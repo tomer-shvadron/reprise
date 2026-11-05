@@ -95,7 +95,7 @@ This phase is serial on purpose. The three phase-2 lanes all code against the mo
 - `midiNote(track, note)` with tuning and capo; drum tracks return the note's MIDI value directly; pitched tracks the same.
 - Standard tunings table (E standard, drop D, Eb standard, D standard, DADGAD, open G, open D, 7-string, 4 and 5-string bass) with names, for the track properties dialog and the tuner.
 - Spelling: given a MIDI note and a key signature, the staff position and accidental for standard notation, preferring the key's accidentals; a `respell` helper for enharmonics.
-- `transpose(note, semitones, track)` that re-fingers on the same string where possible and reports when a note falls off the fretboard.
+- `transpose(track, note, semitones)` (track-first since WP-015, like `midiNote`) that re-fingers on the same string where possible and reports when a note falls off the fretboard.
 - GM percussion map: MIDI note to drum instrument name and default staff position and note head, for the drum staff.
 
 **Acceptance criteria**

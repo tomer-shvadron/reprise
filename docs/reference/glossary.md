@@ -11,6 +11,8 @@ Terms used across the docs, the model and the UI. When two names exist, the one 
 - **Note**: one sounding pitch within a beat, on a string (fretted), or a MIDI note (drums, pitched).
 - **String numbering**: string 1 is the highest-pitched string, as in Guitar Pro. Tuning arrays in the model are low to high, so `tuning[tuning.length - string]` is the string's open pitch.
 - **Tick**: the time unit. 960 ticks per quarter note (PPQ). A whole note is 3840 ticks.
+- **Playback tick**: a tick counted from the start of playback across every pass of the playback sequence, as opposed to a tick within a bar or in written order.
+- **Tie chain**: a note and the notes tied to it in the following beats of its voice. A chain shares one pitch; the score model (`reference/score-model.md`) explains how edits keep it.
 - **Duration**: a beat's base value as the denominator: 1 whole, 2 half, 4 quarter, 8 eighth, and so on, plus dots and an optional tuplet.
 - **Tuplet**: `n` notes in the time of `of`: triplets are `{ n: 3, of: 2 }`.
 - **Playback sequence**: the ordered list of master-bar passes after expanding repeats and jumps. The scheduler and the cursor follow it; the layout shows written order.
