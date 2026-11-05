@@ -19,6 +19,8 @@
     "format:check": "prettier --check .",
     "fixtures:describe": "node scripts/fixtures/describe.ts",
     "fixtures:check": "node scripts/fixtures/describe.ts --check",
+    "sounds:fetch": "node scripts/sounds/fetch-gm.ts",
+    "sounds:fixture": "node scripts/sounds/make-test-sf2.ts",
     "e2e": "pnpm --filter @reprise/desktop e2e",
     "desktop:dev": "pnpm --filter @reprise/desktop dev",
     "desktop:build": "pnpm --filter @reprise/desktop build",

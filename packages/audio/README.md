@@ -88,8 +88,8 @@ from `preload`.
 `AudioBufferSourceNode.loop` cannot be switched off sample-accurately; `delayVolEnv` becomes a
 later `when`; the stereo zones of a sample pair (ruling on this PR) are merged into one two-channel
 buffer, which the voice graph passes through unchanged; a mono zone's `pan` goes to `Region.pan`;
-`keynumToVolEnvHold` and `keynumToVolEnvDecay` have no home yet and are a contract issue if a pack
-needs them.
+`keynumToVolEnvHold` and `keynumToVolEnvDecay` are expanded to one region per key (see
+[SF2 loader and GM tier](#sf2-loader-and-gm-tier), which has the full mapping).
 
 ### Sampler API
 
@@ -144,3 +144,101 @@ can no longer sound (`held` says how many), so a long song does not accumulate t
   settle, and it has a fixed pre-delay, measured at 264 frames (5.99 ms at 44.1 kHz): everything
   through the master bus lands that much after its `when`. Tests that compare levels play below
   the threshold and measure after that; a test that measures onsets must tap before the bus.
+
+## SF2 loader and GM tier
+
+In `src/sf2/`: a SoundFont 2 parser, the resolution of presets into `Region`s, and
+`Sf2Soundfont`, which implements the memory manager's `SampleProvider` seam over one bank.
+
+```ts
+const font = Sf2Soundfont.parse(bytes); // headers only; the PCM stays in `bytes`
+font.regionMapFor(bank, program); // RegionMap | undefined; the bank falls back to 0
+font.drumKitRegionMap(kit); // bank 128; a missing kit falls back to kit 0
+font.preset(bank, program); // exact: { id, name, regions, bytes, report }
+font.instrumentOf(ref); // 'gm:0:25', 'gm:drums:0': whole-instrument eviction groups
+font.byteLength(ref); // decoded Float32 size, before any fetch
+await font.fetch(ref); // { sampleRate, channels: Float32Array[], loop (frames), byteLength }
+```
+
+**Our own parser, not a library.** The candidates were `soundfont2` (MIT, last released in
+October 2024) and SpessaSynth's parser, which ADR-0004 already set aside. Neither resolves
+generators into the shape the `Region` needs, so that layer, the bulk of the work, would be ours
+either way; what remains is the RIFF walk plus fixed-size records, and owning it keeps the PCM a
+view over the file until `fetch`, with no dependency to audit. It reads `INFO`, `sdta` (`smpl` and, from version 2.04,
+`sm24`) and `pdta`'s nine sub-chunks, uses only `DataView` and `TextDecoder`, so it runs in Node
+as well, and builds no `AudioBuffer`: decoding into one is the memory manager's job.
+
+**Lazy decode.** Parsing records where each sample's PCM sits; nothing is converted. `fetch`
+converts one slice of 16-bit PCM (with the `sm24` low byte when present) to Float32 channels. A
+sample ref carries everything `fetch` needs, so the provider keeps no table of issued refs:
+`<instrument>/<shdr index>[+<right index>]/<start>-<end>[/<loop start>-<loop end>]`, absolute
+frames into `smpl` after the zone's address offsets. Refs are scoped to their preset, so
+`instrumentOf` is unambiguous and evicting one instrument never pulls a sample from under
+another; the cost is that two presets sharing a sample decode it twice when both are loaded.
+
+**Resolution.** A preset zone names an instrument, whose zones name samples. Within each level a
+local zone's generators replace its global zone's. Preset values are then added to the
+instrument's as offsets, the sum clamped to the spec's range; key and velocity ranges intersect
+instead, and the generators the spec reserves for instruments (addresses, `sampleModes`,
+`exclusiveClass`, `overridingRootKey`, `keynum`, `velocity`) are ignored at preset level.
+
+| SF2 generator                                                                   | `Region`                                                                                                                                                                  |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `keyRange`, `velRange`                                                          | `keyLo`..`keyHi`, `velLo`..`velHi`: the instrument zone's range intersected with the preset zone's; an empty intersection drops the zone                                  |
+| `overridingRootKey`, else `shdr.originalPitch`                                  | `rootKey`; an `originalPitch` of 255 (unpitched) reads as 60                                                                                                              |
+| `coarseTune`, `fineTune`, `shdr.pitchCorrection`                                | `tune` = coarse × 100 + fine + correction, in cents                                                                                                                       |
+| `scaleTuning` ≠ 100                                                             | one region per key, `rootKey` = key, `tune` = scale × (key − root) + the cents above: exact                                                                               |
+| `sampleModes` 1 and 3                                                           | `loop`, in seconds from the slice start; 3 (loop until release) as a plain loop. 0 and 2 play once                                                                        |
+| address offsets (`start`, `end`, `startloop`, `endloop`, fine + 32768 × coarse) | the slice the ref names and the loop inside it; a loop starting before the start offset cannot live in the slice and is dropped (reported)                                |
+| `attackVolEnv`, `holdVolEnv`                                                    | `envelope.attack`, `.hold`: 2^(timecents / 1200) seconds                                                                                                                  |
+| `sustainVolEnv`                                                                 | `envelope.sustain` = 10^(−cB / 200); 1000 cB (100 dB) and more is 0                                                                                                       |
+| `decayVolEnv`                                                                   | `envelope.decay` = SF2 time × min(sustain dB, 80) / 100: SF2 times a full 100 dB fall at a constant dB rate, the sampler the fall to the sustain level, or -80 dB at most |
+| `releaseVolEnv`                                                                 | `envelope.release` = SF2 time × 80 / 100, the sampler's release ending at -80 dB; exact from full level, slower from a lower one                                          |
+| `keynumToVolEnvHold`, `keynumToVolEnvDecay`                                     | one region per key, with hold and decay at timecents + factor × (60 − key): exact                                                                                         |
+| `initialAttenuation`                                                            | `attenuation` = cB / 10 dB, positive quieter                                                                                                                              |
+| `pan`                                                                           | `pan` = value / 500, mono regions only                                                                                                                                    |
+| linked left and right samples                                                   | one region with a two-channel ref, left first (below)                                                                                                                     |
+
+**Stereo merge.** A zone whose sample is a left or right half, with a zone in the same instrument
+playing its linked partner over exactly the same key and velocity ranges, becomes one region whose
+ref names both samples, left first; `fetch` returns two channels and the voice plays them
+unpanned. The left zone's generators win and a right zone that differs in any of them is counted
+in `report.stereoMismatches`. A half without such a partner stays a mono region with its own pan.
+
+**What the `Region` cannot carry is reported, never approximated.** `preset().report` counts,
+per preset, the zones with a non-neutral value for each generator the `Region` has no field for
+(filter, modulation and vibrato LFOs, modulation envelope, effects sends, `delayVolEnv`,
+`exclusiveClass`, `keynum`, `velocity`), zones under non-default modulators, zones expanded per
+key, overlapping regions (`layered`), stereo mismatches, and dropped zones and loops.
+
+### GeneralUser GS
+
+`pnpm sounds:fetch` (`scripts/sounds/fetch-gm.ts`) downloads GeneralUser GS 2.0.3 and its
+license from the author's GitHub repository, pinned by commit in `scripts/sounds/gm.json`,
+verifies both by SHA-256, and writes them to `apps/web/public/sounds/gm/`, where only the README
+is committed (it has the provenance and the license summary). CI caches the files on the pins and
+fetches them on a miss, so the GeneralUser GS suite (`src/sf2/general-user-gs.test.ts`) runs
+there; locally it skips with a message until the files are fetched.
+
+Measured over the GM set (bank 0 programs 0 to 127 and the standard kit, 129 presets):
+
+- Every program and every GM percussion key, 35 to 81, resolves. 16,100 regions, 1,434 sample
+  refs.
+- Decoded as Float32 the whole GM set is 121.6 MiB; deduplicated across presets it would be
+  71.5 MiB, and the whole sample chunk 61.2 MiB. A median preset is 0.41 MiB; the largest are
+  the string sections at 8.93 MiB each (they share their samples) and the standard kit at
+  5.49 MiB.
+- The file is version 2.01: no `sm24`, and no linked stereo samples at all (all 920 are mono), so
+  the stereo merge is for other banks.
+- It uses the key-scaled envelope generators heavily: `keynumToVolEnvHold` in 287 zones and
+  `keynumToVolEnvDecay` in 676, `scaleTuning` in 156. All are expanded per key, exactly.
+- It needs what the `Region` lacks, tracked in
+  [#61](https://github.com/tomer-shvadron/reprise/issues/61): 70 presets layer more than one zone
+  per key, which the sampler plays as one; 6,458 zone instances set a low-pass filter (median
+  about 800 Hz); 14 zones have an audible volume-envelope delay; 27 set an exclusive class. It
+  also uses non-default modulators in 4,215 zones, which nothing applies.
+- Three zones (Soundtrack, Birds) start past their loop start and play unlooped.
+
+The fixture the parser tests run on is `test-fixtures/synthetic.sf2`, about 3 KB, written by
+`pnpm sounds:fixture` (`scripts/sounds/make-test-sf2.ts`); a scripts test fails when the committed
+file and the generator disagree.
