@@ -43,4 +43,4 @@ pnpm desktop:build  # the Electron package (WP-004)
 pnpm e2e            # Playwright against the Electron build (WP-004)
 ```
 
-`pnpm install` also downloads the Playwright Chromium build that the `audio` tests run in.
+`pnpm install` also downloads the headless Chromium shell (about 100 MB) that the `audio` tests run in. `pnpm exec playwright install chromium` adds the full browser, needed only to watch those tests with `--browser.headless=false`.
