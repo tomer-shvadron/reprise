@@ -80,7 +80,7 @@ describe('insertBar', () => {
     ]);
   });
 
-  it('joins a volta both neighbours share', () => {
+  it('stays inside a volta both neighbours share', () => {
     const score = withMasterBars(buildScore(), (bars) =>
       bars.map((bar, m) =>
         m === 1 || m === 2
