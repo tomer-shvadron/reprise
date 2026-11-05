@@ -16,8 +16,11 @@ export interface TieLink {
   beat: number;
 }
 
-/** A tie joins notes on one string, or with one MIDI value on drum and pitched tracks. */
-export function sameTieSlot(
+/**
+ * The slot a note occupies in a beat: its string on fretted tracks, its MIDI note on drum and
+ * pitched tracks. `setNote` merges over the note in a slot, and a tie joins notes in one slot.
+ */
+export function sameSlot(
   track: Pick<Track, 'kind'>,
   a: Pick<Note, 'string' | 'fret'>,
   b: Pick<Note, 'string' | 'fret'>,
@@ -42,7 +45,7 @@ export function tieOriginOf(
     for (let i = Math.min(from, beats.length - 1); i >= 0; i--) {
       const beat = beats[i];
       if (!beat || beat.rest) continue;
-      const origin = beat.notes.find((candidate) => sameTieSlot(track, candidate, note));
+      const origin = beat.notes.find((candidate) => sameSlot(track, candidate, note));
       if (origin) return { note: origin, bar, beat: i };
     }
     from = Number.POSITIVE_INFINITY;
@@ -72,7 +75,7 @@ function nextInSlot(
     for (let i = start; i < beats.length; i++) {
       const beat = beats[i];
       if (!beat || beat.rest) continue;
-      const next = beat.notes.find((candidate) => sameTieSlot(track, candidate, from.note));
+      const next = beat.notes.find((candidate) => sameSlot(track, candidate, from.note));
       if (next) return { note: next, bar, beat: i };
     }
     start = 0;

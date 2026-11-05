@@ -9,7 +9,7 @@ import { NoteSchema } from '../note';
 import type { Note } from '../note';
 import { transpose } from '../pitch';
 import type { Score } from '../score';
-import { hasTieOrigin, tieChainOf, tieOriginOf } from '../ties';
+import { hasTieOrigin, sameSlot, tieChainOf, tieOriginOf } from '../ties';
 import type { Track } from '../track';
 import { assignChanges } from './changes';
 import type { Changes } from './changes';
@@ -66,9 +66,7 @@ export function setNote(target: { beatId: Id; id?: Id }, note: NoteInput): Comma
       const track = at(draft.tracks, position.track, name);
       const beat = beatAt(draft, position, name);
       assertNotePlaced(track, note, name);
-      const existing = beat.notes.find((n) =>
-        track.kind === 'fretted' ? n.string === note.string : n.fret === note.fret,
-      );
+      const existing = beat.notes.find((n) => sameSlot(track, n, note));
       const chain = existing ? tieChainOf(track, position, existing) : [];
       let placed: Note;
       if (existing) {
