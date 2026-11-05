@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { MenuCommandId } from '@/platform/bridge';
 import type { Platform } from '@/platform/platform';
 import { createUiStore } from '@/state/ui';
 
@@ -74,5 +75,55 @@ describe('App', () => {
       'aria-valuenow',
       '320',
     );
+  });
+
+  it('runs native menu commands through the registry, saving to the path Save As chose', async () => {
+    const saveFile = vi.fn(() => Promise.resolve('/Users/me/song copy.gp5'));
+    const writeFile = vi.fn(() => Promise.resolve());
+    const print = vi.fn(() => Promise.resolve());
+    const platform: Platform = {
+      openFile: () => Promise.resolve({ name: 'song.gp5', bytes: new Uint8Array([1, 2]) }),
+      saveFile,
+      readFile: () => Promise.reject(new Error('not used')),
+      writeFile,
+      libraryDir: () => Promise.reject(new Error('not used')),
+      dataDir: () => Promise.reject(new Error('not used')),
+      print,
+      microphone: () => Promise.reject(new Error('not used')),
+    };
+    let menu: ((id: MenuCommandId) => void) | undefined;
+    const unsubscribe = vi.fn();
+    const ui = createUiStore('dark');
+    render(
+      <App
+        ui={ui}
+        platform={platform}
+        keyboard="mac"
+        onMenuCommand={(listener) => {
+          menu = listener;
+          return unsubscribe;
+        }}
+      />,
+    );
+    const send = async (id: MenuCommandId) => {
+      await act(async () => {
+        menu?.(id);
+        await Promise.resolve();
+      });
+    };
+
+    await send('file.open');
+    expect(await screen.findByText('song.gp5')).toBeInTheDocument();
+    await send('file.saveAs');
+    await send('file.save');
+    await send('file.print');
+    await send('view.zoomIn');
+    await send('view.togglePanel');
+
+    expect(saveFile).toHaveBeenCalledOnce();
+    expect(writeFile).toHaveBeenCalledWith('/Users/me/song copy.gp5', new Uint8Array([1, 2]));
+    expect(print).toHaveBeenCalledOnce();
+    expect(ui.getState().zoom).toBe(1.1);
+    expect(ui.getState().panels.rightPanel).toBe(true);
   });
 });
