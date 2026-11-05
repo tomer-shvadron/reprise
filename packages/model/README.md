@@ -29,6 +29,7 @@ validateScore(score); // cross-node invariants: [] when the score is sound
 | `voice-overfull`                  | A voice's beats sum to at most the bar length. Incomplete bars are allowed.                                                                              |
 | `rest-with-notes`                 | A rest carries no notes.                                                                                                                                 |
 | `string-range`                    | Fretted notes use strings 1 to the string count; drum and pitched notes use string 0.                                                                    |
+| `fret-range`                      | Fretted notes sit on frets 0 to `track.fretCount`, whatever the capo, as Guitar Pro files hold them.                                                     |
 | `duplicate-string`                | No two notes of a fretted beat share a string.                                                                                                           |
 | `tie-target`                      | A tied note has a note on the same string (same MIDI note on drum and pitched tracks) in the previous beat of its voice, crossing into the previous bar. |
 | `tuplet`                          | `n:of` is not 1:1 and lies strictly between 1:2 and 2:1.                                                                                                 |
@@ -96,7 +97,14 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   `Track.tuning` is low to high, so a string's open pitch is `tuning[tuning.length - string]`.
 - **`Note.fret` on drum and pitched tracks is the MIDI note**, and `Note.string` is required
   and `0` there. Required-and-zero keeps fretted code paths free of `undefined` checks; the
-  `string-range` rule enforces 1 to the string count on fretted tracks and 0 elsewhere.
+  `string-range` rule enforces 1 to the string count on fretted tracks and 0 elsewhere, and
+  `fret-range` keeps a fretted note between 0 and `Track.fretCount`.
+- **Spelling follows Guitar Pro**: a note outside the key is spelled with a sharp in C major
+  and the sharp keys and with a flat in the flat keys, the natural letter first, plus a minor
+  key's raised sixth and seventh (see "Pitch, tuning and spelling"). The alternative, the
+  nearest spelling on the line of fifths (MuseScore's rule, which gives Eb, Ab and Bb in C
+  major), was considered and set aside: tab players read Guitar Pro's sharps, and `respell`
+  covers the exceptions one note at a time.
 - **Durations**: `duration` is the denominator, 1 (whole) to 256 as gpif's `NoteValue` allows
   (GP5 stops at 64), `dots` 0 to 2, `tuplet` `{ n, of }`. Tuplets can make tick lengths
   fractional (septuplets at 960 PPQ); `validateScore` compares tick sums with a float
@@ -156,6 +164,10 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   tuning, and the track keeps that tuning and `fretCount` so gp5 export can re-finger it.
 - **`Track.fretCount`** (new) is the neck length, 24 by default, for transposition and the
   fretboard view.
+- **`Track.display.octaveShift`** (new) is written minus sounding pitch, in octaves: `1` on
+  fretted tracks, since guitar and bass are written an octave above where they sound, `0` on
+  drum and pitched tracks. `createTrack` sets it; readers map the file's staff transposition
+  onto it; `staffPosition` takes it so layout places the written pitch.
 - **Chords**: `Beat.chord` is `{ name, diagram? }`. The name alone is a chord written above the
   beat, as the editor enters it; `diagram` is the grid when the file carries one: `baseFret`,
   one absolute fret per string (string 1 first, `null` = muted, 0 = open), optional `barres`
@@ -184,6 +196,54 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   fractional where needed.
 - **Colours** are lower-case `#rrggbb`.
 - **Clefs** are `treble`, `bass`, `alto`, `tenor`, `percussion` (gpif's G2, F4, C3, C4, Neutral).
+
+## Pitch, tuning and spelling
+
+Pure helpers over the model, with no state of their own.
+
+- **`midiNote(track, note)`** is the sounding MIDI note: `tuning[tuning.length - string] +
+capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro writes them;
+  `note.fret` as stored on drum and pitched tracks, even when a pitched track keeps a GP5
+  tuning. A fretted note on a string the track lacks throws a `RangeError`.
+- **`transpose(note, semitones, track)`** moves the note on its own string and returns
+  `{ ok: true, note, warnings }` or `{ ok: false, reason, midi, alternatives }`, never throwing
+  for a note that falls off. `reason` is `belowOpenString`, `aboveLastFret` (past `fretCount`,
+  the fret numbers a Guitar Pro file holds whatever the capo) or `outOfMidiRange` (pitched
+  tracks, 0 to 127). `alternatives` lists the other strings that can play the pitch, for a
+  caller that knows which strings in the beat are free. A stored `accidental` survives only
+  octave shifts; drum notes come back unchanged. `warnings` holds `trillDropped` when the
+  trill's alternate fret, which moves with the note, falls off and the trill is removed, and
+  `naturalHarmonicMoved` when the moved note carries a natural harmonic: its `value` is a node
+  on the string and is left for the editor to re-derive, while an artificial harmonic's `value`
+  is an offset and travels with the note.
+- **`STANDARD_TUNINGS`** names fourteen tunings (guitar, 7-string, 4- and 5-string bass,
+  ukulele), each in `Track.tuning` order. The ukulele is re-entrant, so its array is in string
+  order, not pitch order. **`findTuningName(tuning)`** matches exactly, string count included.
+- **`spell(midi, key, accidental?)`** returns `{ letter, octave, alter, accidental? }`.
+  `octave` is scientific (C4 = 60) and belongs to the letter, so B#3 is MIDI 60. Preference:
+  a stored accidental that can spell the pitch, then the key's own notes, then a minor key's
+  raised seventh and sixth (F## and E# in G# minor), then the natural letter, then a sharp in
+  sharp keys and C major or a flat in flat keys. The returned `accidental` is what to print against the
+  key signature; cancelling an accidental earlier in the bar is the layout's job.
+  `spellNote(track, note, key)` does the same from a note.
+- **`Note.accidental` stores the alteration of the spelling** (`flat` = a lowered letter),
+  not the printed sign. **`respell(track, note, key)`** flips C# and Db, E and Fb, B and Cb;
+  D, G and A, which have no single-accidental alternative, cycle through their double sharp
+  and double flat. It clears the stored accidental when the result is the key's default, so
+  the note follows a later key change.
+- **`staffPosition(spelling, clef, octaveShift = 0)`** is the line or space on a five-line
+  staff: 0 the bottom line, 8 the top line, odd numbers spaces; below 0 and above 8 the even
+  numbers are ledger lines. Treble, bass, alto and tenor clefs. `octaveShift` is the track's
+  `display.octaveShift`, so a guitar's sounding E2 (MIDI 40) is placed as the written E3,
+  position -7 on the treble staff rather than -14.
+- **`percussionInstrument(midi)`** gives the GM (35 to 81) and GM2 (27 to 34, 82 to 87) drum
+  name, default staff position (same numbering) and note head (`normal`, `cross`, `diamond`,
+  `triangle`). Positions follow the common drum-kit layout (kick in the bottom space, a second
+  kick on the bottom line, snare in the third space, hi-hats above the staff, toms descending);
+  the hand-percussion rows (60 to 87) are placeholders for the drum-staff work package to
+  revisit. Cymbals are crosses and bells diamonds; a
+  mute and open pair (hi-hat, triangle, cuica, surdo) shares its position and differs by head
+  or articulation, cross for mute.
 
 ## Timing and playback order
 
@@ -298,7 +358,8 @@ the lead for the phase-1 freeze and re-checked in WP-015.
 - Song level: RSE settings, page setup, master volume and reverb, hidden tempo marks, MIDI
   ports and channels, gpif `WordsAndMusic` (read into `words` and `music`).
 - Track level: the 12-string and banjo flags, tuning labels and flat display, partial capo,
-  ottava and transposing instruments, multiple staves per track (collapsed onto one staff by
+  ottava lines and chromatic transposition (`display.octaveShift` covers the octave), multiple
+  staves per track (collapsed onto one staff by
   ADR-0006; the reader's voice-merge rule is the formats lane's).
 - Bar level: GP5 beam grouping, fermatas, free time, simile marks (the reader copies the
   previous bar's beats into the bar with fresh ids, or the bar would play silent), stem
