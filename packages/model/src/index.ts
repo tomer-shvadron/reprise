@@ -136,6 +136,9 @@ export {
 } from './factories';
 export type { TrackOptions } from './factories';
 
+export { TIE_REACH_BARS, tieOriginOf } from './ties';
+export type { TieLink, TiePosition } from './ties';
+
 export { validateScore } from './validate';
 export type { Violation, ViolationPath, ViolationRule } from './validate';
 

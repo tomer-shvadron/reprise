@@ -55,6 +55,19 @@ jobs:
       - name: Install Chromium and its system dependencies
         run: pnpm exec playwright install --with-deps chromium --only-shell
 
+      # About 32 MB from GitHub, cached on the pins, so the GeneralUser GS suite runs in CI too.
+      - name: Cache the GM soundfont
+        uses: actions/cache@v6
+        with:
+          # The fetched files only: restoring the directory would overwrite its committed README.
+          path: |
+            apps/web/public/sounds/gm/GeneralUser-GS.sf2
+            apps/web/public/sounds/gm/LICENSE.txt
+          key: gm-soundfont-${{ hashFiles('scripts/sounds/gm.json') }}
+
+      - name: Fetch the GM soundfont
+        run: pnpm sounds:fetch
+
       - name: Lint
         run: pnpm lint
 

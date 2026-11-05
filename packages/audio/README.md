@@ -269,8 +269,8 @@ from `preload`.
 `AudioBufferSourceNode.loop` cannot be switched off sample-accurately; `delayVolEnv` becomes a
 later `when`; the stereo zones of a sample pair (ruling on this PR) are merged into one two-channel
 buffer, which the voice graph passes through unchanged; a mono zone's `pan` goes to `Region.pan`;
-`keynumToVolEnvHold` and `keynumToVolEnvDecay` have no home yet and are a contract issue if a pack
-needs them.
+`keynumToVolEnvHold` and `keynumToVolEnvDecay` are expanded to one region per key (see
+[SF2 loader and GM tier](#sf2-loader-and-gm-tier), which has the full mapping).
 
 ### Sampler API
 
@@ -326,3 +326,227 @@ never sounds). It keeps no handles: the sampler's voice set is the state.
   settle, and it has a fixed pre-delay, measured at 264 frames (5.99 ms at 44.1 kHz): everything
   through the master bus lands that much after its `when`. Tests that compare levels play below
   the threshold and measure after that; a test that measures onsets must tap before the bus.
+
+## SF2 loader and GM tier
+
+In `src/sf2/`: a SoundFont 2 parser, the resolution of presets into `Region`s, and
+`Sf2Soundfont`, which implements the memory manager's `SampleProvider` seam over one bank.
+
+```ts
+const font = Sf2Soundfont.parse(bytes); // headers only; the PCM stays in `bytes`
+font.regionMapFor(bank, program); // RegionMap | undefined; the bank falls back to 0
+font.drumKitRegionMap(kit); // bank 128; a missing kit falls back to kit 0
+font.preset(bank, program); // exact: { id, name, regions, bytes, report }
+font.instrumentsOf(ref); // ['gm:0:48', 'gm:0:49', ...]: every preset playing the slice
+font.byteLength(ref); // decoded Float32 size, before any fetch
+await font.fetch(ref); // { sampleRate, channels: Float32Array[], byteLength }
+```
+
+**Our own parser, not a library.** The candidates were `soundfont2` (MIT, last released in
+October 2024) and SpessaSynth's parser, which ADR-0004 already set aside. Neither resolves
+generators into the shape the `Region` needs, so that layer, the bulk of the work, would be ours
+either way; what remains is the RIFF walk plus fixed-size records, and owning it keeps the PCM a
+view over the file until `fetch`, with no dependency to audit. It reads `INFO`, `sdta` (`smpl` and, from version 2.04,
+`sm24`) and `pdta`'s nine sub-chunks, uses only `DataView` and `TextDecoder`, so it runs in Node
+as well, and builds no `AudioBuffer`: decoding into one is the memory manager's job. Every count
+it allocates is bounded by the chunk that holds it, and a malformed file fails with an
+`Sf2ParseError` (fuzzed over byte flips, truncation and corrupted chunk sizes).
+
+**Lazy decode.** Parsing records where each sample's PCM sits; nothing is converted. `fetch`
+converts one slice of 16-bit PCM (with the `sm24` low byte when present) to Float32 channels. A
+sample ref carries everything `fetch` needs, so the provider keeps no table of issued refs:
+`<soundfont>/<shdr index>[+<right index>]/<start>-<end>`, absolute frames into `smpl` after the
+zone's address offsets. The ref is the PCM span alone: the loop lives on the `Region`, in seconds
+of that span, and the tuning and envelope with it, so every zone of every preset that plays the
+same span shares one ref and the memory manager decodes it once. `instrumentsOf` names every
+preset of the bank that plays a slice; its index is built on first use from the instruments'
+zones, which a preset cannot change, so it costs a few milliseconds and under a megabyte for a
+whole GM bank rather than resolving every preset.
+
+**Resolution.** An instrument's zones are resolved once and shared by every preset that names
+it: within each level a local zone's generators replace its global zone's, and the zone's sample,
+addresses, loop and stereo partner are fixed there. Per preset, the preset zone's values are
+added to the instrument's as offsets, the sum clamped to the spec's range; key and velocity ranges
+intersect instead, and the generators the spec reserves for instruments (addresses,
+`sampleModes`, `exclusiveClass`, `overridingRootKey`, `keynum`, `velocity`) are ignored at
+preset level.
+
+| SF2 generator                                                                   | `Region`                                                                                                                                                                  |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `keyRange`, `velRange`                                                          | `keyLo`..`keyHi`, `velLo`..`velHi`: the instrument zone's range intersected with the preset zone's; an empty intersection drops the zone                                  |
+| `overridingRootKey`, else `shdr.originalPitch`                                  | `rootKey`; an `originalPitch` of 255 (unpitched) reads as 60                                                                                                              |
+| `coarseTune`, `fineTune`, `shdr.pitchCorrection`                                | `tune` = coarse × 100 + fine + correction, in cents                                                                                                                       |
+| `modEnvToPitch`, `sustainModEnv`                                                | `tune` += depth × (1000 − sustain) / 1000: the pitch the modulation envelope holds after its transient is a fixed offset (GeneralUser GS tunes its Ocarina with it)       |
+| `scaleTuning` ≠ 100                                                             | one region per key, `rootKey` = key, `tune` = scale × (key − root) + the cents above: exact                                                                               |
+| `sampleModes` 1 and 3                                                           | `loop`, in seconds from the slice start; 3 (loop until release) as a plain loop. 0 and 2 play once                                                                        |
+| address offsets (`start`, `end`, `startloop`, `endloop`, fine + 32768 × coarse) | the slice the ref names and the loop inside it; a loop starting before the start offset cannot live in the slice and is dropped (reported)                                |
+| `attackVolEnv`, `holdVolEnv`                                                    | `envelope.attack`, `.hold`: 2^(timecents / 1200) seconds                                                                                                                  |
+| `sustainVolEnv`                                                                 | `envelope.sustain` = 10^(−cB / 200); 1000 cB (100 dB) and more is 0                                                                                                       |
+| `decayVolEnv`                                                                   | `envelope.decay` = SF2 time × min(sustain dB, 80) / 100: SF2 times a full 100 dB fall at a constant dB rate, the sampler the fall to the sustain level, or -80 dB at most |
+| `releaseVolEnv`                                                                 | `envelope.release` = SF2 time × 80 / 100, the sampler's release ending at -80 dB; exact from full level, slower from a lower one                                          |
+| `keynumToVolEnvHold`, `keynumToVolEnvDecay`                                     | one region per key, with hold and decay at timecents + factor × (60 − key): exact                                                                                         |
+| `initialAttenuation`                                                            | `attenuation` = cB / 10 dB, positive quieter                                                                                                                              |
+| `pan`                                                                           | `pan` = value / 500, mono regions only                                                                                                                                    |
+| linked left and right samples                                                   | one region with a two-channel ref, left first (below)                                                                                                                     |
+
+**Stereo merge.** A zone whose sample is a left or right half, with a zone in the same instrument
+playing its linked partner over exactly the same key and velocity ranges, becomes one region whose
+ref names both samples, left first; `fetch` returns two channels and the voice plays them
+unpanned. The pair's pitch follows the right zone and the right sample header, as spec 7.10
+requires ("their pitch controlled by the right sample's generators"); everything else follows
+the left zone, and a right zone that differs in an envelope, attenuation or sample-mode generator
+is counted in `report.stereoMismatches`. A half without such a partner, or whose partner's span
+would fall outside the sample data, stays a mono region with its own pan and is counted in
+`report.unpairedStereo`: for a pair whose zones cover different keys that is two hard-panned mono
+regions, of which the sampler sounds the first ([#61](https://github.com/tomer-shvadron/reprise/issues/61)).
+
+**What the `Region` cannot carry is reported, never approximated.** `preset().report` counts,
+per preset, the zones with a non-neutral value for each generator the `Region` has no field for
+(filter, modulation and vibrato LFOs, the modulation envelope's transient, effects sends,
+`delayVolEnv`, `exclusiveClass`, `keynum`, `velocity`), zones under non-default modulators, zones
+expanded per key, overlapping region pairs (`layered`; a key-expanded zone counts once per key),
+stereo mismatches and unpaired halves, and dropped zones and loops.
+
+### GeneralUser GS
+
+`pnpm sounds:fetch` (`scripts/sounds/fetch-gm.ts`) downloads GeneralUser GS 2.0.3 and its
+license from the author's GitHub repository, pinned by commit in `scripts/sounds/gm.json`,
+verifies both by SHA-256, and writes them to `apps/web/public/sounds/gm/`, where only the README
+is committed (it has the provenance and the license summary). A network failure or a 5xx is
+retried before the script fails naming the URL and the cause. CI caches the files on the pins and
+fetches them on a miss, so the GeneralUser GS suite (`src/sf2/general-user-gs.test.ts`) runs
+there; locally it skips with a message until the files are fetched.
+
+Measured over the GM set (bank 0 programs 0 to 127 and the standard kit, 129 presets):
+
+- Every program and every GM percussion key, 35 to 81, resolves. 16,100 regions over 971 sample
+  refs, 579 of which are played by more than one preset. Resolving the whole set costs about
+  60 ms and 7 MiB of heap, its region maps 4 ms and 3 MiB, and the `instrumentsOf` index 7 ms and
+  1 MiB; a note-on resolves on the largest map (Timpani, 896 regions) in about 35 ns.
+- Decoded as Float32 the GM set is 71.5 MiB fetched once per ref, against 121.6 MiB summed per
+  preset (`preset().bytes` counts a shared span in every preset that plays it); the whole sample
+  chunk is 61.2 MiB. A median preset is 0.41 MiB; the largest are Tremolo, Fast and Slow Strings
+  at 8.93 MiB each (the same 21 samples, sliced from different start offsets, so three sets of
+  refs) and the standard kit at 5.49 MiB.
+- The file is version 2.01: no `sm24`, and no linked stereo samples at all (all 920 are mono), so
+  the stereo merge is proved by the synthetic fixture.
+- It uses the key-scaled envelope generators heavily: `keynumToVolEnvHold` in 287 zones and
+  `keynumToVolEnvDecay` in 676, `scaleTuning` in 156. All are expanded per key, exactly.
+- `modEnvToPitch` is set in 457 zones; 447 are transients with a `sustainModEnv` of 1000, and 10
+  zones in Ocarina, Bagpipes and Helicopter hold a pitch offset of 94 to 700 cents, which `tune`
+  carries. One note of Whistle and of Ocarina rendered through the sampler lands within a cent of
+  440 Hz at A4.
+- It needs what the `Region` lacks, tracked in
+  [#61](https://github.com/tomer-shvadron/reprise/issues/61): 70 presets layer more than one zone
+  per key, which the sampler plays as one; 6,458 zone instances set a low-pass filter (median
+  about 800 Hz), 2,427 of them with a filter envelope whose held level belongs in the cutoff the
+  same way; 14 zones have an audible volume-envelope delay; 27 set an exclusive class. It also
+  uses non-default modulators in 4,215 zones, which nothing applies.
+- Three zones (Soundtrack, Birds) start past their loop start and play unlooped.
+
+The fixture the parser tests run on is `test-fixtures/synthetic.sf2`, under 4 KB, written by
+`pnpm sounds:fixture` (`scripts/sounds/make-test-sf2.ts`); a scripts test fails when the committed
+file and the generator disagree.
+
+## Memory manager
+
+ADR-0005's decoded-buffer cache, in `src/samples/`. `ManagedSampleSource` is the `SampleSource`
+every instrument plays from: the loaders supply raw PCM through a `SampleProvider`, the manager
+decodes it, accounts for it and evicts it, and the sampler never sees the difference.
+
+### The provider seam
+
+```ts
+type InstrumentId = string; // 'gm:0:25' = bank:program, 'gm:drums:0' for kits
+
+interface RawSample {
+  sampleRate: number;
+  channels: Float32Array[];
+  byteLength: number;
+}
+
+interface SampleProvider {
+  instrumentsOf(ref: SampleRef): InstrumentId[]; // every preset that references the sample
+  fetch(ref: SampleRef): Promise<RawSample>; // raw PCM; the manager builds the AudioBuffer
+  byteLength(ref: SampleRef): number; // decoded size estimate, reserved before the fetch
+}
+```
+
+A `SampleRef` names a sample slice, not a preset's copy of it: GeneralUser GS shares samples
+across presets (its three string sections share 8.9 MiB), so one buffer can belong to several
+instruments.
+
+The seam carries no loop points: a `Region` holds its loop in seconds and the sampler reads it
+there. Two provider answers are refused rather than trusted: a sample `instrumentsOf` names no
+instrument for rejects on load, since a buffer nobody owns could never be evicted; a `byteLength`
+that is not a finite byte count reserves nothing.
+
+### API
+
+```ts
+const source = new ManagedSampleSource(provider, context, { budgetBytes: GM_BUDGET_BYTES });
+const plan = await source.load(score, regionMapOf, { bars: 4 }); // AudioEngine.load's half
+source.memory(); // the engine's MemoryReport: { decodedBytes, budgetBytes, residents }
+const off = source.on('memory', (stats) => {}); // coalesced to one per animation frame
+source.budgetBytes = 300 * MEGABYTE; // settable at runtime; lowering it evicts at once
+source.counters; // { fetches, evictions, pinnedEvictions }
+
+planInstruments(score, { bars?, instrumentOf? }); // instruments and keys per track
+planSamples(plan, regionMapOf); // the SampleRefs those keys reach
+```
+
+### Accounting, eviction and pinning
+
+- **Accounting** is per buffer, `numberOfChannels × length × 4` bytes, from the buffer built and
+  not from the provider's estimate, and counted once however many instruments share it. The estimate only reserves room while a fetch is in flight,
+  so a burst of loads (a preload) evicts ahead and cannot overshoot.
+- **Eviction is by whole instrument**, least recently used first, whenever resident plus
+  reserved bytes exceed the budget. A buffer is attributed to every instrument that references
+  it and freed only when the last resident one goes, so evicting one of two presets that share a
+  sample keeps the sample. Recency is `peekBuffer`, which the sampler calls for every
+  note it starts, and `getBuffer`. Half an instrument would save little and turn into skipped
+  notes all over its range.
+- **Pinning.** `switchSong` (and so `load`) pins the instruments the new song uses and evicts
+  every other one at once. A leftover loaded afterwards (an editor preview on a new track, a
+  program change the plan did not see) is evicted before any pinned instrument, however recent;
+  a sample it shares with a pinned instrument stays.
+- **The instruments of the sample being loaded are never its victims**, so the budget is exceeded
+  only when they alone are larger than the whole budget.
+
+### Planning and preload
+
+`planInstruments` walks the playback sequence, not written order, so a `Beat.mix` program change
+reached through a repeat or a jump is attributed to the bars it actually sounds in. Each track
+plans its own program even when it has no notes (it costs nothing until a note asks for it).
+Keys come from `midiNote`, plus grace notes and the trill's alternate fret.
+
+`load` decodes every sample the opening `bars` (default 4) can reach before it resolves, at every
+velocity and in every articulation layer, since dynamics and articulations are the scheduler's
+to decide. It then warms the rest of the song in the background, four fetches at a time, but only
+if all of it fits the budget: otherwise warming would evict what the opening bars need. A song
+switch (or a later `load`) stops the warm-up after what is already in flight, so the previous song
+is never fetched into the new one's budget; `settled()` resolves once the queue has drained.
+
+### The degrade path
+
+Below the needs of the current song nothing throws. Pinned instruments are evicted least
+recently used first (`counters.pinnedEvictions` counts them); the sampler finds a non-resident
+sample, skips the note, reports it through `onMiss` and requests the load, so the next note on
+it plays. `memory()` shows the overrun, so the settings can say why.
+
+### Budgets, measured
+
+`memory-budget.test.ts` runs the reference long score (8 tracks, 300 bars, with structure)
+against a synthetic GM set shaped like GeneralUser GS as WP-032 measured it: 128 programs and
+the standard kit, the first six programs of each family sharing samples in pairs, sized so the
+presets add up to 121.6 MiB and the distinct samples to 71.5 MiB, a zone every 3 semitones. The
+GM budget is 80 MiB.
+
+| Case                                 | Result                                                         |
+| ------------------------------------ | -------------------------------------------------------------- |
+| `planInstruments`, 8 × 300           | about 17 ms                                                    |
+| Song A, 8 guitar and bass programs   | 1.9 MiB resident, 0 misses in 62,124 notes                     |
+| Song B after A, 7 programs and a kit | 2.1 MiB resident, 0 misses                                     |
+| Every zone of song A's 6 sample sets | 6.9 MiB                                                        |
+| The whole GM set, every sample       | 71.5 MiB resident (121.6 MiB counted per preset), fits         |
+| Song A under half its needs          | peak at the budget, notes skipped and reloaded, nothing thrown |
