@@ -185,6 +185,7 @@ Budgets are starting points. Changing one is a one-line PR to this table plus th
 3. A lane works in its own git worktree on a branch named `wp-0NN-short-slug` and opens one PR per work package.
 4. A PR's description states what was verified and how, links its issue, and includes measurements for anything the budgets table covers.
 5. Integration PRs are lead-only and are where lanes first meet. A lane does not wire its output into the app shell; it exposes the contract and ships a demo route or a story under its feature folder instead.
+6. Every PR is reviewed by a Fable agent before merge: it posts its findings on the PR, fixes blockers and shoulds on the branch with new commits, and reports; the lead merges in dependency order once CI is green, and a stacked branch is brought up to date by merging `main` in, never by rewriting history (ADR-0019).
 
 ## From work package to issue
 
@@ -195,5 +196,6 @@ Each work package in a phase plan maps to one issue:
 - Milestone: the checkpoint it feeds.
 - Body: the work package verbatim, plus the briefing list (which specs, ADRs and reference notes to read), plus the lane rules.
 - Dependencies: "Blocked by #n" lines mirroring the graph above.
+- Board: the issue is added to the Projects board and moved by the lead: Ready → In progress → In review → Done.
 
 Issues are created phase by phase, not all at once, so the backlog reflects contracts that actually exist.

@@ -34,6 +34,7 @@ Notes for the formats lane. The authoritative descriptions of the Guitar Pro for
 - A zip with `Content/score.gpif`, `Content/BinaryStylesheet`, `Content/LayoutConfiguration`, `Content/PartConfiguration`, `Content/Preferences.xml`, `VERSION`, and an optional `Content/Image*` set. Only `score.gpif` matters to us; write the others minimally when exporting so Guitar Pro accepts the file.
 - `gpif` structure: `GPIF > Score` (metadata), `MasterTrack` (tracks list, automations such as tempo), `Tracks > Track` (name, color, instrument set with the `Staves` and `Properties` including `Tuning`, `CapoFret`, `DiagramCollection`), `MasterBars > MasterBar` (`Time`, `Key`, `Repeat`, `AlternateEndings`, `Directions`, `Section`, `TripletFeel`, `Bars` id list), `Bars > Bar` (`Clef`, `Voices` id list), `Voices > Voice` (`Beats` id list), `Beats > Beat` (`Rhythm` ref, `Notes` id list, `Properties`, `Lyrics`, `Chord`, `Legato`, `Whammy`, `Tremolo`), `Notes > Note` (`Properties` with `String`, `Fret`, `Bended`, `BendOriginValue`..., `Slide`, `HopoOrigin`, `HopoDestination`, `HarmonicType`, `PalmMuted`, `LetRing`, `Vibrato`, `Tie`, `Accent`, `LeftFingering`), `Rhythms > Rhythm` (`NoteValue`, `AugmentationDot`, `PrimaryTuplet`).
 - Everything is id-referenced; build maps first, then resolve.
+- `MasterBar > SimileMark` (`Simple`, `FirstOfDouble`, `SecondOfDouble`) is not in the model. The reader expands the previous bar's beats (for the double form, the two bars before it) into the bar with fresh ids and records a warning; export does not reproduce the mark, the expanded bars are written instead.
 
 ## `.reprise`
 
@@ -42,7 +43,13 @@ Notes for the formats lane. The authoritative descriptions of the Guitar Pro for
 
 ## Oracle
 
-alphaTab is a dev-only dependency. It is used to (a) describe fixtures for the manifest, (b) compare parse results note by note, and (c) read back files our gp writer produces. A lint boundary forbids importing it outside test files and scripts.
+alphaTab is a dev-only dependency. It is used to (a) describe fixtures for the manifest, (b) compare parse results note by note, and (c) read back files our gp writer produces. Today it is imported only under `scripts/` (`scripts/fixtures/describe.ts`, which `pnpm fixtures:check` runs in CI); WP-041 adds the lint boundary that keeps it out of everything but test files and scripts.
+
+**Verify format facts against alphaTab's readers, not memory.** Before the formats lane builds a model mapping on a claim about what a format carries, it checks the claim in `node_modules/@coderline/alphatab/dist/alphaTab.core.mjs`: the gpif parser (`_parseRhythm`, the automation parser) and the `Gp3To5Importer`'s beat and note readers. The review of WP-010 (PR #19) found three facts the sketch had wrong from memory:
+
+- gpif `NoteValue` runs from `Long` (a quadruple whole) through `DoubleWhole`, `Whole`, `Half`, `Quarter`, `Eighth`, `16th`, `32nd` and `64th` to `128th` and `256th`. The model's `Duration` covers 1 to 256; a reader ties the two longer values.
+- A gpif tempo automation's `Value` is `"<bpm> <unit>"`, with `unit` 1 to 5 meaning eighth, quarter, dotted quarter, half and dotted half. The reader multiplies by 0.5, 1, 1.5, 2 and 3 to get quarter-note BPM for `TempoMark.bpm` and keeps the unit in `TempoMark.unit`.
+- The gp3 to gp5 bend block carries a vibrato byte after every point (offset, value, vibrato). The reader consumes it; the model does not keep it.
 
 ## Open-licensed fixture sources
 

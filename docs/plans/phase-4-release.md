@@ -42,6 +42,9 @@ Serial, done by the lead. Exit condition: v1 tagged, macOS and Windows installer
 - `release.yml` completed: on a `v*` tag, build on macOS and Windows runners with electron-builder, attach the dmg, zip and nsis installers to a GitHub Release with generated notes; unsigned, with the right-click-Open note in the release body.
 - A Windows smoke test on the runner: launch the built app, open a fixture, exit cleanly.
 - Version bumped from the tag; the app shows its version in the About dialog.
+- Hardening before the first public installer: Electron fuses set in an `afterPack` hook through `@electron/fuses` (`RunAsNode`, `EnableNodeCliInspectArguments` and `EnableNodeOptionsEnvironmentVariable` off, `OnlyLoadAppFromAsar` on), `app.enableSandbox()` before `ready`, and an app icon for both platforms.
+- A Content-Security-Policy on the renderer. A `script-src` without `'unsafe-inline'` blocks the inline theme bootstrap in `apps/web/index.html` and brings back the dark flash for light-theme users: either hash that script in the policy or move it to a classic (non-module) script file, with a test pinning whichever is chosen, as `theme.test.ts` pins the bootstrap today.
+- Local `pnpm desktop:build` packages the host architecture only; CI builds both macOS architectures and Windows.
 
 **Acceptance criteria**
 

@@ -268,6 +268,12 @@ Owns `packages/formats`. Reference: `../reference/file-formats.md`, ADR-0008.
 - Round-trip through the native format is lossless for every fixture.
 - A fuzz test feeds truncated and bit-flipped fixtures and asserts no uncaught exception.
 
+**Notes**
+
+- The corpus is thin on the binary side: lyrics, multiple voices, tempo changes and pitched (non-fretted) tracks exist only in `.gp` fixtures, and no gp3 fixture has more than one track (`fixtures/manifest.json`). Binary-format tests for those paths need hand-built files, which wait for a writer; until then they are covered through `.gp` and the oracle.
+- The model's `tuplet` rule accepts ratios strictly between 1:2 and 2:1 and not 1:1. Guitar Pro 7 custom tuplets can fall outside it; if a GP7 fixture trips the rule, relax it to `n !== of` in the same PR and say so in the PR body (lead ruling on PR #19).
+- Simile marks, wherever a format carries them (gpif's `SimileMark`, read by WP-042 and WP-043), are not modelled: expand the previous bar's beats (the two bars before it for the double form) into the bar with fresh ids and record a warning; export does not reproduce the mark. See `../reference/file-formats.md`.
+
 ## WP-041: alphaTab oracle
 
 - **Size**: S · **Blocked by**: WP-040

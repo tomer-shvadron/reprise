@@ -64,5 +64,13 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # Re-describes every fixture with alphaTab, the dev-only oracle, and fails when
+      # fixtures/manifest.json no longer matches the files.
+      - name: Fixtures
+        run: pnpm fixtures:check
+
+      - name: Format
+        run: pnpm format:check
+
       - name: Build
         run: pnpm build
