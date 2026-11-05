@@ -27,16 +27,27 @@ import { applyPatches, enablePatches, produceWithPatches } from 'immer';
 import type { Patch } from 'immer';
 
 import type { Id } from './id';
+import type { TransposeWarning } from './pitch';
 import type { Score } from './score';
 
 enablePatches();
 
 export type { Patch } from 'immer';
 
+export type CommandWarningCode = TransposeWarning;
+
+/** Something an applied edit changed or left beyond what it was asked to; never a refusal. */
+export interface CommandWarning {
+  code: CommandWarningCode;
+  /** The note the warning is about. */
+  noteId: Id;
+  message: string;
+}
+
 export interface Command {
   name: string;
   /** Mutates an Immer draft; throws `CommandError` and leaves nothing applied on bad input. */
-  run(draft: Score): void;
+  run(draft: Score, warn: (warning: CommandWarning) => void): void;
 }
 
 export interface Change {
@@ -50,14 +61,23 @@ export interface Change {
 export interface Applied {
   score: Score;
   change: Change;
+  /** The command's warnings; always empty from `undo` and `redo`, which replay patches. */
+  warnings: CommandWarning[];
 }
 
 export function applyCommand(score: Score, command: Command): Applied {
+  const warnings: CommandWarning[] = [];
   const [next, raw, rawInverse] = produceWithPatches(score, (draft) => {
-    command.run(draft);
+    command.run(draft, (warning) => {
+      warnings.push(warning);
+    });
   });
   if (raw.length === 0) {
-    return { score, change: { command: command.name, patches: [], inverse: [], touchedBars: [] } };
+    return {
+      score,
+      change: { command: command.name, patches: [], inverse: [], touchedBars: [] },
+      warnings,
+    };
   }
   const patches = compactSplices(score, next, raw);
   return {
@@ -68,6 +88,7 @@ export function applyCommand(score: Score, command: Command): Applied {
       inverse: compactSplices(next, score, rawInverse),
       touchedBars: touchedBars(score, next, patches),
     },
+    warnings,
   };
 }
 
@@ -216,6 +237,7 @@ export function createHistory(): History {
     return {
       score: currentScore,
       change: { command: change.command, patches, inverse, touchedBars: change.touchedBars },
+      warnings: [],
     };
   };
 

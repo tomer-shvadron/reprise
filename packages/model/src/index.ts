@@ -151,7 +151,15 @@ export type { Alter, Letter, PitchedClef, Spelling } from './spelling';
 export { PERCUSSION_INSTRUMENTS, percussionInstrument } from './percussion';
 export type { NoteHead, PercussionInstrument } from './percussion';
 
-export { PPQ, barTicks, beatStartTicks, beatTicks, playedBarTicks, tickOf } from './ticks';
+export {
+  PPQ,
+  barStartTicks,
+  barTicks,
+  beatStartTicks,
+  beatTicks,
+  playedBarTicks,
+  tickOf,
+} from './ticks';
 export type { ScorePosition } from './ticks';
 
 export { PLAYBACK_LENGTH_FACTOR, expandPlaybackSequence } from './playback-sequence';
@@ -162,7 +170,7 @@ export type {
   PlaybackWarningCode,
 } from './playback-sequence';
 
-export { DEFAULT_BPM, positionAtSeconds, secondsAt, tempoMap } from './tempo-map';
+export { DEFAULT_BPM, positionAtSeconds, secondsAt, secondsAtTick, tempoMap } from './tempo-map';
 export type {
   PlaybackPosition,
   PositionOptions,
@@ -187,14 +195,23 @@ export {
 export type {
   AppInfo,
   NativeDocument,
+  NativeFormatErrorCode,
   NativePath,
   ParseResult,
   ParseWarning,
-  ParseWarningRule,
+  ParseWarningCode,
 } from './native';
 
 export { HistoryError, applyCommand, createHistory, touchedBars } from './history';
-export type { Applied, Change, Command, History, Patch } from './history';
+export type {
+  Applied,
+  Change,
+  Command,
+  CommandWarning,
+  CommandWarningCode,
+  History,
+  Patch,
+} from './history';
 
 export {
   CommandError,

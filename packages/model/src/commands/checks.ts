@@ -158,8 +158,15 @@ function sameSlot(track: Track, a: Note, b: Note): boolean {
   return track.kind === 'fretted' ? a.string === b.string : a.fret === b.fret;
 }
 
+/** The note a tied `note` continues: same string (same MIDI note off fretted tracks), any fret. */
+export function tieOrigin(track: Track, note: Note, previous: Beat | undefined): Note | undefined {
+  if (!previous || previous.rest) return undefined;
+  return previous.notes.find((p) => sameSlot(track, p, note));
+}
+
+/** A tie holds when its origin exists and sounds the same pitch (`tie-target` and `tie-pitch`). */
 export function hasTieTarget(track: Track, note: Note, previous: Beat | undefined): boolean {
-  return !!previous && !previous.rest && previous.notes.some((p) => sameSlot(track, p, note));
+  return tieOrigin(track, note, previous)?.fret === note.fret;
 }
 
 export function previousBeat(
@@ -172,9 +179,48 @@ export function previousBeat(
   return track.bars[bar - 1]?.voices[voice]?.beats.at(-1);
 }
 
+export function nextBeat(
+  track: Track,
+  bar: number,
+  voice: number,
+  beat: number,
+): { bar: number; beat: number } | undefined {
+  if (beat + 1 < (track.bars[bar]?.voices[voice]?.beats.length ?? 0))
+    return { bar, beat: beat + 1 };
+  return (track.bars[bar + 1]?.voices[voice]?.beats.length ?? 0) > 0
+    ? { bar: bar + 1, beat: 0 }
+    : undefined;
+}
+
+/**
+ * The notes that continue `note` through ties, in order: each the tied note on the same string
+ * (same MIDI note off fretted tracks) of the next beat in the voice, crossing bar lines. Read
+ * before the origin's pitch changes.
+ */
+export function tieChain(
+  track: Track,
+  position: { bar: number; voice: number; beat: number },
+  note: Note,
+): { note: Note; bar: number; beat: number }[] {
+  const chain: { note: Note; bar: number; beat: number }[] = [];
+  let current = note;
+  let at = nextBeat(track, position.bar, position.voice, position.beat);
+  while (at) {
+    const beat = track.bars[at.bar]?.voices[position.voice]?.beats[at.beat];
+    const tied = beat?.rest
+      ? undefined
+      : beat?.notes.find((n) => n.tie && sameSlot(track, n, current) && n.fret === current.fret);
+    if (!tied) break;
+    chain.push({ note: tied, ...at });
+    current = tied;
+    at = nextBeat(track, at.bar, position.voice, at.beat);
+  }
+  return chain;
+}
+
 /**
  * Clears `tie` on the notes of the beat now at `beat` (rolling into the next bar past the
- * voice's end) whose tie target an edit removed. A tie is a consequence of its neighbour, so
+ * voice's end) whose tie target an edit removed or moved to another pitch. A tie is a consequence of its neighbour, so
  * edits repair it rather than refuse.
  */
 export function releaseTies(track: Track, bar: number, voice: number, beat: number): void {

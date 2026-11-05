@@ -34,11 +34,11 @@ export type NativeDocument = z.infer<typeof NativeDocumentSchema>;
 
 export type NativePath = (string | number)[];
 
-export type ParseWarningRule = 'unknown-field' | ViolationRule;
+export type ParseWarningCode = 'unknown-field' | ViolationRule;
 
 /** `path` is from the document root, so a score violation starts with `score`. */
 export interface ParseWarning {
-  rule: ParseWarningRule;
+  code: ParseWarningCode;
   path: NativePath;
   message: string;
 }
@@ -49,12 +49,23 @@ export interface ParseResult {
   warnings: ParseWarning[];
 }
 
+export type NativeFormatErrorCode =
+  | 'invalid-utf8'
+  | 'invalid-json'
+  | 'wrong-format'
+  | 'invalid-version'
+  | 'newer-version'
+  | 'migration-failed'
+  | 'invalid-document';
+
 export class NativeFormatError extends Error {
   override readonly name = 'NativeFormatError';
+  readonly code: NativeFormatErrorCode;
   readonly path: NativePath;
 
-  constructor(path: NativePath, message: string) {
+  constructor(code: NativeFormatErrorCode, path: NativePath, message: string) {
     super(path.length > 0 ? `${formatPath(path)}: ${message}` : message);
+    this.code = code;
     this.path = path;
   }
 }
@@ -117,19 +128,22 @@ export function parseNative(bytes: Uint8Array): ParseResult {
     // The decoder drops a leading BOM, so a file some editor added one to still opens.
     text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
-    throw new NativeFormatError([], 'The file is not valid UTF-8');
+    throw new NativeFormatError('invalid-utf8', [], 'The file is not valid UTF-8');
   }
 
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch (error) {
-    throw new NativeFormatError([], `The file is not JSON (${reason(error)})`);
+    throw new NativeFormatError('invalid-json', [], `The file is not JSON (${reason(error)})`);
   }
-  if (!isRecord(raw)) throw new NativeFormatError([], 'The file is not a JSON object');
+  if (!isRecord(raw)) {
+    throw new NativeFormatError('invalid-document', [], 'The file is not a JSON object');
+  }
 
   if (raw['format'] !== NATIVE_FORMAT) {
     throw new NativeFormatError(
+      'wrong-format',
       ['format'],
       `Expected "${NATIVE_FORMAT}", found ${show(raw['format'])}`,
     );
@@ -137,16 +151,22 @@ export function parseNative(bytes: Uint8Array): ParseResult {
 
   const version = raw['version'];
   if (typeof version !== 'number' || !Number.isInteger(version)) {
-    throw new NativeFormatError(['version'], `Expected a whole number, found ${show(version)}`);
+    throw new NativeFormatError(
+      'invalid-version',
+      ['version'],
+      `Expected a whole number, found ${show(version)}`,
+    );
   }
   if (version < 1) {
     throw new NativeFormatError(
+      'invalid-version',
       ['version'],
       `Version ${String(version)} does not exist; .reprise versions start at 1`,
     );
   }
   if (version > SCORE_VERSION) {
     throw new NativeFormatError(
+      'newer-version',
       ['version'],
       `The file is version ${String(version)}, newer than this app, which reads up to version ${String(SCORE_VERSION)}`,
     );
@@ -157,6 +177,7 @@ export function parseNative(bytes: Uint8Array): ParseResult {
     score = migrate(raw['score'], version);
   } catch (error) {
     throw new NativeFormatError(
+      'migration-failed',
       ['score'],
       `Migrating from version ${String(version)} to ${String(SCORE_VERSION)} failed: ${reason(error)}`,
     );
@@ -167,7 +188,7 @@ export function parseNative(bytes: Uint8Array): ParseResult {
   const warnings: ParseWarning[] = [];
   collectDropped(candidate, document, [], warnings);
   for (const { rule, path, message } of validateScore(document.score)) {
-    warnings.push({ rule, path: ['score', ...path], message });
+    warnings.push({ code: rule, path: ['score', ...path], message });
   }
   return { score: document.score, app: document.app, warnings };
 }
@@ -180,7 +201,11 @@ function parseDocument(candidate: unknown): NativeDocument {
     (segment): segment is string | number => typeof segment !== 'symbol',
   );
   const more = rest.length > 0 ? ` (and ${String(rest.length)} more)` : '';
-  throw new NativeFormatError(path, `${first?.message ?? 'Invalid document'}${more}`);
+  throw new NativeFormatError(
+    'invalid-document',
+    path,
+    `${first?.message ?? 'Invalid document'}${more}`,
+  );
 }
 
 /**
@@ -205,7 +230,7 @@ function collectDropped(
       collectDropped(value, output[key], [...path, key], warnings);
     } else {
       warnings.push({
-        rule: 'unknown-field',
+        code: 'unknown-field',
         path: [...path, key],
         message: `Unknown field "${key}" was dropped`,
       });

@@ -36,6 +36,25 @@ describe('applyCommand', () => {
     ).toThrow(CommandError);
     expect(JSON.stringify(score)).toBe(snapshot);
   });
+
+  it('collects the warnings a command reports, in order, and none from undo or redo', () => {
+    const score = buildScore();
+    const noteId = noteOf(score, 0, 2, 0).id;
+    const warning = (code: 'trill-dropped' | 'natural-harmonic-moved'): Command => ({
+      name: 'warn',
+      run(draft, warn) {
+        draft.meta.title = code;
+        warn({ code, noteId, message: code });
+      },
+    });
+    const history = createHistory();
+    const first = history.apply(score, warning('trill-dropped'));
+    expect(first.warnings).toEqual([{ code: 'trill-dropped', noteId, message: 'trill-dropped' }]);
+    const second = history.apply(first.score, warning('natural-harmonic-moved'));
+    expect(second.warnings.map((w) => w.code)).toEqual(['natural-harmonic-moved']);
+    expect(history.undo()?.warnings).toEqual([]);
+    expect(history.redo()?.warnings).toEqual([]);
+  });
 });
 
 describe('touchedBars', () => {

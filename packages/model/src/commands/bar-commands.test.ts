@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
+import { createBar } from '../factories';
 import { createHistory } from '../history';
 import { newId } from '../id';
 import type { MasterBar } from '../master-bar';
 import type { Score } from '../score';
 import { validateScore } from '../validate';
 import { insertBar, removeBar, setMasterBar } from './bar-commands';
-import { barOf, buildScore, expectRefusal, noteOf, roundTrip } from './test-score';
+import { buildScore, expectRefusal, noteOf, roundTrip } from './test-score';
 
 function withMasterBars(score: Score, edit: (masterBars: MasterBar[]) => MasterBar[]): Score {
   return { ...score, masterBars: edit(score.masterBars) };
@@ -79,7 +80,7 @@ describe('insertBar', () => {
     ]);
   });
 
-  it('joins a volta both neighbours share', () => {
+  it('stays inside a volta both neighbours share', () => {
     const score = withMasterBars(buildScore(), (bars) =>
       bars.map((bar, m) =>
         m === 1 || m === 2
@@ -89,6 +90,16 @@ describe('insertBar', () => {
     );
     const { score: after } = roundTrip(score, insertBar({ index: 2 }));
     expect(masterBar(after, 2).alternateEndings).toEqual([1]);
+  });
+
+  it('inherits the endings of the volta bar it is inserted before', () => {
+    const score = withVoltas(buildScore());
+    const { score: second } = roundTrip(score, insertBar({ index: 2 }));
+    expect(second.masterBars.map((bar) => bar.alternateEndings)).toEqual([[], [1], [2], [2], []]);
+    const { score: first } = roundTrip(score, insertBar({ index: 1 }));
+    expect(first.masterBars.map((bar) => bar.alternateEndings)).toEqual([[], [1], [1], [2], []]);
+    const { score: afterVoltas } = roundTrip(score, insertBar({ index: 3 }));
+    expect(masterBar(afterVoltas, 3).alternateEndings).toEqual([]);
   });
 
   it('refuses a bad index, a used id and an invalid master bar', () => {
@@ -156,7 +167,7 @@ describe('removeBar', () => {
     const single: Score = {
       ...score,
       masterBars: [masterBar(score, 0)],
-      tracks: score.tracks.map((track) => ({ ...track, lyrics: [], bars: [barOf()] })),
+      tracks: score.tracks.map((track) => ({ ...track, lyrics: [], bars: [createBar()] })),
     };
     expectRefusal(single, removeBar({ masterBarId: masterBar(score, 0).id }), 'last-bar');
     const voltas = withVoltas(score);

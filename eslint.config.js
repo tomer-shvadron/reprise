@@ -40,6 +40,10 @@ const ROOT_IMPORTS_ONLY = boundary(
   'root-imports-only',
   'import a package through its root export (@reprise/x); its index.ts is the public API',
 );
+const TESTING_IN_TESTS = boundary(
+  'testing-entry-in-tests',
+  '@reprise/model/testing, the one allowed subpath, is imported only from test files',
+);
 const ELECTRON_IN_DESKTOP = boundary(
   'electron-only-in-desktop',
   'electron is imported only inside apps/desktop',
@@ -59,6 +63,7 @@ const WORKSPACES = [
   { name: 'desktop', dir: 'apps/desktop', allowed: [], typeOnly: ['web'] },
 ];
 const ENGINES = new Set(['formats', 'layout', 'audio']);
+const TEST_FILES = ['**/*.test.{ts,tsx}', '**/test/**/*.{ts,tsx}'];
 const UI_LIBRARIES = ['react', 'react-dom', 'zustand', 'dexie'];
 
 /** @param {string} self @param {string} other */
@@ -77,13 +82,16 @@ const packageSpecifier = (name) => `^${name}(?:/|$)`;
  * `import()` calls it does not visit. The typescript-eslint variant of the first is the core
  * rule plus `allowTypeImports`, which typeOnly edges need; an `import()` is always a value
  * import, so the second bans those edges too. Flat config replaces a rule's options rather than
- * merging them, so each workspace gets one entry per rule carrying every boundary that applies.
+ * merging them, so each workspace gets one entry per rule carrying every boundary that applies,
+ * once for its test files, which may import `@reprise/model/testing`, and once for the rest.
  * @param {Workspace} workspace
- * @returns {import('eslint').Linter.Config}
+ * @returns {import('eslint').Linter.Config[]}
  */
 function workspaceBoundaries({ name: self, dir, allowed, typeOnly = [] }) {
   /** @type {{ regex: string; message: string; allowTypeImports?: boolean }[]} */
-  const restricted = [{ regex: String.raw`^@reprise/[^/]+/`, message: ROOT_IMPORTS_ONLY }];
+  const restricted = [
+    { regex: String.raw`^@reprise/(?!model/testing$)[^/]+/`, message: ROOT_IMPORTS_ONLY },
+  ];
 
   for (const { name: other } of WORKSPACES) {
     if (other !== self && !allowed.includes(other)) {
@@ -104,19 +112,30 @@ function workspaceBoundaries({ name: self, dir, allowed, typeOnly = [] }) {
     restricted.push({ regex: packageSpecifier('electron'), message: ELECTRON_IN_DESKTOP });
   }
 
-  return {
-    files: [`${dir}/**/*.{ts,tsx}`],
-    rules: {
-      '@typescript-eslint/no-restricted-imports': ['error', { patterns: restricted }],
-      'no-restricted-syntax': [
-        'error',
-        ...restricted.map(({ regex, message }) => ({
-          selector: `ImportExpression > Literal[value=/${regex.replaceAll('/', String.raw`\/`)}/]`,
-          message,
-        })),
-      ],
+  /** @param {typeof restricted} patterns @returns {import('eslint').Linter.RulesRecord} */
+  const rules = (patterns) => ({
+    '@typescript-eslint/no-restricted-imports': ['error', { patterns }],
+    'no-restricted-syntax': [
+      'error',
+      ...patterns.map(({ regex, message }) => ({
+        selector: `ImportExpression > Literal[value=/${regex.replaceAll('/', String.raw`\/`)}/]`,
+        message,
+      })),
+    ],
+  });
+  const tests = TEST_FILES.map((glob) => `${dir}/${glob}`);
+
+  return [
+    {
+      files: [`${dir}/**/*.{ts,tsx}`],
+      ignores: tests,
+      rules: rules([
+        ...restricted,
+        { regex: String.raw`^@reprise/model/testing$`, message: TESTING_IN_TESTS },
+      ]),
     },
-  };
+    { files: tests, rules: rules(restricted) },
+  ];
 }
 
 export default defineConfig(
@@ -162,7 +181,7 @@ export default defineConfig(
     files: ['*.{js,ts}'],
     languageOptions: { globals: globals.node },
   },
-  ...WORKSPACES.map(workspaceBoundaries),
+  ...WORKSPACES.flatMap(workspaceBoundaries),
   {
     files: ['apps/web/**/*.{ts,tsx}'],
     extends: [reactRecommended, reactJsxRuntime, reactHooks.configs.flat['recommended-latest']],

@@ -72,35 +72,29 @@ file bytes --formats.read--> Score --------+--> layout.layout(score, options) --
 
 ## Contracts
 
-The lanes code against these. They are frozen at the end of the model-core phase; changing one is a lead-owned issue.
+**Frozen on 2026-11-05 at WP-015.** Changes after this date are `type:contract` issues owned by the lead.
+
+The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
+
+**Diagnostics** carry kebab-case identifiers. An invariant violation keys its kind as `rule` (`Violation`); a warning or an error keys it as `code` (`ParseWarning`, `PlaybackWarning`, `CommandWarning`, `CommandError`, `NativeFormatError`). Model enum values (`slight`, `doubleFlat`, `belowOpenString`) stay camelCase: they are data, not diagnostics.
 
 ### Score model (`@reprise/model`)
 
-Implemented in WP-010 as Zod schemas with the types derived from them, node factories,
-`newId()` and `validateScore()`; `packages/model/README.md` records the modelling decisions.
-WP-011 to WP-014 add timing, commands, the native envelope and pitch helpers to the same
-package, and **the contract freezes at WP-015**. The `.reprise` envelope's `version` is the
-only version field: `Score.version` is removed in WP-013, when the envelope is defined, and
-`SCORE_VERSION` stays exported for it.
-
-Optional fields are exact: absent means "not set", and an explicit `undefined` is rejected.
-Ranges below are the schemas' (`1..32` is an inclusive integer range); enumerations are
-written out where a lane needs the exact set.
+Zod schemas with the TypeScript types derived from them (`z.infer`), so the two cannot drift; every type below has a `…Schema` beside it (`ScoreSchema`, `NoteSchema`, …). Optional fields are exact: absent means "not set", and an explicit `undefined` is rejected. Ranges are the schemas' (`1..32` is an inclusive integer range).
 
 ```ts
-type Id = string;                // 12 base62 characters from newId(); every node has one except grace beats
+type Id = string;                // 12 base62 characters from newId(); IdSchema, ID_LENGTH, ID_PATTERN
 type Color = string;             // lower-case #rrggbb
 
 interface Score {
   id: Id;
-  version: 1;                    // removed in WP-013; the .reprise envelope carries the version
-  meta: { title; subtitle; artist; album; words; music; copyright; tab; instructions; notices: string[] };
+  meta: { title; subtitle; artist; album; words; music; copyright; tab; instructions: string; notices: string[] };
   masterBars: MasterBar[];       // at least one; one per bar position, shared by every track
   tracks: Track[];               // at least one
 }
 
 interface TempoMark {
-  bpm: number;                   // always per quarter note, whatever `unit` displays
+  bpm: number;                   // > 0, always per quarter note, whatever `unit` displays
   unit?: 'eighth' | 'quarter' | 'dottedQuarter' | 'half' | 'dottedHalf';   // display only; absent = quarter
   label?: string;
 }
@@ -111,7 +105,7 @@ interface MasterBar {
   keySignature: { fifths: -7..7; minor: boolean };    // sharps positive, flats negative
   tempo?: TempoMark;                                   // a change at the start of this bar
   repeat: { start: boolean; endCount: number };        // total plays of the section, 2 = play twice; 0 = no repeat end
-  alternateEndings: number[];                          // volta numbers 1..8, ascending
+  alternateEndings: number[];                          // volta numbers 1..8 (ALTERNATE_ENDING_MAX), ascending, on every bar of the bracket
   jumps: { kind: JumpKind }[];                         // read at the end of the bar; usually none or one, applied in order
   targets: ('segno' | 'segnoSegno' | 'coda' | 'doubleCoda' | 'fine')[];   // where a jump lands, or stops
   section?: { name: string; letter?: string; color?: Color };
@@ -129,28 +123,27 @@ interface Track {
   id: Id;
   name: string; shortName: string; color: Color;
   kind: 'fretted' | 'drums' | 'pitched';
-  tuning: number[];              // open-string MIDI notes, lowest string first, up to 10; empty on drums.
-                                 // A GP5 keyboard track (program outside GM 24..39 and 104..107, channel not
-                                 // percussion) is read as pitched and keeps its tuning and fretCount for gp5 export
-  capo: number;
-  fretCount: number;             // 24 by default; 0 on drums
+  tuning: number[];              // open-string MIDI notes 0..127, lowest string first, up to MAX_STRINGS (10); empty on drums.
+                                 // A GP5 keyboard track is read as pitched and keeps its tuning and fretCount for gp5 export
+  capo: number;                  // >= 0; frets count from the capo
+  fretCount: number;             // neck length, 24 by default; 0 on drums
   program: number; bank: number; // GM program 0..127 and bank 0..16383; on drums, program is the GM2 kit
-  channel: { volume; pan; chorus; reverb; phaser; tremolo; mute: boolean; solo: boolean };   // 0..127, pan 64 = centre
-  display: { notation: 'tab' | 'standard' | 'both'; clef?: Clef };
+  channel: { volume; pan; chorus; reverb; phaser; tremolo: number; mute: boolean; solo: boolean };   // 0..127, pan 64 = centre
+  display: { notation: 'tab' | 'standard' | 'both'; clef?: Clef; octaveShift: number };   // clef absent = treble, percussion on drums; octaveShift: written minus sounding, in octaves (1 fretted, 0 otherwise)
   sound?: { packId?: Id; preset?: string };       // HQ tier assignment; absent = the GM tier plays `program`
-  lyrics: { startBar: number; text: string }[];   // the raw Guitar Pro block, up to five lines; startBar is 0-based
+  lyrics: { startBar: number; text: string }[];   // the raw Guitar Pro block, up to LYRIC_LINES (5); startBar is 0-based
   bars: Bar[];                   // one per master bar, same order
 }
 type Clef = 'treble' | 'bass' | 'alto' | 'tenor' | 'percussion';
 
-interface Bar   { id: Id; voices: [Voice, Voice, Voice, Voice]; clef?: Clef }   // always four; unused voices have no beats
+interface Bar   { id: Id; voices: [Voice, Voice, Voice, Voice]; clef?: Clef }   // always VOICE_COUNT (4); unused voices have no beats; clef: a change from this bar on, absent = the track's
 interface Voice { id: Id; beats: Beat[] }
 
 interface Beat {
   id: Id;
   duration: 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256;   // denominator; gpif's range, GP5 stops at 64
   dots: 0 | 1 | 2;
-  tuplet?: { n: number; of: number };                    // n in the time of `of`; a triplet is { n: 3, of: 2 }
+  tuplet?: { n: number; of: number };                    // integers >= 1: n in the time of `of`; a triplet is { n: 3, of: 2 }
   rest: boolean;
   notes: Note[];                 // empty with rest false is Guitar Pro's empty beat
   text?: string;
@@ -162,23 +155,23 @@ interface Beat {
     vibrato?: 'none' | 'slight' | 'wide';
     whammy?: { kind: 'dive' | 'dip' | 'invertedDip' | 'return' | 'releaseUp' | 'releaseDown' | 'hold' | 'custom'; points: BendPoint[] };
   };
-  grace?: { duration: 16 | 32 | 64; before: boolean; notes: Note[] }[];
+  grace?: { duration: 16 | 32 | 64; before: boolean; notes: Note[] }[];   // grace beats carry no id; their notes do
   mix?: {                        // mixer changes kept for fidelity, applied by playback from this beat on
     program?: number;
     volume?: ChannelMixChange; pan?: ChannelMixChange; chorus?: ChannelMixChange;
     reverb?: ChannelMixChange; phaser?: ChannelMixChange; tremolo?: ChannelMixChange;
-    tempo?: TempoMark & { duration?: number };
+    tempo?: TempoMark & { duration?: number };   // duration in quarter notes: a linear ramp; absent = a step
   };
   lyrics?: string[];             // one syllable per lyric line, index = line, up to five; '' where a line has none
 }
 interface Stroke           { direction: 'up' | 'down'; duration?: 4 | 8 | 16 | 32 | 64 | 128 }   // spread of the stroke
-interface ChannelMixChange { value: number; duration?: number; allTracks?: boolean }   // value 0..127; duration in beats, absent = immediate
+interface ChannelMixChange { value: number; duration?: number; allTracks?: boolean }   // value 0..127; duration >= 1 in beats, absent = immediate
 interface BendPoint        { position: number; value: number }   // position 0..60 across the note's duration; value in quarter tones; a bend or whammy has at least two
 
 interface ChordDiagram {
-  baseFret: number;              // first fret shown in the grid; frets stay absolute
+  baseFret: number;              // >= 1; first fret shown in the grid; frets stay absolute
   frets: (number | null)[];      // one per string, string 1 first; null = muted, 0 = open
-  barres?: { fret: number; firstString: number; lastString: number }[];
+  barres?: { fret: number; firstString: number; lastString: number }[];   // each >= 1
   fingering?: (Finger | null)[]; // parallel to frets
 }
 type Finger = 'thumb' | 'index' | 'middle' | 'ring' | 'little';
@@ -186,32 +179,201 @@ type Finger = 'thumb' | 'index' | 'middle' | 'ring' | 'little';
 interface Note {
   id: Id;
   string: number;                // 1 = highest-pitched string, as in Guitar Pro; always 0 on drum and pitched tracks
-  fret: number;                  // fret on fretted tracks; the MIDI note on drum and pitched tracks
-  tie: boolean; dead: boolean; ghost: boolean; accent: 'none' | 'accent' | 'heavy'; staccato: boolean;
+  fret: number;                  // 0..127: fret on fretted tracks; the MIDI note on drum and pitched tracks
+  tie: boolean;                  // continues the previous note on the same string, at the same fret
+  dead: boolean; ghost: boolean; accent: 'none' | 'accent' | 'heavy'; staccato: boolean;
   bend?: { kind: 'bend' | 'bendRelease' | 'bendReleaseBend' | 'prebend' | 'prebendBend' | 'prebendRelease' | 'release' | 'hold' | 'custom'; points: BendPoint[] };
   slide?: ('shift' | 'legato' | 'intoFromBelow' | 'intoFromAbove' | 'outDown' | 'outUp')[];
   hammerPull: boolean;           // hammered on or pulled off from the previous note on the string; readers move GP5's origin flag here
   vibrato: 'none' | 'slight' | 'wide';
   palmMute: boolean; letRing: boolean;
-  harmonic?: { kind: 'natural' | 'artificial' | 'tapped' | 'pinch' | 'semi' | 'feedback'; value?: number };   // value is the fret, fractional where needed
-  trill?: { fret: number; speed: 16 | 32 | 64 };
+  harmonic?: { kind: 'natural' | 'artificial' | 'tapped' | 'pinch' | 'semi' | 'feedback'; value?: number };   // value >= 0 is the fret, fractional where needed
+  trill?: { fret: number; speed: 16 | 32 | 64 };   // alternate fret, or MIDI note off fretted tracks
   leftHandFinger?: Finger; rightHandFinger?: Finger;
   dynamics: 'ppp' | 'pp' | 'p' | 'mp' | 'mf' | 'f' | 'ff' | 'fff';
-  accidental?: 'doubleFlat' | 'flat' | 'natural' | 'sharp' | 'doubleSharp';   // explicit spelling; absent = from the key
+  accidental?: 'doubleFlat' | 'flat' | 'natural' | 'sharp' | 'doubleSharp';   // the spelling's alteration, not the printed sign; absent = from the key
+}
+
+function newId(): Id;
+function createEmptyScore(): Score;   // one fretted track in E standard (STANDARD_TUNING), one 4/4 bar at 120 BPM
+function createTrack(kind: TrackKind, options?: TrackOptions): Track;   // TrackOptions: any track field but id, kind; plus barCount or bars
+// createMasterBar, createBar, createVoice, createBeat, createNote, createScoreMeta: every required field defaulted
+
+function validateScore(score: Score): Violation[];
+interface Violation { rule: ViolationRule; path: (string | number)[]; message: string }   // path from the score root
+type ViolationRule =
+  | 'duplicate-id' | 'first-bar-tempo' | 'bar-count' | 'track-kind' | 'voice-overfull' | 'rest-with-notes'
+  | 'string-range' | 'fret-range' | 'duplicate-string' | 'tie-target' | 'tie-pitch' | 'tuplet' | 'dots'
+  | 'chord-diagram' | 'alternate-ending-order' | 'alternate-ending-outside-repeat';
+```
+
+`validateScore` assumes schema-valid input and checks what the schemas cannot express: unique ids, a tempo mark on the first bar, one bar per master bar, the track-kind constraints, no overfull voice (incomplete bars are allowed), no notes on a rest, string and fret ranges, no two notes on one string, tie targets and tied notes on their origin's fret, the tuplet window (strictly between 1:2 and 2:1, not 1:1), chord diagrams with one fret per string, and voltas unique, ascending and inside a repeat. The table with each rule's exact check is in `packages/model/README.md`.
+
+### Timing (`@reprise/model`)
+
+```ts
+const PPQ = 960;
+function beatTicks(beat: Pick<Beat, 'duration' | 'dots' | 'tuplet'>): number;   // never rounded; tuplets can be fractional
+function barTicks(masterBar: Pick<MasterBar, 'timeSignature'>): number;          // written length
+function playedBarTicks(score, masterBarIndex: number): number;                  // an anacrusis lasts its longest voice
+function beatStartTicks(voice: Pick<Voice, 'beats'>, index: number): number;     // index = beats.length gives the voice's end
+function barStartTicks(score): number[];                                         // written-order bar starts, masterBars.length + 1 entries
+function tickOf(score, position: { bar: number; beat?: number; track?: number; voice?: number }): number;   // written order; RangeError when out of range
+// `score` here is Pick<Score, 'masterBars' | 'tracks'>
+
+function expandPlaybackSequence(score: Pick<Score, 'masterBars'>): PlaybackSequence;
+interface PlaybackSequence { sequence: BarPass[]; warnings: PlaybackWarning[] }
+interface BarPass { masterBarIndex: number; passIndex: number }                 // passIndex counts earlier plays of the bar, from 0
+interface PlaybackWarning { code: 'repeat-end-without-start' | 'volta-without-repeat' | 'jump-target-missing' | 'sequence-truncated'; masterBarIndex: number; message: string }
+const PLAYBACK_LENGTH_FACTOR = 64;                                               // passes per master bar before the sequence is cut
+
+function tempoMap(score, sequence: readonly BarPass[]): TempoMap;
+interface TempoMap { score; passes: TempoMapPass[]; durationSeconds: number }
+interface TempoMapPass extends BarPass { startTick: number; ticks: number; startSeconds: number; durationSeconds: number; segments: TempoSegment[] }
+interface TempoSegment { tick: number; ticks: number; seconds: number; durationSeconds: number; startBpm: number; endBpm: number }   // offsets from the pass start
+const DEFAULT_BPM = 120;
+function secondsAt(map: TempoMap, sequenceIndex: number, tick: number): number;   // RangeError outside the map
+function secondsAtTick(map: TempoMap, playbackTick: number): number;              // playbackTick = pass startTick + tick; clamped
+function positionAtSeconds(map: TempoMap, seconds: number, options?: { track?: number; voice?: number }): PlaybackPosition | undefined;   // clamped; undefined for an empty map
+interface PlaybackPosition extends BarPass {
+  sequenceIndex: number;
+  tick: number;                  // into the pass
+  playbackTick: number;          // since playback started, counting every pass
+  barProgress: number;           // 0..1
+  beatIndex: number | undefined; // the sounding beat of the track and voice asked for; undefined for an empty voice
+  beatProgress: number;          // 0..1
 }
 ```
 
-`validateScore(score)` returns the cross-node violations the schemas cannot express: unique ids, one bar per master bar, the track-kind constraints, no overfull voice, no notes on a rest, string ranges and no two notes on one string, tie targets, the tuplet window (strictly between 1:2 and 2:1, not 1:1), chord diagrams with one fret per string, and voltas unique, ascending and inside a repeat. The table with each rule's exact check is in `packages/model/README.md`.
-
-Still to come in the same package: tick math at 960 PPQ and bar duration from the time signature (internal today, published by WP-011), `expandPlaybackSequence(score)` returning the ordered list of master-bar indices with repeat and jump semantics and `tempoMap(score, sequence)` mapping ticks to seconds (WP-011), `pitchOf(track, note)` returning a MIDI note with tuning and capo and the spelling helpers for standard notation (WP-014).
+Repeats, voltas and jumps expand by the rules in `../reference/score-model.md` ("Repeats, voltas and jumps"), which follow alphaTab except for the deviations tabulated there; Guitar Pro's own order wins over both when WP-054 compares them. Tempo carries in playback order, and a `Beat.mix.tempo` with a `duration` is a linear ramp in BPM.
 
 ### Commands and history (`@reprise/model`)
 
 ```ts
-interface Command { name: string; run(draft: Score): void }     // Immer draft
-interface Change  { command: string; patches: Patch[]; inverse: Patch[]; touchedBars: Id[] }
-interface History { apply(score, command): { score; change }; undo(); redo(); beginGroup(label); endGroup() }
+interface Command { name: string; run(draft: Score, warn: (warning: CommandWarning) => void): void }   // mutates an Immer draft
+interface Change  { command: string; patches: Patch[]; inverse: Patch[]; touchedBars: Id[] }        // touchedBars: master-bar ids layout re-flows
+interface Applied { score: Score; change: Change; warnings: CommandWarning[] }
+interface CommandWarning { code: 'trill-dropped' | 'natural-harmonic-moved'; noteId: Id; message: string }
+function applyCommand(score: Score, command: Command): Applied;
+function touchedBars(before: Score, after: Score, patches: readonly Patch[]): Id[];
+
+interface History {
+  apply(score: Score, command: Command): Applied;   // score must be the one this history last returned
+  undo(): Applied | undefined; redo(): Applied | undefined;   // replay patches; warnings always empty
+  beginGroup(label: string): void; endGroup(): void;          // one undo step; nested groups flatten
+  readonly canUndo: boolean; readonly canRedo: boolean;
+  readonly undoLabel: string | undefined; readonly redoLabel: string | undefined;
+  readonly steps: readonly Change[];
+}
+function createHistory(): History;
+class HistoryError extends Error {}
+class CommandError extends Error { code: CommandErrorCode; command: string; violations: readonly Violation[] }
+type CommandErrorCode =
+  | 'not-found' | 'invalid-value' | 'duplicate-id' | 'voice-overfull' | 'string-occupied'
+  | 'tie-target' | 'off-fretboard' | 'not-fretted' | 'last-bar' | 'last-track' | 'invariant';
+
+type Changes<T> = { [K in keyof T]?: undefined extends T[K] ? Exclude<T[K], undefined> | null : T[K] };   // null removes an optional field
+type NoteInput = Pick<Note, 'string' | 'fret'> & Partial<Omit<Note, 'id' | 'string' | 'fret'>>;
+type NoteEffects = Omit<Note, 'id' | 'string' | 'fret'>;
+type BeatInput = Partial<Omit<Beat, 'id'>>;
+type BeatRhythm = Pick<Beat, 'duration' | 'dots' | 'tuplet'>;
+type BeatChanges = { effects?: Changes<BeatEffects> } & Changes<Pick<Beat, 'text' | 'chord' | 'lyrics' | 'mix' | 'grace'>>;
+type MasterBarInput = Partial<Omit<MasterBar, 'id'>>;
+type MasterBarChanges = Changes<Omit<MasterBar, 'id'>>;
+type TrackChanges = Changes<Omit<Track, 'id' | 'kind' | 'bars' | 'channel' | 'display'>> & { channel?: Partial<ChannelSettings>; display?: Changes<DisplaySettings> };
+type TrackProperties = Omit<TrackOptions, 'bars' | 'barCount'>;
+interface Selection { beatIds?: readonly Id[]; noteIds?: readonly Id[] }   // the notes picked plus every note of the beats picked
+
+setNote({ beatId, id? }, note: NoteInput);                  removeNote({ noteId });
+setNoteEffect({ noteId }, Changes<NoteEffects>);            transposeSelection(selection, semitones);
+shiftStrings(selection, 'higher' | 'lower');
+insertBeat({ voiceId, index, id? }, beat?: BeatInput);      removeBeat({ beatId });
+setBeatDuration({ beatId }, Changes<BeatRhythm>);           setBeatRest({ beatId }, rest: boolean);
+setBeatEffect({ beatId }, BeatChanges);
+insertBar({ index, id? }, masterBar?: MasterBarInput);      removeBar({ masterBarId });
+setMasterBar({ masterBarId }, MasterBarChanges);
+setTrackProperties({ trackId }, TrackChanges);              addTrack({ kind, index?, id? }, properties?: TrackProperties);
+removeTrack({ trackId });                                   moveTrack({ trackId }, index: number);
 ```
+
+Every command factory returns a `Command`. A command that would break the schema or add a `validateScore` violation throws `CommandError` and nothing is applied; a tie whose origin an edit removes or moves is released instead. Results are frozen by Immer, and the input with them. The per-command behaviour and the `touchedBars` rule are in `../reference/score-model.md` and the header of `packages/model/src/history.ts`.
+
+### Native format (`@reprise/model`)
+
+```ts
+// A .reprise file (NATIVE_EXTENSION) is UTF-8 JSON with sorted keys inside app and score, two-space indent, no compression
+interface NativeDocument { format: 'reprise'; version: typeof SCORE_VERSION; app: AppInfo; score: Score }   // NativeDocumentSchema
+interface AppInfo { name: string; version: string }   // both non-empty; the writer, for diagnostics only
+const SCORE_VERSION = 1;                               // the only schema version; Score carries none
+
+function serializeNative(score: Score, app: AppInfo): Uint8Array;   // validates the envelope first; throws NativeFormatError
+function parseNative(bytes: Uint8Array): { score: Score; app: AppInfo; warnings: ParseWarning[] };   // throws NativeFormatError
+interface ParseWarning { code: ParseWarningCode; path: (string | number)[]; message: string }   // path from the document root
+type ParseWarningCode = 'unknown-field' | ViolationRule;
+class NativeFormatError extends Error { code: NativeFormatErrorCode; path: (string | number)[] }
+type NativeFormatErrorCode =
+  | 'invalid-utf8' | 'invalid-json' | 'wrong-format' | 'invalid-version'
+  | 'newer-version'                                     // above SCORE_VERSION: "newer than this app"
+  | 'migration-failed' | 'invalid-document';            // a step threw; the envelope or score fails NativeDocumentSchema
+function formatPath(path: (string | number)[]): string;               // score.tracks[0].bars[2].id
+
+type Migration = (score: unknown) => unknown;          // version n - 1 JSON to version n JSON
+type MigrationTable = Readonly<Record<number, Migration>>;
+const MIGRATIONS: MigrationTable;                      // keyed by the version a step produces; 1 is the identity
+function migrate(score: unknown, fromVersion: number, toVersion?: number, table?: MigrationTable): unknown;
+```
+
+### Pitch and spelling (`@reprise/model`)
+
+```ts
+function midiNote(track, note: Pick<Note, 'string' | 'fret'>): number;   // tuning[tuning.length - string] + capo + fret; note.fret off fretted tracks
+function openStringPitch(track, string: number): number | undefined;
+function transpose(track, note: Note, semitones: number): TransposeResult;   // stays on the string; drum notes unchanged
+type TransposeResult =
+  | { ok: true; note: Note; warnings: ('trill-dropped' | 'natural-harmonic-moved')[] }
+  | { ok: false; reason: 'belowOpenString' | 'aboveLastFret' | 'outOfMidiRange'; midi: number; alternatives: { string: number; fret: number }[] };
+const MIDI_MAX = 127;
+
+const STANDARD_TUNINGS: readonly { name: string; instrument: 'guitar' | 'bass' | 'ukulele'; strings: readonly number[] }[];   // fourteen, Track.tuning order
+function findTuningName(tuning: readonly number[]): string | undefined;
+
+interface Spelling { letter: 'C' | 'D' | 'E' | 'F' | 'G' | 'A' | 'B'; octave: number; alter: -2 | -1 | 0 | 1 | 2; accidental?: Accidental }   // octave scientific, C4 = 60, B#3 = 60
+const LETTERS: readonly Letter[];                      // C D E F G A B
+function spell(midi: number, key: KeySignature, accidental?: Accidental): Spelling;
+function spellNote(track, note, key: KeySignature): Spelling;
+function respell(track, note: Note, key: KeySignature): Note;   // the enharmonic; clears accidental when it is the key's default
+function keyAlter(key: Pick<KeySignature, 'fifths'>, letter: Letter): Alter;
+function staffPosition(spelling, clef: Exclude<Clef, 'percussion'>, octaveShift?: number): number;   // 0 bottom line, 8 top line
+
+function percussionInstrument(midi: number): PercussionInstrument | undefined;   // GM and GM2, 27..87
+interface PercussionInstrument { midi: number; name: string; staffPosition: number; noteHead: 'normal' | 'cross' | 'diamond' | 'triangle' }
+const PERCUSSION_INSTRUMENTS: readonly PercussionInstrument[];   // the whole table, by MIDI note
+// `track` is a Pick of Track: kind, tuning, capo (and fretCount for transpose)
+```
+
+Arguments are track-first wherever a track is needed. Spelling follows Guitar Pro: a stored accidental that can spell the pitch, then the key's notes, then a minor key's raised sixth and seventh, then the natural letter, then a sharp in C major and the sharp keys or a flat in the flat keys. The returned `accidental` is printed against the key signature; cancelling one earlier in the bar is layout's job.
+
+### Test builders (`@reprise/model/testing`)
+
+The one subpath export, importable only from test files (lint boundary `testing-entry-in-tests`):
+
+```ts
+function score(): ScoreBuilder;                       // fluent; build(options?: BuildOptions) throws ScoreBuildError on schema or invariant violations
+interface BuildOptions { validate?: boolean; ids?: 'random' | 'sequential' }   // sequential: kind-prefixed ids in document order, given ids kept
+class ScoreBuildError extends Error { violations: readonly Violation[] }
+function note(string: number, fret: number, spec?: NoteSpec): Note;   // NoteSpec = Partial<Omit<Note, 'string' | 'fret'>>
+function midi(value: number, spec?: NoteSpec): Note;                  // string 0, fret = the MIDI note
+function parseDuration(spec: DurationSpec): Pick<Beat, 'duration' | 'dots' | 'tuplet'>;   // '8' | '4.' | '2..' | '8t'
+type Instrument = 'guitar' | 'bass' | 'drums' | 'piano';
+type TrackSpec = Omit<TrackOptions, 'bars' | 'barCount'> & { id?: Id };
+type BeatSpec = Partial<Omit<Beat, 'duration' | 'dots' | 'notes' | 'rest'>>;
+function fullScore(): Score;                                            // every node type and optional field
+function largeScore(tracks: number, bars: number, options?: LargeScoreOptions): Score;   // { structure?: boolean }
+function beatOf(score: Score, track: number, bar: number, beat: number, voice?: number): Beat;   // throws when absent
+function noteOf(score: Score, track: number, bar: number, beat: number, note?: number, voice?: number): Note;
+```
+
+Usage is in `../reference/score-model.md`.
 
 ### Formats (`@reprise/formats`)
 
@@ -293,4 +455,4 @@ The browser implementation exists so `pnpm dev` works without Electron; the Elec
 - Strict TypeScript, `noUncheckedIndexedAccess` on. No `any`, no `as` casts without a structural reason.
 - Source filenames kebab-case. Tests colocated as `*.test.ts`. Comments explain why, not what.
 - Every `eslint-disable` carries a justification after `--`.
-- Public API of each package is its `index.ts`; nothing else is imported across packages.
+- Public API of each package is its `index.ts`; nothing else is imported across packages. The one exception is `@reprise/model/testing`, the model's test builders, which test files may import.

@@ -1,3 +1,5 @@
+import { current, isDraft } from 'immer';
+
 import type { Beat } from '../beat';
 import { createNote } from '../factories';
 import type { Command } from '../history';
@@ -5,6 +7,7 @@ import { newId } from '../id';
 import type { Id } from '../id';
 import { NoteSchema } from '../note';
 import type { Note } from '../note';
+import { transpose } from '../pitch';
 import type { Score } from '../score';
 import type { Track } from '../track';
 import { assignChanges } from './changes';
@@ -17,6 +20,8 @@ import {
   parseOrThrow,
   previousBeat,
   releaseTies,
+  tieChain,
+  tieOrigin,
 } from './checks';
 import { CommandError } from './command-error';
 import { at, beatAt, findBeat, findBeats, findNotes } from './locate';
@@ -37,13 +42,23 @@ export interface Selection {
 function assertTie(track: Track, position: BeatAt, note: Note, command: string): void {
   const previous = previousBeat(track, position.bar, position.voice, position.beat);
   if (note.tie && !hasTieTarget(track, note, previous)) {
-    throw new CommandError(command, 'tie-target', 'the tied note has nothing to tie to');
+    const origin = tieOrigin(track, note, previous);
+    throw new CommandError(
+      command,
+      'tie-target',
+      origin
+        ? `the tied note is on fret ${String(note.fret)}, the note it continues on fret ${String(origin.fret)}`
+        : 'the tied note has nothing to tie to',
+    );
   }
 }
 
 /**
- * Places a note on a beat: on fretted tracks it replaces the note on the same string, elsewhere
- * the note with the same MIDI value; otherwise it adds one. A rest becomes a played beat.
+ * Places a note on a beat: on fretted tracks it merges the given fields over the note on the same
+ * string, elsewhere over the note with the same MIDI value, keeping its id and the fields not
+ * given; otherwise it adds one with defaults. A rest becomes a played beat. A new fret carries
+ * along the notes tied to this one; a tied note given another fret is released, unless the input
+ * sets `tie: true`, which is then refused.
  */
 export function setNote(target: { beatId: Id; id?: Id }, note: NoteInput): Command {
   const name = 'setNote';
@@ -57,6 +72,7 @@ export function setNote(target: { beatId: Id; id?: Id }, note: NoteInput): Comma
       const existing = beat.notes.find((n) =>
         track.kind === 'fretted' ? n.string === note.string : n.fret === note.fret,
       );
+      const chain = existing ? tieChain(track, position, existing) : [];
       let placed: Note;
       if (existing) {
         Object.assign(existing, note);
@@ -67,8 +83,13 @@ export function setNote(target: { beatId: Id; id?: Id }, note: NoteInput): Comma
         beat.notes.push(placed);
       }
       beat.rest = false;
-      parseOrThrow(NoteSchema, existing ?? placed, name);
+      parseOrThrow(NoteSchema, placed, name);
+      if (placed.tie && note.tie !== true) {
+        const previous = previousBeat(track, position.bar, position.voice, position.beat);
+        if (tieOrigin(track, placed, previous)?.fret !== placed.fret) placed.tie = false;
+      }
       assertTie(track, position, placed, name);
+      for (const continuation of chain) continuation.note.fret = placed.fret;
     },
   };
 }
@@ -145,39 +166,80 @@ function select(draft: Score, selection: Selection, command: string): Selected[]
   return [...byBeat.values()];
 }
 
+/** Writes `next` over `note` field by field, so untouched fields leave no patch. */
+function overwrite(note: Note, next: Note): void {
+  for (const key of Object.keys(note)) {
+    if (!(key in next)) Reflect.deleteProperty(note, key);
+  }
+  for (const [key, value] of Object.entries(next)) {
+    if (Reflect.get(note, key) !== value) Reflect.set(note, key, value);
+  }
+}
+
 /**
- * Shifts every selected note by `semitones`: the fret on fretted tracks, staying on its string
- * and within the fretboard; the MIDI value on pitched tracks. Drum notes name instruments, and
- * dead notes have no pitch, so both stay. Explicit accidentals are dropped for re-spelling.
+ * Shifts every selected note by `semitones` through `transpose`, staying on its string: the fret
+ * on fretted tracks, the MIDI value on pitched tracks. Drum notes name instruments and dead
+ * notes have no pitch, so both stay. The notes tied to a moved note move with it; a moved tied
+ * note whose origin stayed is released. A note that falls off the fretboard refuses the whole
+ * edit; `transpose`'s warnings (a dropped trill, a moved natural harmonic) are reported.
  */
 export function transposeSelection(selection: Selection, semitones: number): Command {
   const name = 'transposeSelection';
   return {
     name,
-    run(draft) {
+    run(draft, warn) {
       if (!Number.isInteger(semitones)) {
         throw new CommandError(name, 'invalid-value', 'semitones must be a whole number');
       }
-      for (const { track, notes } of select(draft, selection, name)) {
+      const moving: { track: Track; note: Note }[] = [];
+      const seen = new Set<Note>();
+      const touched: { track: Track; bar: number; voice: number; beat: number }[] = [];
+      for (const { track, position, beat, notes } of select(draft, selection, name)) {
         if (track.kind === 'drums') continue;
-        const highest = track.kind === 'fretted' ? maxFret(track) : 127;
-        const shift = (fret: number): number => {
-          const shifted = fret + semitones;
-          if (shifted < 0 || shifted > highest) {
-            throw new CommandError(
-              name,
-              'off-fretboard',
-              `fret ${String(fret)} shifted by ${String(semitones)} falls outside 0 to ${String(highest)}`,
-            );
-          }
-          return shifted;
+        const { bar, voice } = position;
+        const add = (note: Note): void => {
+          if (seen.has(note) || note.dead) return;
+          seen.add(note);
+          moving.push({ track, note });
         };
+        touched.push({ track, bar, voice, beat: position.beat });
         for (const note of notes) {
-          if (note.dead) continue;
-          note.fret = shift(note.fret);
-          if (note.trill) note.trill.fret = shift(note.trill.fret);
-          delete note.accidental;
+          add(note);
+          if (!beat.notes.includes(note)) continue;
+          for (const link of tieChain(track, position, note)) {
+            add(link.note);
+            touched.push({ track, bar: link.bar, voice, beat: link.beat });
+          }
         }
+      }
+      const results = moving.map(({ track, note }) => {
+        const plain = isDraft(note) ? current(note) : note;
+        const result = transpose(track, plain, semitones);
+        if (!result.ok) {
+          throw new CommandError(
+            name,
+            'off-fretboard',
+            `fret ${String(note.fret)} on string ${String(note.string)} shifted by ${String(semitones)} is ${result.reason}`,
+          );
+        }
+        return { note, result };
+      });
+      for (const { note, result } of results) {
+        overwrite(note, result.note);
+        for (const code of result.warnings) {
+          warn({
+            code,
+            noteId: note.id,
+            message:
+              code === 'trill-dropped'
+                ? 'the trill fell off the fretboard and was removed'
+                : "the natural harmonic's node no longer matches its fret",
+          });
+        }
+      }
+      for (const { track, bar, voice, beat } of touched) {
+        releaseTies(track, bar, voice, beat);
+        releaseTies(track, bar, voice, beat + 1);
       }
     },
   };

@@ -269,6 +269,28 @@ describe('validateScore', () => {
     });
   });
 
+  describe('tie-pitch', () => {
+    it('rejects a tied note on another fret than the note it continues', () => {
+      expect(validateScore(scoreOf([guitar(barWith(quarter(3, 5), quarter(3, 7, true)))]))).toEqual(
+        [
+          {
+            rule: 'tie-pitch',
+            path: ['tracks', 0, 'bars', 0, 'voices', 0, 'beats', 1, 'notes', 0, 'fret'],
+            message: 'tied note is on fret 7 but the note it continues is on fret 5',
+          },
+        ],
+      );
+    });
+
+    it('checks across the bar line and leaves untied notes alone', () => {
+      const score = scoreOf(
+        [guitar(barWith(quarter(3, 5)), barWith(quarter(3, 6, true), quarter(3, 9)))],
+        [createMasterBar(), createMasterBar()],
+      );
+      expect(rules(score)).toEqual(['tie-pitch']);
+    });
+  });
+
   describe('tuplet', () => {
     it.each([
       [3, 2],

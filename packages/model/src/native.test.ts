@@ -1,16 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Bar } from './bar';
-import {
-  createBar,
-  createBeat,
-  createEmptyScore,
-  createMasterBar,
-  createNote,
-  createTrack,
-  createVoice,
-} from './factories';
-import { buildFullScore } from './full-score.fixture';
+import { createBeat, createEmptyScore, createNote } from './factories';
+import { fullScore, largeScore } from './testing';
 import { MIGRATIONS, migrate } from './migrations';
 import { NativeFormatError, formatPath, parseNative, serializeNative } from './native';
 import type { AppInfo } from './native';
@@ -42,53 +33,6 @@ function parseError(bytes: Uint8Array): NativeFormatError {
     throw error;
   }
   throw new Error('parseNative did not fail');
-}
-
-// Varied durations, rests, ties and time signatures so the generated score is not one repeated bar.
-function buildLargeScore(): Score {
-  const bars = 200;
-  const masterBars = Array.from({ length: bars }, (_, m) =>
-    createMasterBar({
-      ...(m % 16 === 0 && { tempo: { bpm: 90 + m } }),
-      ...(m % 8 === 0 && { repeat: { start: true, endCount: 0 } }),
-      ...(m % 8 === 7 && { repeat: { start: false, endCount: 2 } }),
-      timeSignature:
-        m % 5 === 4 ? { numerator: 3, denominator: 4 } : { numerator: 4, denominator: 4 },
-    }),
-  );
-  const tracks = Array.from({ length: 6 }, (_, t) =>
-    createTrack('fretted', {
-      name: `Track ${String(t + 1)}`,
-      bars: masterBars.map((masterBar, b): Bar => {
-        const quarters = masterBar.timeSignature.numerator;
-        const beats = Array.from({ length: quarters * 2 }, (_, i) =>
-          (b + i + t) % 7 === 0
-            ? createBeat({ duration: 8, rest: true })
-            : createBeat({
-                duration: 8,
-                notes: [
-                  createNote({ string: ((b * 3 + i + t) % 6) + 1, fret: (b + i * t) % 22 }),
-                  ...((i + t) % 3 === 0
-                    ? [
-                        createNote({
-                          string: ((b * 3 + i + t + 3) % 6) + 1,
-                          fret: (b + i) % 12,
-                          letRing: true,
-                        }),
-                      ]
-                    : []),
-                ],
-                ...(i % 4 === 0 && { text: `b${String(b)}` }),
-              }),
-        );
-        return {
-          ...createBar(),
-          voices: [createVoice(beats), createVoice(), createVoice(), createVoice()],
-        };
-      }),
-    }),
-  );
-  return { ...createEmptyScore(), masterBars, tracks };
 }
 
 /** Re-inserts every object's keys in reverse order, leaving the content unchanged. */
@@ -142,8 +86,8 @@ function timed<T>(run: () => T): [T, number] {
 describe('round trip', () => {
   const scores: [string, () => Score][] = [
     ['the empty score', createEmptyScore],
-    ['a score using every node type and optional field', buildFullScore],
-    ['a large generated score', buildLargeScore],
+    ['a score using every node type and optional field', fullScore],
+    ['a large generated score', () => largeScore(6, 200, { structure: true })],
   ];
 
   it.each(scores)('parseNative(serializeNative(s)) deep-equals s for %s', (_, build) => {
@@ -160,7 +104,7 @@ describe('round trip', () => {
 // quadratic regression.
 describe('a large score', () => {
   it('serialises and parses in linear time', () => {
-    const score = buildLargeScore();
+    const score = largeScore(6, 200, { structure: true });
     const [bytes, serializeMs] = timed(() => serializeNative(score, APP));
     const [result, parseMs] = timed(() => parseNative(bytes));
     expect(result.score).toEqual(score);
@@ -179,12 +123,12 @@ describe('serializeNative', () => {
   });
 
   it('yields identical bytes for the same score twice', () => {
-    const score = buildFullScore();
+    const score = fullScore();
     expect(serializeNative(score, APP)).toEqual(serializeNative(score, APP));
   });
 
   it('does not depend on the order keys were inserted in', () => {
-    const score = buildFullScore();
+    const score = fullScore();
     const shuffled = ScoreSchema.parse(JSON.parse(JSON.stringify(score)));
     reverseKeysInPlace(shuffled);
     expect(JSON.stringify(shuffled)).not.toBe(JSON.stringify(score));
@@ -192,7 +136,7 @@ describe('serializeNative', () => {
   });
 
   it('sorts keys inside the score and keeps array order', () => {
-    const score = buildFullScore();
+    const score = fullScore();
     const written: unknown = JSON.parse(decode(serializeNative(score, APP)));
     expect(keysOf(at(written, 'score'))).toEqual(['id', 'masterBars', 'meta', 'tracks']);
     expect(keysOf(at(written, 'score', 'meta'))).toEqual(Object.keys(score.meta).sort());
@@ -219,6 +163,7 @@ describe('serializeNative', () => {
     }
     expect(error).toBeInstanceOf(NativeFormatError);
     if (error instanceof NativeFormatError) {
+      expect(error.code).toBe('invalid-document');
       expect(error.path).toEqual(['score', 'masterBars', 0, 'tempo', 'bpm']);
     }
     expect(() => serializeNative(score, { name: '', version: '1' })).toThrow(NativeFormatError);
@@ -245,6 +190,7 @@ describe('serializeNative', () => {
 describe('parseNative failures', () => {
   it('rejects a version-0 document, naming the version', () => {
     const error = parseError(bytesOf({ ...envelope(createEmptyScore()), version: 0 }));
+    expect(error.code).toBe('invalid-version');
     expect(error.path).toEqual(['version']);
     expect(error.message).toBe('version: Version 0 does not exist; .reprise versions start at 1');
   });
@@ -253,6 +199,7 @@ describe('parseNative failures', () => {
     const error = parseError(
       bytesOf({ ...envelope(createEmptyScore()), version: SCORE_VERSION + 1 }),
     );
+    expect(error.code).toBe('newer-version');
     expect(error.path).toEqual(['version']);
     expect(error.message).toContain('newer than this app');
     expect(error.message).toContain(`version ${String(SCORE_VERSION + 1)}`);
@@ -263,21 +210,38 @@ describe('parseNative failures', () => {
     [
       'a missing version',
       { version: undefined },
+      'invalid-version',
       'version: Expected a whole number, found nothing',
     ],
-    ['a fractional version', { version: 1.5 }, 'version: Expected a whole number, found 1.5'],
-    ['a string version', { version: '1' }, 'version: Expected a whole number, found "1"'],
-    ['another format', { format: 'gp' }, 'format: Expected "reprise", found "gp"'],
-    ['an object format', { format: {} }, 'format: Expected "reprise", found an object'],
+    [
+      'a fractional version',
+      { version: 1.5 },
+      'invalid-version',
+      'version: Expected a whole number, found 1.5',
+    ],
+    [
+      'a string version',
+      { version: '1' },
+      'invalid-version',
+      'version: Expected a whole number, found "1"',
+    ],
+    ['another format', { format: 'gp' }, 'wrong-format', 'format: Expected "reprise", found "gp"'],
+    [
+      'an object format',
+      { format: {} },
+      'wrong-format',
+      'format: Expected "reprise", found an object',
+    ],
     [
       'a long format',
       { format: 'x'.repeat(100) },
+      'wrong-format',
       `format: Expected "reprise", found "${'x'.repeat(40)}…"`,
     ],
-  ])('rejects %s', (_, override, message) => {
-    expect(parseError(bytesOf({ ...envelope(createEmptyScore()), ...override })).message).toBe(
-      message,
-    );
+  ] as const)('rejects %s', (_, override, code, message) => {
+    const error = parseError(bytesOf({ ...envelope(createEmptyScore()), ...override }));
+    expect(error.code).toBe(code);
+    expect(error.message).toBe(message);
   });
 
   it('names a number JSON cannot hold rather than the null it parses to', () => {
@@ -290,12 +254,17 @@ describe('parseNative failures', () => {
     );
   });
 
-  it('rejects bytes that are not UTF-8, JSON, or an object', () => {
-    expect(parseError(new Uint8Array([0x7b, 0xff, 0x7d])).message).toBe(
-      'The file is not valid UTF-8',
-    );
-    expect(parseError(encode('{"format": ')).message).toMatch(/^The file is not JSON/);
-    expect(parseError(encode('[]')).message).toBe('The file is not a JSON object');
+  it('rejects bytes that are not UTF-8, JSON, or an object, each under its code', () => {
+    const utf8 = parseError(new Uint8Array([0x7b, 0xff, 0x7d]));
+    expect(utf8).toMatchObject({ code: 'invalid-utf8', message: 'The file is not valid UTF-8' });
+    const json = parseError(encode('{"format": '));
+    expect(json.code).toBe('invalid-json');
+    expect(json.message).toMatch(/^The file is not JSON/);
+    const array = parseError(encode('[]'));
+    expect(array).toMatchObject({
+      code: 'invalid-document',
+      message: 'The file is not a JSON object',
+    });
   });
 
   it('reads a file with a leading BOM, without the trailing newline, or with CRLF', () => {
@@ -317,11 +286,12 @@ describe('parseNative failures', () => {
   });
 
   it('names the path of an invalid score field', () => {
-    const score = buildFullScore();
+    const score = fullScore();
     const beat = score.tracks[0]?.bars[0]?.voices[0]?.beats[0];
     if (!beat) throw new Error('the fixture has no first beat');
     Reflect.set(beat, 'duration', 3);
     const error = parseError(bytesOf(envelope(score)));
+    expect(error.code).toBe('invalid-document');
     expect(error.path).toEqual([
       'score',
       'tracks',
@@ -372,7 +342,7 @@ describe('parseNative warnings', () => {
     expect(result.score).toEqual(score);
     expect(result.warnings).toEqual([
       {
-        rule: 'unknown-field',
+        code: 'unknown-field',
         path: ['thumbnail'],
         message: 'Unknown field "thumbnail" was dropped',
       },
@@ -412,7 +382,11 @@ describe('parseNative warnings', () => {
     const result = parseNative(serializeNative(score, APP));
     expect(result.score).toEqual(score);
     expect(result.warnings).toEqual(
-      violations.map(({ rule, path, message }) => ({ rule, path: ['score', ...path], message })),
+      violations.map(({ rule, path, message }) => ({
+        code: rule,
+        path: ['score', ...path],
+        message,
+      })),
     );
   });
 });
@@ -459,6 +433,7 @@ describe('migrations', () => {
     expect(error).toBeInstanceOf(Error);
     if (error instanceof Error) {
       expect(error.name).toBe('NativeFormatError');
+      expect(error).toMatchObject({ code: 'migration-failed' });
       expect(error.message).toBe(
         `score: Migrating from version ${String(SCORE_VERSION)} to ${String(SCORE_VERSION)} failed: bars is not iterable`,
       );

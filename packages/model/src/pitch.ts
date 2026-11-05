@@ -36,11 +36,11 @@ export interface FretPosition {
 export type TransposeFailure = 'belowOpenString' | 'aboveLastFret' | 'outOfMidiRange';
 
 /**
- * `trillDropped`: the trill's alternate fret fell off the fretboard, so the trill was removed.
- * `naturalHarmonicMoved`: the harmonic's node no longer matches its fret; `harmonic.value` is
+ * `trill-dropped`: the trill's alternate fret fell off the fretboard, so the trill was removed.
+ * `natural-harmonic-moved`: the harmonic's node no longer matches its fret; `harmonic.value` is
  * left to the editor.
  */
-export type TransposeWarning = 'trillDropped' | 'naturalHarmonicMoved';
+export type TransposeWarning = 'trill-dropped' | 'natural-harmonic-moved';
 
 export type TransposeResult =
   | {
@@ -86,7 +86,7 @@ function alternativePositions(track: FretTrack, midi: number, except: number): F
  * off the fretboard or out of MIDI range: the failure says why and, on fretted tracks, where
  * else the pitch can be played.
  */
-export function transpose(note: Note, semitones: number, track: FretTrack): TransposeResult {
+export function transpose(track: FretTrack, note: Note, semitones: number): TransposeResult {
   if (!Number.isInteger(semitones)) {
     throw new RangeError(`Transposition must be whole semitones, got ${String(semitones)}`);
   }
@@ -112,9 +112,9 @@ export function transpose(note: Note, semitones: number, track: FretTrack): Tran
     if (failureAt(track, note.string, trillFret) === undefined) {
       moved.trill = { ...trill, fret: trillFret };
     } else {
-      warnings.push('trillDropped');
+      warnings.push('trill-dropped');
     }
   }
-  if (note.harmonic?.kind === 'natural') warnings.push('naturalHarmonicMoved');
+  if (note.harmonic?.kind === 'natural') warnings.push('natural-harmonic-moved');
   return { ok: true, note: moved, warnings };
 }

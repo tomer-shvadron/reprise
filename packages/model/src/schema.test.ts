@@ -7,7 +7,7 @@ import { createBeat, createMasterBar, createNote, createTrack } from './factorie
 import { MasterBarSchema, TimeSignatureSchema } from './master-bar';
 import { BendPointSchema } from './note';
 import type { Note } from './note';
-import { buildFullScore } from './full-score.fixture';
+import { fullScore } from './testing';
 import { ScoreSchema } from './score';
 import { TempoMarkSchema } from './tempo';
 import { ChannelSettingsSchema, TrackSchema } from './track';
@@ -15,14 +15,14 @@ import { validateScore } from './validate';
 
 describe('ScoreSchema', () => {
   it('round-trips a score that uses every node type, through JSON', () => {
-    const score = buildFullScore();
+    const score = fullScore();
     expect(validateScore(score)).toEqual([]);
     const parsed = ScoreSchema.parse(JSON.parse(JSON.stringify(score)));
     expect(parsed).toEqual(score);
   });
 
   it('reports a wrong field with its path', () => {
-    const score = buildFullScore();
+    const score = fullScore();
     const beat = score.tracks[0]?.bars[0]?.voices[0]?.beats[0];
     if (!beat) throw new Error('the fixture has no first beat');
     Reflect.set(beat, 'duration', 3);
@@ -42,7 +42,7 @@ describe('ScoreSchema', () => {
   });
 
   it('rejects an explicit undefined where a field is optional', () => {
-    const score = buildFullScore();
+    const score = fullScore();
     const result = ScoreSchema.safeParse({
       ...score,
       masterBars: score.masterBars.map((masterBar) => ({ ...masterBar, tempo: undefined })),
@@ -52,7 +52,7 @@ describe('ScoreSchema', () => {
   });
 
   it('requires exactly four voices per bar', () => {
-    const score = buildFullScore();
+    const score = fullScore();
     const bar = score.tracks[0]?.bars[1];
     const result = ScoreSchema.safeParse({
       ...score,

@@ -2,7 +2,11 @@
 
 The score model every other package codes against: Zod schemas with the TypeScript types
 derived from them (`z.infer`), node factories, `newId()`, and `validateScore()`. The root
-export (`src/index.ts`) is the public API. Zod and Immer are the only runtime dependencies.
+export (`src/index.ts`) is the public API; `@reprise/model/testing` (`src/testing/index.ts`)
+holds the test builders. Zod and Immer are the only runtime dependencies. This README is the
+record of decisions; [`docs/reference/score-model.md`](../../docs/reference/score-model.md)
+explains the model for readers who have not seen the source, and the frozen contract is
+`docs/specs/architecture.md`, "Contracts" (WP-015, 2026-11-05).
 
 ```ts
 import { ScoreSchema, createEmptyScore, validateScore } from '@reprise/model';
@@ -33,11 +37,20 @@ validateScore(score); // cross-node invariants: [] when the score is sound
 | `fret-range`                      | Fretted notes sit on frets 0 to `track.fretCount`, whatever the capo, as Guitar Pro files hold them.                                                     |
 | `duplicate-string`                | No two notes of a fretted beat share a string.                                                                                                           |
 | `tie-target`                      | A tied note has a note on the same string (same MIDI note on drum and pitched tracks) in the previous beat of its voice, crossing into the previous bar. |
+| `tie-pitch`                       | A tied fretted note is on the same fret as the note it continues; off fretted tracks `tie-target` already matches by MIDI note.                          |
 | `tuplet`                          | `n:of` is not 1:1 and lies strictly between 1:2 and 2:1.                                                                                                 |
 | `dots`                            | 0 to 2 dots (defensive, for input that bypassed the schema).                                                                                             |
 | `chord-diagram`                   | A chord diagram on a track with strings has one fret per string, fingering to match, barres in range.                                                    |
 | `alternate-ending-order`          | Volta numbers on a bar are unique and ascending.                                                                                                         |
 | `alternate-ending-outside-repeat` | Every run of consecutive volta bars contains a repeat end.                                                                                               |
+
+## Diagnostics
+
+One convention, ruled at the WP-015 freeze: every diagnostic identifier is kebab-case, an
+invariant violation keys its kind as `rule` (`Violation`), and a warning or an error keys it as
+`code` (`ParseWarning`, `PlaybackWarning`, `CommandWarning`, `CommandError`,
+`NativeFormatError`). Model enum values (`slight`, `doubleFlat`, `belowOpenString`) stay
+camelCase: they are data a file carries, not something reported about it.
 
 ## Native format (`.reprise`)
 
@@ -66,19 +79,19 @@ const { score: read, app, warnings } = parseNative(bytes); // throws NativeForma
   a whole number fails; a version above `SCORE_VERSION` fails with "newer than this app",
   naming both versions. The `score` then runs through `MIGRATIONS` from the file's version to the current
   one, and the whole envelope is checked against `NativeDocumentSchema`. Any failure is a
-  `NativeFormatError` whose `path` (and message prefix, `score.tracks[0].bars[2].id: ...`) names
-  the offending field.
+  `NativeFormatError` whose `code` says what kind (`invalid-utf8`, `invalid-json`, `wrong-format`,
+  `invalid-version`, `newer-version`, `migration-failed`, `invalid-document`) and whose `path` (and
+  message prefix, `score.tracks[0].bars[2].id: ...`) names the offending field.
 - **Warnings, never failures**, for what the schema cannot see: unknown fields anywhere in the
-  document are dropped and reported (`rule: 'unknown-field'`), and the score's invariant
-  violations (`validateScore`) are reported under their rule. Every `ParseWarning` path starts
+  document are dropped and reported (`code: 'unknown-field'`), and the score's invariant
+  violations (`validateScore`) are reported with their rule as the `code`. Every `ParseWarning` path starts
   at the document root, so a score violation's path begins with `score`.
 - **Migrations**: `MIGRATIONS[n]` turns a version-`n - 1` `score` into its version-`n` shape,
   working on plain JSON. Version 1's entry is the identity. A step that throws surfaces as a
   `NativeFormatError` naming both versions. Raising the version means: bump `SCORE_VERSION`,
   add the step, and add a fixture of the old version to the tests.
-- **Test fixture**: `src/full-score.fixture.ts` builds a score using every node type for the
-  package's own tests. It is not part of the public API; WP-015's `@reprise/model/testing`
-  builders are the entry point for other packages' tests.
+- **Test fixtures** live in `@reprise/model/testing` ("Test builders" below); `fullScore()` is
+  the score that sets every node type and optional field, which the round-trip tests use.
 
 ## Modelling decisions
 
@@ -202,12 +215,12 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
 
 ## Commands and history
 
-Every edit is a named `Command` whose `run(draft)` mutates an Immer draft (ADR-0011).
-`applyCommand(score, command)` returns the new score and a `Change`: the command name, forward
-and inverse patches, and `touchedBars`. `createHistory()` wraps it with undo and redo, which
-replay the patches, so a step costs what it changed: a thousand single-note edits on an 8-track,
-300-bar score hold 194 KB of patches against a 9.6 MB score (`history-memory.test.ts`, budget
-256 KiB).
+Every edit is a named `Command` whose `run(draft, warn)` mutates an Immer draft (ADR-0011).
+`applyCommand(score, command)` returns the new score, a `Change` (the command name, forward and
+inverse patches, and `touchedBars`) and the command's `warnings`. `createHistory()` wraps it
+with undo and redo, which replay the patches, so a step costs what it changed: a thousand
+single-note edits on an 8-track, 300-bar score hold 194 KB of patches against a 9.8 MB score
+(`history-memory.test.ts`, budget 256 KiB).
 
 ```ts
 import { createHistory, insertBar, setNote } from '@reprise/model';
@@ -242,6 +255,10 @@ const undone = history.undo(); // { score, change } with the patches it replayed
   through their beat (`setBeatEffect`, or a `beatIds` selection), not by note id.
 - **Optional fields** are removed with `null` in the `Changes<T>` objects that `setNoteEffect`,
   `setBeatEffect`, `setBeatDuration`, `setMasterBar` and `setTrackProperties` take.
+- **Warnings**: `Command.run(draft, warn)` may report what an applied edit changed beyond what it
+  was asked, and `Applied.warnings` carries them as `{ code, noteId, message }`. Today only
+  `transposeSelection` warns, with `transpose`'s `trill-dropped` and `natural-harmonic-moved`.
+  `undo` and `redo` replay patches and report none.
 - **Refusal**: a command throws `CommandError` (`code`, `command`, and `violations` for
   `invariant`) instead of producing a score that breaks the schema or adds a `validateScore`
   violation. Nodes an edit creates (a new beat's notes, grace notes) are checked in full, string
@@ -249,44 +266,58 @@ const undone = history.undo(); // { score, change } with the patches it replayed
   per rule before and after, so a violation an imported file already carried does not block
   unrelated edits. A fret count or tuning change that would leave more notes outside the
   neck or the string count than before is refused the same way.
-- **Repair**: a tie whose target an edit removes (a note, a beat, a bar, a string shift) is
-  released rather than refused.
+- **Repair**: a tie whose target an edit removes (a note, a beat, a bar, a string shift) or moves
+  to another pitch is released rather than refused.
+- **Tie chains share their pitch** (`tie-pitch`), as in Guitar Pro. Pitch flows forward: a new fret
+  on a note (`setNote`, `transposeSelection`) carries along every note tied to it, and a tied
+  note given a pitch of its own is released from its origin. `setNote` with an explicit
+  `tie: true` and another fret than the origin's is refused as `tie-target`.
 
-| Command                                | Notes                                                                                                                                     |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `setNote`                              | Replaces the note on the same string (same MIDI value off fretted tracks) or adds one; a rest becomes a played beat.                      |
-| `removeNote`                           | A beat left without notes becomes a rest.                                                                                                 |
-| `setNoteEffect`                        | Any note field but id, string and fret.                                                                                                   |
-| `transposeSelection`                   | Shifts frets (MIDI on pitched tracks) and refuses notes that leave 0 to `fretCount`; drum and dead notes stay.                            |
-| `shiftStrings`                         | Moves notes to the neighbouring string at the same pitch; refuses occupied strings and frets off the neck.                                |
-| `insertBeat`, `removeBeat`             | A quarter rest by default; refuses to overfill the voice or to place a note off the neck.                                                 |
-| `setBeatDuration`, `setBeatRest`       | Duration, dots, tuplet; rest drops the notes.                                                                                             |
-| `setBeatEffect`                        | Beat effects, plus text, chord, lyrics, mixer change and grace notes.                                                                     |
-| `insertBar`, `removeBar`               | All tracks at once; copy the previous signatures, join a shared volta, shift `Track.lyrics`; a removed bar's tempo moves to the next bar. |
-| `setMasterBar`                         | Time, key, tempo, repeats, alternate endings, jumps, targets, section, anacrusis, triplet feel, double bar.                               |
-| `setTrackProperties`                   | Everything but id, kind and bars; `channel` and `display` merge; refuses a fret count that strands notes.                                 |
-| `addTrack`, `removeTrack`, `moveTrack` | A new track gets one empty bar per master bar; a score keeps at least one track.                                                          |
+| Command                                | Notes                                                                                                                                                         |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setNote`                              | Merges the given fields over the note on the same string (same MIDI value off fretted tracks) or adds one; a rest becomes a played beat; frets follow ties.   |
+| `removeNote`                           | A beat left without notes becomes a rest.                                                                                                                     |
+| `setNoteEffect`                        | Any note field but id, string and fret.                                                                                                                       |
+| `transposeSelection`                   | Each note through `transpose`, on its string; tie chains follow; refuses notes off the neck; drum and dead notes stay; warns.                                 |
+| `shiftStrings`                         | Moves notes to the neighbouring string at the same pitch; refuses occupied strings and frets off the neck.                                                    |
+| `insertBeat`, `removeBeat`             | A quarter rest by default; refuses to overfill the voice or to place a note off the neck.                                                                     |
+| `setBeatDuration`, `setBeatRest`       | Duration, dots, tuplet; rest drops the notes.                                                                                                                 |
+| `setBeatEffect`                        | Beat effects, plus text, chord, lyrics, mixer change and grace notes.                                                                                         |
+| `insertBar`, `removeBar`               | All tracks at once; copy the previous signatures (the next bar's at index 0) and the next bar's voltas, shift `Track.lyrics`; a removed bar's tempo moves on. |
+| `setMasterBar`                         | Time, key, tempo, repeats, alternate endings, jumps, targets, section, anacrusis, triplet feel, double bar.                                                   |
+| `setTrackProperties`                   | Everything but id, kind and bars; `channel` and `display` merge; refuses a fret count that strands notes.                                                     |
+| `addTrack`, `removeTrack`, `moveTrack` | A new track gets one empty bar per master bar; a score keeps at least one track.                                                                              |
 
 Guitar Pro numbers frets up to the neck length whatever the capo, so the ceiling every command
 places a note under is `fretCount`, the bound `transpose` and the `fret-range` rule share.
+`transposeSelection` computes every note through `transpose`, so the two cannot disagree: a
+stored accidental survives an octave move, and a trill whose alternate fret falls off is dropped
+with a warning rather than refusing the edit. It keeps stay-on-string semantics and does not
+re-finger; `transpose`'s `alternatives` are for an editor that wants to.
+
+`insertBar` takes the volta numbers of the bar it is inserted before, so inserting before a volta
+bar lengthens that ending (a user extending ending 2) rather than splitting the run; inserting
+after the last volta bar, before an ordinary one, adds an ordinary bar.
 
 ## Pitch, tuning and spelling
 
 Pure helpers over the model, with no state of their own.
 
+- **Arguments are track-first** wherever a track is needed: `midiNote(track, note)`,
+  `transpose(track, note, semitones)`, `spellNote(track, note, key)`, `respell(track, note, key)`.
 - **`midiNote(track, note)`** is the sounding MIDI note: `tuning[tuning.length - string] +
 capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro writes them;
   `note.fret` as stored on drum and pitched tracks, even when a pitched track keeps a GP5
   tuning. A fretted note on a string the track lacks throws a `RangeError`.
-- **`transpose(note, semitones, track)`** moves the note on its own string and returns
+- **`transpose(track, note, semitones)`** moves the note on its own string and returns
   `{ ok: true, note, warnings }` or `{ ok: false, reason, midi, alternatives }`, never throwing
   for a note that falls off. `reason` is `belowOpenString`, `aboveLastFret` (past `fretCount`,
   the fret numbers a Guitar Pro file holds whatever the capo) or `outOfMidiRange` (pitched
   tracks, 0 to 127). `alternatives` lists the other strings that can play the pitch, for a
   caller that knows which strings in the beat are free. A stored `accidental` survives only
-  octave shifts; drum notes come back unchanged. `warnings` holds `trillDropped` when the
+  octave shifts; drum notes come back unchanged. `warnings` holds `trill-dropped` when the
   trill's alternate fret, which moves with the note, falls off and the trill is removed, and
-  `naturalHarmonicMoved` when the moved note carries a natural harmonic: its `value` is a node
+  `natural-harmonic-moved` when the moved note carries a natural harmonic: its `value` is a node
   on the string and is left for the editor to re-derive, while an artificial harmonic's `value`
   is an offset and travels with the note.
 - **`STANDARD_TUNINGS`** names fourteen tunings (guitar, 7-string, 4- and 5-string bass,
@@ -323,11 +354,12 @@ capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro write
 Pure helpers over the model, all from the root export.
 
 ```ts
-import { expandPlaybackSequence, positionAtSeconds, tempoMap, tickOf } from '@reprise/model';
+import { expandPlaybackSequence, positionAtSeconds, secondsAtTick, tempoMap } from '@reprise/model';
 
 const { sequence, warnings } = expandPlaybackSequence(score); // [{ masterBarIndex, passIndex }]
 const map = tempoMap(score, sequence); // every pass with its start in seconds
-positionAtSeconds(map, 12.5); // { sequenceIndex, masterBarIndex, passIndex, tick, beatIndex, ... }
+positionAtSeconds(map, 12.5); // { sequenceIndex, passIndex, tick, playbackTick, beatIndex, ... }
+secondsAtTick(map, 9600); // seconds at a playback tick, for the scheduler
 ```
 
 ### Ticks
@@ -343,6 +375,9 @@ positionAtSeconds(map, 12.5); // { sequenceIndex, masterBarIndex, passIndex, tic
   are empty). A short ordinary bar still lasts its full written length.
 - `tickOf(score, { bar, beat, track?, voice? })` is the absolute tick in written order, ignoring
   repeats and jumps, using `playedBarTicks`. Out-of-range positions throw a `RangeError`.
+- `barStartTicks(score)` is the same for every bar at once, a prefix sum with
+  `masterBars.length + 1` entries whose last is the score's end, for layout passes that walk
+  written order.
 
 ### Playback sequence
 
@@ -410,7 +445,10 @@ expander follows Guitar Pro wherever the two disagree.
 `startSeconds`, `durationSeconds` and constant or ramped `segments`; `secondsAt(map,
 sequenceIndex, tick)` is the forward lookup and `positionAtSeconds(map, seconds, { track,
 voice })` the reverse, clamped to the map (`undefined` only for an empty one), with `beatIndex`
--1 for an empty voice.
+`undefined` for an empty voice. A position also carries `playbackTick`, the pass's `startTick`
+plus `tick`, and `secondsAtTick(map, playbackTick)` is its inverse, so a scheduler can work in
+one tick line across passes; it clamps like `positionAtSeconds`, and a tick on a pass boundary
+belongs to the pass that starts there.
 
 - Playback starts at `DEFAULT_BPM` (120) unless the first bar has a mark. **Tempo carries in
   playback order**: a repeat or a D.C. back to an unmarked bar keeps the tempo playback had
@@ -422,6 +460,51 @@ voice })` the reverse, clamped to the map (`undefined` only for an empty one), w
 - **A `duration` is a linear ramp in BPM** from the tempo in effect (mid-ramp if one is running)
   to the new tempo over `duration` quarter notes, continuing across bar lines in playback order;
   without one the change is a step. A new change cuts a running ramp short.
+
+## Test builders (`@reprise/model/testing`)
+
+The one subpath export, and the lint boundaries admit it only from test files
+(`testing-entry-in-tests`). The builders import the package root, so they see exactly what other
+packages see.
+
+```ts
+import { midi, note, score } from '@reprise/model/testing';
+
+const s = score()
+  .tempo(96)
+  .timeSignature(3, 4)
+  .track('guitar')
+  .bar()
+  .repeatStart()
+  .beat('8', [note(1, 0), note(2, 1)], { effects: { pickStroke: 'down' } })
+  .rest('2')
+  .bar()
+  .beat('2.', [note(6, 3)])
+  .volta([1])
+  .repeatEnd(2)
+  .track('drums')
+  .bar()
+  .beat('4', [midi(36)])
+  .build();
+```
+
+- Master-bar calls (`tempo`, `timeSignature`, `key`, `repeatStart`, `repeatEnd`, `volta`,
+  `section`, `jump`, `target`, `anacrusis`, `masterBar`) apply to the open bar's column; before any
+  bar, `tempo`, `timeSignature` and `key` set the defaults. A new master bar copies the previous
+  one's signatures. `bar()` before any track builds master-bar-only scores.
+- `track('guitar' | 'bass' | 'drums' | 'piano', spec)` presets `createTrack`; `bass` is four
+  strings E1 A1 D2 G2 on GM 33 with a bass clef.
+- `build()` pads short tracks, adds a guitar when none was declared, gives the first bar the
+  default tempo when it has no mark, and throws `ScoreBuildError` (with `violations`) when the
+  schema or `validateScore` fails; `build({ validate: false })` skips the invariants. A builder
+  makes one score. Ids are random by default, like a real score's; `build({ ids: 'sequential' })`
+  numbers the nodes in document order (`mbar00000001`, `beat00000001`, ...) and keeps the ids a
+  test gave, so a data snapshot keyed by node id, as layout's anchors are, does not change from
+  run to run.
+- `fullScore()` sets every node type and optional field. `largeScore(tracks, bars, { structure })`
+  fills voice 1 with eighths of two notes and voice 2 with a whole-bar rest (8 by 300 is 38,400
+  notes); `structure` adds tempo changes, repeats, 3/4 bars, rests and text. `beatOf` and
+  `noteOf` find nodes by index.
 
 ## Not modelled yet
 

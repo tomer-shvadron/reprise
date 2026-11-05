@@ -68,6 +68,20 @@ export interface ScorePosition {
   voice?: number;
 }
 
+/**
+ * The written-order start tick of every master bar, plus the score's end: `masterBars.length + 1`
+ * entries, so bar `i` spans `starts[i]` to `starts[i + 1]`. A prefix sum of `playedBarTicks`.
+ */
+export function barStartTicks(score: Pick<Score, 'masterBars' | 'tracks'>): number[] {
+  const starts = [0];
+  let ticks = 0;
+  for (let i = 0; i < score.masterBars.length; i++) {
+    ticks += playedBarTicks(score, i);
+    starts.push(ticks);
+  }
+  return starts;
+}
+
 /** The absolute tick of a position in written order, ignoring repeats and jumps. */
 export function tickOf(
   score: Pick<Score, 'masterBars' | 'tracks'>,

@@ -1,51 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Bar } from './bar';
-import {
-  createBar,
-  createBeat,
-  createEmptyScore,
-  createMasterBar,
-  createNote,
-  createTrack,
-  createVoice,
-} from './factories';
 import { ScoreSchema } from './score';
-import type { Score } from './score';
+import { largeScore } from './testing';
 import { validateScore } from './validate';
-
-const TRACKS = 8;
-const BARS = 300;
-const BEATS_PER_BAR = 8;
-
-// Two notes per eighth in voice 1, a whole rest in voice 2: 38,400 notes, 21,600 beats.
-function buildLargeScore(): Score {
-  const masterBars = Array.from({ length: BARS }, (_, m) =>
-    createMasterBar(m === 0 ? { tempo: { bpm: 120 } } : {}),
-  );
-  const tracks = Array.from({ length: TRACKS }, (_, t) =>
-    createTrack('fretted', {
-      bars: Array.from({ length: BARS }, (_, b): Bar => {
-        const beats = Array.from({ length: BEATS_PER_BAR }, (_, i) =>
-          createBeat({
-            duration: 8,
-            notes: [
-              createNote({ string: ((b + i) % 6) + 1, fret: (b + i + t) % 12 }),
-              createNote({
-                string: ((b + i + 2) % 6) + 1,
-                fret: (b + i) % 12,
-                palmMute: i % 2 === 0,
-              }),
-            ],
-          }),
-        );
-        const rest = createVoice([createBeat({ duration: 1, rest: true })]);
-        return { ...createBar(), voices: [createVoice(beats), rest, createVoice(), createVoice()] };
-      }),
-    }),
-  );
-  return { ...createEmptyScore(), masterBars, tracks };
-}
 
 // Date.now() because the package's lib has no `performance`; millisecond resolution is enough.
 function timed<T>(run: () => T): [T, number] {
@@ -56,7 +13,7 @@ function timed<T>(run: () => T): [T, number] {
 
 // Measured at 15 to 26 ms, 67 ms and 12 ms; the bounds only catch a quadratic regression.
 describe('a large score', () => {
-  const score = buildLargeScore();
+  const score = largeScore(8, 300);
 
   it('validates in linear time', () => {
     const [violations, ms] = timed(() => validateScore(score));
