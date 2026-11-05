@@ -3,6 +3,7 @@
   "references": [
     { "path": "./packages/model" },
     { "path": "./packages/formats" },
+    { "path": "./packages/formats/test" },
     { "path": "./packages/layout" },
     { "path": "./packages/audio" },
     { "path": "./apps/web" },
