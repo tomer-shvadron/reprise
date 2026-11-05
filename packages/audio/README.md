@@ -144,3 +144,93 @@ can no longer sound (`held` says how many), so a long song does not accumulate t
   settle, and it has a fixed pre-delay, measured at 264 frames (5.99 ms at 44.1 kHz): everything
   through the master bus lands that much after its `when`. Tests that compare levels play below
   the threshold and measure after that; a test that measures onsets must tap before the bus.
+
+## Memory manager
+
+ADR-0005's decoded-buffer cache, in `src/samples/`. `ManagedSampleSource` is the `SampleSource`
+every instrument plays from: the loaders supply raw PCM through a `SampleProvider`, the manager
+decodes it, accounts for it and evicts it, and the sampler never sees the difference.
+
+### The provider seam
+
+```ts
+type InstrumentId = string; // 'gm:0:25' = bank:program, 'gm:drums:0' for kits
+
+interface RawSample {
+  sampleRate: number;
+  channels: Float32Array[];
+  loop?: { start: number; end: number };
+  byteLength: number;
+}
+
+interface SampleProvider {
+  instrumentOf(ref: SampleRef): InstrumentId; // the unit of eviction
+  fetch(ref: SampleRef): Promise<RawSample>; // raw PCM; the manager builds the AudioBuffer
+  byteLength(ref: SampleRef): number; // decoded size estimate, reserved before the fetch
+}
+```
+
+The loop points a sampler voice uses are on its `Region`; an `AudioBuffer` has nowhere to carry
+them, so the manager does not read `RawSample.loop`.
+
+### API
+
+```ts
+const source = new ManagedSampleSource(provider, context, { budgetBytes: GM_BUDGET_BYTES });
+const plan = await source.load(score, regionMapOf, { bars: 4 }); // AudioEngine.load's half
+source.memory(); // { decodedBytes, budgetBytes, residents }
+const off = source.on('memory', (stats) => {}); // coalesced to one per animation frame
+source.budgetBytes = 300 * MEGABYTE; // settable at runtime; lowering it evicts at once
+source.counters; // { fetches, evictions, pinnedEvictions }
+
+planInstruments(score, { bars?, instrumentOf? }); // instruments and keys per track
+planSamples(plan, regionMapOf); // the SampleRefs those keys reach
+```
+
+### Accounting, eviction and pinning
+
+- **Accounting** is per buffer, `numberOfChannels × length × 4` bytes, from the buffer built and
+  not from the provider's estimate. The estimate only reserves room while a fetch is in flight,
+  so a burst of loads (a preload) evicts ahead and cannot overshoot.
+- **Eviction is by whole instrument**, least recently used first, whenever resident plus
+  reserved bytes exceed the budget. Recency is `peekBuffer`, which the sampler calls for every
+  note it starts, and `getBuffer`. Half an instrument would save little and turn into skipped
+  notes all over its range.
+- **Pinning.** `switchSong` (and so `load`) pins the instruments the new song uses and evicts
+  every other one at once. A leftover loaded afterwards (an editor preview on a new track, a
+  program change the plan did not see) is evicted before any pinned instrument, however recent.
+- **The instrument being loaded is never its own victim**, so the budget is exceeded only when
+  that one instrument is larger than the whole budget.
+
+### Planning and preload
+
+`planInstruments` walks the playback sequence, not written order, so a `Beat.mix` program change
+reached through a repeat or a jump is attributed to the bars it actually sounds in. Each track
+plans its own program even when it has no notes (it costs nothing until a note asks for it).
+Keys come from `midiNote`, plus grace notes and the trill's alternate fret.
+
+`load` decodes every sample the opening `bars` (default 4) can reach before it resolves, at every
+velocity and in every articulation layer, since dynamics and articulations are the scheduler's
+to decide. It then warms the rest of the song in the background, but only if all of it fits the
+budget: otherwise warming would evict what the opening bars need.
+
+### The degrade path
+
+Below the needs of the current song nothing throws. Pinned instruments are evicted least
+recently used first (`counters.pinnedEvictions` counts them); the sampler finds a non-resident
+sample, skips the note, reports it through `onMiss` and requests the load, so the next note on
+it plays. `memory()` shows the overrun, so the settings can say why.
+
+### Budgets, measured
+
+`memory-budget.test.ts` runs the reference long score (8 tracks, 300 bars, with structure)
+against a synthetic provider sized like GeneralUser GS decoded to Float32 (1 to 4 MB per
+instrument with every zone resident, a zone every 3 semitones), under the GM budget of 80 MB:
+
+| Case                                 | Result                                                   |
+| ------------------------------------ | -------------------------------------------------------- |
+| `planInstruments`, 8 × 300           | about 15 ms                                              |
+| Song A, 8 guitar and bass programs   | 5.7 MB resident, 0 misses in 62,124                      |
+| Song B after A, 7 programs and a kit | 5.9 MB resident (shared instrument kept whole), 0 misses |
+| Every zone of song A's 8 instruments | 21.3 MB                                                  |
+| Song A under half its needs (2.8 MB) | peak 2.8 MB, notes skipped and reloaded, nothing thrown  |
