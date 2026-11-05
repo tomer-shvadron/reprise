@@ -192,3 +192,41 @@ export type {
   ParseWarning,
   ParseWarningRule,
 } from './native';
+
+export { HistoryError, applyCommand, createHistory, touchedBars } from './history';
+export type { Applied, Change, Command, History, Patch } from './history';
+
+export {
+  CommandError,
+  addTrack,
+  insertBar,
+  insertBeat,
+  moveTrack,
+  removeBar,
+  removeBeat,
+  removeNote,
+  removeTrack,
+  setBeatDuration,
+  setBeatEffect,
+  setBeatRest,
+  setMasterBar,
+  setNote,
+  setNoteEffect,
+  setTrackProperties,
+  shiftStrings,
+  transposeSelection,
+} from './commands';
+export type {
+  BeatChanges,
+  BeatInput,
+  BeatRhythm,
+  Changes,
+  CommandErrorCode,
+  MasterBarChanges,
+  MasterBarInput,
+  NoteEffects,
+  NoteInput,
+  Selection,
+  TrackChanges,
+  TrackProperties,
+} from './commands';
