@@ -25,24 +25,34 @@ validateScore(score); // cross-node invariants: [] when the score is sound
   It assumes schema-valid input. It is linear in the score: 8 tracks by 300 bars with 38,400
   notes validate in about 20 ms (`large-score.test.ts`).
 
-| Rule                              | What it checks                                                                                                                                           |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `duplicate-id`                    | Every id is unique across the score.                                                                                                                     |
-| `first-bar-tempo`                 | The first master bar carries a tempo mark.                                                                                                               |
-| `bar-count`                       | Every track has one bar per master bar.                                                                                                                  |
-| `track-kind`                      | Fretted tracks have strings and frets; drum tracks have no tuning, capo or frets.                                                                        |
-| `voice-overfull`                  | A voice's beats sum to at most the bar length. Incomplete bars are allowed.                                                                              |
-| `rest-with-notes`                 | A rest carries no notes.                                                                                                                                 |
-| `string-range`                    | Fretted notes use strings 1 to the string count; drum and pitched notes use string 0.                                                                    |
-| `fret-range`                      | Fretted notes sit on frets 0 to `track.fretCount`, whatever the capo, as Guitar Pro files hold them.                                                     |
-| `duplicate-string`                | No two notes of a fretted beat share a string.                                                                                                           |
-| `tie-target`                      | A tied note has a note on the same string (same MIDI note on drum and pitched tracks) in the previous beat of its voice, crossing into the previous bar. |
-| `tie-pitch`                       | A tied fretted note is on the same fret as the note it continues; off fretted tracks `tie-target` already matches by MIDI note.                          |
-| `tuplet`                          | `n:of` is not 1:1 and lies strictly between 1:2 and 2:1.                                                                                                 |
-| `dots`                            | 0 to 2 dots (defensive, for input that bypassed the schema).                                                                                             |
-| `chord-diagram`                   | A chord diagram on a track with strings has one fret per string, fingering to match, barres in range.                                                    |
-| `alternate-ending-order`          | Volta numbers on a bar are unique and ascending.                                                                                                         |
-| `alternate-ending-outside-repeat` | Every run of consecutive volta bars contains a repeat end.                                                                                               |
+| Rule                              | What it checks                                                                                                                                              |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `duplicate-id`                    | Every id is unique across the score.                                                                                                                        |
+| `first-bar-tempo`                 | The first master bar carries a tempo mark.                                                                                                                  |
+| `bar-count`                       | Every track has one bar per master bar.                                                                                                                     |
+| `track-kind`                      | Fretted tracks have strings and frets; drum tracks have no tuning, capo or frets.                                                                           |
+| `voice-overfull`                  | A voice's beats sum to at most the bar length. Incomplete bars are allowed.                                                                                 |
+| `rest-with-notes`                 | A rest carries no notes.                                                                                                                                    |
+| `string-range`                    | Fretted notes use strings 1 to the string count; drum and pitched notes use string 0.                                                                       |
+| `fret-range`                      | Fretted notes sit on frets 0 to `track.fretCount`, whatever the capo, as Guitar Pro files hold them.                                                        |
+| `duplicate-string`                | No two notes of a fretted beat share a string.                                                                                                              |
+| `tie-target`                      | A tied note has an origin (`tieOriginOf`): the most recent note on its string (MIDI note on drum and pitched tracks) in its voice, at most three bars back. |
+| `tie-pitch`                       | A tied fretted note is on the same fret as the note it continues; off fretted tracks `tie-target` already matches by MIDI note.                             |
+| `tuplet`                          | `n:of` is not 1:1 and lies strictly between 1:2 and 2:1.                                                                                                    |
+| `dots`                            | 0 to 2 dots (defensive, for input that bypassed the schema).                                                                                                |
+| `chord-diagram`                   | A chord diagram on a track with strings has one fret per string, fingering to match, barres in range.                                                       |
+| `alternate-ending-order`          | Volta numbers on a bar are unique and ascending.                                                                                                            |
+| `alternate-ending-outside-repeat` | Every run of consecutive volta bars contains a repeat end.                                                                                                  |
+
+**Tie origins reach back three bars** (#62). Until then a tie's origin had to sit in the previous
+beat, and Guitar Pro files routinely hold a bass note under a moving melody across several beats
+and bar lines: the reader released each such tie, which re-struck the held note. The origin is now
+the most recent note in the tied note's slot in its voice, from the previous beat back to the
+start of the bar three before its own; rests and notes on other strings are passed over, and a
+note on the same string in between is the origin, so it ends the hold. Three bars is alphaTab's
+bound (`Note.MaxOffsetForSameLineSearch`). The rule lives in one place, `src/ties.ts`:
+`tieOriginOf` for validation and repair, and its inverse `tieChainOf` for the chains `setNote` and
+`transposeSelection` carry along.
 
 ## Diagnostics
 
@@ -266,8 +276,12 @@ const undone = history.undo(); // { score, change } with the patches it replayed
   per rule before and after, so a violation an imported file already carried does not block
   unrelated edits. A fret count or tuning change that would leave more notes outside the
   neck or the string count than before is refused the same way.
-- **Repair**: a tie whose target an edit removes (a note, a beat, a bar, a string shift) or moves
-  to another pitch is released rather than refused.
+- **Repair**: a tie whose origin an edit removes (a note, a beat, a bar, a string shift), moves
+  to another pitch, interrupts with a note on its string or puts more than three bars back is
+  released rather than refused. Removing an origin can also hand the tie an earlier one on the
+  same fret, which keeps it: a removed middle link re-links a chain to its first note.
+  `releaseTies` scans from the edit to the end of the bar `TIE_REACH_BARS` later, the furthest a
+  tie reaching back into the edit can sit.
 - **Tie chains share their pitch** (`tie-pitch`), as in Guitar Pro. Pitch flows forward: a new fret
   on a note (`setNote`, `transposeSelection`) carries along every note tied to it, and a tied
   note given a pitch of its own is released from its origin. `setNote` with an explicit

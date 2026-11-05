@@ -11,15 +11,15 @@ import type { CommandErrorCode } from './command-error';
 export { beatOf, noteOf } from '../testing';
 
 /**
- * Four bars of 4/4 at 120 on a guitar and a drum track. Guitar bar 0 ends on string 1 fret 3,
- * tied into bar 1; the guitar carries one lyric line from bar 2.
+ * Four bars of 4/4 at 120 on a guitar and a drum track. Guitar bar 0 opens on string 1 fret 1
+ * and ends on string 1 fret 3, tied into bar 1; the guitar carries one lyric line from bar 2.
  */
 export function buildScore(): Score {
   return score()
     .tempo(120)
     .track('guitar', { lyrics: [{ startBar: 2, text: 'la la' }] })
     .bar()
-    .beat('4', [note(1, 3), note(2, 5)])
+    .beat('4', [note(1, 1), note(2, 5)])
     .beat('4', [note(3, 0)])
     .rest('4')
     .beat('4', [note(1, 3)])
@@ -60,4 +60,29 @@ export function expectRefusal(score: Score, command: Command, code: CommandError
   expect(error).toBeInstanceOf(CommandError);
   expect(error).toMatchObject({ code, command: command.name });
   expect(history.canUndo).toBe(false);
+}
+
+/**
+ * A guitar holding string 2 fret 5 under a melody on string 1: struck in bar 0, tied on the first
+ * beat of bar 1 and again on the second beat of bar 2. Bar 3 is empty.
+ */
+export function buildHeldScore(): Score {
+  return score()
+    .tempo(120)
+    .track('guitar')
+    .bar()
+    .beat('4', [note(2, 5)])
+    .beat('4', [note(1, 3)])
+    .rest('4')
+    .beat('4', [note(1, 5)])
+    .bar()
+    .beat('4', [note(2, 5, { tie: true })])
+    .beat('4', [note(1, 7)])
+    .beat('4', [note(1, 8)])
+    .beat('4', [note(1, 7)])
+    .bar()
+    .beat('4', [note(1, 5)])
+    .beat('4', [note(2, 5, { tie: true })])
+    .bar()
+    .build();
 }

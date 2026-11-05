@@ -7,7 +7,7 @@ import type { MasterBar } from '../master-bar';
 import type { Score } from '../score';
 import { validateScore } from '../validate';
 import { insertBar, removeBar, setMasterBar } from './bar-commands';
-import { buildScore, expectRefusal, noteOf, roundTrip } from './test-score';
+import { buildHeldScore, buildScore, expectRefusal, noteOf, roundTrip } from './test-score';
 
 function withMasterBars(score: Score, edit: (masterBars: MasterBar[]) => MasterBar[]): Score {
   return { ...score, masterBars: edit(score.masterBars) };
@@ -61,14 +61,20 @@ describe('insertBar', () => {
     expect(after.tracks[0]?.lyrics).toEqual([{ startBar: 3, text: 'la la' }]);
   });
 
-  it('moves the tempo onto a new first bar and releases ties across it', () => {
+  it('moves the tempo onto a new first bar', () => {
     const score = buildScore();
     const { score: atStart } = roundTrip(score, insertBar({ index: 0 }));
     expect(masterBar(atStart, 0).tempo).toEqual({ bpm: 120 });
     expect(masterBar(atStart, 1)).not.toHaveProperty('tempo');
+  });
 
-    const { score: inside } = roundTrip(score, insertBar({ index: 1 }));
-    expect(noteOf(inside, 0, 2, 0).tie).toBe(false);
+  it('keeps ties across inserted bars up to three bars back, and releases them beyond', () => {
+    const once = roundTrip(buildScore(), insertBar({ index: 1 })).score;
+    expect(noteOf(once, 0, 2, 0).tie).toBe(true);
+    const twice = roundTrip(once, insertBar({ index: 1 })).score;
+    expect(noteOf(twice, 0, 3, 0).tie).toBe(true);
+    const thrice = roundTrip(twice, insertBar({ index: 1 })).score;
+    expect(noteOf(thrice, 0, 4, 0).tie).toBe(false);
   });
 
   it('keeps the old first bar its tempo when the new one brings its own', () => {
@@ -259,5 +265,13 @@ describe('setMasterBar', () => {
       'alternate-ending-outside-repeat',
     ]);
     expect(history.undo()?.score).toEqual(score);
+  });
+});
+
+describe('held ties across bar edits', () => {
+  it('keeps a chain whose middle bar is removed', () => {
+    const score = buildHeldScore();
+    const { score: after } = roundTrip(score, removeBar({ masterBarId: masterBar(score, 1).id }));
+    expect(noteOf(after, 0, 1, 1)).toMatchObject({ string: 2, fret: 5, tie: true });
   });
 });

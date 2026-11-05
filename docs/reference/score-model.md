@@ -105,7 +105,7 @@ Every edit is a `Command` (`{ name, run(draft, warn) }`) that mutates an Immer d
 - **Results are frozen.** Immer freezes every result and, with it, the input it shares nodes with. Build a score, hand it to a history, and edit it only through commands. `apply` must be given the score the history last returned.
 - **`touchedBars`** are master-bar ids: the columns layout re-flows. A patch inside `tracks/t/bars/b` or `masterBars/m` touches that column; a track property layout draws touches every column (`channel`, `sound`, `program`, `bank` and the raw `lyrics` touch none); `meta` touches none. A removed bar is listed with the bar that took its place; bars that only shifted are not.
 - **Refusal.** A command that would break the schema or add a `validateScore` violation throws `CommandError` (`code`, `command`, and `violations` for `invariant`) and nothing is applied. Violations an imported file already carried do not block unrelated edits.
-- **Repair.** A tie whose origin an edit removes or moves to another pitch is released rather than refused.
+- **Repair.** A tie whose origin an edit removes, moves to another pitch or puts more than three bars back is released rather than refused. An edit that takes away an origin can also hand the tie an earlier one: removing the middle link of a chain re-links the last to the first.
 - **Warnings** (`Applied.warnings`, each `{ code, noteId, message }`) report what an applied edit changed beyond what was asked: today `trill-dropped` and `natural-harmonic-moved` from `transposeSelection`. Undo and redo report none.
 - **Addressing** is by id. Commands that create a node take an optional `id`. Grace notes are reached through their beat. A `Selection` is `{ beatIds?, noteIds? }`: the notes picked, plus every note (grace notes included) of the beats picked.
 
@@ -144,13 +144,23 @@ The schemas (`ScoreSchema` and one per node) check shape and per-field ranges. `
 | `string-range`                    | Fretted notes use strings 1 to the string count; drum and pitched notes use string 0.                                       |
 | `fret-range`                      | Fretted notes sit on frets 0 to `fretCount`.                                                                                 |
 | `duplicate-string`                | No two notes of a fretted beat share a string.                                                                               |
-| `tie-target`                      | A tied note has a note on the same string (same MIDI note off fretted tracks) in the previous beat of its voice, across bar lines. |
+| `tie-target`                      | A tied note has an origin: an earlier note on the same string (same MIDI note off fretted tracks) in its voice within three bars. See **Tie chains**. |
 | `tie-pitch`                       | A tied fretted note is on the same fret as the note it continues.                                                            |
 | `tuplet`                          | `n:of` is not 1:1 and lies strictly between 1:2 and 2:1.                                                                     |
 | `dots`                            | 0 to 2 dots.                                                                                                                 |
 | `chord-diagram`                   | A diagram on a track with strings has one fret per string, fingering to match, barres in range.                              |
 | `alternate-ending-order`          | Volta numbers on a bar are unique and ascending.                                                                             |
 | `alternate-ending-outside-repeat` | Every run of consecutive volta bars contains a repeat end.                                                                   |
+
+### Tie chains
+
+A tied note continues its **origin**: the most recent note on the same string (the same MIDI note on drum and pitched tracks) in the same voice, searching back from the previous beat to the start of the bar three bars before its own, alphaTab's bound. That is what lets a note held under a moving melody stay tied across beats and bar lines:
+
+- **Passed over**: rests, empty bars, and notes on other strings. A held bass note under a melody on the strings above keeps its tie.
+- **Ends the hold**: a note on the same string in between. It is the origin now, so a tied note on another fret than it breaks `tie-pitch`, and one on the same fret is a restrike that the tie continues.
+- **Out of reach**: an origin more than three bars back, counted in master bars (a tie on bar 4 can reach bar 1, not bar 0). Grace notes are never origins.
+
+A **chain** is an origin and the tied notes that follow it, each taking the one before as its origin. `tieOriginOf(track, { bar, voice, beat }, note)` from the root export finds the origin, and the commands use the same definition: a new fret carries along the whole chain (`setNote`, `transposeSelection`), and an edit that takes an origin away releases or re-links the ties that depended on it (see **Repair**).
 
 ## Diagnostics
 

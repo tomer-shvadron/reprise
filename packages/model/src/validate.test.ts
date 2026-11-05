@@ -250,9 +250,65 @@ describe('validateScore', () => {
         {
           rule: 'tie-target',
           path: ['tracks', 0, 'bars', 0, 'voices', 0, 'beats', 0, 'notes', 0, 'tie'],
-          message: 'tied note has no note on string 1 in the previous beat of its voice',
+          message: 'tied note has no earlier note on string 1 in its voice within 3 bars',
         },
       ]);
+    });
+
+    it('reaches back past several beats of melody on other strings and past rests', () => {
+      const held = barWith(
+        quarter(2, 5),
+        quarter(1, 3),
+        createBeat({ rest: true }),
+        quarter(2, 5, true),
+      );
+      expect(rules(scoreOf([guitar(held)]))).toEqual([]);
+    });
+
+    it('reaches back up to three bars and no further', () => {
+      const bars = (gap: number): Bar[] => [
+        barWith(quarter(2, 5)),
+        ...Array.from({ length: gap }, () => barWith(quarter(1, 3))),
+        barWith(quarter(1, 3), quarter(2, 5, true)),
+      ];
+      const masterBars = (count: number): MasterBar[] =>
+        Array.from({ length: count }, () => createMasterBar());
+      expect(rules(scoreOf([guitar(...bars(2))], masterBars(4)))).toEqual([]);
+      expect(rules(scoreOf([guitar(...bars(3))], masterBars(5)))).toEqual(['tie-target']);
+    });
+
+    it('takes the most recent note on the string, so an intervening note breaks the hold', () => {
+      const interrupted = barWith(quarter(2, 5), quarter(2, 7), quarter(1, 3), quarter(2, 5, true));
+      expect(rules(scoreOf([guitar(interrupted)]))).toEqual(['tie-pitch']);
+      const restruck = barWith(quarter(2, 5), quarter(2, 5), quarter(1, 3), quarter(2, 5, true));
+      expect(rules(scoreOf([guitar(restruck)]))).toEqual([]);
+    });
+
+    it('accepts a chain of three across bar lines', () => {
+      const score = scoreOf(
+        [
+          guitar(
+            barWith(quarter(2, 5), quarter(1, 3)),
+            barWith(quarter(1, 7), quarter(2, 5, true)),
+            barWith(quarter(2, 5, true)),
+          ),
+        ],
+        [createMasterBar(), createMasterBar(), createMasterBar()],
+      );
+      expect(rules(score)).toEqual([]);
+    });
+
+    it('keeps voices apart', () => {
+      const bar: Bar = {
+        ...createBar(),
+        voices: [
+          createVoice([quarter(2, 5)]),
+          createVoice([quarter(1, 3), quarter(2, 5, true)]),
+          createVoice(),
+          createVoice(),
+        ],
+      };
+      expect(rules(scoreOf([guitar(bar)]))).toEqual(['tie-target']);
     });
 
     it('rejects a tie to a different string, to a rest, and across an empty previous bar', () => {

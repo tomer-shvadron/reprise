@@ -9,19 +9,17 @@ import { NoteSchema } from '../note';
 import type { Note } from '../note';
 import { transpose } from '../pitch';
 import type { Score } from '../score';
+import { hasTieOrigin, tieChainOf, tieOriginOf } from '../ties';
 import type { Track } from '../track';
 import { assignChanges } from './changes';
 import type { Changes } from './changes';
 import {
   assertFreshId,
   assertNotePlaced,
-  hasTieTarget,
   maxFret,
   parseOrThrow,
-  previousBeat,
   releaseTies,
-  tieChain,
-  tieOrigin,
+  releaseTiesAfter,
 } from './checks';
 import { CommandError } from './command-error';
 import { at, beatAt, findBeat, findBeats, findNotes } from './locate';
@@ -40,9 +38,8 @@ export interface Selection {
 }
 
 function assertTie(track: Track, position: BeatAt, note: Note, command: string): void {
-  const previous = previousBeat(track, position.bar, position.voice, position.beat);
-  if (note.tie && !hasTieTarget(track, note, previous)) {
-    const origin = tieOrigin(track, note, previous);
+  if (note.tie && !hasTieOrigin(track, position, note)) {
+    const origin = tieOriginOf(track, position, note)?.note;
     throw new CommandError(
       command,
       'tie-target',
@@ -72,7 +69,7 @@ export function setNote(target: { beatId: Id; id?: Id }, note: NoteInput): Comma
       const existing = beat.notes.find((n) =>
         track.kind === 'fretted' ? n.string === note.string : n.fret === note.fret,
       );
-      const chain = existing ? tieChain(track, position, existing) : [];
+      const chain = existing ? tieChainOf(track, position, existing) : [];
       let placed: Note;
       if (existing) {
         Object.assign(existing, note);
@@ -84,12 +81,12 @@ export function setNote(target: { beatId: Id; id?: Id }, note: NoteInput): Comma
       }
       beat.rest = false;
       parseOrThrow(NoteSchema, placed, name);
-      if (placed.tie && note.tie !== true) {
-        const previous = previousBeat(track, position.bar, position.voice, position.beat);
-        if (tieOrigin(track, placed, previous)?.fret !== placed.fret) placed.tie = false;
+      if (placed.tie && note.tie !== true && !hasTieOrigin(track, position, placed)) {
+        placed.tie = false;
       }
       assertTie(track, position, placed, name);
       for (const continuation of chain) continuation.note.fret = placed.fret;
+      releaseTies(track, position.bar, position.voice, position.beat + 1);
     },
   };
 }
@@ -193,7 +190,7 @@ export function transposeSelection(selection: Selection, semitones: number): Com
       }
       const moving: { track: Track; note: Note }[] = [];
       const seen = new Set<Note>();
-      const touched: { track: Track; bar: number; voice: number; beat: number }[] = [];
+      const edited: { track: Track; bar: number; voice: number; beat: number }[] = [];
       for (const { track, position, beat, notes } of select(draft, selection, name)) {
         if (track.kind === 'drums') continue;
         const { bar, voice } = position;
@@ -202,13 +199,13 @@ export function transposeSelection(selection: Selection, semitones: number): Com
           seen.add(note);
           moving.push({ track, note });
         };
-        touched.push({ track, bar, voice, beat: position.beat });
+        edited.push({ track, bar, voice, beat: position.beat });
         for (const note of notes) {
           add(note);
           if (!beat.notes.includes(note)) continue;
-          for (const link of tieChain(track, position, note)) {
+          for (const link of tieChainOf(track, position, note)) {
             add(link.note);
-            touched.push({ track, bar: link.bar, voice, beat: link.beat });
+            edited.push({ track, bar: link.bar, voice, beat: link.beat });
           }
         }
       }
@@ -237,10 +234,7 @@ export function transposeSelection(selection: Selection, semitones: number): Com
           });
         }
       }
-      for (const { track, bar, voice, beat } of touched) {
-        releaseTies(track, bar, voice, beat);
-        releaseTies(track, bar, voice, beat + 1);
-      }
+      releaseTiesAfter(edited);
     },
   };
 }
@@ -304,10 +298,7 @@ export function shiftStrings(selection: Selection, direction: 'higher' | 'lower'
           used.add(note.string);
         }
       }
-      for (const { track, position } of selected) {
-        releaseTies(track, position.bar, position.voice, position.beat);
-        releaseTies(track, position.bar, position.voice, position.beat + 1);
-      }
+      releaseTiesAfter(selected.map(({ track, position }) => ({ ...position, track })));
     },
   };
 }
