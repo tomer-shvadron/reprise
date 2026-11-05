@@ -56,6 +56,7 @@ export function staffBar(
     score,
     track: slot.visible.track,
     trackIndex: slot.visible.index,
+    staves: slot.visible.staves,
     bar,
     masterBar: context.masterBar,
     barIndex: context.index,

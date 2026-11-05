@@ -63,9 +63,9 @@ interface StaffModule {
 }
 ```
 
-- `StaffBar` is the track's bar with its context: score, track, bar, master bar, indices, the clef in effect, the key and the staff space in px.
+- `StaffBar` is the track's bar with its context: score, track, bar, master bar, indices, the track's visible staves (two means "both" mode), the clef in effect, the key and the staff space in px.
 - `measure` reports, for every onset it draws (ticks from the bar start, as `beatTicks` sums them), the px it needs left and right of the onset's x, and the room it needs above the top line and below the bottom line. The engine takes the widest request per onset across all staves, so tab numbers, note heads and accidentals on different staves all push the same column apart.
-- `render` gets the bar's content area, the staff's line positions, its system index and `onsetX(tick)`, and pushes primitives and anchors (`note` and `beat`) into the sink. It must stay inside the room it measured.
+- `render` gets the bar's content area, the staff's line positions, its system index, `onsetX(tick)` and, when the bar before or after it is in the same system, that bar's content area and `onsetX` as `previous` and `next`, so a tie, slide or extent that crosses the bar line is drawn in one piece and a bar line can be told from a system break. It pushes primitives and anchors (`note` and `beat`) into the sink and must stay inside the room it measured.
 
 Today all three types use the placeholder module (`src/staves/placeholder.ts`): it reserves a two-digit fret number on tab and a note head on the five-line staves around each onset, and emits beat anchors only. WP-021 replaces the tab module, WP-023 the standard and percussion ones, and WP-022 adds effect glyphs inside the tab module's measure and render; none of them needs to touch spacing or breaking.
 

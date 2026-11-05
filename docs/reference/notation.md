@@ -45,6 +45,7 @@ Cancelling naturals on a key change are not drawn yet; the change leaves a staff
 
 - At the end of a bar, in priority order: a repeat end (light-heavy with dots in front), the score's final bar line (light-heavy), a double bar (two light lines), a single line. Thicknesses and separations are Bravura's engraving defaults.
 - A start repeat (heavy-light with dots after) follows the bar's clef change, key and time signature.
+- A system with two or more staves opens with a bar line joining them; a single staff starts without one.
 - Repeat dots sit in the two spaces either side of the staff's middle; on a staff with an even number of lines, one line spacing either side of the middle.
 - A section played more than twice shows `xN` above the end repeat.
 

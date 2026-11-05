@@ -14,6 +14,8 @@ export interface StaffBar {
   readonly score: Score;
   readonly track: Track;
   readonly trackIndex: number;
+  /** The track's visible staves, top to bottom; more than one means "both" mode. */
+  readonly staves: readonly StaffType[];
   readonly bar: Bar;
   readonly masterBar: MasterBar;
   readonly barIndex: number;
@@ -39,6 +41,13 @@ export interface StaffBarMeasure {
   below: number;
 }
 
+/** A neighbouring bar of the same staff in the same system: its content area and onset positions. */
+export interface NeighbourBar {
+  readonly x: number;
+  readonly width: number;
+  onsetX(tick: number): number;
+}
+
 /** Where the engine put the bar: the module draws inside this. */
 export interface StaffBarPlacement {
   /** The bar's content area, after its signatures and before its end bar line. */
@@ -51,6 +60,12 @@ export interface StaffBarPlacement {
   readonly system: number;
   /** x of the onset `tick` ticks into the bar; an onset the module measured always has one. */
   onsetX(tick: number): number;
+  /**
+   * The bars before and after this one in the system, for ties, slides and extents that cross
+   * the bar line; absent at the system's ends, so a module can tell a bar line from a break.
+   */
+  readonly previous?: NeighbourBar;
+  readonly next?: NeighbourBar;
 }
 
 /**

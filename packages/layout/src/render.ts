@@ -22,6 +22,7 @@ import type { ResolvedOptions } from './options';
 import { line, rect, round, text, type LayoutSink } from './primitives';
 import { staffBar, trackBar, type StaffSlot } from './slots';
 import { stretch } from './spacing';
+import type { NeighbourBar } from './staves';
 import type { Rect, StaffPlacement } from './types';
 import type { VerticalLayout } from './vertical';
 
@@ -47,6 +48,53 @@ export interface RenderedSystem {
 
 const PREFIX_LEAD = 0.5;
 const CLEF_TRAIL = 0.8;
+
+/** One bar's horizontal extent in the system, shared by every staff. */
+interface Column {
+  barX: number;
+  contentX: number;
+  contentWidth: number;
+  barEnd: number;
+  onsetX: (tick: number) => number;
+}
+
+function columns(input: SystemInput, from: number): (Column | undefined)[] {
+  const { measures, plan } = input;
+  const out: (Column | undefined)[] = [];
+  let barX = from;
+  for (let index = plan.start; index < plan.end; index++) {
+    const measure = measures[index];
+    if (!measure) {
+      out.push(undefined);
+      continue;
+    }
+    const opens = plan.opensLine && index === plan.start;
+    const signatures =
+      (opens ? 0 : measure.clefChange + measure.keyChange) + measure.time + measure.repeatStart;
+    const contentX = barX + signatures;
+    const positions: number[] = [];
+    let onset = contentX + measure.leading;
+    for (const segment of stretch(measure.springs, plan.factor)) {
+      positions.push(onset);
+      onset += segment;
+    }
+    const contentWidth = onset + measure.trailing - contentX;
+    const barEnd = contentX + contentWidth + measure.end;
+    out.push({
+      barX,
+      contentX,
+      contentWidth,
+      barEnd,
+      onsetX: (tick) => positions[onsetIndex(measure.onsets, tick)] ?? contentX,
+    });
+    barX = barEnd;
+  }
+  return out;
+}
+
+function neighbour(column: Column | undefined): NeighbourBar | undefined {
+  return column && { x: column.contentX, width: column.contentWidth, onsetX: column.onsetX };
+}
 
 function sameEndings(a: MasterBar | undefined, b: MasterBar | undefined): boolean {
   if (!a || !b || a.alternateEndings.length !== b.alternateEndings.length) return false;
@@ -98,18 +146,19 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
   const startContext = contexts[plan.start];
   const firstMasterBar = startContext?.masterBar;
   if (plan.opensLine && firstBox && lastBox && firstMasterBar) {
-    sink.primitives.push(
-      line(
-        x0 + thinBarline(space) / 2,
-        firstBox.top,
-        x0 + thinBarline(space) / 2,
-        lastBox.bottom,
-        thinBarline(space),
-        {
-          node: firstMasterBar.id,
-        },
-      ),
-    );
+    // A single staff opens without a bar line; two or more are joined by one.
+    if (boxes.length > 1) {
+      sink.primitives.push(
+        line(
+          x0 + thinBarline(space) / 2,
+          firstBox.top,
+          x0 + thinBarline(space) / 2,
+          lastBox.bottom,
+          thinBarline(space),
+          { node: firstMasterBar.id },
+        ),
+      );
+    }
     const clefColumn = Math.max(
       0,
       ...slots.map((slot) =>
@@ -133,14 +182,16 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
     }
   }
 
-  let barX = x0 + plan.prefix;
+  const bars = columns(input, x0 + plan.prefix);
   let volta: VoltaSpan | undefined;
   const voltaBand = band(vertical, 'volta', input.y);
   for (let index = plan.start; index < plan.end; index++) {
     const measure = measures[index];
     const context = contexts[index];
-    if (!measure || !context) continue;
+    const column = bars[index - plan.start];
+    if (!measure || !context || !column) continue;
     const { masterBar } = context;
+    const { barX, barEnd } = column;
     const opens = plan.opensLine && index === plan.start;
     let cursor = barX;
 
@@ -179,22 +230,10 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
     }
     if (measure.repeatStart > 0) {
       for (const staff of boxes) drawRepeatStart(sink, cursor, staff, space, masterBar.id);
-      cursor += measure.repeatStart;
     }
 
-    const contentX = cursor;
-    const segments = stretch(measure.springs, plan.factor);
-    const positions: number[] = [];
-    let onset = contentX + measure.leading;
-    for (const segment of segments) {
-      positions.push(onset);
-      onset += segment;
-    }
-    const contentWidth = onset + measure.trailing - contentX;
-    const barEnd = contentX + contentWidth + measure.end;
-    const onsetX = (tick: number): number =>
-      positions[onsetIndex(measure.onsets, tick)] ?? contentX;
-
+    const previous = neighbour(bars[index - plan.start - 1]);
+    const next = neighbour(bars[index - plan.start + 1]);
     for (const [i, slot] of slots.entries()) {
       const staff = boxes[i];
       const bar = trackBar(slot, index);
@@ -202,13 +241,15 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
       slot.module.render(
         staffBar(score, slot, bar, context, space),
         {
-          x: contentX,
-          width: contentWidth,
+          x: column.contentX,
+          width: column.contentWidth,
           top: staff.top,
           bottom: staff.bottom,
           geometry: slot.geometry,
           system: input.index,
-          onsetX,
+          onsetX: column.onsetX,
+          ...(previous && { previous }),
+          ...(next && { next }),
         },
         sink,
       );
@@ -232,19 +273,19 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
       );
     }
     if (voltaBand && masterBar.alternateEndings.length > 0) {
-      const previous = score.masterBars[index - 1];
-      const next = score.masterBars[index + 1];
+      const before = score.masterBars[index - 1];
+      const after = score.masterBars[index + 1];
       if (!volta) {
         volta = {
           masterBar,
           left: barX,
           right: barEnd,
-          opens: !sameEndings(previous, masterBar),
+          opens: !sameEndings(before, masterBar),
           closes: false,
         };
       }
       volta.right = barEnd;
-      const endsHere = !sameEndings(masterBar, next);
+      const endsHere = !sameEndings(masterBar, after);
       if (endsHere || index === plan.end - 1) {
         volta.closes = endsHere && masterBar.repeat.endCount > 0;
         drawVolta(sink, volta, voltaBand, space);
@@ -277,7 +318,6 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
         masterBar: masterBar.id,
       });
     }
-    barX = barEnd;
   }
 
   const staves: StaffPlacement[] = [];
@@ -306,7 +346,9 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
     });
   }
 
-  const bbox = rect(input.x, input.y, Math.max(xEnd, barX) - input.x, vertical.height);
+  let lastEnd = xEnd;
+  for (const column of bars) if (column) lastEnd = column.barEnd;
+  const bbox = rect(input.x, input.y, Math.max(xEnd, lastEnd) - input.x, vertical.height);
   sink.anchors.push({ kind: 'system', id: input.id, bbox, system: input.index });
   return { bbox, staves };
 }
