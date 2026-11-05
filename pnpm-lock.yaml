@@ -114,7 +114,7 @@ importers:
         version: 1.4.0
       zustand:
         specifier: 5.0.16
-        version: 5.0.16(@types/react@19.2.18)(react@19.2.9)
+        version: 5.0.16(@types/react@19.2.18)(immer@11.2.9)(react@19.2.9)
     devDependencies:
       '@tailwindcss/vite':
         specifier: 4.3.4
@@ -170,6 +170,9 @@ importers:
 
   packages/model:
     dependencies:
+      immer:
+        specifier: 11.2.9
+        version: 11.2.9
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -2472,6 +2475,9 @@ packages:
   ignore@7.0.14:
     resolution: {integrity: sha512-wCBiZ77u1tuWde6G/nfOtLaCTYcFDU5yCzARzK10y+rLhzYoL7a7yEemcopcc2Mzow7gZOIjnV2ym1NYmdiJOQ==}
     engines: {node: '>= 4'}
+
+  immer@11.2.9:
+    resolution: {integrity: sha512-IQ4UEtXjZjyefyWjtLEDXUSrF6T2hwjKPi6BIJl3bY/2XXW24d6cNGdXJSBOA/+KNnuiXkZY6DR0C3efolhitA==}
 
   import-fresh@3.3.1:
     resolution: {integrity: sha512-TR3KfrTZTYLPB6jUjfx6MF9WcWrHL9su5TObK4ZkYgBdWKPOFoSoQIdEuTuR82pmtxH2spWG9h6etwfr1pLBqQ==}
@@ -6356,6 +6362,8 @@ snapshots:
 
   ignore@7.0.14: {}
 
+  immer@11.2.9: {}
+
   import-fresh@3.3.1:
     dependencies:
       parent-module: 1.0.1
@@ -7724,7 +7732,8 @@ snapshots:
 
   zod@4.6.7: {}
 
-  zustand@5.0.16(@types/react@19.2.18)(react@19.2.9):
+  zustand@5.0.16(@types/react@19.2.18)(immer@11.2.9)(react@19.2.9):
     optionalDependencies:
       '@types/react': 19.2.18
+      immer: 11.2.9
       react: 19.2.9

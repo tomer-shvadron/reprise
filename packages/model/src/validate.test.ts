@@ -25,8 +25,11 @@ function barWith(...beats: Beat[]): Bar {
   };
 }
 
+// The first bar's tempo is a rule of its own; every other test starts from one.
 function scoreOf(tracks: Track[], masterBars: MasterBar[] = [createMasterBar()]): Score {
-  return { ...createEmptyScore(), masterBars, tracks };
+  const [first, ...rest] = masterBars;
+  const timed = first && !first.tempo ? [{ ...first, tempo: { bpm: 120 } }, ...rest] : masterBars;
+  return { ...createEmptyScore(), masterBars: timed, tracks };
 }
 
 function guitar(...bars: Bar[]): Track {
@@ -43,6 +46,27 @@ const quarter = (string = 1, fret = 0, tie = false): Beat =>
 describe('validateScore', () => {
   it('accepts the empty score', () => {
     expect(validateScore(createEmptyScore())).toEqual([]);
+  });
+
+  describe('first-bar-tempo', () => {
+    it('rejects a score whose first master bar has no tempo mark', () => {
+      const score = { ...createEmptyScore(), masterBars: [createMasterBar()] };
+      expect(validateScore(score)).toEqual([
+        {
+          rule: 'first-bar-tempo',
+          path: ['masterBars', 0, 'tempo'],
+          message: 'the first master bar has no tempo mark',
+        },
+      ]);
+    });
+
+    it('needs the mark on the first bar only', () => {
+      const score = scoreOf(
+        [guitar(createBar(), createBar())],
+        [createMasterBar(), createMasterBar()],
+      );
+      expect(rules(score)).toEqual([]);
+    });
   });
 
   describe('bar-count', () => {
