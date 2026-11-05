@@ -1,0 +1,24 @@
+{
+  "name": "GeneralUser GS",
+  "version": "2.0.3",
+  "author": "S. Christian Collins",
+  "homepage": "https://www.schristiancollins.com/generaluser",
+  "repository": "https://github.com/mrbumpy409/GeneralUser-GS",
+  "commit": "684543d5e5efaef08d02be50dcda8d552478fa60",
+  "license": "GeneralUser GS License v2.0: free use, modification and redistribution",
+  "target": "apps/web/public/sounds/gm",
+  "files": [
+    {
+      "name": "GeneralUser-GS.sf2",
+      "path": "GeneralUser-GS.sf2",
+      "bytes": 32319396,
+      "sha256": "9575028c7a1f589f5770fccc8cff2734566af40cd26ed836944e9a5152688cfe"
+    },
+    {
+      "name": "LICENSE.txt",
+      "path": "documentation/LICENSE.txt",
+      "bytes": 2317,
+      "sha256": "7b32efefdf95ce38a043799f0659853ddc00fbaa14d8c50f0aca16b9b8b405be"
+    }
+  ]
+}
