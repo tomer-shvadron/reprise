@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { Sampler } from '../sampler/sampler';
 import { offline } from '../sampler/test/offline';
 import { ManagedSampleSource, bufferBytes } from './managed-sample-source';
-import type { MemoryStats } from './managed-sample-source';
+import type { MemoryReport } from '../engine';
 import { SyntheticProvider } from './test/synthetic';
 import type { SyntheticOptions } from './test/synthetic';
 import type { SampleProvider } from './types';
@@ -15,7 +15,7 @@ const factory = new OfflineAudioContext({ numberOfChannels: 1, length: 1, sample
 const ZONE = 4000;
 
 function small(options: SyntheticOptions = {}): SyntheticProvider {
-  return new SyntheticProvider({ zoneWidth: 32, instrumentBytes: () => 4 * ZONE, ...options });
+  return new SyntheticProvider({ zoneWidth: 32, setBytes: () => 4 * ZONE, ...options });
 }
 
 function manualFrames(): { schedule: (callback: () => void) => void; flush: () => void } {
@@ -69,7 +69,7 @@ describe('ManagedSampleSource accounting', () => {
 
   it('copies the raw channels into the buffer', async () => {
     const provider: SampleProvider = {
-      instrumentOf: () => 'gm:0:0',
+      instrumentsOf: () => ['gm:0:0'],
       byteLength: () => 24,
       fetch: () =>
         Promise.resolve({
@@ -141,6 +141,54 @@ describe('ManagedSampleSource eviction', () => {
     expect(source.peekBuffer('a#0')).toBeUndefined();
     expect(source.peekBuffer('a#1')).toBeUndefined();
     expect(source.counters.evictions).toBe(1);
+  });
+
+  it('counts a shared sample once and frees it only with its last instrument', async () => {
+    const owners: Record<string, string[]> = { shared: ['a', 'b'], a1: ['a'], b1: ['b'] };
+    const provider: SampleProvider = {
+      instrumentsOf: (ref) => owners[ref] ?? [],
+      byteLength: () => ZONE,
+      fetch: () =>
+        Promise.resolve({
+          sampleRate: 44_100,
+          channels: [new Float32Array(ZONE / 4)],
+          byteLength: 0,
+        }),
+    };
+    const source = new ManagedSampleSource(provider, factory);
+    for (const ref of ['shared', 'a1', 'b1']) await source.getBuffer(ref);
+    expect(source.memory()).toMatchObject({ decodedBytes: 3 * ZONE, residents: ['a', 'b'] });
+
+    source.budgetBytes = 2 * ZONE;
+    expect(source.memory()).toMatchObject({ decodedBytes: 2 * ZONE, residents: ['b'] });
+    expect(source.peekBuffer('shared')).toBeDefined();
+    expect(source.peekBuffer('a1')).toBeUndefined();
+
+    source.budgetBytes = ZONE;
+    expect(source.memory()).toMatchObject({ decodedBytes: 0, residents: [] });
+    expect(source.peekBuffer('shared')).toBeUndefined();
+  });
+
+  it('keeps a shared sample across a switch to a song whose instrument shares it', async () => {
+    const provider = small({
+      sampleSet: (instrument) => (instrument === 'gm:0:24' ? 'gm:0:25' : instrument),
+      instruments: ['gm:0:24', 'gm:0:25'],
+    });
+    const source = new ManagedSampleSource(provider, factory);
+    await source.load(songA, provider.regionMap);
+    expect(source.memory().residents).toEqual(['gm:0:24', 'gm:0:25', 'gm:0:33']);
+    const shared = source.peekBuffer(provider.ref('gm:0:25', 64));
+    const fetches = source.counters.fetches;
+
+    const songC = score()
+      .track('guitar', { program: 24 })
+      .bar()
+      .beat('1', [note(1, 0)])
+      .build();
+    await source.load(songC, provider.regionMap);
+    expect(source.memory().residents).toEqual(['gm:0:24']);
+    expect(source.peekBuffer(provider.ref('gm:0:24', 64))).toBe(shared);
+    expect(source.counters.fetches).toBe(fetches);
   });
 
   it('reserves room for loads in flight, so a burst cannot overshoot the budget', async () => {
@@ -242,7 +290,7 @@ describe('ManagedSampleSource budget and events', () => {
   it('coalesces changes into one memory event per frame, and none for a touch', async () => {
     const frames = manualFrames();
     const source = new ManagedSampleSource(small(), factory, { schedule: frames.schedule });
-    const events: MemoryStats[] = [];
+    const events: MemoryReport[] = [];
     const unsubscribe = source.on('memory', (stats) => events.push(stats));
 
     await Promise.all(['a#0', 'a#1', 'b#0'].map((ref) => source.getBuffer(ref)));
@@ -270,7 +318,7 @@ describe('ManagedSampleSource budget and events', () => {
 
   it('fires on the next animation frame by default', async () => {
     const source = new ManagedSampleSource(small(), factory);
-    const event = new Promise<MemoryStats>((resolve) => {
+    const event = new Promise<MemoryReport>((resolve) => {
       source.on('memory', resolve);
     });
     await source.getBuffer('a#0');

@@ -8,7 +8,7 @@ export interface RawSample {
   byteLength: number;
 }
 export interface SampleProvider {
-  instrumentOf(ref: SampleRef): InstrumentId; // which instrument a sample belongs to, for whole-instrument eviction
+  instrumentsOf(ref: SampleRef): InstrumentId[]; // every instrument that references a sample; presets share samples
   fetch(ref: SampleRef): Promise<RawSample>; // raw PCM, decoded by the manager into an AudioBuffer
   byteLength(ref: SampleRef): number; // decoded size estimate for budgeting before fetch
 }

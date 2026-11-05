@@ -346,11 +346,15 @@ interface RawSample {
 }
 
 interface SampleProvider {
-  instrumentOf(ref: SampleRef): InstrumentId; // the unit of eviction
+  instrumentsOf(ref: SampleRef): InstrumentId[]; // every preset that references the sample
   fetch(ref: SampleRef): Promise<RawSample>; // raw PCM; the manager builds the AudioBuffer
   byteLength(ref: SampleRef): number; // decoded size estimate, reserved before the fetch
 }
 ```
+
+A `SampleRef` names a sample slice, not a preset's copy of it: GeneralUser GS shares samples
+across presets (its three string sections share 8.9 MiB), so one buffer can belong to several
+instruments.
 
 The loop points a sampler voice uses are on its `Region`; an `AudioBuffer` has nowhere to carry
 them, so the manager does not read `RawSample.loop`.
@@ -360,7 +364,7 @@ them, so the manager does not read `RawSample.loop`.
 ```ts
 const source = new ManagedSampleSource(provider, context, { budgetBytes: GM_BUDGET_BYTES });
 const plan = await source.load(score, regionMapOf, { bars: 4 }); // AudioEngine.load's half
-source.memory(); // { decodedBytes, budgetBytes, residents }
+source.memory(); // the engine's MemoryReport: { decodedBytes, budgetBytes, residents }
 const off = source.on('memory', (stats) => {}); // coalesced to one per animation frame
 source.budgetBytes = 300 * MEGABYTE; // settable at runtime; lowering it evicts at once
 source.counters; // { fetches, evictions, pinnedEvictions }
@@ -372,17 +376,20 @@ planSamples(plan, regionMapOf); // the SampleRefs those keys reach
 ### Accounting, eviction and pinning
 
 - **Accounting** is per buffer, `numberOfChannels × length × 4` bytes, from the buffer built and
-  not from the provider's estimate. The estimate only reserves room while a fetch is in flight,
+  not from the provider's estimate, and counted once however many instruments share it. The estimate only reserves room while a fetch is in flight,
   so a burst of loads (a preload) evicts ahead and cannot overshoot.
 - **Eviction is by whole instrument**, least recently used first, whenever resident plus
-  reserved bytes exceed the budget. Recency is `peekBuffer`, which the sampler calls for every
+  reserved bytes exceed the budget. A buffer is attributed to every instrument that references
+  it and freed only when the last resident one goes, so evicting one of two presets that share a
+  sample keeps the sample. Recency is `peekBuffer`, which the sampler calls for every
   note it starts, and `getBuffer`. Half an instrument would save little and turn into skipped
   notes all over its range.
 - **Pinning.** `switchSong` (and so `load`) pins the instruments the new song uses and evicts
   every other one at once. A leftover loaded afterwards (an editor preview on a new track, a
-  program change the plan did not see) is evicted before any pinned instrument, however recent.
-- **The instrument being loaded is never its own victim**, so the budget is exceeded only when
-  that one instrument is larger than the whole budget.
+  program change the plan did not see) is evicted before any pinned instrument, however recent;
+  a sample it shares with a pinned instrument stays.
+- **The instruments of the sample being loaded are never its victims**, so the budget is exceeded
+  only when they alone are larger than the whole budget.
 
 ### Planning and preload
 
@@ -406,13 +413,16 @@ it plays. `memory()` shows the overrun, so the settings can say why.
 ### Budgets, measured
 
 `memory-budget.test.ts` runs the reference long score (8 tracks, 300 bars, with structure)
-against a synthetic provider sized like GeneralUser GS decoded to Float32 (1 to 4 MB per
-instrument with every zone resident, a zone every 3 semitones), under the GM budget of 80 MB:
+against a synthetic GM set shaped like GeneralUser GS as WP-032 measured it: 128 programs and
+the standard kit, the first six programs of each family sharing samples in pairs, sized so the
+presets add up to 121.6 MiB and the distinct samples to 71.5 MiB, a zone every 3 semitones. The
+GM budget is 80 MiB.
 
-| Case                                 | Result                                                   |
-| ------------------------------------ | -------------------------------------------------------- |
-| `planInstruments`, 8 × 300           | about 15 ms                                              |
-| Song A, 8 guitar and bass programs   | 5.7 MB resident, 0 misses in 62,124                      |
-| Song B after A, 7 programs and a kit | 5.9 MB resident (shared instrument kept whole), 0 misses |
-| Every zone of song A's 8 instruments | 21.3 MB                                                  |
-| Song A under half its needs (2.8 MB) | peak 2.8 MB, notes skipped and reloaded, nothing thrown  |
+| Case                                 | Result                                                         |
+| ------------------------------------ | -------------------------------------------------------------- |
+| `planInstruments`, 8 × 300           | about 17 ms                                                    |
+| Song A, 8 guitar and bass programs   | 1.9 MiB resident, 0 misses in 62,124 notes                     |
+| Song B after A, 7 programs and a kit | 2.1 MiB resident, 0 misses                                     |
+| Every zone of song A's 6 sample sets | 6.9 MiB                                                        |
+| The whole GM set, every sample       | 71.5 MiB resident (121.6 MiB counted per preset), fits         |
+| Song A under half its needs          | peak at the budget, notes skipped and reloaded, nothing thrown |

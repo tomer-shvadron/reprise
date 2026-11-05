@@ -1,5 +1,6 @@
 import type { Score } from '@reprise/model';
 
+import type { MemoryReport } from '../engine';
 import type { RegionMap, SampleRef } from '../sampler/region-map';
 import type { SampleSource } from '../sampler/sample-source';
 import { planInstruments, planSamples } from './plan';
@@ -17,13 +18,6 @@ export interface BufferFactory {
   createBuffer(numberOfChannels: number, length: number, sampleRate: number): AudioBuffer;
 }
 
-export interface MemoryStats {
-  decodedBytes: number;
-  budgetBytes: number;
-  /** Instruments with at least one decoded sample, sorted. */
-  residents: InstrumentId[];
-}
-
 export interface MemoryCounters {
   fetches: number;
   evictions: number;
@@ -39,7 +33,7 @@ export interface ManagedSampleSourceOptions {
 
 export type RegionMaps = (instrument: InstrumentId) => RegionMap | undefined;
 
-export interface LoadOptions extends Omit<PlanOptions, 'bars'> {
+export interface SongLoadOptions extends Omit<PlanOptions, 'bars'> {
   /** Bars of the playback sequence decoded before `load` resolves. */
   bars?: number;
   /**
@@ -49,9 +43,10 @@ export interface LoadOptions extends Omit<PlanOptions, 'bars'> {
   warm?: boolean;
 }
 
-interface Resident {
-  buffers: Map<SampleRef, AudioBuffer>;
+interface Entry {
+  buffer: AudioBuffer;
   bytes: number;
+  owners: readonly InstrumentId[];
 }
 
 export function bufferBytes(buffer: AudioBuffer): number {
@@ -87,26 +82,29 @@ function decode(factory: BufferFactory, raw: RawSample): AudioBuffer {
 
 /**
  * The decoded-buffer cache of ADR-0005, as the `SampleSource` every instrument plays from.
- * Accounting is per buffer, eviction is per instrument (a half-evicted instrument would only
- * trade a few bytes for skipped notes), least recently used first, and the current song's
- * instruments go last.
+ * Accounting is per buffer, counted once however many presets share it; eviction is per
+ * instrument (a half-evicted instrument would only trade a few bytes for skipped notes), least
+ * recently used first, the current song's instruments last, and a buffer lives while any
+ * resident instrument references it.
  */
 export class ManagedSampleSource implements SampleSource {
   readonly #provider: SampleProvider;
   readonly #factory: BufferFactory;
   readonly #schedule: (callback: () => void) => void;
-  /** Map order is recency: the first entry is the least recently used. */
-  readonly #residents = new Map<InstrumentId, Resident>();
-  readonly #owner = new Map<SampleRef, InstrumentId>();
+  /** Set order is recency: the first instrument is the least recently used. */
+  readonly #residents = new Set<InstrumentId>();
+  readonly #entries = new Map<SampleRef, Entry>();
+  /** Every live buffer an instrument references, resident or not. */
+  readonly #refsOf = new Map<InstrumentId, Set<SampleRef>>();
   readonly #pending = new Map<SampleRef, Promise<AudioBuffer>>();
-  readonly #listeners = new Set<(stats: MemoryStats) => void>();
+  readonly #listeners = new Set<(stats: MemoryReport) => void>();
   readonly #counters: MemoryCounters = { fetches: 0, evictions: 0, pinnedEvictions: 0 };
   #pinned = new Set<InstrumentId>();
   #budget: number;
   #bytes = 0;
   /** Estimated bytes of fetches in flight, reserved so a burst of loads cannot overshoot. */
   #reserved = 0;
-  #recent: InstrumentId | undefined;
+  #recent: SampleRef | undefined;
   #queued = false;
   #disposed = false;
 
@@ -122,16 +120,12 @@ export class ManagedSampleSource implements SampleSource {
   }
 
   peekBuffer(ref: SampleRef): AudioBuffer | undefined {
-    const instrument = this.#owner.get(ref);
-    if (instrument === undefined) return undefined;
-    const resident = this.#residents.get(instrument);
-    const buffer = resident?.buffers.get(ref);
-    if (resident && instrument !== this.#recent) {
-      this.#residents.delete(instrument);
-      this.#residents.set(instrument, resident);
-      this.#recent = instrument;
+    const entry = this.#entries.get(ref);
+    if (entry && ref !== this.#recent) {
+      this.#recent = ref;
+      for (const owner of entry.owners) if (this.#residents.has(owner)) this.#touch(owner);
     }
-    return buffer;
+    return entry?.buffer;
   }
 
   getBuffer(ref: SampleRef): Promise<AudioBuffer> {
@@ -151,7 +145,7 @@ export class ManagedSampleSource implements SampleSource {
   /** Takes effect at once: lowering it evicts down to the new budget. */
   set budgetBytes(bytes: number) {
     this.#budget = checkBudget(bytes);
-    this.#reclaim(undefined);
+    this.#reclaim();
     this.#changed();
   }
 
@@ -159,16 +153,17 @@ export class ManagedSampleSource implements SampleSource {
     return { ...this.#counters };
   }
 
-  memory(): MemoryStats {
+  /** `residents` are sorted, so a touch is not a change. */
+  memory(): MemoryReport {
     return {
       decodedBytes: this.#bytes,
       budgetBytes: this.#budget,
-      residents: [...this.#residents.keys()].sort(),
+      residents: [...this.#residents].sort(),
     };
   }
 
   /** Fires with `memory()` after any change, at most once per animation frame. */
-  on(event: 'memory', handler: (stats: MemoryStats) => void): () => void {
+  on(event: 'memory', handler: (stats: MemoryReport) => void): () => void {
     this.#listeners.add(handler);
     return () => this.#listeners.delete(handler);
   }
@@ -177,7 +172,7 @@ export class ManagedSampleSource implements SampleSource {
   switchSong(score: Score, options: Omit<PlanOptions, 'bars'> = {}): SongPlan {
     const plan = planInstruments(score, options);
     this.#pinned = new Set(plan.instruments);
-    for (const instrument of [...this.#residents.keys()]) {
+    for (const instrument of [...this.#residents]) {
       if (!this.#pinned.has(instrument)) this.#evict(instrument);
     }
     this.#changed();
@@ -193,7 +188,11 @@ export class ManagedSampleSource implements SampleSource {
    * `switchSong`, then `preload` of the opening bars, so playback can start without a gap. A
    * sample that fails in the background warm-up is retried, and reported, on first use.
    */
-  async load(score: Score, regionMaps: RegionMaps, options: LoadOptions = {}): Promise<SongPlan> {
+  async load(
+    score: Score,
+    regionMaps: RegionMaps,
+    options: SongLoadOptions = {},
+  ): Promise<SongPlan> {
     const { bars = DEFAULT_PRELOAD_BARS, warm = true, ...planOptions } = options;
     const plan = this.switchSong(score, planOptions);
     await this.preload(planInstruments(score, { ...planOptions, bars }), regionMaps);
@@ -209,58 +208,64 @@ export class ManagedSampleSource implements SampleSource {
   dispose(): void {
     this.#disposed = true;
     this.#residents.clear();
-    this.#owner.clear();
+    this.#entries.clear();
+    this.#refsOf.clear();
     this.#listeners.clear();
     this.#bytes = 0;
   }
 
   #warm(refs: SampleRef[]): void {
-    const missing = refs.filter((ref) => !this.#owner.has(ref));
+    const missing = refs.filter((ref) => !this.#entries.has(ref));
     const bytes = missing.reduce((sum, ref) => sum + this.#provider.byteLength(ref), 0);
     if (this.#bytes + this.#reserved + bytes > this.#budget) return;
     for (const ref of missing) this.getBuffer(ref).catch(() => undefined);
   }
 
   async #load(ref: SampleRef): Promise<AudioBuffer> {
-    const instrument = this.#provider.instrumentOf(ref);
+    const owners = this.#provider.instrumentsOf(ref);
     const estimate = Math.max(0, this.#provider.byteLength(ref));
     this.#counters.fetches += 1;
     this.#reserved += estimate;
     let buffer: AudioBuffer;
     try {
-      this.#reclaim(instrument);
+      this.#reclaim(owners);
       buffer = decode(this.#factory, await this.#provider.fetch(ref));
     } finally {
       this.#reserved -= estimate;
     }
-    if (!this.#disposed) this.#insert(instrument, ref, buffer);
+    if (!this.#disposed) this.#insert(ref, buffer, owners);
     return buffer;
   }
 
-  #insert(instrument: InstrumentId, ref: SampleRef, buffer: AudioBuffer): void {
-    let resident = this.#residents.get(instrument);
-    if (resident) {
-      this.#residents.delete(instrument);
-    } else {
-      resident = { buffers: new Map(), bytes: 0 };
-    }
-    this.#residents.set(instrument, resident);
-    this.#recent = instrument;
+  #insert(ref: SampleRef, buffer: AudioBuffer, owners: readonly InstrumentId[]): void {
     const bytes = bufferBytes(buffer);
-    resident.buffers.set(ref, buffer);
-    resident.bytes += bytes;
+    this.#entries.set(ref, { buffer, bytes, owners });
     this.#bytes += bytes;
-    this.#owner.set(ref, instrument);
-    this.#reclaim(instrument);
+    for (const owner of owners) {
+      let refs = this.#refsOf.get(owner);
+      if (!refs) {
+        refs = new Set();
+        this.#refsOf.set(owner, refs);
+      }
+      refs.add(ref);
+      this.#touch(owner);
+    }
+    this.#recent = ref;
+    this.#reclaim(owners);
     this.#changed();
   }
 
+  #touch(instrument: InstrumentId): void {
+    this.#residents.delete(instrument);
+    this.#residents.add(instrument);
+  }
+
   /**
-   * Evicts until the budget holds. `keep` is the instrument being loaded: evicting it would
-   * hand back a buffer that is already gone, so the budget is exceeded only when that one
-   * instrument alone is larger than it.
+   * Evicts until the budget holds. `keep` is the instruments of the sample being loaded:
+   * evicting them would hand back a buffer that is already gone, so the budget is exceeded only
+   * when they alone are larger than it.
    */
-  #reclaim(keep: InstrumentId | undefined): void {
+  #reclaim(keep: readonly InstrumentId[] = []): void {
     while (this.#bytes + this.#reserved > this.#budget) {
       const victim = this.#victim(keep);
       if (victim === undefined) return;
@@ -268,10 +273,10 @@ export class ManagedSampleSource implements SampleSource {
     }
   }
 
-  #victim(keep: InstrumentId | undefined): InstrumentId | undefined {
+  #victim(keep: readonly InstrumentId[]): InstrumentId | undefined {
     let pinned: InstrumentId | undefined;
-    for (const instrument of this.#residents.keys()) {
-      if (instrument === keep) continue;
+    for (const instrument of this.#residents) {
+      if (keep.includes(instrument)) continue;
       if (!this.#pinned.has(instrument)) return instrument;
       pinned ??= instrument;
     }
@@ -279,15 +284,26 @@ export class ManagedSampleSource implements SampleSource {
   }
 
   #evict(instrument: InstrumentId): void {
-    const resident = this.#residents.get(instrument);
-    if (!resident) return;
-    for (const ref of resident.buffers.keys()) this.#owner.delete(ref);
-    this.#residents.delete(instrument);
-    this.#bytes -= resident.bytes;
-    if (this.#recent === instrument) this.#recent = undefined;
+    if (!this.#residents.delete(instrument)) return;
+    for (const ref of this.#refsOf.get(instrument) ?? []) {
+      const entry = this.#entries.get(ref);
+      if (!entry || entry.owners.some((owner) => this.#residents.has(owner))) continue;
+      this.#free(ref, entry);
+    }
     this.#counters.evictions += 1;
     if (this.#pinned.has(instrument)) this.#counters.pinnedEvictions += 1;
     this.#changed();
+  }
+
+  #free(ref: SampleRef, entry: Entry): void {
+    this.#entries.delete(ref);
+    this.#bytes -= entry.bytes;
+    if (this.#recent === ref) this.#recent = undefined;
+    for (const owner of entry.owners) {
+      const refs = this.#refsOf.get(owner);
+      refs?.delete(ref);
+      if (refs?.size === 0) this.#refsOf.delete(owner);
+    }
   }
 
   #changed(): void {

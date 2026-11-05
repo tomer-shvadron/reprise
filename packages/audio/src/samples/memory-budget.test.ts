@@ -5,7 +5,12 @@ import { describe, expect, it } from 'vitest';
 
 import { GM_BUDGET_BYTES, MEGABYTE, ManagedSampleSource } from './managed-sample-source';
 import { gmInstrumentId, planInstruments, planSamples } from './plan';
-import { SyntheticProvider, generalUserBytes } from './test/synthetic';
+import {
+  GM_DEDUPLICATED_BYTES,
+  GM_PER_PRESET_BYTES,
+  SyntheticProvider,
+  generalUserGs,
+} from './test/synthetic';
 
 const factory = new OfflineAudioContext({ numberOfChannels: 1, length: 1, sampleRate: 44_100 });
 
@@ -82,11 +87,12 @@ async function playThrough(
   return { notes, misses, peak };
 }
 
-const mb = (bytes: number) => `${(bytes / MEGABYTE).toFixed(1)} MB`;
+const mb = (bytes: number) => `${(bytes / MEGABYTE).toFixed(1)} MiB`;
 
 describe('GM-tier memory budget', () => {
-  it('holds 80 MB through two long eight-track songs and the switch between them', async () => {
-    const provider = new SyntheticProvider();
+  it('holds 80 MiB through two long eight-track songs and the switch between them', async () => {
+    const gm = generalUserGs();
+    const provider = new SyntheticProvider(gm);
     const source = new ManagedSampleSource(provider, factory, { budgetBytes: GM_BUDGET_BYTES });
     const songA = band([24, 25, 26, 27, 29, 30, 33, 34], false);
     const songB = band([25, 27, 0, 48, 56, 65, 73], true);
@@ -94,7 +100,8 @@ describe('GM-tier memory budget', () => {
     const started = performance.now();
     const planA = planInstruments(songA);
     const planMs = performance.now() - started;
-    const wholeA = planA.instruments.reduce((sum, id) => sum + generalUserBytes(id), 0);
+    const setsA = new Set(planA.instruments.map((id) => gm.sampleSet(id)));
+    const wholeA = [...setsA].reduce((sum, set) => sum + gm.setBytes(set), 0);
 
     const report: string[] = [`plan 8x300: ${planMs.toFixed(1)} ms`];
     for (const { name, song } of [
@@ -115,22 +122,46 @@ describe('GM-tier memory budget', () => {
           `in ${String(played.notes)} notes`,
       );
 
-      expect(source.memory().residents).toEqual([...plan.instruments].sort());
+      expect(source.memory().residents).toEqual(expect.arrayContaining(plan.instruments));
       expect(warm).toBeGreaterThanOrEqual(needed);
       expect(played.peak).toBeLessThanOrEqual(GM_BUDGET_BYTES);
       expect(played.misses).toBe(0);
       expect(source.counters.pinnedEvictions).toBe(0);
     }
-    report.push(`song A, every zone of every instrument: ${mb(wholeA)}`);
+    report.push(`song A, every zone of its ${String(setsA.size)} sample sets: ${mb(wholeA)}`);
     console.info(report.join('\n'));
 
-    expect(source.memory().residents).not.toContain('gm:0:24');
+    expect(source.memory().residents).not.toContain('gm:0:29');
+    expect(source.memory().residents).not.toContain('gm:0:33');
     expect(source.memory().residents).toContain('gm:0:25');
     expect(wholeA).toBeLessThanOrEqual(GM_BUDGET_BYTES);
   });
 
+  it('holds the whole GM set, deduplicated, inside the budget', async () => {
+    const gm = generalUserGs();
+    const provider = new SyntheticProvider(gm);
+    const source = new ManagedSampleSource(provider, factory, { budgetBytes: GM_BUDGET_BYTES });
+    const refs = new Set(
+      gm.instruments.flatMap((id) => provider.regionMap(id).regions.map((r) => r.sample)),
+    );
+    for (const ref of refs) await source.getBuffer(ref);
+    const perPreset = gm.instruments.reduce((sum, id) => sum + gm.setBytes(gm.sampleSet(id)), 0);
+    console.info(
+      `whole GM set: ${String(gm.instruments.length)} presets, ${String(refs.size)} samples, ` +
+        `${mb(source.memory().decodedBytes)} resident (${mb(perPreset)} counted per preset)`,
+    );
+
+    expect(Math.abs(perPreset - GM_PER_PRESET_BYTES)).toBeLessThan(0.1 * MEGABYTE);
+    expect(Math.abs(source.memory().decodedBytes - GM_DEDUPLICATED_BYTES)).toBeLessThan(
+      0.1 * MEGABYTE,
+    );
+    expect(source.memory().decodedBytes).toBeLessThanOrEqual(GM_BUDGET_BYTES);
+    expect(source.memory().residents).toHaveLength(gm.instruments.length);
+    expect(source.counters.evictions).toBe(0);
+  });
+
   it("degrades under half the long score's needs without throwing or exceeding the budget", async () => {
-    const provider = new SyntheticProvider();
+    const provider = new SyntheticProvider(generalUserGs());
     const song = band([24, 25, 26, 27, 29, 30, 33, 34], false);
     const needed = planSamples(planInstruments(song), provider.regionMap).reduce(
       (sum, ref) => sum + provider.byteLength(ref),

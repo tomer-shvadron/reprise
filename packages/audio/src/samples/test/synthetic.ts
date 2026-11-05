@@ -10,8 +10,12 @@ export interface SyntheticOptions {
   /** Semitones per zone; a soundfont samples every few. */
   zoneWidth?: number;
   channels?: number;
-  /** Decoded bytes of the whole instrument, every zone resident. */
-  instrumentBytes?: (instrument: InstrumentId) => number;
+  /** The sample set an instrument plays from; instruments sharing a set share its samples. */
+  sampleSet?: (instrument: InstrumentId) => string;
+  /** Decoded bytes of a whole sample set, every zone resident. */
+  setBytes?: (set: string) => number;
+  /** Instruments `instrumentsOf` knows before any region map is asked for. */
+  instruments?: readonly InstrumentId[];
   /** Holds every fetch until `release()`. */
   deferred?: boolean;
 }
@@ -23,13 +27,47 @@ function hash(text: string): number {
   return value >>> 0;
 }
 
+const weight = (set: string) => 0.5 + (hash(set) % 1000) / 1000;
+
+/** GeneralUser GS's GM set as WP-032 measured it, decoded to Float32. */
+export const GM_PER_PRESET_BYTES = 121.6 * MEGABYTE;
+export const GM_DEDUPLICATED_BYTES = 71.5 * MEGABYTE;
+
 /**
- * Sized like GeneralUser GS decoded to Float32 at its native rates: a melodic preset or a kit
- * between 1 and 4 MB with every zone resident. Deliberately above the real bank's average, so a
- * budget that holds here holds there.
+ * A GM set shaped like GeneralUser GS: 128 bank-0 programs and the standard kit, where the
+ * first six programs of each family share samples in pairs (as its string sections do), sized
+ * so the presets add up to 121.6 MiB and the distinct samples to 71.5 MiB.
  */
-export function generalUserBytes(instrument: InstrumentId): number {
-  return Math.round((1 + (hash(instrument) % 3001) / 1000) * MEGABYTE);
+export function generalUserGs(): Required<
+  Pick<SyntheticOptions, 'instruments' | 'sampleSet' | 'setBytes'>
+> {
+  const instruments = [
+    ...Array.from({ length: 128 }, (_, program) => `gm:0:${String(program)}`),
+    'gm:drums:0',
+  ];
+  const sampleSet = (instrument: InstrumentId): string => {
+    const program = /^gm:0:(\d+)$/.exec(instrument)?.[1];
+    if (program === undefined) return instrument;
+    const slot = Number(program) % 8;
+    return slot < 6 ? `gm:0:${String(Number(program) - (slot % 2))}` : instrument;
+  };
+  const sets = [...new Set(instruments.map(sampleSet))];
+  const shared = new Set(
+    sets.filter((set) => instruments.filter((i) => sampleSet(i) === set).length > 1),
+  );
+  const sharedTotal = GM_PER_PRESET_BYTES - GM_DEDUPLICATED_BYTES;
+  const groups = [
+    { total: sharedTotal, members: sets.filter((set) => shared.has(set)) },
+    { total: GM_DEDUPLICATED_BYTES - sharedTotal, members: sets.filter((set) => !shared.has(set)) },
+  ];
+  const sizes = new Map<string, number>();
+  for (const { total, members } of groups) {
+    const sum = members.reduce((acc, set) => acc + weight(set), 0);
+    for (const set of members) sizes.set(set, (total * weight(set)) / sum);
+  }
+  const single = groups[1];
+  const mean = single ? single.total / single.members.length : MEGABYTE;
+  return { instruments, sampleSet, setBytes: (set) => sizes.get(set) ?? mean * weight(set) };
 }
 
 /**
@@ -41,7 +79,9 @@ export class SyntheticProvider implements SampleProvider {
   readonly zoneWidth: number;
   readonly channels: number;
   readonly fetched: SampleRef[] = [];
-  readonly #instrumentBytes: (instrument: InstrumentId) => number;
+  readonly #sampleSet: (instrument: InstrumentId) => string;
+  readonly #setBytes: (set: string) => number;
+  readonly #members = new Map<string, Set<InstrumentId>>();
   readonly #deferred: boolean;
   readonly #held: (() => void)[] = [];
   readonly #maps = new Map<InstrumentId, RegionMap>();
@@ -51,8 +91,21 @@ export class SyntheticProvider implements SampleProvider {
     this.sampleRate = options.sampleRate ?? 32_000;
     this.zoneWidth = options.zoneWidth ?? 3;
     this.channels = options.channels ?? 1;
-    this.#instrumentBytes = options.instrumentBytes ?? generalUserBytes;
+    this.#sampleSet = options.sampleSet ?? ((instrument) => instrument);
+    this.#setBytes = options.setBytes ?? (() => 4 * MEGABYTE);
     this.#deferred = options.deferred ?? false;
+    for (const instrument of options.instruments ?? []) this.#register(instrument);
+  }
+
+  #register(instrument: InstrumentId): string {
+    const set = this.#sampleSet(instrument);
+    let members = this.#members.get(set);
+    if (!members) {
+      members = new Set();
+      this.#members.set(set, members);
+    }
+    members.add(instrument);
+    return set;
   }
 
   get zones(): number {
@@ -60,15 +113,20 @@ export class SyntheticProvider implements SampleProvider {
   }
 
   ref(instrument: InstrumentId, key: number): SampleRef {
-    return `${instrument}#${String(Math.floor(key / this.zoneWidth))}`;
+    return `${this.#register(instrument)}#${String(Math.floor(key / this.zoneWidth))}`;
   }
 
-  instrumentOf(ref: SampleRef): InstrumentId {
+  #setOf(ref: SampleRef): string {
     return ref.slice(0, ref.lastIndexOf('#'));
   }
 
+  instrumentsOf(ref: SampleRef): InstrumentId[] {
+    const set = this.#setOf(ref);
+    return [...(this.#members.get(set) ?? [set])];
+  }
+
   frames(ref: SampleRef): number {
-    const bytes = this.#instrumentBytes(this.instrumentOf(ref)) / this.zones;
+    const bytes = this.#setBytes(this.#setOf(ref)) / this.zones;
     return Math.max(1, Math.round(bytes / (this.channels * Float32Array.BYTES_PER_ELEMENT)));
   }
 
