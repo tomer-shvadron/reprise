@@ -34,7 +34,7 @@ const MODEL_STANDS_ALONE = boundary(
 );
 const DEPENDENCY_EDGES = boundary(
   'allowed-dependency-edges',
-  'only formats/layout/audio -> model and web -> model, formats, layout, audio are allowed',
+  'only formats/layout/audio -> model, web -> model, formats, layout, audio and desktop -> web (types only) are allowed',
 );
 const ROOT_IMPORTS_ONLY = boundary(
   'root-imports-only',
@@ -45,14 +45,18 @@ const ELECTRON_IN_DESKTOP = boundary(
   'electron is imported only inside apps/desktop',
 );
 
-/** @type {{ name: string; dir: string; allowed: string[] }[]} */
+/**
+ * `typeOnly` edges admit `import type` alone: desktop needs web's bridge types, never its code.
+ * @typedef {{ name: string; dir: string; allowed: string[]; typeOnly?: string[] }} Workspace
+ * @type {Workspace[]}
+ */
 const WORKSPACES = [
   { name: 'model', dir: 'packages/model', allowed: [] },
   { name: 'formats', dir: 'packages/formats', allowed: ['model'] },
   { name: 'layout', dir: 'packages/layout', allowed: ['model'] },
   { name: 'audio', dir: 'packages/audio', allowed: ['model'] },
   { name: 'web', dir: 'apps/web', allowed: ['model', 'formats', 'layout', 'audio'] },
-  { name: 'desktop', dir: 'apps/desktop', allowed: [] },
+  { name: 'desktop', dir: 'apps/desktop', allowed: [], typeOnly: ['web'] },
 ];
 const ENGINES = new Set(['formats', 'layout', 'audio']);
 const UI_LIBRARIES = ['react', 'react-dom', 'zustand', 'dexie'];
@@ -70,12 +74,15 @@ const packageSpecifier = (name) => `^${name}(?:/|$)`;
 /**
  * Each boundary is a regex over the import specifier, so one list feeds both rules:
  * `no-restricted-imports` sees static imports and re-exports, `no-restricted-syntax` the
- * `import()` calls it does not visit. Flat config replaces a rule's options rather than
+ * `import()` calls it does not visit. The typescript-eslint variant of the first is the core
+ * rule plus `allowTypeImports`, which typeOnly edges need; an `import()` is always a value
+ * import, so the second bans those edges too. Flat config replaces a rule's options rather than
  * merging them, so each workspace gets one entry per rule carrying every boundary that applies.
- * @param {{ name: string; dir: string; allowed: string[] }} workspace
+ * @param {Workspace} workspace
  * @returns {import('eslint').Linter.Config}
  */
-function workspaceBoundaries({ name: self, dir, allowed }) {
+function workspaceBoundaries({ name: self, dir, allowed, typeOnly = [] }) {
+  /** @type {{ regex: string; message: string; allowTypeImports?: boolean }[]} */
   const restricted = [{ regex: String.raw`^@reprise/[^/]+/`, message: ROOT_IMPORTS_ONLY }];
 
   for (const { name: other } of WORKSPACES) {
@@ -83,6 +90,7 @@ function workspaceBoundaries({ name: self, dir, allowed }) {
       restricted.push({
         regex: packageSpecifier(`@reprise/${other}`),
         message: edgeMessage(self, other),
+        ...(typeOnly.includes(other) && { allowTypeImports: true }),
       });
     }
   }
@@ -99,7 +107,7 @@ function workspaceBoundaries({ name: self, dir, allowed }) {
   return {
     files: [`${dir}/**/*.{ts,tsx}`],
     rules: {
-      'no-restricted-imports': ['error', { patterns: restricted }],
+      '@typescript-eslint/no-restricted-imports': ['error', { patterns: restricted }],
       'no-restricted-syntax': [
         'error',
         ...restricted.map(({ regex, message }) => ({
