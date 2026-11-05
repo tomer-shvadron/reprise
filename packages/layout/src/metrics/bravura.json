@@ -327,6 +327,190 @@
       "codepoint": 58603,
       "advance": 2.164,
       "bbox": { "left": 0, "bottom": -4, "right": 2.164, "top": 2.784 }
+    },
+    "flag8thUp": {
+      "codepoint": 57920,
+      "advance": 1.056,
+      "bbox": { "left": 0, "bottom": -3.24, "right": 1.056, "top": 0.036 },
+      "anchors": {
+        "graceNoteSlashNE": [1.284, -0.796],
+        "graceNoteSlashSW": [-0.644, -2.456],
+        "stemUpNW": [0, -0.04]
+      }
+    },
+    "flag8thDown": {
+      "codepoint": 57921,
+      "advance": 1.224,
+      "bbox": { "left": 0, "bottom": -0.056, "right": 1.224, "top": 3.232 },
+      "anchors": {
+        "graceNoteSlashNW": [-0.596, 2.168],
+        "graceNoteSlashSE": [1.328, 0.628],
+        "stemDownSW": [0, 0.132]
+      }
+    },
+    "flag16thUp": {
+      "codepoint": 57922,
+      "advance": 1.116,
+      "bbox": { "left": 0, "bottom": -3.252, "right": 1.116, "top": 0.008 },
+      "anchors": { "stemUpNW": [0, -0.088] }
+    },
+    "flag16thDown": {
+      "codepoint": 57923,
+      "advance": 1.168,
+      "bbox": { "left": 0, "bottom": -0.036, "right": 1.164, "top": 3.248 },
+      "anchors": { "stemDownSW": [0, 0.128] }
+    },
+    "flag32ndUp": {
+      "codepoint": 57924,
+      "advance": 1.048,
+      "bbox": { "left": 0, "bottom": -3.248, "right": 1.044, "top": 0.596 },
+      "anchors": { "stemUpNW": [0, 0.376] }
+    },
+    "flag32ndDown": {
+      "codepoint": 57925,
+      "advance": 1.096,
+      "bbox": { "left": 0, "bottom": -0.688, "right": 1.092, "top": 3.248 },
+      "anchors": { "stemDownSW": [0, -0.448] }
+    },
+    "flag64thUp": {
+      "codepoint": 57926,
+      "advance": 1.048,
+      "bbox": { "left": 0, "bottom": -3.248, "right": 1.044, "top": 1.388 },
+      "anchors": { "stemUpNW": [0, 1.172] }
+    },
+    "flag64thDown": {
+      "codepoint": 57927,
+      "advance": 1.1,
+      "bbox": { "left": 0, "bottom": -1.504, "right": 1.092, "top": 3.248 },
+      "anchors": { "stemDownSW": [0, -1.244] }
+    },
+    "flag128thUp": {
+      "codepoint": 57928,
+      "advance": 1.036,
+      "bbox": { "left": 0, "bottom": -3.248, "right": 1.044, "top": 2.132 },
+      "anchors": { "stemUpNW": [0, 1.9] }
+    },
+    "flag128thDown": {
+      "codepoint": 57929,
+      "advance": 1.1,
+      "bbox": { "left": 0, "bottom": -2.32, "right": 1.092, "top": 3.248 },
+      "anchors": { "stemDownSW": [0, -2.076] }
+    },
+    "flag256thUp": {
+      "codepoint": 57930,
+      "advance": 1.072,
+      "bbox": { "left": 0, "bottom": -3.248, "right": 1.056, "top": 2.816 },
+      "anchors": { "stemUpNW": [0, 2.592] }
+    },
+    "flag256thDown": {
+      "codepoint": 57931,
+      "advance": 1.204,
+      "bbox": { "left": 0, "bottom": -3.004, "right": 1.196, "top": 3.252 },
+      "anchors": { "stemDownSW": [0, -2.812] }
+    },
+    "dynamicPiano": {
+      "codepoint": 58656,
+      "advance": 1.46,
+      "bbox": { "left": -0.356, "bottom": -0.568, "right": 1.464, "top": 1.096 },
+      "anchors": { "opticalCenter": [1.22, 0] }
+    },
+    "dynamicMezzo": {
+      "codepoint": 58657,
+      "advance": 1.748,
+      "bbox": { "left": -0.08, "bottom": -0.04, "right": 1.784, "top": 1.096 },
+      "anchors": { "opticalCenter": [0.872, 0] }
+    },
+    "dynamicForte": {
+      "codepoint": 58658,
+      "advance": 1.456,
+      "bbox": { "left": -0.564, "bottom": -0.608, "right": 1.456, "top": 1.776 },
+      "anchors": { "opticalCenter": [1.256, 0] }
+    },
+    "dynamicPP": {
+      "codepoint": 58667,
+      "advance": 2.908,
+      "bbox": { "left": -0.328, "bottom": -0.568, "right": 2.912, "top": 1.096 },
+      "anchors": { "opticalCenter": [1.708, 0] }
+    },
+    "dynamicPPP": {
+      "codepoint": 58666,
+      "advance": 4.288,
+      "bbox": { "left": -0.368, "bottom": -0.568, "right": 4.292, "top": 1.096 },
+      "anchors": { "opticalCenter": [2.368, 0] }
+    },
+    "dynamicMP": {
+      "codepoint": 58668,
+      "advance": 3.304,
+      "bbox": { "left": -0.08, "bottom": -0.568, "right": 3.3, "top": 1.096 },
+      "anchors": { "opticalCenter": [1.848, 0] }
+    },
+    "dynamicMF": {
+      "codepoint": 58669,
+      "advance": 3.188,
+      "bbox": { "left": -0.08, "bottom": -0.66, "right": 3.272, "top": 1.724 },
+      "anchors": { "opticalCenter": [1.796, 0] }
+    },
+    "dynamicFF": {
+      "codepoint": 58671,
+      "advance": 2.436,
+      "bbox": { "left": -0.54, "bottom": -0.608, "right": 2.44, "top": 1.776 },
+      "anchors": { "opticalCenter": [1.852, 0] }
+    },
+    "dynamicFFF": {
+      "codepoint": 58672,
+      "advance": 3.324,
+      "bbox": { "left": -0.62, "bottom": -0.608, "right": 3.32, "top": 1.776 },
+      "anchors": { "opticalCenter": [2.472, 0] }
+    },
+    "tuplet0": {
+      "codepoint": 59520,
+      "advance": 1.276,
+      "bbox": { "left": 0, "bottom": -0.032, "right": 1.272, "top": 1.5 }
+    },
+    "tuplet1": {
+      "codepoint": 59521,
+      "advance": 0.984,
+      "bbox": { "left": 0.04, "bottom": 0, "right": 1.024, "top": 1.488 }
+    },
+    "tuplet2": {
+      "codepoint": 59522,
+      "advance": 1.276,
+      "bbox": { "left": 0.04, "bottom": -0.024, "right": 1.316, "top": 1.5 }
+    },
+    "tuplet3": {
+      "codepoint": 59523,
+      "advance": 1.184,
+      "bbox": { "left": 0.04, "bottom": -0.032, "right": 1.224, "top": 1.5 }
+    },
+    "tuplet4": {
+      "codepoint": 59524,
+      "advance": 1.212,
+      "bbox": { "left": 0.04, "bottom": 0, "right": 1.252, "top": 1.488 }
+    },
+    "tuplet5": {
+      "codepoint": 59525,
+      "advance": 1.268,
+      "bbox": { "left": 0.04, "bottom": -0.032, "right": 1.308, "top": 1.492 }
+    },
+    "tuplet6": {
+      "codepoint": 59526,
+      "advance": 1.216,
+      "bbox": { "left": 0.04, "bottom": -0.032, "right": 1.256, "top": 1.5 }
+    },
+    "tuplet7": {
+      "codepoint": 59527,
+      "advance": 1.212,
+      "bbox": { "left": 0.12, "bottom": -0.016, "right": 1.332, "top": 1.488 }
+    },
+    "tuplet8": {
+      "codepoint": 59528,
+      "advance": 1.252,
+      "bbox": { "left": 0.04, "bottom": -0.032, "right": 1.292, "top": 1.5 }
+    },
+    "tuplet9": {
+      "codepoint": 59529,
+      "advance": 1.216,
+      "bbox": { "left": 0.04, "bottom": -0.032, "right": 1.256, "top": 1.5 }
     }
   }
 }
