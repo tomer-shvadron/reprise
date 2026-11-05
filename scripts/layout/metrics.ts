@@ -4,6 +4,9 @@
  *   packages/layout/src/metrics/bravura.json   SMuFL glyphs in staff spaces (1 em = 4 spaces)
  *   packages/layout/src/metrics/geist.json     UI text advances in font units at weight 400
  *
+ * Reads the fonts from apps/web/public/fonts/bravura and @fontsource-variable/geist, and the
+ * SMuFL metadata from ./data.
+ *
  *   node scripts/layout/metrics.ts           rewrite both files
  *   node scripts/layout/metrics.ts --check   exit 1 if either is out of date
  */
@@ -17,6 +20,8 @@ import { format, resolveConfig } from 'prettier';
 
 export const ROOT_DIR = join(import.meta.dirname, '..', '..');
 export const BRAVURA_DIR = join(ROOT_DIR, 'apps', 'web', 'public', 'fonts', 'bravura');
+/** SMuFL metadata: build inputs only, so they stay out of the web build. */
+export const DATA_DIR = join(import.meta.dirname, 'data');
 const GEIST_PACKAGE = join(
   ROOT_DIR,
   'apps',
@@ -132,8 +137,8 @@ function packageVersion(dir: string): string {
 }
 
 export function bravuraMetrics(): Record<string, unknown> {
-  const metadata = readJson(join(BRAVURA_DIR, 'bravura_metadata.json'));
-  const names = readJson(join(BRAVURA_DIR, 'glyphnames.json'));
+  const metadata = readJson(join(DATA_DIR, 'bravura_metadata.json'));
+  const names = readJson(join(DATA_DIR, 'glyphnames.json'));
   const boxes = field(metadata, 'glyphBBoxes');
   const anchors = field(metadata, 'glyphsWithAnchors');
   const font = openFont(join(BRAVURA_DIR, 'Bravura.otf'));

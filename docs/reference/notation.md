@@ -18,6 +18,7 @@ The engraving rules `@reprise/layout` follows, collected as the score lane imple
 | `tenor`      | `cClef`                     | position 6 (C4) |
 | `percussion` | `unpitchedPercussionClef1`  | centred       |
 
+- A bar's `clef` holds until the next bar that sets one; the first bar starts from the track's `display.clef`, or treble when that is absent (percussion on a drum track).
 - `Track.display.octaveShift` is written minus sounding pitch, so a guitar's 1 is the treble clef with an 8 below (`gClef8vb`): the music sounds an octave lower than written. Two octaves use the `15mb` forms, negative shifts the `8va` and `15ma` forms. C clefs have only an 8-below form.
 - A tab staff opens with the six-string TAB clef from five strings up and the four-string one below that, scaled down if it would overflow the lines.
 - A clef change inside a system is drawn at three quarters of the size, before the key and time signatures of that bar.
