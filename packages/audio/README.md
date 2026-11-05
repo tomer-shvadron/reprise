@@ -326,3 +326,106 @@ never sounds). It keeps no handles: the sampler's voice set is the state.
   settle, and it has a fixed pre-delay, measured at 264 frames (5.99 ms at 44.1 kHz): everything
   through the master bus lands that much after its `when`. Tests that compare levels play below
   the threshold and measure after that; a test that measures onsets must tap before the bus.
+
+## Memory manager
+
+ADR-0005's decoded-buffer cache, in `src/samples/`. `ManagedSampleSource` is the `SampleSource`
+every instrument plays from: the loaders supply raw PCM through a `SampleProvider`, the manager
+decodes it, accounts for it and evicts it, and the sampler never sees the difference.
+
+### The provider seam
+
+```ts
+type InstrumentId = string; // 'gm:0:25' = bank:program, 'gm:drums:0' for kits
+
+interface RawSample {
+  sampleRate: number;
+  channels: Float32Array[];
+  byteLength: number;
+}
+
+interface SampleProvider {
+  instrumentsOf(ref: SampleRef): InstrumentId[]; // every preset that references the sample
+  fetch(ref: SampleRef): Promise<RawSample>; // raw PCM; the manager builds the AudioBuffer
+  byteLength(ref: SampleRef): number; // decoded size estimate, reserved before the fetch
+}
+```
+
+A `SampleRef` names a sample slice, not a preset's copy of it: GeneralUser GS shares samples
+across presets (its three string sections share 8.9 MiB), so one buffer can belong to several
+instruments.
+
+The seam carries no loop points: a `Region` holds its loop in seconds and the sampler reads it
+there. Two provider answers are refused rather than trusted: a sample `instrumentsOf` names no
+instrument for rejects on load, since a buffer nobody owns could never be evicted; a `byteLength`
+that is not a finite byte count reserves nothing.
+
+### API
+
+```ts
+const source = new ManagedSampleSource(provider, context, { budgetBytes: GM_BUDGET_BYTES });
+const plan = await source.load(score, regionMapOf, { bars: 4 }); // AudioEngine.load's half
+source.memory(); // the engine's MemoryReport: { decodedBytes, budgetBytes, residents }
+const off = source.on('memory', (stats) => {}); // coalesced to one per animation frame
+source.budgetBytes = 300 * MEGABYTE; // settable at runtime; lowering it evicts at once
+source.counters; // { fetches, evictions, pinnedEvictions }
+
+planInstruments(score, { bars?, instrumentOf? }); // instruments and keys per track
+planSamples(plan, regionMapOf); // the SampleRefs those keys reach
+```
+
+### Accounting, eviction and pinning
+
+- **Accounting** is per buffer, `numberOfChannels × length × 4` bytes, from the buffer built and
+  not from the provider's estimate, and counted once however many instruments share it. The estimate only reserves room while a fetch is in flight,
+  so a burst of loads (a preload) evicts ahead and cannot overshoot.
+- **Eviction is by whole instrument**, least recently used first, whenever resident plus
+  reserved bytes exceed the budget. A buffer is attributed to every instrument that references
+  it and freed only when the last resident one goes, so evicting one of two presets that share a
+  sample keeps the sample. Recency is `peekBuffer`, which the sampler calls for every
+  note it starts, and `getBuffer`. Half an instrument would save little and turn into skipped
+  notes all over its range.
+- **Pinning.** `switchSong` (and so `load`) pins the instruments the new song uses and evicts
+  every other one at once. A leftover loaded afterwards (an editor preview on a new track, a
+  program change the plan did not see) is evicted before any pinned instrument, however recent;
+  a sample it shares with a pinned instrument stays.
+- **The instruments of the sample being loaded are never its victims**, so the budget is exceeded
+  only when they alone are larger than the whole budget.
+
+### Planning and preload
+
+`planInstruments` walks the playback sequence, not written order, so a `Beat.mix` program change
+reached through a repeat or a jump is attributed to the bars it actually sounds in. Each track
+plans its own program even when it has no notes (it costs nothing until a note asks for it).
+Keys come from `midiNote`, plus grace notes and the trill's alternate fret.
+
+`load` decodes every sample the opening `bars` (default 4) can reach before it resolves, at every
+velocity and in every articulation layer, since dynamics and articulations are the scheduler's
+to decide. It then warms the rest of the song in the background, four fetches at a time, but only
+if all of it fits the budget: otherwise warming would evict what the opening bars need. A song
+switch (or a later `load`) stops the warm-up after what is already in flight, so the previous song
+is never fetched into the new one's budget; `settled()` resolves once the queue has drained.
+
+### The degrade path
+
+Below the needs of the current song nothing throws. Pinned instruments are evicted least
+recently used first (`counters.pinnedEvictions` counts them); the sampler finds a non-resident
+sample, skips the note, reports it through `onMiss` and requests the load, so the next note on
+it plays. `memory()` shows the overrun, so the settings can say why.
+
+### Budgets, measured
+
+`memory-budget.test.ts` runs the reference long score (8 tracks, 300 bars, with structure)
+against a synthetic GM set shaped like GeneralUser GS as WP-032 measured it: 128 programs and
+the standard kit, the first six programs of each family sharing samples in pairs, sized so the
+presets add up to 121.6 MiB and the distinct samples to 71.5 MiB, a zone every 3 semitones. The
+GM budget is 80 MiB.
+
+| Case                                 | Result                                                         |
+| ------------------------------------ | -------------------------------------------------------------- |
+| `planInstruments`, 8 × 300           | about 17 ms                                                    |
+| Song A, 8 guitar and bass programs   | 1.9 MiB resident, 0 misses in 62,124 notes                     |
+| Song B after A, 7 programs and a kit | 2.1 MiB resident, 0 misses                                     |
+| Every zone of song A's 6 sample sets | 6.9 MiB                                                        |
+| The whole GM set, every sample       | 71.5 MiB resident (121.6 MiB counted per preset), fits         |
+| Song A under half its needs          | peak at the budget, notes skipped and reloaded, nothing thrown |
