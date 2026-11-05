@@ -1,6 +1,6 @@
 import type { Score } from '@reprise/model';
 
-import { readGp3To5 } from '../../src/index';
+import { readGp, readGp3To5 } from '../../src/index';
 
 export type FixtureFormat = 'gp3' | 'gp4' | 'gp5' | 'gp' | 'gpx';
 
@@ -14,6 +14,7 @@ export const READERS: readonly OracleReader[] = [
   { extension: 'gp3', read: (bytes) => readGp3To5(bytes).score },
   { extension: 'gp4', read: (bytes) => readGp3To5(bytes).score },
   { extension: 'gp5', read: (bytes) => readGp3To5(bytes).score },
+  { extension: 'gp', read: (bytes) => readGp(bytes).score },
 ];
 
 export interface PendingReader {
@@ -24,8 +25,7 @@ export interface PendingReader {
   exportName: string;
 }
 
-/** TODO(WP-042, WP-043): move each entry to `READERS` when its reader lands. */
+/** TODO(WP-043): move the entry to `READERS` when the gpx reader lands. */
 export const PENDING_READERS: readonly PendingReader[] = [
-  { extension: 'gp', workPackage: 'WP-042', exportName: 'readGp' },
   { extension: 'gpx', workPackage: 'WP-043', exportName: 'readGpx' },
 ];

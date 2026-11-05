@@ -4,7 +4,7 @@ import type { Beat, MasterBar, Note, Score, Track, TrackKind } from '@reprise/mo
 import {
   keyName,
   strokeName,
-  trimVoices,
+  normaliseVoices,
   tupletName,
   type BeatProjection,
   type MasterBarProjection,
@@ -68,7 +68,7 @@ function projectTrack(track: Track): TrackProjection {
     capo: track.capo,
     percussion: track.kind === 'drums',
     bars: track.bars.map((bar) => ({
-      voices: trimVoices(
+      voices: normaliseVoices(
         bar.voices.map((voice) => ({
           beats: voice.beats.map((beat) => projectBeat(beat, track.kind)),
         })),

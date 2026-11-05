@@ -90,12 +90,26 @@ export interface ScoreProjection {
   masterBars: MasterBarProjection[];
 }
 
-/** Voices past the first that hold no beats on either side are left out, so GP3 and GP4's one
- * voice compares against alphaTab's one voice and the model's four. */
-export function trimVoices(voices: VoiceProjection[]): VoiceProjection[] {
-  let end = voices.length;
-  while (end > 1 && voices[end - 1]?.beats.length === 0) end -= 1;
-  return voices.slice(0, end);
+const isBareEmpty = (beat: BeatProjection): boolean =>
+  !beat.rest &&
+  beat.notes.length === 0 &&
+  beat.graces.length === 0 &&
+  beat.text === null &&
+  beat.chord === null &&
+  beat.lyrics === null;
+
+/**
+ * A voice of nothing but empty beats becomes no beats, since alphaTab fills every voice a file
+ * leaves empty with one; trailing empty voices past the first are then dropped, so GP3 and
+ * GP4's one voice compares against the model's four.
+ */
+export function normaliseVoices(voices: VoiceProjection[]): VoiceProjection[] {
+  const normalised = voices.map((voice) =>
+    voice.beats.every(isBareEmpty) ? { beats: [] } : voice,
+  );
+  let end = normalised.length;
+  while (end > 1 && normalised[end - 1]?.beats.length === 0) end -= 1;
+  return normalised.slice(0, end);
 }
 
 export const DYNAMICS = ['ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff'] as const;

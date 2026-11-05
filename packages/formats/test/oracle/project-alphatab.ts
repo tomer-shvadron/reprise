@@ -7,7 +7,7 @@ import {
   VIBRATO,
   keyName,
   strokeName,
-  trimVoices,
+  normaliseVoices,
   tupletName,
   type BeatProjection,
   type GraceProjection,
@@ -69,8 +69,12 @@ function projectNote(note: AtNote, kind: TrackKind): NoteProjection {
   const slides = [SLIDES_IN.get(note.slideInType), SLIDES_OUT.get(note.slideOutType)];
   let string = 0;
   let value = note.fret;
-  if (note.isPercussion) value = note.percussionArticulation;
-  else if (kind === 'pitched') value = note.fret + note.stringTuning;
+  if (note.isPercussion) {
+    // gpif notes index the track's articulation list; GP3 to GP5 notes hold the sound itself.
+    const articulations = note.beat.voice.bar.staff.track.percussionArticulations;
+    value =
+      articulations[note.percussionArticulation]?.outputMidiNumber ?? note.percussionArticulation;
+  } else if (kind === 'pitched') value = note.fret + note.stringTuning;
   else string = tuning.length - note.string + 1;
   return {
     string,
@@ -164,7 +168,9 @@ function projectTrack(track: AtTrack, kind: TrackKind): TrackProjection {
     capo: staff?.capo ?? 0,
     percussion: staff?.isPercussion ?? false,
     bars: (staff?.bars ?? []).map((bar) => ({
-      voices: trimVoices(bar.voices.map((voice) => ({ beats: projectBeats(voice.beats, kind) }))),
+      voices: normaliseVoices(
+        bar.voices.map((voice) => ({ beats: projectBeats(voice.beats, kind) })),
+      ),
     })),
   };
 }

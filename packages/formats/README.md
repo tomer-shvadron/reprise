@@ -191,8 +191,8 @@ the first location, and `count`.
   fixture: those layouts are read as alphaTab reads them and covered by the hand-built files only.
 - **Text encoding** is always windows-1252.
 - **Simile marks** do not exist in GP3 to GP5, so the reader has nothing to expand.
-- **The alphaTab oracle** covers gp3, gp4 and gp5; its known differences are the tolerance list
-  under "Oracle" below.
+- **The alphaTab oracle** covers gp3, gp4, gp5 and gp; its known differences are the tolerance
+  list under "Oracle" below.
 
 ## gp (GP7/8) and gpif
 
@@ -236,7 +236,7 @@ const fromXml = readGpif(xml, { partConfiguration }); // score.gpif from any con
 
 ### Fixtures
 
-Every `fixtures/gp/*.gp` matches the manifest's track, bar and note counts, shows exactly the manifest's feature flags in the model, raises no `unknown-element` warning, and round-trips through `serializeNative`/`parseNative` unchanged. A throwaway comparison with alphaTab 1.8.4 also matched per bar and voice: every beat's duration, dots and tuplet and every note's string, fret and tie, the drum notes' GM sounds, the tempo automations and the track colours and volumes. The formal oracle test is WP-041's.
+Every `fixtures/gp/*.gp` matches the manifest's track, bar and note counts, shows exactly the manifest's feature flags in the model, raises no `unknown-element` warning, and round-trips through `serializeNative`/`parseNative` unchanged. A throwaway comparison with alphaTab 1.8.4 also matched per bar and voice: every beat's duration, dots and tuplet and every note's string, fret and tie, the drum notes' GM sounds, the tempo automations and the track colours and volumes. The oracle test ("Oracle" below) now holds every gp fixture to the same comparison as the binary formats, with no tolerance needed.
 
 The corpus is thin: none of the seven files has a bend, slide, harmonic, hammer-on, grace note, chord diagram, simile mark or second staff. Those paths are covered by hand-written gpif documents in `src/gpif/read-gpif.test.ts` (built with `src/gpif/test/gpif-builder.ts`), whose shapes follow alphaTab's reader and writer.
 
@@ -314,9 +314,10 @@ About 130 to 270 MB/s and linear in size, so the parser is not where import time
 
 ## Oracle
 
-`test/oracle/` parses every fixture with alphaTab (the dev-only oracle, `@coderline/alphatab`
-1.8.4, loaded as `scripts/fixtures/describe.ts` loads it) and with our reader, reduces both to
-the same plain projection and diffs them. It runs in `pnpm test`; on its own,
+`test/oracle/` parses every fixture (gp3, gp4, gp5 and gp; gpx once WP-043 lands) with
+alphaTab (the dev-only oracle, `@coderline/alphatab` 1.8.4, loaded as
+`scripts/fixtures/describe.ts` loads it) and with our reader, reduces both to the same plain
+projection and diffs them. It runs in `pnpm test`; on its own,
 `pnpm vitest run --project formats test/oracle`.
 
 - **What is compared** (`projection.ts`): per track the name, string count, tuning (MIDI, low to
@@ -331,7 +332,10 @@ the same plain projection and diffs them. It runs in `pnpm test`; on its own,
   `!isEmpty && notes.length === 0` on alphaTab's side, not its `isRest`; a beat's mixer tempo
   counts toward its bar's tempos, where alphaTab moves it to `masterBar.tempoAutomations`; grace
   beats, which alphaTab keeps ahead of the main beat, nest in it as `Beat.grace` does; a chord
-  grid of all muted strings is no grid; voices past the first with no beats are dropped.
+  grid of all muted strings is no grid; a voice of nothing but empty beats has no beats (alphaTab
+  fills every voice a file leaves empty with one), and trailing voices past the first with no
+  beats are dropped; a gpif drum note's articulation index resolves through the track's
+  articulation list to its MIDI note.
 - **Differences** come back as `{ fixture, path, field, ours, alphaTab }`, the path
   `tracks[0].bars[15].voices[0].beats[2].vibrato`; arrays of different lengths report
   `….length` and are compared up to the shorter one.
@@ -343,8 +347,8 @@ the same plain projection and diffs them. It runs in `pnpm test`; on its own,
   reader). Add it only for a legitimate deviation; when the oracle shows a reader bug, fix the
   reader.
 - **Readers** are the table in `test/oracle/readers.ts`, one `{ extension, read }` entry per
-  extension. Every extension in `fixtures/` must have an entry or a pending one (`gp` for WP-042,
-  `gpx` for WP-043), and a pending entry fails once `@reprise/formats` exports its reader, so the
+  extension. Every extension in `fixtures/` must have an entry or a pending one (`gpx` for
+  WP-043), and a pending entry fails once `@reprise/formats` exports its reader, so the
   oracle cannot silently skip a format.
 
 | Tolerance                   | Formats       | Why                                                                                                                                       |
@@ -358,6 +362,6 @@ the same plain projection and diffs them. It runs in `pnpm test`; on its own,
 | `percussion-articulations`  | gp3, gp4, gp5 | Drum notes keep the GM note (27, 28, 32 are GM2's High Q, Slap, Square Click); alphaTab maps those three to its own articulation indices. |
 | `voltas-on-every-bar`       | gp3, gp4, gp5 | The model numbers every bar of a volta bracket; alphaTab marks its first bar only.                                                        |
 
-Seen in review but not in the list, because no gp3 to gp5 fixture shows them: alphaTab keeps a
+Seen in review but not in the list, because no fixture shows them: alphaTab keeps a
 lyric line's leading and trailing spaces as empty syllables, and leaves the compound-time duplet,
 quadruplet and octuplet without a denominator. They become entries when a fixture carries them.
