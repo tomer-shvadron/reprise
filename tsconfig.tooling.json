@@ -5,7 +5,8 @@
     "types": ["node"],
     "outDir": ".tsbuild/tooling",
     "allowJs": true,
-    "checkJs": true
+    "checkJs": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["*.ts", "*.js"]
+  "include": ["*.ts", "*.js", "scripts/**/*.ts"]
 }

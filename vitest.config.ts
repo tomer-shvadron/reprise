@@ -34,6 +34,7 @@ export default defineConfig({
         },
       },
       { test: { name: 'desktop', root: 'apps/desktop', environment: 'node' } },
+      { test: { name: 'scripts', root: 'scripts', environment: 'node' } },
     ],
   },
 });
