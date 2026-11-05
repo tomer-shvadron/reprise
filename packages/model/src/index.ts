@@ -140,7 +140,7 @@ export { validateScore } from './validate';
 export type { Violation, ViolationPath, ViolationRule } from './validate';
 
 export { MIDI_MAX, midiNote, openStringPitch, transpose } from './pitch';
-export type { FretPosition, TransposeFailure, TransposeResult } from './pitch';
+export type { FretPosition, TransposeFailure, TransposeResult, TransposeWarning } from './pitch';
 
 export { STANDARD_TUNINGS, findTuningName } from './tunings';
 export type { NamedTuning, TuningInstrument } from './tunings';

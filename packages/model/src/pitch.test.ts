@@ -156,6 +156,28 @@ describe('transpose', () => {
       ok: true,
       note,
       trillDropped: false,
+      warnings: [],
+    });
+  });
+
+  it('warns when a natural harmonic moves and leaves its value alone', () => {
+    const natural = createNote({ string: 1, fret: 12, harmonic: { kind: 'natural', value: 12 } });
+    expect(transpose(natural, 2, guitar())).toEqual({
+      ok: true,
+      note: { ...natural, fret: 14 },
+      trillDropped: false,
+      warnings: ['natural-harmonic-moved'],
+    });
+    expect(transpose(natural, 0, guitar())).toMatchObject({ ok: true, warnings: [] });
+    const artificial = createNote({
+      string: 1,
+      fret: 5,
+      harmonic: { kind: 'artificial', value: 12 },
+    });
+    expect(transpose(artificial, 2, guitar())).toMatchObject({
+      ok: true,
+      note: { fret: 7, harmonic: { kind: 'artificial', value: 12 } },
+      warnings: [],
     });
   });
 

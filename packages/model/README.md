@@ -154,13 +154,15 @@ capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro write
   `note.fret` as stored on drum and pitched tracks, even when a pitched track keeps a GP5
   tuning. A fretted note on a string the track lacks throws a `RangeError`.
 - **`transpose(note, semitones, track)`** moves the note on its own string and returns
-  `{ ok: true, note, trillDropped }` or `{ ok: false, reason, midi, alternatives }`, never
-  throwing for a note that falls off. `reason` is `belowOpenString`, `aboveLastFret` (past
-  `fretCount - capo`, the frets left above the capo) or `outOfMidiRange` (pitched tracks, 0
-  to 127). `alternatives` lists the other strings that can play the pitch, for a caller that
-  knows which strings in the beat are free. The trill's alternate fret moves too and is
-  dropped when it falls off; a stored `accidental` survives only octave shifts; drum notes come
-  back unchanged.
+  `{ ok: true, note, trillDropped, warnings }` or `{ ok: false, reason, midi, alternatives }`,
+  never throwing for a note that falls off. `reason` is `belowOpenString`, `aboveLastFret`
+  (past `fretCount - capo`, the frets left above the capo) or `outOfMidiRange` (pitched
+  tracks, 0 to 127). `alternatives` lists the other strings that can play the pitch, for a
+  caller that knows which strings in the beat are free. The trill's alternate fret moves too
+  and is dropped when it falls off; a stored `accidental` survives only octave shifts; drum
+  notes come back unchanged. `warnings` holds `'natural-harmonic-moved'` when the moved note
+  carries a natural harmonic: its `value` is a node on the string and is left for the editor
+  to re-derive, while an artificial harmonic's `value` is an offset and travels with the note.
 - **`STANDARD_TUNINGS`** names fourteen tunings (guitar, 7-string, 4- and 5-string bass,
   ukulele), each in `Track.tuning` order. The ukulele is re-entrant, so its array is in string
   order, not pitch order. **`findTuningName(tuning)`** matches exactly, string count included.

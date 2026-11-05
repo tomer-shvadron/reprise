@@ -35,12 +35,16 @@ export interface FretPosition {
 
 export type TransposeFailure = 'belowOpenString' | 'aboveLastFret' | 'outOfMidiRange';
 
+/** A natural harmonic's node no longer matches its fret; `harmonic.value` is left to the editor. */
+export type TransposeWarning = 'natural-harmonic-moved';
+
 export type TransposeResult =
   | {
       ok: true;
       note: Note;
       /** The trill's alternate fret fell off the fretboard, so the trill was removed. */
       trillDropped: boolean;
+      warnings: TransposeWarning[];
     }
   | {
       ok: false;
@@ -73,15 +77,18 @@ function alternativePositions(track: FretTrack, midi: number, except: number): F
  * Moves a note by `semitones` on its own string, keeping every other property, the trill's
  * alternate fret included. Drum notes come back unchanged, since their value names an
  * instrument; they and a move by zero return the input object, not a copy. A stored
- * `accidental` survives only octave shifts. Never throws for a note that falls off the
- * fretboard or out of MIDI range: the failure says why and, on fretted tracks, where else the
- * pitch can be played.
+ * `accidental` survives only octave shifts. A natural harmonic keeps its `value` and the result
+ * warns, since its node is a place on the string; an artificial harmonic's `value` is an offset
+ * and travels with the note. Never throws for a note that falls off the fretboard or out of
+ * MIDI range: the failure says why and, on fretted tracks, where else the pitch can be played.
  */
 export function transpose(note: Note, semitones: number, track: FretTrack): TransposeResult {
   if (!Number.isInteger(semitones)) {
     throw new RangeError(`Transposition must be whole semitones, got ${String(semitones)}`);
   }
-  if (track.kind === 'drums' || semitones === 0) return { ok: true, note, trillDropped: false };
+  if (track.kind === 'drums' || semitones === 0) {
+    return { ok: true, note, trillDropped: false, warnings: [] };
+  }
 
   const fret = note.fret + semitones;
   const reason = failureAt(track, note.string, fret);
@@ -106,5 +113,7 @@ export function transpose(note: Note, semitones: number, track: FretTrack): Tran
       trillDropped = true;
     }
   }
-  return { ok: true, note: moved, trillDropped };
+  const warnings: TransposeWarning[] =
+    note.harmonic?.kind === 'natural' ? ['natural-harmonic-moved'] : [];
+  return { ok: true, note: moved, trillDropped, warnings };
 }
