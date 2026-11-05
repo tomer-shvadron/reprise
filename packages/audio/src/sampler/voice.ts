@@ -178,7 +178,9 @@ export class Voice {
 
   /** A linear glide from the previous automation point, arriving at `at`. */
   rampDetune(semitones: number, at: number): void {
-    // Anchored lazily: Chromium skips a value curve that starts in the quantum of a set value.
+    // Anchored lazily: Chromium skips a value curve starting mid-quantum after any event in that
+    // quantum, so a curve from the onset must be the voice's first detune event; this anchor is
+    // such an event, and a curve from `startTime` scheduled after it would be lost.
     if (!this.#detuneAnchored) this.#source.detune.setValueAtTime(0, this.startTime);
     this.#detuneAnchored = true;
     this.#noteDetune(semitones);

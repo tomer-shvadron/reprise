@@ -25,7 +25,7 @@ interface Chain {
 }
 
 const CHAIN_TOLERANCE = 1e-4;
-/** A pitch curve ends this long before the next note's, so their automation never overlaps. */
+/** A pitch curve ends this long before the next note's events: one inside a curve's span throws. */
 const CURVE_GAP = 2 * CHAIN_TOLERANCE;
 
 function gainAt(points: readonly GainPoint[], time: number): number {

@@ -12,12 +12,14 @@ interface Slot {
 
 /**
  * Which event plays a grace note: the one for the main note on its string, or, for a grace on a
- * string the beat leaves empty (and every grace on a drum or pitched track), the beat's first.
+ * string the beat leaves empty (and every grace on a drum or pitched track), the beat's first
+ * note that is not tied, since a tied note's event is folded into its origin and never arrives.
  */
 function playsGrace(event: NoteEvent, grace: Note): boolean {
   const { beat, note } = event;
   if (grace.string > 0 && grace.string === note.string) return true;
-  if (note !== beat.notes[0]) return false;
+  const first = beat.notes.find((other) => !other.tie) ?? beat.notes[0];
+  if (note !== first) return false;
   return grace.string === 0 || !beat.notes.some((other) => other.string === grace.string);
 }
 

@@ -176,12 +176,13 @@ function filterFor(note: Note): FilterSettings | undefined {
   return undefined;
 }
 
-/** Retriggers every `step` seconds across the note, the last one held to its end. */
+/** Retriggers every `step` seconds across the note; a remainder is a shorter last stroke. */
 function retriggers(when: number, end: number, step: number): { when: number; end: number }[] {
-  const count = Math.max(1, Math.floor((end - when) / step + 1e-6));
+  if (!(step > 0)) return [{ when, end }];
+  const count = Math.max(1, Math.ceil((end - when) / step - 1e-6));
   return Array.from({ length: count }, (_, index) => ({
     when: when + index * step,
-    end: index === count - 1 ? end : when + (index + 1) * step,
+    end: Math.min(end, when + (index + 1) * step),
   }));
 }
 

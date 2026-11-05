@@ -61,6 +61,17 @@ describe('planNote', () => {
     expect(plan.strikes.at(-1)?.end).toBeCloseTo(1.5, 9);
   });
 
+  it('plays a shorter last stroke when the length is not a multiple of the stroke', () => {
+    const plan = planNote(
+      input(drums, midi(38), { length: 0.5 / 3, effects: { tremoloPicking: 32 } }),
+    );
+
+    const whens = plan.strikes.map((strike) => strike.when - 1);
+    expect(whens).toHaveLength(3);
+    for (const [index, when] of whens.entries()) expect(when).toBeCloseTo(index * 0.0625, 9);
+    expect(plan.strikes.at(-1)?.end).toBeCloseTo(1 + 0.5 / 3, 9);
+  });
+
   it('carries a legato slide only when there is a next note to carry into', () => {
     const sliding = note(1, 5, { slide: ['legato'] });
     expect(planNote(input(guitar, sliding)).legatoInto).toBeUndefined();
@@ -146,6 +157,26 @@ describe('placeGraces', () => {
     const placed = placeGraces(event(beat, second, track), 0.5 / 960, 0);
     expect(placed.delay).toBeCloseTo(0.125, 9);
     expect(placed.graces[0]?.next).toEqual({ note: second, when: 2.125 });
+  });
+
+  it('plays a grace on an empty string from the first note that is not tied', () => {
+    const built = score()
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 3)])
+      .beat('4', [note(1, 3, { tie: true }), note(2, 7)], {
+        grace: [{ duration: 16, before: true, notes: [note(3, 5)] }],
+      })
+      .rest('2')
+      .build();
+    const beat = built.tracks[0]?.bars[0]?.voices[0].beats[1];
+    const track = built.tracks[0];
+    if (!beat || !track) throw new Error('two beats');
+    const [tied, second] = beat.notes;
+    if (!tied || !second) throw new Error('two notes');
+
+    expect(placeGraces(event(beat, tied, track), 0.5 / 960, 0).graces).toHaveLength(0);
+    expect(placeGraces(event(beat, second, track), 0.5 / 960, 0).graces).toHaveLength(1);
   });
 
   it('drops grace notes that would start before playback did', () => {

@@ -526,7 +526,9 @@ describe('beat mixer changes', () => {
     const start = toneLevel(data, E4, T0 + 0.01, T0 + 0.03);
     const middle = toneLevel(data, E4, T0 + 0.49, T0 + 0.51);
     const end = toneLevel(data, E4, T0 + 1.2, T0 + 1.5);
-    expect(start / velocityGain(100)).toBeCloseTo(end / velocityGain(50) / 1, 1);
+    // The first window is centred 20 ms into the 1 s glide: the fader is already that far down.
+    const glided = 1 - 0.02 * (1 - velocityGain(50) / velocityGain(100));
+    expect(start / end).toBeCloseTo((velocityGain(100) / velocityGain(50)) * glided, 1);
     expect(middle).toBeCloseTo((start + end) / 2, 2);
   });
 });
