@@ -20,7 +20,10 @@ beforeAll(async () => {
 });
 
 const ms = 2 ** -10; // -12000 timecents, the spec default for every envelope time
-const LEAD_START = 220; // two 64-frame samples, each followed by 46 frames of padding
+// Each sample is followed by 46 frames of padding: 64, 64, 200, 32, 32, 48, 48 frames.
+const LEAD_START = 220;
+const PAIR2_LEFT = 622;
+const PAIR2_RIGHT = 716;
 
 function regionsOf(bank: number, program: number): Region[] {
   const preset = font.preset(bank, program);
@@ -41,14 +44,24 @@ describe('parseSf2', () => {
       ['Lead', 0, 25],
       ['Lead Variation', 8, 25],
       ['Standard Kit', 128, 0],
+      ['Stereo Mismatch', 0, 1],
+      ['Stereo Split', 0, 2],
     ]);
-    expect(file.instruments.map((i) => i.name)).toEqual(['Stereo Pad', 'Looped Lead', 'Kit']);
+    expect(file.instruments.map((i) => i.name)).toEqual([
+      'Stereo Pad',
+      'Looped Lead',
+      'Kit',
+      'Stereo Mismatch',
+      'Stereo Split',
+    ]);
     expect(file.samples.map((s) => s.name)).toEqual([
       'Pair L',
       'Pair R',
       'Loop C4',
       'Kick',
       'Snare',
+      'Pair2 L',
+      'Pair2 R',
     ]);
   });
 
@@ -68,6 +81,7 @@ describe('parseSf2', () => {
       type: 1,
     });
     expect(file.samples[0]).toMatchObject({ type: 4, link: 1 });
+    expect(file.samples[6]).toMatchObject({ start: PAIR2_RIGHT, type: 2, link: 5 });
     expect(file.pcm.sm24Offset).toBeDefined();
   });
 
@@ -78,6 +92,9 @@ describe('parseSf2', () => {
   it('rejects what is not a SoundFont, and truncated files', () => {
     expect(() => parseSf2(new Uint8Array(64))).toThrow(Sf2ParseError);
     expect(() => parseSf2(bytes.subarray(0, 1000))).toThrow(Sf2ParseError);
+    for (const cut of [60, 100, 200, 400]) {
+      expect(() => parseSf2(bytes.subarray(0, cut))).toThrow(Sf2ParseError);
+    }
   });
 });
 
@@ -86,10 +103,39 @@ describe('Sf2Soundfont regions', () => {
     const regions = regionsOf(0, 0);
     expect(regions).toHaveLength(1);
     const [pad] = regions;
-    expect(pad).toMatchObject({ keyLo: 60, keyHi: 72, velLo: 0, velHi: 127, rootKey: 69, tune: 0 });
-    expect(pad?.sample).toBe('gm:0:0/0+1/0-64');
+    expect(pad).toMatchObject({ keyLo: 60, keyHi: 72, velLo: 0, velHi: 127 });
+    expect(pad?.sample).toBe('gm/0+1/0-64');
     // The pair's -500/+500 pans are the stereo image itself, carried by the two channels.
     expect(pad?.pan).toBeUndefined();
+  });
+
+  it("takes a pair's pitch from the right zone and header, everything else from the left", () => {
+    // Spec 7.10: the left coarseTune 1 is not heard; the right fineTune 20 is.
+    const [pad] = regionsOf(0, 0);
+    expect(pad).toMatchObject({ rootKey: 69, tune: 20 });
+    expect(font.preset(0, 0)?.report.stereoMismatches).toBe(0);
+    // Pair2's right header has originalPitch 62 and correction 3; its left zone's attack wins.
+    const [pair] = regionsOf(0, 1);
+    expect(regionsOf(0, 1)).toHaveLength(1);
+    expect(pair).toMatchObject({ keyLo: 48, keyHi: 72, rootKey: 62, tune: 3 });
+    expect(pair?.sample).toBe(`gm/5+6/${String(PAIR2_LEFT)}-${String(PAIR2_LEFT + 48)}`);
+    expect(pair?.envelope.attack).toBeCloseTo(0.5, 12);
+    expect(pair?.pan).toBeUndefined();
+    expect(font.preset(0, 1)?.report).toMatchObject({ stereoMismatches: 1, unpairedStereo: 0 });
+  });
+
+  it('plays a pair whose zones cover different keys as two mono halves with their own pans', () => {
+    const regions = regionsOf(0, 2);
+    expect(regions).toHaveLength(2);
+    expect(regions[0]).toMatchObject({ keyLo: 48, keyHi: 60, rootKey: 60, tune: 0, pan: -1 });
+    expect(regions[0]?.sample).toBe(`gm/5/${String(PAIR2_LEFT)}-${String(PAIR2_LEFT + 48)}`);
+    expect(regions[1]).toMatchObject({ keyLo: 48, keyHi: 72, rootKey: 62, tune: 3, pan: 1 });
+    expect(regions[1]?.sample).toBe(`gm/6/${String(PAIR2_RIGHT)}-${String(PAIR2_RIGHT + 48)}`);
+    expect(font.preset(0, 2)?.report).toMatchObject({
+      unpairedStereo: 2,
+      stereoMismatches: 0,
+      layered: 1,
+    });
   });
 
   it('adds preset generators to the instrument values and ignores instrument-only ones', () => {
@@ -122,10 +168,8 @@ describe('Sf2Soundfont regions', () => {
     // fineTune 10 + preset global fineTune 5 + pitchCorrection -7.
     expect(low?.tune).toBe(8);
     expect(low?.pan).toBe(-0.5);
-    const start = LEAD_START + 10;
-    expect(low?.sample).toBe(
-      `gm:0:25/2/${String(start)}-${String(LEAD_START + 180)}/${String(LEAD_START + 45)}-${String(LEAD_START + 140)}`,
-    );
+    // The ref is the PCM span alone: start offset 10, end offset -20; the loop stays on the region.
+    expect(low?.sample).toBe(`gm/2/${String(LEAD_START + 10)}-${String(LEAD_START + 180)}`);
     expect(low?.loop?.start).toBeCloseTo(35 / 32_000, 12);
     expect(low?.loop?.end).toBeCloseTo(130 / 32_000, 12);
   });
@@ -133,11 +177,19 @@ describe('Sf2Soundfont regions', () => {
   it('loops sample mode 3 like mode 1 and shares one ref between zones playing the same span', () => {
     const regions = regionsOf(0, 25);
     const high = regions.at(-1);
-    expect(high).toMatchObject({ keyLo: 64, keyHi: 127, rootKey: 60, tune: 98 });
+    expect(high).toMatchObject({ keyLo: 64, keyHi: 127, rootKey: 60 });
     expect(high?.loop?.start).toBeCloseTo(40 / 32_000, 12);
     expect(high?.loop?.end).toBeCloseTo(140 / 32_000, 12);
     const keyScaled = regions.find((region) => region.keyLo === 60);
     expect(keyScaled?.sample).toBe(high?.sample);
+  });
+
+  it("folds the modulation envelope's sustain share of modEnvToPitch into the tune", () => {
+    // coarseTune 1, preset global fineTune 5, pitchCorrection -7, and 700 cents at a 50% sustain.
+    const high = regionsOf(0, 25).at(-1);
+    expect(high?.tune).toBe(100 + 5 - 7 + 350);
+    // The envelope's transient is still unexpressed, and counted.
+    expect(font.preset(0, 25)?.report.unsupported['modEnvToPitch']).toBe(1);
   });
 
   it('expands key-scaled hold and decay into one region per key, exactly', () => {
@@ -163,9 +215,10 @@ describe('Sf2Soundfont regions', () => {
 
   it('reports the generators the Region cannot carry instead of approximating them', () => {
     const report = font.preset(0, 25)?.report;
-    expect(report?.unsupported).toEqual({ initialFilterFc: 1, delayVolEnv: 1 });
+    expect(report?.unsupported).toEqual({ initialFilterFc: 1, delayVolEnv: 1, modEnvToPitch: 1 });
     expect(report?.layered).toBe(0);
     expect(report?.stereoMismatches).toBe(0);
+    expect(report?.unpairedStereo).toBe(0);
     const kit = font.preset(128, 0)?.report;
     expect(kit?.unsupported).toEqual({ exclusiveClass: 1 });
     expect(kit?.modulated).toBe(1);
@@ -173,9 +226,11 @@ describe('Sf2Soundfont regions', () => {
 
   it('adds preset offsets per bank: the variation bank transposes the same instrument', () => {
     const high = regionsOf(8, 25).at(-1);
-    // coarseTune 1 - 12 (preset) in semitones, pitchCorrection -7, no global fine tune here.
-    expect(high?.tune).toBe(-1107);
-    expect(high?.sample.startsWith('gm:8:25/')).toBe(true);
+    // coarseTune 1 - 12 (preset) in semitones, pitchCorrection -7, the 350 cents of mod envelope,
+    // and no global fine tune here.
+    expect(high?.tune).toBe(-1100 - 7 + 350);
+    // The same PCM span is one ref, whichever preset plays it.
+    expect(high?.sample).toBe(regionsOf(0, 25).at(-1)?.sample);
   });
 
   it('maps the drum kit per key, with unpitched samples at a fixed pitch', () => {
@@ -184,7 +239,7 @@ describe('Sf2Soundfont regions', () => {
     // scaleTuning 0: the hit plays unshifted; originalPitch 255 reads as 60.
     expect(kick).toMatchObject({ keyLo: 36, keyHi: 36, rootKey: 36, tune: 0 });
     expect(kit?.resolve(38, 100)).toMatchObject({ keyLo: 38, keyHi: 38, rootKey: 38, tune: 0 });
-    expect(kick?.sample.startsWith('gm:drums:0/3/')).toBe(true);
+    expect(kick?.sample.startsWith('gm/3/')).toBe(true);
   });
 
   it('falls back to bank 0 for a missing bank and to kit 0 for a missing kit', () => {
@@ -196,75 +251,97 @@ describe('Sf2Soundfont regions', () => {
   });
 
   it('lists presets with their instrument ids and estimates their decoded size', () => {
-    expect(font.presets.map((p) => p.id)).toEqual(['gm:0:0', 'gm:0:25', 'gm:8:25', 'gm:drums:0']);
+    expect(font.presets.map((p) => p.id)).toEqual([
+      'gm:0:0',
+      'gm:0:25',
+      'gm:8:25',
+      'gm:drums:0',
+      'gm:0:1',
+      'gm:0:2',
+    ]);
     // The lead's zones play two spans: 170 frames (offset zone) and 200 frames (shared).
     expect(font.preset(0, 25)?.bytes).toBe((170 + 200) * 4);
     expect(font.preset(0, 0)?.bytes).toBe(64 * 2 * 4);
   });
 
-  it('prefixes ids with the soundfont id', () => {
+  it('prefixes ids and refs with the soundfont id, which may not hold a slash', () => {
     const other = new Sf2Soundfont(file, { id: 'fluid' });
-    expect(other.preset(0, 0)?.regions[0]?.sample).toBe('fluid:0:0/0+1/0-64');
+    expect(other.preset(0, 0)?.regions[0]?.sample).toBe('fluid/0+1/0-64');
+    expect(other.presets[0]?.id).toBe('fluid:0:0');
+    expect(() => new Sf2Soundfont(file, { id: 'a/b' })).toThrow(/slash/);
   });
 });
 
 describe('Sf2Soundfont as a SampleProvider', () => {
   it('converts 16-bit PCM plus sm24 to float channels, left then right', async () => {
-    const raw = await font.fetch('gm:0:0/0+1/0-64');
+    const raw = await font.fetch('gm/0+1/0-64');
     expect(raw.sampleRate).toBe(22_050);
     expect(raw.channels).toHaveLength(2);
     const [left, right] = raw.channels;
     expect(left?.[5]).toBe((5 * 1000) / 8_388_608);
     expect(right?.[5]).toBe((-5 * 1000) / 8_388_608);
-    expect(raw.loop).toBeUndefined();
     expect(raw.byteLength).toBe(64 * 2 * 4);
+    expect(raw).not.toHaveProperty('loop');
   });
 
-  it('returns the loop in frames of the slice', async () => {
+  it('reads a partner channel at the same offset from its own start', async () => {
+    const raw = await font.fetch(`gm/5+6/${String(PAIR2_LEFT + 2)}-${String(PAIR2_LEFT + 48)}`);
+    expect(raw.channels[0]?.[3]).toBe((5 * 500) / 8_388_608);
+    expect(raw.channels[1]?.[3]).toBe((-5 * 500) / 8_388_608);
+  });
+
+  it('slices from the zone start offset; the region keeps the loop in seconds of that slice', async () => {
     const [low] = regionsOf(0, 25);
     if (!low) throw new Error('missing region');
     const raw = await font.fetch(low.sample);
     expect(raw.channels[0]).toHaveLength(170);
-    expect(raw.loop).toEqual({ start: 35, end: 130 });
     // Frame 0 of the slice is frame 10 of the sample: ((10 % 50) - 25) * 65536 + 0x7f.
     expect(raw.channels[0]?.[0]).toBe((-15 * 65_536 + 0x7f) / 8_388_608);
+    expect(low.loop).toEqual({ start: 35 / 32_000, end: 130 / 32_000 });
+  });
+
+  it('lists every preset that plays a slice, across banks', () => {
+    const shared = regionsOf(0, 25).at(-1)?.sample ?? '';
+    expect(font.instrumentsOf(shared)).toEqual(['gm:0:25', 'gm:8:25']);
+    expect(font.instrumentsOf('gm/0+1/0-64')).toEqual(['gm:0:0']);
+    expect(font.instrumentsOf(regionsOf(0, 2)[1]?.sample ?? '')).toEqual(['gm:0:2']);
+    expect(font.instrumentsOf('gm/3/466-498')).toEqual(['gm:drums:0']);
+    expect(font.instrumentsOf('gm/2/0-1')).toEqual([]);
+    expect(font.instrumentsOf('other/2/0-1')).toEqual([]);
   });
 
   it('honours the contract for every region of every preset', async () => {
     for (const summary of font.presets) {
       const preset = font.preset(summary.bank, summary.program);
       for (const region of preset?.regions ?? []) {
-        expect(font.instrumentOf(region.sample)).toBe(summary.id);
+        expect(font.instrumentsOf(region.sample)).toContain(summary.id);
         const raw = await font.fetch(region.sample);
         expect(raw.byteLength).toBe(font.byteLength(region.sample));
         const length = raw.channels[0]?.length ?? 0;
         expect(raw.byteLength).toBe(length * raw.channels.length * 4);
         for (const channel of raw.channels) expect(channel).toHaveLength(length);
-        if (raw.loop) {
-          expect(raw.loop.start).toBeGreaterThanOrEqual(0);
-          expect(raw.loop.end).toBeLessThanOrEqual(length);
-          expect(region.loop?.start).toBeCloseTo(raw.loop.start / raw.sampleRate, 12);
+        if (region.loop) {
+          expect(region.loop.start).toBeGreaterThanOrEqual(0);
+          expect(region.loop.end * raw.sampleRate).toBeLessThanOrEqual(length);
         }
       }
     }
   });
 
   it('rejects refs it did not issue', async () => {
-    await expect(font.fetch('sfz:guitar/1/0-10')).rejects.toThrow(/not issued/);
+    await expect(font.fetch('sfz/1/0-10')).rejects.toThrow(/not issued/);
     await expect(font.fetch('nonsense')).rejects.toThrow(/Not an SF2 sample ref/);
-    await expect(font.fetch('gm:0:0/0/0-999999')).rejects.toThrow(/outside/);
+    await expect(font.fetch('gm:0:0/0/0-10')).rejects.toThrow(/not issued/);
+    await expect(font.fetch('gm/0/0-999999')).rejects.toThrow(/outside/);
+    await expect(font.fetch('gm/99/0-10')).rejects.toThrow(/no sample header/);
   });
 
   it('round-trips sample refs', () => {
-    const slice = {
-      instrument: 'gm:drums:0',
-      samples: [3, 4],
-      start: 1,
-      end: 9,
-      loop: { start: 2, end: 8 },
-    };
-    expect(parseSampleRef(formatSampleRef(slice))).toEqual(slice);
-    const plain = { instrument: 'gm:0:1', samples: [7], start: 0, end: 4 };
+    const pair = { soundfont: 'gm', samples: [3, 4], start: 1, end: 9 };
+    expect(formatSampleRef(pair)).toBe('gm/3+4/1-9');
+    expect(parseSampleRef(formatSampleRef(pair))).toEqual(pair);
+    const plain = { soundfont: 'fluid', samples: [7], start: 0, end: 4 };
     expect(parseSampleRef(formatSampleRef(plain))).toEqual(plain);
+    expect(() => parseSampleRef('gm/3+4/1-9/2-8')).toThrow(/Not an SF2 sample ref/);
   });
 });

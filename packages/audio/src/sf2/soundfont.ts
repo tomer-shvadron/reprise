@@ -1,13 +1,19 @@
 import { RegionMap, type SampleRef } from '../sampler/region-map';
 import { parseSf2, type Sf2File, type Sf2Info, type Sf2Pcm, type Sf2Preset } from './parse';
 import type { InstrumentId, RawSample, SampleProvider } from './provider-types';
-import { resolvePreset, type ResolvedPreset } from './resolve';
+import {
+  presetRefs,
+  resolveInstrument,
+  resolvePreset,
+  type ResolvedInstrument,
+  type ResolvedPreset,
+} from './resolve';
 import { parseSampleRef } from './sample-ref';
 
 export const PERCUSSION_BANK = 128;
 
 export interface Sf2SoundfontOptions {
-  /** Prefix of every instrument id and sample ref, so two soundfonts never share one. */
+  /** Prefix of every instrument id and sample ref, so two soundfonts never share one. No slash. */
   id?: string;
 }
 
@@ -45,12 +51,19 @@ export class Sf2Soundfont implements SampleProvider {
   readonly #file: Sf2File;
   readonly #prefix: string;
   readonly #byKey = new Map<string, Sf2Preset>();
+  readonly #instruments = new Map<number, ResolvedInstrument>();
   readonly #resolved = new Map<string, ResolvedPreset>();
   readonly #maps = new Map<string, RegionMap>();
+  #usage: Map<SampleRef, InstrumentId[]> | undefined;
 
   constructor(file: Sf2File, options: Sf2SoundfontOptions = {}) {
     this.#file = file;
     this.#prefix = options.id ?? 'gm';
+    if (!this.#prefix || this.#prefix.includes('/')) {
+      throw new Error(
+        `Soundfont id ${JSON.stringify(this.#prefix)} must be non-empty without a slash`,
+      );
+    }
     this.info = file.info;
     const presets: PresetSummary[] = [];
     for (const preset of file.presets) {
@@ -78,6 +91,16 @@ export class Sf2Soundfont implements SampleProvider {
       : `${this.#prefix}:${String(bank)}:${String(program)}`;
   }
 
+  #instrument(index: number): ResolvedInstrument | undefined {
+    const cached = this.#instruments.get(index);
+    if (cached) return cached;
+    const instrument = this.#file.instruments[index];
+    if (!instrument) return undefined;
+    const resolved = resolveInstrument(this.#file, instrument);
+    this.#instruments.set(index, resolved);
+    return resolved;
+  }
+
   /** The preset at exactly this bank and program, resolved to regions. */
   preset(bank: number, program: number): ResolvedPreset | undefined {
     const key = `${String(bank)}:${String(program)}`;
@@ -85,7 +108,9 @@ export class Sf2Soundfont implements SampleProvider {
     if (cached) return cached;
     const preset = this.#byKey.get(key);
     if (!preset) return undefined;
-    const resolved = resolvePreset(this.#file, preset, this.#idOf(bank, program));
+    const resolved = resolvePreset(preset, this.#idOf(bank, program), this.#prefix, (index) =>
+      this.#instrument(index),
+    );
     this.#resolved.set(key, resolved);
     return resolved;
   }
@@ -117,8 +142,26 @@ export class Sf2Soundfont implements SampleProvider {
     return this.regionMapFor(PERCUSSION_BANK, kit);
   }
 
-  instrumentOf(ref: SampleRef): InstrumentId {
-    return parseSampleRef(ref).instrument;
+  /**
+   * Every preset of the bank whose regions play the slice. The index is built once from the
+   * instruments' zones, which a preset cannot change, so it never resolves a preset's regions.
+   */
+  instrumentsOf(ref: SampleRef): InstrumentId[] {
+    this.#usage ??= this.#index();
+    return [...(this.#usage.get(ref) ?? [])];
+  }
+
+  #index(): Map<SampleRef, InstrumentId[]> {
+    const usage = new Map<SampleRef, InstrumentId[]>();
+    for (const preset of this.#byKey.values()) {
+      const id = this.#idOf(preset.bank, preset.program);
+      for (const ref of presetRefs(preset, this.#prefix, (index) => this.#instrument(index))) {
+        const ids = usage.get(ref);
+        if (ids) ids.push(id);
+        else usage.set(ref, [id]);
+      }
+    }
+    return usage;
   }
 
   byteLength(ref: SampleRef): number {
@@ -136,7 +179,7 @@ export class Sf2Soundfont implements SampleProvider {
 
   #read(ref: SampleRef): RawSample {
     const slice = parseSampleRef(ref);
-    if (!slice.instrument.startsWith(`${this.#prefix}:`)) {
+    if (slice.soundfont !== this.#prefix) {
       throw new Error(`Sample ${ref} was not issued by soundfont ${this.#prefix}`);
     }
     const [first] = slice.samples;
@@ -160,9 +203,6 @@ export class Sf2Soundfont implements SampleProvider {
     return {
       sampleRate: head.sampleRate,
       channels,
-      ...(slice.loop && {
-        loop: { start: slice.loop.start - slice.start, end: slice.loop.end - slice.start },
-      }),
       byteLength: length * channels.length * Float32Array.BYTES_PER_ELEMENT,
     };
   }

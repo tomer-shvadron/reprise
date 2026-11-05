@@ -1,4 +1,4 @@
-import type { Envelope, Region } from '../sampler/region-map';
+import type { Envelope, Region, SampleRef } from '../sampler/region-map';
 import {
   Gen,
   INSTRUMENT_ONLY,
@@ -7,7 +7,14 @@ import {
   defaultOf,
   timecentsToSeconds,
 } from './generators';
-import { SampleType, type Sf2File, type Sf2Preset, type Sf2Sample, type Sf2Zone } from './parse';
+import {
+  SampleType,
+  type Sf2File,
+  type Sf2Instrument,
+  type Sf2Preset,
+  type Sf2Sample,
+  type Sf2Zone,
+} from './parse';
 import type { InstrumentId } from './provider-types';
 import { formatSampleRef } from './sample-ref';
 
@@ -19,11 +26,19 @@ export interface PresetReport {
   modulated: number;
   /** Zones expanded to one region per key for `keynumToVolEnv*` or a `scaleTuning` other than 100. */
   keyExpanded: number;
-  /** Stereo pairs whose right zone differs from the left in a generator the merge drops. */
+  /** Stereo pairs whose right zone differs from the left in a non-pitch generator the merge drops. */
   stereoMismatches: number;
-  /** Region pairs that overlap in key and velocity; SF2 sounds both, the sampler the first. */
+  /**
+   * Stereo halves played as mono regions, panned by their own zone, because the partner zone
+   * covers other keys or velocities or its span lies outside the sample data.
+   */
+  unpairedStereo: number;
+  /**
+   * Region pairs that overlap in key and velocity, so a key-expanded zone counts once per key.
+   * SF2 sounds both, the sampler the first.
+   */
   layered: number;
-  /** Zones dropped for a ROM or missing sample. */
+  /** Zones dropped for a ROM or missing sample, or a sample rate that is not positive. */
   skippedZones: number;
   /**
    * Loops dropped, so the zone plays once: a loop outside the sample, or one that starts before
@@ -43,19 +58,53 @@ export interface ResolvedPreset {
   report: PresetReport;
 }
 
-const FULL_RANGE = 127 << 8;
-/** The sampler's exponential ramps stop at -80 dB; SF2 times are for a 100 dB fall (8.1.3). */
-const SAMPLER_FLOOR_DB = 80;
-const SF2_FULL_SCALE_DB = 100;
-
 interface Range {
   lo: number;
   hi: number;
 }
 
+/**
+ * One instrument zone after its global merge and stereo pairing: the part of a region that every
+ * preset using the instrument shares, since a preset cannot change a zone's sample, addresses or
+ * loop (8.5). `pitch` is the zone whose pitch generators and header apply: for a linked pair the
+ * right one (7.10), otherwise the zone itself.
+ */
+export interface InstrumentZone {
+  generators: ReadonlyMap<number, number>;
+  pitch: { generators: ReadonlyMap<number, number>; sample: Sf2Sample };
+  key: Range;
+  vel: Range;
+  sample: Sf2Sample;
+  /** `shdr` indices: one for mono, left then right for a merged pair. */
+  samples: readonly number[];
+  /** Absolute frames into `smpl`, end exclusive, after the address offsets. */
+  start: number;
+  end: number;
+  loop?: { start: number; end: number };
+  invalidLoop: boolean;
+  modulated: boolean;
+  mismatch: boolean;
+  unpaired: boolean;
+}
+
+export interface ResolvedInstrument {
+  zones: InstrumentZone[];
+  /** Zones dropped for a ROM or missing sample, or a sample rate that is not positive. */
+  skipped: number;
+}
+
+const FULL_RANGE = 127 << 8;
+/** The sampler's exponential ramps stop at -80 dB; SF2 times are for a 100 dB fall (8.1.3). */
+const SAMPLER_FLOOR_DB = 80;
+const SF2_FULL_SCALE_DB = 100;
+
 function range(amount: number | undefined): Range {
   const value = amount ?? FULL_RANGE;
   return { lo: value & 0xff, hi: value >> 8 };
+}
+
+function sameRange(a: Range, b: Range): boolean {
+  return a.lo === b.lo && a.hi === b.hi;
 }
 
 function intersect(a: Range, b: Range): Range | undefined {
@@ -69,198 +118,40 @@ function withGlobal(global: Sf2Zone | undefined, zone: Sf2Zone): Map<number, num
   return new Map([...(global?.generators ?? []), ...zone.generators]);
 }
 
-interface Entry {
-  generators: Map<number, number>;
-  sample: number;
-  key: Range;
-  vel: Range;
-  modulated: boolean;
-}
-
-/** Generators the stereo merge reads from the left zone alone; a differing right zone is reported. */
-const PAIR_CHECKED = [
-  Gen.attackVolEnv,
-  Gen.holdVolEnv,
-  Gen.decayVolEnv,
-  Gen.sustainVolEnv,
-  Gen.releaseVolEnv,
-  Gen.initialAttenuation,
-  Gen.coarseTune,
-  Gen.fineTune,
-  Gen.overridingRootKey,
-  Gen.sampleModes,
-];
-
-function isStereo(sample: Sf2Sample): boolean {
-  return (sample.type & (SampleType.left | SampleType.right)) !== 0;
-}
-
-export function resolvePreset(file: Sf2File, preset: Sf2Preset, id: InstrumentId): ResolvedPreset {
-  const report: PresetReport = {
-    unsupported: {},
-    modulated: 0,
-    keyExpanded: 0,
-    stereoMismatches: 0,
-    layered: 0,
-    skippedZones: 0,
-    invalidLoops: 0,
-  };
-  const regions: Region[] = [];
-  const bytes = new Map<string, number>();
-
-  for (const presetZone of preset.zones) {
-    const instrument = file.instruments[presetZone.generators.get(Gen.instrument) ?? -1];
-    if (!instrument) {
-      report.skippedZones += 1;
-      continue;
-    }
-    const presetGens = withGlobal(preset.global, presetZone);
-    const presetKey = range(presetGens.get(Gen.keyRange));
-    const presetVel = range(presetGens.get(Gen.velRange));
-    const presetModulated = presetZone.modulators + (preset.global?.modulators ?? 0) > 0;
-
-    const entries: Entry[] = [];
-    for (const zone of instrument.zones) {
-      const generators = withGlobal(instrument.global, zone);
-      const sampleIndex = generators.get(Gen.sampleID) ?? -1;
-      const sample = file.samples[sampleIndex];
-      const key = intersect(range(generators.get(Gen.keyRange)), presetKey);
-      const vel = intersect(range(generators.get(Gen.velRange)), presetVel);
-      if (!key || !vel) continue;
-      if (!sample || (sample.type & SampleType.rom) !== 0) {
-        report.skippedZones += 1;
-        continue;
-      }
-      // Preset generators are offsets added to the instrument's (9.4); ranges were intersected.
-      for (const [operator, amount] of presetGens) {
-        if (INSTRUMENT_ONLY.has(operator) || operator === Gen.keyRange) continue;
-        if (operator === Gen.velRange || operator === Gen.instrument) continue;
-        generators.set(operator, (generators.get(operator) ?? defaultOf(operator)) + amount);
-      }
-      const modulated =
-        presetModulated || zone.modulators + (instrument.global?.modulators ?? 0) > 0;
-      entries.push({ generators, sample: sampleIndex, key, vel, modulated });
-    }
-
-    for (const group of pairStereo(file, entries, report)) {
-      const built = buildRegions(file, id, group, report);
-      for (const { region, byteLength } of built) {
-        regions.push(region);
-        bytes.set(region.sample, byteLength);
-      }
-    }
+/** Preset generators are offsets added to the instrument's (9.4); ranges intersect instead. */
+function withOffsets(
+  base: ReadonlyMap<number, number>,
+  preset: ReadonlyMap<number, number>,
+): Map<number, number> {
+  const generators = new Map(base);
+  for (const [operator, amount] of preset) {
+    if (INSTRUMENT_ONLY.has(operator) || operator === Gen.keyRange) continue;
+    if (operator === Gen.velRange || operator === Gen.instrument) continue;
+    generators.set(operator, (generators.get(operator) ?? defaultOf(operator)) + amount);
   }
-
-  report.layered = countLayered(regions);
-  let total = 0;
-  for (const size of bytes.values()) total += size;
-  return {
-    id,
-    name: preset.name,
-    bank: preset.bank,
-    program: preset.program,
-    regions,
-    bytes: total,
-    report,
-  };
+  return generators;
 }
 
-/**
- * Merges each left/right zone pair into one entry with both samples, left first, so a note
- * plays one two-channel region. Partners must name each other's sample and cover the same keys
- * and velocities; anything else stays a mono region, panned by its own zone.
- */
-function pairStereo(file: Sf2File, entries: Entry[], report: PresetReport): Entry[][] {
-  const groups: Entry[][] = [];
-  const used = new Set<Entry>();
-  for (const entry of entries) {
-    if (used.has(entry)) continue;
-    used.add(entry);
-    const sample = file.samples[entry.sample];
-    const partner =
-      sample && isStereo(sample)
-        ? entries.find(
-            (other) =>
-              !used.has(other) &&
-              other.sample === sample.link &&
-              file.samples[other.sample]?.link === entry.sample &&
-              other.key.lo === entry.key.lo &&
-              other.key.hi === entry.key.hi &&
-              other.vel.lo === entry.vel.lo &&
-              other.vel.hi === entry.vel.hi,
-          )
-        : undefined;
-    if (!sample || !partner) {
-      groups.push([entry]);
-      continue;
-    }
-    used.add(partner);
-    const pair = (sample.type & SampleType.right) === 0 ? [entry, partner] : [partner, entry];
-    const [left, right] = pair;
-    if (
-      left &&
-      right &&
-      PAIR_CHECKED.some(
-        (operator) => left.generators.get(operator) !== right.generators.get(operator),
-      )
-    ) {
-      report.stereoMismatches += 1;
-    }
-    groups.push(pair);
-  }
-  return groups;
-}
-
-function value(generators: Map<number, number>, operator: number): number {
+function value(generators: ReadonlyMap<number, number>, operator: number): number {
   return clampGenerator(operator, generators.get(operator) ?? defaultOf(operator));
 }
 
-function envelope(generators: Map<number, number>, key: number): Envelope {
-  const fromMiddleC = 60 - key;
-  const holdTc =
-    value(generators, Gen.holdVolEnv) + value(generators, Gen.keynumToVolEnvHold) * fromMiddleC;
-  const decayTc =
-    value(generators, Gen.decayVolEnv) + value(generators, Gen.keynumToVolEnvDecay) * fromMiddleC;
-  const sustainCb = value(generators, Gen.sustainVolEnv);
-  const sustainDb = sustainCb / 10;
-  return {
-    attack: timecentsToSeconds(value(generators, Gen.attackVolEnv)),
-    hold: timecentsToSeconds(holdTc),
-    // SF2 decay and release are the time of a full 100 dB fall at a constant dB rate; the sampler
-    // spends its time reaching the sustain level, or -80 dB at most, so the time scales with it.
-    decay:
-      (timecentsToSeconds(decayTc) * Math.min(sustainDb, SAMPLER_FLOOR_DB)) / SF2_FULL_SCALE_DB,
-    sustain: sustainDb >= SF2_FULL_SCALE_DB ? 0 : 10 ** (-sustainDb / 20),
-    release:
-      (timecentsToSeconds(value(generators, Gen.releaseVolEnv)) * SAMPLER_FLOOR_DB) /
-      SF2_FULL_SCALE_DB,
-  };
-}
-
-function address(generators: Map<number, number>, fine: number, coarse: number): number {
+function address(generators: ReadonlyMap<number, number>, fine: number, coarse: number): number {
   return (generators.get(fine) ?? 0) + 32_768 * (generators.get(coarse) ?? 0);
 }
 
-function buildRegions(
-  file: Sf2File,
-  id: InstrumentId,
-  group: Entry[],
-  report: PresetReport,
-): { region: Region; byteLength: number }[] {
-  const [first] = group;
-  if (!first) return [];
-  const { generators } = first;
-  const sample = file.samples[first.sample];
-  if (!sample) return [];
+interface Slice {
+  start: number;
+  end: number;
+  loop?: { start: number; end: number };
+  invalidLoop: boolean;
+}
 
-  for (const [operator, { name, neutral }] of UNSUPPORTED) {
-    if (value(generators, operator) !== neutral) {
-      report.unsupported[name] = (report.unsupported[name] ?? 0) + 1;
-    }
-  }
-  if (group.some((entry) => entry.modulated)) report.modulated += 1;
-
-  const frames = file.pcm.frames;
+function sliceOf(
+  generators: ReadonlyMap<number, number>,
+  sample: Sf2Sample,
+  frames: number,
+): Slice {
   const start = Math.min(
     frames - 1,
     Math.max(
@@ -283,39 +174,306 @@ function buildRegions(
   // Mode 1 loops; mode 3 loops until release, which a plain loop plus the release covers. 2 is
   // reserved and plays unlooped, as 0 does.
   const mode = value(generators, Gen.sampleModes) & 3;
-  let loop: { start: number; end: number } | undefined;
-  if (mode === 1 || mode === 3) {
-    if (loopStart >= start && loopEnd <= end && loopEnd > loopStart) {
-      loop = { start: loopStart, end: loopEnd };
-    } else {
-      report.invalidLoops += 1;
+  if (mode !== 1 && mode !== 3) return { start, end, invalidLoop: false };
+  if (loopStart >= start && loopEnd <= end && loopEnd > loopStart) {
+    return { start, end, loop: { start: loopStart, end: loopEnd }, invalidLoop: false };
+  }
+  return { start, end, invalidLoop: true };
+}
+
+interface Entry {
+  generators: Map<number, number>;
+  index: number;
+  sample: Sf2Sample;
+  key: Range;
+  vel: Range;
+  modulated: boolean;
+}
+
+/** Generators the stereo merge reads from the left zone alone; a differing right zone is reported. */
+const PAIR_CHECKED = [
+  Gen.attackVolEnv,
+  Gen.holdVolEnv,
+  Gen.decayVolEnv,
+  Gen.sustainVolEnv,
+  Gen.releaseVolEnv,
+  Gen.keynumToVolEnvHold,
+  Gen.keynumToVolEnvDecay,
+  Gen.initialAttenuation,
+  Gen.sampleModes,
+];
+
+function isStereo(sample: Sf2Sample): boolean {
+  return (sample.type & (SampleType.left | SampleType.right)) !== 0;
+}
+
+function isRight(sample: Sf2Sample): boolean {
+  return (sample.type & SampleType.right) !== 0;
+}
+
+/** The right channel reads the left's span at the same offset from its own start; it must fit. */
+function partnerFits(left: Entry, right: Entry, frames: number): boolean {
+  const slice = sliceOf(left.generators, left.sample, frames);
+  const start = right.sample.start + (slice.start - left.sample.start);
+  return start >= 0 && start + (slice.end - slice.start) <= frames;
+}
+
+/**
+ * Merges each left/right zone pair into one zone with both samples, left first, so a note plays
+ * one two-channel region. Partners must name each other's sample and cover the same keys and
+ * velocities; the pair's pitch follows the right zone (7.10), everything else the left.
+ */
+function pairStereo(file: Sf2File, entries: Entry[]): InstrumentZone[] {
+  const frames = file.pcm.frames;
+  const zones: InstrumentZone[] = [];
+  const used = new Set<Entry>();
+  for (const entry of entries) {
+    if (used.has(entry)) continue;
+    used.add(entry);
+    const stereo = isStereo(entry.sample);
+    const partner = stereo
+      ? entries.find((other) => {
+          if (used.has(other) || other.index !== entry.sample.link) return false;
+          if (
+            other.sample.link !== entry.index ||
+            isRight(other.sample) === isRight(entry.sample)
+          ) {
+            return false;
+          }
+          if (!sameRange(other.key, entry.key) || !sameRange(other.vel, entry.vel)) return false;
+          return isRight(entry.sample)
+            ? partnerFits(other, entry, frames)
+            : partnerFits(entry, other, frames);
+        })
+      : undefined;
+    if (!partner) {
+      zones.push({
+        generators: entry.generators,
+        pitch: { generators: entry.generators, sample: entry.sample },
+        key: entry.key,
+        vel: entry.vel,
+        sample: entry.sample,
+        samples: [entry.index],
+        ...sliceOf(entry.generators, entry.sample, frames),
+        modulated: entry.modulated,
+        mismatch: false,
+        unpaired: stereo,
+      });
+      continue;
+    }
+    used.add(partner);
+    const [left, right] = isRight(entry.sample) ? [partner, entry] : [entry, partner];
+    zones.push({
+      generators: left.generators,
+      pitch: { generators: right.generators, sample: right.sample },
+      key: left.key,
+      vel: left.vel,
+      sample: left.sample,
+      samples: [left.index, right.index],
+      ...sliceOf(left.generators, left.sample, frames),
+      modulated: left.modulated || right.modulated,
+      mismatch: PAIR_CHECKED.some(
+        (operator) => left.generators.get(operator) !== right.generators.get(operator),
+      ),
+      unpaired: false,
+    });
+  }
+  return zones;
+}
+
+/** An instrument's zones, resolved once and shared by every preset that names it. */
+export function resolveInstrument(file: Sf2File, instrument: Sf2Instrument): ResolvedInstrument {
+  const entries: Entry[] = [];
+  let skipped = 0;
+  for (const zone of instrument.zones) {
+    const generators = withGlobal(instrument.global, zone);
+    const index = generators.get(Gen.sampleID) ?? -1;
+    const sample = file.samples[index];
+    if (!sample || (sample.type & SampleType.rom) !== 0 || !(sample.sampleRate > 0)) {
+      skipped += 1;
+      continue;
+    }
+    entries.push({
+      generators,
+      index,
+      sample,
+      key: range(generators.get(Gen.keyRange)),
+      vel: range(generators.get(Gen.velRange)),
+      modulated: zone.modulators + (instrument.global?.modulators ?? 0) > 0,
+    });
+  }
+  return { zones: pairStereo(file, entries), skipped };
+}
+
+export type InstrumentAt = (index: number) => ResolvedInstrument | undefined;
+
+interface Use {
+  zone: InstrumentZone;
+  key: Range;
+  vel: Range;
+  presetGens: Map<number, number>;
+  presetModulated: boolean;
+}
+
+/** The instrument zones a preset sounds, each under its preset zone, in map order. */
+function* uses(
+  preset: Sf2Preset,
+  instrumentAt: InstrumentAt,
+  report?: PresetReport,
+): Generator<Use> {
+  for (const presetZone of preset.zones) {
+    const instrument = instrumentAt(presetZone.generators.get(Gen.instrument) ?? -1);
+    if (!instrument) {
+      if (report) report.skippedZones += 1;
+      continue;
+    }
+    if (report) report.skippedZones += instrument.skipped;
+    const presetGens = withGlobal(preset.global, presetZone);
+    const presetKey = range(presetGens.get(Gen.keyRange));
+    const presetVel = range(presetGens.get(Gen.velRange));
+    const presetModulated = presetZone.modulators + (preset.global?.modulators ?? 0) > 0;
+    for (const zone of instrument.zones) {
+      const key = intersect(zone.key, presetKey);
+      const vel = intersect(zone.vel, presetVel);
+      if (key && vel) yield { zone, key, vel, presetGens, presetModulated };
+    }
+  }
+}
+
+function refOf(soundfont: string, zone: InstrumentZone): SampleRef {
+  return formatSampleRef({ soundfont, samples: zone.samples, start: zone.start, end: zone.end });
+}
+
+/** The refs `resolvePreset` would issue, without building the regions: the `instrumentsOf` index. */
+export function presetRefs(
+  preset: Sf2Preset,
+  soundfont: string,
+  instrumentAt: InstrumentAt,
+): Set<SampleRef> {
+  const refs = new Set<SampleRef>();
+  for (const { zone } of uses(preset, instrumentAt)) refs.add(refOf(soundfont, zone));
+  return refs;
+}
+
+export function resolvePreset(
+  preset: Sf2Preset,
+  id: InstrumentId,
+  soundfont: string,
+  instrumentAt: InstrumentAt,
+): ResolvedPreset {
+  const report: PresetReport = {
+    unsupported: {},
+    modulated: 0,
+    keyExpanded: 0,
+    stereoMismatches: 0,
+    unpairedStereo: 0,
+    layered: 0,
+    skippedZones: 0,
+    invalidLoops: 0,
+  };
+  const regions: Region[] = [];
+  const bytes = new Map<SampleRef, number>();
+
+  for (const { zone, key, vel, presetGens, presetModulated } of uses(
+    preset,
+    instrumentAt,
+    report,
+  )) {
+    if (zone.invalidLoop) report.invalidLoops += 1;
+    if (zone.mismatch) report.stereoMismatches += 1;
+    if (zone.unpaired) report.unpairedStereo += 1;
+    if (zone.modulated || presetModulated) report.modulated += 1;
+    const generators = withOffsets(zone.generators, presetGens);
+    const pitch =
+      zone.pitch.generators === zone.generators
+        ? generators
+        : withOffsets(zone.pitch.generators, presetGens);
+    for (const [operator, { name, neutral }] of UNSUPPORTED) {
+      if (value(generators, operator) !== neutral) {
+        report.unsupported[name] = (report.unsupported[name] ?? 0) + 1;
+      }
+    }
+    const ref = refOf(soundfont, zone);
+    const byteLength =
+      (zone.end - zone.start) * zone.samples.length * Float32Array.BYTES_PER_ELEMENT;
+    for (const region of buildRegions(zone, generators, pitch, key, vel, ref, report)) {
+      regions.push(region);
+      bytes.set(ref, byteLength);
     }
   }
 
-  const samples = group.map((entry) => entry.sample);
-  const ref = formatSampleRef({ instrument: id, samples, start, end, ...(loop && { loop }) });
-  const byteLength = (end - start) * samples.length * Float32Array.BYTES_PER_ELEMENT;
+  report.layered = countLayered(regions);
+  let total = 0;
+  for (const size of bytes.values()) total += size;
+  return {
+    id,
+    name: preset.name,
+    bank: preset.bank,
+    program: preset.program,
+    regions,
+    bytes: total,
+    report,
+  };
+}
 
-  const overriding = value(generators, Gen.overridingRootKey);
+function envelope(generators: ReadonlyMap<number, number>, key: number): Envelope {
+  const fromMiddleC = 60 - key;
+  const holdTc =
+    value(generators, Gen.holdVolEnv) + value(generators, Gen.keynumToVolEnvHold) * fromMiddleC;
+  const decayTc =
+    value(generators, Gen.decayVolEnv) + value(generators, Gen.keynumToVolEnvDecay) * fromMiddleC;
+  const sustainCb = value(generators, Gen.sustainVolEnv);
+  const sustainDb = sustainCb / 10;
+  return {
+    attack: timecentsToSeconds(value(generators, Gen.attackVolEnv)),
+    hold: timecentsToSeconds(holdTc),
+    // SF2 decay and release are the time of a full 100 dB fall at a constant dB rate; the sampler
+    // spends its time reaching the sustain level, or -80 dB at most, so the time scales with it.
+    decay:
+      (timecentsToSeconds(decayTc) * Math.min(sustainDb, SAMPLER_FLOOR_DB)) / SF2_FULL_SCALE_DB,
+    sustain: sustainDb >= SF2_FULL_SCALE_DB ? 0 : 10 ** (-sustainDb / 20),
+    release:
+      (timecentsToSeconds(value(generators, Gen.releaseVolEnv)) * SAMPLER_FLOOR_DB) /
+      SF2_FULL_SCALE_DB,
+  };
+}
+
+function buildRegions(
+  zone: InstrumentZone,
+  generators: ReadonlyMap<number, number>,
+  pitch: ReadonlyMap<number, number>,
+  key: Range,
+  vel: Range,
+  ref: SampleRef,
+  report: PresetReport,
+): Region[] {
+  const header = zone.pitch.sample;
+  const overriding = value(pitch, Gen.overridingRootKey);
   // An originalPitch of 255 means "unpitched"; the spec says to treat it as 60.
   const root =
-    overriding >= 0 ? overriding : sample.originalPitch > 127 ? 60 : sample.originalPitch;
+    overriding >= 0 ? overriding : header.originalPitch > 127 ? 60 : header.originalPitch;
+  // The modulation envelope rests at its sustain level for the rest of the note, so that share of
+  // `modEnvToPitch` is a fixed offset (GeneralUser GS tunes its Ocarina with it); only the
+  // transient is lost, and counted as unsupported.
+  const held = (1000 - value(pitch, Gen.sustainModEnv)) / 1000;
   const cents =
-    value(generators, Gen.coarseTune) * 100 +
-    value(generators, Gen.fineTune) +
-    sample.pitchCorrection;
-  const scale = value(generators, Gen.scaleTuning);
+    value(pitch, Gen.coarseTune) * 100 +
+    value(pitch, Gen.fineTune) +
+    header.pitchCorrection +
+    value(pitch, Gen.modEnvToPitch) * held;
+  const scale = value(pitch, Gen.scaleTuning);
   const attenuation = value(generators, Gen.initialAttenuation) / 10;
-  const pan = group.length === 1 ? value(generators, Gen.pan) / 500 : 0;
+  const pan = zone.samples.length === 1 ? value(generators, Gen.pan) / 500 : 0;
+  const rate = zone.sample.sampleRate;
 
   const base = {
-    velLo: first.vel.lo,
-    velHi: first.vel.hi,
+    velLo: vel.lo,
+    velHi: vel.hi,
     sample: ref,
-    ...(loop && {
+    ...(zone.loop && {
       loop: {
-        start: (loop.start - start) / sample.sampleRate,
-        end: (loop.end - start) / sample.sampleRate,
+        start: (zone.loop.start - zone.start) / rate,
+        end: (zone.loop.end - zone.start) / rate,
       },
     }),
     ...(attenuation !== 0 && { attenuation }),
@@ -330,34 +488,28 @@ function buildRegions(
   if (!perKey) {
     return [
       {
-        region: {
-          ...base,
-          keyLo: first.key.lo,
-          keyHi: first.key.hi,
-          rootKey: root,
-          tune: cents,
-          envelope: envelope(generators, 60),
-        },
-        byteLength,
+        ...base,
+        keyLo: key.lo,
+        keyHi: key.hi,
+        rootKey: root,
+        tune: cents,
+        envelope: envelope(generators, 60),
       },
     ];
   }
   report.keyExpanded += 1;
-  const result: { region: Region; byteLength: number }[] = [];
-  for (let key = first.key.lo; key <= first.key.hi; key += 1) {
-    result.push({
-      region: {
-        ...base,
-        keyLo: key,
-        keyHi: key,
-        rootKey: key,
-        tune: scale * (key - root) + cents,
-        envelope: envelope(generators, key),
-      },
-      byteLength,
+  const regions: Region[] = [];
+  for (let k = key.lo; k <= key.hi; k += 1) {
+    regions.push({
+      ...base,
+      keyLo: k,
+      keyHi: k,
+      rootKey: k,
+      tune: scale * (k - root) + cents,
+      envelope: envelope(generators, k),
     });
   }
-  return result;
+  return regions;
 }
 
 function countLayered(regions: readonly Region[]): number {

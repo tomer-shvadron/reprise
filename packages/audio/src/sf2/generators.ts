@@ -17,6 +17,7 @@ export const Gen = {
   chorusEffectsSend: 15,
   reverbEffectsSend: 16,
   pan: 17,
+  sustainModEnv: 29,
   delayVolEnv: 33,
   attackVolEnv: 34,
   holdVolEnv: 35,
@@ -85,7 +86,9 @@ export function defaultOf(generator: number): number {
 
 /** Legal ranges (8.1.3); a sum of instrument value and preset offset is clamped into them. */
 const LIMITS: ReadonlyMap<number, readonly [number, number]> = new Map([
+  [Gen.modEnvToPitch, [-12_000, 12_000]],
   [Gen.pan, [-500, 500]],
+  [Gen.sustainModEnv, [0, 1000]],
   [Gen.delayVolEnv, [-12_000, 5000]],
   [Gen.attackVolEnv, [-12_000, 8000]],
   [Gen.holdVolEnv, [-12_000, 5000]],
@@ -107,7 +110,9 @@ export function clampGenerator(generator: number, value: number): number {
 
 /**
  * Generators the `Region` cannot carry, with the value at which each has no effect. A resolved
- * zone holding anything else is counted in the preset's report, never approximated.
+ * zone holding anything else is counted in the preset's report, never approximated. The one
+ * split case is `modEnvToPitch`: the share the envelope holds at its sustain level is a fixed
+ * pitch offset and goes to `tune`; what is counted here is the transient the voice cannot play.
  */
 export const UNSUPPORTED: ReadonlyMap<number, { name: string; neutral: number }> = new Map([
   [Gen.modLfoToPitch, { name: 'modLfoToPitch', neutral: 0 }],

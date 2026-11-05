@@ -20,8 +20,10 @@ const G = {
   startAddrsOffset: 0,
   endAddrsOffset: 1,
   startloopAddrsOffset: 2,
+  modEnvToPitch: 7,
   initialFilterFc: 8,
   pan: 17,
+  sustainModEnv: 29,
   delayVolEnv: 33,
   attackVolEnv: 34,
   holdVolEnv: 35,
@@ -121,6 +123,28 @@ export const SAMPLES: readonly SampleSpec[] = [
     type: 1,
     link: 0,
   },
+  // 5, 6: a second linked pair with distinct headers, so the right zone's pitch rule and the
+  // unpaired fallback are checkable apart from the pad.
+  {
+    name: 'Pair2 L',
+    frames: 48,
+    value: (i) => i * 500,
+    rate: 22_050,
+    pitch: 60,
+    correction: 0,
+    type: 4,
+    link: 6,
+  },
+  {
+    name: 'Pair2 R',
+    frames: 48,
+    value: (i) => -i * 500,
+    rate: 22_050,
+    pitch: 62,
+    correction: 3,
+    type: 2,
+    link: 5,
+  },
 ];
 
 const INSTRUMENTS: readonly { name: string; global?: Zone; zones: Zone[] }[] = [
@@ -134,10 +158,12 @@ const INSTRUMENTS: readonly { name: string; global?: Zone; zones: Zone[] }[] = [
       ],
     },
     zones: [
+      // A pair's pitch follows the right zone (7.10): the left coarseTune must not be heard.
       {
         generators: [
           [G.keyRange, range(48, 72)],
           [G.pan, -500],
+          [G.coarseTune, 1],
           [G.sampleID, 0],
         ],
       },
@@ -145,6 +171,7 @@ const INSTRUMENTS: readonly { name: string; global?: Zone; zones: Zone[] }[] = [
         generators: [
           [G.keyRange, range(48, 72)],
           [G.pan, 500],
+          [G.fineTune, 20],
           [G.sampleID, 1],
         ],
       },
@@ -185,13 +212,16 @@ const INSTRUMENTS: readonly { name: string; global?: Zone; zones: Zone[] }[] = [
           [G.sampleID, 2],
         ],
       },
-      // Generators the Region cannot carry, to prove they are reported.
+      // Generators the Region cannot carry, to prove they are reported; the modulation envelope's
+      // sustain share of its pitch depth (700 × 50%) is a fixed offset the tune must carry.
       {
         generators: [
           [G.keyRange, range(64, 127)],
           [G.initialFilterFc, 6000],
           [G.delayVolEnv, -3600],
           [G.coarseTune, 1],
+          [G.modEnvToPitch, 700],
+          [G.sustainModEnv, 500],
           [G.sampleModes, 3],
           [G.sampleID, 2],
         ],
@@ -214,6 +244,48 @@ const INSTRUMENTS: readonly { name: string; global?: Zone; zones: Zone[] }[] = [
           [G.keyRange, range(38, 38)],
           [G.exclusiveClass, 1],
           [G.sampleID, 4],
+        ],
+      },
+    ],
+  },
+  // A pair whose right zone differs in a non-pitch generator: merged, and counted as a mismatch.
+  {
+    name: 'Stereo Mismatch',
+    zones: [
+      {
+        generators: [
+          [G.keyRange, range(48, 72)],
+          [G.pan, -500],
+          [G.attackVolEnv, -1200],
+          [G.sampleID, 5],
+        ],
+      },
+      {
+        generators: [
+          [G.keyRange, range(48, 72)],
+          [G.pan, 500],
+          [G.attackVolEnv, 0],
+          [G.sampleID, 6],
+        ],
+      },
+    ],
+  },
+  // A pair whose zones cover different keys: two mono halves, each with its own pan.
+  {
+    name: 'Stereo Split',
+    zones: [
+      {
+        generators: [
+          [G.keyRange, range(48, 60)],
+          [G.pan, -500],
+          [G.sampleID, 5],
+        ],
+      },
+      {
+        generators: [
+          [G.keyRange, range(48, 72)],
+          [G.pan, 500],
+          [G.sampleID, 6],
         ],
       },
     ],
@@ -266,6 +338,8 @@ const PRESETS: readonly {
     ],
   },
   { name: 'Standard Kit', bank: 128, program: 0, zones: [{ generators: [[G.instrument, 2]] }] },
+  { name: 'Stereo Mismatch', bank: 0, program: 1, zones: [{ generators: [[G.instrument, 3]] }] },
+  { name: 'Stereo Split', bank: 0, program: 2, zones: [{ generators: [[G.instrument, 4]] }] },
 ];
 
 class Writer {

@@ -1,42 +1,40 @@
 import type { SampleRef } from '../sampler/region-map';
-import type { InstrumentId } from './provider-types';
 
 /**
  * Everything `fetch` needs, carried in the ref itself so the provider keeps no table of issued
- * refs: the owning preset, the `shdr` index of each channel, the frame span after the zone's
- * address offsets, and the loop inside it. Two zones playing the same span share a ref.
+ * refs: the soundfont, the `shdr` index of each channel and the frame span after the zone's
+ * address offsets. The slice is the PCM alone, so every zone of every preset that plays the same
+ * span, whatever its loop or tuning, shares one ref and the memory manager decodes it once.
  */
 export interface SampleSlice {
-  instrument: InstrumentId;
+  /** The `Sf2Soundfont` id; two banks never issue the same ref. */
+  soundfont: string;
   /** `shdr` indices: one for mono, left then right for a merged stereo pair. */
   samples: readonly number[];
   /** Absolute frames into `smpl` for the first channel, end exclusive. */
   start: number;
   end: number;
-  /** Absolute frames, as `start` and `end`. */
-  loop?: { start: number; end: number };
 }
 
 export function formatSampleRef(slice: SampleSlice): SampleRef {
-  const loop = slice.loop ? `/${String(slice.loop.start)}-${String(slice.loop.end)}` : '';
-  return `${slice.instrument}/${slice.samples.join('+')}/${String(slice.start)}-${String(slice.end)}${loop}`;
+  return `${slice.soundfont}/${slice.samples.join('+')}/${String(slice.start)}-${String(slice.end)}`;
 }
 
-function span(text: string | undefined, ref: SampleRef): { start: number; end: number } {
-  const match = text === undefined ? null : /^(\d+)-(\d+)$/.exec(text);
-  if (!match) throw new Error(`Not an SF2 sample ref: ${ref}`);
-  return { start: Number(match[1]), end: Number(match[2]) };
-}
+const REF = /^([^/]+)\/(\d+(?:\+\d+)?)\/(\d+)-(\d+)$/;
 
 export function parseSampleRef(ref: SampleRef): SampleSlice {
-  const [instrument, samples, frames, loop, ...rest] = ref.split('/');
-  if (!instrument || !samples || !/^\d+(\+\d+)?$/.test(samples) || rest.length > 0) {
+  const match = REF.exec(ref);
+  const soundfont = match?.[1];
+  const samples = match?.[2];
+  const start = match?.[3];
+  const end = match?.[4];
+  if (!soundfont || !samples || start === undefined || end === undefined) {
     throw new Error(`Not an SF2 sample ref: ${ref}`);
   }
   return {
-    instrument,
+    soundfont,
     samples: samples.split('+').map(Number),
-    ...span(frames, ref),
-    ...(loop !== undefined && { loop: span(loop, ref) }),
+    start: Number(start),
+    end: Number(end),
   };
 }

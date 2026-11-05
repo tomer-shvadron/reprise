@@ -178,7 +178,7 @@ function readInfo(bytes: Uint8Array, view: DataView, sub: Chunk[]): Sf2Info {
     return chunk ? zstring(bytes, chunk.offset, chunk.size) : undefined;
   };
   const ifil = sub.find((c) => c.id === 'ifil');
-  if (!ifil) throw new Sf2ParseError('Missing ifil chunk');
+  if (!ifil || ifil.size < 4) throw new Sf2ParseError('Missing or short ifil chunk');
   const engine = text('isng');
   const copyright = text('ICOP');
   const comment = text('ICMT');
