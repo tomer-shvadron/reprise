@@ -227,6 +227,19 @@ describe('setBeatEffect', () => {
     expectRefusal(imported, setBeatEffect({ beatId }, { grace: grace(0, 1) }), 'invalid-value');
   });
 
+  it('refuses a tied grace note', () => {
+    const score = buildScore();
+    const grace = [
+      {
+        duration: 16 as const,
+        before: true,
+        notes: [createNote({ string: 2, fret: 4, tie: true })],
+      },
+    ];
+    const command = setBeatEffect({ beatId: beatOf(score, 0, 2, 0).id }, { grace });
+    expectRefusal(score, command, 'invalid-value');
+  });
+
   it('refuses a chord diagram for the wrong string count and a reused note id', () => {
     const score = buildScore();
     const beatId = beatOf(score, 0, 2, 0).id;

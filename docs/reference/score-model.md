@@ -29,7 +29,7 @@ Score ─ id, meta (title, artist, … , notices)
 - **Ids.** Every `Score`, `MasterBar`, `Track`, `Bar`, `Voice`, `Beat` and `Note` has an `id`: 12 base62 characters from `newId()`, unique across the score. A grace beat has no id of its own; its notes do. Commands address nodes by id; timing helpers address positions by index.
 - **Optional fields are exact.** An absent optional field means "not set"; an explicit `undefined` is rejected by the schemas. Commands remove an optional field with `null`.
 - **Chords.** `Beat.chord.name` alone is a chord symbol written above the beat; `diagram` adds the grid (`baseFret`, one absolute fret per string from string 1, `null` muted, 0 open, optional `barres` and `fingering`).
-- **Grace notes** are `Beat.grace`, an array of grace beats (16th, 32nd or 64th), played `before` the beat's time or on it. Their connection to the main note uses ordinary note fields: a slide or bend on the grace note, `hammerPull` on the main note.
+- **Grace notes** are `Beat.grace`, an array of grace beats (16th, 32nd or 64th), played `before` the beat's time or on it. Their connection to the main note uses ordinary note fields: a slide or bend on the grace note, `hammerPull` on the main note. A grace note is never tied (`GraceNoteSchema` refuses `tie: true`).
 - **Lyrics** exist twice. `Track.lyrics` is Guitar Pro's raw block (up to five lines of `{ startBar, text }`, `startBar` 0-based), kept for lossless import and export. `Beat.lyrics` is what layout draws: one syllable per line, index = line, `''` where a line has nothing on that beat.
 - **Mixer changes** (`Beat.mix`) are mid-song changes of program, volume, pan, chorus, reverb, phaser, tremolo and tempo, each with an optional transition `duration` in beats (quarter notes for tempo); absent is immediate.
 
@@ -160,7 +160,7 @@ A tied note continues its **origin**: the most recent note on the same string (t
 - **Ends the hold**: a note on the same string in between. It is the origin now, so a tied note on another fret than it breaks `tie-pitch`, and one on the same fret is a restrike that the tie continues.
 - **Out of reach**: an origin more than three bars back, counted in master bars, an anacrusis bar among them (a tie on bar 4 can reach bar 1, not bar 0). Grace notes are never origins.
 
-A **chain** is an origin and the tied notes that follow it, each taking the one before as its origin. `tieOriginOf(track, { bar, voice, beat }, note)` from the root export finds the origin, and the commands use the same definition: a new fret carries along the whole chain (`setNote`, `transposeSelection`), and an edit that takes an origin away releases or re-links the ties that depended on it (see **Repair**).
+A **chain** is an origin and the tied notes that follow it, each taking the one before as its origin. `tieOriginOf(track, { bar, voice, beat }, note)` from the root export finds the origin, `tieChainOf(track, { bar, voice, beat }, note)` the tied notes that continue a note, in score order (what playback folds into one sounding note), and the commands use the same definition: a new fret carries along the whole chain (`setNote`, `transposeSelection`), and an edit that takes an origin away releases or re-links the ties that depended on it (see **Repair**).
 
 ## Diagnostics
 

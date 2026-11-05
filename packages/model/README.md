@@ -18,8 +18,9 @@ validateScore(score); // cross-node invariants: [] when the score is sound
 
 ## Two layers of checking
 
-- **Schemas** check shape and per-field ranges only, and carry no refinements, so they stay
-  plain `ZodObject`s that can be picked, extended and introspected.
+- **Schemas** check shape and per-field ranges only, and carry no object-level refinements, so
+  they stay plain `ZodObject`s that can be picked, extended and introspected. The one field check
+  without a type of its own is a grace note's `tie`, which must be false (see **Grace notes**).
 - **`validateScore(score)`** checks what spans fields or nodes and returns `Violation[]`
   (`{ rule, path, message }`, with `path` in Zod's issue-path shape from the score root).
   It assumes schema-valid input. It is linear in the score: 8 tracks by 300 bars with 38,400
@@ -52,7 +53,9 @@ start of the bar three before its own; rests and notes on other strings are pass
 note on the same string in between is the origin, so it ends the hold. Three bars is alphaTab's
 bound (`Note.findTieOrigin` stops at `_maxOffsetForSameLineSearch`, 3). The rule lives in one
 place, `src/ties.ts`: `tieOriginOf` for validation and repair, and its inverse `tieChainOf` for
-the chains `setNote` and `transposeSelection` carry along.
+the chains `setNote` and `transposeSelection` carry along. #65 exports `tieChainOf` too, so
+playback folds a chain with the same definition: the audio timeline sounds a held note for the
+whole chain, however many beats of other strings sit between its links.
 
 ## Diagnostics
 
@@ -211,7 +214,16 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
 - **Grace notes**: `Beat.grace` is an array of grace beats, each `{ duration, before, notes }`,
   so gpif's runs of several grace beats survive. How a grace note connects to the main note
   is expressed with ordinary note fields: a slide on the grace note, a bend on it, or
-  `hammerPull` on the main note.
+  `hammerPull` on the main note. **A grace note is never tied** (#65): `GraceBeat.notes` is
+  `GraceNoteSchema`, `NoteSchema` with `tie` refused when true, so commands and `parseNative`
+  reject one. Guitar Pro 3 to 5 store no tie on a grace note (alphaTab's `readGrace` sets none);
+  gpif's grace beats are ordinary beats and could carry `<Tie>`, but a tie destination is never
+  struck, so a tied grace note would be a silent ornament, and alphaTab only ever makes a grace
+  note a tie _origin_ (its generated bend grace), which the model writes as a bend on the grace
+  note. Validating it with the tie rule instead would mean defining where a grace note sits
+  between the beat before and its own, for no file that needs it. The gpif reader releases such a
+  tie (`grace-tie-released`). The field keeps the `boolean` type, so a grace note is still a
+  `Note`.
 - **Strokes**: `effects.arpeggio` and `effects.brush` are `{ direction, duration? }`, keeping the
   stroke's speed that GP files carry.
 - **Beat vibrato** is the same `'slight' | 'wide'` enum as note vibrato, replacing the
