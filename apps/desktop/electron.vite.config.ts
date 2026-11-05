@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 
 import { defineConfig } from 'electron-vite';
 
+// eslint-disable-next-line import-x/no-relative-packages -- the renderer is built from web's own Vite config, which is tooling, not part of its public export
 import webConfig from '../web/vite.config';
 
 const webRoot = fileURLToPath(new URL('../web', import.meta.url));
