@@ -15,7 +15,7 @@ import {
   type Sf2Sample,
   type Sf2Zone,
 } from './parse';
-import type { InstrumentId } from './provider-types';
+import type { InstrumentId } from '../samples/types';
 import { formatSampleRef } from './sample-ref';
 
 /** What resolving a preset could not carry into its regions; counts are of resolved zones. */

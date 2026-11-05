@@ -1,9 +1,11 @@
-import type { Bar, Voice } from './bar';
+import type { Voice } from './bar';
 import { DotsSchema } from './beat';
 import type { Beat } from './beat';
 import type { MasterBar } from './master-bar';
 import type { Note } from './note';
 import type { Score } from './score';
+import { TIE_REACH_BARS, tieOriginOf } from './ties';
+import type { TiePosition } from './ties';
 import { barTicks, beatTicks } from './ticks';
 import type { Track } from './track';
 
@@ -176,7 +178,7 @@ function checkTrack(score: Score, track: Track, path: ViolationPath, report: Rep
           checkNotes(track, grace.notes, [...beatPath, 'grace', g, 'notes'], report);
         });
         checkChordDiagram(track, beat, beatPath, report);
-        checkTies(track, beat, previousBeat(track.bars, b, v, i), beatPath, report);
+        checkTies(track, beat, { bar: b, voice: v, beat: i }, beatPath, report);
       });
     });
   });
@@ -297,24 +299,16 @@ function checkChordDiagram(track: Track, beat: Beat, path: ViolationPath, report
   });
 }
 
-function previousBeat(bars: Bar[], b: number, v: number, i: number): Beat | undefined {
-  if (i > 0) return bars[b]?.voices[v]?.beats[i - 1];
-  return bars[b - 1]?.voices[v]?.beats.at(-1);
-}
-
 function checkTies(
   track: Track,
   beat: Beat,
-  previous: Beat | undefined,
+  at: TiePosition,
   path: ViolationPath,
   report: Report,
 ): void {
-  const sameSlot = (a: Note, b: Note): boolean =>
-    track.kind === 'fretted' ? a.string === b.string : a.fret === b.fret;
   beat.notes.forEach((note, n) => {
     if (!note.tie) return;
-    const origin =
-      previous && !previous.rest ? previous.notes.find((p) => sameSlot(p, note)) : undefined;
+    const origin = tieOriginOf(track, at, note)?.note;
     if (!origin) {
       const where =
         track.kind === 'fretted'
@@ -323,7 +317,7 @@ function checkTies(
       report(
         'tie-target',
         [...path, 'notes', n, 'tie'],
-        `tied note has no note ${where} in the previous beat of its voice`,
+        `tied note has no earlier note ${where} in its voice within ${String(TIE_REACH_BARS)} bars`,
       );
     } else if (origin.fret !== note.fret) {
       report(

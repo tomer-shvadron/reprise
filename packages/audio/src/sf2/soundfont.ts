@@ -1,6 +1,6 @@
 import { RegionMap, type SampleRef } from '../sampler/region-map';
 import { parseSf2, type Sf2File, type Sf2Info, type Sf2Pcm, type Sf2Preset } from './parse';
-import type { InstrumentId, RawSample, SampleProvider } from './provider-types';
+import type { InstrumentId, RawSample, SampleProvider } from '../samples/types';
 import {
   presetRefs,
   resolveInstrument,
