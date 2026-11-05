@@ -35,15 +35,17 @@ export interface FretPosition {
 
 export type TransposeFailure = 'belowOpenString' | 'aboveLastFret' | 'outOfMidiRange';
 
-/** A natural harmonic's node no longer matches its fret; `harmonic.value` is left to the editor. */
-export type TransposeWarning = 'natural-harmonic-moved';
+/**
+ * `trillDropped`: the trill's alternate fret fell off the fretboard, so the trill was removed.
+ * `naturalHarmonicMoved`: the harmonic's node no longer matches its fret; `harmonic.value` is
+ * left to the editor.
+ */
+export type TransposeWarning = 'trillDropped' | 'naturalHarmonicMoved';
 
 export type TransposeResult =
   | {
       ok: true;
       note: Note;
-      /** The trill's alternate fret fell off the fretboard, so the trill was removed. */
-      trillDropped: boolean;
       warnings: TransposeWarning[];
     }
   | {
@@ -58,7 +60,8 @@ export type TransposeResult =
 function failureAt(track: FretTrack, string: number, fret: number): TransposeFailure | undefined {
   if (track.kind !== 'fretted') return fret < 0 || fret > MIDI_MAX ? 'outOfMidiRange' : undefined;
   if (fret < 0) return 'belowOpenString';
-  if (fret > track.fretCount - track.capo) return 'aboveLastFret';
+  // Guitar Pro numbers frets up to the neck length whatever the capo, and so do its files.
+  if (fret > track.fretCount) return 'aboveLastFret';
   return midiNote(track, { string, fret }) > MIDI_MAX ? 'outOfMidiRange' : undefined;
 }
 
@@ -74,21 +77,20 @@ function alternativePositions(track: FretTrack, midi: number, except: number): F
 }
 
 /**
- * Moves a note by `semitones` on its own string, keeping every other property, the trill's
- * alternate fret included. Drum notes come back unchanged, since their value names an
- * instrument; they and a move by zero return the input object, not a copy. A stored
- * `accidental` survives only octave shifts. A natural harmonic keeps its `value` and the result
- * warns, since its node is a place on the string; an artificial harmonic's `value` is an offset
- * and travels with the note. Never throws for a note that falls off the fretboard or out of
- * MIDI range: the failure says why and, on fretted tracks, where else the pitch can be played.
+ * Moves a note by `semitones` on its own string, keeping every other property. Drum notes come
+ * back unchanged, since their value names an instrument; they and a move by zero return the
+ * input object, not a copy. A stored `accidental` survives only octave shifts. The trill's
+ * alternate fret moves too and is dropped, with a warning, when it falls off. A natural
+ * harmonic keeps its `value` and warns, since its node is a place on the string; an artificial
+ * harmonic's `value` is an offset and travels with the note. Never throws for a note that falls
+ * off the fretboard or out of MIDI range: the failure says why and, on fretted tracks, where
+ * else the pitch can be played.
  */
 export function transpose(note: Note, semitones: number, track: FretTrack): TransposeResult {
   if (!Number.isInteger(semitones)) {
     throw new RangeError(`Transposition must be whole semitones, got ${String(semitones)}`);
   }
-  if (track.kind === 'drums' || semitones === 0) {
-    return { ok: true, note, trillDropped: false, warnings: [] };
-  }
+  if (track.kind === 'drums' || semitones === 0) return { ok: true, note, warnings: [] };
 
   const fret = note.fret + semitones;
   const reason = failureAt(track, note.string, fret);
@@ -104,16 +106,15 @@ export function transpose(note: Note, semitones: number, track: FretTrack): Tran
   const { accidental, trill, ...rest } = note;
   const moved: Note = { ...rest, fret };
   if (accidental !== undefined && semitones % 12 === 0) moved.accidental = accidental;
-  let trillDropped = false;
+  const warnings: TransposeWarning[] = [];
   if (trill !== undefined) {
     const trillFret = trill.fret + semitones;
     if (failureAt(track, note.string, trillFret) === undefined) {
       moved.trill = { ...trill, fret: trillFret };
     } else {
-      trillDropped = true;
+      warnings.push('trillDropped');
     }
   }
-  const warnings: TransposeWarning[] =
-    note.harmonic?.kind === 'natural' ? ['natural-harmonic-moved'] : [];
-  return { ok: true, note: moved, trillDropped, warnings };
+  if (note.harmonic?.kind === 'natural') warnings.push('naturalHarmonicMoved');
+  return { ok: true, note: moved, warnings };
 }

@@ -76,7 +76,8 @@ describe('transpose', () => {
     { name: 'down to the open string', capo: 0, string: 6, fret: 5, by: -5, to: 0 },
     { name: 'up to fret 24', capo: 0, string: 2, fret: 12, by: 12, to: 24 },
     { name: 'fret 24 down', capo: 0, string: 2, fret: 24, by: -24, to: 0 },
-    { name: 'capo 7, up to the last fret', capo: 7, string: 3, fret: 10, by: 7, to: 17 },
+    { name: 'capo 7, up to fret 17', capo: 7, string: 3, fret: 10, by: 7, to: 17 },
+    { name: 'capo 7, up to the last fret', capo: 7, string: 3, fret: 17, by: 7, to: 24 },
     { name: 'capo 7, open string', capo: 7, string: 3, fret: 0, by: 0, to: 0 },
   ])('$name: fret $fret by $by is fret $to', ({ capo, string, fret, by, to }) => {
     const track = guitar(capo);
@@ -100,7 +101,7 @@ describe('transpose', () => {
       name: 'past the last fret with capo 7',
       capo: 7,
       string: 1,
-      fret: 17,
+      fret: 24,
       by: 1,
       reason: 'aboveLastFret',
     },
@@ -152,12 +153,7 @@ describe('transpose', () => {
 
   it('leaves drum notes alone', () => {
     const note = createNote({ string: 0, fret: 38 });
-    expect(transpose(note, 5, createTrack('drums'))).toEqual({
-      ok: true,
-      note,
-      trillDropped: false,
-      warnings: [],
-    });
+    expect(transpose(note, 5, createTrack('drums'))).toEqual({ ok: true, note, warnings: [] });
   });
 
   it('warns when a natural harmonic moves and leaves its value alone', () => {
@@ -165,8 +161,7 @@ describe('transpose', () => {
     expect(transpose(natural, 2, guitar())).toEqual({
       ok: true,
       note: { ...natural, fret: 14 },
-      trillDropped: false,
-      warnings: ['natural-harmonic-moved'],
+      warnings: ['naturalHarmonicMoved'],
     });
     expect(transpose(natural, 0, guitar())).toMatchObject({ ok: true, warnings: [] });
     const artificial = createNote({
@@ -190,13 +185,9 @@ describe('transpose', () => {
   it('moves the trill with the note and drops it when it falls off', () => {
     const note = createNote({ string: 1, fret: 20, trill: { fret: 22, speed: 16 } });
     const up = transpose(note, 2, guitar());
-    expect(up).toMatchObject({
-      ok: true,
-      trillDropped: false,
-      note: { fret: 22, trill: { fret: 24 } },
-    });
+    expect(up).toMatchObject({ ok: true, warnings: [], note: { fret: 22, trill: { fret: 24 } } });
     const further = transpose(note, 3, guitar());
-    expect(further).toMatchObject({ ok: true, trillDropped: true, note: { fret: 23 } });
+    expect(further).toMatchObject({ ok: true, warnings: ['trillDropped'], note: { fret: 23 } });
     expect(moved(further)).not.toHaveProperty('trill');
   });
 

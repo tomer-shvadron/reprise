@@ -29,6 +29,7 @@ validateScore(score); // cross-node invariants: [] when the score is sound
 | `voice-overfull`                  | A voice's beats sum to at most the bar length. Incomplete bars are allowed.                                                                              |
 | `rest-with-notes`                 | A rest carries no notes.                                                                                                                                 |
 | `string-range`                    | Fretted notes use strings 1 to the string count; drum and pitched notes use string 0.                                                                    |
+| `fret-range`                      | Fretted notes sit on frets 0 to `track.fretCount`, whatever the capo, as Guitar Pro files hold them.                                                     |
 | `duplicate-string`                | No two notes of a fretted beat share a string.                                                                                                           |
 | `tie-target`                      | A tied note has a note on the same string (same MIDI note on drum and pitched tracks) in the previous beat of its voice, crossing into the previous bar. |
 | `tuplet`                          | `n:of` is not 1:1 and lies strictly between 1:2 and 2:1.                                                                                                 |
@@ -96,7 +97,14 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   `Track.tuning` is low to high, so a string's open pitch is `tuning[tuning.length - string]`.
 - **`Note.fret` on drum and pitched tracks is the MIDI note**, and `Note.string` is required
   and `0` there. Required-and-zero keeps fretted code paths free of `undefined` checks; the
-  `string-range` rule enforces 1 to the string count on fretted tracks and 0 elsewhere.
+  `string-range` rule enforces 1 to the string count on fretted tracks and 0 elsewhere, and
+  `fret-range` keeps a fretted note between 0 and `Track.fretCount`.
+- **Spelling follows Guitar Pro**: a note outside the key is spelled with a sharp in C major
+  and the sharp keys and with a flat in the flat keys, the natural letter first, plus a minor
+  key's raised sixth and seventh (see "Pitch, tuning and spelling"). The alternative, the
+  nearest spelling on the line of fifths (MuseScore's rule, which gives Eb, Ab and Bb in C
+  major), was considered and set aside: tab players read Guitar Pro's sharps, and `respell`
+  covers the exceptions one note at a time.
 - **Durations**: `duration` is the denominator, 1 (whole) to 256 as gpif's `NoteValue` allows
   (GP5 stops at 64), `dots` 0 to 2, `tuplet` `{ n, of }`. Tuplets can make tick lengths
   fractional (septuplets at 960 PPQ); `validateScore` compares tick sums with a float
@@ -198,15 +206,16 @@ capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro write
   `note.fret` as stored on drum and pitched tracks, even when a pitched track keeps a GP5
   tuning. A fretted note on a string the track lacks throws a `RangeError`.
 - **`transpose(note, semitones, track)`** moves the note on its own string and returns
-  `{ ok: true, note, trillDropped, warnings }` or `{ ok: false, reason, midi, alternatives }`,
-  never throwing for a note that falls off. `reason` is `belowOpenString`, `aboveLastFret`
-  (past `fretCount - capo`, the frets left above the capo) or `outOfMidiRange` (pitched
+  `{ ok: true, note, warnings }` or `{ ok: false, reason, midi, alternatives }`, never throwing
+  for a note that falls off. `reason` is `belowOpenString`, `aboveLastFret` (past `fretCount`,
+  the fret numbers a Guitar Pro file holds whatever the capo) or `outOfMidiRange` (pitched
   tracks, 0 to 127). `alternatives` lists the other strings that can play the pitch, for a
-  caller that knows which strings in the beat are free. The trill's alternate fret moves too
-  and is dropped when it falls off; a stored `accidental` survives only octave shifts; drum
-  notes come back unchanged. `warnings` holds `'natural-harmonic-moved'` when the moved note
-  carries a natural harmonic: its `value` is a node on the string and is left for the editor
-  to re-derive, while an artificial harmonic's `value` is an offset and travels with the note.
+  caller that knows which strings in the beat are free. A stored `accidental` survives only
+  octave shifts; drum notes come back unchanged. `warnings` holds `trillDropped` when the
+  trill's alternate fret, which moves with the note, falls off and the trill is removed, and
+  `naturalHarmonicMoved` when the moved note carries a natural harmonic: its `value` is a node
+  on the string and is left for the editor to re-derive, while an artificial harmonic's `value`
+  is an offset and travels with the note.
 - **`STANDARD_TUNINGS`** names fourteen tunings (guitar, 7-string, 4- and 5-string bass,
   ukulele), each in `Track.tuning` order. The ukulele is re-entrant, so its array is in string
   order, not pitch order. **`findTuningName(tuning)`** matches exactly, string count included.
