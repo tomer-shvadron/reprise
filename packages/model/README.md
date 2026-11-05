@@ -59,9 +59,10 @@ const { score: read, app, warnings } = parseNative(bytes); // throws NativeForma
   becoming a file that cannot be opened, and fields the schema does not know are not written.
   It does not run `validateScore`: a score with an invariant violation still saves, and the
   reader reports the violation.
-- **Reading**: UTF-8 (strict), JSON, `format`, then `version`. A version below 1 or not a whole
-  number fails; a version above `SCORE_VERSION` fails with "newer than this app", naming both
-  versions. The `score` then runs through `MIGRATIONS` from the file's version to the current
+- **Reading**: UTF-8 (strict; a leading BOM is accepted and never written), JSON (`null` is
+  a value, never a missing optional field), `format`, then `version`. A version below 1 or not
+  a whole number fails; a version above `SCORE_VERSION` fails with "newer than this app",
+  naming both versions. The `score` then runs through `MIGRATIONS` from the file's version to the current
   one, and the whole envelope is checked against `NativeDocumentSchema`. Any failure is a
   `NativeFormatError` whose `path` (and message prefix, `score.tracks[0].bars[2].id: ...`) names
   the offending field.
@@ -70,8 +71,12 @@ const { score: read, app, warnings } = parseNative(bytes); // throws NativeForma
   violations (`validateScore`) are reported under their rule. Every `ParseWarning` path starts
   at the document root, so a score violation's path begins with `score`.
 - **Migrations**: `MIGRATIONS[n]` turns a version-`n - 1` `score` into its version-`n` shape,
-  working on plain JSON. Version 1's entry is the identity. Raising the version means: bump
-  `SCORE_VERSION`, add the step, and add a fixture of the old version to the tests.
+  working on plain JSON. Version 1's entry is the identity. A step that throws surfaces as a
+  `NativeFormatError` naming both versions. Raising the version means: bump `SCORE_VERSION`,
+  add the step, and add a fixture of the old version to the tests.
+- **Test fixture**: `src/full-score.fixture.ts` builds a score using every node type for the
+  package's own tests. It is not part of the public API; WP-015's `@reprise/model/testing`
+  builders are the entry point for other packages' tests.
 
 ## Modelling decisions
 

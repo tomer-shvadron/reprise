@@ -8,10 +8,7 @@ export type Migration = (score: unknown) => unknown;
 
 export type MigrationTable = Readonly<Record<number, Migration>>;
 
-/**
- * Keyed by the version each step produces. Version 1 is the first format, so its entry is the
- * identity; it keeps the table total over `1..SCORE_VERSION`, which a test checks.
- */
+/** Keyed by the version each step produces; version 1 is the identity so the table is total. */
 export const MIGRATIONS: MigrationTable = {
   1: (score) => score,
 };

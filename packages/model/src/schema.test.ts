@@ -7,7 +7,7 @@ import { createBeat, createMasterBar, createNote, createTrack } from './factorie
 import { MasterBarSchema, TimeSignatureSchema } from './master-bar';
 import { BendPointSchema } from './note';
 import type { Note } from './note';
-import { buildFullScore } from './full-score-fixture';
+import { buildFullScore } from './full-score.fixture';
 import { ScoreSchema } from './score';
 import { TempoMarkSchema } from './tempo';
 import { ChannelSettingsSchema, TrackSchema } from './track';

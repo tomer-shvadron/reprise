@@ -114,6 +114,7 @@ export function serializeNative(score: Score, app: AppInfo): Uint8Array {
 export function parseNative(bytes: Uint8Array): ParseResult {
   let text: string;
   try {
+    // The decoder drops a leading BOM, so a file some editor added one to still opens.
     text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
     throw new NativeFormatError([], 'The file is not valid UTF-8');

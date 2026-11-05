@@ -10,7 +10,7 @@ import {
   createTrack,
   createVoice,
 } from './factories';
-import { buildFullScore } from './full-score-fixture';
+import { buildFullScore } from './full-score.fixture';
 import { MIGRATIONS, migrate } from './migrations';
 import { NativeFormatError, formatPath, parseNative, serializeNative } from './native';
 import type { AppInfo } from './native';
@@ -118,6 +118,27 @@ function at(value: unknown, ...path: (string | number)[]): unknown {
 const keysOf = (value: unknown): string[] =>
   typeof value === 'object' && value !== null ? Object.keys(value) : [];
 
+/** Paths of every object whose keys are not in sorted order, arrays walked in place. */
+function unsortedObjects(value: unknown, path = ''): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => unsortedObjects(item, `${path}[${String(index)}]`));
+  }
+  if (typeof value !== 'object' || value === null) return [];
+  const keys = Object.keys(value);
+  const here = keys.join() === [...keys].sort().join() ? [] : [path];
+  return [
+    ...here,
+    ...keys.flatMap((key) => unsortedObjects(Reflect.get(value, key), `${path}.${key}`)),
+  ];
+}
+
+// Date.now() because the package's lib has no `performance`; millisecond resolution is enough.
+function timed<T>(run: () => T): [T, number] {
+  const start = Date.now();
+  const result = run();
+  return [result, Date.now() - start];
+}
+
 describe('round trip', () => {
   const scores: [string, () => Score][] = [
     ['the empty score', createEmptyScore],
@@ -132,6 +153,19 @@ describe('round trip', () => {
     expect(parsed).toEqual(score);
     expect(app).toEqual(APP);
     expect(warnings).toEqual([]);
+  });
+});
+
+// Measured at 40 to 50 ms each on the 200-bar, 6-track score; the bounds only catch a
+// quadratic regression.
+describe('a large score', () => {
+  it('serialises and parses in linear time', () => {
+    const score = buildLargeScore();
+    const [bytes, serializeMs] = timed(() => serializeNative(score, APP));
+    const [result, parseMs] = timed(() => parseNative(bytes));
+    expect(result.score).toEqual(score);
+    expect(serializeMs).toBeLessThan(1000);
+    expect(parseMs).toBeLessThan(2000);
   });
 });
 
@@ -162,6 +196,8 @@ describe('serializeNative', () => {
     const written: unknown = JSON.parse(decode(serializeNative(score, APP)));
     expect(keysOf(at(written, 'score'))).toEqual(['id', 'masterBars', 'meta', 'tracks']);
     expect(keysOf(at(written, 'score', 'meta'))).toEqual(Object.keys(score.meta).sort());
+    expect(unsortedObjects(at(written, 'app'), 'app')).toEqual([]);
+    expect(unsortedObjects(at(written, 'score'), 'score')).toEqual([]);
     expect(at(written, 'score', 'meta', 'notices')).toEqual(['one', 'two']);
     expect([0, 1, 2].map((index) => at(written, 'score', 'tracks', index, 'kind'))).toEqual([
       'fretted',
@@ -260,6 +296,24 @@ describe('parseNative failures', () => {
     );
     expect(parseError(encode('{"format": ')).message).toMatch(/^The file is not JSON/);
     expect(parseError(encode('[]')).message).toBe('The file is not a JSON object');
+  });
+
+  it('reads a file with a leading BOM, without the trailing newline, or with CRLF', () => {
+    const score = createEmptyScore();
+    const bytes = serializeNative(score, APP);
+    const text = decode(bytes);
+    expect(parseNative(new Uint8Array([0xef, 0xbb, 0xbf, ...bytes])).score).toEqual(score);
+    expect(parseNative(encode(text.trimEnd())).score).toEqual(score);
+    expect(parseNative(encode(text.replaceAll('\n', '\r\n'))).score).toEqual(score);
+  });
+
+  it('treats null as a value, never as a missing optional field', () => {
+    const text = decode(serializeNative(createEmptyScore(), APP)).replace(
+      /"tempo": \{[^}]*\}/,
+      '"tempo": null',
+    );
+    const error = parseError(encode(text));
+    expect(error.path).toEqual(['score', 'masterBars', 0, 'tempo']);
   });
 
   it('names the path of an invalid score field', () => {
