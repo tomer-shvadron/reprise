@@ -60,9 +60,8 @@ specifics and the places the file is ambiguous.
 
 - **Track kind**: drums when the percussion flag is set or the track plays on MIDI channel 10;
   otherwise pitched when the program is outside the fretted families (GM 24 to 39, 104 to 107),
-  keeping the tuning, capo and fret count; otherwise fretted. The reference states the keyboard
-  rule for GP5; GP3 and GP4 store keyboards on strings the same way, so the rule applies to all
-  three. Pitched notes become `open string + capo + fret`; drum notes keep the fret byte, which is
+  keeping the tuning, capo and fret count; otherwise fretted, the reference's rule for all three versions,
+  which store keyboards on strings the same way. Pitched notes become `open string + capo + fret`; drum notes keep the fret byte, which is
   the GM percussion note.
 - **Strings**: the file lists string 1 (highest) first and the beat's string mask uses bit 6 for
   string 1; `Track.tuning` is reversed to lowest first. A mask bit for a string the track lacks
