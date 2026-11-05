@@ -47,80 +47,91 @@ const ELECTRON_IN_DESKTOP = boundary(
 
 /**
  * `typeOnly` edges admit `import type` alone: desktop needs web's bridge types, never its code.
- * @type {Record<'model' | 'formats' | 'layout' | 'audio' | 'web' | 'desktop', { dir: string; allowed: string[]; typeOnly?: string[] }>}
+ * @typedef {{ name: string; dir: string; allowed: string[]; typeOnly?: string[] }} Workspace
+ * @type {Workspace[]}
  */
-const WORKSPACES = {
-  model: { dir: 'packages/model', allowed: [] },
-  formats: { dir: 'packages/formats', allowed: ['model'] },
-  layout: { dir: 'packages/layout', allowed: ['model'] },
-  audio: { dir: 'packages/audio', allowed: ['model'] },
-  web: { dir: 'apps/web', allowed: ['model', 'formats', 'layout', 'audio'] },
-  desktop: { dir: 'apps/desktop', allowed: [], typeOnly: ['web'] },
-};
+const WORKSPACES = [
+  { name: 'model', dir: 'packages/model', allowed: [] },
+  { name: 'formats', dir: 'packages/formats', allowed: ['model'] },
+  { name: 'layout', dir: 'packages/layout', allowed: ['model'] },
+  { name: 'audio', dir: 'packages/audio', allowed: ['model'] },
+  { name: 'web', dir: 'apps/web', allowed: ['model', 'formats', 'layout', 'audio'] },
+  { name: 'desktop', dir: 'apps/desktop', allowed: [], typeOnly: ['web'] },
+];
 const ENGINES = new Set(['formats', 'layout', 'audio']);
-const UI_LIBRARIES = ['react', 'react-dom', '@radix-ui', 'zustand', 'dexie'];
+const UI_LIBRARIES = ['react', 'react-dom', 'zustand', 'dexie'];
 
-/** @param {keyof typeof WORKSPACES} self @param {string} other */
+/** @param {string} self @param {string} other */
 function edgeMessage(self, other) {
   if (self === 'model') return MODEL_STANDS_ALONE;
   if (ENGINES.has(self) && ENGINES.has(other)) return ENGINE_ISOLATION;
   return DEPENDENCY_EDGES;
 }
 
+/** The package itself or any subpath of it. @param {string} name */
+const packageSpecifier = (name) => `^${name}(?:/|$)`;
+
 /**
- * The typescript-eslint rule is the core one plus `allowTypeImports`, which typeOnly edges need.
- * Flat config replaces a rule's options rather than merging them, so each workspace gets one
- * `no-restricted-imports` entry that carries every boundary that applies to it.
- * @param {keyof typeof WORKSPACES} self
+ * Each boundary is a regex over the import specifier, so one list feeds both rules:
+ * `no-restricted-imports` sees static imports and re-exports, `no-restricted-syntax` the
+ * `import()` calls it does not visit. The typescript-eslint variant of the first is the core
+ * rule plus `allowTypeImports`, which typeOnly edges need; an `import()` is always a value
+ * import, so the second bans those edges too. Flat config replaces a rule's options rather than
+ * merging them, so each workspace gets one entry per rule carrying every boundary that applies.
+ * @param {Workspace} workspace
  * @returns {import('eslint').Linter.Config}
  */
-function workspaceBoundaries(self) {
-  const { dir, allowed, typeOnly = [] } = WORKSPACES[self];
-  /** @type {{ name: string; message: string; allowTypeImports?: boolean }[]} */
-  const paths = [];
-  /** @type {({ group: string[]; message: string } | { regex: string; message: string })[]} */
-  const patterns = [
-    { group: ['@reprise/*/**'], message: ROOT_IMPORTS_ONLY },
-    // A relative path that climbs out of src/ is reaching into another workspace's files.
-    { regex: String.raw`^\.\.?/(?:.*/)?(?:src|packages|apps)(?:/|$)`, message: ROOT_IMPORTS_ONLY },
-  ];
+function workspaceBoundaries({ name: self, dir, allowed, typeOnly = [] }) {
+  /** @type {{ regex: string; message: string; allowTypeImports?: boolean }[]} */
+  const restricted = [{ regex: String.raw`^@reprise/[^/]+/`, message: ROOT_IMPORTS_ONLY }];
 
-  for (const other of Object.keys(WORKSPACES)) {
+  for (const { name: other } of WORKSPACES) {
     if (other !== self && !allowed.includes(other)) {
-      paths.push({
-        name: `@reprise/${other}`,
+      restricted.push({
+        regex: packageSpecifier(`@reprise/${other}`),
         message: edgeMessage(self, other),
         ...(typeOnly.includes(other) && { allowTypeImports: true }),
       });
     }
   }
   if (dir.startsWith('packages/')) {
-    patterns.push({
-      group: UI_LIBRARIES.flatMap((library) =>
-        library.startsWith('@') ? [`${library}/*`] : [library, `${library}/*`],
-      ),
+    restricted.push({
+      regex: [...UI_LIBRARIES.map(packageSpecifier), '^@radix-ui/'].join('|'),
       message: FRAMEWORK_FREE,
     });
   }
   if (self !== 'desktop') {
-    patterns.push({ group: ['electron', 'electron/*'], message: ELECTRON_IN_DESKTOP });
+    restricted.push({ regex: packageSpecifier('electron'), message: ELECTRON_IN_DESKTOP });
   }
 
   return {
     files: [`${dir}/**/*.{ts,tsx}`],
-    rules: { '@typescript-eslint/no-restricted-imports': ['error', { paths, patterns }] },
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', { patterns: restricted }],
+      'no-restricted-syntax': [
+        'error',
+        ...restricted.map(({ regex, message }) => ({
+          selector: `ImportExpression > Literal[value=/${regex.replaceAll('/', String.raw`\/`)}/]`,
+          message,
+        })),
+      ],
+    },
   };
 }
 
 export default defineConfig(
   {
+    // Everything .gitignore lists as build or test output, since any of it can hold .js.
     ignores: [
       '**/node_modules/',
       '**/dist/',
       '**/out/',
       '**/release/',
       '**/.tsbuild/',
+      '**/.vite/',
       '**/coverage/',
+      '**/playwright-report/',
+      '**/test-results/',
       'docs/',
       'local-tabs/',
     ],
@@ -144,19 +155,18 @@ export default defineConfig(
       'unicorn/filename-case': ['error', { case: 'kebabCase' }],
       'import-x/no-self-import': 'error',
       'import-x/no-cycle': 'error',
+      'import-x/no-relative-packages': 'error',
     },
   },
   {
     files: ['*.{js,ts}'],
     languageOptions: { globals: globals.node },
   },
-  ...Object.keys(WORKSPACES).map((name) =>
-    workspaceBoundaries(/** @type {keyof typeof WORKSPACES} */ (name)),
-  ),
+  ...WORKSPACES.map(workspaceBoundaries),
   {
     files: ['apps/web/**/*.{ts,tsx}'],
     extends: [reactRecommended, reactJsxRuntime, reactHooks.configs.flat['recommended-latest']],
     languageOptions: { globals: globals.browser },
-    settings: { react: { version: '19.2' } },
+    settings: { react: { version: 'detect' } },
   },
 );

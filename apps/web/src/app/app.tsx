@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -32,7 +32,7 @@ export function App({ ui, platform, keyboard, onMenuCommand }: AppProps) {
   });
   const theme = useStore(ui, (state) => state.theme);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.dataset['theme'] = theme;
   }, [theme]);
 

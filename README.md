@@ -47,4 +47,4 @@ Not yet available (prints a notice and exits successfully until its work package
 pnpm e2e            # Playwright against the Electron build (WP-055)
 ```
 
-`pnpm install` also downloads the Playwright Chromium build that the `audio` tests run in. The Electron binary is downloaded the first time `pnpm desktop:dev` or `pnpm desktop:build` runs.
+`pnpm install` also downloads the headless Chromium shell (about 100 MB) that the `audio` tests run in. `pnpm exec playwright install chromium` adds the full browser, needed only to watch those tests with `--browser.headless=false`. The Electron binary is downloaded the first time `pnpm desktop:dev` or `pnpm desktop:build` runs.
