@@ -165,14 +165,25 @@ const undone = history.undo(); // { score, change } with the patches it replayed
 ```
 
 - `apply` takes the score the history last returned; a different document needs a new history.
-  A command that changed nothing records no step. `undo` and `redo` refuse while a group is open.
+  A command that changed nothing records no step and returns the score it was given. `undo` and
+  `redo` refuse while a group is open, and a command refused inside a group leaves the group
+  open, so end it in a `finally`.
+- **Immer freezes** the result of every apply, and the input along with it, since the two share
+  every untouched node. Build a score before handing it to a history and never mutate it after;
+  edits go through commands.
+- **Patches** are Immer's, with one rewrite: a splice is recorded as one `add` or `remove`
+  rather than a `replace` of every element after it, so a bar inserted at the front of a long
+  score costs a patch per track, not one per bar, and undo copies only what it restores.
 - **`touchedBars`** are master-bar ids, the bar columns layout re-flows; the rule is in the
   header of `src/history.ts`. In short: a patch under `tracks/t/bars/b` or `masterBars/m` touches
   that column; a track property other than `channel`, `sound`, `program`, `bank` and the raw
   `lyrics` touches every column, as does any change to a whole track or array; `meta` touches
-  none. Ids come from the scores before and after the edit, so removed bars are listed too.
+  none. Ids come from the scores before and after the edit, so a removed bar is listed with the
+  bar that took its place; bars that only shifted are not, since layout re-breaks systems from
+  the first listed bar onward.
 - **Addressing** is by id: beats, notes, voices, master bars and tracks. Commands that create a
-  node take an optional `id` so the caller can select it afterwards.
+  node take an optional `id` so the caller can select it afterwards. Grace notes are reached
+  through their beat (`setBeatEffect`, or a `beatIds` selection), not by note id.
 - **Optional fields** are removed with `null` in the `Changes<T>` objects that `setNoteEffect`,
   `setBeatEffect`, `setBeatDuration`, `setMasterBar` and `setTrackProperties` take.
 - **Refusal**: a command throws `CommandError` (`code`, `command`, and `violations` for

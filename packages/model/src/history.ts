@@ -14,7 +14,14 @@
  *   touches every column.
  * - `meta`, `id` and `version` touch none.
  *
- * Ids are listed in score order, then any that only the score before the edit had.
+ * Ids are listed in score order, then any that only the score before the edit had. A bar that
+ * only shifted is not listed: its content is unchanged, and layout re-breaks systems from the
+ * first listed bar onward.
+ *
+ * Immer writes an array splice as a `replace` of every element after it, so a bar inserted near
+ * the start of a long score would be thousands of patches that each carry a whole bar, and undo
+ * would clone every one. `applyCommand` rewrites such a run as the splice plus a `replace` for
+ * each shifted element the command also edited.
  */
 import { applyPatches, enablePatches, produceWithPatches } from 'immer';
 import type { Patch } from 'immer';
@@ -46,18 +53,86 @@ export interface Applied {
 }
 
 export function applyCommand(score: Score, command: Command): Applied {
-  const [next, patches, inverse] = produceWithPatches(score, (draft) => {
+  const [next, raw, rawInverse] = produceWithPatches(score, (draft) => {
     command.run(draft);
   });
+  if (raw.length === 0) {
+    return { score, change: { command: command.name, patches: [], inverse: [], touchedBars: [] } };
+  }
+  const patches = compactSplices(score, next, raw);
   return {
     score: next,
     change: {
       command: command.name,
       patches,
-      inverse,
+      inverse: compactSplices(next, score, rawInverse),
       touchedBars: touchedBars(score, next, patches),
     },
   };
+}
+
+type Path = readonly (string | number)[];
+
+function arrayKey(patch: Patch): string | undefined {
+  return typeof patch.path.at(-1) === 'number'
+    ? JSON.stringify(patch.path.slice(0, -1))
+    : undefined;
+}
+
+function arrayAt(score: Score, path: Path): readonly unknown[] | undefined {
+  let node: unknown = score;
+  for (const key of path) {
+    if (typeof node !== 'object' || node === null) return undefined;
+    node = Reflect.get(node, key);
+  }
+  return Array.isArray(node) ? node : undefined;
+}
+
+/** Rewrites each run of patches on one array as a splice when `from` and `to` differ by one element. */
+function compactSplices(from: Score, to: Score, patches: Patch[]): Patch[] {
+  const counts = new Map<string, number>();
+  for (const patch of patches) {
+    const key = arrayKey(patch);
+    if (key !== undefined) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const result: Patch[] = [];
+  for (let start = 0; start < patches.length;) {
+    const first = patches[start];
+    if (!first) break;
+    const key = arrayKey(first);
+    let end = start + 1;
+    for (
+      let next = patches[end];
+      key !== undefined && next && arrayKey(next) === key;
+      next = patches[++end]
+    );
+    const run = patches.slice(start, end);
+    const splice =
+      key !== undefined && counts.get(key) === run.length
+        ? spliceOf(from, to, first.path.slice(0, -1))
+        : undefined;
+    result.push(...(splice && splice.length < run.length ? splice : run));
+    start = end;
+  }
+  return result;
+}
+
+function spliceOf(from: Score, to: Score, path: Path): Patch[] | undefined {
+  const before = arrayAt(from, path);
+  const after = arrayAt(to, path);
+  if (!before || !after || Math.abs(after.length - before.length) !== 1) return undefined;
+  const inserted = after.length > before.length;
+  const shorter = inserted ? before : after;
+  let index = 0;
+  while (index < shorter.length && before[index] === after[index]) index += 1;
+  const patches: Patch[] = inserted
+    ? [{ op: 'add', path: [...path, index], value: after[index] }]
+    : [{ op: 'remove', path: [...path, index] }];
+  for (let j = inserted ? index + 1 : index; j < after.length; j++) {
+    const was = inserted ? before[j - 1] : before[j + 1];
+    if (after[j] !== was) patches.push({ op: 'replace', path: [...path, j], value: after[j] });
+  }
+  return patches;
 }
 
 const LAYOUT_NEUTRAL_TRACK_KEYS = new Set<string | number>([

@@ -51,9 +51,7 @@ describe('insertBar', () => {
     ]);
     expect(masterBar(after, 2).timeSignature).toEqual({ numerator: 3, denominator: 4 });
     for (const track of after.tracks) expect(track.bars).toHaveLength(5);
-    expect(change.touchedBars).toEqual(
-      expect.arrayContaining([id, masterBar(score, 2).id, masterBar(score, 3).id]),
-    );
+    expect(change.touchedBars).toEqual([id, masterBar(score, 2).id]);
   });
 
   it('shifts lyric lines that start at or after it', () => {

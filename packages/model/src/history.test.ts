@@ -55,11 +55,77 @@ describe('touchedBars', () => {
     expect(change.touchedBars).toEqual(score.masterBars.map((bar) => bar.id));
   });
 
-  it('names a removed bar and the bars that moved up, in score order', () => {
+  it('names a removed bar and the bar that took its place, not the bars that only shifted', () => {
     const score = buildScore();
-    const [, second, third, fourth] = score.masterBars.map((bar) => bar.id);
+    const [, second, third] = score.masterBars.map((bar) => bar.id);
     const { change } = applyCommand(score, removeBar({ masterBarId: second ?? '' }));
-    expect(change.touchedBars).toEqual([third, fourth, second]);
+    expect(change.touchedBars).toEqual([third, second]);
+  });
+});
+
+describe('splice compaction', () => {
+  const ops = (patches: readonly { op: string; path: (string | number)[] }[]): string[] =>
+    patches.map((patch) => `${patch.op} ${patch.path.join('/')}`).sort();
+
+  it('records a bar insert as one add per array, and undo keeps the other bars by identity', () => {
+    const score = buildScore();
+    const history = createHistory();
+    const { score: after, change } = history.apply(score, insertBar({ index: 0 }));
+    expect(ops(change.patches)).toEqual([
+      'add masterBars/0',
+      'add tracks/0/bars/0',
+      'add tracks/1/bars/0',
+      'replace masterBars/1',
+      'replace tracks/0/lyrics/0/startBar',
+    ]);
+    // Applied to the longer score, so the old first bar gets its tempo back at index 0.
+    expect(ops(change.inverse)).toEqual([
+      'remove masterBars/0',
+      'remove tracks/0/bars/0',
+      'remove tracks/1/bars/0',
+      'replace masterBars/0',
+      'replace tracks/0/lyrics/0/startBar',
+    ]);
+    expect(applyPatches(score, change.patches)).toEqual(after);
+    expect(applyPatches(after, change.inverse)).toEqual(score);
+    const undone = history.undo()?.score;
+    expect(undone?.tracks[1]?.bars[3]).toBe(score.tracks[1]?.bars[3]);
+    expect(history.redo()?.score).toEqual(after);
+  });
+
+  it('keeps a replace for a shifted bar the command also edited', () => {
+    const score = buildScore();
+    const { score: after, change } = applyCommand(
+      score,
+      removeBar({ masterBarId: score.masterBars[0]?.id ?? '' }),
+    );
+    // The tie into the old bar 1 is released, so that bar is replaced where it lands.
+    expect(ops(change.patches)).toEqual([
+      'remove masterBars/0',
+      'remove tracks/0/bars/0',
+      'remove tracks/1/bars/0',
+      'replace masterBars/0',
+      'replace tracks/0/bars/0',
+      'replace tracks/0/lyrics/0/startBar',
+    ]);
+    expect(applyPatches(score, change.patches)).toEqual(after);
+    expect(applyPatches(after, change.inverse)).toEqual(score);
+  });
+
+  it('leaves a reorder as Immer wrote it', () => {
+    const score = buildScore();
+    const { change } = applyCommand(score, moveTrack({ trackId: score.tracks[1]?.id ?? '' }, 0));
+    expect(ops(change.patches)).toEqual(['replace tracks/0', 'replace tracks/1']);
+  });
+
+  it('returns the same score when a command changed nothing', () => {
+    const score = buildScore();
+    const { score: same, change } = applyCommand(
+      score,
+      moveTrack({ trackId: score.tracks[0]?.id ?? '' }, 0),
+    );
+    expect(same).toBe(score);
+    expect(change).toEqual({ command: 'moveTrack', patches: [], inverse: [], touchedBars: [] });
   });
 });
 
