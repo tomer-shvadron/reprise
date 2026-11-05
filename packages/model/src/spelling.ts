@@ -83,19 +83,22 @@ function candidates(midi: number): Omit<Spelling, 'accidental'>[] {
   return ALTERS.flatMap((alter) => spellingWith(midi, alter) ?? []);
 }
 
-/** A minor key's seventh degree, raised a semitone above the key signature. */
-function leadingTone(key: KeySignature): { letter: Letter; alter: number } | undefined {
-  if (!key.minor) return undefined;
-  // Each fifth moves the major tonic four letters; the relative minor's seventh is four above that.
-  const letter = letterAt(key.fifths * 4 + 4);
-  return { letter, alter: keyAlter(key, letter) + 1 };
+/** A minor key's seventh and sixth raised a semitone, for the harmonic and melodic minor. */
+function raisedDegrees(key: KeySignature): { letter: Letter; alter: number }[] {
+  if (!key.minor) return [];
+  // Each fifth moves the major tonic four letters; the relative minor's seventh and sixth sit four
+  // and three above that.
+  return [4, 3].map((offset) => {
+    const letter = letterAt(key.fifths * 4 + offset);
+    return { letter, alter: keyAlter(key, letter) + 1 };
+  });
 }
 
 /**
  * Spells a MIDI note for standard notation. An `explicit` accidental (a note's stored
  * `Note.accidental`) wins when it can spell the pitch. Otherwise the key's own notes come
- * first, then a minor key's raised leading tone, then the natural letter, then a sharp in sharp
- * keys and C major or a flat in flat keys.
+ * first, then a minor key's raised seventh and sixth, then the natural letter, then a sharp in
+ * sharp keys and C major or a flat in flat keys.
  */
 export function spell(midi: number, key: KeySignature, explicit?: Accidental): Spelling {
   if (explicit !== undefined) {
@@ -105,9 +108,9 @@ export function spell(midi: number, key: KeySignature, explicit?: Accidental): S
   const options = candidates(midi);
   const diatonic = options.find(({ letter, alter }) => alter === keyAlter(key, letter));
   if (diatonic !== undefined) return diatonic;
-  const leading = leadingTone(key);
-  const raised = options.find(
-    ({ letter, alter }) => letter === leading?.letter && alter === leading.alter,
+  const degrees = raisedDegrees(key);
+  const raised = options.find(({ letter, alter }) =>
+    degrees.some((degree) => degree.letter === letter && degree.alter === alter),
   );
   if (raised !== undefined) return withAccidental(raised, key);
   const sharpFirst = key.fifths >= 0;

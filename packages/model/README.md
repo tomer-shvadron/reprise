@@ -163,8 +163,8 @@ capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro write
 - **`spell(midi, key, accidental?)`** returns `{ letter, octave, alter, accidental? }`.
   `octave` is scientific (C4 = 60) and belongs to the letter, so B#3 is MIDI 60. Preference:
   a stored accidental that can spell the pitch, then the key's own notes, then a minor key's
-  raised leading tone (F## in G# minor), then the natural letter, then a sharp in sharp keys
-  and C major or a flat in flat keys. The returned `accidental` is what to print against the
+  raised seventh and sixth (F## and E# in G# minor), then the natural letter, then a sharp in
+  sharp keys and C major or a flat in flat keys. The returned `accidental` is what to print against the
   key signature; cancelling an accidental earlier in the bar is the layout's job.
   `spellNote(track, note, key)` does the same from a note.
 - **`Note.accidental` stores the alteration of the spelling** (`flat` = a lowered letter),

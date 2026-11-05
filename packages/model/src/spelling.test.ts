@@ -47,9 +47,9 @@ describe('spell', () => {
     ['B', 2, 'C! C# D D#! E F! F# G G#! A A#! B'],
     ['F#', 3, 'C! C# D D#! E E#! F# G! G# A A#! B'],
     ['C#', 4, 'B#! C# D! D# E F! F# G! G# A A#! B'],
-    ['G#', 5, 'C! C# D! D# E F! F# F##! G# A! A# B'],
-    ['D#', 6, 'C! C# C##! D# E! E# F# G! G# A! A# B'],
-    ['A#', 7, 'B# C# D! D# E! E# F# G! G# G##! A# B!'],
+    ['G#', 5, 'C! C# D! D# E E#! F# F##! G# A! A# B'],
+    ['D#', 6, 'B#! C# C##! D# E! E# F# G! G# A! A# B'],
+    ['A#', 7, 'B# C# D! D# E! E# F# F##! G# G##! A# B!'],
   ];
 
   it.each([
@@ -77,6 +77,18 @@ describe('spell', () => {
       }
     },
   );
+
+  it.each<[string, number, number, string]>([
+    ['A minor', 0, 66, 'F#!'],
+    ['A minor', 0, 68, 'G#!'],
+    ['D minor', -1, 71, 'B!'],
+    ['C minor', -3, 69, 'A!'],
+    ['G# minor', 5, 65, 'E#!'],
+    ['D# minor', 6, 60, 'B#!'],
+    ['A# minor', 7, 67, 'F##!'],
+  ])('raises the sixth and seventh of %s: MIDI %i is %s', (_name, fifths, midi, expected) => {
+    expect(label(spell(midi, key(fifths, true)))).toBe(expected);
+  });
 
   it('takes the octave from the letter', () => {
     expect(spell(60, key(0))).toEqual({ letter: 'C', octave: 4, alter: 0 });
