@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "outDir": ".tsbuild/app",
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/model" },
+    { "path": "../../packages/formats" },
+    { "path": "../../packages/layout" },
+    { "path": "../../packages/audio" }
+  ]
+}
