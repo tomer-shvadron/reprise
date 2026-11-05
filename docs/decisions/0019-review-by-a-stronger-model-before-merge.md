@@ -37,15 +37,15 @@ Taken by the owner on 2026-11-05.
 - **The lead merges**, in dependency order, once CI is green, using **auto-merge behind the
   strict up-to-date rule** on `main`: a PR behind `main` is brought up to date first.
 - **Stacked branches are brought up to date by merging `main` in, never by rewriting
-  history.** A base branch is not deleted while a PR is stacked on it; the stacked PR is
-  retargeted to `main` and `main` is merged into it, so the review's commit references and
+  history.** Before a base branch is squash-merged, which deletes it, every PR stacked on it is
+  retargeted to `main` and then `main` is merged into it, so the review's commit references and
   the PR itself survive.
 
 ## Alternatives considered
 
 - **The owner reviews every PR**, the earlier default of ADR-0014 and ADR-0016. It does not
-  scale to the rate at which agents produce PRs, and the owner's review is a skim where the
-  reviewer's is a verification. Rejected; the owner reads the review's findings and rules on
+  scale to the rate at which agents produce PRs, and a human reading eight agent-written PRs in a day cannot re-run every check and walk every
+  reference implementation, which the reviewer agent does. Rejected; the owner reads the review's findings and rules on
   the items marked for the lead, which is the part only the owner can do.
 - **The implementing agent reviews its own PR.** It shares its own blind spots and has
   already decided the questions the review should reopen. Rejected.
