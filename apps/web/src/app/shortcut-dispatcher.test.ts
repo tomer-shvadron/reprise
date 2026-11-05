@@ -65,6 +65,28 @@ describe('shortcut dispatcher', () => {
     expect(open).toHaveBeenCalledOnce();
   });
 
+  it('matches the printed key on a Latin layout that is not QWERTY', () => {
+    const { open } = setup('mac');
+
+    // Dvorak: the key printed O sits on physical KeyS, and physical KeyO prints R.
+    fireEvent.keyDown(window, { key: 'o', code: 'KeyS', metaKey: true });
+    expect(open).toHaveBeenCalledOnce();
+
+    fireEvent.keyDown(window, { key: 'r', code: 'KeyO', metaKey: true });
+    expect(open).toHaveBeenCalledOnce();
+  });
+
+  it('falls back to the physical key when Option changes the character on macOS', () => {
+    const registry = new CommandRegistry();
+    const run = vi.fn();
+    registry.register({ id: 'view.zoom', title: 'Zoom', shortcut: { key: 'l', alt: true }, run });
+    uninstall = installShortcutDispatcher(window, registry, 'mac');
+
+    fireEvent.keyDown(window, { key: '¬', code: 'KeyL', altKey: true });
+
+    expect(run).toHaveBeenCalledOnce();
+  });
+
   it('does nothing for a keydown that matches no shortcut', () => {
     const { open, toggle } = setup('mac');
 
