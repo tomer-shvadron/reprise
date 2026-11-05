@@ -45,6 +45,7 @@ const ENTRIES: readonly Entry[] = [
   [57, 'Crash Cymbal 2', 11, 'cross'],
   [58, 'Vibraslap', 3, 'triangle'],
   [59, 'Ride Cymbal 2', 7, 'cross'],
+  // 60 to 87, hand percussion: positions and heads are placeholders for the drum-staff package.
   [60, 'Hi Bongo', 6, 'triangle'],
   [61, 'Low Bongo', 4, 'triangle'],
   [62, 'Mute Hi Conga', 6, 'cross'],

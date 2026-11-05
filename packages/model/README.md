@@ -179,7 +179,8 @@ capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro write
   name, default staff position (same numbering) and note head (`normal`, `cross`, `diamond`,
   `triangle`). Positions follow the common drum-kit layout (kick in the bottom space, a second
   kick on the bottom line, snare in the third space, hi-hats above the staff, toms descending);
-  the hand-percussion positions are defaults only. Cymbals are crosses and bells diamonds; a
+  the hand-percussion rows (60 to 87) are placeholders for the drum-staff work package to
+  revisit. Cymbals are crosses and bells diamonds; a
   mute and open pair (hi-hat, triangle, cuica, surdo) shares its position and differs by head
   or articulation, cross for mute.
 
