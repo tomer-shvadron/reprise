@@ -196,8 +196,8 @@ describe('transposeSelection', () => {
     expect(noteOf(applied.score, 0, 2, 0)).toMatchObject({ fret: 19, accidental: 'sharp' });
     expect(noteOf(applied.score, 0, 2, 0)).not.toHaveProperty('trill');
     expect(applied.warnings.map(({ code, noteId }) => ({ code, noteId }))).toEqual([
-      { code: 'trillDropped', noteId: note.id },
-      { code: 'naturalHarmonicMoved', noteId: note.id },
+      { code: 'trill-dropped', noteId: note.id },
+      { code: 'natural-harmonic-moved', noteId: note.id },
     ]);
   });
 

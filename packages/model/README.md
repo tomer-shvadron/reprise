@@ -44,6 +44,14 @@ validateScore(score); // cross-node invariants: [] when the score is sound
 | `alternate-ending-order`          | Volta numbers on a bar are unique and ascending.                                                                                                         |
 | `alternate-ending-outside-repeat` | Every run of consecutive volta bars contains a repeat end.                                                                                               |
 
+## Diagnostics
+
+One convention, ruled at the WP-015 freeze: every diagnostic identifier is kebab-case, an
+invariant violation keys its kind as `rule` (`Violation`), and a warning or an error keys it as
+`code` (`ParseWarning`, `PlaybackWarning`, `CommandWarning`, `CommandError`,
+`NativeFormatError`). Model enum values (`slight`, `doubleFlat`, `belowOpenString`) stay
+camelCase: they are data a file carries, not something reported about it.
+
 ## Native format (`.reprise`)
 
 ```ts
@@ -71,11 +79,12 @@ const { score: read, app, warnings } = parseNative(bytes); // throws NativeForma
   a whole number fails; a version above `SCORE_VERSION` fails with "newer than this app",
   naming both versions. The `score` then runs through `MIGRATIONS` from the file's version to the current
   one, and the whole envelope is checked against `NativeDocumentSchema`. Any failure is a
-  `NativeFormatError` whose `path` (and message prefix, `score.tracks[0].bars[2].id: ...`) names
-  the offending field.
+  `NativeFormatError` whose `code` says what kind (`invalid-utf8`, `invalid-json`, `wrong-format`,
+  `invalid-version`, `newer-version`, `migration-failed`, `invalid-document`) and whose `path` (and
+  message prefix, `score.tracks[0].bars[2].id: ...`) names the offending field.
 - **Warnings, never failures**, for what the schema cannot see: unknown fields anywhere in the
-  document are dropped and reported (`rule: 'unknown-field'`), and the score's invariant
-  violations (`validateScore`) are reported under their rule. Every `ParseWarning` path starts
+  document are dropped and reported (`code: 'unknown-field'`), and the score's invariant
+  violations (`validateScore`) are reported with their rule as the `code`. Every `ParseWarning` path starts
   at the document root, so a score violation's path begins with `score`.
 - **Migrations**: `MIGRATIONS[n]` turns a version-`n - 1` `score` into its version-`n` shape,
   working on plain JSON. Version 1's entry is the identity. A step that throws surfaces as a
@@ -248,7 +257,7 @@ const undone = history.undo(); // { score, change } with the patches it replayed
   `setBeatEffect`, `setBeatDuration`, `setMasterBar` and `setTrackProperties` take.
 - **Warnings**: `Command.run(draft, warn)` may report what an applied edit changed beyond what it
   was asked, and `Applied.warnings` carries them as `{ code, noteId, message }`. Today only
-  `transposeSelection` warns, with `transpose`'s `trillDropped` and `naturalHarmonicMoved`.
+  `transposeSelection` warns, with `transpose`'s `trill-dropped` and `natural-harmonic-moved`.
   `undo` and `redo` replay patches and report none.
 - **Refusal**: a command throws `CommandError` (`code`, `command`, and `violations` for
   `invariant`) instead of producing a score that breaks the schema or adds a `validateScore`
@@ -306,9 +315,9 @@ capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro write
   the fret numbers a Guitar Pro file holds whatever the capo) or `outOfMidiRange` (pitched
   tracks, 0 to 127). `alternatives` lists the other strings that can play the pitch, for a
   caller that knows which strings in the beat are free. A stored `accidental` survives only
-  octave shifts; drum notes come back unchanged. `warnings` holds `trillDropped` when the
+  octave shifts; drum notes come back unchanged. `warnings` holds `trill-dropped` when the
   trill's alternate fret, which moves with the note, falls off and the trill is removed, and
-  `naturalHarmonicMoved` when the moved note carries a natural harmonic: its `value` is a node
+  `natural-harmonic-moved` when the moved note carries a natural harmonic: its `value` is a node
   on the string and is left for the editor to re-derive, while an artificial harmonic's `value`
   is an offset and travels with the note.
 - **`STANDARD_TUNINGS`** names fourteen tunings (guitar, 7-string, 4- and 5-string bass,

@@ -161,7 +161,7 @@ describe('transpose', () => {
     expect(transpose(guitar(), natural, 2)).toEqual({
       ok: true,
       note: { ...natural, fret: 14 },
-      warnings: ['naturalHarmonicMoved'],
+      warnings: ['natural-harmonic-moved'],
     });
     expect(transpose(guitar(), natural, 0)).toMatchObject({ ok: true, warnings: [] });
     const artificial = createNote({
@@ -187,7 +187,7 @@ describe('transpose', () => {
     const up = transpose(guitar(), note, 2);
     expect(up).toMatchObject({ ok: true, warnings: [], note: { fret: 22, trill: { fret: 24 } } });
     const further = transpose(guitar(), note, 3);
-    expect(further).toMatchObject({ ok: true, warnings: ['trillDropped'], note: { fret: 23 } });
+    expect(further).toMatchObject({ ok: true, warnings: ['trill-dropped'], note: { fret: 23 } });
     expect(moved(further)).not.toHaveProperty('trill');
   });
 

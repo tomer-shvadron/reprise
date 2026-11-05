@@ -195,10 +195,11 @@ export {
 export type {
   AppInfo,
   NativeDocument,
+  NativeFormatErrorCode,
   NativePath,
   ParseResult,
   ParseWarning,
-  ParseWarningRule,
+  ParseWarningCode,
 } from './native';
 
 export { HistoryError, applyCommand, createHistory, touchedBars } from './history';

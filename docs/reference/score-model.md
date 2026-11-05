@@ -105,7 +105,7 @@ Every edit is a `Command` (`{ name, run(draft, warn) }`) that mutates an Immer d
 - **`touchedBars`** are master-bar ids: the columns layout re-flows. A patch inside `tracks/t/bars/b` or `masterBars/m` touches that column; a track property layout draws touches every column (`channel`, `sound`, `program`, `bank` and the raw `lyrics` touch none); `meta` touches none. A removed bar is listed with the bar that took its place; bars that only shifted are not.
 - **Refusal.** A command that would break the schema or add a `validateScore` violation throws `CommandError` (`code`, `command`, and `violations` for `invariant`) and nothing is applied. Violations an imported file already carried do not block unrelated edits.
 - **Repair.** A tie whose origin an edit removes or moves to another pitch is released rather than refused.
-- **Warnings** (`Applied.warnings`, each `{ code, noteId, message }`) report what an applied edit changed beyond what was asked: today `trillDropped` and `naturalHarmonicMoved` from `transposeSelection`. Undo and redo report none.
+- **Warnings** (`Applied.warnings`, each `{ code, noteId, message }`) report what an applied edit changed beyond what was asked: today `trill-dropped` and `natural-harmonic-moved` from `transposeSelection`. Undo and redo report none.
 - **Addressing** is by id. Commands that create a node take an optional `id`. Grace notes are reached through their beat. A `Selection` is `{ beatIds?, noteIds? }`: the notes picked, plus every note (grace notes included) of the beats picked.
 
 | Command                                     | What it does                                                                                                                                                                  |
@@ -151,18 +151,22 @@ The schemas (`ScoreSchema` and one per node) check shape and per-field ranges. `
 | `alternate-ending-order`          | Volta numbers on a bar are unique and ascending.                                                                             |
 | `alternate-ending-outside-repeat` | Every run of consecutive volta bars contains a repeat end.                                                                   |
 
+## Diagnostics
+
+Every diagnostic identifier is kebab-case. An invariant violation keys its kind as `rule` (`Violation`); a warning or an error keys it as `code` (`ParseWarning`, `PlaybackWarning`, `CommandWarning`, `CommandError`, `NativeFormatError`). Model enum values (`slight`, `doubleFlat`, `belowOpenString`) are camelCase: they are data a file carries, not something reported about it.
+
 ## Native format
 
 A `.reprise` file is UTF-8 JSON: `{ format: 'reprise', version, app: { name, version }, score }`, in that key order.
 
 - `serializeNative(score, app)` returns `Uint8Array` bytes. Every object inside `app` and `score` is written with sorted keys and two-space indentation, so the bytes depend only on content and diffs stay readable. No compression, deliberately. Writing validates against `NativeDocumentSchema` and throws `NativeFormatError` (with a `path`) rather than writing a file that cannot be read; it does not run `validateScore`.
-- `parseNative(bytes)` returns `{ score, app, warnings }` or throws `NativeFormatError`. A version above `SCORE_VERSION` fails with "newer than this app". Unknown fields are dropped and reported (`unknown-field`), and invariant violations are reported as warnings under their rule, with paths from the document root (`score.tracks[0]…`).
+- `parseNative(bytes)` returns `{ score, app, warnings }` or throws `NativeFormatError` (`code` and `path`): `invalid-utf8`, `invalid-json`, `wrong-format`, `invalid-version`, `newer-version` (above `SCORE_VERSION`: "newer than this app"), `migration-failed` or `invalid-document`. Unknown fields are dropped and reported (`code: 'unknown-field'`), and invariant violations are reported as warnings with their rule as the `code`, with paths from the document root (`score.tracks[0]…`).
 - **The envelope's `version` is the only schema version.** `MIGRATIONS[n]` turns a version-`n − 1` score into version `n`, on plain JSON; version 1 is the identity. `Score` itself carries no version.
 
 ## Pitch and spelling
 
 - `midiNote(track, note)` is the sounding MIDI note: `tuning[tuning.length − string] + capo + fret` on fretted tracks, `note.fret` on drum and pitched tracks. `openStringPitch(track, string)` is the open string without the capo.
-- `transpose(track, note, semitones)` moves a note on its own string and returns `{ ok: true, note, warnings }` or `{ ok: false, reason, midi, alternatives }` (`belowOpenString`, `aboveLastFret`, `outOfMidiRange`; `alternatives` are other strings that can play the pitch). Drum notes come back unchanged. The trill's alternate fret moves too and is dropped with `trillDropped` if it falls off; a natural harmonic warns `naturalHarmonicMoved`.
+- `transpose(track, note, semitones)` moves a note on its own string and returns `{ ok: true, note, warnings }` or `{ ok: false, reason, midi, alternatives }` (`belowOpenString`, `aboveLastFret`, `outOfMidiRange`; `alternatives` are other strings that can play the pitch). Drum notes come back unchanged. The trill's alternate fret moves too and is dropped with `trill-dropped` if it falls off; a natural harmonic warns `natural-harmonic-moved`.
 - `STANDARD_TUNINGS` names fourteen tunings (guitar, 7-string, 4- and 5-string bass, ukulele) and `findTuningName(tuning)` matches one exactly.
 - **Written octave.** `Track.display.octaveShift` is written minus sounding pitch in octaves: 1 on fretted tracks, since guitar and bass are written an octave above where they sound, 0 on drum and pitched tracks.
 - **Spelling.** `spell(midi, key, accidental?)` returns `{ letter, octave, alter, accidental? }`; `spellNote(track, note, key)` does it from a note. `octave` is scientific (C4 = 60) and belongs to the letter, so B#3 is MIDI 60. The returned `accidental` is what to print against the key signature; cancelling an accidental earlier in the bar is layout's job. The policy follows Guitar Pro: a stored accidental that can spell the pitch wins, then the key's own notes, then a minor key's raised sixth and seventh, then the natural letter, then a **sharp in C major and the sharp keys** or a flat in the flat keys.

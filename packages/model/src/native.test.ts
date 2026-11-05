@@ -163,6 +163,7 @@ describe('serializeNative', () => {
     }
     expect(error).toBeInstanceOf(NativeFormatError);
     if (error instanceof NativeFormatError) {
+      expect(error.code).toBe('invalid-document');
       expect(error.path).toEqual(['score', 'masterBars', 0, 'tempo', 'bpm']);
     }
     expect(() => serializeNative(score, { name: '', version: '1' })).toThrow(NativeFormatError);
@@ -189,6 +190,7 @@ describe('serializeNative', () => {
 describe('parseNative failures', () => {
   it('rejects a version-0 document, naming the version', () => {
     const error = parseError(bytesOf({ ...envelope(createEmptyScore()), version: 0 }));
+    expect(error.code).toBe('invalid-version');
     expect(error.path).toEqual(['version']);
     expect(error.message).toBe('version: Version 0 does not exist; .reprise versions start at 1');
   });
@@ -197,6 +199,7 @@ describe('parseNative failures', () => {
     const error = parseError(
       bytesOf({ ...envelope(createEmptyScore()), version: SCORE_VERSION + 1 }),
     );
+    expect(error.code).toBe('newer-version');
     expect(error.path).toEqual(['version']);
     expect(error.message).toContain('newer than this app');
     expect(error.message).toContain(`version ${String(SCORE_VERSION + 1)}`);
@@ -207,21 +210,38 @@ describe('parseNative failures', () => {
     [
       'a missing version',
       { version: undefined },
+      'invalid-version',
       'version: Expected a whole number, found nothing',
     ],
-    ['a fractional version', { version: 1.5 }, 'version: Expected a whole number, found 1.5'],
-    ['a string version', { version: '1' }, 'version: Expected a whole number, found "1"'],
-    ['another format', { format: 'gp' }, 'format: Expected "reprise", found "gp"'],
-    ['an object format', { format: {} }, 'format: Expected "reprise", found an object'],
+    [
+      'a fractional version',
+      { version: 1.5 },
+      'invalid-version',
+      'version: Expected a whole number, found 1.5',
+    ],
+    [
+      'a string version',
+      { version: '1' },
+      'invalid-version',
+      'version: Expected a whole number, found "1"',
+    ],
+    ['another format', { format: 'gp' }, 'wrong-format', 'format: Expected "reprise", found "gp"'],
+    [
+      'an object format',
+      { format: {} },
+      'wrong-format',
+      'format: Expected "reprise", found an object',
+    ],
     [
       'a long format',
       { format: 'x'.repeat(100) },
+      'wrong-format',
       `format: Expected "reprise", found "${'x'.repeat(40)}…"`,
     ],
-  ])('rejects %s', (_, override, message) => {
-    expect(parseError(bytesOf({ ...envelope(createEmptyScore()), ...override })).message).toBe(
-      message,
-    );
+  ] as const)('rejects %s', (_, override, code, message) => {
+    const error = parseError(bytesOf({ ...envelope(createEmptyScore()), ...override }));
+    expect(error.code).toBe(code);
+    expect(error.message).toBe(message);
   });
 
   it('names a number JSON cannot hold rather than the null it parses to', () => {
@@ -234,12 +254,17 @@ describe('parseNative failures', () => {
     );
   });
 
-  it('rejects bytes that are not UTF-8, JSON, or an object', () => {
-    expect(parseError(new Uint8Array([0x7b, 0xff, 0x7d])).message).toBe(
-      'The file is not valid UTF-8',
-    );
-    expect(parseError(encode('{"format": ')).message).toMatch(/^The file is not JSON/);
-    expect(parseError(encode('[]')).message).toBe('The file is not a JSON object');
+  it('rejects bytes that are not UTF-8, JSON, or an object, each under its code', () => {
+    const utf8 = parseError(new Uint8Array([0x7b, 0xff, 0x7d]));
+    expect(utf8).toMatchObject({ code: 'invalid-utf8', message: 'The file is not valid UTF-8' });
+    const json = parseError(encode('{"format": '));
+    expect(json.code).toBe('invalid-json');
+    expect(json.message).toMatch(/^The file is not JSON/);
+    const array = parseError(encode('[]'));
+    expect(array).toMatchObject({
+      code: 'invalid-document',
+      message: 'The file is not a JSON object',
+    });
   });
 
   it('reads a file with a leading BOM, without the trailing newline, or with CRLF', () => {
@@ -266,6 +291,7 @@ describe('parseNative failures', () => {
     if (!beat) throw new Error('the fixture has no first beat');
     Reflect.set(beat, 'duration', 3);
     const error = parseError(bytesOf(envelope(score)));
+    expect(error.code).toBe('invalid-document');
     expect(error.path).toEqual([
       'score',
       'tracks',
@@ -316,7 +342,7 @@ describe('parseNative warnings', () => {
     expect(result.score).toEqual(score);
     expect(result.warnings).toEqual([
       {
-        rule: 'unknown-field',
+        code: 'unknown-field',
         path: ['thumbnail'],
         message: 'Unknown field "thumbnail" was dropped',
       },
@@ -356,7 +382,11 @@ describe('parseNative warnings', () => {
     const result = parseNative(serializeNative(score, APP));
     expect(result.score).toEqual(score);
     expect(result.warnings).toEqual(
-      violations.map(({ rule, path, message }) => ({ rule, path: ['score', ...path], message })),
+      violations.map(({ rule, path, message }) => ({
+        code: rule,
+        path: ['score', ...path],
+        message,
+      })),
     );
   });
 });
@@ -403,6 +433,7 @@ describe('migrations', () => {
     expect(error).toBeInstanceOf(Error);
     if (error instanceof Error) {
       expect(error.name).toBe('NativeFormatError');
+      expect(error).toMatchObject({ code: 'migration-failed' });
       expect(error.message).toBe(
         `score: Migrating from version ${String(SCORE_VERSION)} to ${String(SCORE_VERSION)} failed: bars is not iterable`,
       );

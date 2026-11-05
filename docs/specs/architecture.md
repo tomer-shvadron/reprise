@@ -76,6 +76,8 @@ file bytes --formats.read--> Score --------+--> layout.layout(score, options) --
 
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
 
+**Diagnostics** carry kebab-case identifiers. An invariant violation keys its kind as `rule` (`Violation`); a warning or an error keys it as `code` (`ParseWarning`, `PlaybackWarning`, `CommandWarning`, `CommandError`, `NativeFormatError`). Model enum values (`slight`, `doubleFlat`, `belowOpenString`) stay camelCase: they are data, not diagnostics.
+
 ### Score model (`@reprise/model`)
 
 Zod schemas with the TypeScript types derived from them (`z.infer`), so the two cannot drift; every type below has a `…Schema` beside it (`ScoreSchema`, `NoteSchema`, …). Optional fields are exact: absent means "not set", and an explicit `undefined` is rejected. Ranges are the schemas' (`1..32` is an inclusive integer range).
@@ -250,7 +252,7 @@ Repeats, voltas and jumps expand by the rules in `../reference/score-model.md` (
 interface Command { name: string; run(draft: Score, warn: (warning: CommandWarning) => void): void }   // mutates an Immer draft
 interface Change  { command: string; patches: Patch[]; inverse: Patch[]; touchedBars: Id[] }        // touchedBars: master-bar ids layout re-flows
 interface Applied { score: Score; change: Change; warnings: CommandWarning[] }
-interface CommandWarning { code: 'trillDropped' | 'naturalHarmonicMoved'; noteId: Id; message: string }
+interface CommandWarning { code: 'trill-dropped' | 'natural-harmonic-moved'; noteId: Id; message: string }
 function applyCommand(score: Score, command: Command): Applied;
 function touchedBars(before: Score, after: Score, patches: readonly Patch[]): Id[];
 
@@ -305,8 +307,13 @@ const SCORE_VERSION = 1;                               // the only schema versio
 
 function serializeNative(score: Score, app: AppInfo): Uint8Array;   // validates the envelope first; throws NativeFormatError
 function parseNative(bytes: Uint8Array): { score: Score; app: AppInfo; warnings: ParseWarning[] };   // throws NativeFormatError
-interface ParseWarning { rule: 'unknown-field' | ViolationRule; path: (string | number)[]; message: string }   // path from the document root
-class NativeFormatError extends Error { path: (string | number)[] }   // "newer than this app" above SCORE_VERSION
+interface ParseWarning { code: ParseWarningCode; path: (string | number)[]; message: string }   // path from the document root
+type ParseWarningCode = 'unknown-field' | ViolationRule;
+class NativeFormatError extends Error { code: NativeFormatErrorCode; path: (string | number)[] }
+type NativeFormatErrorCode =
+  | 'invalid-utf8' | 'invalid-json' | 'wrong-format' | 'invalid-version'
+  | 'newer-version'                                     // above SCORE_VERSION: "newer than this app"
+  | 'migration-failed' | 'invalid-document';            // a step threw; the envelope or score fails NativeDocumentSchema
 function formatPath(path: (string | number)[]): string;               // score.tracks[0].bars[2].id
 
 type Migration = (score: unknown) => unknown;          // version n - 1 JSON to version n JSON
@@ -322,7 +329,7 @@ function midiNote(track, note: Pick<Note, 'string' | 'fret'>): number;   // tuni
 function openStringPitch(track, string: number): number | undefined;
 function transpose(track, note: Note, semitones: number): TransposeResult;   // stays on the string; drum notes unchanged
 type TransposeResult =
-  | { ok: true; note: Note; warnings: ('trillDropped' | 'naturalHarmonicMoved')[] }
+  | { ok: true; note: Note; warnings: ('trill-dropped' | 'natural-harmonic-moved')[] }
   | { ok: false; reason: 'belowOpenString' | 'aboveLastFret' | 'outOfMidiRange'; midi: number; alternatives: { string: number; fret: number }[] };
 const MIDI_MAX = 127;
 

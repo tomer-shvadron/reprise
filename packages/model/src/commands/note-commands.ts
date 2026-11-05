@@ -230,7 +230,7 @@ export function transposeSelection(selection: Selection, semitones: number): Com
             code,
             noteId: note.id,
             message:
-              code === 'trillDropped'
+              code === 'trill-dropped'
                 ? 'the trill fell off the fretboard and was removed'
                 : "the natural harmonic's node no longer matches its fret",
           });
