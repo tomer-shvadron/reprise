@@ -90,6 +90,7 @@ export class MasterBus {
   readonly input: GainNode;
   readonly limiter: DynamicsCompressorNode;
   readonly output: GainNode;
+  #gain = 1;
 
   constructor(context: BaseAudioContext, destination: AudioNode) {
     this.input = context.createGain();
@@ -105,11 +106,12 @@ export class MasterBus {
   }
 
   set gain(value: number) {
-    this.output.gain.setTargetAtTime(value, this.output.context.currentTime, PARAM_SMOOTHING);
+    this.#gain = value;
+    smooth(this.output.gain, value, this.output.context);
   }
 
   get gain(): number {
-    return this.output.gain.value;
+    return this.#gain;
   }
 
   dispose(): void {

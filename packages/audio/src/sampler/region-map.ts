@@ -26,8 +26,10 @@ export interface Region {
   envelope: Envelope;
   /** An articulation layer (`palmMute`, `harmonic`, ...); absent is the default layer. */
   layer?: string;
-  /** Attenuation in dB, 0 when absent. */
-  volume?: number;
+  /** dB, positive is quieter (SF2's sign; an SFZ loader negates its `volume`). 0 when absent. */
+  attenuation?: number;
+  /** -1 (left) to 1 (right) for a mono sample; absent or 0 adds no panner to the voice. */
+  pan?: number;
 }
 
 const KEY_COUNT = 128;

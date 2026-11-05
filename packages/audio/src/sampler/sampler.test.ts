@@ -12,6 +12,7 @@ import {
   region,
   rms,
   sineInstrument,
+  stereoInstrument,
   toneLevel,
   zeroCrossingFrequency,
 } from './test/offline';
@@ -125,6 +126,20 @@ describe('envelope', () => {
     const held = toneLevel(data, 440, 0.25, 0.4);
     expect(toneLevel(data, 440, 0.6, 0.95) / held).toBeCloseTo(0.25, 2);
   });
+
+  it('applies the region attenuation', async () => {
+    const level = async (attenuation?: number): Promise<number> => {
+      const context = offline(0.6);
+      const sampler = new Sampler(context);
+      sampler.addTrack(samplerTrack('t'), {
+        ...sineInstrument(),
+        regions: new RegionMap([region(attenuation === undefined ? {} : { attenuation })]),
+      });
+      sampler.noteOn('t', { key: 69, velocity: 64, when: 0 });
+      return toneLevel(await render(context), 440, 0.2, 0.5);
+    };
+    expect((await level(20 * Math.log10(2))) / (await level())).toBeCloseTo(0.5, 3);
+  });
 });
 
 describe('voice stealing', () => {
@@ -169,6 +184,39 @@ describe('voice stealing', () => {
     expect(level).toContain(newer);
     expect(level.map((voice) => voice.key)).not.toContain(72);
     expect(level.length).toBe(3);
+  });
+
+  it('fades a stolen released voice from its current level, not its pre-release level', async () => {
+    const context = offline(1);
+    const sampler = new Sampler(context, { polyphony: 1 });
+    sampler.addTrack(
+      samplerTrack('t'),
+      sineInstrument({ attack: 0.001, hold: 0, decay: 0, sustain: 1, release: 1 }),
+    );
+    const voice = sampler.noteOn('t', { key: 69, velocity: 127, when: 0 });
+    voice?.release(0.2);
+    // Half a second into a one-second release the gain is 1e-4^0.5 = 0.01.
+    sampler.noteOn('t', { key: 81, velocity: 1, when: 0.7 });
+    expect(sampler.pool.stolen).toBe(1);
+    const data = await render(context);
+    const before = peak(data, 0.66, 0.699);
+    expect(before).toBeGreaterThan(0.005);
+    // The master bus delays by about 6 ms, so the window after the steal is wide.
+    expect(peak(data, 0.7, 0.73)).toBeLessThan(before * 1.5);
+    // Unstolen, the release would still be at 0.006 here; what remains is the velocity-1 note.
+    expect(peak(data, 0.75, 1)).toBeLessThan(0.001);
+  });
+
+  it('never steals a note that has not started yet', async () => {
+    const context = offline(1);
+    const sampler = new Sampler(context, { polyphony: 1 });
+    sampler.addTrack(samplerTrack('t'), sineInstrument());
+    sampler.noteOn('t', { key: 69, velocity: 127, when: 0.5 });
+    sampler.noteOn('t', { key: 76, velocity: 127, when: 0.2 });
+    expect(sampler.pool.stolen).toBe(0);
+    const data = await render(context);
+    expect(toneLevel(data, midiToFrequency(76), 0.3, 0.45)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, 440, 0.6, 0.9)).toBeGreaterThan(0.1);
   });
 });
 
@@ -285,6 +333,33 @@ describe('mixer', () => {
     expect(peak(right, 0.1, 0.5)).toBeLessThan(0.001);
   });
 
+  it('plays a stereo sample on both channels', async () => {
+    const context = offline(0.6);
+    const sampler = new Sampler(context);
+    sampler.addTrack(samplerTrack('t'), stereoInstrument(440, 660));
+    sampler.noteOn('t', { key: 69, velocity: 127, when: 0 });
+    const output = await context.startRendering();
+    const left = output.getChannelData(0);
+    const right = output.getChannelData(1);
+    expect(toneLevel(left, 440, 0.2, 0.5)).toBeGreaterThan(0.4);
+    expect(toneLevel(right, 660, 0.2, 0.5)).toBeGreaterThan(0.4);
+    expect(toneLevel(left, 660, 0.2, 0.5)).toBeLessThan(0.001);
+    expect(toneLevel(right, 440, 0.2, 0.5)).toBeLessThan(0.001);
+  });
+
+  it('pans a mono region', async () => {
+    const context = offline(0.6);
+    const sampler = new Sampler(context);
+    sampler.addTrack(samplerTrack('t'), {
+      ...sineInstrument(),
+      regions: new RegionMap([region({ pan: -1 })]),
+    });
+    sampler.noteOn('t', { key: 69, velocity: 127, when: 0 });
+    const output = await context.startRendering();
+    expect(toneLevel(output.getChannelData(0), A, 0.2, 0.5)).toBeGreaterThan(0.1);
+    expect(peak(output.getChannelData(1), 0.2, 0.5)).toBeLessThan(0.001);
+  });
+
   it('passes through the empty effects insertion point', () => {
     const context = offline(0.1);
     const sampler = new Sampler(context);
@@ -304,6 +379,36 @@ describe('mixer', () => {
     }
     // Eight in-phase sines at -3 dB per side would peak near 5.7 unlimited.
     expect(peak(await render(context), 0.2, 0.6)).toBeLessThan(1.2);
+  });
+});
+
+describe('load', () => {
+  it('starts every note of a burst, holds the limit, and frees every voice', async () => {
+    const notes = 2000;
+    const spacing = 0.002;
+    const length = 0.25;
+    const polyphony = 64;
+    const context = offline(notes * spacing + 0.5);
+    const sampler = new Sampler(context, { polyphony });
+    sampler.addTrack(samplerTrack('t'), sineInstrument());
+
+    const started = performance.now();
+    for (let index = 0; index < notes; index += 1) {
+      const when = index * spacing;
+      const voice = sampler.noteOn('t', { key: 40 + (index % 48), velocity: 100, when });
+      if (!voice) throw new Error(`note ${String(index)} did not start`);
+      sampler.noteOff(voice, when + length);
+      expect(sampler.pool.active(when).length).toBeLessThanOrEqual(polyphony);
+    }
+    const elapsed = performance.now() - started;
+
+    // Every voice outlives the next 64 onsets, so each note past the limit steals exactly one.
+    expect(sampler.pool.stolen).toBe(notes - polyphony);
+    // Measured at about 21 us per note; the bound only catches a pathological regression.
+    expect(elapsed / notes).toBeLessThan(1);
+
+    await context.startRendering();
+    expect(sampler.pool.active(0)).toHaveLength(0);
   });
 });
 

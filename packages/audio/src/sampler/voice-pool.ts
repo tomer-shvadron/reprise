@@ -45,10 +45,12 @@ export class VoicePool {
     this.#voices = this.#voices.filter((other) => other !== voice);
   }
 
+  /** A note that has not started yet is the newest there is, so it is never the victim. */
   #victim(voices: readonly Voice[], time: number): Voice | undefined {
     let victim: Voice | undefined;
     let victimRank: [number, number, number] = [Infinity, Infinity, Infinity];
     for (const voice of voices) {
+      if (voice.startTime > time) continue;
       const rank: [number, number, number] = [
         voice.released && voice.releaseAt <= time ? 0 : 1,
         voice.levelAt(time),

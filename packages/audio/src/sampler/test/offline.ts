@@ -1,6 +1,7 @@
 import { RegionMap } from '../region-map';
 import type { Envelope, Region } from '../region-map';
 import { SynthSampleSource } from '../sample-source';
+import type { SampleSource } from '../sample-source';
 import type { Instrument } from '../sampler';
 
 export const SAMPLE_RATE = 44_100;
@@ -37,6 +38,22 @@ export function sineInstrument(envelope: Envelope = ORGAN, seconds = 6): Instrum
       a440: { kind: 'sine', frequency: 440, duration: seconds },
     }),
   };
+}
+
+/** One two-channel sample, a different sine per side, as a merged SF2 pair arrives. */
+export function stereoInstrument(left: number, right: number, seconds = 1): Instrument {
+  const length = Math.round(seconds * SAMPLE_RATE);
+  const buffer = new AudioBuffer({ length, sampleRate: SAMPLE_RATE, numberOfChannels: 2 });
+  for (const [channel, frequency] of [left, right].entries()) {
+    const data = buffer.getChannelData(channel);
+    const step = (2 * Math.PI * frequency) / SAMPLE_RATE;
+    for (let i = 0; i < length; i += 1) data[i] = 0.5 * Math.sin(step * i);
+  }
+  const source: SampleSource = {
+    getBuffer: () => Promise.resolve(buffer),
+    peekBuffer: () => buffer,
+  };
+  return { regions: new RegionMap([region()]), source };
 }
 
 function slice(data: Float32Array, from: number, to: number): Float32Array {

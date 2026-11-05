@@ -36,9 +36,10 @@ export interface FilterSettings {
 }
 
 /**
- * One sounding sample: source -> envelope gain -> filter -> level gain -> channel strip. The
- * envelope gain carries the ADSR, the level gain velocity, region volume and the dB automation,
- * so articulations never fight the envelope for the same `AudioParam`.
+ * One sounding sample: source -> envelope gain -> filter -> level gain -> channel strip, with a
+ * panner before the strip when the region pans. The envelope gain carries the ADSR, the level
+ * gain velocity, region attenuation and the dB automation, so articulations never fight the
+ * envelope for the same `AudioParam`.
  */
 export class Voice {
   readonly track: string;
@@ -50,18 +51,22 @@ export class Voice {
 
   readonly #region: Region;
   readonly #source: AudioBufferSourceNode;
+  readonly #nodes: readonly AudioNode[];
   readonly #envelope: GainNode;
   readonly #filter: BiquadFilterNode;
   readonly #level: GainNode;
   readonly #baseLevel: number;
   readonly #attack: number;
+  readonly #decay: number;
   readonly #sustain: number;
   readonly #playable: number;
   readonly #rate: number;
   #lowestDetune = 0;
   #releaseAt = Infinity;
+  #releaseFrom = 0;
+  /** 0 marks a linear fade to zero; otherwise the exponential fade's target. */
+  #releaseFloor = 0;
   #releaseTime: number;
-  #releaseFloor = SILENCE;
   #end = Infinity;
   #ended = false;
 
@@ -80,6 +85,7 @@ export class Voice {
     this.startTime = when;
     this.#region = region;
     this.#attack = Math.max(envelope.attack, MIN_ATTACK);
+    this.#decay = Math.max(envelope.decay, MIN_ATTACK);
     this.#sustain = Math.min(1, Math.max(0, envelope.sustain));
     this.#releaseTime = Math.max(envelope.release, MIN_RELEASE);
     this.#rate = 2 ** ((start.key - region.rootKey + region.tune / 100) / 12);
@@ -102,10 +108,19 @@ export class Voice {
     // Butterworth, in the dB units lowpass Q uses: no resonant peak once a cutoff is lowered.
     this.#filter.Q.value = -3.0103;
     this.#level = context.createGain();
-    this.#baseLevel = velocityGain(start.velocity) * dbToGain(-(region.volume ?? 0));
+    this.#baseLevel = velocityGain(start.velocity) * dbToGain(-(region.attenuation ?? 0));
     this.#level.gain.setValueAtTime(this.#baseLevel, when);
 
-    source.connect(this.#envelope).connect(this.#filter).connect(this.#level).connect(destination);
+    const nodes: AudioNode[] = [source, this.#envelope, this.#filter, this.#level];
+    if (region.pan) {
+      const panner = context.createStereoPanner();
+      panner.pan.value = Math.min(1, Math.max(-1, region.pan));
+      nodes.push(panner);
+    }
+    this.#nodes = nodes;
+    let tail: AudioNode = source;
+    for (const node of nodes.slice(1)) tail = tail.connect(node);
+    tail.connect(destination);
     this.#scheduleEnvelope(when);
 
     const offset = Math.min(Math.max(0, start.offset ?? 0), buffer.duration);
@@ -113,8 +128,7 @@ export class Voice {
     if (!region.loop) this.#end = when + this.#playable / this.#rate;
     source.addEventListener('ended', () => {
       this.#ended = true;
-      source.disconnect();
-      this.#level.disconnect();
+      for (const node of this.#nodes) node.disconnect();
       onEnded(this);
     });
     source.start(when, offset);
@@ -160,6 +174,12 @@ export class Voice {
 
   detuneCurve(semitones: readonly number[], start: number, duration: number): void {
     for (const value of semitones) this.#noteDetune(value);
+    const [only] = semitones;
+    if (only === undefined) return;
+    if (semitones.length === 1) {
+      this.#source.detune.setValueAtTime(only * 100, start);
+      return;
+    }
     this.#source.detune.setValueCurveAtTime(
       Float32Array.from(semitones, (value) => value * 100),
       start,
@@ -189,34 +209,36 @@ export class Voice {
   /** The level the envelope and velocity give at `time`, ignoring gain automation. */
   levelAt(time: number): number {
     if (time < this.startTime || time >= this.#end) return 0;
-    if (time < this.#releaseAt) return this.#baseLevel * this.#envelopeAt(time);
-    const from = this.#envelopeAt(this.#releaseAt);
-    if (from <= this.#releaseFloor) return this.#baseLevel * from;
-    const progress = (time - this.#releaseAt) / (this.#end - this.#releaseAt);
-    const floor = Math.max(this.#releaseFloor, SILENCE);
-    return this.#baseLevel * from * (floor / from) ** progress;
+    return this.#baseLevel * this.#envelopeAt(time);
   }
 
+  /** The envelope gain at `time`, including a release or steal fade in progress. */
   #envelopeAt(time: number): number {
-    const { hold, decay } = this.#region.envelope;
+    if (time < this.#releaseAt) return this.#shapeAt(time);
+    const progress = (time - this.#releaseAt) / (this.#end - this.#releaseAt);
+    if (this.#releaseFloor === 0) return this.#releaseFrom * (1 - progress);
+    return this.#releaseFrom * (this.#releaseFloor / this.#releaseFrom) ** progress;
+  }
+
+  /** The ADSR before any fade, mirroring `#scheduleEnvelope`. */
+  #shapeAt(time: number): number {
     let elapsed = time - this.startTime;
     if (elapsed < this.#attack) return elapsed / this.#attack;
-    elapsed -= this.#attack + hold;
-    if (elapsed < 0) return 1;
-    if (elapsed < decay) return Math.max(this.#sustain, SILENCE) ** (elapsed / decay);
+    elapsed -= this.#attack + this.#region.envelope.hold;
+    if (elapsed < 0 || this.#sustain >= 1) return 1;
+    if (elapsed < this.#decay) return Math.max(this.#sustain, SILENCE) ** (elapsed / this.#decay);
     return this.#sustain;
   }
 
   #scheduleEnvelope(when: number): void {
-    const { hold, decay } = this.#region.envelope;
     const gain = this.#envelope.gain;
     gain.setValueAtTime(0, when);
     const peak = when + this.#attack;
     gain.linearRampToValueAtTime(1, peak);
     if (this.#sustain >= 1) return;
-    const decayStart = peak + hold;
+    const decayStart = peak + this.#region.envelope.hold;
     gain.setValueAtTime(1, decayStart);
-    const decayEnd = decayStart + Math.max(decay, MIN_ATTACK);
+    const decayEnd = decayStart + this.#decay;
     gain.exponentialRampToValueAtTime(Math.max(this.#sustain, SILENCE), decayEnd);
     if (this.#sustain === 0) gain.setValueAtTime(0, decayEnd);
   }
@@ -225,16 +247,19 @@ export class Voice {
     const time = Math.max(at, this.startTime);
     const end = time + length;
     if (end >= this.#end || this.#ended) return;
+    const from = this.#envelopeAt(time);
+    const exponential = floor > 0 && from > floor;
     this.#releaseAt = time;
-    this.#releaseFloor = floor;
+    this.#releaseFrom = from;
+    this.#releaseFloor = exponential ? floor : 0;
+    this.#end = end;
     const gain = this.#envelope.gain;
     // Chromium's hold is a no-op when no ramp spans `time`; the explicit value anchors the fade.
     gain.cancelAndHoldAtTime(time);
-    gain.setValueAtTime(this.#envelopeAt(time), time);
-    if (floor > 0) gain.exponentialRampToValueAtTime(floor, end);
+    gain.setValueAtTime(from, time);
+    if (exponential) gain.exponentialRampToValueAtTime(floor, end);
     else gain.linearRampToValueAtTime(0, end);
     gain.setValueAtTime(0, end);
-    this.#end = end;
     this.#source.stop(end);
   }
 

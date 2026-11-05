@@ -159,9 +159,10 @@ export class Sampler {
    */
   noteOn(id: Id, request: NoteOnRequest): VoiceHandle | undefined {
     const state = this.#state(id);
+    if (request.velocity <= 0) return undefined;
     const { regions, source } = state.instrument;
     const region = regions.resolve(request.key, request.velocity, request.layer);
-    if (!region || request.velocity <= 0) return undefined;
+    if (!region) return undefined;
     const buffer = source.peekBuffer(region.sample);
     if (!buffer) {
       this.#misses += 1;
