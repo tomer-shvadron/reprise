@@ -18,6 +18,7 @@ export type ViolationRule =
   | 'fret-range'
   | 'duplicate-string'
   | 'tie-target'
+  | 'tie-pitch'
   | 'tuplet'
   | 'dots'
   | 'chord-diagram'
@@ -312,8 +313,9 @@ function checkTies(
     track.kind === 'fretted' ? a.string === b.string : a.fret === b.fret;
   beat.notes.forEach((note, n) => {
     if (!note.tie) return;
-    const found = previous && !previous.rest && previous.notes.some((p) => sameSlot(p, note));
-    if (!found) {
+    const origin =
+      previous && !previous.rest ? previous.notes.find((p) => sameSlot(p, note)) : undefined;
+    if (!origin) {
       const where =
         track.kind === 'fretted'
           ? `on string ${String(note.string)}`
@@ -322,6 +324,12 @@ function checkTies(
         'tie-target',
         [...path, 'notes', n, 'tie'],
         `tied note has no note ${where} in the previous beat of its voice`,
+      );
+    } else if (origin.fret !== note.fret) {
+      report(
+        'tie-pitch',
+        [...path, 'notes', n, 'fret'],
+        `tied note is on fret ${String(note.fret)} but the note it continues is on fret ${String(origin.fret)}`,
       );
     }
   });

@@ -91,6 +91,16 @@ describe('insertBar', () => {
     expect(masterBar(after, 2).alternateEndings).toEqual([1]);
   });
 
+  it('inherits the endings of the volta bar it is inserted before', () => {
+    const score = withVoltas(buildScore());
+    const { score: second } = roundTrip(score, insertBar({ index: 2 }));
+    expect(second.masterBars.map((bar) => bar.alternateEndings)).toEqual([[], [1], [2], [2], []]);
+    const { score: first } = roundTrip(score, insertBar({ index: 1 }));
+    expect(first.masterBars.map((bar) => bar.alternateEndings)).toEqual([[], [1], [1], [2], []]);
+    const { score: afterVoltas } = roundTrip(score, insertBar({ index: 3 }));
+    expect(masterBar(afterVoltas, 3).alternateEndings).toEqual([]);
+  });
+
   it('refuses a bad index, a used id and an invalid master bar', () => {
     const score = buildScore();
     expectRefusal(score, insertBar({ index: 5 }), 'invalid-value');

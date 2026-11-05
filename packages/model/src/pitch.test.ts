@@ -82,7 +82,7 @@ describe('transpose', () => {
   ])('$name: fret $fret by $by is fret $to', ({ capo, string, fret, by, to }) => {
     const track = guitar(capo);
     const note = createNote({ string, fret });
-    const result = moved(transpose(note, by, track));
+    const result = moved(transpose(track, note, by));
     expect(result).toMatchObject({ string, fret: to });
     expect(midiNote(track, result)).toBe(midiNote(track, note) + by);
   });
@@ -109,7 +109,7 @@ describe('transpose', () => {
   ] as const)('$name reports $reason', ({ capo, string, fret, by, reason }) => {
     const track = guitar(capo);
     const note = createNote({ string, fret });
-    expect(transpose(note, by, track)).toMatchObject({
+    expect(transpose(track, note, by)).toMatchObject({
       ok: false,
       reason,
       midi: midiNote(track, note) + by,
@@ -117,7 +117,7 @@ describe('transpose', () => {
   });
 
   it('offers the other strings that can play a pitch that fell off', () => {
-    const result = transpose(createNote({ string: 5, fret: 0 }), -1, guitar());
+    const result = transpose(guitar(), createNote({ string: 5, fret: 0 }), -1);
     expect(result).toEqual({
       ok: false,
       reason: 'belowOpenString',
@@ -127,25 +127,25 @@ describe('transpose', () => {
   });
 
   it('has no alternatives when the pitch is lower than every string', () => {
-    const result = transpose(createNote({ string: 6, fret: 0 }), -1, guitar());
+    const result = transpose(guitar(), createNote({ string: 6, fret: 0 }), -1);
     expect(result).toMatchObject({ ok: false, alternatives: [] });
   });
 
   it('honours a short neck', () => {
-    const result = transpose(createNote({ string: 1, fret: 19 }), 2, guitar(0, 20));
+    const result = transpose(guitar(0, 20), createNote({ string: 1, fret: 19 }), 2);
     expect(result).toMatchObject({ ok: false, reason: 'aboveLastFret' });
   });
 
   it('moves pitched notes as MIDI and stops at the MIDI range', () => {
     const piano = createTrack('pitched');
-    expect(moved(transpose(createNote({ string: 0, fret: 60 }), 7, piano)).fret).toBe(67);
-    expect(transpose(createNote({ string: 0, fret: 127 }), 1, piano)).toEqual({
+    expect(moved(transpose(piano, createNote({ string: 0, fret: 60 }), 7)).fret).toBe(67);
+    expect(transpose(piano, createNote({ string: 0, fret: 127 }), 1)).toEqual({
       ok: false,
       reason: 'outOfMidiRange',
       midi: 128,
       alternatives: [],
     });
-    expect(transpose(createNote({ string: 0, fret: 0 }), -1, piano)).toMatchObject({
+    expect(transpose(piano, createNote({ string: 0, fret: 0 }), -1)).toMatchObject({
       ok: false,
       reason: 'outOfMidiRange',
     });
@@ -153,23 +153,23 @@ describe('transpose', () => {
 
   it('leaves drum notes alone', () => {
     const note = createNote({ string: 0, fret: 38 });
-    expect(transpose(note, 5, createTrack('drums'))).toEqual({ ok: true, note, warnings: [] });
+    expect(transpose(createTrack('drums'), note, 5)).toEqual({ ok: true, note, warnings: [] });
   });
 
   it('warns when a natural harmonic moves and leaves its value alone', () => {
     const natural = createNote({ string: 1, fret: 12, harmonic: { kind: 'natural', value: 12 } });
-    expect(transpose(natural, 2, guitar())).toEqual({
+    expect(transpose(guitar(), natural, 2)).toEqual({
       ok: true,
       note: { ...natural, fret: 14 },
       warnings: ['naturalHarmonicMoved'],
     });
-    expect(transpose(natural, 0, guitar())).toMatchObject({ ok: true, warnings: [] });
+    expect(transpose(guitar(), natural, 0)).toMatchObject({ ok: true, warnings: [] });
     const artificial = createNote({
       string: 1,
       fret: 5,
       harmonic: { kind: 'artificial', value: 12 },
     });
-    expect(transpose(artificial, 2, guitar())).toMatchObject({
+    expect(transpose(guitar(), artificial, 2)).toMatchObject({
       ok: true,
       note: { fret: 7, harmonic: { kind: 'artificial', value: 12 } },
       warnings: [],
@@ -178,27 +178,27 @@ describe('transpose', () => {
 
   it('keeps a stored accidental only across octaves', () => {
     const note = createNote({ string: 2, fret: 2, accidental: 'flat' });
-    expect(moved(transpose(note, 12, guitar())).accidental).toBe('flat');
-    expect(moved(transpose(note, 1, guitar()))).not.toHaveProperty('accidental');
+    expect(moved(transpose(guitar(), note, 12)).accidental).toBe('flat');
+    expect(moved(transpose(guitar(), note, 1))).not.toHaveProperty('accidental');
   });
 
   it('moves the trill with the note and drops it when it falls off', () => {
     const note = createNote({ string: 1, fret: 20, trill: { fret: 22, speed: 16 } });
-    const up = transpose(note, 2, guitar());
+    const up = transpose(guitar(), note, 2);
     expect(up).toMatchObject({ ok: true, warnings: [], note: { fret: 22, trill: { fret: 24 } } });
-    const further = transpose(note, 3, guitar());
+    const further = transpose(guitar(), note, 3);
     expect(further).toMatchObject({ ok: true, warnings: ['trillDropped'], note: { fret: 23 } });
     expect(moved(further)).not.toHaveProperty('trill');
   });
 
   it('keeps every other property and returns a new note', () => {
     const note = createNote({ string: 3, fret: 5, palmMute: true, dynamics: 'pp' });
-    const result = moved(transpose(note, 2, guitar()));
+    const result = moved(transpose(guitar(), note, 2));
     expect(result).toEqual({ ...note, fret: 7 });
     expect(note.fret).toBe(5);
   });
 
   it('rejects fractional semitones', () => {
-    expect(() => transpose(createNote({ string: 1, fret: 0 }), 0.5, guitar())).toThrow(RangeError);
+    expect(() => transpose(guitar(), createNote({ string: 1, fret: 0 }), 0.5)).toThrow(RangeError);
   });
 });

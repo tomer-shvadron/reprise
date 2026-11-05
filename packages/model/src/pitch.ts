@@ -86,7 +86,7 @@ function alternativePositions(track: FretTrack, midi: number, except: number): F
  * off the fretboard or out of MIDI range: the failure says why and, on fretted tracks, where
  * else the pitch can be played.
  */
-export function transpose(note: Note, semitones: number, track: FretTrack): TransposeResult {
+export function transpose(track: FretTrack, note: Note, semitones: number): TransposeResult {
   if (!Number.isInteger(semitones)) {
     throw new RangeError(`Transposition must be whole semitones, got ${String(semitones)}`);
   }

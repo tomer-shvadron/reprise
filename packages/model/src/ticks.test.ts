@@ -12,7 +12,15 @@ import {
 } from './factories';
 import type { MasterBar } from './master-bar';
 import type { Score } from './score';
-import { PPQ, barTicks, beatStartTicks, beatTicks, playedBarTicks, tickOf } from './ticks';
+import {
+  PPQ,
+  barStartTicks,
+  barTicks,
+  beatStartTicks,
+  beatTicks,
+  playedBarTicks,
+  tickOf,
+} from './ticks';
 
 function barWith(...beats: Beat[]): Bar {
   return {
@@ -122,6 +130,12 @@ describe('tickOf', () => {
     expect(tickOf(score, { bar: 1, beat: 1 })).toBe(1920);
     expect(tickOf(score, { bar: 2 })).toBe(3840);
     expect(tickOf(score, { bar: 2, beat: 2 })).toBe(5760);
+  });
+
+  it('agrees with barStartTicks, which adds the end of the score', () => {
+    const starts = barStartTicks(score);
+    expect(starts).toEqual([0, 960, 3840, 7680]);
+    for (const bar of [0, 1, 2]) expect(starts[bar]).toBe(tickOf(score, { bar }));
   });
 
   it('rejects positions that do not exist', () => {

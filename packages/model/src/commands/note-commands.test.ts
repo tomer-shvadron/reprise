@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { applyCommand } from '../history';
 import { newId } from '../id';
 import type { Bend } from '../note';
 import {
@@ -55,6 +56,24 @@ describe('setNote', () => {
       'invalid-value',
     );
     expectRefusal(score, setNote({ beatId: 'nonexistent0' }, { string: 1, fret: 0 }), 'not-found');
+  });
+
+  it('carries a new fret along the notes tied to it', () => {
+    const score = buildScore();
+    const origin = beatOf(score, 0, 0, 3);
+    const { score: after } = roundTrip(
+      score,
+      setNote({ beatId: origin.id }, { string: 1, fret: 5 }),
+    );
+    expect(noteOf(after, 0, 1, 0)).toMatchObject({ fret: 5, tie: true });
+  });
+
+  it('releases a tied note given another fret, and refuses one that insists on the tie', () => {
+    const score = buildScore();
+    const beatId = beatOf(score, 0, 1, 0).id;
+    const { score: after } = roundTrip(score, setNote({ beatId }, { string: 1, fret: 7 }));
+    expect(noteOf(after, 0, 1, 0)).toMatchObject({ fret: 7, tie: false });
+    expectRefusal(score, setNote({ beatId }, { string: 1, fret: 7, tie: true }), 'tie-target');
   });
 
   it('numbers frets up to the neck length whatever the capo, as transpose does', () => {
@@ -147,6 +166,39 @@ describe('transposeSelection', () => {
       transposeSelection({ noteIds: [note.id], beatIds: [beatOf(score, 0, 2, 0).id] }, -7),
     );
     expect(noteOf(after, 0, 2, 0)).toEqual({ ...note, fret: 0 });
+  });
+
+  it('moves the notes tied to a moved note and releases a tie whose origin stayed', () => {
+    const score = buildScore();
+    const origin = noteOf(score, 0, 0, 3);
+    const { score: chained } = roundTrip(score, transposeSelection({ noteIds: [origin.id] }, 2));
+    expect(noteOf(chained, 0, 1, 0)).toMatchObject({ fret: 5, tie: true });
+    const continuation = noteOf(score, 0, 1, 0);
+    const { score: split } = roundTrip(
+      score,
+      transposeSelection({ noteIds: [continuation.id] }, 2),
+    );
+    expect(noteOf(split, 0, 1, 0)).toMatchObject({ fret: 5, tie: false });
+    expect(noteOf(split, 0, 0, 3).fret).toBe(3);
+  });
+
+  it('keeps an accidental across an octave and reports what transpose reports', () => {
+    const score = buildScore();
+    const note = noteOf(score, 0, 2, 0);
+    const marked = roundTrip(
+      score,
+      setNoteEffect(
+        { noteId: note.id },
+        { accidental: 'sharp', trill: { fret: 20, speed: 16 }, harmonic: { kind: 'natural' } },
+      ),
+    ).score;
+    const applied = applyCommand(marked, transposeSelection({ noteIds: [note.id] }, 12));
+    expect(noteOf(applied.score, 0, 2, 0)).toMatchObject({ fret: 19, accidental: 'sharp' });
+    expect(noteOf(applied.score, 0, 2, 0)).not.toHaveProperty('trill');
+    expect(applied.warnings.map(({ code, noteId }) => ({ code, noteId }))).toEqual([
+      { code: 'trillDropped', noteId: note.id },
+      { code: 'naturalHarmonicMoved', noteId: note.id },
+    ]);
   });
 
   it('refuses a note that would fall off the fretboard', () => {

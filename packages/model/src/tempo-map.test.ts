@@ -13,7 +13,7 @@ import {
 import type { MasterBar } from './master-bar';
 import { expandPlaybackSequence } from './playback-sequence';
 import type { Score } from './score';
-import { DEFAULT_BPM, positionAtSeconds, secondsAt, tempoMap } from './tempo-map';
+import { DEFAULT_BPM, positionAtSeconds, secondsAt, secondsAtTick, tempoMap } from './tempo-map';
 import type { TempoMap } from './tempo-map';
 
 function barWith(...beats: Beat[]): Bar {
@@ -191,6 +191,7 @@ describe('secondsAt and positionAtSeconds', () => {
       masterBarIndex: 0,
       passIndex: 0,
       tick: 2400,
+      playbackTick: 2400,
       barProgress: 0.625,
       beatIndex: 2,
       beatProgress: 0.5,
@@ -244,11 +245,24 @@ describe('secondsAt and positionAtSeconds', () => {
 
   it('reports no beat for an empty voice and the last beat past the end of a short voice', () => {
     expect(positionAtSeconds(map, 0.5, { voice: 1 })).toMatchObject({
-      beatIndex: -1,
+      beatIndex: undefined,
       beatProgress: 0,
     });
     const short = mapOf(scoreOf([createMasterBar()], [barWith(createBeat())]));
     expect(positionAtSeconds(short, 1.5)).toMatchObject({ beatIndex: 0, beatProgress: 1 });
+  });
+
+  it('counts playback ticks across passes, and secondsAtTick inverts them', () => {
+    for (const [sequenceIndex, pass] of map.passes.entries()) {
+      for (const tick of [0, 1500, 3000]) {
+        const seconds = secondsAt(map, sequenceIndex, tick);
+        expect(positionAtSeconds(map, seconds)?.playbackTick).toBeCloseTo(pass.startTick + tick, 6);
+        expect(secondsAtTick(map, pass.startTick + tick)).toBeCloseTo(seconds, 9);
+      }
+    }
+    expect(secondsAtTick(map, -10)).toBe(0);
+    expect(secondsAtTick(map, 1e9)).toBeCloseTo(map.durationSeconds, 9);
+    expect(secondsAtTick(tempoMap(map.score, []), 100)).toBe(0);
   });
 
   it('rejects a sequence index outside the map', () => {

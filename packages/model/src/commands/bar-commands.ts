@@ -28,7 +28,8 @@ function releaseColumnTies(track: Track, bar: number): void {
 
 /**
  * Inserts an empty bar at `index` in every track. The new master bar copies the time and key
- * signature and triplet feel of the bar before it, and joins a volta both neighbours share.
+ * signature and triplet feel of the bar before it, and the volta numbers of the bar it is
+ * inserted before, so inserting before a volta bar lengthens that ending.
  * At index 0 the tempo mark moves onto the new first bar, which must carry one.
  */
 export function insertBar(
@@ -53,10 +54,6 @@ export function insertBar(
       const before = base.masterBars[index - 1];
       const after = base.masterBars[index];
       const model = before ?? after;
-      const sharedVolta =
-        before && after && before.alternateEndings.join() === after.alternateEndings.join()
-          ? [...before.alternateEndings]
-          : [];
       const node: MasterBar = {
         ...createMasterBar({
           ...(model && {
@@ -64,7 +61,7 @@ export function insertBar(
             keySignature: { ...model.keySignature },
             tripletFeel: model.tripletFeel,
           }),
-          alternateEndings: sharedVolta,
+          alternateEndings: [...(after?.alternateEndings ?? [])],
           ...masterBar,
         }),
         id: target.id ?? newId(),

@@ -174,14 +174,29 @@ export function secondsAt(map: TempoMap, sequenceIndex: number, tick: number): n
   return pass.startSeconds + pass.durationSeconds;
 }
 
+/**
+ * Seconds from the start of playback to `playbackTick`, a tick counted across every pass as
+ * `TempoMapPass.startTick` counts it, clamped to the map. A tick on a pass boundary belongs to
+ * the pass that starts there.
+ */
+export function secondsAtTick(map: TempoMap, playbackTick: number): number {
+  if (map.passes.length === 0) return 0;
+  const sequenceIndex = lastAtOrBefore(map.passes, playbackTick, (pass) => pass.startTick);
+  const pass = map.passes[sequenceIndex];
+  if (!pass) return 0;
+  return secondsAt(map, sequenceIndex, playbackTick - pass.startTick);
+}
+
 export interface PlaybackPosition extends BarPass {
   sequenceIndex: number;
   /** Ticks into the pass. */
   tick: number;
+  /** Ticks since the start of playback, counting every pass: `startTick` of the pass plus `tick`. */
+  playbackTick: number;
   /** 0 to 1 across the bar. */
   barProgress: number;
-  /** The beat sounding in the requested voice; -1 when the voice has no beats. */
-  beatIndex: number;
+  /** The beat sounding in the requested voice; `undefined` when the voice has no beats. */
+  beatIndex: number | undefined;
   /** 0 to 1 across that beat; 1 past the voice's last beat in an incomplete bar. */
   beatProgress: number;
 }
@@ -231,7 +246,7 @@ export function positionAtSeconds(
 
   const { track = 0, voice = 0 } = options;
   const beats = map.score.tracks[track]?.bars[pass.masterBarIndex]?.voices[voice]?.beats ?? [];
-  let beatIndex = -1;
+  let beatIndex: number | undefined;
   let beatProgress = 0;
   let start = 0;
   for (const [index, beat] of beats.entries()) {
@@ -249,6 +264,7 @@ export function positionAtSeconds(
     masterBarIndex: pass.masterBarIndex,
     passIndex: pass.passIndex,
     tick,
+    playbackTick: pass.startTick + tick,
     barProgress: tick / pass.ticks,
     beatIndex,
     beatProgress,
