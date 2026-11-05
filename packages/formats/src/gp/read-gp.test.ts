@@ -1,0 +1,277 @@
+import { readFileSync } from 'node:fs';
+
+import { parseNative, serializeNative, type Score } from '@reprise/model';
+import { zipSync } from 'fflate';
+import { describe, expect, it } from 'vitest';
+
+import { GpifError } from '../gpif/errors';
+import { GpError, readGp } from './read-gp';
+
+const FIXTURES = new URL('../../../../fixtures/', import.meta.url);
+const APP = { name: 'reprise-test', version: '0.0.0' };
+
+interface ManifestEntry {
+  path: string;
+  format: string;
+  features: string[];
+  tracks: number;
+  bars: number;
+  notes: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isEntry(value: unknown): value is ManifestEntry {
+  return (
+    isRecord(value) &&
+    typeof value['path'] === 'string' &&
+    typeof value['format'] === 'string' &&
+    Array.isArray(value['features']) &&
+    value['features'].every((feature) => typeof feature === 'string') &&
+    typeof value['tracks'] === 'number' &&
+    typeof value['bars'] === 'number' &&
+    typeof value['notes'] === 'number'
+  );
+}
+
+function gpFixtures(): ManifestEntry[] {
+  const manifest: unknown = JSON.parse(readFileSync(new URL('manifest.json', FIXTURES), 'utf8'));
+  if (!isRecord(manifest) || !Array.isArray(manifest['fixtures'])) throw new Error('bad manifest');
+  return manifest['fixtures'].filter(isEntry).filter((entry) => entry.format === 'gp');
+}
+
+const fixtureBytes = (path: string): Uint8Array =>
+  new Uint8Array(readFileSync(new URL(path, FIXTURES)));
+
+/** Every beat of every voice, with grace notes counted as notes, as the oracle counts them. */
+function countNotes(score: Score): number {
+  let notes = 0;
+  for (const track of score.tracks) {
+    for (const bar of track.bars) {
+      for (const voice of bar.voices) {
+        for (const beat of voice.beats) {
+          notes += beat.notes.length;
+          for (const grace of beat.grace ?? []) notes += grace.notes.length;
+        }
+      }
+    }
+  }
+  return notes;
+}
+
+/** The manifest's feature vocabulary, read off the model the way the oracle reads alphaTab's. */
+function features(score: Score): Set<string> {
+  const found = new Set<string>();
+  const tempos = new Set<number>();
+  score.masterBars.forEach((masterBar, index) => {
+    if (masterBar.repeat.start || masterBar.repeat.endCount > 0) found.add('repeats');
+    if (masterBar.alternateEndings.length > 0) found.add('alternate-endings');
+    if (masterBar.jumps.length > 0 || masterBar.targets.length > 0) found.add('jumps');
+    if (masterBar.tempo) tempos.add(masterBar.tempo.bpm);
+    const previous = score.masterBars[index - 1];
+    if (previous) {
+      const [a, b] = [previous.timeSignature, masterBar.timeSignature];
+      if (a.numerator !== b.numerator || a.denominator !== b.denominator)
+        found.add('time-signature-change');
+      if (previous.keySignature.fifths !== masterBar.keySignature.fifths) found.add('key-change');
+    }
+  });
+  if (score.tracks.length > 1) found.add('multiple-tracks');
+  for (const track of score.tracks) {
+    if (track.kind === 'drums') found.add('drums-track');
+    if (track.kind === 'pitched') found.add('pitched-non-fretted-track');
+    for (const bar of track.bars) {
+      bar.voices.forEach((voice, voiceIndex) => {
+        for (const beat of voice.beats) {
+          if (voiceIndex > 0 && beat.notes.length > 0) found.add('multiple-voices');
+          if (beat.tuplet) found.add('tuplets');
+          if (beat.lyrics?.some((line) => line.trim() !== '') === true) found.add('lyrics');
+          if (beat.mix?.tempo) tempos.add(beat.mix.tempo.bpm);
+          if (beat.chord?.diagram?.frets.some((fret) => fret !== null) === true)
+            found.add('chord-diagrams');
+          for (const note of beat.notes) {
+            if (note.bend) found.add('bends');
+            if (note.slide) found.add('slides');
+            if (note.hammerPull) found.add('hammer-ons');
+            if (note.harmonic) found.add('harmonics');
+            if (note.palmMute) found.add('palm-mute');
+          }
+        }
+      });
+    }
+  }
+  if (tempos.size > 1) found.add('tempo-change');
+  return found;
+}
+
+describe('readGp on the fixture corpus', () => {
+  const entries = gpFixtures();
+
+  it('covers every gp fixture in the manifest', () => {
+    expect(entries.map((entry) => entry.path).sort()).toEqual([
+      'gp/beat-lyrics.gp',
+      'gp/beat-tempo-change.gp',
+      'gp/drum-tabs.gp',
+      'gp/multivoice-rhythm.gp',
+      'gp/sustain.gp',
+      'gp/timer.gp',
+      'gp/track-volume.gp',
+    ]);
+  });
+
+  describe.each(entries)('$path', (entry) => {
+    const { score, warnings } = readGp(fixtureBytes(entry.path));
+
+    it('has the manifest counts of tracks, bars and notes', () => {
+      expect(score.tracks).toHaveLength(entry.tracks);
+      expect(score.masterBars).toHaveLength(entry.bars);
+      expect(countNotes(score)).toBe(entry.notes);
+    });
+
+    it('shows the manifest features in the model', () => {
+      expect([...features(score)].sort()).toEqual([...entry.features].sort());
+    });
+
+    it('reports nothing it does not recognise', () => {
+      expect(warnings.filter((warning) => warning.code === 'unknown-element')).toEqual([]);
+    });
+
+    it('round-trips losslessly through the native format', () => {
+      const parsed = parseNative(serializeNative(score, APP));
+      expect(parsed.score).toEqual(score);
+      expect(parsed.warnings.filter((warning) => warning.code === 'unknown-field')).toEqual([]);
+    });
+  });
+});
+
+describe('readGp on specific fixtures', () => {
+  it('reads per-beat lyrics and keeps the raw block', () => {
+    const { score } = readGp(fixtureBytes('gp/beat-lyrics.gp'));
+    const track = score.tracks[0];
+    expect(track?.lyrics[0]?.text).toBe(
+      'Manually Modified to ensure beat lyrics are used [with comments]',
+    );
+    const firstLine = track?.bars.flatMap((bar) =>
+      bar.voices[0].beats.map((beat) => beat.lyrics?.[0]),
+    );
+    expect(firstLine).toEqual([
+      'This',
+      'is',
+      'a',
+      'test file',
+      'for',
+      'lyrics',
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it('reads tempo automations at bar starts and mid-bar', () => {
+    const { score, warnings } = readGp(fixtureBytes('gp/beat-tempo-change.gp'));
+    expect(score.masterBars.map((bar) => bar.tempo?.bpm)).toEqual([120, 100, 121, 121]);
+    const midBar = score.tracks[0]?.bars.map((bar) =>
+      bar.voices[0].beats.flatMap((beat) => (beat.mix?.tempo ? [beat.mix.tempo.bpm] : [])),
+    );
+    expect(midBar).toEqual([[60], [120], [120], [120, 121]]);
+    expect(warnings.some((warning) => warning.code === 'tempo-moved')).toBe(true);
+  });
+
+  it('reads repeats, voltas and directions', () => {
+    const { score } = readGp(fixtureBytes('gp/timer.gp'));
+    const bars = score.masterBars;
+    expect(bars[1]?.repeat).toEqual({ start: true, endCount: 0 });
+    expect(bars[3]?.targets).toEqual(['fine']);
+    expect(bars[4]?.alternateEndings).toEqual([1]);
+    expect(bars[5]?.alternateEndings).toEqual([2, 3]);
+    expect(bars[5]?.repeat).toEqual({ start: false, endCount: 3 });
+    expect(bars[7]?.jumps).toEqual([{ kind: 'dcAlFine' }]);
+  });
+
+  it('reads a drum kit as drums with GM percussion notes', () => {
+    const { score } = readGp(fixtureBytes('gp/drum-tabs.gp'));
+    const track = score.tracks[0];
+    expect(track?.kind).toBe('drums');
+    expect(track?.tuning).toEqual([]);
+    expect(track?.display.clef).toBe('percussion');
+    const notes = track?.bars.flatMap((bar) =>
+      bar.voices.flatMap((voice) => voice.beats.flatMap((beat) => beat.notes)),
+    );
+    expect(notes?.every((note) => note.string === 0 && note.fret >= 27 && note.fret <= 87)).toBe(
+      true,
+    );
+  });
+
+  it('reads a piano as a pitched track with MIDI notes', () => {
+    const { score } = readGp(fixtureBytes('gp/sustain.gp'));
+    const track = score.tracks[0];
+    expect(track?.kind).toBe('pitched');
+    expect(track?.display.notation).toBe('standard');
+    expect(track?.bars[0]?.voices[0].beats[0]?.notes[0]).toMatchObject({ string: 0, fret: 67 });
+  });
+
+  it('reads track volume from the channel strip', () => {
+    const { score } = readGp(fixtureBytes('gp/track-volume.gp'));
+    expect(score.tracks.map((track) => track.channel.volume)).toEqual([
+      127, 114, 102, 84, 61, 30, 1,
+    ]);
+    expect(score.tracks.every((track) => track.channel.pan === 64)).toBe(true);
+  });
+
+  it('reads tuplets and the octave transposition', () => {
+    const { score } = readGp(fixtureBytes('gp/beat-tempo-change.gp'));
+    const track = score.tracks[0];
+    expect(track?.display.octaveShift).toBe(1);
+    const tuplets = track?.bars.flatMap((bar) => bar.voices[0].beats.filter((beat) => beat.tuplet));
+    expect(tuplets?.[0]?.tuplet).toEqual({ n: 3, of: 2 });
+  });
+});
+
+describe('readGp errors', () => {
+  const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
+
+  it('rejects bytes that are not a zip', () => {
+    expect(() => readGp(encode('not a zip at all'))).toThrow(GpError);
+    try {
+      readGp(encode('not a zip at all'));
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'invalid-zip' });
+    }
+  });
+
+  it('rejects a zip without Content/score.gpif', () => {
+    const zip = zipSync({ 'Content/other.xml': encode('<x/>'), VERSION: encode('7.0') });
+    expect(() => readGp(zip)).toThrow(expect.objectContaining({ code: 'missing-score' }));
+  });
+
+  it('reports malformed XML with its position', () => {
+    const zip = zipSync({ 'Content/score.gpif': encode('<GPIF>\n<Score>\n</GPIF>') });
+    let caught: unknown;
+    try {
+      readGp(zip);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(GpifError);
+    expect(caught).toMatchObject({ code: 'invalid-xml', line: 3, column: 1 });
+  });
+
+  it('rejects a document whose root is not GPIF', () => {
+    const zip = zipSync({ 'Content/score.gpif': encode('<Score/>') });
+    expect(() => readGp(zip)).toThrow(expect.objectContaining({ code: 'not-gpif' }));
+  });
+});
+
+describe('readGp timing', () => {
+  it('reads the largest fixture well inside the import budget', () => {
+    const bytes = fixtureBytes('gp/drum-tabs.gp');
+    readGp(bytes);
+    const runs = 20;
+    const start = Date.now();
+    for (let run = 0; run < runs; run++) readGp(bytes);
+    const perRead = (Date.now() - start) / runs;
+    // About 2 ms on a laptop; the bound leaves room for a slow CI runner.
+    expect(perRead).toBeLessThan(100);
+  });
+});
