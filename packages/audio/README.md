@@ -66,8 +66,11 @@ interface NoteEvent {
   strokes, grace notes) is the sink's business: the event carries the whole `Note`, `Beat` and
   `Track`, and `duration` is in seconds so bend points (0 to 60 across the note) map directly.
 - `allNotesOff(when)` must cancel every note sounding at `when` **and every note already
-  scheduled to start after it**: the scheduler has handed out up to 200 ms of the future. It is
-  called with `when = currentTime` on pause, stop and seek.
+  scheduled to start after it**: the scheduler has handed out up to 200 ms of the future. Stop
+  the source nodes rather than only muting them, or every cancelled note keeps a node running
+  until its original stop time; `stop(when)` on a node whose start time is later makes it
+  produce nothing and end at once, and a second `stop` replaces the first. It is called with
+  `when = currentTime` on pause, stop and seek.
 - `MetronomeSink` (`click(when, accent)`, `silence(when)`, `setVolume(volume)`) is the same
   idea for the metronome and the count-in; `ClickSynth` is the built-in one.
 

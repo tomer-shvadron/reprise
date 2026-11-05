@@ -29,7 +29,9 @@ export interface NoteEvent {
  *   except when playback starts or a loop wraps exactly on it, where it arrives as an onset.
  *   The sink schedules both the start and the release itself; there is no per-note off call.
  * - `allNotesOff(when)` cancels every note sounding at `when` and every note already scheduled
- *   to start at or after it. Called on pause, stop and seek, with `when` = `currentTime`.
+ *   to start at or after it, by stopping their source nodes (`stop(when)` is valid before a
+ *   node's start time), not only by muting them. Called on pause, stop and seek, with `when` =
+ *   `currentTime`.
  */
 export interface InstrumentSink {
   noteOn(event: NoteEvent): void;

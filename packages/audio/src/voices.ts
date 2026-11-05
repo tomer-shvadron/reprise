@@ -11,11 +11,13 @@ export class VoiceSet {
     });
   }
 
-  /** Fades every voice out from `when`; one that starts later never becomes audible. */
+  /** Fades every voice out from `when` and stops it; one that starts later never sounds. */
   cut(when: number, fade = 0.005): void {
-    for (const { gain } of this.voices) {
+    for (const { source, gain } of this.voices) {
       gain.gain.cancelAndHoldAtTime(when);
       gain.gain.linearRampToValueAtTime(0, when + fade);
+      // A stop before a node's start time makes it produce nothing and end at once.
+      source.stop(when + fade);
     }
   }
 
