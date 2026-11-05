@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Applies the repository's merge settings and the branch protection on `main`.
 # Idempotent: both calls replace the settings wholesale, so rerunning converges.
+# Apply only after ci.yml is on main: a PR whose merge ref lacks it can never produce the
+# required `ci` check, and enforce_admins leaves no bypass.
 # Needs a token with admin rights on the repo, e.g. GH_TOKEN=$(gh auth token --user tomer-shvadron).
 set -euo pipefail
 
