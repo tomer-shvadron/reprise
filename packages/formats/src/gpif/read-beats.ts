@@ -1,4 +1,4 @@
-import { DynamicsSchema } from '@reprise/model';
+import { DynamicsSchema, type Stroke } from '@reprise/model';
 
 import {
   bendPoints,
@@ -13,6 +13,7 @@ import {
   childPath,
   childText,
   notModelled,
+  parseIntOr,
   splitList,
   unknownElement,
   unknownValue,
@@ -24,6 +25,54 @@ const TREMOLO = { '1/2': 8, '1/4': 16, '1/8': 32 } as const;
 
 function isTremoloKey(text: string): text is keyof typeof TREMOLO {
   return Object.hasOwn(TREMOLO, text);
+}
+
+type StrokeDuration = NonNullable<Stroke['duration']>;
+
+/** A brush or arpeggio's length in MIDI ticks at 960 per quarter, as the note value it spreads over. */
+const STROKE_TICKS: Readonly<Record<number, StrokeDuration>> = {
+  960: 4,
+  480: 8,
+  240: 16,
+  120: 32,
+  60: 64,
+  30: 128,
+};
+
+/** The stroke-length property, the one beat `XProperty` the model has a field for. */
+const STROKE_LENGTH_ID = '687935489';
+const BEAMING_IDS = new Set(['1124204545', '1124204546', '1124204552']);
+
+function readXProperties(
+  sink: WarningSink,
+  element: XmlElement,
+  path: string,
+): StrokeDuration | undefined {
+  let stroke: StrokeDuration | undefined;
+  for (const property of element.children) {
+    const at = childPath(path, property);
+    const id = property.attributes.get('id');
+    if (property.name !== 'XProperty' || id === undefined) {
+      unknownElement(sink, at);
+      continue;
+    }
+    if (id === STROKE_LENGTH_ID) {
+      const ticks = parseIntOr(childText(property, 'Int'), 0);
+      stroke = STROKE_TICKS[ticks];
+      if (stroke === undefined) {
+        sink.warn(
+          'invalid-value',
+          at,
+          `A stroke length of ${String(ticks)} ticks is not a note value; dropped`,
+        );
+      }
+    } else if (BEAMING_IDS.has(id)) {
+      notModelled(sink, at, 'Beam direction and grouping');
+    } else {
+      notModelled(sink, at, `Extended beat property ${id}`);
+    }
+  }
+  return stroke;
 }
 
 function direction(property: XmlElement): 'up' | 'down' {
@@ -108,6 +157,7 @@ function readLyrics(element: XmlElement): string[] | undefined {
 
 export function readBeat(sink: WarningSink, element: XmlElement, path: string): GpifBeat {
   const beat: GpifBeat = { path, noteIds: [], effects: {} };
+  let stroke: StrokeDuration | undefined;
   for (const node of element.children) {
     const at = childPath(path, node);
     const text = node.text.trim();
@@ -198,11 +248,16 @@ export function readBeat(sink: WarningSink, element: XmlElement, path: string): 
         notModelled(sink, at, 'A timer');
         break;
       case 'XProperties':
-        notModelled(sink, at, 'Beaming and stroke-length overrides');
+        stroke = readXProperties(sink, node, at) ?? stroke;
         break;
       default:
         unknownElement(sink, at);
     }
+  }
+  // The length belongs to whichever stroke the beat has; alone it says nothing.
+  if (stroke !== undefined) {
+    if (beat.effects.brush) beat.effects.brush.duration = stroke;
+    else if (beat.effects.arpeggio) beat.effects.arpeggio.duration = stroke;
   }
   return beat;
 }

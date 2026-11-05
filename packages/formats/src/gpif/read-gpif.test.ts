@@ -267,6 +267,7 @@ describe('beats and rhythms', () => {
       property('WhammyBarOriginValue', '<Float>0</Float>'),
       property('WhammyBarDestinationValue', '<Float>-100</Float>'),
       '</Properties>',
+      '<XProperties><XProperty id="687935489"><Int>120</Int></XProperty></XProperties>',
     ].join('');
     const { score } = read(oneBar([beat('0', '0', '0', extra)], [note('0', 2, 5)], QUARTERS));
     expect(beatsOf(score)[0]).toMatchObject({
@@ -274,7 +275,7 @@ describe('beats and rhythms', () => {
       effects: {
         volumeSwell: true,
         tremoloPicking: 16,
-        arpeggio: { direction: 'up' },
+        arpeggio: { direction: 'up', duration: 32 },
         pickStroke: 'down',
         whammy: {
           kind: 'dive',
@@ -285,6 +286,25 @@ describe('beats and rhythms', () => {
         },
       },
     });
+  });
+
+  it('reads the stroke length onto a brush and drops one that is not a note value', () => {
+    const brush = (ticks: number): string =>
+      `<Properties>${property('Brush', '<Direction>Up</Direction>')}</Properties><XProperties><XProperty id="687935489"><Int>${String(ticks)}</Int></XProperty></XProperties>`;
+    const { score, warnings } = read(
+      oneBar(
+        [beat('0', '0', '0', brush(480)), beat('1', '0', '0', brush(500))],
+        [note('0', 2, 5)],
+        QUARTERS,
+      ),
+    );
+    expect(beatsOf(score).map((b) => b.effects.brush)).toEqual([
+      { direction: 'up', duration: 8 },
+      { direction: 'up' },
+    ]);
+    expect(warnings.map((w) => w.message)).toContain(
+      'A stroke length of 500 ticks is not a note value; dropped',
+    );
   });
 
   it('reads a chord diagram from the staff collection', () => {
