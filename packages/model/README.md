@@ -111,7 +111,9 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   the migrations key; `Score` carries none, so an in-memory score never claims a version it
   was not migrated to. `SCORE_VERSION` is the envelope's current version.
 - **IDs**: `newId()` is 12 base62 characters from `crypto.getRandomValues`, with rejection
-  sampling so every character is equally likely. On `Score`, `MasterBar`, `Track`, `Bar`,
+  sampling so every character is equally likely. The bytes come from a 1 KiB pool refilled when
+  spent: one `getRandomValues` call per id was about 60% of importing a 38,400-note file (#62),
+  and pooling makes 100k ids about eight times faster. On `Score`, `MasterBar`, `Track`, `Bar`,
   `Voice`, `Beat` and `Note`. `IdSchema` enforces the format. A grace beat has no id of its
   own; its notes do.
 - **Optional fields are exact** (`z.exactOptional()`): with `exactOptionalPropertyTypes` the

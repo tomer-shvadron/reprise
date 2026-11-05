@@ -74,7 +74,7 @@ file bytes --formats.read--> Score --------+--> layout.layout(score, options) --
 
 **Frozen on 2026-11-05 at WP-015.** Changes after this date are `type:contract` issues owned by the lead.
 
-Changed by #62 (2026-11-05): a tie's origin is the most recent note on its string in its voice within three bars, not only the previous beat (`tieOriginOf`, `TIE_REACH_BARS`).
+Changed by #62 (2026-11-05): a tie's origin is the most recent note on its string in its voice within three bars, not only the previous beat (`tieOriginOf`, `TIE_REACH_BARS`); `newId()` draws its random bytes from a pooled buffer, with the same format and distribution.
 
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
 
