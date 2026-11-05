@@ -149,7 +149,7 @@ export {
   NativeDocumentSchema,
   NativeFormatError,
   formatPath,
-  parse,
-  serialize,
+  parseNative,
+  serializeNative,
 } from './native';
 export type { AppInfo, NativeDocument, NativePath, ParseResult, ParseWarning } from './native';

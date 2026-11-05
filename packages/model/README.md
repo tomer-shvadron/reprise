@@ -40,10 +40,10 @@ validateScore(score); // cross-node invariants: [] when the score is sound
 ## Native format (`.reprise`)
 
 ```ts
-import { parse, serialize } from '@reprise/model';
+import { parseNative, serializeNative } from '@reprise/model';
 
-const bytes = serialize(score, { name: 'Reprise', version: '1.0.0' }); // Uint8Array
-const { score: read, app, warnings } = parse(bytes); // throws NativeFormatError
+const bytes = serializeNative(score, { name: 'Reprise', version: '1.0.0' }); // Uint8Array
+const { score: read, app, warnings } = parseNative(bytes); // throws NativeFormatError
 ```
 
 - **Envelope**: `{ format: 'reprise', version, app: { name, version }, score }`, in that key
@@ -58,7 +58,7 @@ const { score: read, app, warnings } = parse(bytes); // throws NativeFormatError
   versions. The `score` then runs through `MIGRATIONS` from the file's version to the current
   one, and the whole envelope is checked against `NativeDocumentSchema`. Any failure is a
   `NativeFormatError` whose `path` (and message prefix, `score.tracks[0].bars[2].id: ...`) names
-  the offending field. `parse` does not run `validateScore`; callers that need the invariants
+  the offending field. `parseNative` does not run `validateScore`; callers that need the invariants
   run it on the result.
 - **Unknown fields** anywhere in the document are dropped, each reported as a `ParseWarning`
   with its path, rather than failing the read.

@@ -86,7 +86,7 @@ function canonical(value: unknown): Json {
  * Two-space-indented UTF-8 JSON with a trailing newline. The envelope keeps its documented
  * order so `format` comes first; everything inside `app` and `score` is key-sorted.
  */
-export function serialize(score: Score, app: AppInfo): Uint8Array {
+export function serializeNative(score: Score, app: AppInfo): Uint8Array {
   const document = {
     format: NATIVE_FORMAT,
     version: SCORE_VERSION,
@@ -101,7 +101,7 @@ export function serialize(score: Score, app: AppInfo): Uint8Array {
  * offending path, for anything it cannot turn into a valid `Score`; fields it does not know
  * are dropped and reported in `warnings`.
  */
-export function parse(bytes: Uint8Array): ParseResult {
+export function parseNative(bytes: Uint8Array): ParseResult {
   let text: string;
   try {
     text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);

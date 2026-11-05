@@ -12,7 +12,7 @@ import {
 } from './factories';
 import { buildFullScore } from './full-score-fixture';
 import { MIGRATIONS, migrate } from './migrations';
-import { NativeFormatError, formatPath, parse, serialize } from './native';
+import { NativeFormatError, formatPath, parseNative, serializeNative } from './native';
 import type { AppInfo } from './native';
 import { SCORE_VERSION, ScoreSchema } from './score';
 import type { Score } from './score';
@@ -36,12 +36,12 @@ const bytesOf = (value: unknown): Uint8Array => encode(JSON.stringify(value));
 
 function parseError(bytes: Uint8Array): NativeFormatError {
   try {
-    parse(bytes);
+    parseNative(bytes);
   } catch (error) {
     if (error instanceof NativeFormatError) return error;
     throw error;
   }
-  throw new Error('parse did not fail');
+  throw new Error('parseNative did not fail');
 }
 
 // Varied durations, rests, ties and time signatures so the generated score is not one repeated bar.
@@ -125,19 +125,19 @@ describe('round trip', () => {
     ['a large generated score', buildLargeScore],
   ];
 
-  it.each(scores)('parse(serialize(s)) deep-equals s for %s', (_, build) => {
+  it.each(scores)('parseNative(serializeNative(s)) deep-equals s for %s', (_, build) => {
     const score = build();
     expect(validateScore(score)).toEqual([]);
-    const { score: parsed, app, warnings } = parse(serialize(score, APP));
+    const { score: parsed, app, warnings } = parseNative(serializeNative(score, APP));
     expect(parsed).toEqual(score);
     expect(app).toEqual(APP);
     expect(warnings).toEqual([]);
   });
 });
 
-describe('serialize', () => {
+describe('serializeNative', () => {
   it('writes the envelope in its documented order, two-space indented, with a trailing newline', () => {
-    const text = decode(serialize(createEmptyScore(), APP));
+    const text = decode(serializeNative(createEmptyScore(), APP));
     expect(text.startsWith('{\n  "format": "reprise",\n  "version": 1,\n  "app": {\n')).toBe(true);
     expect(text.endsWith('}\n')).toBe(true);
     expect(text.endsWith('\n\n')).toBe(false);
@@ -146,7 +146,7 @@ describe('serialize', () => {
 
   it('yields identical bytes for the same score twice', () => {
     const score = buildFullScore();
-    expect(serialize(score, APP)).toEqual(serialize(score, APP));
+    expect(serializeNative(score, APP)).toEqual(serializeNative(score, APP));
   });
 
   it('does not depend on the order keys were inserted in', () => {
@@ -154,12 +154,12 @@ describe('serialize', () => {
     const shuffled = ScoreSchema.parse(JSON.parse(JSON.stringify(score)));
     reverseKeysInPlace(shuffled);
     expect(JSON.stringify(shuffled)).not.toBe(JSON.stringify(score));
-    expect(decode(serialize(shuffled, APP))).toBe(decode(serialize(score, APP)));
+    expect(decode(serializeNative(shuffled, APP))).toBe(decode(serializeNative(score, APP)));
   });
 
   it('sorts keys inside the score and keeps array order', () => {
     const score = buildFullScore();
-    const written: unknown = JSON.parse(decode(serialize(score, APP)));
+    const written: unknown = JSON.parse(decode(serializeNative(score, APP)));
     expect(keysOf(at(written, 'score'))).toEqual(['id', 'masterBars', 'meta', 'tracks']);
     expect(keysOf(at(written, 'score', 'meta'))).toEqual(Object.keys(score.meta).sort());
     expect(at(written, 'score', 'meta', 'notices')).toEqual(['one', 'two']);
@@ -173,13 +173,13 @@ describe('serialize', () => {
   it('writes non-ASCII text as UTF-8', () => {
     const score = createEmptyScore();
     score.meta.title = 'Café · 東京';
-    const bytes = serialize(score, APP);
+    const bytes = serializeNative(score, APP);
     expect(decode(bytes)).toContain('"title": "Café · 東京"');
-    expect(parse(bytes).score.meta.title).toBe('Café · 東京');
+    expect(parseNative(bytes).score.meta.title).toBe('Café · 東京');
   });
 });
 
-describe('parse failures', () => {
+describe('parseNative failures', () => {
   it('rejects a version-0 document, naming the version', () => {
     const error = parseError(bytesOf({ ...envelope(createEmptyScore()), version: 0 }));
     expect(error.path).toEqual(['version']);
@@ -249,10 +249,10 @@ describe('parse failures', () => {
   });
 });
 
-describe('parse warnings', () => {
+describe('parseNative warnings', () => {
   it('drops an unknown top-level field with a warning', () => {
     const score = createEmptyScore();
-    const result = parse(bytesOf({ ...envelope(score), thumbnail: 'data:...' }));
+    const result = parseNative(bytesOf({ ...envelope(score), thumbnail: 'data:...' }));
     expect(result.score).toEqual(score);
     expect(result.warnings).toEqual([
       { path: ['thumbnail'], message: 'Unknown field "thumbnail" was dropped' },
@@ -271,7 +271,7 @@ describe('parse warnings', () => {
         tracks: [{ ...track, bars: [{ ...bar, legacy: true }] }],
       },
     };
-    const result = parse(bytesOf(raw));
+    const result = parseNative(bytesOf(raw));
     expect(result.score).toEqual(score);
     expect(result.warnings.map((warning) => warning.path)).toEqual([
       ['score', 'meta', 'rating'],
