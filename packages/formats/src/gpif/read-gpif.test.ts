@@ -525,6 +525,104 @@ describe('tracks', () => {
     expect(codes({ score, warnings })).toContain('multiple-staves');
   });
 
+  it('gives a second staff the same voice slot in every bar', () => {
+    const twoStaves = guitarTrack('0').replace(
+      '</Staves>',
+      '<Staff><Properties /></Staff></Staves>',
+    );
+    const { score, warnings } = read(
+      gpif({
+        tracks: [twoStaves],
+        masterBars: [masterBar('0 1'), masterBar('2 3')],
+        // Staff 1 uses voice 2 only in the second bar; staff 2's voice still takes slot 3 in both.
+        bars: [
+          bar('0', '0 -1 -1 -1'),
+          bar('1', '1 -1 -1 -1'),
+          bar('2', '0 2 -1 -1'),
+          bar('3', '3 -1 -1 -1'),
+        ],
+        voices: [voice('0', '0'), voice('1', '1'), voice('2', '0'), voice('3', '2')],
+        beats: [beat('0', '0', '0'), beat('1', '0', '1'), beat('2', '0', '2')],
+        notes: [
+          note('0', 2, 5),
+          note('1', 0, 3),
+          note('2', 0, 3, '<Tie origin="false" destination="true" />'),
+        ],
+        rhythms: [rhythm('0', 'Whole')],
+      }),
+    );
+    const slots = score.tracks[0]?.bars.map((b) => b.voices.map((v) => v.beats.length));
+    expect(slots).toEqual([
+      [1, 0, 1, 0],
+      [1, 1, 1, 0],
+    ]);
+    // The tie in bar 2 continues staff 2's note in bar 1, which only holds in a stable slot.
+    expect(codes({ score, warnings })).not.toContain('tie-target');
+  });
+
+  it('drops a second-staff voice once, counting its bars, when staff 1 uses every slot', () => {
+    const twoStaves = guitarTrack('0').replace(
+      '</Staves>',
+      '<Staff><Properties /></Staff></Staves>',
+    );
+    const { score, warnings } = read(
+      gpif({
+        tracks: [twoStaves],
+        masterBars: [masterBar('0 1'), masterBar('2 1')],
+        bars: [bar('0', '0 -1 -1 -1'), bar('1', '0 -1 -1 -1'), bar('2', '0 0 0 0')],
+        voices: [voice('0', '0')],
+        beats: [beat('0', '0', '0')],
+        notes: [note('0', 2, 5)],
+        rhythms: [rhythm('0', 'Whole')],
+      }),
+    );
+    expect(score.tracks[0]?.bars.map((b) => b.voices.map((v) => v.beats.length))).toEqual([
+      [1, 0, 0, 0],
+      [1, 1, 1, 1],
+    ]);
+    expect(warnings.filter((w) => w.code === 'voice-dropped')).toEqual([
+      expect.objectContaining({ count: 2, path: 'Bars/Bar[1]' }),
+    ]);
+  });
+
+  it('finds a hammer-on destination within three bars, and on the next beat off fretted tracks', () => {
+    const origin = property('HopoOrigin', '<Enable />');
+    const fretted = read(
+      gpif({
+        masterBars: ['0', '1', '2', '3', '4'].map((id) => masterBar(id)),
+        bars: ['0', '1', '2', '3', '4'].map((id) => bar(id, `${id} -1 -1 -1`)),
+        voices: [voice('0', '0'), voice('1', ''), voice('2', ''), voice('3', '1'), voice('4', '2')],
+        beats: [beat('0', '0', '0 1'), beat('1', '0', '2'), beat('2', '0', '3')],
+        notes: [
+          note('0', 2, 5, '', origin),
+          note('1', 4, 5, '', origin),
+          note('2', 2, 7),
+          note('3', 4, 7),
+        ],
+        rhythms: [rhythm('0', 'Whole')],
+      }),
+    );
+    expect(beatsOf(fretted.score, 3)[0]?.notes[0]?.hammerPull).toBe(true);
+    expect(beatsOf(fretted.score, 4)[0]?.notes[0]?.hammerPull).toBe(false);
+    expect(fretted.warnings.filter((w) => w.code === 'hammer-pull-without-destination')).toEqual([
+      expect.objectContaining({ count: 1, path: 'Notes/Note[1]' }),
+    ]);
+
+    const piano = guitarTrack('0', { program: 0 });
+    const pitched = read(
+      oneBar(
+        [beat('0', '0', '0'), beat('1', '0', '1')],
+        [
+          note('0', 2, 5, '', origin + property('Midi', '<Number>60</Number>')),
+          note('1', 3, 5, '', property('Midi', '<Number>64</Number>')),
+        ],
+        QUARTERS,
+        { tracks: [piano] },
+      ),
+    );
+    expect(beatsOf(pitched.score).map((b) => b.notes[0]?.hammerPull)).toEqual([false, true]);
+  });
+
   it('dispatches the raw lyric block when no beat has lyrics', () => {
     const lyrics =
       '<Lyrics><Line><Text><![CDATA[Hel-lo [aside] world+wide]]></Text><Offset>0</Offset></Line></Lyrics>';

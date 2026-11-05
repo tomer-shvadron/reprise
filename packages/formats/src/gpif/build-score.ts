@@ -1,6 +1,7 @@
 import {
   LYRIC_LINES,
   PPQ,
+  VOICE_COUNT,
   barTicks,
   beatStartTicks,
   createBar,
@@ -38,6 +39,9 @@ import type { WarningSink } from './warnings';
 
 /** Beat starts within this many ticks of an automation's position count as the same moment. */
 const TICK_TOLERANCE = 0.5;
+
+/** How many bars ahead a hammer-on may find its destination, as far as alphaTab's search looks. */
+const HAMMER_PULL_BAR_WINDOW = 3;
 
 const MODEL_DURATIONS: readonly Duration[] = [1, 2, 4, 8, 16, 32, 64, 128, 256];
 
@@ -80,12 +84,82 @@ interface Located {
   exact: boolean;
 }
 
+interface PlacedBeat {
+  beat: Beat;
+  barIndex: number;
+}
+
+/** `staffIndex.voiceIndex`: one voice line of a track across all its bars. */
+const lineKey = (staffIndex: number, voiceIndex: number): string =>
+  `${String(staffIndex)}.${String(voiceIndex)}`;
+
+/**
+ * Which model voice slot each voice line of a track lands in, fixed for the whole track. The
+ * model has one staff per track, so a second staff's voices share the first staff's four slots:
+ * staff 1 keeps its own indices and every other line that is used anywhere takes the lowest slot
+ * staff 1 never uses, in staff and voice order. A line with no slot left is absent from the map.
+ * Choosing per bar instead would move a voice between slots from one bar to the next, and ties,
+ * hammer-ons and grace notes all follow a slot across bars.
+ */
+function planVoiceSlots(document: GpifDocument, barIds: string[][]): Map<string, number> {
+  const used = new Set<string>();
+  for (const staves of barIds) {
+    staves.forEach((id, staffIndex) => {
+      document.bars.get(id)?.voiceIds.forEach((voiceId, voiceIndex) => {
+        if (voiceId !== '-1') used.add(lineKey(staffIndex, voiceIndex));
+      });
+    });
+  }
+  const slots = new Map<string, number>();
+  const taken = new Set<number>();
+  for (let voiceIndex = 0; voiceIndex < VOICE_COUNT; voiceIndex++) {
+    if (!used.has(lineKey(0, voiceIndex))) continue;
+    slots.set(lineKey(0, voiceIndex), voiceIndex);
+    taken.add(voiceIndex);
+  }
+  const free = Array.from({ length: VOICE_COUNT }, (_, slot) => slot).filter(
+    (slot) => !taken.has(slot),
+  );
+  const others = [...used]
+    .filter((line) => !line.startsWith('0.'))
+    .map((line) => line.split('.').map(Number) as [number, number])
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  for (const [staffIndex, voiceIndex] of others) {
+    const slot = free.shift();
+    if (slot !== undefined) slots.set(lineKey(staffIndex, voiceIndex), slot);
+  }
+  return slots;
+}
+
+/** The next note on the origin's string, or the next note at all off fretted tracks, within the window. */
+function hammerPullDestination(
+  beats: PlacedBeat[],
+  from: number,
+  note: Note,
+  fretted: boolean,
+): Note | undefined {
+  const origin = beats[from];
+  if (!origin) return undefined;
+  for (let index = from + 1; index < beats.length; index++) {
+    const later = beats[index];
+    if (!later || later.barIndex > origin.barIndex + HAMMER_PULL_BAR_WINDOW) return undefined;
+    const found = fretted
+      ? later.beat.notes.find((candidate) => candidate.string === note.string)
+      : later.beat.notes[0];
+    if (found) return found;
+  }
+  return undefined;
+}
+
 class ScoreBuilder {
   readonly #sink: WarningSink;
   readonly #document: GpifDocument;
   readonly #plans: TrackPlan[];
   readonly #masterBars: MasterBar[];
   readonly #tracks: Track[];
+  /** Per track, per master bar, the gpif bar ids of the track's staves. */
+  readonly #barIds: string[][][];
+  readonly #slots: Map<string, number>[];
   readonly #pendingGrace = new Map<string, PendingGrace[]>();
   readonly #hopoOrigins = new Map<Note, string>();
   readonly #similes: { track: number; bar: number; mark: SimileMark; path: string }[] = [];
@@ -110,6 +184,24 @@ class ScoreBuilder {
     if (document.masterBars.length === 0)
       throw new GpifError('empty-score', 'The file defines no bars');
 
+    this.#barIds = this.#plans.map(() => []);
+    for (const raw of document.masterBars) {
+      let cursor = 0;
+      this.#plans.forEach((plan, trackIndex) => {
+        const staffCount = Math.max(1, plan.source.staves.length);
+        this.#barIds[trackIndex]?.push(raw.barIds.slice(cursor, cursor + staffCount));
+        cursor += staffCount;
+      });
+      if (raw.barIds.length > cursor) {
+        sink.warn(
+          'missing-reference',
+          raw.path,
+          'More bars than the tracks have staves; the extra ones are ignored',
+        );
+      }
+    }
+    this.#slots = this.#barIds.map((barIds) => planVoiceSlots(document, barIds));
+
     this.#masterBars = document.masterBars.map((raw) =>
       createMasterBar({
         timeSignature: raw.timeSignature,
@@ -132,20 +224,10 @@ class ScoreBuilder {
 
   build(): Score {
     this.#document.masterBars.forEach((raw, barIndex) => {
-      let cursor = 0;
-      this.#plans.forEach((plan, trackIndex) => {
-        const staffCount = Math.max(1, plan.source.staves.length);
-        const ids = raw.barIds.slice(cursor, cursor + staffCount);
-        cursor += staffCount;
+      this.#plans.forEach((_, trackIndex) => {
+        const ids = this.#barIds[trackIndex]?.[barIndex] ?? [];
         this.#tracks[trackIndex]?.bars.push(this.#buildBar(trackIndex, barIndex, ids, raw.path));
       });
-      if (raw.barIds.length > cursor) {
-        this.#sink.warn(
-          'missing-reference',
-          raw.path,
-          'More bars than the tracks have staves; the extra ones are ignored',
-        );
-      }
     });
     for (const [key, pending] of this.#pendingGrace) {
       for (const { path } of pending) {
@@ -197,12 +279,7 @@ class ScoreBuilder {
   }
 
   #firstClef(trackIndex: number): Clef | undefined {
-    const first = this.#document.masterBars[0];
-    let cursor = 0;
-    for (let index = 0; index < trackIndex; index++) {
-      cursor += Math.max(1, this.#plans[index]?.source.staves.length ?? 1);
-    }
-    const id = first?.barIds[cursor];
+    const id = this.#barIds[trackIndex]?.[0]?.[0];
     return id === undefined ? undefined : this.#document.bars.get(id)?.clef;
   }
 
@@ -219,9 +296,8 @@ class ScoreBuilder {
   }
 
   /**
-   * One model bar from the track's staves at this master bar. Staff 1 keeps its voice slots;
-   * the voices of further staves (a piano's second staff) fill the slots staff 1 leaves empty,
-   * since the model has one staff per track, and are dropped with a warning when none is left.
+   * One model bar from the track's staves at this master bar, each voice line in the slot
+   * `planVoiceSlots` gave it; a line that got none is dropped with a warning counting its bars.
    */
   #buildBar(trackIndex: number, barIndex: number, ids: string[], path: string): Bar {
     const bar = createBar();
@@ -244,32 +320,25 @@ class ScoreBuilder {
         path: first.path,
       });
 
-    const overflow: { id: string; path: string }[] = [];
+    const slots = this.#slots[trackIndex];
     staves.forEach((staff, staffIndex) => {
-      staff?.voiceIds.forEach((voiceId, slot) => {
+      staff?.voiceIds.forEach((voiceId, voiceIndex) => {
         if (voiceId === '-1') return;
-        const voice = staffIndex === 0 ? bar.voices[slot] : undefined;
-        if (voice) {
+        const line = lineKey(staffIndex, voiceIndex);
+        const slot = slots?.get(line);
+        const voice = slot === undefined ? undefined : bar.voices[slot];
+        if (voice && slot !== undefined) {
           voice.beats = this.#buildVoice(trackIndex, slot, voiceId, staff.path);
         } else {
-          overflow.push({ id: voiceId, path: staff.path });
+          this.#sink.warn(
+            'voice-dropped',
+            staff.path,
+            `Voice ${String(voiceIndex + 1)} of staff ${String(staffIndex + 1)} has no free voice slot on the merged staff; dropped`,
+            `${String(trackIndex)}:${line}`,
+          );
         }
       });
     });
-    for (const { id, path: voicePath } of overflow) {
-      const slot = bar.voices.findIndex((voice, index) => {
-        const ownId = staves[0]?.voiceIds[index];
-        return voice.beats.length === 0 && (ownId === undefined || ownId === '-1');
-      });
-      const voice = bar.voices[slot];
-      if (voice) voice.beats = this.#buildVoice(trackIndex, slot, id, voicePath);
-      else
-        this.#sink.warn(
-          'voice-dropped',
-          voicePath,
-          `Voice ${id} has no free voice slot on the merged staff; dropped`,
-        );
-    }
     return bar;
   }
 
@@ -448,25 +517,24 @@ class ScoreBuilder {
 
   #moveHammerPulls(): void {
     this.#tracks.forEach((track, trackIndex) => {
-      const fretted = this.#plans[trackIndex]?.kind === 'fretted';
-      for (let slot = 0; slot < 4; slot++) {
-        const beats = track.bars.flatMap((bar) => bar.voices[slot]?.beats ?? []);
-        beats.forEach((beat, index) => {
+      const plan = this.#plans[trackIndex];
+      const fretted = plan?.kind === 'fretted';
+      for (let slot = 0; slot < VOICE_COUNT; slot++) {
+        const beats: PlacedBeat[] = track.bars.flatMap((bar, barIndex) =>
+          (bar.voices[slot]?.beats ?? []).map((beat) => ({ beat, barIndex })),
+        );
+        beats.forEach(({ beat }, index) => {
           for (const note of beat.notes) {
             const origin = this.#hopoOrigins.get(note);
             if (origin === undefined) continue;
-            const same = (other: Note): boolean =>
-              fretted ? other.string === note.string : other.fret === note.fret;
-            const destination = beats
-              .slice(index + 1)
-              .map((later) => later.notes.find(same))
-              .find((found) => found !== undefined);
+            const destination = hammerPullDestination(beats, index, note, fretted);
             if (destination) destination.hammerPull = true;
             else {
               this.#sink.warn(
                 'hammer-pull-without-destination',
                 origin,
-                'A hammer-on or pull-off with no later note on its string; dropped',
+                `A hammer-on or pull-off with no later note on its string within ${String(HAMMER_PULL_BAR_WINDOW)} bars; dropped`,
+                plan?.source.id ?? String(trackIndex),
               );
             }
           }

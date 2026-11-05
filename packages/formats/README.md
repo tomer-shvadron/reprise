@@ -59,7 +59,7 @@ Each verified against alphaTab's `GpifParser` (and `GpifWriter` where noted) in 
 - **Lyric offsets** (`Lyrics/Line/Offset`) are 0-based bar indexes, unlike GP3 to GP5's 1-based ones (`_parseLyricsLine`; the writer writes `bar.index`).
 - **Per-beat lyrics win.** When any beat carries `Lyrics`, the track's block is not laid onto beats (`_skipApplyLyrics`).
 - **Tempo units.** `Value` is `"<bpm> <unit>"`, 1 to 5 for eighth to dotted half, scaled by 0.5, 1, 1.5, 2 and 3 to quarter-note BPM (`Automation.buildTempoAutomation`). A value without a unit is per quarter (alphaTab reads it as an eighth, `reference = 1`; Guitar Pro always writes a unit, so the quarter default is deliberate). `Position` is a 0 to 1 ratio of the bar.
-- **Hammer-ons** are flagged at both ends (`HopoOrigin`, `HopoDestination`); the destination flag is the model's, and an origin whose destination is unflagged moves to the next note on its string in the voice.
+- **Hammer-ons** are flagged at both ends (`HopoOrigin`, `HopoDestination`); the destination flag is the model's, and an origin whose destination is unflagged moves to the next note on its string in the voice within three bars, as far as alphaTab's `findHammerPullDestination` looks; off fretted tracks it is the next beat with notes, since a hammer-on changes pitch.
 - **Bends** carry points but no type. Values are 100 per whole tone (/ 25 to quarter tones), offsets 0 to 100 (× 0.6); a missing origin offset is 0 and destination offset 100 (`_parseNoteProperties`). The kind is read off the curve, `custom` where none fits.
 - **Accent** is a bit set: 1 staccato, 2 staccatissimo, 4 heavy accent, 8 accent, 16 tenuto (`_parseNote`). **AntiAccent** `Normal` is a ghost note; **Muted** is a dead note.
 - **Slide flags**: 1 shift, 2 legato, 4 out down, 8 out up, 16 in from below, 32 in from above, 64 and 128 pick slides. The model keeps every set flag; alphaTab keeps one in and one out.
@@ -75,7 +75,7 @@ Each verified against alphaTab's `GpifParser` (and `GpifWriter` where noted) in 
 
 ### Known gaps
 
-- **Multiple staves** collapse onto one (ADR-0006): staff 1 keeps its voice slots and the voices of later staves fill the empty ones, dropped with `voice-dropped` when none is free. The other staves' tunings and capos are not read.
+- **Multiple staves** collapse onto one (ADR-0006). Staff 1 keeps its voice indices as slots; every other staff's voice line that is used anywhere in the track takes the lowest slot staff 1 never uses, in staff and voice order, and keeps that slot in every bar, so ties, hammer-ons and grace notes follow it across bars. A line with no slot left is dropped, one `voice-dropped` per line counting its bars. The other staves' tunings and capos are not read.
 - **Linear tempo ramps** become a ramp starting at the previous automation with `duration` rounded to whole quarter notes (`MixTransitionSchema` is an integer); a ramp that starts mid-bar starts from the tempo before it. No fixture has one.
 - **Tempo automations between beats** move to the beat sounding at that moment (`tempo-moved`), as in `beat-tempo-change.gp` bar 2.
 - **Drum articulation variants** (rim shot, choke, half-open) play as their GM sound and are reported once per track; the model has no articulation field.
@@ -95,11 +95,11 @@ Every warning is `{ code, message, path, count }`: `path` is the gpif element (`
 | `invalid-value`                   | a value outside the model (a time signature, key, dot count, fret beyond 127, a volta past 8)  |
 | `missing-reference`               | an id that names no node (bar, voice, beat, note, rhythm, chord, sound, track)                 |
 | `multiple-staves`                 | a track with more than one staff, merged                                                       |
-| `voice-dropped`                   | a further staff's voice with no free slot                                                      |
+| `voice-dropped`                   | a further staff's voice line with no free slot, once per line with its bar count               |
 | `simile-expanded`                 | a simile bar, filled with a copy of the bar it repeats                                         |
 | `grace-without-beat`              | grace beats at the end of a voice with no beat after them                                      |
 | `grace-duration-clamped`          | a grace note outside 16th to 64th                                                              |
-| `hammer-pull-without-destination` | a hammer-on origin with no later note on its string                                            |
+| `hammer-pull-without-destination` | a hammer-on origin with no later note on its string within three bars, once per track          |
 | `tempo-moved`                     | a tempo change placed on the nearest earlier beat, or a ramp length rounded                    |
 | `automation-dropped`              | a tempo or sound change in a bar with no beats, or past the last bar                           |
 | `default-tempo`                   | no tempo at the start; 120 BPM is used                                                         |
