@@ -49,7 +49,7 @@ export interface Run {
   countIn: readonly ScheduledClick[];
   countInNext: number;
   finished: boolean;
-  /** Context time the last note's tick is reached; set once `finished`. */
+  /** Context time the end of the last pass is reached; set once `finished`. */
   endTime: number | undefined;
 }
 
@@ -178,8 +178,11 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
         next = { ...next, finished: true, endTime: when };
         break;
       }
+      // Reaching the loop end by playing is a crossing; a cursor a seek or setLoop left past it
+      // only jumps back, so it neither counts a pass nor fires the event.
+      const crossed = next.cursorTick <= limit + EPSILON;
       const wrapped: Anchor = { time: when, tick: loop.startTick, rate: anchor.rate };
-      const loopPasses = next.loopPasses + 1;
+      const loopPasses = crossed ? next.loopPasses + 1 : next.loopPasses;
       next = {
         ...next,
         anchor: wrapped,
@@ -188,7 +191,8 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
         loopPasses,
       };
       anchors.push(wrapped);
-      return { run: next, notes, clicks, anchors, loop: { pass: loopPasses, when } };
+      if (crossed) return { run: next, notes, clicks, anchors, loop: { pass: loopPasses, when } };
+      continue;
     }
 
     const target = Math.min(tickAtTime(timeline, anchor, horizon), limit);

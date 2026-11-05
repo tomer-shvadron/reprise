@@ -88,7 +88,7 @@ offline tests drive the engine deterministically (`src/offline-driver.ts` suspen
 | `play(fromTick?)`               | Starts from `fromTick`, the paused tick, or the start. A tick outside the loop starts at the loop start. Counts in when count-in is on. Resumes a suspended `AudioContext`. |
 | `pause()`                       | Keeps the current tick, cuts every scheduled note and click.                                                                                                                |
 | `stop()`                        | Cuts everything, returns to the loop start or the song start.                                                                                                               |
-| `seek(tick)`                    | While playing: cuts, restarts from `tick` after `startLatency`, no count-in. Otherwise moves the resume point.                                                              |
+| `seek(tick)`                    | While playing: cuts, restarts from `tick` after `startLatency`, no count-in. Otherwise moves the resume point. Past the loop end, playback restarts at the loop start.      |
 | `setTempo('percent', p)`        | Scales the whole tempo map: 50 plays at half speed.                                                                                                                         |
 | `setTempo('bpm', b)`            | Scales the whole map so the tempo at the current position plays at `b`; other tempo regions keep their ratio to it. The factor is fixed until the next `setTempo`.          |
 | `setLoop({ startBar, endBar })` | Master-bar ids, inclusive. In playback order the occurrence holding the playhead wins, then the next one, then the first. `undefined` clears the loop.                      |
@@ -140,9 +140,11 @@ Events:
 - **Metronome beats** follow the time signature's denominator: 6/8 clicks six eighths. An
   anacrusis bar is aligned to the end of its bar, so a one-beat pickup clicks beat four.
 - **Loop start.** Pressing play outside the loop starts at the loop start, as Guitar Pro does.
-  Seeking outside it while playing plays from there until the loop end is reached.
-- **End of song.** Playback stops when the clock passes the last note's tick and returns to the
-  start (or the loop start).
+  Seeking before the loop while playing plays from there into it. Seeking past its end, or setting
+  a loop that is already behind the playhead, jumps to the loop start without counting a pass or
+  firing `loop`: only a loop end reached by playing is a crossing.
+- **End of song.** Playback stops when the clock passes the end of the last bar, so the last
+  note sounds its full length, and returns to the start (or the loop start).
 - **Tests run in Vitest browser mode on headless Chromium** (`../../docs/research/2026-11-05-vitest-web-audio-environment.md`):
   the real `OfflineAudioContext`, driven through `suspend` points so the scheduler's timer is
   simulated deterministically.

@@ -185,6 +185,63 @@ describe('AudioEngine transport (OfflineAudioContext)', () => {
     expectNothingInThePast(h.sink);
   });
 
+  it('restarts at the loop start on a seek past the loop end, without counting a pass', async () => {
+    const song = bars(6);
+    const h = await harness(song, 6);
+    const [, second, third] = song.masterBars;
+    if (!second || !third) throw new Error('fixture');
+    h.engine.setLoop({ startBar: second.id, endBar: third.id });
+    let seekedAt = 0;
+    h.engine.play();
+    await h.render([
+      {
+        at: 1,
+        run: () => {
+          seekedAt = h.context.currentTime;
+          h.engine.seek(4 * 4 * PPQ);
+        },
+      },
+    ]);
+
+    const after = h.sink.notes.filter((n) => n.calledAt >= seekedAt);
+    expect(after[0]?.note.fret).toBe(1);
+    expect(after[0]?.beatIndex).toBe(0);
+    expect(after[0]?.when).toBeCloseTo(seekedAt + LATENCY, 9);
+    expect(h.loops).toHaveLength(1);
+    expect(h.loops[0]?.pass).toBe(1);
+    expect(h.loops[0]?.when).toBeCloseTo(seekedAt + LATENCY + 4, 9);
+    expectNothingInThePast(h.sink);
+  });
+
+  it('jumps to a loop set behind the playhead, without counting a pass', async () => {
+    const song = bars(6);
+    const h = await harness(song, 10);
+    const [first, second] = song.masterBars;
+    if (!first || !second) throw new Error('fixture');
+    let setAt = 0;
+    h.engine.play();
+    await h.render([
+      {
+        at: 4.5,
+        run: () => {
+          setAt = h.context.currentTime;
+          h.engine.setLoop({ startBar: first.id, endBar: second.id });
+        },
+      },
+    ]);
+
+    const after = h.sink.notes.filter((n) => n.calledAt >= setAt);
+    const jump = after[0];
+    if (!jump) throw new Error('nothing scheduled after setLoop');
+    expect(jump.note.fret).toBe(0);
+    expect(jump.beatIndex).toBe(0);
+    expect(jump.when).toBeGreaterThanOrEqual(setAt);
+    expect(jump.when).toBeLessThanOrEqual(setAt + 0.2 + MS);
+    expect(h.loops.map((loop) => loop.pass)).toEqual([1]);
+    expect(h.loops[0]?.when).toBeCloseTo(jump.when + 4, 9);
+    expectNothingInThePast(h.sink);
+  });
+
   it('counts in exactly one bar before the first note', async () => {
     const h = await harness(bars(2), 6.5);
     h.engine.setCountIn(true);
