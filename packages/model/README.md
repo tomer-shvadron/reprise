@@ -67,8 +67,9 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   (gpif's five: eighth, quarter, dotted quarter, half, dotted half), so "dotted quarter = 80"
   is `{ bpm: 120, unit: 'dottedQuarter' }` and survives gp export. `MasterBar.tempo` is a
   change at the start of a bar; `Beat.mix.tempo` is the same shape plus a `duration`, for
-  mid-bar changes. The first master bar must carry one (`first-bar-tempo`), which `insertBar`
-  and `removeBar` keep true by moving the mark.
+  mid-bar changes. The first master bar must carry one (`first-bar-tempo`): `insertBar` at 0
+  moves the mark onto the new first bar, and `removeBar` moves a removed bar's mark onto the bar
+  after it when that has none, whichever bar it was.
 - **Repeats**: `repeat.endCount` is the total number of plays of the section (2 = play twice),
   0 = no repeat end. Readers convert from formats that store "extra repeats".
 - **Jumps and targets are split**: `MasterBar.jumps` holds the instructions read at the end of
@@ -181,20 +182,20 @@ const undone = history.undo(); // { score, change } with the patches it replayed
 - **Repair**: a tie whose target an edit removes (a note, a beat, a bar, a string shift) is
   released rather than refused.
 
-| Command                                | Notes                                                                                                                  |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `setNote`                              | Replaces the note on the same string (same MIDI value off fretted tracks) or adds one; a rest becomes a played beat.   |
-| `removeNote`                           | A beat left without notes becomes a rest.                                                                              |
-| `setNoteEffect`                        | Any note field but id, string and fret.                                                                                |
-| `transposeSelection`                   | Shifts frets (MIDI on pitched tracks) and refuses notes that leave 0 to `fretCount - capo`; drum and dead notes stay.  |
-| `shiftStrings`                         | Moves notes to the neighbouring string at the same pitch; refuses occupied strings and frets off the neck.             |
-| `insertBeat`, `removeBeat`             | A quarter rest by default; refuses to overfill the voice.                                                              |
-| `setBeatDuration`, `setBeatRest`       | Duration, dots, tuplet; rest drops the notes.                                                                          |
-| `setBeatEffect`                        | Beat effects, plus text, chord, lyrics, mixer change and grace notes.                                                  |
-| `insertBar`, `removeBar`               | All tracks at once; copy the previous signatures, join a shared volta, shift `Track.lyrics`, keep the first-bar tempo. |
-| `setMasterBar`                         | Time, key, tempo, repeats, alternate endings, jumps, targets, section, anacrusis, triplet feel, double bar.            |
-| `setTrackProperties`                   | Everything but id, kind and bars; `channel` and `display` merge.                                                       |
-| `addTrack`, `removeTrack`, `moveTrack` | A new track gets one empty bar per master bar; a score keeps at least one track.                                       |
+| Command                                | Notes                                                                                                                                     |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `setNote`                              | Replaces the note on the same string (same MIDI value off fretted tracks) or adds one; a rest becomes a played beat.                      |
+| `removeNote`                           | A beat left without notes becomes a rest.                                                                                                 |
+| `setNoteEffect`                        | Any note field but id, string and fret.                                                                                                   |
+| `transposeSelection`                   | Shifts frets (MIDI on pitched tracks) and refuses notes that leave 0 to `fretCount - capo`; drum and dead notes stay.                     |
+| `shiftStrings`                         | Moves notes to the neighbouring string at the same pitch; refuses occupied strings and frets off the neck.                                |
+| `insertBeat`, `removeBeat`             | A quarter rest by default; refuses to overfill the voice.                                                                                 |
+| `setBeatDuration`, `setBeatRest`       | Duration, dots, tuplet; rest drops the notes.                                                                                             |
+| `setBeatEffect`                        | Beat effects, plus text, chord, lyrics, mixer change and grace notes.                                                                     |
+| `insertBar`, `removeBar`               | All tracks at once; copy the previous signatures, join a shared volta, shift `Track.lyrics`; a removed bar's tempo moves to the next bar. |
+| `setMasterBar`                         | Time, key, tempo, repeats, alternate endings, jumps, targets, section, anacrusis, triplet feel, double bar.                               |
+| `setTrackProperties`                   | Everything but id, kind and bars; `channel` and `display` merge.                                                                          |
+| `addTrack`, `removeTrack`, `moveTrack` | A new track gets one empty bar per master bar; a score keeps at least one track.                                                          |
 
 Frets count from the capo, as Guitar Pro shows them, so the highest reachable fret is
 `fretCount - capo`.

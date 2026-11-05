@@ -123,6 +123,16 @@ describe('removeBar', () => {
     expect(masterBar(after, 0)).toMatchObject({ id: masterBar(score, 1).id, tempo: { bpm: 120 } });
   });
 
+  it('carries a middle bar tempo onto the bar after it, and drops the last bar with its own', () => {
+    const score = withMasterBars(buildScore(), (bars) =>
+      bars.map((bar, m) => (m === 1 || m === 3 ? { ...bar, tempo: { bpm: 80 + m } } : bar)),
+    );
+    const { score: shorter } = roundTrip(score, removeBar({ masterBarId: masterBar(score, 1).id }));
+    expect(shorter.masterBars.map((bar) => bar.tempo?.bpm)).toEqual([120, 81, 83]);
+    const { score: trimmed } = roundTrip(score, removeBar({ masterBarId: masterBar(score, 3).id }));
+    expect(trimmed.masterBars.map((bar) => bar.tempo?.bpm)).toEqual([120, 81, undefined]);
+  });
+
   it('leaves a new first bar its own tempo', () => {
     const score = withMasterBars(buildScore(), (bars) =>
       bars.map((bar, m) => (m === 1 ? { ...bar, tempo: { bpm: 60 } } : bar)),

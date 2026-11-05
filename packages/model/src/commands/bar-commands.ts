@@ -87,8 +87,8 @@ export function insertBar(
 }
 
 /**
- * Removes a bar from every track. Removing the first bar carries its tempo mark onto the new
- * first bar when that has none, so the score keeps a starting tempo.
+ * Removes a bar from every track. Its tempo mark moves onto the bar that follows when that has
+ * none, so a tempo change outlives the bar it was written on and the first bar keeps one.
  */
 export function removeBar(target: { masterBarId: Id }): Command {
   const name = 'removeBar';
@@ -101,8 +101,8 @@ export function removeBar(target: { masterBarId: Id }): Command {
         throw new CommandError(name, 'last-bar', 'a score keeps at least one bar');
       }
       draft.masterBars.splice(index, 1);
-      const first = draft.masterBars[0];
-      if (index === 0 && removed.tempo && first && !first.tempo) first.tempo = { ...removed.tempo };
+      const next = draft.masterBars[index];
+      if (removed.tempo && next && !next.tempo) next.tempo = { ...removed.tempo };
       const last = draft.masterBars.length - 1;
       for (const track of draft.tracks) {
         track.bars.splice(index, 1);
