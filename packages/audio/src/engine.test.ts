@@ -104,7 +104,18 @@ describe('AudioEngine transport (OfflineAudioContext)', () => {
       h.sink.notes.map((n) => n.when),
       range(16, LATENCY, 0.5),
     );
-    for (const scheduled of h.sink.notes) expect(scheduled.duration).toBeCloseTo(0.5, 9);
+    for (const [index, scheduled] of h.sink.notes.entries()) {
+      expect(scheduled.duration).toBeCloseTo(0.5, 9);
+      expect(scheduled.masterBarIndex).toBe(Math.floor(index / 4));
+      expect(scheduled.passIndex).toBe(0);
+      expect(scheduled.barEnd).toBeCloseTo(LATENCY + 2 * (Math.floor(index / 4) + 1), 9);
+      if (index < 15) {
+        expect(scheduled.nextOnString?.when).toBeCloseTo(scheduled.when + 0.5, 9);
+        expect(scheduled.nextOnString?.note.fret).toBe(Math.floor((index + 1) / 4));
+      } else {
+        expect(scheduled.nextOnString).toBeUndefined();
+      }
+    }
     expect(h.states).toEqual(['playing', 'stopped']);
     expectNothingInThePast(h.sink);
   });
@@ -182,6 +193,11 @@ describe('AudioEngine transport (OfflineAudioContext)', () => {
       h.loops.map((loop) => loop.when),
       [4.1, 8.1],
     );
+    // The last note of a pass has no slide target: the wrap is a discontinuity.
+    for (const scheduled of h.sink.notes) {
+      const lastOfPass = scheduled.note.fret === 2 && scheduled.beatIndex === 3;
+      expect(scheduled.nextOnString === undefined).toBe(lastOfPass);
+    }
     expectNothingInThePast(h.sink);
   });
 

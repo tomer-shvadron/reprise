@@ -36,12 +36,24 @@ export interface NoteOnset {
   tick: number;
   durationTicks: number;
   sequenceIndex: number;
+  masterBarIndex: number;
+  passIndex: number;
+  /** Playback tick where the onset's pass ends. */
+  barEndTick: number;
   trackIndex: number;
   voiceIndex: number;
   beatIndex: number;
   track: Track;
   beat: Beat;
   note: Note;
+  /** The note on the same string in the beat after this note ends, in playback order. */
+  next: NextOnString | undefined;
+}
+
+export interface NextOnString {
+  note: Note;
+  beat: Beat;
+  tick: number;
 }
 
 export interface ClickOnset {
@@ -99,32 +111,59 @@ function sameNote(a: Note, b: Note): boolean {
   return a.string === b.string && a.fret === b.fret;
 }
 
-/** Ticks a note's ties add, following the voice across bar lines in playback order. */
-function tiedTicks(
+interface VoicePosition {
+  sequenceIndex: number;
+  trackIndex: number;
+  voiceIndex: number;
+  beatIndex: number;
+  tick: number;
+}
+
+/**
+ * Follows a note's ties through its voice in playback order: the ticks they add, and the beat
+ * that ends the chain with its tick, or `undefined` where the voice runs out.
+ */
+function followTies(
   timeline: Timeline,
-  start: { sequenceIndex: number; trackIndex: number; voiceIndex: number; beatIndex: number },
+  start: VoicePosition,
+  beat: Beat,
   note: Note,
-): number {
+): { ticks: number; after: { beat: Beat; tick: number } | undefined } {
   const { passes } = timeline.map;
   const track = timeline.score.tracks[start.trackIndex];
   let sequenceIndex = start.sequenceIndex;
   let beatIndex = start.beatIndex + 1;
-  let total = 0;
+  let tick = start.tick + beatTicks(beat);
+  let ticks = 0;
   for (;;) {
     const pass = passes[sequenceIndex];
-    if (!pass || !track) return total;
+    if (!pass || !track) return { ticks, after: undefined };
     const beats = track.bars[pass.masterBarIndex]?.voices[start.voiceIndex]?.beats ?? [];
-    const beat = beats[beatIndex];
-    if (!beat) {
-      if (beatIndex === 0) return total;
+    const candidate = beats[beatIndex];
+    if (!candidate) {
+      if (beatIndex === 0) return { ticks, after: undefined };
       sequenceIndex += 1;
       beatIndex = 0;
+      tick = passes[sequenceIndex]?.startTick ?? tick;
       continue;
     }
-    if (beat.rest || !beat.notes.some((next) => next.tie && sameNote(next, note))) return total;
-    total += beatTicks(beat);
+    if (candidate.rest || !candidate.notes.some((next) => next.tie && sameNote(next, note))) {
+      return { ticks, after: { beat: candidate, tick } };
+    }
+    ticks += beatTicks(candidate);
+    tick += beatTicks(candidate);
     beatIndex += 1;
   }
+}
+
+/** The sounding note on `note`'s string in `after`; fretted tracks only, so drums never match. */
+function nextOnString(
+  note: Note,
+  after: { beat: Beat; tick: number } | undefined,
+): NextOnString | undefined {
+  if (!after || after.beat.rest || note.string === 0) return undefined;
+  const next = after.beat.notes.find((n) => n.string === note.string && !n.tie);
+  return next ? { note: next, beat: after.beat, tick: after.tick } : undefined;
 }
 
 /**
@@ -140,6 +179,7 @@ export function notesInRange(
 ): NoteOnset[] {
   const onsets: NoteOnset[] = [];
   for (const [sequenceIndex, pass] of passesOverlapping(timeline, from, to)) {
+    const barEndTick = pass.startTick + pass.ticks;
     for (const [trackIndex, track] of timeline.score.tracks.entries()) {
       const bar = track.bars[pass.masterBarIndex];
       if (!bar) continue;
@@ -152,15 +192,19 @@ export function notesInRange(
           for (const note of beat.notes) {
             const startsRun = Math.abs(tick - options.runStartTick) < EPSILON;
             if (note.tie && !startsRun) continue;
-            const position = { sequenceIndex, trackIndex, voiceIndex, beatIndex };
-            const length = beatTicks(beat) + tiedTicks(timeline, position, note);
+            const position = { sequenceIndex, trackIndex, voiceIndex, beatIndex, tick };
+            const { ticks, after } = followTies(timeline, position, beat, note);
+            const length = beatTicks(beat) + ticks;
             onsets.push({
               ...position,
-              tick,
+              masterBarIndex: pass.masterBarIndex,
+              passIndex: pass.passIndex,
+              barEndTick,
               durationTicks: Math.max(0, Math.min(length, options.limitTick - tick)),
               track,
               beat,
               note,
+              next: nextOnString(note, after),
             });
           }
         }

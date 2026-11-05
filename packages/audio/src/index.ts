@@ -44,4 +44,4 @@ export {
   loopRange,
   notesInRange,
 } from './timeline';
-export type { ClickOnset, NoteOnset, TickRange, Timeline } from './timeline';
+export type { ClickOnset, NextOnString, NoteOnset, TickRange, Timeline } from './timeline';

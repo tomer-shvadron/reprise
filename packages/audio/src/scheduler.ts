@@ -10,7 +10,7 @@
 import { PPQ, positionAtSeconds, secondsAtTick } from '@reprise/model';
 
 import { bpmAtTick, clicksInRange, countInTicks, notesInRange } from './timeline';
-import type { NoteOnset, TickRange, Timeline } from './timeline';
+import type { NextOnString, NoteOnset, TickRange, Timeline } from './timeline';
 
 export interface Anchor {
   /** `AudioContext` time at which `tick` sounds. */
@@ -29,6 +29,10 @@ export interface ScheduledClick {
 export interface ScheduledNote extends NoteOnset {
   when: number;
   duration: number;
+  /** Context time the onset's bar ends. */
+  barEnd: number;
+  /** `next` timed through the anchor; undefined where the loop or the song ends first. */
+  nextOnString: (Omit<NextOnString, 'tick'> & { when: number }) | undefined;
 }
 
 export interface LoopCrossing {
@@ -204,7 +208,18 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
       const end = timeAtTick(timeline, anchor, onset.tick + onset.durationTicks);
       const when = fit(start);
       if (when === undefined || end <= when) continue;
-      notes.push({ ...onset, when, duration: end - when });
+      const following = onset.next && onset.next.tick < limit - EPSILON ? onset.next : undefined;
+      notes.push({
+        ...onset,
+        when,
+        duration: end - when,
+        barEnd: timeAtTick(timeline, anchor, onset.barEndTick),
+        nextOnString: following && {
+          note: following.note,
+          beat: following.beat,
+          when: timeAtTick(timeline, anchor, following.tick),
+        },
+      });
     }
     if (window.metronome) {
       for (const click of clicksInRange(timeline, next.cursorTick, target)) {

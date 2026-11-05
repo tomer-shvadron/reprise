@@ -41,6 +41,42 @@ describe('notesInRange', () => {
     expect(onsets.map((o) => [o.tick, o.durationTicks])).toEqual([[2 * PPQ, 2 * PPQ]]);
   });
 
+  it('names the next note on the string after the tie chain, in playback order', () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .repeatStart()
+      .beat('2', [note(1, 0), note(2, 9)])
+      .beat('2', [note(1, 5)])
+      .bar()
+      .repeatEnd(2)
+      .beat('2', [note(1, 5, { tie: true })])
+      .beat('4', [note(2, 7)])
+      .beat('4', [note(1, 8)])
+      .bar()
+      .beat('1', [note(1, 3)])
+      .build();
+    const timeline = createTimeline(song);
+    const onsets = notesInRange(timeline, 0, 5 * BAR, { runStartTick: 0, limitTick: 5 * BAR });
+    const at = (tick: number, string: number) =>
+      onsets.find((o) => Math.abs(o.tick - tick) < 1e-6 && o.note.string === string);
+
+    expect(at(0, 1)?.next).toMatchObject({ tick: 2 * PPQ, note: { fret: 5 } });
+    // The fret-5 note is tied into bar 1; the beat after the chain has nothing on string 1.
+    expect(at(2 * PPQ, 1)?.durationTicks).toBe(4 * PPQ);
+    expect(at(2 * PPQ, 1)?.next).toBeUndefined();
+    // Another string on the next beat, or a rest, is no target either.
+    expect(at(0, 2)?.next).toBeUndefined();
+    expect(at(6 * PPQ, 2)?.next).toBeUndefined();
+    // Bar 1's last note: the repeat takes it back to bar 0 first, then on to bar 2.
+    expect(at(7 * PPQ, 1)?.next).toMatchObject({ tick: 2 * BAR, note: { fret: 0 } });
+    expect(at(2 * BAR + 7 * PPQ, 1)?.next).toMatchObject({ tick: 4 * BAR, note: { fret: 3 } });
+    expect(at(4 * BAR, 1)?.next).toBeUndefined();
+
+    expect(at(0, 1)).toMatchObject({ masterBarIndex: 0, passIndex: 0, barEndTick: BAR });
+    expect(at(2 * BAR, 1)).toMatchObject({ masterBarIndex: 0, passIndex: 1, barEndTick: 3 * BAR });
+  });
+
   it('skips rests and clips durations to the limit', () => {
     const bars = score()
       .track('guitar')

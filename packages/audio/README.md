@@ -53,6 +53,10 @@ interface NoteEvent {
   playbackTick: number; // PlaybackPosition.playbackTick of the onset
   durationTicks: number; // the same length in ticks
   sequenceIndex: number; // the pass in the playback sequence
+  masterBarIndex: number; // the bar the beat is in, and which play of it
+  passIndex: number;
+  barEnd: number; // AudioContext time the bar ends: the latest a let-ring note sounds
+  nextOnString: { note: Note; beat: Beat; when: number } | undefined; // a slide's target
 }
 ```
 
@@ -65,6 +69,13 @@ interface NoteEvent {
 - Everything else about a note (velocity from `dynamics`, accents, palm mute, bends, let ring,
   strokes, grace notes) is the sink's business: the event carries the whole `Note`, `Beat` and
   `Track`, and `duration` is in seconds so bend points (0 to 60 across the note) map directly.
+  Two things the sink cannot work out alone come with the event, because they need the playback
+  sequence and the tick-to-time mapping: `barEnd`, where a let-ring note stops at the latest, and
+  `nextOnString`, the note on the same string in the beat after this one ends (in playback order,
+  so across a bar line it is the next pass's bar) with the time it starts, which is what a shift
+  or legato slide glides into. It is `undefined` off fretted tracks, where a rest follows, and
+  where the loop or the song ends first. `masterBarIndex` and `passIndex` locate the beat in the
+  score the way `PlaybackPosition` does.
 - `allNotesOff(when)` must cancel every note sounding at `when` **and every note already
   scheduled to start after it**: the scheduler has handed out up to 200 ms of the future. Stop
   the source nodes rather than only muting them, or every cancelled note keeps a node running

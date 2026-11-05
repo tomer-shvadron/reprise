@@ -18,6 +18,16 @@ export interface NoteEvent {
   durationTicks: number;
   /** Index into the playback sequence of the pass the onset belongs to. */
   sequenceIndex: number;
+  masterBarIndex: number;
+  passIndex: number;
+  /** `AudioContext` time the onset's bar ends: the latest a let-ring note sounds. */
+  barEnd: number;
+  /**
+   * The note on the same string in the beat after this note ends, in playback order, and when
+   * it starts: the target of a slide. Undefined off fretted tracks, where a rest follows, and
+   * where the loop or the song ends first.
+   */
+  nextOnString: { note: Note; beat: Beat; when: number } | undefined;
 }
 
 /**

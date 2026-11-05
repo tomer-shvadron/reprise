@@ -231,6 +231,10 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
           playbackTick: note.tick,
           durationTicks: note.durationTicks,
           sequenceIndex: note.sequenceIndex,
+          masterBarIndex: note.masterBarIndex,
+          passIndex: note.passIndex,
+          barEnd: note.barEnd,
+          nextOnString: note.nextOnString,
         });
       }
       if (!result.loop) break;
