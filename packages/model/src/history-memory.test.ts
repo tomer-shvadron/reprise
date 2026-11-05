@@ -1,56 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Bar } from './bar';
 import { setNote } from './commands/note-commands';
-import {
-  createBar,
-  createBeat,
-  createEmptyScore,
-  createMasterBar,
-  createNote,
-  createTrack,
-  createVoice,
-} from './factories';
 import { createHistory } from './history';
-import type { Score } from './score';
+import { largeScore } from './testing';
 
 const TRACKS = 8;
 const BARS = 300;
 const BEATS_PER_BAR = 8;
 const EDITS = 1000;
-// Measured at 193,598 bytes, about 194 per edit (forward plus inverse); the score is 9.6 MB of JSON.
+// Measured at 193,598 bytes, about 194 per edit (forward plus inverse); the score is 9.8 MB of JSON.
 const BUDGET_BYTES = 256 * 1024;
-
-// The shape of large-score.test.ts: 38,400 notes, two per eighth on every track.
-function buildLongScore(): Score {
-  const masterBars = Array.from({ length: BARS }, (_, m) =>
-    createMasterBar(m === 0 ? { tempo: { bpm: 120 } } : {}),
-  );
-  const tracks = Array.from({ length: TRACKS }, () =>
-    createTrack('fretted', {
-      bars: Array.from({ length: BARS }, (_, b): Bar => {
-        const beats = Array.from({ length: BEATS_PER_BAR }, (_, i) =>
-          createBeat({
-            duration: 8,
-            notes: [
-              createNote({ string: ((b + i) % 6) + 1, fret: (b + i) % 12 }),
-              createNote({ string: ((b + i + 2) % 6) + 1, fret: (b + i) % 12 }),
-            ],
-          }),
-        );
-        return {
-          ...createBar(),
-          voices: [createVoice(beats), createVoice(), createVoice(), createVoice()],
-        };
-      }),
-    }),
-  );
-  return { ...createEmptyScore(), masterBars, tracks };
-}
 
 describe('history memory', () => {
   it(`keeps ${String(EDITS)} single-note edits on a long score under ${String(BUDGET_BYTES)} bytes`, () => {
-    let score = buildLongScore();
+    let score = largeScore(TRACKS, BARS);
     const scoreBytes = JSON.stringify(score).length;
     const history = createHistory();
     for (let edit = 0; edit < EDITS; edit++) {

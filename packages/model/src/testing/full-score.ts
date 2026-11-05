@@ -1,4 +1,3 @@
-import type { Beat } from './beat';
 import {
   STANDARD_TUNING,
   createBar,
@@ -8,13 +7,12 @@ import {
   createScoreMeta,
   createTrack,
   createVoice,
-} from './factories';
-import { newId } from './id';
-import type { Note } from './note';
-import type { Score } from './score';
+  newId,
+} from '../index';
+import type { Beat, Note, Score } from '../index';
 
 /** A schema- and invariant-valid score that sets every node type and optional field. */
-export function buildFullScore(): Score {
+export function fullScore(): Score {
   const bend = createNote({
     string: 3,
     fret: 7,

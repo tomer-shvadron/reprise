@@ -1,85 +1,38 @@
 import { expect } from 'vitest';
 
-import type { Bar } from '../bar';
-import type { Beat } from '../beat';
-import {
-  createBar,
-  createBeat,
-  createMasterBar,
-  createNote,
-  createScoreMeta,
-  createTrack,
-  createVoice,
-} from '../factories';
 import { createHistory } from '../history';
 import type { Applied, Command } from '../history';
-import { newId } from '../id';
-import type { Note } from '../note';
 import type { Score } from '../score';
+import { midi, note, score } from '../testing';
 import { validateScore } from '../validate';
 import { CommandError } from './command-error';
 import type { CommandErrorCode } from './command-error';
 
-export function barOf(...beats: Beat[]): Bar {
-  return {
-    ...createBar(),
-    voices: [createVoice(beats), createVoice(), createVoice(), createVoice()],
-  };
-}
-
-export const quarter = (...notes: Note[]): Beat =>
-  createBeat(notes.length > 0 ? { notes } : { rest: true });
+export { beatOf, noteOf } from '../testing';
 
 /**
  * Four bars of 4/4 at 120 on a guitar and a drum track. Guitar bar 0 ends on string 1 fret 3,
  * tied into bar 1; the guitar carries one lyric line from bar 2.
  */
 export function buildScore(): Score {
-  const masterBars = [
-    createMasterBar({ tempo: { bpm: 120 } }),
-    createMasterBar(),
-    createMasterBar(),
-    createMasterBar(),
-  ];
-  const guitar = createTrack('fretted', {
-    lyrics: [{ startBar: 2, text: 'la la' }],
-    bars: [
-      barOf(
-        quarter(createNote({ string: 1, fret: 3 }), createNote({ string: 2, fret: 5 })),
-        quarter(createNote({ string: 3, fret: 0 })),
-        quarter(),
-        quarter(createNote({ string: 1, fret: 3 })),
-      ),
-      barOf(
-        quarter(createNote({ string: 1, fret: 3, tie: true })),
-        quarter(createNote({ string: 6, fret: 22 })),
-      ),
-      barOf(quarter(createNote({ string: 2, fret: 7 }))),
-      barOf(),
-    ],
-  });
-  const drums = createTrack('drums', {
-    bars: [barOf(quarter(createNote({ string: 0, fret: 36 }))), barOf(), barOf(), barOf()],
-  });
-  return {
-    id: newId(),
-    meta: createScoreMeta(),
-    masterBars,
-    tracks: [guitar, drums],
-  };
-}
-
-export function beatOf(score: Score, track: number, bar: number, beat: number, voice = 0): Beat {
-  const found = score.tracks[track]?.bars[bar]?.voices[voice]?.beats[beat];
-  if (!found)
-    throw new Error(`no beat at ${String(track)}/${String(bar)}/${String(voice)}/${String(beat)}`);
-  return found;
-}
-
-export function noteOf(score: Score, track: number, bar: number, beat: number, note = 0): Note {
-  const found = beatOf(score, track, bar, beat).notes[note];
-  if (!found) throw new Error('no such note');
-  return found;
+  return score()
+    .tempo(120)
+    .track('guitar', { lyrics: [{ startBar: 2, text: 'la la' }] })
+    .bar()
+    .beat('4', [note(1, 3), note(2, 5)])
+    .beat('4', [note(3, 0)])
+    .rest('4')
+    .beat('4', [note(1, 3)])
+    .bar()
+    .beat('4', [note(1, 3, { tie: true })])
+    .beat('4', [note(6, 22)])
+    .bar()
+    .beat('4', [note(2, 7)])
+    .bar()
+    .track('drums')
+    .bar()
+    .beat('4', [midi(36)])
+    .build();
 }
 
 /**

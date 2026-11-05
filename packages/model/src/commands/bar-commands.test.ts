@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
+import { createBar } from '../factories';
 import { createHistory } from '../history';
 import { newId } from '../id';
 import type { MasterBar } from '../master-bar';
 import type { Score } from '../score';
 import { validateScore } from '../validate';
 import { insertBar, removeBar, setMasterBar } from './bar-commands';
-import { barOf, buildScore, expectRefusal, noteOf, roundTrip } from './test-score';
+import { buildScore, expectRefusal, noteOf, roundTrip } from './test-score';
 
 function withMasterBars(score: Score, edit: (masterBars: MasterBar[]) => MasterBar[]): Score {
   return { ...score, masterBars: edit(score.masterBars) };
@@ -166,7 +167,7 @@ describe('removeBar', () => {
     const single: Score = {
       ...score,
       masterBars: [masterBar(score, 0)],
-      tracks: score.tracks.map((track) => ({ ...track, lyrics: [], bars: [barOf()] })),
+      tracks: score.tracks.map((track) => ({ ...track, lyrics: [], bars: [createBar()] })),
     };
     expectRefusal(single, removeBar({ masterBarId: masterBar(score, 0).id }), 'last-bar');
     const voltas = withVoltas(score);
