@@ -23,7 +23,7 @@ describe('the package runs anywhere', () => {
 
   it('imports no Node module and touches no Node global in its source', () => {
     const offenders = productionSources(join(PACKAGE, 'src')).filter((path) =>
-      /from 'node:|\brequire\(|\bprocess\.|\bBuffer\b|\b__dirname\b/.test(
+      /from '(node:|(fs|path|os|url|util|crypto|stream|buffer|child_process|worker_threads)\b)|\brequire\(|\bprocess\.|\bBuffer\b|\b__dirname\b|import\.meta\.(dirname|filename)/.test(
         readFileSync(path, 'utf8'),
       ),
     );
