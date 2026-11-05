@@ -23,7 +23,7 @@
     "desktop:dev": "pnpm --filter @reprise/desktop dev",
     "desktop:build": "pnpm --filter @reprise/desktop build",
     "prepare": "husky",
-    "postinstall": "playwright install chromium"
+    "postinstall": "playwright install chromium --only-shell"
   },
   "devDependencies": {
     "@coderline/alphatab": "1.8.4",

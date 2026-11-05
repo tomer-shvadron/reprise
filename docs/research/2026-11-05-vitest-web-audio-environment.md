@@ -33,9 +33,12 @@ environment provides one: a DOM polyfill (`happy-dom`, `jsdom`) or Vitest browse
   assertions.
 - Browser mode runs the real Chromium audio renderer. Each run of the audio project took
   roughly 0.36 s with the browser already downloaded; no flakiness was observed.
-- The cost is a Chromium download (about 100 MB for the headless shell). The root
-  `postinstall` runs `playwright install chromium`, which is a no-op when the build is cached.
-  CI (WP-002) should cache `~/Library/Caches/ms-playwright` or `~/.cache/ms-playwright`.
+- The cost is a Chromium download. `playwright install chromium` fetches two builds, the full
+  Chromium and `chromium_headless_shell` (366 MB and 203 MB on disk, Playwright 1.64 on macOS
+  arm64). Under `headless: true` Playwright launches only the shell, and the smoke test passes
+  with just `playwright install chromium --only-shell`, a 99 MiB download. The root `postinstall`
+  runs that, a no-op when the build is cached. CI (WP-002) should cache
+  `~/Library/Caches/ms-playwright` or `~/.cache/ms-playwright`.
 
 ## Conclusion
 

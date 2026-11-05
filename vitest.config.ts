@@ -16,6 +16,8 @@ export default defineConfig({
             enabled: true,
             provider: playwright(),
             headless: true,
+            // The suite renders through OfflineAudioContext; there is nothing on screen to capture.
+            screenshotFailures: false,
             instances: [{ browser: 'chromium' }],
           },
         },
