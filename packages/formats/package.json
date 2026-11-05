@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@reprise/model": "workspace:*"
+    "@reprise/model": "workspace:*",
+    "fflate": "0.8.3"
   }
 }

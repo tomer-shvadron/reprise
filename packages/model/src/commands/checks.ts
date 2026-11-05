@@ -6,6 +6,7 @@ import type { Id } from '../id';
 import type { MasterBar } from '../master-bar';
 import type { Note } from '../note';
 import type { Score } from '../score';
+import { TIE_REACH_BARS, hasTieOrigin } from '../ties';
 import type { Track } from '../track';
 import { validateMasterBars, validateScore } from '../validate';
 import type { Violation } from '../validate';
@@ -154,83 +155,55 @@ function containsId(score: Score, id: Id): boolean {
   );
 }
 
-function sameSlot(track: Track, a: Note, b: Note): boolean {
-  return track.kind === 'fretted' ? a.string === b.string : a.fret === b.fret;
-}
-
-/** The note a tied `note` continues: same string (same MIDI note off fretted tracks), any fret. */
-export function tieOrigin(track: Track, note: Note, previous: Beat | undefined): Note | undefined {
-  if (!previous || previous.rest) return undefined;
-  return previous.notes.find((p) => sameSlot(track, p, note));
-}
-
-/** A tie holds when its origin exists and sounds the same pitch (`tie-target` and `tie-pitch`). */
-export function hasTieTarget(track: Track, note: Note, previous: Beat | undefined): boolean {
-  return tieOrigin(track, note, previous)?.fret === note.fret;
-}
-
-export function previousBeat(
-  track: Track,
-  bar: number,
-  voice: number,
-  beat: number,
-): Beat | undefined {
-  if (beat > 0) return track.bars[bar]?.voices[voice]?.beats[beat - 1];
-  return track.bars[bar - 1]?.voices[voice]?.beats.at(-1);
-}
-
-export function nextBeat(
-  track: Track,
-  bar: number,
-  voice: number,
-  beat: number,
-): { bar: number; beat: number } | undefined {
-  if (beat + 1 < (track.bars[bar]?.voices[voice]?.beats.length ?? 0))
-    return { bar, beat: beat + 1 };
-  return (track.bars[bar + 1]?.voices[voice]?.beats.length ?? 0) > 0
-    ? { bar: bar + 1, beat: 0 }
-    : undefined;
-}
-
 /**
- * The notes that continue `note` through ties, in order: each the tied note on the same string
- * (same MIDI note off fretted tracks) of the next beat in the voice, crossing bar lines. Read
- * before the origin's pitch changes.
+ * Clears `tie` on every tied note whose origin an edit removed, moved to another pitch or put out
+ * of reach, from `beat` of `bar` to the end of the bar `TIE_REACH_BARS` after `lastBar`: the
+ * furthest a tie reaching back into the edited span can sit. A tie is a consequence of its
+ * neighbours, so edits repair it rather than refuse.
  */
-export function tieChain(
+export function releaseTies(
   track: Track,
-  position: { bar: number; voice: number; beat: number },
-  note: Note,
-): { note: Note; bar: number; beat: number }[] {
-  const chain: { note: Note; bar: number; beat: number }[] = [];
-  let current = note;
-  let at = nextBeat(track, position.bar, position.voice, position.beat);
-  while (at) {
-    const beat = track.bars[at.bar]?.voices[position.voice]?.beats[at.beat];
-    const tied = beat?.rest
-      ? undefined
-      : beat?.notes.find((n) => n.tie && sameSlot(track, n, current) && n.fret === current.fret);
-    if (!tied) break;
-    chain.push({ note: tied, ...at });
-    current = tied;
-    at = nextBeat(track, at.bar, position.voice, at.beat);
+  bar: number,
+  voice: number,
+  beat: number,
+  lastBar = bar,
+): void {
+  const last = Math.min(lastBar + TIE_REACH_BARS, track.bars.length - 1);
+  let start = beat;
+  for (let b = bar; b <= last; b++) {
+    const beats = track.bars[b]?.voices[voice]?.beats ?? [];
+    for (let i = start; i < beats.length; i++) {
+      for (const note of beats[i]?.notes ?? []) {
+        if (note.tie && !hasTieOrigin(track, { bar: b, voice, beat: i }, note)) note.tie = false;
+      }
+    }
+    start = 0;
   }
-  return chain;
 }
 
-/**
- * Clears `tie` on the notes of the beat now at `beat` (rolling into the next bar past the
- * voice's end) whose tie target an edit removed or moved to another pitch. A tie is a consequence of its neighbour, so
- * edits repair it rather than refuse.
- */
-export function releaseTies(track: Track, bar: number, voice: number, beat: number): void {
-  const beats = track.bars[bar]?.voices[voice]?.beats;
-  if (!beats) return;
-  const [b, i] = beat < beats.length ? [bar, beat] : [bar + 1, 0];
-  const target = track.bars[b]?.voices[voice]?.beats[i];
-  if (!target) return;
-  const previous = previousBeat(track, b, voice, i);
-  for (const note of target.notes) {
-    if (note.tie && !hasTieTarget(track, note, previous)) note.tie = false;
+/** `releaseTies` once per track and voice, over the span from the first edited beat to the last. */
+export function releaseTiesAfter(
+  edits: readonly { track: Track; bar: number; voice: number; beat: number }[],
+): void {
+  const spans = new Map<Track, Map<number, { bar: number; beat: number; lastBar: number }>>();
+  for (const { track, bar, voice, beat } of edits) {
+    const voices =
+      spans.get(track) ?? new Map<number, { bar: number; beat: number; lastBar: number }>();
+    spans.set(track, voices);
+    const span = voices.get(voice);
+    if (!span) {
+      voices.set(voice, { bar, beat, lastBar: bar });
+      continue;
+    }
+    if (bar < span.bar || (bar === span.bar && beat < span.beat)) {
+      span.bar = bar;
+      span.beat = beat;
+    }
+    span.lastBar = Math.max(span.lastBar, bar);
+  }
+  for (const [track, voices] of spans) {
+    for (const [voice, { bar, beat, lastBar }] of voices) {
+      releaseTies(track, bar, voice, beat, lastBar);
+    }
   }
 }
