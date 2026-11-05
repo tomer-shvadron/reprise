@@ -78,9 +78,10 @@ specifics and the places the file is ambiguous.
   bracket with no repeat end ahead stays one bar.
 - **Ties**: Guitar Pro often stores 0 as a tied note's fret, so a tie takes the fret of the note it
   continues: the last note on its string in the voice, searched back through up to three bars as
-  Guitar Pro ties it. The model ties only to the previous beat, so an origin further back lends
-  its fret and the tie is released (`tie-beyond-previous-beat`); a tie with no origin at all is
-  released too (`tie-without-origin`). Either way the score stays valid.
+  Guitar Pro ties it, which is the model's `tieOriginOf` reach. The tie is kept wherever an origin
+  is found, so a note held under a melody on other strings stays one note across beats and bar
+  lines; a tie with no origin is released (`tie-without-origin`). Either way the score stays
+  valid.
 - **Hammer-ons and pull-offs**: the flag moves from the origin to the next note on the same
   string in the same voice, across bar lines, up to a rest and within three bars; with none,
   `hammer-pull-without-destination`.
@@ -161,7 +162,6 @@ the first location, and `count`.
 | `invalid-value`                   | warning  | A value out of range (time signature, key, duration, fret, mixer value, tuning, …), replaced.                                                                  |
 | `note-off-string`                 | warning  | A string-mask bit for a string the track does not have, skipped.                                                                                               |
 | `tie-without-origin`              | warning  | A tied note with no earlier note on its string within three bars, released.                                                                                    |
-| `tie-beyond-previous-beat`        | warning  | A tied note whose origin is more than one beat back; it takes the origin's fret and is released, since the model ties only to the previous beat.               |
 | `hammer-pull-without-destination` | warning  | A hammer-on or pull-off with no following note on its string.                                                                                                  |
 | `lyrics-unplaced`                 | warning  | Syllables past the lyric track's last played beat, or lyrics for a track the file lacks.                                                                       |
 | `trailing-data`                   | info     | Non-zero bytes after the last bar (GP3's four zero bytes are not reported).                                                                                    |
@@ -301,6 +301,7 @@ Every warning is `{ code, message, path, count }`: `path` is the gpif element (`
 | `simile-expanded`                 | a simile bar, filled with a copy of the bar it repeats                                         |
 | `grace-without-beat`              | grace beats at the end of a voice with no beat after them                                      |
 | `grace-duration-clamped`          | a grace note outside 16th to 64th                                                              |
+| `grace-tie-released`              | a tied grace note; the model forbids `tie` on grace notes, so it is struck                     |
 | `hammer-pull-without-destination` | a hammer-on origin with no later note on its string within three bars, once per track          |
 | `tempo-moved`                     | a tempo change placed on the nearest earlier beat, or a ramp length rounded                    |
 | `automation-dropped`              | a tempo or sound change in a bar with no beats, or past the last bar                           |
