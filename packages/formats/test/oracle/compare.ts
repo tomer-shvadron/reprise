@@ -66,7 +66,7 @@ export function compareProjections(
     }
     if (isRecord(a) && isRecord(b)) {
       const inner = field === 'beats' && isBeat(a) && isBeat(b) ? { ours: a, alphaTab: b } : beat;
-      for (const key of Object.keys(a)) {
+      for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
         walk(a[key], b[key], path === '' ? key : `${path}.${key}`, key, inner);
       }
       return;

@@ -3,7 +3,7 @@
  * oracle, and an entry that accepts no difference in its formats fails too, so the list stays
  * as short as the corpus allows. Sources: the classified comparison in the review of PR #56,
  * the reader's mapping decisions in `packages/formats/README.md`, and alphaTab 1.8.4's
- * `Gp3To5Importer` (`node_modules/@coderline/alphatab/dist/alphaTab.core.mjs`).
+ * `Gp3To5Importer` and model `finish` methods (`node_modules/@coderline/alphatab/dist/alphaTab.core.mjs`).
  */
 import type { Difference } from './compare';
 import type { BeatProjection, ScoreProjection } from './projection';
@@ -51,6 +51,10 @@ const everyNote = (beat: BeatProjection | undefined, vibrato: string): boolean =
   beat.notes.length > 0 &&
   beat.notes.every((note) => note.vibrato === vibrato);
 
+/** `Beat.finish`: one grace beat in the group is an eighth, two are sixteenths, more are 32nds. */
+const alphaTabGraceDuration = (graces: number): number =>
+  graces === 1 ? 8 : graces === 2 ? 16 : 32;
+
 /** alphaTab's `_gp5PercussionInstrumentMap` entries that differ from the GM note. */
 const ALPHATAB_PERCUSSION = new Map([
   [27, 42],
@@ -58,41 +62,58 @@ const ALPHATAB_PERCUSSION = new Map([
   [32, 31],
 ]);
 
+/** The GP3 dip the reader writes: three points, down to the depth at mid-note and back. */
+const GP3_DIP: Readonly<Record<string, (value: number) => boolean>> = {
+  whammyPoints: (value) => value === 3,
+  whammyFrom: (value) => value === 0,
+  whammyTo: (value) => value === 0,
+  whammyMax: (value) => value === 0,
+  whammyMin: (value) => value < 0,
+};
+
 export const TOLERANCES: readonly Tolerance[] = [
   {
     id: 'grace-duration',
     formats: GP3_TO_5,
-    why: "We read the grace duration byte (1, 2, 3 as a 64th, 32nd, 16th), as TuxGuitar and PyGuitarPro do (lead ruling, PR #56); alphaTab's `readGrace` ignores it and a lone grace beat's `finish` writes an eighth.",
-    applies: (d) => /\.graces\[\d+\]\.duration$/.test(d.path) && d.alphaTab === 8,
+    why: "We read the grace duration byte (1, 2, 3 as a 64th, 32nd, 16th), as TuxGuitar and PyGuitarPro do (lead ruling, PR #56); alphaTab's `readGrace` skips the byte and `Beat.finish` sets the duration from the grace group's size: an eighth for one grace beat, a sixteenth for two, a 32nd for more.",
+    applies: (d) =>
+      /\.graces\[\d+\]\.duration$/.test(d.path) &&
+      d.beat !== undefined &&
+      d.alphaTab === alphaTabGraceDuration(d.beat.alphaTab.graces.length),
   },
   {
     id: 'bend-points-kept',
     formats: GP3_TO_5,
-    why: 'The model keeps each bend as the file stores it (score-model reference, "Bend and whammy points"); alphaTab drops points it finds redundant, so it holds fewer (PR #56: `[0,0],[15,4],[60,4]` against `[0,0],[60,4]`).',
+    why: 'The model keeps each bend as the file stores it (score-model reference, "Bend and whammy points"); alphaTab\'s `Note.finish` rewrites a three- or four-point list to the shape of the bend type it detects: two points for a bend, release, prebend or hold (PR #56: `[0,0],[15,4],[60,4]` against `[0,0],[60,4]`), four for a three-point bend-release. The ends and `maxBendPoint` survive, so the values are still compared.',
     applies: (d) =>
       isNoteField(d, 'bendPoints') &&
-      typeof d.ours === 'number' &&
-      typeof d.alphaTab === 'number' &&
-      d.alphaTab >= 2 &&
-      d.alphaTab < d.ours,
+      ((d.alphaTab === 2 && (d.ours === 3 || d.ours === 4)) || (d.alphaTab === 4 && d.ours === 3)),
   },
   {
     id: 'gp3-tremolo-bar',
     formats: ['gp3'],
-    why: "GP3 stores a tremolo bar as one depth, which we read as a dip to that depth, the shape GP4 writes for the same effect (README, PyGuitarPro agrees); alphaTab's GP3 path skips it.",
-    applies: (d) =>
-      isBeatField(d, 'whammyPoints') && typeof d.ours === 'number' && d.alphaTab === null,
+    why: "GP3 stores a tremolo bar as one depth, which we read as a dip to that depth, the shape GP4 writes for the same effect (README, PyGuitarPro agrees); alphaTab's `readBeatEffects` skips the GP3 depth int, so it has no whammy at all.",
+    applies: (d) => {
+      const field = BEAT_FIELD.exec(d.path)?.groups?.['field'];
+      const expected = field === undefined ? undefined : GP3_DIP[field];
+      return (
+        expected !== undefined &&
+        d.alphaTab === null &&
+        typeof d.ours === 'number' &&
+        expected(d.ours)
+      );
+    },
   },
   {
     id: 'beat-vibrato-wide',
     formats: GP3_TO_5,
-    why: 'Beat-effect bit 0x02 is Guitar Pro\'s beat-level wide vibrato (README, "Vibrato"); alphaTab reads it as slight.',
+    why: 'Beat-effect bit 0x02 is Guitar Pro\'s beat-level wide vibrato (README, "Vibrato"); alphaTab\'s `readBeatEffects` reads it as slight.',
     applies: (d) => isBeatField(d, 'vibrato') && d.ours === 'wide' && d.alphaTab === 'slight',
   },
   {
     id: 'gp3-beat-vibrato-on-notes',
     formats: ['gp3'],
-    why: 'GP3 has no note-level vibrato flag and stores a note\'s slight vibrato as beat-effect bit 0x01, so we put it on the beat\'s notes (README, "Vibrato"); alphaTab leaves it on the beat.',
+    why: "GP3 has no note-level vibrato flag and stores a note's slight vibrato as beat-effect bit 0x01, so we put it on the beat's notes (README, \"Vibrato\"); alphaTab's `readBeatEffects` leaves it on the beat.",
     applies: (d) =>
       (isBeatField(d, 'vibrato') &&
         d.ours === 'none' &&
@@ -106,7 +127,7 @@ export const TOLERANCES: readonly Tolerance[] = [
   {
     id: 'stroke-speed',
     formats: GP3_TO_5,
-    why: "We read the stroke speed byte 1 to 6 as a 128th down to a quarter, as Guitar Pro's dialog, TuxGuitar and PyGuitarPro do; alphaTab's `_toStrokeValue` is one step slower (1 and 2 both a 128th), so speeds 2 to 6 read at half our note value (PR #56).",
+    why: "We read the stroke speed byte 1 to 6 as a 128th down to a quarter, as Guitar Pro's dialog, TuxGuitar and PyGuitarPro do; alphaTab's `_toStrokeValue` is one step slower (1 and 2 both 30 ticks, a 128th), so speeds 2 to 6 read at half our note value (PR #56).",
     applies: (d) => {
       const [ours, theirs] = [stroke(d.ours), stroke(d.alphaTab)];
       return (
@@ -121,7 +142,7 @@ export const TOLERANCES: readonly Tolerance[] = [
   {
     id: 'percussion-articulations',
     formats: GP3_TO_5,
-    why: "A drum note keeps its GM note, and the model's percussion table has 27, 28 and 32 as GM2's High Q, Slap and Square Click; alphaTab maps those three to its own articulation indices (PR #56: an articulation quirk, not a MIDI remap).",
+    why: "A drum note keeps its GM note, and the model's percussion table has 27, 28 and 32 as GM2's High Q, Slap and Square Click; alphaTab's `readNote` maps those three through `_gp5PercussionInstrumentMap` to its own articulation indices (PR #56: an articulation quirk, not a MIDI remap).",
     applies: (d, { ours }) => {
       const track = Number(TRACK.exec(d.path)?.groups?.['track']);
       return (
@@ -135,7 +156,7 @@ export const TOLERANCES: readonly Tolerance[] = [
   {
     id: 'voltas-on-every-bar',
     formats: GP3_TO_5,
-    why: 'The model puts the volta numbers on every bar of the bracket, through the bar that closes the repeat (score-model reference, "Volta numbers"); alphaTab marks the bracket\'s first bar only.',
+    why: 'The model puts the volta numbers on every bar of the bracket, through the bar that closes the repeat (score-model reference, "Volta numbers"); alphaTab\'s `readMasterBar` marks the bracket\'s first bar only.',
     applies: (d, { ours, alphaTab }) => {
       const bar = Number(MASTER_BAR_ENDINGS.exec(d.path)?.groups?.['bar']);
       const numbers = ours.masterBars[bar]?.alternateEndings;
