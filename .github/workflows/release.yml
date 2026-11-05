@@ -31,7 +31,9 @@ jobs:
       # The web build needs no browser; skipping the postinstall's Chromium download keeps
       # this job independent of the Playwright cache.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
       - name: Build web
         run: pnpm --filter @reprise/web build
