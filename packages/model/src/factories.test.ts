@@ -61,7 +61,7 @@ describe('createTrack', () => {
       capo: 0,
       fretCount: 24,
       program: 25,
-      display: { notation: 'tab', clef: 'treble' },
+      display: { notation: 'tab', clef: 'treble', octaveShift: 1 },
       channel: { volume: 100, pan: 64, mute: false, solo: false },
       lyrics: [],
     });
@@ -77,7 +77,7 @@ describe('createTrack', () => {
       fretCount: 0,
       program: 0,
       bank: 0,
-      display: { notation: 'standard', clef: 'percussion' },
+      display: { notation: 'standard', clef: 'percussion', octaveShift: 0 },
     });
     expect(TrackSchema.safeParse(track).success).toBe(true);
   });
@@ -88,7 +88,7 @@ describe('createTrack', () => {
       kind: 'pitched',
       tuning: [],
       fretCount: 0,
-      display: { notation: 'standard', clef: 'treble' },
+      display: { notation: 'standard', clef: 'treble', octaveShift: 0 },
     });
     expect(TrackSchema.safeParse(track).success).toBe(true);
   });
@@ -97,7 +97,7 @@ describe('createTrack', () => {
     const track = createTrack('fretted', {
       name: 'Bass',
       tuning: [28, 33, 38, 43],
-      display: { notation: 'both', clef: 'bass' },
+      display: { notation: 'both', clef: 'bass', octaveShift: 1 },
       barCount: 3,
     });
     expect(track.name).toBe('Bass');
