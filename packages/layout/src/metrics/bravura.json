@@ -1,0 +1,332 @@
+{
+  "font": { "family": "Bravura", "version": 1.482, "unitsPerSpace": "staff spaces" },
+  "engravingDefaults": {
+    "arrowShaftThickness": 0.16,
+    "barlineSeparation": 0.4,
+    "beamSpacing": 0.25,
+    "beamThickness": 0.5,
+    "bracketThickness": 0.5,
+    "dashedBarlineDashLength": 0.5,
+    "dashedBarlineGapLength": 0.25,
+    "dashedBarlineThickness": 0.16,
+    "hBarThickness": 1,
+    "hairpinThickness": 0.16,
+    "legerLineExtension": 0.4,
+    "legerLineThickness": 0.16,
+    "lyricLineThickness": 0.16,
+    "octaveLineThickness": 0.16,
+    "pedalLineThickness": 0.16,
+    "repeatBarlineDotSeparation": 0.16,
+    "repeatEndingLineThickness": 0.16,
+    "slurEndpointThickness": 0.1,
+    "slurMidpointThickness": 0.22,
+    "staffLineThickness": 0.13,
+    "stemThickness": 0.12,
+    "subBracketThickness": 0.16,
+    "textEnclosureThickness": 0.16,
+    "thickBarlineThickness": 0.5,
+    "thinBarlineThickness": 0.16,
+    "thinThickBarlineSeparation": 0.4,
+    "tieEndpointThickness": 0.1,
+    "tieMidpointThickness": 0.22,
+    "tupletBracketThickness": 0.16
+  },
+  "glyphs": {
+    "gClef": {
+      "codepoint": 57424,
+      "advance": 2.684,
+      "bbox": { "left": 0, "bottom": -2.632, "right": 2.684, "top": 4.392 }
+    },
+    "gClef8vb": {
+      "codepoint": 57426,
+      "advance": 2.656,
+      "bbox": { "left": 0, "bottom": -3.512, "right": 2.684, "top": 4.392 }
+    },
+    "gClef8va": {
+      "codepoint": 57427,
+      "advance": 2.684,
+      "bbox": { "left": 0, "bottom": -2.632, "right": 2.684, "top": 5.28 }
+    },
+    "gClef15mb": {
+      "codepoint": 57425,
+      "advance": 2.684,
+      "bbox": { "left": 0, "bottom": -3.524, "right": 2.684, "top": 4.392 }
+    },
+    "gClef15ma": {
+      "codepoint": 57428,
+      "advance": 2.684,
+      "bbox": { "left": 0, "bottom": -2.632, "right": 2.684, "top": 5.276 }
+    },
+    "fClef": {
+      "codepoint": 57442,
+      "advance": 2.736,
+      "bbox": { "left": -0.02, "bottom": -2.54, "right": 2.736, "top": 1.048 }
+    },
+    "fClef8vb": {
+      "codepoint": 57444,
+      "advance": 2.736,
+      "bbox": { "left": -0.02, "bottom": -2.976, "right": 2.736, "top": 1.048 }
+    },
+    "fClef8va": {
+      "codepoint": 57445,
+      "advance": 2.736,
+      "bbox": { "left": -0.02, "bottom": -2.54, "right": 2.736, "top": 1.98 }
+    },
+    "fClef15mb": {
+      "codepoint": 57443,
+      "advance": 2.736,
+      "bbox": { "left": -0.02, "bottom": -2.968, "right": 2.736, "top": 1.048 }
+    },
+    "fClef15ma": {
+      "codepoint": 57446,
+      "advance": 2.736,
+      "bbox": { "left": -0.02, "bottom": -2.54, "right": 2.736, "top": 1.984 }
+    },
+    "cClef": {
+      "codepoint": 57436,
+      "advance": 2.796,
+      "bbox": { "left": 0, "bottom": -2.024, "right": 2.796, "top": 2.024 }
+    },
+    "cClef8vb": {
+      "codepoint": 57437,
+      "advance": 2.796,
+      "bbox": { "left": 0, "bottom": -2.964, "right": 2.796, "top": 2.024 }
+    },
+    "unpitchedPercussionClef1": {
+      "codepoint": 57449,
+      "advance": 1.528,
+      "bbox": { "left": 0, "bottom": -1, "right": 1.528, "top": 1 }
+    },
+    "6stringTabClef": {
+      "codepoint": 57453,
+      "advance": 1.636,
+      "bbox": { "left": -0.012, "bottom": -2.992, "right": 1.632, "top": 3.056 }
+    },
+    "4stringTabClef": {
+      "codepoint": 57454,
+      "advance": 1.084,
+      "bbox": { "left": -0.012, "bottom": -2.032, "right": 1.088, "top": 2.016 }
+    },
+    "timeSig0": {
+      "codepoint": 57472,
+      "advance": 1.88,
+      "bbox": { "left": 0.08, "bottom": -1, "right": 1.8, "top": 1.004 }
+    },
+    "timeSig1": {
+      "codepoint": 57473,
+      "advance": 1.336,
+      "bbox": { "left": 0.08, "bottom": -1, "right": 1.256, "top": 1.004 }
+    },
+    "timeSig2": {
+      "codepoint": 57474,
+      "advance": 1.784,
+      "bbox": { "left": 0.08, "bottom": -1.028, "right": 1.704, "top": 1.016 }
+    },
+    "timeSig3": {
+      "codepoint": 57475,
+      "advance": 1.684,
+      "bbox": { "left": 0.08, "bottom": -1.004, "right": 1.604, "top": 0.996 }
+    },
+    "timeSig4": {
+      "codepoint": 57476,
+      "advance": 1.88,
+      "bbox": { "left": 0.08, "bottom": -1, "right": 1.8, "top": 1.004 }
+    },
+    "timeSig5": {
+      "codepoint": 57477,
+      "advance": 1.612,
+      "bbox": { "left": 0.08, "bottom": -1.004, "right": 1.532, "top": 0.984 }
+    },
+    "timeSig6": {
+      "codepoint": 57478,
+      "advance": 1.736,
+      "bbox": { "left": 0.08, "bottom": -0.996, "right": 1.656, "top": 1.004 }
+    },
+    "timeSig7": {
+      "codepoint": 57479,
+      "advance": 1.764,
+      "bbox": { "left": 0.08, "bottom": -1, "right": 1.684, "top": 0.996 }
+    },
+    "timeSig8": {
+      "codepoint": 57480,
+      "advance": 1.744,
+      "bbox": { "left": 0.08, "bottom": -1.036, "right": 1.664, "top": 1.036 }
+    },
+    "timeSig9": {
+      "codepoint": 57481,
+      "advance": 1.736,
+      "bbox": { "left": 0.08, "bottom": -0.996, "right": 1.656, "top": 1.004 }
+    },
+    "accidentalFlat": {
+      "codepoint": 57952,
+      "advance": 0.904,
+      "bbox": { "left": 0, "bottom": -0.7, "right": 0.904, "top": 1.756 },
+      "anchors": { "cutOutNE": [0.252, 0.656], "cutOutSE": [0.504, -0.476] }
+    },
+    "accidentalNatural": {
+      "codepoint": 57953,
+      "advance": 0.672,
+      "bbox": { "left": 0, "bottom": -1.34, "right": 0.672, "top": 1.364 },
+      "anchors": { "cutOutNE": [0.192, 0.776], "cutOutSW": [0.476, -0.828] }
+    },
+    "accidentalSharp": {
+      "codepoint": 57954,
+      "advance": 0.996,
+      "bbox": { "left": 0, "bottom": -1.392, "right": 0.996, "top": 1.4 },
+      "anchors": {
+        "cutOutNE": [0.84, 0.896],
+        "cutOutNW": [0.144, 0.568],
+        "cutOutSE": [0.84, -0.596],
+        "cutOutSW": [0.144, -0.896]
+      }
+    },
+    "accidentalDoubleSharp": {
+      "codepoint": 57955,
+      "advance": 1,
+      "bbox": { "left": 0, "bottom": -0.5, "right": 0.988, "top": 0.508 }
+    },
+    "accidentalDoubleFlat": {
+      "codepoint": 57956,
+      "advance": 1.652,
+      "bbox": { "left": 0, "bottom": -0.7, "right": 1.644, "top": 1.748 },
+      "anchors": { "cutOutNE": [0.988, 0.644], "cutOutSE": [1.336, -0.396] }
+    },
+    "repeatDot": {
+      "codepoint": 57412,
+      "advance": 0.4,
+      "bbox": { "left": 0, "bottom": -0.2, "right": 0.4, "top": 0.2 }
+    },
+    "segno": {
+      "codepoint": 57415,
+      "advance": 2.228,
+      "bbox": { "left": 0.016, "bottom": -0.108, "right": 2.2, "top": 3.036 }
+    },
+    "coda": {
+      "codepoint": 57416,
+      "advance": 3.816,
+      "bbox": { "left": -0.016, "bottom": -0.632, "right": 3.82, "top": 3.592 }
+    },
+    "codaSquare": {
+      "codepoint": 57417,
+      "advance": 3.276,
+      "bbox": { "left": 0, "bottom": -0.616, "right": 3.288, "top": 3.612 }
+    },
+    "metNoteWhole": {
+      "codepoint": 60578,
+      "advance": 1.836,
+      "bbox": { "left": 0, "bottom": -0.5, "right": 1.836, "top": 0.592 }
+    },
+    "metNoteHalfUp": {
+      "codepoint": 60579,
+      "advance": 1.364,
+      "bbox": { "left": 0, "bottom": -0.564, "right": 1.364, "top": 2.752 }
+    },
+    "metNoteQuarterUp": {
+      "codepoint": 60581,
+      "advance": 1.328,
+      "bbox": { "left": 0, "bottom": -0.564, "right": 1.328, "top": 2.752 }
+    },
+    "metNote8thUp": {
+      "codepoint": 60583,
+      "advance": 2.136,
+      "bbox": { "left": 0, "bottom": -0.564, "right": 2.132, "top": 2.784 }
+    },
+    "metAugmentationDot": {
+      "codepoint": 60599,
+      "advance": 0.4,
+      "bbox": { "left": 0, "bottom": -0.2, "right": 0.4, "top": 0.2 }
+    },
+    "noteheadBlack": {
+      "codepoint": 57508,
+      "advance": 1.18,
+      "bbox": { "left": 0, "bottom": -0.5, "right": 1.18, "top": 0.5 },
+      "anchors": {
+        "cutOutNW": [0.208, 0.3],
+        "cutOutSE": [0.94, -0.296],
+        "splitStemDownNE": [0.968, -0.248],
+        "splitStemDownNW": [0.12, -0.416],
+        "splitStemUpSE": [1.092, 0.392],
+        "splitStemUpSW": [0.312, 0.356],
+        "stemDownNW": [0, -0.168],
+        "stemUpSE": [1.18, 0.168]
+      }
+    },
+    "noteheadHalf": {
+      "codepoint": 57507,
+      "advance": 1.18,
+      "bbox": { "left": 0, "bottom": -0.5, "right": 1.18, "top": 0.5 },
+      "anchors": {
+        "cutOutNW": [0.204, 0.296],
+        "cutOutSE": [0.98, -0.3],
+        "splitStemDownNE": [0.956, -0.3],
+        "splitStemDownNW": [0.128, -0.428],
+        "splitStemUpSE": [1.108, 0.372],
+        "splitStemUpSW": [0.328, 0.38],
+        "stemDownNW": [0, -0.168],
+        "stemUpSE": [1.18, 0.168]
+      }
+    },
+    "noteheadWhole": {
+      "codepoint": 57506,
+      "advance": 1.688,
+      "bbox": { "left": 0, "bottom": -0.5, "right": 1.688, "top": 0.5 },
+      "anchors": { "cutOutNW": [0.172, 0.332], "cutOutSE": [1.532, -0.364] }
+    },
+    "noteheadXBlack": {
+      "codepoint": 57513,
+      "advance": 1.16,
+      "bbox": { "left": 0, "bottom": -0.5, "right": 1.16, "top": 0.5 },
+      "anchors": { "stemDownNW": [0, -0.44], "stemUpSE": [1.16, 0.444] }
+    },
+    "augmentationDot": {
+      "codepoint": 57831,
+      "advance": 0.4,
+      "bbox": { "left": 0, "bottom": -0.2, "right": 0.4, "top": 0.2 }
+    },
+    "restWhole": {
+      "codepoint": 58595,
+      "advance": 1.132,
+      "bbox": { "left": 0, "bottom": -0.54, "right": 1.128, "top": 0.036 }
+    },
+    "restHalf": {
+      "codepoint": 58596,
+      "advance": 1.132,
+      "bbox": { "left": 0, "bottom": -0.008, "right": 1.128, "top": 0.568 }
+    },
+    "restQuarter": {
+      "codepoint": 58597,
+      "advance": 1.08,
+      "bbox": { "left": 0.004, "bottom": -1.5, "right": 1.08, "top": 1.492 }
+    },
+    "rest8th": {
+      "codepoint": 58598,
+      "advance": 1,
+      "bbox": { "left": 0, "bottom": -1.004, "right": 0.988, "top": 0.696 }
+    },
+    "rest16th": {
+      "codepoint": 58599,
+      "advance": 1.28,
+      "bbox": { "left": 0, "bottom": -2, "right": 1.28, "top": 0.716 }
+    },
+    "rest32nd": {
+      "codepoint": 58600,
+      "advance": 1.452,
+      "bbox": { "left": 0, "bottom": -2, "right": 1.452, "top": 1.704 }
+    },
+    "rest64th": {
+      "codepoint": 58601,
+      "advance": 1.696,
+      "bbox": { "left": 0, "bottom": -3.012, "right": 1.692, "top": 1.72 }
+    },
+    "rest128th": {
+      "codepoint": 58602,
+      "advance": 1.94,
+      "bbox": { "left": 0, "bottom": -3, "right": 1.94, "top": 2.756 }
+    },
+    "rest256th": {
+      "codepoint": 58603,
+      "advance": 2.164,
+      "bbox": { "left": 0, "bottom": -4, "right": 2.164, "top": 2.784 }
+    }
+  }
+}

@@ -4,6 +4,6 @@
     "lib": ["ES2022"],
     "outDir": ".tsbuild"
   },
-  "include": ["src"],
+  "include": ["src", "src/**/*.json"],
   "references": [{ "path": "../../packages/model" }]
 }
