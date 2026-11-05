@@ -50,7 +50,7 @@ From [the roadmap](docs/plans/roadmap.md#lane-rules):
 - The body links the issue (`Closes #n`), says what changed and **how it was verified**: the commands run and what they showed, not just "tests pass".
 - Include before and after measurements for anything the [budgets table](docs/plans/roadmap.md#budgets) covers, screenshots for any UI change, and any deviation from the plan with its reason.
 - Open questions go on the issue as comments, not as assumptions buried in code.
-- Before opening it, this passes locally; CI runs the same checks:
+- Before opening it, this passes locally, and CI must be green on the PR (lint, typecheck, tests, build, per [ADR-0014](docs/decisions/0014-repo-and-process.md)):
 
   ```sh
   pnpm lint && pnpm typecheck && pnpm test && pnpm format:check
@@ -60,11 +60,11 @@ From [the roadmap](docs/plans/roadmap.md#lane-rules):
 
 ## No time estimates
 
-Work packages carry a size by scope, never by time: **S** a focused change in one file or module, **M** a module with tests, **L** a subsystem with several modules and a test suite, **XL** should have been split. Do not add days, weeks or deadlines to docs, issues or code. Agents do the implementation; the time that matters goes to planning and review.
+Work packages carry a size by scope, never by time: **S** a focused change in one file or module, **M** a module with tests, **L** a subsystem with several modules and a test suite, **XL** should have been split, and is only used when splitting would create artificial seams. Do not add days, weeks or deadlines to docs, issues or code. Agents do the implementation; the time that matters goes to planning and review.
 
 ## Git and gh credentials
 
-This machine has more than one GitHub account. The repository's local git config pushes as the personal account (`tomer-shvadron`) through a credential helper, so `git push` needs nothing extra. The `gh` CLI does not read that config: when its active account is a different one, prefix each command with the personal token:
+The owner's machine has more than one GitHub account. The repository's local git config pushes as the personal account (`tomer-shvadron`) through a credential helper, so `git push` needs nothing extra. The `gh` CLI does not read that config: when its active account is a different one, prefix each command with the personal token:
 
 ```sh
 GH_TOKEN=$(gh auth token --user tomer-shvadron) gh pr create -R tomer-shvadron/reprise ...

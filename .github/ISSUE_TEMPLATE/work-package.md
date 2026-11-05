@@ -16,7 +16,7 @@ Fill every field from the work package in docs/plans/phase-N-*.md, then set:
 Work package **WP-0NN** from [phase N: {name}](https://github.com/tomer-shvadron/reprise/blob/main/docs/plans/phase-N-{slug}.md). The text below is the plan verbatim; the plan file is the source of truth if they ever differ.
 
 - **Lane**: {lead | score | audio | formats | app} · **Size**: {S | M | L | XL} · **Blocked by**: {WP-0NN, or none}
-- **Packages**: `<path>`, `<path>`
+- **Packages**: `{path}`, `{path}`
 
 **Deliverables**
 
