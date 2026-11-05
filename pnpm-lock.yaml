@@ -192,6 +192,9 @@ importers:
       '@reprise/model':
         specifier: workspace:*
         version: link:../model
+      fflate:
+        specifier: 0.8.3
+        version: 0.8.3
     devDependencies:
       '@coderline/alphatab':
         specifier: 1.8.4
