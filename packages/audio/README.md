@@ -10,8 +10,8 @@ sampler itself.
 ```
 main thread                                     audio thread (native Web Audio)
 -----------                                     -------------------------------
-25 ms worker timer -> advance(run, now, now + 0.2) --> InstrumentSink.noteOn -> sampler nodes --+
-                                                  \--> MetronomeSink.click  -> click gain ------+-> destination
+25 ms worker timer -> advance(run, now, now + 0.2) --> InstrumentSink.noteOn -> sampler voices -> strips --+
+                                                  \--> MetronomeSink.click  -> click gain ----------------+-> master bus -> destination
 animation frame -> currentTime -> position event
 ```
 
@@ -93,7 +93,11 @@ interface NoteEvent {
   produce nothing and end at once, and a second `stop` replaces the first. It is called with
   `when = currentTime` on pause, stop and seek.
 - `MetronomeSink` (`click(when, accent)`, `silence(when)`, `setVolume(volume)`) is the same
-  idea for the metronome and the count-in; `ClickSynth` is the built-in one.
+  idea for the metronome and the count-in; `ClickSynth` is the built-in one. **Route it through
+  the sampler's master bus**, `new ClickSynth(context, sampler.master.input)`: the bus's limiter
+  delays everything through it by about 6 ms (see the sampler's "limiter" note), so a click sent
+  straight to the destination lands 6 ms ahead of the notes. The engine's default `ClickSynth`
+  goes to the destination only because the engine has no sampler of its own.
 
 Stand-ins shipped here: `RecordingSink` (implements both sinks, makes no sound, records each
 event with the `currentTime` it was handed out at) for tests, and `ToneSink` (one oscillator
@@ -145,6 +149,10 @@ Events:
   later one is dropped rather than played out of time.
 - Onsets are exact to the tempo map: the offline tests measure every onset of a four-bar score
   at 120 BPM at its expected sample, and through `RecordingSink` the times match to 1e-9 s.
+  Through the real sampler (`engine-sampler.test.ts`) every onset lands at `when` plus the
+  master bus's pre-delay, on the grid within 1 ms, and the metronome's clicks through the same
+  bus carry the same delay to within 0.5 ms; a test that measures onsets behind the bus reads the
+  delay off the first onset and subtracts it.
 - A loop wraps on the exact tick: the first note of the next pass is one beat after the last
   note of the previous, with no gap or overlap.
 - A tempo change takes effect at the scheduling cursor, at most 200 ms after the call: events
@@ -279,11 +287,12 @@ sampler.previewNote(trackId, note); // now, at velocity 96, through the track's 
 await sampler.preload(trackId, [{ key, velocity }]);
 ```
 
-`createSamplerSink(sampler)` adapts the sampler to the scheduler's sink shape
-(`noteOn(track, note, beat, when, duration, letRingUntil?)`, `noteOff`, `allNotesOff`); it is to
-be reconciled with WP-030's `InstrumentSink` when both land. `letRingUntil` is where the scheduler
-puts the end of the bar for a let-ring note. The sink keeps a handle per note only until the voice
-can no longer sound (`held` says how many), so a long song does not accumulate them.
+`createSamplerSink(sampler)` is the scheduler's `InstrumentSink` over the sampler: `noteOn(event)`
+starts the note at `event.when` at velocity 96 (flat until WP-033 maps dynamics) and releases it
+at `when + duration`; a let-ring note instead rings to the next note on its string or to
+`event.barEnd`, whichever comes first; `allNotesOff(when)` releases every voice, the ones
+scheduled after `when` included (a release before a voice's start time is a 0-to-0 fade, so it
+never sounds). It keeps no handles: the sampler's voice set is the state.
 
 ### Decisions
 

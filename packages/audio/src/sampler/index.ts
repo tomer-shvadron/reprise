@@ -20,7 +20,6 @@ export type {
   VoiceHandle,
 } from './sampler';
 export { createSamplerSink } from './sampler-sink';
-export type { SamplerSink } from './sampler-sink';
 export { dbToGain, velocityGain } from './voice';
 export type { FilterSettings } from './voice';
 export { VoicePool } from './voice-pool';
