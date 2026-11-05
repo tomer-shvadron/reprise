@@ -9,31 +9,38 @@ import type { Sampler, VoiceHandle } from './sampler';
  * `InstrumentSink` at merge: this file then implements that interface instead of its own copy.
  */
 export interface SamplerSink {
+  /** `letRingUntil` is where the scheduler puts the end of the bar for a let-ring note. */
   noteOn(
     track: Pick<Track, 'id' | 'kind' | 'tuning' | 'capo'>,
     note: Note,
     beat: Beat,
     when: number,
     duration: number,
+    letRingUntil?: number,
   ): void;
   noteOff(track: Pick<Track, 'id'>, note: Note, when: number): void;
   allNotesOff(when: number): void;
+  /** Handles still held for a note-off; bounded by the voices that can sound at once. */
+  readonly held: number;
 }
 
 /**
  * Plays scheduler events on the sampler. Velocity is flat until articulation playback maps
- * dynamics; let-ring notes ring until the next note on their string or `allNotesOff`.
+ * dynamics; let-ring notes ring until the next note on their string, `letRingUntil`, or
+ * `allNotesOff`.
  */
 export function createSamplerSink(sampler: Sampler): SamplerSink {
   const sounding = new Map<Id, VoiceHandle>();
   return {
-    noteOn(track, note, _beat, when, duration) {
+    noteOn(track, note, _beat, when, duration, letRingUntil) {
+      for (const [id, held] of sounding) if (held.endTime <= when) sounding.delete(id);
       const voice = sampler.noteOn(track.id, {
         key: midiNote(track, note),
         velocity: DEFAULT_VELOCITY,
         when,
         string: note.string,
-        letRing: note.letRing,
+        letRing:
+          note.letRing && letRingUntil !== undefined ? { until: letRingUntil } : note.letRing,
       });
       if (!voice) return;
       sounding.set(note.id, voice);
@@ -48,6 +55,9 @@ export function createSamplerSink(sampler: Sampler): SamplerSink {
     allNotesOff(when) {
       sampler.allNotesOff(when);
       sounding.clear();
+    },
+    get held() {
+      return sounding.size;
     },
   };
 }

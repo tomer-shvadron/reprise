@@ -68,4 +68,31 @@ describe('createSamplerSink', () => {
     expect(toneLevel(data, pitch(lastNote), 0.85, 1.2)).toBeGreaterThan(0.1);
     expect(toneLevel(data, pitch(lastNote), 1.35, 1.5)).toBeLessThan(0.001);
   });
+
+  it('releases a let-ring note at the bar end the scheduler supplies', async () => {
+    const context = offline(1);
+    const sampler = new Sampler(context);
+    sampler.addTrack(guitar, sineInstrument());
+    const sink = createSamplerSink(sampler);
+
+    sink.noteOn(guitar, ringingNote, ringing, 0, 0.2, 0.6);
+    const data = (await context.startRendering()).getChannelData(0);
+
+    const frequency = midiToFrequency(midiNote(guitar, ringingNote));
+    expect(toneLevel(data, frequency, 0.3, 0.55)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, frequency, 0.7, 1)).toBeLessThan(0.001);
+  });
+
+  it('holds handles only while their voices can still sound', () => {
+    const sampler = new Sampler(offline(1));
+    sampler.addTrack(guitar, sineInstrument());
+    const sink = createSamplerSink(sampler);
+
+    for (let index = 0; index < 300; index += 1) {
+      sink.noteOn(guitar, { ...firstNote, id: `n${String(index)}` }, first, index * 0.05, 0.1);
+    }
+    expect(sink.held).toBeLessThan(10);
+    sink.allNotesOff(15);
+    expect(sink.held).toBe(0);
+  });
 });
