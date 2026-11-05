@@ -48,5 +48,8 @@ export type { ClickOnset, NextOnString, NoteOnset, TickRange, Timeline } from '.
 // Sampler (WP-031)
 export * from './sampler/index';
 
+// SF2 loader (WP-032)
+export * from './sf2/index';
+
 // Memory manager (WP-034)
 export * from './samples/index';
