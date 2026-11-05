@@ -255,7 +255,11 @@ describe('parseNative warnings', () => {
     const result = parseNative(bytesOf({ ...envelope(score), thumbnail: 'data:...' }));
     expect(result.score).toEqual(score);
     expect(result.warnings).toEqual([
-      { path: ['thumbnail'], message: 'Unknown field "thumbnail" was dropped' },
+      {
+        rule: 'unknown-field',
+        path: ['thumbnail'],
+        message: 'Unknown field "thumbnail" was dropped',
+      },
     ]);
   });
 
@@ -277,6 +281,23 @@ describe('parseNative warnings', () => {
       ['score', 'meta', 'rating'],
       ['score', 'tracks', 0, 'bars', 0, 'legacy'],
     ]);
+  });
+
+  it('reports invariant violations as warnings from the document root, not as failures', () => {
+    const score = createEmptyScore();
+    const voice = score.tracks[0]?.bars[0]?.voices[0];
+    if (!voice) throw new Error('the empty score has no first voice');
+    voice.beats.push(createBeat({ duration: 1 }), createBeat({ duration: 1 }));
+    voice.beats.push(
+      createBeat({ duration: 4, notes: [createNote({ string: 1, fret: 0, tie: true })] }),
+    );
+    const violations = validateScore(score);
+    expect(violations.map((violation) => violation.rule)).toEqual(['voice-overfull', 'tie-target']);
+    const result = parseNative(serializeNative(score, APP));
+    expect(result.score).toEqual(score);
+    expect(result.warnings).toEqual(
+      violations.map(({ rule, path, message }) => ({ rule, path: ['score', ...path], message })),
+    );
   });
 });
 

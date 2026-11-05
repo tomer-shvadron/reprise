@@ -152,4 +152,11 @@ export {
   parseNative,
   serializeNative,
 } from './native';
-export type { AppInfo, NativeDocument, NativePath, ParseResult, ParseWarning } from './native';
+export type {
+  AppInfo,
+  NativeDocument,
+  NativePath,
+  ParseResult,
+  ParseWarning,
+  ParseWarningRule,
+} from './native';

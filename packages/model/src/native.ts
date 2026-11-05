@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { migrate } from './migrations';
 import { SCORE_VERSION, ScoreSchema } from './score';
 import type { Score } from './score';
+import { validateScore } from './validate';
+import type { ViolationRule } from './validate';
 
 // Declared locally rather than through the DOM or Node lib so the package stays lib-free;
 // both runtimes provide the globals.
@@ -32,7 +34,11 @@ export type NativeDocument = z.infer<typeof NativeDocumentSchema>;
 
 export type NativePath = (string | number)[];
 
+export type ParseWarningRule = 'unknown-field' | ViolationRule;
+
+/** `path` is from the document root, so a score violation starts with `score`. */
 export interface ParseWarning {
+  rule: ParseWarningRule;
   path: NativePath;
   message: string;
 }
@@ -98,8 +104,8 @@ export function serializeNative(score: Score, app: AppInfo): Uint8Array {
 
 /**
  * Reads a `.reprise` file of this or an older version. Throws `NativeFormatError`, naming the
- * offending path, for anything it cannot turn into a valid `Score`; fields it does not know
- * are dropped and reported in `warnings`.
+ * offending path, for anything it cannot turn into a schema-valid `Score`. Fields it does not
+ * know are dropped, and those and the score's invariant violations are reported in `warnings`.
  */
 export function parseNative(bytes: Uint8Array): ParseResult {
   let text: string;
@@ -159,6 +165,9 @@ export function parseNative(bytes: Uint8Array): ParseResult {
 
   const warnings: ParseWarning[] = [];
   collectDropped(candidate, result.data, [], warnings);
+  for (const { rule, path, message } of validateScore(result.data.score)) {
+    warnings.push({ rule, path: ['score', ...path], message });
+  }
   return { score: result.data.score, app: result.data.app, warnings };
 }
 
@@ -180,7 +189,11 @@ function collectDropped(
     if (key in output) {
       collectDropped(value, output[key], [...path, key], warnings);
     } else {
-      warnings.push({ path: [...path, key], message: `Unknown field "${key}" was dropped` });
+      warnings.push({
+        rule: 'unknown-field',
+        path: [...path, key],
+        message: `Unknown field "${key}" was dropped`,
+      });
     }
   }
 }

@@ -58,10 +58,11 @@ const { score: read, app, warnings } = parseNative(bytes); // throws NativeForma
   versions. The `score` then runs through `MIGRATIONS` from the file's version to the current
   one, and the whole envelope is checked against `NativeDocumentSchema`. Any failure is a
   `NativeFormatError` whose `path` (and message prefix, `score.tracks[0].bars[2].id: ...`) names
-  the offending field. `parseNative` does not run `validateScore`; callers that need the invariants
-  run it on the result.
-- **Unknown fields** anywhere in the document are dropped, each reported as a `ParseWarning`
-  with its path, rather than failing the read.
+  the offending field.
+- **Warnings, never failures**, for what the schema cannot see: unknown fields anywhere in the
+  document are dropped and reported (`rule: 'unknown-field'`), and the score's invariant
+  violations (`validateScore`) are reported under their rule. Every `ParseWarning` path starts
+  at the document root, so a score violation's path begins with `score`.
 - **Migrations**: `MIGRATIONS[n]` turns a version-`n - 1` `score` into its version-`n` shape,
   working on plain JSON. Version 1's entry is the identity. Raising the version means: bump
   `SCORE_VERSION`, add the step, and add a fixture of the old version to the tests.
