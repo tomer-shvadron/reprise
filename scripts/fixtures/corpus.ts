@@ -4,7 +4,8 @@
  */
 import { join } from 'node:path';
 
-export const FIXTURES_DIR = join(import.meta.dirname, '..', '..', 'fixtures');
+export const ROOT_DIR = join(import.meta.dirname, '..', '..');
+export const FIXTURES_DIR = join(ROOT_DIR, 'fixtures');
 export const MANIFEST_PATH = join(FIXTURES_DIR, 'manifest.json');
 
 /** Each format's fixtures live in `fixtures/<format>/` and carry that extension. */
