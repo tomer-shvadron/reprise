@@ -87,6 +87,8 @@ function shape(points: BendPoint[]): { origin: number; peak: number; trough: num
  * gpif stores bend points but no bend type, so the kind is read off the curve, as Guitar Pro's
  * own bend dialog names them; `custom` where the curve fits none. `tied` says the note continues
  * a tied one, so a falling curve is a release of the earlier bend rather than a prebend.
+ * `bendReleaseBend` never comes out of here: gpif's properties describe an origin, one plateau
+ * and a destination, which cannot hold an up-down-up curve.
  */
 export function bendKind(points: BendPoint[], tied: boolean): BendKind {
   const { origin, peak, trough, end } = shape(points);

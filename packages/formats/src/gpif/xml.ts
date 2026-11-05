@@ -61,7 +61,9 @@ function decodeEntities(raw: string, source: string, offset: number): string {
       : body.startsWith('#')
         ? Number.parseInt(body.slice(1), 10)
         : Number.NaN;
-    if (!Number.isInteger(code) || code < 0 || code > 0x10_ff_ff) {
+    // XML has no NUL and no lone surrogates, whatever the reference says.
+    const surrogate = code >= 0xd8_00 && code <= 0xdf_ff;
+    if (!Number.isInteger(code) || code <= 0 || code > 0x10_ff_ff || surrogate) {
       throw new XmlError(`Unknown entity &${body};`, source, offset + at);
     }
     return String.fromCodePoint(code);
@@ -73,8 +75,18 @@ function isSpace(code: number): boolean {
 }
 
 function isNameEnd(code: number): boolean {
-  return isSpace(code) || code === 0x2f || code === 0x3e || code === 0x3d || Number.isNaN(code);
+  return (
+    isSpace(code) ||
+    code === 0x2f ||
+    code === 0x3e ||
+    code === 0x3d ||
+    code === 0x3c ||
+    Number.isNaN(code)
+  );
 }
+
+/** Most gpif elements have no attributes; they share one map instead of allocating each. */
+const NO_ATTRIBUTES: ReadonlyMap<string, string> = new Map();
 
 function skipTo(source: string, from: number, terminator: string, what: string): number {
   const end = source.indexOf(terminator, from);
@@ -162,7 +174,7 @@ function readStartTag(
   const nameEnd = readName(source, lt + 1);
   const name = source.slice(lt + 1, nameEnd);
   if (name === '') throw new XmlError('Expected an element name', source, lt);
-  const attributes = new Map<string, string>();
+  let attributes: Map<string, string> | undefined;
   let pos = nameEnd;
 
   for (;;) {
@@ -187,15 +199,26 @@ function readStartTag(
     }
     const valueEnd = source.indexOf(quote, pos + 1);
     if (valueEnd === -1) throw new XmlError(`Unterminated attribute ${attribute}`, source, pos);
+    const raw = source.slice(pos + 1, valueEnd);
+    if (raw.includes('<')) {
+      throw new XmlError(`Attribute ${attribute} in <${name}> contains <`, source, pos);
+    }
+    attributes ??= new Map();
     if (attributes.has(attribute)) {
       throw new XmlError(`Duplicate attribute ${attribute} in <${name}>`, source, pos);
     }
-    attributes.set(attribute, decodeEntities(source.slice(pos + 1, valueEnd), source, pos + 1));
+    attributes.set(attribute, decodeEntities(raw, source, pos + 1));
     pos = valueEnd + 1;
   }
 
   const selfClosing = source.charCodeAt(pos) === 0x2f;
-  const element: XmlElement = { name, attributes, children: [], text: '', offset: lt };
+  const element: XmlElement = {
+    name,
+    attributes: attributes ?? NO_ATTRIBUTES,
+    children: [],
+    text: '',
+    offset: lt,
+  };
   const parent = stack.at(-1);
   if (parent) parent.children.push(element);
   else setRoot(element);

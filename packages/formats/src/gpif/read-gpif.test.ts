@@ -483,6 +483,28 @@ describe('tracks', () => {
     expect(pitched?.bars[0]?.voices[0].beats[0]?.notes[0]).toMatchObject({ string: 0, fret: 55 });
   });
 
+  it('keeps a GP6 drum note without an articulation and reports one outside GM', () => {
+    const gp6Drums = guitarTrack('0', {
+      extra: '<GeneralMidi table="Percussion"><Program>0</Program></GeneralMidi>',
+    });
+    const { score, warnings } = read(
+      oneBar(
+        [beat('0', '0', '0 1')],
+        [
+          note('0', 0, 0, '', property('Midi', '<Number>38</Number>')),
+          note('1', 0, 0, '', property('Midi', '<Number>91</Number>')),
+        ],
+        QUARTERS,
+        { tracks: [gp6Drums] },
+      ),
+    );
+    expect(score.tracks[0]?.kind).toBe('drums');
+    expect(beatsOf(score)[0]?.notes.map((n) => n.fret)).toEqual([38, 91]);
+    expect(warnings.map((w) => w.message)).toContain(
+      'Drum note 91 has no articulation and is outside GM percussion (27 to 87); kept as is',
+    );
+  });
+
   it('merges a second staff onto free voices', () => {
     const twoStaves = guitarTrack('0').replace(
       '</Staves>',

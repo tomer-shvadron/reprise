@@ -14,6 +14,10 @@ import type { GpifNote, GpifStaff, GpifTrack, NoteFields } from './document';
 import type { TrackNotation } from './part-configuration';
 import type { WarningSink } from './warnings';
 
+/** GM2 percussion keys, high Q to open surdo. */
+const GM_PERCUSSION_MIN = 27;
+const GM_PERCUSSION_MAX = 87;
+
 /** General MIDI programs of fretted instruments: guitars and basses, then sitar, banjo, shamisen, koto. */
 function isFrettedProgram(program: number): boolean {
   return (program >= 24 && program <= 39) || (program >= 104 && program <= 107);
@@ -144,6 +148,15 @@ export function resolveNote(
       }
     } else {
       fret = note.midi;
+      // GP6 numbers drum notes like GP7's articulation inputs, so a variant runs past GM.
+      if (fret !== undefined && (fret < GM_PERCUSSION_MIN || fret > GM_PERCUSSION_MAX)) {
+        sink.warn(
+          'invalid-value',
+          note.path,
+          `Drum note ${String(fret)} has no articulation and is outside GM percussion (${String(GM_PERCUSSION_MIN)} to ${String(GM_PERCUSSION_MAX)}); kept as is`,
+          `${plan.source.id}:gm-percussion`,
+        );
+      }
     }
   } else {
     fret = note.midi;

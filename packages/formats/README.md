@@ -58,7 +58,7 @@ Each verified against alphaTab's `GpifParser` (and `GpifWriter` where noted) in 
 - **Volta brackets** mark only their first bar. The reader copies the numbers onto each following bar up to and including the bar that closes the repeat; a bracket with no repeat end ahead (a final ending) stays one bar.
 - **Lyric offsets** (`Lyrics/Line/Offset`) are 0-based bar indexes, unlike GP3 to GP5's 1-based ones (`_parseLyricsLine`; the writer writes `bar.index`).
 - **Per-beat lyrics win.** When any beat carries `Lyrics`, the track's block is not laid onto beats (`_skipApplyLyrics`).
-- **Tempo units.** `Value` is `"<bpm> <unit>"`, 1 to 5 for eighth to dotted half, scaled by 0.5, 1, 1.5, 2 and 3 to quarter-note BPM (`Automation.buildTempoAutomation`). A value without a unit is per quarter. `Position` is a 0 to 1 ratio of the bar.
+- **Tempo units.** `Value` is `"<bpm> <unit>"`, 1 to 5 for eighth to dotted half, scaled by 0.5, 1, 1.5, 2 and 3 to quarter-note BPM (`Automation.buildTempoAutomation`). A value without a unit is per quarter (alphaTab reads it as an eighth, `reference = 1`; Guitar Pro always writes a unit, so the quarter default is deliberate). `Position` is a 0 to 1 ratio of the bar.
 - **Hammer-ons** are flagged at both ends (`HopoOrigin`, `HopoDestination`); the destination flag is the model's, and an origin whose destination is unflagged moves to the next note on its string in the voice.
 - **Bends** carry points but no type. Values are 100 per whole tone (/ 25 to quarter tones), offsets 0 to 100 (× 0.6); a missing origin offset is 0 and destination offset 100 (`_parseNoteProperties`). The kind is read off the curve, `custom` where none fits.
 - **Accent** is a bit set: 1 staccato, 2 staccatissimo, 4 heavy accent, 8 accent, 16 tenuto (`_parseNote`). **AntiAccent** `Normal` is a ghost note; **Muted** is a dead note.
@@ -71,7 +71,7 @@ Each verified against alphaTab's `GpifParser` (and `GpifWriter` where noted) in 
 - **Simile marks** are on `Bar`, not `MasterBar` as `file-formats.md` has it (`_parseBar`).
 - **Stem orientation.** `TransposedPitchStemOrientation` and `ConcertPitchStemOrientation` on every beat are directions Guitar Pro computed; only `UserTransposedPitchStemOrientation` is an override, so only it is reported.
 - **Text oddities.** `Score/MultiVoice` holds `0>` in real files; the XML parser accepts `>` in text, as XML allows. `Fadding` is Guitar Pro's spelling.
-- **GP6 forms** handled here for WP-043: track-level `Properties`, `GeneralMidi` with the percussion table, the `Whammy` element with attributes, `Instrument ref` ending in `-gs` for a second staff, and `Octave`/`Tone` note pitches.
+- **GP6 forms** handled here for WP-043: track-level `Properties`, `GeneralMidi` with the percussion table, the `Whammy` element with attributes, `Instrument ref` ending in `-gs` for a second staff, and `Octave`/`Tone` note pitches. A GP6 drum note has no `InstrumentArticulation`, so its `Midi` number is kept as the sound; GP6 numbers variants like GP7's articulation inputs (91 and up), so one outside GM percussion (27 to 87) is reported with `invalid-value`, and mapping `Element`/`Variation` to the GM sound is WP-043's.
 
 ### Known gaps
 

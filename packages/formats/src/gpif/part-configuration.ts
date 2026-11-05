@@ -18,7 +18,8 @@ export function readPartConfiguration(bytes: Uint8Array): TrackNotation[] | unde
   if (count < 0 || 9 + count > bytes.byteLength) return undefined;
   const tracks: TrackNotation[] = [];
   for (let index = 0; index < count; index++) {
-    const flags = bytes[9 + index] || 1;
+    const raw = bytes[9 + index] ?? 0;
+    const flags = raw === 0 ? 1 : raw;
     tracks.push({ standard: (flags & 1) !== 0, tab: (flags & 2) !== 0 });
   }
   return tracks;
