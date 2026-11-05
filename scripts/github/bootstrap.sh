@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Creates or updates the repository's labels, milestones and Projects board via gh.
 # Idempotent: anything already in the desired state is left untouched, and nothing is
-# ever deleted. Runs on the bash 3.2 that ships with macOS (no associative arrays).
+# ever deleted or closed (a milestone's open/closed state is not managed). Runs on the
+# bash 3.2 that ships with macOS (no associative arrays).
 #
 # Usage:
 #   GH_TOKEN=$(gh auth token --user tomer-shvadron) scripts/github/bootstrap.sh
@@ -18,14 +19,14 @@ DRY_RUN="${DRY_RUN:-0}"
 
 # name|colour|description
 LABELS=(
-  "area:model|0E8A16|Touches packages/model or apps/model"
-  "area:formats|0E8A16|Touches packages/formats or apps/formats"
-  "area:layout|0E8A16|Touches packages/layout or apps/layout"
-  "area:audio|0E8A16|Touches packages/audio or apps/audio"
-  "area:web|0E8A16|Touches packages/web or apps/web"
-  "area:desktop|0E8A16|Touches packages/desktop or apps/desktop"
-  "area:docs|0E8A16|Touches packages/docs or apps/docs"
-  "area:repo|0E8A16|Touches packages/repo or apps/repo"
+  "area:model|0E8A16|Touches packages/model"
+  "area:formats|0E8A16|Touches packages/formats"
+  "area:layout|0E8A16|Touches packages/layout"
+  "area:audio|0E8A16|Touches packages/audio"
+  "area:web|0E8A16|Touches apps/web"
+  "area:desktop|0E8A16|Touches apps/desktop"
+  "area:docs|0E8A16|Touches docs/"
+  "area:repo|0E8A16|Touches the repository root, .github, scripts or fixtures"
   "type:feature|1D76DB|New capability from a work package"
   "type:bug|D93F0B|Something is wrong"
   "type:chore|5319E7|Scaffolding, tooling, housekeeping"
@@ -140,13 +141,19 @@ sync_project() {
   log "Projects board \"$PROJECT_TITLE\" for $PROJECT_OWNER"
   local projects err number created=0
   err=$(mktemp)
-  if ! projects=$(gh project list --owner "$PROJECT_OWNER" --limit 100 --format json \
-    --jq ".projects[] | select(.title == \"$PROJECT_TITLE\") | .number" 2>"$err"); then
-    log "  skipped: the token cannot read Projects ($(head -n 1 "$err"))"
-    log "  grant the scope, then run this script again:"
-    log "    $SCOPE_HINT"
+  if ! projects=$(PROJECT_TITLE="$PROJECT_TITLE" gh project list --owner "$PROJECT_OWNER" --limit 100 \
+    --format json --jq '.projects[] | select(.title == env.PROJECT_TITLE) | .number' 2>"$err"); then
+    if grep -q 'missing required scopes' "$err"; then
+      log "  skipped: the token cannot read Projects ($(head -n 1 "$err"))"
+      log "  grant the scope, then run this script again:"
+      log "    $SCOPE_HINT"
+      rm -f "$err"
+      return 0
+    fi
+    log "  failed: could not list Projects for $PROJECT_OWNER"
+    cat "$err" >&2
     rm -f "$err"
-    return 0
+    return 1
   fi
   rm -f "$err"
 
@@ -178,11 +185,10 @@ sync_project() {
     run gh project link "$number" --owner "$PROJECT_OWNER" --repo "$REPO"
   fi
 
-  local field_id current_options desired_options entry name
-  field_id=$(gh project field-list "$number" --owner "$PROJECT_OWNER" --format json \
-    --jq '.fields[] | select(.name == "Status") | .id')
-  current_options=$(gh project field-list "$number" --owner "$PROJECT_OWNER" --format json \
-    --jq '[.fields[] | select(.name == "Status") | .options[].name] | join("|")')
+  local status_field field_id current_options desired_options entry name
+  status_field=$(gh project field-list "$number" --owner "$PROJECT_OWNER" --format json \
+    --jq '.fields[] | select(.name == "Status") | [.id, ([.options[].name] | join("|"))] | @tsv')
+  IFS=$'\t' read -r field_id current_options <<<"$status_field"
   desired_options=""
   for entry in "${STATUS_OPTIONS[@]}"; do
     IFS='|' read -r name _ <<<"$entry"
