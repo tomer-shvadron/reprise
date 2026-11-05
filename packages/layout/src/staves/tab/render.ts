@@ -1,4 +1,4 @@
-import type { Dynamics, Note, Track } from '@reprise/model';
+import { VOICE_COUNT, type Dynamics, type Note, type Track } from '@reprise/model';
 
 import { glyphMetrics, textExtent } from '../../metrics';
 import { box, glyph, rect, text, type LayoutSink } from '../../primitives';
@@ -272,17 +272,33 @@ function drawTies(context: Context, voice: TabVoice, xs: readonly number[]): voi
   }
 }
 
-/** The dynamic in effect before the bar in `voice`: the last one played in earlier bars. */
+const dynamicsIn = new WeakMap<Track, Map<number, Dynamics>>();
+
+/**
+ * The dynamic in effect before the bar in `voice`: the last one played in earlier bars. Memoised
+ * per track, so a voice of rests does not walk back to the start for every bar.
+ */
 function dynamicsBefore(track: Track, barIndex: number, voice: number): Dynamics {
-  for (let b = barIndex - 1; b >= 0; b--) {
-    const beats = trackVoiceBeats(track, b, voice);
-    for (let i = beats.length - 1; i >= 0; i--) {
-      const beat = beats[i];
-      const dynamics = beat && beatDynamics(beat);
-      if (dynamics) return dynamics;
-    }
+  let memo = dynamicsIn.get(track);
+  if (!memo) {
+    memo = new Map();
+    dynamicsIn.set(track, memo);
   }
-  return DEFAULT_DYNAMICS;
+  let start = barIndex - 1;
+  let found: Dynamics = DEFAULT_DYNAMICS;
+  while (start >= 0) {
+    const known = memo.get(start * VOICE_COUNT + voice);
+    if (known !== undefined) {
+      found = known;
+      break;
+    }
+    start--;
+  }
+  for (let b = start + 1; b < barIndex; b++) {
+    for (const beat of trackVoiceBeats(track, b, voice)) found = beatDynamics(beat) ?? found;
+    memo.set(b * VOICE_COUNT + voice, found);
+  }
+  return found;
 }
 
 function drawWords(context: Context, xs: Map<TabBeat, number>): void {
