@@ -15,6 +15,7 @@ Everything about what Reprise is and why it is built the way it is lives under [
 - [Architecture](docs/specs/architecture.md): packages, boundaries and contracts.
 - [Decisions](docs/decisions/README.md): one record per decision.
 - [Roadmap](docs/plans/roadmap.md): phases, lanes, sequential and parallel work.
+- [Contributing](CONTRIBUTING.md): from plan to issue to PR, the briefing order, lane rules, branch names and commit conventions.
 
 ## Prerequisites
 
