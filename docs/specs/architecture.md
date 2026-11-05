@@ -351,7 +351,25 @@ Arguments are track-first wherever a track is needed. Spelling follows Guitar Pr
 
 ### Test builders (`@reprise/model/testing`)
 
-The one subpath export, importable only from test files (lint boundary `testing-entry-in-tests`): `score()` (a fluent `ScoreBuilder` whose `build()` throws `ScoreBuildError` on schema or invariant violations), `note(string, fret, spec?)`, `midi(value, spec?)`, `parseDuration`, `fullScore()`, `largeScore(tracks, bars, { structure? })`, `beatOf`, `noteOf`. Usage is in `../reference/score-model.md`.
+The one subpath export, importable only from test files (lint boundary `testing-entry-in-tests`):
+
+```ts
+function score(): ScoreBuilder;                       // fluent; build(options?: BuildOptions) throws ScoreBuildError on schema or invariant violations
+interface BuildOptions { validate?: boolean; ids?: 'random' | 'sequential' }   // sequential: kind-prefixed ids in document order, given ids kept
+class ScoreBuildError extends Error { violations: readonly Violation[] }
+function note(string: number, fret: number, spec?: NoteSpec): Note;   // NoteSpec = Partial<Omit<Note, 'string' | 'fret'>>
+function midi(value: number, spec?: NoteSpec): Note;                  // string 0, fret = the MIDI note
+function parseDuration(spec: DurationSpec): Pick<Beat, 'duration' | 'dots' | 'tuplet'>;   // '8' | '4.' | '2..' | '8t'
+type Instrument = 'guitar' | 'bass' | 'drums' | 'piano';
+type TrackSpec = Omit<TrackOptions, 'bars' | 'barCount'> & { id?: Id };
+type BeatSpec = Partial<Omit<Beat, 'duration' | 'dots' | 'notes' | 'rest'>>;
+function fullScore(): Score;                                            // every node type and optional field
+function largeScore(tracks: number, bars: number, options?: LargeScoreOptions): Score;   // { structure?: boolean }
+function beatOf(score: Score, track: number, bar: number, beat: number, voice?: number): Beat;   // throws when absent
+function noteOf(score: Score, track: number, bar: number, beat: number, note?: number, voice?: number): Note;
+```
+
+Usage is in `../reference/score-model.md`.
 
 ### Formats (`@reprise/formats`)
 

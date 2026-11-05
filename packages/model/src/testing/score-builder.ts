@@ -1,4 +1,5 @@
 import {
+  ID_LENGTH,
   ScoreSchema,
   createBar,
   createBeat,
@@ -45,9 +46,21 @@ export type BeatSpec = Partial<Omit<Beat, 'duration' | 'dots' | 'notes' | 'rest'
 
 export type NoteSpec = Partial<Omit<Note, 'string' | 'fret'>>;
 
+export interface BuildOptions {
+  /** `false` skips `validateScore`, for tests of invalid scores. */
+  validate?: boolean;
+  /** `'sequential'` numbers every node in document order; ids a test gave explicitly are kept. */
+  ids?: 'random' | 'sequential';
+}
+
 const DURATION_SPEC = /^(1|2|4|8|16|32|64|128|256)(\.{0,2}|t)$/;
+const DURATIONS: readonly Duration[] = [1, 2, 4, 8, 16, 32, 64, 128, 256];
+const DOTS: readonly Dots[] = [0, 1, 2];
 const TRIPLET: Tuplet = { n: 3, of: 2 };
 const BASS_TUNING = [28, 33, 38, 43];
+
+/** Notes `note()` was given an id for, so sequential numbering leaves them alone. */
+const givenNotes = new WeakSet<Note>();
 
 const INSTRUMENTS: Record<Instrument, { kind: TrackKind; defaults: TrackSpec }> = {
   guitar: { kind: 'fretted', defaults: {} },
@@ -76,13 +89,12 @@ export function parseDuration(spec: DurationSpec): Pick<Beat, 'duration' | 'dots
   return { duration, dots };
 }
 
-const DURATIONS: readonly Duration[] = [1, 2, 4, 8, 16, 32, 64, 128, 256];
-const DOTS: readonly Dots[] = [0, 1, 2];
-
 /** A note on a fretted track: string 1 is the highest-pitched, as in Guitar Pro. */
 export function note(string: number, fret: number, spec: NoteSpec = {}): Note {
   const { id, ...rest } = spec;
-  return { ...createNote({ string, fret, ...rest }), id: id ?? newId() };
+  const built = { ...createNote({ string, fret, ...rest }), id: id ?? newId() };
+  if (id !== undefined) givenNotes.add(built);
+  return built;
 }
 
 /** A note on a drum or pitched track, where `fret` is the MIDI note and the string is 0. */
@@ -111,6 +123,7 @@ export class ScoreBuildError extends Error {
 export class ScoreBuilder {
   #meta: Partial<ScoreMeta> = {};
   #id: Id | undefined;
+  readonly #givenIds = new Set<Id>();
   #tempo: TempoMark = { bpm: 120 };
   #timeSignature: TimeSignature = { numerator: 4, denominator: 4 };
   #keySignature: KeySignature = { fifths: 0, minor: false };
@@ -122,6 +135,7 @@ export class ScoreBuilder {
 
   id(id: Id): this {
     this.#id = id;
+    this.#givenIds.add(id);
     return this;
   }
 
@@ -164,7 +178,7 @@ export class ScoreBuilder {
     const { kind, defaults } = INSTRUMENTS[instrument];
     const { id, ...properties } = { ...defaults, ...spec };
     const track = createTrack(kind, { ...properties, barCount: 0 });
-    this.#current = { ...track, id: id ?? track.id };
+    this.#current = { ...track, id: this.#given(id) ?? track.id };
     this.#tracks.push(this.#current);
     this.#voice = 0;
     return this;
@@ -179,7 +193,7 @@ export class ScoreBuilder {
       return this;
     }
     const { id, ...options } = spec;
-    this.#current.bars.push({ ...createBar(options), id: id ?? newId() });
+    this.#current.bars.push({ ...createBar(options), id: this.#given(id) ?? newId() });
     this.#masterBar();
     return this;
   }
@@ -194,7 +208,7 @@ export class ScoreBuilder {
     const { id, ...rest } = spec;
     this.#beats().push({
       ...createBeat({ ...parseDuration(duration), notes: [...notes], ...rest }),
-      id: id ?? newId(),
+      id: this.#given(id) ?? newId(),
     });
     return this;
   }
@@ -203,7 +217,7 @@ export class ScoreBuilder {
     const { id, ...rest } = spec;
     this.#beats().push({
       ...createBeat({ ...parseDuration(duration), rest: true, ...rest }),
-      id: id ?? newId(),
+      id: this.#given(id) ?? newId(),
     });
     return this;
   }
@@ -254,10 +268,13 @@ export class ScoreBuilder {
 
   /**
    * The score, every track padded with empty bars to the master-bar count, a guitar track when
-   * none was declared. A builder makes one score: the result shares its nodes. Throws `ScoreBuildError` when the result fails the schema or, unless
-   * `validate` is false, `validateScore`.
+   * none was declared. A builder makes one score: the result shares its nodes. Throws
+   * `ScoreBuildError` when the result fails the schema or, unless `validate` is false,
+   * `validateScore`. `ids: 'sequential'` numbers the nodes in document order with kind-prefixed
+   * ids (`mbar00000001`, `beat00000001`, ...) so two builds of one chain deep-equal and a data
+   * snapshot keyed by id stays put; ids given explicitly are kept.
    */
-  build(options: { validate?: boolean } = {}): Score {
+  build(options: BuildOptions = {}): Score {
     if (this.#masterBars.length === 0) this.#createMasterBar();
     const first = this.#masterBars[0];
     if (first && !first.tempo) first.tempo = { ...this.#tempo };
@@ -275,6 +292,7 @@ export class ScoreBuilder {
         ],
       })),
     };
+    if (options.ids === 'sequential') this.#renumber(score);
     const parsed = ScoreSchema.safeParse(score);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -289,6 +307,40 @@ export class ScoreBuilder {
       throw new ScoreBuildError(`invalid score:\n${lines.join('\n')}`, violations);
     }
     return score;
+  }
+
+  #given(id: Id | undefined): Id | undefined {
+    if (id !== undefined) this.#givenIds.add(id);
+    return id;
+  }
+
+  #renumber(score: Score): void {
+    const counts = new Map<string, number>();
+    const assign = (node: { id: Id }, prefix: string): void => {
+      if (this.#givenIds.has(node.id)) return;
+      const count = (counts.get(prefix) ?? 0) + 1;
+      counts.set(prefix, count);
+      node.id = `${prefix}${String(count).padStart(ID_LENGTH - prefix.length, '0')}`;
+    };
+    const assignNote = (note: Note): void => {
+      if (!givenNotes.has(note)) assign(note, 'note');
+    };
+    assign(score, 'score');
+    for (const masterBar of score.masterBars) assign(masterBar, 'mbar');
+    for (const track of score.tracks) {
+      assign(track, 'track');
+      for (const bar of track.bars) {
+        assign(bar, 'bar');
+        for (const voice of bar.voices) {
+          assign(voice, 'voice');
+          for (const beat of voice.beats) {
+            assign(beat, 'beat');
+            beat.notes.forEach(assignNote);
+            for (const grace of beat.grace ?? []) grace.notes.forEach(assignNote);
+          }
+        }
+      }
+    }
   }
 
   #barIndex(): number {

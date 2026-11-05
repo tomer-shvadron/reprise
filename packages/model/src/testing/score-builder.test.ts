@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { beatTicks, expandPlaybackSequence, midiNote, validateScore } from '../index';
 import { beatOf, fullScore, largeScore, midi, note, noteOf, parseDuration, score } from './index';
 import { ScoreBuildError } from './score-builder';
+import type { ScoreBuilder } from './score-builder';
 
 describe('score()', () => {
   it('builds the empty score: one guitar, one bar of 4/4 at 120', () => {
@@ -96,11 +97,12 @@ describe('score()', () => {
       .track('guitar')
       .beat('4', [note(1, 0)])
       .voice(1)
-      .rest('1')
+      .beat('1', [note(6, 0)])
       .build();
     expect(built.tracks[0]?.bars[0]?.voices.map((voice) => voice.beats.length)).toEqual([
       1, 1, 0, 0,
     ]);
+    expect(noteOf(built, 0, 0, 0, 0, 1)).toMatchObject({ string: 6, fret: 0 });
   });
 
   it('builds master-bar-only scores for playback tests', () => {
@@ -134,6 +136,37 @@ describe('score()', () => {
     expect(built.tracks[0]?.bars[0]?.id).toBe('BarBarBarBar');
     expect(beatOf(built, 0, 0, 0).id).toBe('BeatBeatBeat');
     expect(noteOf(built, 0, 0, 0).id).toBe(id);
+  });
+
+  it('numbers ids in document order when asked, keeping the ids it was given', () => {
+    const chain = (): ScoreBuilder =>
+      score()
+        .track('guitar', { id: 'TrackTrack00' })
+        .bar()
+        .beat('4', [note(1, 0, { id: 'NoteNoteNote' }), note(2, 1)], {
+          grace: [{ duration: 16, before: true, notes: [note(3, 2)] }],
+        })
+        .track('drums')
+        .bar()
+        .beat('4', [midi(36)]);
+    const built = chain().build({ ids: 'sequential' });
+    expect(chain().build({ ids: 'sequential' })).toEqual(built);
+    expect(validateScore(built)).toEqual([]);
+    expect(built.id).toBe('score0000001');
+    expect(built.masterBars.map((bar) => bar.id)).toEqual(['mbar00000001']);
+    expect(built.tracks.map((track) => track.id)).toEqual(['TrackTrack00', 'track0000001']);
+    expect(built.tracks[0]?.bars[0]?.id).toBe('bar000000001');
+    expect(built.tracks[1]?.bars[0]?.voices.map((voice) => voice.id)).toEqual([
+      'voice0000005',
+      'voice0000006',
+      'voice0000007',
+      'voice0000008',
+    ]);
+    expect(beatOf(built, 0, 0, 0).id).toBe('beat00000001');
+    expect(beatOf(built, 0, 0, 0).notes.map((n) => n.id)).toEqual(['NoteNoteNote', 'note00000001']);
+    expect(beatOf(built, 0, 0, 0).grace?.[0]?.notes[0]?.id).toBe('note00000002');
+    expect(noteOf(built, 1, 0, 0).id).toBe('note00000003');
+    expect(chain().build().id).not.toBe(chain().build().id);
   });
 
   it('throws on a schema error and on invariant violations, unless told not to validate', () => {

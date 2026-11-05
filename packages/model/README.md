@@ -494,10 +494,13 @@ const s = score()
   one's signatures. `bar()` before any track builds master-bar-only scores.
 - `track('guitar' | 'bass' | 'drums' | 'piano', spec)` presets `createTrack`; `bass` is four
   strings E1 A1 D2 G2 on GM 33 with a bass clef.
-- `build()` pads short tracks, adds a guitar when none was declared, gives the first bar 120 BPM
-  when it has no mark, and throws `ScoreBuildError` (with `violations`) when the schema or
-  `validateScore` fails; `build({ validate: false })` skips the invariants. A builder makes one
-  score.
+- `build()` pads short tracks, adds a guitar when none was declared, gives the first bar the
+  default tempo when it has no mark, and throws `ScoreBuildError` (with `violations`) when the
+  schema or `validateScore` fails; `build({ validate: false })` skips the invariants. A builder
+  makes one score. Ids are random by default, like a real score's; `build({ ids: 'sequential' })`
+  numbers the nodes in document order (`mbar00000001`, `beat00000001`, ...) and keeps the ids a
+  test gave, so a data snapshot keyed by node id, as layout's anchors are, does not change from
+  run to run.
 - `fullScore()` sets every node type and optional field. `largeScore(tracks, bars, { structure })`
   fills voice 1 with eighths of two notes and voice 2 with a whole-bar rest (8 by 300 is 38,400
   notes); `structure` adds tempo changes, repeats, 3/4 bars, rests and text. `beatOf` and

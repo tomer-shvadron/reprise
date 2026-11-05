@@ -9,9 +9,16 @@ export function beatOf(score: Score, track: number, bar: number, beat: number, v
   return found;
 }
 
-/** The note at index `note` of `beatOf(score, track, bar, beat)` in voice 0. */
-export function noteOf(score: Score, track: number, bar: number, beat: number, note = 0): Note {
-  const found = beatOf(score, track, bar, beat).notes[note];
+/** The note at index `note` of `beatOf(score, track, bar, beat, voice)`. */
+export function noteOf(
+  score: Score,
+  track: number,
+  bar: number,
+  beat: number,
+  note = 0,
+  voice = 0,
+): Note {
+  const found = beatOf(score, track, bar, beat, voice).notes[note];
   if (!found) throw new Error(`no note ${String(note)} on that beat`);
   return found;
 }

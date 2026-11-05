@@ -1,11 +1,12 @@
 import {
   createBar,
   createBeat,
-  createEmptyScore,
   createMasterBar,
   createNote,
+  createScoreMeta,
   createTrack,
   createVoice,
+  newId,
 } from '../index';
 import type { Bar, Beat, MasterBar, Score } from '../index';
 
@@ -48,7 +49,8 @@ export function largeScore(tracks: number, bars: number, options: LargeScoreOpti
   const { structure = false } = options;
   const masterBars = Array.from({ length: bars }, (_, m) => masterBarAt(m, structure));
   return {
-    ...createEmptyScore(),
+    id: newId(),
+    meta: createScoreMeta(),
     masterBars,
     tracks: Array.from({ length: tracks }, (_, t) =>
       createTrack('fretted', {
