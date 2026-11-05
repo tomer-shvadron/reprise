@@ -26,3 +26,7 @@ local-tabs/*
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# sound banks, fetched by `pnpm sounds:fetch`
+apps/web/public/sounds/gm/*
+!apps/web/public/sounds/gm/README.md
