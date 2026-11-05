@@ -14,7 +14,7 @@ Score ─ id, meta (title, artist, … , notices)
 └── tracks: Track[]                  kind: fretted | drums | pitched
       tuning, capo, fretCount, program, bank, channel, display, sound, lyrics (raw block)
       └── bars: Bar[]                one per master bar, same index
-            clef?                    a clef change from this bar on; absent = the track's clef
+            clef?                    a clef change that holds until the next bar that sets one; the first bar starts from the track's clef
             └── voices: [Voice, Voice, Voice, Voice]   always four; unused ones are empty
                   └── beats: Beat[]
                         duration, dots, tuplet?, rest
@@ -25,7 +25,7 @@ Score ─ id, meta (title, artist, … , notices)
 ```
 
 - **Master bar versus bar.** Anything that is the same for every instrument at a bar position (time signature, repeats, tempo marks, sections) lives on the `MasterBar`. A track's `Bar` at the same index holds only that instrument's content. `score.tracks[t].bars[i]` always pairs with `score.masterBars[i]`.
-- **Clef.** A bar's `clef` is a change from that bar on; without one the track's `display.clef` applies, and when that is absent too the clef is treble, or percussion on a drum track (what `createTrack` sets). `display.notation` says whether the track shows tab, a standard staff or both.
+- **Clef.** A bar's `clef` is a change from that bar on, and it holds until the next bar that sets one; a bar without one continues the clef in effect. The first bar starts from the track's `display.clef`, and when that is absent too from treble, or percussion on a drum track (what `createTrack` sets). `display.notation` says whether the track shows tab, a standard staff or both.
 - **Ids.** Every `Score`, `MasterBar`, `Track`, `Bar`, `Voice`, `Beat` and `Note` has an `id`: 12 base62 characters from `newId()`, unique across the score. A grace beat has no id of its own; its notes do. Commands address nodes by id; timing helpers address positions by index.
 - **Optional fields are exact.** An absent optional field means "not set"; an explicit `undefined` is rejected by the schemas. Commands remove an optional field with `null`.
 - **Chords.** `Beat.chord.name` alone is a chord symbol written above the beat; `diagram` adds the grid (`baseFret`, one absolute fret per string from string 1, `null` muted, 0 open, optional `barres` and `fingering`).
