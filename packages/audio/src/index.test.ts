@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { packageName } from './index';
+import { createAudioEngine } from './index';
 
 describe('@reprise/audio', () => {
   it('exposes its root export', () => {
-    expect(packageName).toBe('@reprise/audio');
+    expect(typeof createAudioEngine).toBe('function');
   });
 
   it('renders silence through an OfflineAudioContext', async () => {
