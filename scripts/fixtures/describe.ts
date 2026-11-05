@@ -46,7 +46,8 @@ const FRETTED_PROGRAMS = new Set([
 
 /**
  * alphaTab gives a piano track a default six-string tuning, so the string count cannot tell a
- * keyboard from a guitar; the instrument and the absence of tablature together can.
+ * keyboard from a guitar; the instrument and the absence of tablature together can. gp3 and gp4
+ * store no staff flags and get tablature by default, so this never fires for them.
  */
 function isPitchedNonFretted(track: alphaTab.model.Track): boolean {
   return (
@@ -76,6 +77,7 @@ export function describeScore(score: Score): Omit<FixtureEntry, 'path' | 'format
     }
   }
 
+  if (score.tracks.length > 1) found.add('multiple-tracks');
   for (const track of score.tracks) {
     if (isPitchedNonFretted(track)) found.add('pitched-non-fretted-track');
     for (const staff of track.staves) {

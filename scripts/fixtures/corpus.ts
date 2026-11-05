@@ -30,6 +30,7 @@ export const FEATURES = [
   'lyrics',
   'chord-diagrams',
   'multiple-voices',
+  'multiple-tracks',
 ] as const;
 export type Feature = (typeof FEATURES)[number];
 

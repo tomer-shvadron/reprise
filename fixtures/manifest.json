@@ -17,7 +17,8 @@
     "tempo-change",
     "lyrics",
     "chord-diagrams",
-    "multiple-voices"
+    "multiple-voices",
+    "multiple-tracks"
   ],
   "fixtures": [
     {
@@ -45,6 +46,14 @@
       "notes": 0
     },
     {
+      "path": "gp4/colors.gp4",
+      "format": "gp4",
+      "features": ["multiple-tracks"],
+      "tracks": 4,
+      "bars": 1,
+      "notes": 0
+    },
+    {
       "path": "gp4/effects.gp4",
       "format": "gp4",
       "features": ["tuplets", "bends", "slides", "hammer-ons", "harmonics", "palm-mute"],
@@ -66,6 +75,14 @@
       "features": ["time-signature-change"],
       "tracks": 1,
       "bars": 6,
+      "notes": 0
+    },
+    {
+      "path": "gp5/bass-tuning.gp5",
+      "format": "gp5",
+      "features": ["multiple-tracks"],
+      "tracks": 4,
+      "bars": 1,
       "notes": 0
     },
     {
@@ -117,6 +134,14 @@
       "notes": 5
     },
     {
+      "path": "gp5/staves.gp5",
+      "format": "gp5",
+      "features": ["multiple-tracks"],
+      "tracks": 3,
+      "bars": 1,
+      "notes": 0
+    },
+    {
       "path": "gpx/chords.gpx",
       "format": "gpx",
       "features": ["chord-diagrams"],
@@ -138,6 +163,14 @@
       "features": ["key-change"],
       "tracks": 1,
       "bars": 33,
+      "notes": 0
+    },
+    {
+      "path": "gpx/layout-configuration-multi-track-all.gpx",
+      "format": "gpx",
+      "features": ["multiple-tracks"],
+      "tracks": 3,
+      "bars": 1,
       "notes": 0
     },
     {
@@ -195,6 +228,14 @@
       "tracks": 1,
       "bars": 9,
       "notes": 36
+    },
+    {
+      "path": "gp/track-volume.gp",
+      "format": "gp",
+      "features": ["multiple-tracks"],
+      "tracks": 7,
+      "bars": 1,
+      "notes": 31
     }
   ]
 }
