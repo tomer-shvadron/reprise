@@ -21,6 +21,7 @@ Notes for the formats lane. The authoritative descriptions of the Guitar Pro for
 - Beat: a flags byte selects which optional blocks follow (dotted, chord diagram, text, effects, mixer change, tuplet); a duration byte; the string bitmask of notes present; then one note block per set string.
 - Note: flags byte, note type (normal, tie, dead), dynamics, fret, fingering, then an effects block if flagged (bend with a point list, grace, slide, harmonic, trill, tremolo picking, let ring, hammer, staccato, palm mute, vibrato).
 - gp5 adds: a second voice block per bar, note and beat flag extensions, more harmonic kinds, a padding byte after certain structures, track RSE blocks, and a different tuplet and chord-diagram layout. These are the places where most reader bugs live; the fixture manifest marks files per version.
+- Keyboard parts are stored on strings in gp3 and gp4 as in gp5: a track whose channel is not percussion and whose program is outside the fretted families (GM 24 to 39, 104 to 107) is read as `pitched`, its notes converted to MIDI through its tuning and capo, and it keeps the tuning and `fretCount` so gp5 export can re-finger it.
 - Repeats, alternate endings, markers, triplet feel and key changes live on master bars; mixer changes and tempo changes also appear on beats and must be applied to the model's `mix` field.
 
 ## gpx (Guitar Pro 6)
@@ -31,10 +32,10 @@ Notes for the formats lane. The authoritative descriptions of the Guitar Pro for
 
 ## gp (Guitar Pro 7, 8)
 
-- A zip with `Content/score.gpif`, `Content/BinaryStylesheet`, `Content/LayoutConfiguration`, `Content/PartConfiguration`, `Content/Preferences.xml`, `VERSION`, and an optional `Content/Image*` set. Only `score.gpif` matters to us; write the others minimally when exporting so Guitar Pro accepts the file.
+- A zip with `Content/score.gpif`, `Content/BinaryStylesheet`, `Content/LayoutConfiguration`, `Content/PartConfiguration`, `Content/Preferences.json`, `VERSION`, and an optional `Content/Image*` set. Only `score.gpif` matters to us; write the others minimally when exporting so Guitar Pro accepts the file.
 - `gpif` structure: `GPIF > Score` (metadata), `MasterTrack` (tracks list, automations such as tempo), `Tracks > Track` (name, color, instrument set with the `Staves` and `Properties` including `Tuning`, `CapoFret`, `DiagramCollection`), `MasterBars > MasterBar` (`Time`, `Key`, `Repeat`, `AlternateEndings`, `Directions`, `Section`, `TripletFeel`, `Bars` id list), `Bars > Bar` (`Clef`, `Voices` id list), `Voices > Voice` (`Beats` id list), `Beats > Beat` (`Rhythm` ref, `Notes` id list, `Properties`, `Lyrics`, `Chord`, `Legato`, `Whammy`, `Tremolo`), `Notes > Note` (`Properties` with `String`, `Fret`, `Bended`, `BendOriginValue`..., `Slide`, `HopoOrigin`, `HopoDestination`, `HarmonicType`, `PalmMuted`, `LetRing`, `Vibrato`, `Tie`, `Accent`, `LeftFingering`), `Rhythms > Rhythm` (`NoteValue`, `AugmentationDot`, `PrimaryTuplet`).
 - Everything is id-referenced; build maps first, then resolve.
-- `MasterBar > SimileMark` (`Simple`, `FirstOfDouble`, `SecondOfDouble`) is not in the model. The reader expands the previous bar's beats (for the double form, the two bars before it) into the bar with fresh ids and records a warning; export does not reproduce the mark, the expanded bars are written instead.
+- `Bar > SimileMark` (`Simple`, `FirstOfDouble`, `SecondOfDouble`) is not in the model. The reader expands the previous bar's beats (for the double form, the two bars before it) into the bar with fresh ids and records a warning; export does not reproduce the mark, the expanded bars are written instead.
 
 ## `.reprise`
 

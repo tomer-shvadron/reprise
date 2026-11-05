@@ -41,7 +41,7 @@ The empty score (`createEmptyScore()`) is one fretted track in E standard, one 4
 | --------- | ------------------------------ | ------------------ | ------------------------------------------------------- | --------------------------------------------- |
 | `fretted` | 1 = highest-pitched string     | fret, 0 to `fretCount` | open-string MIDI notes, **lowest string first**, up to 10 | tab, treble clef, `octaveShift` 1             |
 | `drums`   | always 0                       | the GM percussion MIDI note | empty; `capo` and `fretCount` 0               | standard, percussion clef, `octaveShift` 0    |
-| `pitched` | always 0                       | the MIDI note      | usually empty; a GP5 keyboard part keeps its tuning for export | standard, treble clef, `octaveShift` 0 |
+| `pitched` | always 0                       | the MIDI note      | usually empty; a gp3, gp4 or gp5 keyboard part keeps its tuning for export | standard, treble clef, `octaveShift` 0 |
 
 - **String 1 is the highest-pitched string**, as in Guitar Pro, but `Track.tuning` runs low to high, so string `s` sounds `tuning[tuning.length - s]` when open. On a six-string guitar string 6 is the low E (`tuning[0]`, MIDI 40) and string 1 the high E (`tuning[5]`, MIDI 64).
 - **Frets count from the capo**, as Guitar Pro writes them: the sounding note is `open + capo + fret`. The ceiling a note may sit on is `fretCount` (24 by default) whatever the capo, which is what Guitar Pro files hold.
