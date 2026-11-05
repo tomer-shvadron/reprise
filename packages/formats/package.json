@@ -9,5 +9,8 @@
   "dependencies": {
     "@reprise/model": "workspace:*",
     "fflate": "0.8.3"
+  },
+  "devDependencies": {
+    "@coderline/alphatab": "1.8.4"
   }
 }
