@@ -212,18 +212,18 @@ const built = score()
 
 What a reader does on the way in and a writer undoes on the way out. The reasons are in the README's "Modelling decisions"; the formats themselves are in `file-formats.md`.
 
-- **Tuning order.** Guitar Pro lists strings from string 1 (the highest) down; `Track.tuning` is lowest first, so a reader reverses the list and a writer reverses it back.
+- **Tuning order.** `Track.tuning` is lowest first. GP3 to GP5 list strings from string 1 (the highest) down, so their reader reverses the list and the gp5 writer reverses it back. gpif's `Tuning/Pitches` is already lowest first and its note `String` index counts from the lowest string (0), so the gp and gpx readers keep the list as it is and map string index `i` to model string `strings − i`.
 - **Volta numbers** go on every bar of the bracket, through the bar carrying the repeat end; GP5 and gpif mark only the bracket's first bar.
 - **`repeat.endCount`** is the section's total plays (2 = play twice); a format that stores the extra repeats is off by one.
 - **`hammerPull`** sits on the destination note. GP5 flags the origin and gpif flags both ends, so a reader moves the flag to the next note on the same string in the same voice and drops it with a warning when there is none.
 - **Bend and whammy points**: `position` 0 to 60 across the note, `value` in quarter tones. GP3 to GP5 raw values / 25 (100 = a whole tone); gpif values / 25, gpif offsets (0 to 100) × 0.6. Each bend keeps the file's `kind`, `custom` where the points fit none.
 - **Controller values** (`channel`, `Beat.mix`) are 0 to 127, pan 64 = centre; GP3 to GP5 store 0 to 16, so a reader scales up and a writer back (the step is about 8, which round-trips).
-- **Lyrics**: `Track.lyrics[].startBar` is 0-based, GP files store it 1-based. A reader fills both `Track.lyrics` and `Beat.lyrics`; a writer prefers the raw block when it is non-empty.
+- **Lyrics**: `Track.lyrics[].startBar` is 0-based; GP3 to GP5 store it 1-based, gpif's `Lyrics/Line/Offset` 0-based. A reader fills both `Track.lyrics` and `Beat.lyrics`; a writer prefers the raw block when it is non-empty.
 - **A GP5 track is `pitched`** when its program is outside the fretted families (GM 24 to 39, and 104 to 107) and its channel is not percussion; its notes become MIDI values through the file's tuning, and the track keeps that tuning and `fretCount` so gp5 export can re-finger them. A percussion-channel track is `drums`.
 - **Grace notes**: a run of gpif grace beats becomes several `Beat.grace` entries, GP5's single grace note one; `before` is whether it plays ahead of the beat or on it.
 - **Chord diagrams**: GP5 stores one on the beat; gpif stores them once per track and references them, so a writer deduplicates by structural equality.
 - **Tempo**: `bpm` is per quarter note; a mark shown against another note value keeps that in `unit`. A gpif linear tempo automation becomes a `Beat.mix.tempo` at its start with `duration` set to its length in quarter notes.
-- **Simile marks** are not modelled: a reader copies the previous bar's beats (the two bars before it for the double form) into the bar with fresh ids and warns.
+- **Simile marks** are not modelled: a reader copies the previous bar's beats (the two bars before it for the double form) into the bar with fresh ids and warns. gpif carries the mark on `Bar` (one per track staff), not on `MasterBar`.
 - **Double and quadruple whole notes** are not representable; a reader ties whole notes.
 - **Names**: colours are lower-case `#rrggbb`; clefs map from gpif's G2, F4, C3, C4 and Neutral to `treble`, `bass`, `alto`, `tenor` and `percussion`; fingering from T 1 2 3 4 and p i m a c to `thumb`, `index`, `middle`, `ring`, `little`.
 
