@@ -53,6 +53,12 @@ const { score: read, app, warnings } = parseNative(bytes); // throws NativeForma
   spaces of indentation, UTF-8, a trailing newline.
 - **No compression**, deliberately: files are small, and readable diffs and hand inspection
   matter more than size. A library that wants compression applies it around these bytes.
+- **Writing validates first**: `serializeNative` checks the envelope against
+  `NativeDocumentSchema` and writes the validated copy, so a score the reader would reject (a
+  non-finite number, a missing field) throws `NativeFormatError` with the path instead of
+  becoming a file that cannot be opened, and fields the schema does not know are not written.
+  It does not run `validateScore`: a score with an invariant violation still saves, and the
+  reader reports the violation.
 - **Reading**: UTF-8 (strict), JSON, `format`, then `version`. A version below 1 or not a whole
   number fails; a version above `SCORE_VERSION` fails with "newer than this app", naming both
   versions. The `score` then runs through `MIGRATIONS` from the file's version to the current

@@ -78,28 +78,32 @@ function canonical(value: unknown): Json {
   if (typeof value === 'number') return value;
   if (Array.isArray(value)) return value.map((item) => canonical(item));
   if (isRecord(value)) {
-    const sorted: { [key: string]: Json } = {};
-    for (const key of Object.keys(value).sort()) {
-      const child = value[key];
-      if (child !== undefined) sorted[key] = canonical(child);
-    }
-    return sorted;
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .filter((key) => value[key] !== undefined)
+        .map((key) => [key, canonical(value[key])]),
+    );
   }
   throw new TypeError(`A score cannot hold a ${typeof value}`);
 }
 
 /**
  * Two-space-indented UTF-8 JSON with a trailing newline. The envelope keeps its documented
- * order so `format` comes first; everything inside `app` and `score` is key-sorted.
+ * order so `format` comes first; everything inside `app` and `score` is key-sorted. The
+ * envelope is validated first and the validated copy is what gets written, so a file this
+ * function produces always reads back without warnings; an invalid score throws
+ * `NativeFormatError` naming the path.
  */
 export function serializeNative(score: Score, app: AppInfo): Uint8Array {
-  const document = {
-    format: NATIVE_FORMAT,
-    version: SCORE_VERSION,
-    app: canonical(app),
-    score: canonical(score),
+  const document = parseDocument({ format: NATIVE_FORMAT, version: SCORE_VERSION, app, score });
+  const ordered = {
+    format: document.format,
+    version: document.version,
+    app: canonical(document.app),
+    score: canonical(document.score),
   };
-  return new TextEncoder().encode(`${JSON.stringify(document, null, 2)}\n`);
+  return new TextEncoder().encode(`${JSON.stringify(ordered, null, 2)}\n`);
 }
 
 /**
@@ -153,22 +157,25 @@ export function parseNative(bytes: Uint8Array): ParseResult {
     version: SCORE_VERSION,
     score: migrate(raw['score'], version),
   };
-  const result = NativeDocumentSchema.safeParse(candidate);
-  if (!result.success) {
-    const [first, ...rest] = result.error.issues;
-    const path = (first?.path ?? []).filter(
-      (segment): segment is string | number => typeof segment !== 'symbol',
-    );
-    const more = rest.length > 0 ? ` (and ${String(rest.length)} more)` : '';
-    throw new NativeFormatError(path, `${first?.message ?? 'Invalid document'}${more}`);
-  }
+  const document = parseDocument(candidate);
 
   const warnings: ParseWarning[] = [];
-  collectDropped(candidate, result.data, [], warnings);
-  for (const { rule, path, message } of validateScore(result.data.score)) {
+  collectDropped(candidate, document, [], warnings);
+  for (const { rule, path, message } of validateScore(document.score)) {
     warnings.push({ rule, path: ['score', ...path], message });
   }
-  return { score: result.data.score, app: result.data.app, warnings };
+  return { score: document.score, app: document.app, warnings };
+}
+
+function parseDocument(candidate: unknown): NativeDocument {
+  const result = NativeDocumentSchema.safeParse(candidate);
+  if (result.success) return result.data;
+  const [first, ...rest] = result.error.issues;
+  const path = (first?.path ?? []).filter(
+    (segment): segment is string | number => typeof segment !== 'symbol',
+  );
+  const more = rest.length > 0 ? ` (and ${String(rest.length)} more)` : '';
+  throw new NativeFormatError(path, `${first?.message ?? 'Invalid document'}${more}`);
 }
 
 /** Zod strips keys it does not know; walking input and output side by side finds them. */

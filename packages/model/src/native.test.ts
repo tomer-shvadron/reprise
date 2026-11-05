@@ -170,6 +170,33 @@ describe('serializeNative', () => {
     ]);
   });
 
+  it('refuses to write a score the reader would reject, naming the path', () => {
+    const score = createEmptyScore();
+    const masterBar = score.masterBars[0];
+    if (!masterBar) throw new Error('the empty score has no master bar');
+    masterBar.tempo = { bpm: Number.POSITIVE_INFINITY };
+    let error: unknown;
+    try {
+      serializeNative(score, APP);
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(NativeFormatError);
+    if (error instanceof NativeFormatError) {
+      expect(error.path).toEqual(['score', 'masterBars', 0, 'tempo', 'bpm']);
+    }
+    expect(() => serializeNative(score, { name: '', version: '1' })).toThrow(NativeFormatError);
+  });
+
+  it('does not write fields the schema does not know', () => {
+    const score = createEmptyScore();
+    Reflect.set(score, 'selected', true);
+    Reflect.set(score.meta, 'rating', 5);
+    const bytes = serializeNative(score, APP);
+    expect(decode(bytes)).not.toMatch(/selected|rating/);
+    expect(parseNative(bytes).warnings).toEqual([]);
+  });
+
   it('writes non-ASCII text as UTF-8', () => {
     const score = createEmptyScore();
     score.meta.title = 'Café · 東京';
