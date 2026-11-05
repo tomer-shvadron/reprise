@@ -9,6 +9,7 @@ import {
   FORMATS,
   MANIFEST_PATH,
   NON_FIXTURE_FILES,
+  isFixtureName,
   type Manifest,
 } from './corpus.ts';
 
@@ -31,7 +32,7 @@ function loadManifest(): Manifest {
 
 function filesOnDisk(): string[] {
   return readdirSync(FIXTURES_DIR, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile())
+    .filter((entry) => entry.isFile() && isFixtureName(entry.name))
     .map((entry) => relative(FIXTURES_DIR, `${entry.parentPath}/${entry.name}`))
     .filter((path) => !NON_FIXTURE_FILES.has(path))
     .sort();

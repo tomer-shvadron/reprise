@@ -18,6 +18,7 @@ import {
   FIXTURES_DIR,
   FORMATS,
   MANIFEST_PATH,
+  isFixtureName,
   type Feature,
   type FixtureEntry,
   type Format,
@@ -139,7 +140,7 @@ export function describeBytes(bytes: Uint8Array): Omit<FixtureEntry, 'path' | 'f
 }
 
 async function describeFormat(fixtureFormat: Format): Promise<FixtureEntry[]> {
-  const names = (await readdir(join(FIXTURES_DIR, fixtureFormat))).sort();
+  const names = (await readdir(join(FIXTURES_DIR, fixtureFormat))).filter(isFixtureName).sort();
   const entries: FixtureEntry[] = [];
   for (const name of names) {
     if (!name.endsWith(`.${fixtureFormat}`)) {

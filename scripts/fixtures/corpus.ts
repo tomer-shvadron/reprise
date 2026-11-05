@@ -49,3 +49,6 @@ export interface Manifest {
 
 /** Files in `fixtures/` that are documentation rather than fixtures. */
 export const NON_FIXTURE_FILES = new Set(['LICENSES.md', 'MPL-2.0.txt', 'manifest.json']);
+
+/** Finder's `.DS_Store` and other dotfiles are never fixtures. */
+export const isFixtureName = (name: string): boolean => !name.startsWith('.');
