@@ -341,7 +341,6 @@ type InstrumentId = string; // 'gm:0:25' = bank:program, 'gm:drums:0' for kits
 interface RawSample {
   sampleRate: number;
   channels: Float32Array[];
-  loop?: { start: number; end: number };
   byteLength: number;
 }
 
@@ -356,8 +355,10 @@ A `SampleRef` names a sample slice, not a preset's copy of it: GeneralUser GS sh
 across presets (its three string sections share 8.9 MiB), so one buffer can belong to several
 instruments.
 
-The loop points a sampler voice uses are on its `Region`; an `AudioBuffer` has nowhere to carry
-them, so the manager does not read `RawSample.loop`.
+The seam carries no loop points: a `Region` holds its loop in seconds and the sampler reads it
+there. Two provider answers are refused rather than trusted: a sample `instrumentsOf` names no
+instrument for rejects on load, since a buffer nobody owns could never be evicted; a `byteLength`
+that is not a finite byte count reserves nothing.
 
 ### API
 
@@ -400,8 +401,10 @@ Keys come from `midiNote`, plus grace notes and the trill's alternate fret.
 
 `load` decodes every sample the opening `bars` (default 4) can reach before it resolves, at every
 velocity and in every articulation layer, since dynamics and articulations are the scheduler's
-to decide. It then warms the rest of the song in the background, but only if all of it fits the
-budget: otherwise warming would evict what the opening bars need.
+to decide. It then warms the rest of the song in the background, four fetches at a time, but only
+if all of it fits the budget: otherwise warming would evict what the opening bars need. A song
+switch (or a later `load`) stops the warm-up after what is already in flight, so the previous song
+is never fetched into the new one's budget; `settled()` resolves once the queue has drained.
 
 ### The degrade path
 

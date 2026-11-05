@@ -12,6 +12,8 @@ export const MEGABYTE = 1024 * 1024;
 export const GM_BUDGET_BYTES = 80 * MEGABYTE;
 export const HQ_BUDGET_BYTES = 300 * MEGABYTE;
 export const DEFAULT_PRELOAD_BARS = 4;
+/** Fetches in flight for the background warm-up; a whole song is a queue, not a burst. */
+const WARM_CONCURRENCY = 4;
 
 /** What a `BaseAudioContext` offers for building buffers; an `OfflineAudioContext` will do. */
 export interface BufferFactory {
@@ -105,6 +107,9 @@ export class ManagedSampleSource implements SampleSource {
   /** Estimated bytes of fetches in flight, reserved so a burst of loads cannot overshoot. */
   #reserved = 0;
   #recent: SampleRef | undefined;
+  /** Bumped by every song switch; a warm-up or a `load` from an earlier one stops. */
+  #generation = 0;
+  #warming: Promise<void> | undefined;
   #queued = false;
   #disposed = false;
 
@@ -168,9 +173,13 @@ export class ManagedSampleSource implements SampleSource {
     return () => this.#listeners.delete(handler);
   }
 
-  /** Pins the song's instruments and evicts every other one now, as a song switch should. */
+  /**
+   * Pins the song's instruments and evicts every other one now, as a song switch should; a
+   * warm-up still running for the previous song stops after what is already in flight.
+   */
   switchSong(score: Score, options: Omit<PlanOptions, 'bars'> = {}): SongPlan {
     const plan = planInstruments(score, options);
+    this.#generation += 1;
     this.#pinned = new Set(plan.instruments);
     for (const instrument of [...this.#residents]) {
       if (!this.#pinned.has(instrument)) this.#evict(instrument);
@@ -195,18 +204,24 @@ export class ManagedSampleSource implements SampleSource {
   ): Promise<SongPlan> {
     const { bars = DEFAULT_PRELOAD_BARS, warm = true, ...planOptions } = options;
     const plan = this.switchSong(score, planOptions);
+    const generation = this.#generation;
     await this.preload(planInstruments(score, { ...planOptions, bars }), regionMaps);
-    if (warm) this.#warm(planSamples(plan, regionMaps));
+    if (warm && generation === this.#generation) {
+      this.#warm(planSamples(plan, regionMaps), generation);
+    }
     return plan;
   }
 
-  /** Resolves once no fetch is in flight. */
+  /** Resolves once no fetch is in flight and no warm-up is queued. */
   async settled(): Promise<void> {
-    while (this.#pending.size > 0) await Promise.allSettled(this.#pending.values());
+    while (this.#pending.size > 0 || this.#warming) {
+      await Promise.allSettled([...this.#pending.values(), this.#warming]);
+    }
   }
 
   dispose(): void {
     this.#disposed = true;
+    this.#generation += 1;
     this.#residents.clear();
     this.#entries.clear();
     this.#refsOf.clear();
@@ -214,16 +229,34 @@ export class ManagedSampleSource implements SampleSource {
     this.#bytes = 0;
   }
 
-  #warm(refs: SampleRef[]): void {
-    const missing = refs.filter((ref) => !this.#entries.has(ref));
-    const bytes = missing.reduce((sum, ref) => sum + this.#provider.byteLength(ref), 0);
-    if (this.#bytes + this.#reserved + bytes > this.#budget) return;
-    for (const ref of missing) this.getBuffer(ref).catch(() => undefined);
+  #warm(refs: SampleRef[], generation: number): void {
+    const queue = refs.filter((ref) => !this.#entries.has(ref) && !this.#pending.has(ref));
+    const bytes = queue.reduce((sum, ref) => sum + this.#estimate(ref), 0);
+    if (queue.length === 0 || this.#bytes + this.#reserved + bytes > this.#budget) return;
+    const worker = async (): Promise<void> => {
+      for (let ref = queue.shift(); ref !== undefined; ref = queue.shift()) {
+        if (generation !== this.#generation) return;
+        await this.getBuffer(ref).catch(() => undefined);
+      }
+    };
+    const warming = Promise.all(Array.from({ length: WARM_CONCURRENCY }, worker)).then(() => {
+      if (this.#warming === warming) this.#warming = undefined;
+    });
+    this.#warming = warming;
+  }
+
+  /** A bad estimate must not reach `#reserved`: one `NaN` there would disable the budget. */
+  #estimate(ref: SampleRef): number {
+    const bytes = this.#provider.byteLength(ref);
+    return Number.isFinite(bytes) && bytes > 0 ? Math.ceil(bytes) : 0;
   }
 
   async #load(ref: SampleRef): Promise<AudioBuffer> {
     const owners = this.#provider.instrumentsOf(ref);
-    const estimate = Math.max(0, this.#provider.byteLength(ref));
+    if (owners.length === 0) {
+      throw new Error(`Sample ${ref} belongs to no instrument, so it could never be evicted`);
+    }
+    const estimate = this.#estimate(ref);
     this.#counters.fetches += 1;
     this.#reserved += estimate;
     let buffer: AudioBuffer;

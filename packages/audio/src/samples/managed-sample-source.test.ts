@@ -75,7 +75,6 @@ describe('ManagedSampleSource accounting', () => {
         Promise.resolve({
           sampleRate: 48_000,
           channels: [Float32Array.of(0.5, -0.5, 0.25), Float32Array.of(0, 1, -1)],
-          loop: { start: 1, end: 2 },
           byteLength: 12,
         }),
     };
@@ -112,6 +111,31 @@ describe('ManagedSampleSource accounting', () => {
     await source.getBuffer('gm:0:25#0');
     expect(source.memory().decodedBytes).toBe(ZONE);
     expect(source.counters.fetches).toBe(2);
+  });
+
+  it('reserves nothing for an estimate that is not a finite byte count, and keeps the budget', async () => {
+    const provider = small();
+    const broken: SampleProvider = {
+      instrumentsOf: (ref) => provider.instrumentsOf(ref),
+      fetch: (ref) => provider.fetch(ref),
+      byteLength: () => NaN,
+    };
+    const source = new ManagedSampleSource(broken, factory, { budgetBytes: 2 * ZONE });
+    for (const ref of ['a#0', 'b#0', 'c#0']) await source.getBuffer(ref);
+    expect(source.memory()).toMatchObject({ decodedBytes: 2 * ZONE, residents: ['b', 'c'] });
+  });
+
+  it('rejects a sample that belongs to no instrument, which nothing could evict', async () => {
+    const provider = small();
+    const orphan: SampleProvider = {
+      instrumentsOf: () => [],
+      fetch: (ref) => provider.fetch(ref),
+      byteLength: (ref) => provider.byteLength(ref),
+    };
+    const source = new ManagedSampleSource(orphan, factory);
+    await expect(source.getBuffer('a#0')).rejects.toThrow('no instrument');
+    expect(source.memory()).toMatchObject({ decodedBytes: 0, residents: [] });
+    expect(source.counters.fetches).toBe(0);
   });
 });
 
@@ -377,5 +401,84 @@ describe('ManagedSampleSource.load', () => {
     await source.settled();
     expect(provider.fetched.sort()).toEqual(['gm:0:25#2', 'gm:0:25#5']);
     expect(source.peekBuffer('gm:0:25#5')).toBeDefined();
+  });
+
+  it('resolves when a warm-up fetch fails, and retries that sample on first use', async () => {
+    const provider = small({ zoneWidth: 16 });
+    provider.failing.add('gm:0:25#5');
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('1', [note(6, 0)])
+      .bar()
+      .beat('1', [note(1, 24)])
+      .build();
+    const source = new ManagedSampleSource(provider, factory);
+    await expect(source.load(song, provider.regionMap, { bars: 1 })).resolves.toBeDefined();
+    await source.settled();
+    expect(source.peekBuffer('gm:0:25#5')).toBeUndefined();
+
+    provider.failing.clear();
+    expect(await source.getBuffer('gm:0:25#5')).toBeDefined();
+  });
+
+  it('stops the warm-up at a song switch, after what is already in flight', async () => {
+    const provider = small({ zoneWidth: 1, deferred: true });
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('1', [note(1, 0)])
+      .bar()
+      .beat('4', [note(1, 1)])
+      .beat('4', [note(1, 2)])
+      .beat('4', [note(1, 3)])
+      .beat('4', [note(1, 4)])
+      .bar()
+      .beat('4', [note(1, 5)])
+      .beat('4', [note(1, 6)])
+      .beat('4', [note(1, 7)])
+      .beat('4', [note(1, 8)])
+      .build();
+    const piano = score()
+      .track('piano', { program: 0 })
+      .bar()
+      .beat('1', [midi(60)])
+      .build();
+    const source = new ManagedSampleSource(provider, factory);
+    const loading = source.load(song, provider.regionMap, { bars: 1 });
+    provider.release();
+    await loading;
+    expect(provider.fetched).toHaveLength(5);
+
+    source.switchSong(piano);
+    provider.release();
+    await source.settled();
+    expect(provider.fetched).toHaveLength(5);
+    expect(source.memory().residents).toEqual(['gm:0:25']);
+  });
+
+  it('does not warm a song that a later load replaced', async () => {
+    const provider = small({ zoneWidth: 16, deferred: true });
+    const guitar = score()
+      .track('guitar')
+      .bar()
+      .beat('1', [note(6, 0)])
+      .bar()
+      .beat('1', [note(1, 24)])
+      .build();
+    const piano = score()
+      .track('piano', { program: 0 })
+      .bar()
+      .beat('1', [midi(60)])
+      .build();
+    const source = new ManagedSampleSource(provider, factory);
+    const first = source.load(guitar, provider.regionMap, { bars: 1 });
+    const second = source.load(piano, provider.regionMap, { bars: 1 });
+    provider.release();
+    await Promise.all([first, second]);
+    await source.settled();
+
+    expect(provider.fetched.sort()).toEqual(['gm:0:0#3', 'gm:0:25#2']);
+    expect(source.memory().residents).toEqual(['gm:0:0', 'gm:0:25']);
   });
 });

@@ -37,18 +37,17 @@ export function gmInstrumentId(track: Pick<Track, 'kind' | 'bank'>, program: num
     : `gm:${String(track.bank)}:${String(program)}`;
 }
 
-function soundingNotes(beat: Beat): Note[] {
-  const notes = [...beat.notes];
-  for (const grace of beat.grace ?? []) notes.push(...grace.notes);
-  return notes;
-}
-
 function addKeys(track: Track, note: Note, keys: Set<number>): void {
   const frets = note.trill ? [note.fret, note.trill.fret] : [note.fret];
   for (const fret of frets) {
     const key = midiNote(track, { string: note.string, fret });
     if (key >= 0 && key <= 127) keys.add(key);
   }
+}
+
+function addBeat(track: Track, beat: Beat, keys: Set<number>): void {
+  for (const note of beat.notes) addKeys(track, note, keys);
+  for (const grace of beat.grace ?? []) for (const note of grace.notes) addKeys(track, note, keys);
 }
 
 /**
@@ -104,15 +103,14 @@ export function planInstruments(score: Score, options: PlanOptions = {}): SongPl
     let program = track.program;
     for (const pass of passes) {
       program = walkBar(track, pass.masterBarIndex, program, (current, beat) => {
-        const notes = soundingNotes(beat);
-        if (notes.length === 0) return;
+        if (beat.notes.length === 0 && (beat.grace?.length ?? 0) === 0) return;
         const instrument = instrumentOf(track, current);
         let keys = uses.get(instrument);
         if (!keys) {
           keys = new Set();
           uses.set(instrument, keys);
         }
-        for (const note of notes) addKeys(track, note, keys);
+        addBeat(track, beat, keys);
       });
     }
     for (const instrument of uses.keys()) instruments.add(instrument);
