@@ -13,7 +13,7 @@ runs anywhere: no DOM, no Node APIs.
 | --------------- | ------------------- | ------------ |
 | gp3, gp4, gp5   | `readGp3To5` (here) | WP-040       |
 | gp (GP7 and 8)  | `readGp` (here)     | WP-042       |
-| gpx (GP6)       | not yet             | WP-043       |
+| gpx (GP6)       | `readGpx` (here)    | WP-043       |
 | `detect`/`read` | not yet             | WP-045       |
 
 ```ts
@@ -214,7 +214,7 @@ const fromXml = readGpif(xml, { partConfiguration }); // score.gpif from any con
 ```
 
 - `src/gp/` is the Guitar Pro 7 and 8 container: a zip read with `fflate` (pinned, the package's one runtime dependency besides the model). Only `Content/score.gpif` and `Content/PartConfiguration` are inflated, and only when the central directory declares them under 256 MB, since fflate allocates the declared size up front; the stylesheets, layout and preferences are Guitar Pro's view state.
-- `src/gpif/` is the XML model shared with Guitar Pro 6. `readGpif` takes the document as a string or UTF-8 bytes, plus the container's `PartConfiguration` bytes when it has them. The gpx container (WP-043) only has to find those two entries in its file system and call it.
+- `src/gpif/` is the XML model shared with Guitar Pro 6. `readGpif` takes the document as a string or UTF-8 bytes, plus the container's `PartConfiguration` bytes when it has them. The gpx container finds those two entries in its file system and calls it (see "gpx (GP6)" below).
 - Reading runs in two passes: `read-document.ts` turns every section into id-keyed maps (`GpifDocument`), and `build-score.ts` resolves the references into a score through the model's factories and `newId()`, then runs `validateScore` and reports each violation as a warning.
 - Both readers are synchronous; the async `read()` dispatcher of the Formats contract (WP-045) wraps them.
 - Errors: `GpError` (`invalid-zip`, `missing-score`, `too-large`) for the container, `GpifError` (`invalid-utf8`, `invalid-xml` with `line` and `column`, `not-gpif`, `empty-score`) for a document that cannot become a score. Everything else is a `GpifWarning`.
@@ -273,7 +273,7 @@ Each verified against alphaTab's `GpifParser` (and `GpifWriter` where noted) in 
 - **Simile marks** are on `Bar`, not `MasterBar` as `file-formats.md` has it (`_parseBar`).
 - **Stem orientation.** `TransposedPitchStemOrientation` and `ConcertPitchStemOrientation` on every beat are directions Guitar Pro computed; only `UserTransposedPitchStemOrientation` is an override, so only it is reported.
 - **Text oddities.** `Score/MultiVoice` holds `0>` in real files; the XML parser accepts `>` in text, as XML allows. `Fadding` is Guitar Pro's spelling.
-- **GP6 forms** handled here for WP-043: track-level `Properties`, `GeneralMidi` with the percussion table, the `Whammy` element with attributes, `Instrument ref` ending in `-gs` for a second staff, and `Octave`/`Tone` note pitches. A GP6 drum note has no `InstrumentArticulation`, so its `Midi` number is kept as the sound; GP6 numbers variants like GP7's articulation inputs (91 and up), so one outside GM percussion (27 to 87) is reported with `invalid-value`, and mapping `Element`/`Variation` to the GM sound is WP-043's.
+- **GP6 forms** handled here for WP-043: track-level `Properties`, `GeneralMidi` with the percussion table, the `Whammy` element with attributes, `Instrument ref` ending in `-gs` for a second staff, and `Octave`/`Tone` note pitches. Read through `readGpif` alone, a GP6 drum note (no `InstrumentArticulation`) keeps its `Midi` number as the sound and one outside GM percussion (27 to 87) is reported with `invalid-value`; `readGpx` maps its `Element`/`Variation` to the GM sound first (see "gpx (GP6)").
 
 ### Known gaps
 
@@ -282,7 +282,7 @@ Each verified against alphaTab's `GpifParser` (and `GpifWriter` where noted) in 
 - **Tempo automations between beats** move to the beat sounding at that moment (`tempo-moved`), as in `beat-tempo-change.gp` bar 2.
 - **Drum articulation variants** (rim shot, choke, half-open) play as their GM sound and are reported once per track; the model has no articulation field.
 - **Grace notes** longer than a 16th or shorter than a 64th are clamped; a grace beat's own effects are not kept.
-- **Not read**: track and staff layout, RSE settings, MIDI routing, ottavas, chromatic transposition, partial capo, tuning labels and flat display, fermatas, free time, beam grouping, hairpins, legato slurs, timers, golpe, rasgueado, wah, dead slaps, slashed beats, barre marks, staccatissimo, tenuto, left-hand tapping, ornaments, pick slides, nested tuplets, sustain pedal, backing tracks, the chord wizard's data. Each is reported as `not-modelled`. A drum note's `Element` and `Variation` properties repeat what `InstrumentArticulation` says and are read silently.
+- **Not read**: track and staff layout, RSE settings, MIDI routing, ottavas, chromatic transposition, partial capo, tuning labels and flat display, fermatas, free time, beam grouping, hairpins, legato slurs, timers, golpe, rasgueado, wah, dead slaps, slashed beats, barre marks, staccatissimo, tenuto, left-hand tapping, ornaments, pick slides, nested tuplets, sustain pedal, backing tracks, the chord wizard's data. Each is reported as `not-modelled`. A drum note's `Element` and `Variation` properties repeat what `InstrumentArticulation` says; they are read, and used only by the gpx container for GP6 notes without an articulation.
 - A tempo automation with `Visible` false keeps its tempo; the hidden flag is reported.
 
 ### Warning catalogue
@@ -320,4 +320,42 @@ Measured on an Apple M4 Pro, Node 24, after warm-up:
 | `drum-tabs.gp`, the largest fixture                       | 145 KB | 0.53 ms    | 1.3 ms (`readGp`, unzip 0.15 ms) |
 | Generated "long score", 8 tracks × 300 bars, 38,400 notes | 7.9 MB | 61 ms      | 188 ms (`readGpif`)              |
 
-About 130 to 270 MB/s and linear in size, so the parser is not where import time goes; the long score's read leaves most of the 500 ms drop-to-first-paint budget to layout. The fixture timing is asserted in `src/gp/read-gp.test.ts` with a loose bound for CI.
+About 130 to 270 MB/s and linear in size, so the parser is not where import time goes; the long score's read leaves most of the 500 ms drop-to-first-paint budget to layout. The fixture timing is asserted in `test/read-gp.test.ts` with a loose bound for CI.
+
+## gpx (GP6)
+
+```ts
+import { GpxError, readGpx } from '@reprise/formats';
+
+const { score, warnings, format } = readGpx(bytes); // format 'gpx'
+```
+
+`src/gpx/` holds the Guitar Pro 6 container and the GP6 differences; the score itself goes through the gpif reader above, so everything in its coverage table, quirks and warning catalogue applies. Re-implemented from the format's description and from reading alphaTab's `GpxFileSystem` and TuxGuitar's decompressor, not copied.
+
+**Container.**
+
+- `bcfz.ts`: `BCFZ`, a little-endian 32-bit uncompressed length, then a bit stream read most significant bit first (`bit-reader.ts`). A 0 bit starts a literal run (a 2-bit count, then that many unaligned bytes); a 1 bit a back-reference (a 4-bit width w, then a w-bit distance and a w-bit length, both least significant bit first). A back-reference copies at most `distance` bytes, so a length past its distance does not repeat the run as LZ77 would; alphaTab and TuxGuitar read it the same way. A declared length over 256 MB is refused before anything is allocated (`too-large`); the work is linear in input plus output.
+- `bcfs.ts`: `BCFS`, then 4 KB sectors; sector 0 is a header. A file entry sector holds, little-endian, the type 2, a NUL-terminated name at 4, the size at 140, and from 148 the sector numbers of its blocks, ended by 0. Directory entries (type 1) are skipped, as are the names' paths, which GP6 does not use. Data blocks carry no marker and can start with an entry's bytes, so the scan skips every sector an earlier entry claimed. Only `score.gpif` and `PartConfiguration` are copied out; a damaged file nobody asked for (the stylesheet of a cut-short file) does not fail the read.
+- An uncompressed `BCFS` image is accepted too.
+- **Short streams are normal.** Every fixture's stream ends one or two bytes before its declared length (the unused tail of the last sector), so running out of input is not an error in the decompressor; a file entry whose blocks are missing is reported as `truncated` when the header declared those bytes, and `corrupt` when it points past them.
+
+**GP6 differences**, handled in `gp6-differences.ts` and `gp6-drums.ts` through `readGpifWith`'s two hooks (`beforeRead` on the XML, `afterRead` on the read document), so the shared reader carries no version switch. The forms WP-042 already reads (track-level `Properties`, `GeneralMidi`, `Octave`/`Tone`, the `Whammy` element, `-gs` staves) are listed under "gpif quirks".
+
+| GP6 form                                                                    | Handling                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Drum note with `Element` and `Variation`, no `InstrumentArticulation`       | The GM sound of the kit piece and variant (17 pieces, 3 variants each, the sounds alphaTab 1.8.4's `PercussionMapper` assigns). A variant whose `Midi` input differs from its sound (rim shot 91 as snare 38) is `drum-articulation`, once per track; an unknown pair is `unknown-value`, once per track, and keeps its `Midi` number. Only on drum tracks, only without an articulation. |
+| `Note/Accidental` (`Flat`, `Sharp`, `Natural`, `DoubleFlat`, `DoubleSharp`) | `Note.accidental`, unless a `ConcertPitch` property spells one; another word is `unknown-value`. alphaTab ignores it.                                                                                                                                                                                                                                                                     |
+| `Beat/Bank`                                                                 | An RSE sound bank choice, `not-modelled` with the rest of RSE.                                                                                                                                                                                                                                                                                                                            |
+| Track-level `Property[AutoBrush]`                                           | `not-modelled`, as GP7's `AutoBrush` track element.                                                                                                                                                                                                                                                                                                                                       |
+
+**Fixtures.** Every `fixtures/gpx/*.gpx` matches the manifest's track, bar and note counts and feature flags, raises no `unknown-element` warning, is schema-valid and round-trips through `serializeNative`/`parseNative` unchanged (`test/gpx-fixtures.test.ts`). `effects`, `key-signatures` and `repeat-close-alternate-endings` exist as gp5 too, and both reads agree on every sounding beat's rhythm, every note's string, fret and tie, and the master bars' time, key, repeats and voltas; GP6 only padded short bars with rests when it resaved them. A throwaway comparison with alphaTab 1.8.4 matched per bar and voice on every beat's duration, dots and tuplet and every note's string, fret and tie, except that alphaTab reports `effects.gpx`'s four 32nd grace notes as eighths, where the file says `32nd`. No gpx fixture has a drum track, so the drum mapping is covered by hand-built documents in `test/gp6-differences.test.ts`; the container by hand-built BCFZ streams and BCFS images (`test/gpx-builder.ts`, `test/gpx-container.test.ts`).
+
+**Timing** (Apple M4 Pro, Node 24, after warm-up): `effects.gpx` (28 KB, the largest) reads in 1.3 ms, 0.3 ms of it decompression; a synthetic 4 MB stream decompresses in 39 ms, about 100 MB/s. The fixture bound is asserted loosely for CI.
+
+**Known gaps.**
+
+- The GP6 drum sounds follow alphaTab, which plays the ride's third variant (the bell) as GM 59 (ride cymbal 2) rather than 53 (ride bell), and every cowbell as 56. Not checked against Guitar Pro 6 itself.
+- `BinaryStylesheet`, `LayoutConfiguration` and `misc.xml` are not read (page and system layout, view state).
+- `effects.gpx` holds three overfull voices (bars 4, 6 and 24) and a 5:2 rest tuplet (bar 29), which alphaTab reads the same way; they are reported as invariant warnings.
+
+**Errors and warnings.** `GpxError` with `code`: `not-bcfz` (neither magic), `truncated` (the stream or the file system ends before data the header declared), `too-large` (a declared length over 256 MB), `corrupt` (a back-reference before the output's start, a block or size past the declared image, an image without `BCFS`), `missing-score` (no `score.gpif`). A `score.gpif` that cannot be read throws the gpif reader's `GpifError`. New warnings, all through the gpif catalogue's codes: `drum-articulation` and `unknown-value` for GP6 drum pairs, `unknown-value` for an unknown note accidental word, `not-modelled` for `Bank` and `AutoBrush`.

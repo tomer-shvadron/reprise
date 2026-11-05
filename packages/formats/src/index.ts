@@ -19,3 +19,9 @@ export type { GpifErrorCode } from './gpif/errors';
 export { readGpif } from './gpif/read-gpif';
 export type { GpifReadOptions, GpifReadResult } from './gpif/read-gpif';
 export type { GpifWarning, GpifWarningCode } from './gpif/warnings';
+
+// gpx (Guitar Pro 6): the BCFZ/BCFS container around the same gpif document.
+export { GpxError } from './gpx/errors';
+export type { GpxErrorCode } from './gpx/errors';
+export { readGpx } from './gpx/read-gpx';
+export type { GpxReadResult } from './gpx/read-gpx';
