@@ -156,10 +156,13 @@ export function respell(
 /**
  * Line or space on a five-line staff: 0 is the bottom line, 1 the space above it, 8 the top
  * line. Below 0 and above 8 are ledger positions; the even ones sit on ledger lines.
+ * `octaveShift` is the track's `display.octaveShift`, written minus sounding octaves, so a
+ * guitar's sounding E2 lands where E3 is written.
  */
 export function staffPosition(
   spelling: Pick<Spelling, 'letter' | 'octave'>,
   clef: PitchedClef,
+  octaveShift = 0,
 ): number {
-  return spelling.octave * 7 + letterIndex(spelling.letter) - BOTTOM_LINE[clef];
+  return (spelling.octave + octaveShift) * 7 + letterIndex(spelling.letter) - BOTTOM_LINE[clef];
 }

@@ -31,6 +31,8 @@ export type Notation = z.infer<typeof NotationSchema>;
 export const DisplaySettingsSchema = z.object({
   notation: NotationSchema,
   clef: ClefSchema.exactOptional(),
+  /** Written minus sounding, in octaves: 1 for guitar and bass, which are written an octave up. */
+  octaveShift: z.int(),
 });
 export type DisplaySettings = z.infer<typeof DisplaySettingsSchema>;
 

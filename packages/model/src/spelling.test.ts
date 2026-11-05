@@ -208,4 +208,11 @@ describe('staffPosition', () => {
     expect(staffPosition(spell(60, key(0)), 'treble')).toBe(-2);
     expect(staffPosition(spell(40, key(0)), 'treble')).toBe(-14);
   });
+
+  it('writes a transposing staff the given octaves above sounding pitch', () => {
+    const guitar = createTrack('fretted');
+    expect(staffPosition(spell(40, key(0)), 'treble', guitar.display.octaveShift)).toBe(-7);
+    expect(staffPosition({ letter: 'E', octave: 1 }, 'bass', 1)).toBe(-2);
+    expect(staffPosition({ letter: 'C', octave: 4 }, 'treble', -1)).toBe(-9);
+  });
 });

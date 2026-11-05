@@ -112,6 +112,10 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   tuning, and the track keeps that tuning and `fretCount` so gp5 export can re-finger it.
 - **`Track.fretCount`** (new) is the neck length, 24 by default, for transposition and the
   fretboard view.
+- **`Track.display.octaveShift`** (new) is written minus sounding pitch, in octaves: `1` on
+  fretted tracks, since guitar and bass are written an octave above where they sound, `0` on
+  drum and pitched tracks. `createTrack` sets it; readers map the file's staff transposition
+  onto it; `staffPosition` takes it so layout places the written pitch.
 - **Chords**: `Beat.chord` is `{ name, diagram? }`. The name alone is a chord written above the
   beat, as the editor enters it; `diagram` is the grid when the file carries one: `baseFret`,
   one absolute fret per string (string 1 first, `null` = muted, 0 = open), optional `barres`
@@ -172,9 +176,11 @@ capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro write
   D, G and A, which have no single-accidental alternative, cycle through their double sharp
   and double flat. It clears the stored accidental when the result is the key's default, so
   the note follows a later key change.
-- **`staffPosition(spelling, clef)`** is the line or space on a five-line staff: 0 the bottom
-  line, 8 the top line, odd numbers spaces; below 0 and above 8 the even numbers are ledger
-  lines. Treble, bass, alto and tenor clefs.
+- **`staffPosition(spelling, clef, octaveShift = 0)`** is the line or space on a five-line
+  staff: 0 the bottom line, 8 the top line, odd numbers spaces; below 0 and above 8 the even
+  numbers are ledger lines. Treble, bass, alto and tenor clefs. `octaveShift` is the track's
+  `display.octaveShift`, so a guitar's sounding E2 (MIDI 40) is placed as the written E3,
+  position -7 on the treble staff rather than -14.
 - **`percussionInstrument(midi)`** gives the GM (35 to 81) and GM2 (27 to 34, 82 to 87) drum
   name, default staff position (same numbering) and note head (`normal`, `cross`, `diamond`,
   `triangle`). Positions follow the common drum-kit layout (kick in the bottom space, a second
@@ -192,7 +198,8 @@ the lead for the phase-1 freeze and re-checked in WP-015.
 - Song level: RSE settings, page setup, master volume and reverb, hidden tempo marks, MIDI
   ports and channels, gpif `WordsAndMusic` (read into `words` and `music`).
 - Track level: the 12-string and banjo flags, tuning labels and flat display, partial capo,
-  ottava and transposing instruments, multiple staves per track (collapsed onto one staff by
+  ottava lines and chromatic transposition (`display.octaveShift` covers the octave), multiple
+  staves per track (collapsed onto one staff by
   ADR-0006; the reader's voice-merge rule is the formats lane's).
 - Bar level: GP5 beam grouping, fermatas, free time, simile marks (the reader copies the
   previous bar's beats into the bar with fresh ids, or the bar would play silent), stem
