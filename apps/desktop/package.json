@@ -1,0 +1,14 @@
+{
+  "name": "@reprise/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "node -e \"console.log('@reprise/desktop dev: not yet available, see WP-004')\"",
+    "build": "node -e \"console.log('@reprise/desktop build: not yet available, see WP-004')\"",
+    "e2e": "node -e \"console.log('@reprise/desktop e2e: not yet available, see WP-004')\""
+  }
+}

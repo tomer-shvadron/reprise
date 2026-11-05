@@ -6,12 +6,14 @@ dist/
 out/
 release/
 *.tsbuildinfo
+.tsbuild/
 .vite/
 
 # tests
 coverage/
 playwright-report/
 test-results/
+.vitest/
 
 # local only
 local-tabs/*

@@ -1,0 +1,19 @@
+{
+  "name": "@reprise/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "node -e \"console.log('@reprise/web dev: not yet available, see WP-003')\"",
+    "build": "node -e \"console.log('@reprise/web build: not yet available, see WP-003')\""
+  },
+  "dependencies": {
+    "@reprise/audio": "workspace:*",
+    "@reprise/formats": "workspace:*",
+    "@reprise/layout": "workspace:*",
+    "@reprise/model": "workspace:*"
+  }
+}
