@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 import { playwright } from '@vitest/browser-playwright';
 import { defineConfig } from 'vitest/config';
 
@@ -16,11 +18,21 @@ export default defineConfig({
             enabled: true,
             provider: playwright(),
             headless: true,
+            // The suite renders through OfflineAudioContext; there is nothing on screen to capture.
+            screenshotFailures: false,
             instances: [{ browser: 'chromium' }],
           },
         },
       },
-      { test: { name: 'web', root: 'apps/web', environment: 'jsdom' } },
+      {
+        resolve: { alias: { '@': fileURLToPath(new URL('apps/web/src', import.meta.url)) } },
+        test: {
+          name: 'web',
+          root: 'apps/web',
+          environment: 'jsdom',
+          setupFiles: ['./src/test/setup.ts'],
+        },
+      },
       { test: { name: 'desktop', root: 'apps/desktop', environment: 'node' } },
     ],
   },
