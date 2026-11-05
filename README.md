@@ -31,13 +31,15 @@ pnpm typecheck      # tsc -b across every package, incremental
 pnpm test           # Vitest, every package as its own project
 pnpm test:watch
 pnpm format         # Prettier; format:check verifies without writing
+pnpm dev            # the web app in the browser, Vite dev server with hot reload
+pnpm build          # production build of the web app into apps/web/dist
 ```
+
+`pnpm --filter @reprise/web preview` serves the last build.
 
 Not yet available (each prints a notice and exits successfully until its work package lands):
 
 ```
-pnpm dev            # web app in the browser (WP-003)
-pnpm build          # web app build (WP-003)
 pnpm desktop:dev    # the Electron app (WP-004)
 pnpm desktop:build  # the Electron package (WP-004)
 pnpm e2e            # Playwright against the Electron build (WP-004)
