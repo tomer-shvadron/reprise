@@ -14,17 +14,26 @@ declare const crypto: { getRandomValues(array: Uint8Array): Uint8Array };
 export const IdSchema = z.string().regex(ID_PATTERN);
 export type Id = z.infer<typeof IdSchema>;
 
+// One `getRandomValues` call per id dominated import time on large files.
+const POOL_SIZE = 1024;
+const pool = new Uint8Array(POOL_SIZE);
+let poolIndex = POOL_SIZE;
+
+function nextByte(): number {
+  if (poolIndex === POOL_SIZE) {
+    crypto.getRandomValues(pool);
+    poolIndex = 0;
+  }
+  const byte = pool[poolIndex] ?? 0;
+  poolIndex += 1;
+  return byte;
+}
+
 export function newId(): Id {
   let id = '';
-  const bytes = new Uint8Array(ID_LENGTH * 2);
   while (id.length < ID_LENGTH) {
-    crypto.getRandomValues(bytes);
-    for (const byte of bytes) {
-      if (byte < UNBIASED_LIMIT) {
-        id += ALPHABET.charAt(byte % ALPHABET.length);
-        if (id.length === ID_LENGTH) break;
-      }
-    }
+    const byte = nextByte();
+    if (byte < UNBIASED_LIMIT) id += ALPHABET.charAt(byte % ALPHABET.length);
   }
   return id;
 }

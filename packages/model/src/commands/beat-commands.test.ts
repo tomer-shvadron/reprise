@@ -12,7 +12,7 @@ import {
   setBeatEffect,
   setBeatRest,
 } from './beat-commands';
-import { beatOf, buildScore, expectRefusal, noteOf, roundTrip } from './test-score';
+import { beatOf, buildHeldScore, buildScore, expectRefusal, noteOf, roundTrip } from './test-score';
 
 const copy = (score: Score): Score => ScoreSchema.parse(JSON.parse(JSON.stringify(score)));
 
@@ -34,15 +34,32 @@ describe('insertBeat', () => {
     expect(beatOf(after, 0, 2, 1)).toEqual(beatOf(score, 0, 2, 0));
   });
 
-  it('inserts a played beat and releases the tie it interrupts', () => {
+  it('inserts a played beat and releases the tie it interrupts on the same string', () => {
     const score = buildScore();
-    const notes = [createNote({ string: 5, fret: 2 })];
+    const notes = [createNote({ string: 1, fret: 2 })];
     const { score: after } = roundTrip(
       score,
       insertBeat({ voiceId: voiceOf(score, 0, 1).id, index: 0 }, { duration: 8, notes }),
     );
     expect(beatOf(after, 0, 1, 0)).toMatchObject({ duration: 8, rest: false, notes });
     expect(noteOf(after, 0, 1, 1).tie).toBe(false);
+  });
+
+  it('keeps a tie past an inserted beat on other strings, and one on the same fret', () => {
+    const score = buildScore();
+    const voiceId = voiceOf(score, 0, 1).id;
+    const other = [createNote({ string: 5, fret: 2 })];
+    const { score: under } = roundTrip(
+      score,
+      insertBeat({ voiceId, index: 0 }, { duration: 8, notes: other }),
+    );
+    expect(noteOf(under, 0, 1, 1).tie).toBe(true);
+    const same = [createNote({ string: 1, fret: 3 })];
+    const { score: restruck } = roundTrip(
+      score,
+      insertBeat({ voiceId, index: 0 }, { duration: 8, notes: same }),
+    );
+    expect(noteOf(restruck, 0, 1, 1).tie).toBe(true);
   });
 
   it('refuses to overfill a voice, a bad index, a used id and an invalid beat', () => {
@@ -225,5 +242,29 @@ describe('setBeatEffect', () => {
       setBeatEffect({ beatId }, { lyrics: ['a', 'b', 'c', 'd', 'e', 'f'] }),
       'invalid-value',
     );
+  });
+});
+
+describe('held ties under a melody', () => {
+  it('re-links a chain to its first note when the middle link is removed or silenced', () => {
+    const score = buildHeldScore();
+    const beatId = beatOf(score, 0, 1, 0).id;
+    const { score: removed } = roundTrip(score, removeBeat({ beatId }));
+    expect(noteOf(removed, 0, 2, 1).tie).toBe(true);
+    const { score: silenced } = roundTrip(score, setBeatRest({ beatId }, true));
+    expect(noteOf(silenced, 0, 2, 1).tie).toBe(true);
+  });
+
+  it('keeps a held note tied past an inserted melody note', () => {
+    const score = buildHeldScore();
+    const voiceId = voiceOf(score, 0, 2).id;
+    const { score: after } = roundTrip(
+      score,
+      insertBeat(
+        { voiceId, index: 1 },
+        { duration: 8, notes: [createNote({ string: 1, fret: 3 })] },
+      ),
+    );
+    expect(noteOf(after, 0, 2, 2).tie).toBe(true);
   });
 });
