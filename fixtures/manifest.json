@@ -1,0 +1,200 @@
+{
+  "oracle": { "name": "@coderline/alphatab", "version": "1.8.4" },
+  "features": [
+    "repeats",
+    "alternate-endings",
+    "jumps",
+    "tuplets",
+    "bends",
+    "slides",
+    "hammer-ons",
+    "harmonics",
+    "palm-mute",
+    "drums-track",
+    "pitched-non-fretted-track",
+    "time-signature-change",
+    "key-change",
+    "tempo-change",
+    "lyrics",
+    "chord-diagrams",
+    "multiple-voices"
+  ],
+  "fixtures": [
+    {
+      "path": "gp3/effects.gp3",
+      "format": "gp3",
+      "features": ["tuplets", "bends", "slides", "hammer-ons", "harmonics"],
+      "tracks": 1,
+      "bars": 32,
+      "notes": 121
+    },
+    {
+      "path": "gp3/notes.gp3",
+      "format": "gp3",
+      "features": [],
+      "tracks": 1,
+      "bars": 1,
+      "notes": 28
+    },
+    {
+      "path": "gp3/time-signatures.gp3",
+      "format": "gp3",
+      "features": ["time-signature-change"],
+      "tracks": 1,
+      "bars": 6,
+      "notes": 0
+    },
+    {
+      "path": "gp4/effects.gp4",
+      "format": "gp4",
+      "features": ["tuplets", "bends", "slides", "hammer-ons", "harmonics", "palm-mute"],
+      "tracks": 1,
+      "bars": 32,
+      "notes": 121
+    },
+    {
+      "path": "gp4/notes.gp4",
+      "format": "gp4",
+      "features": [],
+      "tracks": 1,
+      "bars": 1,
+      "notes": 28
+    },
+    {
+      "path": "gp4/time-signatures.gp4",
+      "format": "gp4",
+      "features": ["time-signature-change"],
+      "tracks": 1,
+      "bars": 6,
+      "notes": 0
+    },
+    {
+      "path": "gp5/chords.gp5",
+      "format": "gp5",
+      "features": ["chord-diagrams"],
+      "tracks": 1,
+      "bars": 2,
+      "notes": 36
+    },
+    {
+      "path": "gp5/directions.gp5",
+      "format": "gp5",
+      "features": ["jumps"],
+      "tracks": 1,
+      "bars": 19,
+      "notes": 0
+    },
+    {
+      "path": "gp5/effects.gp5",
+      "format": "gp5",
+      "features": ["tuplets", "bends", "slides", "hammer-ons", "harmonics", "palm-mute"],
+      "tracks": 1,
+      "bars": 32,
+      "notes": 121
+    },
+    {
+      "path": "gp5/key-signatures.gp5",
+      "format": "gp5",
+      "features": ["key-change"],
+      "tracks": 1,
+      "bars": 33,
+      "notes": 0
+    },
+    {
+      "path": "gp5/percussion-all.gp5",
+      "format": "gp5",
+      "features": ["drums-track"],
+      "tracks": 1,
+      "bars": 16,
+      "notes": 61
+    },
+    {
+      "path": "gp5/repeat-close-alternate-endings.gp5",
+      "format": "gp5",
+      "features": ["repeats", "alternate-endings"],
+      "tracks": 1,
+      "bars": 5,
+      "notes": 5
+    },
+    {
+      "path": "gpx/chords.gpx",
+      "format": "gpx",
+      "features": ["chord-diagrams"],
+      "tracks": 1,
+      "bars": 5,
+      "notes": 36
+    },
+    {
+      "path": "gpx/effects.gpx",
+      "format": "gpx",
+      "features": ["tuplets", "bends", "slides", "hammer-ons", "harmonics", "palm-mute"],
+      "tracks": 1,
+      "bars": 32,
+      "notes": 121
+    },
+    {
+      "path": "gpx/key-signatures.gpx",
+      "format": "gpx",
+      "features": ["key-change"],
+      "tracks": 1,
+      "bars": 33,
+      "notes": 0
+    },
+    {
+      "path": "gpx/repeat-close-alternate-endings.gpx",
+      "format": "gpx",
+      "features": ["repeats", "alternate-endings"],
+      "tracks": 1,
+      "bars": 5,
+      "notes": 5
+    },
+    {
+      "path": "gp/beat-lyrics.gp",
+      "format": "gp",
+      "features": ["lyrics"],
+      "tracks": 1,
+      "bars": 2,
+      "notes": 8
+    },
+    {
+      "path": "gp/beat-tempo-change.gp",
+      "format": "gp",
+      "features": ["tuplets", "tempo-change"],
+      "tracks": 1,
+      "bars": 4,
+      "notes": 21
+    },
+    {
+      "path": "gp/drum-tabs.gp",
+      "format": "gp",
+      "features": ["drums-track"],
+      "tracks": 1,
+      "bars": 24,
+      "notes": 94
+    },
+    {
+      "path": "gp/multivoice-rhythm.gp",
+      "format": "gp",
+      "features": ["multiple-voices"],
+      "tracks": 1,
+      "bars": 7,
+      "notes": 51
+    },
+    {
+      "path": "gp/sustain.gp",
+      "format": "gp",
+      "features": ["pitched-non-fretted-track"],
+      "tracks": 1,
+      "bars": 8,
+      "notes": 35
+    },
+    {
+      "path": "gp/timer.gp",
+      "format": "gp",
+      "features": ["repeats", "alternate-endings", "jumps"],
+      "tracks": 1,
+      "bars": 9,
+      "notes": 36
+    }
+  ]
+}

@@ -22,6 +22,7 @@ export default defineConfig({
       },
       { test: { name: 'web', root: 'apps/web', environment: 'jsdom' } },
       { test: { name: 'desktop', root: 'apps/desktop', environment: 'node' } },
+      { test: { name: 'scripts', root: 'scripts', environment: 'node' } },
     ],
   },
 });
