@@ -139,6 +139,18 @@ export type { TrackOptions } from './factories';
 export { validateScore } from './validate';
 export type { Violation, ViolationPath, ViolationRule } from './validate';
 
+export { MIDI_MAX, midiNote, openStringPitch, transpose } from './pitch';
+export type { FretPosition, TransposeFailure, TransposeResult, TransposeWarning } from './pitch';
+
+export { STANDARD_TUNINGS, findTuningName } from './tunings';
+export type { NamedTuning, TuningInstrument } from './tunings';
+
+export { LETTERS, keyAlter, respell, spell, spellNote, staffPosition } from './spelling';
+export type { Alter, Letter, PitchedClef, Spelling } from './spelling';
+
+export { PERCUSSION_INSTRUMENTS, percussionInstrument } from './percussion';
+export type { NoteHead, PercussionInstrument } from './percussion';
+
 export { PPQ, barTicks, beatStartTicks, beatTicks, playedBarTicks, tickOf } from './ticks';
 export type { ScorePosition } from './ticks';
 

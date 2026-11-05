@@ -101,7 +101,7 @@ export const NoteSchema = z.object({
   leftHandFinger: FingerSchema.exactOptional(),
   rightHandFinger: FingerSchema.exactOptional(),
   dynamics: DynamicsSchema,
-  /** Explicit spelling for standard notation; absent = spell from the key signature. */
+  /** The letter's alteration (`flat` lowers it), not the printed sign; absent = spell from the key. */
   accidental: AccidentalSchema.exactOptional(),
 });
 export type Note = z.infer<typeof NoteSchema>;

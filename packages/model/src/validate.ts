@@ -15,6 +15,7 @@ export type ViolationRule =
   | 'voice-overfull'
   | 'rest-with-notes'
   | 'string-range'
+  | 'fret-range'
   | 'duplicate-string'
   | 'tie-target'
   | 'tuplet'
@@ -252,6 +253,13 @@ function checkNotes(track: Track, notes: Note[], path: ViolationPath, report: Re
         'string-range',
         stringPath,
         `string ${String(note.string)} is outside 1 to ${String(stringCount)}`,
+      );
+    }
+    if (note.fret < 0 || note.fret > track.fretCount) {
+      report(
+        'fret-range',
+        [...path, n, 'fret'],
+        `fret ${String(note.fret)} is outside 0 to ${String(track.fretCount)}`,
       );
     }
     if (strings.has(note.string)) {

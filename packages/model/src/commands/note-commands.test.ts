@@ -57,16 +57,16 @@ describe('setNote', () => {
     expectRefusal(score, setNote({ beatId: 'nonexistent0' }, { string: 1, fret: 0 }), 'not-found');
   });
 
-  it('counts frets from the capo', () => {
+  it('numbers frets up to the neck length whatever the capo, as transpose does', () => {
     const score = buildScore();
     const guitar = score.tracks[0];
     if (!guitar) throw new Error('no guitar');
     const capoed = { ...score, tracks: [{ ...guitar, capo: 5 }, ...score.tracks.slice(1)] };
-    expectRefusal(
-      capoed,
-      setNote({ beatId: beatOf(score, 0, 0, 1).id }, { string: 3, fret: 20 }),
-      'off-fretboard',
-    );
+    const beatId = beatOf(score, 0, 0, 1).id;
+    expect(
+      roundTrip(capoed, setNote({ beatId }, { string: 3, fret: 24 })).score.tracks[0]?.capo,
+    ).toBe(5);
+    expectRefusal(capoed, setNote({ beatId }, { string: 3, fret: 25 }), 'off-fretboard');
   });
 });
 

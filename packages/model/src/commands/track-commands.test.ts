@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { createHistory } from '../history';
 import { newId } from '../id';
 import { ScoreSchema } from '../score';
+import { validateScore } from '../validate';
 import { buildScore, expectRefusal, roundTrip } from './test-score';
 import { addTrack, moveTrack, removeTrack, setTrackProperties } from './track-commands';
 
@@ -70,16 +72,15 @@ describe('setTrackProperties', () => {
 
 describe('setTrackProperties fret ceiling', () => {
   // The guitar's highest note sits at fret 22 on 24 frets.
-  it('refuses a capo or fret count that strands a note, and accepts one that just reaches it', () => {
+  it('refuses a fret count that strands a note; the capo does not move the ceiling', () => {
     const score = buildScore();
     const id = trackId(score, 0);
-    expectRefusal(score, setTrackProperties({ trackId: id }, { capo: 3 }), 'off-fretboard');
-    expectRefusal(score, setTrackProperties({ trackId: id }, { fretCount: 21 }), 'off-fretboard');
+    expectRefusal(score, setTrackProperties({ trackId: id }, { fretCount: 21 }), 'invariant');
     const { score: after } = roundTrip(
       score,
-      setTrackProperties({ trackId: id }, { capo: 2, fretCount: 24 }),
+      setTrackProperties({ trackId: id }, { capo: 7, fretCount: 22 }),
     );
-    expect(after.tracks[0]).toMatchObject({ capo: 2, fretCount: 24 });
+    expect(after.tracks[0]).toMatchObject({ capo: 7, fretCount: 22 });
   });
 
   it('tolerates a note an import left above the ceiling', () => {
@@ -87,11 +88,14 @@ describe('setTrackProperties fret ceiling', () => {
     const guitar = imported.tracks[0];
     if (!guitar) throw new Error('no guitar');
     guitar.fretCount = 20;
-    const { score: after } = roundTrip(
+    expect(validateScore(imported).map((violation) => violation.rule)).toEqual(['fret-range']);
+    const history = createHistory();
+    const { score: after } = history.apply(
       imported,
-      setTrackProperties({ trackId: guitar.id }, { capo: 1 }),
+      setTrackProperties({ trackId: guitar.id }, { fretCount: 21 }),
     );
-    expect(after.tracks[0]?.capo).toBe(1);
+    expect(validateScore(after).map((violation) => violation.rule)).toEqual(['fret-range']);
+    expect(history.undo()?.score).toEqual(imported);
   });
 });
 

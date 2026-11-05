@@ -90,9 +90,9 @@ export function assertTrackValid(
   );
 }
 
-/** The highest fret above the capo; frets count from the capo, as Guitar Pro shows them. */
+/** Guitar Pro numbers frets up to the neck length whatever the capo; `transpose` and `fret-range` use the same bound. */
 export function maxFret(track: Track): number {
-  return Math.max(0, track.fretCount - track.capo);
+  return track.fretCount;
 }
 
 export function assertNotePlaced(

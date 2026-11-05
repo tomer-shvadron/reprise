@@ -185,6 +185,33 @@ describe('validateScore', () => {
     });
   });
 
+  describe('fret-range', () => {
+    it('accepts the open string and the last fret, whatever the capo', () => {
+      const capoed = createTrack('fretted', {
+        capo: 7,
+        bars: [barWith(quarter(1, 0), quarter(2, 24))],
+      });
+      expect(rules(scoreOf([capoed]))).toEqual([]);
+    });
+
+    it('rejects a fret past the neck on a fretted track, with a path to the fret', () => {
+      const short = createTrack('fretted', { fretCount: 20, bars: [barWith(quarter(1, 21))] });
+      expect(validateScore(scoreOf([short]))).toEqual([
+        {
+          rule: 'fret-range',
+          path: ['tracks', 0, 'bars', 0, 'voices', 0, 'beats', 0, 'notes', 0, 'fret'],
+          message: 'fret 21 is outside 0 to 20',
+        },
+      ]);
+    });
+
+    it('leaves drum and pitched notes alone, whose fret is a MIDI note', () => {
+      const drums = createTrack('drums', { bars: [barWith(quarter(0, 36))] });
+      const piano = createTrack('pitched', { bars: [barWith(quarter(0, 108))] });
+      expect(rules(scoreOf([drums, piano]))).toEqual([]);
+    });
+  });
+
   describe('duplicate-string', () => {
     it('rejects two notes on one string in a beat', () => {
       const beat = createBeat({

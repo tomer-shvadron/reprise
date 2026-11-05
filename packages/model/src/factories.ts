@@ -98,7 +98,7 @@ const KIND_DEFAULTS: Record<TrackKind, () => TrackDefaults> = {
     program: 25,
     bank: 0,
     channel: { ...CHANNEL_DEFAULTS },
-    display: { notation: 'tab', clef: 'treble' },
+    display: { notation: 'tab', clef: 'treble', octaveShift: 1 },
     lyrics: [],
   }),
   drums: () => ({
@@ -111,7 +111,7 @@ const KIND_DEFAULTS: Record<TrackKind, () => TrackDefaults> = {
     program: 0,
     bank: 0,
     channel: { ...CHANNEL_DEFAULTS },
-    display: { notation: 'standard', clef: 'percussion' },
+    display: { notation: 'standard', clef: 'percussion', octaveShift: 0 },
     lyrics: [],
   }),
   pitched: () => ({
@@ -124,7 +124,7 @@ const KIND_DEFAULTS: Record<TrackKind, () => TrackDefaults> = {
     program: 0,
     bank: 0,
     channel: { ...CHANNEL_DEFAULTS },
-    display: { notation: 'standard', clef: 'treble' },
+    display: { notation: 'standard', clef: 'treble', octaveShift: 0 },
     lyrics: [],
   }),
 };
