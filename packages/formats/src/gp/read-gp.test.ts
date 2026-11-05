@@ -245,6 +245,20 @@ describe('readGp errors', () => {
     expect(() => readGp(zip)).toThrow(expect.objectContaining({ code: 'missing-score' }));
   });
 
+  it('refuses an entry whose declared size would allocate gigabytes', () => {
+    const zip = zipSync({ 'Content/score.gpif': encode('<GPIF/>') });
+    // The central directory's uncompressed size sits 24 bytes into its entry, after the
+    // 0x02014b50 signature; the name starts at byte 46.
+    const name = encode('Content/score.gpif');
+    for (let at = 0; at + 46 + name.length <= zip.length; at++) {
+      const signature = zip[at] === 0x50 && zip[at + 1] === 0x4b && zip[at + 2] === 0x01;
+      if (!signature || zip[at + 3] !== 0x02) continue;
+      if (!name.every((byte, index) => zip[at + 46 + index] === byte)) continue;
+      new DataView(zip.buffer, zip.byteOffset).setUint32(at + 24, 0xff_ff_ff_fe, true);
+    }
+    expect(() => readGp(zip)).toThrow(expect.objectContaining({ code: 'too-large' }));
+  });
+
   it('reports malformed XML with its position', () => {
     const zip = zipSync({ 'Content/score.gpif': encode('<GPIF>\n<Score>\n</GPIF>') });
     let caught: unknown;
