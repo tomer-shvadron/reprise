@@ -9,6 +9,7 @@ import type { Track } from './track';
 
 export type ViolationRule =
   | 'duplicate-id'
+  | 'first-bar-tempo'
   | 'bar-count'
   | 'track-kind'
   | 'voice-overfull'
@@ -44,11 +45,27 @@ export function validateScore(score: Score): Violation[] {
   };
 
   checkUniqueIds(score, report);
-  checkAlternateEndings(score.masterBars, report);
+  checkMasterBars(score.masterBars, report);
   score.tracks.forEach((track, trackIndex) => {
     checkTrack(score, track, ['tracks', trackIndex], report);
   });
   return violations;
+}
+
+/** The master-bar rules alone, for edits that touch only the master bars. */
+export function validateMasterBars(masterBars: MasterBar[]): Violation[] {
+  const violations: Violation[] = [];
+  checkMasterBars(masterBars, (rule, path, message) => {
+    violations.push({ rule, path, message });
+  });
+  return violations;
+}
+
+function checkMasterBars(masterBars: MasterBar[], report: Report): void {
+  if (masterBars.length > 0 && !masterBars[0]?.tempo) {
+    report('first-bar-tempo', ['masterBars', 0, 'tempo'], 'the first master bar has no tempo mark');
+  }
+  checkAlternateEndings(masterBars, report);
 }
 
 function checkUniqueIds(score: Score, report: Report): void {

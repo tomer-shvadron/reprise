@@ -2,7 +2,7 @@
 
 The score model every other package codes against: Zod schemas with the TypeScript types
 derived from them (`z.infer`), node factories, `newId()`, and `validateScore()`. The root
-export (`src/index.ts`) is the public API. Zod is the only runtime dependency.
+export (`src/index.ts`) is the public API. Zod and Immer are the only runtime dependencies.
 
 ```ts
 import { ScoreSchema, createEmptyScore, validateScore } from '@reprise/model';
@@ -24,6 +24,7 @@ validateScore(score); // cross-node invariants: [] when the score is sound
 | Rule                              | What it checks                                                                                                                                           |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `duplicate-id`                    | Every id is unique across the score.                                                                                                                     |
+| `first-bar-tempo`                 | The first master bar carries a tempo mark.                                                                                                               |
 | `bar-count`                       | Every track has one bar per master bar.                                                                                                                  |
 | `track-kind`                      | Fretted tracks have strings and frets; drum tracks have no tuning, capo or frets.                                                                        |
 | `voice-overfull`                  | A voice's beats sum to at most the bar length. Incomplete bars are allowed.                                                                              |
@@ -118,7 +119,9 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   (gpif's five: eighth, quarter, dotted quarter, half, dotted half), so "dotted quarter = 80"
   is `{ bpm: 120, unit: 'dottedQuarter' }` and survives gp export. `MasterBar.tempo` is a
   change at the start of a bar; `Beat.mix.tempo` is the same shape plus a `duration`, for
-  mid-bar changes. Nothing requires a tempo on the first master bar; WP-011 defaults to 120.
+  mid-bar changes. The first master bar must carry one (`first-bar-tempo`): `insertBar` at 0
+  moves the mark onto the new first bar, and `removeBar` moves a removed bar's mark onto the bar
+  after it when that has none, whichever bar it was.
 - **Repeats**: `repeat.endCount` is the total number of plays of the section (2 = play twice),
   0 = no repeat end. Readers convert from formats that store "extra repeats".
 - **Jumps and targets are split**: `MasterBar.jumps` holds the instructions read at the end of
@@ -196,6 +199,76 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   fractional where needed.
 - **Colours** are lower-case `#rrggbb`.
 - **Clefs** are `treble`, `bass`, `alto`, `tenor`, `percussion` (gpif's G2, F4, C3, C4, Neutral).
+
+## Commands and history
+
+Every edit is a named `Command` whose `run(draft)` mutates an Immer draft (ADR-0011).
+`applyCommand(score, command)` returns the new score and a `Change`: the command name, forward
+and inverse patches, and `touchedBars`. `createHistory()` wraps it with undo and redo, which
+replay the patches, so a step costs what it changed: a thousand single-note edits on an 8-track,
+300-bar score hold 194 KB of patches against a 9.6 MB score (`history-memory.test.ts`, budget
+256 KiB).
+
+```ts
+import { createHistory, insertBar, setNote } from '@reprise/model';
+
+const history = createHistory();
+history.beginGroup('Paste bars'); // one undo step; nested groups flatten into the outer one
+let { score } = history.apply(current, insertBar({ index: 4 }));
+({ score } = history.apply(score, setNote({ beatId }, { string: 1, fret: 5 })));
+history.endGroup();
+const undone = history.undo(); // { score, change } with the patches it replayed
+```
+
+- `apply` takes the score the history last returned; a different document needs a new history.
+  A command that changed nothing records no step and returns the score it was given. `undo` and
+  `redo` refuse while a group is open, and a command refused inside a group leaves the group
+  open, so end it in a `finally`.
+- **Immer freezes** the result of every apply, and the input along with it, since the two share
+  every untouched node. Build a score before handing it to a history and never mutate it after;
+  edits go through commands.
+- **Patches** are Immer's, with one rewrite: a splice is recorded as one `add` or `remove`
+  rather than a `replace` of every element after it, so a bar inserted at the front of a long
+  score costs a patch per track, not one per bar, and undo copies only what it restores.
+- **`touchedBars`** are master-bar ids, the bar columns layout re-flows; the rule is in the
+  header of `src/history.ts`. In short: a patch under `tracks/t/bars/b` or `masterBars/m` touches
+  that column; a track property other than `channel`, `sound`, `program`, `bank` and the raw
+  `lyrics` touches every column, as does any change to a whole track or array; `meta` touches
+  none. Ids come from the scores before and after the edit, so a removed bar is listed with the
+  bar that took its place; bars that only shifted are not, since layout re-breaks systems from
+  the first listed bar onward.
+- **Addressing** is by id: beats, notes, voices, master bars and tracks. Commands that create a
+  node take an optional `id` so the caller can select it afterwards. Grace notes are reached
+  through their beat (`setBeatEffect`, or a `beatIds` selection), not by note id.
+- **Optional fields** are removed with `null` in the `Changes<T>` objects that `setNoteEffect`,
+  `setBeatEffect`, `setBeatDuration`, `setMasterBar` and `setTrackProperties` take.
+- **Refusal**: a command throws `CommandError` (`code`, `command`, and `violations` for
+  `invariant`) instead of producing a score that breaks the schema or adds a `validateScore`
+  violation. Nodes an edit creates (a new beat's notes, grace notes) are checked in full, string
+  range and fret ceiling included; for the nodes that already existed the checks count violations
+  per rule before and after, so a violation an imported file already carried does not block
+  unrelated edits. A fret count or tuning change that would leave more notes outside the
+  neck or the string count than before is refused the same way.
+- **Repair**: a tie whose target an edit removes (a note, a beat, a bar, a string shift) is
+  released rather than refused.
+
+| Command                                | Notes                                                                                                                                     |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `setNote`                              | Replaces the note on the same string (same MIDI value off fretted tracks) or adds one; a rest becomes a played beat.                      |
+| `removeNote`                           | A beat left without notes becomes a rest.                                                                                                 |
+| `setNoteEffect`                        | Any note field but id, string and fret.                                                                                                   |
+| `transposeSelection`                   | Shifts frets (MIDI on pitched tracks) and refuses notes that leave 0 to `fretCount`; drum and dead notes stay.                            |
+| `shiftStrings`                         | Moves notes to the neighbouring string at the same pitch; refuses occupied strings and frets off the neck.                                |
+| `insertBeat`, `removeBeat`             | A quarter rest by default; refuses to overfill the voice or to place a note off the neck.                                                 |
+| `setBeatDuration`, `setBeatRest`       | Duration, dots, tuplet; rest drops the notes.                                                                                             |
+| `setBeatEffect`                        | Beat effects, plus text, chord, lyrics, mixer change and grace notes.                                                                     |
+| `insertBar`, `removeBar`               | All tracks at once; copy the previous signatures, join a shared volta, shift `Track.lyrics`; a removed bar's tempo moves to the next bar. |
+| `setMasterBar`                         | Time, key, tempo, repeats, alternate endings, jumps, targets, section, anacrusis, triplet feel, double bar.                               |
+| `setTrackProperties`                   | Everything but id, kind and bars; `channel` and `display` merge; refuses a fret count that strands notes.                                 |
+| `addTrack`, `removeTrack`, `moveTrack` | A new track gets one empty bar per master bar; a score keeps at least one track.                                                          |
+
+Guitar Pro numbers frets up to the neck length whatever the capo, so the ceiling every command
+places a note under is `fretCount`, the bound `transpose` and the `fret-range` rule share.
 
 ## Pitch, tuning and spelling
 
