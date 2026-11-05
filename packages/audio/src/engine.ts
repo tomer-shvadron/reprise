@@ -2,6 +2,7 @@ import { positionAtSeconds, secondsAtTick } from '@reprise/model';
 import type { Id, Note, PlaybackPosition, Score } from '@reprise/model';
 
 import { ClickSynth } from './click-synth';
+import type { TrackParams } from './sampler/sampler';
 import { advance, retime, startRun, tickAtTime, withLoop } from './scheduler';
 import type { Anchor, Run } from './scheduler';
 import type { InstrumentSink, MetronomeSink } from './sink';
@@ -23,13 +24,6 @@ export interface PackAssignment {
 export interface LoadOptions {
   tier: 'gm' | 'hq';
   packs: PackAssignment[];
-}
-
-export interface TrackParams {
-  volume?: number;
-  pan?: number;
-  mute?: boolean;
-  solo?: boolean;
 }
 
 export interface MemoryReport {

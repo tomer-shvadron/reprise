@@ -11,7 +11,6 @@ export type {
   PlaybackState,
   PositionEvent,
   TempoMode,
-  TrackParams,
   Unsubscribe,
 } from './engine';
 
@@ -45,3 +44,6 @@ export {
   notesInRange,
 } from './timeline';
 export type { ClickOnset, NextOnString, NoteOnset, TickRange, Timeline } from './timeline';
+
+// Sampler (WP-031)
+export * from './sampler/index';
