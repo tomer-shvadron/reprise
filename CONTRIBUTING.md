@@ -42,7 +42,7 @@ From [the roadmap](docs/plans/roadmap.md#lane-rules):
 - One branch per work package, named `wp-0NN-short-slug` after the issue (`wp-005-repository-governance`), off `main`, in its own worktree.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): subject`, imperative and lowercase, for example `feat(formats): read gp5 voltas` or `chore(repo): add issue templates`. The scope is the package or area; leave it out for a change that is genuinely cross-cutting.
 - No samples, tabs, secrets or build output in git. Downloaded tabs for manual testing go in `local-tabs/`, which is ignored.
-- Commits and pushes happen only with the owner's go-ahead for that change.
+- The owner has approved branch commits, pushes and PR creation for the whole project (ADR-0019): an agent working an issue commits on its own branch and opens its PR without asking. `main` changes only through reviewed, CI-green squash merges performed by the lead.
 
 ## Pull requests
 
