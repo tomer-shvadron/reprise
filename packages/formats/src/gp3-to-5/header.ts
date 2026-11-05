@@ -62,9 +62,10 @@ const DIRECTION_SLOTS: readonly Direction[] = [
   { jump: 'toDoubleCoda' },
 ];
 
-/** Guitar Pro caps both at these; anything larger is a corrupt count, not a big song. */
+/** Guitar Pro caps these far lower; anything larger is a corrupt count, not a big song. */
 const MAX_TRACKS = 127;
 const MAX_MASTER_BARS = 2048;
+const MAX_NOTICE_LINES = 1000;
 const LYRIC_LINE_COUNT = 5;
 
 /**
@@ -89,7 +90,9 @@ export function readHeader(context: Context, partial: Partial<Header>): Header {
   meta.instructions = text();
   const noticeOffset = reader.offset;
   const noticeLines = reader.int();
-  if (noticeLines < 0) throw new CorruptFile(noticeOffset, `${String(noticeLines)} notice lines`);
+  if (noticeLines < 0 || noticeLines > MAX_NOTICE_LINES) {
+    throw new CorruptFile(noticeOffset, `${String(noticeLines)} notice lines`);
+  }
   for (let i = 0; i < noticeLines; i++) meta.notices.push(text());
 
   partial.tripletFeel = version < 500 ? reader.bool() : false;

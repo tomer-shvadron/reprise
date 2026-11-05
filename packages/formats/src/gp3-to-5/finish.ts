@@ -29,41 +29,51 @@ export function finishTrack(
     track.bars.forEach((bar, b) => {
       bar.voices[voice]?.beats.forEach((beat, index) => slots.push({ bar: b, voice, index, beat }));
     });
-    resolveTies(context, track, slots, trackIndex);
+    resolveTies(context, slots, trackIndex);
     moveHammerFlags(context, slots, trackIndex);
   }
   if (track.kind !== 'fretted') toMidi(context, track, trackIndex);
   if (track.kind !== 'drums') swapAccidentals(context, track, masterBars);
 }
 
-/** The beat `validateScore` pairs a tie with: the previous one in the voice, into the bar before. */
-function previousOf(track: Track, slot: Slot): Beat | undefined {
-  const { bar, voice, index } = slot;
-  if (index > 0) return track.bars[bar]?.voices[voice]?.beats[index - 1];
-  return track.bars[bar - 1]?.voices[voice]?.beats.at(-1);
-}
+/** How many bars back or forward a tie origin or hammer-on destination is looked for. */
+const SAME_STRING_SEARCH_BARS = 3;
 
-function resolveTies(context: Context, track: Track, slots: Slot[], trackIndex: number): void {
-  for (const slot of slots) {
+/**
+ * Guitar Pro ties a note to the last note on its string even when the beats between do not use
+ * that string. The model only ties to the previous beat, so a farther origin still lends its
+ * fret but the tie is released and reported.
+ */
+function resolveTies(context: Context, slots: Slot[], trackIndex: number): void {
+  slots.forEach((slot, s) => {
     for (const note of slot.beat.notes) {
       if (!note.tie) continue;
-      const previous = previousOf(track, slot);
-      const origin =
-        previous && !previous.rest
-          ? previous.notes.find((n) => n.string === note.string)
-          : undefined;
-      if (origin) {
-        note.fret = origin.fret;
-        continue;
+      let origin: Note | undefined;
+      let distance = 0;
+      for (let back = s - 1; back >= 0 && !origin; back--) {
+        const earlier = slots[back];
+        if (!earlier || earlier.bar < slot.bar - SAME_STRING_SEARCH_BARS) break;
+        origin = earlier.beat.notes.find((n) => n.string === note.string);
+        distance = s - back;
       }
+      if (origin) note.fret = origin.fret;
+      if (origin && distance === 1) continue;
       note.tie = false;
-      context.log.warn(
-        'tie-without-origin',
-        `a tied note on string ${String(note.string)} has no note to continue in the previous beat; it is played instead`,
-        locationOf(context, note, slot, trackIndex),
-      );
+      if (origin) {
+        context.log.warn(
+          'tie-beyond-previous-beat',
+          `a tied note on string ${String(note.string)} continues a note ${String(distance)} beats back; the model ties only to the previous beat, so it is played at that note's fret`,
+          locationOf(context, note, slot, trackIndex),
+        );
+      } else {
+        context.log.warn(
+          'tie-without-origin',
+          `a tied note on string ${String(note.string)} has no note to continue; it is played instead`,
+          locationOf(context, note, slot, trackIndex),
+        );
+      }
     }
-  }
+  });
 }
 
 function moveHammerFlags(context: Context, slots: Slot[], trackIndex: number): void {
@@ -72,9 +82,9 @@ function moveHammerFlags(context: Context, slots: Slot[], trackIndex: number): v
       if (!context.noteFacts.get(note)?.hammerOrigin) continue;
       let destination: Note | undefined;
       for (let next = s + 1; next < slots.length && !destination; next++) {
-        const beat = slots[next]?.beat;
-        if (!beat || beat.rest) break;
-        destination = beat.notes.find((n) => n.string === note.string);
+        const later = slots[next];
+        if (!later || later.beat.rest || later.bar > slot.bar + SAME_STRING_SEARCH_BARS) break;
+        destination = later.beat.notes.find((n) => n.string === note.string);
       }
       if (destination) {
         destination.hammerPull = true;

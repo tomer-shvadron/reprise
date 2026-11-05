@@ -132,19 +132,22 @@ function readGrace(context: Context, beat: Beat, note: Note, location: NoteLocat
   const { reader, version } = context;
   const offset = reader.offset;
   const here = { ...location, offset };
-  const fret = fretValue(context, here, reader.signedByte());
+  // GP3 and GP4 write a dead grace note as fret -1; GP5 moved that to a flag but may still do so.
+  const rawFret = reader.signedByte();
+  const fret = rawFret === -1 ? 0 : fretValue(context, here, rawFret);
   const dynamicsValue = reader.signedByte();
   const transition = reader.signedByte();
   const durationValue = reader.byte();
   const grace = createNote({
     string: note.string,
     fret,
+    dead: rawFret === -1,
     dynamics: dynamicsOf(dynamicsValue) ?? 'f',
   });
   let before = true;
   if (version >= 500) {
     const flags = reader.byte();
-    grace.dead = hasFlag(flags, 0x01);
+    if (hasFlag(flags, 0x01)) grace.dead = true;
     before = !hasFlag(flags, 0x02);
   }
   switch (transition) {

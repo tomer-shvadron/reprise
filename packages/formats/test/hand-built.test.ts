@@ -134,6 +134,183 @@ describe.each(VERSIONS)('a hand-built v%s file', (version) => {
     expect(score.tracks[0]).toMatchObject({ kind: 'drums', tuning: [], fretCount: 0, capo: 0 });
     expect(noteOf(score, 0, 0, 0)).toMatchObject({ string: 0, fret: 36 });
   });
+
+  it('skips a string bit the track lacks without reading a note block', () => {
+    const { score, warnings } = read(
+      buildGpFile({
+        version,
+        tracks: [{ strings: [64, 59, 55, 50] }],
+        bars: [
+          [
+            [
+              [
+                {
+                  notes: [
+                    { string: 2, fret: 3 },
+                    { string: 6, fret: 0, phantom: true },
+                  ],
+                },
+                quarter(4, 5),
+              ],
+            ],
+          ],
+        ],
+      }),
+    );
+    const beats = score.tracks[0]?.bars[0]?.voices[0].beats ?? [];
+    expect(beats.map((beat) => beat.notes.map((note) => [note.string, note.fret]))).toEqual([
+      [[2, 3]],
+      [[4, 5]],
+    ]);
+    expect(warnings.filter((warning) => warning.severity !== 'info')).toMatchObject([
+      { code: 'note-off-string', location: { beat: 0 } },
+    ]);
+  });
+
+  it('reads the stroke speed byte as a 128th (1) down to a quarter (6)', () => {
+    const { score } = read(
+      buildGpFile({
+        version,
+        tracks: [{}],
+        bars: [
+          [
+            [
+              [
+                quarter(1, 0, { effects: { stroke: { direction: 'down', speed: 1 } } }),
+                quarter(1, 0, { effects: { stroke: { direction: 'up', speed: 3 } } }),
+                quarter(1, 0, { effects: { stroke: { direction: 'up', speed: 6 } } }),
+              ],
+            ],
+          ],
+        ],
+      }),
+    );
+    const beats = score.tracks[0]?.bars[0]?.voices[0].beats ?? [];
+    expect(beats.map((beat) => beat.effects.brush)).toEqual([
+      { direction: 'down', duration: 128 },
+      { direction: 'up', duration: 32 },
+      { direction: 'up', duration: 4 },
+    ]);
+  });
+
+  it('puts the beat vibrato bit on the notes and keeps wide vibrato on the beat', () => {
+    // GP3 has no note-level vibrato; GP4 and GP5 set beat bit 0x01 next to the note's own flag.
+    const noteVibrato = version >= '4.00' ? { effects2: 0x40 } : {};
+    const { score } = read(
+      buildGpFile({
+        version,
+        tracks: [{}],
+        bars: [
+          [
+            [
+              [
+                { notes: [{ string: 1, fret: 0, ...noteVibrato }], effects: { flags: 0x01 } },
+                { notes: [{ string: 1, fret: 0 }], effects: { flags: 0x02 } },
+                quarter(1, 0),
+              ],
+            ],
+          ],
+        ],
+      }),
+    );
+    const beats = score.tracks[0]?.bars[0]?.voices[0].beats ?? [];
+    expect(beats.map((beat) => [beat.effects.vibrato, beat.notes[0]?.vibrato])).toEqual([
+      [undefined, 'slight'],
+      ['wide', 'none'],
+      [undefined, 'none'],
+    ]);
+  });
+
+  it('reads a grace note at fret -1 as a dead one', () => {
+    const { score, warnings } = read(
+      buildGpFile({
+        version,
+        tracks: [{}],
+        bars: [
+          [
+            [
+              [
+                { notes: [{ string: 1, fret: 5, grace: { fret: -1, duration: 2 } }] },
+                { notes: [{ string: 1, fret: 5, grace: { fret: 3, transition: 3, duration: 3 } }] },
+              ],
+            ],
+          ],
+        ],
+      }),
+    );
+    const beats = score.tracks[0]?.bars[0]?.voices[0].beats ?? [];
+    expect(beats[0]?.grace).toEqual([
+      { duration: 32, before: true, notes: [expect.objectContaining({ dead: true, fret: 0 })] },
+    ]);
+    expect(beats[1]?.grace).toEqual([
+      { duration: 16, before: true, notes: [expect.objectContaining({ dead: false, fret: 3 })] },
+    ]);
+    expect(noteOf(score, 0, 0, 1).hammerPull).toBe(true);
+    expect(warnings.filter((warning) => warning.severity !== 'info')).toEqual([]);
+  });
+
+  it('takes the fret of a tie origin further back and releases the tie', () => {
+    const { score, warnings } = read(
+      buildGpFile({
+        version,
+        tracks: [{}],
+        masterBars: 2,
+        bars: [
+          [
+            [
+              [
+                {
+                  notes: [
+                    { string: 6, fret: 5 },
+                    { string: 2, fret: 1 },
+                  ],
+                },
+                quarter(2, 3),
+              ],
+            ],
+          ],
+          [[[{ notes: [{ string: 6, fret: 0, tie: true }] }]]],
+        ],
+      }),
+    );
+    expect(noteOf(score, 0, 1, 0)).toMatchObject({ string: 6, fret: 5, tie: false });
+    expect(warnings.filter((warning) => warning.severity !== 'info')).toMatchObject([
+      { code: 'tie-beyond-previous-beat', location: { track: 0, bar: 1, voice: 0, beat: 0 } },
+    ]);
+  });
+
+  it('reads a chord diagram with barres', () => {
+    const { score } = read(
+      buildGpFile({
+        version,
+        tracks: [{}],
+        bars: [
+          [
+            [
+              [
+                quarter(1, 1, {
+                  chord: {
+                    name: 'F',
+                    firstFret: 1,
+                    frets: [1, 1, 2, 3, 3, 1],
+                    barres: [{ fret: 1, start: 1, end: 6 }],
+                  },
+                }),
+              ],
+            ],
+          ],
+        ],
+      }),
+    );
+    expect(beatOf(score, 0, 0, 0).chord).toEqual({
+      name: 'F',
+      diagram: {
+        baseFret: 1,
+        frets: [1, 1, 2, 3, 3, 1],
+        barres: [{ fret: 1, firstString: 1, lastString: 6 }],
+      },
+    });
+  });
 });
 
 describe.each(['4.06', '5.10'] satisfies BuildVersion[])('lyrics in v%s', (version) => {

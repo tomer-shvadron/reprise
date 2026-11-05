@@ -167,4 +167,19 @@ describe('what the fixtures carry', () => {
     const gp4 = read('gp4/effects.gp4').tracks[0]?.bars[8]?.voices[0].beats[0];
     expect(gp3?.effects.whammy?.points).toEqual(gp4?.effects.whammy?.points);
   });
+
+  it.each(['gp3/effects.gp3', 'gp4/effects.gp4', 'gp5/effects.gp5'])(
+    'reads the vibrato bar of %s the same way: slight on the notes, wide on the beat',
+    (path) => {
+      const beats = read(path).tracks[0]?.bars[15]?.voices[0].beats ?? [];
+      expect(
+        beats.map((beat) => [beat.effects.vibrato, beat.notes.map((note) => note.vibrato)]),
+      ).toEqual([
+        [undefined, ['slight']],
+        [undefined, ['slight']],
+        ['wide', ['none']],
+        ['wide', ['none']],
+      ]);
+    },
+  );
 });

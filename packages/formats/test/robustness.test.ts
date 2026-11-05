@@ -104,6 +104,25 @@ describe('truncated files', () => {
   });
 });
 
+describe('corrupt counts', () => {
+  it('stops at a notice count no real file holds instead of reading to the end', () => {
+    const bytes = new Uint8Array(1 << 20);
+    bytes.set(fixtureBytes('gp5/chords.gp5').subarray(0, 31));
+    // Nine empty header strings (int 1, byte 0), then the notice count.
+    let offset = 31;
+    for (let i = 0; i < 9; i++) {
+      bytes[offset] = 1;
+      offset += 5;
+    }
+    new DataView(bytes.buffer).setInt32(offset, 0x7fffffff, true);
+    const { score, warnings } = readGp3To5(bytes);
+    expect(score.meta.notices).toEqual([]);
+    expect(warnings).toEqual([
+      expect.objectContaining({ code: 'corrupt-file', severity: 'error', location: { offset } }),
+    ]);
+  });
+});
+
 describe('bit-flipped files', () => {
   it.each(entries.map((entry) => entry.path))('%s never throws past the reader', (path) => {
     const original = fixtureBytes(path);

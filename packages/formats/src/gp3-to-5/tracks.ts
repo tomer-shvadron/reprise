@@ -84,11 +84,11 @@ export function readTrack(context: Context, header: Header, index: number): Trac
     const tab = hasFlag(staffFlags, 0x01);
     const standard = hasFlag(staffFlags, 0x02);
     notation = tab && standard ? 'both' : tab ? 'tab' : standard ? 'standard' : undefined;
-    // Auto-accentuation, an RSE setting.
-    reader.skip(1);
-    // The channel's MIDI bank change, then a byte the RSE dialog writes.
-    reader.skip(1);
+    // The high byte of the track-settings short (auto let ring, auto brush, extend rhythmic),
+    // then auto-accentuation.
+    reader.skip(2);
     bank = reader.byte();
+    // RSE humanize, then an int whose value 12 selects the bass clef.
     reader.skip(1);
     bassClefSetting = reader.int() === GP5_BASS_CLEF;
     log.info(

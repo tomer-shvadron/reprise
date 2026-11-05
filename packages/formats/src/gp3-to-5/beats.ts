@@ -105,8 +105,8 @@ function readBeat(context: Context, info: TrackInfo, location: NoteLocation): Be
     if (chord) beat.chord = chord;
   }
   if (hasFlag(flags, 0x04)) beat.text = reader.intByteString('byte');
-  let harmonic: HarmonicKind | undefined;
-  if (hasFlag(flags, 0x08)) harmonic = readBeatEffects(context, beat, location);
+  let noteWide: NoteWideEffects = {};
+  if (hasFlag(flags, 0x08)) noteWide = readBeatEffects(context, beat, location);
   if (hasFlag(flags, 0x10)) {
     const mix = readMixTable(context, location);
     if (Object.keys(mix).length > 0) beat.mix = mix;
@@ -117,20 +117,22 @@ function readBeat(context: Context, info: TrackInfo, location: NoteLocation): Be
   // Bit 6 is string 1, the highest; bit 0 is string 7.
   for (let string = 1; string <= MAX_GP_STRINGS; string++) {
     if (!hasFlag(strings, 1 << (MAX_GP_STRINGS - string))) continue;
-    const note = readNote(context, info, beat, string, location);
+    // A bit for a string the track lacks carries no note block: every reader of the format
+    // skips it unread, and reading one would desync from them on a damaged file.
     if (string > info.gpTuning.length) {
       log.warn(
         'note-off-string',
         `a note on string ${String(string)} of a ${String(info.gpTuning.length)}-string track was dropped`,
         { ...location, offset: stringsOffset },
       );
-      const graces = beat.grace?.filter((grace) => grace.notes.every((n) => n.string !== string));
-      if (graces && graces.length > 0) beat.grace = graces;
-      else delete beat.grace;
       continue;
     }
+    const note = readNote(context, info, beat, string, location);
     // GP3's beat-level harmonics apply to each note, at the node its fret names.
-    if (harmonic) note.harmonic = { kind: harmonic, value: harmonicPosition(note.fret) };
+    if (noteWide.harmonic) {
+      note.harmonic = { kind: noteWide.harmonic, value: harmonicPosition(note.fret) };
+    }
+    if (noteWide.vibrato && note.vibrato === 'none') note.vibrato = 'slight';
     beat.notes.push(note);
   }
   if (beat.rest && beat.notes.length > 0) {
@@ -184,7 +186,18 @@ function readChord(context: Context, info: TrackInfo, location: NoteLocation): C
     name = reader.fixedString(34);
     firstFret = reader.int();
     for (let i = 0; i < 6; i++) frets.push(reader.int());
-    reader.skip(36);
+    // Up to two barres as ints: the count, then frets, start strings and end strings in pairs.
+    const barreCount = Math.min(2, reader.int());
+    const barreFrets = [reader.int(), reader.int()];
+    const starts = [reader.int(), reader.int()];
+    const ends = [reader.int(), reader.int()];
+    barres = Array.from({ length: Math.max(0, barreCount) }, (_, i) => ({
+      fret: barreFrets[i] ?? 0,
+      start: starts[i] ?? 0,
+      end: ends[i] ?? 0,
+    }));
+    // The omitted chord tones and a padding byte.
+    reader.skip(7 + 1);
   } else {
     log.info('chord-construction-dropped', "the chord wizard's root, type and options", here);
     // Sharp, root, type, extension, bass, tonality and added note.
@@ -245,32 +258,39 @@ function readChord(context: Context, info: TrackInfo, location: NoteLocation): C
   return { name, diagram };
 }
 
-/** GP's stroke speed byte (1 to 6) as the note value the stroke spreads over. */
+/**
+ * GP's stroke speed byte as the note value the stroke spreads over: the six choices of the
+ * stroke dialog, from a 128th (1) to a quarter (6).
+ */
 const STROKE_DURATIONS: Readonly<Record<number, NonNullable<Stroke['duration']>>> = {
   1: 128,
-  2: 128,
-  3: 64,
-  4: 32,
-  5: 16,
-  6: 8,
+  2: 64,
+  3: 32,
+  4: 16,
+  5: 8,
+  6: 4,
 };
 
-/** Returns the GP3 beat-level harmonic, which applies to every note of the beat. */
-function readBeatEffects(
-  context: Context,
-  beat: Beat,
-  location: NoteLocation,
-): HarmonicKind | undefined {
+/** Beat-effect bits that Guitar Pro means per note, applied once the notes are read. */
+interface NoteWideEffects {
+  /** GP3's beat-level harmonic. */
+  harmonic?: HarmonicKind;
+  /** Bit 0x01: GP3's only vibrato; GP4 and GP5 set it alongside the notes' own vibrato flag. */
+  vibrato?: boolean;
+}
+
+function readBeatEffects(context: Context, beat: Beat, location: NoteLocation): NoteWideEffects {
   const { reader, version, log } = context;
   const offset = reader.offset;
   const here = { ...location, offset };
   const flags = reader.byte();
   const flags2 = version >= 400 ? reader.byte() : 0;
   const effects = beat.effects;
+  const noteWide: NoteWideEffects = {};
 
-  // GP3 has vibrato (0x01) and wide vibrato (0x02); later versions keep only the wide one here.
+  // 0x02 is the beat-level "wide vibrato"; 0x01 belongs to the notes (see NoteWideEffects).
   if (hasFlag(flags, 0x02)) effects.vibrato = 'wide';
-  else if (hasFlag(flags, 0x01)) effects.vibrato = 'slight';
+  if (hasFlag(flags, 0x01)) noteWide.vibrato = true;
   if (hasFlag(flags, 0x10)) effects.fadeIn = true;
   if (hasFlag(flags2, 0x01)) log.info('rasgueado-dropped', 'a rasgueado', here);
 
@@ -283,7 +303,7 @@ function readBeatEffects(
     if (type === 1) effects.tapping = true;
     else if (type === 2) effects.slapping = true;
     else if (type === 3) effects.popping = true;
-    else if (type === 0 && version < 400) {
+    else if (type === 0 && version < 400 && dip !== 0) {
       effects.whammy = {
         kind: 'dip',
         points: [
@@ -326,10 +346,10 @@ function readBeatEffects(
     else if (stroke !== 0) invalid(context, here, 'pick stroke', stroke, 'none');
   }
   if (version < 400) {
-    if (hasFlag(flags, 0x04)) return 'natural';
-    if (hasFlag(flags, 0x08)) return 'artificial';
+    if (hasFlag(flags, 0x04)) noteWide.harmonic = 'natural';
+    else if (hasFlag(flags, 0x08)) noteWide.harmonic = 'artificial';
   }
-  return undefined;
+  return noteWide;
 }
 
 type ChannelField = 'volume' | 'pan' | 'chorus' | 'reverb' | 'phaser' | 'tremolo';
