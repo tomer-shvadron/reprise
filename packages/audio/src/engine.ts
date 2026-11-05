@@ -120,6 +120,8 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   let state: PlaybackState = 'stopped';
   let run: Run | undefined;
   let anchors: Anchor[] = [];
+  /** Context time the run's first tick sounds: when a count-in ends. */
+  let runStart = 0;
   let restTick = 0;
   let tempo: { mode: TempoMode; value: number } = { mode: 'percent', value: 100 };
   let rate = 1;
@@ -152,13 +154,14 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     return Math.min(Math.max(tick, 0), Math.max(line.endTick - 1e-6, 0));
   }
 
+  /** The anchor in effect at `time`; anchors it has superseded are dropped. */
   function anchorAt(time: number): Anchor | undefined {
-    let found = anchors[0];
-    for (const anchor of anchors) {
-      if (anchor.time <= time) found = anchor;
-      else break;
+    let index = 0;
+    while (index + 1 < anchors.length && (anchors[index + 1]?.time ?? Infinity) <= time) {
+      index += 1;
     }
-    return found;
+    if (index > 0) anchors.splice(0, index);
+    return anchors[0];
   }
 
   function currentTick(): number {
@@ -175,8 +178,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     const position = positionAtSeconds(timeline.map, seconds);
     const masterBar = position && timeline.score.masterBars[position.masterBarIndex];
     if (!position || !masterBar) return;
-    const first = anchors[0];
-    const countingIn = state === 'counting-in' && first !== undefined && now < first.time;
+    const countingIn = state === 'counting-in' && now < runStart;
     emit('position', { position, masterBarId: masterBar.id, seconds, countingIn });
   }
 
@@ -241,14 +243,12 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       emit('loop', result.loop);
       if (!isRunning()) return;
     }
-    const first = anchors[0];
-    if (state === 'counting-in' && first && now >= first.time) setState('playing');
+    if (state === 'counting-in' && now >= runStart) setState('playing');
     if (run.finished && run.endTime !== undefined && now >= run.endTime) finish();
   }
 
   function frame(): void {
-    const first = anchors[0];
-    if (state === 'counting-in' && first && context.currentTime >= first.time) setState('playing');
+    if (state === 'counting-in' && context.currentTime >= runStart) setState('playing');
     emitPosition();
   }
 
@@ -261,6 +261,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       countIn: withCountIn,
     });
     anchors = [run.anchor];
+    runStart = run.anchor.time;
     cancelScheduler ??= schedulerTicker(pump);
     cancelFrames ??= frames(frame);
   }

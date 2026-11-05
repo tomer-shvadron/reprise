@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { PPQ } from '@reprise/model';
-import { note, score } from '@reprise/model/testing';
+import { PPQ, secondsAtTick } from '@reprise/model';
+import { largeScore, note, score } from '@reprise/model/testing';
 import type { ScoreBuilder } from '@reprise/model/testing';
 
 import { advance, retime, startRun } from './scheduler';
@@ -133,5 +133,63 @@ describe('advance', () => {
       { when: 2.5, accent: false, countIn: true },
     ]);
     expect(result.notes.map((n) => n.when)).toEqual([3]);
+  });
+});
+
+describe('drift', () => {
+  it('keeps every onset on the tempo map across 300 structured bars, each note once', () => {
+    const song = largeScore(8, 300, { structure: true });
+    const timeline = createTimeline(song);
+    let expected = 0;
+    for (const pass of timeline.map.passes) {
+      for (const track of song.tracks) {
+        for (const voice of track.bars[pass.masterBarIndex]?.voices ?? []) {
+          for (const beat of voice.beats) if (!beat.rest) expected += beat.notes.length;
+        }
+      }
+    }
+    const run = startRun(timeline, { tick: 0, time: 0, rate: 1, loop: undefined, countIn: false });
+    const { run: end, notes } = walk(timeline, run, 10_000);
+
+    // 596 passes (repeats every 8 bars), tempo marks every 16, a 3/4 bar every fifth.
+    expect(timeline.map.passes.length).toBeGreaterThan(300);
+    expect(notes).toHaveLength(expected);
+    let drift = 0;
+    for (const scheduled of notes) {
+      drift = Math.max(
+        drift,
+        Math.abs(scheduled.when - secondsAtTick(timeline.map, scheduled.tick)),
+      );
+      expect(scheduled.when).toBeGreaterThanOrEqual(scheduled.now);
+    }
+    expect(drift).toBeLessThan(1e-9);
+    expect(end.finished).toBe(true);
+    expect(end.endTime).toBeCloseTo(timeline.map.durationSeconds, 9);
+  });
+
+  it('keeps a loop on the grid over 300 wraps', () => {
+    const timeline = createTimeline(largeScore(1, 2));
+    const loop = { startTick: 0, endTick: 2 * BAR };
+    const passSeconds = 4;
+    let run = startRun(timeline, { tick: 0, time: 0, rate: 1, loop, countIn: false });
+    let wraps = 0;
+    let drift = 0;
+    for (let now = 0; wraps < 300; now += 0.025) {
+      for (;;) {
+        const result = advance(timeline, run, { now, horizon: now + 0.2, metronome: false });
+        run = result.run;
+        for (const scheduled of result.notes) {
+          const inPass = scheduled.tick - loop.startTick;
+          const ideal = run.loopPasses * passSeconds + secondsAtTick(timeline.map, inPass);
+          drift = Math.max(drift, Math.abs(scheduled.when - ideal));
+        }
+        if (!result.loop) break;
+        wraps += 1;
+        drift = Math.max(drift, Math.abs(result.loop.when - wraps * passSeconds));
+      }
+    }
+
+    expect(run.loopPasses).toBe(300);
+    expect(drift).toBeLessThan(1e-9);
   });
 });

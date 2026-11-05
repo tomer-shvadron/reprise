@@ -201,6 +201,84 @@ describe('AudioEngine transport (OfflineAudioContext)', () => {
     expectNothingInThePast(h.sink);
   });
 
+  it('gives a tempo set from the loop handler to the first note of the next pass', async () => {
+    const song = bars(4);
+    const h = await harness(song, 12.5);
+    const [, second, third] = song.masterBars;
+    if (!second || !third) throw new Error('fixture');
+    h.engine.setLoop({ startBar: second.id, endBar: third.id });
+    h.engine.on('loop', (loop) => {
+      if (loop.pass === 1) h.engine.setTempo('percent', 50);
+    });
+    h.engine.play();
+    await h.render();
+
+    expectTimes(
+      h.sink.notes.map((n) => n.when),
+      [...range(8, LATENCY, 0.5), ...range(8, LATENCY + 4, 1), LATENCY + 12],
+    );
+    expect(h.loops.map((loop) => [loop.pass, loop.when])).toEqual([
+      [1, expect.closeTo(LATENCY + 4, 9) as number],
+      [2, expect.closeTo(LATENCY + 12, 9) as number],
+    ]);
+    expectNothingInThePast(h.sink);
+  });
+
+  it('dispose cuts, stops the timers, drops handlers and disposes the sinks', async () => {
+    class DisposableSink extends RecordingSink {
+      disposed = 0;
+      dispose(): void {
+        this.disposed += 1;
+      }
+    }
+    const context = new OfflineAudioContext({
+      numberOfChannels: 1,
+      length: SAMPLE_RATE,
+      sampleRate: SAMPLE_RATE,
+    });
+    const sink = new DisposableSink(context);
+    const metronome = new DisposableSink(context);
+    const scheduler = manualTicker();
+    const frames = manualTicker();
+    const engine = createAudioEngine({
+      context,
+      sink,
+      metronome,
+      scheduler: scheduler.ticker,
+      frames: frames.ticker,
+      startLatency: LATENCY,
+    });
+    const states: PlaybackState[] = [];
+    engine.on('state', (state) => states.push(state));
+    await engine.load(bars(2), { tier: 'gm', packs: [] });
+    engine.play();
+    let disposedAt = 0;
+    await drive(context, {
+      tickers: [scheduler, frames],
+      actions: [
+        {
+          at: 0.5,
+          run: () => {
+            disposedAt = context.currentTime;
+            engine.dispose();
+          },
+        },
+      ],
+    });
+
+    expect(sink.cuts.map((cut) => cut.when)).toEqual([disposedAt]);
+    expect(metronome.cuts.map((cut) => cut.when)).toEqual([disposedAt]);
+    expect(sink.notes.every((n) => n.calledAt < disposedAt)).toBe(true);
+    expect(scheduler.active).toBe(0);
+    expect(frames.active).toBe(0);
+    expect(sink.disposed).toBe(1);
+    expect(metronome.disposed).toBe(1);
+    expect(states).toEqual(['playing']);
+    expect(() => {
+      engine.play();
+    }).toThrow(/load a score first/);
+  });
+
   it('restarts at the loop start on a seek past the loop end, without counting a pass', async () => {
     const song = bars(6);
     const h = await harness(song, 6);
