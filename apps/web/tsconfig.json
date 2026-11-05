@@ -1,14 +1,6 @@
 {
-  "extends": "../../tsconfig.base.json",
-  "compilerOptions": {
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "outDir": ".tsbuild"
-  },
-  "include": ["src"],
-  "references": [
-    { "path": "../../packages/model" },
-    { "path": "../../packages/formats" },
-    { "path": "../../packages/layout" },
-    { "path": "../../packages/audio" }
-  ]
+  "files": [],
+  // Duplicated from tsconfig.app.json: the shadcn CLI resolves the alias from this file only.
+  "compilerOptions": { "paths": { "@/*": ["./src/*"] } },
+  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }]
 }
