@@ -321,3 +321,90 @@ Measured on an Apple M4 Pro, Node 24, after warm-up:
 | Generated "long score", 8 tracks × 300 bars, 38,400 notes | 7.9 MB | 61 ms      | 188 ms (`readGpif`)              |
 
 About 130 to 270 MB/s and linear in size, so the parser is not where import time goes; the long score's read leaves most of the 500 ms drop-to-first-paint budget to layout. The fixture timing is asserted in `src/gp/read-gp.test.ts` with a loose bound for CI.
+
+## gp writer
+
+```ts
+import { writeGp, writeGpif } from '@reprise/formats';
+
+const { bytes, dropped } = writeGp(score); // a .gp file Guitar Pro 7 and 8 open
+const { xml } = writeGpif(score); // just the score.gpif document
+```
+
+Both are synchronous and deterministic: ids are sequential per gpif section and the zip entries carry a fixed timestamp, so one score always gives the same bytes. `dropped` lists the score features the file cannot carry, one `GpifDropped` (`{ code, message, path, count }`) per kind of loss with the first model path it was found on (`score.tracks[0].bars[2].voices[0].beats[1]`); it is what the export dialog (WP-061) shows. The `write()` dispatcher (WP-045) wraps `writeGp`.
+
+`src/gpif/write-gpif.ts` is the inverse of the reader's mapping; `write-tracks.ts`, `write-notes.ts` and `write-tempo.ts` hold the track, note and tempo parts, and `xml-writer.ts` a small serializer (escaped text, CDATA for free text, one element per line as Guitar Pro writes them). `src/gp/write-gp.ts` assembles the zip.
+
+### What is written
+
+Everything in the coverage table above that the model holds, in the shape the reader reads and Guitar Pro writes:
+
+- **Score** metadata (notices joined by line), **MasterTrack** with the track order, the pickup flag and the tempo automations: every `MasterBar.tempo` and `Beat.mix.tempo`, with its unit (`"<value> <unit>"`, the value divided back from quarter-note BPM) and label. A ramp (`Beat.mix.tempo.duration`) becomes gpif's pair: an automation at its start holding the tempo in effect and a linear one `duration` quarter notes later holding the target, which the reader turns back into the ramp.
+- **Tracks**: name, short name, colour, playback state (solo, mute), instrument set, octave transposition, channel strip (volume and pan as RSE parameters 12 and 11), sounds and `Sound` automations for `Beat.mix.program`, the raw lyric block (`dispatched` when beats carry their own lyrics), and one staff with capo, fret count, the tuning lowest string first, and a diagram collection deduplicated by structure. A drum kit lists one articulation per GM2 percussion sound (27 to 87) plus any other MIDI note the track plays; notes index it.
+- **MasterBars**: time, key, repeat with its total plays, alternate endings (on the first bar of each bracket, as gpif marks them), directions from `jumps` and `targets`, section letter and name, triplet feel, double bar.
+- **Bars** with the clef in effect on every bar, **Voices** (an empty voice is `-1`), **Beats** with a deduplicated `Rhythms` table by note value, dots and tuplet, the beat's dynamic, grace beats before their beat (`BeforeBeat`/`OnBeat`), text, chord, lyrics, fades, tremolo picking, arpeggio, brush, pick stroke, slap, pop, whammy-bar vibrato, the whammy curve and the stroke length `XProperty`.
+- **Notes**: string (counted from the lowest) and fret, the sounding `Midi` number, the concert-pitch accidental when one is stored, tapping, harmonics with their fret, dead, palm mute, bends (offsets ÷ 0.6, values × 25), slides as bit flags, both ends of a hammer-on (the origin found as the reader would search back to it), both ends of a tie, let ring, ghost, staccato and accents, vibrato, the trill as a MIDI value, and both hands' fingers (`P I M A C`). Keyboard notes carry `Midi`, plus the string and fret Guitar Pro 7 fingers them on when the track keeps a tuning, or GP6's octave and tone when it does not.
+
+### Dropped
+
+What a score can hold and gpif cannot. Practice data never reaches the writer; nothing here is practice data.
+
+| Code                    | Dropped                                                                                                                                                                                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `section-color`         | `Section.color`                                                                                                                                                                                                                                              |
+| `channel-effect`        | `channel.chorus`, `reverb`, `phaser`, `tremolo` away from 0                                                                                                                                                                                                  |
+| `mixer-change`          | `Beat.mix` volume, pan and effect changes; a second program change at one moment of a track                                                                                                                                                                  |
+| `sound-override`        | `Track.sound`, the HQ tier's assignment                                                                                                                                                                                                                      |
+| `note-dynamics`         | different dynamics on notes of one beat (gpif has one per beat; the first note's is kept)                                                                                                                                                                    |
+| `stroke-duration`       | an arpeggio's length on a beat that also has a brush (one length per beat, the brush's)                                                                                                                                                                      |
+| `fade`                  | more than one of fade in, fade out, volume swell on a beat                                                                                                                                                                                                   |
+| `tapping-without-notes` | `effects.tapping` on a beat without notes (gpif marks tapping on notes)                                                                                                                                                                                      |
+| `empty-beat`            | an empty beat (`rest: false`, no notes) becomes a rest; a voice of nothing but empty beats (GP5's unused voice) is left out                                                                                                                                  |
+| `bend-shape`            | a bend of more than four points, two middle points at different values, or a kind its curve does not show                                                                                                                                                    |
+| `whammy-shape`          | the same for a whammy curve                                                                                                                                                                                                                                  |
+| `trill-speed`           | a trill speed other than sixteenths                                                                                                                                                                                                                          |
+| `trill-range`           | a trill whose other note is past MIDI 127                                                                                                                                                                                                                    |
+| `chord-barre`           | barres that no single finger spans in the fingering, an all-empty fingering, a finger on a muted string                                                                                                                                                      |
+| `volta-bracket`         | a bracket layout the reader cannot rebuild from first-bar marks (a final ending followed by unmarked bars and a repeat end)                                                                                                                                  |
+| `anacrusis`             | `anacrusis` on a bar other than the first                                                                                                                                                                                                                    |
+| `notation`              | a drum or keyboard track not on standard notation; a fretted track with a non-guitar program on standard notation only (it gets tablature, or it would read back as a keyboard); a keyboard track with a guitar program and a tuning (it reads back fretted) |
+| `capo`                  | a capo on a drum or keyboard track                                                                                                                                                                                                                           |
+| `tempo-ramp`            | a ramp cut short by the next change, ending past the score, between beats, or on a different mark; written as a step                                                                                                                                         |
+| `tempo-collision`       | two different tempo changes at one moment; playback's winner is written                                                                                                                                                                                      |
+| `notices`               | a lone empty notice, or one holding a line break                                                                                                                                                                                                             |
+| `text-characters`       | characters XML cannot hold (C0 controls, lone surrogates), removed                                                                                                                                                                                           |
+
+`fullScore()` drops exactly `section-color`, `channel-effect`, `sound-override`, `chord-barre`, `mixer-change`, `stroke-duration`, `note-dynamics` and `trill-speed`; the gp fixtures and `largeScore()` drop nothing.
+
+### The zip
+
+The entries and their order are Guitar Pro 7's own (`unzip -l` on the fixtures): `Content/` (stored), `Content/BinaryStylesheet`, `Content/LayoutConfiguration`, `Content/PartConfiguration`, `Content/Preferences.json`, `Content/score.gpif`, `VERSION` (`7.0`). The non-score entries are **generated**, not copied: the fixtures' entries are Guitar Pro's own boilerplate, but they come from MPL-licensed test data and a generated entry is small and says only what we mean.
+
+- `PartConfiguration`: the full score view with one flag byte per track (1 standard, 2 tablature), then one single-track view per track and the selected view, as Guitar Pro writes it. It carries `display.notation` and half of the reader's keyboard-track rule.
+- `LayoutConfiguration`: zoom 4, page view, then a visibility byte for each track in each of those views, then the selected track; the shape of every fixture's entry.
+- `BinaryStylesheet`: fifteen page and system settings with the values Guitar Pro 7 writes by default (the fixtures carry about 590); Guitar Pro fills the rest from its defaults, as it does for alphaTab's exports, which write about a dozen.
+- `Preferences.json`: the playback preferences of a new file, every option off. The reference sketch calls it `Preferences.xml`; every fixture has `Preferences.json`.
+
+### Verification
+
+There is no Guitar Pro here, so two readers stand in for it (`test/gp-writer.test.ts`, `test/gp-writer-oracle.test.ts`):
+
+- **Round trip through our reader**: every gp fixture, `largeScore()` plain and structured, and a hand-built score with every feature gpif can carry on all three track kinds (`test/kitchen-sink.ts`) read back equal, with nothing dropped; `fullScore()` reads back equal to itself with exactly its known losses applied; every gp3, gp4 and gp5 fixture exports with only the losses above (marker colours, GP5's empty voices, long bend curves). The comparison (`test/gp-round-trip.ts`) normalises only what the reader legitimately places differently: ids, clefs as the clef in effect per bar, tempo and program changes as one list per moment (a beat-level change can come back on another track's beat at the same moment, and a ramp's end comes back as a mark), slide flags and barres as sets, and floats to 1e-6.
+- **alphaTab** (1.8.4, dev-only) loads every written file with the same tracks, bars, notes, track names and opening tempo, and the same sounding pitches beat by beat in every voice, for all 22 fixtures, `fullScore()`, the kitchen-sink score and a structured `largeScore()`.
+- Every drop code has its own test, and the zip's entry list, part configuration and layout sizes are checked.
+
+Measured on an Apple M4 Pro, Node 24, after warm-up:
+
+| Input                              | gpif    | `writeGpif` | `writeGp` (with deflate) | `.gp` size |
+| ---------------------------------- | ------- | ----------- | ------------------------ | ---------- |
+| `drum-tabs.gp`, read then written  | 68 KB   | 0.7 ms      | 1.3 ms                   | 6 KB       |
+| `largeScore(8, 300)`, 38,400 notes | 11.8 MB | 126 ms      | 231 ms                   | 495 KB     |
+
+The large-score timing and size are asserted with loose bounds for CI.
+
+### Known gaps
+
+- **Guitar Pro itself has not opened these files.** alphaTab's acceptance is the proxy. The parts most likely to matter to Guitar Pro and not to alphaTab: the drum kit's single `Drums` element (Guitar Pro groups articulations by drum element, with its own element types), the sound paths (`Midi/<program>`, no RSE bank), and the absent page layout and score view elements. A check in a real Guitar Pro 7 or 8 is an open question on the PR.
+- Our reader reports three `not-modelled` warnings on every file the writer makes (`RSE`, `MidiConnection`, `AudioEngineState`): elements written for Guitar Pro's playback that the model does not keep. A ramp that starts mid-bar also draws the reader's "starts from the tempo before it" warning, though it comes back where it was.
+- A keyboard track's notes are fingered on the highest string that reaches them, for Guitar Pro's tablature view; the reader ignores the fingering.
+- Volta numbers are written on each bracket's first bar; a bracket the reader would carry too far is written on every bar, which Guitar Pro draws as separate brackets.
