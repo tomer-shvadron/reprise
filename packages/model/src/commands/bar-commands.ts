@@ -124,8 +124,8 @@ function assertColumnFits(
   after: MasterBar,
   command: string,
 ): void {
-  const oldCapacity = barTicks(before.timeSignature) + TICK_EPSILON;
-  const capacity = barTicks(after.timeSignature) + TICK_EPSILON;
+  const oldCapacity = barTicks(before) + TICK_EPSILON;
+  const capacity = barTicks(after) + TICK_EPSILON;
   if (capacity >= oldCapacity) return;
   for (const track of score.tracks) {
     for (const voice of track.bars[index]?.voices ?? []) {

@@ -25,7 +25,7 @@ formats  -> model
 layout   -> model
 audio    -> model
 web      -> model, formats, layout, audio
-desktop  -> (nothing from packages; talks to web through the preload bridge)
+desktop  -> web (types only, for the preload bridge)
 model    -> (no workspace dependencies)
 ```
 
@@ -76,78 +76,134 @@ The lanes code against these. They are frozen at the end of the model-core phase
 
 ### Score model (`@reprise/model`)
 
+Implemented in WP-010 as Zod schemas with the types derived from them, node factories,
+`newId()` and `validateScore()`; `packages/model/README.md` records the modelling decisions.
+WP-011 to WP-014 add timing, commands, the native envelope and pitch helpers to the same
+package, and **the contract freezes at WP-015**. The `.reprise` envelope's `version` is the
+only version field: `Score.version` is removed in WP-013, when the envelope is defined, and
+`SCORE_VERSION` stays exported for it.
+
+Optional fields are exact: absent means "not set", and an explicit `undefined` is rejected.
+Ranges below are the schemas' (`1..32` is an inclusive integer range); enumerations are
+written out where a lane needs the exact set.
+
 ```ts
-type Id = string; // stable, assigned on creation or import
+type Id = string;                // 12 base62 characters from newId(); every node has one except grace beats
+type Color = string;             // lower-case #rrggbb
 
 interface Score {
   id: Id;
-  version: number;              // native schema version
-  meta: { title; subtitle; artist; album; words; music; copyright; tab; instructions; notices[] };
-  masterBars: MasterBar[];      // one per bar position, shared by all tracks
-  tracks: Track[];
+  version: 1;                    // removed in WP-013; the .reprise envelope carries the version
+  meta: { title; subtitle; artist; album; words; music; copyright; tab; instructions; notices: string[] };
+  masterBars: MasterBar[];       // at least one; one per bar position, shared by every track
+  tracks: Track[];               // at least one
+}
+
+interface TempoMark {
+  bpm: number;                   // always per quarter note, whatever `unit` displays
+  unit?: 'eighth' | 'quarter' | 'dottedQuarter' | 'half' | 'dottedHalf';   // display only; absent = quarter
+  label?: string;
 }
 
 interface MasterBar {
   id: Id;
-  timeSignature: { numerator; denominator };
-  keySignature: { fifths: number; minor: boolean };
-  tempo?: { bpm: number; label?: string };     // tempo change at this bar
-  repeat: { start: boolean; endCount: number }; // endCount 0 = no repeat end
-  alternateEndings: number[];                   // volta numbers this bar belongs to
-  jump?: { kind: 'segno' | 'coda' | 'dsAlCoda' | 'dsAlFine' | 'dcAlCoda' | 'dcAlFine' | 'fine' | 'toCoda' | 'doubleCoda' };
-  section?: { name: string; letter?: string };
-  tripletFeel?: 'none' | 'eighth' | 'sixteenth';
+  timeSignature: { numerator: 1..32; denominator: 1 | 2 | 4 | 8 | 16 | 32 };
+  keySignature: { fifths: -7..7; minor: boolean };    // sharps positive, flats negative
+  tempo?: TempoMark;                                   // a change at the start of this bar
+  repeat: { start: boolean; endCount: number };        // total plays of the section, 2 = play twice; 0 = no repeat end
+  alternateEndings: number[];                          // volta numbers 1..8, ascending
+  jumps: { kind: JumpKind }[];                         // read at the end of the bar; usually none or one, applied in order
+  targets: ('segno' | 'segnoSegno' | 'coda' | 'doubleCoda' | 'fine')[];   // where a jump lands, or stops
+  section?: { name: string; letter?: string; color?: Color };
+  tripletFeel: 'none' | 'eighth' | 'sixteenth' | 'dottedEighth' | 'dottedSixteenth' | 'scottishEighth' | 'scottishSixteenth';
   doubleBar: boolean;
+  anacrusis: boolean;                                  // pickup bar: not counted, skipped by the count-in
 }
+type JumpKind =
+  | 'daCapo' | 'dcAlCoda' | 'dcAlDoubleCoda' | 'dcAlFine'
+  | 'dalSegno' | 'dsAlCoda' | 'dsAlDoubleCoda' | 'dsAlFine'
+  | 'dalSegnoSegno' | 'dssAlCoda' | 'dssAlDoubleCoda' | 'dssAlFine'
+  | 'toCoda' | 'toDoubleCoda';
 
 interface Track {
   id: Id;
-  name: string; shortName: string; color: string;
+  name: string; shortName: string; color: Color;
   kind: 'fretted' | 'drums' | 'pitched';
-  tuning: number[];             // MIDI note per string, low to high; empty for drums/pitched
+  tuning: number[];              // open-string MIDI notes, lowest string first, up to 10; empty on drums.
+                                 // A GP5 keyboard track (program outside GM 24..39 and 104..107, channel not
+                                 // percussion) is read as pitched and keeps its tuning and fretCount for gp5 export
   capo: number;
-  program: number; bank: number; // GM program and bank
-  channel: { volume; pan; chorus; reverb; phaser; tremolo };
-  display: { notation: 'tab' | 'standard' | 'both'; clef?: 'treble' | 'bass' };
-  sound?: { packId?: Id; preset?: string };    // HQ override, absent = GM tier
-  bars: Bar[];                  // same length as masterBars
+  fretCount: number;             // 24 by default; 0 on drums
+  program: number; bank: number; // GM program 0..127 and bank 0..16383; on drums, program is the GM2 kit
+  channel: { volume; pan; chorus; reverb; phaser; tremolo; mute: boolean; solo: boolean };   // 0..127, pan 64 = centre
+  display: { notation: 'tab' | 'standard' | 'both'; clef?: Clef };
+  sound?: { packId?: Id; preset?: string };       // HQ tier assignment; absent = the GM tier plays `program`
+  lyrics: { startBar: number; text: string }[];   // the raw Guitar Pro block, up to five lines; startBar is 0-based
+  bars: Bar[];                   // one per master bar, same order
 }
+type Clef = 'treble' | 'bass' | 'alto' | 'tenor' | 'percussion';
 
-interface Bar   { id: Id; voices: [Voice, Voice, Voice, Voice]; clef?: 'treble' | 'bass' }
+interface Bar   { id: Id; voices: [Voice, Voice, Voice, Voice]; clef?: Clef }   // always four; unused voices have no beats
 interface Voice { id: Id; beats: Beat[] }
 
 interface Beat {
   id: Id;
-  duration: 1 | 2 | 4 | 8 | 16 | 32 | 64;
+  duration: 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256;   // denominator; gpif's range, GP5 stops at 64
   dots: 0 | 1 | 2;
-  tuplet?: { n: number; of: number };
+  tuplet?: { n: number; of: number };                    // n in the time of `of`; a triplet is { n: 3, of: 2 }
   rest: boolean;
-  notes: Note[];
-  text?: string; chordName?: string; chordDiagram?: ChordDiagram;
-  effects: { tremoloPicking?: 8|16|32; pickStroke?: 'up'|'down'; fadeIn?: boolean; tapping?: boolean; slapping?: boolean; popping?: boolean; arpeggio?: 'up'|'down'; brush?: 'up'|'down'; vibrato?: boolean; wideVibrato?: boolean };
-  grace?: { notes: Note[]; duration: 16|32|64; before: boolean };
-  mix?: { volume?; pan?; tempo?; ... };        // mixer changes stored for fidelity
-  lyrics?: string[];                             // one per lyric line
+  notes: Note[];                 // empty with rest false is Guitar Pro's empty beat
+  text?: string;
+  chord?: { name: string; diagram?: ChordDiagram };     // the name alone is a chord written above the beat
+  effects: {
+    tremoloPicking?: 8 | 16 | 32; pickStroke?: 'up' | 'down';
+    fadeIn?: boolean; fadeOut?: boolean; volumeSwell?: boolean; tapping?: boolean; slapping?: boolean; popping?: boolean;
+    arpeggio?: Stroke; brush?: Stroke;
+    vibrato?: 'none' | 'slight' | 'wide';
+    whammy?: { kind: 'dive' | 'dip' | 'invertedDip' | 'return' | 'releaseUp' | 'releaseDown' | 'hold' | 'custom'; points: BendPoint[] };
+  };
+  grace?: { duration: 16 | 32 | 64; before: boolean; notes: Note[] }[];
+  mix?: {                        // mixer changes kept for fidelity, applied by playback from this beat on
+    program?: number;
+    volume?: ChannelMixChange; pan?: ChannelMixChange; chorus?: ChannelMixChange;
+    reverb?: ChannelMixChange; phaser?: ChannelMixChange; tremolo?: ChannelMixChange;
+    tempo?: TempoMark & { duration?: number };
+  };
+  lyrics?: string[];             // one syllable per lyric line, index = line, up to five; '' where a line has none
 }
+interface Stroke           { direction: 'up' | 'down'; duration?: 4 | 8 | 16 | 32 | 64 | 128 }   // spread of the stroke
+interface ChannelMixChange { value: number; duration?: number; allTracks?: boolean }   // value 0..127; duration in beats, absent = immediate
+interface BendPoint        { position: number; value: number }   // position 0..60 across the note's duration; value in quarter tones; a bend or whammy has at least two
+
+interface ChordDiagram {
+  baseFret: number;              // first fret shown in the grid; frets stay absolute
+  frets: (number | null)[];      // one per string, string 1 first; null = muted, 0 = open
+  barres?: { fret: number; firstString: number; lastString: number }[];
+  fingering?: (Finger | null)[]; // parallel to frets
+}
+type Finger = 'thumb' | 'index' | 'middle' | 'ring' | 'little';
 
 interface Note {
   id: Id;
-  string: number;               // 1 = highest-pitched string, as in Guitar Pro
-  fret: number;                 // or MIDI note for pitched/drums
+  string: number;                // 1 = highest-pitched string, as in Guitar Pro; always 0 on drum and pitched tracks
+  fret: number;                  // fret on fretted tracks; the MIDI note on drum and pitched tracks
   tie: boolean; dead: boolean; ghost: boolean; accent: 'none' | 'accent' | 'heavy'; staccato: boolean;
-  bend?: { kind: 'bend' | 'bendRelease' | 'bendReleaseBend' | 'prebend' | 'prebendRelease'; points: { position: number; value: number }[] };
+  bend?: { kind: 'bend' | 'bendRelease' | 'bendReleaseBend' | 'prebend' | 'prebendBend' | 'prebendRelease' | 'release' | 'hold' | 'custom'; points: BendPoint[] };
   slide?: ('shift' | 'legato' | 'intoFromBelow' | 'intoFromAbove' | 'outDown' | 'outUp')[];
-  hammerPull: boolean;          // this note is hammered/pulled from the previous
+  hammerPull: boolean;           // hammered on or pulled off from the previous note on the string; readers move GP5's origin flag here
   vibrato: 'none' | 'slight' | 'wide';
   palmMute: boolean; letRing: boolean;
-  harmonic?: { kind: 'natural' | 'artificial' | 'tapped' | 'pinch' | 'semi'; value?: number };
-  trill?: { fret: number; speed: 16|32|64 };
-  leftHandFinger?: number; rightHandFinger?: number;
-  dynamics: 'ppp'|'pp'|'p'|'mp'|'mf'|'f'|'ff'|'fff';
+  harmonic?: { kind: 'natural' | 'artificial' | 'tapped' | 'pinch' | 'semi' | 'feedback'; value?: number };   // value is the fret, fractional where needed
+  trill?: { fret: number; speed: 16 | 32 | 64 };
+  leftHandFinger?: Finger; rightHandFinger?: Finger;
+  dynamics: 'ppp' | 'pp' | 'p' | 'mp' | 'mf' | 'f' | 'ff' | 'fff';
+  accidental?: 'doubleFlat' | 'flat' | 'natural' | 'sharp' | 'doubleSharp';   // explicit spelling; absent = from the key
 }
 ```
 
-Plus pure helpers: tick math at 960 PPQ, bar duration from time signature, tuplet scaling, `expandPlaybackSequence(score)` returning the ordered list of master-bar indices with repeat and jump semantics, `tempoMap(score, sequence)` mapping ticks to seconds, `pitchOf(track, note)` returning a MIDI note with tuning and capo, and spelling helpers for standard notation.
+`validateScore(score)` returns the cross-node violations the schemas cannot express: unique ids, one bar per master bar, the track-kind constraints, no overfull voice, no notes on a rest, string ranges and no two notes on one string, tie targets, the tuplet window (strictly between 1:2 and 2:1, not 1:1), chord diagrams with one fret per string, and voltas unique, ascending and inside a repeat. The table with each rule's exact check is in `packages/model/README.md`.
+
+Still to come in the same package: tick math at 960 PPQ and bar duration from the time signature (internal today, published by WP-011), `expandPlaybackSequence(score)` returning the ordered list of master-bar indices with repeat and jump semantics and `tempoMap(score, sequence)` mapping ticks to seconds (WP-011), `pitchOf(track, note)` returning a MIDI note with tuning and capo and the spelling helpers for standard notation (WP-014).
 
 ### Commands and history (`@reprise/model`)
 

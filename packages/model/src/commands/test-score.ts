@@ -15,7 +15,6 @@ import { createHistory } from '../history';
 import type { Applied, Command } from '../history';
 import { newId } from '../id';
 import type { Note } from '../note';
-import { SCORE_VERSION } from '../score';
 import type { Score } from '../score';
 import { validateScore } from '../validate';
 import { CommandError } from './command-error';
@@ -64,7 +63,6 @@ export function buildScore(): Score {
   });
   return {
     id: newId(),
-    version: SCORE_VERSION,
     meta: createScoreMeta(),
     masterBars,
     tracks: [guitar, drums],
