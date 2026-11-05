@@ -53,7 +53,7 @@ jobs:
       # The postinstall fetches the browser only; the audio tests' headless Chromium also needs
       # its system libraries, which only `--with-deps` installs on the runner.
       - name: Install Chromium and its system dependencies
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium --only-shell
 
       - name: Lint
         run: pnpm lint
