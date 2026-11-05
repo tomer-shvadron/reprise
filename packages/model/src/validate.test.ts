@@ -311,6 +311,20 @@ describe('validateScore', () => {
       expect(rules(scoreOf([guitar(bar)]))).toEqual(['tie-target']);
     });
 
+    it('counts an anacrusis bar as one of the three', () => {
+      const held = (gap: number): Bar[] => [
+        barWith(quarter(6, 3)),
+        ...Array.from({ length: gap }, () => barWith(quarter(1, 1))),
+        barWith(quarter(6, 3, true)),
+      ];
+      const pickup = (count: number): MasterBar[] => [
+        createMasterBar({ anacrusis: true }),
+        ...Array.from({ length: count - 1 }, () => createMasterBar()),
+      ];
+      expect(rules(scoreOf([guitar(...held(2))], pickup(4)))).toEqual([]);
+      expect(rules(scoreOf([guitar(...held(3))], pickup(5)))).toEqual(['tie-target']);
+    });
+
     it('rejects a tie to a different string, to a rest, and across an empty previous bar', () => {
       expect(rules(scoreOf([guitar(barWith(quarter(2), quarter(3, 0, true)))]))).toEqual([
         'tie-target',

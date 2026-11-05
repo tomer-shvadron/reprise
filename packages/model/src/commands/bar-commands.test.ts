@@ -274,4 +274,10 @@ describe('held ties across bar edits', () => {
     const { score: after } = roundTrip(score, removeBar({ masterBarId: masterBar(score, 1).id }));
     expect(noteOf(after, 0, 1, 1)).toMatchObject({ string: 2, fret: 5, tie: true });
   });
+
+  it('keeps a chain that a new first bar shifts whole', () => {
+    const score = buildHeldScore();
+    const { score: after } = roundTrip(score, insertBar({ index: 0 }));
+    expect([noteOf(after, 0, 2, 0).tie, noteOf(after, 0, 3, 1).tie]).toEqual([true, true]);
+  });
 });

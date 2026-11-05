@@ -11,7 +11,15 @@ import {
   shiftStrings,
   transposeSelection,
 } from './note-commands';
-import { beatOf, buildHeldScore, buildScore, expectRefusal, noteOf, roundTrip } from './test-score';
+import {
+  beatOf,
+  buildHeldPianoScore,
+  buildHeldScore,
+  buildScore,
+  expectRefusal,
+  noteOf,
+  roundTrip,
+} from './test-score';
 
 describe('setNote', () => {
   it('replaces the note on the same string, keeping its id', () => {
@@ -337,5 +345,51 @@ describe('held ties under a melody', () => {
     );
     expect(noteOf(after, 0, 1, 1)).toMatchObject({ string: 2, fret: 12 });
     expect(noteOf(after, 0, 2, 1).tie).toBe(false);
+  });
+
+  it('lets a note set tied on the held fret join the chain, which a new fret then reaches', () => {
+    const score = buildHeldScore();
+    const beatId = beatOf(score, 0, 1, 2).id;
+    const { score: joined } = roundTrip(
+      score,
+      setNote({ beatId }, { string: 2, fret: 5, tie: true }),
+    );
+    expect(noteOf(joined, 0, 1, 2, 1)).toMatchObject({ string: 2, fret: 5, tie: true });
+    expect(noteOf(joined, 0, 2, 1).tie).toBe(true);
+    const { score: moved } = roundTrip(
+      joined,
+      setNote({ beatId: beatOf(joined, 0, 0, 0).id }, { string: 2, fret: 8 }),
+    );
+    const chain = [noteOf(moved, 0, 1, 0), noteOf(moved, 0, 1, 2, 1), noteOf(moved, 0, 2, 1)];
+    expect(chain.map(({ fret, tie }) => ({ fret, tie }))).toEqual([
+      { fret: 8, tie: true },
+      { fret: 8, tie: true },
+      { fret: 8, tie: true },
+    ]);
+  });
+
+  it('releases the first link when the origin moves string, and re-links the second to it', () => {
+    const score = buildHeldScore();
+    const { score: after } = roundTrip(
+      score,
+      shiftStrings({ noteIds: [noteOf(score, 0, 0, 0).id] }, 'higher'),
+    );
+    expect(noteOf(after, 0, 0, 0)).toMatchObject({ string: 1, fret: 0 });
+    expect(noteOf(after, 0, 1, 0).tie).toBe(false);
+    expect(noteOf(after, 0, 2, 1).tie).toBe(true);
+  });
+
+  it('moves a pitched chain, whose slot is the MIDI note', () => {
+    const score = buildHeldPianoScore();
+    const { score: after } = roundTrip(
+      score,
+      transposeSelection({ noteIds: [noteOf(score, 0, 0, 0).id] }, 2),
+    );
+    const chain = [noteOf(after, 0, 0, 0), noteOf(after, 0, 1, 1), noteOf(after, 0, 2, 0)];
+    expect(chain.map(({ fret, tie }) => ({ fret, tie }))).toEqual([
+      { fret: 62, tie: false },
+      { fret: 62, tie: true },
+      { fret: 62, tie: true },
+    ]);
   });
 });

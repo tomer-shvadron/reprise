@@ -86,3 +86,20 @@ export function buildHeldScore(): Score {
     .bar()
     .build();
 }
+
+/** A piano holding middle C under a melody: struck in bar 0, tied in bars 1 and 2. */
+export function buildHeldPianoScore(): Score {
+  return score()
+    .tempo(120)
+    .track('piano')
+    .bar()
+    .beat('4', [midi(60)])
+    .beat('4', [midi(64)])
+    .beat('2', [midi(67)])
+    .bar()
+    .beat('4', [midi(64)])
+    .beat('4', [midi(60, { tie: true })])
+    .bar()
+    .beat('4', [midi(60, { tie: true })])
+    .build();
+}

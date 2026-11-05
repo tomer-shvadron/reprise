@@ -30,6 +30,8 @@ describe('newId', () => {
     }
   });
 
+  // Loose on purpose: one `getRandomValues` call per id took about 80 ms here, so this catches
+  // only a gross regression, and a slow CI box must not fail it.
   it('makes 100k ids well under a second', () => {
     const start = Date.now();
     for (let i = 0; i < 100_000; i++) newId();
