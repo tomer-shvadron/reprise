@@ -74,6 +74,8 @@ file bytes --formats.read--> Score --------+--> layout.layout(score, options) --
 
 **Frozen on 2026-11-05 at WP-015.** Changes after this date are `type:contract` issues owned by the lead.
 
+Changed by #62 (2026-11-05): a tie's origin is the most recent note on its string in its voice within three bars, not only the previous beat (`tieOriginOf`, `TIE_REACH_BARS`); `newId()` draws its random bytes from a pooled buffer, with the same format and distribution.
+
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
 
 **Diagnostics** carry kebab-case identifiers. An invariant violation keys its kind as `rule` (`Violation`); a warning or an error keys it as `code` (`ParseWarning`, `PlaybackWarning`, `CommandWarning`, `CommandError`, `NativeFormatError`). Model enum values (`slight`, `doubleFlat`, `belowOpenString`) stay camelCase: they are data, not diagnostics.
@@ -180,7 +182,7 @@ interface Note {
   id: Id;
   string: number;                // 1 = highest-pitched string, as in Guitar Pro; always 0 on drum and pitched tracks
   fret: number;                  // 0..127: fret on fretted tracks; the MIDI note on drum and pitched tracks
-  tie: boolean;                  // continues the previous note on the same string, at the same fret
+  tie: boolean;                  // continues the most recent note on the same string in its voice, at the same fret (see tieOriginOf)
   dead: boolean; ghost: boolean; accent: 'none' | 'accent' | 'heavy'; staccato: boolean;
   bend?: { kind: 'bend' | 'bendRelease' | 'bendReleaseBend' | 'prebend' | 'prebendBend' | 'prebendRelease' | 'release' | 'hold' | 'custom'; points: BendPoint[] };
   slide?: ('shift' | 'legato' | 'intoFromBelow' | 'intoFromAbove' | 'outDown' | 'outUp')[];
@@ -205,9 +207,16 @@ type ViolationRule =
   | 'duplicate-id' | 'first-bar-tempo' | 'bar-count' | 'track-kind' | 'voice-overfull' | 'rest-with-notes'
   | 'string-range' | 'fret-range' | 'duplicate-string' | 'tie-target' | 'tie-pitch' | 'tuplet' | 'dots'
   | 'chord-diagram' | 'alternate-ending-order' | 'alternate-ending-outside-repeat';
+
+const TIE_REACH_BARS = 3;
+interface TiePosition { bar: number; voice: number; beat: number }   // indices within one track
+interface TieLink { note: Note; bar: number; beat: number }
+function tieOriginOf(track: Pick<Track, 'kind' | 'bars'>, at: TiePosition, note: Pick<Note, 'string' | 'fret'>): TieLink | undefined;
 ```
 
 `validateScore` assumes schema-valid input and checks what the schemas cannot express: unique ids, a tempo mark on the first bar, one bar per master bar, the track-kind constraints, no overfull voice (incomplete bars are allowed), no notes on a rest, string and fret ranges, no two notes on one string, tie targets and tied notes on their origin's fret, the tuplet window (strictly between 1:2 and 2:1, not 1:1), chord diagrams with one fret per string, and voltas unique, ascending and inside a repeat. The table with each rule's exact check is in `packages/model/README.md`.
+
+A tied note's origin (`tieOriginOf`) is the most recent note in its slot (its string; its MIDI note on drum and pitched tracks) in the same voice, searching back from the previous beat to the start of the bar `TIE_REACH_BARS` (three, alphaTab's bound) before its own. Rests and notes on other strings in between are passed over; a note on the same string in between is itself the origin, so it ends the hold. Grace notes are never origins. `tie-target` fails when there is no origin, `tie-pitch` when the origin is on another fret, and the command layer's tie chains follow the same definition.
 
 ### Timing (`@reprise/model`)
 
@@ -296,7 +305,7 @@ setTrackProperties({ trackId }, TrackChanges);              addTrack({ kind, ind
 removeTrack({ trackId });                                   moveTrack({ trackId }, index: number);
 ```
 
-Every command factory returns a `Command`. A command that would break the schema or add a `validateScore` violation throws `CommandError` and nothing is applied; a tie whose origin an edit removes or moves is released instead. Results are frozen by Immer, and the input with them. The per-command behaviour and the `touchedBars` rule are in `../reference/score-model.md` and the header of `packages/model/src/history.ts`.
+Every command factory returns a `Command`. A command that would break the schema or add a `validateScore` violation throws `CommandError` and nothing is applied; a tie whose origin an edit removes, moves to another pitch or puts out of reach is released instead. Results are frozen by Immer, and the input with them. The per-command behaviour and the `touchedBars` rule are in `../reference/score-model.md` and the header of `packages/model/src/history.ts`.
 
 ### Native format (`@reprise/model`)
 
