@@ -15,6 +15,19 @@ export function glyphMetrics(name: GlyphName): GlyphMetrics {
   return bravura.glyphs[name];
 }
 
+/** A SMuFL anchor of the glyph (`stemUpSE`, `stemDownNW`, ...), in staff spaces, y up. */
+export function glyphAnchor(
+  name: GlyphName,
+  anchor: string,
+): readonly [number, number] | undefined {
+  const entry = bravura.glyphs[name];
+  const anchors: Partial<Record<string, readonly number[]>> =
+    'anchors' in entry ? entry.anchors : {};
+  const point = anchors[anchor];
+  const [x, y] = point ?? [];
+  return x === undefined || y === undefined ? undefined : [x, y];
+}
+
 /** Bravura's engraving defaults, in staff spaces. */
 export const engraving = bravura.engravingDefaults;
 

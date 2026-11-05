@@ -33,6 +33,25 @@ describe('layout budget', () => {
     expect(cold).toBeLessThan(COLD_BUDGET_MS);
   });
 
+  it(`lays out the long score in standard notation cold in under ${String(COLD_BUDGET_MS)} ms`, async ({
+    annotate,
+  }) => {
+    // A fresh score each run, so the staff modules' per-bar memo starts empty.
+    const scores = Array.from({ length: RUNS }, () => largeScore(8, 300, { structure: true }));
+    const times = scores.map(
+      (fresh) =>
+        layout(fresh, {
+          ...options,
+          notation: Object.fromEntries(fresh.tracks.map(({ id }) => [id, 'standard' as const])),
+        }).metrics.layoutMs,
+    );
+    const cold = median(times);
+    await annotate(
+      `cold standard-notation layout of 8 tracks x 300 bars: median ${String(cold)} ms of ${times.join(', ')}`,
+    );
+    expect(cold).toBeLessThan(COLD_BUDGET_MS);
+  });
+
   it('re-lays out a single-note edit from the cache', async ({ annotate }) => {
     const cache = new LayoutCache();
     layout(long, options, cache);
