@@ -4,7 +4,7 @@ A Guitar Pro style tab player, trainer and editor for the desktop. Built so one 
 
 Reprise opens Guitar Pro files (gp3, gp4, gp5, gpx, gp), renders them as tab with rhythm notation or standard notation, plays them back with sampled instruments at any tempo, loops sections for practice, and lets you write and edit tabs. It runs as an Electron app on macOS, with Windows builds in CI.
 
-Status: **planning complete, implementation not started.** See `docs/plans/roadmap.md` for what comes next.
+Status: **foundation in progress.** See `docs/plans/roadmap.md` for what comes next.
 
 ## Documentation
 
@@ -23,12 +23,24 @@ Everything about what Reprise is and why it is built the way it is lives under [
 
 ## Commands
 
-Not yet available; they arrive with the foundation phase. The intended set:
+Run from the repository root after `pnpm install`.
 
 ```
-pnpm dev            # web app in the browser
-pnpm desktop:dev    # the Electron app
-pnpm lint
-pnpm typecheck
-pnpm test
+pnpm lint           # ESLint, including the package boundary rules; fails on any warning
+pnpm typecheck      # tsc -b across every package, incremental
+pnpm test           # Vitest, every package as its own project
+pnpm test:watch
+pnpm format         # Prettier; format:check verifies without writing
 ```
+
+Not yet available (each prints a notice and exits successfully until its work package lands):
+
+```
+pnpm dev            # web app in the browser (WP-003)
+pnpm build          # web app build (WP-003)
+pnpm desktop:dev    # the Electron app (WP-004)
+pnpm desktop:build  # the Electron package (WP-004)
+pnpm e2e            # Playwright against the Electron build (WP-004)
+```
+
+`pnpm install` also downloads the Playwright Chromium build that the `audio` tests run in.

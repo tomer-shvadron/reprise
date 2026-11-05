@@ -1,0 +1,5 @@
+pnpm-lock.yaml
+**/.tsbuild/
+coverage/
+local-tabs/
+docs/
