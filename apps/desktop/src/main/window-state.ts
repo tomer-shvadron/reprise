@@ -62,8 +62,6 @@ export function fitToDisplays(state: WindowState, workAreas: readonly Rect[]): W
   return fitted;
 }
 
-// Synchronous so the final save on window close completes before the app quits.
-
 export function readWindowState(file: string): WindowState | undefined {
   try {
     return parseWindowState(JSON.parse(readFileSync(file, 'utf8')));
@@ -72,6 +70,7 @@ export function readWindowState(file: string): WindowState | undefined {
   }
 }
 
+// Synchronous so the final save on window close completes before the app quits.
 export function writeWindowState(file: string, state: WindowState): void {
   const { position, ...size } = state;
   mkdirSync(dirname(file), { recursive: true });

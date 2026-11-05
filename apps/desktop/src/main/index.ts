@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   app,
@@ -17,6 +17,7 @@ import {
 
 import type { FileFilter, MenuCommandId } from '@reprise/web';
 
+import { isAppUrl } from './app-url';
 import { registerInvokeHandlers, sendEvent } from './ipc';
 import { menuTemplate } from './menu';
 import { PathAccess } from './path-access';
@@ -32,7 +33,9 @@ import {
 const DOCS_URL = 'https://github.com/tomer-shvadron/reprise/tree/main/docs';
 const PRELOAD = fileURLToPath(new URL('../preload/index.cjs', import.meta.url));
 const RENDERER_HTML = fileURLToPath(new URL('../renderer/index.html', import.meta.url));
-const RENDERER_URL = process.env['ELECTRON_RENDERER_URL'];
+// Only a development build follows the dev server; a shipped app must not be pointed elsewhere.
+const RENDERER_URL = app.isPackaged ? undefined : process.env['ELECTRON_RENDERER_URL'];
+const APP_URL = RENDERER_URL ?? pathToFileURL(RENDERER_HTML).href;
 
 const libraryDir = join(app.getPath('music'), 'Reprise');
 const dataDir = app.getPath('userData');
@@ -47,9 +50,12 @@ function assertAccess(path: string): void {
 }
 
 function isTrusted(event: IpcMainInvokeEvent): boolean {
+  const frame = event.senderFrame;
   return (
-    BrowserWindow.fromWebContents(event.sender) !== null &&
-    event.senderFrame === event.sender.mainFrame
+    frame !== null &&
+    frame === event.sender.mainFrame &&
+    isAppUrl(APP_URL, frame.url) &&
+    BrowserWindow.fromWebContents(event.sender) !== null
   );
 }
 
@@ -141,8 +147,8 @@ function restrictNavigation(window: BrowserWindow): void {
     if (url.startsWith('https://')) void shell.openExternal(url);
     return { action: 'deny' };
   });
-  window.webContents.on('will-navigate', (event) => {
-    event.preventDefault();
+  window.webContents.on('will-navigate', (event, url) => {
+    if (!isAppUrl(APP_URL, url)) event.preventDefault();
   });
 }
 
@@ -184,6 +190,7 @@ function allowMicrophoneOnly(): void {
     const audioOnly =
       permission === 'media' &&
       'mediaTypes' in details &&
+      details.mediaTypes.length > 0 &&
       details.mediaTypes.every((type) => type === 'audio');
     if (!audioOnly) {
       callback(false);

@@ -15,6 +15,9 @@ function pickerTypes(filters: readonly FileFilter[]): FilePickerAcceptType[] {
   }));
 }
 
+// The DOM lib takes views over a plain ArrayBuffer; a copy rules out a SharedArrayBuffer-backed one.
+const plainCopy = (bytes: Uint8Array): Uint8Array<ArrayBuffer> => bytes.slice();
+
 function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
@@ -35,7 +38,7 @@ function pickWithInput(doc: Document, filters: readonly FileFilter[]): Promise<F
 }
 
 function download(doc: Document, name: string, bytes: Uint8Array): void {
-  const url = URL.createObjectURL(new Blob([bytes.slice()]));
+  const url = URL.createObjectURL(new Blob([plainCopy(bytes)]));
   const anchor = doc.createElement('a');
   anchor.href = url;
   anchor.download = name;
@@ -76,7 +79,7 @@ async function storageDir(
 
 async function writeHandle(handle: FileSystemFileHandle, bytes: Uint8Array): Promise<void> {
   const writable = await handle.createWritable();
-  await writable.write(bytes.slice());
+  await writable.write(plainCopy(bytes));
   await writable.close();
 }
 
