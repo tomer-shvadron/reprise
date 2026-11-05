@@ -115,6 +115,8 @@ export function resolveNote(
 ): Note | undefined {
   let string = 0;
   let fret: number | undefined;
+  /** The pitch of fret 0 on this note's string; absent off fretted tracks. */
+  let stringPitch: number | undefined;
   if (plan.kind === 'fretted') {
     if (note.string === undefined) {
       sink.warn('invalid-value', note.path, 'A note without a string on a fretted track; dropped');
@@ -122,9 +124,10 @@ export function resolveNote(
     }
     string = plan.tuning.length - note.string;
     fret = note.fret;
-    if (fret === undefined && note.midi !== undefined) {
-      const open = plan.tuning[note.string];
-      if (open !== undefined) fret = note.midi - open - plan.capo;
+    const open = plan.tuning[note.string];
+    if (open !== undefined) stringPitch = open + plan.capo;
+    if (fret === undefined && note.midi !== undefined && stringPitch !== undefined) {
+      fret = note.midi - stringPitch;
     }
   } else if (plan.kind === 'drums') {
     const articulation =
@@ -160,6 +163,19 @@ export function resolveNote(
   }
   const result: Note = { id: newId(), string, fret, dynamics, ...cloneNoteFields(note.fields) };
   if (note.accidental !== undefined) result.accidental = note.accidental;
+  if (note.trill !== undefined) {
+    // gpif keeps no trill speed; Guitar Pro plays sixteenths, as alphaTab's reader assumes.
+    const trillFret =
+      plan.kind === 'fretted' ? note.trill - (stringPitch ?? Number.NaN) : note.trill;
+    if (trillFret >= 0 && trillFret <= 127) result.trill = { fret: trillFret, speed: 16 };
+    else {
+      sink.warn(
+        'invalid-value',
+        note.path,
+        `A trill to MIDI ${String(note.trill)} has no fret on this string; dropped`,
+      );
+    }
+  }
   return result;
 }
 
@@ -170,6 +186,5 @@ export function cloneNoteFields(fields: NoteFields): NoteFields {
     copy.bend = { kind: fields.bend.kind, points: fields.bend.points.map((p) => ({ ...p })) };
   if (fields.slide) copy.slide = [...fields.slide];
   if (fields.harmonic) copy.harmonic = { ...fields.harmonic };
-  if (fields.trill) copy.trill = { ...fields.trill };
   return copy;
 }

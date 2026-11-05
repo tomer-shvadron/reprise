@@ -242,10 +242,9 @@ export function readNote(sink: WarningSink, element: XmlElement, path: string): 
         else unknownValue(sink, at, text);
         break;
       case 'Trill': {
-        // The value is the alternate fret; gpif keeps the speed nowhere, and Guitar Pro plays
-        // sixteenths, as alphaTab's reader assumes.
-        const fret = parseIntOr(text, -1);
-        if (fret >= 0 && fret <= 127) note.fields.trill = { fret, speed: 16 };
+        // The alternate note as a MIDI value (alphaTab's `trillValue`), not a fret.
+        const value = parseIntOr(text, -1);
+        if (value >= 0 && value <= 127) note.trill = value;
         else unknownValue(sink, at, text);
         break;
       }

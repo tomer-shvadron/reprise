@@ -149,8 +149,8 @@ export interface GpifBeat {
   lyrics?: string[];
 }
 
-/** Note fields that do not depend on the track; string and fret are resolved per track. */
-export type NoteFields = Omit<Note, 'id' | 'string' | 'fret' | 'dynamics' | 'accidental'>;
+/** Note fields that do not depend on the track; string, fret and the trill are resolved per track. */
+export type NoteFields = Omit<Note, 'id' | 'string' | 'fret' | 'dynamics' | 'accidental' | 'trill'>;
 
 export interface GpifNote {
   path: string;
@@ -164,6 +164,8 @@ export interface GpifNote {
   octave?: number;
   tone?: number;
   accidental?: Accidental;
+  /** The trill's alternate note as a MIDI value; its fret depends on the track's tuning. */
+  trill?: number;
   hopoOrigin: boolean;
   hopoDestination: boolean;
   tapped: boolean;

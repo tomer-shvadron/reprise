@@ -53,7 +53,8 @@ describe('notes', () => {
       '<Accent>9</Accent>',
       '<LeftFingering>I</LeftFingering>',
       '<RightFingering>P</RightFingering>',
-      '<Trill>7</Trill>',
+      // A MIDI value: gpif string 2 is D3 (50), so this trills to fret 7.
+      '<Trill>57</Trill>',
     ].join('');
     const properties = [
       property('PalmMuted', '<Enable />'),
@@ -153,6 +154,37 @@ describe('notes', () => {
     const notes = beatsOf(score).map((b) => b.notes[0]);
     expect(notes.map((n) => n?.tie)).toEqual([false, true, true]);
     expect(new Set(notes.map((n) => n?.id)).size).toBe(3);
+  });
+
+  it('resolves a trill against the capo on fretted tracks and keeps MIDI on pitched ones', () => {
+    const trill = (value: number): string => `<Trill>${String(value)}</Trill>`;
+    const capo = guitarTrack('0', { staffProperties: property('CapoFret', '<Fret>2</Fret>') });
+    const fretted = read(
+      oneBar(
+        [beat('0', '0', '0'), beat('1', '0', '1')],
+        [note('0', 2, 5, trill(59)), note('1', 2, 5, trill(40))],
+        QUARTERS,
+        { tracks: [capo] },
+      ),
+    );
+    expect(beatsOf(fretted.score).map((b) => b.notes[0]?.trill)).toEqual([
+      { fret: 7, speed: 16 },
+      undefined,
+    ]);
+    expect(fretted.warnings.map((w) => w.message)).toContain(
+      'A trill to MIDI 40 has no fret on this string; dropped',
+    );
+
+    const piano = guitarTrack('0', { program: 0 });
+    const pitched = read(
+      oneBar(
+        [beat('0', '0', '0')],
+        [note('0', 2, 5, trill(62), property('Midi', '<Number>60</Number>'))],
+        QUARTERS,
+        { tracks: [piano] },
+      ),
+    );
+    expect(firstNote(pitched.score)).toMatchObject({ fret: 60, trill: { fret: 62, speed: 16 } });
   });
 
   it('marks a beat with a tapped note as tapped', () => {
