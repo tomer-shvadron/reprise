@@ -34,7 +34,7 @@ const MODEL_STANDS_ALONE = boundary(
 );
 const DEPENDENCY_EDGES = boundary(
   'allowed-dependency-edges',
-  'only formats/layout/audio -> model and web -> model, formats, layout, audio are allowed',
+  'only formats/layout/audio -> model, web -> model, formats, layout, audio and desktop -> web (types only) are allowed',
 );
 const ROOT_IMPORTS_ONLY = boundary(
   'root-imports-only',
@@ -45,14 +45,17 @@ const ELECTRON_IN_DESKTOP = boundary(
   'electron is imported only inside apps/desktop',
 );
 
-/** @type {Record<'model' | 'formats' | 'layout' | 'audio' | 'web' | 'desktop', { dir: string; allowed: string[] }>} */
+/**
+ * `typeOnly` edges admit `import type` alone: desktop needs web's bridge types, never its code.
+ * @type {Record<'model' | 'formats' | 'layout' | 'audio' | 'web' | 'desktop', { dir: string; allowed: string[]; typeOnly?: string[] }>}
+ */
 const WORKSPACES = {
   model: { dir: 'packages/model', allowed: [] },
   formats: { dir: 'packages/formats', allowed: ['model'] },
   layout: { dir: 'packages/layout', allowed: ['model'] },
   audio: { dir: 'packages/audio', allowed: ['model'] },
   web: { dir: 'apps/web', allowed: ['model', 'formats', 'layout', 'audio'] },
-  desktop: { dir: 'apps/desktop', allowed: [] },
+  desktop: { dir: 'apps/desktop', allowed: [], typeOnly: ['web'] },
 };
 const ENGINES = new Set(['formats', 'layout', 'audio']);
 const UI_LIBRARIES = ['react', 'react-dom', '@radix-ui', 'zustand', 'dexie'];
@@ -65,14 +68,15 @@ function edgeMessage(self, other) {
 }
 
 /**
+ * The typescript-eslint rule is the core one plus `allowTypeImports`, which typeOnly edges need.
  * Flat config replaces a rule's options rather than merging them, so each workspace gets one
  * `no-restricted-imports` entry that carries every boundary that applies to it.
  * @param {keyof typeof WORKSPACES} self
  * @returns {import('eslint').Linter.Config}
  */
 function workspaceBoundaries(self) {
-  const { dir, allowed } = WORKSPACES[self];
-  /** @type {{ name: string; message: string }[]} */
+  const { dir, allowed, typeOnly = [] } = WORKSPACES[self];
+  /** @type {{ name: string; message: string; allowTypeImports?: boolean }[]} */
   const paths = [];
   /** @type {({ group: string[]; message: string } | { regex: string; message: string })[]} */
   const patterns = [
@@ -83,7 +87,11 @@ function workspaceBoundaries(self) {
 
   for (const other of Object.keys(WORKSPACES)) {
     if (other !== self && !allowed.includes(other)) {
-      paths.push({ name: `@reprise/${other}`, message: edgeMessage(self, other) });
+      paths.push({
+        name: `@reprise/${other}`,
+        message: edgeMessage(self, other),
+        ...(typeOnly.includes(other) && { allowTypeImports: true }),
+      });
     }
   }
   if (dir.startsWith('packages/')) {
@@ -100,7 +108,7 @@ function workspaceBoundaries(self) {
 
   return {
     files: [`${dir}/**/*.{ts,tsx}`],
-    rules: { 'no-restricted-imports': ['error', { paths, patterns }] },
+    rules: { '@typescript-eslint/no-restricted-imports': ['error', { paths, patterns }] },
   };
 }
 
@@ -109,6 +117,8 @@ export default defineConfig(
     ignores: [
       '**/node_modules/',
       '**/dist/',
+      '**/out/',
+      '**/release/',
       '**/.tsbuild/',
       '**/coverage/',
       'docs/',

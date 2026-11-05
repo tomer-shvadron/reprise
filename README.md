@@ -33,16 +33,18 @@ pnpm test:watch
 pnpm format         # Prettier; format:check verifies without writing
 pnpm dev            # the web app in the browser, Vite dev server with hot reload
 pnpm build          # production build of the web app into apps/web/dist
+pnpm desktop:dev    # the Electron app around the same web core, with hot reload
+pnpm desktop:build  # electron-vite build, then electron-builder for the current platform
 ```
 
 `pnpm --filter @reprise/web preview` serves the last build.
 
-Not yet available (each prints a notice and exits successfully until its work package lands):
+`pnpm desktop:build` writes installers to `apps/desktop/release/`: on macOS a `.dmg` and a `.zip` for both arm64 and x64, on Windows an NSIS installer. The builds are unsigned, so the first time you open the macOS app, right-click it in Finder and choose **Open**, then confirm. After that it opens normally.
+
+Not yet available (prints a notice and exits successfully until its work package lands):
 
 ```
-pnpm desktop:dev    # the Electron app (WP-004)
-pnpm desktop:build  # the Electron package (WP-004)
-pnpm e2e            # Playwright against the Electron build (WP-004)
+pnpm e2e            # Playwright against the Electron build (WP-055)
 ```
 
-`pnpm install` also downloads the Playwright Chromium build that the `audio` tests run in.
+`pnpm install` also downloads the Playwright Chromium build that the `audio` tests run in. The Electron binary is downloaded the first time `pnpm desktop:dev` or `pnpm desktop:build` runs.

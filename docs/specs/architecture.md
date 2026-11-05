@@ -25,7 +25,7 @@ formats  -> model
 layout   -> model
 audio    -> model
 web      -> model, formats, layout, audio
-desktop  -> (nothing from packages; talks to web through the preload bridge)
+desktop  -> web (types only, for the preload bridge)
 model    -> (no workspace dependencies)
 ```
 
