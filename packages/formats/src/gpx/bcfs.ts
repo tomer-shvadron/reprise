@@ -3,6 +3,7 @@ import { GpxError } from './errors';
 
 const BCFS = 'BCFS';
 export const SECTOR_BYTES = 0x1000;
+const ENTRY_DIRECTORY = 1;
 const ENTRY_FILE = 2;
 const NAME_OFFSET = 4;
 const NAME_BYTES = 127;
@@ -34,12 +35,15 @@ function entryName(data: Uint8Array, offset: number): string {
  * nothing needs. Every later sector is either free, a directory entry, a file entry or a block
  * of some file's data. A file entry holds, little-endian: the type 2 at 0, a NUL-terminated
  * ASCII name at 4 (127 bytes at most), the size at 140, and from 148 the sector numbers of its
- * data blocks, ended by a 0. The entries carry no paths in practice: Guitar Pro 6 names its
- * files `score.gpif`, `PartConfiguration` and so on, and directory entries can be ignored.
+ * data blocks, ended by a 0. A directory entry (type 1) has the same shape; its block lists its
+ * children's entry sectors. The names carry no paths in practice: Guitar Pro 6 writes
+ * `score.gpif`, `PartConfiguration` and so on under one root directory.
  *
- * Data blocks are not marked as such, and one can begin with the bytes of a file entry's type,
- * so the scan skips every sector some earlier entry claimed (alphaTab skips past each file's
- * last block, which comes to the same on the files Guitar Pro writes).
+ * Data blocks are not marked as such, and one can begin with the bytes of a file entry's type:
+ * the root directory's block always does, since `score.gpif` is sector 2. So every entry, file
+ * or directory, claims its blocks and the scan skips every sector already claimed (alphaTab
+ * resumes after each file's last block instead, which comes to the same on the files Guitar
+ * Pro writes).
  */
 export function readBcfs(
   image: Uint8Array,
@@ -108,9 +112,10 @@ export function readBcfs(
   for (let sector = 1; sector < sectors; sector++) {
     const entry = sector * SECTOR_BYTES;
     if (claimed[sector] === 1 || entry + BLOCKS_OFFSET > data.length) continue;
-    if (int32(data, entry) !== ENTRY_FILE) continue;
+    const type = int32(data, entry);
+    if (type !== ENTRY_FILE && type !== ENTRY_DIRECTORY) continue;
     const name = entryName(data, entry + NAME_OFFSET);
-    const keep = wanted(name);
+    const keep = type === ENTRY_FILE && wanted(name);
     try {
       const content = readEntry(entry, name, keep);
       if (content) files.push({ name, data: content });

@@ -34,15 +34,15 @@ export interface BcfzContent {
  *   significant bit first (unlike the width and the literals), copying from that far back in
  *   the output.
  *
- * A back-reference copies at most `distance` bytes, so it never reads bytes it is writing: a
- * length past the distance is cut short rather than repeating the run as classic LZ77 would.
- * That is how alphaTab's and TuxGuitar's readers treat it. The last chunk may overshoot the
- * declared length; the excess is discarded.
+ * A back-reference longer than its distance repeats the run, as LZ77 does: Guitar Pro 6 writes
+ * one (`d=256 l=257`, in the zero padding of the last sector) in three of the five fixtures, and
+ * read this way each of their streams ends exactly on its declared length. alphaTab and
+ * TuxGuitar cut the copy at the distance, lose that byte, and so see every such stream as ending
+ * short. The last chunk may overshoot the declared length; the excess is discarded.
  *
- * Guitar Pro 6 itself stops writing a byte or two short of the length it declares (the tail
- * of the file system's last sector, which nothing reads), so running out of input is not an
- * error here: the bytes decoded so far are returned, and the file system reports a file whose
- * blocks are missing as `truncated`.
+ * A stream may still stop short of its declared length (`chords.gpx` ends one literal early),
+ * so running out of input is not an error here: the bytes decoded so far are returned, and the
+ * file system reports a file whose blocks are missing as `truncated`.
  *
  * Each chunk consumes at least three bits and the output is bounded by the declared length, so
  * the time is linear in the input plus the output.
@@ -71,15 +71,20 @@ export function decompressBcfz(bytes: Uint8Array): BcfzContent {
       if (input.readBit() === 1) {
         const width = input.readBits(4);
         const distance = input.readBitsReversed(width);
-        const count = Math.min(input.readBitsReversed(width), distance, declared - length);
-        if (distance > length) {
+        const count = Math.min(input.readBitsReversed(width), declared - length);
+        if (count > 0 && (distance === 0 || distance > length)) {
           throw new GpxError(
             'corrupt',
             `A back-reference reaches ${String(distance)} bytes back with only ${String(length)} decoded`,
           );
         }
-        output.copyWithin(length, length - distance, length - distance + count);
-        length += count;
+        // In pieces of at most `distance` bytes, so a longer run reads what the piece before wrote.
+        for (let left = count; left > 0;) {
+          const piece = Math.min(left, distance);
+          output.copyWithin(length, length - distance, length - distance + piece);
+          length += piece;
+          left -= piece;
+        }
       } else {
         const count = input.readBitsReversed(2);
         for (let index = 0; index < count; index++) {

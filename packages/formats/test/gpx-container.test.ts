@@ -72,14 +72,15 @@ describe('decompressBcfz', () => {
     expect(inflate(stream)).toEqual([...text, 33, 33]);
   });
 
-  it('cuts a back-reference longer than its distance at the distance', () => {
-    // Classic LZ77 would repeat [1, 2] to fill five bytes; BCFZ copies only what exists.
-    const stream = bcfz(6, [
+  it('repeats a back-reference longer than its distance, as LZ77 does', () => {
+    const stream = bcfz(9, [
       { literal: [1, 2] },
       { distance: 2, length: 5, width: 3 },
-      { distance: 4, length: 2, width: 3 },
+      { distance: 7, length: 2, width: 3 },
     ]);
-    expect(inflate(stream)).toEqual([1, 2, 1, 2, 1, 2]);
+    expect(inflate(stream)).toEqual([1, 2, 1, 2, 1, 2, 1, 1, 2]);
+    const run = bcfz(6, [{ literal: [7] }, { distance: 1, length: 5, width: 3 }]);
+    expect(inflate(run)).toEqual([7, 7, 7, 7, 7, 7]);
   });
 
   it('discards what the last chunk writes past the declared length', () => {
@@ -110,18 +111,22 @@ describe('decompressBcfz', () => {
     expect(codeOf(() => decompressBcfz(bcfz(-1, [])))).toBe('corrupt');
   });
 
-  it('rejects a back-reference before the start of the output', () => {
+  it('rejects a back-reference before the start of the output or at distance zero', () => {
     const stream = bcfz(4, [{ literal: [1] }, { distance: 2, length: 1, width: 2 }]);
     expect(codeOf(() => decompressBcfz(stream))).toBe('corrupt');
+    const zero = bcfz(4, [{ literal: [1] }, { distance: 0, length: 1, width: 1 }]);
+    expect(codeOf(() => decompressBcfz(zero))).toBe('corrupt');
   });
 
   it.each(manifestEntries(['gpx']).map((entry) => entry.path))(
-    'inflates %s to a BCFS image within a sector tail of its declared length',
+    'inflates %s to a BCFS image of its declared length',
     (path) => {
       const { bytes, declaredLength } = decompressBcfz(fixtureBytes(path));
       expect(String.fromCharCode(...bytes.subarray(0, 4))).toBe('BCFS');
-      expect(declaredLength - bytes.length).toBeGreaterThanOrEqual(0);
-      expect(declaredLength - bytes.length).toBeLessThan(4);
+      // Three of these end on a back-reference longer than its distance; cut at the distance,
+      // as alphaTab and TuxGuitar read it, they would be a byte short. chords.gpx's stream does
+      // stop one literal early.
+      expect(declaredLength - bytes.length).toBe(path === 'gpx/chords.gpx' ? 1 : 0);
     },
   );
 });
@@ -130,10 +135,12 @@ describe('readBcfs', () => {
   const names = (image: Uint8Array) =>
     readBcfs(image, () => true).map((file) => [file.name, file.data.length]);
 
-  it('reads every file entry and skips directories', () => {
+  it('reads every file entry and only claims the blocks of a directory', () => {
     const big = new Uint8Array(0x1000 * 2 + 10).fill(65);
+    // A directory's block lists its children's entry sectors, so it starts with a file's type.
+    const listing = Uint8Array.of(2, 0, 0, 0, 12, 0, 0, 0);
     const image = bcfs([
-      { name: 'Content', type: 1 },
+      { name: '/', type: 1, data: listing },
       { name: 'score.gpif', data: big },
       { name: 'misc.xml', data: ascii('<MISC/>') },
     ]);
