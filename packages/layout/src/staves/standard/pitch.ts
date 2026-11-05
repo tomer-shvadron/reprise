@@ -12,6 +12,7 @@ import {
   type Note,
   type NoteHead,
   type PitchedClef,
+  type Spelling,
   type Track,
 } from '@reprise/model';
 
@@ -26,6 +27,24 @@ export interface ShownAccidental {
 export interface PlacedNote {
   position: number;
   head: NoteHead;
+}
+
+type SpellTrack = Pick<Track, 'kind' | 'tuning' | 'capo'>;
+
+const spellings = new WeakMap<
+  Note,
+  { track: SpellTrack; fifths: number; minor: boolean; spelling: Spelling }
+>();
+
+/** `spellNote`, remembered per note: a bar's notes are spelled for itself and for the bar after. */
+function spelled(track: SpellTrack, note: Note, key: KeySignature): Spelling {
+  const cached = spellings.get(note);
+  if (cached?.track === track && cached.fifths === key.fifths && cached.minor === key.minor) {
+    return cached.spelling;
+  }
+  const spelling = spellNote(track, note, key);
+  spellings.set(note, { track, fifths: key.fifths, minor: key.minor, spelling });
+  return spelling;
 }
 
 /** Where a drum note without a GM2 mapping goes: the middle line, with a normal head. */
@@ -49,7 +68,7 @@ export function placeNote(
       head: note.dead ? 'cross' : (instrument?.noteHead ?? 'normal'),
     };
   }
-  const spelling = spellNote(track, note, key);
+  const spelling = spelled(track, note, key);
   return {
     position: staffPosition(spelling, pitchedClef(clef), track.display.octaveShift),
     head: note.dead ? 'cross' : 'normal',
@@ -102,7 +121,7 @@ function walk(
   const seen = new Set<string>();
   for (const { note } of timedNotes(bar)) {
     if (note.tie) continue;
-    const { letter, octave, alter } = spellNote(track, note, key);
+    const { letter, octave, alter } = spelled(track, note, key);
     const slot = `${letter}${String(octave)}`;
     const current = printed.get(slot) ?? keyAlter(key, letter);
     const before = previous?.get(slot);
