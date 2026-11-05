@@ -8,7 +8,10 @@ export interface BarPass {
 }
 
 export type PlaybackWarningCode =
-  'repeat-end-without-start' | 'jump-target-missing' | 'sequence-truncated';
+  | 'repeat-end-without-start'
+  | 'volta-without-repeat'
+  | 'jump-target-missing'
+  | 'sequence-truncated';
 
 export interface PlaybackWarning {
   code: PlaybackWarningCode;
@@ -70,6 +73,19 @@ function finalEndings(masterBars: readonly MasterBar[]): number[] {
   return finals;
 }
 
+/** The repeat end closing each bar's section: the next bar with a count, before a repeat start. */
+function closingEnds(masterBars: readonly MasterBar[]): (number | undefined)[] {
+  const ends: (number | undefined)[] = masterBars.map(() => undefined);
+  let end: number | undefined;
+  for (let i = masterBars.length - 1; i >= 0; i--) {
+    const bar = masterBars[i];
+    if (bar && bar.repeat.endCount >= 2) end = i;
+    ends[i] = end;
+    if (bar?.repeat.start) end = undefined;
+  }
+  return ends;
+}
+
 function findTarget(
   masterBars: readonly MasterBar[],
   target: DirectionTarget,
@@ -107,6 +123,7 @@ export function expandPlaybackSequence(score: Pick<Score, 'masterBars'>): Playba
   };
 
   const finals = finalEndings(masterBars);
+  const closings = closingEnds(masterBars);
   const plays = masterBars.map(() => 0);
   const limit = masterBars.length * PLAYBACK_LENGTH_FACTOR;
   const fired = new Set<string>();
@@ -136,17 +153,27 @@ export function expandPlaybackSequence(score: Pick<Score, 'masterBars'>): Playba
       sectionPass = 1;
       repeatPlays.clear();
     }
-    const volta = mode === 'normal' ? sectionPass : (finals[i] ?? 0);
-    if (bar.alternateEndings.length > 0 && !bar.alternateEndings.includes(volta)) {
-      i++;
-      continue;
+    // A volta bar with no repeat end ahead in its section plays: there is no pass to count.
+    let skipped = false;
+    if (bar.alternateEndings.length > 0) {
+      if (mode !== 'normal') skipped = !bar.alternateEndings.includes(finals[i] ?? 0);
+      else if (closings[i] !== undefined) skipped = !bar.alternateEndings.includes(sectionPass);
+      else if (sectionStart === undefined && sectionPass === 1) {
+        warn(
+          'volta-without-repeat',
+          i,
+          `bar ${String(i + 1)} has an alternate ending but no repeat; played every time`,
+        );
+      }
     }
 
-    sequence.push({ masterBarIndex: i, passIndex: plays[i] ?? 0 });
-    plays[i] = (plays[i] ?? 0) + 1;
+    if (!skipped) {
+      sequence.push({ masterBarIndex: i, passIndex: plays[i] ?? 0 });
+      plays[i] = (plays[i] ?? 0) + 1;
+      if (mode === 'alFine' && bar.targets.includes('fine')) break;
+    }
 
-    if (mode === 'alFine' && bar.targets.includes('fine')) break;
-
+    // The repeat sign closes the section whichever ending it sits in, so a skipped bar's is read.
     if (mode === 'normal' && bar.repeat.endCount >= 2) {
       const played = repeatPlays.get(i) ?? 1;
       if (played < bar.repeat.endCount) {
@@ -163,6 +190,11 @@ export function expandPlaybackSequence(score: Pick<Score, 'masterBars'>): Playba
         i = sectionStart ?? segmentStart;
         continue;
       }
+    }
+
+    if (skipped) {
+      i++;
+      continue;
     }
 
     let next = i + 1;

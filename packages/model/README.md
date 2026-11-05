@@ -179,8 +179,15 @@ except where noted:
   start, and replays the first repeat too (`|: A :| B :|` is A A B A A B), as alphaTab does.
 - **Unmatched repeat end**: with no repeat start since the song start (or since landing on a
   coda), the section starts there, with a `repeat-end-without-start` warning.
-- **Alternate endings.** A volta bar plays only on the passes its numbers list; a skipped bar's
-  repeat end and jumps are not read. A volta whose numbers match no pass is always skipped.
+- **Alternate endings.** Inside a repeat section a volta bar plays only on the passes its
+  numbers list. A skipped bar's repeat end is still read, since the repeat sign closes the section
+  whichever ending it sits in (as alphaTab does); its jumps are not. A volta bar with no repeat
+  end ahead of it in its section always plays, with a `volta-without-repeat` warning when no
+  repeat surrounds it at all. **Every bar of a bracket carries its numbers.** GP5 and gpif store
+  them on the bracket's first bar only (in `fixtures/gp5/repeat-close-alternate-endings.gp5` bar
+  3 sits inside the "2." bracket, carries nothing and holds the repeat close), so a reader
+  propagates them from the marked bar through the bar carrying the repeat end; alphaTab inherits
+  them at playback instead.
 - **Jumps** are read at the end of a played bar, after its repeat end is exhausted (so a D.S. on
   a repeated bar is taken on the last pass; alphaTab takes it on the first). The bar's `jumps`
   are tried in order and the first that applies is taken. Each jump instruction fires at most

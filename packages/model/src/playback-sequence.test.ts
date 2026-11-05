@@ -107,6 +107,32 @@ describe('expandPlaybackSequence: alternate endings', () => {
   it('skips a volta with no matching pass', () => {
     expect(order({ start: true }, { volta: [3] }, { end: 2 }, {})).toEqual([0, 2, 0, 2, 3]);
   });
+
+  it('reads the repeat end of a skipped volta bar, as fixtures/gp5/repeat-close-alternate-endings.gp5 needs', () => {
+    // |: A | [1,3. B | [2. C | D :|x4 | E, the repeat close inside the "2." bracket; alphaTab's order.
+    expect(
+      order({ start: true }, { volta: [1, 3] }, { volta: [2] }, { volta: [2], end: 4 }, {}),
+    ).toEqual([0, 1, 0, 2, 3, 0, 1, 0, 4]);
+  });
+
+  it('plays a volta bar with no repeat end ahead of it', () => {
+    expect(order({ start: true }, { end: 2 }, { volta: [1] }, {})).toEqual([0, 1, 0, 1, 2, 3]);
+    expect(warningCodes({ start: true }, { end: 2 }, { volta: [1] }, {})).toEqual([]);
+  });
+
+  it('plays a volta bar with no repeat around it, with a warning', () => {
+    expect(order({}, { volta: [2] }, {})).toEqual([0, 1, 2]);
+    expect(warningCodes({}, { volta: [2] }, {})).toEqual(['volta-without-repeat']);
+    const coda: BarSpec[] = [
+      { jumps: ['toCoda'] },
+      { jumps: ['dcAlCoda'] },
+      { targets: ['coda'] },
+      { volta: [2] },
+      {},
+    ];
+    expect(order(...coda)).toEqual([0, 1, 0, 2, 3, 4]);
+    expect(warningCodes(...coda)).toEqual(['volta-without-repeat']);
+  });
 });
 
 describe('expandPlaybackSequence: jumps', () => {
@@ -191,6 +217,36 @@ describe('expandPlaybackSequence: jumps', () => {
     expect(order(...lead, { targets: ['fine'] }, { jumps: ['dssAlFine'] }, {})).toEqual([
       0, 1, 2, 3, 4, 2, 3,
     ]);
+  });
+
+  it('plays fixtures/gp5/directions.gp5 as alphaTab does: nothing fires after a plain D.C.', () => {
+    const kinds: JumpKind[] = [
+      'daCapo',
+      'dcAlCoda',
+      'dcAlDoubleCoda',
+      'dcAlFine',
+      'dalSegno',
+      'dalSegnoSegno',
+      'dsAlCoda',
+      'dsAlDoubleCoda',
+      'dssAlCoda',
+      'dssAlDoubleCoda',
+      'dsAlFine',
+      'dssAlFine',
+      'toCoda',
+      'toDoubleCoda',
+    ];
+    const specs: BarSpec[] = [
+      { targets: ['coda'] },
+      { targets: ['doubleCoda'] },
+      { targets: ['segno'] },
+      { targets: ['segnoSegno'] },
+      { targets: ['fine'] },
+      ...kinds.map((kind): BarSpec => ({ jumps: [kind] })),
+    ];
+    const written = specs.map((_, index) => index);
+    expect(order(...specs)).toEqual([0, 1, 2, 3, 4, 5, ...written]);
+    expect(warningCodes(...specs)).toEqual([]);
   });
 
   it('applies a bar’s jumps in order, taking the first that applies', () => {
