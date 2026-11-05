@@ -50,9 +50,9 @@ and bar lines: the reader released each such tie, which re-struck the held note.
 the most recent note in the tied note's slot in its voice, from the previous beat back to the
 start of the bar three before its own; rests and notes on other strings are passed over, and a
 note on the same string in between is the origin, so it ends the hold. Three bars is alphaTab's
-bound (`Note.MaxOffsetForSameLineSearch`). The rule lives in one place, `src/ties.ts`:
-`tieOriginOf` for validation and repair, and its inverse `tieChainOf` for the chains `setNote` and
-`transposeSelection` carry along.
+bound (`Note.findTieOrigin` stops at `_maxOffsetForSameLineSearch`, 3). The rule lives in one
+place, `src/ties.ts`: `tieOriginOf` for validation and repair, and its inverse `tieChainOf` for
+the chains `setNote` and `transposeSelection` carry along.
 
 ## Diagnostics
 

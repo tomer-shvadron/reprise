@@ -158,7 +158,7 @@ A tied note continues its **origin**: the most recent note on the same string (t
 
 - **Passed over**: rests, empty bars, and notes on other strings. A held bass note under a melody on the strings above keeps its tie.
 - **Ends the hold**: a note on the same string in between. It is the origin now, so a tied note on another fret than it breaks `tie-pitch`, and one on the same fret is a restrike that the tie continues.
-- **Out of reach**: an origin more than three bars back, counted in master bars (a tie on bar 4 can reach bar 1, not bar 0). Grace notes are never origins.
+- **Out of reach**: an origin more than three bars back, counted in master bars, an anacrusis bar among them (a tie on bar 4 can reach bar 1, not bar 0). Grace notes are never origins.
 
 A **chain** is an origin and the tied notes that follow it, each taking the one before as its origin. `tieOriginOf(track, { bar, voice, beat }, note)` from the root export finds the origin, and the commands use the same definition: a new fret carries along the whole chain (`setNote`, `transposeSelection`), and an edit that takes an origin away releases or re-links the ties that depended on it (see **Repair**).
 
