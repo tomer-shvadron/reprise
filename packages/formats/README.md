@@ -60,9 +60,9 @@ specifics and the places the file is ambiguous.
 
 - **Track kind**: drums when the percussion flag is set or the track plays on MIDI channel 10;
   otherwise pitched when the program is outside the fretted families (GM 24 to 39, 104 to 107),
-  keeping the tuning, capo and fret count; otherwise fretted, the reference's rule for all three versions,
-  which store keyboards on strings the same way. Pitched notes become `open string + capo + fret`; drum notes keep the fret byte, which is
-  the GM percussion note.
+  keeping the tuning, capo and fret count; otherwise fretted. This is the reference's rule for all
+  three versions, which store keyboards on strings the same way. Pitched notes become
+  `open string + capo + fret`; drum notes keep the fret byte, which is the GM percussion note.
 - **Strings**: the file lists string 1 (highest) first and the beat's string mask uses bit 6 for
   string 1; `Track.tuning` is reversed to lowest first. A mask bit for a string the track lacks
   carries no note block (every reader of the format skips it unread) and is reported as
@@ -191,14 +191,55 @@ the first location, and `count`.
   fixture: those layouts are read as alphaTab reads them and covered by the hand-built files only.
 - **Text encoding** is always windows-1252.
 - **Simile marks** do not exist in GP3 to GP5, so the reader has nothing to expand.
-- **The oracle comparison** against alphaTab is WP-041. Differences seen while building and
-  reviewing this reader, which that test's tolerance list will need: alphaTab's `isRest` is also
-  true for Guitar Pro's empty beat (`rest || notes.length === 0` here); alphaTab moves a beat's
-  tempo change onto `masterBar.tempoAutomations` where this reader keeps `Beat.mix.tempo`;
-  alphaTab drops redundant bend points and recomputes bend and whammy kinds where this reader
-  keeps the file's; alphaTab maps GP5 percussion notes 27, 28 and 32 to its own articulation
-  indices; alphaTab reads beat vibrato as slight and ignores GP3's tremolo bar; alphaTab makes
-  every grace note a thirty-second; alphaTab's stroke table is one step slower than Guitar Pro's
-  (1 and 2 both a 128th, 6 an eighth); alphaTab leaves the compound-time duplet, quadruplet and
-  octuplet without a denominator; alphaTab marks voltas on the bracket's first bar only; alphaTab
-  keeps a lyric line's leading and trailing spaces as empty syllables.
+- **The alphaTab oracle** covers gp3, gp4 and gp5; its known differences are the tolerance list
+  under "Oracle" below.
+
+## Oracle
+
+`test/oracle/` parses every fixture with alphaTab (the dev-only oracle, `@coderline/alphatab`
+1.8.4, loaded as `scripts/fixtures/describe.ts` loads it) and with our reader, reduces both to
+the same plain projection and diffs them. It runs in `pnpm test`; on its own,
+`pnpm vitest run --project formats test/oracle`.
+
+- **What is compared** (`projection.ts`): per track the name, string count, tuning (MIDI, low to
+  high), capo and percussion flag; per master bar the time signature, key, repeat start, repeat
+  end count, alternate endings, every tempo set in the bar and the section; per beat, voice by
+  voice, the duration, dots, tuplet, rest, grace notes (duration, before or on the beat, notes),
+  text, chord name and grid, tremolo picking, beat vibrato, whammy point count, brush stroke and
+  lyrics; per note the string, the fret (the MIDI note on drum and pitched tracks), tie, dead,
+  ghost, hammer-on or pull-off destination, slide kinds, bend point count, harmonic kind, palm
+  mute, let ring, vibrato, trill, staccato, accent and dynamics.
+- **Equivalences the projection settles**, so they need no tolerance: a Guitar Pro empty beat is
+  `!isEmpty && notes.length === 0` on alphaTab's side, not its `isRest`; a beat's mixer tempo
+  counts toward its bar's tempos, where alphaTab moves it to `masterBar.tempoAutomations`; grace
+  beats, which alphaTab keeps ahead of the main beat, nest in it as `Beat.grace` does; a chord
+  grid of all muted strings is no grid; voices past the first with no beats are dropped.
+- **Differences** come back as `{ fixture, path, field, ours, alphaTab }`, the path
+  `tracks[0].bars[15].voices[0].beats[2].vibrato`; arrays of different lengths report
+  `….length` and are compared up to the shorter one.
+- **The tolerance list** is `test/oracle/tolerances.ts`. A difference no entry accepts fails the
+  fixture's test, and an entry that accepts nothing in its formats fails too. To add one: give it
+  an `id`, the `formats` it applies to, a predicate as narrow as the difference (match the field
+  and both values, not the path alone), and a `why` of one or two sentences naming the source (a
+  review, the score-model reference, this README's mapping decisions, or the line in alphaTab's
+  reader). Add it only for a legitimate deviation; when the oracle shows a reader bug, fix the
+  reader.
+- **Readers** are the table in `test/oracle/readers.ts`, one `{ extension, read }` entry per
+  extension. Every extension in `fixtures/` must have an entry or a pending one (`gp` for WP-042,
+  `gpx` for WP-043), and a pending entry fails once `@reprise/formats` exports its reader, so the
+  oracle cannot silently skip a format.
+
+| Tolerance                   | Formats       | Why                                                                                                                                       |
+| --------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `grace-duration`            | gp3, gp4, gp5 | We read the grace duration byte (64th, 32nd, 16th); alphaTab ignores it and writes a lone grace as an eighth.                             |
+| `bend-points-kept`          | gp3, gp4, gp5 | The model keeps the file's bend points; alphaTab drops ones it finds redundant.                                                           |
+| `gp3-tremolo-bar`           | gp3           | GP3's one-depth tremolo bar is read as a dip, the shape GP4 writes; alphaTab skips it.                                                    |
+| `beat-vibrato-wide`         | gp3, gp4, gp5 | Beat-effect bit 0x02 is Guitar Pro's wide vibrato; alphaTab reads it as slight.                                                           |
+| `gp3-beat-vibrato-on-notes` | gp3           | GP3 stores a note's slight vibrato only as beat bit 0x01, so it goes on the notes; alphaTab leaves it on the beat.                        |
+| `stroke-speed`              | gp3, gp4, gp5 | Stroke speed 1 to 6 is a 128th down to a quarter, as Guitar Pro, TuxGuitar and PyGuitarPro read it; alphaTab's table is one step slower.  |
+| `percussion-articulations`  | gp3, gp4, gp5 | Drum notes keep the GM note (27, 28, 32 are GM2's High Q, Slap, Square Click); alphaTab maps those three to its own articulation indices. |
+| `voltas-on-every-bar`       | gp3, gp4, gp5 | The model numbers every bar of a volta bracket; alphaTab marks its first bar only.                                                        |
+
+Seen in review but not in the list, because no gp3 to gp5 fixture shows them: alphaTab keeps a
+lyric line's leading and trailing spaces as empty syllables, and leaves the compound-time duplet,
+quadruplet and octuplet without a denominator. They become entries when a fixture carries them.

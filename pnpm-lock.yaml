@@ -192,6 +192,10 @@ importers:
       '@reprise/model':
         specifier: workspace:*
         version: link:../model
+    devDependencies:
+      '@coderline/alphatab':
+        specifier: 1.8.4
+        version: 1.8.4
 
   packages/layout:
     dependencies:
