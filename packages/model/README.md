@@ -189,7 +189,7 @@ except where noted:
   propagates them from the marked bar through the bar carrying the repeat end; alphaTab inherits
   them at playback instead.
 - **Jumps** are read at the end of a played bar, after its repeat end is exhausted (so a D.S. on
-  a repeated bar is taken on the last pass; alphaTab takes it on the first). The bar's `jumps`
+  a repeated bar is taken on the last pass; see "Deviations from alphaTab"). The bar's `jumps`
   are tried in order and the first that applies is taken. Each jump instruction fires at most
   once, which keeps every input finite.
   - D.C. forms land on bar 1; D.S. on the nearest `segno` searching backwards, then forwards;
@@ -199,13 +199,33 @@ except where noted:
     `toDoubleCoda` respectively, to the nearest `coda` or `doubleCoda` searching forwards, then
     backwards. Fine, To Coda and To Double Coda are ignored on the first time through.
   - **After a D.C. or D.S. jump, repeats are not taken** (senza repetizione) and each volta run
-    plays only its final ending, the highest number in the run. alphaTab plays every volta bar
-    there; that deviation is deliberate. Repeats are honoured again from a coda on.
+    plays only its final ending, the highest number in the run. Repeats are honoured again from a
+    coda on.
 - **Malformed input.** A jump whose target is missing is ignored with a `jump-target-missing`
   warning (an `al Fine` with no `fine` anywhere still jumps, plays to the end, and warns). A
   To Coda whose coda precedes the segno is followed; it cannot loop because jumps fire once.
   As a backstop the sequence stops at `PLAYBACK_LENGTH_FACTOR` (64) passes per master bar with a
   `sequence-truncated` warning; only runaway repeat counts or many stacked repeat ends reach it.
+
+### Deviations from alphaTab
+
+alphaTab (`MidiPlaybackController`, `MidiFileGenerator`) is the oracle the fixtures are checked
+against; these are the places this package knowingly differs, and why. Guitar Pro's own order
+wins over both: WP-054 compares `fixtures/gp5/directions.gp5` and
+`fixtures/gp5/repeat-close-alternate-endings.gp5` against it once the reader lands, and the
+expander follows Guitar Pro wherever the two disagree.
+
+| Case                                         | Here                                     | alphaTab                                    | Why                                                          |
+| -------------------------------------------- | ---------------------------------------- | ------------------------------------------- | ------------------------------------------------------------ |
+| D.S. or D.C. on a bar with a repeat end      | taken on the last pass, after the repeat | taken on the first pass, before it          | the musical convention                                       |
+| Voltas after a D.C. or D.S.                  | only the final ending of each run        | every volta bar                             | the musical convention (senza repetizione)                   |
+| Jumps on a skipped volta bar                 | not read                                 | read                                        | a jump inside a skipped bracket is not seen                  |
+| A jump instruction                           | fires once                               | no guard; a D.S. after a coda loops there   | the finite-sequence guarantee                                |
+| Unmatched repeat end after landing on a coda | repeats from the coda, with a warning    | ignored: its section's start was not passed | the plan: the song start or the last repeat start            |
+| Nested repeat starts `\|: A \|: B :\| C :\|` | A B B C B B C: the latest start wins     | A B B C A B B C                             | Guitar Pro has no nested repeats; a start closes the section |
+| Voltas in a section with several repeat ends | numbered by the last repeat end taken    | numbered by the next repeat end             | rare; revisited on a real file                               |
+| `Beat.mix.tempo.duration`                    | a linear ramp in BPM                     | a step at the beat; `isLinear` is ignored   | the ruling on tempo transitions                              |
+| Seconds                                      | exact                                    | each bar truncated to whole milliseconds    | nothing to round for                                         |
 
 ### Tempo map
 
