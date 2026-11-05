@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { exit } from 'node:process';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 interface BundleFile {
   name: string;
@@ -30,6 +31,7 @@ interface Bundle {
 }
 
 const ROOT = join(import.meta.dirname, '../..');
+const ATTEMPTS = 3;
 
 function isBundle(value: unknown): value is Bundle {
   return (
@@ -70,6 +72,31 @@ function rawUrl(bundle: Bundle, file: BundleFile): string {
   return `https://raw.githubusercontent.com/${repo}/${bundle.commit}/${file.path}`;
 }
 
+/** A network failure or a 5xx is retried; a 4xx means the pin or the path is wrong. */
+async function download(url: string, target: string): Promise<Uint8Array> {
+  for (let attempt = 1; ; attempt += 1) {
+    let reason: string;
+    try {
+      const response = await fetch(url);
+      if (response.ok) return new Uint8Array(await response.arrayBuffer());
+      if (response.status < 500) throw new Error(`${url} answered ${String(response.status)}`);
+      reason = `answered ${String(response.status)}`;
+    } catch (error) {
+      // fetch reports a network failure as a TypeError whose cause names the socket error.
+      if (!(error instanceof TypeError)) throw error;
+      reason = error.cause instanceof Error ? error.cause.message : error.message;
+    }
+    if (attempt >= ATTEMPTS) {
+      throw new Error(
+        `Could not download ${url} after ${String(ATTEMPTS)} attempts (${reason}). Check the ` +
+          `network, or put the file in ${target} by hand: its SHA-256 is verified on the next run.`,
+      );
+    }
+    console.log(`${url}: ${reason}; retrying`);
+    await sleep(1000 * attempt);
+  }
+}
+
 async function main(): Promise<void> {
   const bundle = await loadBundle();
   const target = join(ROOT, bundle.target);
@@ -82,9 +109,7 @@ async function main(): Promise<void> {
     }
     const url = rawUrl(bundle, file);
     console.log(`${file.name}: downloading ${url}`);
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`${url} answered ${String(response.status)}`);
-    const bytes = new Uint8Array(await response.arrayBuffer());
+    const bytes = await download(url, bundle.target);
     const actual = sha256(bytes);
     if (actual !== file.sha256) {
       throw new Error(`${file.name}: SHA-256 ${actual} does not match gm.json's ${file.sha256}`);

@@ -20,8 +20,10 @@ pnpm sounds:fetch
 **License summary.** Free to use without restriction for music creation, private or commercial,
 and free to use in software projects, modify and redistribute. The author asks that his own
 download links are not hot-linked: link to his web page or ship a local copy, which is what this
-bundle is. The license notes the origin of a few samples cannot be fully traced; read it in full
-before any commercial distribution.
+bundle is. The GitHub repository the fetch reads is the channel he offers for exactly this: its
+README says it exists "to host updated documentation, track issues, and offer an easier source
+for automated packaging of GeneralUser GS and its support files". The license notes the origin
+of a few samples cannot be fully traced; read it in full before any commercial distribution.
 
 To move to a new release, update the commit, sizes and hashes in `scripts/sounds/gm.json`, run
 `pnpm sounds:fetch`, and rerun the audio tests, whose GeneralUser GS suite checks every GM
