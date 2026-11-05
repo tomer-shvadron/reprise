@@ -5,6 +5,8 @@ const SILENCE = 1e-4;
 const MIN_ATTACK = 0.001;
 const MIN_RELEASE = 0.005;
 export const STEAL_FADE = 0.005;
+/** A string re-plucked: the new attack damps the old note this fast, whatever its release. */
+export const CHOKE_FADE = 0.015;
 
 export function dbToGain(db: number): number {
   return 10 ** (db / 20);
@@ -33,6 +35,8 @@ export interface FilterSettings {
   type?: BiquadFilterType;
   frequency: number;
   q?: number;
+  /** dB, for the shelving and peaking types. */
+  gain?: number;
 }
 
 /**
@@ -62,6 +66,7 @@ export class Voice {
   readonly #playable: number;
   readonly #rate: number;
   #lowestDetune = 0;
+  #detuneAnchored = false;
   #releaseAt = Infinity;
   #releaseFrom = 0;
   /** 0 marks a linear fade to zero; otherwise the exponential fade's target. */
@@ -93,7 +98,6 @@ export class Voice {
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.playbackRate.value = this.#rate;
-    source.detune.setValueAtTime(0, when);
     if (region.loop) {
       source.loop = true;
       source.loopStart = region.loop.start;
@@ -160,19 +164,31 @@ export class Voice {
     this.#fadeOut(at, STEAL_FADE, 0);
   }
 
+  /** A new note on the same string: a short fade instead of the region's full release. */
+  choke(at: number): void {
+    this.#fadeOut(at, CHOKE_FADE, 0);
+  }
+
   /** Relative to the note's own pitch, in semitones; fractions are cents. */
   setDetune(semitones: number, at: number): void {
+    this.#detuneAnchored = true;
     this.#noteDetune(semitones);
     this.#source.detune.setValueAtTime(semitones * 100, at);
   }
 
   /** A linear glide from the previous automation point, arriving at `at`. */
   rampDetune(semitones: number, at: number): void {
+    // Anchored lazily: Chromium skips a value curve starting mid-quantum after any event in that
+    // quantum, so a curve from the onset must be the voice's first detune event; this anchor is
+    // such an event, and a curve from `startTime` scheduled after it would be lost.
+    if (!this.#detuneAnchored) this.#source.detune.setValueAtTime(0, this.startTime);
+    this.#detuneAnchored = true;
     this.#noteDetune(semitones);
     this.#source.detune.linearRampToValueAtTime(semitones * 100, at);
   }
 
   detuneCurve(semitones: readonly number[], start: number, duration: number): void {
+    this.#detuneAnchored = true;
     for (const value of semitones) this.#noteDetune(value);
     const [only] = semitones;
     if (only === undefined) return;
@@ -204,6 +220,7 @@ export class Voice {
     if (settings.type) this.#filter.type = settings.type;
     this.#filter.frequency.setValueAtTime(settings.frequency, at);
     if (settings.q !== undefined) this.#filter.Q.setValueAtTime(settings.q, at);
+    if (settings.gain !== undefined) this.#filter.gain.setValueAtTime(settings.gain, at);
   }
 
   /** The level the envelope and velocity give at `time`, ignoring gain automation. */

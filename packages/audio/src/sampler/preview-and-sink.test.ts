@@ -62,19 +62,31 @@ describe('previewNote', () => {
     const context = offline(1);
     const sampler = new Sampler(context);
     sampler.addTrack(guitar, sineInstrument());
-    sampler.addTrack({ ...bass, channel: { ...bass.channel, mute: true } }, sineInstrument());
+    sampler.addTrack(bass, sineInstrument());
 
-    expect(sampler.previewNote(bass.id, note(1, 0))).toBeDefined();
     const voice = sampler.previewNote(guitar.id, firstNote);
     const data = (await context.startRendering()).getChannelData(0);
 
     const expected = midiToFrequency(midiNote(guitar, firstNote));
     expect(Math.abs(cents(zeroCrossingFrequency(data, 0.1, 0.5), expected))).toBeLessThan(1);
-    expect(toneLevel(data, midiToFrequency(midiNote(bass, note(1, 0))), 0.1, 0.5)).toBeLessThan(
-      0.001,
-    );
     expect(voice?.endTime).toBeLessThan(1);
     expect(toneLevel(data, expected, 0.8, 1)).toBeLessThan(0.001);
+  });
+
+  it('sounds on a muted track and beside a soloed one, and the gate still holds for playback', async () => {
+    const context = offline(1);
+    const sampler = new Sampler(context);
+    sampler.addTrack({ ...guitar, channel: { ...guitar.channel, solo: true } }, sineInstrument());
+    sampler.addTrack({ ...bass, channel: { ...bass.channel, mute: true } }, sineInstrument());
+    const previewed = midiToFrequency(midiNote(bass, note(1, 0)));
+    const played = midiToFrequency(midiNote(bass, note(2, 0)));
+
+    sampler.previewNote(bass.id, note(1, 0));
+    sampler.noteOn(bass.id, { key: midiNote(bass, note(2, 0)), velocity: 96, when: 0 });
+    const data = (await context.startRendering()).getChannelData(0);
+
+    expect(toneLevel(data, previewed, 0.1, 0.5)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, played, 0.1, 0.5)).toBeLessThan(0.001);
   });
 });
 
