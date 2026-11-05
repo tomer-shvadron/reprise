@@ -1,6 +1,6 @@
 # ADR-0014: Public repository, issue-driven work, PR review in GitHub
 
-- **Status**: Accepted
+- **Status**: Accepted; label families and credential notes superseded by ADR-0018
 - **Date**: 2026-11-05
 - **Deciders**: Tomer Shvadron, with Claude
 

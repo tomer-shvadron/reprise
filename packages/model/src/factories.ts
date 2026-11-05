@@ -3,7 +3,6 @@ import type { Beat } from './beat';
 import { newId } from './id';
 import type { MasterBar } from './master-bar';
 import type { Note } from './note';
-import { SCORE_VERSION } from './score';
 import type { Score, ScoreMeta } from './score';
 import type { Track, TrackKind } from './track';
 
@@ -160,7 +159,6 @@ export function createScoreMeta(options: Partial<ScoreMeta> = {}): ScoreMeta {
 export function createEmptyScore(): Score {
   return {
     id: newId(),
-    version: SCORE_VERSION,
     meta: createScoreMeta(),
     masterBars: [createMasterBar({ tempo: { bpm: 120 } })],
     tracks: [createTrack('fretted')],

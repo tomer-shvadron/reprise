@@ -16,7 +16,6 @@ import { validateScore } from './validate';
 describe('createEmptyScore', () => {
   it('is one fretted track in standard tuning, 4/4 at 120 BPM, with one empty bar', () => {
     const score = createEmptyScore();
-    expect(score.version).toBe(1);
     expect(score.masterBars).toHaveLength(1);
     expect(score.masterBars[0]).toMatchObject({
       timeSignature: { numerator: 4, denominator: 4 },

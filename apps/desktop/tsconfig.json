@@ -2,8 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2022"],
+    "types": ["node"],
     "outDir": ".tsbuild"
   },
-  "include": ["src"],
-  "references": []
+  "include": ["src", "electron.vite.config.ts"],
+  "references": [{ "path": "../web/tsconfig.app.json" }, { "path": "../web/tsconfig.node.json" }]
 }
