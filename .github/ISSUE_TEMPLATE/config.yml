@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Plans and decisions
+    url: https://github.com/tomer-shvadron/reprise/tree/main/docs
+    about: Work comes from the phase plans in docs/plans; read them before filing a new work package.
