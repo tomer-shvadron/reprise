@@ -192,7 +192,7 @@ function checkVoiceLength(
   path: ViolationPath,
   report: Report,
 ): void {
-  const capacity = barTicks(masterBar.timeSignature);
+  const capacity = barTicks(masterBar);
   const used = voice.beats.reduce((sum, beat) => sum + beatTicks(beat), 0);
   if (used > capacity + TICK_EPSILON) {
     report(
