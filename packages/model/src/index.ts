@@ -138,3 +138,23 @@ export type { TrackOptions } from './factories';
 
 export { validateScore } from './validate';
 export type { Violation, ViolationPath, ViolationRule } from './validate';
+
+export { PPQ, barTicks, beatStartTicks, beatTicks, playedBarTicks, tickOf } from './ticks';
+export type { ScorePosition } from './ticks';
+
+export { PLAYBACK_LENGTH_FACTOR, expandPlaybackSequence } from './playback-sequence';
+export type {
+  BarPass,
+  PlaybackSequence,
+  PlaybackWarning,
+  PlaybackWarningCode,
+} from './playback-sequence';
+
+export { DEFAULT_BPM, positionAtSeconds, secondsAt, tempoMap } from './tempo-map';
+export type {
+  PlaybackPosition,
+  PositionOptions,
+  TempoMap,
+  TempoMapPass,
+  TempoSegment,
+} from './tempo-map';
