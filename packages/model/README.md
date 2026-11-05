@@ -141,6 +141,46 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
 - **Colours** are lower-case `#rrggbb`.
 - **Clefs** are `treble`, `bass`, `alto`, `tenor`, `percussion` (gpif's G2, F4, C3, C4, Neutral).
 
+## Pitch, tuning and spelling
+
+Pure helpers over the model, with no state of their own.
+
+- **`midiNote(track, note)`** is the sounding MIDI note: `tuning[tuning.length - string] +
+capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro writes them;
+  `note.fret` as stored on drum and pitched tracks, even when a pitched track keeps a GP5
+  tuning. A fretted note on a string the track lacks throws a `RangeError`.
+- **`transpose(note, semitones, track)`** moves the note on its own string and returns
+  `{ ok: true, note, trillDropped }` or `{ ok: false, reason, midi, alternatives }`, never
+  throwing for a note that falls off. `reason` is `belowOpenString`, `aboveLastFret` (past
+  `fretCount - capo`, the frets left above the capo) or `outOfMidiRange` (pitched tracks, 0
+  to 127). `alternatives` lists the other strings that can play the pitch, for a caller that
+  knows which strings in the beat are free. The trill's alternate fret moves too and is
+  dropped when it falls off; a stored `accidental` survives only octave shifts; drum notes come
+  back unchanged.
+- **`STANDARD_TUNINGS`** names fourteen tunings (guitar, 7-string, 4- and 5-string bass,
+  ukulele), each in `Track.tuning` order. The ukulele is re-entrant, so its array is in string
+  order, not pitch order. **`findTuningName(tuning)`** matches exactly, string count included.
+- **`spell(midi, key, accidental?)`** returns `{ letter, octave, alter, accidental? }`.
+  `octave` is scientific (C4 = 60) and belongs to the letter, so B#3 is MIDI 60. Preference:
+  a stored accidental that can spell the pitch, then the key's own notes, then a minor key's
+  raised leading tone (F## in G# minor), then the natural letter, then a sharp in sharp keys
+  and C major or a flat in flat keys. The returned `accidental` is what to print against the
+  key signature; cancelling an accidental earlier in the bar is the layout's job.
+  `spellNote(track, note, key)` does the same from a note.
+- **`Note.accidental` stores the alteration of the spelling** (`flat` = a lowered letter),
+  not the printed sign. **`respell(track, note, key)`** flips C# and Db, E and Fb, B and Cb;
+  D, G and A, which have no single-accidental alternative, cycle through their double sharp
+  and double flat. It clears the stored accidental when the result is the key's default, so
+  the note follows a later key change.
+- **`staffPosition(spelling, clef)`** is the line or space on a five-line staff: 0 the bottom
+  line, 8 the top line, odd numbers spaces; below 0 and above 8 the even numbers are ledger
+  lines. Treble, bass, alto and tenor clefs.
+- **`percussionInstrument(midi)`** gives the GM (35 to 81) and GM2 (27 to 34, 82 to 87) drum
+  name, default staff position (same numbering) and note head (`normal`, `cross`, `diamond`,
+  `triangle`). Positions follow the common drum-kit layout (kick in the bottom space, snare in
+  the third, hi-hats above the staff, toms descending); the hand-percussion positions are
+  defaults only. Open and closed hi-hat share a head; the open circle is an articulation.
+
 ## Not modelled yet
 
 Readers drop these with a warning; each is a contract change if it is ever needed. Confirmed by
