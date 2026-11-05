@@ -5,7 +5,7 @@ import { ClickSynth } from './click-synth';
 import { advance, retime, startRun, tickAtTime, withLoop } from './scheduler';
 import type { Anchor, Run } from './scheduler';
 import type { InstrumentSink, MetronomeSink } from './sink';
-import { frameTicker, intervalTicker } from './ticker';
+import { frameTicker, workerTicker } from './ticker';
 import type { Ticker } from './ticker';
 import { bpmAtTick, createTimeline, loopRange } from './timeline';
 import type { TickRange, Timeline } from './timeline';
@@ -90,7 +90,7 @@ export interface AudioEngineOptions {
   sink: InstrumentSink;
   /** Defaults to a `ClickSynth` on the context's destination. */
   metronome?: MetronomeSink;
-  /** Drives the lookahead scheduler; defaults to a 25 ms interval. */
+  /** Drives the lookahead scheduler; defaults to a 25 ms interval in a worker. */
   scheduler?: Ticker;
   /** Drives position events; defaults to animation frames. */
   frames?: Ticker;
@@ -109,7 +109,7 @@ function notYet(method: string, workPackage: string): Error {
 export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   const { context, sink } = options;
   const metronome = options.metronome ?? new ClickSynth(context);
-  const schedulerTicker = options.scheduler ?? intervalTicker(25);
+  const schedulerTicker = options.scheduler ?? workerTicker(25);
   const frames = options.frames ?? frameTicker();
   const lookahead = options.lookahead ?? 0.2;
   const startLatency = options.startLatency ?? 0.03;

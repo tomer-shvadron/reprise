@@ -9,8 +9,8 @@ what exists so far, the transport, and the contract the sampler plugs into.
 ```
 main thread                                     audio thread (native Web Audio)
 -----------                                     -------------------------------
-25 ms timer -> advance(run, now, now + 0.2) --> InstrumentSink.noteOn -> sampler nodes --+
-                                           \--> MetronomeSink.click  -> click gain ------+-> destination
+25 ms worker timer -> advance(run, now, now + 0.2) --> InstrumentSink.noteOn -> sampler nodes --+
+                                                  \--> MetronomeSink.click  -> click gain ------+-> destination
 animation frame -> currentTime -> position event
 ```
 
@@ -18,6 +18,11 @@ animation frame -> currentTime -> position event
   `advance(timeline, run, { now, horizon: now + 0.2 })`, which hands out every note and click due
   in the next 200 ms with an absolute `AudioContext` time. Sinks turn them into native nodes
   started at that time, so a late timer never makes a note late, only the next window shorter.
+  The timer itself runs in a dedicated worker (`workerTicker`): browsers slow a hidden page's
+  main-thread timers to once a second as soon as it stops being audible (a long rest is enough),
+  and at that cadence a 200 ms lookahead plays 200 ms of every second. Worker timers are not
+  throttled; where workers are unavailable, or a CSP forbids a blob worker, it falls back to
+  `setInterval`.
 - **The core is pure.** `advance`, `startRun`, `retime` and `withLoop` (`src/scheduler.ts`) take
   and return plain data and never touch Web Audio or a timer, so moving the scheduler into a
   worker or an AudioWorklet (ADR-0004's documented mitigation) changes only `engine.ts`.

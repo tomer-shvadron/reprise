@@ -22,7 +22,7 @@ export type { RecordedClick, RecordedCut, RecordedNote } from './recording-sink'
 export { ToneSink } from './tone-sink';
 export type { ToneSinkOptions } from './tone-sink';
 
-export { frameTicker, intervalTicker } from './ticker';
+export { frameTicker, intervalTicker, workerTicker } from './ticker';
 export type { Ticker } from './ticker';
 
 export { advance, retime, startRun, tickAtTime, timeAtTick, withLoop } from './scheduler';
