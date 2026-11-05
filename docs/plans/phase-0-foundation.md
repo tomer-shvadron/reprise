@@ -82,6 +82,7 @@ Everything here is scaffolding. The goal is that a lane agent can clone, install
 - Electron main: file open and save dialogs, read and write files, `libraryDir` resolving to `~/Music/Reprise` (created on first run), `dataDir` resolving to `app.getPath('userData')`, `print()` via `webContents.print`, native application menu with File (Open, Save, Save As, Print, Quit), Edit (Undo, Redo, Cut, Copy, Paste as roles), View (zoom in/out/reset, toggle theme, toggle panels), Window, Help (open docs URL).
 - Window state (bounds, maximised) persisted and restored.
 - electron-builder config: macOS `dmg` and `zip` for arm64 and x64, Windows `nsis`; no signing configuration yet. `pnpm desktop:build` produces a macOS artifact locally.
+- The local build currently packages both macOS architectures; WP-102 narrows it to the host architecture and leaves both to CI.
 
 **Acceptance criteria**
 
