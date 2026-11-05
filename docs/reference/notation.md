@@ -63,3 +63,38 @@ Drawn above a system's first staff, in bands that exist only when a bar of the s
 - Every onset of every visible voice and track gets one column, so simultaneous beats align vertically across tracks and voices.
 - The width from one onset to the next is logarithmic in the shortest beat starting at the onset (Gourlay): a 64th is one staff space and each doubling adds 0.7, scaled by the fraction of that beat before the next onset. Nothing is narrower than its contents need.
 - A pickup bar (anacrusis) is as wide as what it holds; any other bar spans its whole time signature, so an incomplete bar keeps its empty space.
+
+## Tab staff (WP-021)
+
+The tab module is `packages/layout/src/staves/tab/`; every size below is in staff spaces and lives in its `TAB` table.
+
+- **Fret numbers** are UI-font text, 1.3 spaces, centred on their string at the onset (string 1 on the top line). Each sits on a filled `paper` knockout rectangle 0.12 em wider and 0.09 em taller than the number on each side, so the string line stops short of the digits; the painter fills it with the paper colour. Numbers of any width (`12`, `24`) are centred the same way and widen their onset's room.
+- **Note forms**: a dead note is `x`, a ghost note `(5)`, a tied note `(5)`, a dead ghost note `(x)`. A tied note can instead be hidden (`tabModule({ tiedNotes: 'hidden' })`): nothing is drawn on the string, the tie and the note anchor stay.
+- **Grace notes** are fret numbers at 0.7 of the size, one column per grace beat, left of the main number with 0.25 spaces between columns, each on a stem two spaces long (0.7 of the thickness) with its flag at 0.6 of the size.
+- **Rests** are the SMuFL rest glyphs, centred on the onset and on the staff's middle; dots follow 0.3 spaces after the glyph. The rests of an upper voice sit in that voice's rhythm area above the staff.
+- **Two voices.** Voice 1 stems down below the tab; voices 2 to 4 stem up above it whenever voice 1 has beats, Guitar Pro's convention for tab. A voice alone stems down.
+- **Words.** Above the staff, upwards from the top string (or from the upper voice's rhythm area): chord names (1.2 spaces, starting at the left edge of the beat's numbers), left- and right-hand fingering stacked one per fingered note in string order (`T 1 2 3 4`, then `p i m a c`), then beat text. Below the rhythm notation: one lyric row per line used, each syllable centred on its beat. A row exists only in bars that have it; the chord row is nearest the staff so it aligns most often.
+- **Dynamics** are the Bravura dynamic glyphs at 0.8 size, centred on the beat in the row below the stems, written where a voice's dynamic changes from the previous played beat, across bar lines, starting from Guitar Pro's default `f`.
+- **Spacing.** A beat reserves its numbers and knockouts, grace columns, rest glyph, flag and dots either side of its onset, plus its chord name, text, lyrics and dynamic. Long notes are widened towards Guitar Pro's feel: a beat longer than a quarter asks for `3.8 × q^0.85` spaces for `q` quarters (a half 6.8, a whole 12.3, where the engine's logarithmic spacing gives 4.5 and 5.2), so a 4/4 bar of one whole note is about 15 spaces of content instead of 7.4. Shorter beats keep the engine's spacing.
+
+## Rhythm notation (WP-021)
+
+Drawn by the staff-agnostic helpers in `packages/layout/src/staves/rhythm/`, which take x and y positions and a stem direction; the tab module draws them under the tab in every display mode (ADR-0007).
+
+- **Stems** start 0.75 spaces past the outer string and are 3.25 spaces long, 0.12 thick (Bravura's `stemThickness`). A half note's stem is the outer 1.5 spaces only; a whole note has none. Each beam past the second lengthens a voice's stems by one beam pitch.
+- **Flags** are the SMuFL flag glyphs for an unbeamed eighth or shorter, attached by their `stemDownSW` / `stemUpNW` anchor to the stem's end.
+- **Beams are horizontal under tab**, never sloped, since every stem in a voice ends at the same height. Thickness 0.5, gap 0.25 (Bravura), so each further beam sits 0.75 towards the notes. A stem with more beams than its neighbours takes a partial beam 1.1 spaces long, pointing right on the group's first stem and left elsewhere.
+- **Beam groups** never cross a rest, an empty beat or a longer note; a tuplet beams within itself; everything else beams within the spans of its time signature:
+
+  | Signature                        | Eighths                        | Sixteenths and shorter |
+  | -------------------------------- | ------------------------------ | ---------------------- |
+  | 4/4                              | half bars (two quarters)       | quarters               |
+  | other x/4                        | quarters                       | quarters               |
+  | 6/8, 9/8, 12/8 (x/8, x/16 by 3s) | dotted quarters                | the same               |
+  | 3/8                              | the whole bar                  | the same               |
+  | other x/8 and x/16               | pairs, the last of three       | the same               |
+  | x/2 and x/1                      | halves                         | quarters               |
+
+- **Dots** sit 0.45 spaces right of the stem and 0.6 spaces past where it starts, 0.5 apart.
+- **Tuplets** group consecutive beats with the same ratio until their written lengths add up to `n` of the shortest among them. The number (SMuFL `tuplet` digits) is centred under the group, 1.45 spaces past the beams; a bracket (0.16 thick, 0.6-space hooks pointing back at the stems, broken 0.3 spaces around the number) is added unless one beam spans exactly the tuplet.
+- **Ties** are filled crescents between the two notes' numbers (or the onset of a hidden one), just past the number on the stem side: height 0.12 of the span, kept between 0.3 and 0.6 spaces, Bravura's midpoint thickness of 0.22. A tie across a bar line is drawn by the earlier bar in one piece when both bars share a system; across a system break each side draws a half to or from the bar's edge.

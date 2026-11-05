@@ -67,13 +67,33 @@ interface StaffModule {
 - `measure` reports, for every onset it draws (ticks from the bar start, as `beatTicks` sums them), the px it needs left and right of the onset's x, and the room it needs above the top line and below the bottom line. The engine takes the widest request per onset across all staves, so tab numbers, note heads and accidentals on different staves all push the same column apart.
 - `render` gets the bar's content area, the staff's line positions, its system index, `onsetX(tick)` and, when the bar before or after it is in the same system, that bar's content area and `onsetX` as `previous` and `next`, so a tie, slide or extent that crosses the bar line is drawn in one piece and a bar line can be told from a system break. It pushes primitives and anchors (`note` and `beat`) into the sink and must stay inside the room it measured.
 
-Today all three types use the placeholder module (`src/staves/placeholder.ts`): it reserves a two-digit fret number on tab and a note head on the five-line staves around each onset, and emits beat anchors only. WP-021 replaces the tab module, WP-023 the standard and percussion ones, and WP-022 adds effect glyphs inside the tab module's measure and render; none of them needs to touch spacing or breaking.
+The standard and percussion types still use the placeholder module (`src/staves/placeholder.ts`), which reserves a note head around each onset and emits beat anchors only, until WP-023 replaces them; WP-022 adds effect glyphs inside the tab module's measure and render. None of them needs to touch spacing or breaking.
+
+### Tab (`src/staves/tab/`)
+
+`tabModule({ tiedNotes })` draws one line per string, fret numbers over `paper` knockouts, rests, grace notes, the rhythm notation of each voice (voice 1 below the staff, the others above when voice 1 has beats), ties, chord names, fingering, beat text, lyrics and dynamics. Its rules and numbers are in [`notation.md`](../../docs/reference/notation.md) under "Tab staff" and "Rhythm notation". It emits a `note` anchor per note (the knockout box, grace notes included) and a `beat` anchor per beat, voice by voice.
+
+- `analysis.ts` turns a bar into what measure and render both need (labels, extents, beam and tuplet groups, the rows drawn above and below), cached per `Bar` object. It reads the bar alone, so a cached measurement stays true; render also reads the neighbouring bars (a tie into the next bar, the dynamic before the bar), which the engine allows because a system is redrawn whenever a bar in it or right after it changes.
+- `spacing.ts` widens long notes towards Guitar Pro's feel by raising an onset's right extent, since a module can only ask for minimums: the onsets it compares against are every track's at that bar index, so a hidden track can only make the floor smaller.
+- `measure.ts` and `render.ts` are the module's two halves.
+
+### Rhythm notation (`src/staves/rhythm/`)
+
+Staff-agnostic helpers for any staff that draws rhythm, so WP-023 can reuse them: they take x positions, y positions and a `StemDirection`, and push primitives into the sink.
+
+| Export                                                         | What it does                                                                                |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `RhythmEvent`, `beamCount(duration)`                           | A beat as rhythm sees it (tick, ticks, duration, dots, tuplet, silent); beams per duration. |
+| `beamGrouping(timeSignature)`, `beamGroups(events, signature)` | The beat-grouping table, and the beamed groups of a voice by index (a group of one flags).  |
+| `tupletGroups(events)`                                         | Runs of beats under one tuplet number.                                                      |
+| `drawStem`, `drawFlag`, `flagWidth`, `drawBeams`, `BEAM_PITCH` | Stems, flags by their SMuFL stem anchor, horizontal beams with partial beams.               |
+| `drawDots`, `dotsWidth`, `drawTuplet`, `drawTie`               | Augmentation dots, tuplet numbers with an optional bracket, ties as filled crescents.       |
 
 ## Metrics pipeline
 
 The engine reads two committed tables and never a font:
 
-- `src/metrics/bravura.json`: for every glyph the engine uses, its codepoint, advance width (from the font's own `hmtx`) and bounding box and anchors (from the SMuFL metadata), in staff spaces, plus Bravura's engraving defaults (line, stem, beam and bar-line thicknesses).
+- `src/metrics/bravura.json`: for every glyph the engine uses (clefs, signatures, rests, flags, dynamics and tuplet digits among them), its codepoint, advance width (from the font's own `hmtx`) and bounding box and anchors (from the SMuFL metadata), in staff spaces, plus Bravura's engraving defaults (line, stem, beam and bar-line thicknesses).
 - `src/metrics/geist.json`: advance widths in font units of Geist Variable at weight 400 for printable ASCII and the extra characters tab labels use, with the font's units per em, ascent, descent, cap height and x-height. Text is measured without kerning; a character outside the table measures as the digit `0` does.
 
 `scripts/layout/metrics.ts` generates both with `fontkit` from the Bravura font in `apps/web/public/fonts/bravura/` (provenance in the README there), the SMuFL metadata in `scripts/layout/data/` and the Geist font of `@fontsource-variable/geist`. Run it by hand with `pnpm layout:metrics` after adding a glyph to its `GLYPHS` list or updating a font; `pnpm layout:metrics:check` and `scripts/layout/metrics.test.ts` fail when the committed tables are stale.
