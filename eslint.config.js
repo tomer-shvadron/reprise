@@ -159,6 +159,6 @@ export default defineConfig(
     files: ['apps/web/**/*.{ts,tsx}'],
     extends: [reactRecommended, reactJsxRuntime, reactHooks.configs.flat['recommended-latest']],
     languageOptions: { globals: globals.browser },
-    settings: { react: { version: '19.2' } },
+    settings: { react: { version: 'detect' } },
   },
 );
