@@ -21,7 +21,7 @@
     "desktop:dev": "pnpm --filter @reprise/desktop dev",
     "desktop:build": "pnpm --filter @reprise/desktop build",
     "prepare": "husky",
-    "postinstall": "playwright install chromium"
+    "postinstall": "playwright install chromium --only-shell"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
