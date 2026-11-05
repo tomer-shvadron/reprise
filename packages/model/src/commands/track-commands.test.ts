@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { newId } from '../id';
+import { ScoreSchema } from '../score';
 import { buildScore, expectRefusal, roundTrip } from './test-score';
 import { addTrack, moveTrack, removeTrack, setTrackProperties } from './track-commands';
 
@@ -64,6 +65,33 @@ describe('setTrackProperties', () => {
       setTrackProperties({ trackId: trackId(score, 1) }, { capo: 2 }),
       'invariant',
     );
+  });
+});
+
+describe('setTrackProperties fret ceiling', () => {
+  // The guitar's highest note sits at fret 22 on 24 frets.
+  it('refuses a capo or fret count that strands a note, and accepts one that just reaches it', () => {
+    const score = buildScore();
+    const id = trackId(score, 0);
+    expectRefusal(score, setTrackProperties({ trackId: id }, { capo: 3 }), 'off-fretboard');
+    expectRefusal(score, setTrackProperties({ trackId: id }, { fretCount: 21 }), 'off-fretboard');
+    const { score: after } = roundTrip(
+      score,
+      setTrackProperties({ trackId: id }, { capo: 2, fretCount: 24 }),
+    );
+    expect(after.tracks[0]).toMatchObject({ capo: 2, fretCount: 24 });
+  });
+
+  it('tolerates a note an import left above the ceiling', () => {
+    const imported = ScoreSchema.parse(JSON.parse(JSON.stringify(buildScore())));
+    const guitar = imported.tracks[0];
+    if (!guitar) throw new Error('no guitar');
+    guitar.fretCount = 20;
+    const { score: after } = roundTrip(
+      imported,
+      setTrackProperties({ trackId: guitar.id }, { capo: 1 }),
+    );
+    expect(after.tracks[0]?.capo).toBe(1);
   });
 });
 

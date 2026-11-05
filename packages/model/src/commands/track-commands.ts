@@ -3,13 +3,14 @@ import type { TrackOptions } from '../factories';
 import type { Command } from '../history';
 import { newId } from '../id';
 import type { Id } from '../id';
+import type { Score } from '../score';
 import { TrackSchema } from '../track';
 import type { ChannelSettings, DisplaySettings, Track, TrackKind } from '../track';
 import { assignChanges } from './changes';
 import type { Changes } from './changes';
-import { assertFreshId, assertTrackValid, parseOrThrow } from './checks';
+import { assertFreshId, assertTrackValid, maxFret, parseOrThrow } from './checks';
 import { CommandError } from './command-error';
-import { at, findTrack } from './locate';
+import { at, baseOf, findTrack } from './locate';
 
 /** Everything but identity, kind and bars; `channel` and `display` merge field by field. */
 export type TrackChanges = Changes<Omit<Track, 'id' | 'kind' | 'bars' | 'channel' | 'display'>> & {
@@ -23,6 +24,39 @@ const TrackPropertiesSchema = TrackSchema.omit({ bars: true });
 
 // The properties the track's notes are checked against; any other edit cannot break them.
 const NOTE_BEARING_KEYS = new Set(['tuning', 'capo', 'fretCount']);
+
+function notesAbove(track: Track, ceiling: number): number {
+  let count = 0;
+  for (const bar of track.bars) {
+    for (const voice of bar.voices) {
+      for (const beat of voice.beats) {
+        for (const note of beat.notes) if (note.fret > ceiling) count += 1;
+        for (const grace of beat.grace ?? []) {
+          for (const note of grace.notes) if (note.fret > ceiling) count += 1;
+        }
+      }
+    }
+  }
+  return count;
+}
+
+/** Counts on the base track, so the draft's bars stay unproxied; frets an import left above the ceiling are tolerated. */
+function assertFretsReachable(draft: Score, index: number, command: string): void {
+  const before = at(baseOf(draft).tracks, index, command);
+  const track = at(draft.tracks, index, command);
+  if (track.kind !== 'fretted') return;
+  const ceiling = maxFret(track);
+  const was = maxFret(before);
+  if (ceiling >= was) return;
+  const stranded = notesAbove(before, ceiling) - notesAbove(before, was);
+  if (stranded > 0) {
+    throw new CommandError(
+      command,
+      'off-fretboard',
+      `${String(stranded)} notes would sit above fret ${String(ceiling)}`,
+    );
+  }
+}
 
 function assertIndex(index: number, count: number, command: string): void {
   if (!Number.isInteger(index) || index < 0 || index > count) {
@@ -47,6 +81,7 @@ export function setTrackProperties(target: { trackId: Id }, changes: TrackChange
       if (display) assignChanges(track.display, display);
       parseOrThrow(TrackPropertiesSchema, track, name);
       if (Object.keys(properties).some((key) => NOTE_BEARING_KEYS.has(key))) {
+        assertFretsReachable(draft, index, name);
         assertTrackValid(draft, index, name);
       }
     },

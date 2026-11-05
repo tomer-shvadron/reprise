@@ -31,7 +31,9 @@ export function parseOrThrow<T>(schema: z.ZodType<T>, value: unknown, command: s
 
 /**
  * Fails when the edit raised the count of any rule. Counting per rule, not matching paths,
- * tolerates violations an imported file already carried and indices an insert shifted.
+ * tolerates violations an imported file already carried and indices an insert shifted; it
+ * cannot tell a fixed violation from a new one of the same rule, so the nodes a command
+ * creates are checked in full before this runs.
  */
 function assertNoNewViolations(command: string, before: Violation[], after: Violation[]): void {
   const counts = new Map<string, number>();
@@ -86,6 +88,43 @@ export function assertTrackValid(
     isNew ? [] : trackViolations(base, base.tracks[trackIndex], trackIndex),
     trackViolations(after, draftTrack && plainTrack(draftTrack), trackIndex),
   );
+}
+
+/** The highest fret above the capo; frets count from the capo, as Guitar Pro shows them. */
+export function maxFret(track: Track): number {
+  return Math.max(0, track.fretCount - track.capo);
+}
+
+export function assertNotePlaced(
+  track: Track,
+  note: Pick<Note, 'string' | 'fret'>,
+  command: string,
+): void {
+  if (track.kind !== 'fretted') {
+    if (note.string !== 0) {
+      throw new CommandError(
+        command,
+        'invalid-value',
+        `notes on a ${track.kind} track use string 0`,
+      );
+    }
+    return;
+  }
+  const strings = track.tuning.length;
+  if (note.string < 1 || note.string > strings) {
+    throw new CommandError(
+      command,
+      'invalid-value',
+      `string ${String(note.string)} is outside 1 to ${String(strings)}`,
+    );
+  }
+  if (note.fret < 0 || note.fret > maxFret(track)) {
+    throw new CommandError(
+      command,
+      'off-fretboard',
+      `fret ${String(note.fret)} is outside 0 to ${String(maxFret(track))}`,
+    );
+  }
 }
 
 export function assertFreshId(score: Score, id: Id, command: string): void {

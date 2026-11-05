@@ -6,9 +6,16 @@ import { newId } from '../id';
 import type { Id } from '../id';
 import type { Note } from '../note';
 import type { Score } from '../score';
+import type { Track } from '../track';
 import { assignChanges } from './changes';
 import type { Changes } from './changes';
-import { assertFreshId, assertTrackValid, parseOrThrow, releaseTies } from './checks';
+import {
+  assertFreshId,
+  assertNotePlaced,
+  assertTrackValid,
+  parseOrThrow,
+  releaseTies,
+} from './checks';
 import { CommandError } from './command-error';
 import { at, beatAt, findBeat, findVoice } from './locate';
 
@@ -25,7 +32,8 @@ function graceNotes(grace: readonly GraceBeat[] | undefined): Note[] {
   return grace?.flatMap((g) => g.notes) ?? [];
 }
 
-function assertFreshNotes(draft: Score, notes: readonly Note[], command: string): void {
+/** Notes a command adds get the full placement check, ids included; the count-based check cannot see them as new. */
+function assertNewNotes(draft: Score, track: Track, notes: readonly Note[], command: string): void {
   const ids = new Set<Id>();
   for (const note of notes) {
     if (ids.has(note.id)) {
@@ -33,6 +41,7 @@ function assertFreshNotes(draft: Score, notes: readonly Note[], command: string)
     }
     ids.add(note.id);
     assertFreshId(draft, note.id, command);
+    assertNotePlaced(track, note, command);
   }
 }
 
@@ -60,7 +69,7 @@ export function insertBeat(
         );
       }
       if (target.id !== undefined) assertFreshId(draft, target.id, name);
-      assertFreshNotes(draft, [...(beat.notes ?? []), ...graceNotes(beat.grace)], name);
+      assertNewNotes(draft, track, [...(beat.notes ?? []), ...graceNotes(beat.grace)], name);
       const node = parseOrThrow(
         BeatSchema,
         {
@@ -128,12 +137,14 @@ export function setBeatEffect(target: { beatId: Id }, changes: BeatChanges): Com
     name,
     run(draft) {
       const position = findBeat(draft, target.beatId, name);
+      const track = at(draft.tracks, position.track, name);
       const beat = beatAt(draft, position, name);
       const { effects, ...properties } = changes;
       if (properties.grace) {
         const kept = new Set(graceNotes(beat.grace).map((note) => note.id));
-        assertFreshNotes(
+        assertNewNotes(
           draft,
+          track,
           graceNotes(properties.grace).filter((note) => !kept.has(note.id)),
           name,
         );

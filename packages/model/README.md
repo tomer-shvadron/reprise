@@ -177,8 +177,11 @@ const undone = history.undo(); // { score, change } with the patches it replayed
   `setBeatEffect`, `setBeatDuration`, `setMasterBar` and `setTrackProperties` take.
 - **Refusal**: a command throws `CommandError` (`code`, `command`, and `violations` for
   `invariant`) instead of producing a score that breaks the schema or adds a `validateScore`
-  violation. Checks count violations per rule before and after, so a violation an imported file
-  already carried does not block unrelated edits.
+  violation. Nodes an edit creates (a new beat's notes, grace notes) are checked in full, string
+  range and fret ceiling included; for the nodes that already existed the checks count violations
+  per rule before and after, so a violation an imported file already carried does not block
+  unrelated edits. A capo, fret count or tuning change that would leave more notes above the
+  ceiling than before is refused the same way.
 - **Repair**: a tie whose target an edit removes (a note, a beat, a bar, a string shift) is
   released rather than refused.
 
@@ -189,12 +192,12 @@ const undone = history.undo(); // { score, change } with the patches it replayed
 | `setNoteEffect`                        | Any note field but id, string and fret.                                                                                                   |
 | `transposeSelection`                   | Shifts frets (MIDI on pitched tracks) and refuses notes that leave 0 to `fretCount - capo`; drum and dead notes stay.                     |
 | `shiftStrings`                         | Moves notes to the neighbouring string at the same pitch; refuses occupied strings and frets off the neck.                                |
-| `insertBeat`, `removeBeat`             | A quarter rest by default; refuses to overfill the voice.                                                                                 |
+| `insertBeat`, `removeBeat`             | A quarter rest by default; refuses to overfill the voice or to place a note off the neck.                                                 |
 | `setBeatDuration`, `setBeatRest`       | Duration, dots, tuplet; rest drops the notes.                                                                                             |
 | `setBeatEffect`                        | Beat effects, plus text, chord, lyrics, mixer change and grace notes.                                                                     |
 | `insertBar`, `removeBar`               | All tracks at once; copy the previous signatures, join a shared volta, shift `Track.lyrics`; a removed bar's tempo moves to the next bar. |
 | `setMasterBar`                         | Time, key, tempo, repeats, alternate endings, jumps, targets, section, anacrusis, triplet feel, double bar.                               |
-| `setTrackProperties`                   | Everything but id, kind and bars; `channel` and `display` merge.                                                                          |
+| `setTrackProperties`                   | Everything but id, kind and bars; `channel` and `display` merge; refuses a capo or fret count that strands notes.                         |
 | `addTrack`, `removeTrack`, `moveTrack` | A new track gets one empty bar per master bar; a score keeps at least one track.                                                          |
 
 Frets count from the capo, as Guitar Pro shows them, so the highest reachable fret is

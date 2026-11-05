@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import { createNote } from '../factories';
 import { newId } from '../id';
+import { ScoreSchema } from '../score';
+import type { Score } from '../score';
+import { validateScore } from '../validate';
 import {
   insertBeat,
   removeBeat,
@@ -10,6 +13,8 @@ import {
   setBeatRest,
 } from './beat-commands';
 import { beatOf, buildScore, expectRefusal, noteOf, roundTrip } from './test-score';
+
+const copy = (score: Score): Score => ScoreSchema.parse(JSON.parse(JSON.stringify(score)));
 
 const voiceOf = (score: ReturnType<typeof buildScore>, track: number, bar: number) => {
   const voice = score.tracks[track]?.bars[bar]?.voices[0];
@@ -68,7 +73,25 @@ describe('insertBeat', () => {
         { voiceId: voiceOf(score, 0, 2).id, index: 0 },
         { notes: [createNote({ string: 9, fret: 0 })] },
       ),
-      'invariant',
+      'invalid-value',
+    );
+  });
+
+  it('refuses a note or grace note off the neck', () => {
+    const score = buildScore();
+    const voiceId = voiceOf(score, 0, 2).id;
+    expectRefusal(
+      score,
+      insertBeat({ voiceId, index: 0 }, { notes: [createNote({ string: 4, fret: 30 })] }),
+      'off-fretboard',
+    );
+    expectRefusal(
+      score,
+      insertBeat(
+        { voiceId, index: 0 },
+        { grace: [{ duration: 16, before: true, notes: [createNote({ string: 4, fret: 30 })] }] },
+      ),
+      'off-fretboard',
     );
   });
 });
@@ -171,6 +194,20 @@ describe('setBeatEffect', () => {
       setBeatEffect({ beatId: beatOf(score, 0, 2, 0).id }, { grace }),
     );
     expect(beatOf(after, 0, 2, 0).grace).toEqual(grace);
+  });
+
+  it('checks a new grace note in full, even one replacing a bad import', () => {
+    const score = buildScore();
+    const beatId = beatOf(score, 0, 2, 0).id;
+    const grace = (string: number, fret: number) => [
+      { duration: 16 as const, before: true, notes: [createNote({ string, fret })] },
+    ];
+    expectRefusal(score, setBeatEffect({ beatId }, { grace: grace(4, 30) }), 'off-fretboard');
+    // A count of violations per rule alone would let string 0 replace string 9 unnoticed.
+    const imported = copy(score);
+    beatOf(imported, 0, 2, 0).grace = grace(9, 1);
+    expect(validateScore(imported).map((violation) => violation.rule)).toEqual(['string-range']);
+    expectRefusal(imported, setBeatEffect({ beatId }, { grace: grace(0, 1) }), 'invalid-value');
   });
 
   it('refuses a chord diagram for the wrong string count and a reused note id', () => {

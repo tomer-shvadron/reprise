@@ -9,7 +9,15 @@ import type { Score } from '../score';
 import type { Track } from '../track';
 import { assignChanges } from './changes';
 import type { Changes } from './changes';
-import { assertFreshId, hasTieTarget, parseOrThrow, previousBeat, releaseTies } from './checks';
+import {
+  assertFreshId,
+  assertNotePlaced,
+  hasTieTarget,
+  maxFret,
+  parseOrThrow,
+  previousBeat,
+  releaseTies,
+} from './checks';
 import { CommandError } from './command-error';
 import { at, beatAt, findBeat, findBeats, findNotes } from './locate';
 import type { BeatAt } from './locate';
@@ -24,39 +32,6 @@ export type NoteEffects = Omit<Note, 'id' | 'string' | 'fret'>;
 export interface Selection {
   beatIds?: readonly Id[];
   noteIds?: readonly Id[];
-}
-
-/** The highest fret reachable above the capo; frets count from the capo, as Guitar Pro shows them. */
-function maxFret(track: Track): number {
-  return Math.max(0, track.fretCount - track.capo);
-}
-
-function assertPlacement(track: Track, note: Pick<Note, 'string' | 'fret'>, command: string): void {
-  if (track.kind !== 'fretted') {
-    if (note.string !== 0) {
-      throw new CommandError(
-        command,
-        'invalid-value',
-        `notes on a ${track.kind} track use string 0`,
-      );
-    }
-    return;
-  }
-  const strings = track.tuning.length;
-  if (note.string < 1 || note.string > strings) {
-    throw new CommandError(
-      command,
-      'invalid-value',
-      `string ${String(note.string)} is outside 1 to ${String(strings)}`,
-    );
-  }
-  if (note.fret < 0 || note.fret > maxFret(track)) {
-    throw new CommandError(
-      command,
-      'off-fretboard',
-      `fret ${String(note.fret)} is outside 0 to ${String(maxFret(track))}`,
-    );
-  }
 }
 
 function assertTie(track: Track, position: BeatAt, note: Note, command: string): void {
@@ -78,7 +53,7 @@ export function setNote(target: { beatId: Id; id?: Id }, note: NoteInput): Comma
       const position = findBeat(draft, target.beatId, name);
       const track = at(draft.tracks, position.track, name);
       const beat = beatAt(draft, position, name);
-      assertPlacement(track, note, name);
+      assertNotePlaced(track, note, name);
       const existing = beat.notes.find((n) =>
         track.kind === 'fretted' ? n.string === note.string : n.fret === note.fret,
       );
