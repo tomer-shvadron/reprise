@@ -37,10 +37,42 @@ validateScore(score); // cross-node invariants: [] when the score is sound
 | `alternate-ending-order`          | Volta numbers on a bar are unique and ascending.                                                                                                         |
 | `alternate-ending-outside-repeat` | Every run of consecutive volta bars contains a repeat end.                                                                                               |
 
+## Native format (`.reprise`)
+
+```ts
+import { parse, serialize } from '@reprise/model';
+
+const bytes = serialize(score, { name: 'Reprise', version: '1.0.0' }); // Uint8Array
+const { score: read, app, warnings } = parse(bytes); // throws NativeFormatError
+```
+
+- **Envelope**: `{ format: 'reprise', version, app: { name, version }, score }`, in that key
+  order so `format` opens the file. `app` records the writer for diagnostics only.
+- **Stable bytes**: every object inside `app` and `score` is written with its keys sorted, so
+  the output depends only on content, never on insertion order; arrays keep their order. Two
+  spaces of indentation, UTF-8, a trailing newline.
+- **No compression**, deliberately: files are small, and readable diffs and hand inspection
+  matter more than size. A library that wants compression applies it around these bytes.
+- **Reading**: UTF-8 (strict), JSON, `format`, then `version`. A version below 1 or not a whole
+  number fails; a version above `SCORE_VERSION` fails with "newer than this app", naming both
+  versions. The `score` then runs through `MIGRATIONS` from the file's version to the current
+  one, and the whole envelope is checked against `NativeDocumentSchema`. Any failure is a
+  `NativeFormatError` whose `path` (and message prefix, `score.tracks[0].bars[2].id: ...`) names
+  the offending field. `parse` does not run `validateScore`; callers that need the invariants
+  run it on the result.
+- **Unknown fields** anywhere in the document are dropped, each reported as a `ParseWarning`
+  with its path, rather than failing the read.
+- **Migrations**: `MIGRATIONS[n]` turns a version-`n - 1` `score` into its version-`n` shape,
+  working on plain JSON. Version 1's entry is the identity. Raising the version means: bump
+  `SCORE_VERSION`, add the step, and add a fixture of the old version to the tests.
+
 ## Modelling decisions
 
 Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left a loose end:
 
+- **One version field**: the `.reprise` envelope's `version` is the only schema version and
+  the migrations key; `Score` carries none, so an in-memory score never claims a version it
+  was not migrated to. `SCORE_VERSION` is the envelope's current version.
 - **IDs**: `newId()` is 12 base62 characters from `crypto.getRandomValues`, with rejection
   sampling so every character is equally likely. On `Score`, `MasterBar`, `Track`, `Bar`,
   `Voice`, `Beat` and `Note`. `IdSchema` enforces the format. A grace beat has no id of its
