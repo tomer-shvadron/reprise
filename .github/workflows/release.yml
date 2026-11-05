@@ -1,0 +1,37 @@
+# Placeholder: builds @reprise/web on version tags so the release path is exercised from the
+# start. Electron packaging for macOS and Windows, and attaching installers to a GitHub
+# Release, are added in WP-102.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # The web build needs no browser; skipping the postinstall's Chromium download keeps
+      # this job independent of the Playwright cache.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build web
+        run: pnpm --filter @reprise/web build
