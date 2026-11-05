@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+out/
+release/
+*.tsbuildinfo
+.vite/
+
+# tests
+coverage/
+playwright-report/
+test-results/
+
+# local only
+local-tabs/*
+!local-tabs/README.md
+.env
+.env.*
+.DS_Store
+
+# editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
