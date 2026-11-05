@@ -35,8 +35,11 @@ export type {
   Vibrato,
 } from './note';
 
-export { BarreSchema, ChordDiagramSchema } from './chord-diagram';
-export type { Barre, ChordDiagram } from './chord-diagram';
+export { BarreSchema, ChordDiagramSchema, ChordSchema } from './chord-diagram';
+export type { Barre, Chord, ChordDiagram } from './chord-diagram';
+
+export { TempoMarkSchema, TempoUnitSchema } from './tempo';
+export type { TempoMark, TempoUnit } from './tempo';
 
 export {
   BeatEffectsSchema,
@@ -82,7 +85,6 @@ export {
   MasterBarSchema,
   RepeatSchema,
   SectionSchema,
-  TempoMarkSchema,
   TimeSignatureSchema,
   TripletFeelSchema,
 } from './master-bar';
@@ -94,7 +96,6 @@ export type {
   MasterBar,
   Repeat,
   Section,
-  TempoMark,
   TimeSignature,
   TripletFeel,
 } from './master-bar';
@@ -102,6 +103,7 @@ export type {
 export {
   ChannelSettingsSchema,
   DisplaySettingsSchema,
+  LyricLineSchema,
   MAX_STRINGS,
   NotationSchema,
   SoundOverrideSchema,
@@ -111,6 +113,7 @@ export {
 export type {
   ChannelSettings,
   DisplaySettings,
+  LyricLine,
   Notation,
   SoundOverride,
   Track,

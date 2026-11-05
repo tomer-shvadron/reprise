@@ -1,11 +1,12 @@
 import { z } from 'zod';
 
-import { ChordDiagramSchema } from './chord-diagram';
+import { ChordSchema } from './chord-diagram';
 import { IdSchema } from './id';
 import { BendPointSchema, NoteSchema, VibratoSchema } from './note';
+import { TempoMarkSchema } from './tempo';
 
-/** The note value as a denominator: 1 whole, 2 half, 4 quarter, down to 64 for a sixty-fourth. */
-export const DurationSchema = z.literal([1, 2, 4, 8, 16, 32, 64]);
+/** The note value as a denominator: 1 whole, 2 half, 4 quarter, down to 256 as gpif allows. */
+export const DurationSchema = z.literal([1, 2, 4, 8, 16, 32, 64, 128, 256]);
 export type Duration = z.infer<typeof DurationSchema>;
 
 export const DotsSchema = z.literal([0, 1, 2]);
@@ -71,24 +72,18 @@ export const GraceBeatSchema = z.object({
 });
 export type GraceBeat = z.infer<typeof GraceBeatSchema>;
 
-const MixTransitionSchema = z.int().min(1);
+/** Transition length in beats; absent = immediate. */
+const MixTransitionSchema = z.int().min(1).exactOptional();
 
 export const ChannelMixChangeSchema = z.object({
   /** MIDI controller units, 0 to 127; pan 64 is centre. */
   value: z.int().min(0).max(127),
-  /** Transition length in beats; absent = immediate. */
-  duration: MixTransitionSchema.exactOptional(),
+  duration: MixTransitionSchema,
   allTracks: z.boolean().exactOptional(),
 });
 export type ChannelMixChange = z.infer<typeof ChannelMixChangeSchema>;
 
-export const TempoMixChangeSchema = z.object({
-  /** Beats per minute, quarter-note beat. */
-  value: z.number().positive(),
-  /** Transition length in beats; absent = immediate. */
-  duration: MixTransitionSchema.exactOptional(),
-  label: z.string().exactOptional(),
-});
+export const TempoMixChangeSchema = TempoMarkSchema.extend({ duration: MixTransitionSchema });
 export type TempoMixChange = z.infer<typeof TempoMixChangeSchema>;
 
 export const MixerChangeSchema = z.object({
@@ -114,7 +109,7 @@ export const BeatSchema = z.object({
   /** Empty with `rest: false` is Guitar Pro's empty beat, an unfilled slot rather than a rest. */
   notes: z.array(NoteSchema),
   text: z.string().exactOptional(),
-  chordDiagram: ChordDiagramSchema.exactOptional(),
+  chord: ChordSchema.exactOptional(),
   effects: BeatEffectsSchema,
   grace: z.array(GraceBeatSchema).exactOptional(),
   /** Mixer changes stored for import fidelity, applied by playback from this beat on. */

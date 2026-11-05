@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Bar } from './bar';
 import type { Beat } from './beat';
 import {
+  STANDARD_TUNING,
   createBar,
   createBeat,
   createEmptyScore,
@@ -313,12 +314,21 @@ describe('validateScore', () => {
       expect(rules(scoreOf([createTrack('fretted', { tuning: [] })]))).toEqual(['track-kind']);
     });
 
-    it('rejects tuning, capo or frets on drum and pitched tracks', () => {
+    it('rejects tuning, capo or frets on a drums track', () => {
       expect(rules(scoreOf([createTrack('drums', { tuning: [40] })]))).toEqual(['track-kind']);
-      expect(rules(scoreOf([createTrack('pitched', { capo: 2, fretCount: 24 })]))).toEqual([
+      expect(rules(scoreOf([createTrack('drums', { capo: 2, fretCount: 24 })]))).toEqual([
         'track-kind',
         'track-kind',
       ]);
+    });
+
+    it('accepts the tuning a GP5 keyboard track keeps on a pitched track', () => {
+      const keys = createTrack('pitched', {
+        tuning: [...STANDARD_TUNING],
+        fretCount: 24,
+        bars: [barWith(quarter(0, 60))],
+      });
+      expect(rules(scoreOf([keys]))).toEqual([]);
     });
   });
 
@@ -330,16 +340,40 @@ describe('validateScore', () => {
   });
 
   describe('chord-diagram', () => {
-    const diagram = (frets: (number | null)[], complete = true): Beat =>
-      createBeat({ rest: true, chordDiagram: { name: 'E', complete, baseFret: 1, frets } });
+    const diagram = (frets: (number | null)[]): Beat =>
+      createBeat({ rest: true, chord: { name: 'E', diagram: { baseFret: 1, frets } } });
 
-    it('accepts one fret per string, and a name-only chord of any shape', () => {
+    it('accepts one fret per string, and a name-only chord', () => {
       expect(rules(scoreOf([guitar(barWith(diagram([0, 0, 1, 2, 2, 0])))]))).toEqual([]);
-      expect(rules(scoreOf([guitar(barWith(diagram([], false)))]))).toEqual([]);
+      const nameOnly = createBeat({ rest: true, chord: { name: 'E' } });
+      expect(rules(scoreOf([guitar(barWith(nameOnly))]))).toEqual([]);
     });
 
-    it('rejects a complete diagram with the wrong string count', () => {
-      expect(rules(scoreOf([guitar(barWith(diagram([0, 0, 1, 2])))]))).toEqual(['chord-diagram']);
+    it('rejects a diagram with the wrong string count, with a path into the diagram', () => {
+      expect(validateScore(scoreOf([guitar(barWith(diagram([0, 0, 1, 2])))]))[0]?.path).toEqual([
+        'tracks',
+        0,
+        'bars',
+        0,
+        'voices',
+        0,
+        'beats',
+        0,
+        'chord',
+        'diagram',
+        'frets',
+      ]);
+    });
+
+    it('checks a diagram against the tuning a pitched track keeps, and skips drums', () => {
+      const keys = createTrack('pitched', {
+        tuning: [...STANDARD_TUNING],
+        fretCount: 24,
+        bars: [barWith(diagram([0, 0, 1, 2]))],
+      });
+      expect(rules(scoreOf([keys]))).toEqual(['chord-diagram']);
+      const drums = createTrack('drums', { bars: [barWith(diagram([0, 0, 1, 2]))] });
+      expect(rules(scoreOf([drums]))).toEqual([]);
     });
   });
 

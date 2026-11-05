@@ -60,9 +60,11 @@ export function createMasterBar(options: Partial<Omit<MasterBar, 'id'>> = {}): M
     keySignature: { fifths: 0, minor: false },
     repeat: { start: false, endCount: 0 },
     alternateEndings: [],
+    jumps: [],
     targets: [],
     tripletFeel: 'none',
     doubleBar: false,
+    anacrusis: false,
     ...options,
   };
 }
@@ -75,7 +77,16 @@ export type TrackOptions = Partial<Omit<Track, 'id' | 'kind' | 'bars'>> & {
 
 type TrackDefaults = Omit<Track, 'id' | 'kind' | 'bars'>;
 
-const CHANNEL_DEFAULTS = { volume: 100, pan: 64, chorus: 0, reverb: 0, phaser: 0, tremolo: 0 };
+const CHANNEL_DEFAULTS = {
+  volume: 100,
+  pan: 64,
+  chorus: 0,
+  reverb: 0,
+  phaser: 0,
+  tremolo: 0,
+  mute: false,
+  solo: false,
+};
 
 const KIND_DEFAULTS: Record<TrackKind, () => TrackDefaults> = {
   fretted: () => ({
@@ -89,6 +100,7 @@ const KIND_DEFAULTS: Record<TrackKind, () => TrackDefaults> = {
     bank: 0,
     channel: { ...CHANNEL_DEFAULTS },
     display: { notation: 'tab', clef: 'treble' },
+    lyrics: [],
   }),
   drums: () => ({
     name: 'Drums',
@@ -101,6 +113,7 @@ const KIND_DEFAULTS: Record<TrackKind, () => TrackDefaults> = {
     bank: 0,
     channel: { ...CHANNEL_DEFAULTS },
     display: { notation: 'standard', clef: 'percussion' },
+    lyrics: [],
   }),
   pitched: () => ({
     name: 'Piano',
@@ -113,6 +126,7 @@ const KIND_DEFAULTS: Record<TrackKind, () => TrackDefaults> = {
     bank: 0,
     channel: { ...CHANNEL_DEFAULTS },
     display: { notation: 'standard', clef: 'treble' },
+    lyrics: [],
   }),
 };
 

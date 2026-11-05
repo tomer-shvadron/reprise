@@ -10,9 +10,6 @@ export const BarreSchema = z.object({
 export type Barre = z.infer<typeof BarreSchema>;
 
 export const ChordDiagramSchema = z.object({
-  name: z.string(),
-  /** False when the file carries only a name; the grid fields are then placeholders, not drawn. */
-  complete: z.boolean(),
   /** First fret shown in the grid; `frets` stay absolute. */
   baseFret: z.int().min(1),
   /** One entry per string, string 1 first; `null` is a muted (x) string, 0 an open one. */
@@ -22,3 +19,10 @@ export const ChordDiagramSchema = z.object({
   fingering: z.array(FingerSchema.nullable()).exactOptional(),
 });
 export type ChordDiagram = z.infer<typeof ChordDiagramSchema>;
+
+/** A chord name above the beat, with its grid when the file carries one. */
+export const ChordSchema = z.object({
+  name: z.string(),
+  diagram: ChordDiagramSchema.exactOptional(),
+});
+export type Chord = z.infer<typeof ChordSchema>;

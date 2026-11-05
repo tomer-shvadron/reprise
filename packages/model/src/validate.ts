@@ -173,14 +173,16 @@ function checkTrackKind(track: Track, path: ViolationPath, report: Report): void
     }
     return;
   }
+  // A pitched track may keep the tuning a GP5 keyboard part was written against.
+  if (track.kind !== 'drums') return;
   if (track.tuning.length > 0) {
-    report('track-kind', [...path, 'tuning'], `a ${track.kind} track has no strings to tune`);
+    report('track-kind', [...path, 'tuning'], 'a drums track has no strings to tune');
   }
   if (track.capo !== 0) {
-    report('track-kind', [...path, 'capo'], `a ${track.kind} track has no capo`);
+    report('track-kind', [...path, 'capo'], 'a drums track has no capo');
   }
   if (track.fretCount !== 0) {
-    report('track-kind', [...path, 'fretCount'], `a ${track.kind} track has no frets`);
+    report('track-kind', [...path, 'fretCount'], 'a drums track has no frets');
   }
 }
 
@@ -243,10 +245,10 @@ function checkNotes(track: Track, notes: Note[], path: ViolationPath, report: Re
 }
 
 function checkChordDiagram(track: Track, beat: Beat, path: ViolationPath, report: Report): void {
-  const diagram = beat.chordDiagram;
-  if (!diagram?.complete || track.kind !== 'fretted') return;
+  const diagram = beat.chord?.diagram;
   const stringCount = track.tuning.length;
-  const diagramPath = [...path, 'chordDiagram'];
+  if (!diagram || stringCount === 0) return;
+  const diagramPath = [...path, 'chord', 'diagram'];
   if (diagram.frets.length !== stringCount) {
     report(
       'chord-diagram',

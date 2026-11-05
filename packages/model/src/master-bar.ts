@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { ColorSchema } from './color';
 import { IdSchema } from './id';
+import { TempoMarkSchema } from './tempo';
 
 export const TimeSignatureSchema = z.object({
   numerator: z.int().min(1).max(32),
@@ -15,13 +16,6 @@ export const KeySignatureSchema = z.object({
   minor: z.boolean(),
 });
 export type KeySignature = z.infer<typeof KeySignatureSchema>;
-
-export const TempoMarkSchema = z.object({
-  /** Quarter-note beats per minute. */
-  bpm: z.number().positive(),
-  label: z.string().exactOptional(),
-});
-export type TempoMark = z.infer<typeof TempoMarkSchema>;
 
 export const RepeatSchema = z.object({
   start: z.boolean(),
@@ -85,10 +79,13 @@ export const MasterBarSchema = z.object({
   repeat: RepeatSchema,
   /** Volta numbers this bar belongs to, ascending. */
   alternateEndings: z.array(z.int().min(1).max(ALTERNATE_ENDING_MAX)),
-  jump: JumpSchema.exactOptional(),
+  /** Usually empty or one; applied in order when more than one. */
+  jumps: z.array(JumpSchema),
   targets: z.array(DirectionTargetSchema),
   section: SectionSchema.exactOptional(),
   tripletFeel: TripletFeelSchema,
   doubleBar: z.boolean(),
+  /** A pickup bar: shorter than its time signature, not counted and skipped by the count-in. */
+  anacrusis: z.boolean(),
 });
 export type MasterBar = z.infer<typeof MasterBarSchema>;

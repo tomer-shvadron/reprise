@@ -24,9 +24,11 @@ describe('createEmptyScore', () => {
       tempo: { bpm: 120 },
       repeat: { start: false, endCount: 0 },
       alternateEndings: [],
+      jumps: [],
       targets: [],
       tripletFeel: 'none',
       doubleBar: false,
+      anacrusis: false,
     });
     expect(score.tracks).toHaveLength(1);
     const track = score.tracks[0];
@@ -61,7 +63,8 @@ describe('createTrack', () => {
       fretCount: 24,
       program: 25,
       display: { notation: 'tab', clef: 'treble' },
-      channel: { volume: 100, pan: 64 },
+      channel: { volume: 100, pan: 64, mute: false, solo: false },
+      lyrics: [],
     });
     expect(track.bars).toHaveLength(1);
     expect(TrackSchema.safeParse(track).success).toBe(true);
