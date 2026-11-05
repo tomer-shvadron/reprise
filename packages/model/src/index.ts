@@ -138,3 +138,25 @@ export type { TrackOptions } from './factories';
 
 export { validateScore } from './validate';
 export type { Violation, ViolationPath, ViolationRule } from './validate';
+
+export { MIGRATIONS, migrate } from './migrations';
+export type { Migration, MigrationTable } from './migrations';
+
+export {
+  AppInfoSchema,
+  NATIVE_EXTENSION,
+  NATIVE_FORMAT,
+  NativeDocumentSchema,
+  NativeFormatError,
+  formatPath,
+  parseNative,
+  serializeNative,
+} from './native';
+export type {
+  AppInfo,
+  NativeDocument,
+  NativePath,
+  ParseResult,
+  ParseWarning,
+  ParseWarningRule,
+} from './native';

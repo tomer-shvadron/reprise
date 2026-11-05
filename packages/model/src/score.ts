@@ -4,6 +4,7 @@ import { IdSchema } from './id';
 import { MasterBarSchema } from './master-bar';
 import { TrackSchema } from './track';
 
+/** The current `.reprise` envelope version, the key of the migrations table. */
 export const SCORE_VERSION = 1;
 
 export const ScoreMetaSchema = z.object({
@@ -25,8 +26,6 @@ export type ScoreMeta = z.infer<typeof ScoreMetaSchema>;
 
 export const ScoreSchema = z.object({
   id: IdSchema,
-  /** The native schema version this object conforms to. */
-  version: z.literal(SCORE_VERSION),
   meta: ScoreMetaSchema,
   /** One per bar position, shared by every track. */
   masterBars: z.array(MasterBarSchema).min(1),
