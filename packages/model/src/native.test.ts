@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { Bar } from './bar';
 import {
@@ -232,9 +232,25 @@ describe('parseNative failures', () => {
     ['a fractional version', { version: 1.5 }, 'version: Expected a whole number, found 1.5'],
     ['a string version', { version: '1' }, 'version: Expected a whole number, found "1"'],
     ['another format', { format: 'gp' }, 'format: Expected "reprise", found "gp"'],
+    ['an object format', { format: {} }, 'format: Expected "reprise", found an object'],
+    [
+      'a long format',
+      { format: 'x'.repeat(100) },
+      `format: Expected "reprise", found "${'x'.repeat(40)}…"`,
+    ],
   ])('rejects %s', (_, override, message) => {
     expect(parseError(bytesOf({ ...envelope(createEmptyScore()), ...override })).message).toBe(
       message,
+    );
+  });
+
+  it('names a number JSON cannot hold rather than the null it parses to', () => {
+    const text = decode(serializeNative(createEmptyScore(), APP)).replace(
+      '"version": 1,',
+      '"version": 1e400,',
+    );
+    expect(parseError(encode(text)).message).toBe(
+      'version: Expected a whole number, found Infinity',
     );
   });
 
@@ -277,6 +293,25 @@ describe('parseNative failures', () => {
 });
 
 describe('parseNative warnings', () => {
+  it('reports unknown fields named like Object.prototype members, and __proto__ itself', () => {
+    const score = createEmptyScore();
+    const text = decode(serializeNative(score, APP))
+      .replace(
+        '"score": {',
+        '"score": {\n    "toString": 1,\n    "__proto__": { "polluted": true },',
+      )
+      .replace('"meta": {', '"meta": {\n      "constructor": 2,');
+    const result = parseNative(encode(text));
+    expect(result.score).toEqual(score);
+    expect(result.warnings.map((warning) => warning.path)).toEqual([
+      ['score', 'toString'],
+      ['score', '__proto__'],
+      ['score', 'meta', 'constructor'],
+    ]);
+    expect(Object.getPrototypeOf(result.score)).toBe(Object.prototype);
+    expect(Reflect.get({}, 'polluted')).toBeUndefined();
+  });
+
   it('drops an unknown top-level field with a warning', () => {
     const score = createEmptyScore();
     const result = parseNative(bytesOf({ ...envelope(score), thumbnail: 'data:...' }));
@@ -350,6 +385,30 @@ describe('migrations', () => {
     expect(() => migrate({}, 1, 2, { 1: (score: unknown) => score })).toThrow(
       'No migration produces .reprise version 2',
     );
+  });
+
+  it('surfaces a failing step through parseNative as a NativeFormatError naming the versions', async () => {
+    vi.resetModules();
+    vi.doMock('./migrations', () => ({
+      migrate: () => {
+        throw new TypeError('bars is not iterable');
+      },
+    }));
+    const { parseNative: parseWithFailingStep } = await import('./native');
+    vi.doUnmock('./migrations');
+    let error: unknown;
+    try {
+      parseWithFailingStep(serializeNative(createEmptyScore(), APP));
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(Error);
+    if (error instanceof Error) {
+      expect(error.name).toBe('NativeFormatError');
+      expect(error.message).toBe(
+        `score: Migrating from version ${String(SCORE_VERSION)} to ${String(SCORE_VERSION)} failed: bars is not iterable`,
+      );
+    }
   });
 });
 

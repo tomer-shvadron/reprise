@@ -123,8 +123,7 @@ export function parseNative(bytes: Uint8Array): ParseResult {
   try {
     raw = JSON.parse(text);
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new NativeFormatError([], `The file is not JSON (${reason})`);
+    throw new NativeFormatError([], `The file is not JSON (${reason(error)})`);
   }
   if (!isRecord(raw)) throw new NativeFormatError([], 'The file is not a JSON object');
 
@@ -152,11 +151,16 @@ export function parseNative(bytes: Uint8Array): ParseResult {
     );
   }
 
-  const candidate = {
-    ...raw,
-    version: SCORE_VERSION,
-    score: migrate(raw['score'], version),
-  };
+  let score: unknown;
+  try {
+    score = migrate(raw['score'], version);
+  } catch (error) {
+    throw new NativeFormatError(
+      ['score'],
+      `Migrating from version ${String(version)} to ${String(SCORE_VERSION)} failed: ${reason(error)}`,
+    );
+  }
+  const candidate = { ...raw, version: SCORE_VERSION, score };
   const document = parseDocument(candidate);
 
   const warnings: ParseWarning[] = [];
@@ -178,7 +182,10 @@ function parseDocument(candidate: unknown): NativeDocument {
   throw new NativeFormatError(path, `${first?.message ?? 'Invalid document'}${more}`);
 }
 
-/** Zod strips keys it does not know; walking input and output side by side finds them. */
+/**
+ * Zod strips keys it does not know; walking input and output side by side finds them. Own
+ * keys only, or an unknown `toString` or `__proto__` would pass as present.
+ */
 function collectDropped(
   input: unknown,
   output: unknown,
@@ -193,7 +200,7 @@ function collectDropped(
   }
   if (!isRecord(input) || !isRecord(output)) return;
   for (const [key, value] of Object.entries(input)) {
-    if (key in output) {
+    if (Object.hasOwn(output, key)) {
       collectDropped(value, output[key], [...path, key], warnings);
     } else {
       warnings.push({
@@ -209,6 +216,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function reason(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** A found value for a message: short, and never `null` for a number JSON cannot hold. */
 function show(value: unknown): string {
-  return value === undefined ? 'nothing' : JSON.stringify(value);
+  if (value === undefined) return 'nothing';
+  if (typeof value === 'string') {
+    return JSON.stringify(value.length > 40 ? `${value.slice(0, 40)}…` : value);
+  }
+  if (Array.isArray(value)) return 'an array';
+  if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
+    return String(value);
+  }
+  return typeof value === 'object' ? 'an object' : typeof value;
 }
