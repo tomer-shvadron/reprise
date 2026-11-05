@@ -132,13 +132,15 @@ export function spellNote(
 /**
  * The note with its enharmonic flipped (C# to Db and back, E to Fb, B to Cb). Pitches with no
  * single-accidental alternative (D, G, A) cycle through their double sharp and double flat.
- * The stored accidental is cleared when the new spelling is the key's default.
+ * The stored accidental is cleared when the new spelling is the key's default. Drum notes come
+ * back unchanged.
  */
 export function respell(
   track: Pick<Track, 'kind' | 'tuning' | 'capo'>,
   note: Note,
   key: KeySignature,
 ): Note {
+  if (track.kind === 'drums') return note;
   const midi = midiNote(track, note);
   const current = spell(midi, key, note.accidental);
   const all = candidates(midi);

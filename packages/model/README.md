@@ -177,9 +177,11 @@ capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro write
   lines. Treble, bass, alto and tenor clefs.
 - **`percussionInstrument(midi)`** gives the GM (35 to 81) and GM2 (27 to 34, 82 to 87) drum
   name, default staff position (same numbering) and note head (`normal`, `cross`, `diamond`,
-  `triangle`). Positions follow the common drum-kit layout (kick in the bottom space, snare in
-  the third, hi-hats above the staff, toms descending); the hand-percussion positions are
-  defaults only. Open and closed hi-hat share a head; the open circle is an articulation.
+  `triangle`). Positions follow the common drum-kit layout (kick in the bottom space, a second
+  kick on the bottom line, snare in the third space, hi-hats above the staff, toms descending);
+  the hand-percussion positions are defaults only. Cymbals are crosses and bells diamonds; a
+  mute and open pair (hi-hat, triangle, cuica, surdo) shares its position and differs by head
+  or articulation, cross for mute.
 
 ## Not modelled yet
 

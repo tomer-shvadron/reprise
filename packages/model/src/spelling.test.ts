@@ -173,6 +173,11 @@ describe('respell', () => {
     const guitar = createTrack('fretted', { capo: 2 });
     expect(respell(guitar, createNote({ string: 1, fret: 2 }), C_MAJOR).accidental).toBe('flat');
   });
+
+  it('leaves drum notes alone', () => {
+    const note = createNote({ string: 0, fret: 38 });
+    expect(respell(createTrack('drums'), note, C_MAJOR)).toBe(note);
+  });
 });
 
 describe('staffPosition', () => {

@@ -72,9 +72,10 @@ function alternativePositions(track: FretTrack, midi: number, except: number): F
 /**
  * Moves a note by `semitones` on its own string, keeping every other property, the trill's
  * alternate fret included. Drum notes come back unchanged, since their value names an
- * instrument. A stored `accidental` survives only octave shifts. Never throws for a note that
- * falls off the fretboard or out of MIDI range: the failure says why and, on fretted tracks,
- * where else the pitch can be played.
+ * instrument; they and a move by zero return the input object, not a copy. A stored
+ * `accidental` survives only octave shifts. Never throws for a note that falls off the
+ * fretboard or out of MIDI range: the failure says why and, on fretted tracks, where else the
+ * pitch can be played.
  */
 export function transpose(note: Note, semitones: number, track: FretTrack): TransposeResult {
   if (!Number.isInteger(semitones)) {

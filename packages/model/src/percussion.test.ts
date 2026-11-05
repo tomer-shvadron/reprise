@@ -15,7 +15,7 @@ describe('percussionInstrument', () => {
   });
 
   it.each([
-    [35, 'Acoustic Bass Drum', 1, 'normal'],
+    [35, 'Acoustic Bass Drum', 0, 'normal'],
     [36, 'Bass Drum 1', 1, 'normal'],
     [38, 'Acoustic Snare', 5, 'normal'],
     [42, 'Closed Hi-Hat', 9, 'cross'],
@@ -24,6 +24,8 @@ describe('percussionInstrument', () => {
     [49, 'Crash Cymbal 1', 10, 'cross'],
     [51, 'Ride Cymbal 1', 8, 'cross'],
     [53, 'Ride Bell', 8, 'diamond'],
+    [55, 'Splash Cymbal', 11, 'cross'],
+    [80, 'Mute Triangle', 11, 'cross'],
     [81, 'Open Triangle', 11, 'normal'],
   ])('%i is %s at %i with a %s head', (midi, name, staffPosition, noteHead) => {
     expect(percussionInstrument(midi)).toEqual({ midi, name, staffPosition, noteHead });
