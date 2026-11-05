@@ -6,7 +6,7 @@ import {
   type TempoMark,
 } from '@reprise/model';
 
-import { textExtent, textWidth, type GlyphName } from './metrics';
+import { engraving, textExtent, textWidth, type GlyphName } from './metrics';
 import { box, glyph, glyphWidth, polyline, rect, text, type LayoutSink } from './primitives';
 
 const TEXT_SIZE = 1.5;
@@ -112,9 +112,11 @@ export function drawSection(
   const boxWidth = textWidth(boxed, size) + pad * 2;
   const node = masterBar.id;
   sink.primitives.push(
-    box(rect(x, baseline - ascent - pad, boxWidth, ascent + descent + pad * 2), space * 0.12, {
-      node,
-    }),
+    box(
+      rect(x, baseline - ascent - pad, boxWidth, ascent + descent + pad * 2),
+      engraving.textEnclosureThickness * space,
+      { node },
+    ),
     text(boxed, x + pad, baseline, size, { node }),
   );
   if (section.letter !== undefined && section.name !== '') {
@@ -207,7 +209,7 @@ export function drawVolta(sink: LayoutSink, span: VoltaSpan, band: Band, space: 
     ...(span.closes ? [[right, hook] satisfies [number, number]] : []),
   ];
   const node = span.masterBar.id;
-  sink.primitives.push(polyline(points, space * 0.16, { node }));
+  sink.primitives.push(polyline(points, engraving.repeatEndingLineThickness * space, { node }));
   if (span.opens) {
     const label = span.masterBar.alternateEndings.map((n) => `${String(n)}.`).join(', ');
     sink.primitives.push(

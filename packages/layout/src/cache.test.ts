@@ -4,6 +4,7 @@ import {
   removeBar,
   setMasterBar,
   setNote,
+  setTrackProperties,
   type Score,
 } from '@reprise/model';
 import { beatOf, largeScore } from '@reprise/model/testing';
@@ -111,5 +112,33 @@ describe('LayoutCache', () => {
     expect(wider.metrics.reusedSystems).toBe(0);
     cache.clear();
     expect(cache.size).toBe(0);
+  });
+
+  it('notices a clef change by identity in every bar it reaches', () => {
+    const score = largeScore(1, 20);
+    const { cache } = warm(score);
+    const edited: Score = {
+      ...score,
+      tracks: score.tracks.map((track) => ({
+        ...track,
+        bars: track.bars.map((bar, index) => (index === 5 ? { ...bar, clef: 'bass' } : bar)),
+      })),
+    };
+    const result = layout(edited, paged, cache);
+    expect(result.metrics.measuredBars).toBe(15);
+    expect(stable(result)).toBe(stable(layout(edited, paged)));
+  });
+
+  it('keeps measurements across a rename and drops them for a capo change', () => {
+    const score = largeScore(1, 10);
+    const trackId = score.tracks[0]?.id ?? '';
+    const { cache } = warm(score);
+    const renamed = applyCommand(score, setTrackProperties({ trackId }, { name: 'Lead' })).score;
+    const afterRename = layout(renamed, paged, cache);
+    expect(afterRename.metrics.measuredBars).toBe(0);
+    expect(afterRename.metrics.reusedSystems).toBe(0);
+    expect(stable(afterRename)).toBe(stable(layout(renamed, paged)));
+    const capo = applyCommand(renamed, setTrackProperties({ trackId }, { capo: 3 })).score;
+    expect(layout(capo, paged, cache).metrics.measuredBars).toBe(10);
   });
 });

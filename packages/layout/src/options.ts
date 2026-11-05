@@ -86,13 +86,14 @@ export function resolveOptions(score: Score, options: LayoutOptions): ResolvedOp
   const trackKey = tracks.map(({ track, staves }) => [
     track.id,
     staves,
-    track.tuning.length,
     track.kind,
+    track.tuning,
+    track.capo,
+    track.fretCount,
     track.display.clef ?? '',
     track.display.octaveShift,
-    track.name,
-    track.shortName,
   ]);
+  const nameKey = tracks.map(({ track }) => [track.name, track.shortName]);
   const margins = { ...DEFAULT_MARGINS[options.mode], ...options.margins };
   const pageGap = options.pageGap ?? DEFAULT_GAPS.pageGap;
   const measureKey = JSON.stringify([space, trackKey]);
@@ -108,6 +109,7 @@ export function resolveOptions(score: Score, options: LayoutOptions): ResolvedOp
     measureKey,
     systemKey: JSON.stringify([
       measureKey,
+      nameKey,
       options.mode,
       width,
       pageHeight,

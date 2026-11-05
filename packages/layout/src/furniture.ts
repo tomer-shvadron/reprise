@@ -230,6 +230,9 @@ function thick(space: number): number {
 function separation(space: number): number {
   return engraving.barlineSeparation * space;
 }
+function thinThickSeparation(space: number): number {
+  return engraving.thinThickBarlineSeparation * space;
+}
 function dotGap(space: number): number {
   return engraving.repeatBarlineDotSeparation * space;
 }
@@ -241,7 +244,7 @@ export function endBarlineWidth(kind: EndBarline, space: number): number {
     case 'double':
       return 2 * thin(space) + separation(space);
     case 'final':
-      return thin(space) + separation(space) + thick(space);
+      return thin(space) + thinThickSeparation(space) + thick(space);
     case 'repeat':
       return glyphWidth('repeatDot', space) + dotGap(space) + endBarlineWidth('final', space);
   }
@@ -284,7 +287,7 @@ export function drawEndBarline(
     return;
   }
   vertical(sink, right - thick(space) / 2, staff, thick(space), node);
-  const thinX = right - thick(space) - separation(space) - thin(space) / 2;
+  const thinX = right - thick(space) - thinThickSeparation(space) - thin(space) / 2;
   vertical(sink, thinX, staff, thin(space), node);
   if (kind === 'repeat') {
     const dotX = thinX - thin(space) / 2 - dotGap(space) - glyphWidth('repeatDot', space);
@@ -301,7 +304,7 @@ export function drawRepeatStart(
   node: Id,
 ): void {
   vertical(sink, left + thick(space) / 2, staff, thick(space), node);
-  const thinX = left + thick(space) + separation(space) + thin(space) / 2;
+  const thinX = left + thick(space) + thinThickSeparation(space) + thin(space) / 2;
   vertical(sink, thinX, staff, thin(space), node);
   repeatDots(sink, thinX + thin(space) / 2 + dotGap(space), staff, space, node);
 }

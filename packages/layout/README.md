@@ -74,13 +74,13 @@ Today all three types use the placeholder module (`src/staves/placeholder.ts`): 
 The engine reads two committed tables and never a font:
 
 - `src/metrics/bravura.json`: for every glyph the engine uses, its codepoint, advance width (from the font's own `hmtx`) and bounding box and anchors (from the SMuFL metadata), in staff spaces, plus Bravura's engraving defaults (line, stem, beam and bar-line thicknesses).
-- `src/metrics/geist.json`: advance widths in font units of Geist Variable at weight 400 for printable ASCII and the extra characters tab labels use, with the font's units per em, ascent, descent, cap height and x-height. Text is measured without kerning; a character outside the table measures as `0`.
+- `src/metrics/geist.json`: advance widths in font units of Geist Variable at weight 400 for printable ASCII and the extra characters tab labels use, with the font's units per em, ascent, descent, cap height and x-height. Text is measured without kerning; a character outside the table measures as the digit `0` does.
 
 `scripts/layout/metrics.ts` generates both with `fontkit` from the Bravura font in `apps/web/public/fonts/bravura/` (provenance in the README there), the SMuFL metadata in `scripts/layout/data/` and the Geist font of `@fontsource-variable/geist`. Run it by hand with `pnpm layout:metrics` after adding a glyph to its `GLYPHS` list or updating a font; `pnpm layout:metrics:check` and `scripts/layout/metrics.test.ts` fail when the committed tables are stale.
 
 ## Cache
 
-`LayoutCache` holds, per master-bar id, the bar's measurement and the inputs it was made from, plus the systems of the last layout. On the next call a bar is re-measured when it is listed in `dirtyBars` or when its inputs differ by identity: Immer keeps unchanged nodes, so an edit that `touchedBars` misses is still caught. Systems that end before the first re-measured bar (and whose bars are still the same ids at the same indices) are reused with their primitives and anchors; breaking resumes from there. Changing anything bars are measured with (zoom, visible tracks, notation, a track's name or tuning) drops the cache; changing only page geometry keeps the measurements and drops the systems. A cached layout is identical to a cold one; the tests compare them byte for byte.
+`LayoutCache` holds, per master-bar id, the bar's measurement and the inputs it was made from, plus the systems of the last layout. On the next call a bar is re-measured when it is listed in `dirtyBars` or when its inputs differ by identity: Immer keeps unchanged nodes, so an edit that `touchedBars` misses is still caught. Systems that end before the first re-measured bar (and whose bars are still the same ids at the same indices) are reused with their primitives and anchors; breaking resumes from there. Changing anything bars are measured with (zoom, visible tracks, notation, a track's tuning, capo, fret count or clef) drops the cache; changing only page geometry or a track's name keeps the measurements and drops the systems. A cached layout is identical to a cold one; the tests compare them byte for byte.
 
 ## Decisions
 
