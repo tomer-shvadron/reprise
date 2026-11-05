@@ -47,3 +47,10 @@ export type { ClickOnset, NextOnString, NoteOnset, TickRange, Timeline } from '.
 
 // Sampler (WP-031)
 export * from './sampler/index';
+
+// Tied continuations and mixer changes on beats (#65)
+export type { MixEvent } from './sink';
+export type { RecordedMix } from './recording-sink';
+export type { ScheduledContinuation, ScheduledMix } from './scheduler';
+export { mixesInRange } from './timeline';
+export type { MixOnset, TiedContinuation } from './timeline';

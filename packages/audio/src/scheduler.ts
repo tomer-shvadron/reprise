@@ -9,8 +9,15 @@
  */
 import { PPQ, positionAtSeconds, secondsAtTick } from '@reprise/model';
 
-import { bpmAtTick, clicksInRange, countInTicks, notesInRange } from './timeline';
-import type { NextOnString, NoteOnset, TickRange, Timeline } from './timeline';
+import { bpmAtTick, clicksInRange, countInTicks, mixesInRange, notesInRange } from './timeline';
+import type {
+  MixOnset,
+  NextOnString,
+  NoteOnset,
+  TickRange,
+  TiedContinuation,
+  Timeline,
+} from './timeline';
 
 export interface Anchor {
   /** `AudioContext` time at which `tick` sounds. */
@@ -26,13 +33,23 @@ export interface ScheduledClick {
   countIn: boolean;
 }
 
-export interface ScheduledNote extends NoteOnset {
+export interface ScheduledNote extends Omit<NoteOnset, 'continuations'> {
   when: number;
   duration: number;
   /** Context time the onset's bar ends. */
   barEnd: number;
   /** `next` timed through the anchor; undefined where the loop or the song ends first. */
   nextOnString: (Omit<NextOnString, 'tick'> & { when: number }) | undefined;
+  continuations: ScheduledContinuation[];
+}
+
+export type ScheduledContinuation = Omit<TiedContinuation, 'tick'> & { when: number };
+
+export interface ScheduledMix extends MixOnset {
+  /** Never earlier than `now`: a late mixer change still applies, from now on. */
+  when: number;
+  /** Context seconds per tick at the beat, for timing the change's `duration`. */
+  secondsPerTick: number;
 }
 
 export interface LoopCrossing {
@@ -69,6 +86,8 @@ export interface Window {
 export interface Advanced {
   run: Run;
   notes: ScheduledNote[];
+  /** Mixer changes on beats, rests and tied continuations included. */
+  mixes: ScheduledMix[];
   clicks: ScheduledClick[];
   /** Anchors this call started, in time order; the cursor follows them. */
   anchors: Anchor[];
@@ -158,6 +177,7 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
     return now - when <= tolerance ? now : undefined;
   };
   const notes: ScheduledNote[] = [];
+  const mixes: ScheduledMix[] = [];
   const clicks: ScheduledClick[] = [];
   const anchors: Anchor[] = [];
   let next = run;
@@ -195,7 +215,8 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
         loopPasses,
       };
       anchors.push(wrapped);
-      if (crossed) return { run: next, notes, clicks, anchors, loop: { pass: loopPasses, when } };
+      if (crossed)
+        return { run: next, notes, mixes, clicks, anchors, loop: { pass: loopPasses, when } };
       continue;
     }
 
@@ -203,6 +224,11 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
     if (target <= next.cursorTick) break;
 
     const range = { runStartTick: next.runStartTick, limitTick: limit };
+    for (const mix of mixesInRange(timeline, next.cursorTick, target, range)) {
+      const start = timeAtTick(timeline, anchor, mix.tick);
+      const span = timeAtTick(timeline, anchor, mix.tick + PPQ) - start;
+      mixes.push({ ...mix, when: Math.max(start, now), secondsPerTick: span / PPQ });
+    }
     for (const onset of notesInRange(timeline, next.cursorTick, target, range)) {
       const start = timeAtTick(timeline, anchor, onset.tick);
       const end = timeAtTick(timeline, anchor, onset.tick + onset.durationTicks);
@@ -219,6 +245,10 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
           beat: following.beat,
           when: timeAtTick(timeline, anchor, following.tick),
         },
+        continuations: onset.continuations.map(({ tick, ...link }) => ({
+          ...link,
+          when: timeAtTick(timeline, anchor, tick),
+        })),
       });
     }
     if (window.metronome) {
@@ -230,5 +260,5 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
     next = { ...next, cursorTick: target };
     if (target < limit) break;
   }
-  return { run: next, notes, clicks, anchors, loop: undefined };
+  return { run: next, notes, mixes, clicks, anchors, loop: undefined };
 }

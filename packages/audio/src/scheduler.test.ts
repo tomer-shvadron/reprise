@@ -121,6 +121,23 @@ describe('advance', () => {
     expect(late.notes[0]?.duration).toBeCloseTo(0.48, 9);
   });
 
+  it('applies a mixer change handed out late from now instead of dropping it', () => {
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .rest('4', { mix: { volume: { value: 20 } } })
+      .beat('4', [note(1, 0)])
+      .rest('2')
+      .build();
+    const timeline = createTimeline(song);
+    const run = startRun(timeline, { tick: 0, time: 0, rate: 1, loop: undefined, countIn: false });
+    const late = advance(timeline, run, { now: 0.3, horizon: 0.6, metronome: false });
+
+    expect(late.mixes.map((m) => [m.tick, m.when, m.mix.volume?.value])).toEqual([[0, 0.3, 20]]);
+    expect(late.notes.map((n) => n.when)).toEqual([0.5]);
+  });
+
   it('plays the count-in clicks before the first note', () => {
     const timeline = repeated();
     const run = startRun(timeline, { tick: 0, time: 1, rate: 1, loop: undefined, countIn: true });

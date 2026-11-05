@@ -54,6 +54,7 @@ function event(spec: {
     passIndex: 0,
     barEnd: spec.barEnd ?? spec.when + spec.duration,
     nextOnString: undefined,
+    continuations: [],
   };
 }
 

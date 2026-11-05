@@ -44,6 +44,7 @@ notes itself.
 ```ts
 interface InstrumentSink {
   noteOn(event: NoteEvent): void;
+  mix?(event: MixEvent): void; // a beat's mixer change, rests and tied continuations included
   allNotesOff(when: number): void;
   dispose?(): void;
 }
@@ -63,6 +64,21 @@ interface NoteEvent {
   passIndex: number;
   barEnd: number; // AudioContext time the bar ends: the latest a let-ring note sounds
   nextOnString: { note: Note; beat: Beat; when: number } | undefined; // a slide's target
+  continuations: { note: Note; beat: Beat; when: number; durationTicks: number }[]; // tied links, in order
+}
+interface MixEvent {
+  track: Track;
+  trackIndex: number;
+  voiceIndex: number;
+  beat: Beat;
+  beatIndex: number;
+  mix: MixerChange; // Beat.mix
+  when: number; // AudioContext time of the beat; currentTime when handed out late
+  playbackTick: number;
+  secondsPerTick: number; // at the beat, to time the change's duration
+  sequenceIndex: number;
+  masterBarIndex: number;
+  passIndex: number;
 }
 ```
 
@@ -72,10 +88,22 @@ interface NoteEvent {
   quarter note), because a 16th grace is 250 ms at 60 BPM and 500 ms with the speed trainer at
   half speed, longer than the lookahead: the sink places the grace ahead of `when` and still has
   the time to do so.
-- **Ties** are resolved by the scheduler: a tied continuation is never sent and its length is
-  added to the origin's `duration`, following the voice across bar lines in playback order. The
-  one exception is a tie on the exact tick where playback starts or a loop wraps, which arrives
-  as an onset so the bar does not start silent.
+- **Ties** are resolved by the scheduler with the model's own chain (`tieChainOf`, #65): a tied
+  continuation is never sent and the chain's length is added to the origin's `duration`, however
+  many beats of other strings (or rests) sit between the links, following the voice across bar
+  lines while the bars play in score order. A repeat or jump between two links ends the hold
+  there. A tie whose origin did not play just before it in this run, because playback started or
+  a loop wrapped after the origin or a repeat jumped back to it, arrives as an onset instead, so
+  nothing goes silent. The links themselves come with the event as `continuations`, each with its
+  `when` and `durationTicks`, clipped to the loop or song end: an effect written on a later link
+  (a hold bend, a slide out, vibrato) starts there. Playing those effects is the articulation
+  layer's job and is tracked in #72; until then the origin's effects alone are played.
+- **Mixer changes** arrive as `MixEvent`s through `mix`, one per beat carrying `Beat.mix`,
+  whether the beat is played, a rest or a tied continuation; a `NoteEvent` with no note was the
+  alternative, but it would make `note` optional for every consumer and send a mixer change once
+  per note. `mix` is the one place mixer changes arrive, so a sink does not read `beat.mix` in
+  `noteOn`. A change handed out late is moved to `currentTime`, never dropped, because it holds
+  for the rest of the song. Changes before the point playback starts from are not replayed.
 - Everything else about a note (velocity from `dynamics`, accents, palm mute, bends, let ring,
   strokes, grace notes) is the sink's business: the event carries the whole `Note`, `Beat` and
   `Track`, and `duration` is in seconds so bend points (0 to 60 across the note) map directly.

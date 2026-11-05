@@ -1,4 +1,4 @@
-import type { Beat, Note, Track } from '@reprise/model';
+import type { Beat, MixerChange, Note, Track } from '@reprise/model';
 
 /** One note the scheduler wants sounded, with everything a sampler needs to voice it. */
 export interface NoteEvent {
@@ -28,6 +28,34 @@ export interface NoteEvent {
    * where the loop or the song ends first.
    */
   nextOnString: { note: Note; beat: Beat; when: number } | undefined;
+  /**
+   * The tied notes folded into this one, in order (`tieChainOf`), each with its own onset and
+   * length: where a hold bend, a slide out or vibrato written on a later link starts. Empty
+   * for an untied note. Their lengths, and the beats of other strings between them, are
+   * already in `duration`.
+   */
+  continuations: { note: Note; beat: Beat; when: number; durationTicks: number }[];
+}
+
+/**
+ * A beat's mixer change (`Beat.mix`), sent once per beat that carries one: on rests and tied
+ * continuations too, which send no `NoteEvent`.
+ */
+export interface MixEvent {
+  track: Track;
+  trackIndex: number;
+  voiceIndex: number;
+  beat: Beat;
+  beatIndex: number;
+  mix: MixerChange;
+  /** `AudioContext` time of the beat; `currentTime` when it was handed out late. */
+  when: number;
+  playbackTick: number;
+  /** Context seconds per tick at the beat, to time the change's `duration`. */
+  secondsPerTick: number;
+  sequenceIndex: number;
+  masterBarIndex: number;
+  passIndex: number;
 }
 
 /**
@@ -40,6 +68,8 @@ export interface NoteEvent {
  *   A tied continuation is never sent: its length is folded into the origin's `duration`,
  *   except when playback starts or a loop wraps exactly on it, where it arrives as an onset.
  *   The sink schedules both the start and the release itself; there is no per-note off call.
+ * - `mix` is called for every beat carrying a mixer change, in the same window as the notes
+ *   at its tick; the sink applies it from `when`. It is the one place mixer changes arrive.
  * - `allNotesOff(when)` cancels every note sounding at `when` and every note already scheduled
  *   to start at or after it, by stopping their source nodes (`stop(when)` is valid before a
  *   node's start time), not only by muting them. Called on pause, stop and seek, with `when` =
@@ -47,6 +77,7 @@ export interface NoteEvent {
  */
 export interface InstrumentSink {
   noteOn(event: NoteEvent): void;
+  mix?(event: MixEvent): void;
   allNotesOff(when: number): void;
   dispose?(): void;
 }
