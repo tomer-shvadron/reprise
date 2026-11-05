@@ -54,10 +54,11 @@ function assertTie(track: Track, position: BeatAt, note: Note, command: string):
 }
 
 /**
- * Places a note on a beat: on fretted tracks it replaces the note on the same string, elsewhere
- * the note with the same MIDI value; otherwise it adds one. A rest becomes a played beat. A new
- * fret carries along the notes tied to this one; on a tied note it releases the tie, unless the
- * input sets `tie: true`, which is then refused.
+ * Places a note on a beat: on fretted tracks it merges the given fields over the note on the same
+ * string, elsewhere over the note with the same MIDI value, keeping its id and the fields not
+ * given; otherwise it adds one with defaults. A rest becomes a played beat. A new fret carries
+ * along the notes tied to this one; a tied note given another fret is released, unless the input
+ * sets `tie: true`, which is then refused.
  */
 export function setNote(target: { beatId: Id; id?: Id }, note: NoteInput): Command {
   const name = 'setNote';

@@ -273,20 +273,20 @@ const undone = history.undo(); // { score, change } with the patches it replayed
   note given a pitch of its own is released from its origin. `setNote` with an explicit
   `tie: true` and another fret than the origin's is refused as `tie-target`.
 
-| Command                                | Notes                                                                                                                                   |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `setNote`                              | Replaces the note on the same string (same MIDI value off fretted tracks) or adds one; a rest becomes a played beat; frets follow ties. |
-| `removeNote`                           | A beat left without notes becomes a rest.                                                                                               |
-| `setNoteEffect`                        | Any note field but id, string and fret.                                                                                                 |
-| `transposeSelection`                   | Each note through `transpose`, on its string; tie chains follow; refuses notes off the neck; drum and dead notes stay; warns.           |
-| `shiftStrings`                         | Moves notes to the neighbouring string at the same pitch; refuses occupied strings and frets off the neck.                              |
-| `insertBeat`, `removeBeat`             | A quarter rest by default; refuses to overfill the voice or to place a note off the neck.                                               |
-| `setBeatDuration`, `setBeatRest`       | Duration, dots, tuplet; rest drops the notes.                                                                                           |
-| `setBeatEffect`                        | Beat effects, plus text, chord, lyrics, mixer change and grace notes.                                                                   |
-| `insertBar`, `removeBar`               | All tracks at once; copy the previous signatures and the next bar's voltas, shift `Track.lyrics`; a removed bar's tempo moves on.       |
-| `setMasterBar`                         | Time, key, tempo, repeats, alternate endings, jumps, targets, section, anacrusis, triplet feel, double bar.                             |
-| `setTrackProperties`                   | Everything but id, kind and bars; `channel` and `display` merge; refuses a fret count that strands notes.                               |
-| `addTrack`, `removeTrack`, `moveTrack` | A new track gets one empty bar per master bar; a score keeps at least one track.                                                        |
+| Command                                | Notes                                                                                                                                                         |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setNote`                              | Merges the given fields over the note on the same string (same MIDI value off fretted tracks) or adds one; a rest becomes a played beat; frets follow ties.   |
+| `removeNote`                           | A beat left without notes becomes a rest.                                                                                                                     |
+| `setNoteEffect`                        | Any note field but id, string and fret.                                                                                                                       |
+| `transposeSelection`                   | Each note through `transpose`, on its string; tie chains follow; refuses notes off the neck; drum and dead notes stay; warns.                                 |
+| `shiftStrings`                         | Moves notes to the neighbouring string at the same pitch; refuses occupied strings and frets off the neck.                                                    |
+| `insertBeat`, `removeBeat`             | A quarter rest by default; refuses to overfill the voice or to place a note off the neck.                                                                     |
+| `setBeatDuration`, `setBeatRest`       | Duration, dots, tuplet; rest drops the notes.                                                                                                                 |
+| `setBeatEffect`                        | Beat effects, plus text, chord, lyrics, mixer change and grace notes.                                                                                         |
+| `insertBar`, `removeBar`               | All tracks at once; copy the previous signatures (the next bar's at index 0) and the next bar's voltas, shift `Track.lyrics`; a removed bar's tempo moves on. |
+| `setMasterBar`                         | Time, key, tempo, repeats, alternate endings, jumps, targets, section, anacrusis, triplet feel, double bar.                                                   |
+| `setTrackProperties`                   | Everything but id, kind and bars; `channel` and `display` merge; refuses a fret count that strands notes.                                                     |
+| `addTrack`, `removeTrack`, `moveTrack` | A new track gets one empty bar per master bar; a score keeps at least one track.                                                                              |
 
 Guitar Pro numbers frets up to the neck length whatever the capo, so the ceiling every command
 places a note under is `fretCount`, the bound `transpose` and the `fret-range` rule share.

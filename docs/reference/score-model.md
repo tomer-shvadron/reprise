@@ -14,7 +14,7 @@ Score ─ id, meta (title, artist, … , notices)
 └── tracks: Track[]                  kind: fretted | drums | pitched
       tuning, capo, fretCount, program, bank, channel, display, sound, lyrics (raw block)
       └── bars: Bar[]                one per master bar, same index
-            clef?                    a clef change from this bar on
+            clef?                    a clef change from this bar on; absent = the track's clef
             └── voices: [Voice, Voice, Voice, Voice]   always four; unused ones are empty
                   └── beats: Beat[]
                         duration, dots, tuplet?, rest
@@ -25,6 +25,7 @@ Score ─ id, meta (title, artist, … , notices)
 ```
 
 - **Master bar versus bar.** Anything that is the same for every instrument at a bar position (time signature, repeats, tempo marks, sections) lives on the `MasterBar`. A track's `Bar` at the same index holds only that instrument's content. `score.tracks[t].bars[i]` always pairs with `score.masterBars[i]`.
+- **Clef.** A bar's `clef` is a change from that bar on; without one the track's `display.clef` applies, and when that is absent too the clef is treble, or percussion on a drum track (what `createTrack` sets). `display.notation` says whether the track shows tab, a standard staff or both.
 - **Ids.** Every `Score`, `MasterBar`, `Track`, `Bar`, `Voice`, `Beat` and `Note` has an `id`: 12 base62 characters from `newId()`, unique across the score. A grace beat has no id of its own; its notes do. Commands address nodes by id; timing helpers address positions by index.
 - **Optional fields are exact.** An absent optional field means "not set"; an explicit `undefined` is rejected by the schemas. Commands remove an optional field with `null`.
 - **Chords.** `Beat.chord.name` alone is a chord symbol written above the beat; `diagram` adds the grid (`baseFret`, one absolute fret per string from string 1, `null` muted, 0 open, optional `barres` and `fingering`).
@@ -94,7 +95,7 @@ The reasons for each row are in the README's "Deviations from alphaTab".
 Lookups:
 
 - `secondsAt(map, sequenceIndex, tick)`: seconds at `tick` ticks into a pass.
-- `secondsAtTick(map, playbackTick)`: the same from a playback tick (`startTick` + tick), for the scheduler; clamped to the map.
+- `secondsAtTick(map, playbackTick)`: the same from a playback tick (`startTick` + tick), for the scheduler; clamped to the map. A beat sounds at `pass.startTick + beatStartTicks(voice, i)` on each pass of its bar, with `voice = score.tracks[t].bars[pass.masterBarIndex].voices[v]`; `pass.ticks` (`playedBarTicks`) is how long the pass lasts, so an anacrusis pass is short.
 - `positionAtSeconds(map, seconds, { track?, voice? })`: the inverse, clamped to the map and `undefined` only for an empty one. It returns `sequenceIndex`, `masterBarIndex`, `passIndex`, `tick` (into the pass), `playbackTick`, `barProgress` (0 to 1), `beatIndex` (the sounding beat in that track and voice, `undefined` when the voice is empty) and `beatProgress`.
 
 ## Commands and history
@@ -110,7 +111,7 @@ Every edit is a `Command` (`{ name, run(draft, warn) }`) that mutates an Immer d
 
 | Command                                     | What it does                                                                                                                                                                  |
 | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `setNote({ beatId, id? }, note)`            | Replaces the note on the same string (same MIDI value off fretted tracks) or adds one; a rest becomes a played beat. A new fret carries along its tie chain; on a tied note it releases the tie. |
+| `setNote({ beatId, id? }, note)`            | Merges the given fields over the note on the same string (same MIDI value off fretted tracks), keeping its id and the fields not given, or adds one with defaults; a rest becomes a played beat. A new fret carries along its tie chain; a tied note given another fret is released. |
 | `removeNote({ noteId })`                    | Removes a note; a beat left without notes becomes a rest.                                                                                                                     |
 | `setNoteEffect({ noteId }, changes)`        | Any note field but id, string and fret.                                                                                                                                       |
 | `transposeSelection(selection, semitones)`  | Moves each note through `transpose`, staying on its string; tie chains move with their origin; drum and dead notes stay; refuses notes that fall off the neck.               |
@@ -120,8 +121,8 @@ Every edit is a `Command` (`{ name, run(draft, warn) }`) that mutates an Immer d
 | `setBeatDuration({ beatId }, rhythm)`       | Duration, dots, tuplet; refuses to overfill the voice.                                                                                                                        |
 | `setBeatRest({ beatId }, rest)`             | `true` makes a rest and drops the notes; `false` leaves an empty beat.                                                                                                        |
 | `setBeatEffect({ beatId }, changes)`        | Beat effects, text, chord, lyrics, mixer change and grace notes.                                                                                                              |
-| `insertBar({ index, id? }, masterBar?)`     | An empty bar in every track; copies the previous bar's signatures and triplet feel and the following bar's voltas; at index 0 takes over the tempo mark; shifts `Track.lyrics`. |
-| `removeBar({ masterBarId })`                | Removes the column from every track; its tempo mark moves to the next bar when that has none; a score keeps one bar.                                                         |
+| `insertBar({ index, id? }, masterBar?)`     | An empty bar in every track; copies the previous bar's signatures and triplet feel (the following bar's at index 0) and the following bar's voltas; at index 0 takes over the tempo mark; shifts `Track.lyrics`. |
+| `removeBar({ masterBarId })`                | Removes the column from every track; its tempo mark moves to the next bar when that has none; shifts `Track.lyrics` and clamps a start past the end; a score keeps one bar. |
 | `setMasterBar({ masterBarId }, changes)`    | Time, key, tempo, repeats, voltas, jumps, targets, section, anacrusis, triplet feel, double bar; refuses a signature that would overfill a voice.                             |
 | `setTrackProperties({ trackId }, changes)`  | Everything but id, kind and bars; `channel` and `display` merge; refuses a tuning or fret count that strands notes.                                                           |
 | `addTrack({ kind, index?, id? }, props)`    | A track of empty bars, one per master bar.                                                                                                                                    |
@@ -206,6 +207,25 @@ const built = score()
 - Durations: `'8'` eighth, `'4.'` dotted quarter, `'2..'` double-dotted half, `'8t'` triplet eighth; any other tuplet goes in the spec (`beat('8', notes, { tuplet: { n: 5, of: 4 } })`). `note(string, fret, spec?)` for fretted tracks, `midi(value, spec?)` for drum and pitched ones; ids may be given wherever a test needs them.
 - `build()` pads short tracks, adds a guitar if no track was declared, gives the first bar the builder's default tempo if it has no mark (`tempo()` before any bar, 120 otherwise), then checks the schema and `validateScore` and throws `ScoreBuildError` (with `violations`). `build({ validate: false })` skips the invariants, for tests of invalid scores. `build({ ids: 'sequential' })` numbers every node in document order with kind-prefixed ids (`score0000001`, `mbar00000001`, `track0000001`, `bar000000001`, `voice0000001`, `beat00000001`, `note00000001`), keeping the ids a test gave, so two builds of one chain deep-equal and a data snapshot keyed by node id (layout's anchors) stays put; by default ids are random, as in a real score.
 - `fullScore()` is a valid score that sets every node type and optional field; `largeScore(tracks, bars, { structure? })` is the generated score for performance and memory tests; `beatOf(score, track, bar, beat, voice = 0)` and `noteOf(score, track, bar, beat, note = 0, voice = 0)` find nodes by index.
+
+## Reading and writing Guitar Pro files
+
+What a reader does on the way in and a writer undoes on the way out. The reasons are in the README's "Modelling decisions"; the formats themselves are in `file-formats.md`.
+
+- **Tuning order.** Guitar Pro lists strings from string 1 (the highest) down; `Track.tuning` is lowest first, so a reader reverses the list and a writer reverses it back.
+- **Volta numbers** go on every bar of the bracket, through the bar carrying the repeat end; GP5 and gpif mark only the bracket's first bar.
+- **`repeat.endCount`** is the section's total plays (2 = play twice); a format that stores the extra repeats is off by one.
+- **`hammerPull`** sits on the destination note. GP5 flags the origin and gpif flags both ends, so a reader moves the flag to the next note on the same string in the same voice and drops it with a warning when there is none.
+- **Bend and whammy points**: `position` 0 to 60 across the note, `value` in quarter tones. GP3 to GP5 raw values / 25 (100 = a whole tone); gpif values / 25, gpif offsets (0 to 100) × 0.6. Each bend keeps the file's `kind`, `custom` where the points fit none.
+- **Controller values** (`channel`, `Beat.mix`) are 0 to 127, pan 64 = centre; GP3 to GP5 store 0 to 16, so a reader scales up and a writer back (the step is about 8, which round-trips).
+- **Lyrics**: `Track.lyrics[].startBar` is 0-based, GP files store it 1-based. A reader fills both `Track.lyrics` and `Beat.lyrics`; a writer prefers the raw block when it is non-empty.
+- **A GP5 track is `pitched`** when its program is outside the fretted families (GM 24 to 39, and 104 to 107) and its channel is not percussion; its notes become MIDI values through the file's tuning, and the track keeps that tuning and `fretCount` so gp5 export can re-finger them. A percussion-channel track is `drums`.
+- **Grace notes**: a run of gpif grace beats becomes several `Beat.grace` entries, GP5's single grace note one; `before` is whether it plays ahead of the beat or on it.
+- **Chord diagrams**: GP5 stores one on the beat; gpif stores them once per track and references them, so a writer deduplicates by structural equality.
+- **Tempo**: `bpm` is per quarter note; a mark shown against another note value keeps that in `unit`. A gpif linear tempo automation becomes a `Beat.mix.tempo` at its start with `duration` set to its length in quarter notes.
+- **Simile marks** are not modelled: a reader copies the previous bar's beats (the two bars before it for the double form) into the bar with fresh ids and warns.
+- **Double and quadruple whole notes** are not representable; a reader ties whole notes.
+- **Names**: colours are lower-case `#rrggbb`; clefs map from gpif's G2, F4, C3, C4 and Neutral to `treble`, `bass`, `alto`, `tenor` and `percussion`; fingering from T 1 2 3 4 and p i m a c to `thumb`, `index`, `middle`, `ring`, `little`.
 
 ## Not modelled in v1
 

@@ -129,21 +129,21 @@ interface Track {
   fretCount: number;             // neck length, 24 by default; 0 on drums
   program: number; bank: number; // GM program 0..127 and bank 0..16383; on drums, program is the GM2 kit
   channel: { volume; pan; chorus; reverb; phaser; tremolo: number; mute: boolean; solo: boolean };   // 0..127, pan 64 = centre
-  display: { notation: 'tab' | 'standard' | 'both'; clef?: Clef; octaveShift: number };   // octaveShift: written minus sounding, in octaves (1 fretted, 0 otherwise)
+  display: { notation: 'tab' | 'standard' | 'both'; clef?: Clef; octaveShift: number };   // clef absent = treble, percussion on drums; octaveShift: written minus sounding, in octaves (1 fretted, 0 otherwise)
   sound?: { packId?: Id; preset?: string };       // HQ tier assignment; absent = the GM tier plays `program`
   lyrics: { startBar: number; text: string }[];   // the raw Guitar Pro block, up to LYRIC_LINES (5); startBar is 0-based
   bars: Bar[];                   // one per master bar, same order
 }
 type Clef = 'treble' | 'bass' | 'alto' | 'tenor' | 'percussion';
 
-interface Bar   { id: Id; voices: [Voice, Voice, Voice, Voice]; clef?: Clef }   // always VOICE_COUNT (4); unused voices have no beats
+interface Bar   { id: Id; voices: [Voice, Voice, Voice, Voice]; clef?: Clef }   // always VOICE_COUNT (4); unused voices have no beats; clef: a change from this bar on, absent = the track's
 interface Voice { id: Id; beats: Beat[] }
 
 interface Beat {
   id: Id;
   duration: 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 256;   // denominator; gpif's range, GP5 stops at 64
   dots: 0 | 1 | 2;
-  tuplet?: { n: number; of: number };                    // n in the time of `of`; a triplet is { n: 3, of: 2 }
+  tuplet?: { n: number; of: number };                    // integers >= 1: n in the time of `of`; a triplet is { n: 3, of: 2 }
   rest: boolean;
   notes: Note[];                 // empty with rest false is Guitar Pro's empty beat
   text?: string;
@@ -169,9 +169,9 @@ interface ChannelMixChange { value: number; duration?: number; allTracks?: boole
 interface BendPoint        { position: number; value: number }   // position 0..60 across the note's duration; value in quarter tones; a bend or whammy has at least two
 
 interface ChordDiagram {
-  baseFret: number;              // first fret shown in the grid; frets stay absolute
+  baseFret: number;              // >= 1; first fret shown in the grid; frets stay absolute
   frets: (number | null)[];      // one per string, string 1 first; null = muted, 0 = open
-  barres?: { fret: number; firstString: number; lastString: number }[];
+  barres?: { fret: number; firstString: number; lastString: number }[];   // each >= 1
   fingering?: (Finger | null)[]; // parallel to frets
 }
 type Finger = 'thumb' | 'index' | 'middle' | 'ring' | 'little';
@@ -187,7 +187,7 @@ interface Note {
   hammerPull: boolean;           // hammered on or pulled off from the previous note on the string; readers move GP5's origin flag here
   vibrato: 'none' | 'slight' | 'wide';
   palmMute: boolean; letRing: boolean;
-  harmonic?: { kind: 'natural' | 'artificial' | 'tapped' | 'pinch' | 'semi' | 'feedback'; value?: number };   // value is the fret, fractional where needed
+  harmonic?: { kind: 'natural' | 'artificial' | 'tapped' | 'pinch' | 'semi' | 'feedback'; value?: number };   // value >= 0 is the fret, fractional where needed
   trill?: { fret: number; speed: 16 | 32 | 64 };   // alternate fret, or MIDI note off fretted tracks
   leftHandFinger?: Finger; rightHandFinger?: Finger;
   dynamics: 'ppp' | 'pp' | 'p' | 'mp' | 'mf' | 'f' | 'ff' | 'fff';
@@ -221,7 +221,8 @@ function barStartTicks(score): number[];                                        
 function tickOf(score, position: { bar: number; beat?: number; track?: number; voice?: number }): number;   // written order; RangeError when out of range
 // `score` here is Pick<Score, 'masterBars' | 'tracks'>
 
-function expandPlaybackSequence(score: Pick<Score, 'masterBars'>): { sequence: BarPass[]; warnings: PlaybackWarning[] };
+function expandPlaybackSequence(score: Pick<Score, 'masterBars'>): PlaybackSequence;
+interface PlaybackSequence { sequence: BarPass[]; warnings: PlaybackWarning[] }
 interface BarPass { masterBarIndex: number; passIndex: number }                 // passIndex counts earlier plays of the bar, from 0
 interface PlaybackWarning { code: 'repeat-end-without-start' | 'volta-without-repeat' | 'jump-target-missing' | 'sequence-truncated'; masterBarIndex: number; message: string }
 const PLAYBACK_LENGTH_FACTOR = 64;                                               // passes per master bar before the sequence is cut
@@ -302,7 +303,7 @@ Every command factory returns a `Command`. A command that would break the schema
 ```ts
 // A .reprise file (NATIVE_EXTENSION) is UTF-8 JSON with sorted keys inside app and score, two-space indent, no compression
 interface NativeDocument { format: 'reprise'; version: typeof SCORE_VERSION; app: AppInfo; score: Score }   // NativeDocumentSchema
-interface AppInfo { name: string; version: string }   // the writer, for diagnostics only
+interface AppInfo { name: string; version: string }   // both non-empty; the writer, for diagnostics only
 const SCORE_VERSION = 1;                               // the only schema version; Score carries none
 
 function serializeNative(score: Score, app: AppInfo): Uint8Array;   // validates the envelope first; throws NativeFormatError
@@ -337,13 +338,16 @@ const STANDARD_TUNINGS: readonly { name: string; instrument: 'guitar' | 'bass' |
 function findTuningName(tuning: readonly number[]): string | undefined;
 
 interface Spelling { letter: 'C' | 'D' | 'E' | 'F' | 'G' | 'A' | 'B'; octave: number; alter: -2 | -1 | 0 | 1 | 2; accidental?: Accidental }   // octave scientific, C4 = 60, B#3 = 60
+const LETTERS: readonly Letter[];                      // C D E F G A B
 function spell(midi: number, key: KeySignature, accidental?: Accidental): Spelling;
 function spellNote(track, note, key: KeySignature): Spelling;
 function respell(track, note: Note, key: KeySignature): Note;   // the enharmonic; clears accidental when it is the key's default
 function keyAlter(key: Pick<KeySignature, 'fifths'>, letter: Letter): Alter;
 function staffPosition(spelling, clef: Exclude<Clef, 'percussion'>, octaveShift?: number): number;   // 0 bottom line, 8 top line
 
-function percussionInstrument(midi: number): { midi: number; name: string; staffPosition: number; noteHead: 'normal' | 'cross' | 'diamond' | 'triangle' } | undefined;   // GM and GM2, 27..87
+function percussionInstrument(midi: number): PercussionInstrument | undefined;   // GM and GM2, 27..87
+interface PercussionInstrument { midi: number; name: string; staffPosition: number; noteHead: 'normal' | 'cross' | 'diamond' | 'triangle' }
+const PERCUSSION_INSTRUMENTS: readonly PercussionInstrument[];   // the whole table, by MIDI note
 // `track` is a Pick of Track: kind, tuning, capo (and fretCount for transpose)
 ```
 
