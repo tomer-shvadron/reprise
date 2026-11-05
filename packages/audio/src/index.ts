@@ -51,6 +51,9 @@ export * from './sampler/index';
 // SF2 loader (WP-032)
 export * from './sf2/index';
 
+// Articulations (WP-033)
+export * from './articulations/index';
+
 // Memory manager (WP-034)
 export * from './samples/index';
 

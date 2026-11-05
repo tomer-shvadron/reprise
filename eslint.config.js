@@ -17,8 +17,8 @@ if (!reactRecommended || !reactJsxRuntime) {
 
 const ARCHITECTURE = 'docs/specs/architecture.md';
 
-/** @param {string} name @param {string} rule */
-const boundary = (name, rule) => `Boundary "${name}": ${rule} (${ARCHITECTURE}).`;
+/** @param {string} name @param {string} rule @param {string} [doc] */
+const boundary = (name, rule, doc = ARCHITECTURE) => `Boundary "${name}": ${rule} (${doc}).`;
 
 const FRAMEWORK_FREE = boundary(
   'framework-free-packages',
@@ -48,15 +48,21 @@ const ELECTRON_IN_DESKTOP = boundary(
   'electron-only-in-desktop',
   'electron is imported only inside apps/desktop',
 );
+const ORACLE_IN_TESTS = boundary(
+  'alphatab-only-in-oracle-tests',
+  '@coderline/alphatab, the dev-only oracle, is imported only under packages/formats/test/ and scripts/',
+  'docs/reference/file-formats.md, "Oracle"',
+);
 
 /**
  * `typeOnly` edges admit `import type` alone: desktop needs web's bridge types, never its code.
- * @typedef {{ name: string; dir: string; allowed: string[]; typeOnly?: string[] }} Workspace
+ * `oracle` globs, relative to `dir`, are the test files that may import alphaTab.
+ * @typedef {{ name: string; dir: string; allowed: string[]; typeOnly?: string[]; oracle?: string[] }} Workspace
  * @type {Workspace[]}
  */
 const WORKSPACES = [
   { name: 'model', dir: 'packages/model', allowed: [] },
-  { name: 'formats', dir: 'packages/formats', allowed: ['model'] },
+  { name: 'formats', dir: 'packages/formats', allowed: ['model'], oracle: ['test/**/*.ts'] },
   { name: 'layout', dir: 'packages/layout', allowed: ['model'] },
   { name: 'audio', dir: 'packages/audio', allowed: ['model'] },
   { name: 'web', dir: 'apps/web', allowed: ['model', 'formats', 'layout', 'audio'] },
@@ -76,6 +82,22 @@ function edgeMessage(self, other) {
 /** The package itself or any subpath of it. @param {string} name */
 const packageSpecifier = (name) => `^${name}(?:/|$)`;
 
+/** @typedef {{ regex: string; message: string; allowTypeImports?: boolean }} Restriction */
+
+const ORACLE = { regex: packageSpecifier('@coderline/alphatab'), message: ORACLE_IN_TESTS };
+
+/** @param {Restriction[]} patterns @returns {import('eslint').Linter.RulesRecord} */
+const restrictImports = (patterns) => ({
+  '@typescript-eslint/no-restricted-imports': ['error', { patterns }],
+  'no-restricted-syntax': [
+    'error',
+    ...patterns.map(({ regex, message }) => ({
+      selector: `ImportExpression > Literal[value=/${regex.replaceAll('/', String.raw`\/`)}/]`,
+      message,
+    })),
+  ],
+});
+
 /**
  * Each boundary is a regex over the import specifier, so one list feeds both rules:
  * `no-restricted-imports` sees static imports and re-exports, `no-restricted-syntax` the
@@ -83,12 +105,13 @@ const packageSpecifier = (name) => `^${name}(?:/|$)`;
  * rule plus `allowTypeImports`, which typeOnly edges need; an `import()` is always a value
  * import, so the second bans those edges too. Flat config replaces a rule's options rather than
  * merging them, so each workspace gets one entry per rule carrying every boundary that applies,
- * once for its test files, which may import `@reprise/model/testing`, and once for the rest.
+ * once for its test files, which may import `@reprise/model/testing`, and once for the rest;
+ * oracle test files are a third entry, the only one without the alphaTab ban.
  * @param {Workspace} workspace
  * @returns {import('eslint').Linter.Config[]}
  */
-function workspaceBoundaries({ name: self, dir, allowed, typeOnly = [] }) {
-  /** @type {{ regex: string; message: string; allowTypeImports?: boolean }[]} */
+function workspaceBoundaries({ name: self, dir, allowed, typeOnly = [], oracle = [] }) {
+  /** @type {Restriction[]} */
   const restricted = [
     { regex: String.raw`^@reprise/(?!model/testing$)[^/]+/`, message: ROOT_IMPORTS_ONLY },
   ];
@@ -111,30 +134,21 @@ function workspaceBoundaries({ name: self, dir, allowed, typeOnly = [] }) {
   if (self !== 'desktop') {
     restricted.push({ regex: packageSpecifier('electron'), message: ELECTRON_IN_DESKTOP });
   }
-
-  /** @param {typeof restricted} patterns @returns {import('eslint').Linter.RulesRecord} */
-  const rules = (patterns) => ({
-    '@typescript-eslint/no-restricted-imports': ['error', { patterns }],
-    'no-restricted-syntax': [
-      'error',
-      ...patterns.map(({ regex, message }) => ({
-        selector: `ImportExpression > Literal[value=/${regex.replaceAll('/', String.raw`\/`)}/]`,
-        message,
-      })),
-    ],
-  });
   const tests = TEST_FILES.map((glob) => `${dir}/${glob}`);
+  const oracleTests = oracle.map((glob) => `${dir}/${glob}`);
 
   return [
     {
       files: [`${dir}/**/*.{ts,tsx}`],
       ignores: tests,
-      rules: rules([
+      rules: restrictImports([
         ...restricted,
+        ORACLE,
         { regex: String.raw`^@reprise/model/testing$`, message: TESTING_IN_TESTS },
       ]),
     },
-    { files: tests, rules: rules(restricted) },
+    { files: tests, ignores: oracleTests, rules: restrictImports([...restricted, ORACLE]) },
+    ...(oracleTests.length > 0 ? [{ files: oracleTests, rules: restrictImports(restricted) }] : []),
   ];
 }
 
@@ -180,6 +194,12 @@ export default defineConfig(
   {
     files: ['*.{js,ts}'],
     languageOptions: { globals: globals.node },
+  },
+  // Files in no workspace; each workspace's own entries below replace this one for its files.
+  {
+    files: ['**/*.{js,mjs,cjs,ts,tsx}'],
+    ignores: ['scripts/**'],
+    rules: restrictImports([ORACLE]),
   },
   ...WORKSPACES.flatMap(workspaceBoundaries),
   {

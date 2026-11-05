@@ -3,7 +3,8 @@
 The playback engine: the transport and lookahead scheduler (WP-030), the sampler (WP-031), the
 SF2 loader (WP-032), articulations (WP-033) and the memory manager (WP-034). This README covers
 what exists so far: the transport and the contract the sampler plugs into first, then the
-sampler itself.
+sampler itself, the SF2 loader, the articulation layer between the scheduler and the sampler, and
+the memory manager.
 
 ## Architecture
 
@@ -227,8 +228,8 @@ plug in.
                                            closes it                  automation
 
  per track (ChannelStrip)
- input -> insert.input -> insert.output -> Gain (volume) -> StereoPanner -> Gain (mute/solo gate) -> master
-          (effects, WP-092; straight through now)
+ input -> Gain (mute/solo gate) -> insert.input -> insert.output -> Gain (volume) -> StereoPanner -> master
+ previewInput ---------------------^        (effects, WP-092; straight through now)
 
  master bus (MasterBus)
  input -> DynamicsCompressor (limiter: -1 dBFS, ratio 20, knee 0) -> Gain (master) -> destination
@@ -306,21 +307,35 @@ buffer, which the voice graph passes through unchanged; a mono zone's `pan` goes
 const sampler = new Sampler(context, { polyphony: 64 });
 sampler.addTrack(track, instrument); // a strip per track, from track.channel
 sampler.setTrack(trackId, { volume, pan, mute, solo }); // AudioEngine.setTrack, 0..127 units
-const voice = sampler.noteOn(trackId, { key, velocity, when, string, layer, offset, letRing });
+sampler.setTrack(trackId, { volume }, { at, ramp }); // a scheduled mixer change: at `at`, gliding over `ramp` s
+const voice = sampler.noteOn(trackId, {
+  key,
+  velocity,
+  when,
+  string,
+  layer,
+  offset,
+  letRing,
+  instrument,
+});
 voice?.rampDetune(2, when + 0.2); // semitones, absolute times
 voice?.setGain(-6, when + 0.1); // dB relative to the velocity level
 voice?.setFilter({ frequency: 1200, q: 1 }, when);
 sampler.noteOff(voice, when + 0.5); // ignored for let-ring voices
-sampler.previewNote(trackId, note); // now, at velocity 96, through the track's strip
+sampler.previewNote(trackId, note); // now, at velocity 96, through the strip past its mute gate
 await sampler.preload(trackId, [{ key, velocity }]);
 ```
 
-`createSamplerSink(sampler)` is the scheduler's `InstrumentSink` over the sampler: `noteOn(event)`
-starts the note at `event.when` at velocity 96 (flat until WP-033 maps dynamics) and releases it
-at `when + duration`; a let-ring note instead rings to the next note on its string or to
-`event.barEnd`, whichever comes first; `allNotesOff(when)` releases every voice, the ones
-scheduled after `when` included (a release before a voice's start time is a 0-to-0 fade, so it
-never sounds). It keeps no handles: the sampler's voice set is the state.
+`createSamplerSink(sampler, { deadNote? })` is the scheduler's `InstrumentSink` over the sampler,
+with the articulation layer described under [Articulations](#articulations): each event becomes
+attacks, pitch and level automation, a filter and a release; `allNotesOff(when)` releases every
+voice, the ones scheduled after `when` included (a release before a voice's start time is a 0-to-0
+fade, so it never sounds), and forgets any legato slide waiting for its next note.
+
+`noteOn`'s `instrument` plays a region of another instrument through the track's strip: the dead
+note's noise burst uses it, so it works whichever tier the track is on. `previewNote` joins the
+strip after its mute gate, so a note clicked in the editor sounds on a muted track and beside a
+soloed one; it still goes through the insert, the fader and the panner.
 
 ### Decisions
 
@@ -330,8 +345,15 @@ never sounds). It keeps no handles: the sampler's voice set is the state.
   level gain after the filter is the extra node.
 - **Pitch** is split: `playbackRate` carries the key shift and region tune, fixed per voice;
   `detune` starts at 0 and carries only automation, so bend and vibrato curves are relative to
-  the written note. Measured on a rendered 440 Hz sine by interpolated zero crossings, every
-  case in the test lands within 0.001 cent of the target.
+  the written note. The voice sets no initial `detune` value: Chromium skips a value curve
+  (`setValueCurveAtTime`) that starts mid-quantum after any event in the same 128-frame render
+  quantum (a `setValueAtTime` at the same time or up to a quantum earlier, a `setTargetAtTime`), so
+  a curve from the note's onset never played. A quantum-aligned start plays, a curve after a curve
+  plays, and an event scheduled inside a curve's span throws `NotSupportedError`; so a curve is
+  always a voice's first detune event, a chained note's events start after the previous curve
+  ends, and `rampDetune`, which anchors at the onset lazily, cannot precede a curve from the onset
+  on one voice. Measured on a rendered 440 Hz sine by interpolated zero crossings, every case in
+  the test lands within 0.001 cent of the target.
 - **Envelope shapes.** Linear attack, exponential decay and release (aimed at -80 dB, then set
   to 0 and the source stopped), so the release reaches exact silence. Chromium's
   `cancelAndHoldAtTime` holds nothing when no ramp spans the release time, so the release also
@@ -340,15 +362,18 @@ never sounds). It keeps no handles: the sampler's voice set is the state.
   envelope, computed analytically), then the oldest; a note that has not started yet is never
   stolen. The stolen voice fades over 5 ms from its level at that moment, release in progress
   included, and no longer counts against the limit.
-- **Strings choke.** A new note on a string releases whatever sounds on that string, let-ring or
-  not; string 0 (drum and pitched tracks) never chokes. A let-ring voice ignores note-off and
-  rings to the next note on its string or to `letRing.until`, the end of the bar the scheduler
-  supplies.
+- **Strings choke.** A new note on a string damps whatever sounds on that string, let-ring or
+  not, with a dedicated 15 ms fade (`CHOKE_FADE`) rather than the region's release, which on a
+  sampled guitar is long enough to smear the next note; string 0 (drum and pitched tracks)
+  never chokes. A let-ring voice ignores note-off and rings to the next note on its string or to
+  `letRing.until`, the end of the bar the scheduler supplies.
 - **A non-resident sample is a skipped note, not a late one.** A scheduled note cannot wait for a
   decode; `noteOn` returns `undefined`, requests the load and reports through `onMiss`. Playback
   start pre-warms with `preload` (ADR-0005).
 - **Channel units.** `setTrack` takes the model's 0..127 volume and pan; volume follows the MIDI
-  curve `(v / 127)^2`, pan 64 is centre. `ChannelStrip.set` takes linear gain and -1..1 pan.
+  curve `(v / 127)^2`, pan 64 is centre. `ChannelStrip.set(settings, at?, ramp?)` takes linear gain
+  and -1..1 pan; without `at` a change is smoothed in now, with it the change lands at `at`, as a
+  linear glide over `ramp` seconds or a 5 ms smoothed step.
 - **The limiter is Chromium's compressor**, which is not transparent: it applies automatic makeup
   gain (about +0.5 dB at these settings), its detector takes the first 100 ms or so of a render to
   settle, and it has a fixed pre-delay, measured at 264 frames (5.99 ms at 44.1 kHz): everything
@@ -475,6 +500,89 @@ Measured over the GM set (bank 0 programs 0 to 127 and the standard kit, 129 pre
 The fixture the parser tests run on is `test-fixtures/synthetic.sf2`, under 4 KB, written by
 `pnpm sounds:fixture` (`scripts/sounds/make-test-sf2.ts`); a scripts test fails when the committed
 file and the generator disagree.
+
+## Articulations
+
+The GM-tier articulation layer (WP-033), in `src/articulations/`, between the scheduler and the
+sampler. `planNote` turns one note into a `NotePlan`, pure data: its attacks (`strikes`), a pitch
+function in semitones, level breakpoints in dB, a filter, and how it ends (a release time, let
+ring to a time, or a legato carry into the next note). `createSamplerSink` executes the plan on
+sampler voices. Every constant is in `ARTICULATION` (`parameters.ts`), which the table below
+quotes.
+
+### Mapping
+
+| Effect                                               | Automation                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dynamics` `ppp` to `fff`                            | Velocity 15, 31, 47, 63, 79, 95, 111, 127 (Guitar Pro's ladder, steps of 16). `f`, the model's default, is 95: the old flat 96.                                                                                                                                           |
+| `accent` normal, heavy                               | +1, +2 steps of 16, capped at 127.                                                                                                                                                                                                                                        |
+| `ghost`                                              | -2 steps.                                                                                                                                                                                                                                                                 |
+| `hammerPull` (on the destination)                    | -1 step, and the sample starts 20 ms in (`offset`), past the pick transient. After a legato slide it is no attack at all (below).                                                                                                                                         |
+| `bend`                                               | Points to a sampled detune curve (2 ms resolution, linear between points): `position` 0 to 60 across the note's own beat, `value` / 2 semitones. Prebend, release and hold shapes are the points; `kind` adds nothing. Holds after the beat.                              |
+| `Beat.effects.whammy`                                | The same, added to the bend (negative values dive).                                                                                                                                                                                                                       |
+| `vibrato` slight, wide; `Beat.effects.vibrato`       | A sine on detune from the onset: slight 5.5 Hz ±0.25 semitone, wide 5 Hz ±0.6; the wider of note and beat wins.                                                                                                                                                           |
+| `slide` `shift`                                      | A linear glide into `nextOnString`'s pitch over the last 25% of the note, at most 200 ms, ending on the next onset; the next note is struck.                                                                                                                              |
+| `slide` `legato`                                     | The same glide, then the voice carries on as the next note: no attack, no velocity of its own, released at the next note's end (or carried again).                                                                                                                        |
+| `slide` `intoFromBelow`, `intoFromAbove`             | From 3 semitones below or above, over the first 80 ms (at most a third of the note).                                                                                                                                                                                      |
+| `slide` `outDown`, `outUp`                           | To 3 semitones down or up over the last 80 ms (at most a third).                                                                                                                                                                                                          |
+| `trill`                                              | Retriggers every `trill.speed` note value (16th, 32nd, 64th at the tempo) for the note's length, alternating the note and `trill.fret`, a shorter last stroke when the length is not a multiple; the alternations after the first are hammer-ons (-1 step, 20 ms offset). |
+| `Beat.effects.tremoloPicking`                        | Retriggers every 8th, 16th or 32nd at the full velocity; a remainder is a shorter last stroke.                                                                                                                                                                            |
+| `palmMute`                                           | Low-pass at 900 Hz (Butterworth), and the level falls to -18 dB over 250 ms: the shortened envelope.                                                                                                                                                                      |
+| `dead`                                               | A noise burst instead of the instrument: the `fx:dead` region (100 ms of seeded noise, 1 ms attack, 50 ms decay to silence), low-pass at 2.5 kHz, cut at 80 ms. It damps the string like any note.                                                                        |
+| `harmonic` natural                                   | The node's overtone of the open string: frets 12 (+12), 7 and 19 (+19.02), 5 and 24 (+24), 4, 9 and 16 (+27.86), 3.2 (+31.02), 2.7 (+33.69); a fret on no node plays fretted. Pure intervals, not tempered. +6 dB high shelf at 2 kHz.                                    |
+| `harmonic` artificial, pinch, tapped, semi, feedback | The fretted note raised by the overtone at `value` frets from it (12 when absent), with the same shelf.                                                                                                                                                                   |
+| `staccato`                                           | Released at half the note's length.                                                                                                                                                                                                                                       |
+| `letRing`                                            | Rings to the next note on its string or `barEnd`, whichever comes first.                                                                                                                                                                                                  |
+| `Beat.effects.fadeIn`, `fadeOut`                     | Level from -48 dB to 0 (or back) across the beat, linear in dB.                                                                                                                                                                                                           |
+| `Beat.effects.volumeSwell`                           | -48 dB to 0 at half the beat and back to -48 dB at its end.                                                                                                                                                                                                               |
+| `Beat.grace`                                         | Played by the sink with their own effects: grace notes `before` end on the beat (squeezed into a quarter note, the scheduler's lead); on-beat ones start on it and delay the main note (squeezed into half the beat).                                                     |
+| `tie`                                                | Nothing: the scheduler folds the continuation into the origin.                                                                                                                                                                                                            |
+| `Beat.mix` volume, pan                               | Scheduled on the strip at the beat (`setTrack(..., { at, ramp })`), a linear glide over `duration` quarter notes when given; `allTracks` applies it to every track.                                                                                                       |
+
+On drum tracks only velocity (dynamics, accents, ghost), fades, trills and tremolo apply; drum
+articulation variants (rim shot, choke) arrive from the readers already mapped to their GM note.
+Pitched tracks take everything, but a harmonic changes the pitch only on a fretted track, which
+has the open string it needs.
+
+### Measured (`articulations.test.ts`, the engine driving the real sampler, tapped before the bus)
+
+| Property                            | Measured                                                           |
+| ----------------------------------- | ------------------------------------------------------------------ |
+| Full bend, held part                | 2 semitones up, 0.00001 cent off                                   |
+| Natural harmonics at 12, 7, 5, 4    | 2, 3, 4, 5 × the open string within 0.0001 cent                    |
+| Palm mute, energy above 2 kHz       | 0.033 × the unmuted note's                                         |
+| Tie                                 | one onset                                                          |
+| Hammer-on                           | -3.2 dB against the picked note before it                          |
+| Shift and legato slide              | 197 cents of 200 at 1 ms before the next onset; on pitch after it  |
+| Legato vs shift, level at the onset | ×0.84 (still decaying) vs ×17.9 (struck again)                     |
+| Vibrato slight, wide                | 5.5 Hz ±25.0 cents, 5 Hz ±60.0 cents                               |
+| Trill (32nds), tremolo (16ths)      | 8 and 8 onsets, each within 0.06 ms of the grid                    |
+| Dead note                           | a 35 ms burst; the note's pitch carries 3% of its level            |
+| Staccato quarter at 120 BPM         | silent 292 ms after the onset (release at 250 ms)                  |
+| Beat volume change to 50            | lands 5 ms after the beat (the strip's smoothing), ×0.25 the level |
+
+### What the HQ tier will override (WP-093)
+
+The filter and envelope paths above are ADR-0004's fallback for packs without articulation
+samples. The sink passes no `layer` yet. WP-093 adds it for packs that carry `palmMute`,
+`harmonic`, `dead` or legato layers (the sampler already resolves `layer`, falling back to the
+default layer), and drops the matching filter or envelope here when the layer exists: a sampled
+palm mute through a 900 Hz low-pass is muted twice. The dead note's noise burst gives way to the
+pack's dead-note region, and the hammer-on's 20 ms offset to its legato layer. Bends, slides,
+vibrato, trills, tremolo, dynamics and fades stay automation in both tiers.
+
+### Known and deliberate
+
+- **Effects of a tied continuation are not played.** The scheduler folds the continuation into
+  its origin and never sends it, so a bend or vibrato written on the tied note is lost; the
+  origin's bend holds its last value across the tie.
+- **A legato slide's destination keeps its origin's tone.** A `BiquadFilter`'s type switches at
+  once, not at a time, so a carried voice cannot change from a palm-muted low-pass to a
+  harmonic's shelf without affecting the note still sounding.
+- **Mixer changes on rest beats are not applied**: the scheduler only hands out beats with notes.
+  A scheduled change also outlives a pause or seek; the next one on playback overrides it.
+- **Vibrato is in Hz, not tempo-synced**, and starts at the onset; Guitar Pro's sounds the same at
+  any tempo too.
 
 ## Memory manager
 

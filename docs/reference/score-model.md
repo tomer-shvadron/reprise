@@ -41,7 +41,7 @@ The empty score (`createEmptyScore()`) is one fretted track in E standard, one 4
 | --------- | ------------------------------ | ------------------ | ------------------------------------------------------- | --------------------------------------------- |
 | `fretted` | 1 = highest-pitched string     | fret, 0 to `fretCount` | open-string MIDI notes, **lowest string first**, up to 10 | tab, treble clef, `octaveShift` 1             |
 | `drums`   | always 0                       | the GM percussion MIDI note | empty; `capo` and `fretCount` 0               | standard, percussion clef, `octaveShift` 0    |
-| `pitched` | always 0                       | the MIDI note      | usually empty; a GP5 keyboard part keeps its tuning for export | standard, treble clef, `octaveShift` 0 |
+| `pitched` | always 0                       | the MIDI note      | usually empty; a GP3 to GP5 keyboard part keeps its tuning for export | standard, treble clef, `octaveShift` 0 |
 
 - **String 1 is the highest-pitched string**, as in Guitar Pro, but `Track.tuning` runs low to high, so string `s` sounds `tuning[tuning.length - s]` when open. On a six-string guitar string 6 is the low E (`tuning[0]`, MIDI 40) and string 1 the high E (`tuning[5]`, MIDI 64).
 - **Frets count from the capo**, as Guitar Pro writes them: the sounding note is `open + capo + fret`. The ceiling a note may sit on is `fretCount` (24 by default) whatever the capo, which is what Guitar Pro files hold.
@@ -229,7 +229,7 @@ What a reader does on the way in and a writer undoes on the way out. The reasons
 - **Bend and whammy points**: `position` 0 to 60 across the note, `value` in quarter tones. GP3 to GP5 raw values / 25 (100 = a whole tone); gpif values / 25, gpif offsets (0 to 100) × 0.6. Each bend keeps the file's `kind`, `custom` where the points fit none.
 - **Controller values** (`channel`, `Beat.mix`) are 0 to 127, pan 64 = centre; GP3 to GP5 store 0 to 16, so a reader scales up and a writer back (the step is about 8, which round-trips).
 - **Lyrics**: `Track.lyrics[].startBar` is 0-based; GP3 to GP5 store it 1-based, gpif's `Lyrics/Line/Offset` 0-based. A reader fills both `Track.lyrics` and `Beat.lyrics`; a writer prefers the raw block when it is non-empty.
-- **A GP5 track is `pitched`** when its program is outside the fretted families (GM 24 to 39, and 104 to 107) and its channel is not percussion; its notes become MIDI values through the file's tuning, and the track keeps that tuning and `fretCount` so gp5 export can re-finger them. A percussion-channel track is `drums`.
+- **A GP3, GP4 or GP5 track is `pitched`** when its program is outside the fretted families (GM 24 to 39, and 104 to 107) and its channel is not percussion: all three versions store a keyboard part on strings the same way. Its notes become MIDI values through the file's tuning, and the track keeps that tuning and `fretCount` so gp5 export can re-finger them. A percussion-channel track is `drums`.
 - **Grace notes**: a run of gpif grace beats becomes several `Beat.grace` entries, GP5's single grace note one; `before` is whether it plays ahead of the beat or on it.
 - **Chord diagrams**: GP5 stores one on the beat; gpif stores them once per track and references them, so a writer deduplicates by structural equality.
 - **Tempo**: `bpm` is per quarter note; a mark shown against another note value keeps that in `unit`. A gpif linear tempo automation becomes a `Beat.mix.tempo` at its start with `duration` set to its length in quarter notes.

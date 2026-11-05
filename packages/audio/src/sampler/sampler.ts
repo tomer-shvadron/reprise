@@ -38,6 +38,14 @@ export interface NoteOnRequest {
   offset?: number;
   /** Ignore note-off: ring until the next note on the string, or `until` when given. */
   letRing?: boolean | { until: number };
+  /** Plays a region of this instrument instead of the track's, through the track's strip. */
+  instrument?: Instrument;
+}
+
+/** When a `setTrack` volume or pan change happens: at `at`, gliding over `ramp` seconds. */
+export interface TrackParamsTiming {
+  at: number;
+  ramp?: number;
 }
 
 export interface SamplerOptions {
@@ -102,6 +110,10 @@ export class Sampler {
     return this.#misses;
   }
 
+  get trackIds(): Id[] {
+    return [...this.#tracks.keys()];
+  }
+
   addTrack(track: SamplerTrack, instrument: Instrument): ChannelStrip {
     this.removeTrack(track.id);
     const strip = new ChannelStrip(this.context, this.master.input);
@@ -127,14 +139,19 @@ export class Sampler {
     return this.#tracks.get(id)?.strip;
   }
 
-  setTrack(id: Id, params: TrackParams): void {
+  /** Now, or volume and pan at `timing.at` for a scheduled mixer change; mute and solo are always now. */
+  setTrack(id: Id, params: TrackParams, timing?: TrackParamsTiming): void {
     const { strip } = this.#state(id);
-    strip.set({
-      ...(params.volume !== undefined && { gain: channelVolumeToGain(params.volume) }),
-      ...(params.pan !== undefined && { pan: channelPanToStereo(params.pan) }),
-      ...(params.mute !== undefined && { mute: params.mute }),
-      ...(params.solo !== undefined && { solo: params.solo }),
-    });
+    strip.set(
+      {
+        ...(params.volume !== undefined && { gain: channelVolumeToGain(params.volume) }),
+        ...(params.pan !== undefined && { pan: channelPanToStereo(params.pan) }),
+        ...(params.mute !== undefined && { mute: params.mute }),
+        ...(params.solo !== undefined && { solo: params.solo }),
+      },
+      timing?.at,
+      timing?.ramp,
+    );
     applySolo(this.#strips());
   }
 
@@ -159,8 +176,13 @@ export class Sampler {
    */
   noteOn(id: Id, request: NoteOnRequest): VoiceHandle | undefined {
     const state = this.#state(id);
+    return this.#start(state, request, state.strip.input);
+  }
+
+  #start(state: TrackState, request: NoteOnRequest, destination: AudioNode): Voice | undefined {
+    const id = state.track.id;
     if (request.velocity <= 0) return undefined;
-    const { regions, source } = state.instrument;
+    const { regions, source } = request.instrument ?? state.instrument;
     const region = regions.resolve(request.key, request.velocity, request.layer);
     if (!region) return undefined;
     const buffer = source.peekBuffer(region.sample);
@@ -176,7 +198,7 @@ export class Sampler {
     if (string > 0) {
       for (const voice of state.voices) {
         if (voice.string === string && voice.isSoundingAt(request.when)) {
-          voice.release(request.when);
+          voice.choke(request.when);
         }
       }
     }
@@ -184,7 +206,7 @@ export class Sampler {
     this.pool.reserve(request.when);
     const voice = new Voice(
       this.context,
-      state.strip.input,
+      destination,
       {
         track: id,
         region,
@@ -222,16 +244,20 @@ export class Sampler {
     }
   }
 
-  /** One note now, through the track's strip, at the preview velocity. */
+  /**
+   * One note now, at the preview velocity, through the track's strip past its mute gate: a note
+   * clicked in the editor sounds even on a muted track or with another track soloed.
+   */
   previewNote(id: Id, note: Pick<Note, 'string' | 'fret'>): VoiceHandle | undefined {
-    const { track } = this.#state(id);
+    const state = this.#state(id);
     const when = this.context.currentTime;
-    const voice = this.noteOn(id, {
-      key: midiNote(track, note),
+    const request = {
+      key: midiNote(state.track, note),
       velocity: this.#options.previewVelocity ?? DEFAULT_VELOCITY,
       when,
       string: note.string,
-    });
+    };
+    const voice = this.#start(state, request, state.strip.previewInput);
     voice?.release(when + (this.#options.previewSeconds ?? PREVIEW_SECONDS));
     return voice;
   }
