@@ -34,7 +34,9 @@ export interface NoteEvent {
  * What the scheduler drives. The sampler (WP-031) implements it with real samples; `ToneSink`
  * and `RecordingSink` are the stand-ins until then.
  *
- * - `noteOn` is called once per sounding note, up to the scheduler's lookahead before `when`.
+ * - `noteOn` is called once per sounding note, up to the scheduler's lookahead before `when`,
+ *   and for a beat with grace notes before it, earlier by their length too (up to a quarter
+ *   note), so the sink can place them ahead of `when`.
  *   A tied continuation is never sent: its length is folded into the origin's `duration`,
  *   except when playback starts or a loop wraps exactly on it, where it arrives as an onset.
  *   The sink schedules both the start and the release itself; there is no per-note off call.

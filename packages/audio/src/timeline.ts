@@ -62,6 +62,8 @@ export interface ClickOnset {
 }
 
 const EPSILON = 1e-6;
+/** The most a beat is handed out early for the grace notes before it: a quarter note. */
+const MAX_GRACE_LEAD = PPQ;
 
 export function createTimeline(score: Score): Timeline {
   const { sequence, warnings } = expandPlaybackSequence(score);
@@ -156,6 +158,15 @@ function followTies(
   }
 }
 
+/** Ticks the grace notes played before `beat` take, which the sink needs before `when`. */
+function graceLeadTicks(beat: Beat): number {
+  let ticks = 0;
+  for (const grace of beat.grace ?? []) {
+    if (grace.before) ticks += beatTicks({ duration: grace.duration, dots: 0 });
+  }
+  return Math.min(ticks, MAX_GRACE_LEAD);
+}
+
 /** The sounding note on `note`'s string in `after`; fretted tracks only, so drums never match. */
 function nextOnString(
   note: Note,
@@ -167,9 +178,10 @@ function nextOnString(
 }
 
 /**
- * Every note whose onset falls in `[from, to)`. Tied continuations are skipped, their length
- * folded into the origin, except one starting exactly at `runStartTick`, where playback began
- * or a loop wrapped. Durations are clipped to `limitTick`.
+ * Every note due in `[from, to)`: its onset, or earlier by the grace notes before it (never
+ * before `runStartTick`), so the sink gets those in time. Tied continuations are skipped, their
+ * length folded into the origin, except one starting exactly at `runStartTick`, where playback
+ * began or a loop wrapped. Durations are clipped to `limitTick`, and nothing at or past it is due.
  */
 export function notesInRange(
   timeline: Timeline,
@@ -178,7 +190,7 @@ export function notesInRange(
   options: { runStartTick: number; limitTick: number },
 ): NoteOnset[] {
   const onsets: NoteOnset[] = [];
-  for (const [sequenceIndex, pass] of passesOverlapping(timeline, from, to)) {
+  for (const [sequenceIndex, pass] of passesOverlapping(timeline, from, to + MAX_GRACE_LEAD)) {
     const barEndTick = pass.startTick + pass.ticks;
     for (const [trackIndex, track] of timeline.score.tracks.entries()) {
       const bar = track.bars[pass.masterBarIndex];
@@ -188,7 +200,11 @@ export function notesInRange(
         for (const [beatIndex, beat] of voice.beats.entries()) {
           const tick = pass.startTick + offset;
           offset += beatTicks(beat);
-          if (tick < from || tick >= to || beat.rest) continue;
+          if (beat.rest || tick < options.runStartTick || tick >= options.limitTick - EPSILON) {
+            continue;
+          }
+          const due = Math.max(tick - graceLeadTicks(beat), options.runStartTick);
+          if (due < from || due >= to) continue;
           for (const note of beat.notes) {
             const startsRun = Math.abs(tick - options.runStartTick) < EPSILON;
             if (note.tie && !startsRun) continue;

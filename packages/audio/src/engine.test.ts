@@ -307,6 +307,38 @@ describe('AudioEngine transport (OfflineAudioContext)', () => {
     );
   });
 
+  it('hands out a beat with grace notes before it early enough to play them', async () => {
+    const graced = score()
+      .tempo(60)
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 2)], { grace: [{ duration: 16, before: true, notes: [note(1, 1)] }] })
+      .rest('2')
+      .bar()
+      .beat('4', [note(1, 3)], { grace: [{ duration: 16, before: true, notes: [note(1, 2)] }] })
+      .rest('2.')
+      .build();
+    const h = await harness(graced, 8.5);
+    h.engine.play();
+    await h.render();
+
+    const [plain, inBar, atBarStart] = h.sink.notes;
+    expect(h.sink.notes).toHaveLength(3);
+    expectTimes(
+      h.sink.notes.map((n) => n.when),
+      [LATENCY, LATENCY + 1, LATENCY + 4],
+    );
+    // A 16th grace at 60 BPM is 250 ms; the event must arrive at least that long before `when`
+    // on top of the usual lookahead, also where the beat opens a bar.
+    expect((plain?.when ?? 0) - (plain?.calledAt ?? 0)).toBeLessThanOrEqual(0.2 + 0.03);
+    expect((inBar?.when ?? 0) - (inBar?.calledAt ?? 0)).toBeGreaterThanOrEqual(0.25 + 0.2 - 0.03);
+    expect((atBarStart?.when ?? 0) - (atBarStart?.calledAt ?? 0)).toBeGreaterThanOrEqual(
+      0.25 + 0.2 - 0.03,
+    );
+    expectNothingInThePast(h.sink);
+  });
+
   it('plays the metronome with an accented downbeat while it is on', async () => {
     const h = await harness(bars(2), 4.5);
     h.engine.setMetronome(true, 0.5);

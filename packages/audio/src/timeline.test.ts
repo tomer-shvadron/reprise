@@ -93,6 +93,38 @@ describe('notesInRange', () => {
   });
 });
 
+describe('grace lead', () => {
+  const graced = score()
+    .track('guitar')
+    .bar()
+    .beat('4', [note(1, 0)])
+    .beat('4', [note(1, 2)], { grace: [{ duration: 16, before: true, notes: [note(1, 1)] }] })
+    .rest('2')
+    .bar()
+    .beat('4', [note(1, 3)], { grace: [{ duration: 16, before: true, notes: [note(1, 2)] }] })
+    .rest('2.')
+    .build();
+  const timeline = createTimeline(graced);
+  const lead = PPQ / 4;
+  const frets = (from: number, to: number, runStartTick = 0, limitTick = 2 * BAR) =>
+    notesInRange(timeline, from, to, { runStartTick, limitTick }).map((o) => o.note.fret);
+
+  it('makes a beat due early by the grace notes before it, once', () => {
+    expect(frets(0, PPQ - lead - 1)).toEqual([0]);
+    expect(frets(PPQ - lead - 1, PPQ - 1)).toEqual([2]);
+    expect(frets(PPQ - 1, BAR - lead)).toEqual([]);
+    expect(frets(BAR - lead, BAR)).toEqual([3]);
+    expect(frets(BAR, 2 * BAR)).toEqual([]);
+  });
+
+  it('never before the run start, and never at or past the limit', () => {
+    expect(frets(PPQ, BAR, PPQ)).toEqual([2, 3]);
+    expect(frets(PPQ, BAR - lead, PPQ)).toEqual([2]);
+    expect(frets(0, BAR, 0, PPQ)).toEqual([0]);
+    expect(frets(0, BAR, 0, BAR)).toEqual([0, 2]);
+  });
+});
+
 describe('clicks and count-in', () => {
   it('accents the downbeat of each 4/4 bar', () => {
     const plain = score().track('guitar').bar().rest('1').bar().rest('1').build();

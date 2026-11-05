@@ -61,7 +61,11 @@ interface NoteEvent {
 ```
 
 - `noteOn` arrives up to 200 ms before `when`, once per sounding note, in tick order within a
-  window. The sink schedules both the start and the release; there is no per-note off.
+  window. The sink schedules both the start and the release; there is no per-note off. A beat
+  with grace notes played **before** it is handed out early by their length as well (capped at a
+  quarter note), because a 16th grace is 250 ms at 60 BPM and 500 ms with the speed trainer at
+  half speed, longer than the lookahead: the sink places the grace ahead of `when` and still has
+  the time to do so.
 - **Ties** are resolved by the scheduler: a tied continuation is never sent and its length is
   added to the origin's `duration`, following the voice across bar lines in playback order. The
   one exception is a tie on the exact tick where playback starts or a loop wraps, which arrives
