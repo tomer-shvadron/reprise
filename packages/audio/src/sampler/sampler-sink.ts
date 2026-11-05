@@ -1,63 +1,29 @@
 import { midiNote } from '@reprise/model';
-import type { Beat, Id, Note, Track } from '@reprise/model';
 
+import type { InstrumentSink, NoteEvent } from '../sink';
 import { DEFAULT_VELOCITY } from './sampler';
-import type { Sampler, VoiceHandle } from './sampler';
+import type { Sampler } from './sampler';
 
 /**
- * The scheduler-facing sink shape as WP-030 describes it. Reconcile with WP-030's
- * `InstrumentSink` at merge: this file then implements that interface instead of its own copy.
+ * The scheduler's `InstrumentSink` over the sampler. Velocity is flat until articulation
+ * playback (WP-033) maps dynamics. A let-ring note rings to the next note on its string or to
+ * the end of its bar, whichever comes first; every other note releases at `when + duration`.
  */
-export interface SamplerSink {
-  /** `letRingUntil` is where the scheduler puts the end of the bar for a let-ring note. */
-  noteOn(
-    track: Pick<Track, 'id' | 'kind' | 'tuning' | 'capo'>,
-    note: Note,
-    beat: Beat,
-    when: number,
-    duration: number,
-    letRingUntil?: number,
-  ): void;
-  noteOff(track: Pick<Track, 'id'>, note: Note, when: number): void;
-  allNotesOff(when: number): void;
-  /** Handles still held for a note-off; bounded by the voices that can sound at once. */
-  readonly held: number;
-}
-
-/**
- * Plays scheduler events on the sampler. Velocity is flat until articulation playback maps
- * dynamics; let-ring notes ring until the next note on their string, `letRingUntil`, or
- * `allNotesOff`.
- */
-export function createSamplerSink(sampler: Sampler): SamplerSink {
-  const sounding = new Map<Id, VoiceHandle>();
+export function createSamplerSink(sampler: Sampler): InstrumentSink {
   return {
-    noteOn(track, note, _beat, when, duration, letRingUntil) {
-      for (const [id, held] of sounding) if (held.endTime <= when) sounding.delete(id);
+    noteOn(event: NoteEvent): void {
+      const { track, note, when, duration } = event;
       const voice = sampler.noteOn(track.id, {
         key: midiNote(track, note),
         velocity: DEFAULT_VELOCITY,
         when,
         string: note.string,
-        letRing:
-          note.letRing && letRingUntil !== undefined ? { until: letRingUntil } : note.letRing,
+        letRing: note.letRing && { until: Math.max(event.barEnd, when + duration) },
       });
-      if (!voice) return;
-      sounding.set(note.id, voice);
-      sampler.noteOff(voice, when + duration);
+      if (voice) sampler.noteOff(voice, when + duration);
     },
-    noteOff(_track, note, when) {
-      const voice = sounding.get(note.id);
-      if (!voice) return;
-      sampler.noteOff(voice, when);
-      sounding.delete(note.id);
-    },
-    allNotesOff(when) {
+    allNotesOff(when: number): void {
       sampler.allNotesOff(when);
-      sounding.clear();
-    },
-    get held() {
-      return sounding.size;
     },
   };
 }

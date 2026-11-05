@@ -1,7 +1,9 @@
 import { midiNote } from '@reprise/model';
+import type { Beat, Note, Track } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
+import type { NoteEvent } from '../sink';
 import { midiToFrequency } from './sample-source';
 import { Sampler } from './sampler';
 import { createSamplerSink } from './sampler-sink';
@@ -25,6 +27,34 @@ const ringingNote = ringing?.notes[0];
 const lastNote = last?.notes[0];
 if (!first || !ringing || !last || !firstNote || !ringingNote || !lastNote) {
   throw new Error('the guitar bar has three notes');
+}
+const guitarTrack: Track = guitar;
+
+/** A scheduler event for the guitar's first voice; `barEnd` defaults to the note's own end. */
+function event(spec: {
+  note: Note;
+  beat: Beat;
+  when: number;
+  duration: number;
+  barEnd?: number;
+}): NoteEvent {
+  return {
+    track: guitarTrack,
+    trackIndex: 0,
+    voiceIndex: 0,
+    beat: spec.beat,
+    beatIndex: 0,
+    note: spec.note,
+    when: spec.when,
+    duration: spec.duration,
+    playbackTick: 0,
+    durationTicks: 0,
+    sequenceIndex: 0,
+    masterBarIndex: 0,
+    passIndex: 0,
+    barEnd: spec.barEnd ?? spec.when + spec.duration,
+    nextOnString: undefined,
+  };
 }
 
 describe('previewNote', () => {
@@ -55,9 +85,11 @@ describe('createSamplerSink', () => {
     sampler.addTrack(guitar, sineInstrument());
     const sink = createSamplerSink(sampler);
 
-    sink.noteOn(guitar, firstNote, first, 0, 0.25);
-    sink.noteOn(guitar, ringingNote, ringing, 0.25, 0.25);
-    sink.noteOn(guitar, lastNote, last, 0.75, 0.5);
+    sink.noteOn(event({ note: firstNote, beat: first, when: 0, duration: 0.25, barEnd: 1.25 }));
+    sink.noteOn(
+      event({ note: ringingNote, beat: ringing, when: 0.25, duration: 0.25, barEnd: 1.25 }),
+    );
+    sink.noteOn(event({ note: lastNote, beat: last, when: 0.75, duration: 0.5, barEnd: 1.25 }));
     sink.allNotesOff(1.25);
     const data = (await context.startRendering()).getChannelData(0);
 
@@ -75,7 +107,7 @@ describe('createSamplerSink', () => {
     sampler.addTrack(guitar, sineInstrument());
     const sink = createSamplerSink(sampler);
 
-    sink.noteOn(guitar, ringingNote, ringing, 0, 0.2, 0.6);
+    sink.noteOn(event({ note: ringingNote, beat: ringing, when: 0, duration: 0.2, barEnd: 0.6 }));
     const data = (await context.startRendering()).getChannelData(0);
 
     const frequency = midiToFrequency(midiNote(guitar, ringingNote));
@@ -83,16 +115,18 @@ describe('createSamplerSink', () => {
     expect(toneLevel(data, frequency, 0.7, 1)).toBeLessThan(0.001);
   });
 
-  it('holds handles only while their voices can still sound', () => {
-    const sampler = new Sampler(offline(1));
+  it('cancels a note scheduled ahead when allNotesOff comes first', async () => {
+    const context = offline(1);
+    const sampler = new Sampler(context);
     sampler.addTrack(guitar, sineInstrument());
     const sink = createSamplerSink(sampler);
 
-    for (let index = 0; index < 300; index += 1) {
-      sink.noteOn(guitar, { ...firstNote, id: `n${String(index)}` }, first, index * 0.05, 0.1);
-    }
-    expect(sink.held).toBeLessThan(10);
-    sink.allNotesOff(15);
-    expect(sink.held).toBe(0);
+    sink.noteOn(event({ note: firstNote, beat: first, when: 0.5, duration: 0.4 }));
+    sink.allNotesOff(0.2);
+    const data = (await context.startRendering()).getChannelData(0);
+
+    expect(toneLevel(data, midiToFrequency(midiNote(guitar, firstNote)), 0.5, 1)).toBeLessThan(
+      0.001,
+    );
   });
 });
