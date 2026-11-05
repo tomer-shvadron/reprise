@@ -17,9 +17,11 @@ export type {
   SamplerOptions,
   SamplerTrack,
   TrackParams,
+  TrackParamsTiming,
   VoiceHandle,
 } from './sampler';
 export { createSamplerSink } from './sampler-sink';
-export { dbToGain, velocityGain } from './voice';
+export type { SamplerSinkOptions } from './sampler-sink';
+export { CHOKE_FADE, dbToGain, velocityGain } from './voice';
 export type { FilterSettings } from './voice';
 export { VoicePool } from './voice-pool';
