@@ -1,0 +1,23 @@
+# Unsigned on purpose (ADR-0003): identity null stops electron-builder looking for a certificate.
+appId: app.reprise.desktop
+productName: Reprise
+directories:
+  output: release
+files:
+  - out/**
+  - package.json
+npmRebuild: false
+mac:
+  category: public.app-category.music
+  identity: null
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  extendInfo:
+    NSMicrophoneUsageDescription: Reprise listens to your instrument for the tuner and practice tools.
+win:
+  target:
+    - target: nsis
+      arch: [x64]
