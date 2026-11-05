@@ -99,9 +99,9 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   `string-range` rule enforces 1 to the string count on fretted tracks and 0 elsewhere.
 - **Durations**: `duration` is the denominator, 1 (whole) to 256 as gpif's `NoteValue` allows
   (GP5 stops at 64), `dots` 0 to 2, `tuplet` `{ n, of }`. Tuplets can make tick lengths
-  fractional (septuplets at 960 PPQ); the internal tick helper compares with a float
-  tolerance, and WP-011 owns rounding. Double and quadruple whole notes are not representable;
-  a reader ties whole notes.
+  fractional (septuplets at 960 PPQ); `validateScore` compares tick sums with a float
+  tolerance, and tick values are never rounded (see "Timing and playback order"). Double and
+  quadruple whole notes are not representable; a reader ties whole notes.
 - **Voices**: exactly four per bar, all present (a Zod tuple); unused voices have no beats.
 - **Empty score**: one fretted track in E standard, 4/4, 120 BPM on the first master bar, and
   one bar whose four voices have no beats. A score has at least one track and one master bar.
@@ -184,6 +184,111 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   fractional where needed.
 - **Colours** are lower-case `#rrggbb`.
 - **Clefs** are `treble`, `bass`, `alto`, `tenor`, `percussion` (gpif's G2, F4, C3, C4, Neutral).
+
+## Timing and playback order
+
+Pure helpers over the model, all from the root export.
+
+```ts
+import { expandPlaybackSequence, positionAtSeconds, tempoMap, tickOf } from '@reprise/model';
+
+const { sequence, warnings } = expandPlaybackSequence(score); // [{ masterBarIndex, passIndex }]
+const map = tempoMap(score, sequence); // every pass with its start in seconds
+positionAtSeconds(map, 12.5); // { sequenceIndex, masterBarIndex, passIndex, tick, beatIndex, ... }
+```
+
+### Ticks
+
+- `PPQ` is 960. `beatTicks(beat)` applies dots and tuplets; `barTicks(masterBar)` is the written
+  length from the time signature; `beatStartTicks(voice, index)` sums the beats before `index`
+  (`beats.length` gives the voice's end).
+- **No rounding.** Tick values are plain numbers and stay fractional where a tuplet makes them
+  so (a sixteenth septuplet is 960 / 7). Comparisons use a tolerance; whatever needs
+  integers (MIDI export) rounds at its own boundary.
+- `playedBarTicks(score, index)` is how long a bar lasts in playback: the written length, except
+  that an anacrusis lasts as long as its longest voice in any track (the written length when all
+  are empty). A short ordinary bar still lasts its full written length.
+- `tickOf(score, { bar, beat, track?, voice? })` is the absolute tick in written order, ignoring
+  repeats and jumps, using `playedBarTicks`. Out-of-range positions throw a `RangeError`.
+
+### Playback sequence
+
+`expandPlaybackSequence(score)` returns `{ sequence, warnings }`. `passIndex` counts the earlier
+plays of the same master bar, from 0. The rules, which follow alphaTab (the project's oracle)
+except where noted:
+
+- **Repeats.** A bar with `repeat.start` opens a section. At the end of a played bar with
+  `endCount` n ≥ 2, playback returns to the section start until the section has been played n
+  times; `endCount` 1 is no repeat. A second repeat end after a completed one returns to the same
+  start, and replays the first repeat too (`|: A :| B :|` is A A B A A B), as alphaTab does.
+- **Unmatched repeat end**: with no repeat start since the song start (or since landing on a
+  coda), the section starts there, with a `repeat-end-without-start` warning.
+- **Alternate endings.** Inside a repeat section a volta bar plays only on the passes its
+  numbers list. A skipped bar's repeat end is still read, since the repeat sign closes the section
+  whichever ending it sits in (as alphaTab does); its jumps are not. A volta bar with no repeat
+  end ahead of it in its section always plays, with a `volta-without-repeat` warning when no
+  repeat surrounds it at all. **Every bar of a bracket carries its numbers.** GP5 and gpif store
+  them on the bracket's first bar only (in `fixtures/gp5/repeat-close-alternate-endings.gp5` bar
+  3 sits inside the "2." bracket, carries nothing and holds the repeat close), so a reader
+  propagates them from the marked bar through the bar carrying the repeat end; alphaTab inherits
+  them at playback instead.
+- **Jumps** are read at the end of a played bar, after its repeat end is exhausted (so a D.S. on
+  a repeated bar is taken on the last pass; see "Deviations from alphaTab"). The bar's `jumps`
+  are tried in order and the first that applies is taken. Each jump instruction fires at most
+  once, which keeps every input finite.
+  - D.C. forms land on bar 1; D.S. on the nearest `segno` searching backwards, then forwards;
+    D.S.S. likewise on `segnoSegno`.
+  - D.C., D.S. and D.S.S. alone play to the end; their `al Fine` forms stop after the first
+    played bar carrying `fine`; their `al Coda` and `al Double Coda` forms take `toCoda` or
+    `toDoubleCoda` respectively, to the nearest `coda` or `doubleCoda` searching forwards, then
+    backwards. Fine, To Coda and To Double Coda are ignored on the first time through.
+  - **After a D.C. or D.S. jump, repeats are not taken** (senza repetizione) and each volta run
+    plays only its final ending, the highest number in the run. Repeats are honoured again from a
+    coda on.
+- **Malformed input.** A jump whose target is missing is ignored with a `jump-target-missing`
+  warning (an `al Fine` with no `fine` anywhere still jumps, plays to the end, and warns). A
+  To Coda whose coda precedes the segno is followed; it cannot loop because jumps fire once.
+  As a backstop the sequence stops at `PLAYBACK_LENGTH_FACTOR` (64) passes per master bar with a
+  `sequence-truncated` warning; only runaway repeat counts or many stacked repeat ends reach it.
+
+### Deviations from alphaTab
+
+alphaTab (`MidiPlaybackController`, `MidiFileGenerator`) is the oracle the fixtures are checked
+against; these are the places this package knowingly differs, and why. Guitar Pro's own order
+wins over both: WP-054 compares `fixtures/gp5/directions.gp5` and
+`fixtures/gp5/repeat-close-alternate-endings.gp5` against it once the reader lands, and the
+expander follows Guitar Pro wherever the two disagree.
+
+| Case                                         | Here                                     | alphaTab                                    | Why                                                          |
+| -------------------------------------------- | ---------------------------------------- | ------------------------------------------- | ------------------------------------------------------------ |
+| D.S. or D.C. on a bar with a repeat end      | taken on the last pass, after the repeat | taken on the first pass, before it          | the musical convention                                       |
+| Voltas after a D.C. or D.S.                  | only the final ending of each run        | every volta bar                             | the musical convention (senza repetizione)                   |
+| Jumps on a skipped volta bar                 | not read                                 | read                                        | a jump inside a skipped bracket is not seen                  |
+| A jump instruction                           | fires once                               | no guard; a D.S. after a coda loops there   | the finite-sequence guarantee                                |
+| Unmatched repeat end after landing on a coda | repeats from the coda, with a warning    | ignored: its section's start was not passed | the plan: the song start or the last repeat start            |
+| Nested repeat starts `\|: A \|: B :\| C :\|` | A B B C B B C: the latest start wins     | A B B C A B B C                             | Guitar Pro has no nested repeats; a start closes the section |
+| Voltas in a section with several repeat ends | numbered by the last repeat end taken    | numbered by the next repeat end             | rare; revisited on a real file                               |
+| `Beat.mix.tempo.duration`                    | a linear ramp in BPM                     | a step at the beat; `isLinear` is ignored   | the ruling on tempo transitions                              |
+| Seconds                                      | exact                                    | each bar truncated to whole milliseconds    | nothing to round for                                         |
+
+### Tempo map
+
+`tempoMap(score, sequence)` gives every pass its `startTick` (playback ticks), `ticks`,
+`startSeconds`, `durationSeconds` and constant or ramped `segments`; `secondsAt(map,
+sequenceIndex, tick)` is the forward lookup and `positionAtSeconds(map, seconds, { track,
+voice })` the reverse, clamped to the map (`undefined` only for an empty one), with `beatIndex`
+-1 for an empty voice.
+
+- Playback starts at `DEFAULT_BPM` (120) unless the first bar has a mark. **Tempo carries in
+  playback order**: a repeat or a D.C. back to an unmarked bar keeps the tempo playback had
+  reached, as a MIDI rendering of the expanded sequence does.
+- `MasterBar.tempo` applies at the bar's start; `Beat.mix.tempo` at the beat's start, collected
+  from every track and voice (the first track and voice win where two disagree at one tick).
+  At tick 0 the beat-level change applies after the mark, so a step overrides it and a ramp
+  starts from it.
+- **A `duration` is a linear ramp in BPM** from the tempo in effect (mid-ramp if one is running)
+  to the new tempo over `duration` quarter notes, continuing across bar lines in playback order;
+  without one the change is a step. A new change cuts a running ramp short.
 
 ## Not modelled yet
 
