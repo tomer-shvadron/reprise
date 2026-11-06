@@ -123,10 +123,10 @@ describe('planNote over a tie chain', () => {
       input(guitar, origin({ bend: up }), { length: 2, links: [link({ bend: hold }, 1.5, 1.5)] }),
     );
 
-    // Half a second in, the chain-long bend is a quarter way and the beat-long one has arrived.
-    expect(pitch(bare, 1.5)).toBeCloseTo(0.5, 9);
+    // Inside the origin's beat, the chain-long bend is an eighth of the way, the beat-long half.
+    expect(pitch(bare, 1.25)).toBeCloseTo(0.25, 9);
     expect(pitch(bare, 3)).toBeCloseTo(2, 9);
-    expect(pitch(held, 1.5)).toBeCloseTo(2, 9);
+    expect(pitch(held, 1.25)).toBeCloseTo(1, 9);
   });
 
   it('holds a bend through one link and releases it on the next', () => {
