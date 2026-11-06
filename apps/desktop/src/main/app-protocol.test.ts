@@ -101,10 +101,22 @@ describe('the app protocol', () => {
     expect(resolveAppPath(`reprise://app/${'a/'.repeat(600)}x`, root, access)).toBeUndefined();
   });
 
-  it('answers 405 to anything but GET', async () => {
-    const response = await handle(new Request('reprise://app/index.html', { method: 'POST' }));
-    expect(response.status).toBe(405);
+  it('answers HEAD with the GET headers and no body', async () => {
+    const response = await handle(new Request('reprise://app/index.html', { method: 'HEAD' }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-length')).toBe('29');
+    expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8');
+    expect(response.body).toBeNull();
   });
+
+  it.each(['POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'])(
+    'answers 405 with Allow to %s',
+    async (method) => {
+      const response = await handle(new Request('reprise://app/index.html', { method }));
+      expect(response.status).toBe(405);
+      expect(response.headers.get('allow')).toBe('GET, HEAD');
+    },
+  );
 
   it('resolves only paths inside the root', () => {
     const access = new PathAccess([root]);

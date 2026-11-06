@@ -56,14 +56,19 @@ export function resolveAppPath(url: string, root: string, access: PathAccess): s
 
 const notFound = () => new Response('Not found', { status: 404 });
 
+const ALLOW = 'GET, HEAD';
+
 /**
- * Serves the built renderer. A path outside `root` answers 404 like a missing one. Range is
- * ignored: nothing in the renderer asks for one, so every GET gets the whole file.
+ * Serves the built renderer. A path outside `root` answers 404 like a missing one. HEAD gets
+ * GET's headers and no body; any other method gets 405 with `Allow`. Range is ignored: nothing
+ * in the renderer asks for one, so every GET gets the whole file.
  */
 export function createAppProtocolHandler(root: string): (request: Request) => Promise<Response> {
   const access = new PathAccess([root]);
   return async (request) => {
-    if (request.method !== 'GET') return new Response(null, { status: 405 });
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      return new Response(null, { status: 405, headers: { Allow: ALLOW } });
+    }
     let path: string | undefined;
     try {
       path = resolveAppPath(request.url, root, access);
@@ -79,7 +84,8 @@ export function createAppProtocolHandler(root: string): (request: Request) => Pr
     } catch {
       return notFound();
     }
-    return new Response(Readable.toWeb(createReadStream(path)), {
+    const body = request.method === 'HEAD' ? null : Readable.toWeb(createReadStream(path));
+    return new Response(body, {
       headers: {
         'Content-Type': contentTypeOf(path),
         'Content-Length': String(size),
