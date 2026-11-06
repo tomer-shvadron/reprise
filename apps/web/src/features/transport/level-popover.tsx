@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import { useAppServices } from '@/app/services-context';
@@ -39,6 +39,9 @@ export function LevelPopover({
   const open = useStore(transport, (state) => state.popover === popover);
   const bound = useCommand(command);
   const percent = value * 100;
+  // Where focus was when the popover opened: Radix would return it to the trigger, which then
+  // takes the next Space, so only someone who tabbed to the trigger goes back to it.
+  const returnTo = useRef<Element | null>(null);
 
   return (
     <Popover
@@ -64,7 +67,21 @@ export function LevelPopover({
         </TooltipTrigger>
         <TooltipContent>{tooltipText(label, bound.keys)}</TooltipContent>
       </Tooltip>
-      <PopoverContent side="top" className="w-56">
+      <PopoverContent
+        side="top"
+        className="w-56"
+        onOpenAutoFocus={() => {
+          returnTo.current = document.activeElement;
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          const target = returnTo.current;
+          returnTo.current = null;
+          if (target instanceof HTMLElement && target.isConnected && target !== document.body) {
+            target.focus();
+          }
+        }}
+      >
         <div className="flex items-center justify-between text-xs">
           <span className="font-medium">{label}</span>
           <span className="text-muted-foreground tabular-nums">{percentText(percent)}</span>
