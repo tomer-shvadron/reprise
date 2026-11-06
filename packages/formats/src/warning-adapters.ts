@@ -16,6 +16,7 @@ export const GPIF_SEVERITY: Readonly<Record<GpifReaderCode, WarningSeverity>> = 
   'simile-expanded': 'warning',
   'grace-without-beat': 'warning',
   'grace-duration-clamped': 'warning',
+  'grace-tie-released': 'warning',
   'hammer-pull-without-destination': 'warning',
   'tempo-moved': 'warning',
   'automation-dropped': 'warning',

@@ -30,6 +30,7 @@ describe('fromGpifWarning', () => {
     ['simile-expanded', 'warning'],
     ['grace-without-beat', 'warning'],
     ['grace-duration-clamped', 'warning'],
+    ['grace-tie-released', 'warning'],
     ['hammer-pull-without-destination', 'warning'],
     ['tempo-moved', 'warning'],
     ['automation-dropped', 'warning'],
