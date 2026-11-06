@@ -167,6 +167,7 @@ describe('standard staff', () => {
       .build({ ids: 'sequential' });
     expect(accidentals(plan(built, 0))).toEqual(['accidentalSharp']);
     expect(accidentals(plan(built, 1))).toEqual(['accidentalSharp']);
+    expect(content(laid(built))).toMatchSnapshot();
   });
 
   it('prints a plain natural after a tied-in sharp, and restates the sharp', () => {
@@ -186,6 +187,7 @@ describe('standard staff', () => {
         'accidentalSharp',
       ]);
     }
+    expect(content(laid(built))).toMatchSnapshot();
   });
 
   it('moves a head a second from its neighbour to the other side of the stem', () => {
@@ -283,6 +285,7 @@ describe('standard staff', () => {
     const built = builder.build({ ids: 'sequential' });
     expect(plan(built, 0).groups.map(({ beats }) => beats.length)).toEqual([4, 4]);
     expect(plan(built, 1).groups.map(({ beats }) => beats.length)).toEqual([4, 4, 4, 4]);
+    expect(content(laid(built))).toMatchSnapshot();
   });
 
   it('keeps beams of repeated pitches horizontal and others within a space', () => {
@@ -415,6 +418,7 @@ describe('standard staff', () => {
       [3, 3],
       [5, 5],
     ]);
+    expect(content(laid(built))).toMatchSnapshot();
   });
 
   it('draws grace notes small, a single one slashed and several beamed', () => {
@@ -450,6 +454,7 @@ describe('standard staff', () => {
       .build({ ids: 'sequential' });
     const [beat] = plan(built).beats;
     expect(beat?.chord?.dots.ys).toEqual([24.5]);
+    expect(content(laid(built))).toMatchSnapshot();
   });
 
   it('shows dynamics below where they change and fingering above', () => {
@@ -508,11 +513,19 @@ describe('key and time changes', () => {
       .key(-2)
       .rest('1')
       .build({ ids: 'sequential' });
-    expect(glyphNames(laid(built), /^accidental/)).toEqual([
+    const result = laid(built);
+    expect(glyphNames(result, /^accidental/)).toEqual([
       ...Array.from({ length: 3 }, () => 'accidentalSharp'),
       ...Array.from({ length: 3 }, () => 'accidentalNatural'),
       ...Array.from({ length: 2 }, () => 'accidentalFlat'),
     ]);
+    expect(
+      result.primitives
+        .filter(
+          (primitive) => primitive.kind === 'glyph' && primitive.glyph.startsWith('accidental'),
+        )
+        .map(describePrimitive),
+    ).toMatchSnapshot();
   });
 
   it('announces a change at the next line with courtesy signatures after the last bar line', () => {
@@ -573,6 +586,13 @@ describe('both mode', () => {
         primitive.y2 === tab?.top,
     );
     expect(joins.length).toBeGreaterThan(0);
+    const barLines = result.primitives.filter(
+      (primitive) => primitive.kind === 'line' && primitive.node?.startsWith('mbar'),
+    );
+    expect({
+      content: content(result),
+      barLines: barLines.map(describePrimitive),
+    }).toMatchSnapshot();
   });
 });
 
@@ -627,6 +647,31 @@ describe('percussion staff', () => {
       ...Array.from({ length: 4 }, () => '1down'),
     ]);
     expect(content(laid(built))).toMatchSnapshot();
+  });
+  it('draws rests, beams, dots, tuplets and ties on the percussion staff as on the standard staff', () => {
+    const builder = score().track('drums').bar();
+    builder
+      .beat('8', [midi(42), midi(36)])
+      .beat('8', [midi(42)])
+      .beat('8t', [midi(42), midi(38)])
+      .beat('8t', [midi(42)])
+      .beat('8t', [midi(42)])
+      .beat('4.', [midi(49)])
+      .rest('8')
+      .bar()
+      .beat('2', [midi(49, { tie: true })])
+      .rest('4')
+      .beat('16', [midi(42)])
+      .beat('16', [midi(42)])
+      .rest('8');
+    builder
+      .voice(1)
+      .beat('2', [midi(36)])
+      .rest('4')
+      .beat('4', [midi(36)]);
+    const result = laid(builder.build({ ids: 'sequential' }));
+    expect(glyphNames(result, /^(rest|augmentationDot|tuplet)/).length).toBeGreaterThan(0);
+    expect(content(result)).toMatchSnapshot();
   });
 });
 

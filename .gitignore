@@ -14,6 +14,8 @@ coverage/
 playwright-report/
 test-results/
 .vitest/
+# visual baselines are CI's Linux images; a developer's own references stay local
+apps/web/e2e/visual/__local__/
 
 # local only
 local-tabs/*

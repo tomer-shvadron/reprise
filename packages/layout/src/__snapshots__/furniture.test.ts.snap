@@ -1,5 +1,18 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`master-bar markings > continues a bracket across a system break without a second label 1`] = `
+{
+  "brackets": [
+    "path stroked M219.62 90L219.62 77.4L743.2 77.4 <mbar00000002>",
+    "path stroked M99.18 240.65L743.2 240.65 <mbar00000004>",
+    "path stroked M99.18 403.9L743.2 403.9L743.2 416.5 <mbar00000007>",
+  ],
+  "labels": [
+    "text "1." @223.12,87.9 size 9.1 start <mbar00000002>",
+  ],
+}
+`;
+
 exports[`master-bar markings > draws alternate-ending brackets over each run of bars, closed where they repeat 1`] = `
 [
   "path stroked M203.27 90L203.27 77.4L306.73 77.4L306.73 90 <mbar00000002>",
@@ -76,6 +89,23 @@ exports[`master-bar markings > draws tempo marks as a note value and the number 
     "system:mbar00000001 page 0 bars 0-4 [48,48 318.07x138.25]",
   ],
 }
+`;
+
+exports[`master-bar markings > writes full track names on the first system and short names after 1`] = `
+[
+  "text "Lead Guitar" @48,117.43 size 11.2 start <track0000001>",
+  "text "Bass" @48,243.98 size 11.2 start <track0000002>",
+  "text "L.Gt." @48,378.53 size 11.2 start <track0000001>",
+  "text "Bs." @48,505.08 size 11.2 start <track0000002>",
+]
+`;
+
+exports[`staff furniture > draws clef changes inside a system smaller, on standard staves 1`] = `
+[
+  "glyph gClef @91.11,104.7 size 28 <track0000001>",
+  "glyph fClef @187.18,90.7 size 21 <mbar00000002>",
+  "glyph gClef @303.18,104.7 size 21 <mbar00000004>",
+]
 `;
 
 exports[`staff furniture > draws key signatures on standard staves only, by the clef 1`] = `

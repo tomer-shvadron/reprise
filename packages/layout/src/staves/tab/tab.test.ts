@@ -102,6 +102,7 @@ describe('tab staff: strings and fret numbers', () => {
         (p) => p.kind === 'line' && p.node === 'guitar000001' && p.y === p.y2,
       );
       expect(lines).toHaveLength(tuning.length);
+      expect(lines.map(describePrimitive)).toMatchSnapshot(`${String(tuning.length)} strings`);
     }
   });
 
@@ -126,6 +127,7 @@ describe('tab staff: strings and fret numbers', () => {
         .build({ ids: 'sequential' }),
     );
     expect(texts(result)).toEqual(['x', '(3)', '7', '(7)', '(x)']);
+    expect(content(result)).toMatchSnapshot();
   });
 
   it('hides tied notes through the layout option, keeping their tie and anchor', () => {
@@ -141,6 +143,7 @@ describe('tab staff: strings and fret numbers', () => {
       'note00000001',
       'note00000002',
     ]);
+    expect(content(result)).toMatchSnapshot();
     // The option is part of the bar cache key, so flipping it re-measures.
     const cache = new LayoutCache();
     layout(built, paged, cache);
@@ -198,6 +201,7 @@ describe('tab staff: rests', () => {
     const first = anchorOf(result, 'beat', 'beat00000001');
     expect(dotted.x).toBeGreaterThan(first.x + first.width);
     expect(dotted.x).toBeLessThan(first.x + first.width + 5 * STAFF_SPACE);
+    expect(content(result)).toMatchSnapshot();
   });
 
   it('draws every rest glyph in the middle of the staff, with its dots', () => {
@@ -363,6 +367,7 @@ describe('tab staff: ties', () => {
       const from = anchorOf(result, 'note', origin);
       expect(tie?.bbox.x).toBeCloseTo(from.x + from.width, 1);
     }
+    expect(content(result)).toMatchSnapshot();
   });
 
   it('ties consecutive beats with an arc under the numbers', () => {
@@ -488,6 +493,7 @@ describe('tab staff: words', () => {
       'dynamicMF <beat00000005>',
       'dynamicForte <beat00000006>',
     ]);
+    expect(content(result)).toMatchSnapshot();
   });
 });
 
