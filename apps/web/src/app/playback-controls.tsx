@@ -64,7 +64,7 @@ export function PlaybackControls() {
       <Tooltip>
         <TooltipTrigger asChild>
           <span role="status" className="text-muted-foreground min-w-0 truncate text-xs">
-            {text}
+            {text ?? (memory.decodedBytes > 0 && `${(memory.decodedBytes / MB).toFixed(0)} MB`)}
           </span>
         </TooltipTrigger>
         <TooltipContent>
