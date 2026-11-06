@@ -6,6 +6,11 @@ import { configDefaults, defineConfig } from 'vitest/config';
 // Audio runs in the browser; files named `*.node.test.ts` prove a module also runs under Node.
 const AUDIO_NODE_TESTS = '**/*.node.test.ts';
 
+// Web code that needs real Web Audio runs in the browser; the rest of web stays in jsdom.
+const WEB_BROWSER_TESTS = 'src/**/*.browser.test.{ts,tsx}';
+
+const webAlias = { '@': fileURLToPath(new URL('apps/web/src', import.meta.url)) };
+
 // Long-score measurements, kept out of the parallel unit run until `pnpm bench` (#90) takes them.
 const MEASURE_TESTS = '**/*.measure.test.{ts,tsx}';
 const measuring = Boolean(process.env['REPRISE_MEASURE']);
@@ -45,15 +50,35 @@ export default defineConfig({
         },
       },
       {
-        resolve: { alias: { '@': fileURLToPath(new URL('apps/web/src', import.meta.url)) } },
+        resolve: { alias: webAlias },
         test: {
           name: 'web',
           root: 'apps/web',
           environment: 'jsdom',
-          exclude: [...configDefaults.exclude, ...(measuring ? [] : [MEASURE_TESTS])],
+          exclude: [
+            ...configDefaults.exclude,
+            WEB_BROWSER_TESTS,
+            ...(measuring ? [] : [MEASURE_TESTS]),
+          ],
           setupFiles: ['./src/test/setup.ts'],
           // Vitest empties CSS imports; score-css.test.ts reads the painter's stylesheet as text.
           css: { include: [/score\.css/] },
+        },
+      },
+      {
+        resolve: { alias: webAlias },
+        test: {
+          name: 'web-browser',
+          root: 'apps/web',
+          include: [WEB_BROWSER_TESTS],
+          setupFiles: ['./src/test/browser-setup.ts'],
+          browser: {
+            enabled: true,
+            provider: playwright(),
+            headless: true,
+            screenshotFailures: false,
+            instances: [{ browser: 'chromium' }],
+          },
         },
       },
       { test: { name: 'desktop', root: 'apps/desktop', environment: 'node' } },

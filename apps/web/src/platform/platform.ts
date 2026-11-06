@@ -1,6 +1,6 @@
-import type { FileFilter, OpenedFile } from './bridge';
+import type { FileFilter, FileHandle, OpenedFile } from './bridge';
 
-export type { FileFilter, OpenedFile } from './bridge';
+export type { FileFilter, FileHandle, OpenedFile } from './bridge';
 
 export interface Platform {
   /** Resolves undefined when the user cancels. */
@@ -16,6 +16,8 @@ export interface Platform {
   ): Promise<string | undefined>;
   readFile(path: string): Promise<Uint8Array>;
   writeFile(path: string, bytes: Uint8Array): Promise<void>;
+  /** Writes over a file `openFile` returned the handle of, or a path `saveFile` returned. */
+  writeHandle(handle: FileHandle, bytes: Uint8Array): Promise<void>;
   /** ~/Music/Reprise on desktop; a directory in origin-private storage in the browser. */
   libraryDir(): Promise<string>;
   /** Electron userData on desktop; a directory in origin-private storage in the browser. */

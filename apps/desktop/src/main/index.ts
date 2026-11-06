@@ -75,7 +75,7 @@ registerInvokeHandlers(
       const path = result.filePaths[0];
       if (result.canceled || path === undefined) return undefined;
       access.grant(path);
-      return { name: basename(path), bytes: await readFile(path) };
+      return { name: basename(path), bytes: await readFile(path), handle: path };
     },
     'file:save': async (event, suggestedName, bytes, filters) => {
       const result = await dialog.showSaveDialog(ownerWindow(event), {
