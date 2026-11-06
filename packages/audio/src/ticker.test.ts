@@ -14,8 +14,7 @@ describe('tickers', () => {
     const cancel = ticker(() => {
       ticks += 1;
     });
-    // Until a few ticks, not a fixed time: other test files' renders share this main thread.
-    for (let waited = 0; ticks <= 3 && waited < 3000; waited += 50) await wait(50);
+    await wait(150);
     cancel();
     const atCancel = ticks;
     await wait(60);
