@@ -51,6 +51,8 @@ export function paintPage(result: LayoutResult, pageIndex: number, theme: Theme)
         primitives={result.primitives}
         zoom={1}
         height={height}
+        // A fractional width rounds up in the capture, whose last column is then the shell.
+        style={{ width: Math.floor(page.bbox.width) }}
       />
     </div>,
   );
