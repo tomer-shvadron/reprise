@@ -602,33 +602,33 @@ exports[`tab staff: strings and fret numbers > centres fret numbers on their str
 
 exports[`tab staff: strings and fret numbers > draws one line per string for any string count > 4 strings 1`] = `
 [
-  "line @90.32,87.2 -> 234.56,87.2 w 0.91 <guitar000001>",
-  "line @90.32,97.7 -> 234.56,97.7 w 0.91 <guitar000001>",
-  "line @90.32,108.2 -> 234.56,108.2 w 0.91 <guitar000001>",
-  "line @90.32,118.7 -> 234.56,118.7 w 0.91 <guitar000001>",
+  "line @90.32,87.2 -> 174.73,87.2 w 0.91 <guitar000001>",
+  "line @90.32,97.7 -> 174.73,97.7 w 0.91 <guitar000001>",
+  "line @90.32,108.2 -> 174.73,108.2 w 0.91 <guitar000001>",
+  "line @90.32,118.7 -> 174.73,118.7 w 0.91 <guitar000001>",
 ]
 `;
 
 exports[`tab staff: strings and fret numbers > draws one line per string for any string count > 6 strings 1`] = `
 [
-  "line @90.32,87.2 -> 243.35,87.2 w 0.91 <guitar000001>",
-  "line @90.32,97.7 -> 243.35,97.7 w 0.91 <guitar000001>",
-  "line @90.32,108.2 -> 243.35,108.2 w 0.91 <guitar000001>",
-  "line @90.32,118.7 -> 243.35,118.7 w 0.91 <guitar000001>",
-  "line @90.32,129.2 -> 243.35,129.2 w 0.91 <guitar000001>",
-  "line @90.32,139.7 -> 243.35,139.7 w 0.91 <guitar000001>",
+  "line @90.32,87.2 -> 183.53,87.2 w 0.91 <guitar000001>",
+  "line @90.32,97.7 -> 183.53,97.7 w 0.91 <guitar000001>",
+  "line @90.32,108.2 -> 183.53,108.2 w 0.91 <guitar000001>",
+  "line @90.32,118.7 -> 183.53,118.7 w 0.91 <guitar000001>",
+  "line @90.32,129.2 -> 183.53,129.2 w 0.91 <guitar000001>",
+  "line @90.32,139.7 -> 183.53,139.7 w 0.91 <guitar000001>",
 ]
 `;
 
 exports[`tab staff: strings and fret numbers > draws one line per string for any string count > 7 strings 1`] = `
 [
-  "line @90.32,87.2 -> 243.35,87.2 w 0.91 <guitar000001>",
-  "line @90.32,97.7 -> 243.35,97.7 w 0.91 <guitar000001>",
-  "line @90.32,108.2 -> 243.35,108.2 w 0.91 <guitar000001>",
-  "line @90.32,118.7 -> 243.35,118.7 w 0.91 <guitar000001>",
-  "line @90.32,129.2 -> 243.35,129.2 w 0.91 <guitar000001>",
-  "line @90.32,139.7 -> 243.35,139.7 w 0.91 <guitar000001>",
-  "line @90.32,150.2 -> 243.35,150.2 w 0.91 <guitar000001>",
+  "line @90.32,87.2 -> 183.53,87.2 w 0.91 <guitar000001>",
+  "line @90.32,97.7 -> 183.53,97.7 w 0.91 <guitar000001>",
+  "line @90.32,108.2 -> 183.53,108.2 w 0.91 <guitar000001>",
+  "line @90.32,118.7 -> 183.53,118.7 w 0.91 <guitar000001>",
+  "line @90.32,129.2 -> 183.53,129.2 w 0.91 <guitar000001>",
+  "line @90.32,139.7 -> 183.53,139.7 w 0.91 <guitar000001>",
+  "line @90.32,150.2 -> 183.53,150.2 w 0.91 <guitar000001>",
 ]
 `;
 

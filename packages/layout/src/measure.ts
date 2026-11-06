@@ -1,4 +1,4 @@
-import { barTicks, beatTicks, playedBarTicks, type Score } from '@reprise/model';
+import { PPQ, barTicks, beatTicks, playedBarTicks, type Score } from '@reprise/model';
 
 import type { BarContext } from './context';
 import {
@@ -13,7 +13,7 @@ import {
 } from './furniture';
 import { headerWidth } from './header';
 import { staffBar, trackBar, type StaffSlot } from './slots';
-import { segmentWidth, type Spring } from './spacing';
+import { durationWidth, segmentWidth, type Spring } from './spacing';
 
 /** Onsets closer than this many ticks are one: tuplet ticks are fractional and never rounded. */
 const TICK_EPSILON = 1e-6;
@@ -134,7 +134,8 @@ export function measureBar(
   const { index, masterBar } = context;
   let onsets = columnOnsets(score, slots, index);
   const end = endTick(score, index, onsets);
-  if (onsets.length === 0) onsets = [{ tick: 0, governing: end }];
+  const empty = onsets.length === 0;
+  if (empty) onsets = [{ tick: 0, governing: end }];
   const ticks = onsets.map(({ tick }) => tick);
   const left = ticks.map(() => 0);
   const right = ticks.map(() => 0);
@@ -156,7 +157,9 @@ export function measureBar(
     const gap = Math.max(next - tick, TICK_EPSILON);
     const min =
       (right[i] ?? 0) + (i + 1 < onsets.length ? (left[i + 1] ?? 0) : 0) + ONSET_GAP * space;
-    return { natural: Math.max(min, segmentWidth(gap, governing, space)), min };
+    // alphaTab fills an empty voice with one beat of its default duration, a quarter.
+    const natural = empty ? durationWidth(PPQ, space) : segmentWidth(gap, governing, space);
+    return { natural: Math.max(min, natural), min };
   });
 
   const standardSlots = slots.filter((slot) => slot.type === 'standard');
