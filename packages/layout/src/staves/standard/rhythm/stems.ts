@@ -1,7 +1,6 @@
 import type { Id } from '@reprise/model';
 
 import { engraving, glyphAnchor, type GlyphName } from '../../../metrics';
-import { beamCount } from '../../rhythm';
 import { glyph, line, type LayoutSink } from '../../../primitives';
 
 export type StemDirection = 'up' | 'down';
@@ -10,8 +9,6 @@ export type StemDirection = 'up' | 'down';
 export const STEM_LENGTH = 3.5;
 /** Each beam or flag past the second lengthens the stem by this much, in staff spaces. */
 const EXTRA_BEAM_LENGTH = 0.75;
-
-export { beamCount };
 
 /** The stem length, in staff spaces, that leaves room for `beams` flags or beams. */
 export function stemLength(beams: number): number {
