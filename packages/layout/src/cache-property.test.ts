@@ -206,7 +206,7 @@ function optionsFor(
   const tracks = subset ? score.tracks.filter((_, i) => i % 3 !== 1).map(({ id }) => id) : 'all';
   return {
     mode,
-    width: mode === 'paged' ? 500 : 640,
+    width: mode === 'paged' ? PAGE_SIZES.a4.width : 640,
     pageHeight: PAGE_SIZES.a4.height,
     zoom: 1,
     tracks,
