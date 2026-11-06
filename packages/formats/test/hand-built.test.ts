@@ -1,4 +1,4 @@
-import { ScoreSchema, midiNote } from '@reprise/model';
+import { ScoreSchema, midiNote, validateScore } from '@reprise/model';
 import { beatOf, noteOf } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
@@ -249,7 +249,7 @@ describe.each(VERSIONS)('a hand-built v%s file', (version) => {
     expect(warnings.filter((warning) => warning.severity !== 'info')).toEqual([]);
   });
 
-  it('takes the fret of a tie origin further back and releases the tie', () => {
+  it('keeps a held note tied under a melody across a bar line', () => {
     const { score, warnings } = read(
       buildGpFile({
         version,
@@ -266,17 +266,32 @@ describe.each(VERSIONS)('a hand-built v%s file', (version) => {
                   ],
                 },
                 quarter(2, 3),
+                quarter(1, 0),
               ],
             ],
           ],
-          [[[{ notes: [{ string: 6, fret: 0, tie: true }] }]]],
+          [
+            [
+              [
+                {
+                  notes: [
+                    { string: 6, fret: 0, tie: true },
+                    { string: 2, fret: 5 },
+                  ],
+                },
+                quarter(2, 3),
+                { notes: [{ string: 6, fret: 0, tie: true }] },
+              ],
+            ],
+          ],
         ],
       }),
     );
-    expect(noteOf(score, 0, 1, 0)).toMatchObject({ string: 6, fret: 5, tie: false });
-    expect(warnings.filter((warning) => warning.severity !== 'info')).toMatchObject([
-      { code: 'tie-beyond-previous-beat', location: { track: 0, bar: 1, voice: 0, beat: 0 } },
-    ]);
+    const held = (beat: number) => beatOf(score, 0, 1, beat).notes.find((n) => n.string === 6);
+    expect(held(0)).toMatchObject({ fret: 5, tie: true });
+    expect(held(2)).toMatchObject({ fret: 5, tie: true });
+    expect(warnings.filter((warning) => warning.severity !== 'info')).toEqual([]);
+    expect(validateScore(score)).toEqual([]);
   });
 
   it('reads a chord diagram with barres', () => {

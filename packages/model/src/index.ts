@@ -250,3 +250,6 @@ export type {
   TrackChanges,
   TrackProperties,
 } from './commands';
+
+export { GraceNoteSchema } from './beat';
+export { tieChainOf } from './ties';

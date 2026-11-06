@@ -1,6 +1,6 @@
 # Contributing to Reprise
 
-Reprise is built issue by issue, mostly by agents, with the owner reviewing in GitHub. This file is the working agreement. The reasoning behind it is in [ADR-0014](docs/decisions/0014-repo-and-process.md) and [ADR-0016](docs/decisions/0016-build-order-and-parallel-lanes.md); the plan it serves is [the roadmap](docs/plans/roadmap.md).
+Reprise is built issue by issue, mostly by agents, with every PR reviewed by an agent and merged by the lead. This file is the working agreement. The reasoning behind it is in [ADR-0014](docs/decisions/0014-repo-and-process.md) and [ADR-0016](docs/decisions/0016-build-order-and-parallel-lanes.md); the plan it serves is [the roadmap](docs/plans/roadmap.md).
 
 ## From plan to issue
 
@@ -37,6 +37,8 @@ From [the roadmap](docs/plans/roadmap.md#lane-rules):
 4. A PR's description states what was verified and how, links its issue, and includes measurements for anything the budgets table covers.
 5. Integration PRs are lead-only and are where lanes first meet. A lane does not wire its output into the app shell; it exposes the contract and ships a demo route or a story under its feature folder instead.
 
+The roadmap's rule 6, review before merge, is the review flow in [AGENTS.md](AGENTS.md#task-workflow).
+
 ## Branches and commits
 
 - One branch per work package, named `wp-0NN-short-slug` after the issue (`wp-005-repository-governance`), off `main`, in its own worktree.
@@ -70,7 +72,7 @@ The hook is per worktree: Husky writes its shim under `.husky/_/` (ignored), and
   pnpm lint && pnpm typecheck && pnpm test && pnpm format:check
   ```
 
-- The owner reviews in GitHub; address comments on the same branch.
+- An agent reviews the PR and another fixes the findings on the same branch, as [AGENTS.md](AGENTS.md#task-workflow) describes; the lead merges after the review, once CI is green.
 
 ## No time estimates
 

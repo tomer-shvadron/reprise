@@ -23,10 +23,15 @@ function isManifest(value: unknown): value is { fixtures: ManifestEntry[] } {
   );
 }
 
-export function manifestEntries(formats: readonly string[]): ManifestEntry[] {
+/** Every fixture in `fixtures/manifest.json`, whatever its format. */
+export function allManifestEntries(): ManifestEntry[] {
   const manifest: unknown = JSON.parse(readFileSync(join(FIXTURES_DIR, 'manifest.json'), 'utf8'));
   if (!isManifest(manifest)) throw new Error('fixtures/manifest.json has no fixtures list');
-  return manifest.fixtures.filter((entry) => formats.includes(entry.format));
+  return manifest.fixtures;
+}
+
+export function manifestEntries(formats: readonly string[]): ManifestEntry[] {
+  return allManifestEntries().filter((entry) => formats.includes(entry.format));
 }
 
 export function fixtureBytes(path: string): Uint8Array {

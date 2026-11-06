@@ -11,7 +11,7 @@ the memory manager.
 ```
 main thread                                     audio thread (native Web Audio)
 -----------                                     -------------------------------
-25 ms worker timer -> advance(run, now, now + 0.2) --> InstrumentSink.noteOn -> sampler voices -> strips --+
+25 ms worker timer -> advance(run, now, now + 0.2) --> InstrumentSink.noteOn, mix -> sampler voices, strips -+
                                                   \--> MetronomeSink.click  -> click gain ----------------+-> master bus -> destination
 animation frame -> currentTime -> position event
 ```
@@ -45,6 +45,7 @@ notes itself.
 ```ts
 interface InstrumentSink {
   noteOn(event: NoteEvent): void;
+  mix?(event: MixEvent): void; // a beat's mixer change, rests and tied continuations included
   allNotesOff(when: number): void;
   dispose?(): void;
 }
@@ -64,6 +65,21 @@ interface NoteEvent {
   passIndex: number;
   barEnd: number; // AudioContext time the bar ends: the latest a let-ring note sounds
   nextOnString: { note: Note; beat: Beat; when: number } | undefined; // a slide's target
+  continuations: { note: Note; beat: Beat; when: number; durationTicks: number }[]; // tied links, in order
+}
+interface MixEvent {
+  track: Track;
+  trackIndex: number;
+  voiceIndex: number;
+  beat: Beat;
+  beatIndex: number;
+  mix: MixerChange; // Beat.mix
+  when: number; // AudioContext time of the beat; currentTime when handed out late; the run's start when replayed
+  playbackTick: number;
+  secondsPerTick: number; // at the beat, to time the change's duration
+  sequenceIndex: number;
+  masterBarIndex: number;
+  passIndex: number;
 }
 ```
 
@@ -73,10 +89,28 @@ interface NoteEvent {
   quarter note), because a 16th grace is 250 ms at 60 BPM and 500 ms with the speed trainer at
   half speed, longer than the lookahead: the sink places the grace ahead of `when` and still has
   the time to do so.
-- **Ties** are resolved by the scheduler: a tied continuation is never sent and its length is
-  added to the origin's `duration`, following the voice across bar lines in playback order. The
-  one exception is a tie on the exact tick where playback starts or a loop wraps, which arrives
-  as an onset so the bar does not start silent.
+- **Ties** are resolved by the scheduler with the model's own chain (`tieChainOf`, #65): a tied
+  continuation is never sent and the chain's length is added to the origin's `duration`, however
+  many beats of other strings (or rests) sit between the links, following the voice across bar
+  lines while the bars play in score order. A repeat or jump between two links ends the hold
+  there. A tie whose origin did not play just before it in this run, because playback started or
+  a loop wrapped after the origin or a repeat jumped back to it, arrives as an onset instead, so
+  nothing goes silent. The links themselves come with the event as `continuations`, each with its
+  `when` and `durationTicks`, clipped to the loop or song end: an effect written on a later link
+  (a hold bend, a slide out, vibrato) starts there. Playing those effects is the articulation
+  layer's job and is tracked in #72; until then the origin's effects alone are played.
+- **Mixer changes** arrive as `MixEvent`s through `mix`, one per beat carrying `Beat.mix`,
+  whether the beat is played, a rest or a tied continuation; a `NoteEvent` with no note was the
+  alternative, but it would make `note` optional for every consumer and send a mixer change once
+  per note. `mix` is the one place mixer changes arrive, so a sink does not read `beat.mix` in
+  `noteOn`. A change handed out late is moved to `currentTime`, never dropped, because it holds
+  for the rest of the song. **A run start replays the state.** When playback starts from a tick,
+  seeks, or a loop wraps, every change before the run's start point is sent again first, in
+  playback order, at the run's start and with its transition stripped (it has run its course),
+  so a song that halves a track's volume in bar 2 and is started from bar 10 plays at half
+  volume. What is not restored is the baseline those changes build on, `track.channel`: a change
+  outlives a stop until the next run replays or writes over it, and the mixer panel's `setTrack`
+  (WP-050) owns that reset.
 - Everything else about a note (velocity from `dynamics`, accents, palm mute, bends, let ring,
   strokes, grace notes) is the sink's business: the event carries the whole `Note`, `Beat` and
   `Track`, and `duration` is in seconds so bend points (0 to 60 across the note) map directly.
@@ -490,7 +524,7 @@ quotes.
 | `accent` normal, heavy                               | +1, +2 steps of 16, capped at 127.                                                                                                                                                                                                                                        |
 | `ghost`                                              | -2 steps.                                                                                                                                                                                                                                                                 |
 | `hammerPull` (on the destination)                    | -1 step, and the sample starts 20 ms in (`offset`), past the pick transient. After a legato slide it is no attack at all (below).                                                                                                                                         |
-| `bend`                                               | Points to a sampled detune curve (2 ms resolution, linear between points): `position` 0 to 60 across the note's own beat, `value` / 2 semitones. Prebend, release and hold shapes are the points; `kind` adds nothing. Holds after the beat.                              |
+| `bend`                                               | Points to a sampled detune curve (2 ms resolution, linear between points): `position` 0 to 60 across the note's own beat, `value` / 2 semitones. Prebend, release and hold shapes are the points; `kind` adds nothing. Holds after the beat. On a tie chain, see `tie`.   |
 | `Beat.effects.whammy`                                | The same, added to the bend (negative values dive).                                                                                                                                                                                                                       |
 | `vibrato` slight, wide; `Beat.effects.vibrato`       | A sine on detune from the onset: slight 5.5 Hz ±0.25 semitone, wide 5 Hz ±0.6; the wider of note and beat wins.                                                                                                                                                           |
 | `slide` `shift`                                      | A linear glide into `nextOnString`'s pitch over the last 25% of the note, at most 200 ms, ending on the next onset; the next note is struck.                                                                                                                              |
@@ -508,8 +542,8 @@ quotes.
 | `Beat.effects.fadeIn`, `fadeOut`                     | Level from -48 dB to 0 (or back) across the beat, linear in dB.                                                                                                                                                                                                           |
 | `Beat.effects.volumeSwell`                           | -48 dB to 0 at half the beat and back to -48 dB at its end.                                                                                                                                                                                                               |
 | `Beat.grace`                                         | Played by the sink with their own effects: grace notes `before` end on the beat (squeezed into a quarter note, the scheduler's lead); on-beat ones start on it and delay the main note (squeezed into half the beat).                                                     |
-| `tie`                                                | Nothing: the scheduler folds the continuation into the origin.                                                                                                                                                                                                            |
-| `Beat.mix` volume, pan                               | Scheduled on the strip at the beat (`setTrack(..., { at, ramp })`), a linear glide over `duration` quarter notes when given; `allTracks` applies it to every track.                                                                                                       |
+| `tie`                                                | The scheduler folds the chain into the origin. A bend on the origin spans the whole tied length when no later link bends on its own, as Guitar Pro plays it (`PlanInput.bendLength`); the links' own effects are #72.                                                     |
+| `Beat.mix` volume, pan                               | From `mix`, scheduled on the strip at the beat (`setTrack(..., { at, ramp })`), a linear glide over `duration` quarter notes when given; `allTracks` applies it to every track. Rests and tied continuations included.                                                    |
 
 On drum tracks only velocity (dynamics, accents, ghost), fades, trills and tremolo apply; drum
 articulation variants (rim shot, choke) arrive from the readers already mapped to their GM note.
@@ -545,14 +579,14 @@ vibrato, trills, tremolo, dynamics and fades stay automation in both tiers.
 
 ### Known and deliberate
 
-- **Effects of a tied continuation are not played.** The scheduler folds the continuation into
-  its origin and never sends it, so a bend or vibrato written on the tied note is lost; the
-  origin's bend holds its last value across the tie.
+- **Effects written on a tied link are not played yet** (#72). The event carries the links as
+  `continuations`, but the planner reads the origin's effects only, so a bend or vibrato written
+  on a later link is lost. The one rule already in place is the bend span above.
 - **A legato slide's destination keeps its origin's tone.** A `BiquadFilter`'s type switches at
   once, not at a time, so a carried voice cannot change from a palm-muted low-pass to a
   harmonic's shelf without affecting the note still sounding.
-- **Mixer changes on rest beats are not applied**: the scheduler only hands out beats with notes.
-  A scheduled change also outlives a pause or seek; the next one on playback overrides it.
+- **A mixer change outlives a stop.** The run start replays the changes before it, but nothing
+  restores `track.channel` first (see the `InstrumentSink` contract above).
 - **Vibrato is in Hz, not tempo-synced**, and starts at the onset; Guitar Pro's sounds the same at
   any tempo too.
 
