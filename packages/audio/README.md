@@ -673,8 +673,9 @@ vibrato, trills, tremolo, dynamics and fades stay automation in both tiers.
   - A link's harmonic, dynamics, accent, ghost, hammer-on or slide in: attack properties, and a
     link is not struck.
   - Let ring on a link: `NoteEvent` carries no bar end for a link.
-  - A palm-muted link under a harmonic origin damps the level only: a `BiquadFilter`'s type
-    switches at once, not at a time.
+  - A palm-muted link under a harmonic origin, or under one a legato slide carried in from a
+    harmonic, damps the level only: a `BiquadFilter`'s type switches at once, not at a time. A
+    carried voice still on its low-pass takes the link's 900 Hz.
   - Vibrato cannot stop inside a chain once started: the model has no "unset".
   - A grace on a tied link's own string, or any grace on a beat whose notes are all tied: that
     beat sends no event, and playing it would need the timeline to break the hold there.

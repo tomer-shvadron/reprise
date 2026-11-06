@@ -29,6 +29,8 @@ export interface SamplerSinkOptions {
 interface Chain {
   voice: VoiceHandle;
   at: number;
+  /** The filter type the voice was left with, which the note it carries into keeps. */
+  filterType: BiquadFilterType;
 }
 
 const CHAIN_TOLERANCE = 1e-4;
@@ -53,13 +55,32 @@ function shapeGain(
   if (last && last.at > to) voice.rampGain(levelAt(points, to), to);
 }
 
-function shapeFilter(voice: VoiceHandle, plan: NotePlan, from: number, to: number): void {
-  let onset: FilterSettings | undefined = plan.filter;
-  for (const change of plan.filterChanges) if (change.at <= from) onset = change.filter;
-  if (onset) voice.setFilter(onset, from);
-  for (const change of plan.filterChanges) {
-    if (change.at > from && change.at < to) voice.setFilter(change.filter, change.at);
+/**
+ * Returns the filter type the voice is left with. A type switches at once, not at a time, so a
+ * carried voice keeps its type and takes only the timed changes that need no switch.
+ */
+function shapeFilter(
+  voice: VoiceHandle,
+  plan: NotePlan,
+  from: number,
+  to: number,
+  carried: BiquadFilterType | undefined,
+): BiquadFilterType {
+  let type = carried ?? 'lowpass';
+  if (carried === undefined) {
+    let onset: FilterSettings | undefined = plan.filter;
+    for (const change of plan.filterChanges) if (change.at <= from) onset = change.filter;
+    if (onset) voice.setFilter(onset, from);
+    type = onset?.type ?? type;
   }
+  for (const change of plan.filterChanges) {
+    if (change.at <= from || change.at >= to) continue;
+    const next = change.filter.type ?? type;
+    if (carried !== undefined && next !== type) continue;
+    voice.setFilter(change.filter, change.at);
+    type = next;
+  }
+  return type;
 }
 
 function shapePitch(
@@ -136,12 +157,17 @@ export function createSamplerSink(
       if (!voice) continue;
       const isCarried = voice === carried;
       const until = last && plan.legatoInto !== undefined ? plan.legatoInto : strike.end;
-      // A filter's type switches at once, so a carried voice keeps the tone it was struck with.
-      if (!isCarried) shapeFilter(voice, plan, strike.when, until);
+      const filterType = shapeFilter(
+        voice,
+        plan,
+        strike.when,
+        until,
+        isCarried ? chain?.filterType : undefined,
+      );
       shapeGain(voice, plan.gain, strike.when, until);
       shapePitch(voice, plan, strike, until, isCarried);
       if (last && plan.legatoInto !== undefined) {
-        chains.set(chainKey, { voice, at: plan.legatoInto });
+        chains.set(chainKey, { voice, at: plan.legatoInto, filterType });
       } else if (last && plan.letRingUntil !== undefined) {
         if (isCarried) voice.release(plan.letRingUntil);
       } else {

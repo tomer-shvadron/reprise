@@ -188,6 +188,22 @@ describe('muted and faded links', () => {
     expect(muted / open).toBeLessThan(0.05);
   });
 
+  it('damps the highs from a palm-muted link when a legato slide carried the origin in', async () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 3, { slide: ['legato'] })])
+      .beat('4', [a()])
+      .beat('4', [tied({ palmMute: true })])
+      .rest('4')
+      .build();
+    const { data } = await render(song, { instrument: noiseInstrument });
+
+    const open = energyAbove(data, 2000, T0 + 0.7, T0 + 0.95);
+    const muted = energyAbove(data, 2000, T0 + 1.3, T0 + 1.45);
+    expect(muted / open).toBeLessThan(0.05);
+  });
+
   it('fades a tied link in across its own beat', async () => {
     const song = score()
       .track('guitar')
