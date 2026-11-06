@@ -570,8 +570,9 @@ describe('writing a large score', () => {
     const { bytes, dropped } = writeGp(source);
     const elapsed = performance.now() - start;
     const xml = new TextDecoder().decode(unzipSync(bytes)['Content/score.gpif']);
-    // Measured on an Apple M4 Pro; the bound is loose for CI machines.
-    expect(elapsed).toBeLessThan(2000);
+    // 313 ms on an Apple M4 Pro, 2.2 s seen on a loaded CI runner; the bound only catches a
+    // pathological regression.
+    expect(elapsed).toBeLessThan(5000);
     expect(dropped).toEqual([]);
     expect(bytes.byteLength).toBeLessThan(1_000_000);
     expect(xml.length).toBeGreaterThan(bytes.byteLength);
