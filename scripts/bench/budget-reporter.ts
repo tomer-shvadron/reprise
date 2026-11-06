@@ -4,15 +4,16 @@
  * changes the exit code: failing is the bench tests' job.
  */
 import { appendFileSync } from 'node:fs';
-import { cpus } from 'node:os';
+import { cpus, loadavg } from 'node:os';
 import { join } from 'node:path';
 
 import type { Reporter, TestModule, Vitest } from 'vitest/node';
 
 import { isCi, loadBudgets, type BudgetResult, type ResolvedBudget } from './budgets.ts';
 
-interface Outcome {
-  result: BudgetResult;
+export interface Outcome {
+  /** Absent when the bench threw before its budget check stored a measurement. */
+  result?: BudgetResult;
   state: string;
   retried: boolean;
 }
@@ -26,12 +27,13 @@ const amount = (value: number, unit: string): string =>
     ? value.toLocaleString('en-US').replaceAll(',', ' ')
     : `${String(value)} ${unit}`;
 
-function status(budget: ResolvedBudget, outcome: Outcome | undefined): string {
+export function status(budget: ResolvedBudget, outcome: Outcome | undefined): string {
   const by = budget.assertedBy;
   if (by.kind === 'unit') return `unit: ${by.path}`;
   if (by.kind === 'pending') return `pending: ${by.workPackage}`;
   if (!outcome) return 'not run';
   const { result, state, retried } = outcome;
+  if (!result) return 'fail';
   if (!result.enforced) {
     const side = result.measured <= budget.threshold ? 'under' : 'over';
     return `${side}, reported until ${result.until ?? 'it is enforced'}`;
@@ -46,7 +48,7 @@ function row(budget: ResolvedBudget, outcome: Outcome | undefined): Row {
     budget.metric,
     amount(budget.value, budget.unit),
     measured ? amount(budget.threshold, budget.unit) : '-',
-    outcome ? amount(outcome.result.measured, budget.unit) : '-',
+    outcome?.result ? amount(outcome.result.measured, budget.unit) : '-',
     status(budget, outcome),
   ];
 }
@@ -83,12 +85,13 @@ export default class BudgetReporter implements Reporter {
     for (const module of testModules) {
       for (const test of module.children.allTests()) {
         const result = test.meta().budget;
-        if (!result) continue;
-        outcomes.set(result.metric, {
-          result,
-          state: test.result().state,
-          retried: (test.diagnostic()?.retryCount ?? 0) > 0,
-        });
+        const state = test.result().state;
+        const retried = (test.diagnostic()?.retryCount ?? 0) > 0;
+        if (result) outcomes.set(result.metric, { result, state, retried });
+        // Bench tests are named after their metric, so one that threw still finds its row.
+        else if (state === 'failed' && !outcomes.has(test.name)) {
+          outcomes.set(test.name, { state, retried });
+        }
       }
     }
 
@@ -96,19 +99,27 @@ export default class BudgetReporter implements Reporter {
     const ci = isCi(process.env);
     const cpu = cpus();
     const factor = budgets.find(({ unit }) => unit === 'ms')?.factor ?? 1;
+    const load = loadavg()[0] ?? 0;
     const title =
       `Budgets (docs/plans/roadmap.md) on ${cpu[0]?.model.trim() ?? 'unknown CPU'} ×${String(cpu.length)}, ` +
-      `Node ${process.version}, ${ci ? 'CI' : 'local'}: time budgets ×${String(factor)}`;
+      `Node ${process.version}, load ${load.toFixed(1)}, ${ci ? 'CI' : 'local'}: time budgets ×${String(factor)}`;
+    const busy =
+      load > cpu.length / 2
+        ? [
+            `Load ${load.toFixed(1)} is above half the ${String(cpu.length)} CPUs: the times are not an idle measurement.`,
+          ]
+        : [];
 
     const rows: Row[] = [HEADER];
     for (const budget of budgets) rows.push(row(budget, outcomes.get(budget.metric)));
     const known = new Set(budgets.map(({ metric }) => metric));
     const extra = [...outcomes.values()]
-      .filter(({ result }) => !known.has(result.metric))
-      .map(({ result }) => `${result.metric}, p50 ${String(result.measured)} ms`);
+      .flatMap(({ result }) => (result && !known.has(result.metric) ? [result] : []))
+      .map((result) => `${result.metric}, p50 ${String(result.measured)} ms`);
 
     const lines = [
       title,
+      ...busy,
       ...(error ? [`The budgets table did not parse: ${error}`] : [text(rows)]),
       ...extra.map((measurement) => `Measured without a budget: ${measurement}`),
     ];
@@ -119,6 +130,7 @@ export default class BudgetReporter implements Reporter {
       const body = [
         `### ${title}`,
         '',
+        ...busy.flatMap((warning) => [warning, '']),
         error ? `The budgets table did not parse: ${error}` : markdown(rows),
         '',
         ...extra.map((measurement) => `Measured without a budget: ${measurement}`),
