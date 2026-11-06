@@ -86,7 +86,7 @@ Owns `packages/layout` and `apps/web/src/features/score`. Reference: `../referen
 
 - A React component that takes a `LayoutResult` and paints only the systems intersecting the viewport plus one on either side, keyed by system ID so unchanged systems don't re-render.
 - Bravura loaded as a web font with glyphs referenced by codepoint; text in the UI font; every primitive mapped to a theme role (`ink`, `paper`, `accent`, `muted`) resolved through CSS variables so the light and dark themes and the print stylesheet all work without re-layout.
-- Zoom via a transform on the page, not re-layout, until a threshold where re-layout at the new width happens.
+- Zoom by scaling the SVG viewBox, display only, never re-laying out; continuous mode lays out in fixed 640 px segments. Segments as wide as the viewport were dropped with the re-layout threshold: at zoom 0.5 on a 1 920 px viewport one would hold about 9 200 elements, and three or four mounted ones break the 20 000-element budget, where fixed segments keep the long score under 12 600 at every zoom (WP-024, #30).
 - Overlays: a playback cursor (a vertical bar at the current beat with a soft highlight of the bar), selection highlight, hover highlight, each driven by anchors.
 - A demo route `/dev/score` that renders any fixture, for the lane's own iteration and for the lead's review.
 

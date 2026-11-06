@@ -3,7 +3,9 @@
   "compilerOptions": {
     "lib": ["ES2022"],
     "types": ["node"],
-    "outDir": ".tsbuild/node"
+    "outDir": ".tsbuild/node",
+    // Vite's native config loader needs the extension on vite.demo.config.ts's import.
+    "rewriteRelativeImportExtensions": true
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "vite.demo.config.ts"]
 }
