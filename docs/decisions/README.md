@@ -5,7 +5,7 @@ architecture decision record (ADR): the context that forced the decision, what w
 the alternatives that were rejected and why, and the consequences. The records exist so that
 anyone, including an agent picking up an issue, can see why things are the way they are
 without re-deriving or re-litigating them. The first seventeen were written from the planning
-session of 2026-11-05, and 0018 and 0019 from the phase-0 reviews the same day; see `../specs/shared-understanding.md` for the session's summary.
+session of 2026-11-05, 0018 and 0019 from the phase-0 reviews the same day, and 0020 from the switch off Fable on 2026-11-06; see `../specs/shared-understanding.md` for the session's summary.
 
 Rules:
 
@@ -37,4 +37,5 @@ Rules:
 | 0016 | Serial foundation and model core, then three parallel lanes         | Accepted                                                             |
 | 0017 | The project is called Reprise                                       | Accepted                                                             |
 | 0018 | Label families and repository credentials                           | Accepted                                                             |
-| 0019 | Review by a stronger model before merge                             | Accepted                                                             |
+| 0019 | Review by a stronger model before merge                             | Accepted, superseded in part by ADR-0020                             |
+| 0020 | Plan and review with Opus at xhigh effort                           | Accepted                                                             |
