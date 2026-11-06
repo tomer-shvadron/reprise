@@ -165,7 +165,8 @@ export function fadePoints(
 
 /**
  * The origin's level shape, then each link's fade or palm mute from its onset, starting from the
- * level there. Lifting the palm does not revive a damped string, so the first mute latches.
+ * level there. Lifting the palm does not revive a damped string, so the first mute latches and a
+ * later fade runs that much lower.
  */
 export function chainGain(segments: readonly PlanLink[], tonal: boolean): GainPoint[] {
   const [origin, ...links] = segments;
@@ -173,11 +174,13 @@ export function chainGain(segments: readonly PlanLink[], tonal: boolean): GainPo
   const { decayTo, decayTime } = ARTICULATION.palmMute;
   let points = fadePoints(origin.effects, origin.when, origin.length) ?? [];
   let muted = tonal && origin.note.palmMute;
+  let damped = 0;
   if (points.length === 0 && muted) {
     points = [
       { at: origin.when, db: 0 },
       { at: origin.when + decayTime, db: decayTo },
     ];
+    damped = decayTo;
   }
   for (const link of links) {
     const fade = fadePoints(link.effects, link.when, link.length);
@@ -188,8 +191,11 @@ export function chainGain(segments: readonly PlanLink[], tonal: boolean): GainPo
     points = points.filter((point) => point.at <= link.when);
     points.push(
       { at: link.when, db: level },
-      ...(fade ?? [{ at: link.when + decayTime, db: level + decayTo }]),
+      ...(fade?.map((point) => ({ at: point.at, db: point.db + damped })) ?? [
+        { at: link.when + decayTime, db: level + decayTo },
+      ]),
     );
+    if (mutes && !fade) damped = decayTo;
   }
   return points;
 }

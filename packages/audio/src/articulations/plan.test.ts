@@ -300,6 +300,24 @@ describe('planNote over a tie chain', () => {
     ]);
   });
 
+  it('fades a link after a palm-muted one from the damped level', () => {
+    const planned = planNote(
+      input(guitar, origin(), {
+        length: 1.5,
+        links: [link({ palmMute: true }, 1.5), link({}, 2, 0.5, { fadeOut: true })],
+      }),
+    );
+    const { decayTo } = ARTICULATION.palmMute;
+
+    expect(planned.gain).toEqual([
+      { at: 1.5, db: 0 },
+      { at: 1.75, db: decayTo },
+      { at: 2, db: decayTo },
+      { at: 2, db: decayTo },
+      { at: 2.5, db: ARTICULATION.fadeFloor + decayTo },
+    ]);
+  });
+
   it('fades a link in across its own beat', () => {
     const planned = planNote(
       input(guitar, origin(), { length: 1, links: [link({}, 1.5, 0.5, { fadeIn: true })] }),
