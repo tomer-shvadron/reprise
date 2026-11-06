@@ -4,7 +4,7 @@ import { parseNative } from '@reprise/model';
 
 import { GM_BUDGET_BYTES, MEGABYTE } from '../samples/managed-sample-source';
 import { loadGeneralUser, renderScore } from './harness';
-import { peak } from './signal';
+import { peak, signalOf } from './signal';
 
 /** What `scripts/fixtures/provide-scores.ts` provides: each fixture read in Node, as a native document. */
 interface ScoreFixture {
@@ -58,8 +58,12 @@ describe('the fixture corpus', () => {
 
       expect(rendered.missed).toEqual([]);
       expect(memory?.decodedBytes ?? 0).toBeLessThanOrEqual(GM_BUDGET_BYTES);
-      expect(rendered.data.every(Number.isFinite)).toBe(true);
-      const loudest = peak(rendered, 0, rendered.data.length / SAMPLE_RATE);
+      let loudest = 0;
+      for (let channel = 0; channel < rendered.buffer.numberOfChannels; channel += 1) {
+        const signal = signalOf(rendered.buffer, channel);
+        expect(signal.data.findIndex((value) => !Number.isFinite(value))).toBe(-1);
+        loudest = Math.max(loudest, peak(signal, 0, Number.POSITIVE_INFINITY));
+      }
       expect(loudest).toBeLessThanOrEqual(1);
       if (notes) expect(loudest).toBeGreaterThan(1e-3);
       else expect(loudest).toBe(0);
