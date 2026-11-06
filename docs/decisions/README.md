@@ -42,3 +42,4 @@ Rules:
 | 0021 | Rhythm on the standard staff in both mode                           | Accepted, extended by ADR-0022                                       |
 | 0022 | In both mode, lane effects are drawn once, on the tab staff         | Accepted                                                             |
 | 0023 | Visual regression in Vitest browser mode                            | Accepted                                                             |
+| 0024 | Mixer values are score data; mute and solo are session state        | Accepted                                                             |
