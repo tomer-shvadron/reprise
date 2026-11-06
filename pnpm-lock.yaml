@@ -201,6 +201,10 @@ importers:
       fflate:
         specifier: 0.8.3
         version: 0.8.3
+    devDependencies:
+      '@coderline/alphatab':
+        specifier: 1.8.4
+        version: 1.8.4
 
   packages/layout:
     dependencies:
