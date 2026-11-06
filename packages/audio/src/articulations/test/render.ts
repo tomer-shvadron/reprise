@@ -10,13 +10,7 @@ import { Sampler } from '../../sampler/sampler';
 import type { Instrument } from '../../sampler/sampler';
 import { createSamplerSink } from '../../sampler/sampler-sink';
 import type { SamplerSinkOptions } from '../../sampler/sampler-sink';
-import {
-  SAMPLE_RATE,
-  offline,
-  region,
-  sineInstrument,
-  toneLevel,
-} from '../../sampler/test/offline';
+import { SAMPLE_RATE, offline, region, sineInstrument } from '../../sampler/test/offline';
 import { detectOnsets } from '../../test/signal';
 
 /** Playback starts this long after `play`; at the default 120 BPM, quarter `k` is at `T0 + k / 2`. */
@@ -84,15 +78,6 @@ export function noiseInstrument(): Instrument {
 /** Seconds at which the signal rises above `floor` after at least `gap` seconds below it. */
 export function onsets(data: Float32Array, gap = 0.01, floor = 1e-3): number[] {
   return detectOnsets({ data, sampleRate: SAMPLE_RATE }, { gap, floor });
-}
-
-/** Root-sum-square of the tone levels from `low` up to 10 kHz in 250 Hz steps. */
-export function energyAbove(data: Float32Array, low: number, from: number, to: number): number {
-  let sum = 0;
-  for (let frequency = low; frequency <= 10_000; frequency += 250) {
-    sum += toneLevel(data, frequency, from, to) ** 2;
-  }
-  return Math.sqrt(sum);
 }
 
 /**

@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { energyAbove } from '../articulations/test/render';
 import { RegionMap } from '../sampler/region-map';
 import type { Region, SampleRef } from '../sampler/region-map';
 import type { SampleSource } from '../sampler/sample-source';
 import { Sampler } from '../sampler/sampler';
 import type { SamplerTrack } from '../sampler/sampler';
-import { cents, offline, peak, rms, zeroCrossingFrequency } from '../sampler/test/offline';
+import {
+  bandEnergy,
+  cents,
+  offline,
+  peak,
+  rms,
+  zeroCrossingFrequency,
+} from '../sampler/test/offline';
 import type { PresetReport, ResolvedPreset } from './resolve';
 import { PERCUSSION_BANK, Sf2Soundfont } from './soundfont';
 
@@ -292,7 +298,8 @@ describe.skipIf(!font)('GeneralUser GS', () => {
       }),
       strikes,
     );
-    const ratio = energyAbove(filtered, 3000, 0.1, 0.6) / energyAbove(open, 3000, 0.1, 0.6);
+    const ratio =
+      bandEnergy(filtered, 3000, 10_000, 0.1, 0.6) / bandEnergy(open, 3000, 10_000, 0.1, 0.6);
     console.info(
       `Synth Bass 1 C3: cutoffs ${cutoffs.map((c) => (c ?? 0).toFixed(0)).join(', ')} Hz, ` +
         `energy above 3 kHz ×${ratio.toFixed(3)}`,

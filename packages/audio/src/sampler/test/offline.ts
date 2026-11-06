@@ -75,6 +75,17 @@ export function peak(data: Float32Array, from: number, to: number): number {
   return measure.peak(signal(data), from, to);
 }
 
+/** RMS of the band between `low` and `high` Hz, from a Hann-windowed FFT. */
+export function bandEnergy(
+  data: Float32Array,
+  low: number,
+  high: number,
+  from: number,
+  to: number,
+): number {
+  return measure.bandEnergy(signal(data), low, high, from, to);
+}
+
 /** Amplitude of one frequency in a Hann-windowed span (Goertzel), 1 for a full-scale sine. */
 export function toneLevel(data: Float32Array, frequency: number, from: number, to: number): number {
   return measure.toneLevel(signal(data), frequency, from, to);
