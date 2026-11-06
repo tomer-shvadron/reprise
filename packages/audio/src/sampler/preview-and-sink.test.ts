@@ -130,7 +130,7 @@ describe('createSamplerSink', () => {
     expect(toneLevel(data, frequency, 0.7, 1)).toBeLessThan(0.001);
   });
 
-  it('spans a bend over a tie chain unless a later link bends on its own', async () => {
+  it('spans a bend over a tie chain up to the first link that bends or vibrates', async () => {
     const bend = {
       kind: 'bend' as const,
       points: [
@@ -158,8 +158,12 @@ describe('createSamplerSink', () => {
 
     // Half way along the chain, a chain-long bend is half way up its two semitones.
     expect(Math.abs((await centsAfterOneSecond([link()])) - 100)).toBeLessThan(3);
-    // A link bending on its own keeps the origin's bend on the origin's beat, held after it.
-    expect(Math.abs((await centsAfterOneSecond([link({ bend })])) - 200)).toBeLessThan(1);
+    // A link bending on its own keeps the origin's bend on the origin's beat; a hold keeps it up.
+    const hold = {
+      kind: 'hold' as const,
+      points: bend.points.map((point) => ({ ...point, value: 4 })),
+    };
+    expect(Math.abs((await centsAfterOneSecond([link({ bend: hold })])) - 200)).toBeLessThan(1);
   });
 
   it('cancels a note scheduled ahead when allNotesOff comes first', async () => {

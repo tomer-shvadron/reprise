@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Beat, Note, Track } from '@reprise/model';
+import type { Beat, BeatEffects, BendPoint, Note, Track } from '@reprise/model';
 import { midi, note, score } from '@reprise/model/testing';
 
 import type { NoteEvent } from '../sink';
 import { placeGraces } from './grace';
 import { ARTICULATION } from './parameters';
 import { planNote } from './plan';
-import type { PlanInput } from './plan';
+import type { PlanInput, PlanLink } from './plan';
 import { noteVelocity } from './velocity';
 
 const song = score().track('guitar').bar().rest('1').track('drums').bar().rest('1').build();
@@ -26,9 +26,26 @@ function input(track: Track, n: Note, spec: Partial<PlanInput> = {}): PlanInput 
     secondsPerTick: 0.5 / 960,
     barEnd: 3,
     next: undefined,
+    links: [],
     ...spec,
   };
 }
+
+/** A tied note on string 1 fret 5, the origin's string and fret. */
+function link(
+  spec: Parameters<typeof note>[2],
+  when: number,
+  length = 0.5,
+  effects: BeatEffects = {},
+): PlanLink {
+  return { note: note(1, 5, { tie: true, ...spec }), effects, when, length };
+}
+
+const points = (...values: [number, number][]): BendPoint[] =>
+  values.map(([position, value]) => ({ position, value }));
+const up = { kind: 'bend' as const, points: points([0, 0], [60, 4]) };
+const hold = { kind: 'hold' as const, points: points([0, 4], [60, 4]) };
+const release = { kind: 'release' as const, points: points([0, 4], [60, 0]) };
 
 describe('noteVelocity', () => {
   it('stays within MIDI velocity at both ends of the ladder', () => {
@@ -86,29 +103,240 @@ describe('planNote', () => {
     expect(plan.strikes[0]).toMatchObject({ key: 69, detune: 2 });
   });
 
-  it('spans a bend over the tied length it is given, and over the beat otherwise', () => {
-    const bent = note(1, 5, {
-      bend: {
-        kind: 'bend',
-        points: [
-          { position: 0, value: 0 },
-          { position: 60, value: 4 },
-        ],
-      },
-    });
-    const beat = planNote(input(guitar, bent, { length: 2 }));
-    const chain = planNote(input(guitar, bent, { length: 2, bendLength: 2 }));
-
-    // Half a second in, the beat-long bend has arrived and the chain-long one is a quarter way.
-    expect(beat.pitch?.(1.5)).toBeCloseTo(2, 9);
-    expect(chain.pitch?.(1.5)).toBeCloseTo(0.5, 9);
-    expect(chain.pitch?.(3)).toBeCloseTo(2, 9);
-  });
-
   it('skips the attack of a hammer-on and plays it a step softer', () => {
     const [strike] = planNote(input(guitar, note(1, 7, { hammerPull: true }))).strikes;
     expect(strike?.offset).toBe(ARTICULATION.hammerOffset);
     expect(strike?.velocity).toBe(79);
+  });
+});
+
+describe('planNote over a tie chain', () => {
+  const origin = (spec: Parameters<typeof note>[2] = {}): Note => note(1, 5, spec);
+  const pitch = (planned: ReturnType<typeof planNote>, time: number): number | undefined =>
+    planned.pitch?.(time);
+
+  it('spans a bend to the end of the chain, or to the origin’s beat when the next link bends', () => {
+    const bare = planNote(
+      input(guitar, origin({ bend: up }), { length: 2, links: [link({}, 1.5, 1.5)] }),
+    );
+    const held = planNote(
+      input(guitar, origin({ bend: up }), { length: 2, links: [link({ bend: hold }, 1.5, 1.5)] }),
+    );
+
+    // Half a second in, the chain-long bend is a quarter way and the beat-long one has arrived.
+    expect(pitch(bare, 1.5)).toBeCloseTo(0.5, 9);
+    expect(pitch(bare, 3)).toBeCloseTo(2, 9);
+    expect(pitch(held, 1.5)).toBeCloseTo(2, 9);
+  });
+
+  it('holds a bend through one link and releases it on the next', () => {
+    const planned = planNote(
+      input(guitar, origin({ bend: up }), {
+        length: 1.5,
+        links: [link({ bend: hold }, 1.5), link({ bend: release }, 2)],
+      }),
+    );
+
+    expect(pitch(planned, 1.25)).toBeCloseTo(1, 9);
+    expect(pitch(planned, 1.75)).toBeCloseTo(2, 9);
+    expect(pitch(planned, 2.25)).toBeCloseTo(1, 9);
+    expect(pitch(planned, 2.5)).toBeCloseTo(0, 9);
+  });
+
+  it('stops spreading a bend at the first link with its own vibrato', () => {
+    const vibrating = planNote(
+      input(guitar, origin({ bend: up }), {
+        length: 1.5,
+        links: [link({}, 1.5), link({ vibrato: 'wide' }, 2)],
+      }),
+    );
+    const bare = planNote(
+      input(guitar, origin({ bend: up }), { length: 1.5, links: [link({}, 1.5), link({}, 2)] }),
+    );
+
+    expect(pitch(vibrating, 1.5)).toBeCloseTo(1, 9);
+    expect(pitch(vibrating, 2)).toBeCloseTo(2, 9);
+    expect(pitch(bare, 1.75)).toBeCloseTo(1, 9);
+  });
+
+  it('starts a bend written on a link at that link', () => {
+    const planned = planNote(
+      input(guitar, origin(), { length: 1, links: [link({ bend: up }, 1.5)] }),
+    );
+
+    expect(pitch(planned, 1.25)).toBeCloseTo(0, 9);
+    expect(pitch(planned, 1.75)).toBeCloseTo(1, 9);
+    expect(pitch(planned, 2)).toBeCloseTo(2, 9);
+  });
+
+  it('holds the last bend value until the next bend starts', () => {
+    const bent = { kind: 'bend' as const, points: points([0, 0], [30, 4], [60, 4]) };
+    const planned = planNote(
+      input(guitar, origin({ bend: bent }), { length: 1.5, links: [link({ bend: release }, 2)] }),
+    );
+
+    expect(pitch(planned, 1.75)).toBeCloseTo(2, 9);
+    expect(pitch(planned, 2.25)).toBeCloseTo(1, 9);
+  });
+
+  it('plays a whammy on a link’s beat over that beat', () => {
+    const dive = { kind: 'dive' as const, points: points([0, 0], [60, -4]) };
+    const releaseUp = { kind: 'releaseUp' as const, points: points([0, -4], [60, 0]) };
+    const planned = planNote(
+      input(guitar, origin(), {
+        effects: { whammy: dive },
+        length: 1,
+        links: [link({}, 1.5, 0.5, { whammy: releaseUp })],
+      }),
+    );
+
+    expect(pitch(planned, 1.25)).toBeCloseTo(-1, 9);
+    expect(pitch(planned, 1.5)).toBeCloseTo(-2, 9);
+    expect(pitch(planned, 1.75)).toBeCloseTo(-1, 9);
+    expect(pitch(planned, 2)).toBeCloseTo(0, 9);
+  });
+
+  it('starts vibrato at the link that writes it and carries it through bare links, phase unbroken', () => {
+    const planned = planNote(
+      input(guitar, origin(), {
+        length: 1.5,
+        links: [link({ vibrato: 'wide' }, 1.5), link({}, 2)],
+      }),
+    );
+
+    expect(pitch(planned, 1.4)).toBeCloseTo(0, 9);
+    expect(pitch(planned, 1.55)).toBeCloseTo(0.6, 9);
+    expect(pitch(planned, 2.05)).toBeCloseTo(-0.6, 9);
+    expect(pitch(planned, 2 - 1e-9)).toBeCloseTo(pitch(planned, 2) ?? Number.NaN, 6);
+  });
+
+  it('slides out at the end of the chain, from the origin or a link', () => {
+    for (const planned of [
+      planNote(input(guitar, origin(), { length: 1, links: [link({ slide: ['outDown'] }, 1.5)] })),
+      planNote(
+        input(guitar, origin({ slide: ['outDown'] }), { length: 1, links: [link({}, 1.5)] }),
+      ),
+    ]) {
+      expect(pitch(planned, 1.9)).toBeCloseTo(0, 9);
+      expect(pitch(planned, 1.96)).toBeCloseTo(-1.5, 9);
+      expect(pitch(planned, 2)).toBeCloseTo(-3, 9);
+    }
+  });
+
+  it('glides into the next note only from the last link of a chain', () => {
+    const next = { note: note(1, 7), when: 2 };
+    const plan = (originSlide: 'shift' | 'legato' | undefined, linkSlide?: 'shift' | 'legato') =>
+      planNote(
+        input(guitar, origin(originSlide ? { slide: [originSlide] } : {}), {
+          length: 1,
+          next,
+          links: [link(linkSlide ? { slide: [linkSlide] } : {}, 1.5)],
+        }),
+      );
+
+    expect(plan('shift').pitch).toBeUndefined();
+    expect(plan('legato').legatoInto).toBeUndefined();
+    expect(pitch(plan(undefined, 'shift'), 1.9375)).toBeCloseTo(1, 9);
+    expect(plan(undefined, 'legato').legatoInto).toBe(2);
+  });
+
+  it('ends the chain at a dead or staccato link, and a staccato origin at half its beat', () => {
+    const dead = planNote(
+      input(guitar, origin({ letRing: true }), { length: 1.5, links: [link({ dead: true }, 1.5)] }),
+    );
+    const staccatoLink = planNote(
+      input(guitar, origin(), { length: 1.5, links: [link({ staccato: true }, 1.5)] }),
+    );
+    const staccatoOrigin = planNote(
+      input(guitar, origin({ staccato: true }), { length: 1, links: [link({}, 1.5)] }),
+    );
+
+    expect(dead.strikes[0]?.end).toBeCloseTo(1.58, 9);
+    expect(dead.letRingUntil).toBeUndefined();
+    expect(dead.dead).toBe(false);
+    expect(staccatoLink.strikes[0]?.end).toBeCloseTo(1.75, 9);
+    expect(staccatoOrigin.strikes[0]?.end).toBeCloseTo(1.25, 9);
+  });
+
+  it('damps the level and the tone from a palm-muted link of an open string', () => {
+    const links = [link({ palmMute: true }, 1.5)];
+    const open = planNote(input(guitar, origin(), { length: 1, links }));
+    const harmonic = planNote(
+      input(guitar, origin({ harmonic: { kind: 'natural' } }), { length: 1, links }),
+    );
+    const muted = planNote(input(guitar, origin({ palmMute: true }), { length: 1, links }));
+
+    const damped = [
+      { at: 1.5, db: 0 },
+      { at: 1.75, db: -18 },
+    ];
+    expect(open.filterChanges).toEqual([
+      { at: 1.5, filter: { type: 'lowpass', frequency: ARTICULATION.palmMute.cutoff } },
+    ]);
+    expect(open.gain).toEqual(damped);
+    expect(harmonic.filterChanges).toEqual([]);
+    expect(harmonic.gain).toEqual(damped);
+    expect(muted.filterChanges).toEqual([]);
+    expect(muted.gain).toEqual([
+      { at: 1, db: 0 },
+      { at: 1.25, db: -18 },
+    ]);
+  });
+
+  it('fades a link in across its own beat', () => {
+    const planned = planNote(
+      input(guitar, origin(), { length: 1, links: [link({}, 1.5, 0.5, { fadeIn: true })] }),
+    );
+
+    expect(planned.gain).toEqual([
+      { at: 1.5, db: 0 },
+      { at: 1.5, db: ARTICULATION.fadeFloor },
+      { at: 2, db: 0 },
+    ]);
+  });
+
+  it('ignores a link’s attack properties, let ring, trill and tremolo', () => {
+    const ignored = link(
+      {
+        harmonic: { kind: 'natural' },
+        trill: { fret: 7, speed: 16 },
+        letRing: true,
+        slide: ['intoFromBelow'],
+        accent: 'heavy',
+      },
+      1.5,
+      0.5,
+      { tremoloPicking: 16 },
+    );
+    const planned = planNote(input(guitar, origin(), { length: 1, links: [ignored] }));
+
+    expect(planned.strikes).toHaveLength(1);
+    expect(planned.strikes[0]).toMatchObject({ key: 69, velocity: 95, end: 2 });
+    expect(planned.pitch).toBeUndefined();
+    expect(planned.letRingUntil).toBeUndefined();
+  });
+
+  it('applies only a link’s fades on a drum track', () => {
+    const planned = planNote(
+      input(drums, midi(38), {
+        length: 1,
+        links: [
+          {
+            note: midi(38, { tie: true, dead: true }),
+            effects: { fadeOut: true },
+            when: 1.5,
+            length: 0.5,
+          },
+        ],
+      }),
+    );
+
+    expect(planned.strikes.at(-1)?.end).toBeCloseTo(2, 9);
+    expect(planned.gain).toEqual([
+      { at: 1.5, db: 0 },
+      { at: 1.5, db: 0 },
+      { at: 2, db: ARTICULATION.fadeFloor },
+    ]);
   });
 });
 
