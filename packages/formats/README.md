@@ -114,8 +114,9 @@ table, so a new gpif code fails to compile until it has one:
 | `warning` | `unknown-element`, `unknown-value`, `invalid-value`, `missing-reference`, `multiple-staves`, `simile-expanded`, `grace-without-beat`, `grace-duration-clamped`, `grace-tie-released`, `hammer-pull-without-destination`, `tempo-moved`, `automation-dropped`, `default-tempo`, every `validateScore` rule |
 | `info`    | `not-modelled`, `long-note-tied`, `drum-articulation`                                                                                                                                                                                                                                                     |
 
-A native `unknown-field` or violation is a `warning`, at its document path less the leading
-`score` (an envelope field keeps `['app', …]`). No fixture produces an `error` warning.
+A native `unknown-field` or violation is a `warning`. A field inside `score` goes to
+`location.path` less the leading `score`; one outside it (`extra`, `app.extra`) goes to
+`location.element` as text, so `location.path` always starts at the score root. No fixture produces an `error` warning.
 
 **Known gaps.**
 

@@ -103,7 +103,7 @@ describe('fromGpifDropped', () => {
 });
 
 describe('fromParseWarning', () => {
-  it('strips the score root and keeps an envelope path', () => {
+  it('strips the score root and names an envelope field as an element', () => {
     const score = fromParseWarning({
       code: 'unknown-field',
       path: ['score', 'tracks', 0],
@@ -116,7 +116,18 @@ describe('fromParseWarning', () => {
       location: { path: ['tracks', 0] },
     });
     const app = fromParseWarning({ code: 'unknown-field', path: ['app', 'x'], message: 'm' });
-    expect(app.location.path).toEqual(['app', 'x']);
+    expect(app.location).toEqual({ element: 'app.x' });
+  });
+
+  it('keeps a top-level field apart from a score field of the same name', () => {
+    const top = fromParseWarning({ code: 'unknown-field', path: ['extra'], message: 'm' });
+    const inScore = fromParseWarning({
+      code: 'unknown-field',
+      path: ['score', 'extra'],
+      message: 'm',
+    });
+    expect(top.location).toEqual({ element: 'extra' });
+    expect(inScore.location).toEqual({ path: ['extra'] });
   });
 });
 

@@ -52,12 +52,12 @@ export interface WarningLocation {
   bar?: number;
   voice?: number;
   beat?: number;
-  /**
-   * Path from the score root, for invariant violations; from the document root for a native
-   * envelope field (`['app', 'extra']`).
-   */
+  /** Path from the score root, always: an invariant violation, a native score field, an export loss. */
   path?: ViolationPath;
-  /** The gpif element a gp or gpx warning is about, `Notes/Note[3]/Properties/Property[Slide]`. */
+  /**
+   * Where in the file rather than in the score: the gpif element a gp or gpx warning is about
+   * (`Notes/Note[3]/Properties/Property[Slide]`), or a native field outside the score (`app.extra`).
+   */
   element?: string;
 }
 

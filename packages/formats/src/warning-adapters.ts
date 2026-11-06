@@ -1,3 +1,4 @@
+import { formatPath } from '@reprise/model';
 import type { NativePath, ParseWarning, ViolationPath, ViolationRule } from '@reprise/model';
 
 import type { GpifDropped } from './gpif/dropped';
@@ -82,7 +83,10 @@ export function fromGpifDropped(dropped: GpifDropped): Warning {
   };
 }
 
+/** A score field keeps its score path; an envelope field (`app.extra`) is named in `element`. */
 export function fromParseWarning(warning: ParseWarning): Warning {
-  const location: WarningLocation = { path: withoutScoreRoot(warning.path) };
+  const [root, ...rest] = warning.path;
+  const location: WarningLocation =
+    root === 'score' ? { path: rest } : { element: formatPath(warning.path) };
   return { code: warning.code, severity: 'warning', message: warning.message, location };
 }

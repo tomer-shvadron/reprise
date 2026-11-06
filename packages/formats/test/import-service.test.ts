@@ -263,6 +263,16 @@ describe('the native format', () => {
     ]);
   });
 
+  it('reports a top-level unknown field outside the score path', async () => {
+    const { score } = await read(fixtureBytes('gp3/notes.gp3'));
+    const { bytes } = await write(score, 'reprise');
+    const text = decode(bytes).replace('{', '{\n  "extra": 1,');
+    const { warnings } = await read(encode(text));
+    expect(warnings.filter((w) => w.code === 'unknown-field')).toEqual([
+      expect.objectContaining({ location: { element: 'extra' } }),
+    ]);
+  });
+
   it('rejects an invalid score as a FormatError', async () => {
     const { score } = await read(fixtureBytes('gp3/notes.gp3'));
     const error = await failure(write({ ...score, masterBars: [] }, 'reprise'));
