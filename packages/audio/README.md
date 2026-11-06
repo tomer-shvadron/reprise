@@ -228,10 +228,11 @@ plug in.
 
 ```text
  per voice
- AudioBufferSource -> Gain (ADSR) -> BiquadFilter -> Gain (level) -> [StereoPanner] -> strip input
-   playbackRate: key - rootKey + tune      lowpass, open at Nyquist   velocity, region   only when the
-   detune: automation, semitones           until an articulation      attenuation, dB    region pans
-                                           closes it                  automation
+ AudioBufferSource -> Gain (ADSR) -> [BiquadFilter] -> BiquadFilter -> Gain (level) -> [StereoPanner] -> strip input
+   playbackRate: key - rootKey + tune  Region.filter:   lowpass, open at    velocity, region   only when the
+   detune: automation, semitones       only when the    Nyquist until an    attenuation, dB    region pans
+                                       region filters   articulation        automation
+                                                        closes it
 
  per track (ChannelStrip)
  input -> Gain (mute/solo gate) -> insert.input -> insert.output -> Gain (volume) -> StereoPanner -> master
@@ -247,6 +248,7 @@ plug in.
 type SampleRef = string; // opaque; only the SampleSource that issued it resolves it
 
 interface Envelope {
+  delay?: number; // silence before the attack while the sample already runs; 0 when absent
   attack: number;
   hold: number;
   decay: number;
@@ -268,11 +270,14 @@ interface Region {
   layer?: string; // articulation layer; absent = default
   attenuation?: number; // dB, positive is quieter: SF2's sign; an SFZ loader negates its `volume`
   pan?: number; // -1..1, for a mono sample; absent or 0 adds no panner to the voice
+  filter?: { cutoffHz: number; q: number }; // static low-pass from the note's start; q in dB, Web Audio's lowpass unit
+  exclusiveClass?: number; // a new note of the class chokes the sounding ones on the track's instrument
 }
 
 class RegionMap {
   constructor(regions: readonly Region[]);
-  resolve(key: number, velocity: number, layer?: string): Region | undefined;
+  resolveAll(key: number, velocity: number, layer?: string): Region[]; // every layer of the note
+  resolve(key: number, velocity: number, layer?: string): Region | undefined; // resolveAll's first
   readonly layers: string[];
 }
 
@@ -287,8 +292,9 @@ interface Instrument {
 }
 ```
 
-`resolve` takes the first exact match in map order; failing that, the region nearest by key and
-then by velocity, so a pack that stops short of a drop tuning still sounds. A layer the map lacks
+`resolveAll` returns every exact match in map order, since an SF2 preset layers zones by design (a
+body and an attack, two panned mono samples) and sounds them all; failing any, the one region
+nearest by key and then by velocity, so a pack that stops short of a drop tuning still sounds. A layer the map lacks
 falls back to the default layer (and a map with no default layer uses its only one), which is
 ADR-0004's filter-and-envelope path for articulations without samples. `SynthSampleSource` is the
 in-memory source for tests: sines and seeded noise, synthesized on first use, optionally
@@ -301,8 +307,8 @@ from `preload`.
 
 **SF2 generators the shape does not carry**, and what the loader does with them: `sampleModes` 3
 (loop until release) becomes a plain `loop`, since the release envelope covers the tail and
-`AudioBufferSourceNode.loop` cannot be switched off sample-accurately; `delayVolEnv` becomes a
-later `when`; the stereo zones of a sample pair (ruling on this PR) are merged into one two-channel
+`AudioBufferSourceNode.loop` cannot be switched off sample-accurately; `delayVolEnv` becomes
+`Envelope.delay`; the filter and its envelope's held level become `Region.filter`; the stereo zones of a sample pair (ruling on this PR) are merged into one two-channel
 buffer, which the voice graph passes through unchanged; a mono zone's `pan` goes to `Region.pan`;
 `keynumToVolEnvHold` and `keynumToVolEnvDecay` are expanded to one region per key (see
 [SF2 loader and GM tier](#sf2-loader-and-gm-tier), which has the full mapping).
@@ -312,6 +318,8 @@ buffer, which the voice graph passes through unchanged; a mono zone's `pan` goes
 ```ts
 const sampler = new Sampler(context, { polyphony: 64 });
 sampler.addTrack(track, instrument); // a strip per track, from track.channel
+sampler.setInstrument(trackId, instrument, at); // a program change: notes from `at` on play it; no `at` is now
+sampler.instrumentAt(trackId, when); // the instrument a note starting at `when` plays
 sampler.setTrack(trackId, { volume, pan, mute, solo }); // AudioEngine.setTrack, 0..127 units
 sampler.setTrack(trackId, { volume }, { at, ramp }); // a scheduled mixer change: at `at`, gliding over `ramp` s
 const voice = sampler.noteOn(trackId, {
@@ -326,17 +334,25 @@ const voice = sampler.noteOn(trackId, {
 });
 voice?.rampDetune(2, when + 0.2); // semitones, absolute times
 voice?.setGain(-6, when + 0.1); // dB relative to the velocity level
-voice?.setFilter({ frequency: 1200, q: 1 }, when);
+voice?.setFilter({ frequency: 1200, q: 1 }, when); // the articulation filter, after Region.filter
 sampler.noteOff(voice, when + 0.5); // ignored for let-ring voices
 sampler.previewNote(trackId, note); // now, at velocity 96, through the strip past its mute gate
 await sampler.preload(trackId, [{ key, velocity }]);
 ```
 
-`createSamplerSink(sampler, { deadNote? })` is the scheduler's `InstrumentSink` over the sampler,
+`noteOn` starts a voice per region `resolveAll` returns and hands back one handle for all of them:
+detune, gain, filter and release reach every layer, and `endTime` is the last one's.
+
+`createSamplerSink(sampler, { deadNote?, instrumentOf? })` is the scheduler's `InstrumentSink` over the sampler,
 with the articulation layer described under [Articulations](#articulations): each event becomes
 attacks, pitch and level automation, a filter and a release; `allNotesOff(when)` releases every
 voice, the ones scheduled after `when` included (a release before a voice's start time is a 0-to-0
-fade, so it never sounds), and forgets any legato slide waiting for its next note.
+fade, so it never sounds), forgets any legato slide waiting for its next note, and drops the
+program changes scheduled after `when` (the scheduler sends each again when playback reaches its
+beat, so a pause or seek inside the lookahead never plays a later program early). A
+`MixEvent`'s `mix.program` switches the track's instrument at the beat through `setInstrument`, to what
+`instrumentOf(track, program)` returns (the caller's region map and source for that program;
+`undefined` keeps the current one), the same playback-order attribution the memory planner uses.
 
 `noteOn`'s `instrument` plays a region of another instrument through the track's strip: the dead
 note's noise burst uses it, so it works whichever tier the track is on. `previewNote` joins the
@@ -364,22 +380,40 @@ soloed one; it still goes through the insert, the fader and the panner.
   to 0 and the source stopped), so the release reaches exact silence. Chromium's
   `cancelAndHoldAtTime` holds nothing when no ramp spans the release time, so the release also
   sets the analytic envelope value at that time to anchor the fade.
-- **Stealing** is released voices first, then the quietest at the new note's time (velocity and
-  envelope, computed analytically), then the oldest; a note that has not started yet is never
-  stolen. The stolen voice fades over 5 ms from its level at that moment, release in progress
-  included, and no longer counts against the limit.
+- **Stealing** is released voices first, then the quietest at the new note's time, then the
+  oldest. Quietest is what the voice plays: envelope × velocity × the articulation gain automation
+  (a palm mute's -18 dB, a fade-in from -48 dB), all computed analytically. A note that has not
+  started yet, or starts with the new one (its own layers, a chord), is stolen only when every
+  other voice is gone, the quietest at its onset first, so `polyphony` is a hard cap: a
+  three-note chord at polyphony 2 keeps its two louder notes. The stolen
+  voice fades over 5 ms from its level at that moment, release in progress included, and no longer
+  counts against the limit. Each layer of a note is a voice of its own and counts as one; a layer
+  inside its envelope delay ranks by the level it is about to sound at, not as silent.
 - **Strings choke.** A new note on a string damps whatever sounds on that string, let-ring or
   not, with a dedicated 15 ms fade (`CHOKE_FADE`) rather than the region's release, which on a
   sampled guitar is long enough to smear the next note; string 0 (drum and pitched tracks)
   never chokes. A let-ring voice ignores note-off and rings to the next note on its string or to
   `letRing.until`, the end of the bar the scheduler supplies.
+- **Exclusive classes choke the same way.** A note whose regions carry an `exclusiveClass` damps,
+  with the same 15 ms fade, every sounding voice of that class on the track that came from the same
+  region map, which is how a GM kit's closed hi-hat cuts the open one. A region of another
+  instrument played through the track (the dead note) is not in the class.
+- **Region filter and envelope delay.** `Region.filter` is a low-pass node of its own ahead of the
+  articulation filter, set at the note's start, so a palm mute's 900 Hz adds to a GM zone's cutoff
+  and a harmonic's shelf, which switches the articulation filter's type, keeps it. `Envelope.delay`
+  holds the envelope at 0 from the onset while the source already runs, as SF2 does, so the sample
+  enters partway through; `levelAt` reads 0 until then.
 - **A non-resident sample is a skipped note, not a late one.** A scheduled note cannot wait for a
   decode; `noteOn` returns `undefined`, requests the load and reports through `onMiss`. Playback
-  start pre-warms with `preload` (ADR-0005).
+  start pre-warms with `preload` (ADR-0005), which loads every layer. A layered note with some
+  layers resident plays those and reports each missing one, so `Sampler.misses` counts missing
+  samples, one per layer, not notes.
 - **Channel units.** `setTrack` takes the model's 0..127 volume and pan; volume follows the MIDI
   curve `(v / 127)^2`, pan 64 is centre. `ChannelStrip.set(settings, at?, ramp?)` takes linear gain
   and -1..1 pan; without `at` a change is smoothed in now, with it the change lands at `at`, as a
-  linear glide over `ramp` seconds or a 5 ms smoothed step.
+  linear glide over `ramp` seconds or a 5 ms smoothed step. `ChannelStrip.gain` and `.pan` report
+  the last value set, so a change scheduled for `at` reads as its target from the call on, before
+  it lands.
 - **The limiter is Chromium's compressor**, which is not transparent: it applies automatic makeup
   gain (about +0.5 dB at these settings), its detector takes the first 100 ms or so of a render to
   settle, and it has a fixed pre-delay, measured at 264 frames (5.99 ms at 44.1 kHz): everything
@@ -430,23 +464,26 @@ intersect instead, and the generators the spec reserves for instruments (address
 `sampleModes`, `exclusiveClass`, `overridingRootKey`, `keynum`, `velocity`) are ignored at
 preset level.
 
-| SF2 generator                                                                   | `Region`                                                                                                                                                                  |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `keyRange`, `velRange`                                                          | `keyLo`..`keyHi`, `velLo`..`velHi`: the instrument zone's range intersected with the preset zone's; an empty intersection drops the zone                                  |
-| `overridingRootKey`, else `shdr.originalPitch`                                  | `rootKey`; an `originalPitch` of 255 (unpitched) reads as 60                                                                                                              |
-| `coarseTune`, `fineTune`, `shdr.pitchCorrection`                                | `tune` = coarse × 100 + fine + correction, in cents                                                                                                                       |
-| `modEnvToPitch`, `sustainModEnv`                                                | `tune` += depth × (1000 − sustain) / 1000: the pitch the modulation envelope holds after its transient is a fixed offset (GeneralUser GS tunes its Ocarina with it)       |
-| `scaleTuning` ≠ 100                                                             | one region per key, `rootKey` = key, `tune` = scale × (key − root) + the cents above: exact                                                                               |
-| `sampleModes` 1 and 3                                                           | `loop`, in seconds from the slice start; 3 (loop until release) as a plain loop. 0 and 2 play once                                                                        |
-| address offsets (`start`, `end`, `startloop`, `endloop`, fine + 32768 × coarse) | the slice the ref names and the loop inside it; a loop starting before the start offset cannot live in the slice and is dropped (reported)                                |
-| `attackVolEnv`, `holdVolEnv`                                                    | `envelope.attack`, `.hold`: 2^(timecents / 1200) seconds                                                                                                                  |
-| `sustainVolEnv`                                                                 | `envelope.sustain` = 10^(−cB / 200); 1000 cB (100 dB) and more is 0                                                                                                       |
-| `decayVolEnv`                                                                   | `envelope.decay` = SF2 time × min(sustain dB, 80) / 100: SF2 times a full 100 dB fall at a constant dB rate, the sampler the fall to the sustain level, or -80 dB at most |
-| `releaseVolEnv`                                                                 | `envelope.release` = SF2 time × 80 / 100, the sampler's release ending at -80 dB; exact from full level, slower from a lower one                                          |
-| `keynumToVolEnvHold`, `keynumToVolEnvDecay`                                     | one region per key, with hold and decay at timecents + factor × (60 − key): exact                                                                                         |
-| `initialAttenuation`                                                            | `attenuation` = cB / 10 dB, positive quieter                                                                                                                              |
-| `pan`                                                                           | `pan` = value / 500, mono regions only                                                                                                                                    |
-| linked left and right samples                                                   | one region with a two-channel ref, left first (below)                                                                                                                     |
+| SF2 generator                                                                   | `Region`                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `keyRange`, `velRange`                                                          | `keyLo`..`keyHi`, `velLo`..`velHi`: the instrument zone's range intersected with the preset zone's; an empty intersection drops the zone                                                                                                                                                                                             |
+| `overridingRootKey`, else `shdr.originalPitch`                                  | `rootKey`; an `originalPitch` of 255 (unpitched) reads as 60                                                                                                                                                                                                                                                                         |
+| `coarseTune`, `fineTune`, `shdr.pitchCorrection`                                | `tune` = coarse × 100 + fine + correction, in cents                                                                                                                                                                                                                                                                                  |
+| `modEnvToPitch`, `sustainModEnv`                                                | `tune` += depth × (1000 − sustain) / 1000: the pitch the modulation envelope holds after its transient is a fixed offset (GeneralUser GS tunes its Ocarina with it)                                                                                                                                                                  |
+| `scaleTuning` ≠ 100                                                             | one region per key, `rootKey` = key, `tune` = scale × (key − root) + the cents above: exact                                                                                                                                                                                                                                          |
+| `sampleModes` 1 and 3                                                           | `loop`, in seconds from the slice start; 3 (loop until release) as a plain loop. 0 and 2 play once                                                                                                                                                                                                                                   |
+| address offsets (`start`, `end`, `startloop`, `endloop`, fine + 32768 × coarse) | the slice the ref names and the loop inside it; a loop starting before the start offset cannot live in the slice and is dropped (reported)                                                                                                                                                                                           |
+| `attackVolEnv`, `holdVolEnv`                                                    | `envelope.attack`, `.hold`: 2^(timecents / 1200) seconds                                                                                                                                                                                                                                                                             |
+| `sustainVolEnv`                                                                 | `envelope.sustain` = 10^(−cB / 200); 1000 cB (100 dB) and more is 0                                                                                                                                                                                                                                                                  |
+| `decayVolEnv`                                                                   | `envelope.decay` = SF2 time × min(sustain dB, 80) / 100: SF2 times a full 100 dB fall at a constant dB rate, the sampler the fall to the sustain level, or -80 dB at most                                                                                                                                                            |
+| `releaseVolEnv`                                                                 | `envelope.release` = SF2 time × 80 / 100, the sampler's release ending at -80 dB; exact from full level, slower from a lower one                                                                                                                                                                                                     |
+| `delayVolEnv`                                                                   | `envelope.delay`, seconds, when above the spec's 1 ms default                                                                                                                                                                                                                                                                        |
+| `initialFilterFc`, `modEnvToFilterFc`, `sustainModEnv`, `initialFilterQ`        | `filter.cutoffHz` from fc + depth × (1000 − sustain) / 1000 cents, the held level as for the pitch, clamped to 1500 to 13500 cents (20 Hz to 19.9 kHz); `filter.q` = Q / 10 − 3.01 dB (FluidSynth's: 0 is Butterworth), and Q / 20 dB more `attenuation`, the DC gain reduction of SF2 8.1.3 and FluidSynth's 1 / √Q; none when open |
+| `exclusiveClass`                                                                | `exclusiveClass`                                                                                                                                                                                                                                                                                                                     |
+| `keynumToVolEnvHold`, `keynumToVolEnvDecay`                                     | one region per key, with hold and decay at timecents + factor × (60 − key): exact                                                                                                                                                                                                                                                    |
+| `initialAttenuation`                                                            | `attenuation` = cB / 10 dB, positive quieter, plus the resonance's DC reduction above                                                                                                                                                                                                                                                |
+| `pan`                                                                           | `pan` = value / 500, mono regions only                                                                                                                                                                                                                                                                                               |
+| linked left and right samples                                                   | one region with a two-channel ref, left first (below)                                                                                                                                                                                                                                                                                |
 
 **Stereo merge.** A zone whose sample is a left or right half, with a zone in the same instrument
 playing its linked partner over exactly the same key and velocity ranges, becomes one region whose
@@ -457,14 +494,14 @@ the left zone, and a right zone that differs in an envelope, attenuation or samp
 is counted in `report.stereoMismatches`. A half without such a partner, or whose partner's span
 would fall outside the sample data, stays a mono region with its own pan and is counted in
 `report.unpairedStereo`: for a pair whose zones cover different keys that is two hard-panned mono
-regions, of which the sampler sounds the first ([#61](https://github.com/tomer-shvadron/reprise/issues/61)).
+regions, which the sampler layers where both cover the key.
 
 **What the `Region` cannot carry is reported, never approximated.** `preset().report` counts,
 per preset, the zones with a non-neutral value for each generator the `Region` has no field for
-(filter, modulation and vibrato LFOs, the modulation envelope's transient, effects sends,
-`delayVolEnv`, `exclusiveClass`, `keynum`, `velocity`), zones under non-default modulators, zones
-expanded per key, overlapping region pairs (`layered`; a key-expanded zone counts once per key),
-stereo mismatches and unpaired halves, and dropped zones and loops.
+(modulation and vibrato LFOs, the modulation envelope's transient on pitch and on the filter,
+effects sends, `keynum`, `velocity`), zones under non-default modulators, zones expanded per key,
+overlapping region pairs (`layered`, which the sampler sounds together; a key-expanded zone counts
+once per key), stereo mismatches and unpaired halves, and dropped zones and loops.
 
 ### GeneralUser GS
 
@@ -495,12 +532,16 @@ Measured over the GM set (bank 0 programs 0 to 127 and the standard kit, 129 pre
   zones in Ocarina, Bagpipes and Helicopter hold a pitch offset of 94 to 700 cents, which `tune`
   carries. One note of Whistle and of Ocarina rendered through the sampler lands within a cent of
   440 Hz at A4.
-- It needs what the `Region` lacks, tracked in
-  [#61](https://github.com/tomer-shvadron/reprise/issues/61): 70 presets layer more than one zone
-  per key, which the sampler plays as one; 6,458 zone instances set a low-pass filter (median
-  about 800 Hz), 2,427 of them with a filter envelope whose held level belongs in the cutoff the
-  same way; 14 zones have an audible volume-envelope delay; 27 set an exclusive class. It also
-  uses non-default modulators in 4,215 zones, which nothing applies.
+- It layers: 70 presets have keys where more than one zone matches, and the sampler sounds them all
+  (Fast Strings at C4 is two panned samples, measured at 67% and 43% of the note's energy). 6,458
+  zone instances set a low-pass filter (median about 800 Hz), 2,427 of them with a filter envelope
+  whose held level the cutoff carries; Synth Bass 1 at C3 filters at 227 and 368 Hz and keeps 0.3%
+  of its open energy above 3 kHz. 14 zones have an audible volume-envelope delay (Synth Strings 2's
+  second layer enters 150 ms late, silent until then); 1,864 regions are resonant, and each loses half
+  its peak at DC (Music Box, 170 cB, plays 8.5 dB under its unfiltered level); 27 set an exclusive class (the closed hi-hat
+  leaves exactly its own level after choking the open one). It also uses non-default modulators in
+  4,215 zones, which nothing applies, and LFOs and the modulation envelope's transients, which the
+  report counts.
 - Three zones (Soundtrack, Birds) start past their loop start and play unlooped.
 
 The fixture the parser tests run on is `test-fixtures/synthetic.sf2`, under 4 KB, written by
@@ -544,6 +585,7 @@ quotes.
 | `Beat.grace`                                         | Played by the sink with their own effects: grace notes `before` end on the beat (squeezed into a quarter note, the scheduler's lead); on-beat ones start on it and delay the main note (squeezed into half the beat).                                                     |
 | `tie`                                                | The scheduler folds the chain into the origin. A bend on the origin spans the whole tied length when no later link bends on its own, as Guitar Pro plays it (`PlanInput.bendLength`); the links' own effects are #72.                                                     |
 | `Beat.mix` volume, pan                               | From `mix`, scheduled on the strip at the beat (`setTrack(..., { at, ramp })`), a linear glide over `duration` quarter notes when given; `allTracks` applies it to every track. Rests and tied continuations included.                                                    |
+| `Beat.mix` program                                   | From `mix`, the track's instrument switches at the beat (`setInstrument(..., at)`) to the sink's `instrumentOf(track, program)`; notes already sounding keep theirs. Rests and tied continuations included; replayed at a run start.                                      |
 
 On drum tracks only velocity (dynamics, accents, ghost), fades, trills and tremolo apply; drum
 articulation variants (rim shot, choke) arrive from the readers already mapped to their GM note.
@@ -586,7 +628,10 @@ vibrato, trills, tremolo, dynamics and fades stay automation in both tiers.
   once, not at a time, so a carried voice cannot change from a palm-muted low-pass to a
   harmonic's shelf without affecting the note still sounding.
 - **A mixer change outlives a stop.** The run start replays the changes before it, but nothing
-  restores `track.channel` first (see the `InstrumentSink` contract above).
+  first restores `track.channel` or the instrument the track was added with (see the
+  `InstrumentSink` contract above): seeking back before a program change, or a loop whose range
+  contains one, keeps the new program until a run start replays an earlier change. The baseline
+  reset WP-050 owns covers the instrument too; on the sampler side the baseline is `addTrack`'s.
 - **Vibrato is in Hz, not tempo-synced**, and starts at the onset; Guitar Pro's sounds the same at
   any tempo too.
 
@@ -660,7 +705,9 @@ planSamples(plan, regionMapOf); // the SampleRefs those keys reach
 `planInstruments` walks the playback sequence, not written order, so a `Beat.mix` program change
 reached through a repeat or a jump is attributed to the bars it actually sounds in. Each track
 plans its own program even when it has no notes (it costs nothing until a note asks for it).
-Keys come from `midiNote`, plus grace notes and the trill's alternate fret.
+Keys are the ones the sink strikes: the note's sounding key rounded (`soundingKey`, so a harmonic
+plans the overtone it plays, not the fretted key), plus grace notes and the trill's alternate fret.
+`planSamples` takes every layered region of a key (`resolveAll`).
 
 `load` decodes every sample the opening `bars` (default 4) can reach before it resolves, at every
 velocity and in every articulation layer, since dynamics and articulations are the scheduler's

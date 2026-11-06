@@ -207,16 +207,25 @@ describe('voice stealing', () => {
     expect(peak(data, 0.75, 1)).toBeLessThan(0.001);
   });
 
-  it('never steals a note that has not started yet', async () => {
+  it('steals a note that has not started yet only when nothing else is left', async () => {
     const context = offline(1);
-    const sampler = new Sampler(context, { polyphony: 1 });
+    const sampler = new Sampler(context, { polyphony: 2 });
     sampler.addTrack(samplerTrack('t'), sineInstrument());
+    sampler.noteOn('t', { key: 64, velocity: 127, when: 0 });
     sampler.noteOn('t', { key: 69, velocity: 127, when: 0.5 });
     sampler.noteOn('t', { key: 76, velocity: 127, when: 0.2 });
-    expect(sampler.pool.stolen).toBe(0);
+    expect(sampler.pool.stolen).toBe(1);
     const data = await render(context);
     expect(toneLevel(data, midiToFrequency(76), 0.3, 0.45)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, midiToFrequency(64), 0.3, 0.45)).toBeLessThan(0.001);
     expect(toneLevel(data, 440, 0.6, 0.9)).toBeGreaterThan(0.1);
+
+    // With a slot for one, the cap holds: the later note gives way.
+    const single = new Sampler(offline(1), { polyphony: 1 });
+    single.addTrack(samplerTrack('t'), sineInstrument());
+    single.noteOn('t', { key: 69, velocity: 127, when: 0.5 });
+    single.noteOn('t', { key: 76, velocity: 127, when: 0.2 });
+    expect(single.pool.active(0.2).map((voice) => voice.key)).toEqual([76]);
   });
 });
 

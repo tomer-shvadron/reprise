@@ -1,6 +1,7 @@
 import type { Score } from '@reprise/model';
 
 import { createAudioEngine } from '../../engine';
+import type { AudioEngine } from '../../engine';
 import { drive, manualTicker } from '../../offline-driver';
 import { RegionMap } from '../../sampler/region-map';
 import type { Envelope } from '../../sampler/region-map';
@@ -8,6 +9,7 @@ import { SynthSampleSource } from '../../sampler/sample-source';
 import { Sampler } from '../../sampler/sampler';
 import type { Instrument } from '../../sampler/sampler';
 import { createSamplerSink } from '../../sampler/sampler-sink';
+import type { SamplerSinkOptions } from '../../sampler/sampler-sink';
 import {
   SAMPLE_RATE,
   offline,
@@ -30,7 +32,14 @@ export interface Render {
  */
 export async function render(
   song: Score,
-  options: { instrument?: () => Instrument; seconds?: number } = {},
+  options: {
+    instrument?: () => Instrument;
+    seconds?: number;
+    sink?: SamplerSinkOptions;
+    fromTick?: number;
+    /** Transport calls at context times, e.g. a pause and a resume. */
+    actions?: (engine: AudioEngine) => { at: number; run: () => void }[];
+  } = {},
 ): Promise<Render> {
   const context = offline(options.seconds ?? 2.5);
   const sampler = new Sampler(context);
@@ -43,14 +52,15 @@ export async function render(
   const frames = manualTicker();
   const engine = createAudioEngine({
     context,
-    sink: createSamplerSink(sampler),
+    sink: createSamplerSink(sampler, options.sink),
     scheduler: scheduler.ticker,
     frames: frames.ticker,
     startLatency: T0,
   });
   await engine.load(song, { tier: 'gm', packs: [] });
-  engine.play();
-  const buffer = await drive(context, { tickers: [scheduler, frames] });
+  engine.play(options.fromTick);
+  const actions = options.actions?.(engine) ?? [];
+  const buffer = await drive(context, { tickers: [scheduler, frames], actions });
   return { data: buffer.getChannelData(0), sampler };
 }
 

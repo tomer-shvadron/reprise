@@ -1,5 +1,5 @@
 import { PPQ, beatTicks } from '@reprise/model';
-import type { ChannelMixChange, Id } from '@reprise/model';
+import type { ChannelMixChange, Id, Track } from '@reprise/model';
 
 import { DEAD_NOTE_KEY, deadNoteInstrument } from '../articulations/dead-note';
 import { placeGraces } from '../articulations/grace';
@@ -12,6 +12,11 @@ import type { Instrument, Sampler, TrackParams, VoiceHandle } from './sampler';
 export interface SamplerSinkOptions {
   /** The dead-note burst; a synthesized noise region when absent. */
   deadNote?: Instrument;
+  /**
+   * The instrument a `MixEvent` program change switches the track to, from the beat on;
+   * `undefined` (or no resolver) keeps the current one.
+   */
+  instrumentOf?: (track: Track, program: number) => Instrument | undefined;
 }
 
 /**
@@ -82,7 +87,8 @@ function shapePitch(
  * The scheduler's `InstrumentSink` over the sampler, with the articulation layer: each event,
  * and each grace note before or on its beat, becomes a `NotePlan` of attacks, pitch and level
  * automation, a filter and a release (`src/articulations/`). A beat's mixer change arrives
- * through `mix` and is scheduled on the strip at the beat.
+ * through `mix` and is scheduled on the strip at the beat, and its program change on the track's
+ * instrument.
  */
 export function createSamplerSink(
   sampler: Sampler,
@@ -146,7 +152,7 @@ export function createSamplerSink(
 
   function mix(event: MixEvent): void {
     const { track, when, secondsPerTick } = event;
-    const { volume, pan } = event.mix;
+    const { volume, pan, program } = event.mix;
     const apply = (change: ChannelMixChange, params: TrackParams): void => {
       const ramp = (change.duration ?? 0) * PPQ * secondsPerTick;
       const ids = change.allTracks ? sampler.trackIds : [track.id];
@@ -154,6 +160,8 @@ export function createSamplerSink(
     };
     if (volume) apply(volume, { volume: volume.value });
     if (pan) apply(pan, { pan: pan.value });
+    const instrument = program === undefined ? undefined : options.instrumentOf?.(track, program);
+    if (instrument) sampler.setInstrument(track.id, instrument, when);
   }
 
   return {

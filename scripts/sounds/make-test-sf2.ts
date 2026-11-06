@@ -22,6 +22,8 @@ const G = {
   startloopAddrsOffset: 2,
   modEnvToPitch: 7,
   initialFilterFc: 8,
+  initialFilterQ: 9,
+  modEnvToFilterFc: 11,
   pan: 17,
   sustainModEnv: 29,
   delayVolEnv: 33,
@@ -212,12 +214,15 @@ const INSTRUMENTS: readonly { name: string; global?: Zone; zones: Zone[] }[] = [
           [G.sampleID, 2],
         ],
       },
-      // Generators the Region cannot carry, to prove they are reported; the modulation envelope's
-      // sustain share of its pitch depth (700 × 50%) is a fixed offset the tune must carry.
+      // A filter, a delayed envelope, and the modulation envelope's transients, which are
+      // reported; its sustain share of the pitch depth (700 × 50%) and of the cutoff sweep
+      // (-1200 × 50%) are fixed offsets the tune and the filter must carry.
       {
         generators: [
           [G.keyRange, range(64, 127)],
           [G.initialFilterFc, 6000],
+          [G.initialFilterQ, 60],
+          [G.modEnvToFilterFc, -1200],
           [G.delayVolEnv, -3600],
           [G.coarseTune, 1],
           [G.modEnvToPitch, 700],

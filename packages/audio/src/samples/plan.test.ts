@@ -3,6 +3,8 @@ import type { Score } from '@reprise/model';
 import { largeScore, midi, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
+import { RegionMap } from '../sampler/region-map';
+import { region } from '../sampler/test/offline';
 import { gmInstrumentId, planInstruments, planSamples } from './plan';
 import { SyntheticProvider } from './test/synthetic';
 
@@ -92,6 +94,18 @@ describe('planInstruments', () => {
     expect(planInstruments(song).tracks[0]?.uses[0]?.keys).toEqual([67, 69, 71, 76]);
   });
 
+  it('plans the key a harmonic sounds at, which the sink strikes, not the fretted one', () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      // E4 open; the natural harmonic at 7 sounds B5 (+19.02), the pinch harmonic at fret 5 an
+      // octave over A4.
+      .beat('2', [note(1, 7, { harmonic: { kind: 'natural' } })])
+      .beat('2', [note(1, 5, { harmonic: { kind: 'pinch' } })])
+      .build();
+    expect(planInstruments(song).tracks[0]?.uses[0]?.keys).toEqual([69 + 12, 64 + 19]);
+  });
+
   it('takes an instrument resolver for other tiers', () => {
     const song = score()
       .track('guitar')
@@ -122,5 +136,23 @@ describe('planSamples', () => {
       'gm:0:25#16',
     ]);
     expect(planSamples(planInstruments(song), () => undefined)).toEqual([]);
+  });
+
+  it('reaches every layered region of a key', () => {
+    const layered = new RegionMap([
+      region({ sample: 'body' }),
+      region({ sample: 'air' }),
+      region({ sample: 'loud-only', velLo: 120 }),
+    ]);
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('1', [note(1, 5)])
+      .build();
+    expect(planSamples(planInstruments(song), () => layered).sort()).toEqual([
+      'air',
+      'body',
+      'loud-only',
+    ]);
   });
 });
