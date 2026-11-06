@@ -4,16 +4,8 @@ import type { BendPoint, Note } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 
 import { midiToFrequency } from '../sampler/sample-source';
-import { cents, peak, rms, zeroCrossingFrequency } from '../sampler/test/offline';
-import {
-  T0,
-  energyAbove,
-  noiseInstrument,
-  onsets,
-  pitchTrack,
-  pluckedInstrument,
-  render,
-} from './test/render';
+import { bandEnergy, cents, peak, rms, zeroCrossingFrequency } from '../sampler/test/offline';
+import { T0, noiseInstrument, onsets, pitchTrack, pluckedInstrument, render } from './test/render';
 
 const A4 = 440;
 const B4 = midiToFrequency(71);
@@ -183,8 +175,8 @@ describe('muted and faded links', () => {
       .build();
     const { data } = await render(song, { instrument: noiseInstrument });
 
-    const open = energyAbove(data, 2000, T0 + 0.2, T0 + 0.45);
-    const muted = energyAbove(data, 2000, T0 + 0.8, T0 + 0.95);
+    const open = bandEnergy(data, 2000, 10_000, T0 + 0.2, T0 + 0.45);
+    const muted = bandEnergy(data, 2000, 10_000, T0 + 0.8, T0 + 0.95);
     expect(muted / open).toBeLessThan(0.05);
   });
 
@@ -199,8 +191,8 @@ describe('muted and faded links', () => {
       .build();
     const { data } = await render(song, { instrument: noiseInstrument });
 
-    const open = energyAbove(data, 2000, T0 + 0.7, T0 + 0.95);
-    const muted = energyAbove(data, 2000, T0 + 1.3, T0 + 1.45);
+    const open = bandEnergy(data, 2000, 10_000, T0 + 0.7, T0 + 0.95);
+    const muted = bandEnergy(data, 2000, 10_000, T0 + 1.3, T0 + 1.45);
     expect(muted / open).toBeLessThan(0.05);
   });
 
