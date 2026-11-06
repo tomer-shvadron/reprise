@@ -257,9 +257,12 @@ export class Voice {
     return this.#gainAt(time) * this.#envelopeAt(time);
   }
 
-  /** What a steal ranks the voice by: `levelAt`, or before its onset the level it starts at. */
+  /**
+   * What a steal ranks the voice by: `levelAt`, or, before its onset or inside its envelope delay,
+   * the level it is about to sound at, so a delayed layer is not taken for a silent one.
+   */
   stealLevelAt(time: number): number {
-    if (time <= this.startTime) return this.#gainAt(this.startTime);
+    if (time <= this.startTime + this.#delay) return this.#gainAt(Math.max(time, this.startTime));
     return this.levelAt(time);
   }
 

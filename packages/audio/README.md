@@ -386,7 +386,8 @@ soloed one; it still goes through the insert, the fader and the panner.
   other voice is gone, the quietest at its onset first, so `polyphony` is a hard cap: a
   three-note chord at polyphony 2 keeps its two louder notes. The stolen
   voice fades over 5 ms from its level at that moment, release in progress included, and no longer
-  counts against the limit. Each layer of a note is a voice of its own and counts as one.
+  counts against the limit. Each layer of a note is a voice of its own and counts as one; a layer
+  inside its envelope delay ranks by the level it is about to sound at, not as silent.
 - **Strings choke.** A new note on a string damps whatever sounds on that string, let-ring or
   not, with a dedicated 15 ms fade (`CHOKE_FADE`) rather than the region's release, which on a
   sampled guitar is long enough to smear the next note; string 0 (drum and pitched tracks)

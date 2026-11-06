@@ -166,8 +166,10 @@ describe('envelope delay', () => {
     const envelope = { ...ORGAN, delay: 0.2 };
     sampler.addTrack(TRACK, instrument([region({ envelope })], { a440: sine(440) }));
     const voice = sampler.noteOn('t', { key: 69, velocity: 127, when: 0.1 });
-    // The pool ranks it by what it plays: nothing yet.
-    expect(sampler.pool.active(0.2)[0]?.levelAt(0.2)).toBe(0);
+    // It plays nothing yet, but the pool ranks it by the level it is about to sound at.
+    const [delayed] = sampler.pool.active(0.2);
+    expect(delayed?.levelAt(0.2)).toBe(0);
+    expect(delayed?.stealLevelAt(0.2)).toBeGreaterThan(0.5);
     voice?.release(0.8);
     const data = await render(context);
     expect(peak(data, 0, 0.3)).toBe(0);
@@ -239,6 +241,22 @@ describe('stealing by audible level', () => {
     sampler.noteOn('t', { key: 64, velocity: 100, when: 0.1 });
     expect(sampler.pool.stolen).toBe(2);
     expect(sampler.pool.active(0.1).map((voice) => voice.key)).toEqual([64, 64]);
+  });
+
+  it('keeps a layer inside its envelope delay over a quieter sounding note', () => {
+    const { sampler } = setup(1, 3);
+    sampler.addTrack(
+      TRACK,
+      instrument(
+        [region({ sample: 'a' }), region({ sample: 'b', envelope: { ...ORGAN, delay: 0.15 } })],
+        { a: sine(440), b: sine(880) },
+      ),
+    );
+    sampler.noteOn('t', { key: 69, velocity: 127, when: 0 });
+    const single = instrument([region()], { a440: sine(440) });
+    sampler.noteOn('t', { key: 60, velocity: 30, when: 0.05, instrument: single });
+    sampler.noteOn('t', { key: 67, velocity: 30, when: 0.1, instrument: single });
+    expect(sampler.pool.active(0.1).map((voice) => voice.key)).toEqual([69, 69, 67]);
   });
 
   it('holds the polyphony for a chord, stealing its quietest partner when nothing else is left', () => {
