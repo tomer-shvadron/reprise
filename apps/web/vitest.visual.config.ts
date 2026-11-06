@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { playwright } from '@vitest/browser-playwright';
@@ -9,6 +10,7 @@ import viteConfig from './vite.config.ts';
 const viewport = { width: 1600, height: 2000 };
 
 const ci = process.env['GITHUB_ACTIONS'] === 'true';
+const LOCAL_REFERENCES = '__local__';
 
 /**
  * Pixel screenshots of the score painter in Chromium. Kept out of the root config, so `pnpm test`,
@@ -46,6 +48,25 @@ export default mergeConfig(
             // Baselines and checks both come from CI's Linux Chromium, so the expected difference
             // is zero; ten pixels absorb a stray edge, while a stem moved 2 px changes about 40.
             comparatorOptions: { threshold: 0.1, includeAA: false, allowedMismatchedPixels: 10 },
+            // Outside CI a run compares against the developer's own references, in a gitignored
+            // folder, so it never reads or overwrites the committed Linux baselines.
+            resolveScreenshotPath: ({
+              arg,
+              ext,
+              browserName,
+              platform,
+              root,
+              testFileDirectory,
+              testFileName,
+              screenshotDirectory,
+            }) =>
+              join(
+                root,
+                testFileDirectory,
+                ci ? screenshotDirectory : LOCAL_REFERENCES,
+                testFileName,
+                `${arg}-${browserName}-${platform}${ext}`,
+              ),
           },
         },
       },

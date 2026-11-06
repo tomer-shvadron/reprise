@@ -8,8 +8,8 @@ suite catches what data cannot show: glyph and font rendering, the CSS tokens, p
 collisions, and how the tab and standard staves draw the same music side by side.
 
 ```sh
-pnpm test:visual              # compare against the baselines for this platform
-pnpm test:visual --update     # write your own local references (never committed)
+pnpm test:visual              # locally: compare against your own references in __local__/
+pnpm test:visual --update     # rewrite your own references (never committed)
 pnpm visual:accept [run-id]   # take a failed CI run's images as the new baselines
 ```
 
@@ -20,9 +20,22 @@ and the pre-commit hook never run it. CI runs it in the **Visual** step.
 
 Linux and macOS rasterize text differently, so only CI's images are committed:
 `__screenshots__/score.visual.test.tsx/<scene>-<notation>[-p<page>]-<theme>-chromium-linux.png`.
-A local run on macOS compares against your own `*-chromium-darwin.png` references, which are
-gitignored: run `pnpm test:visual --update` on the base commit, then `pnpm test:visual` after your
-change, and the diffs land in `apps/web/.vitest/attachments/`.
+CI (`GITHUB_ACTIONS=true`) is the only run that reads them.
+
+Every other run, on macOS or anywhere else, compares against your own references in
+`e2e/visual/__local__/score.visual.test.tsx/`, which is gitignored. The config's
+`resolveScreenshotPath` sends local runs there, so a local run never reads the committed baselines
+and `--update` on a Linux machine cannot overwrite them. To check a change locally:
+
+1. On the base commit, run `pnpm test:visual`. The first run has no references, so it creates
+   `__local__/` and writes one per scene, and every test fails with "a new one was created". That
+   failure means nothing yet: it is not a check. `pnpm test:visual --update` rewrites the
+   references when they are stale.
+2. Switch to your change and run `pnpm test:visual` again. It now compares, and the diffs land
+   in `apps/web/.vitest/attachments/`.
+
+A local pass says only that your change did not move pixels on your machine; CI's Visual step is
+what checks the committed baselines.
 
 When a PR changes pixels on purpose:
 
