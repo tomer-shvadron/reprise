@@ -159,6 +159,22 @@ describe('planNote over a tie chain', () => {
     expect(pitch(bare, 1.75)).toBeCloseTo(1, 9);
   });
 
+  it('completes a bend at the release when a staccato link or note cuts it short', () => {
+    const tied = planNote(
+      input(guitar, origin({ bend: up }), {
+        length: 1,
+        links: [link({ staccato: true }, 1.5)],
+      }),
+    );
+    const untied = planNote(input(guitar, origin({ bend: up, staccato: true })));
+
+    expect(tied.strikes[0]?.end).toBeCloseTo(1.75, 9);
+    expect(pitch(tied, 1.375)).toBeCloseTo(1, 9);
+    expect(pitch(tied, 1.75)).toBeCloseTo(2, 9);
+    expect(untied.strikes[0]?.end).toBeCloseTo(1.25, 9);
+    expect(pitch(untied, 1.25)).toBeCloseTo(2, 9);
+  });
+
   it('starts a bend written on a link at that link', () => {
     const planned = planNote(
       input(guitar, origin(), { length: 1, links: [link({ bend: up }, 1.5)] }),

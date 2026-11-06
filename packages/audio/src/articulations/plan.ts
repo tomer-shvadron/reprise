@@ -126,7 +126,7 @@ function slideTerms(input: PlanInput, key: number, chain: TieChain): PitchTerm[]
 
 function pitchTerms(input: PlanInput, key: number, chain: TieChain): PitchTerm[] {
   const { segments } = chain;
-  const terms = [bendTerm(segments), whammyTerm(segments), vibratoTerm(segments)].filter(
+  const terms = [bendTerm(segments, chain.end), whammyTerm(segments), vibratoTerm(segments)].filter(
     (term): term is PitchTerm => term !== undefined,
   );
   terms.push(...slideTerms(input, key, chain));

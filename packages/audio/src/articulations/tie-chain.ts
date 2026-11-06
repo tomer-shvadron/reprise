@@ -81,9 +81,10 @@ function latest(curves: readonly Curve[]): PitchTerm | undefined {
 
 /**
  * Each bend from its own onset, spanning to the end of the last link before one that bends or
- * vibrates on its own (alphaTab's `extendBendArrowsOnTiedNotes`); its last value holds after.
+ * vibrates on its own (alphaTab's `extendBendArrowsOnTiedNotes`), or to an earlier release;
+ * its last value holds after.
  */
-export function bendTerm(segments: readonly PlanLink[]): PitchTerm | undefined {
+export function bendTerm(segments: readonly PlanLink[], end: number): PitchTerm | undefined {
   const curves: Curve[] = [];
   for (const [index, segment] of segments.entries()) {
     const bend = segment.note.bend;
@@ -93,7 +94,8 @@ export function bendTerm(segments: readonly PlanLink[]): PitchTerm | undefined {
       if (following.note.bend || ownVibrato(following) !== 'none') break;
       last = following;
     }
-    const span = last.when + last.length - segment.when;
+    // alphaTab spans to the end note's sounding length, which a staccato halves.
+    const span = Math.min(last.when + last.length, end) - segment.when;
     curves.push({ start: segment.when, term: pointsCurve(bend.points, segment.when, span) });
   }
   return latest(curves);

@@ -612,11 +612,12 @@ where a tied link gets no note-on and its pitch carries on from the link before 
 
 A bend spans to the end of the last link before the first link with its own bend or vibrato
 (alphaTab's `extendBendArrowsOnTiedNotes`); with no such link that is the whole chain, and when
-the first link bends it is the origin's beat. Drum tracks take only the links' fades. Three
-departures from alphaTab, deliberate: vibrato carries through every bare link, not just the next
-one, since the model cannot write "no vibrato" on a link; bend and vibrato add up, where alphaTab
-plays one of bend, whammy, slide and vibrato per note; and a bend's span breaks on a link's note
-**or beat** vibrato, matching the "wider of note and beat" rule above.
+the first link bends it is the origin's beat. A staccato release before that end, of the note
+or of its last link, ends the span there instead, as alphaTab's `_generateBend` does. Drum
+tracks take only the links' fades. Three departures from alphaTab, deliberate: vibrato carries
+through every bare link, not just the next one, since the model cannot write "no vibrato" on a
+link; bend and vibrato add up, where alphaTab plays one of bend, whammy, slide and vibrato per
+note; and a bend's span breaks on a link's note **or beat** vibrato, matching the "wider of note and beat" rule above.
 
 On drum tracks only velocity (dynamics, accents, ghost), fades, trills and tremolo apply; drum
 articulation variants (rim shot, choke) arrive from the readers already mapped to their GM note.
