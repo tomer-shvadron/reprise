@@ -146,8 +146,8 @@ describe('ScoreView', () => {
     expect(top.end).toBeLessThan(6);
     expect(mountedIds()).toEqual(result.systems.slice(top.start, top.end).map(({ id }) => id));
 
-    scrollTo(2500);
-    const { range } = expected(result, 1, { x: 0, y: 2500 });
+    scrollTo(3500);
+    const { range } = expected(result, 1, { x: 0, y: 3500 });
     expect(range.start).toBeGreaterThan(3);
     expect(range.end).toBeLessThan(result.systems.length);
     expect(mountedIds()).toEqual(result.systems.slice(range.start, range.end).map(({ id }) => id));
