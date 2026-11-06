@@ -82,6 +82,25 @@ describe('installTransport', () => {
     expect(playback.getState().settings.tempo).toEqual({ mode: 'percent', value: 75 });
   });
 
+  it('announces each sound load stage once, not its progress', () => {
+    const services = createTestServices();
+    const { playback, transport } = services;
+    const spoken: string[] = [];
+    transport.subscribe(({ announcement }, previous) => {
+      if (announcement && announcement !== previous.announcement) spoken.push(announcement.text);
+    });
+    const sounds = (loaded: number) => {
+      playback.setState({ sounds: { status: 'loading', loaded, total: 100, error: undefined } });
+    };
+    sounds(1);
+    sounds(2);
+    sounds(50);
+    playback.setState({
+      sounds: { status: 'error', loaded: 50, total: 100, error: 'missing' },
+    });
+    expect(spoken).toEqual(['Loading sounds…', 'Sounds unavailable']);
+  });
+
   it('retargets an active loop to a new selection and keeps it when the selection clears', async () => {
     const services = createTestServices();
     mirrorAudio(services);

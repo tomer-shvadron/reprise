@@ -14,23 +14,28 @@ export function megabytes(bytes: number): string {
   return mb < 10 ? mb.toFixed(1) : mb.toFixed(0);
 }
 
+export interface SoundStatusLine {
+  text: string;
+  /** The text without its progress, which the announcer speaks once per stage. */
+  stage: string;
+  retry: boolean;
+}
+
+const line = (text: string, retry: boolean): SoundStatusLine => ({ text, stage: text, retry });
+
 /** What the sound status line says, and whether it offers Retry. */
-export function soundStatus(
-  state: PlaybackStoreState,
-): { text: string; retry: boolean } | undefined {
-  if (state.output.status === 'error') return { text: 'Audio output unavailable', retry: true };
-  if (state.sounds.status === 'error') return { text: 'Sounds unavailable', retry: true };
+export function soundStatus(state: PlaybackStoreState): SoundStatusLine | undefined {
+  if (state.output.status === 'error') return line('Audio output unavailable', true);
+  if (state.sounds.status === 'error') return line('Sounds unavailable', true);
   if (state.sounds.status === 'loading') {
     const { loaded, total } = state.sounds;
-    return {
-      text: total
-        ? `Loading sounds… ${String(Math.floor((loaded / total) * 100))}%`
-        : 'Loading sounds…',
-      retry: false,
-    };
+    const stage = 'Loading sounds…';
+    return total
+      ? { text: `${stage} ${String(Math.floor((loaded / total) * 100))}%`, stage, retry: false }
+      : line(stage, false);
   }
-  if (state.song.status === 'error') return { text: 'Sounds unavailable', retry: true };
-  if (state.song.status === 'loading') return { text: 'Preparing instruments…', retry: false };
+  if (state.song.status === 'error') return line('Sounds unavailable', true);
+  if (state.song.status === 'loading') return line('Preparing instruments…', false);
   return undefined;
 }
 
@@ -54,7 +59,13 @@ export function SoundStatus() {
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <Tooltip>
         <TooltipTrigger asChild>
-          <span role="status" className="text-muted-foreground min-w-0 truncate text-xs">
+          {/* Not a live region: progress would be read out at every percent; the announcer
+              speaks each stage once. */}
+          <span
+            aria-live="off"
+            data-sound-status
+            className="text-muted-foreground min-w-0 truncate text-xs"
+          >
             {text ?? (memory.decodedBytes > 0 && `${megabytes(memory.decodedBytes)} MB`)}
           </span>
         </TooltipTrigger>

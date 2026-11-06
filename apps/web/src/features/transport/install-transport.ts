@@ -5,6 +5,7 @@ import type { SelectionStore } from '@/state/selection';
 
 import { applyLoop } from './loop';
 import { readTransportPreferences, writeTransportPreferences } from './preferences';
+import { soundStatus } from './sound-status';
 import { TEMPO_PERCENT } from './tempo';
 import type { TransportUiStore } from './transport-ui';
 
@@ -39,6 +40,13 @@ export function installTransport(deps: TransportDeps): () => void {
     }
     const { countIn, metronome, masterVolume } = settings;
     writeTransportPreferences({ countIn, metronome, masterVolume }, storage);
+  });
+
+  const unsubscribeSounds = playback.subscribe((state, previous) => {
+    const stage = soundStatus(state)?.stage;
+    if (stage !== undefined && stage !== soundStatus(previous)?.stage) {
+      transport.getState().announce(stage);
+    }
   });
 
   // The speed is a song's own, found by the hash of its bytes: a different file starts at 100%
@@ -77,6 +85,7 @@ export function installTransport(deps: TransportDeps): () => void {
 
   return () => {
     unsubscribePlayback();
+    unsubscribeSounds();
     unsubscribeDocument();
     unsubscribeSelection();
   };

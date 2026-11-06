@@ -7,6 +7,12 @@ import { renderWithServices } from '@/test/render';
 
 import { megabytes, SoundStatus, soundStatus } from './sound-status';
 
+const status = () => {
+  const element = document.querySelector<HTMLElement>('[data-sound-status]');
+  if (!element) throw new Error('no sound status');
+  return element;
+};
+
 function stateWith(partial: Partial<PlaybackStoreState>): PlaybackStoreState {
   return { ...initialPlaybackState(), ...partial };
 }
@@ -22,7 +28,7 @@ describe('SoundStatus', () => {
       });
     });
 
-    expect(screen.getByRole('status')).toHaveTextContent('Sounds unavailable');
+    expect(status()).toHaveTextContent('Sounds unavailable');
     await user.click(screen.getByRole('button', { name: 'Retry' }));
     expect(services.fakeAudio.retry).toHaveBeenCalledOnce();
   });
@@ -41,8 +47,8 @@ describe('SoundStatus', () => {
       });
     });
 
-    expect(screen.getByRole('status')).toHaveTextContent('0.6 MB');
-    await user.hover(screen.getByRole('status'));
+    expect(status()).toHaveTextContent('0.6 MB');
+    await user.hover(status());
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
       '0.6 of 80 MB decoded · 1 instrument',
     );
@@ -71,11 +77,16 @@ describe('soundStatus', () => {
     expect(soundStatus(stateWith({ sounds: sounds({ status: 'loading' }) }))?.text).toBe(
       'Loading sounds…',
     );
+    expect(
+      soundStatus(stateWith({ sounds: sounds({ status: 'loading', loaded: 42, total: 100 }) }))
+        ?.stage,
+    ).toBe('Loading sounds…');
     expect(soundStatus(stateWith({ song: { status: 'loading', error: undefined } }))?.text).toBe(
       'Preparing instruments…',
     );
     expect(soundStatus(stateWith({ output: { status: 'error', error: 'no device' } }))).toEqual({
       text: 'Audio output unavailable',
+      stage: 'Audio output unavailable',
       retry: true,
     });
   });
