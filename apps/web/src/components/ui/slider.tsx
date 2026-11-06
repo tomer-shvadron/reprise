@@ -10,8 +10,17 @@ function Slider({
   value,
   min = 0,
   max = 100,
+  thumbLabel,
+  thumbKeys,
+  valueText,
   ...props
-}: React.ComponentProps<typeof SliderPrimitive.Root>) {
+}: React.ComponentProps<typeof SliderPrimitive.Root> & {
+  /** Names each thumb: Radix puts `role="slider"` on the thumb, so a label on the root names nothing. */
+  thumbLabel?: string;
+  /** `aria-keyshortcuts` for each thumb, such as the step commands that move it. */
+  thumbKeys?: string | undefined;
+  valueText?: (value: number) => string;
+}) {
   const _values = React.useMemo(
     () => (Array.isArray(value) ? value : Array.isArray(defaultValue) ? defaultValue : [min, max]),
     [value, defaultValue, min, max],
@@ -43,6 +52,11 @@ function Slider({
         <SliderPrimitive.Thumb
           data-slot="slider-thumb"
           key={index}
+          aria-label={thumbLabel}
+          aria-keyshortcuts={thumbKeys}
+          aria-valuetext={
+            valueText && _values[index] !== undefined ? valueText(_values[index]) : undefined
+          }
           className="border-ring ring-ring/50 relative block size-3 shrink-0 rounded-full border bg-white transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50"
         />
       ))}

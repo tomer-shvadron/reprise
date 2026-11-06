@@ -7,19 +7,14 @@ import type { AppServices } from './services';
 const ZOOM_STEP = 0.1;
 
 export type AppCommandId =
-  | MenuCommandId
-  | 'app.commandPalette'
-  | 'file.close'
-  | 'file.showImportDetails'
-  | 'transport.playPause'
-  | 'transport.stop';
+  MenuCommandId | 'app.commandPalette' | 'file.close' | 'file.showImportDetails';
 
 type AppCommand = Command & { id: AppCommandId };
 
 export function appCommands(
-  services: Pick<AppServices, 'ui' | 'platform' | 'document' | 'audio'>,
+  services: Pick<AppServices, 'ui' | 'platform' | 'document'>,
 ): AppCommand[] {
-  const { ui, platform, document, audio } = services;
+  const { ui, platform, document } = services;
   const zoomBy = (delta: number) => {
     ui.getState().setZoom(Math.round((ui.getState().zoom + delta) * 10) / 10);
   };
@@ -71,20 +66,6 @@ export function appCommands(
       title: 'Print…',
       shortcut: { key: 'p', mod: true },
       run: () => platform.print(),
-    },
-    {
-      id: 'transport.playPause',
-      title: 'Play or pause',
-      run: () => {
-        audio.togglePlay();
-      },
-    },
-    {
-      id: 'transport.stop',
-      title: 'Stop',
-      run: () => {
-        audio.stop();
-      },
     },
     {
       id: 'view.zoomIn',

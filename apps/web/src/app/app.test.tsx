@@ -45,6 +45,7 @@ describe('App', () => {
     expect(screen.getByRole('main', { name: 'Score' })).toHaveTextContent('Open a file (⌘O)');
     expect(screen.getByRole('contentinfo', { name: 'Transport' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeDisabled();
     expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
   });
 
@@ -55,7 +56,8 @@ describe('App', () => {
     await user.keyboard('{Meta>}k{/Meta}');
     const item = await screen.findByRole('option', { name: /Toggle light and dark theme/ });
     expect(screen.getByRole('option', { name: /Open file/ })).toHaveTextContent('⌘O');
-    expect(screen.getByRole('option', { name: /Play or pause/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Play or pause/ })).toHaveTextContent('Space');
+    expect(screen.getByRole('option', { name: /Toggle loop/ })).toHaveTextContent('F9');
     expect(screen.queryByRole('option', { name: /command palette/i })).not.toBeInTheDocument();
 
     await user.click(item);
@@ -103,6 +105,36 @@ describe('App', () => {
       'aria-valuenow',
       '320',
     );
+  });
+
+  it('gives Space back to Play after Escape closes a volume popover', async () => {
+    const { services, user } = renderApp();
+    await act(async () => {
+      await services.document.getState().openBytes('riff.reprise', await riffBytes());
+    });
+    act(() => {
+      services.playback.setState({ song: { status: 'ready', error: undefined } });
+    });
+    const trigger = screen.getByRole('button', { name: 'Master volume' });
+
+    await user.keyboard('{Alt>}{Shift>}v{/Shift}{/Alt}');
+    expect(await screen.findByRole('slider', { name: 'Master volume' })).toHaveFocus();
+    await user.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.queryByRole('slider', { name: 'Master volume' })).not.toBeInTheDocument();
+    });
+    expect(trigger).not.toHaveFocus();
+    await user.keyboard(' ');
+    expect(services.fakeAudio.togglePlay).toHaveBeenCalledOnce();
+
+    // Reached with Tab, the trigger keeps focus, as any button does.
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    await screen.findByRole('slider', { name: 'Master volume' });
+    await user.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(trigger).toHaveFocus();
+    });
   });
 
   it('runs native menu commands through the registry, saving in place after Save As', async () => {

@@ -6,6 +6,8 @@ export interface Command {
   shortcut?: Shortcut;
   /** False keeps a command out of the palette while its shortcut still works. */
   inPalette?: boolean;
+  /** False ignores auto-repeated keydowns, so holding Space does not toggle play on and off. */
+  repeat?: false;
   run: () => void | Promise<void>;
 }
 

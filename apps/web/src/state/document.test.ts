@@ -7,6 +7,7 @@ import type { Platform } from '@/platform/platform';
 import { fakePlatform } from '@/test/services';
 
 import {
+  contentKey,
   createDocumentStore,
   GP_FILES,
   REPRISE_FILES,
@@ -112,7 +113,7 @@ describe('the document store', () => {
     const state = store.getState();
     expect(state.score?.meta.title).toBe('Song');
     expect(state.id).toBeDefined();
-    expect(state.file).toEqual({ name: 'song.gp5', format: 'gp5' });
+    expect(state.file).toMatchObject({ name: 'song.gp5', format: 'gp5' });
     expect(state.warnings).toHaveLength(1);
     expect(state.warningsOpen).toBe(true);
     expect(state.dirty).toBe(false);
@@ -280,6 +281,31 @@ describe('the document store', () => {
     expect(store.getState().dirty).toBe(true);
   });
 
+  it('keys a file by the SHA-256 of its bytes and records the hash of each save', async () => {
+    expect(await contentKey(new TextEncoder().encode('abc'))).toBe(
+      'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+    );
+    const handle = { kind: 'file' };
+    const { store } = setup({ saveFile: () => Promise.resolve('/music/song.gp') });
+    const opened = new TextEncoder().encode('{}');
+    await store.getState().openBytes('song.reprise', opened, handle);
+    const key = await contentKey(opened);
+    expect(store.getState().file).toMatchObject({ key, savedKeys: [] });
+
+    store.getState().apply(editOf(store, 5));
+    await store.getState().save();
+    const saved = await contentKey(REPRISE_BYTES);
+    expect(store.getState().file).toMatchObject({ key, savedKeys: [saved] });
+
+    await answering(store, store.getState().saveAs(), 'gp');
+    expect(store.getState().file).toMatchObject({
+      name: 'song.gp',
+      format: 'gp',
+      key,
+      savedKeys: [saved, await contentKey(GP_BYTES)],
+    });
+  });
+
   it('sends Save on a gp5 to Save As, saying why, then saves in place to the chosen .reprise', async () => {
     const { store, write, saveFile, writeHandle } = setup({ gpDropped: [dynamicsDropped] });
     await store.getState().openBytes('song.gp5', GP5, { kind: 'file' });
@@ -295,7 +321,7 @@ describe('the document store', () => {
     });
     expect(write).toHaveBeenCalledWith(store.getState().score, 'reprise');
     expect(saveFile).toHaveBeenCalledWith('song.reprise', REPRISE_BYTES, REPRISE_FILES);
-    expect(store.getState().file).toEqual({
+    expect(store.getState().file).toMatchObject({
       name: 'song.reprise',
       format: 'reprise',
       handle: '/music/song.reprise',
@@ -321,7 +347,7 @@ describe('the document store', () => {
     await answering(store, store.getState().saveAs(), 'gp');
 
     expect(saveFile).toHaveBeenCalledWith('song.gp', GP_BYTES, GP_FILES);
-    expect(store.getState().file).toEqual({
+    expect(store.getState().file).toMatchObject({
       name: 'song.gp',
       format: 'gp',
       handle: '/music/song.gp',
@@ -383,7 +409,7 @@ describe('the document store', () => {
     expect(write).not.toHaveBeenCalledWith(expect.anything(), 'reprise');
     expect(writeHandle).toHaveBeenCalledWith(handle, GP_BYTES);
     expect(saveFile).not.toHaveBeenCalled();
-    expect(store.getState().file).toEqual({ name: 'song.gp', format: 'gp', handle });
+    expect(store.getState().file).toMatchObject({ name: 'song.gp', format: 'gp', handle });
     expect(store.getState().dirty).toBe(false);
     expect(store.getState().savePrompt).toBeUndefined();
 
@@ -403,7 +429,7 @@ describe('the document store', () => {
 
     expect(writeHandle).not.toHaveBeenCalled();
     expect(saveFile).not.toHaveBeenCalled();
-    expect(store.getState().file).toEqual({ name: 'song.gp', format: 'gp', handle });
+    expect(store.getState().file).toMatchObject({ name: 'song.gp', format: 'gp', handle });
     expect(store.getState().dirty).toBe(true);
     expect(store.getState().saving).toBe(false);
   });
@@ -418,7 +444,7 @@ describe('the document store', () => {
 
     expect(store.getState().savePrompt).toBeUndefined();
     expect(writeHandle).toHaveBeenCalledWith(handle, GP_BYTES);
-    expect(store.getState().file).toEqual({ name: 'song.gp', format: 'gp', handle });
+    expect(store.getState().file).toMatchObject({ name: 'song.gp', format: 'gp', handle });
     expect(store.getState().dirty).toBe(false);
   });
 
@@ -432,7 +458,7 @@ describe('the document store', () => {
     await answering(store, store.getState().saveAs(), 'gp');
     expect(saveFile).toHaveBeenCalledWith('song.gp', GP_BYTES, GP_FILES);
 
-    expect(store.getState().file).toEqual({ name: 'song.gp5', format: 'gp5' });
+    expect(store.getState().file).toMatchObject({ name: 'song.gp5', format: 'gp5' });
     expect(store.getState().dirty).toBe(true);
     expect(store.getState().saving).toBe(false);
   });
@@ -502,7 +528,7 @@ describe('the document store', () => {
     finish('/music/first.reprise');
     await saving;
 
-    expect(store.getState().file).toEqual({ name: 'second.gp5', format: 'gp5' });
+    expect(store.getState().file).toMatchObject({ name: 'second.gp5', format: 'gp5' });
     expect(store.getState().dirty).toBe(true);
   });
 

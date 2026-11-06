@@ -110,6 +110,67 @@ describe('shortcut dispatcher', () => {
   });
 });
 
+describe('bare keys on focused controls', () => {
+  function bare() {
+    const registry = new CommandRegistry();
+    const play = vi.fn();
+    const slower = vi.fn();
+    registry.register({
+      id: 'play',
+      title: 'Play',
+      shortcut: { key: ' ' },
+      repeat: false,
+      run: play,
+    });
+    registry.register({ id: 'slower', title: 'Slower', shortcut: { key: '[' }, run: slower });
+    uninstall = installShortcutDispatcher(window, registry, 'mac');
+    return { play, slower };
+  }
+
+  it('leaves Space and Enter to a focused button or switch', () => {
+    const { play, slower } = bare();
+    const button = document.createElement('button');
+    const toggle = document.createElement('div');
+    toggle.setAttribute('role', 'switch');
+    document.body.append(button, toggle);
+
+    fireEvent.keyDown(button, { key: ' ', code: 'Space' });
+    fireEvent.keyDown(toggle, { key: ' ', code: 'Space' });
+    expect(play).not.toHaveBeenCalled();
+    fireEvent.keyDown(button, { key: '[', code: 'BracketLeft' });
+    expect(slower).toHaveBeenCalledOnce();
+    button.remove();
+    toggle.remove();
+  });
+
+  it('plays from the body and swallows a held Space without repeating it', () => {
+    const { play, slower } = bare();
+    const first = new KeyboardEvent('keydown', {
+      key: ' ',
+      code: 'Space',
+      bubbles: true,
+      cancelable: true,
+    });
+    document.body.dispatchEvent(first);
+    expect(play).toHaveBeenCalledOnce();
+    expect(first.defaultPrevented).toBe(true);
+
+    const held = new KeyboardEvent('keydown', {
+      key: ' ',
+      code: 'Space',
+      repeat: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    document.body.dispatchEvent(held);
+    expect(play).toHaveBeenCalledOnce();
+    expect(held.defaultPrevented).toBe(true);
+
+    fireEvent.keyDown(document.body, { key: '[', code: 'BracketLeft', repeat: true });
+    expect(slower).toHaveBeenCalledOnce();
+  });
+});
+
 describe('formatShortcut', () => {
   it('renders platform-specific labels', () => {
     const shortcut = { key: 'l', mod: true, shift: true };
