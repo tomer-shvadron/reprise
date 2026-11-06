@@ -16,6 +16,7 @@ Terms used across the docs, the model and the UI. When two names exist, the one 
 - **Duration**: a beat's base value as the denominator: 1 whole, 2 half, 4 quarter, 8 eighth, and so on, plus dots and an optional tuplet.
 - **Tuplet**: `n` notes in the time of `of`: triplets are `{ n: 3, of: 2 }`.
 - **Playback sequence**: the ordered list of master-bar passes after expanding repeats and jumps. The scheduler and the cursor follow it; the layout shows written order.
+- **Run**: consecutive passes of the playback sequence that play consecutive master bars. A repeat back, a skipped alternate ending or a jump ends one. Click-to-seek stays in the playhead's run.
 - **Tempo map**: the mapping from a position in the playback sequence to seconds, given tempo changes.
 - **Alternate ending** (volta): the bracketed endings of a repeated section, numbered.
 - **Jumps**: segno, coda, D.S. (dal segno), D.C. (da capo), al Coda, al Fine, Fine, To Coda, double coda.
@@ -24,6 +25,7 @@ Terms used across the docs, the model and the UI. When two names exist, the one 
 - **Rhythm notation under tab**: stems, beams and flags drawn below the tab staff so the tab carries timing. Always shown in tab mode; in both mode the standard staff carries the rhythm instead (ADR-0021).
 - **System**: one line of music across all visible tracks. The layout breaks bars into systems and systems into pages.
 - **Primitive**: a positioned drawable produced by layout: glyph, line, path or text.
+- **Playhead**: the playback position drawn on the score: a line at the current onset and a highlight on its bar. The cursor of the specs.
 - **Anchor**: a model node's bounding box in layout output, used for hit-testing and cursor placement.
 - **GM**: General MIDI: 128 programs and a percussion map. The GM tier is the bundled soundfont.
 - **SF2**: SoundFont 2, a single binary file of samples and mappings. Used for the GM tier.
