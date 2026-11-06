@@ -94,6 +94,7 @@ pnpm desktop:build         # electron-vite build plus electron-builder installer
 pnpm fixtures:check        # re-describes fixtures/ with alphaTab, fails on a stale manifest
 pnpm sounds:fetch          # downloads the GM soundfont, verified by SHA-256
 pnpm layout:metrics:check  # fails when the committed layout font metrics are stale
+pnpm test:visual           # painter screenshots against CI's baselines; pnpm visual:accept takes a failed run's
 ```
 
 The PR gate is `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check`; CI also runs `pnpm fixtures:check` and `pnpm build` ([.github/workflows/ci.yml](.github/workflows/ci.yml)).

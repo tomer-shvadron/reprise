@@ -117,7 +117,7 @@ Owns `packages/layout` and `apps/web/src/features/score`. Reference: `../referen
 
 **Deliverables**
 
-- A reference score set (six fixtures covering tab only, standard only, both, drums, pitched, long) rendered through the demo route under Playwright, screenshots compared against committed baselines with a tolerance; a documented command to update baselines deliberately.
+- A reference score set (six fixtures covering tab only, standard only, both, drums, pitched, long) painted with the score painter's `ScorePage` in Vitest browser mode on the Playwright Chromium shell, screenshots compared against committed baselines with a tolerance; a documented command to update baselines deliberately.
 - Layout data snapshot coverage for every staff feature.
 
 **Acceptance criteria**
