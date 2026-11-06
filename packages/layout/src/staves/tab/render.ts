@@ -25,20 +25,24 @@ import {
 } from '../rhythm';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
 import { DYNAMICS_GLYPHS, dynamicsBaseline, shownDynamics } from '../dynamics';
+import { analyseEffects, drawLanes } from '../effects';
 import {
   TAB,
   analyseBar,
   fingering,
   labelHalf,
   labelHalfHeight,
+  freeStem,
   labelOf,
   restGlyph,
+  tremoloGlyph,
   type NoteLabel,
-  type TabBar,
   type TabBeat,
   type TabOptions,
   type TabVoice,
 } from './analysis';
+import { lineY, type TabContext as Context } from './context';
+import { drawNoteEffects, drawStrokes, graceCentres } from './effects';
 import { wordStart } from './measure';
 
 const sign = (direction: StemDirection): number => (direction === 'down' ? 1 : -1);
@@ -48,19 +52,6 @@ const TUPLET_OVERHANG = 0.4;
 const DESCENT = 0.6;
 /** A word row's baseline above the row's bottom: descenders and a gap from what is below. */
 const WORD_LIFT = 0.8;
-
-interface Context {
-  input: StaffBar;
-  placement: StaffBarPlacement;
-  sink: LayoutSink;
-  options: TabOptions;
-  analysed: TabBar;
-  space: number;
-}
-
-function lineY({ placement }: Context, string: number): number {
-  return placement.top + (string - 1) * placement.geometry.lineSpacing;
-}
 
 /** Where a voice's stems start, next to the outer string, and where unbeamed ones end. */
 function stemBase(context: Context, direction: StemDirection): number {
@@ -112,6 +103,22 @@ function drawLabel(
       }),
     );
   }
+  if (label.suffix) {
+    const small = size * TAB.graceScale;
+    const knockX = TAB.knockoutX * small;
+    const left = x + half + TAB.suffixGap * size;
+    const smallHalfHeight = labelHalfHeight(small);
+    sink.primitives.push(
+      box(
+        rect(left, y - smallHalfHeight, label.suffix.width + 2 * knockX, smallHalfHeight * 2),
+        0,
+        { fill: true, role: 'paper', node: label.note.id },
+      ),
+      text(label.suffix.text, left + knockX, y + textExtent(small).ascent / 2, small, {
+        node: label.note.id,
+      }),
+    );
+  }
   anchor(context, 'note', label.note.id, area, voice);
 }
 
@@ -119,9 +126,10 @@ function drawGraces(context: Context, beat: TabBeat, x: number): void {
   const { space, sink } = context;
   const size = TAB.fretSize * space * TAB.graceScale;
   const base = stemBase(context, beat.direction);
-  let cursor = x - beat.half - TAB.graceGap * space;
-  for (const column of [...beat.graces].reverse()) {
-    const centre = cursor - column.width / 2;
+  const centres = graceCentres(beat, x, space);
+  // Nearest the beat first, as the columns were always drawn.
+  for (const [g, column] of [...beat.graces.entries()].reverse()) {
+    const centre = centres[g] ?? x;
     for (const label of column.labels) drawLabel(context, label, centre, size, beat.voice);
     if (context.analysed.rhythm) {
       const end = base + sign(beat.direction) * TAB.graceStem * space;
@@ -132,7 +140,6 @@ function drawGraces(context: Context, beat: TabBeat, x: number): void {
         node,
       });
     }
-    cursor -= column.width + TAB.graceGap * space;
   }
 }
 
@@ -172,7 +179,7 @@ function drawRhythm(context: Context, voice: TabVoice, xs: readonly number[]): v
   const s = sign(direction);
   const base = stemBase(context, direction);
   const stemEnd = (beams: number): number =>
-    base + s * (TAB.stem * space + Math.max(0, beams - 2) * BEAM_PITCH * space);
+    base + s * (TAB.stem * space + voice.tremolo + Math.max(0, beams - 2) * BEAM_PITCH * space);
 
   for (const indices of voice.beams) {
     const beats = indices.flatMap((i) => {
@@ -206,6 +213,15 @@ function drawRhythm(context: Context, voice: TabVoice, xs: readonly number[]): v
     const from = duration === 2 ? base + s * TAB.halfStemSkip * space : base;
     if (duration === 2 || duration === 4) drawStem(sink, x, from, stemEnd(0), space, { node: id });
     drawDots(sink, dots, x + TAB.dotX * space, from + s * TAB.dotY * space, space, { node: id });
+    const tremolo = tremoloGlyph(beat.beat);
+    if (tremolo) {
+      const free = freeStem(beat.beat);
+      const middle = base + s * ((free.from + free.to) / 2) * space + (s * voice.tremolo) / 2;
+      const { bbox } = glyphMetrics(tremolo);
+      sink.primitives.push(
+        glyph(tremolo, x, middle + ((bbox.top + bbox.bottom) / 2) * space, space, { node: id }),
+      );
+    }
   }
 
   const tupletY = base + s * (TAB.stem * space + voice.extraStem + TAB.tupletGap * space);
@@ -409,6 +425,15 @@ export function renderTab(
     }
     if (analysed.rhythm) drawRhythm(context, voice, xs);
     drawTies(context, voice, xs);
+    drawStrokes(context, voice, xs);
+    drawNoteEffects(context, voice, xs);
   }
   drawWords(context, positions);
+  drawLanes({
+    input,
+    placement,
+    sink,
+    space,
+    effects: analyseEffects(input.bar, space, { articulations: analysed.rhythm }),
+  });
 }

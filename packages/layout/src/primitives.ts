@@ -127,6 +127,55 @@ export function box(
   };
 }
 
+/** SVG path data `d` in layout coordinates, whose extent the caller knows. */
+export function path(
+  d: string,
+  bbox: Rect,
+  fill: boolean,
+  thickness: number,
+  options: Common = {},
+): PathPrimitive {
+  return {
+    kind: 'path',
+    x: bbox.x,
+    y: bbox.y,
+    d,
+    fill,
+    thickness: round(thickness),
+    bbox,
+    ...common(options),
+  };
+}
+
+/** A point for path data, rounded like every emitted coordinate. */
+export function point(x: number, y: number): string {
+  return `${String(round(x))} ${String(round(y))}`;
+}
+
+/** Arrowheads are filled triangles this wide and long, in staff spaces. */
+const ARROW_WIDTH = 0.7;
+export const ARROW_LENGTH = 0.8;
+
+/** A filled triangular arrowhead with its tip at (x, y), pointing up, down, left or right. */
+export function arrowhead(
+  x: number,
+  y: number,
+  direction: 'up' | 'down',
+  space: number,
+  options: Common = {},
+): PathPrimitive {
+  const half = (ARROW_WIDTH * space) / 2;
+  const length = ARROW_LENGTH * space * (direction === 'up' ? 1 : -1);
+  const d = `M${point(x, y)}L${point(x + half, y + length)}L${point(x - half, y + length)}Z`;
+  return path(
+    d,
+    rect(x - half, Math.min(y, y + length), half * 2, Math.abs(length)),
+    true,
+    0,
+    options,
+  );
+}
+
 /** An open polyline through `points`, stroked. */
 export function polyline(
   points: readonly (readonly [number, number])[],

@@ -1,6 +1,7 @@
 import { glyphMetrics, textWidth } from '../../metrics';
 import type { OnsetExtent, StaffBar, StaffBarMeasure } from '../staff-module';
 import { DYNAMICS_GLYPHS, beatDynamics } from '../dynamics';
+import { analyseEffects } from '../effects';
 import { TAB, analyseBar, type TabBeat, type TabOptions } from './analysis';
 import { feelRight } from './spacing';
 
@@ -62,6 +63,13 @@ export function measureTab(input: StaffBar, options: TabOptions): StaffBarMeasur
       onsets.push({ tick: beat.tick, left, right });
     }
   }
+  const effects = analyseEffects(input.bar, space, { articulations: analysed.rhythm });
+  for (const reserved of effects.reserved) {
+    const onset = onsets.find((o) => Math.abs(o.tick - reserved.tick) < TICK_EPSILON);
+    if (!onset) continue;
+    onset.left = Math.max(onset.left, reserved.left);
+    onset.right = Math.max(onset.right, reserved.right);
+  }
   const nextLeft = (tick: number): number =>
     onsets.find((onset) => Math.abs(onset.tick - tick) < TICK_EPSILON)?.left ?? 0;
   for (const onset of onsets) {
@@ -74,7 +82,7 @@ export function measureTab(input: StaffBar, options: TabOptions): StaffBarMeasur
   const { rows } = analysed;
   return {
     onsets,
-    above: rows.upper > 0 ? rows.upper : TAB.wordClearance * space,
-    below: rows.lower,
+    above: Math.max(rows.upper > 0 ? rows.upper : TAB.wordClearance * space, rows.lettersAbove),
+    below: Math.max(rows.lower, rows.lettersBelow),
   };
 }
