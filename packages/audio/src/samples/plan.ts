@@ -38,7 +38,7 @@ export function gmInstrumentId(track: Pick<Track, 'kind' | 'bank'>, program: num
     : `gm:${String(track.bank)}:${String(program)}`;
 }
 
-/** The keys `planNote` strikes: a harmonic sounds its overtone, a trill's alternate its fret. */
+/** The keys the sink strikes: a harmonic's sounding key, rounded as it is, and a trill's alternate. */
 function addKeys(track: Track, note: Note, keys: Set<number>): void {
   const struck = [Math.round(soundingKey(track, note))];
   if (note.trill) struck.push(midiNote(track, { string: note.string, fret: note.trill.fret }));
@@ -129,9 +129,9 @@ export function planInstruments(score: Score, options: PlanOptions = {}): SongPl
 const VELOCITIES = Array.from({ length: 127 }, (_, i) => i + 1);
 
 /**
- * The samples a plan's keys resolve to at every velocity and in every layer: the plan does not
- * know dynamics or articulations (the scheduler does), so preloading all of them for the
- * opening bars is what guarantees no skipped note there.
+ * The samples a plan's keys resolve to at every velocity and in every layer, every layered
+ * region of a key included: the plan does not know dynamics or articulations (the scheduler
+ * does), so preloading all of them for the opening bars is what guarantees no skipped note there.
  */
 export function planSamples(
   plan: SongPlan,
@@ -145,8 +145,7 @@ export function planSamples(
       for (const layer of [undefined, ...map.layers]) {
         for (const key of keys) {
           for (const velocity of VELOCITIES) {
-            const region = map.resolve(key, velocity, layer);
-            if (region) samples.add(region.sample);
+            for (const region of map.resolveAll(key, velocity, layer)) samples.add(region.sample);
           }
         }
       }

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import { PPQ } from '@reprise/model';
 import type { Dynamics, Note } from '@reprise/model';
 import { midi, note, score } from '@reprise/model/testing';
 
 import { RegionMap } from '../sampler/region-map';
+import type { Instrument } from '../sampler/sampler';
 import { SynthSampleSource, midiToFrequency } from '../sampler/sample-source';
 import {
   SAMPLE_RATE,
@@ -34,6 +36,16 @@ const E4 = midiToFrequency(64);
 /** String 1 of a guitar in E standard: fret 5 is A4, fret 7 is B4. */
 const a = (spec: Parameters<typeof note>[2] = {}): Note => note(1, 5, spec);
 const b = (spec: Parameters<typeof note>[2] = {}): Note => note(1, 7, spec);
+
+/** Program 30 in the program-change tests: every key a fifth up, so A4 sounds at E5. */
+function fifthUp(): Instrument {
+  return {
+    regions: new RegionMap([region({ sample: 'e5' })]),
+    source: new SynthSampleSource(SAMPLE_RATE, {
+      e5: { kind: 'sine', frequency: A4 * 1.5, duration: 6 },
+    }),
+  };
+}
 
 function pitchAt(data: Float32Array, from: number, to: number, expected: number): number {
   return cents(zeroCrossingFrequency(data, from, to), expected);
@@ -513,6 +525,100 @@ describe('beat mixer changes', () => {
       }
     }
     expect(Math.abs(crossing - (T0 + 1))).toBeLessThan(0.01);
+  });
+
+  it('switches the track to the program a beat names, from that beat on', async () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('2', [a()])
+      .beat('2', [a()], { mix: { program: 30 } })
+      .build();
+    const programs: number[] = [];
+    const { data } = await render(song, {
+      sink: {
+        instrumentOf: (_track, program) => {
+          programs.push(program);
+          return program === 30 ? fifthUp() : undefined;
+        },
+      },
+    });
+    expect(programs).toEqual([30]);
+    expect(toneLevel(data, A4, T0 + 0.2, T0 + 0.9)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, A4 * 1.5, T0 + 0.2, T0 + 0.9)).toBeLessThan(0.001);
+    expect(toneLevel(data, A4 * 1.5, T0 + 1.2, T0 + 1.9)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, A4, T0 + 1.2, T0 + 1.9)).toBeLessThan(0.001);
+  });
+
+  it('plays a run started past a program change in the new program from its first note', async () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('2', [a()], { mix: { program: 30 } })
+      .beat('2', [a()])
+      .bar()
+      .beat('2', [a()])
+      .rest('2')
+      .build();
+    const { data } = await render(song, {
+      fromTick: 4 * PPQ,
+      sink: { instrumentOf: (_track, program) => (program === 30 ? fifthUp() : undefined) },
+    });
+    expect(toneLevel(data, A4 * 1.5, T0 + 0.05, T0 + 0.4)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, A4, T0 + 0.05, T0 + 0.4)).toBeLessThan(0.001);
+  });
+
+  it('applies a program change written on a rest beat', async () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('2', [a()])
+      .rest('4', { mix: { program: 30 } })
+      .beat('4', [a()])
+      .build();
+    const { data } = await render(song, {
+      sink: { instrumentOf: (_track, program) => (program === 30 ? fifthUp() : undefined) },
+    });
+    expect(toneLevel(data, A4, T0 + 0.2, T0 + 0.9)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, A4 * 1.5, T0 + 1.6, T0 + 1.9)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, A4, T0 + 1.6, T0 + 1.9)).toBeLessThan(0.001);
+  });
+
+  it('keeps the old program up to its beat after a pause inside the lookahead', async () => {
+    let builder = score().track('guitar').bar();
+    for (let k = 0; k < 16; k++) builder = builder.beat('16', [a()]);
+    const song = builder
+      .bar()
+      .beat('1', [a()], { mix: { program: 30 } })
+      .build();
+    // The change on bar 2 is at T0 + 2; the pause lands inside the 200 ms lookahead before it.
+    const pauseAt = T0 + 1.83;
+    const resumeAt = 3;
+    const { data } = await render(song, {
+      seconds: 4.5,
+      sink: { instrumentOf: (_track, program) => (program === 30 ? fifthUp() : undefined) },
+      actions: (engine) => [
+        {
+          at: pauseAt,
+          run: () => {
+            engine.pause();
+          },
+        },
+        {
+          at: resumeAt,
+          run: () => {
+            engine.play();
+          },
+        },
+      ],
+    });
+    const found = onsets(data, 0.3).filter((onset) => onset > resumeAt);
+    const resumed = found[0] ?? Number.NaN;
+    // The sixteenths left in bar 1, then the change on bar 2.
+    const change = resumed + Math.round((T0 + 2 - pauseAt) / 0.125) * 0.125;
+    expect(toneLevel(data, A4, resumed + 0.01, change - 0.01)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, A4 * 1.5, resumed + 0.01, change - 0.01)).toBeLessThan(0.001);
+    expect(toneLevel(data, A4 * 1.5, change + 0.05, change + 0.5)).toBeGreaterThan(0.1);
   });
 
   it('glides a volume change over its transition', async () => {

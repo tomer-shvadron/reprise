@@ -35,7 +35,7 @@ export interface PresetReport {
   unpairedStereo: number;
   /**
    * Region pairs that overlap in key and velocity, so a key-expanded zone counts once per key.
-   * SF2 sounds both, the sampler the first.
+   * SF2 and the sampler sound both.
    */
   layered: number;
   /** Zones dropped for a ROM or missing sample, or a sample rate that is not positive. */
@@ -97,6 +97,20 @@ const FULL_RANGE = 127 << 8;
 /** The sampler's exponential ramps stop at -80 dB; SF2 times are for a 100 dB fall (8.1.3). */
 const SAMPLER_FLOOR_DB = 80;
 const SF2_FULL_SCALE_DB = 100;
+/** `initialFilterFc`'s maximum, about 19.9 kHz: at or above it with no resonance the filter is open. */
+const OPEN_FILTER_CENTS = 13_500;
+/** `initialFilterFc`'s minimum, 20 Hz: a negative filter envelope never holds the cutoff below it. */
+const MIN_FILTER_CENTS = 1500;
+/**
+ * SF2's Q is the peak above DC gain at the cutoff; FluidSynth takes 0 as no peak at all, the
+ * Butterworth the voice already plays, so the soundfonts voiced on it sound as designed.
+ */
+const BUTTERWORTH_Q_DB = -3.0103;
+
+/** Absolute cents, A4 = 6900, to hertz. */
+function centsToHz(cents: number): number {
+  return 440 * 2 ** ((cents - 6900) / 1200);
+}
 
 function range(amount: number | undefined): Range {
   const value = amount ?? FULL_RANGE;
@@ -201,6 +215,12 @@ const PAIR_CHECKED = [
   Gen.keynumToVolEnvDecay,
   Gen.initialAttenuation,
   Gen.sampleModes,
+  Gen.delayVolEnv,
+  Gen.initialFilterFc,
+  Gen.initialFilterQ,
+  Gen.modEnvToFilterFc,
+  Gen.sustainModEnv,
+  Gen.exclusiveClass,
 ];
 
 function isStereo(sample: Sf2Sample): boolean {
@@ -416,6 +436,22 @@ export function resolvePreset(
   };
 }
 
+/**
+ * The low-pass the zone holds once its modulation envelope has settled: like the pitch, the
+ * sustain share of `modEnvToFilterFc` is a fixed offset to the cutoff. Absent when open.
+ */
+function filter(generators: ReadonlyMap<number, number>): Region['filter'] {
+  const held = (1000 - value(generators, Gen.sustainModEnv)) / 1000;
+  const cents =
+    value(generators, Gen.initialFilterFc) + value(generators, Gen.modEnvToFilterFc) * held;
+  const resonance = value(generators, Gen.initialFilterQ);
+  if (cents >= OPEN_FILTER_CENTS && resonance === 0) return undefined;
+  return {
+    cutoffHz: centsToHz(Math.min(Math.max(cents, MIN_FILTER_CENTS), OPEN_FILTER_CENTS)),
+    q: resonance / 10 + BUTTERWORTH_Q_DB,
+  };
+}
+
 function envelope(generators: ReadonlyMap<number, number>, key: number): Envelope {
   const fromMiddleC = 60 - key;
   const holdTc =
@@ -424,7 +460,10 @@ function envelope(generators: ReadonlyMap<number, number>, key: number): Envelop
     value(generators, Gen.decayVolEnv) + value(generators, Gen.keynumToVolEnvDecay) * fromMiddleC;
   const sustainCb = value(generators, Gen.sustainVolEnv);
   const sustainDb = sustainCb / 10;
+  const delayTc = value(generators, Gen.delayVolEnv);
   return {
+    // The spec's default, -12000 timecents, is about a millisecond: nothing to carry.
+    ...(delayTc > defaultOf(Gen.delayVolEnv) && { delay: timecentsToSeconds(delayTc) }),
     attack: timecentsToSeconds(value(generators, Gen.attackVolEnv)),
     hold: timecentsToSeconds(holdTc),
     // SF2 decay and release are the time of a full 100 dB fall at a constant dB rate; the sampler
@@ -462,9 +501,13 @@ function buildRegions(
     header.pitchCorrection +
     value(pitch, Gen.modEnvToPitch) * held;
   const scale = value(pitch, Gen.scaleTuning);
-  const attenuation = value(generators, Gen.initialAttenuation) / 10;
+  const lowpass = filter(generators);
+  // SF2 8.1.3 #9: the resonance lowers the DC gain by half of it, as FluidSynth's 1 / sqrt(Q) does.
+  const resonanceCut = lowpass ? value(generators, Gen.initialFilterQ) / 20 : 0;
+  const attenuation = value(generators, Gen.initialAttenuation) / 10 + resonanceCut;
   const pan = zone.samples.length === 1 ? value(generators, Gen.pan) / 500 : 0;
   const rate = zone.sample.sampleRate;
+  const exclusiveClass = value(generators, Gen.exclusiveClass);
 
   const base = {
     velLo: vel.lo,
@@ -478,6 +521,8 @@ function buildRegions(
     }),
     ...(attenuation !== 0 && { attenuation }),
     ...(pan !== 0 && { pan }),
+    ...(lowpass && { filter: lowpass }),
+    ...(exclusiveClass !== 0 && { exclusiveClass }),
   };
 
   // The Region tunes and shapes per range, so per-key generators become one region per key.

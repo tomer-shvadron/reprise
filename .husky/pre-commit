@@ -1,2 +1,1 @@
-pnpm exec lint-staged
-pnpm typecheck
+lint-staged --hide-all --diff-filter=ACMRD

@@ -136,6 +136,28 @@ describe('Sf2Soundfont regions', () => {
       stereoMismatches: 0,
       layered: 1,
     });
+    // Where both cover the key, the map resolves both, so the sampler sounds the whole image.
+    const map = font.regionMapFor(0, 2);
+    expect(map?.resolveAll(50, 100).map((region) => region.pan)).toEqual([-1, 1]);
+    expect(map?.resolveAll(70, 100).map((region) => region.pan)).toEqual([1]);
+  });
+
+  it('carries the low-pass at its held level, the envelope delay and the exclusive class', () => {
+    const high = regionsOf(0, 25).at(-1);
+    // 6000 cents less the held half of the -1200-cent sweep is 5400 cents: 440 × 2^-1.25 Hz.
+    expect(high?.filter?.cutoffHz).toBeCloseTo(440 * 2 ** ((5400 - 6900) / 1200), 9);
+    // 60 cB of resonance over FluidSynth's Butterworth floor.
+    expect(high?.filter?.q).toBeCloseTo(6 - 3.0103, 9);
+    // Half of the 6 dB peak comes off the DC gain.
+    expect(high?.attenuation).toBeCloseTo(3, 9);
+    expect(high?.envelope.delay).toBeCloseTo(2 ** (-3600 / 1200), 12);
+    // The other zones keep the spec's open filter and 1 ms delay, which carry nothing.
+    const [low] = regionsOf(0, 25);
+    expect(low?.filter).toBeUndefined();
+    expect(low?.envelope.delay).toBeUndefined();
+    const kit = font.drumKitRegionMap();
+    expect(kit?.resolve(38, 100)?.exclusiveClass).toBe(1);
+    expect(kit?.resolve(36, 100)?.exclusiveClass).toBeUndefined();
   });
 
   it('adds preset generators to the instrument values and ignores instrument-only ones', () => {
@@ -215,12 +237,13 @@ describe('Sf2Soundfont regions', () => {
 
   it('reports the generators the Region cannot carry instead of approximating them', () => {
     const report = font.preset(0, 25)?.report;
-    expect(report?.unsupported).toEqual({ initialFilterFc: 1, delayVolEnv: 1, modEnvToPitch: 1 });
+    // Only the modulation envelope's transients are left; its held shares are carried.
+    expect(report?.unsupported).toEqual({ modEnvToPitch: 1, modEnvToFilterFc: 1 });
     expect(report?.layered).toBe(0);
     expect(report?.stereoMismatches).toBe(0);
     expect(report?.unpairedStereo).toBe(0);
     const kit = font.preset(128, 0)?.report;
-    expect(kit?.unsupported).toEqual({ exclusiveClass: 1 });
+    expect(kit?.unsupported).toEqual({});
     expect(kit?.modulated).toBe(1);
   });
 

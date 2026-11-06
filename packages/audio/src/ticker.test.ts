@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { intervalTicker, workerTicker } from './ticker';
 
@@ -14,7 +14,14 @@ describe('tickers', () => {
     const cancel = ticker(() => {
       ticks += 1;
     });
-    await wait(150);
+    // This waits out the worker's start-up latency, not tick accuracy: other files' main-thread
+    // work in the page delays its spawn and first messages, 150 to 180 ms on main.
+    await vi.waitFor(
+      () => {
+        expect(ticks).toBeGreaterThan(3);
+      },
+      { timeout: 2000 },
+    );
     cancel();
     const atCancel = ticks;
     await wait(60);

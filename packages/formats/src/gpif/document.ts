@@ -160,6 +160,9 @@ export interface GpifNote {
   midi?: number;
   /** Index into the track's drum articulations. */
   articulation?: number;
+  /** GP6's drum kit piece and its variant; GP7 writes them too, beside the articulation. */
+  drumElement?: number;
+  drumVariation?: number;
   /** GP6 pitched notes: `Octave` and `Tone` instead of a MIDI number. */
   octave?: number;
   tone?: number;

@@ -1,6 +1,7 @@
 import { unzipSync } from 'fflate';
 
 import { readGpif, type GpifReadResult } from '../gpif/read-gpif';
+import { MAX_FILE_BYTES } from '../limits';
 
 export type GpErrorCode = 'invalid-zip' | 'missing-score' | 'too-large';
 
@@ -21,7 +22,7 @@ const PART_CONFIGURATION_ENTRY = 'Content/PartConfiguration';
  * fflate allocates each entry's declared inflated size before inflating, so a zip whose central
  * directory lies about it would allocate that much. A 38,400-note score is 13 MB of gpif.
  */
-const MAX_ENTRY_BYTES = 256 * 1024 * 1024;
+const MAX_ENTRY_BYTES = MAX_FILE_BYTES;
 
 /**
  * Reads a Guitar Pro 7 or 8 file: a zip whose `Content/score.gpif` holds the score. Only that

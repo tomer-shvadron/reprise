@@ -74,7 +74,13 @@ file bytes --formats.read--> Score --------+--> layout.layout(score, options) --
 
 **Frozen on 2026-11-05 at WP-015.** Changes after this date are `type:contract` issues owned by the lead.
 
-Changed by #62 (2026-11-05): a tie's origin is the most recent note on its string in its voice within three bars, not only the previous beat (`tieOriginOf`, `TIE_REACH_BARS`); `newId()` draws its random bytes from a pooled buffer, with the same format and distribution.
+Changed by #62 (2026-11-05): a tie's origin is the most recent note on its string in its voice within three bars, not only the previous beat (`tieOriginOf`, `TIE_REACH_BARS`); `newId()` draws its random bytes from a pooled buffer, with the same format and distribution. Widened by #65 (2026-11-05): `tieChainOf`, the forward walk in score order, is exported; a grace note may not carry `tie` (`GraceNoteSchema`); `ChannelMixChange.duration` counts quarter notes, the unit the #66 review ruled; and the audio sink contract (`packages/audio/README.md`) gains `InstrumentSink.mix?(MixEvent)` for beat-level mixer changes, replayed at each run start, and `NoteEvent.continuations`, the tied links folded into an onset.
+
+Changed by #82 (2026-11-06): `write` takes an optional third argument, `write(score, format, options?: { app?: AppInfo })`, the app stamped into a `.reprise` file, defaulting to `{ name: 'reprise', version: '0.0.0' }`.
+
+Changed by #79 (2026-11-06): a region map resolves every layered region of a key and velocity (`RegionMap.resolveAll`) and a note starts one voice per region behind one handle; `Region` gains `filter` (a static low-pass at the filter envelope's held level, its resonance lowering the DC gain by half its peak) and `exclusiveClass` (choke groups within a track's instrument), `Envelope` gains `delay`; the voice pool stays a hard cap and ranks stealing victims by their audible level, articulation gain included, taking a voice that starts with or after the new note only when no other is left; `Sampler.setInstrument` takes an optional time, `Sampler.instrumentAt(trackId, when)` returns the instrument a note at `when` plays, and `Sampler.allNotesOff` drops the instrument changes scheduled after its time; the sampler sink switches a track's instrument from `InstrumentSink.mix` (`MixEvent.mix.program`) through its `instrumentOf` option.
+
+Synced by #74 (2026-11-06), no contract change: the Layout sketch lists the `LayoutOptions`, `LayoutMetrics` and `Anchor` fields #59 shipped and the `tiedNotes` option #68 added, and the Audio sketch names the `InstrumentSink` #55 shipped and #73 widened.
 
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
 
@@ -167,7 +173,7 @@ interface Beat {
   lyrics?: string[];             // one syllable per lyric line, index = line, up to five; '' where a line has none
 }
 interface Stroke           { direction: 'up' | 'down'; duration?: 4 | 8 | 16 | 32 | 64 | 128 }   // spread of the stroke
-interface ChannelMixChange { value: number; duration?: number; allTracks?: boolean }   // value 0..127; duration >= 1 in beats, absent = immediate
+interface ChannelMixChange { value: number; duration?: number; allTracks?: boolean }   // value 0..127; duration >= 1 in quarter notes, absent = immediate
 interface BendPoint        { position: number; value: number }   // position 0..60 across the note's duration; value in quarter tones; a bend or whammy has at least two
 
 interface ChordDiagram {
@@ -212,11 +218,12 @@ const TIE_REACH_BARS = 3;
 interface TiePosition { bar: number; voice: number; beat: number }   // indices within one track
 interface TieLink { note: Note; bar: number; beat: number }
 function tieOriginOf(track: Pick<Track, 'kind' | 'bars'>, at: TiePosition, note: Pick<Note, 'string' | 'fret'>): TieLink | undefined;
+function tieChainOf(track: Pick<Track, 'kind' | 'bars'>, at: TiePosition, note: Note): TieLink[];   // the notes tied on from `note`, in score order
 ```
 
 `validateScore` assumes schema-valid input and checks what the schemas cannot express: unique ids, a tempo mark on the first bar, one bar per master bar, the track-kind constraints, no overfull voice (incomplete bars are allowed), no notes on a rest, string and fret ranges, no two notes on one string, tie targets and tied notes on their origin's fret, the tuplet window (strictly between 1:2 and 2:1, not 1:1), chord diagrams with one fret per string, and voltas unique, ascending and inside a repeat. The table with each rule's exact check is in `packages/model/README.md`.
 
-A tied note's origin (`tieOriginOf`) is the most recent note in its slot (its string; its MIDI note on drum and pitched tracks) in the same voice, searching back from the previous beat to the start of the bar `TIE_REACH_BARS` (three, alphaTab's bound) before its own. Rests and notes on other strings in between are passed over; a note on the same string in between is itself the origin, so it ends the hold. Grace notes are never origins. `tie-target` fails when there is no origin, `tie-pitch` when the origin is on another fret, and the command layer's tie chains follow the same definition.
+A tied note's origin (`tieOriginOf`) is the most recent note in its slot (its string; its MIDI note on drum and pitched tracks) in the same voice, searching back from the previous beat to the start of the bar `TIE_REACH_BARS` (three, alphaTab's bound) before its own. Rests and notes on other strings in between are passed over; a note on the same string in between is itself the origin, so it ends the hold. Grace notes are never origins and never tied: `GraceBeat.notes` is `GraceNoteSchema`, which refuses `tie: true`. `tieChainOf` walks the other way, from a note to the tied notes that continue it in score order. `tie-target` fails when there is no origin, `tie-pitch` when the origin is on another fret, and the command layer's tie chains follow the same definition.
 
 ### Timing (`@reprise/model`)
 
@@ -390,19 +397,29 @@ Usage is in `../reference/score-model.md`.
 type Format = 'gp3' | 'gp4' | 'gp5' | 'gp' | 'gpx' | 'reprise';
 function detect(bytes: Uint8Array): Format | undefined;
 function read(bytes: Uint8Array, format?: Format): Promise<{ score: Score; warnings: Warning[] }>;
-function write(score: Score, format: 'reprise' | 'gp'): Promise<{ bytes: Uint8Array; dropped: Warning[] }>;
+function write(score: Score, format: 'reprise' | 'gp', options?: { app?: AppInfo }): Promise<{ bytes: Uint8Array; dropped: Warning[] }>;
 ```
 
 ### Layout (`@reprise/layout`)
 
 ```ts
-interface LayoutOptions { mode: 'paged' | 'continuous'; width: number; pageHeight?: number; zoom: number; tracks: Id[] | 'all'; notation: Record<Id, 'tab'|'standard'|'both'> }
+interface LayoutOptions {
+  mode: 'paged' | 'continuous'; width: number; pageHeight?: number; zoom: number; tracks: Id[] | 'all'; notation: Record<Id, 'tab'|'standard'|'both'>;
+  tiedNotes?: 'parentheses' | 'hidden'; // tied notes on tab staves, parentheses unless given
+  margins?: Partial<Margins>;         // page margins, unscaled
+  pageGap?: number; staffGap?: number; trackGap?: number; systemGap?: number; // pageGap unscaled, the rest at zoom 1
+  dirtyBars?: readonly Id[];          // master bars to re-measure when a cache is given, usually Change.touchedBars
+}
 interface LayoutResult {
   pages: Page[];                      // continuous mode = one infinitely wide page
   systems: System[];                  // each with its bar range and bounding box
   primitives: Primitive[];            // glyph | line | path | text, with x, y, bbox, theme role
   anchors: Anchor[];                  // model-node id -> bbox, for hit-testing and cursor placement
-  metrics: { layoutMs: number; primitives: number };
+  metrics: { layoutMs: number; primitives: number; anchors: number; measuredBars: number; reusedSystems: number };
+}
+interface Anchor {
+  kind: 'note' | 'beat' | 'bar' | 'staff' | 'system'; id: Id; bbox: Rect;
+  system: number; track?: Id; staff?: 'tab' | 'standard' | 'percussion'; voice?: number; masterBar?: Id;
 }
 function layout(score: Score, options: LayoutOptions, cache?: LayoutCache): LayoutResult;
 function hitTest(result: LayoutResult, x: number, y: number): Anchor | undefined;
@@ -426,6 +443,8 @@ interface AudioEngine {
   dispose(): void;
 }
 ```
+
+The scheduler drives an `InstrumentSink` (`noteOn(NoteEvent)`, optional `mix(MixEvent)`, `allNotesOff(when)`, optional `dispose()`), which the sampler implements. The events' fields and timing rules are in `packages/audio/src/sink.ts`, explained in `packages/audio/README.md`, "The `InstrumentSink` contract".
 
 Internals: a lookahead scheduler on the main thread (schedule ~200 ms ahead on a 25 ms timer), a voice pool with per-voice gain and detune automation, region maps produced by the SF2 and SFZ loaders, an LRU cache of decoded buffers under the memory budget, per-track channel strips with an effects chain, a master bus.
 

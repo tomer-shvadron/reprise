@@ -64,10 +64,15 @@ export class ChannelStrip {
     return this.#solo;
   }
 
+  /**
+   * The last gain set, which a change scheduled with `at` reports from the call on, before it
+   * lands: the target the mixer shows, not the level the fader passes at `currentTime`.
+   */
   get gain(): number {
     return this.#gain;
   }
 
+  /** The last pan set; like `gain`, the target of a scheduled change from the call on. */
   get pan(): number {
     return this.#pan;
   }

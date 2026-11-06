@@ -1,6 +1,6 @@
 # ADR-0007: Per-track notation toggle, rhythm stems under tab always
 
-- **Status**: Accepted
+- **Status**: Accepted, superseded in part by [ADR-0021](0021-rhythm-on-the-standard-staff-in-both-mode.md)
 - **Date**: 2026-11-05
 - **Deciders**: Tomer Shvadron, with Claude
 

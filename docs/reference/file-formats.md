@@ -13,6 +13,21 @@ Notes for the formats lane. The authoritative descriptions of the Guitar Pro for
 | `.gp`     | Guitar Pro 7, 8  | zip                                         | `Content/score.gpif` XML      | yes     | yes (v1)     |
 | `.reprise`| Reprise          | none                                        | JSON, versioned               | yes     | yes (native) |
 
+## Detection
+
+`detect(bytes)` in `@reprise/formats` names a file's format from its first bytes; the extension is never consulted ([ADR-0008](../decisions/0008-file-formats.md): detected from the file's bytes, not its extension). First match wins:
+
+| Format          | Signature                                                                                       | Offset                     |
+| --------------- | ----------------------------------------------------------------------------------------------- | -------------------------- |
+| gp3, gp4, gp5   | `0x18`, `FICHIER GUITAR PRO `, one letter (`v`, or `L` in some exports), then `3.`, `4.` or `5.` | bytes 0 to 22               |
+| gp              | `50 4B 03 04` (`PK\x03\x04`, a zip local file header)                                           | 0                          |
+| gpx             | `BCFZ`, or `BCFS` (the uncompressed image Guitar Pro 6 also reads)                               | 0                          |
+| reprise         | `{`, after an optional UTF-8 BOM and ASCII whitespace                                            | first non-whitespace byte  |
+
+- The binary family is decided by the major digit alone, so an unknown minor (`v5.20`) detects as gp5 and the reader's `unknown-version` names the header; `v6.00` detects as nothing.
+- Any zip detects as gp and any JSON object as reprise; the reader then tells a zip without `Content/score.gpif` (`missing-score`) or a JSON object that is not a Reprise document (`wrong-format`) apart.
+- An extension is a fallback only: when the bytes match nothing, a caller with a file name may retry with `formatOfExtension(name)`.
+
 ## gp3, gp4, gp5
 
 - Starts with a Pascal string version header such as `FICHIER GUITAR PRO v3.00`, `v4.06`, `v5.00`, `v5.10`. Branch on it.
@@ -21,20 +36,21 @@ Notes for the formats lane. The authoritative descriptions of the Guitar Pro for
 - Beat: a flags byte selects which optional blocks follow (dotted, chord diagram, text, effects, mixer change, tuplet); a duration byte; the string bitmask of notes present; then one note block per set string.
 - Note: flags byte, note type (normal, tie, dead), dynamics, fret, fingering, then an effects block if flagged (bend with a point list, grace, slide, harmonic, trill, tremolo picking, let ring, hammer, staccato, palm mute, vibrato).
 - gp5 adds: a second voice block per bar, note and beat flag extensions, more harmonic kinds, a padding byte after certain structures, track RSE blocks, and a different tuplet and chord-diagram layout. These are the places where most reader bugs live; the fixture manifest marks files per version.
+- Keyboard parts are stored on strings in gp3 and gp4 as in gp5: a track that is not a drum track (percussion flag or MIDI channel 10) and whose program is outside the fretted families (GM 24 to 39, 104 to 107) is read as `pitched`, its notes converted to MIDI through its tuning and capo, and it keeps its tuning, capo and `fretCount` so gp5 export can re-finger it.
 - Repeats, alternate endings, markers, triplet feel and key changes live on master bars; mixer changes and tempo changes also appear on beats and must be applied to the model's `mix` field.
 
 ## gpx (Guitar Pro 6)
 
 - Magic `BCFZ` then an int of uncompressed length, then a bit stream: each chunk starts with a bit that selects a raw block (two bits of length-length, then the length, then raw bytes) or a back-reference (four bits of offset-length, then offset and length into already-decoded output, LZ-style).
-- The decompressed payload is a `BCFS` file system: 4-byte magic, then sectors of fixed size; sector 1 onward holds entries of type file or directory with a name, size and a list of block indices. Extract `score.gpif`.
+- The decompressed payload is a `BCFS` file system: 4-byte magic, then sectors of fixed size; sector 1 onward holds entries of type file or directory with a name, size and a list of block indices. Extract `score.gpif` and `PartConfiguration`.
 - The `gpif` XML is the same vocabulary as Guitar Pro 7's with small differences in a handful of element names and the absence of newer properties. One reader with a version switch.
 
 ## gp (Guitar Pro 7, 8)
 
-- A zip with `Content/score.gpif`, `Content/BinaryStylesheet`, `Content/LayoutConfiguration`, `Content/PartConfiguration`, `Content/Preferences.xml`, `VERSION`, and an optional `Content/Image*` set. Only `score.gpif` matters to us; write the others minimally when exporting so Guitar Pro accepts the file.
+- A zip with `Content/score.gpif`, `Content/BinaryStylesheet`, `Content/LayoutConfiguration`, `Content/PartConfiguration`, `Content/Preferences.json`, `VERSION`, and optional `Content/ScoreViews/`, `Content/Stylesheets/`, `meta.json` and `Content/Image*` entries. The readers use `score.gpif` and `PartConfiguration` (each track's notation display); the writer writes the others minimally so Guitar Pro accepts the file.
 - `gpif` structure: `GPIF > Score` (metadata), `MasterTrack` (tracks list, automations such as tempo), `Tracks > Track` (name, color, instrument set with the `Staves` and `Properties` including `Tuning`, `CapoFret`, `DiagramCollection`), `MasterBars > MasterBar` (`Time`, `Key`, `Repeat`, `AlternateEndings`, `Directions`, `Section`, `TripletFeel`, `Bars` id list), `Bars > Bar` (`Clef`, `Voices` id list), `Voices > Voice` (`Beats` id list), `Beats > Beat` (`Rhythm` ref, `Notes` id list, `Properties`, `Lyrics`, `Chord`, `Legato`, `Whammy`, `Tremolo`), `Notes > Note` (`Properties` with `String`, `Fret`, `Bended`, `BendOriginValue`..., `Slide`, `HopoOrigin`, `HopoDestination`, `HarmonicType`, `PalmMuted`, `LetRing`, `Vibrato`, `Tie`, `Accent`, `LeftFingering`), `Rhythms > Rhythm` (`NoteValue`, `AugmentationDot`, `PrimaryTuplet`).
 - Everything is id-referenced; build maps first, then resolve.
-- `MasterBar > SimileMark` (`Simple`, `FirstOfDouble`, `SecondOfDouble`) is not in the model. The reader expands the previous bar's beats (for the double form, the two bars before it) into the bar with fresh ids and records a warning; export does not reproduce the mark, the expanded bars are written instead.
+- `Bar > SimileMark` (`Simple`, `FirstOfDouble`, `SecondOfDouble`) is not in the model. The reader expands the previous bar's beats (for the double form, the two bars before it) into the bar with fresh ids and records a warning; export does not reproduce the mark, the expanded bars are written instead.
 
 ## `.reprise`
 

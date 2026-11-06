@@ -1,4 +1,4 @@
-import { MIDI_MAX, respell } from '@reprise/model';
+import { MIDI_MAX, TIE_REACH_BARS, respell } from '@reprise/model';
 import type { Beat, KeySignature, MasterBar, Note, Track } from '@reprise/model';
 
 import type { WarningLocation } from '../warnings';
@@ -36,42 +36,35 @@ export function finishTrack(
   if (track.kind !== 'drums') swapAccidentals(context, track, masterBars);
 }
 
-/** How many bars back or forward a tie origin or hammer-on destination is looked for. */
+/** How many bars forward a hammer-on destination is looked for. */
 const SAME_STRING_SEARCH_BARS = 3;
 
 /**
- * Guitar Pro ties a note to the last note on its string even when the beats between do not use
- * that string. The model only ties to the previous beat, so a farther origin still lends its
- * fret but the tie is released and reported.
+ * Guitar Pro ties a note to the last note on its string in its voice, up to three bars back, and
+ * the model's `tieOriginOf` uses the same reach. The search is by string, not by `sameSlot`,
+ * because it runs before `toMidi`: Guitar Pro stores every track on strings, and the origin on
+ * the same string has the same MIDI note once converted, so the model finds an origin too.
  */
 function resolveTies(context: Context, slots: Slot[], trackIndex: number): void {
   slots.forEach((slot, s) => {
     for (const note of slot.beat.notes) {
       if (!note.tie) continue;
       let origin: Note | undefined;
-      let distance = 0;
       for (let back = s - 1; back >= 0 && !origin; back--) {
         const earlier = slots[back];
-        if (!earlier || earlier.bar < slot.bar - SAME_STRING_SEARCH_BARS) break;
+        if (!earlier || earlier.bar < slot.bar - TIE_REACH_BARS) break;
         origin = earlier.beat.notes.find((n) => n.string === note.string);
-        distance = s - back;
       }
-      if (origin) note.fret = origin.fret;
-      if (origin && distance === 1) continue;
-      note.tie = false;
       if (origin) {
-        context.log.warn(
-          'tie-beyond-previous-beat',
-          `a tied note on string ${String(note.string)} continues a note ${String(distance)} beats back; the model ties only to the previous beat, so it is played at that note's fret`,
-          locationOf(context, note, slot, trackIndex),
-        );
-      } else {
-        context.log.warn(
-          'tie-without-origin',
-          `a tied note on string ${String(note.string)} has no note to continue; it is played instead`,
-          locationOf(context, note, slot, trackIndex),
-        );
+        note.fret = origin.fret;
+        continue;
       }
+      note.tie = false;
+      context.log.warn(
+        'tie-without-origin',
+        `a tied note on string ${String(note.string)} has no note to continue; it is played instead`,
+        locationOf(context, note, slot, trackIndex),
+      );
     }
   });
 }

@@ -2,7 +2,7 @@ import { midiNote } from '@reprise/model';
 import type { Id, Note, Track } from '@reprise/model';
 
 import { ChannelStrip, MasterBus, applySolo } from './channel-strip';
-import type { RegionMap, SampleRef } from './region-map';
+import type { Region, RegionMap, SampleRef } from './region-map';
 import type { SampleSource } from './sample-source';
 import { Voice, velocityGain } from './voice';
 import type { FilterSettings } from './voice';
@@ -78,8 +78,66 @@ export interface VoiceHandle {
 interface TrackState {
   track: SamplerTrack;
   instrument: Instrument;
+  /** Program changes scheduled ahead, by time; each takes over from the one before at `at`. */
+  changes: { at: number; instrument: Instrument }[];
   strip: ChannelStrip;
   voices: Set<Voice>;
+}
+
+/** One note's voices, a voice per layered region: every call applies to all of them. */
+class LayeredVoice implements VoiceHandle {
+  readonly track: Id;
+  readonly key: number;
+  readonly velocity: number;
+  readonly string: number;
+  readonly startTime: number;
+  readonly #voices: readonly Voice[];
+
+  constructor(voices: readonly [Voice, ...Voice[]]) {
+    const [first] = voices;
+    this.track = first.track;
+    this.key = first.key;
+    this.velocity = first.velocity;
+    this.string = first.string;
+    this.startTime = first.startTime;
+    this.#voices = voices;
+  }
+
+  get endTime(): number {
+    return Math.max(...this.#voices.map((voice) => voice.endTime));
+  }
+
+  get letRing(): boolean {
+    return this.#voices.some((voice) => voice.letRing);
+  }
+
+  release(at: number): void {
+    for (const voice of this.#voices) voice.release(at);
+  }
+
+  setDetune(semitones: number, at: number): void {
+    for (const voice of this.#voices) voice.setDetune(semitones, at);
+  }
+
+  rampDetune(semitones: number, at: number): void {
+    for (const voice of this.#voices) voice.rampDetune(semitones, at);
+  }
+
+  detuneCurve(semitones: readonly number[], start: number, duration: number): void {
+    for (const voice of this.#voices) voice.detuneCurve(semitones, start, duration);
+  }
+
+  setGain(db: number, at: number): void {
+    for (const voice of this.#voices) voice.setGain(db, at);
+  }
+
+  rampGain(db: number, at: number): void {
+    for (const voice of this.#voices) voice.rampGain(db, at);
+  }
+
+  setFilter(settings: FilterSettings, at: number): void {
+    for (const voice of this.#voices) voice.setFilter(settings, at);
+  }
 }
 
 /** Channel volume follows the MIDI curve, the same as velocity. */
@@ -106,6 +164,7 @@ export class Sampler {
     this.pool = new VoicePool(options.polyphony ?? DEFAULT_POLYPHONY);
   }
 
+  /** Samples found not resident at a note: one per missing layer, not per note. */
   get misses(): number {
     return this.#misses;
   }
@@ -117,13 +176,40 @@ export class Sampler {
   addTrack(track: SamplerTrack, instrument: Instrument): ChannelStrip {
     this.removeTrack(track.id);
     const strip = new ChannelStrip(this.context, this.master.input);
-    this.#tracks.set(track.id, { track, instrument, strip, voices: new Set() });
+    this.#tracks.set(track.id, { track, instrument, changes: [], strip, voices: new Set() });
     this.setTrack(track.id, track.channel);
     return strip;
   }
 
-  setInstrument(id: Id, instrument: Instrument): void {
-    this.#state(id).instrument = instrument;
+  /**
+   * Switches the track's instrument now, or from `at` on for a program change scheduled on a beat:
+   * a note starting before `at` keeps the instrument in effect at its own start.
+   */
+  setInstrument(id: Id, instrument: Instrument, at?: number): void {
+    const state = this.#state(id);
+    if (at === undefined) {
+      state.instrument = instrument;
+      state.changes = [];
+      return;
+    }
+    state.changes = state.changes.filter((change) => change.at < at);
+    state.changes.push({ at, instrument });
+  }
+
+  /** The instrument a note starting at `when` plays; changes already in the past are folded in. */
+  instrumentAt(id: Id, when: number): Instrument {
+    return this.#instrumentAt(this.#state(id), when);
+  }
+
+  #instrumentAt(state: TrackState, when: number): Instrument {
+    const now = this.context.currentTime;
+    while (state.changes[0] && state.changes[0].at <= now) {
+      state.instrument = state.changes[0].instrument;
+      state.changes.shift();
+    }
+    let instrument = state.instrument;
+    for (const change of state.changes) if (change.at <= when) instrument = change.instrument;
+    return instrument;
   }
 
   removeTrack(id: Id): void {
@@ -163,72 +249,87 @@ export class Sampler {
     const { regions, source } = this.#state(id).instrument;
     const samples = new Set<SampleRef>();
     for (const { key, velocity, layer } of notes) {
-      const region = regions.resolve(key, velocity, layer);
-      if (region) samples.add(region.sample);
+      for (const region of regions.resolveAll(key, velocity, layer)) samples.add(region.sample);
     }
     await Promise.all([...samples].map((sample) => source.getBuffer(sample)));
   }
 
   /**
-   * Starts a note at `request.when`. Returns `undefined` when no region covers it, or when its
-   * sample is not resident: a scheduled note cannot wait for a decode, so the load is requested
-   * for the next time and the note is reported through `onMiss`.
+   * Starts a note at `request.when`, one voice per region layered on its key and velocity, behind
+   * one handle. Returns `undefined` when no region covers it, or when none of its samples is
+   * resident: a scheduled note cannot wait for a decode, so each missing sample's load is requested
+   * for the next time and reported through `onMiss`, and the resident layers play without it.
    */
   noteOn(id: Id, request: NoteOnRequest): VoiceHandle | undefined {
     const state = this.#state(id);
     return this.#start(state, request, state.strip.input);
   }
 
-  #start(state: TrackState, request: NoteOnRequest, destination: AudioNode): Voice | undefined {
+  #start(
+    state: TrackState,
+    request: NoteOnRequest,
+    destination: AudioNode,
+  ): VoiceHandle | undefined {
     const id = state.track.id;
     if (request.velocity <= 0) return undefined;
-    const { regions, source } = request.instrument ?? state.instrument;
-    const region = regions.resolve(request.key, request.velocity, request.layer);
-    if (!region) return undefined;
-    const buffer = source.peekBuffer(region.sample);
-    if (!buffer) {
+    const { regions, source } = request.instrument ?? this.#instrumentAt(state, request.when);
+    const layers: { region: Region; buffer: AudioBuffer }[] = [];
+    for (const region of regions.resolveAll(request.key, request.velocity, request.layer)) {
+      const buffer = source.peekBuffer(region.sample);
+      if (buffer) {
+        layers.push({ region, buffer });
+        continue;
+      }
       this.#misses += 1;
       this.#options.onMiss?.(id, region.sample);
       // A failed load surfaces through `preload` or the memory manager, not mid-playback.
       source.getBuffer(region.sample).catch(() => undefined);
-      return undefined;
     }
+    if (layers.length === 0) return undefined;
 
     const string = request.string ?? 0;
-    if (string > 0) {
-      for (const voice of state.voices) {
-        if (voice.string === string && voice.isSoundingAt(request.when)) {
-          voice.choke(request.when);
-        }
-      }
+    const classes = new Set(layers.map(({ region }) => region.exclusiveClass ?? 0));
+    classes.delete(0);
+    for (const voice of state.voices) {
+      if (!voice.isSoundingAt(request.when)) continue;
+      const struck = string > 0 && voice.string === string;
+      const excluded = voice.instrument === regions && classes.has(voice.exclusiveClass);
+      if (struck || excluded) voice.choke(request.when);
     }
 
-    this.pool.reserve(request.when);
-    const voice = new Voice(
-      this.context,
-      destination,
-      {
-        track: id,
-        region,
-        buffer,
-        key: request.key,
-        velocity: request.velocity,
-        when: request.when,
-        string,
-        ...(request.offset !== undefined && { offset: request.offset }),
-      },
-      (ended) => {
-        state.voices.delete(ended);
-        this.pool.remove(ended);
-      },
-    );
-    state.voices.add(voice);
-    this.pool.add(voice);
-    if (request.letRing) {
-      voice.letRing = true;
-      if (typeof request.letRing === 'object') voice.release(request.letRing.until);
+    const voices: Voice[] = [];
+    for (const { region, buffer } of layers) {
+      this.pool.reserve(request.when);
+      const voice = new Voice(
+        this.context,
+        destination,
+        {
+          track: id,
+          region,
+          buffer,
+          key: request.key,
+          velocity: request.velocity,
+          when: request.when,
+          string,
+          instrument: regions,
+          ...(request.offset !== undefined && { offset: request.offset }),
+        },
+        (ended) => {
+          state.voices.delete(ended);
+          this.pool.remove(ended);
+        },
+      );
+      state.voices.add(voice);
+      this.pool.add(voice);
+      if (request.letRing) {
+        voice.letRing = true;
+        if (typeof request.letRing === 'object') voice.release(request.letRing.until);
+      }
+      voices.push(voice);
     }
-    return voice;
+    const [first, ...rest] = voices;
+    if (!first) return undefined;
+    return rest.length === 0 ? first : new LayeredVoice([first, ...rest]);
   }
 
   /** Releases the note, unless it lets ring: then the next note on its string releases it. */
@@ -236,11 +337,16 @@ export class Sampler {
     if (!voice.letRing) voice.release(when);
   }
 
-  /** Releases every voice, let-ring included, on one track or all of them. */
+  /**
+   * Releases every voice, let-ring included, on one track or all of them, and drops the
+   * instrument changes scheduled after `when`: the scheduler sends a change again when playback
+   * reaches its beat, so one left over from a pause or seek would only play early.
+   */
   allNotesOff(when: number, id?: Id): void {
     const states = id === undefined ? [...this.#tracks.values()] : [this.#state(id)];
     for (const state of states) {
       for (const voice of state.voices) voice.release(when);
+      state.changes = state.changes.filter((change) => change.at <= when);
     }
   }
 

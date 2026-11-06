@@ -21,7 +21,7 @@ Terms used across the docs, the model and the UI. When two names exist, the one 
 - **Jumps**: segno, coda, D.S. (dal segno), D.C. (da capo), al Coda, al Fine, Fine, To Coda, double coda.
 - **Section**: a named marker on a master bar (Intro, Verse, Chorus) used for navigation.
 - **Articulation**: a playing technique attached to a note or beat: bend, slide, hammer-on, pull-off, vibrato, palm mute, let ring, harmonic, dead note, tapping, tremolo picking, trill, grace note, staccato, accent, ghost note.
-- **Rhythm notation under tab**: stems, beams and flags drawn below the tab staff so the tab carries timing. Always shown.
+- **Rhythm notation under tab**: stems, beams and flags drawn below the tab staff so the tab carries timing. Always shown in tab mode; in both mode the standard staff carries the rhythm instead (ADR-0021).
 - **System**: one line of music across all visible tracks. The layout breaks bars into systems and systems into pages.
 - **Primitive**: a positioned drawable produced by layout: glyph, line, path or text.
 - **Anchor**: a model node's bounding box in layout output, used for hit-testing and cursor placement.

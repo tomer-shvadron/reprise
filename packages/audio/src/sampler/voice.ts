@@ -1,4 +1,4 @@
-import type { Region } from './region-map';
+import type { Region, RegionMap } from './region-map';
 
 /** -80 dB: the floor exponential ramps aim at, since they cannot reach zero. */
 const SILENCE = 1e-4;
@@ -29,6 +29,8 @@ export interface VoiceStart {
   offset?: number;
   /** 0 when the note has no string to choke. */
   string?: number;
+  /** The map the region came from: exclusive classes choke within one instrument. */
+  instrument?: RegionMap;
 }
 
 export interface FilterSettings {
@@ -39,11 +41,20 @@ export interface FilterSettings {
   gain?: number;
 }
 
+/** A point of the level gain's automation, mirrored so the pool can rank a voice by what it plays. */
+interface GainEvent {
+  at: number;
+  value: number;
+  /** An exponential ramp arriving at `at`, rather than a step there. */
+  ramp: boolean;
+}
+
 /**
- * One sounding sample: source -> envelope gain -> filter -> level gain -> channel strip, with a
- * panner before the strip when the region pans. The envelope gain carries the ADSR, the level
- * gain velocity, region attenuation and the dB automation, so articulations never fight the
- * envelope for the same `AudioParam`.
+ * One sounding sample: source -> envelope gain -> [region filter] -> filter -> level gain ->
+ * channel strip, with a panner before the strip when the region pans. The envelope gain carries
+ * the ADSR, the level gain velocity, region attenuation and the dB automation, so articulations
+ * never fight the envelope for the same `AudioParam`; the region's own low-pass is a node of its
+ * own, so an articulation that switches the filter's type keeps it.
  */
 export class Voice {
   readonly track: string;
@@ -51,6 +62,8 @@ export class Voice {
   readonly velocity: number;
   readonly string: number;
   readonly startTime: number;
+  readonly exclusiveClass: number;
+  readonly instrument: RegionMap | undefined;
   letRing = false;
 
   readonly #region: Region;
@@ -60,6 +73,8 @@ export class Voice {
   readonly #filter: BiquadFilterNode;
   readonly #level: GainNode;
   readonly #baseLevel: number;
+  readonly #gainEvents: GainEvent[];
+  readonly #delay: number;
   readonly #attack: number;
   readonly #decay: number;
   readonly #sustain: number;
@@ -88,7 +103,10 @@ export class Voice {
     this.velocity = start.velocity;
     this.string = start.string ?? 0;
     this.startTime = when;
+    this.exclusiveClass = region.exclusiveClass ?? 0;
+    this.instrument = start.instrument;
     this.#region = region;
+    this.#delay = Math.max(envelope.delay ?? 0, 0);
     this.#attack = Math.max(envelope.attack, MIN_ATTACK);
     this.#decay = Math.max(envelope.decay, MIN_ATTACK);
     this.#sustain = Math.min(1, Math.max(0, envelope.sustain));
@@ -114,8 +132,17 @@ export class Voice {
     this.#level = context.createGain();
     this.#baseLevel = velocityGain(start.velocity) * dbToGain(-(region.attenuation ?? 0));
     this.#level.gain.setValueAtTime(this.#baseLevel, when);
+    this.#gainEvents = [{ at: when, value: this.#baseLevel, ramp: false }];
 
-    const nodes: AudioNode[] = [source, this.#envelope, this.#filter, this.#level];
+    const nodes: AudioNode[] = [source, this.#envelope];
+    if (region.filter) {
+      const filter = context.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = Math.min(region.filter.cutoffHz, context.sampleRate / 2);
+      filter.Q.value = region.filter.q;
+      nodes.push(filter);
+    }
+    nodes.push(this.#filter, this.#level);
     if (region.pan) {
       const panner = context.createStereoPanner();
       panner.pan.value = Math.min(1, Math.max(-1, region.pan));
@@ -125,7 +152,7 @@ export class Voice {
     let tail: AudioNode = source;
     for (const node of nodes.slice(1)) tail = tail.connect(node);
     tail.connect(destination);
-    this.#scheduleEnvelope(when);
+    this.#scheduleEnvelope(when + this.#delay);
 
     const offset = Math.min(Math.max(0, start.offset ?? 0), buffer.duration);
     this.#playable = buffer.duration - offset;
@@ -205,15 +232,16 @@ export class Voice {
 
   /** dB relative to the note's velocity level. */
   setGain(db: number, at: number): void {
-    this.#level.gain.setValueAtTime(this.#baseLevel * dbToGain(db), at);
+    const value = this.#baseLevel * dbToGain(db);
+    this.#level.gain.setValueAtTime(value, at);
+    this.#noteGain({ at, value, ramp: false });
   }
 
   /** Linear in dB, arriving at `at`. */
   rampGain(db: number, at: number): void {
-    this.#level.gain.exponentialRampToValueAtTime(
-      Math.max(this.#baseLevel * dbToGain(db), SILENCE * SILENCE),
-      at,
-    );
+    const value = Math.max(this.#baseLevel * dbToGain(db), SILENCE * SILENCE);
+    this.#level.gain.exponentialRampToValueAtTime(value, at);
+    this.#noteGain({ at, value, ramp: true });
   }
 
   setFilter(settings: FilterSettings, at: number): void {
@@ -223,10 +251,39 @@ export class Voice {
     if (settings.gain !== undefined) this.#filter.gain.setValueAtTime(settings.gain, at);
   }
 
-  /** The level the envelope and velocity give at `time`, ignoring gain automation. */
+  /** What the voice plays at `time`: envelope × level gain, velocity and articulation automation included. */
   levelAt(time: number): number {
     if (time < this.startTime || time >= this.#end) return 0;
-    return this.#baseLevel * this.#envelopeAt(time);
+    return this.#gainAt(time) * this.#envelopeAt(time);
+  }
+
+  /**
+   * What a steal ranks the voice by: `levelAt`, or, before its onset or inside its envelope delay,
+   * the level it is about to sound at, so a delayed layer is not taken for a silent one.
+   */
+  stealLevelAt(time: number): number {
+    if (time <= this.startTime + this.#delay) return this.#gainAt(Math.max(time, this.startTime));
+    return this.levelAt(time);
+  }
+
+  /** The level gain's automation evaluated as Web Audio does: a step, or an exponential ramp from the previous point. */
+  #gainAt(time: number): number {
+    const events = this.#gainEvents;
+    let index = -1;
+    while (index + 1 < events.length && (events[index + 1]?.at ?? Infinity) <= time) index += 1;
+    const current = events[index];
+    if (!current) return this.#baseLevel;
+    const next = events[index + 1];
+    if (!next?.ramp || next.at <= current.at || current.value <= 0) return current.value;
+    return (
+      current.value * (next.value / current.value) ** ((time - current.at) / (next.at - current.at))
+    );
+  }
+
+  #noteGain(event: GainEvent): void {
+    const index = this.#gainEvents.findIndex((other) => other.at > event.at);
+    if (index === -1) this.#gainEvents.push(event);
+    else this.#gainEvents.splice(index, 0, event);
   }
 
   /** The envelope gain at `time`, including a release or steal fade in progress. */
@@ -239,7 +296,8 @@ export class Voice {
 
   /** The ADSR before any fade, mirroring `#scheduleEnvelope`. */
   #shapeAt(time: number): number {
-    let elapsed = time - this.startTime;
+    let elapsed = time - this.startTime - this.#delay;
+    if (elapsed < 0) return 0;
     if (elapsed < this.#attack) return elapsed / this.#attack;
     elapsed -= this.#attack + this.#region.envelope.hold;
     if (elapsed < 0 || this.#sustain >= 1) return 1;
@@ -247,8 +305,11 @@ export class Voice {
     return this.#sustain;
   }
 
+  /** From `when`, the onset plus the envelope's delay; the gain sits at 0 until then. */
   #scheduleEnvelope(when: number): void {
     const gain = this.#envelope.gain;
+    // The gain's intrinsic value is 1, so a delayed envelope must hold 0 from the onset.
+    if (when > this.startTime) gain.setValueAtTime(0, this.startTime);
     gain.setValueAtTime(0, when);
     const peak = when + this.#attack;
     gain.linearRampToValueAtTime(1, peak);

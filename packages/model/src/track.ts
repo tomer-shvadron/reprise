@@ -58,10 +58,11 @@ export const TrackSchema = z.object({
   color: ColorSchema,
   kind: TrackKindSchema,
   /**
-   * Open-string MIDI notes, lowest string first (string N first). Empty on drum tracks. A GP5
-   * keyboard track (program outside GM 24 to 39 and 104 to 107, channel not percussion) is read
-   * as `pitched` with its notes converted to MIDI through this tuning, which it keeps, with
-   * `fretCount`, so gp5 export can re-finger it.
+   * Open-string MIDI notes, lowest string first (string N first). Empty on drum tracks. A GP3 to
+   * GP5 keyboard track (program outside GM 24 to 39 and 104 to 107, not a drum track by its
+   * percussion flag or MIDI channel 10) is read as `pitched` with its notes converted to MIDI
+   * through this tuning, which it keeps, with `capo` and `fretCount`, so gp5 export can
+   * re-finger it.
    */
   tuning: z.array(z.int().min(0).max(127)).max(MAX_STRINGS),
   capo: z.int().min(0),
