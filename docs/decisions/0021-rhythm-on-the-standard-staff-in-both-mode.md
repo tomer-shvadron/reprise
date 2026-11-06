@@ -1,6 +1,6 @@
 # ADR-0021: Rhythm on the standard staff in both mode
 
-- **Status**: Accepted
+- **Status**: Accepted, extended by [ADR-0022](0022-lane-effects-once-on-the-tab-in-both-mode.md)
 - **Date**: 2026-11-06
 - **Deciders**: the lead's ruling on PR #68, which the owner can overrule
 

@@ -127,7 +127,7 @@ function drawGraces(context: Context, beat: TabBeat, x: number): void {
   const size = TAB.fretSize * space * TAB.graceScale;
   const base = stemBase(context, beat.direction);
   const centres = graceCentres(beat, x, space);
-  // Nearest the beat first, as the columns were always drawn.
+  // Nearest the beat first.
   for (const [g, column] of [...beat.graces.entries()].reverse()) {
     const centre = centres[g] ?? x;
     for (const label of column.labels) drawLabel(context, label, centre, size, beat.voice);
