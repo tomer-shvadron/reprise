@@ -91,6 +91,6 @@ export function measureTab(input: StaffBar, options: TabOptions): StaffBarMeasur
       TAB.minAbove * space,
       wordsBase(rows) + rows.fingering + rows.chord + rows.text,
     ),
-    below: rows.lower + rows.lyrics,
+    below: Math.max(rows.lower + rows.lyrics, TAB.beatReach * space),
   };
 }

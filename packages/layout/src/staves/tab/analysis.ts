@@ -53,6 +53,8 @@ export const TAB = {
   dynamicsScale: 0.8,
   /** Room kept above the top string when nothing is drawn there; a repeat count sits in it. */
   minAbove: 2,
+  /** How far a beat's hit box reaches past the staff on a side without rhythm notation. */
+  beatReach: 1,
   /** Where words above the staff start when no upper voice is drawn: clear of the fret numbers. */
   wordClearance: 0.75,
   restSpacing: 0.3,

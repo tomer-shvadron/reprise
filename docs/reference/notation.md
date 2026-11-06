@@ -34,7 +34,8 @@ Standard staves only, in the order sharps (F C G D A E B) or flats (B E A D G C 
 | alto   | 7 4 8 5 2 6 3         | 3 6 2 5 1 4 0         |
 | tenor  | 2 6 3 7 4 8 5         | 5 8 4 7 3 6 2         |
 
-Cancelling naturals on a key change are not drawn yet; the change leaves a staff space for them.
+- A key change inside a system cancels the old key with naturals before the new signature (WP-023): every accidental of the old key when the new one is C or changes between sharps and flats, the dropped ones when it keeps fewer of the same kind. The naturals sit at the old accidentals' positions. A line that opens with the new key shows only the new key.
+- **Courtesy signatures** (WP-023): a paged system whose next system opens with a key or time change ends with that key (its cancelling naturals included, standard staves only) and time signature after its last bar line, the staff lines running on under them. Continuous mode has no line ends and no courtesy signatures. Clef changes get no courtesy clef yet.
 
 ## Time signatures (WP-020)
 
@@ -46,6 +47,7 @@ Cancelling naturals on a key change are not drawn yet; the change leaves a staff
 - At the end of a bar, in priority order: a repeat end (light-heavy with dots in front), the score's final bar line (light-heavy), a double bar (two light lines), a single line. Thicknesses and separations are Bravura's engraving defaults.
 - A start repeat (heavy-light with dots after) follows the bar's clef change, key and time signature.
 - A system with two or more staves opens with a bar line joining them; a single staff starts without one.
+- The end bar lines of a track shown on two staves (standard above tab) run on through the gap between them (WP-023); repeat dots stay inside each staff. Separate tracks keep separate bar lines.
 - Repeat dots sit in the two spaces either side of the staff's middle; on a staff with an even number of lines, one line spacing either side of the middle.
 - A section played more than twice shows `xN` above the end repeat.
 
@@ -99,3 +101,34 @@ Drawn by the staff-agnostic helpers in `packages/layout/src/staves/rhythm/`, whi
 - **Dots** sit 0.45 spaces right of the stem and 0.6 spaces past where it starts, 0.5 apart.
 - **Tuplets** group consecutive beats with the same ratio until their written lengths add up to `n` of the shortest among them. The number (SMuFL `tuplet` digits) is centred under the group, 1.45 spaces past the beams; a bracket (0.16 thick, 0.6-space hooks pointing back at the stems, broken 0.3 spaces around the number) is added unless one beam spans exactly the tuplet.
 - **Ties** are filled crescents from the origin the model names (`tieOriginOf`: the last note on the string in the same voice within three bars, past rests and other strings) to the tied note's number (or the onset of a hidden one), just past the number on the stem side: height 0.12 of the span, kept between 0.3 and 0.6 spaces, Bravura's midpoint thickness of 0.22. The bar holding the tied note draws the tie: in one piece when the origin is in that bar or in the previous bar of the system, otherwise as a half from the bar's left edge, and a bar ending a system draws the other half to its right edge for each note a later bar continues.
+## Standard staff (WP-023)
+
+Fretted and pitched tracks. Pitches come from the model's `spellNote` and `staffPosition` with the clef in effect and `Track.display.octaveShift`; a `percussion` clef on a pitched track reads as treble.
+
+- **Note heads** by duration: whole, half, black. A dead note has a cross head.
+- **Chords** stack by staff position. A head a second (or a unison) from its neighbour goes to the other side of the stem, sharing it: right of an up stem, scanning from the bottom; left of a down stem, scanning from the top; right when there is no stem.
+- **Accidentals** are what `spellNote` gives against the key, with measure memory: a printed accidental holds for its letter and octave until the bar line, so a repeat shows nothing and a return to the key's alteration shows a natural (or the key's sign). Grace notes count, in reading order, before their beat. A tied note prints nothing, but the alteration it carries in from the bar before holds until the next untied note of its letter and octave, which prints its own accidental when it differs (a natural after a tied-in sharp) and restates it when it is the same.
+- **Courtesy accidentals** (on by default; `standardModule({ courtesyAccidentals: false })` turns them off): the first note of a letter and octave whose accidental the previous bar printed, and which no longer needs one, gets it again in parentheses.
+- Accidentals of a chord stack in columns to the left of the heads, outermost first, alternating top and bottom, each in the nearest column where it does not collide vertically; they clear the ledger lines of a note off the staff.
+- **Stems**: with one voice on the staff, up when the note furthest from the middle line is below it, down otherwise (a tie goes down); a beamed group takes the direction of its furthest note. With two or more voices, voices 1 and 3 stem up, 2 and 4 down, whatever the pitch. A stem is 3.5 spaces from the note nearest its tip, 0.75 more for each flag or beam past the second, and always reaches the middle line.
+- **Flags** for unbeamed eighths and shorter; **beams** over runs of two or more eighths and shorter within a beam window: a beat in simple time (the half note in x/2 and x/1, at most a quarter otherwise), a dotted quarter in compound time, pairs of eighths in other eighth-based meters with the odd one joining the last pair (5/8 as 2+3). Rests, quarters and longer break a beam; a tuplet is beamed only within itself. A stem alone at a beam level gets a partial beam, pointing right from the first stem and left elsewhere. Beams follow the first and last notes but rise or fall at most one staff space, are horizontal for repeated pitches or when an inner note is further out than both ends, and move out until no stem is shorter than 3 spaces (more with more beams). Thicknesses and spacing are Bravura's engraving defaults.
+- **Rests**: a whole rest hangs from the fourth line, a half rest sits on the middle line, shorter rests centre on it. With two voices, voice 1's rests move up and voice 2's down. A rest alone in its voice is centred in the bar.
+- **Ledger lines** at every even position past the staff, `legerLineExtension` beyond the heads.
+- **Ties** are arcs from the head they continue to the tied head, on the side away from the stem (with two voices, towards it, so the voices' ties part); in a chord the upper half arcs up and the lower half down. A tie across a bar line in the same system is one arc; across a system break it is two halves, to the end of the first system and from the start of the next.
+- **Dots** follow the rightmost head; a note on a line dots the space above (the space below for a stem-down voice when there are two).
+- **Tuplets** group as alphaTab groups them, so brackets match Guitar Pro's: consecutive beats of one ratio, closed after `n` beats of one value, or once beats of unequal values add up to a plain note value (a quarter-and-eighth triplet is one group, the quarter triplets after it another). The number alone over a tuplet that is exactly one beamed group, otherwise a bracket open towards the notes with the number in a gap; on the stem side, past the stems and beams.
+- **Grace notes** at 0.6 of the size, stems up, before the beat and its accidentals: a single one as an eighth with a slash, several beamed by their value.
+- **Dynamics** below the staff, where a note's dynamics differ from the note sounding before it in reading order. Only the bar before is consulted (so a bar is measured from itself and its predecessor); with no note there, the model's default `f` is assumed.
+- **Fingering** above the staff, one per note top to bottom: left hand as `T 1 2 3 4`, right hand as `p i m a c`.
+
+## Percussion staff (WP-023)
+
+Drum tracks. Five lines, the percussion clef, no key signature and no accidentals.
+
+- Each note's position and head come from `percussionInstrument(midi)`: crosses for hi-hats and cymbals, diamonds for bells, triangles where conventional, normal heads for drums. A note outside the GM2 map sits on the middle line with a normal head.
+- Stems point up with one voice; with two, the file's voices decide: voice 1 up, voice 2 down.
+- Rests, beams, flags, dots, ties, tuplets, grace notes and dynamics follow the standard staff.
+
+## Both mode (WP-023)
+
+A track shown as `both` has a standard staff above its tab staff (Guitar Pro's "both"). **Rhythm lives only on the standard staff**: stems, flags, beams, tuplets, rhythm dots and rests are drawn there, and the tab staff shows fret numbers (and effects) without rhythm notation. A staff module knows it is in both mode when `StaffBar.staves` holds two staves; the tab module reads `staves.includes('standard')` as the signal to leave rhythm out. Dynamics and fingering are drawn by the standard staff in this mode, so the tab staff should leave them out too.

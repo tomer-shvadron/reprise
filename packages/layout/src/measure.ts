@@ -179,7 +179,11 @@ export function measureBar(
     clefChange,
     keyChange:
       context.keyChange && standardSlots.length > 0
-        ? Math.max(keyWidth(masterBar.keySignature.fifths, space), space)
+        ? keyWidth(
+            masterBar.keySignature.fifths,
+            space,
+            score.masterBars[index - 1]?.keySignature.fifths,
+          )
         : 0,
     time: context.showTime
       ? Math.max(0, ...slots.map((slot) => timeWidth(slot.box, masterBar.timeSignature, space)))

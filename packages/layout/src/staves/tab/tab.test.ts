@@ -537,7 +537,9 @@ describe('tab staff: both mode', () => {
       'riff',
       'la',
     ]);
-    expect(drawn.filter((line) => line.startsWith('path filled'))).toHaveLength(1);
+    expect(
+      sink.primitives.filter((p) => p.kind === 'path' && p.fill && p.role === 'ink'),
+    ).toHaveLength(1);
     expect(measured.below).toBeCloseTo(TAB.lyricRow * STAFF_SPACE, 5);
     expect({ primitives: drawn, anchors: sink.anchors.map(describeAnchor) }).toMatchSnapshot();
   });

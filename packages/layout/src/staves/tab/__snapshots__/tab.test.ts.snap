@@ -1,5 +1,35 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`tab staff: both mode > shows numbers, ties and words only under a standard staff 1`] = `
+{
+  "anchors": [
+    "note note00000001 [15.89,-4.05 8.22x8.1] track0000001 tab 0",
+    "beat beat00000001 [15.89,-7 8.22x66.5] track0000001 tab 0",
+    "note note00000002 [33.4,-4.05 13.2x8.1] track0000001 tab 0",
+    "beat beat00000002 [33.4,-7 13.2x66.5] track0000001 tab 0",
+    "beat beat00000003 [60,-7 0x66.5] track0000001 tab 0",
+    "note note00000003 [96.12,6.45 7.76x8.1] track0000001 tab 0",
+    "note note00000004 [90.39,7.67 3.97x5.67] track0000001 tab 0",
+    "beat beat00000004 [90.39,-7 13.49x66.5] track0000001 tab 0",
+    "beat beat00000005 [160,-7 0x66.5] track0000001 tab 0",
+  ],
+  "primitives": [
+    "path filled M15.89 -4.05h8.22v8.1h-8.22Z (paper) <note00000001>",
+    "text "0" @20,3.23 size 9.1 middle <note00000001>",
+    "path filled M33.4 -4.05h13.2v8.1h-13.2Z (paper) <note00000002>",
+    "text "(0)" @40,3.23 size 9.1 middle <note00000002>",
+    "path filled M96.12 6.45h7.76v8.1h-7.76Z (paper) <note00000003>",
+    "text "3" @100,13.73 size 9.1 middle <note00000003>",
+    "path filled M90.39 7.67h3.97v5.67h-3.97Z (paper) <note00000004>",
+    "text "1" @92.38,12.76 size 6.37 middle <note00000004>",
+    "path filled M24.11 4.05C26.43 6.85 31.08 6.85 33.4 4.05C31.08 4.8 26.43 4.8 24.11 4.05Z <note00000002>",
+    "text "D" @15.89,-10.85 size 8.4 start <beat00000001>",
+    "text "riff" @15.89,-26.25 size 8.4 start <beat00000001>",
+    "text "la" @20,62.3 size 8.4 middle <beat00000001>",
+  ],
+}
+`;
+
 exports[`tab staff: rests > draws every rest glyph in the middle of the staff, with its dots 1`] = `
 {
   "anchors": [

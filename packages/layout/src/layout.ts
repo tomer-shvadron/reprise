@@ -35,9 +35,14 @@ const clock: Clock = isClock(performanceClock) ? performanceClock : Date;
 function barInputs(score: Score, context: BarContext, options: ResolvedOptions): unknown[] {
   const { index, masterBar } = context;
   const tracks = masterBar.anacrusis ? score.tracks : options.tracks.map(({ track }) => track);
+  // A five-line staff's bar reads the bar before it (courtesy accidentals, ties, dynamics) and
+  // the key it cancels (naturals, courtesies).
+  const before = options.tracks.filter(({ staves }) => staves.some((type) => type !== 'tab'));
   return [
     masterBar,
+    score.masterBars[index - 1]?.keySignature,
     ...tracks.map((track) => track.bars[index]),
+    ...before.map(({ track }) => track.bars[index - 1]),
     ...context.clefs,
     ...context.clefChanges,
     context.showTime,

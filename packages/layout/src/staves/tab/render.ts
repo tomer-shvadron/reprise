@@ -47,8 +47,6 @@ import { wordStart, wordsBase } from './measure';
 const sign = (direction: StemDirection): number => (direction === 'down' ? 1 : -1);
 /** A tuplet of one beat still gets a bracket this wide either side of it, in staff spaces. */
 const TUPLET_OVERHANG = 0.4;
-/** How far a beat's hit box reaches past the staff on the side without its stems. */
-const BEAT_REACH = 1;
 /** Room under a row's baseline for descenders, in staff spaces. */
 const DESCENT = 0.6;
 /** A word row's baseline above the row's bottom: descenders and a gap from what is below. */
@@ -431,7 +429,7 @@ export function renderTab(
   const context: Context = { input, placement, sink, options, analysed, space };
   const size = TAB.fretSize * space;
   const positions = new Map<TabBeat, number>();
-  const reach = BEAT_REACH * space;
+  const reach = TAB.beatReach * space;
 
   for (const voice of analysed.voices) {
     // A rest alone in its voice is centred in the bar, as Guitar Pro draws a whole-bar rest.
