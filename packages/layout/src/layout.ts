@@ -189,12 +189,6 @@ function pages(options: ResolvedOptions, systems: readonly System[]): Page[] {
   }));
 }
 
-function append<T>(target: T[], items: readonly T[]): Range {
-  const start = target.length;
-  for (const item of items) target.push(item);
-  return { start, end: target.length };
-}
-
 /**
  * Lays out `score` for `options`. With a cache from an earlier call on the same document, bars
  * whose content is unchanged (by identity) and not listed in `options.dirtyBars` keep their
@@ -236,13 +230,12 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
     }
   }
 
-  const systems: CachedSystem[] = [];
-  const primitives: Primitive[] = [];
-  const anchors: Anchor[] = [];
+  const systems: CachedSystem[] = [...kept];
+  let primitiveCount = 0;
+  let anchorCount = 0;
   for (const entry of kept) {
-    systems.push(entry);
-    append(primitives, entry.primitives);
-    append(anchors, entry.anchors);
+    primitiveCount += entry.primitives.length;
+    anchorCount += entry.anchors.length;
   }
 
   if (slots.length > 0) {
@@ -291,9 +284,11 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
         bars: { start: plan.start, end: plan.end },
         bbox: rendered.bbox,
         staves: rendered.staves,
-        primitives: append(primitives, sink.primitives),
-        anchors: append(anchors, sink.anchors),
+        primitives: { start: primitiveCount, end: primitiveCount + sink.primitives.length },
+        anchors: { start: anchorCount, end: anchorCount + sink.anchors.length },
       };
+      primitiveCount += sink.primitives.length;
+      anchorCount += sink.anchors.length;
       systems.push({
         plan,
         barIds: barIds(score, plan),
@@ -306,6 +301,11 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
     }
   }
   const systemList = systems.map(({ system }) => system);
+  // One copy per array: pushing item by item cost several times as much on the long score.
+  const noPrimitives: Primitive[] = [];
+  const noAnchors: Anchor[] = [];
+  const primitives = noPrimitives.concat(...systems.map((entry) => entry.primitives));
+  const anchors = noAnchors.concat(...systems.map((entry) => entry.anchors));
 
   if (cache) {
     writeCache(cache, {
