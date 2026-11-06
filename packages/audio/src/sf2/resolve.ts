@@ -99,6 +99,8 @@ const SAMPLER_FLOOR_DB = 80;
 const SF2_FULL_SCALE_DB = 100;
 /** `initialFilterFc`'s maximum, about 19.9 kHz: at or above it with no resonance the filter is open. */
 const OPEN_FILTER_CENTS = 13_500;
+/** `initialFilterFc`'s minimum, 20 Hz: a negative filter envelope never holds the cutoff below it. */
+const MIN_FILTER_CENTS = 1500;
 /**
  * SF2's Q is the peak above DC gain at the cutoff; FluidSynth takes 0 as no peak at all, the
  * Butterworth the voice already plays, so the soundfonts voiced on it sound as designed.
@@ -217,6 +219,7 @@ const PAIR_CHECKED = [
   Gen.initialFilterFc,
   Gen.initialFilterQ,
   Gen.modEnvToFilterFc,
+  Gen.sustainModEnv,
   Gen.exclusiveClass,
 ];
 
@@ -444,7 +447,7 @@ function filter(generators: ReadonlyMap<number, number>): Region['filter'] {
   const resonance = value(generators, Gen.initialFilterQ);
   if (cents >= OPEN_FILTER_CENTS && resonance === 0) return undefined;
   return {
-    cutoffHz: centsToHz(Math.min(cents, OPEN_FILTER_CENTS)),
+    cutoffHz: centsToHz(Math.min(Math.max(cents, MIN_FILTER_CENTS), OPEN_FILTER_CENTS)),
     q: resonance / 10 + BUTTERWORTH_Q_DB,
   };
 }
