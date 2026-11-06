@@ -64,7 +64,11 @@ export function reportTrackLosses(track: Track, index: number, drops: DropCollec
     );
   }
   if (track.kind !== 'fretted' && track.capo !== 0) {
-    drops.drop('capo', [...path, 'capo'], 'Only a fretted track keeps a capo');
+    drops.drop(
+      'capo',
+      [...path, 'capo'],
+      'A capo off a fretted track is lost: the notes are fingered without one, and Guitar Pro would sound them a capo higher',
+    );
   }
   const { chorus, reverb, phaser, tremolo } = track.channel;
   if (chorus !== 0 || reverb !== 0 || phaser !== 0 || tremolo !== 0) {
@@ -173,20 +177,234 @@ export function planTrack(
   return plan;
 }
 
-/** Drum articulations: every GM2 percussion sound, then any other MIDI note the track plays. */
-export function drumArticulations(track: Track): number[] {
-  const known = PERCUSSION_INSTRUMENTS.map((instrument) => instrument.midi);
-  const extra = new Set<number>();
+export interface DrumArticulation {
+  midi: number;
+  name: string;
+  /** Guitar Pro's RSE sound for the articulation; empty where it has none. */
+  sound: string;
+}
+
+export interface DrumElement {
+  name: string;
+  type: string;
+  soundbank: string;
+  articulations: DrumArticulation[];
+}
+
+type KitEntry = readonly [
+  name: string,
+  type: string,
+  soundbank: string,
+  articulations: readonly (readonly [midi: number, name: string, sound: string])[],
+];
+
+/**
+ * Guitar Pro 7's drum kit in its own element order: the element each GM2 sound belongs to, with
+ * the articulation name and RSE sound Guitar Pro gives it (alphaTab's `GpifSoundMapper` lists the
+ * same kit for its exports). The GM2 sounds Guitar Pro has no element for (27, 28, 32) and any
+ * other note a track plays go in a trailing unpitched element.
+ */
+const DRUM_KIT: readonly KitEntry[] = [
+  [
+    'Snare',
+    'snare',
+    'Master-Snare',
+    [
+      [38, 'Snare (hit)', 'stick.hit.hit'],
+      [37, 'Snare (side stick)', 'stick.hit.sidestick'],
+    ],
+  ],
+  [
+    'Charley',
+    'hiHat',
+    'Master-Hihat',
+    [
+      [42, 'Hi-Hat (closed)', 'stick.hit.closed'],
+      [46, 'Hi-Hat (open)', 'stick.hit.open'],
+      [44, 'Pedal Hi-Hat (hit)', 'pedal.hit.pedal'],
+    ],
+  ],
+  ['Acoustic Kick Drum', 'kickDrum', 'AcousticKick-Percu', [[35, 'Kick (hit)', 'pedal.hit.hit']]],
+  ['Kick Drum', 'kickDrum', 'Master-Kick', [[36, 'Kick (hit)', 'pedal.hit.hit']]],
+  ['Tom Very High', 'tom', 'Master-Tom05', [[50, 'High Floor Tom (hit)', 'stick.hit.hit']]],
+  ['Tom High', 'tom', 'Master-Tom04', [[48, 'High Tom (hit)', 'stick.hit.hit']]],
+  ['Tom Medium', 'tom', 'Master-Tom03', [[47, 'Mid Tom (hit)', 'stick.hit.hit']]],
+  ['Tom Low', 'tom', 'Master-Tom02', [[45, 'Low Tom (hit)', 'stick.hit.hit']]],
+  ['Tom Very Low', 'tom', 'Master-Tom01', [[43, 'Very Low Tom (hit)', 'stick.hit.hit']]],
+  [
+    'Ride',
+    'ride',
+    'Master-Ride',
+    [
+      [51, 'Ride (middle)', 'stick.hit.mid'],
+      [53, 'Ride (bell)', 'stick.hit.bell'],
+    ],
+  ],
+  ['Splash', 'splash', 'Master-Splash', [[55, 'Splash (hit)', 'stick.hit.hit']]],
+  ['China', 'china', 'Master-China', [[52, 'China (hit)', 'stick.hit.hit']]],
+  ['Crash High', 'crash', 'Master-Crash02', [[49, 'Crash high (hit)', 'stick.hit.hit']]],
+  ['Crash Medium', 'crash', 'Master-Crash01', [[57, 'Crash medium (hit)', 'stick.hit.hit']]],
+  [
+    'Cowbell Medium',
+    'cowbell',
+    'CowbellMid-Percu',
+    [[56, 'Cowbell medium (hit)', 'stick.hit.hit']],
+  ],
+  [
+    'Woodblock Low',
+    'woodblock',
+    'WoodblockLow-Percu',
+    [[77, 'Woodblock low (hit)', 'stick.hit.hit']],
+  ],
+  [
+    'Woodblock High',
+    'woodblock',
+    'WoodblockHigh-Percu',
+    [[76, 'Woodblock high (hit)', 'stick.hit.hit']],
+  ],
+  ['Bongo High', 'bongo', 'BongoHigh-Percu', [[60, 'Bongo High (hit)', 'hand.hit.hit']]],
+  ['Bongo Low', 'bongo', 'BongoLow-Percu', [[61, 'Bongo Low (hit)', 'hand.hit.hit']]],
+  ['Timbale Low', 'timbale', 'TimbaleLow-Percu', [[66, 'Timbale low (hit)', 'stick.hit.hit']]],
+  ['Timbale High', 'timbale', 'TimbaleHigh-Percu', [[65, 'Timbale high (hit)', 'stick.hit.hit']]],
+  ['Agogo Low', 'agogo', 'AgogoLow-Percu', [[68, 'Agogo low (hit)', 'stick.hit.hit']]],
+  ['Agogo High', 'agogo', 'AgogoHigh-Percu', [[67, 'Agogo high (hit)', 'stick.hit.hit']]],
+  ['Conga Low', 'conga', 'CongaLow-Percu', [[64, 'Conga low (hit)', 'hand.hit.hit']]],
+  [
+    'Conga High',
+    'conga',
+    'CongaHigh-Percu',
+    [
+      [63, 'Conga high (hit)', 'hand.hit.hit'],
+      [62, 'Conga high (mute)', 'hand.hit.mute'],
+    ],
+  ],
+  ['Whistle Low', 'whistle', 'WhistleLow-Percu', [[72, 'Whistle low (hit)', 'blow.hit.hit']]],
+  ['Whistle High', 'whistle', 'WhistleHigh-Percu', [[71, 'Whistle high (hit)', 'blow.hit.hit']]],
+  [
+    'Guiro',
+    'guiro',
+    'Guiro-Percu',
+    [
+      [73, 'Guiro (hit)', 'stick.hit.hit'],
+      [74, 'Guiro (scrap-return)', 'stick.scrape.return'],
+    ],
+  ],
+  [
+    'Surdo',
+    'surdo',
+    'Surdo-Percu',
+    [
+      [86, 'Surdo (hit)', 'brush.hit.hit'],
+      [87, 'Surdo (mute)', 'brush.hit.mute'],
+    ],
+  ],
+  ['Tambourine', 'tambourine', 'Tambourine-Percu', [[54, 'Tambourine (hit)', 'hand.hit.hit']]],
+  [
+    'Cuica',
+    'cuica',
+    'Cuica-Percu',
+    [
+      [79, 'Cuica (open)', 'hand.hit.hit'],
+      [78, 'Cuica (mute)', 'hand.hit.mute'],
+    ],
+  ],
+  ['Vibraslap', 'vibraslap', 'Vibraslap-Percu', [[58, 'Vibraslap (hit)', 'hand.hit.hit']]],
+  [
+    'Triangle',
+    'triangle',
+    'Triangle-Percu',
+    [
+      [81, 'Triangle (hit)', 'stick.hit.hit'],
+      [80, 'Triangle (mute)', 'stick.hit.mute'],
+    ],
+  ],
+  ['Cabasa', 'cabasa', 'Cabasa-Percu', [[69, 'Cabasa (hit)', 'hand.hit.hit']]],
+  ['Castanets', 'castanets', 'Castanets-Percu', [[85, 'Castanets (hit)', 'hand.hit.hit']]],
+  ['Claves', 'claves', 'Claves-Percu', [[75, 'Claves (hit)', 'stick.hit.hit']]],
+  ['Left Maraca', 'maraca', 'Maracas-Percu', [[70, 'Left Maraca (hit)', 'hand.hit.hit']]],
+  ['Shaker', 'shaker', 'ShakerStudio-Percu', [[82, 'Shaker (hit)', 'hand.hit.hit']]],
+  ['Bell Tree', 'bellTree', 'BellTree-Percu', [[84, 'Bell Tree (hit)', 'stick.hit.hit']]],
+  ['Jingle Bell', 'jingleBell', 'JingleBell-Percu', [[83, 'Jingle Bell (hit)', 'stick.hit.hit']]],
+  ['Hand Clap', 'handClap', 'GroupHandClap-Percu', [[39, 'Hand Clap (hit)', 'hand.hit.hit']]],
+  [
+    'Electric Snare',
+    'snare',
+    'ElectricSnare-Percu',
+    [[40, 'Electric Snare (hit)', 'stick.hit.hit']],
+  ],
+  ['Sticks', 'snare', 'Stick-Percu', [[31, 'Snare (side stick)', 'stick.hit.sidestick']]],
+  [
+    'Very Low Floor Tom',
+    'tom',
+    'LowFloorTom-Percu',
+    [[41, 'Low Floor Tom (hit)', 'stick.hit.hit']],
+  ],
+  [
+    'Ride Cymbal 2',
+    'ride',
+    'Ride-Percu',
+    [
+      [59, 'Ride (edge)', 'stick.hit.edge'],
+      [29, 'Ride (choke)', 'stick.hit.choke'],
+    ],
+  ],
+  ['Reverse Cymbal', 'crash', 'Reverse-Cymbal', [[30, 'Reverse Cymbal (hit)', 'stick.hit.hit']]],
+  [
+    'Metronome',
+    'snare',
+    'Metronome-Percu',
+    [
+      [33, 'Metronome (hit)', 'stick.hit.sidestick'],
+      [34, 'Metronome (bell)', 'stick.hit.hit'],
+    ],
+  ],
+];
+
+const PERCUSSION_BY_MIDI = new Map(
+  PERCUSSION_INSTRUMENTS.map((instrument) => [instrument.midi, instrument]),
+);
+
+/** A drum track's instrument set: Guitar Pro's kit, then whatever else the track plays. */
+export function drumKit(track: Track): DrumElement[] {
+  const elements: DrumElement[] = DRUM_KIT.map(([name, type, soundbank, articulations]) => ({
+    name,
+    type,
+    soundbank,
+    articulations: articulations.map(([midi, label, sound]) => ({ midi, name: label, sound })),
+  }));
+  const known = new Set(elements.flatMap((element) => element.articulations.map((a) => a.midi)));
+  const others = new Set(
+    PERCUSSION_INSTRUMENTS.map((instrument) => instrument.midi).filter((midi) => !known.has(midi)),
+  );
   for (const bar of track.bars) {
     for (const voice of bar.voices) {
       for (const beat of voice.beats) {
         for (const note of [...beat.notes, ...(beat.grace ?? []).flatMap((g) => g.notes)]) {
-          if (!known.includes(note.fret)) extra.add(note.fret);
+          if (!known.has(note.fret)) others.add(note.fret);
         }
       }
     }
   }
-  return [...known, ...[...extra].sort((a, b) => a - b)];
+  if (others.size > 0) {
+    elements.push({
+      name: 'Percussion',
+      type: 'unpitched',
+      soundbank: '',
+      articulations: [...others]
+        .sort((a, b) => a - b)
+        .map((midi) => ({
+          midi,
+          name: PERCUSSION_BY_MIDI.get(midi)?.name ?? `MIDI ${String(midi)}`,
+          sound: '',
+        })),
+    });
+  }
+  return elements;
+}
+
+/** Every articulation's MIDI note in document order, which is what notes index. */
+export function drumArticulations(kit: readonly DrumElement[]): number[] {
+  return kit.flatMap((element) => element.articulations.map((a) => a.midi));
 }
 
 const NOTEHEADS: Readonly<Record<NoteHead, string>> = {
@@ -199,15 +417,22 @@ const NOTEHEADS: Readonly<Record<NoteHead, string>> = {
 /** The five-line staff's top line is gpif's line 0 and its bottom line 8; the model counts up from the bottom. */
 const BOTTOM_STAFF_LINE = 8;
 
-function articulation(xml: XmlWriter, name: string, line: number, heads: string, midi: number) {
+function articulation(
+  xml: XmlWriter,
+  name: string,
+  line: number,
+  heads: string,
+  midi: number,
+  sound: string,
+): void {
   xml.open('Articulation');
-  xml.cdata('Name', name);
+  xml.text('Name', name);
   xml.text('StaffLine', line);
   xml.text('Noteheads', heads);
   xml.text('TechniquePlacement', 'outside');
   xml.text('TechniqueSymbol', '');
   xml.text('InputMidiNumbers', midi === 0 ? '' : midi);
-  xml.text('OutputRSESound', '');
+  xml.text('OutputRSESound', sound);
   xml.text('OutputMidiNumber', midi);
   xml.close('Articulation');
 }
@@ -228,42 +453,48 @@ function instrumentSet(track: Track): [name: string, type: string] {
 }
 
 /**
- * The instrument set: a drum kit lists one articulation per sound (notes index them, and the
- * reader plays each as its `OutputMidiNumber`); any other track has Guitar Pro's single
- * `Pitched` element.
+ * The instrument set: a drum kit's elements with their articulations (notes index them across
+ * elements, and the reader plays each as its `OutputMidiNumber`); any other track has Guitar
+ * Pro's single `Pitched` element.
  */
-function writeInstrumentSet(xml: XmlWriter, track: Track, drums: number[]): void {
+function writeInstrumentSet(xml: XmlWriter, track: Track, kit: readonly DrumElement[]): void {
   const [name, type] = instrumentSet(track);
   xml.open('InstrumentSet');
   xml.text('Name', name);
   xml.text('Type', type);
   xml.text('LineCount', 5);
   xml.open('Elements');
-  xml.open('Element');
-  if (track.kind === 'drums') {
-    xml.text('Name', 'Drums');
-    xml.text('Type', 'drumKit');
-    xml.text('SoundbankName', '');
+  const elements: readonly DrumElement[] =
+    track.kind === 'drums'
+      ? kit
+      : [
+          {
+            name: 'Pitched',
+            type: 'pitched',
+            soundbank: '',
+            articulations: [{ midi: 0, name: '', sound: '' }],
+          },
+        ];
+  for (const element of elements) {
+    xml.open('Element');
+    xml.text('Name', element.name);
+    xml.text('Type', element.type);
+    xml.text('SoundbankName', element.soundbank);
     xml.open('Articulations');
-    for (const midi of drums) {
-      const instrument = PERCUSSION_INSTRUMENTS.find((entry) => entry.midi === midi);
+    for (const { midi, name: label, sound } of element.articulations) {
+      const instrument = PERCUSSION_BY_MIDI.get(midi);
       articulation(
         xml,
-        instrument?.name ?? `MIDI ${String(midi)}`,
-        BOTTOM_STAFF_LINE - (instrument?.staffPosition ?? 4),
+        label,
+        track.kind === 'drums' ? BOTTOM_STAFF_LINE - (instrument?.staffPosition ?? 4) : 0,
         NOTEHEADS[instrument?.noteHead ?? 'normal'],
         midi,
+        sound,
       );
     }
-  } else {
-    xml.text('Name', 'Pitched');
-    xml.text('Type', 'pitched');
-    xml.text('SoundbankName', '');
-    xml.open('Articulations');
-    articulation(xml, '', 0, NOTEHEADS.normal, 0);
+    xml.close('Articulations');
+    xml.close('Element');
   }
-  xml.close('Articulations');
-  xml.close('Element');
   xml.close('Elements');
   xml.close('InstrumentSet');
 }
@@ -272,7 +503,8 @@ const DIAGRAM_FINGERS: Readonly<Record<Finger, string>> = {
   thumb: 'Thumb',
   index: 'Index',
   middle: 'Middle',
-  ring: 'Ring',
+  // Guitar Pro's own spelling; alphaTab's writer says `Ring`, which its parser does not read back.
+  ring: 'Rank',
   little: 'Pinky',
 };
 
@@ -355,23 +587,37 @@ function property(xml: XmlWriter, name: string, inner: string, value: string | n
   xml.close('Property');
 }
 
+/** Guitar Pro's neck for a staff the model gives none (a drum kit). */
+const DEFAULT_FRET_COUNT = 24;
+
+/** The `Instrument` Guitar Pro names a tuning with; the reader reads it silently. */
+function tuningInstrument(track: Track): string {
+  if (track.program === 105) return 'Banjo';
+  if (track.program >= 32 && track.program <= 39) return 'Bass';
+  return 'Guitar';
+}
+
 function writeStaff(xml: XmlWriter, track: Track, plan: TrackPlan): void {
   xml.open('Staves');
   xml.open('Staff');
   xml.open('Properties');
-  if (track.kind !== 'drums') {
-    property(xml, 'CapoFret', 'Fret', track.kind === 'fretted' ? track.capo : 0);
-    property(xml, 'FretCount', 'Number', track.fretCount);
-    property(xml, 'PartialCapoFret', 'Fret', 0);
-    property(xml, 'PartialCapoStringFlags', 'Bitset', track.tuning.map(() => '0').join(''));
-    if (track.tuning.length > 0) {
-      xml.open('Property', { name: 'Tuning' });
-      // Lowest string first, the model's order too.
-      xml.text('Pitches', track.tuning.join(' '));
-      xml.cdata('Label', '');
-      xml.text('LabelVisible', 'false');
-      xml.close('Property');
-    }
+  property(xml, 'CapoFret', 'Fret', track.kind === 'fretted' ? track.capo : 0);
+  property(
+    xml,
+    'FretCount',
+    'Number',
+    track.kind === 'drums' ? DEFAULT_FRET_COUNT : track.fretCount,
+  );
+  property(xml, 'PartialCapoFret', 'Fret', 0);
+  property(xml, 'PartialCapoStringFlags', 'Bitset', track.tuning.map(() => '0').join(''));
+  if (track.tuning.length > 0) {
+    xml.open('Property', { name: 'Tuning' });
+    // Lowest string first, the model's order too.
+    xml.text('Pitches', track.tuning.join(' '));
+    xml.text('Instrument', tuningInstrument(track));
+    xml.cdata('Label', '');
+    xml.text('LabelVisible', 'false');
+    xml.close('Property');
   }
   xml.open('Property', { name: 'DiagramCollection' });
   xml.open('Items');
@@ -423,7 +669,7 @@ function color(hex: string): string {
 export interface TrackWriteContext {
   index: number;
   plan: TrackPlan;
-  drums: number[];
+  kit: readonly DrumElement[];
   /** Whether any beat carries its own lyrics, in which case Guitar Pro must not lay the block again. */
   beatLyrics: boolean;
 }
@@ -435,7 +681,7 @@ export function writeTrack(xml: XmlWriter, track: Track, context: TrackWriteCont
   xml.cdata('ShortName', track.shortName);
   xml.text('Color', color(track.color));
   xml.text('PlayingStyle', 'Default');
-  writeInstrumentSet(xml, track, context.drums);
+  writeInstrumentSet(xml, track, context.kit);
   xml.open('Transpose');
   xml.text('Chromatic', 0);
   // Guitar Pro stores sounding minus written; the model keeps written minus sounding.

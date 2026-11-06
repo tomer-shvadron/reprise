@@ -15,6 +15,7 @@ import type {
   TripletFeel,
   Tuplet,
 } from '@reprise/model';
+import { tieOriginOf } from '@reprise/model';
 
 import { propagateVoltas } from './build-score';
 import { DropCollector, type GpifDropped } from './dropped';
@@ -23,11 +24,13 @@ import { planTempos } from './write-tempo';
 import {
   chordKey,
   drumArticulations,
+  drumKit,
   impliedBarres,
   planTrack,
   reportTrackLosses,
   sortedBarres,
   writeTrack,
+  type DrumElement,
   type TrackPlan,
 } from './write-tracks';
 import { XmlWriter, hasInvalidXmlCharacters } from './xml-writer';
@@ -175,24 +178,30 @@ const HAMMER_PULL_BAR_WINDOW = 3;
 
 /**
  * Notes that start a tie, and notes that start a hammer-on or pull-off. gpif flags both ends of
- * each; the model flags the destination. A hammer-on origin is the previous note on the string
- * (the previous note at all off fretted tracks, where the destination must be the first note of
- * its beat), and only where the reader, searching forward from it, would find this destination.
+ * each; the model flags the destination. A tie's origin is the model's (`tieOriginOf`: the last
+ * note in the slot within three bars). A hammer-on origin is the previous note on the string (the
+ * previous note at all off fretted tracks, where the destination must be the first note of its
+ * beat), and only where the reader, searching forward from it, would find this destination.
  */
 function linkOrigins(track: Track): { ties: Set<Note>; hopos: Set<Note> } {
   const ties = new Set<Note>();
   const hopos = new Set<Note>();
   const fretted = track.kind === 'fretted';
-  const matches = (a: Note, b: Note): boolean =>
-    fretted ? a.string === b.string : a.fret === b.fret;
+  track.bars.forEach((bar, barIndex) => {
+    bar.voices.forEach((voice, slot) => {
+      voice.beats.forEach((beat, beatIndex) => {
+        for (const note of beat.notes) {
+          if (!note.tie) continue;
+          const origin = tieOriginOf(track, { bar: barIndex, voice: slot, beat: beatIndex }, note);
+          if (origin) ties.add(origin.note);
+        }
+      });
+    });
+  });
   for (let slot = 0; slot < 4; slot++) {
     const line = voiceLine(track, slot);
     line.forEach(({ beat, bar }, index) => {
       for (const note of beat.notes) {
-        if (note.tie) {
-          const origin = line[index - 1]?.beat.notes.find((candidate) => matches(candidate, note));
-          if (origin) ties.add(origin);
-        }
         if (!note.hammerPull || (!fretted && beat.notes[0] !== note)) continue;
         for (let back = index - 1; back >= 0; back--) {
           const earlier = line[back];
@@ -283,16 +292,8 @@ class BodyWriter {
     const id = this.nextBarId();
     const bar = track.bars[barIndex];
     const voiceIds = (bar?.voices ?? []).map((voice, slot) => {
-      if (voice.beats.length === 0) return -1;
-      if (voice.beats.every(isEmptyBeat)) {
-        // GP5's unused second voice is a row of empty beats; gpif leaves an unused voice out.
-        this.#drops.drop(
-          'empty-beat',
-          ['tracks', trackIndex, 'bars', barIndex, 'voices', slot],
-          'A voice of empty beats (no notes, not rests) is left out, as gpif writes an unused voice',
-        );
-        return -1;
-      }
+      // GP5's unused voice is a row of empty beats, which says nothing: gpif leaves it out.
+      if (voice.beats.every(isEmptyBeat)) return -1;
       const voiceId = this.#ids.voice++;
       const beatIds = voice.beats.flatMap((beat, beatIndex) =>
         this.#writeBeat(beat, {
@@ -388,15 +389,16 @@ class BodyWriter {
         'Volume, pan and effect changes on beats have no gp equivalent',
       );
     }
-    let stroke = effects.brush ? effects.brush.duration : effects.arpeggio?.duration;
-    if (effects.brush && effects.arpeggio?.duration !== undefined) {
+    // gpif has one stroke per beat (alphaTab's `brushType`): a brush beside an arpeggio keeps the brush.
+    const arpeggio = effects.brush ? undefined : effects.arpeggio;
+    if (effects.brush && effects.arpeggio) {
       drop.drop(
-        'stroke-duration',
-        [...path, 'effects', 'arpeggio', 'duration'],
-        "A beat with a brush and an arpeggio keeps only the brush's length",
+        'stroke',
+        [...path, 'effects', 'arpeggio'],
+        'A beat with both a brush and an arpeggio keeps the brush; gpif has one stroke per beat',
       );
-      stroke = effects.brush.duration;
     }
+    const stroke = effects.brush ? effects.brush.duration : arpeggio?.duration;
 
     const dynamic = this.#dynamic(beat.notes, path);
     const rhythm = this.#rhythm(beat.duration, beat.dots, beat.tuplet);
@@ -415,7 +417,7 @@ class BodyWriter {
     else if (effects.fadeOut === true) xml.text('Fadding', 'FadeOut');
     else if (effects.volumeSwell === true) xml.text('Fadding', 'VolumeSwell');
     if (effects.tremoloPicking !== undefined) xml.text('Tremolo', TREMOLO[effects.tremoloPicking]);
-    if (effects.arpeggio) xml.text('Arpeggio', effects.arpeggio.direction === 'up' ? 'Up' : 'Down');
+    if (arpeggio) xml.text('Arpeggio', arpeggio.direction === 'up' ? 'Up' : 'Down');
     if (beat.text !== undefined) {
       this.#checkText(beat.text, [...path, 'text']);
       xml.cdata('FreeText', beat.text);
@@ -475,6 +477,8 @@ class BodyWriter {
 interface TrackBodyContext {
   track: Track;
   plan: TrackPlan;
+  kit: DrumElement[];
+  /** The kit's articulations' MIDI notes, in the order notes index them. */
   drums: number[];
   links: { ties: Set<Note>; hopos: Set<Note> };
 }
@@ -668,20 +672,16 @@ export function writeGpif(score: Score): GpifWriteResult {
     plan.chords.forEach((chord: Chord) => {
       checkText(chord.name, ['tracks', index]);
     });
-    return {
-      track,
-      plan,
-      drums: track.kind === 'drums' ? drumArticulations(track) : [],
-      links: linkOrigins(track),
-    };
+    const kit = track.kind === 'drums' ? drumKit(track) : [];
+    return { track, plan, kit, drums: drumArticulations(kit), links: linkOrigins(track) };
   });
 
   xml.open('Tracks');
-  contexts.forEach(({ track, plan, drums }, index) => {
+  contexts.forEach(({ track, plan, kit }, index) => {
     const beatLyrics = track.bars.some((bar) =>
       bar.voices.some((voice) => voice.beats.some((beat) => beat.lyrics !== undefined)),
     );
-    writeTrack(xml, track, { index, plan, drums, beatLyrics });
+    writeTrack(xml, track, { index, plan, kit, beatLyrics });
   });
   xml.close('Tracks');
 

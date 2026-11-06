@@ -15,13 +15,17 @@ export type GpifDropCode =
   | 'sound-override'
   /** Notes of one beat (or one grace beat) with different dynamics; gpif has one per beat. */
   | 'note-dynamics'
-  /** A brush and an arpeggio on one beat with a length on the arpeggio; gpif has one length. */
-  | 'stroke-duration'
+  /** A brush and an arpeggio on one beat; gpif has one stroke per beat, and the brush is kept. */
+  | 'stroke'
   /** More than one of fade in, fade out and volume swell on a beat; gpif has one `Fadding`. */
   | 'fade'
   /** `effects.tapping` on a beat with no notes; gpif marks tapping on notes. */
   | 'tapping-without-notes'
-  /** Guitar Pro's empty beat (`rest: false`, no notes), which gpif can only write as a rest. */
+  /**
+   * Guitar Pro's empty beat (`rest: false`, no notes) among a voice's played beats, which gpif can
+   * only write as a rest. A voice of nothing but empty beats (GP5's unused voice) is left out
+   * silently, as Guitar Pro 7 writes an unused voice.
+   */
   | 'empty-beat'
   /** A bend whose points or kind gpif's origin, middle and destination cannot hold. */
   | 'bend-shape'

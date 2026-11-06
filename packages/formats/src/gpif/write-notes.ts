@@ -216,7 +216,8 @@ function fingerPitched(track: Track, midi: number): [string: number, fret: numbe
 export function writeNote(xml: XmlWriter, id: number, note: Note, options: NoteWriteOptions): void {
   const { track, path, drops } = options;
   xml.open('Note', { id: String(id) });
-  if (options.articulation !== undefined) xml.text('InstrumentArticulation', options.articulation);
+  // Guitar Pro writes it on every note; off a drum kit it is 0.
+  xml.text('InstrumentArticulation', options.articulation ?? 0);
   xml.open('Properties');
 
   let midi: number | undefined;

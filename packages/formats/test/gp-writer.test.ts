@@ -3,7 +3,7 @@ import { fullScore, largeScore, note, score } from '@reprise/model/testing';
 import { unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
-import { readGp, readGp3To5, writeGp, writeGpif, type GpifDropCode } from '../src/index';
+import { readGp, readGp3To5, readGpx, writeGp, writeGpif, type GpifDropCode } from '../src/index';
 import { readPartConfiguration } from '../src/gpif/part-configuration';
 import { fixtureBytes, manifestEntries } from './corpus';
 import { roundTripView } from './gp-round-trip';
@@ -85,7 +85,7 @@ describe('the gp writer round trip', () => {
       ['sound-override', 'score.tracks[0].sound'],
       ['chord-barre', 'score.tracks[0]'],
       ['mixer-change', 'score.tracks[0].bars[0].voices[0].beats[0].mix'],
-      ['stroke-duration', 'score.tracks[0].bars[0].voices[0].beats[0].effects.arpeggio.duration'],
+      ['stroke', 'score.tracks[0].bars[0].voices[0].beats[0].effects.arpeggio'],
       ['note-dynamics', 'score.tracks[0].bars[0].voices[0].beats[0]'],
       ['trill-speed', 'score.tracks[0].bars[0].voices[0].beats[0].notes[0].trill.speed'],
     ]);
@@ -106,7 +106,7 @@ describe('the gp writer round trip', () => {
       ...(beat.mix?.program !== undefined && { program: beat.mix.program }),
       ...(beat.mix?.tempo && { tempo: beat.mix.tempo }),
     };
-    delete beat.effects.arpeggio.duration;
+    delete beat.effects.arpeggio;
     const [bent, other] = beat.notes;
     if (!bent?.trill || !other) throw new Error('fullScore changed shape');
     other.dynamics = bent.dynamics;
@@ -121,10 +121,11 @@ describe('the gp writer round trip', () => {
 });
 
 /**
- * The binary fixtures carry what gpif cannot: GP5's coloured markers, its unused voices of
- * empty beats, and bend and whammy curves of more than four points. Everything else survives.
+ * The binary fixtures carry what gpif cannot: GP5's coloured markers, its empty beats, and bend
+ * and whammy curves of more than four points. Everything else survives, and a gpx score (the
+ * same document in GP6's container) loses nothing.
  */
-describe('a gp3, gp4 or gp5 score exported to gp', () => {
+describe('a gp3, gp4, gp5 or gpx score exported to gp', () => {
   const CROSS_FORMAT_LOSSES: GpifDropCode[] = [
     'section-color',
     'empty-beat',
@@ -168,8 +169,17 @@ describe('a gp3, gp4 or gp5 score exported to gp', () => {
     return copy;
   }
 
-  it.each(manifestEntries(['gp3', 'gp4', 'gp5']).map((entry) => entry.path))('%s', (path) => {
-    const source = readGp3To5(fixtureBytes(path)).score;
+  const binary = manifestEntries(['gp3', 'gp4', 'gp5']).map((entry): [string, () => Score] => [
+    entry.path,
+    () => readGp3To5(fixtureBytes(entry.path)).score,
+  ]);
+  const gpx = manifestEntries(['gpx']).map((entry): [string, () => Score] => [
+    entry.path,
+    () => readGpx(fixtureBytes(entry.path)).score,
+  ]);
+
+  it.each([...binary, ...gpx])('%s', (_, build) => {
+    const source = build();
     const result = roundTrip(source);
     for (const entry of result.dropped) expect(CROSS_FORMAT_LOSSES).toContain(entry.code);
     expect(roundTripView(withoutCurves(result.score))).toEqual(
@@ -233,11 +243,11 @@ describe('what the writer reports as dropped', () => {
           .build(),
     ],
     [
-      'stroke-duration',
+      'stroke',
       () =>
         base()
           .beat('1', [note(1, 0)], {
-            effects: { brush: { direction: 'up' }, arpeggio: { direction: 'up', duration: 8 } },
+            effects: { brush: { direction: 'up' }, arpeggio: { direction: 'up' } },
           })
           .build(),
     ],
@@ -255,7 +265,14 @@ describe('what the writer reports as dropped', () => {
           .rest('1', { effects: { tapping: true } })
           .build(),
     ],
-    ['empty-beat', () => base().beat('1', []).build()],
+    [
+      'empty-beat',
+      () =>
+        base()
+          .beat('2', [note(1, 0)])
+          .beat('2', [])
+          .build(),
+    ],
     [
       'bend-shape',
       () =>
@@ -382,6 +399,9 @@ describe('what the writer reports as dropped', () => {
 });
 
 describe('the gpif document', () => {
+  const notesOf = (xml: string): string[] =>
+    xml.slice(xml.indexOf('<Notes>\n'), xml.indexOf('</Notes>\n<Rhythms>')).split('<Note id=');
+
   it('flags both ends of a hammer-on and a tie, as Guitar Pro does', () => {
     const { xml } = writeGpif(
       score()
@@ -393,14 +413,50 @@ describe('the gpif document', () => {
         .beat('4', [note(1, 7, { tie: true })])
         .build(),
     );
-    const notes = xml
-      .slice(xml.indexOf('<Notes>\n'), xml.indexOf('</Notes>\n<Rhythms>'))
-      .split('<Note id=');
+    const notes = notesOf(xml);
     expect(notes[1]).toContain('HopoOrigin');
+    expect(notes[1]).toContain('<InstrumentArticulation>0</InstrumentArticulation>');
     expect(notes[2]).not.toContain('Hopo');
     expect(notes[3]).toContain('HopoDestination');
     expect(notes[3]).toContain('<Tie origin="true" destination="false" />');
     expect(notes[4]).toContain('<Tie origin="false" destination="true" />');
+  });
+
+  it("flags a tie's origin where the model finds it, past rests and other strings", () => {
+    const { xml } = writeGpif(
+      score()
+        .track('guitar')
+        .bar()
+        .beat('4', [note(6, 3)])
+        .rest('4')
+        .beat('4', [note(1, 0)])
+        .beat('4', [note(6, 3, { tie: true })])
+        .build(),
+    );
+    const notes = notesOf(xml);
+    expect(notes[1]).toContain('<Tie origin="true" destination="false" />');
+    expect(notes[2]).not.toContain('<Tie');
+    expect(notes[3]).toContain('<Tie origin="false" destination="true" />');
+  });
+
+  it('leaves a voice of nothing but empty beats out, without reporting it', () => {
+    const { xml, dropped } = writeGpif(score().track('guitar').bar().beat('1', []).build());
+    expect(dropped).toEqual([]);
+    expect(xml).toContain('<Voices>-1 -1 -1 -1</Voices>');
+  });
+
+  it("groups drum articulations under Guitar Pro's elements, the rest in an unpitched one", () => {
+    const { xml } = writeGpif(kitchenSink());
+    const elements = [
+      ...xml.matchAll(/<Element>\n<Name>([^<]*)<\/Name>\n<Type>([^<]*)<\/Type>/g),
+    ].map((match) => match.slice(1, 3));
+    const names = elements.map(([name]) => name);
+    expect(names.indexOf('Snare')).toBeLessThan(names.indexOf('Kick Drum'));
+    expect(names.indexOf('Kick Drum')).toBeLessThan(names.indexOf('Percussion'));
+    expect(elements).toContainEqual(['Percussion', 'unpitched']);
+    expect(elements.some(([, type]) => type === 'drumKit')).toBe(false);
+    expect(xml).toContain('<InputMidiNumbers>20</InputMidiNumbers>');
+    expect(xml).toContain('finger="Rank"');
   });
 
   it('marks a volta bracket on its first bar only', () => {
