@@ -1,12 +1,10 @@
-import { PauseIcon, PlayIcon } from 'lucide-react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 
+import { useAppServices } from '@/app/services-context';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { selectCanPlay, selectRunning, type PlaybackStoreState } from '@/state/playback';
-
-import { useAppServices } from './services-context';
+import type { PlaybackStoreState } from '@/state/playback';
 
 const MB = 1024 * 1024;
 
@@ -36,15 +34,14 @@ export function soundStatus(
   return undefined;
 }
 
-export function PlaybackControls() {
+/** The sound bank's and the song's load state, the decoded memory, and Retry after an error. */
+export function SoundStatus() {
   const { playback, audio } = useAppServices();
-  const { canPlay, running, text, retry, memory, instruments } = useStore(
+  const { text, retry, memory, instruments } = useStore(
     playback,
     useShallow((state) => {
       const status = soundStatus(state);
       return {
-        canPlay: selectCanPlay(state),
-        running: selectRunning(state),
         text: status?.text,
         retry: status?.retry ?? false,
         memory: state.memory,
@@ -52,22 +49,9 @@ export function PlaybackControls() {
       };
     }),
   );
-  const label = running ? 'Pause' : 'Play';
-  const Icon = running ? PauseIcon : PlayIcon;
 
   return (
-    <>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={label}
-        disabled={!canPlay}
-        onClick={() => {
-          audio.togglePlay();
-        }}
-      >
-        <Icon />
-      </Button>
+    <div className="flex min-w-0 flex-1 items-center gap-1">
       <Tooltip>
         <TooltipTrigger asChild>
           <span role="status" className="text-muted-foreground min-w-0 truncate text-xs">
@@ -90,6 +74,6 @@ export function PlaybackControls() {
           Retry
         </Button>
       )}
-    </>
+    </div>
   );
 }

@@ -5,32 +5,15 @@ import { describe, expect, it } from 'vitest';
 import { initialPlaybackState, type PlaybackStoreState } from '@/state/playback';
 import { renderWithServices } from '@/test/render';
 
-import { megabytes, PlaybackControls, soundStatus } from './playback-controls';
+import { megabytes, SoundStatus, soundStatus } from './sound-status';
 
 function stateWith(partial: Partial<PlaybackStoreState>): PlaybackStoreState {
   return { ...initialPlaybackState(), ...partial };
 }
 
-describe('PlaybackControls', () => {
-  it('stays disabled until the song is ready, then toggles play', async () => {
-    const { services } = renderWithServices(<PlaybackControls />);
-    const user = userEvent.setup();
-    expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled();
-
-    act(() => {
-      services.playback.setState({ song: { status: 'ready', error: undefined } });
-    });
-    await user.click(screen.getByRole('button', { name: 'Play' }));
-    expect(services.fakeAudio.togglePlay).toHaveBeenCalledOnce();
-
-    act(() => {
-      services.playback.setState({ transport: 'playing' });
-    });
-    expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled();
-  });
-
+describe('SoundStatus', () => {
   it('offers Retry when sounds are unavailable', async () => {
-    const { services } = renderWithServices(<PlaybackControls />);
+    const { services } = renderWithServices(<SoundStatus />);
     const user = userEvent.setup();
 
     act(() => {
@@ -45,7 +28,7 @@ describe('PlaybackControls', () => {
   });
 
   it('counts the song’s instruments in the memory tooltip, not the bank’s preset aliases', async () => {
-    const { services } = renderWithServices(<PlaybackControls />);
+    const { services } = renderWithServices(<SoundStatus />);
     const user = userEvent.setup();
     act(() => {
       services.playback.setState({

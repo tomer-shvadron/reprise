@@ -39,6 +39,7 @@ export function fakeAudioService(): FakeAudioService {
     setLoop: vi.fn(),
     setCountIn: vi.fn(),
     setMetronome: vi.fn(),
+    setMasterVolume: vi.fn(),
     setTrack: vi.fn(),
     retry: vi.fn(),
     settled: vi.fn(() => Promise.resolve()),
@@ -47,11 +48,33 @@ export function fakeAudioService(): FakeAudioService {
   };
 }
 
+/** A `Storage` held in memory, so tests never share `localStorage`. */
+export function memoryStorage(): Storage {
+  const items = new Map<string, string>();
+  return {
+    get length() {
+      return items.size;
+    },
+    clear: () => {
+      items.clear();
+    },
+    getItem: (key) => items.get(key) ?? null,
+    key: (index) => [...items.keys()][index] ?? null,
+    removeItem: (key) => {
+      items.delete(key);
+    },
+    setItem: (key, value) => {
+      items.set(key, value);
+    },
+  };
+}
+
 /** Real stores over a fake platform and a fake audio service, for jsdom tests. */
 export function createTestServices(
   options: Partial<AppServicesOptions> = {},
 ): AppServices & { fakeAudio: FakeAudioService } {
   let fakeAudio: FakeAudioService | undefined;
+  const storage = memoryStorage();
   const services = createAppServices({
     platform: options.platform ?? fakePlatform(),
     ui: options.ui ?? createUiStore('dark'),
@@ -63,6 +86,7 @@ export function createTestServices(
       }),
     ...(options.read && { read: options.read }),
     ...(options.write && { write: options.write }),
+    storage: options.storage ?? (() => storage),
   });
   return Object.assign(services, { fakeAudio: fakeAudio ?? fakeAudioService() });
 }

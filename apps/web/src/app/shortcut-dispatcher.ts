@@ -8,6 +8,33 @@ function isEditable(target: EventTarget | null): boolean {
   );
 }
 
+// Sliders are left out on purpose: Space plays while one has focus.
+const ACTIVATES_ON_SPACE = [
+  'button',
+  'a[href]',
+  'summary',
+  ...[
+    'button',
+    'switch',
+    'checkbox',
+    'radio',
+    'menuitem',
+    'menuitemcheckbox',
+    'menuitemradio',
+    'option',
+    'tab',
+    'treeitem',
+  ].map((role) => `[role="${role}"]`),
+].join(', ');
+
+/** A bare key the focused element handles itself: text in a field, Space or Enter on a control. */
+function leavesKeyToTarget(event: KeyboardEvent): boolean {
+  const { target } = event;
+  if (isEditable(target)) return true;
+  const activates = event.key === ' ' || event.key === 'Enter';
+  return activates && target instanceof Element && target.closest(ACTIVATES_ON_SPACE) !== null;
+}
+
 /** Runs the registered command whose shortcut matches the event; returns whether one ran. */
 export function dispatchShortcut(
   event: KeyboardEvent,
@@ -19,13 +46,14 @@ export function dispatchShortcut(
 
   const command = registry.list().find(({ shortcut }) => {
     if (!shortcut) return false;
-    // A bare key typed into a text field is text, not a shortcut.
-    if (!shortcut.mod && isEditable(event.target)) return false;
+    if (!shortcut.mod && leavesKeyToTarget(event)) return false;
     return matchesShortcut(event, shortcut, platform);
   });
   if (!command) return false;
 
+  // A held key is still swallowed, so a held Space does not scroll the page.
   event.preventDefault();
+  if (event.repeat && command.repeat === false) return false;
   runCommand(command, onError);
   return true;
 }
