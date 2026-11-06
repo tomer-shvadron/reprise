@@ -27,7 +27,7 @@ export interface Margins {
 
 export interface LayoutOptions {
   mode: 'paged' | 'continuous';
-  /** Paged: the page width. Continuous: the viewport width, the target width of each system. */
+  /** Paged: the page width. Continuous: the target width of each segment (the painter passes 640). */
   width: number;
   /** Paged only; defaults to the A4 height. */
   pageHeight?: number;
