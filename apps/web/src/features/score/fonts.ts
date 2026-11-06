@@ -11,9 +11,8 @@ const listeners = new Set<() => void>();
 
 /**
  * Loads Bravura and Geist once per page and resolves when both settle. Bravura goes through the
- * FontFace API from `BASE_URL`, which is `./` in the Electron build where an absolute
- * `@font-face` URL would miss under `file://`. A failure warns and still resolves: a fallback
- * font beats a blank score.
+ * FontFace API from `BASE_URL`, which is `./` in the Electron build. A failure warns and still
+ * resolves: a fallback font beats a blank score.
  */
 export function loadScoreFonts(): Promise<void> {
   if (loading) return loading;
