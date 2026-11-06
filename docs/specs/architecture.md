@@ -76,6 +76,8 @@ file bytes --formats.read--> Score --------+--> layout.layout(score, options) --
 
 Changed by #62 (2026-11-05): a tie's origin is the most recent note on its string in its voice within three bars, not only the previous beat (`tieOriginOf`, `TIE_REACH_BARS`); `newId()` draws its random bytes from a pooled buffer, with the same format and distribution. Widened by #65 (2026-11-05): `tieChainOf`, the forward walk in score order, is exported; a grace note may not carry `tie` (`GraceNoteSchema`); `ChannelMixChange.duration` counts quarter notes, the unit the #66 review ruled; and the audio sink contract (`packages/audio/README.md`) gains `InstrumentSink.mix?(MixEvent)` for beat-level mixer changes, replayed at each run start, and `NoteEvent.continuations`, the tied links folded into an onset.
 
+Changed by #82 (2026-11-06): `write` takes an optional third argument, `write(score, format, options?: { app?: AppInfo })`, the app stamped into a `.reprise` file, defaulting to `{ name: 'reprise', version: '0.0.0' }`.
+
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
 
 **Diagnostics** carry kebab-case identifiers. An invariant violation keys its kind as `rule` (`Violation`); a warning or an error keys it as `code` (`ParseWarning`, `PlaybackWarning`, `CommandWarning`, `CommandError`, `NativeFormatError`). Model enum values (`slight`, `doubleFlat`, `belowOpenString`) stay camelCase: they are data, not diagnostics.
@@ -391,7 +393,7 @@ Usage is in `../reference/score-model.md`.
 type Format = 'gp3' | 'gp4' | 'gp5' | 'gp' | 'gpx' | 'reprise';
 function detect(bytes: Uint8Array): Format | undefined;
 function read(bytes: Uint8Array, format?: Format): Promise<{ score: Score; warnings: Warning[] }>;
-function write(score: Score, format: 'reprise' | 'gp'): Promise<{ bytes: Uint8Array; dropped: Warning[] }>;
+function write(score: Score, format: 'reprise' | 'gp', options?: { app?: AppInfo }): Promise<{ bytes: Uint8Array; dropped: Warning[] }>;
 ```
 
 ### Layout (`@reprise/layout`)
