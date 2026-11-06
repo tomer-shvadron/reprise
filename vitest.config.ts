@@ -1,12 +1,13 @@
 import { fileURLToPath } from 'node:url';
 
 import { playwright } from '@vitest/browser-playwright';
-import { configDefaults, defineConfig } from 'vitest/config';
+import { configDefaults, defaultExclude, defineConfig } from 'vitest/config';
 
 import { loadBudgets } from './scripts/bench/budgets.ts';
 
 // Audio runs in the browser; files named `*.node.test.ts` prove a module also runs under Node.
 const AUDIO_NODE_TESTS = '**/*.node.test.ts';
+const AUDIO_NODE_BENCHES = '**/*.node.bench.ts';
 
 const { budgets, error: budgetsError } = loadBudgets(
   fileURLToPath(new URL('docs/plans/roadmap.md', import.meta.url)),
@@ -29,6 +30,7 @@ export default defineConfig({
           name: 'audio',
           root: 'packages/audio',
           exclude: [...configDefaults.exclude, AUDIO_NODE_TESTS],
+          benchmark: { exclude: [...defaultExclude, AUDIO_NODE_BENCHES] },
           // Reads the fixture corpus in Node, since audio may not import the readers.
           globalSetup: ['../../scripts/fixtures/provide-scores.ts'],
           browser: {
@@ -47,6 +49,7 @@ export default defineConfig({
           root: 'packages/audio',
           environment: 'node',
           include: [AUDIO_NODE_TESTS],
+          benchmark: { include: [AUDIO_NODE_BENCHES] },
           // Reads the SF2 fixture in Node, since audio is typed without Node's modules.
           globalSetup: ['../../scripts/sounds/provide-sf2.ts'],
         },
