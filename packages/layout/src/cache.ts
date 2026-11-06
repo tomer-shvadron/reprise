@@ -2,12 +2,18 @@ import type { Id } from '@reprise/model';
 
 import type { SystemPlan } from './breaking';
 import type { BarMeasure } from './measure';
+import type { LaneRequests } from './staves/lanes';
 import type { Anchor, Primitive, System } from './types';
 
 export interface CachedBar {
   /** What the measurement was made from, compared by identity: Immer keeps unchanged nodes. */
   inputs: readonly unknown[];
   measure: BarMeasure;
+  /**
+   * The bar's lane requests per staff slot, with the index and entering dynamic they were made
+   * at; filled in place once per call, as they depend on earlier bars through the dynamic.
+   */
+  lanes?: { index: number; entering: string; requests: LaneRequests[] };
 }
 
 /** Where the next system goes: paged systems flow down pages, continuous ones run rightwards. */

@@ -141,7 +141,10 @@ describe('LayoutCache', () => {
     );
   });
 
-  it('rebuilds a system out of reach whose entering dynamic changed', () => {
+  it.each([
+    ['paged', paged],
+    ['continuous', continuous],
+  ])('rebuilds a system out of reach whose entering dynamic changed, %s', (_, base) => {
     // Voice 2 plays in bar 0 and bar 12 only, so its bar-0 dynamic decides whether bar 12 writes
     // one. Voice 1 opens with a dynamic, so the first system keeps its dynamics lane and height.
     const builder = scoreBuilder().track('guitar');
@@ -153,7 +156,7 @@ describe('LayoutCache', () => {
       if (bar === 0 || bar === 12) builder.voice(1).beat('1', [note(4, 2, { dynamics: 'mf' })]);
     }
     const built = builder.build({ ids: 'sequential' });
-    const options = { ...paged, width: widthStarting(built, 12, paged) };
+    const options = { ...base, width: widthStarting(built, 12, base) };
     const { cache, first } = warm(built, options);
     const later = first.systems.find(({ bars }) => bars.start === 12);
     if (!later) throw new Error('no system starts at bar 12');
