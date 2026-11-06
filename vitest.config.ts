@@ -1,10 +1,7 @@
 import { fileURLToPath } from 'node:url';
 
 import { playwright } from '@vitest/browser-playwright';
-import { configDefaults, defineConfig } from 'vitest/config';
-
-// Audio runs in the browser; files named `*.node.test.ts` prove a module also runs under Node.
-const AUDIO_NODE_TESTS = '**/*.node.test.ts';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
@@ -17,7 +14,6 @@ export default defineConfig({
         test: {
           name: 'audio',
           root: 'packages/audio',
-          exclude: [...configDefaults.exclude, AUDIO_NODE_TESTS],
           browser: {
             enabled: true,
             provider: playwright(),
@@ -26,14 +22,6 @@ export default defineConfig({
             screenshotFailures: false,
             instances: [{ browser: 'chromium' }],
           },
-        },
-      },
-      {
-        test: {
-          name: 'audio-node',
-          root: 'packages/audio',
-          environment: 'node',
-          include: [AUDIO_NODE_TESTS],
         },
       },
       {
