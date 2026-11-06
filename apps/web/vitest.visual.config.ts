@@ -28,8 +28,13 @@ export default mergeConfig(
       ],
       browser: {
         enabled: true,
-        // deviceScaleFactor 1 keeps the tester iframe at 1:1, so an A4 page is 794 px wide.
-        provider: playwright({ contextOptions: { viewport, deviceScaleFactor: 1 } }),
+        provider: playwright({
+          // Grayscale anti-aliasing and no hinting, so the runner's font configuration cannot
+          // move a glyph edge.
+          launchOptions: { args: ['--disable-lcd-text', '--font-render-hinting=none'] },
+          // deviceScaleFactor 1 keeps the tester iframe at 1:1, so an A4 page is 794 px wide.
+          contextOptions: { viewport, deviceScaleFactor: 1 },
+        }),
         headless: true,
         viewport,
         screenshotFailures: false,
