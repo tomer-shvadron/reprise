@@ -29,6 +29,7 @@
     "e2e": "pnpm --filter @reprise/desktop e2e",
     "desktop:dev": "pnpm --filter @reprise/desktop dev",
     "desktop:build": "pnpm --filter @reprise/desktop build",
+    "desktop:smoke": "node scripts/desktop/smoke.ts",
     "prepare": "husky",
     "postinstall": "playwright install chromium --only-shell"
   },

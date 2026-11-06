@@ -42,7 +42,11 @@ Serial, done by the lead. Exit condition: v1 tagged, macOS and Windows installer
 - `release.yml` completed: on a `v*` tag, build on macOS and Windows runners with electron-builder, attach the dmg, zip and nsis installers to a GitHub Release with generated notes; unsigned, with the right-click-Open note in the release body.
 - A Windows smoke test on the runner: launch the built app, open a fixture, exit cleanly.
 - Version bumped from the tag; the app shows its version in the About dialog.
-- Hardening before the first public installer: Electron fuses set in an `afterPack` hook through `@electron/fuses` (`RunAsNode`, `EnableNodeCliInspectArguments` and `EnableNodeOptionsEnvironmentVariable` off, `OnlyLoadAppFromAsar` on), `app.enableSandbox()` before `ready`, and an app icon for both platforms.
+- Hardening before the first public installer: Electron fuses set in an `afterPack` hook through `@electron/fuses` (`RunAsNode`, `EnableNodeCliInspectArguments` and `EnableNodeOptionsEnvironmentVariable` off, `OnlyLoadAppFromAsar` on), `app.enableSandbox()` before `ready`, and an app icon for both platforms. Notes from #93:
+  - `GrantFileProtocolExtraPrivileges` is already off, in the `electronFuses` block of `apps/desktop/electron-builder.yml`: since #93 nothing loads from `file://`. Measured: with it off, a `file://` build does not start, and the `reprise://` build plays.
+  - electron-builder 26's `electronFuses` option, which #93 uses, can carry the other fuses instead of an `afterPack` hook. With `identity: null`, electron-builder skips signing, so it needs `resetAdHocDarwinSignature: true` on arm64, which that block sets.
+  - The CSP's `'self'` is `reprise://app`, and `apps/desktop/src/main/app-protocol.ts` can send the policy as a header on `text/html` responses. The audio ticker's blob worker needs `worker-src blob:`.
+  - `EnableNodeCliInspectArguments` off stops Playwright's `_electron.launch` (measured: it times out), so `pnpm desktop:smoke` and WP-055's e2e need a build without that fuse, or another way in.
 - A Content-Security-Policy on the renderer. A `script-src` without `'unsafe-inline'` blocks the inline theme bootstrap in `apps/web/index.html` and brings back the dark flash for light-theme users: either hash that script in the policy or move it to a classic (non-module) script file, with a test pinning whichever is chosen, as `theme.test.ts` pins the bootstrap today.
 - Local `pnpm desktop:build` packages the host architecture only; CI builds both macOS architectures and Windows.
 
