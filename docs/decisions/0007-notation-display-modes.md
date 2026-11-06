@@ -1,6 +1,6 @@
 # ADR-0007: Per-track notation toggle, rhythm stems under tab always
 
-- **Status**: Accepted
+- **Status**: Accepted, superseded in part by [ADR-0021](0021-rhythm-on-the-standard-staff-in-both-mode.md)
 - **Date**: 2026-11-05
 - **Deciders**: Tomer Shvadron, with Claude
 
@@ -39,12 +39,3 @@ guitar tracks costs little.
 - `../specs/shared-understanding.md`
 - `0006-score-model-scope.md`
 - `0010-svg-renderer-virtualized.md`
-
-## Clarification (2026-11-06)
-
-"Rhythm stems, beams and flags are drawn under the tab in every mode" means every mode that
-shows a tab staff without a standard staff, that is, **tab** mode. In **both** mode the rhythm
-(stems, beams and flags) is drawn on the standard staff only, and the tab staff shows the
-numbers without rhythm notation; the tab module also leaves dynamics and fingering to the
-standard staff. The decision itself is unchanged. Source: the review threads of PR #59 and
-PR #68.
