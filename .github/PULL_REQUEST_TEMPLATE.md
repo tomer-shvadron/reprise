@@ -15,7 +15,7 @@ Closes #{issue}
 
 ## Budget measurements
 
-<!-- Required when the change touches anything in the Budgets table of docs/plans/roadmap.md. Otherwise write "Not applicable". -->
+<!-- Required when the change touches anything in the Budgets table of docs/plans/roadmap.md. Paste the table `pnpm bench` prints, before and after. Otherwise write "Not applicable". -->
 
 | Metric | Budget | Before | After |
 | ------ | ------ | ------ | ----- |
