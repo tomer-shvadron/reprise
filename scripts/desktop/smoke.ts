@@ -1,7 +1,8 @@
 /**
  * Smoke check of the packaged desktop app: launches the unpacked build `pnpm desktop:build`
  * leaves in apps/desktop/release, opens a fixture through File → Open with the native dialog
- * stubbed, plays it, and checks the GM bank came from the app's own scheme.
+ * stubbed, plays it, and checks the GM bank came from the app's own scheme and that the
+ * GrantFileProtocolExtraPrivileges fuse is off.
  *
  *   pnpm desktop:build && pnpm desktop:smoke [executable]
  */
@@ -17,6 +18,7 @@ const RELEASE = join(ROOT, 'apps/desktop/release');
 const FIXTURE = join(ROOT, 'fixtures/gp5/chords.gp5');
 const APP_URL = 'reprise://app/index.html';
 const TIMEOUT = 30_000;
+const BANK_URL = 'reprise://app/sounds/gm/GeneralUser-GS.sf2';
 
 function packagedExecutable(): string {
   if (process.platform === 'darwin') {
@@ -58,9 +60,43 @@ async function main(): Promise<void> {
       bank.status === 200 && bank.length === (await gmBytes()),
       `the scheme serves the GM bank (${JSON.stringify(bank)})`,
     );
-    // out/main/index.js exists in the asar, so only the guard can make this a 404.
-    const escape = await page.evaluate(async () => (await fetch('./..%2Fmain%2Findex.js')).status);
-    check(escape === 404, `a path out of the renderer answers 404 (got ${String(escape)})`);
+    // out/main/index.js exists in the asar, so only the guard can make these a 404. The URL
+    // parser normalizes `%2e%2e/` but not `%2e%2e%2f`, and `%5C` is a separator only on Windows.
+    for (const probe of [
+      './..%2Fmain%2Findex.js',
+      './%2e%2e%2fmain%2findex.js',
+      './..%5Cmain%5Cindex.js',
+    ]) {
+      const escape = await page.evaluate(async (url) => (await fetch(url)).status, probe);
+      check(escape === 404, `${probe} out of the renderer answers 404 (got ${String(escape)})`);
+    }
+
+    // With the fuse on, file:// may read inside the asar and this load succeeds.
+    const fileLoad = await app.evaluate(async ({ app, BrowserWindow }) => {
+      const window = new BrowserWindow({ show: false });
+      try {
+        await window.loadFile(`${app.getAppPath()}/out/renderer/index.html`);
+        return 'loaded';
+      } catch (error) {
+        return error instanceof Error ? error.message : String(error);
+      } finally {
+        window.destroy();
+      }
+    });
+    check(
+      fileLoad.startsWith('ERR_FILE_NOT_FOUND'),
+      `file:// is refused in the asar, so GrantFileProtocolExtraPrivileges is off (${fileLoad})`,
+    );
+
+    await app.evaluate(({ session }) => {
+      const seen: string[] = [];
+      Object.assign(globalThis, { repriseSmokeBankRequests: seen });
+      // Unfiltered, because a URL pattern's `*` scheme does not cover custom schemes.
+      session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+        if (details.url.endsWith('.sf2')) seen.push(`${details.method} ${details.url}`);
+        callback({});
+      });
+    });
 
     await app.evaluate(({ dialog }, path) => {
       dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [path] });
@@ -82,6 +118,14 @@ async function main(): Promise<void> {
     check(
       await page.getByRole('button', { name: 'Pause' }).isVisible(),
       'playback runs with the GM instruments decoded',
+    );
+    const bankRequests = await app.evaluate(() => {
+      const seen: unknown = Reflect.get(globalThis, 'repriseSmokeBankRequests');
+      return Array.isArray(seen) ? seen.map(String) : [];
+    });
+    check(
+      bankRequests.includes(`GET ${BANK_URL}`),
+      `the app's loader fetches the bank over the scheme (${bankRequests.join(', ')})`,
     );
   } finally {
     await app.close();
