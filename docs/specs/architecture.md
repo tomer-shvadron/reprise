@@ -78,6 +78,8 @@ Changed by #62 (2026-11-05): a tie's origin is the most recent note on its strin
 
 Changed by #82 (2026-11-06): `write` takes an optional third argument, `write(score, format, options?: { app?: AppInfo })`, the app stamped into a `.reprise` file, defaulting to `{ name: 'reprise', version: '0.0.0' }`.
 
+Changed by #79 (2026-11-06): a region map resolves every layered region of a key and velocity (`RegionMap.resolveAll`) and a note starts one voice per region behind one handle; `Region` gains `filter` (a static low-pass at the filter envelope's held level, its resonance lowering the DC gain by half its peak) and `exclusiveClass` (choke groups within a track's instrument), `Envelope` gains `delay`; the voice pool stays a hard cap and ranks stealing victims by their audible level, articulation gain included, taking a voice that starts with or after the new note only when no other is left; `Sampler.setInstrument` takes an optional time, `Sampler.instrumentAt(trackId, when)` returns the instrument a note at `when` plays, and `Sampler.allNotesOff` drops the instrument changes scheduled after its time; the sampler sink switches a track's instrument from `InstrumentSink.mix` (`MixEvent.mix.program`) through its `instrumentOf` option.
+
 Synced by #74 (2026-11-06), no contract change: the Layout sketch lists the `LayoutOptions`, `LayoutMetrics` and `Anchor` fields #59 shipped and the `tiedNotes` option #68 added, and the Audio sketch names the `InstrumentSink` #55 shipped and #73 widened.
 
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
@@ -445,8 +447,6 @@ interface AudioEngine {
 The scheduler drives an `InstrumentSink` (`noteOn(NoteEvent)`, optional `mix(MixEvent)`, `allNotesOff(when)`, optional `dispose()`), which the sampler implements. The events' fields and timing rules are in `packages/audio/src/sink.ts`, explained in `packages/audio/README.md`, "The `InstrumentSink` contract".
 
 Internals: a lookahead scheduler on the main thread (schedule ~200 ms ahead on a 25 ms timer), a voice pool with per-voice gain and detune automation, region maps produced by the SF2 and SFZ loaders, an LRU cache of decoded buffers under the memory budget, per-track channel strips with an effects chain, a master bus.
-
-Changed by #79 (2026-11-06): a region map resolves every layered region of a key and velocity (`RegionMap.resolveAll`) and a note starts one voice per region behind one handle; `Region` gains `filter` (a static low-pass, the filter envelope's held level included) and `exclusiveClass` (choke groups within a track's instrument), `Envelope` gains `delay`; the voice pool ranks stealing victims by their audible level, articulation gain included; `Sampler.setInstrument` takes an optional time, and the sampler sink switches a track's instrument on a `Beat.mix.program` change through its `instrumentOf` option.
 
 ### Platform (`apps/web/src/platform`)
 

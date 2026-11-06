@@ -319,6 +319,7 @@ buffer, which the voice graph passes through unchanged; a mono zone's `pan` goes
 const sampler = new Sampler(context, { polyphony: 64 });
 sampler.addTrack(track, instrument); // a strip per track, from track.channel
 sampler.setInstrument(trackId, instrument, at); // a program change: notes from `at` on play it; no `at` is now
+sampler.instrumentAt(trackId, when); // the instrument a note starting at `when` plays
 sampler.setTrack(trackId, { volume, pan, mute, solo }); // AudioEngine.setTrack, 0..127 units
 sampler.setTrack(trackId, { volume }, { at, ramp }); // a scheduled mixer change: at `at`, gliding over `ramp` s
 const voice = sampler.noteOn(trackId, {
