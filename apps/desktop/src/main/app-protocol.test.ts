@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import process from 'node:process';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -52,13 +53,17 @@ describe('the app protocol', () => {
     expect(script.headers.get('content-type')).toBe('text/javascript; charset=utf-8');
   });
 
-  // secret.txt exists, so without the guard the encoded escapes would answer 200.
+  // secret.txt exists, so without the guard each of these would answer 200.
   it.each([
     'reprise://app/..%2Fsecret.txt',
     'reprise://app/assets/..%2F..%2Fsecret.txt',
-    'reprise://app/%2e%2e/secret.txt',
-    'reprise://app/..%5Csecret.txt',
+    'reprise://app/%2e%2e%2fsecret.txt',
     'reprise://app/link.txt',
+  ])('the guard answers 404 for %s', async (url) => {
+    expect((await get(url)).status).toBe(404);
+  });
+
+  it.each([
     'reprise://app/index.html%00.js',
     'reprise://app/%E0%A4%A',
     'reprise://app/assets',
@@ -66,6 +71,21 @@ describe('the app protocol', () => {
     'reprise://app/missing.js',
     'reprise://other/index.html',
   ])('answers 404 for %s', async (url) => {
+    expect((await get(url)).status).toBe(404);
+  });
+
+  // These two never reach the guard on POSIX, so they test the step that stops them instead.
+  it('normalizes a `%2e%2e/` segment away before decoding', async () => {
+    const url = 'reprise://app/%2e%2e/secret.txt';
+    expect(new URL(url).pathname).toBe('/secret.txt');
+    expect((await get(url)).status).toBe(404);
+  });
+
+  it('treats `%5C` as a separator only where the platform does', async () => {
+    const url = 'reprise://app/..%5Csecret.txt';
+    const resolved = resolveAppPath(url, root, new PathAccess([root]));
+    if (process.platform === 'win32') expect(resolved).toBeUndefined();
+    else expect(resolved).toBe(join(root, '..\\secret.txt'));
     expect((await get(url)).status).toBe(404);
   });
 
