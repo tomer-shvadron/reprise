@@ -92,6 +92,18 @@ describe('planInstruments', () => {
     expect(planInstruments(song).tracks[0]?.uses[0]?.keys).toEqual([67, 69, 71, 76]);
   });
 
+  it('plans the key a harmonic sounds, not the fret it is written on', () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('2', [note(1, 5, { harmonic: { kind: 'natural' } })])
+      .beat('2', [note(3, 2, { harmonic: { kind: 'artificial', value: 12 } })])
+      .build();
+
+    // E4's open string 64 + 24 at the fifth fret node; A3 57 + 12 an octave up.
+    expect(planInstruments(song).tracks[0]?.uses[0]?.keys).toEqual([69, 88]);
+  });
+
   it('takes an instrument resolver for other tiers', () => {
     const song = score()
       .track('guitar')

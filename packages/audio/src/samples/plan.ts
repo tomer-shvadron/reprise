@@ -1,6 +1,7 @@
 import { beatTicks, expandPlaybackSequence, midiNote } from '@reprise/model';
 import type { Beat, Id, Note, Score, Track } from '@reprise/model';
 
+import { soundingKey } from '../articulations/harmonics';
 import type { RegionMap, SampleRef } from '../sampler/region-map';
 import type { InstrumentId } from './types';
 
@@ -37,12 +38,11 @@ export function gmInstrumentId(track: Pick<Track, 'kind' | 'bank'>, program: num
     : `gm:${String(track.bank)}:${String(program)}`;
 }
 
+/** The keys `planNote` strikes: a harmonic sounds its overtone, a trill's alternate its fret. */
 function addKeys(track: Track, note: Note, keys: Set<number>): void {
-  const frets = note.trill ? [note.fret, note.trill.fret] : [note.fret];
-  for (const fret of frets) {
-    const key = midiNote(track, { string: note.string, fret });
-    if (key >= 0 && key <= 127) keys.add(key);
-  }
+  const struck = [Math.round(soundingKey(track, note))];
+  if (note.trill) struck.push(midiNote(track, { string: note.string, fret: note.trill.fret }));
+  for (const key of struck) if (key >= 0 && key <= 127) keys.add(key);
 }
 
 function addBeat(track: Track, beat: Beat, keys: Set<number>): void {
