@@ -78,6 +78,8 @@ Changed by #62 (2026-11-05): a tie's origin is the most recent note on its strin
 
 Changed by #82 (2026-11-06): `write` takes an optional third argument, `write(score, format, options?: { app?: AppInfo })`, the app stamped into a `.reprise` file, defaulting to `{ name: 'reprise', version: '0.0.0' }`.
 
+Synced by #74 (2026-11-06), no contract change: the Layout sketch lists the `LayoutOptions`, `LayoutMetrics` and `Anchor` fields #59 shipped and the `tiedNotes` option #68 added, and the Audio sketch names the `InstrumentSink` #55 shipped and #73 widened.
+
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
 
 **Diagnostics** carry kebab-case identifiers. An invariant violation keys its kind as `rule` (`Violation`); a warning or an error keys it as `code` (`ParseWarning`, `PlaybackWarning`, `CommandWarning`, `CommandError`, `NativeFormatError`). Model enum values (`slight`, `doubleFlat`, `belowOpenString`) stay camelCase: they are data, not diagnostics.
@@ -399,13 +401,23 @@ function write(score: Score, format: 'reprise' | 'gp', options?: { app?: AppInfo
 ### Layout (`@reprise/layout`)
 
 ```ts
-interface LayoutOptions { mode: 'paged' | 'continuous'; width: number; pageHeight?: number; zoom: number; tracks: Id[] | 'all'; notation: Record<Id, 'tab'|'standard'|'both'> }
+interface LayoutOptions {
+  mode: 'paged' | 'continuous'; width: number; pageHeight?: number; zoom: number; tracks: Id[] | 'all'; notation: Record<Id, 'tab'|'standard'|'both'>;
+  tiedNotes?: 'parentheses' | 'hidden'; // tied notes on tab staves, parentheses unless given
+  margins?: Partial<Margins>;         // page margins, unscaled
+  pageGap?: number; staffGap?: number; trackGap?: number; systemGap?: number; // pageGap unscaled, the rest at zoom 1
+  dirtyBars?: readonly Id[];          // master bars to re-measure when a cache is given, usually Change.touchedBars
+}
 interface LayoutResult {
   pages: Page[];                      // continuous mode = one infinitely wide page
   systems: System[];                  // each with its bar range and bounding box
   primitives: Primitive[];            // glyph | line | path | text, with x, y, bbox, theme role
   anchors: Anchor[];                  // model-node id -> bbox, for hit-testing and cursor placement
-  metrics: { layoutMs: number; primitives: number };
+  metrics: { layoutMs: number; primitives: number; anchors: number; measuredBars: number; reusedSystems: number };
+}
+interface Anchor {
+  kind: 'note' | 'beat' | 'bar' | 'staff' | 'system'; id: Id; bbox: Rect;
+  system: number; track?: Id; staff?: 'tab' | 'standard' | 'percussion'; voice?: number; masterBar?: Id;
 }
 function layout(score: Score, options: LayoutOptions, cache?: LayoutCache): LayoutResult;
 function hitTest(result: LayoutResult, x: number, y: number): Anchor | undefined;
@@ -429,6 +441,8 @@ interface AudioEngine {
   dispose(): void;
 }
 ```
+
+The scheduler drives an `InstrumentSink` (`noteOn(NoteEvent)`, optional `mix(MixEvent)`, `allNotesOff(when)`, optional `dispose()`), which the sampler implements. The events' fields and timing rules are in `packages/audio/src/sink.ts`, explained in `packages/audio/README.md`, "The `InstrumentSink` contract".
 
 Internals: a lookahead scheduler on the main thread (schedule ~200 ms ahead on a 25 ms timer), a voice pool with per-voice gain and detune automation, region maps produced by the SF2 and SFZ loaders, an LRU cache of decoded buffers under the memory budget, per-track channel strips with an effects chain, a master bus.
 
