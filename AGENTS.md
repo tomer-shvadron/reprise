@@ -36,7 +36,8 @@ The lead's ruling on PR #84, which the owner can overrule: a coding task is any 
 
 - The owner has approved branch commits, pushes and PR creation for the whole project ([CONTRIBUTING.md](CONTRIBUTING.md#branches-and-commits), ADR-0019). Do them without asking.
 - Never commit to `main`. Never rebase, `reset --hard`, amend a pushed commit or force-push.
-- Each branch gets its own worktree under `../reprise-worktrees/<branch>`.
+- Never skip the pre-commit hook (`--no-verify`, `HUSKY=0`) except as [CONTRIBUTING.md](CONTRIBUTING.md#pre-commit-hook) allows.
+- Each branch gets its own worktree under `../reprise-worktrees/<branch>`; run `pnpm install` in it before the first commit, or the pre-commit hook is skipped without a word.
 - Commits carry the identity `Tomer Shvadron <tomer94@gmail.com>` from the repository-local git config; do not override it.
 - End a commit written by an agent with a co-author trailer naming the model that wrote the change, and with the `Claude-Session:` line when the session provides one:
 
