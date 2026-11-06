@@ -3,11 +3,12 @@ import { removeBar } from '@reprise/model';
 import { describe, expect, it } from 'vitest';
 
 import { fourBars } from '@/test/position';
-import { createTestServices, memoryStorage } from '@/test/services';
+import { createTestServices, fakePlatform, memoryStorage } from '@/test/services';
 
 import { TRANSPORT_STORAGE_KEY } from './preferences';
 import { mirrorAudio } from './test/mirror-audio';
 
+// Each call builds the song afresh with new ids, so each returns different bytes.
 const bytes = async () => (await write(fourBars(), 'reprise')).bytes;
 
 describe('installTransport', () => {
@@ -39,15 +40,45 @@ describe('installTransport', () => {
     expect(reloaded.fakeAudio.setCountIn).toHaveBeenCalledWith(false);
   });
 
-  it('resets the speed for a different song and keeps it for the same file reopened', async () => {
+  it('keys the speed by the bytes, so a same-named different song starts at 100%', async () => {
     const services = createTestServices();
     mirrorAudio(services);
     const { document, audio, playback } = services;
-    await document.getState().openBytes('a.reprise', await bytes());
+    const first = await bytes();
+    await document.getState().openBytes('a.reprise', first);
     audio.setTempo('percent', 75);
+    await document.getState().openBytes('a.reprise', await bytes());
+    expect(playback.getState().settings.tempo).toEqual({ mode: 'percent', value: 100 });
+    // The first song's bytes under a new name are still that song.
+    await document.getState().openBytes('renamed.reprise', first);
+    expect(playback.getState().settings.tempo).toEqual({ mode: 'percent', value: 75 });
+  });
+
+  it('keeps the speed across a save, for the saved file reopened', async () => {
+    const written: Uint8Array[] = [];
+    const services = createTestServices({
+      platform: fakePlatform({
+        writeHandle: (_handle, data) => {
+          written.push(data);
+          return Promise.resolve();
+        },
+      }),
+    });
+    mirrorAudio(services);
+    const { document, audio, playback } = services;
+    const first = await bytes();
+    await document.getState().openBytes('a.reprise', first, '/music/a.reprise');
+    audio.setTempo('percent', 75);
+    const bars = document.getState().score?.masterBars ?? [];
+    document.getState().apply(removeBar({ masterBarId: bars[3]?.id ?? '' }));
+    await document.getState().save();
+    const saved = written[0];
+    if (!saved) throw new Error('nothing was saved');
+    expect(saved).not.toEqual(first);
+
     await document.getState().openBytes('b.reprise', await bytes());
     expect(playback.getState().settings.tempo).toEqual({ mode: 'percent', value: 100 });
-    await document.getState().openBytes('a.reprise', await bytes());
+    await document.getState().openBytes('a.reprise', saved);
     expect(playback.getState().settings.tempo).toEqual({ mode: 'percent', value: 75 });
   });
 

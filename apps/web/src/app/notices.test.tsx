@@ -34,7 +34,7 @@ describe('Notices', () => {
     const user = userEvent.setup();
     act(() => {
       services.document.setState({
-        file: { name: 'song.gp5', format: 'gp5' },
+        file: { name: 'song.gp5', format: 'gp5', key: '', savedKeys: [] },
         warnings: [
           warning('info', 'RSE dropped', 3),
           warning('warning', 'A bend was clamped'),
@@ -65,7 +65,7 @@ describe('Notices', () => {
     const { services } = renderWithServices(<Notices />);
     act(() => {
       services.document.setState({
-        file: { name: 'song.gp5', format: 'gp5' },
+        file: { name: 'song.gp5', format: 'gp5', key: '', savedKeys: [] },
         warnings: [warning('warning', 'A bend was clamped')],
       });
       services.document.getState().showImportDetails();
@@ -81,7 +81,7 @@ describe('Notices', () => {
 
     act(() => {
       services.document.setState({
-        file: { name: 'other.gp5', format: 'gp5' },
+        file: { name: 'other.gp5', format: 'gp5', key: '', savedKeys: [] },
         detailsOpen: false,
       });
     });
@@ -94,7 +94,7 @@ describe('Notices', () => {
     const user = userEvent.setup();
     act(() => {
       services.document.setState({
-        file: { name: 'big.gp5', format: 'gp5' },
+        file: { name: 'big.gp5', format: 'gp5', key: '', savedKeys: [] },
         warnings: Array.from({ length: 250 }, (_, i) => warning('warning', `w${String(i)}`)),
         warningsOpen: true,
       });
