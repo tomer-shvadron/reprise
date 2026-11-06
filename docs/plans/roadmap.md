@@ -164,19 +164,21 @@ flowchart TB
 
 ## Budgets
 
-Asserted by the benchmark test from WP-027 onward, on the reference "long score": 8 tracks, 300 bars, mixed notation.
+Measured on the reference "long score": 8 tracks, 300 bars; the bench uses each track's default notation until WP-027 switches it to mixed notation.
 
-| Metric                                      | Budget |
-| ------------------------------------------- | ------ |
-| Full layout, cold                           | 250 ms |
-| Re-layout after a single-note edit          | 16 ms  |
-| Mounted SVG elements at any zoom            | 20 000 |
-| Decoded audio resident, GM tier, any song   | 80 MB  |
-| Decoded audio resident, HQ tier, default    | 300 MB |
-| Renderer heap after opening the long score  | 400 MB |
-| Time from file drop to first paint          | 500 ms |
+| Metric                                      | Budget | Asserted by                                          |
+| ------------------------------------------- | ------ | ---------------------------------------------------- |
+| Full layout, cold                           | 250 ms | `packages/layout/src/layout.bench.ts`                |
+| Re-layout after a single-note edit          | 16 ms  | `packages/layout/src/layout.bench.ts`                |
+| Mounted SVG elements at any zoom            | 20 000 | `apps/web/src/features/score/budget.test.ts`         |
+| Decoded audio resident, GM tier, any song   | 80 MB  | `packages/audio/src/samples/memory-budget.test.ts`   |
+| Decoded audio resident, HQ tier, default    | 300 MB | WP-094                                               |
+| Renderer heap after opening the long score  | 400 MB | WP-055                                               |
+| Time from file drop to first paint          | 500 ms | WP-055                                               |
 
-Budgets are starting points. Changing one is a one-line PR to this table plus the test, with the measurement in the PR body.
+Measured by `pnpm bench`: the `*.bench.ts` files run one at a time after three warm-up iterations, never inside the parallel `pnpm test`, and CI runs them as their own step after the tests. A time budget holds on the reference machine, an Apple M4 Pro (14 cores) on Node 24, and is multiplied by 3.4 on CI, a GitHub-hosted `ubuntu-latest` runner (4 vCPU x64), whose pool mixes CPU models. The two CI runs of #90 measured the cold-layout bench at 2.95 times the reference machine on an AMD EPYC 7763 (199 ms against 67.5 ms) and 2.40 times on an AMD EPYC 9V74 (162 ms); 3.4 is the larger ratio with 15% to spare. The factor changes only in a PR of its own that changes no measured code and cites at least five CI Bench runs on `main` against three local runs: the largest CI-to-local ratio with 15% to spare, rounded up to one decimal, which may lower the factor as well as raise it. A PR whose own bench fails on CI fixes the code or the budget row, never the factor. The bench checks ceilings only: a regression fails it once it pushes a measurement past its threshold, so a 2× slowdown under a budget with more headroom passes; comparing the PR head against `main` in the same job is #98. Byte and element budgets are deterministic and never scaled. A `.test.ts` in the last column asserts its budget in the unit suite; a work package there has not measured it yet. The re-layout row is reported, not enforced, until WP-027 brings it under 16 ms (about 30 ms today).
+
+Budgets are starting points. Changing one is a one-line PR to this table, with `pnpm bench` before and after in the PR body.
 
 ## Lane rules
 

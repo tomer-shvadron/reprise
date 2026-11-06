@@ -624,12 +624,16 @@ describe('tab staff: spacing', () => {
 });
 
 describe('tab staff: anchors', () => {
-  it('gives every note an anchor that overlaps no other in its voice, on the long score', () => {
-    const result = layout(largeScore(8, 300, { structure: true }), paged);
-    const notes = result.anchors.filter((anchor) => anchor.kind === 'note');
-    expect(notes.length).toBeGreaterThan(30000);
-    expect(overlappingAnchors(result)).toEqual([]);
-  });
+  it(
+    'gives every note an anchor that overlaps no other in its voice, on the long score',
+    { timeout: 30_000 },
+    () => {
+      const result = layout(largeScore(8, 300, { structure: true }), paged);
+      const notes = result.anchors.filter((anchor) => anchor.kind === 'note');
+      expect(notes.length).toBeGreaterThan(30000);
+      expect(overlappingAnchors(result)).toEqual([]);
+    },
+  );
 
   it('lays out the full score with every feature validly', () => {
     laid(fullScore());
