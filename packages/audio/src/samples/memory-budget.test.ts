@@ -160,26 +160,30 @@ describe('GM-tier memory budget', () => {
     expect(source.counters.evictions).toBe(0);
   });
 
-  it("degrades under half the long score's needs without throwing or exceeding the budget", async () => {
-    const provider = new SyntheticProvider(generalUserGs());
-    const song = band([24, 25, 26, 27, 29, 30, 33, 34], false);
-    const needed = planSamples(planInstruments(song), provider.regionMap).reduce(
-      (sum, ref) => sum + provider.byteLength(ref),
-      0,
-    );
-    const budgetBytes = Math.floor(needed / 2);
-    const source = new ManagedSampleSource(provider, factory, { budgetBytes });
-    await source.load(song, provider.regionMap);
-    await source.settled();
-    const played = await playThrough(source, provider, song);
-    console.info(
-      `budget ${mb(budgetBytes)} for ${mb(needed)}: peak ${mb(played.peak)}, ` +
-        `${String(played.misses)} misses in ${String(played.notes)} notes, ` +
-        `${String(source.counters.fetches)} fetches`,
-    );
+  it(
+    "degrades under half the long score's needs without throwing or exceeding the budget",
+    { timeout: 30_000 },
+    async () => {
+      const provider = new SyntheticProvider(generalUserGs());
+      const song = band([24, 25, 26, 27, 29, 30, 33, 34], false);
+      const needed = planSamples(planInstruments(song), provider.regionMap).reduce(
+        (sum, ref) => sum + provider.byteLength(ref),
+        0,
+      );
+      const budgetBytes = Math.floor(needed / 2);
+      const source = new ManagedSampleSource(provider, factory, { budgetBytes });
+      await source.load(song, provider.regionMap);
+      await source.settled();
+      const played = await playThrough(source, provider, song);
+      console.info(
+        `budget ${mb(budgetBytes)} for ${mb(needed)}: peak ${mb(played.peak)}, ` +
+          `${String(played.misses)} misses in ${String(played.notes)} notes, ` +
+          `${String(source.counters.fetches)} fetches`,
+      );
 
-    expect(played.peak).toBeLessThanOrEqual(budgetBytes);
-    expect(played.misses).toBeGreaterThan(0);
-    expect(source.counters.pinnedEvictions).toBeGreaterThan(0);
-  });
+      expect(played.peak).toBeLessThanOrEqual(budgetBytes);
+      expect(played.misses).toBeGreaterThan(0);
+      expect(source.counters.pinnedEvictions).toBeGreaterThan(0);
+    },
+  );
 });

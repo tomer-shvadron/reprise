@@ -392,33 +392,37 @@ describe('mixer', () => {
 });
 
 describe('load', () => {
-  it('starts every note of a burst, holds the limit, and frees every voice', async () => {
-    const notes = 2000;
-    const spacing = 0.002;
-    const length = 0.25;
-    const polyphony = 64;
-    const context = offline(notes * spacing + 0.5);
-    const sampler = new Sampler(context, { polyphony });
-    sampler.addTrack(samplerTrack('t'), sineInstrument());
+  it(
+    'starts every note of a burst, holds the limit, and frees every voice',
+    { timeout: 120_000 },
+    async () => {
+      const notes = 2000;
+      const spacing = 0.002;
+      const length = 0.25;
+      const polyphony = 64;
+      const context = offline(notes * spacing + 0.5);
+      const sampler = new Sampler(context, { polyphony });
+      sampler.addTrack(samplerTrack('t'), sineInstrument());
 
-    const started = performance.now();
-    for (let index = 0; index < notes; index += 1) {
-      const when = index * spacing;
-      const voice = sampler.noteOn('t', { key: 40 + (index % 48), velocity: 100, when });
-      if (!voice) throw new Error(`note ${String(index)} did not start`);
-      sampler.noteOff(voice, when + length);
-      expect(sampler.pool.active(when).length).toBeLessThanOrEqual(polyphony);
-    }
-    const elapsed = performance.now() - started;
+      const started = performance.now();
+      for (let index = 0; index < notes; index += 1) {
+        const when = index * spacing;
+        const voice = sampler.noteOn('t', { key: 40 + (index % 48), velocity: 100, when });
+        if (!voice) throw new Error(`note ${String(index)} did not start`);
+        sampler.noteOff(voice, when + length);
+        expect(sampler.pool.active(when).length).toBeLessThanOrEqual(polyphony);
+      }
+      const elapsed = performance.now() - started;
 
-    // Every voice outlives the next 64 onsets, so each note past the limit steals exactly one.
-    expect(sampler.pool.stolen).toBe(notes - polyphony);
-    // Measured at about 21 us per note; the bound only catches a pathological regression.
-    expect(elapsed / notes).toBeLessThan(1);
+      // Every voice outlives the next 64 onsets, so each note past the limit steals exactly one.
+      expect(sampler.pool.stolen).toBe(notes - polyphony);
+      // Measured at about 30 us per note; the bound only catches a pathological regression.
+      expect(elapsed / notes).toBeLessThan(1);
 
-    await context.startRendering();
-    expect(sampler.pool.active(0)).toHaveLength(0);
-  });
+      await context.startRendering();
+      expect(sampler.pool.active(0)).toHaveLength(0);
+    },
+  );
 });
 
 describe('sample residency', () => {

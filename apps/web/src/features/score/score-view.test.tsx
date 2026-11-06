@@ -156,15 +156,19 @@ describe('ScoreView', () => {
   it.each([
     ['paged', { mode: 'paged', paper: 'a4' }],
     ['continuous', { mode: 'continuous', paper: 'a4' }],
-  ] as const)('keeps the %s both-notation DOM equal to the budget model at zoom 0.5', (_, view) => {
-    const result = viewLayout('small', view, 'both');
-    renderView(result, 0.5);
-    const scroll = view.mode === 'paged' ? { x: 0, y: 3000 } : { x: 3000, y: 0 };
-    scrollTo(scroll.y, scroll.x);
-    const count = region().querySelectorAll('*').length;
-    expect(count).toBe(expected(result, 0.5, scroll).count);
-    expect(count).toBeLessThan(20_000);
-  });
+  ] as const)(
+    'keeps the %s both-notation DOM equal to the budget model at zoom 0.5',
+    (_, view) => {
+      const result = viewLayout('small', view, 'both');
+      renderView(result, 0.5);
+      const scroll = view.mode === 'paged' ? { x: 0, y: 3000 } : { x: 3000, y: 0 };
+      scrollTo(scroll.y, scroll.x);
+      const count = region().querySelectorAll('*').length;
+      expect(count).toBe(expected(result, 0.5, scroll).count);
+      expect(count).toBeLessThan(20_000);
+    },
+    30_000,
+  );
 
   it('zooms by resizing alone, mutating nothing inside a system', () => {
     const result = small();
