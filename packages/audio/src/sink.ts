@@ -48,7 +48,10 @@ export interface MixEvent {
   beat: Beat;
   beatIndex: number;
   mix: MixerChange;
-  /** `AudioContext` time of the beat; `currentTime` when it was handed out late. */
+  /**
+   * `AudioContext` time of the beat; `currentTime` when it was handed out late; the run's start
+   * for a change replayed from before it.
+   */
   when: number;
   playbackTick: number;
   /** Context seconds per tick at the beat, to time the change's `duration`. */
@@ -65,11 +68,16 @@ export interface MixEvent {
  * - `noteOn` is called once per sounding note, up to the scheduler's lookahead before `when`,
  *   and for a beat with grace notes before it, earlier by their length too (up to a quarter
  *   note), so the sink can place them ahead of `when`.
- *   A tied continuation is never sent: its length is folded into the origin's `duration`,
- *   except when playback starts or a loop wraps exactly on it, where it arrives as an onset.
- *   The sink schedules both the start and the release itself; there is no per-note off call.
+ *   A tied continuation held from its origin in this run is never sent: its length is folded
+ *   into the origin's `duration` and the link rides along in `continuations`; one whose origin
+ *   did not play just before it (playback started or a loop wrapped after the origin, a repeat
+ *   jumped back) arrives as an onset. The sink schedules both the start and the release
+ *   itself; there is no per-note off call.
  * - `mix` is called for every beat carrying a mixer change, in the same window as the notes
  *   at its tick; the sink applies it from `when`. It is the one place mixer changes arrive.
+ *   When a run starts (play, seek, a loop wrap) the changes before its start point are sent
+ *   first, in order, at the run's start and with their transitions stripped, so the mixer
+ *   state in effect there is restored; `track.channel` is the baseline they build on.
  * - `allNotesOff(when)` cancels every note sounding at `when` and every note already scheduled
  *   to start at or after it, by stopping their source nodes (`stop(when)` is valid before a
  *   node's start time), not only by muting them. Called on pause, stop and seek, with `when` =

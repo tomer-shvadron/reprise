@@ -111,6 +111,7 @@ describe('placeGraces', () => {
       passIndex: 0,
       barEnd: 4,
       nextOnString: undefined,
+      continuations: [],
     };
   }
 

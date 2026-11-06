@@ -11,7 +11,7 @@ the memory manager.
 ```
 main thread                                     audio thread (native Web Audio)
 -----------                                     -------------------------------
-25 ms worker timer -> advance(run, now, now + 0.2) --> InstrumentSink.noteOn -> sampler voices -> strips --+
+25 ms worker timer -> advance(run, now, now + 0.2) --> InstrumentSink.noteOn, mix -> sampler voices, strips -+
                                                   \--> MetronomeSink.click  -> click gain ----------------+-> master bus -> destination
 animation frame -> currentTime -> position event
 ```
@@ -74,7 +74,7 @@ interface MixEvent {
   beat: Beat;
   beatIndex: number;
   mix: MixerChange; // Beat.mix
-  when: number; // AudioContext time of the beat; currentTime when handed out late
+  when: number; // AudioContext time of the beat; currentTime when handed out late; the run's start when replayed
   playbackTick: number;
   secondsPerTick: number; // at the beat, to time the change's duration
   sequenceIndex: number;
@@ -104,7 +104,13 @@ interface MixEvent {
   alternative, but it would make `note` optional for every consumer and send a mixer change once
   per note. `mix` is the one place mixer changes arrive, so a sink does not read `beat.mix` in
   `noteOn`. A change handed out late is moved to `currentTime`, never dropped, because it holds
-  for the rest of the song. Changes before the point playback starts from are not replayed.
+  for the rest of the song. **A run start replays the state.** When playback starts from a tick,
+  seeks, or a loop wraps, every change before the run's start point is sent again first, in
+  playback order, at the run's start and with its transition stripped (it has run its course),
+  so a song that halves a track's volume in bar 2 and is started from bar 10 plays at half
+  volume. What is not restored is the baseline those changes build on, `track.channel`: a change
+  outlives a stop until the next run replays or writes over it, and the mixer panel's `setTrack`
+  (WP-050) owns that reset.
 - Everything else about a note (velocity from `dynamics`, accents, palm mute, bends, let ring,
   strokes, grace notes) is the sink's business: the event carries the whole `Note`, `Beat` and
   `Track`, and `duration` is in seconds so bend points (0 to 60 across the note) map directly.
@@ -537,7 +543,7 @@ quotes.
 | `Beat.effects.volumeSwell`                           | -48 dB to 0 at half the beat and back to -48 dB at its end.                                                                                                                                                                                                               |
 | `Beat.grace`                                         | Played by the sink with their own effects: grace notes `before` end on the beat (squeezed into a quarter note, the scheduler's lead); on-beat ones start on it and delay the main note (squeezed into half the beat).                                                     |
 | `tie`                                                | Nothing: the scheduler folds the continuation into the origin.                                                                                                                                                                                                            |
-| `Beat.mix` volume, pan                               | Scheduled on the strip at the beat (`setTrack(..., { at, ramp })`), a linear glide over `duration` quarter notes when given; `allTracks` applies it to every track.                                                                                                       |
+| `Beat.mix` volume, pan                               | From `mix`, scheduled on the strip at the beat (`setTrack(..., { at, ramp })`), a linear glide over `duration` quarter notes when given; `allTracks` applies it to every track. Rests and tied continuations included.                                                    |
 
 On drum tracks only velocity (dynamics, accents, ghost), fades, trills and tremolo apply; drum
 articulation variants (rim shot, choke) arrive from the readers already mapped to their GM note.
@@ -579,8 +585,8 @@ vibrato, trills, tremolo, dynamics and fades stay automation in both tiers.
 - **A legato slide's destination keeps its origin's tone.** A `BiquadFilter`'s type switches at
   once, not at a time, so a carried voice cannot change from a palm-muted low-pass to a
   harmonic's shelf without affecting the note still sounding.
-- **Mixer changes on rest beats are not applied**: the scheduler only hands out beats with notes.
-  A scheduled change also outlives a pause or seek; the next one on playback overrides it.
+- **A mixer change outlives a stop.** The run start replays the changes before it, but nothing
+  restores `track.channel` first (see the `InstrumentSink` contract above).
 - **Vibrato is in Hz, not tempo-synced**, and starts at the onset; Guitar Pro's sounds the same at
   any tempo too.
 

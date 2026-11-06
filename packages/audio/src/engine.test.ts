@@ -464,6 +464,27 @@ describe('AudioEngine transport (OfflineAudioContext)', () => {
     expect(mix?.calledAt).toBeLessThanOrEqual(mix?.when ?? 0);
   });
 
+  it('starts from the middle with the mixer changes before it in effect', async () => {
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .rest('2', { mix: { volume: { value: 40, duration: 2 } } })
+      .rest('2')
+      .bar()
+      .beat('1', [note(1, 2)])
+      .build();
+    const h = await harness(song, 3);
+    h.engine.play(4 * PPQ);
+    await h.render();
+
+    expect(h.sink.notes.map((n) => n.when)).toEqual([expect.closeTo(LATENCY, 9)]);
+    expect(h.sink.mixes.map((m) => [m.playbackTick, m.when, m.mix])).toEqual([
+      [0, expect.closeTo(LATENCY, 9), { volume: { value: 40 } }],
+    ]);
+    expect(h.sink.mixes[0]?.calledAt).toBeLessThanOrEqual(h.sink.mixes[0]?.when ?? 0);
+  });
+
   it('carries the tied notes of a held note, each with its own onset', async () => {
     const song = score()
       .tempo(120)
