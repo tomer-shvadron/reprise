@@ -15,12 +15,15 @@ Where things are decided, rather than repeated here:
 
 The rule, in the owner's words:
 
-> Whenever the owner gives a coding task: 1) create a GitHub issue for it; 2) plan the implementation with a Fable sub-agent at xhigh effort, posting the plan on the issue; 3) implement the plan with an Opus sub-agent at medium effort that commits, pushes and opens the PR; 4) review the PR with a Fable sub-agent at high effort that posts findings as PR review comments; 5) fix the review comments with an Opus sub-agent at medium effort. The lead merges after CI is green.
+> Whenever the owner gives a coding task: 1) create a GitHub issue for it; 2) plan the implementation with an Opus sub-agent at xhigh effort, posting the plan on the issue; 3) implement the plan with an Opus sub-agent at medium effort that commits, pushes and opens the PR; 4) review the PR with an Opus sub-agent at xhigh effort that posts findings as PR review comments; 5) fix the review comments with an Opus sub-agent at medium effort. The lead merges after CI is green.
+
+Amended on 2026-11-06 from Fable to Opus at xhigh effort, when the Fable monthly limit ran out; Fable is not used unless the owner says so.
 
 "The lead" is the Claude session the owner talks to. Around the rule:
 
 - Issues map to the work packages in [docs/plans/](docs/plans/), one issue per work package, filed as [CONTRIBUTING.md](CONTRIBUTING.md#from-plan-to-issue) describes.
-- Every PR is reviewed by a stronger model than the one that wrote it ([ADR-0019](docs/decisions/0019-review-by-a-stronger-model-before-merge.md)).
+- Every PR is reviewed at a higher reasoning effort (xhigh) than the one it was written at (medium) ([ADR-0019](docs/decisions/0019-review-by-a-stronger-model-before-merge.md)).
+- Docs-only changes skip the plan step (step 2) but keep implement, review and fix.
 - Review (step 4): the reviewer changes nothing on the branch. It posts one PR review with inline comments tagged `[blocker]`, `[should]` or `[nit]`, and a summary.
 - Fix (step 5): the fixer commits on the PR branch in small commits, answers each review thread with what it did or why not, and reports back.
 - The lead merges when every `[blocker]` and `[should]` is resolved and CI is green, with `gh pr merge --squash --auto --delete-branch`. The squash subject is `<PR title> (#N)`; the body is a short summary plus the `Co-Authored-By` trailers of both the implementing and the reviewing model and the `Claude-Session` line. `main` changes no other way.
@@ -117,4 +120,4 @@ Vitest, one project per workspace, defined in [vitest.config.ts](vitest.config.t
 
 ## Quota
 
-Running many heavy sub-agents at once (nine Fable reviews in parallel) exhausted the account's 5-hour limit twice. Stagger reviews rather than launching them together. After a 429, resume each stopped agent by sending it a message, which continues its transcript, instead of restarting it, and check each worktree's `git status` first so no work is redone or lost.
+Running many heavy sub-agents at once (nine review agents in parallel) exhausted the account's 5-hour limit twice. Stagger reviews rather than launching them together. After a 429, resume each stopped agent by sending it a message, which continues its transcript, instead of restarting it, and check each worktree's `git status` first so no work is redone or lost. When a model's limit is exhausted outright rather than for five hours, stopped agents cannot be resumed on it: brief fresh agents on the PR's review comments and the worktree's `git status` instead.

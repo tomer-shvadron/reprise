@@ -1,6 +1,6 @@
 # ADR-0019: Review by a stronger model before merge
 
-- **Status**: Accepted
+- **Status**: Accepted, amended 2026-11-06
 - **Date**: 2026-11-05
 - **Deciders**: Tomer Shvadron, with Claude
 
@@ -76,3 +76,21 @@ Taken by the owner on 2026-11-05.
 - `0014-repo-and-process.md`
 - `0016-build-order-and-parallel-lanes.md`
 - `0018-label-families-and-repository-credentials.md`
+
+## Amendment (2026-11-06)
+
+Taken by the owner on 2026-11-06, after the Fable monthly limit ran out: "update the agentic
+workflow definition - instead of using fable - use opus xhigh".
+
+- **The reviewer is an Opus agent at xhigh effort**; the implementer and the fixer are Opus
+  agents at medium effort. Planning also runs on Opus at xhigh effort.
+- **The reviewer posts findings only.** It changes nothing on the branch; a separate fixer
+  agent applies the `[blocker]` and `[should]` items in new commits and answers each review
+  thread. The original decision above had the reviewer fix on the branch itself.
+- **Why**: the owner's instruction once Fable was no longer available, and to keep the
+  expensive reasoning on judgement, finding and ranking the issues, rather than on edits,
+  which a medium-effort agent makes as well.
+
+What still holds is the principle: the review runs with more reasoning than the writing. The
+"stronger model" of the title is now the same model at a higher reasoning effort. Fable is not
+used unless the owner says so.

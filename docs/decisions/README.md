@@ -37,4 +37,4 @@ Rules:
 | 0016 | Serial foundation and model core, then three parallel lanes         | Accepted                                                             |
 | 0017 | The project is called Reprise                                       | Accepted                                                             |
 | 0018 | Label families and repository credentials                           | Accepted                                                             |
-| 0019 | Review by a stronger model before merge                             | Accepted                                                             |
+| 0019 | Review by a stronger model before merge                             | Accepted, amended 2026-11-06                                         |
