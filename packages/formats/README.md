@@ -48,13 +48,17 @@ try {
 }
 
 const { bytes, dropped } = await write(score, 'reprise', { app: { name: 'reprise', version } });
+const gp = await write(score, 'gp'); // gp.dropped: what Guitar Pro's format cannot hold
 ```
 
 `read` and `write` return promises and never throw synchronously, so a worker can take them over
 behind the same signatures; today they run on the caller's thread. `read` resolves to exactly
 `{ score, warnings }`: the readers' `format`, `version` and the native file's `app` are not
 passed on, and a caller that wants the format calls `detect`. `write`'s third argument is the
-`app` stamped into a `.reprise` file, `{ name: 'reprise', version: '0.0.0' }` by default.
+`app` stamped into a `.reprise` file, `{ name: 'reprise', version: '0.0.0' }` by default; `gp`
+ignores it. `write(score, 'gp')` calls `writeGp` and maps each `GpifDropped` to a `Warning` of
+severity `warning`, its model path to `location.path` without the leading `score`, and `count`
+only when it is above 1.
 
 **Detection** reads the signature only, first match wins:
 
@@ -92,7 +96,6 @@ reader's is a bug and is rethrown untouched.
 | `unknown-format`                                                                                                           | `read`                           | No format given and the bytes match no signature.                         |
 | `format-mismatch`                                                                                                          | `read`                           | The given format's reader refused the bytes, which are `detected`.        |
 | `too-large`                                                                                                                | `read`, `readGp`, `readGpx`      | Over `MAX_FILE_BYTES`, or a container declaring more.                     |
-| `unsupported-format`                                                                                                       | `write`                          | `write(score, 'gp')` until the gp writer (WP-044) lands.                  |
 | `unknown-version`                                                                                                          | `readGp3To5`                     | A header the binary reader does not know, or none.                        |
 | `invalid-zip`, `missing-score`                                                                                             | `readGp`                         | Not a readable zip; no `Content/score.gpif`.                              |
 | `not-bcfz`, `truncated`, `corrupt`, `missing-score`                                                                        | `readGpx`                        | See "gpx (GP6)" below.                                                    |
@@ -116,7 +119,6 @@ A native `unknown-field` or violation is a `warning`, at its document path less 
 
 **Known gaps.**
 
-- `write(score, 'gp')` rejects with `unsupported-format` until WP-044's writer is on main.
 - Nothing runs off-thread yet.
 - Any zip detects as gp and any JSON object as reprise; the reader tells them apart.
 - `read` has no file name, so it reports no extension mismatch; a caller can compare `detect`
@@ -522,7 +524,7 @@ const { bytes, dropped } = writeGp(score); // a .gp file Guitar Pro 7 and 8 open
 const { xml } = writeGpif(score); // just the score.gpif document
 ```
 
-Both are synchronous and deterministic: ids are sequential per gpif section and the zip entries carry a fixed timestamp, so one score always gives the same bytes. `dropped` lists the score features the file cannot carry, one `GpifDropped` (`{ code, message, path, count }`) per kind of loss with the first model path it was found on (`score.tracks[0].bars[2].voices[0].beats[1]`); it is what the export dialog (WP-061) shows. The `write()` dispatcher (WP-045) wraps `writeGp`.
+Both are synchronous and deterministic: ids are sequential per gpif section and the zip entries carry a fixed timestamp, so one score always gives the same bytes. `dropped` lists the score features the file cannot carry, one `GpifDropped` (`{ code, message, path, count }`) per kind of loss with the first model path it was found on (`score.tracks[0].bars[2].voices[0].beats[1]`); it is what the export dialog (WP-061) shows. The `write()` dispatcher wraps `writeGp` and maps `dropped` to `Warning`s.
 
 `src/gpif/write-gpif.ts` is the inverse of the reader's mapping; `write-tracks.ts`, `write-notes.ts` and `write-tempo.ts` hold the track, note and tempo parts, and `xml-writer.ts` a small serializer (escaped text, CDATA for free text, one element per line as Guitar Pro writes them). `src/gp/write-gp.ts` assembles the zip.
 

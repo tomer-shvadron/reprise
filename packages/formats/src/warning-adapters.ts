@@ -1,5 +1,6 @@
 import type { NativePath, ParseWarning, ViolationPath, ViolationRule } from '@reprise/model';
 
+import type { GpifDropped } from './gpif/dropped';
 import type { GpifWarning, GpifWarningCode } from './gpif/warnings';
 import type { Warning, WarningLocation, WarningSeverity } from './warnings';
 
@@ -60,6 +61,18 @@ export function fromGpifWarning(warning: GpifWarning): Warning {
       ...folded(count),
     };
   }
+  return {
+    code,
+    severity: 'warning',
+    message,
+    location: { path: withoutScoreRoot(parseModelPath(path)) },
+    ...folded(count),
+  };
+}
+
+/** Every export loss is a `warning`: what goes missing is the user's own score feature. */
+export function fromGpifDropped(dropped: GpifDropped): Warning {
+  const { code, message, path, count } = dropped;
   return {
     code,
     severity: 'warning',

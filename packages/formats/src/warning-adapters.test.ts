@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { GpifWarning, GpifWarningCode } from './gpif/warnings';
 import {
   GPIF_SEVERITY,
+  fromGpifDropped,
   fromGpifWarning,
   fromParseWarning,
   parseModelPath,
@@ -66,6 +67,36 @@ describe('fromGpifWarning', () => {
       severity: 'warning',
       message: 'm',
       location: { path: ['tracks', 0, 'bars', 1, 'voices', 1] },
+      count: 3,
+    });
+  });
+});
+
+describe('fromGpifDropped', () => {
+  it('gives every loss the severity warning at its score path', () => {
+    const once = fromGpifDropped({
+      code: 'trill-speed',
+      message: 'm',
+      path: 'score.tracks[0].bars[0].voices[0].beats[0].notes[0].trill.speed',
+      count: 1,
+    });
+    expect(once).toEqual({
+      code: 'trill-speed',
+      severity: 'warning',
+      message: 'm',
+      location: {
+        path: ['tracks', 0, 'bars', 0, 'voices', 0, 'beats', 0, 'notes', 0, 'trill', 'speed'],
+      },
+    });
+    const folded = fromGpifDropped({
+      code: 'mixer-change',
+      message: 'm',
+      path: 'score.tracks[1]',
+      count: 3,
+    });
+    expect(folded).toMatchObject({
+      severity: 'warning',
+      location: { path: ['tracks', 1] },
       count: 3,
     });
   });

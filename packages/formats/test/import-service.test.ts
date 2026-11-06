@@ -1,4 +1,5 @@
 import { ScoreSchema, parseNative } from '@reprise/model';
+import { fullScore } from '@reprise/model/testing';
 import { zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
@@ -18,6 +19,7 @@ import {
 import type { Format, Warning } from '../src/index';
 import { countNotes, featuresOf, fixtureBytes, manifestEntries } from './corpus';
 import { bcfz, gpx } from './gpx-builder';
+import { kitchenSink } from './kitchen-sink';
 
 const FAMILIES = ['gp3', 'gp4', 'gp5', 'gp', 'gpx'] as const;
 const entries = manifestEntries(FAMILIES);
@@ -269,12 +271,48 @@ describe('the native format', () => {
 });
 
 describe('gp export', () => {
-  it('is not available until the gp writer lands', async () => {
-    const { score } = await read(fixtureBytes('gp3/notes.gp3'));
-    await expect(write(score, 'gp')).rejects.toMatchObject({
-      code: 'unsupported-format',
-      format: 'gp',
-    });
+  it('writes a gp file that reads back with the same counts', async () => {
+    const source = kitchenSink();
+    const { bytes, dropped } = await write(source, 'gp');
+    expect(detect(bytes)).toBe('gp');
+    const { score } = await read(bytes);
+    expect(score.tracks).toHaveLength(source.tracks.length);
+    expect(score.masterBars).toHaveLength(source.masterBars.length);
+    expect(countNotes(score)).toBe(countNotes(source));
+    for (const warning of dropped) {
+      expect(warning.severity).toBe('warning');
+      expect(Array.isArray(warning.location.path)).toBe(true);
+      if (warning.count !== undefined) expect(warning.count).toBeGreaterThan(1);
+    }
+  });
+
+  it('keeps a gp fixture through read, write and read', async () => {
+    const entry = entries.find((e) => e.path === 'gp/timer.gp');
+    if (!entry) throw new Error('gp/timer.gp is not in the manifest');
+    const { score } = await read(fixtureBytes(entry.path));
+    const { bytes } = await write(score, 'gp');
+    const back = await read(bytes);
+    expect(back.score.tracks).toHaveLength(entry.tracks);
+    expect(back.score.masterBars).toHaveLength(entry.bars);
+    expect(countNotes(back.score)).toBe(entry.notes);
+  });
+
+  it("reports the writer's losses on fullScore as warnings at their score paths", async () => {
+    const { dropped } = await write(fullScore(), 'gp');
+    expect(dropped.map((w) => [w.code, w.location.path])).toEqual([
+      ['section-color', ['masterBars', 0, 'section', 'color']],
+      ['channel-effect', ['tracks', 0, 'channel']],
+      ['sound-override', ['tracks', 0, 'sound']],
+      ['chord-barre', ['tracks', 0]],
+      ['mixer-change', ['tracks', 0, 'bars', 0, 'voices', 0, 'beats', 0, 'mix']],
+      ['stroke', ['tracks', 0, 'bars', 0, 'voices', 0, 'beats', 0, 'effects', 'arpeggio']],
+      ['note-dynamics', ['tracks', 0, 'bars', 0, 'voices', 0, 'beats', 0]],
+      [
+        'trill-speed',
+        ['tracks', 0, 'bars', 0, 'voices', 0, 'beats', 0, 'notes', 0, 'trill', 'speed'],
+      ],
+    ]);
+    expect(new Set(dropped.map((w) => w.severity))).toEqual(new Set(['warning']));
   });
 });
 

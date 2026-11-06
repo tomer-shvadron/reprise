@@ -2,10 +2,12 @@ import { NativeFormatError, serializeNative } from '@reprise/model';
 import type { AppInfo, Score } from '@reprise/model';
 
 import { FormatError } from './errors';
+import { writeGp } from './gp/write-gp';
+import { fromGpifDropped } from './warning-adapters';
 import type { Warning } from './warnings';
 
 export interface WriteOptions {
-  /** Stamped into a `.reprise` file for diagnostics; never changes how it is read. */
+  /** Stamped into a `.reprise` file for diagnostics; never changes how it is read. Ignored for `gp`. */
   app?: AppInfo;
 }
 
@@ -28,10 +30,8 @@ function writeNative(score: Score, app: AppInfo): WriteResult {
 
 function writeNow(score: Score, format: 'reprise' | 'gp', options: WriteOptions): WriteResult {
   if (format === 'reprise') return writeNative(score, options.app ?? DEFAULT_APP);
-  // TODO(WP-044): call writeGp and map its GpifDropped entries once #71 is on main.
-  throw new FormatError('unsupported-format', 'Writing gp files is not available yet', {
-    format: 'gp',
-  });
+  const { bytes, dropped } = writeGp(score);
+  return { bytes, dropped: dropped.map(fromGpifDropped) };
 }
 
 /** Writes a score as `.reprise` or `.gp`. Rejects with `FormatError` and never throws synchronously. */
