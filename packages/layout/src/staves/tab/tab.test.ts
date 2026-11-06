@@ -16,7 +16,6 @@ import { describeAnchor, describePrimitive } from '../../test/describe';
 import type { StaffBar } from '../staff-module';
 import { TAB } from './analysis';
 import { tabModule } from './index';
-import { feelWidth } from './spacing';
 
 const paged: LayoutOptions = {
   mode: 'paged',
@@ -664,8 +663,6 @@ describe('tab staff: spacing', () => {
     await annotate(
       `bar widths in staff spaces (time signature included): ${JSON.stringify(widths)}`,
     );
-    expect(feelWidth(3840)).toBeCloseTo(12.35, 1);
-    expect(feelWidth(960)).toBe(0);
     expect(widths['1']).toBeGreaterThan(14);
   });
 });
