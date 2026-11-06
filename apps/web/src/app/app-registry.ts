@@ -1,4 +1,5 @@
 import { transportCommands } from '@/features/transport';
+import { seekCommands } from '@/features/transport/seek-commands';
 
 import { CommandRegistry } from './command-registry';
 import { appCommands } from './commands';
@@ -10,5 +11,7 @@ export function createAppRegistry(services: AppServices): CommandRegistry {
   for (const command of [...appCommands(services), ...transportCommands(services)]) {
     registry.register(command);
   }
+  // Seeking and following (WP-053).
+  for (const command of seekCommands(services)) registry.register(command);
   return registry;
 }

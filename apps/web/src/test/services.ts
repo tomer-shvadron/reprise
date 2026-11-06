@@ -35,6 +35,7 @@ export function fakeAudioService(): FakeAudioService {
     togglePlay: vi.fn(),
     stop: vi.fn(),
     seek: vi.fn(),
+    outputLatency: vi.fn(() => 0),
     setTempo: vi.fn(),
     setLoop: vi.fn(),
     setCountIn: vi.fn(),

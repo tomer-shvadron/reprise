@@ -5,6 +5,7 @@ Shortcuts follow Guitar Pro where Guitar Pro has one.
 The table below is checked against the command registry in `apps/web` by `apps/web/src/app/shortcut-doc.test.ts`, which fails on any difference and prints the table to paste in. WP-101 adds the script that writes it, the contexts and the cheat sheet. Until then, edit it only by pasting the table that test prints.
 
 - A bare key (no Cmd or Ctrl) never fires while typing in a text field.
+- Arrows, Home and End stay with a text field or a control that uses them (a slider, a menu); elsewhere they move the playhead.
 - Space and Enter on a focused button or toggle activate that control; transport buttons do not take focus on click, so Space keeps playing after one.
 
 <!-- shortcuts:start -->
@@ -23,6 +24,7 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Toggle light and dark theme | View | Global | ⇧⌘L | Ctrl+Shift+L |
 | Toggle tracks | View | Global | — | — |
 | Toggle panel | View | Global | — | — |
+| Follow playback | View | Global | — | — |
 | Play or pause | Transport | Global | Space | Space |
 | Stop | Transport | Global | ↩ | Enter |
 | Play from start | Transport | Global | ⇧Space | Shift+Space |
@@ -36,4 +38,13 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Speed up 5% | Transport | Global | ] | ] |
 | Toggle relative speed | Transport | Global | ⌘F9 | Ctrl+F9 |
 | Announce position | Transport | Global | ⌥P | Alt+P |
+| Previous beat | Transport | Global | ← | Left |
+| Next beat | Transport | Global | → | Right |
+| Previous bar | Transport | Global | ⌘← | Ctrl+Left |
+| Next bar | Transport | Global | ⌘→ | Ctrl+Right |
+| Start of bar | Transport | Global | ↖ | Home |
+| First bar | Transport | Global | ⌘↖ | Ctrl+Home |
+| Last bar | Transport | Global | ⌘↘ | Ctrl+End |
+| Extend selection to previous bar | Transport | Global | ⇧⌘← | Ctrl+Shift+Left |
+| Extend selection to next bar | Transport | Global | ⇧⌘→ | Ctrl+Shift+Right |
 <!-- shortcuts:end -->

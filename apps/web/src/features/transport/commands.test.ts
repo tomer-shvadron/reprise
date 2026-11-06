@@ -26,7 +26,7 @@ describe('transport commands', () => {
   it('register with the app’s commands without a shortcut conflict, each with a shortcut', async () => {
     const { registry } = await setup();
     const transport = registry.list().filter((command) => command.id.startsWith('transport.'));
-    expect(transport).toHaveLength(13);
+    expect(transport).toHaveLength(22);
     for (const command of transport) expect(command.shortcut, command.id).toBeDefined();
   });
 
@@ -117,5 +117,61 @@ describe('transport commands', () => {
     expect(services.transport.getState().popover).toBe('master');
     await run('transport.announcePosition');
     expect(services.transport.getState().announcement?.text).toMatch(/^Bar 1 of 4, beat 1 of 4/);
+  });
+
+  it('step the playhead by beats and bars, announcing the position while stopped', async () => {
+    const { services, run } = await setup(fourBars());
+    const { fakeAudio, transport } = services;
+    await run('transport.nextBar');
+    expect(fakeAudio.seek).toHaveBeenLastCalledWith(3840);
+    expect(services.ui.getState().follow.request).toBe(1);
+    expect(transport.getState().announcement?.text).toMatch(/^Bar 2 of 4, beat 1 of 4/);
+    await run('transport.nextBeat');
+    expect(fakeAudio.seek).toHaveBeenLastCalledWith(3840 + 960);
+    await run('transport.previousBeat');
+    expect(fakeAudio.seek).toHaveBeenLastCalledWith(3840);
+    await run('transport.lastBar');
+    expect(fakeAudio.seek).toHaveBeenLastCalledWith(3 * 3840);
+    await run('transport.firstBar');
+    expect(fakeAudio.seek).toHaveBeenLastCalledWith(0);
+    const seeks = fakeAudio.seek.mock.calls.length;
+    await run('transport.barStart');
+    await run('transport.previousBar');
+    expect(fakeAudio.seek).toHaveBeenCalledTimes(seeks);
+
+    services.playback.setState({ transport: 'playing' });
+    const announced = transport.getState().announcement;
+    await run('transport.nextBar');
+    expect(transport.getState().announcement).toBe(announced);
+  });
+
+  it('extend the bar selection from its anchor and announce it', async () => {
+    const { services, run } = await setup(fourBars());
+    const bars = services.document.getState().score?.masterBars ?? [];
+    const id = (index: number) => bars[index]?.id ?? '';
+    await run('transport.nextBar');
+    await run('transport.selectNextBar');
+    expect(services.selection.getState()).toMatchObject({
+      bars: { startBar: id(1), endBar: id(2) },
+      barsAnchor: id(1),
+    });
+    await run('transport.selectNextBar');
+    expect(services.transport.getState().announcement?.text).toBe('Bars 2 to 4 selected');
+    await run('transport.selectPreviousBar');
+    await run('transport.selectPreviousBar');
+    await run('transport.selectPreviousBar');
+    expect(services.selection.getState().bars).toEqual({ startBar: id(0), endBar: id(1) });
+  });
+
+  it('do nothing without a song, and Follow playback requests following', async () => {
+    const { services, run } = await setup();
+    for (const id of ['transport.nextBeat', 'transport.lastBar', 'transport.selectNextBar']) {
+      await run(id);
+    }
+    expect(services.fakeAudio.seek).not.toHaveBeenCalled();
+    expect(services.selection.getState().bars).toBeUndefined();
+    services.ui.getState().pauseFollow();
+    await run('view.followPlayback');
+    expect(services.ui.getState().follow).toEqual({ on: true, request: 1 });
   });
 });

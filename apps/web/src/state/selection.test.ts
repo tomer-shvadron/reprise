@@ -13,13 +13,22 @@ describe('the selection store', () => {
       currentTrack: 'track000001',
       selection: { noteIds: ['note00000001'] },
       bars: { startBar: 'bar000000001', endBar: 'bar000000002' },
+      barsAnchor: 'bar000000001',
     });
+
+    store
+      .getState()
+      .selectBars({ startBar: 'bar000000001', endBar: 'bar000000002' }, 'bar000000002');
+    expect(store.getState().barsAnchor).toBe('bar000000002');
+    store.getState().selectBars(undefined, 'bar000000003');
+    expect(store.getState()).toMatchObject({ bars: undefined, barsAnchor: 'bar000000003' });
 
     store.getState().reset('track000002');
     expect(store.getState()).toMatchObject({
       currentTrack: 'track000002',
       selection: {},
       bars: undefined,
+      barsAnchor: undefined,
     });
   });
 });

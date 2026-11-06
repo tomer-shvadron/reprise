@@ -1,5 +1,13 @@
-import { LayoutCache, layout, type Anchor, type LayoutResult } from '@reprise/layout';
-import { applyCommand, setNote, type Id, type Score } from '@reprise/model';
+import { createTimeline } from '@reprise/audio';
+import { LayoutCache, layout, type LayoutResult } from '@reprise/layout';
+import {
+  applyCommand,
+  positionAtSeconds,
+  secondsAtTick,
+  setNote,
+  type Id,
+  type Score,
+} from '@reprise/model';
 import {
   useEffect,
   useEffectEvent,
@@ -12,9 +20,9 @@ import {
 
 import { Button } from '@/components/ui/button';
 
-import { cursorAt } from '../anchors';
 import { useScoreFonts } from '../fonts';
 import type { ScoreOverlays } from '../overlay-layer';
+import { playheadAt, pointerTarget } from '../playhead';
 import { ScorePages } from '../score-page';
 import { ScoreView, type ScorePointerEvent, type ScoreViewHandle } from '../score-view';
 import { uniformNotation, viewLayoutOptions } from '../view-options';
@@ -101,29 +109,18 @@ function countElements(frame: HTMLElement | null): number {
   return regionIn(frame)?.querySelectorAll('*').length ?? 0;
 }
 
-/** Beat anchors of each system's first staff, in reading order: the Step cursor's path. */
-function cursorPath(result: LayoutResult): Anchor[] {
-  return result.systems.flatMap((system) => {
-    const staff = system.staves[0];
-    if (!staff) return [];
-    return result.anchors
-      .slice(system.anchors.start, system.anchors.end)
-      .filter((a) => a.kind === 'beat' && a.track === staff.track && a.staff === staff.type)
-      .sort((a, b) => a.bbox.x - b.bbox.x);
-  });
-}
-
 /** The `/dev/score` page: any fixture or the long score, every view option, and measurements. */
 export function ScoreDemo({ initial }: { initial: DemoParams }) {
   const [params, setParams] = useState(initial);
   const [doc, setDoc] = useState<Doc>();
   const [error, setError] = useState<string>();
   const [overlays, setOverlays] = useState<ScoreOverlays>({});
-  const [cursorIndex, setCursorIndex] = useState(-1);
   const [paints, setPaints] = useState<PaintRecord[]>([]);
   const [scrolls, setScrolls] = useState<ScrollRecord[]>([]);
   const [elements, setElements] = useState(0);
   const [scrolling, setScrolling] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const clock = useRef(0);
   const fontsReady = useScoreFonts();
   const handle = useRef<ScoreViewHandle>(null);
   const frame = useRef<HTMLDivElement>(null);
@@ -147,7 +144,6 @@ export function ScoreDemo({ initial }: { initial: DemoParams }) {
     pending.current = { label, layoutMs: result.metrics.layoutMs, handedAt: performance.now() };
     setDoc({ score, cache, result });
     setOverlays({});
-    setCursorIndex(-1);
   };
 
   const onLoaded = useEffectEvent((score: Score) => {
@@ -257,17 +253,41 @@ export function ScoreDemo({ initial }: { initial: DemoParams }) {
     if (pending.current) pending.current.observer = { observer, records };
   };
 
-  const path = useMemo(() => (doc ? cursorPath(doc.result) : []), [doc]);
+  const score = doc?.score;
+  const timeline = useMemo(() => score && createTimeline(score), [score]);
 
-  const stepCursor = () => {
-    if (!doc || path.length === 0) return;
-    const index = (cursorIndex + 1) % path.length;
-    const anchor = path[index];
-    const cursor = anchor && cursorAt(doc.result, anchor);
-    setCursorIndex(index);
-    if (!cursor) return;
-    setOverlays((current) => ({ ...current, cursor }));
-    handle.current?.revealRect(cursor.bar.bbox);
+  const showClock = (follow: boolean) => {
+    const view = handle.current;
+    const position = timeline && positionAtSeconds(timeline.map, clock.current);
+    const masterBar = position && doc?.score.masterBars[position.masterBarIndex];
+    if (!view || !doc || !position || !masterBar) return;
+    view.setPlayhead(playheadAt(doc.result, doc.score, masterBar.id, position.tick));
+    if (follow) {
+      view.followPlayhead({ mode: params.mode, running: true, track: doc.score.tracks[0]?.id });
+    }
+  };
+
+  // A fake clock on the model's tempo map, driving the playhead the way the app's driver does.
+  const play = async () => {
+    if (!timeline || playing) return;
+    setPlaying(true);
+    const intervals: number[] = [];
+    const start = await nextFrame();
+    let last = start;
+    for (let now = await nextFrame(); now - start < SCROLL_MS; now = await nextFrame()) {
+      intervals.push(now - last);
+      clock.current = Math.min(clock.current + (now - last) / 1000, timeline.map.durationSeconds);
+      last = now;
+      showClock(true);
+    }
+    const record: ScrollRecord = {
+      label: `play ${params.mode} ${params.notation} ×${String(params.zoom)}`,
+      ...frameStats(intervals),
+      elements: countElements(frame.current),
+    };
+    console.table([record]);
+    setScrolls((list) => [...list, record]);
+    setPlaying(false);
   };
 
   const autoScroll = async () => {
@@ -297,7 +317,8 @@ export function ScoreDemo({ initial }: { initial: DemoParams }) {
     setScrolling(false);
   };
 
-  const onScorePointer = ({ type, anchor }: ScorePointerEvent) => {
+  const onScorePointer = (event: ScorePointerEvent) => {
+    const { type, anchor } = event;
     if (type === 'move' || type === 'leave') {
       if (overlays.hover === anchor) return;
       setOverlays((current) => {
@@ -306,13 +327,14 @@ export function ScoreDemo({ initial }: { initial: DemoParams }) {
         else delete next.hover;
         return next;
       });
-    } else if (type === 'down' && anchor && doc) {
-      const cursor = cursorAt(doc.result, anchor);
-      setOverlays((current) => ({
-        ...current,
-        selection: [anchor],
-        ...(cursor && { cursor }),
-      }));
+    } else if (type === 'down' && doc && timeline) {
+      if (anchor) setOverlays((current) => ({ ...current, selection: [anchor] }));
+      const target = pointerTarget(doc.result, doc.score, event);
+      const pass =
+        target && timeline.map.passes.find((p) => p.masterBarIndex === target.masterBarIndex);
+      if (!target || !pass) return;
+      clock.current = secondsAtTick(timeline.map, pass.startTick + target.tick);
+      showClock(false);
     }
   };
 
@@ -384,8 +406,8 @@ export function ScoreDemo({ initial }: { initial: DemoParams }) {
         <Button size="sm" variant="outline" onClick={editOneNote} disabled={!doc}>
           Edit one note
         </Button>
-        <Button size="sm" variant="outline" onClick={stepCursor} disabled={!doc}>
-          Step cursor
+        <Button size="sm" variant="outline" onClick={() => void play()} disabled={!doc || playing}>
+          {playing ? 'Playing…' : 'Play'}
         </Button>
         <Button
           size="sm"

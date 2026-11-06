@@ -21,6 +21,7 @@ import { selectCanPlay, type PlaybackStore, type PlaybackStoreState } from '@/st
 import type { BarRange } from '@/state/selection';
 
 import { GmBank } from './gm-bank';
+import { outputLatencyOf } from './output-latency';
 import { loadGmSoundfont, SoundfontError, type SoundfontLoader } from './soundfont-loader';
 
 export interface AudioServiceOptions {
@@ -56,7 +57,10 @@ export interface AudioService {
   pause(): void;
   togglePlay(): void;
   stop(): void;
+  /** Ignored until the engine has the open song, which waits on the sound bank. */
   seek(tick: number): void;
+  /** Seconds between the clock positions are read from and what is heard; 0 with no context. */
+  outputLatency(): number;
   setTempo(mode: TempoMode, value: number): void;
   setLoop(range?: BarRange): void;
   setCountIn(on: boolean): void;
@@ -434,10 +438,14 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     },
 
     seek(tick) {
-      if (!engine || !doc) return;
+      if (!engine || !doc || !attached) return;
       // A seek during a count-in emits `playing` after `counting-in`, which skips the reset there.
       if (isRunning(transport)) resetBaseline();
       engine.seek(tick);
+    },
+
+    outputLatency() {
+      return outputLatencyOf(context);
     },
 
     setTempo(mode, value) {

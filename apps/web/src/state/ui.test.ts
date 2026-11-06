@@ -83,3 +83,20 @@ describe('the ui view', () => {
     expect(store.getState().view).toEqual({ mode: 'continuous', paper: 'letter' });
   });
 });
+
+describe('following the playhead', () => {
+  it('is on by default, pauses, and comes back on with a new request', () => {
+    const store = createUiStore('dark');
+    expect(store.getState().follow).toEqual({ on: true, request: 0 });
+
+    store.getState().pauseFollow();
+    const paused = store.getState().follow;
+    expect(paused).toEqual({ on: false, request: 0 });
+    store.getState().pauseFollow();
+    expect(store.getState().follow).toBe(paused);
+
+    store.getState().requestFollow();
+    store.getState().requestFollow();
+    expect(store.getState().follow).toEqual({ on: true, request: 2 });
+  });
+});

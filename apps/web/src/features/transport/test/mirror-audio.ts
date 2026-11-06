@@ -1,10 +1,11 @@
 import type { AppServices } from '@/app/services';
 import type { TransportSettings } from '@/state/playback';
+import { positionEventAt } from '@/test/position';
 import type { FakeAudioService } from '@/test/services';
 
-/** Makes the fake's setters write `settings` as the real service does, so the bar follows. */
+/** Makes the fake's setters write `settings`, and its seek the position, as the real service does. */
 export function mirrorAudio(services: AppServices & { fakeAudio: FakeAudioService }): void {
-  const { fakeAudio, playback } = services;
+  const { fakeAudio, playback, document } = services;
   const settings = (partial: Partial<TransportSettings>) => {
     playback.setState({ settings: { ...playback.getState().settings, ...partial } });
   };
@@ -22,5 +23,9 @@ export function mirrorAudio(services: AppServices & { fakeAudio: FakeAudioServic
   });
   fakeAudio.setMasterVolume.mockImplementation((masterVolume) => {
     settings({ masterVolume });
+  });
+  fakeAudio.seek.mockImplementation((tick) => {
+    const { score } = document.getState();
+    if (score) playback.setState({ position: positionEventAt(score, tick) });
   });
 }
