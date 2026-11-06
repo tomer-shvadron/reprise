@@ -1,4 +1,12 @@
-import { applyCommand, setBeatDuration, setNote, type Notation, type Score } from '@reprise/model';
+import {
+  applyCommand,
+  setBeatDuration,
+  setNote,
+  setNoteEffect,
+  type Dynamics,
+  type Notation,
+  type Score,
+} from '@reprise/model';
 import { beatOf, largeScore } from '@reprise/model/testing';
 import { expect, test, type TestContext } from 'vitest';
 
@@ -212,5 +220,56 @@ test('Re-layout after a single-note edit', RELAYOUT_BENCH, async (context) => {
 test('Re-layout after a rhythm edit, continuous', RELAYOUT_BENCH, async (context) => {
   const metric = 'Re-layout after a rhythm edit, continuous';
   const p50 = await relayoutBench(context, metric, () => continuous, rhythmEdit);
+  await recordMeasurement(context, metric, p50);
+});
+
+/**
+ * The first dynamic in a system adds a lane, and once a page overflows every later page starts a
+ * system later. The first edit adds a `pp` to one bar after another from bar 100 until one moves a
+ * page break, judging each by cold layouts in an untimed warm-up; the rest restore that note's own
+ * dynamic and set the `pp` again, alternately.
+ */
+function pageBreakEdit(build: (score: Score) => LayoutOptions): Edit {
+  let target: { noteId: string; own: Dynamics } | undefined;
+  let set = true;
+  const pageStarts = (score: Score): string =>
+    layout(score, build(score))
+      .systems.filter((system, i, systems) => systems[i - 1]?.page !== system.page)
+      .map((system) => system.bars.start)
+      .join();
+  const withDynamic = (score: Score, noteId: string, dynamics: Dynamics) =>
+    applyCommand(score, setNoteEffect({ noteId }, { dynamics }));
+  return (score) => {
+    if (target) {
+      set = !set;
+      return withDynamic(score, target.noteId, set ? 'pp' : target.own);
+    }
+    let current = score;
+    let before = pageStarts(current);
+    for (let bar = 100; bar < current.masterBars.length; bar++) {
+      const notes = current.tracks[0]?.bars[bar]?.voices[0]?.beats.flatMap((beat) => beat.notes);
+      const note = notes?.find((candidate) => candidate.dynamics !== 'pp');
+      if (!note) continue;
+      const next = withDynamic(current, note.id, 'pp');
+      const after = pageStarts(next.score);
+      if (after !== before) {
+        target = { noteId: note.id, own: note.dynamics };
+        return next;
+      }
+      current = next.score;
+      before = after;
+    }
+    throw new Error('no dynamic on the first track moves a page break');
+  };
+}
+
+test('Re-layout after a page-break-moving edit, paged', RELAYOUT_BENCH, async (context) => {
+  const metric = 'Re-layout after a page-break-moving edit, paged';
+  // On the long score every system of all eight tracks fills a page, so one part is shown.
+  const part = (score: Score): LayoutOptions => {
+    const id = score.tracks[0]?.id ?? '';
+    return { ...options, tracks: [id], notation: { [id]: 'tab' } };
+  };
+  const p50 = await relayoutBench(context, metric, part, pageBreakEdit(part));
   await recordMeasurement(context, metric, p50);
 });
