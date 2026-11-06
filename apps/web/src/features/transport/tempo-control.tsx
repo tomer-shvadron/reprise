@@ -26,7 +26,7 @@ export function TempoControl() {
   const focus = useStore(transport, (state) => state.focus);
   const setTempoCommand = useCommand('transport.setTempo');
 
-  const [bpm, setBpm] = useState<number | undefined>(undefined);
+  const [written, setWritten] = useState<number | undefined>(undefined);
   const [draft, setDraftState] = useState<string | undefined>(undefined);
   // Read by the blur that follows Enter or Escape in the same task, before React re-renders.
   const draftRef = useRef<string | undefined>(undefined);
@@ -36,37 +36,32 @@ export function TempoControl() {
   };
   const input = useRef<HTMLInputElement>(null);
   const returnFocus = useRef<Element | null>(null);
-  const reader = useRef<{ refresh(): void } | undefined>(undefined);
 
-  // The written tempo moves with the playhead through tempo marks, so the reader feeds it.
+  // The written tempo moves with the playhead through tempo marks, so the reader feeds it; React
+  // renders only when it changes, which a constant section never does.
   useLayoutEffect(() => {
-    let shown: number | undefined;
-    const started = startPositionReader(playback, (event) => {
+    const read = () => {
       const { score } = document.getState();
-      let next: number | undefined;
-      if (score) {
-        const written = writtenBpmAt(timelineOf(score), event);
-        next = bpmFor(percentOf(playback.getState().settings.tempo, written), written);
-      }
-      if (next !== shown) {
-        shown = next;
-        setBpm(next);
-      }
+      return score ? writtenBpmAt(timelineOf(score), playback.getState().position) : undefined;
+    };
+    let last: number | undefined;
+    const reader = startPositionReader(playback, () => {
+      const next = read();
+      // Within a ramp the written tempo moves every frame; only a new displayed integer renders.
+      const display = (w: number | undefined) =>
+        w === undefined ? undefined : bpmFor(percentOf(playback.getState().settings.tempo, w), w);
+      if (last !== undefined && next !== undefined && display(next) === display(last)) return;
+      last = next;
+      setWritten(next);
     });
     const unsubscribe = document.subscribe((state, previous) => {
-      if (state.score !== previous.score) started.refresh();
+      if (state.score !== previous.score) reader.refresh();
     });
-    reader.current = started;
     return () => {
       unsubscribe();
-      started.stop();
-      reader.current = undefined;
+      reader.stop();
     };
   }, [playback, document]);
-
-  useEffect(() => {
-    reader.current?.refresh();
-  }, [tempo]);
 
   useEffect(() => {
     if (focus?.target !== 'tempo') return;
@@ -74,15 +69,14 @@ export function TempoControl() {
     input.current?.select();
   }, [focus]);
 
-  const written = () => {
-    const { score } = document.getState();
-    return score ? writtenBpmAt(timelineOf(score), playback.getState().position) : undefined;
-  };
-  const percent = percentOf(tempo, written() ?? 100);
+  const percent = percentOf(tempo, written ?? 100);
+  const bpm = written === undefined ? undefined : bpmFor(percent, written);
 
   const commitBpm = (value: number) => {
-    const base = written();
-    if (base === undefined) return;
+    const { score } = document.getState();
+    if (!score) return;
+    // Fresh from the store: the state can trail the playhead by a frame.
+    const base = writtenBpmAt(timelineOf(score), playback.getState().position);
     audio.setTempo('percent', percentForBpm(value, base));
   };
 

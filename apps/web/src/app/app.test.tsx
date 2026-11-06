@@ -45,6 +45,7 @@ describe('App', () => {
     expect(screen.getByRole('main', { name: 'Score' })).toHaveTextContent('Open a file (⌘O)');
     expect(screen.getByRole('contentinfo', { name: 'Transport' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeDisabled();
     expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
   });
 
@@ -55,7 +56,8 @@ describe('App', () => {
     await user.keyboard('{Meta>}k{/Meta}');
     const item = await screen.findByRole('option', { name: /Toggle light and dark theme/ });
     expect(screen.getByRole('option', { name: /Open file/ })).toHaveTextContent('⌘O');
-    expect(screen.getByRole('option', { name: /Play or pause/ })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Play or pause/ })).toHaveTextContent('Space');
+    expect(screen.getByRole('option', { name: /Toggle loop/ })).toHaveTextContent('F9');
     expect(screen.queryByRole('option', { name: /command palette/i })).not.toBeInTheDocument();
 
     await user.click(item);
