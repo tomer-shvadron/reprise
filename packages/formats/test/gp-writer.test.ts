@@ -70,11 +70,15 @@ describe('the gp writer round trip', () => {
   it.each([
     ['plain', largeScore(4, 64)],
     ['structured', largeScore(4, 64, { structure: true })],
-  ])('reads back a %s large score unchanged', (_, source) => {
-    const result = roundTrip(source);
-    expect(result.dropped).toEqual([]);
-    expect(roundTripView(result.score)).toEqual(roundTripView(source));
-  });
+  ])(
+    'reads back a %s large score unchanged',
+    (_, source) => {
+      const result = roundTrip(source);
+      expect(result.dropped).toEqual([]);
+      expect(roundTripView(result.score)).toEqual(roundTripView(source));
+    },
+    30_000,
+  );
 
   it('drops exactly the known set from fullScore and keeps the rest', () => {
     const source = fullScore();
@@ -563,16 +567,16 @@ describe('the gp zip', () => {
 });
 
 describe('writing a large score', () => {
-  it('writes 8 tracks by 300 bars within budget', () => {
+  it('writes 8 tracks by 300 bars without losses, under a megabyte', { timeout: 30_000 }, () => {
     const source = largeScore(8, 300);
     writeGp(source);
     const start = performance.now();
     const { bytes, dropped } = writeGp(source);
     const elapsed = performance.now() - start;
     const xml = new TextDecoder().decode(unzipSync(bytes)['Content/score.gpif']);
-    // 313 ms on an Apple M4 Pro, 2.2 s seen on a loaded CI runner; the bound only catches a
-    // pathological regression.
-    expect(elapsed).toBeLessThan(5000);
+    // 281 ms warm on an Apple M4 Pro, 1.7 s under three parallel runs, about 2.6 s on a loaded CI
+    // runner; the bound only catches a pathological regression.
+    expect(elapsed).toBeLessThan(10_000);
     expect(dropped).toEqual([]);
     expect(bytes.byteLength).toBeLessThan(1_000_000);
     expect(xml.length).toBeGreaterThan(bytes.byteLength);

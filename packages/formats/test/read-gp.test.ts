@@ -179,14 +179,14 @@ describe('readGp errors', () => {
 });
 
 describe('readGp timing', () => {
-  it('reads the largest fixture well inside the import budget', () => {
+  it('reads the largest fixture well inside the import budget', { timeout: 30_000 }, () => {
     const bytes = fixtureBytes('gp/drum-tabs.gp');
     readGp(bytes);
     const runs = 20;
     const start = Date.now();
     for (let run = 0; run < runs; run++) readGp(bytes);
     const perRead = (Date.now() - start) / runs;
-    // About 2 ms on a laptop; the bound leaves room for a slow CI runner.
-    expect(perRead).toBeLessThan(100);
+    // About 2 ms on a laptop and 52 ms under three parallel runs; the bound is a sanity check.
+    expect(perRead).toBeLessThan(200);
   });
 });

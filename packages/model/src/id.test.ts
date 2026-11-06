@@ -30,12 +30,12 @@ describe('newId', () => {
     }
   });
 
-  // Loose on purpose: one `getRandomValues` call per id took about 80 ms here, so this catches
-  // only a gross regression, and a slow CI box must not fail it.
-  it('makes 100k ids well under a second', () => {
+  // Loose on purpose: one `getRandomValues` call per id took about 80 ms here and 341 ms under
+  // three parallel runs, so this catches only a gross regression.
+  it('makes 100k ids in a sane time', { timeout: 30_000 }, () => {
     const start = Date.now();
     for (let i = 0; i < 100_000; i++) newId();
-    expect(Date.now() - start).toBeLessThan(500);
+    expect(Date.now() - start).toBeLessThan(2_000);
   });
 
   it('is rejected by the schema when malformed', () => {

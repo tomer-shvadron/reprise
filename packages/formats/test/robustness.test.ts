@@ -58,15 +58,19 @@ describe('unknown versions', () => {
 });
 
 describe('truncated files', () => {
-  it.each(entries.map((entry) => entry.path))('%s yields a partial score at every cut', (path) => {
-    const bytes = fixtureBytes(path);
-    for (let length = 31; length < bytes.length - 4; length += 17) {
-      const result = readSafely(bytes.subarray(0, length));
-      expect(result).not.toBeInstanceOf(GpVersionError);
-      if (result instanceof GpVersionError) continue;
-      expect(result.warnings.some((warning) => warning.code === 'truncated-file')).toBe(true);
-    }
-  });
+  it.each(entries.map((entry) => entry.path))(
+    '%s yields a partial score at every cut',
+    (path) => {
+      const bytes = fixtureBytes(path);
+      for (let length = 31; length < bytes.length - 4; length += 17) {
+        const result = readSafely(bytes.subarray(0, length));
+        expect(result).not.toBeInstanceOf(GpVersionError);
+        if (result instanceof GpVersionError) continue;
+        expect(result.warnings.some((warning) => warning.code === 'truncated-file')).toBe(true);
+      }
+    },
+    30_000,
+  );
 
   it('yields a partial score at every byte of a GP5 header', () => {
     const bytes = fixtureBytes('gp5/chords.gp5');
