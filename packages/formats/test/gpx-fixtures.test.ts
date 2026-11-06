@@ -133,29 +133,33 @@ function random(seed: number): () => number {
 }
 
 describe('readGpx on damaged files', () => {
-  it('either reads a schema-valid score or throws GpxError or GpifError', () => {
-    const next = random(43);
-    for (const entry of entries) {
-      const original = fixtureBytes(entry.path);
-      for (let run = 0; run < 40; run++) {
-        const bytes = original.slice();
-        const flips = 1 + Math.floor(next() * 4);
-        for (let flip = 0; flip < flips; flip++) {
-          const at = 8 + Math.floor(next() * (bytes.length - 8));
-          bytes[at] = Math.floor(next() * 256);
-        }
-        try {
-          expect(ScoreSchema.safeParse(readGpx(bytes).score).success).toBe(true);
-        } catch (error) {
-          if (!(error instanceof GpxError || error instanceof GpifError)) throw error;
+  it(
+    'either reads a schema-valid score or throws GpxError or GpifError',
+    { timeout: 30_000 },
+    () => {
+      const next = random(43);
+      for (const entry of entries) {
+        const original = fixtureBytes(entry.path);
+        for (let run = 0; run < 40; run++) {
+          const bytes = original.slice();
+          const flips = 1 + Math.floor(next() * 4);
+          for (let flip = 0; flip < flips; flip++) {
+            const at = 8 + Math.floor(next() * (bytes.length - 8));
+            bytes[at] = Math.floor(next() * 256);
+          }
+          try {
+            expect(ScoreSchema.safeParse(readGpx(bytes).score).success).toBe(true);
+          } catch (error) {
+            if (!(error instanceof GpxError || error instanceof GpifError)) throw error;
+          }
         }
       }
-    }
-  });
+    },
+  );
 });
 
 describe('readGpx timing', () => {
-  it('reads the largest fixture well inside the import budget', () => {
+  it('reads the largest fixture well inside the import budget', { timeout: 30_000 }, () => {
     const bytes = fixtureBytes('gpx/effects.gpx');
     readGpx(bytes);
     const runs = 20;

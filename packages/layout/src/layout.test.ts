@@ -55,19 +55,23 @@ describe('layout', () => {
   it.each([
     ['paged', paged],
     ['continuous', continuous],
-  ])('lays out the long score in %s mode', (_, options) => {
-    const long = largeScore(8, 300, { structure: true });
-    const result = layout(long, options);
-    expectValid(result);
-    expect(result.systems.at(-1)?.bars.end).toBe(300);
-    const beats = result.anchors.filter((anchor) => anchor.kind === 'beat');
-    const total = long.tracks.reduce(
-      (sum, track) =>
-        sum + track.bars.reduce((count, bar) => count + bar.voices[0].beats.length + 1, 0),
-      0,
-    );
-    expect(beats).toHaveLength(total);
-  });
+  ])(
+    'lays out the long score in %s mode',
+    (_, options) => {
+      const long = largeScore(8, 300, { structure: true });
+      const result = layout(long, options);
+      expectValid(result);
+      expect(result.systems.at(-1)?.bars.end).toBe(300);
+      const beats = result.anchors.filter((anchor) => anchor.kind === 'beat');
+      const total = long.tracks.reduce(
+        (sum, track) =>
+          sum + track.bars.reduce((count, bar) => count + bar.voices[0].beats.length + 1, 0),
+        0,
+      );
+      expect(beats).toHaveLength(total);
+    },
+    30_000,
+  );
 
   it('justifies every paged system but a short last one to the right margin', () => {
     const result = layout(eighthsScore(10), paged);

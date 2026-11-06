@@ -9,7 +9,7 @@ import {
   type ViewSettings,
 } from '../view-options';
 
-/** Big enough to scroll past and virtualize (20 systems on 10 A4 pages), cheap enough for unit tests. */
+/** Big enough to scroll past and virtualize (14 systems on 7 A4 pages), cheap enough for unit tests. */
 export function smallScore(): Score {
   return largeScore(2, 40);
 }

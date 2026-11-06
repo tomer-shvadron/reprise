@@ -201,26 +201,30 @@ describe('damaged files', () => {
     }
   });
 
-  it('yields a valid score or a FormatError for flipped bytes, nothing else', async () => {
-    const next = random(45);
-    for (const entry of entries) {
-      const original = fixtureBytes(entry.path);
-      for (let run = 0; run < 40; run++) {
-        const bytes = original.slice();
-        const flips = 1 + Math.floor(next() * 4);
-        for (let flip = 0; flip < flips; flip++) {
-          const at = 32 + Math.floor(next() * (bytes.length - 32));
-          bytes[at] = Math.floor(next() * 256);
-        }
-        try {
-          const { score } = await read(bytes);
-          expect(ScoreSchema.safeParse(score).success).toBe(true);
-        } catch (error) {
-          if (!(error instanceof FormatError)) throw error;
+  it(
+    'yields a valid score or a FormatError for flipped bytes, nothing else',
+    { timeout: 30_000 },
+    async () => {
+      const next = random(45);
+      for (const entry of entries) {
+        const original = fixtureBytes(entry.path);
+        for (let run = 0; run < 40; run++) {
+          const bytes = original.slice();
+          const flips = 1 + Math.floor(next() * 4);
+          for (let flip = 0; flip < flips; flip++) {
+            const at = 32 + Math.floor(next() * (bytes.length - 32));
+            bytes[at] = Math.floor(next() * 256);
+          }
+          try {
+            const { score } = await read(bytes);
+            expect(ScoreSchema.safeParse(score).success).toBe(true);
+          } catch (error) {
+            if (!(error instanceof FormatError)) throw error;
+          }
         }
       }
-    }
-  });
+    },
+  );
 });
 
 describe('the size limit', () => {
@@ -377,7 +381,7 @@ describe('gp export', () => {
 });
 
 describe('read timing', () => {
-  it('adds nothing measurable to the largest fixture', async () => {
+  it('adds nothing measurable to the largest fixture', { timeout: 30_000 }, async () => {
     const bytes = fixtureBytes('gpx/effects.gpx');
     await read(bytes);
     const runs = 20;

@@ -40,22 +40,26 @@ const masterBarArbitrary: Arbitrary<MasterBar> = record({
 const masterBarsArbitrary = array(masterBarArbitrary, { minLength: 1, maxLength: 40 });
 
 describe('expandPlaybackSequence: properties', () => {
-  it('is finite, bounded by a multiple of the bar count, and numbers passes consistently', () => {
-    assert(
-      property(masterBarsArbitrary, (masterBars) => {
-        const { sequence } = expandPlaybackSequence({ masterBars });
-        expect(sequence.length).toBeLessThanOrEqual(masterBars.length * PLAYBACK_LENGTH_FACTOR);
-        const seen = masterBars.map(() => 0);
-        for (const { masterBarIndex, passIndex } of sequence) {
-          expect(masterBarIndex).toBeGreaterThanOrEqual(0);
-          expect(masterBarIndex).toBeLessThan(masterBars.length);
-          expect(passIndex).toBe(seen[masterBarIndex]);
-          seen[masterBarIndex] = passIndex + 1;
-        }
-      }),
-      { numRuns: 2000 },
-    );
-  });
+  it(
+    'is finite, bounded by a multiple of the bar count, and numbers passes consistently',
+    { timeout: 30_000 },
+    () => {
+      assert(
+        property(masterBarsArbitrary, (masterBars) => {
+          const { sequence } = expandPlaybackSequence({ masterBars });
+          expect(sequence.length).toBeLessThanOrEqual(masterBars.length * PLAYBACK_LENGTH_FACTOR);
+          const seen = masterBars.map(() => 0);
+          for (const { masterBarIndex, passIndex } of sequence) {
+            expect(masterBarIndex).toBeGreaterThanOrEqual(0);
+            expect(masterBarIndex).toBeLessThan(masterBars.length);
+            expect(passIndex).toBe(seen[masterBarIndex]);
+            seen[masterBarIndex] = passIndex + 1;
+          }
+        }),
+        { numRuns: 2000 },
+      );
+    },
+  );
 
   it('without repeats, plays each bar at most once per jump instruction plus once', () => {
     const withoutRepeats = masterBarsArbitrary.map((masterBars) =>

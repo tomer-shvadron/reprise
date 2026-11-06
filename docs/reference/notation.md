@@ -49,7 +49,7 @@ Standard staves only, in the order sharps (F C G D A E B) or flats (B E A D G C 
 - A system with two or more staves opens with a bar line joining them; a single staff starts without one.
 - The end bar lines of a track shown on two staves (standard above tab) run on through the gap between them (WP-023); repeat dots stay inside each staff. Separate tracks keep separate bar lines.
 - Repeat dots sit in the two spaces either side of the staff's middle; on a staff with an even number of lines, one line spacing either side of the middle.
-- A section played more than twice shows `xN` above the end repeat.
+- A section played more than twice shows `xN` above the end repeat, in a lane of its own above the system's first staff (WP-022).
 
 ## Header markings (WP-020)
 
@@ -75,10 +75,10 @@ The tab module is `packages/layout/src/staves/tab/`; every size below is in staf
 - **Grace notes** are fret numbers at 0.7 of the size, one column per grace beat, left of the main number with 0.25 spaces between columns, each on a stem two spaces long (0.7 of the thickness) with its flag at 0.6 of the size.
 - **Rests** are the SMuFL rest glyphs, centred on the onset and on the staff's middle; dots follow 0.3 spaces after the glyph. A rest alone in its voice is centred in the bar, as Guitar Pro draws a whole-bar rest. The rests of an upper voice sit in that voice's rhythm area above the staff.
 - **Two voices.** Voice 1 stems down below the tab; voices 2 to 4 stem up above it whenever voice 1 is present, Guitar Pro's convention for tab. A voice alone stems down. A voice is present only when it has a note or a rest: Guitar Pro's unused voices hold empty beats, and those draw nothing and reserve nothing.
-- **Words.** Above the staff, upwards from the top string (or from the upper voice's rhythm area): chord names (1.2 spaces, starting at the left edge of the beat's numbers), left- and right-hand fingering stacked one per fingered note in string order (`T 1 2 3 4`, then `p i m a c`), then beat text. Below the rhythm notation: one lyric row per line used, each syllable centred on its beat. A row exists only in bars that have it; the chord row is nearest the staff so it aligns most often.
-- **Dynamics** are the Bravura dynamic glyphs at 0.8 size, centred on the beat in the row below the stems, written where a voice's dynamic changes from the previous played beat, across bar lines, starting from Guitar Pro's default `f`. The first played beat of a bar always has room measured for one, since only render sees the bar before.
-- **Both mode.** Under a standard staff (`StaffBar.staves` holds `standard`) the tab shows fret numbers, grace numbers, ties, chord names, beat text and lyrics only: stems, flags, beams, dots, tuplets, rests, dynamics and fingering are the standard staff's, Guitar Pro's "both" (the plan's reading of ADR-0007). Chord names, text and lyrics stay on the tab because the standard staff does not draw them.
-- **Spacing.** A beat reserves its numbers and knockouts, grace columns, rest glyph, flag and dots either side of its onset, plus its chord name, text, lyrics and dynamic. Long notes are widened towards Guitar Pro's feel: a beat longer than a quarter asks for `3.8 × q^0.85` spaces for `q` quarters (a half 6.8, a whole 12.3, where the engine's logarithmic spacing gives 4.5 and 5.2), so a 4/4 bar of one whole note is about 15 spaces of content instead of 7.4. Shorter beats keep the engine's spacing.
+- **Words.** In lanes above the staff, outside the effect lanes (see [Note effects](#note-effects-wp-022)): chord names (1.2 spaces, starting at the left edge of the beat's numbers), left- and right-hand fingering stacked one per fingered note in string order (`T 1 2 3 4`, then `p i m a c`), then beat text. Below the rhythm notation and the dynamics: one lyric row per line used, each syllable centred on its beat. A lane exists in a system when a bar of it has the row, and every bar of the system writes it at the same height (WP-022).
+- **Dynamics** are the Bravura dynamic glyphs at 0.8 size, centred on the beat in a dynamics lane below the rhythm notation, by the rule every staff shares (see [Dynamics](#dynamics-wp-022)).
+- **Both mode.** Under a standard staff (`StaffBar.staves` holds `standard`) the tab shows fret numbers, grace numbers, ties, chord names, beat text, lyrics and the note effects (lanes, bends, slides, hammer-ons) only: stems, flags, beams, dots, tuplets, rests, dynamics, fingering, articulations and tremolo strokes are the standard staff's, Guitar Pro's "both" ([ADR-0021](../decisions/0021-rhythm-on-the-standard-staff-in-both-mode.md), [ADR-0022](../decisions/0022-lane-effects-once-on-the-tab-in-both-mode.md)). Chord names, text and lyrics stay on the tab because the standard staff does not draw them.
+- **Spacing.** A beat reserves its numbers and knockouts, grace columns, rest glyph, flag and dots either side of its onset, plus its chord name, text, lyrics, dynamic and effects (see [Note effects](#note-effects-wp-022)). Long notes are widened towards Guitar Pro's feel: a beat longer than a quarter asks for `3.8 × q^0.85` spaces for `q` quarters (a half 6.8, a whole 12.3, where the engine's logarithmic spacing gives 4.5 and 5.2), so a 4/4 bar of one whole note is about 15 spaces of content instead of 7.4. Shorter beats keep the engine's spacing.
 
 ## Rhythm notation (WP-021)
 
@@ -121,7 +121,7 @@ Fretted and pitched tracks. Pitches come from the model's `spellNote` and `staff
 - **Dots** follow the rightmost head; a note on a line dots the space above (the space below for a stem-down voice when there are two).
 - **Tuplets** are grouped by the shared rule under **Rhythm notation**. The number alone over a tuplet that is exactly one beamed group, otherwise a bracket open towards the notes with the number in a gap; on the stem side, past the stems and beams.
 - **Grace notes** at 0.6 of the size, stems up, before the beat and its accidentals: a single one as an eighth with a slash, several beamed by their value.
-- **Dynamics** below the staff, where a note's dynamics differ from the note sounding before it in reading order. Only the bar before is consulted (so a bar is measured from itself and its predecessor); with no note there, the model's default `f` is assumed. The glyphs are Bravura's precomposed dynamics (`dynamicPP` to `dynamicFFF`), as on the tab.
+- **Dynamics** in a lane below the staff, by the rule every staff shares (see [Dynamics](#dynamics-wp-022)); the glyphs are Bravura's precomposed dynamics (`dynamicPP` to `dynamicFFF`), as on the tab.
 - **Fingering** above the staff, one per note top to bottom: left hand as `T 1 2 3 4`, right hand as `p i m a c`.
 
 ## Percussion staff (WP-023)
@@ -134,4 +134,86 @@ Drum tracks. Five lines, the percussion clef, no key signature and no accidental
 
 ## Both mode (WP-023)
 
-A track shown as `both` has a standard staff above its tab staff (Guitar Pro's "both"). **Rhythm lives only on the standard staff**: stems, flags, beams, tuplets, rhythm dots, rests, dynamics and fingering are drawn there. A staff module knows it is in both mode when `StaffBar.staves` holds two staves; what the tab staff still draws is in its **Both mode** bullet under [Tab staff](#tab-staff-wp-021).
+A track shown as `both` has a standard staff above its tab staff (Guitar Pro's "both"). **Rhythm lives only on the standard staff**: stems, flags, beams, tuplets, rhythm dots, rests, dynamics and fingering are drawn there ([ADR-0021](../decisions/0021-rhythm-on-the-standard-staff-in-both-mode.md)). **Lane effects live only on the tab**: bends, palm mute, let ring, harmonic labels, vibrato, trills, whammy, pick strokes, fades, tapping, slapping and popping are drawn once, in the tab's lanes between the two staves ([ADR-0022](../decisions/0022-lane-effects-once-on-the-tab-in-both-mode.md)); articulations and tremolo strokes belong to the standard staff's heads and stems (#86). A staff module knows it is in both mode when `StaffBar.staves` holds two staves; what the tab staff still draws is in its **Both mode** bullet under [Tab staff](#tab-staff-wp-021).
+
+## Dynamics (WP-022)
+
+One rule for the tab, standard and percussion staves (`packages/layout/src/staves/dynamics.ts`):
+
+1. A **played beat** has at least one note; its dynamic is its first note's.
+2. Per voice, a played beat **writes** its dynamic when it differs from the previous played beat of the same voice, searching back across bar lines to the track's first bar. Before a voice's first played beat the dynamic is Guitar Pro's default `f`.
+3. The comparison is always with what was played, never with what was written: a beat that writes nothing still becomes its voice's previous beat.
+4. At one onset, only the lowest voice that writes a dynamic draws it.
+
+The glyph is centred on its beat in the dynamics lane, its node the beat id. Measuring reads one bar only, so each voice's first played beat and every change within the voice reserve room for a glyph; whatever the rule writes is among them.
+
+## Note effects (WP-022)
+
+The tab staff draws every effect the model holds; the standard and percussion staves draw theirs from #86. The shared code is `packages/layout/src/staves/effects/`, the tab's on-string drawing `packages/layout/src/staves/tab/effects.ts`. Sizes are in staff spaces.
+
+### Lanes
+
+Everything above or below a staff that is not attached to a note head goes in a **lane**: one row per kind, in a fixed order nearest the staff first, as tall as the tallest request among the system's bars (the whole line in continuous mode). Every bar of a system draws a lane at the same y, so labels and lines join across bar lines. A lane exists only when a bar of the system uses it; rows are never shared between kinds.
+
+| Above the staff, from the staff out | Lane | Height |
+| --- | --- | --- |
+| 0 | inner room: the tab's upper-voice rhythm (else 0.75), and H/P letters over the top string | measured |
+| 1 | `bend` | 0.55 per quarter tone of the bar's highest bend, + 1.3 for its label |
+| 2 | `articulation` (tab mode) | the stacked glyphs + 0.25 between + 0.4 |
+| 3 | `pickStroke` | glyph height + 0.5 |
+| 4 | `palmMute` | 1.4 |
+| 5 | `letRing` | 1.4 |
+| 6 | `harmonic` | 1.4 |
+| 7 | `fade` | 1.9 |
+| 8 | `tap` | 1.3 |
+| 9 | `vibrato` | slight 1.0, wide 1.6 |
+| 10 | `beatVibrato` | slight 1.2, wide 1.7 |
+| 11 | `trill` | 2.0 |
+| 12 | `whammy` | 5.0 |
+| 13 | `chord` | 2.2 |
+| 14 | `fingering` (tab mode) | 1.1 per row |
+| 15 | `text` | 2.0 |
+| 16 | `repeatCount`, the system's first staff | 1.6 |
+
+| Below the staff, from the staff out | Lane | Height |
+| --- | --- | --- |
+| 0 | inner room: voice 1's rhythm in tab mode, and H/P letters under the bottom string | measured |
+| 1 | `dynamics` | tab 2.4, five-line 2.9 |
+| 2 | `lyrics` | 2.0 per line |
+
+The room around a staff is the larger of its floor (tab 2 above and 1 below, five-line 1.5 each) and the inner room plus the lanes. In a lane, effect text (1.0 spaces) has its baseline 0.35 above the lane's bottom, a glyph its bottom edge 0.25 above it, a wave its centre line in the middle; dynamics hang 0.5 below the lane's top on one baseline.
+
+### Effects on the tab
+
+| Effect | Model | Drawn |
+| --- | --- | --- |
+| Bend, release, hold, pre-bend | `Note.bend` | From 0.15 right of the widest bent number of the beat to the next onset less 0.6 (at least 1.0 long; at least 2.2 of room right of a bent number). Every value above 0 is drawn 0.55 per quarter tone above the bend lane's bottom (its edge nearest the staff), as alphaTab measures from the staff top, so intermediate values stay above the staff; 0 is the note's string. A bent grace note keeps 1.2 of room right of its column and its bend stops 0.3 short of the next number, with no minimum length. A rise is a curved shaft (0.16) to a filled arrowhead (0.7 × 0.8) with the amount above: `¼ ½ ¾ full 1¼ 1½ 2`. A release is a shaft down to an arrowhead, at 0 ending 0.1 over the beat's topmost bent number (alphaTab's `maxStringNote`), labelled right of the tip otherwise. A hold is a dashed line. A pre-bend (first value above 0) is a vertical arrow from the number at the onset; a tied note continues its bend without one. Equal bends of a chord share their tip, arrowhead and label, and only the top note's pre-bend arrow is drawn. |
+| Shift and legato slide | `Note.slide` on the origin | A line (0.12) from 0.15 right of the origin's number to 0.15 left of the next note on the string (in the voice, this bar or the next), rising by 0.6 towards a higher fret and falling towards a lower one. A legato slide adds an arc labelled `sl.`. |
+| Slide into and out of | `Note.slide` | A 1.3 line ending 0.2 before the number (into, from below rising, from above falling), or starting 0.2 after it (out, down falling, up rising); 1.5 of room on that side. |
+| Hammer-on, pull-off | `Note.hammerPull` on the target | An arc from the origin (the last grace column's note on the string, else the previous note on the string within three bars) to the target, up from the upper half of the strings and down from the rest; `H` (the target's fret is the same or higher) or `P` (1.0 text) 0.25 outside the apex on a paper knockout. Of a beat's arcs pointing one way only the outermost carries its letter. |
+| Grace-note connections | the grace note's slide, the main note's hammer-on | From the last grace column into the main note on the string, in one piece. |
+| Harmonics | `Note.harmonic` | A natural harmonic writes `<12>` (its node, `value` or the fret, one decimal at most) in place of the fret, `(<12>)` when ghost; the others write a small `<17>` (fret + `value`, 12 without one) at grace size after the number, on its own knockout. Runs of one kind are labelled `N.H.`, `A.H.`, `T.H.`, `P.H.`, `S.H.` or `Fdbk.` in the harmonic lane. |
+| Trill | `Note.trill` | The other fret as a small `(7)` after the number (it takes the suffix's place from a harmonic); `tr` (`ornamentTrill`) in the trill lane at the run's first onset, then a wave. |
+| Palm mute, let ring | `Note.palmMute`, `Note.letRing` | `P.M.` and `let ring` at the run's first onset, a dashed line (0.6 dash, 0.4 gap, 0.16 thick) to its last onset and an end tick 0.8 tall. A line shorter than 0.3 is left out, so a one-beat run is its label. |
+| Vibrato | `Note.vibrato` | A wave from the onset to the run's end less 0.2: slight λ 0.9, amplitude 0.22; wide λ 1.4, amplitude 0.45. The widest in the run wins. |
+| Whammy-bar vibrato | `Beat.effects.vibrato` | A sawtooth, slight λ 0.9, amplitude 0.35; wide λ 1.4, amplitude 0.6. |
+| Whammy | `Beat.effects.whammy` | `w/bar` (0.9 text) at the run's first onset; per beat a polyline from its onset to the next onset less 0.3, 0.25 per quarter tone around a middle low enough that a label over the highest point clears `w/bar` (clamped at 4); labels (0.8 text) at the extreme point and at a non-zero final point that differs from it. |
+| Tapping, slapping, popping | `Beat.effects` | `T`, `S` or `P` centred on the beat in the tap lane; the first of the three that is set. |
+| Pick stroke | `Beat.effects.pickStroke` | `stringsDownBow` or `stringsUpBow`, centred. |
+| Fade in, fade out, volume swell | `Beat.effects` | `guitarFadeIn`, `guitarFadeOut` or `guitarVolumeSwell`, centred. |
+| Staccato, accent, heavy accent | `Note.staccato`, `Note.accent` | Tab mode only: in the articulation lane, a union over the onset's notes, staccato nearest the staff and the accent (or marcato) above it. |
+| Tremolo picking | `Beat.effects.tremoloPicking` | Tab mode only: `tremolo1`, `2` or `3` (8, 16, 32) centred on the stem between 0.5 from the strings and the innermost beam or flag; a voice's stems lengthen together when the strokes and 1.0 of room do not fit. On a whole note, where the stem would be. |
+| Arpeggio, brush | `Beat.effects.arpeggio`, `brush` | Left of the beat's numbers (1.0 of room, grace columns further left), spanning its strings ± 0.4: a vertical wave (arpeggio) or a line (brush), with an arrowhead towards string 1 for a down stroke and away from it for an up one. |
+| Dead and ghost notes | `Note.dead`, `Note.ghost` | `x` and parentheses, as before (WP-021). |
+
+Fermatas, hairpins, tenuto, staccatissimo and the other techniques the model does not hold are not drawn.
+
+### Rules
+
+- **Several voices, one onset.** A lane draws one item per onset: articulations are a union over the onset's notes, the other items come from the first voice that has them.
+- **Reservation.** Every item centred on an onset (labels, glyphs, a run's first label, dynamics) reserves half its width + 0.2 either side of the onset; `w/bar` reserves its width to the right. The reservation joins the onset's other room, so items at different onsets cannot overlap. A note-attached extra widens its beat instead (slides, bends, suffixes, stroke arrows).
+- **Runs** (palm mute, let ring, harmonics by kind, vibrato, whammy-bar vibrato, trills, whammy) merge the beats carrying the effect across voices on the onset grid: a beat without it, a rest or an empty beat breaks the run. A run that reaches a bar's end and starts the next bar is one run across the bar line: its line ends at the next bar's content and carries on there.
+- **Labels at line starts.** A run continuing from the bar before repeats its label at the start of a paged line, not where a continuous line is cut into segments. A line that reaches a system break ends at the system's content end without an end tick.
+- **Connections across bar lines** follow the tab's ties: the bar holding the target draws the slide or arc, in one piece when the origin is in this bar or the previous bar of the system and as a half from the bar's left edge otherwise; a bar ending a system draws the origin's half, to its right edge, when the target is in the next bar. Each half of a slide takes half its rise; the letter goes with the target's half.
+- **Collisions** are avoided by construction: the lanes are disjoint rows, items at different onsets reserve their widths, and runs of one lane never overlap. H/P and `sl.` letters sit between two onsets and reserve nothing; letters over the top string or under the bottom one enlarge the inner room. Bend shafts and stroke arrows cross the rows between their note and their lane, as in Guitar Pro.
+

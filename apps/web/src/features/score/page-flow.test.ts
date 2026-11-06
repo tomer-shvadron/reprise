@@ -24,8 +24,9 @@ describe('pageFlow', () => {
     ).toBe(true);
     flow.pages.forEach((page, index) => {
       const systems = flow.systems.filter((system) => system.page === index);
+      // The flow adds shifts to rounded coordinates, so equal bottoms can differ in the last bit.
       for (const system of systems)
-        expect(bottom(system.bbox)).toBeLessThanOrEqual(bottom(page.bbox));
+        expect(bottom(system.bbox) - bottom(page.bbox)).toBeLessThan(1e-9);
       const next = flow.pages[index + 1];
       if (next) expect(next.bbox.y).toBeCloseTo(bottom(page.bbox) + gap);
     });

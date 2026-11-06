@@ -23,7 +23,7 @@ import type { ResolvedOptions } from './options';
 import { line, rect, round, text, type LayoutSink } from './primitives';
 import { staffBar, trackBar, type StaffSlot } from './slots';
 import { stretch } from './spacing';
-import type { NeighbourBar } from './staves';
+import type { LaneBands, NeighbourBar } from './staves';
 import type { Rect, StaffPlacement } from './types';
 import type { VerticalLayout } from './vertical';
 
@@ -109,6 +109,15 @@ function band(
 ): Band | undefined {
   const found = vertical.rows[row];
   return found && { top: y + found.top, bottom: y + found.bottom };
+}
+
+/** A staff slot's lanes, moved from system offsets to absolute y. */
+function laneBands(vertical: VerticalLayout, slot: number, y: number): LaneBands {
+  const bands: Record<string, Band> = {};
+  for (const [lane, found] of Object.entries(vertical.staves[slot]?.lanes ?? {})) {
+    bands[lane] = { top: y + found.top, bottom: y + found.bottom };
+  }
+  return bands;
 }
 
 export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSystem {
@@ -240,6 +249,7 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
       const staff = boxes[i];
       const bar = trackBar(slot, index);
       if (!staff || !bar) continue;
+      const lanes = laneBands(vertical, i, input.y);
       slot.module.render(
         staffBar(score, slot, bar, context, space),
         {
@@ -252,6 +262,8 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
           onsetX: column.onsetX,
           ...(previous && { previous }),
           ...(next && { next }),
+          lanes,
+          lineStart: opens,
         },
         sink,
       );
@@ -265,7 +277,8 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
         drawEndBarline(sink, kind, barEnd, gap, space, masterBar.id);
       }
     }
-    if (firstBox) repeatCount(sink, masterBar, barEnd, firstBox.top, space);
+    const countBand = laneBands(vertical, 0, input.y).repeatCount;
+    if (countBand) repeatCount(sink, masterBar, barEnd, countBand, space);
 
     const sectionBand = band(vertical, 'section', input.y);
     if (sectionBand) drawSection(sink, masterBar, barX + space * 0.2, sectionBand, space);
