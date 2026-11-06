@@ -95,7 +95,7 @@ The grouping rules every staff shares (`grouping.ts`: the beat-grouping table, b
 
 - `standardModule({ courtesyAccidentals })` is the configuration point; the registered module has courtesy accidentals on.
 - A bar's plan reads the bar before it (courtesy accidentals, ties coming in, dynamics) and the key it cancels, so the cache keys every bar of a five-line staff on its predecessor and the previous key signature as well.
-- **Both mode**: when `StaffBar.staves` is `['standard', 'tab']`, the standard staff draws all the rhythm notation and the tab module must draw fret numbers only (`staves.includes('standard')`), and leave dynamics and fingering to the standard staff. This is the contract WP-021's tab module follows.
+- **Both mode**: when `StaffBar.staves` is `['standard', 'tab']`, the standard staff draws all the rhythm notation, dynamics and fingering; what the tab keeps is the tab's **Both mode** bullet in [`notation.md`](../../docs/reference/notation.md#tab-staff-wp-021).
 - `src/staves/standard/rhythm/` draws the five-line staves' rhythm notation (stems, flags, sloped beams, dots, ties, tuplet marks) from x positions, note-head y extents, directions and durations; beam and tuplet grouping come from the shared `src/staves/rhythm/`.
 - Anchors: one `note` anchor per head (grace notes included) with the head's box, less any width it shares with a neighbour across a stem; one `beat` anchor per beat and voice.
 

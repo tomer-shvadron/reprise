@@ -132,4 +132,4 @@ Drum tracks. Five lines, the percussion clef, no key signature and no accidental
 
 ## Both mode (WP-023)
 
-A track shown as `both` has a standard staff above its tab staff (Guitar Pro's "both"). **Rhythm lives only on the standard staff**: stems, flags, beams, tuplets, rhythm dots and rests are drawn there, and the tab staff shows fret numbers (and effects) without rhythm notation. A staff module knows it is in both mode when `StaffBar.staves` holds two staves; the tab module reads `staves.includes('standard')` as the signal to leave rhythm out. Dynamics and fingering are drawn by the standard staff in this mode, so the tab staff should leave them out too.
+A track shown as `both` has a standard staff above its tab staff (Guitar Pro's "both"). **Rhythm lives only on the standard staff**: stems, flags, beams, tuplets, rhythm dots, rests, dynamics and fingering are drawn there. A staff module knows it is in both mode when `StaffBar.staves` holds two staves; what the tab staff still draws is in its **Both mode** bullet under [Tab staff](#tab-staff-wp-021).
