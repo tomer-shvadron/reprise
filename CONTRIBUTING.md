@@ -46,6 +46,20 @@ The roadmap's rule 6, review before merge, is the review flow in [AGENTS.md](AGE
 - No samples, tabs, secrets or build output in git. Downloaded tabs for manual testing go in `local-tabs/`, which is ignored.
 - The owner has approved branch commits, pushes and PR creation for the whole project (ADR-0019): an agent working an issue commits on its own branch and opens its PR without asking. `main` changes only through reviewed, CI-green squash merges performed by the lead.
 
+## Pre-commit hook
+
+`pnpm install` installs a Husky pre-commit hook (the `prepare` script; the hook is `.husky/pre-commit`, its tasks are in `lint-staged.config.js`). While it runs, lint-staged (`--hide-all`) stashes unstaged changes and untracked files, so every check sees exactly what is being committed: a file you forgot to `git add` fails the commit, and unstaged work in progress cannot fail it. If a run is interrupted, everything, untracked files included, is in the `lint-staged automatic backup` stash. On every commit it runs:
+
+- ESLint (`--fix --max-warnings 0`) and then Prettier on staged code, Prettier on staged JSON, Markdown, YAML, CSS and HTML. A problem the tool can fix is fixed and the fix is staged with the commit; anything else rejects the commit.
+- `vitest related --run` on the staged TypeScript: every test that imports those files, directly or through other modules, in every Vitest project except the browser-mode `audio` project, which joins only when a file under `packages/audio` is staged (every audio test imports the model, so a model-only commit would otherwise launch Chromium).
+- `tsc -b`, incremental, on every commit, including one that only deletes files.
+
+Measured: a docs-only commit about one second, a one-file change in `packages/model` about five seconds (it rebuilds the downstream types and runs every test that imports the model), a one-file `packages/audio` change about three. If the hook takes much longer, something is wrong; say so on the issue rather than skipping it.
+
+The hook is per worktree: Husky writes its shim under `.husky/_/` (ignored), and git skips a missing hook without a word, so **run `pnpm install` in every new worktree before committing**. A git GUI that starts with a minimal `PATH` may not find `node`; put your Node install on the `PATH` in `~/.config/husky/init.sh`, which the hook sources.
+
+`git commit --no-verify` skips the hook (`HUSKY=0` skips it for a whole shell). Use it only when the hook itself is what is broken and the fix is the commit you are making, and say so in the PR. CI runs the full lint, typecheck, test and format checks regardless, so skipping the hook only moves a failure from your machine to the PR, where it costs a review round trip.
+
 ## Pull requests
 
 - One PR per work package, filled from the PR template, squash-merged into `main`. The PR title becomes the squash commit, so it is a conventional commit line too.
