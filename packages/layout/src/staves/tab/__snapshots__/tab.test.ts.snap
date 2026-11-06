@@ -30,6 +30,25 @@ exports[`tab staff: both mode > shows numbers, ties and words only under a stand
 }
 `;
 
+exports[`tab staff: rests > centres a rest alone in its voice in the bar 1`] = `
+{
+  "anchors": [
+    "note note00000001 [141.2,83.15 8.22x8.1] track0000001 tab 0",
+    "beat beat00000001 [141.2,80.2 8.22x106.05] track0000001 tab 0",
+    "beat beat00000002 [167.95,80.2 12.82x106.05] track0000001 tab 0",
+    "beat beat00000003 [289.76,80.2 7.92x106.05] track0000001 tab 0",
+  ],
+  "primitives": [
+    "path filled M141.2 83.15h8.22v8.1h-8.22Z (paper) <note00000001>",
+    "text "0" @145.31,90.43 size 9.1 middle <note00000001>",
+    "glyph restHalf @167.95,115.41 size 28 <beat00000002>",
+    "glyph augmentationDot @177.97,109.95 size 28 <beat00000002>",
+    "line @145.31,144.95 -> 145.31,167.7 w 0.84 <beat00000001>",
+    "glyph restWhole @289.76,111.69 size 28 <beat00000003>",
+  ],
+}
+`;
+
 exports[`tab staff: rests > draws every rest glyph in the middle of the staff, with its dots 1`] = `
 {
   "anchors": [
@@ -581,6 +600,87 @@ exports[`tab staff: strings and fret numbers > centres fret numbers on their str
 }
 `;
 
+exports[`tab staff: strings and fret numbers > draws one line per string for any string count > 4 strings 1`] = `
+[
+  "line @90.32,87.2 -> 184.53,87.2 w 0.91 <guitar000001>",
+  "line @90.32,97.7 -> 184.53,97.7 w 0.91 <guitar000001>",
+  "line @90.32,108.2 -> 184.53,108.2 w 0.91 <guitar000001>",
+  "line @90.32,118.7 -> 184.53,118.7 w 0.91 <guitar000001>",
+]
+`;
+
+exports[`tab staff: strings and fret numbers > draws one line per string for any string count > 6 strings 1`] = `
+[
+  "line @90.32,87.2 -> 193.33,87.2 w 0.91 <guitar000001>",
+  "line @90.32,97.7 -> 193.33,97.7 w 0.91 <guitar000001>",
+  "line @90.32,108.2 -> 193.33,108.2 w 0.91 <guitar000001>",
+  "line @90.32,118.7 -> 193.33,118.7 w 0.91 <guitar000001>",
+  "line @90.32,129.2 -> 193.33,129.2 w 0.91 <guitar000001>",
+  "line @90.32,139.7 -> 193.33,139.7 w 0.91 <guitar000001>",
+]
+`;
+
+exports[`tab staff: strings and fret numbers > draws one line per string for any string count > 7 strings 1`] = `
+[
+  "line @90.32,87.2 -> 193.33,87.2 w 0.91 <guitar000001>",
+  "line @90.32,97.7 -> 193.33,97.7 w 0.91 <guitar000001>",
+  "line @90.32,108.2 -> 193.33,108.2 w 0.91 <guitar000001>",
+  "line @90.32,118.7 -> 193.33,118.7 w 0.91 <guitar000001>",
+  "line @90.32,129.2 -> 193.33,129.2 w 0.91 <guitar000001>",
+  "line @90.32,139.7 -> 193.33,139.7 w 0.91 <guitar000001>",
+  "line @90.32,150.2 -> 193.33,150.2 w 0.91 <guitar000001>",
+]
+`;
+
+exports[`tab staff: strings and fret numbers > hides tied notes through the layout option, keeping their tie and anchor 1`] = `
+{
+  "anchors": [
+    "note note00000001 [141.84,104.15 6.95x8.1] track0000001 tab 0",
+    "beat beat00000001 [141.84,80.2 6.95x106.05] track0000001 tab 0",
+    "note note00000002 [189.78,104.15 6.95x8.1] track0000001 tab 0",
+    "beat beat00000002 [189.78,80.2 6.95x106.05] track0000001 tab 0",
+  ],
+  "primitives": [
+    "path filled M141.84 104.15h6.95v8.1h-6.95Z (paper) <note00000001>",
+    "text "7" @145.31,111.43 size 9.1 middle <note00000001>",
+    "line @145.31,157.2 -> 145.31,167.7 w 0.84 <beat00000001>",
+    "line @193.26,157.2 -> 193.26,167.7 w 0.84 <beat00000002>",
+    "path filled M148.79 112.25C159.9 117.85 182.14 117.85 193.26 112.25C182.14 115.8 159.9 115.8 148.79 112.25Z <note00000002>",
+  ],
+}
+`;
+
+exports[`tab staff: strings and fret numbers > writes dead notes as x, ghost notes and tied notes in parentheses 1`] = `
+{
+  "anchors": [
+    "note note00000001 [143.03,83.15 7.51x8.1] track0000001 tab 0",
+    "note note00000002 [140.41,93.65 12.75x8.1] track0000001 tab 0",
+    "note note00000003 [143.31,104.15 6.95x8.1] track0000001 tab 0",
+    "beat beat00000001 [140.41,80.2 12.75x106.05] track0000001 tab 0",
+    "note note00000004 [167.42,104.15 11.94x8.1] track0000001 tab 0",
+    "beat beat00000002 [167.42,80.2 11.94x106.05] track0000001 tab 0",
+    "note note00000005 [193.74,114.65 12.49x8.1] track0000001 tab 0",
+    "beat beat00000003 [193.74,80.2 12.49x106.05] track0000001 tab 0",
+  ],
+  "primitives": [
+    "path filled M143.03 83.15h7.51v8.1h-7.51Z (paper) <note00000001>",
+    "text "x" @146.79,90.43 size 9.1 middle <note00000001>",
+    "path filled M140.41 93.65h12.75v8.1h-12.75Z (paper) <note00000002>",
+    "text "(3)" @146.79,100.93 size 9.1 middle <note00000002>",
+    "path filled M143.31 104.15h6.95v8.1h-6.95Z (paper) <note00000003>",
+    "text "7" @146.79,111.43 size 9.1 middle <note00000003>",
+    "path filled M167.42 104.15h11.94v8.1h-11.94Z (paper) <note00000004>",
+    "text "(7)" @173.39,111.43 size 9.1 middle <note00000004>",
+    "path filled M193.74 114.65h12.49v8.1h-12.49Z (paper) <note00000005>",
+    "text "(x)" @199.99,121.93 size 9.1 middle <note00000005>",
+    "line @146.79,144.95 -> 146.79,167.7 w 0.84 <beat00000001>",
+    "line @173.39,144.95 -> 173.39,167.7 w 0.84 <beat00000002>",
+    "line @199.99,144.95 -> 199.99,167.7 w 0.84 <beat00000003>",
+    "path filled M150.26 112.25C154.55 115.05 163.13 115.05 167.42 112.25C163.13 113 154.55 113 150.26 112.25Z <note00000004>",
+  ],
+}
+`;
+
 exports[`tab staff: ties > draws a tie across a bar line in one piece, and as two halves across a system break 1`] = `
 [
   "path filled M141.37 93.65h7.88v8.1h-7.88Z (paper) <note00000001>",
@@ -655,6 +755,59 @@ exports[`tab staff: ties > ties consecutive beats with an arc under the numbers 
 }
 `;
 
+exports[`tab staff: ties > ties from the origin the model names, past rests, other strings and the previous bar 1`] = `
+{
+  "anchors": [
+    "note note00000001 [141.37,93.65 7.88x8.1] track0000001 tab 0",
+    "note note00000002 [141.84,104.15 6.95x8.1] track0000001 tab 0",
+    "beat beat00000001 [141.37,80.2 7.88x106.05] track0000001 tab 0",
+    "beat beat00000002 [168.13,80.2 7.56x106.05] track0000001 tab 0",
+    "note note00000003 [192.08,93.65 12.87x8.1] track0000001 tab 0",
+    "beat beat00000003 [192.08,80.2 12.87x106.05] track0000001 tab 0",
+    "note note00000004 [219.14,104.15 11.94x8.1] track0000001 tab 0",
+    "beat beat00000004 [219.14,80.2 11.94x106.05] track0000001 tab 0",
+    "note note00000005 [260.19,125.15 7.68x8.1] track0000001 tab 0",
+    "note note00000006 [260.15,135.65 7.76x8.1] track0000001 tab 0",
+    "beat beat00000005 [260.15,80.2 7.76x106.05] track0000001 tab 0",
+    "note note00000007 [308.14,125.15 7.68x8.1] track0000001 tab 0",
+    "beat beat00000006 [308.14,80.2 7.68x106.05] track0000001 tab 0",
+    "note note00000008 [367.34,135.65 12.75x8.1] track0000001 tab 0",
+    "beat beat00000007 [367.34,80.2 12.75x106.05] track0000001 tab 0",
+    "beat beat00000008 [396.36,80.2 12.82x106.05] track0000001 tab 0",
+  ],
+  "primitives": [
+    "path filled M141.37 93.65h7.88v8.1h-7.88Z (paper) <note00000001>",
+    "text "5" @145.31,100.93 size 9.1 middle <note00000001>",
+    "path filled M141.84 104.15h6.95v8.1h-6.95Z (paper) <note00000002>",
+    "text "7" @145.31,111.43 size 9.1 middle <note00000002>",
+    "glyph restQuarter @168.13,113.42 size 28 <beat00000002>",
+    "path filled M192.08 93.65h12.87v8.1h-12.87Z (paper) <note00000003>",
+    "text "(5)" @198.51,100.93 size 9.1 middle <note00000003>",
+    "path filled M219.14 104.15h11.94v8.1h-11.94Z (paper) <note00000004>",
+    "text "(7)" @225.11,111.43 size 9.1 middle <note00000004>",
+    "line @145.31,144.95 -> 145.31,167.7 w 0.84 <beat00000001>",
+    "line @198.51,144.95 -> 198.51,167.7 w 0.84 <beat00000003>",
+    "line @225.11,144.95 -> 225.11,167.7 w 0.84 <beat00000004>",
+    "path filled M149.25 101.75C159.96 107.35 181.37 107.35 192.08 101.75C181.37 105.3 159.96 105.3 149.25 101.75Z <note00000003>",
+    "path filled M148.79 112.25C166.38 117.85 201.55 117.85 219.14 112.25C201.55 115.8 166.38 115.8 148.79 112.25Z <note00000004>",
+    "path filled M260.19 125.15h7.68v8.1h-7.68Z (paper) <note00000005>",
+    "text "8" @264.03,132.43 size 9.1 middle <note00000005>",
+    "path filled M260.15 135.65h7.76v8.1h-7.76Z (paper) <note00000006>",
+    "text "3" @264.03,142.93 size 9.1 middle <note00000006>",
+    "path filled M308.14 125.15h7.68v8.1h-7.68Z (paper) <note00000007>",
+    "text "8" @311.98,132.43 size 9.1 middle <note00000007>",
+    "line @264.03,157.2 -> 264.03,167.7 w 0.84 <beat00000005>",
+    "line @311.98,157.2 -> 311.98,167.7 w 0.84 <beat00000006>",
+    "path filled M367.34 135.65h12.75v8.1h-12.75Z (paper) <note00000008>",
+    "text "(3)" @373.72,142.93 size 9.1 middle <note00000008>",
+    "glyph restHalf @396.36,115.41 size 28 <beat00000008>",
+    "glyph augmentationDot @406.38,109.95 size 28 <beat00000008>",
+    "line @373.72,144.95 -> 373.72,167.7 w 0.84 <beat00000007>",
+    "path filled M267.91 143.75C292.77 149.35 342.49 149.35 367.34 143.75C342.49 147.3 292.77 147.3 267.91 143.75Z <note00000008>",
+  ],
+}
+`;
+
 exports[`tab staff: two voices > stems voice 1 down below the tab and voice 2 up above it 1`] = `
 {
   "anchors": [
@@ -709,6 +862,48 @@ exports[`tab staff: words > stacks fingering above the staff 1`] = `
     "line @145.31,151.6 -> 145.31,174.35 w 0.84 <beat00000001>",
     "text "1" @145.31,79.15 size 7 middle <note00000001>",
     "text "2 p" @145.31,86.85 size 7 middle <note00000002>",
+  ],
+}
+`;
+
+exports[`tab staff: words > writes a dynamic below where it changes, across bar lines too 1`] = `
+{
+  "anchors": [
+    "note note00000001 [141.2,83.15 8.22x8.1] track0000001 tab 0",
+    "beat beat00000001 [141.2,80.2 8.22x106.05] track0000001 tab 0",
+    "note note00000002 [167.8,83.15 8.22x8.1] track0000001 tab 0",
+    "beat beat00000002 [167.8,80.2 8.22x106.05] track0000001 tab 0",
+    "note note00000003 [194.4,83.15 8.22x8.1] track0000001 tab 0",
+    "beat beat00000003 [194.4,80.2 8.22x106.05] track0000001 tab 0",
+    "note note00000004 [263.16,83.15 8.22x8.1] track0000001 tab 0",
+    "beat beat00000004 [263.16,80.2 8.22x106.05] track0000001 tab 0",
+    "note note00000005 [289.76,83.15 8.22x8.1] track0000001 tab 0",
+    "beat beat00000005 [289.76,80.2 8.22x106.05] track0000001 tab 0",
+    "note note00000006 [381.88,83.15 8.22x8.1] track0000001 tab 0",
+    "beat beat00000006 [381.88,80.2 8.22x106.05] track0000001 tab 0",
+  ],
+  "primitives": [
+    "path filled M141.2 83.15h8.22v8.1h-8.22Z (paper) <note00000001>",
+    "text "0" @145.31,90.43 size 9.1 middle <note00000001>",
+    "path filled M167.8 83.15h8.22v8.1h-8.22Z (paper) <note00000002>",
+    "text "0" @171.91,90.43 size 9.1 middle <note00000002>",
+    "path filled M194.4 83.15h8.22v8.1h-8.22Z (paper) <note00000003>",
+    "text "0" @198.51,90.43 size 9.1 middle <note00000003>",
+    "line @145.31,144.95 -> 145.31,167.7 w 0.84 <beat00000001>",
+    "line @171.91,144.95 -> 171.91,167.7 w 0.84 <beat00000002>",
+    "line @198.51,144.95 -> 198.51,167.7 w 0.84 <beat00000003>",
+    "glyph dynamicPP @163.77,199 size 22.4 <beat00000002>",
+    "path filled M263.16 83.15h8.22v8.1h-8.22Z (paper) <note00000004>",
+    "text "0" @267.27,90.43 size 9.1 middle <note00000004>",
+    "path filled M289.76 83.15h8.22v8.1h-8.22Z (paper) <note00000005>",
+    "text "0" @293.87,90.43 size 9.1 middle <note00000005>",
+    "line @267.27,144.95 -> 267.27,167.7 w 0.84 <beat00000004>",
+    "line @293.87,144.95 -> 293.87,167.7 w 0.84 <beat00000005>",
+    "glyph dynamicMF @284.95,199 size 22.4 <beat00000005>",
+    "path filled M381.88 83.15h8.22v8.1h-8.22Z (paper) <note00000006>",
+    "text "0" @385.99,90.43 size 9.1 middle <note00000006>",
+    "line @385.99,144.95 -> 385.99,167.7 w 0.84 <beat00000006>",
+    "glyph dynamicForte @381.92,199 size 22.4 <beat00000006>",
   ],
 }
 `;

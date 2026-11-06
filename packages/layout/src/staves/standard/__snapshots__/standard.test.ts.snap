@@ -1,5 +1,85 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`both mode > draws the rhythm on the standard staff and joins the bar lines of the two staves 1`] = `
+{
+  "barLines": [
+    "line @90.88,94.55 -> 90.88,217.15 w 1.12 <mbar00000001>",
+    "line @340.15,94.55 -> 340.15,122.55 w 3.5 <mbar00000001>",
+    "line @335.04,94.55 -> 335.04,122.55 w 1.12 <mbar00000001>",
+    "line @340.15,122.55 -> 340.15,164.65 w 3.5 <mbar00000001>",
+    "line @335.04,122.55 -> 335.04,164.65 w 1.12 <mbar00000001>",
+    "line @340.15,164.65 -> 340.15,217.15 w 3.5 <mbar00000001>",
+    "line @335.04,164.65 -> 335.04,217.15 w 1.12 <mbar00000001>",
+  ],
+  "content": [
+    "glyph noteheadBlack @149.92,112.05 size 28 <note00000002>",
+    "glyph noteheadBlack @149.92,98.05 size 28 <note00000001>",
+    "glyph noteheadBlack @171.62,112.05 size 28 <note00000004>",
+    "glyph noteheadBlack @171.62,94.55 size 28 <note00000003>",
+    "glyph noteheadBlack @193.32,112.05 size 28 <note00000006>",
+    "glyph accidentalSharp @184.95,94.55 size 28 <note00000005>",
+    "glyph noteheadBlack @193.32,94.55 size 28 <note00000005>",
+    "glyph noteheadBlack @215.02,112.05 size 28 <note00000008>",
+    "glyph noteheadBlack @215.02,91.05 size 28 <note00000007>",
+    "glyph noteheadBlack @236.72,112.05 size 28 <note00000010>",
+    "glyph accidentalSharp @228.35,91.05 size 28 <note00000009>",
+    "glyph noteheadBlack @236.72,91.05 size 28 <note00000009>",
+    "line @255.62,87.55 -> 269.48,87.55 w 1.12 <beat00000006>",
+    "glyph noteheadBlack @258.42,112.05 size 28 <note00000012>",
+    "glyph noteheadBlack @258.42,87.55 size 28 <note00000011>",
+    "line @279.95,87.55 -> 293.81,87.55 w 1.12 <beat00000007>",
+    "glyph noteheadBlack @282.75,112.05 size 28 <note00000014>",
+    "glyph accidentalSharp @271.58,87.55 size 28 <note00000013>",
+    "glyph noteheadBlack @282.75,87.55 size 28 <note00000013>",
+    "line @301.65,87.55 -> 315.51,87.55 w 1.12 <beat00000008>",
+    "glyph noteheadBlack @304.45,112.05 size 28 <note00000016>",
+    "glyph noteheadBlack @304.45,84.05 size 28 <note00000015>",
+    "line @150.34,99.23 -> 150.34,136.55 w 0.84 <beat00000001>",
+    "line @172.04,95.73 -> 172.04,136.55 w 0.84 <beat00000002>",
+    "line @193.74,95.73 -> 193.74,136.55 w 0.84 <beat00000003>",
+    "line @215.44,92.23 -> 215.44,136.55 w 0.84 <beat00000004>",
+    "path filled M149.92 136.55L215.86 136.55L215.86 133.05L149.92 133.05Z <beat00000001>",
+    "line @237.14,92.23 -> 237.14,136.55 w 0.84 <beat00000005>",
+    "line @258.84,88.73 -> 258.84,136.55 w 0.84 <beat00000006>",
+    "line @283.17,88.73 -> 283.17,136.55 w 0.84 <beat00000007>",
+    "line @304.87,85.23 -> 304.87,136.55 w 0.84 <beat00000008>",
+    "path filled M236.72 136.55L305.29 136.55L305.29 133.05L236.72 133.05Z <beat00000005>",
+    "path filled M149.94 160.6h8.22v8.1h-8.22Z (paper) <note00000001>",
+    "text "0" @154.05,167.88 size 9.1 middle <note00000001>",
+    "path filled M150.14 181.6h7.82v8.1h-7.82Z (paper) <note00000002>",
+    "text "2" @154.05,188.88 size 9.1 middle <note00000002>",
+    "path filled M172.91 160.6h5.68v8.1h-5.68Z (paper) <note00000003>",
+    "text "1" @175.75,167.88 size 9.1 middle <note00000003>",
+    "path filled M171.84 181.6h7.82v8.1h-7.82Z (paper) <note00000004>",
+    "text "2" @175.75,188.88 size 9.1 middle <note00000004>",
+    "path filled M193.54 160.6h7.82v8.1h-7.82Z (paper) <note00000005>",
+    "text "2" @197.45,167.88 size 9.1 middle <note00000005>",
+    "path filled M193.54 181.6h7.82v8.1h-7.82Z (paper) <note00000006>",
+    "text "2" @197.45,188.88 size 9.1 middle <note00000006>",
+    "path filled M215.27 160.6h7.76v8.1h-7.76Z (paper) <note00000007>",
+    "text "3" @219.15,167.88 size 9.1 middle <note00000007>",
+    "path filled M215.24 181.6h7.82v8.1h-7.82Z (paper) <note00000008>",
+    "text "2" @219.15,188.88 size 9.1 middle <note00000008>",
+    "path filled M236.96 160.6h7.78v8.1h-7.78Z (paper) <note00000009>",
+    "text "4" @240.85,167.88 size 9.1 middle <note00000009>",
+    "path filled M236.94 181.6h7.82v8.1h-7.82Z (paper) <note00000010>",
+    "text "2" @240.85,188.88 size 9.1 middle <note00000010>",
+    "path filled M258.61 160.6h7.88v8.1h-7.88Z (paper) <note00000011>",
+    "text "5" @262.55,167.88 size 9.1 middle <note00000011>",
+    "path filled M258.64 181.6h7.82v8.1h-7.82Z (paper) <note00000012>",
+    "text "2" @262.55,188.88 size 9.1 middle <note00000012>",
+    "path filled M283.09 160.6h7.58v8.1h-7.58Z (paper) <note00000013>",
+    "text "6" @286.88,167.88 size 9.1 middle <note00000013>",
+    "path filled M282.97 181.6h7.82v8.1h-7.82Z (paper) <note00000014>",
+    "text "2" @286.88,188.88 size 9.1 middle <note00000014>",
+    "path filled M305.1 160.6h6.95v8.1h-6.95Z (paper) <note00000015>",
+    "text "7" @308.58,167.88 size 9.1 middle <note00000015>",
+    "path filled M304.67 181.6h7.82v8.1h-7.82Z (paper) <note00000016>",
+    "text "2" @308.58,188.88 size 9.1 middle <note00000016>",
+  ],
+}
+`;
+
 exports[`key and time changes > announces a change at the next line with courtesy signatures after the last bar line 1`] = `
 [
   "glyph accidentalNatural @664.24,493.92 size 44.8 <mbar00000009>",
@@ -8,6 +88,60 @@ exports[`key and time changes > announces a change at the next line with courtes
   "glyph accidentalFlat @694.66,516.32 size 44.8 <mbar00000009>",
   "glyph timeSig3 @717.08,505.12 size 44.8 <mbar00000009>",
   "glyph timeSig4 @715.98,527.52 size 44.8 <mbar00000009>",
+]
+`;
+
+exports[`key and time changes > cancels a key with naturals before the new one inside a system 1`] = `
+[
+  "glyph accidentalSharp @115.5,83.7 size 28 <mbar00000001>",
+  "glyph accidentalSharp @123.17,94.2 size 28 <mbar00000001>",
+  "glyph accidentalSharp @130.84,80.2 size 28 <mbar00000001>",
+  "glyph accidentalNatural @214.39,83.7 size 28 <mbar00000002>",
+  "glyph accidentalNatural @219.8,94.2 size 28 <mbar00000002>",
+  "glyph accidentalNatural @225.2,80.2 size 28 <mbar00000002>",
+  "glyph accidentalFlat @233.4,97.7 size 28 <mbar00000002>",
+  "glyph accidentalFlat @240.43,87.2 size 28 <mbar00000002>",
+]
+`;
+
+exports[`percussion staff > draws rests, beams, dots, tuplets and ties on the percussion staff as on the standard staff 1`] = `
+[
+  "glyph noteheadBlack @137.73,142.02 size 28 <note00000002>",
+  "glyph noteheadXBlack @137.73,114.02 size 28 <note00000001>",
+  "glyph noteheadXBlack @159.5,114.02 size 28 <note00000003>",
+  "glyph noteheadBlack @181.13,128.02 size 28 <note00000005>",
+  "glyph noteheadXBlack @181.13,114.02 size 28 <note00000004>",
+  "glyph noteheadXBlack @200.03,114.02 size 28 <note00000006>",
+  "glyph noteheadXBlack @218.86,114.02 size 28 <note00000007>",
+  "line @235.64,110.52 -> 249.36,110.52 w 1.12 <beat00000006>",
+  "glyph noteheadXBlack @238.44,110.52 size 28 <note00000008>",
+  "glyph augmentationDot @248.31,107.02 size 28 <beat00000006>",
+  "line @246.14,107.42 -> 246.14,86.02 w 0.84 <beat00000006>",
+  "glyph rest8th @268.5,131.52 size 28 <beat00000007>",
+  "line @145.57,140.85 -> 145.57,89.52 w 0.84 <beat00000001>",
+  "line @167.2,110.92 -> 167.2,89.52 w 0.84 <beat00000002>",
+  "path filled M145.15 89.52L167.62 89.52L167.62 93.02L145.15 93.02Z <beat00000001>",
+  "line @188.97,126.85 -> 188.97,89.52 w 0.84 <beat00000003>",
+  "line @207.73,110.92 -> 207.73,89.52 w 0.84 <beat00000004>",
+  "line @226.56,110.92 -> 226.56,89.52 w 0.84 <beat00000005>",
+  "path filled M188.55 89.52L226.98 89.52L226.98 93.02L188.55 93.02Z <beat00000003>",
+  "glyph tuplet3 @199.91,86.02 size 28 <beat00000003>",
+  "line @301.08,110.52 -> 316.03,110.52 w 1.12 <beat00000008>",
+  "glyph noteheadXHalf @303.88,110.52 size 28 <note00000009>",
+  "line @312.81,107.64 -> 312.81,86.02 w 0.84 <beat00000008>",
+  "glyph restQuarter @336.29,117.52 size 28 <beat00000009>",
+  "glyph noteheadXBlack @362.6,114.02 size 28 <note00000010>",
+  "glyph noteheadXBlack @379.79,114.02 size 28 <note00000011>",
+  "glyph rest8th @397.19,117.52 size 28 <beat00000012>",
+  "glyph noteheadHalf @304.43,142.02 size 28 <note00000012>",
+  "line @304.85,143.2 -> 304.85,166.52 w 0.84 <beat00000013>",
+  "glyph restQuarter @336.29,145.52 size 28 <beat00000014>",
+  "glyph noteheadBlack @362.53,142.02 size 28 <note00000013>",
+  "line @362.95,143.2 -> 362.95,166.52 w 0.84 <beat00000015>",
+  "line @370.3,110.92 -> 370.3,89.52 w 0.84 <beat00000010>",
+  "line @387.49,110.92 -> 387.49,89.52 w 0.84 <beat00000011>",
+  "path filled M369.88 89.52L387.91 89.52L387.91 93.02L369.88 93.02Z <beat00000010>",
+  "path filled M369.88 94.77L387.91 94.77L387.91 98.27L369.88 98.27Z <beat00000010>",
 ]
 `;
 
@@ -201,6 +335,82 @@ exports[`percussion staff > stems one voice up and splits two by voice 1`] = `
 ]
 `;
 
+exports[`standard staff > beams 2/2 eighths by the half note and sixteenths by the quarter 1`] = `
+[
+  "line @137.78,118.7 -> 151.64,118.7 w 1.12 <beat00000001>",
+  "glyph noteheadBlack @140.58,118.7 size 28 <note00000001>",
+  "line @172.66,118.7 -> 186.52,118.7 w 1.12 <beat00000002>",
+  "glyph accidentalSharp @164.28,118.7 size 28 <note00000002>",
+  "glyph noteheadBlack @175.46,118.7 size 28 <note00000002>",
+  "glyph noteheadBlack @202.4,115.2 size 28 <note00000003>",
+  "glyph accidentalSharp @225.42,115.2 size 28 <note00000004>",
+  "glyph noteheadBlack @233.8,115.2 size 28 <note00000004>",
+  "glyph noteheadBlack @260.74,111.7 size 28 <note00000005>",
+  "glyph noteheadBlack @287.69,108.2 size 28 <note00000006>",
+  "glyph accidentalSharp @310.71,108.2 size 28 <note00000007>",
+  "glyph noteheadBlack @319.08,108.2 size 28 <note00000007>",
+  "glyph noteheadBlack @346.03,104.7 size 28 <note00000008>",
+  "line @148.42,117.52 -> 148.42,94.2 w 0.84 <beat00000001>",
+  "line @183.3,117.52 -> 183.3,92.89 w 0.84 <beat00000002>",
+  "line @210.24,114.02 -> 210.24,91.88 w 0.84 <beat00000003>",
+  "line @241.64,114.02 -> 241.64,90.7 w 0.84 <beat00000004>",
+  "path filled M148 94.22L242.06 90.68L242.06 94.18L148 97.72Z <beat00000001>",
+  "line @268.58,110.52 -> 268.58,87.2 w 0.84 <beat00000005>",
+  "line @295.53,107.02 -> 295.53,84.99 w 0.84 <beat00000006>",
+  "line @326.92,107.02 -> 326.92,82.41 w 0.84 <beat00000007>",
+  "line @353.87,103.52 -> 353.87,80.2 w 0.84 <beat00000008>",
+  "path filled M268.16 87.23L354.29 80.17L354.29 83.67L268.16 90.73Z <beat00000005>",
+  "glyph noteheadBlack @386.89,94.2 size 28 <note00000009>",
+  "glyph noteheadBlack @407.75,97.7 size 28 <note00000010>",
+  "glyph accidentalSharp @422.63,101.2 size 28 <note00000011>",
+  "glyph noteheadBlack @431.01,101.2 size 28 <note00000011>",
+  "glyph accidentalNatural @445.76,101.2 size 28 <note00000012>",
+  "glyph noteheadBlack @451.87,101.2 size 28 <note00000012>",
+  "glyph noteheadBlack @472.73,94.2 size 28 <note00000013>",
+  "glyph noteheadBlack @493.59,97.7 size 28 <note00000014>",
+  "glyph accidentalSharp @508.48,101.2 size 28 <note00000015>",
+  "glyph noteheadBlack @516.85,101.2 size 28 <note00000015>",
+  "glyph accidentalNatural @531.6,101.2 size 28 <note00000016>",
+  "glyph noteheadBlack @537.71,101.2 size 28 <note00000016>",
+  "glyph noteheadBlack @558.57,94.2 size 28 <note00000017>",
+  "glyph noteheadBlack @579.43,97.7 size 28 <note00000018>",
+  "glyph accidentalSharp @594.32,101.2 size 28 <note00000019>",
+  "glyph noteheadBlack @602.69,101.2 size 28 <note00000019>",
+  "glyph accidentalNatural @617.44,101.2 size 28 <note00000020>",
+  "glyph noteheadBlack @623.55,101.2 size 28 <note00000020>",
+  "glyph noteheadBlack @644.41,94.2 size 28 <note00000021>",
+  "glyph noteheadBlack @665.27,97.7 size 28 <note00000022>",
+  "glyph accidentalSharp @680.16,101.2 size 28 <note00000023>",
+  "glyph noteheadBlack @688.53,101.2 size 28 <note00000023>",
+  "glyph accidentalNatural @703.29,101.2 size 28 <note00000024>",
+  "glyph noteheadBlack @709.39,101.2 size 28 <note00000024>",
+  "line @387.31,95.38 -> 387.31,118.7 w 0.84 <beat00000009>",
+  "line @408.17,98.88 -> 408.17,120.95 w 0.84 <beat00000010>",
+  "line @431.43,102.38 -> 431.43,123.45 w 0.84 <beat00000011>",
+  "line @452.29,102.38 -> 452.29,125.7 w 0.84 <beat00000012>",
+  "path filled M386.89 118.65L452.71 125.75L452.71 122.25L386.89 115.15Z <beat00000009>",
+  "path filled M386.89 113.4L452.71 120.5L452.71 117L386.89 109.9Z <beat00000009>",
+  "line @473.15,95.38 -> 473.15,118.7 w 0.84 <beat00000013>",
+  "line @494.01,98.88 -> 494.01,120.95 w 0.84 <beat00000014>",
+  "line @517.27,102.38 -> 517.27,123.45 w 0.84 <beat00000015>",
+  "line @538.13,102.38 -> 538.13,125.7 w 0.84 <beat00000016>",
+  "path filled M472.73 118.65L538.55 125.75L538.55 122.25L472.73 115.15Z <beat00000013>",
+  "path filled M472.73 113.4L538.55 120.5L538.55 117L472.73 109.9Z <beat00000013>",
+  "line @558.99,95.38 -> 558.99,118.7 w 0.84 <beat00000017>",
+  "line @579.85,98.88 -> 579.85,120.95 w 0.84 <beat00000018>",
+  "line @603.11,102.38 -> 603.11,123.45 w 0.84 <beat00000019>",
+  "line @623.97,102.38 -> 623.97,125.7 w 0.84 <beat00000020>",
+  "path filled M558.57 118.65L624.39 125.75L624.39 122.25L558.57 115.15Z <beat00000017>",
+  "path filled M558.57 113.4L624.39 120.5L624.39 117L558.57 109.9Z <beat00000017>",
+  "line @644.83,95.38 -> 644.83,118.7 w 0.84 <beat00000021>",
+  "line @665.69,98.88 -> 665.69,120.95 w 0.84 <beat00000022>",
+  "line @688.95,102.38 -> 688.95,123.45 w 0.84 <beat00000023>",
+  "line @709.81,102.38 -> 709.81,125.7 w 0.84 <beat00000024>",
+  "path filled M644.41 118.65L710.23 125.75L710.23 122.25L644.41 115.15Z <beat00000021>",
+  "path filled M644.41 113.4L710.23 120.5L710.23 117L644.41 109.9Z <beat00000021>",
+]
+`;
+
 exports[`standard staff > beams 3/4 by the beat and 6/8 by the dotted quarter 1`] = `
 [
   "line @138.46,118.7 -> 152.32,118.7 w 1.12 <beat00000001>",
@@ -273,6 +483,60 @@ exports[`standard staff > beams eighths by the half bar and sixteenths by the be
   "line @330.81,107.02 -> 330.81,83.7 w 0.84 <beat00000010>",
   "path filled M305.83 80.14L331.23 83.76L331.23 87.26L305.83 83.64Z <beat00000009>",
   "path filled M323.11 87.85L331.23 89.01L331.23 92.51L323.11 91.35Z <beat00000009>",
+]
+`;
+
+exports[`standard staff > closes a tuplet of unequal values on a plain note value and one of equal values at n 1`] = `
+[
+  "glyph noteheadBlack @140.82,124.52 size 28 <note00000001>",
+  "line @148.66,123.35 -> 148.66,100.02 w 0.84 <beat00000001>",
+  "glyph noteheadBlack @164.56,121.02 size 28 <note00000002>",
+  "line @172.4,119.85 -> 172.4,96.52 w 0.84 <beat00000002>",
+  "glyph flag8thUp @171.98,96.52 size 28 <beat00000002>",
+  "glyph noteheadBlack @183.39,117.52 size 28 <note00000003>",
+  "line @191.23,116.35 -> 191.23,93.02 w 0.84 <beat00000003>",
+  "glyph noteheadBlack @207.12,114.02 size 28 <note00000004>",
+  "line @214.96,112.85 -> 214.96,89.52 w 0.84 <beat00000004>",
+  "glyph noteheadBlack @230.86,110.52 size 28 <note00000005>",
+  "line @231.28,111.7 -> 231.28,135.02 w 0.84 <beat00000005>",
+  "glyph tuplet3 @152.68,93.02 size 28 <beat00000001>",
+  "path stroked M140.82 91.16L140.82 87.66L150.58 87.66 <beat00000001>",
+  "path stroked M163.06 87.66L172.82 87.66L172.82 91.16 <beat00000001>",
+  "glyph tuplet3 @207.11,86.02 size 28 <beat00000003>",
+  "path stroked M183.39 84.16L183.39 80.66L205.01 80.66 <beat00000003>",
+  "path stroked M217.5 80.66L239.12 80.66L239.12 84.16 <beat00000003>",
+  "glyph noteheadBlack @304.11,107.02 size 28 <note00000006>",
+  "glyph noteheadBlack @322.94,107.02 size 28 <note00000007>",
+  "glyph noteheadBlack @341.78,107.02 size 28 <note00000008>",
+  "glyph noteheadBlack @360.61,107.02 size 28 <note00000009>",
+  "glyph noteheadBlack @375.83,103.52 size 28 <note00000010>",
+  "glyph noteheadBlack @391.05,100.02 size 28 <note00000011>",
+  "glyph noteheadBlack @406.28,96.52 size 28 <note00000012>",
+  "glyph noteheadBlack @421.5,93.02 size 28 <note00000013>",
+  "glyph restHalf @436.9,110.52 size 28 <beat00000014>",
+  "line @304.53,108.2 -> 304.53,131.52 w 0.84 <beat00000006>",
+  "line @323.36,108.2 -> 323.36,131.52 w 0.84 <beat00000007>",
+  "line @342.2,108.2 -> 342.2,131.52 w 0.84 <beat00000008>",
+  "path filled M304.11 131.52L342.62 131.52L342.62 128.02L304.11 128.02Z <beat00000006>",
+  "line @361.03,108.2 -> 361.03,131.52 w 0.84 <beat00000009>",
+  "line @376.25,104.7 -> 376.25,129.77 w 0.84 <beat00000010>",
+  "line @391.47,101.2 -> 391.47,128.02 w 0.84 <beat00000011>",
+  "line @406.7,97.7 -> 406.7,126.27 w 0.84 <beat00000012>",
+  "line @421.92,94.2 -> 421.92,124.52 w 0.84 <beat00000013>",
+  "path filled M360.61 131.57L422.34 124.48L422.34 120.98L360.61 128.07Z <beat00000009>",
+  "path filled M360.61 126.32L422.34 119.23L422.34 115.73L360.61 122.82Z <beat00000009>",
+  "glyph tuplet3 @322.93,145.75 size 28 <beat00000006>",
+  "glyph tuplet5 @390.75,145.75 size 28 <beat00000009>",
+]
+`;
+
+exports[`standard staff > dots a line note in the space above 1`] = `
+[
+  "glyph noteheadHalf @140.82,111.7 size 28 <note00000001>",
+  "glyph augmentationDot @150.83,108.2 size 28 <beat00000001>",
+  "line @148.66,110.52 -> 148.66,87.2 w 0.84 <beat00000001>",
+  "glyph noteheadBlack @175.19,108.2 size 28 <note00000002>",
+  "line @183.03,107.02 -> 183.03,83.7 w 0.84 <beat00000002>",
 ]
 `;
 
@@ -496,6 +760,29 @@ exports[`standard staff > points stems by the note furthest from the middle line
 ]
 `;
 
+exports[`standard staff > prints a plain natural after a tied-in sharp, and restates the sharp 1`] = `
+[
+  "line @146.83,118.7 -> 164.24,118.7 w 1.12 <beat00000001>",
+  "glyph accidentalSharp @138.46,118.7 size 28 <note00000001>",
+  "glyph noteheadWhole @149.63,118.7 size 28 <note00000001>",
+  "line @199.36,118.7 -> 213.22,118.7 w 1.12 <beat00000002>",
+  "glyph noteheadBlack @202.16,118.7 size 28 <note00000002>",
+  "line @210,117.52 -> 210,94.2 w 0.84 <beat00000002>",
+  "line @225.96,118.7 -> 239.82,118.7 w 1.12 <beat00000003>",
+  "glyph accidentalNatural @219.85,118.7 size 28 <note00000003>",
+  "glyph noteheadBlack @228.76,118.7 size 28 <note00000003>",
+  "line @236.6,117.52 -> 236.6,94.2 w 0.84 <beat00000003>",
+  "line @252.56,118.7 -> 266.42,118.7 w 1.12 <beat00000004>",
+  "glyph accidentalSharp @244.18,118.7 size 28 <note00000004>",
+  "glyph noteheadBlack @255.36,118.7 size 28 <note00000004>",
+  "line @263.2,117.52 -> 263.2,94.2 w 0.84 <beat00000004>",
+  "line @279.16,118.7 -> 293.02,118.7 w 1.12 <beat00000005>",
+  "glyph noteheadBlack @281.96,118.7 size 28 <note00000005>",
+  "line @289.8,117.52 -> 289.8,94.2 w 0.84 <beat00000005>",
+  "path filled M160.72 121.15C170.81 127.61 191.01 127.61 201.11 121.15C191.01 125.56 170.81 125.56 160.72 121.15Z <note00000002>",
+]
+`;
+
 exports[`standard staff > remembers accidentals through the bar and reminds of them in the next 1`] = `
 [
   "line @146.83,118.7 -> 160.69,118.7 w 1.12 <beat00000001>",
@@ -537,6 +824,27 @@ exports[`standard staff > shows dynamics below where they change and fingering a
   "glyph fingering3 @195,83 size 28 <note00000003>",
   "glyph dynamicMF @213.59,142.33 size 28 <beat00000004>",
   "glyph fingeringILower @222.46,83 size 28 <note00000004>",
+]
+`;
+
+exports[`standard staff > shows no accidental on a tied note and restates it after 1`] = `
+[
+  "line @146.83,118.7 -> 160.69,118.7 w 1.12 <beat00000001>",
+  "glyph accidentalSharp @138.46,118.7 size 28 <note00000001>",
+  "glyph noteheadHalf @149.63,118.7 size 28 <note00000001>",
+  "line @157.47,117.52 -> 157.47,94.2 w 0.84 <beat00000001>",
+  "line @178.33,118.7 -> 192.19,118.7 w 1.12 <beat00000002>",
+  "glyph noteheadHalf @181.13,118.7 size 28 <note00000002>",
+  "line @188.97,117.52 -> 188.97,94.2 w 0.84 <beat00000002>",
+  "path filled M158.94 121.15C164.22 124.53 174.79 124.53 180.08 121.15C174.79 122.48 164.22 122.48 158.94 121.15Z <note00000002>",
+  "line @224.18,118.7 -> 238.04,118.7 w 1.12 <beat00000003>",
+  "glyph noteheadHalf @226.98,118.7 size 28 <note00000003>",
+  "line @234.82,117.52 -> 234.82,94.2 w 0.84 <beat00000003>",
+  "line @255.68,118.7 -> 269.54,118.7 w 1.12 <beat00000004>",
+  "glyph accidentalSharp @247.31,118.7 size 28 <note00000004>",
+  "glyph noteheadHalf @258.48,118.7 size 28 <note00000004>",
+  "line @266.32,117.52 -> 266.32,94.2 w 0.84 <beat00000004>",
+  "path filled M190.44 121.15C199.31 126.83 217.06 126.83 225.93 121.15C217.06 124.78 199.31 124.78 190.44 121.15Z <note00000003>",
 ]
 `;
 
