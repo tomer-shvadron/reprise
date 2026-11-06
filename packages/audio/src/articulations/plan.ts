@@ -1,12 +1,24 @@
 import { beatTicks, midiNote } from '@reprise/model';
-import type { BeatEffects, BendPoint, Note, Track, Vibrato } from '@reprise/model';
+import type { BeatEffects, Note, Track } from '@reprise/model';
 
 import type { FilterSettings } from '../sampler/voice';
 import { soundingKey } from './harmonics';
 import { ARTICULATION } from './parameters';
+import { bendTerm, chainGain, tieChain, vibratoTerm, whammyTerm } from './tie-chain';
+import type { PitchTerm, TieChain } from './tie-chain';
 import { noteVelocity } from './velocity';
 
 export type PlanTrack = Pick<Track, 'kind' | 'tuning' | 'capo'>;
+
+/** A tied link folded into the note, timed in context seconds; the origin is one too, spanning its beat. */
+export interface PlanLink {
+  note: Note;
+  /** The link's beat effects: whammy, vibrato and fades. */
+  effects: BeatEffects;
+  when: number;
+  /** Seconds of the link's own beat. */
+  length: number;
+}
 
 /** One note to voice: a scheduler event, or a grace note placed by the sink. */
 export interface PlanInput {
@@ -19,8 +31,8 @@ export interface PlanInput {
   length: number;
   /** Seconds of the note's own beat, which whammy and fades span. */
   beatLength: number;
-  /** Seconds a bend spans when it outlives the beat (a tie chain); the beat when absent. */
-  bendLength?: number;
+  /** The tied notes folded into this one, in order; empty when it is not tied. */
+  links: readonly PlanLink[];
   secondsPerTick: number;
   barEnd: number;
   next: { note: Note; when: number } | undefined;
@@ -54,65 +66,56 @@ export interface NotePlan {
   /** Semitones relative to each strike's pitch at an absolute time; absent when flat. */
   pitch: ((time: number) => number) | undefined;
   gain: GainPoint[];
+  /** The onset filter. */
   filter: FilterSettings | undefined;
+  /** Filter settings taking over later in the note, in time order: a palm-muted link. */
+  filterChanges: { at: number; filter: FilterSettings }[];
   letRingUntil: number | undefined;
   /** The last strike's voice is not released: it carries into the next note, starting here. */
   legatoInto: number | undefined;
 }
 
-type PitchTerm = (time: number) => number;
-
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-/** Bend and whammy points: position 0 to 60 across `span`, values in quarter tones. */
-function pointsCurve(points: readonly BendPoint[], start: number, span: number): PitchTerm {
-  const sorted = [...points].sort((a, b) => a.position - b.position);
-  return (time) => {
-    const position = span > 0 ? ((time - start) / span) * 60 : 60;
-    let previous = sorted[0];
-    if (!previous) return 0;
-    if (position <= previous.position) return previous.value / 2;
-    for (const point of sorted) {
-      if (position <= point.position) {
-        const width = point.position - previous.position;
-        const share = width > 0 ? (position - previous.position) / width : 1;
-        return (previous.value + (point.value - previous.value) * share) / 2;
-      }
-      previous = point;
-    }
-    return previous.value / 2;
-  };
+/** Whether the last link is heard, even staccato: only its slide aims past the chain. */
+function reachesLastLink(input: PlanInput, chain: TieChain): boolean {
+  return chain.segments.length === input.links.length + 1;
 }
 
-function wider(a: Vibrato, b: Vibrato | undefined): Vibrato {
-  if (a === 'wide' || b === 'wide') return 'wide';
-  return a === 'slight' || b === 'slight' ? 'slight' : 'none';
-}
-
-function slideTerms(input: PlanInput, key: number, end: number): PitchTerm[] {
+function slideTerms(input: PlanInput, key: number, chain: TieChain): PitchTerm[] {
   const { note, when, next, track } = input;
-  const slides = note.slide ?? [];
+  const { end, segments } = chain;
   const terms: PitchTerm[] = [];
-  const shortWindow = Math.min(ARTICULATION.slideInOutTime, (end - when) / 3);
   const interval = ARTICULATION.slideInterval;
-  for (const kind of slides) {
-    if (kind === 'intoFromBelow' || kind === 'intoFromAbove') {
+  const last = segments.at(-1) ?? { note, when };
+  if (note.slide?.includes('intoFromBelow') || note.slide?.includes('intoFromAbove')) {
+    const window = Math.min(ARTICULATION.slideInOutTime, (end - when) / 3);
+    for (const kind of note.slide) {
+      if (kind !== 'intoFromBelow' && kind !== 'intoFromAbove') continue;
       const from = kind === 'intoFromBelow' ? -interval : interval;
-      terms.push((time) => from * (1 - clamp01((time - when) / shortWindow)));
-    } else if (kind === 'outDown' || kind === 'outUp') {
-      const to = kind === 'outDown' ? -interval : interval;
-      const start = end - shortWindow;
-      terms.push((time) => to * clamp01((time - start) / shortWindow));
+      terms.push((time) => from * (1 - clamp01((time - when) / window)));
     }
   }
-  const glides = slides.includes('legato') || slides.includes('shift');
-  if (glides && next) {
+  const out = [...segments]
+    .reverse()
+    .find((segment) => segment.note.slide?.some((kind) => kind === 'outDown' || kind === 'outUp'));
+  if (out) {
+    const window = Math.min(ARTICULATION.slideInOutTime, (end - last.when) / 3);
+    const start = end - window;
+    for (const kind of out.note.slide ?? []) {
+      if (kind !== 'outDown' && kind !== 'outUp') continue;
+      const to = kind === 'outDown' ? -interval : interval;
+      terms.push((time) => to * clamp01((time - start) / window));
+    }
+  }
+  const glides = last.note.slide?.includes('legato') || last.note.slide?.includes('shift');
+  if (glides && next && reachesLastLink(input, chain)) {
     const target = soundingKey(track, next.note) - key;
     const arrive = Math.min(end, next.when);
     const glide = Math.min(
-      ARTICULATION.slideFraction * (arrive - when),
+      ARTICULATION.slideFraction * (arrive - last.when),
       ARTICULATION.slideMaxGlide,
     );
     const start = arrive - glide;
@@ -121,51 +124,13 @@ function slideTerms(input: PlanInput, key: number, end: number): PitchTerm[] {
   return terms;
 }
 
-function pitchTerms(input: PlanInput, key: number, end: number): PitchTerm[] {
-  const { note, effects, when, beatLength } = input;
-  const terms: PitchTerm[] = [];
-  if (note.bend) terms.push(pointsCurve(note.bend.points, when, input.bendLength ?? beatLength));
-  if (effects.whammy) terms.push(pointsCurve(effects.whammy.points, when, beatLength));
-  const vibrato = wider(note.vibrato, effects.vibrato);
-  if (vibrato !== 'none') {
-    const { rate, depth } = ARTICULATION.vibrato[vibrato];
-    terms.push((time) => depth * Math.sin(2 * Math.PI * rate * (time - when)));
-  }
-  terms.push(...slideTerms(input, key, end));
+function pitchTerms(input: PlanInput, key: number, chain: TieChain): PitchTerm[] {
+  const { segments } = chain;
+  const terms = [bendTerm(segments, chain.end), whammyTerm(segments), vibratoTerm(segments)].filter(
+    (term): term is PitchTerm => term !== undefined,
+  );
+  terms.push(...slideTerms(input, key, chain));
   return terms;
-}
-
-function gainPoints(input: PlanInput, tonal: boolean): GainPoint[] {
-  const { effects, note, when, beatLength } = input;
-  const floor = ARTICULATION.fadeFloor;
-  const end = when + beatLength;
-  if (effects.volumeSwell) {
-    return [
-      { at: when, db: floor },
-      { at: when + beatLength / 2, db: 0 },
-      { at: end, db: floor },
-    ];
-  }
-  if (effects.fadeIn) {
-    return [
-      { at: when, db: floor },
-      { at: end, db: 0 },
-    ];
-  }
-  if (effects.fadeOut) {
-    return [
-      { at: when, db: 0 },
-      { at: end, db: floor },
-    ];
-  }
-  if (tonal && note.palmMute) {
-    const { decayTo, decayTime } = ARTICULATION.palmMute;
-    return [
-      { at: when, db: 0 },
-      { at: when + decayTime, db: decayTo },
-    ];
-  }
-  return [];
 }
 
 function filterFor(note: Note): FilterSettings | undefined {
@@ -176,6 +141,13 @@ function filterFor(note: Note): FilterSettings | undefined {
     return { type: 'highshelf', frequency: shelfFrequency, gain: shelfGain };
   }
   return undefined;
+}
+
+/** A palm-muted link damps an open string from its onset. */
+function linkFilters(chain: TieChain): NotePlan['filterChanges'] {
+  const muted = chain.segments.slice(1).find((link) => link.note.palmMute);
+  if (!muted) return [];
+  return [{ at: muted.when, filter: { type: 'lowpass', frequency: ARTICULATION.palmMute.cutoff } }];
 }
 
 /** Retriggers every `step` seconds across the note; a remainder is a shorter last stroke. */
@@ -202,10 +174,21 @@ export function planNote(input: PlanInput): NotePlan {
   const continues = input.continues;
 
   let end = when + input.length;
-  if (tonal && note.staccato) end = when + input.length * ARTICULATION.staccatoFraction;
+  // Guitar Pro shortens a staccato note to half its own beat, ties ignored.
+  if (tonal && note.staccato) {
+    end = when + Math.min(input.length, input.beatLength) * ARTICULATION.staccatoFraction;
+  }
   if (dead) end = Math.min(end, when + ARTICULATION.dead.length);
+  const chain = tieChain(input, tonal, end);
+  end = chain.end;
+  const last = chain.segments.at(-1)?.note ?? note;
 
-  const legato = tonal && !dead && input.next !== undefined && note.slide?.includes('legato');
+  const legato =
+    tonal &&
+    !dead &&
+    input.next !== undefined &&
+    reachesLastLink(input, chain) &&
+    last.slide?.includes('legato');
   const legatoInto = legato ? input.next?.when : undefined;
 
   const velocity = noteVelocity(note);
@@ -241,7 +224,8 @@ export function planNote(input: PlanInput): NotePlan {
     });
   }
 
-  const terms = tonal && !dead ? pitchTerms(input, key, end) : [];
+  const filter = tonal ? filterFor(note) : undefined;
+  const terms = tonal && !dead ? pitchTerms(input, key, chain) : [];
   const pitch =
     terms.length > 0
       ? (time: number): number => terms.reduce((sum, term) => sum + term(time), 0)
@@ -252,10 +236,13 @@ export function planNote(input: PlanInput): NotePlan {
     continues: continues !== undefined,
     dead,
     pitch,
-    gain: gainPoints(input, tonal),
-    filter: tonal ? filterFor(note) : undefined,
+    gain: chainGain(chain.segments, tonal),
+    filter,
+    filterChanges: tonal && !dead && filter === undefined ? linkFilters(chain) : [],
     letRingUntil:
-      tonal && note.letRing && legatoInto === undefined ? Math.max(input.barEnd, end) : undefined,
+      tonal && note.letRing && legatoInto === undefined && !chain.cut
+        ? Math.max(input.barEnd, end)
+        : undefined,
     legatoInto,
   };
 }
