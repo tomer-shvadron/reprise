@@ -640,9 +640,8 @@ describe('tab staff: both mode', () => {
     const both = rhythm('both');
     const drawn = { stems: 13, beams: 7, flag: 1, rest: 1, augmentationDot: 1, tuplet: 1 };
     expect(both['tab']).toBeUndefined();
-    // The two staves still compare dynamics differently: per voice on the tab, in reading order
-    // on the standard staff.
-    expect(both['standard']).toEqual({ ...drawn, dynamic: 3 });
+    // One dynamics rule on every staff (#76).
+    expect(both['standard']).toEqual({ ...drawn, dynamic: 4 });
     expect(tab['tab']).toEqual({ ...drawn, dynamic: 4 });
   });
 });
