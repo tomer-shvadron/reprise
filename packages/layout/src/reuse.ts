@@ -35,23 +35,39 @@ export function enteringDynamics(tracks: readonly VisibleTrack[], index: number)
   return parts.join();
 }
 
-export function samePlan(a: SystemPlan, b: SystemPlan): boolean {
-  return (
-    a.start === b.start &&
-    a.end === b.end &&
-    a.opensLine === b.opensLine &&
-    a.first === b.first &&
-    a.indent === b.indent &&
-    a.prefix === b.prefix &&
-    a.factor === b.factor &&
-    a.width === b.width &&
-    a.courtesy === b.courtesy
-  );
+/**
+ * The keys given, which must be every key of `T`: a field added to `SystemPlan` or `Cursor` fails
+ * to compile here rather than letting reuse hand back a system built from a different one.
+ */
+const everyKey =
+  <T>() =>
+  <const K extends readonly (keyof T)[]>(
+    keys: K & ([Exclude<keyof T, K[number]>] extends [never] ? unknown : never),
+  ): K =>
+    keys;
+
+const PLAN_KEYS = everyKey<SystemPlan>()([
+  'start',
+  'end',
+  'opensLine',
+  'first',
+  'indent',
+  'prefix',
+  'factor',
+  'width',
+  'courtesy',
+]);
+
+const CURSOR_KEYS = everyKey<Cursor>()(['page', 'x', 'y', 'empty']);
+
+function sameFields<T>(keys: readonly (keyof T)[], a: T, b: T): boolean {
+  for (const key of keys) if (a[key] !== b[key]) return false;
+  return true;
 }
 
-export function sameCursor(a: Cursor, b: Cursor): boolean {
-  return a.page === b.page && a.x === b.x && a.y === b.y && a.empty === b.empty;
-}
+export const samePlan = (a: SystemPlan, b: SystemPlan): boolean => sameFields(PLAN_KEYS, a, b);
+
+export const sameCursor = (a: Cursor, b: Cursor): boolean => sameFields(CURSOR_KEYS, a, b);
 
 const sameRange = (a: Range, b: Range): boolean => a.start === b.start && a.end === b.end;
 
