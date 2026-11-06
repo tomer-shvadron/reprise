@@ -45,6 +45,11 @@ function allNotation(score: Score, notation: Notation, base: LayoutOptions): Lay
   };
 }
 
+const round = (ms: number): number => Math.round(ms * 10) / 10;
+
+/** More systems than an edit's own window renders: a sign it moved every later one. */
+const MANY_SYSTEMS = 10;
+
 const median = (values: readonly number[]): number => {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.floor(sorted.length / 2)] ?? 0;
@@ -161,11 +166,12 @@ async function relayoutBench(
       },
     )
     .run(RUN);
-  const p50 = result.latency.p50;
+  const { p50, max } = result.latency;
   // tinybench calls the function once before any beforeEach, to see whether it is async.
-  const systems = median(rendered.slice(-RUN.iterations));
+  const timed = rendered.slice(-RUN.iterations);
+  const many = timed.filter((count) => count > MANY_SYSTEMS).length;
   await context.annotate(
-    `${name}: p50 ${String(Math.round(p50 * 10) / 10)} ms, median ${String(systems)} systems rendered`,
+    `${name}: p50 ${String(round(p50))} ms, max ${String(round(max))} ms, median ${String(median(timed))} systems rendered, ${String(many)} of ${String(timed.length)} edits rendered more than ${String(MANY_SYSTEMS)}`,
   );
   return p50;
 }
