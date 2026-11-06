@@ -59,7 +59,7 @@ function presetOf(track: Pick<Track, 'kind' | 'bank'>, program: number): [number
 export interface RenderOptions {
   /**
    * Where the notes come from: a soundfont plays each track's GM preset through the memory
-   * manager, as the GM tier does; a function supplies the instrument per track.
+   * manager, switching preset at each program change; a function supplies the instrument per track.
    */
   instruments: Sf2Soundfont | ((track: Track) => Instrument);
   /** Rendered length; the song plus `tail` by default. */
@@ -104,7 +104,11 @@ async function gmInstruments(
   score: Score,
   soundfont: Sf2Soundfont,
   context: BaseAudioContext,
-): Promise<{ source: ManagedSampleSource; instrumentOf: (track: Track) => Instrument }> {
+): Promise<{
+  source: ManagedSampleSource;
+  instrumentOf: (track: Track) => Instrument;
+  programOf: (track: Track, program: number) => Instrument | undefined;
+}> {
   const source = new ManagedSampleSource(soundfont, context, {
     budgetBytes: GM_BUDGET_BYTES,
     schedule: () => undefined,
@@ -124,13 +128,18 @@ async function gmInstruments(
     instrumentOf,
   });
   await source.settled();
+  const programOf = (track: Track, program: number): Instrument | undefined => {
+    const regions = maps.get(instrumentOf(track, program));
+    return regions && { regions, source };
+  };
   return {
     source,
     instrumentOf: (track) => {
-      const regions = maps.get(instrumentOf(track, track.program));
-      if (!regions) throw new Error(`no region map for track ${track.name}`);
-      return { regions, source };
+      const instrument = programOf(track, track.program);
+      if (!instrument) throw new Error(`no region map for track ${track.name}`);
+      return instrument;
     },
+    programOf,
   };
 }
 
@@ -149,8 +158,13 @@ export async function renderScore(score: Score, options: RenderOptions): Promise
   });
   let source: ManagedSampleSource | undefined;
   let instrumentOf: (track: Track) => Instrument;
+  let programOf: ((track: Track, program: number) => Instrument | undefined) | undefined;
   if (options.instruments instanceof Sf2Soundfont) {
-    ({ source, instrumentOf } = await gmInstruments(score, options.instruments, context));
+    ({ source, instrumentOf, programOf } = await gmInstruments(
+      score,
+      options.instruments,
+      context,
+    ));
   } else {
     instrumentOf = options.instruments;
   }
@@ -167,7 +181,7 @@ export async function renderScore(score: Score, options: RenderOptions): Promise
   const frames = manualTicker();
   const engine = createAudioEngine({
     context,
-    sink: createSamplerSink(sampler),
+    sink: createSamplerSink(sampler, programOf ? { instrumentOf: programOf } : {}),
     metronome: new ClickSynth(context, sampler.master.input),
     scheduler: scheduler.ticker,
     frames: frames.ticker,
