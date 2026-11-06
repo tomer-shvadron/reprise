@@ -4,6 +4,7 @@ import type { Dynamics, Note } from '@reprise/model';
 import { midi, note, score } from '@reprise/model/testing';
 
 import { RegionMap } from '../sampler/region-map';
+import type { Instrument } from '../sampler/sampler';
 import { SynthSampleSource, midiToFrequency } from '../sampler/sample-source';
 import {
   SAMPLE_RATE,
@@ -513,6 +514,36 @@ describe('beat mixer changes', () => {
       }
     }
     expect(Math.abs(crossing - (T0 + 1))).toBeLessThan(0.01);
+  });
+
+  it('switches the track to the program a beat names, from that beat on', async () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('2', [a()])
+      .beat('2', [a()], { mix: { program: 30 } })
+      .build();
+    // Program 30 plays every key a fifth up: A4 sounds at E5.
+    const fifthUp: Instrument = {
+      regions: new RegionMap([region({ sample: 'e5' })]),
+      source: new SynthSampleSource(SAMPLE_RATE, {
+        e5: { kind: 'sine', frequency: A4 * 1.5, duration: 6 },
+      }),
+    };
+    const programs: number[] = [];
+    const { data } = await render(song, {
+      sink: {
+        instrumentOf: (_track, program) => {
+          programs.push(program);
+          return program === 30 ? fifthUp : undefined;
+        },
+      },
+    });
+    expect(programs).toEqual([30]);
+    expect(toneLevel(data, A4, T0 + 0.2, T0 + 0.9)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, A4 * 1.5, T0 + 0.2, T0 + 0.9)).toBeLessThan(0.001);
+    expect(toneLevel(data, A4 * 1.5, T0 + 1.2, T0 + 1.9)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, A4, T0 + 1.2, T0 + 1.9)).toBeLessThan(0.001);
   });
 
   it('glides a volume change over its transition', async () => {

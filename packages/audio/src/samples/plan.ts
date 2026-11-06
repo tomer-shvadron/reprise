@@ -1,6 +1,7 @@
 import { beatTicks, expandPlaybackSequence, midiNote } from '@reprise/model';
 import type { Beat, Id, Note, Score, Track } from '@reprise/model';
 
+import { soundingKey } from '../articulations/harmonics';
 import type { RegionMap, SampleRef } from '../sampler/region-map';
 import type { InstrumentId } from './types';
 
@@ -37,12 +38,11 @@ export function gmInstrumentId(track: Pick<Track, 'kind' | 'bank'>, program: num
     : `gm:${String(track.bank)}:${String(program)}`;
 }
 
+/** The keys the sink strikes: a harmonic's sounding key, rounded as it is, and a trill's alternate. */
 function addKeys(track: Track, note: Note, keys: Set<number>): void {
-  const frets = note.trill ? [note.fret, note.trill.fret] : [note.fret];
-  for (const fret of frets) {
-    const key = midiNote(track, { string: note.string, fret });
-    if (key >= 0 && key <= 127) keys.add(key);
-  }
+  const struck = [Math.round(soundingKey(track, note))];
+  if (note.trill) struck.push(midiNote(track, { string: note.string, fret: note.trill.fret }));
+  for (const key of struck) if (key >= 0 && key <= 127) keys.add(key);
 }
 
 function addBeat(track: Track, beat: Beat, keys: Set<number>): void {
@@ -129,9 +129,9 @@ export function planInstruments(score: Score, options: PlanOptions = {}): SongPl
 const VELOCITIES = Array.from({ length: 127 }, (_, i) => i + 1);
 
 /**
- * The samples a plan's keys resolve to at every velocity and in every layer: the plan does not
- * know dynamics or articulations (the scheduler does), so preloading all of them for the
- * opening bars is what guarantees no skipped note there.
+ * The samples a plan's keys resolve to at every velocity and in every layer, every layered
+ * region of a key included: the plan does not know dynamics or articulations (the scheduler
+ * does), so preloading all of them for the opening bars is what guarantees no skipped note there.
  */
 export function planSamples(
   plan: SongPlan,
@@ -145,8 +145,7 @@ export function planSamples(
       for (const layer of [undefined, ...map.layers]) {
         for (const key of keys) {
           for (const velocity of VELOCITIES) {
-            const region = map.resolve(key, velocity, layer);
-            if (region) samples.add(region.sample);
+            for (const region of map.resolveAll(key, velocity, layer)) samples.add(region.sample);
           }
         }
       }

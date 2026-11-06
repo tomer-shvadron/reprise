@@ -8,6 +8,7 @@ import { SynthSampleSource } from '../../sampler/sample-source';
 import { Sampler } from '../../sampler/sampler';
 import type { Instrument } from '../../sampler/sampler';
 import { createSamplerSink } from '../../sampler/sampler-sink';
+import type { SamplerSinkOptions } from '../../sampler/sampler-sink';
 import {
   SAMPLE_RATE,
   offline,
@@ -30,7 +31,7 @@ export interface Render {
  */
 export async function render(
   song: Score,
-  options: { instrument?: () => Instrument; seconds?: number } = {},
+  options: { instrument?: () => Instrument; seconds?: number; sink?: SamplerSinkOptions } = {},
 ): Promise<Render> {
   const context = offline(options.seconds ?? 2.5);
   const sampler = new Sampler(context);
@@ -43,7 +44,7 @@ export async function render(
   const frames = manualTicker();
   const engine = createAudioEngine({
     context,
-    sink: createSamplerSink(sampler),
+    sink: createSamplerSink(sampler, options.sink),
     scheduler: scheduler.ticker,
     frames: frames.ticker,
     startLatency: T0,

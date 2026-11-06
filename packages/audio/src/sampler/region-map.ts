@@ -3,6 +3,8 @@ export type SampleRef = string;
 
 /** Seconds for the times, a linear 0..1 gain for `sustain`. */
 export interface Envelope {
+  /** Silence before the attack while the sample already plays (SF2's `delayVolEnv`). 0 when absent. */
+  delay?: number;
   attack: number;
   hold: number;
   decay: number;
@@ -30,6 +32,13 @@ export interface Region {
   attenuation?: number;
   /** -1 (left) to 1 (right) for a mono sample; absent or 0 adds no panner to the voice. */
   pan?: number;
+  /**
+   * A static low-pass applied from the note's start, before any articulation filter. `q` is the
+   * resonance in dB, Web Audio's lowpass unit: about -3 is Butterworth, 0 a flat 0 dB at cutoff.
+   */
+  filter?: { cutoffHz: number; q: number };
+  /** A new note of the same class on the same track and instrument chokes this one (SF2 7.10). */
+  exclusiveClass?: number;
 }
 
 const KEY_COUNT = 128;
@@ -47,10 +56,10 @@ function distance(value: number, lo: number, hi: number): number {
 }
 
 /**
- * Resolves a key, a velocity and an optional layer to one region. An exact match wins, in map
- * order; failing that, the region nearest by key and then by velocity, so a pack that stops
- * short of a drop tuning still sounds, pitch-shifted. A layer the map lacks falls back to the
- * default layer, which is the filter-and-envelope path of ADR-0004.
+ * Resolves a key, a velocity and an optional layer to its regions. Every exact match sounds, in
+ * map order (SF2 layers zones by design); failing any, the one region nearest by key and then by
+ * velocity, so a pack that stops short of a drop tuning still sounds, pitch-shifted. A layer the
+ * map lacks falls back to the default layer, which is the filter-and-envelope path of ADR-0004.
  */
 export class RegionMap {
   readonly regions: readonly Region[];
@@ -77,14 +86,19 @@ export class RegionMap {
     return [...this.#layers.keys()].filter((layer) => layer !== undefined);
   }
 
+  /** The first region `resolveAll` would return. */
   resolve(key: number, velocity: number, layer?: string): Region | undefined {
+    return this.resolveAll(key, velocity, layer)[0];
+  }
+
+  resolveAll(key: number, velocity: number, layer?: string): Region[] {
     const set =
       this.#layers.get(layer) ?? this.#layers.get(undefined) ?? this.#layers.values().next().value;
-    if (!set) return undefined;
-    const exact = set.byKey[key]?.find(
-      (region) => velocity >= region.velLo && velocity <= region.velHi,
-    );
-    if (exact) return exact;
+    if (!set) return [];
+    const exact =
+      set.byKey[key]?.filter((region) => velocity >= region.velLo && velocity <= region.velHi) ??
+      [];
+    if (exact.length > 0) return exact;
 
     let best: Region | undefined;
     let bestKey = Infinity;
@@ -98,6 +112,6 @@ export class RegionMap {
         bestVelocity = velocityDistance;
       }
     }
-    return best;
+    return best ? [best] : [];
   }
 }

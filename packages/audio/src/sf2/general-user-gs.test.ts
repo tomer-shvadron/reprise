@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import type { SampleRef } from '../sampler/region-map';
+import { energyAbove } from '../articulations/test/render';
+import { RegionMap } from '../sampler/region-map';
+import type { Region, SampleRef } from '../sampler/region-map';
 import type { SampleSource } from '../sampler/sample-source';
 import { Sampler } from '../sampler/sampler';
 import type { SamplerTrack } from '../sampler/sampler';
-import { cents, offline, rms, zeroCrossingFrequency } from '../sampler/test/offline';
+import { cents, offline, peak, rms, zeroCrossingFrequency } from '../sampler/test/offline';
 import type { PresetReport, ResolvedPreset } from './resolve';
 import { PERCUSSION_BANK, Sf2Soundfont } from './soundfont';
 
@@ -81,20 +83,54 @@ const TRACK: SamplerTrack = {
   },
 };
 
-/** One note of a GM program through the real sampler, rendered offline. */
+interface Strike {
+  key: number;
+  when: number;
+  off: number;
+  velocity?: number;
+}
+
+/**
+ * Notes of a region map through the real sampler, every layer preloaded, rendered offline before
+ * the master bus, so levels compare without the limiter; the result is left plus right.
+ */
+async function playMap(
+  font: Sf2Soundfont,
+  regions: RegionMap,
+  strikes: readonly Strike[],
+  seconds = 1.5,
+): Promise<Float32Array> {
+  const source = new BufferSource(font);
+  const context = offline(seconds);
+  const sampler = new Sampler(context);
+  sampler.master.input.disconnect();
+  sampler.master.input.connect(context.destination);
+  sampler.addTrack(TRACK, { regions, source });
+  await sampler.preload(
+    't',
+    strikes.map(({ key, velocity }) => ({ key, velocity: velocity ?? 127 })),
+  );
+  for (const { key, when, off, velocity } of strikes) {
+    const voice = sampler.noteOn('t', { key, velocity: velocity ?? 127, when });
+    if (!voice) throw new Error(`No voice for key ${String(key)}`);
+    sampler.noteOff(voice, off);
+  }
+  const rendered = await context.startRendering();
+  const right = rendered.getChannelData(1);
+  // Both channels summed: GM layers are often hard-panned mono samples.
+  return rendered.getChannelData(0).map((left, index) => left + (right[index] ?? 0));
+}
+
+/** One note of a GM program through the real sampler. */
 async function play(font: Sf2Soundfont, program: number, key: number): Promise<Float32Array> {
   const regions = font.regionMapFor(0, program);
   if (!regions) throw new Error(`No program ${String(program)}`);
-  const source = new BufferSource(font);
-  const region = regions.resolve(key, 127);
-  if (!region) throw new Error(`No region for key ${String(key)}`);
-  await source.getBuffer(region.sample);
-  const context = offline(1.5);
-  const sampler = new Sampler(context);
-  sampler.addTrack(TRACK, { regions, source });
-  const voice = sampler.noteOn('t', { key, velocity: 127, when: 0 });
-  if (voice) sampler.noteOff(voice, 1.2);
-  return (await context.startRendering()).getChannelData(0);
+  return playMap(font, regions, [{ key, when: 0, off: 1.2 }]);
+}
+
+/** The map with each region changed by `edit`, to render the same notes without a feature. */
+function without(regions: RegionMap, edit: (region: Region) => Region): RegionMap {
+  return new RegionMap(regions.regions.map(edit));
 }
 
 // The suite body runs at collection even when skipped, so nothing here may assume the file.
@@ -217,5 +253,88 @@ describe.skipIf(!font)('GeneralUser GS', () => {
     expect(rms(data, 0.3, 1)).toBeGreaterThan(0.05);
     const measured = zeroCrossingFrequency(data, 0.3, 1);
     expect(Math.abs(cents(measured, 440))).toBeLessThan(5);
+  });
+  it('sounds every layer of a layered GM program: Fast Strings', async () => {
+    if (!font) return;
+    const regions = font.regionMapFor(0, 48);
+    if (!regions) throw new Error('No Fast Strings');
+    const layers = regions.resolveAll(60, 127);
+    expect(layers).toHaveLength(2);
+    const strikes = [{ key: 60, when: 0, off: 1.2 }];
+    const energy = async (map: RegionMap): Promise<number> =>
+      rms(await playMap(font, map, strikes), 0.1, 1) ** 2;
+    const all = await energy(regions);
+    const each = await Promise.all(layers.map((layer) => energy(new RegionMap([layer]))));
+    const share = (each[1] ?? 0) / all;
+    console.info(
+      `Fast Strings C4: layer energies ${each.map((e) => (e / all).toFixed(3)).join(', ')} of the note's`,
+    );
+    // Two different samples are nearly uncorrelated: the note carries both layers' energy
+    // (measured 1.10 of it, the rest correlation).
+    expect(Math.abs(each.reduce((sum, e) => sum + e, 0) / all - 1)).toBeLessThan(0.15);
+    expect(share).toBeGreaterThan(0.25);
+  });
+
+  it('filters a GM program at its held cutoff: Synth Bass 1 loses its top end', async () => {
+    if (!font) return;
+    const regions = font.regionMapFor(0, 38);
+    if (!regions) throw new Error('No Synth Bass 1');
+    const cutoffs = regions.resolveAll(48, 127).map((region) => region.filter?.cutoffHz);
+    expect(cutoffs.some((cutoff) => cutoff !== undefined && cutoff < 4000)).toBe(true);
+    const strikes = [{ key: 48, when: 0, off: 1.2 }];
+    const filtered = await playMap(font, regions, strikes);
+    const open = await playMap(
+      font,
+      without(regions, (region) => {
+        const open = { ...region };
+        delete open.filter;
+        return open;
+      }),
+      strikes,
+    );
+    const ratio = energyAbove(filtered, 3000, 0.1, 0.6) / energyAbove(open, 3000, 0.1, 0.6);
+    console.info(
+      `Synth Bass 1 C3: cutoffs ${cutoffs.map((c) => (c ?? 0).toFixed(0)).join(', ')} Hz, ` +
+        `energy above 3 kHz ×${ratio.toFixed(3)}`,
+    );
+    expect(ratio).toBeLessThan(0.5);
+  });
+
+  it('delays the volume envelope where a GM zone does: Synth Strings 2', async () => {
+    if (!font) return;
+    const regions = font.regionMapFor(0, 51);
+    if (!regions) throw new Error('No Synth Strings 2');
+    // One of its two hard-panned layers enters 150 ms late; render that one alone.
+    const delayed = regions.regions.filter((region) => (region.envelope.delay ?? 0) > 0);
+    const [layer] = delayed;
+    expect(layer?.envelope.delay).toBeCloseTo(0.15, 2);
+    const delay = layer?.envelope.delay ?? 0;
+    const data = await playMap(font, new RegionMap(delayed), [{ key: 60, when: 0, off: 1.2 }]);
+    expect(peak(data, 0, delay - 0.003)).toBe(0);
+    expect(rms(data, delay + 0.3, 1)).toBeGreaterThan(0.01);
+  });
+
+  it('chokes the open hi-hat with the closed one in the standard kit', async () => {
+    if (!font) return;
+    const kit = font.drumKitRegionMap();
+    if (!kit) throw new Error('No standard kit');
+    const open = kit.resolveAll(46, 127);
+    const closed = kit.resolveAll(42, 127);
+    const classOf = (regions: Region[]) => new Set(regions.map((r) => r.exclusiveClass ?? 0));
+    expect([...classOf(open)].every((c) => c > 0 && classOf(closed).has(c))).toBe(true);
+    const ringing = await playMap(font, kit, [{ key: 46, when: 0, off: 1.4 }]);
+    const choked = await playMap(font, kit, [
+      { key: 46, when: 0, off: 1.4 },
+      { key: 42, when: 0.3, off: 1.4 },
+    ]);
+    const solo = await playMap(font, kit, [{ key: 42, when: 0.3, off: 1.4 }]);
+    // What is left after the choke is the closed hi-hat alone.
+    const left = rms(choked, 0.35, 0.8);
+    console.info(
+      `Open hi-hat 0.35-0.8 s: ringing ${rms(ringing, 0.35, 0.8).toFixed(4)}, ` +
+        `choked ${left.toFixed(4)}, closed alone ${rms(solo, 0.35, 0.8).toFixed(4)}`,
+    );
+    expect(left).toBeCloseTo(rms(solo, 0.35, 0.8), 4);
+    expect(left).toBeLessThan(rms(ringing, 0.35, 0.8) / 2);
   });
 });
