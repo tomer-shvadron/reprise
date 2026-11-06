@@ -214,6 +214,22 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       run = result.run;
       anchors.push(...result.anchors);
       for (const click of result.clicks) metronome.click(click.when, click.accent);
+      for (const mix of result.mixes) {
+        sink.mix?.({
+          track: mix.track,
+          trackIndex: mix.trackIndex,
+          voiceIndex: mix.voiceIndex,
+          beat: mix.beat,
+          beatIndex: mix.beatIndex,
+          mix: mix.mix,
+          when: mix.when,
+          playbackTick: mix.tick,
+          secondsPerTick: mix.secondsPerTick,
+          sequenceIndex: mix.sequenceIndex,
+          masterBarIndex: mix.masterBarIndex,
+          passIndex: mix.passIndex,
+        });
+      }
       for (const note of result.notes) {
         sink.noteOn({
           track: note.track,
@@ -231,6 +247,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
           passIndex: note.passIndex,
           barEnd: note.barEnd,
           nextOnString: note.nextOnString,
+          continuations: note.continuations,
         });
       }
       if (!result.loop) break;

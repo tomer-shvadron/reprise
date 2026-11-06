@@ -33,7 +33,6 @@ export type ReaderWarningCode =
   | 'note-off-string'
   | 'hammer-pull-without-destination'
   | 'tie-without-origin'
-  | 'tie-beyond-previous-beat'
   | 'lyrics-unplaced';
 
 /**
