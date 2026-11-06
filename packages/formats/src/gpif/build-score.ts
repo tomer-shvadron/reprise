@@ -431,6 +431,15 @@ class ScoreBuilder {
         'grace-duration',
       );
     }
+    for (const note of notes.filter((n) => n.tie)) {
+      note.tie = false;
+      this.#sink.warn(
+        'grace-tie-released',
+        beat.path,
+        'A tied grace note is played as a grace note; the model has no tied grace notes',
+        'grace-tie',
+      );
+    }
     return { duration, before: beat.grace === 'before', notes };
   }
 

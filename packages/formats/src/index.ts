@@ -25,3 +25,10 @@ export { GpxError } from './gpx/errors';
 export type { GpxErrorCode } from './gpx/errors';
 export { readGpx } from './gpx/read-gpx';
 export type { GpxReadResult } from './gpx/read-gpx';
+
+// The gp writer: the model as a gpif document, and the Guitar Pro 7 and 8 zip around it.
+export { writeGp } from './gp/write-gp';
+export type { GpWriteOptions, GpWriteResult } from './gp/write-gp';
+export { writeGpif } from './gpif/write-gpif';
+export type { GpifWriteResult } from './gpif/write-gpif';
+export type { GpifDropCode, GpifDropped } from './gpif/dropped';

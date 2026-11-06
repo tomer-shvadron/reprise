@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ZodType } from 'zod';
 
-import { BeatSchema, DurationSchema } from './beat';
+import { BeatSchema, DurationSchema, GraceBeatSchema } from './beat';
 import { ColorSchema } from './color';
 import { createBeat, createMasterBar, createNote, createTrack } from './factories';
 import { MasterBarSchema, TimeSignatureSchema } from './master-bar';
@@ -118,6 +118,18 @@ describe('field ranges', () => {
     ['tempo unit', TempoMarkSchema, { bpm: 120, unit: 'dottedQuarter' }, true],
     ['tempo unit outside the gpif set', TempoMarkSchema, { bpm: 120, unit: 'whole' }, false],
     ['tempo zero', TempoMarkSchema, { bpm: 0 }, false],
+    [
+      'grace note',
+      GraceBeatSchema,
+      { duration: 32, before: true, notes: [createNote({ string: 2, fret: 3 })] },
+      true,
+    ],
+    [
+      'tied grace note',
+      GraceBeatSchema,
+      { duration: 32, before: true, notes: [createNote({ string: 2, fret: 3, tie: true })] },
+      false,
+    ],
   ])('%s', (_name, schema, value, accepted) => {
     expect(schema.safeParse(value).success).toBe(accepted);
   });

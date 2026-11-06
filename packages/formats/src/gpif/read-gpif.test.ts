@@ -236,6 +236,19 @@ describe('beats and rhythms', () => {
     ]);
   });
 
+  it('releases a tie on a grace note, which the model forbids', () => {
+    const grace = '<GraceNotes>BeforeBeat</GraceNotes>';
+    const { score, warnings } = read(
+      oneBar(
+        [beat('0', '0', '0'), beat('1', '1', '1', grace), beat('2', '2', '0')],
+        [note('0', 2, 5), note('1', 2, 5, '<Tie origin="false" destination="true" />')],
+        [rhythm('0', 'Half'), rhythm('1', '32nd'), rhythm('2', 'Half')],
+      ),
+    );
+    expect(beatsOf(score)[1]?.grace?.[0]?.notes[0]).toMatchObject({ fret: 5, tie: false });
+    expect(warnings.map((w) => w.code)).toContain('grace-tie-released');
+  });
+
   it('ties whole notes for a double whole note', () => {
     const { score, warnings } = read(
       gpif({

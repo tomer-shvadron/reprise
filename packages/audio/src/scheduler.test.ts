@@ -121,6 +121,23 @@ describe('advance', () => {
     expect(late.notes[0]?.duration).toBeCloseTo(0.48, 9);
   });
 
+  it('applies a mixer change handed out late from now instead of dropping it', () => {
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .rest('4', { mix: { volume: { value: 20 } } })
+      .beat('4', [note(1, 0)])
+      .rest('2')
+      .build();
+    const timeline = createTimeline(song);
+    const run = startRun(timeline, { tick: 0, time: 0, rate: 1, loop: undefined, countIn: false });
+    const late = advance(timeline, run, { now: 0.3, horizon: 0.6, metronome: false });
+
+    expect(late.mixes.map((m) => [m.tick, m.when, m.mix.volume?.value])).toEqual([[0, 0.3, 20]]);
+    expect(late.notes.map((n) => n.when)).toEqual([0.5]);
+  });
+
   it('plays the count-in clicks before the first note', () => {
     const timeline = repeated();
     const run = startRun(timeline, { tick: 0, time: 1, rate: 1, loop: undefined, countIn: true });
@@ -191,5 +208,51 @@ describe('drift', () => {
 
     expect(run.loopPasses).toBe(300);
     expect(drift).toBeLessThan(1e-9);
+  });
+});
+
+describe('mixer changes', () => {
+  /** Bar 0 glides the volume and steps the pan on rests; bars 1 and 2 are quarter notes. */
+  function mixed(): Timeline {
+    let builder = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .rest('4', { mix: { volume: { value: 40, duration: 2 } } })
+      .rest('4', { mix: { pan: { value: 20 } } })
+      .rest('2')
+      .bar();
+    builder = quarters(builder, 1).bar();
+    return createTimeline(quarters(builder, 2).build());
+  }
+
+  it('replays the changes before the start point at the run start, settled, and only once', () => {
+    const timeline = mixed();
+    const run = startRun(timeline, {
+      tick: BAR,
+      time: 1,
+      rate: 1,
+      loop: undefined,
+      countIn: false,
+    });
+    const first = advance(timeline, run, { now: 0.5, horizon: 1.1, metronome: false });
+    const second = advance(timeline, first.run, { now: 0.6, horizon: 1.5, metronome: false });
+
+    expect(first.mixes.map((m) => [m.tick, m.when, m.mix])).toEqual([
+      [0, 1, { volume: { value: 40 } }],
+      [PPQ, 1, { pan: { value: 20 } }],
+    ]);
+    for (const mix of first.mixes) expect(mix.secondsPerTick).toBeCloseTo(0.5 / PPQ, 12);
+    expect(second.mixes).toEqual([]);
+  });
+
+  it('replays them again at each loop wrap, timed at the wrap', () => {
+    const timeline = mixed();
+    const loop = { startTick: BAR, endTick: 2 * BAR };
+    const run = startRun(timeline, { tick: BAR, time: 0, rate: 1, loop, countIn: false });
+    const whens: number[] = [];
+    walk(timeline, run, 5, (_, result) => whens.push(...result.mixes.map((m) => m.when)));
+
+    expect(whens.map((when) => Math.round(when * 1e6) / 1e6)).toEqual([0, 0, 2, 2, 4, 4]);
   });
 });
