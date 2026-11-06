@@ -11,16 +11,14 @@ import { GpVersionError } from './gp3-to-5/version';
 import { GpifError } from './gpif/errors';
 import { GpxError } from './gpx/errors';
 import { readGpx } from './gpx/read-gpx';
-import { fromGpifWarning, fromParseWarning } from './warning-adapters';
+import { MAX_FILE_BYTES } from './limits';
+import { fromGpifWarning, fromParseWarning, withFoldedCount } from './warning-adapters';
 import type { Warning } from './warnings';
 
 export interface ReadResult {
   score: Score;
   warnings: Warning[];
 }
-
-/** The cap the gp and gpx readers already put on a declared inflated size, applied to the file. */
-export const MAX_FILE_BYTES = 256 * 1024 * 1024;
 
 /** Codes a reader gives bytes that are not its format at all, as opposed to a damaged file. */
 const NOT_THIS_FORMAT: ReadonlySet<FormatErrorCode> = new Set<FormatErrorCode>([
@@ -42,7 +40,7 @@ function dispatch(bytes: Uint8Array, format: Format): ReadResult {
   switch (readerOf(format)) {
     case 'binary': {
       const { score, warnings } = readGp3To5(bytes);
-      return { score, warnings };
+      return { score, warnings: warnings.map(withFoldedCount) };
     }
     case 'gp': {
       const { score, warnings } = readGp(bytes);

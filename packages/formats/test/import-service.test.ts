@@ -25,6 +25,7 @@ import {
   fixtureBytes,
   manifestEntries,
 } from './corpus';
+import { MAX_UNCOMPRESSED_BYTES } from '../src/gpx/bcfz';
 import { bcfz, gpx } from './gpx-builder';
 import { kitchenSink } from './kitchen-sink';
 
@@ -100,24 +101,37 @@ describe('the import service on the fixture corpus', () => {
     });
   });
 
-  it('detects a renamed file by its content', async () => {
-    const bytes = fixtureBytes('gp/timer.gp');
-    expect(formatOfExtension('timer.gp5')).toBe('gp5');
-    expect(detect(bytes)).toBe('gp');
+  it('reads a renamed file by its content, and the extension only when asked', async () => {
+    const entry = manifest.find((e) => e.path === 'gp/timer.gp');
+    if (!entry) throw new Error('gp/timer.gp is not in the manifest');
+    const bytes = fixtureBytes(entry.path);
     const { score } = await read(bytes);
-    expect(score.tracks.length).toBeGreaterThan(0);
+    expect(score.tracks).toHaveLength(entry.tracks);
+    expect(score.masterBars).toHaveLength(entry.bars);
+    expect(countNotes(score)).toBe(entry.notes);
+    const error = await failure(read(bytes, formatOfExtension('timer.gpx')));
+    expect(error).toMatchObject({ code: 'format-mismatch', format: 'gpx', detected: 'gp' });
+  });
+
+  it('keeps the binary reader warnings to the shared count rule', async () => {
+    const { warnings } = await read(fixtureBytes('gp5/effects.gp5'));
+    expect(warnings.some((w) => w.severity === 'info')).toBe(true);
+    expect(warnings.filter((w) => w.count === 1)).toEqual([]);
   });
 });
 
 describe('a format argument the bytes contradict', () => {
   const gp = fixtureBytes('gp/timer.gp');
   const gp5 = fixtureBytes('gp5/chords.gp5');
+  const gpxBytes = fixtureBytes('gpx/chords.gpx');
 
   it.each<[string, Uint8Array, Format, Format]>([
     ['gp as gp5', gp, 'gp5', 'gp'],
     ['gp5 as gpx', gp5, 'gpx', 'gp5'],
     ['gp5 as gp', gp5, 'gp', 'gp5'],
     ['gp5 as reprise', gp5, 'reprise', 'gp5'],
+    ['gp as gpx', gp, 'gpx', 'gp'],
+    ['gpx as gp', gpxBytes, 'gp', 'gpx'],
   ])('reports %s as a mismatch', async (_, bytes, format, detected) => {
     const error = await failure(read(bytes, format));
     expect(error).toMatchObject({ code: 'format-mismatch', format, detected });
@@ -125,8 +139,12 @@ describe('a format argument the bytes contradict', () => {
   });
 
   it('reads a gp4 file named gp5, since one reader serves the binary family', async () => {
-    const { score } = await read(fixtureBytes('gp4/notes.gp4'), 'gp5');
-    expect(score.tracks.length).toBeGreaterThan(0);
+    const entry = entries.find((e) => e.path === 'gp4/notes.gp4');
+    if (!entry) throw new Error('gp4/notes.gp4 is not in the manifest');
+    const { score } = await read(fixtureBytes(entry.path), 'gp5');
+    expect(score.tracks).toHaveLength(entry.tracks);
+    expect(score.masterBars).toHaveLength(entry.bars);
+    expect(countNotes(score)).toBe(entry.notes);
   });
 
   it('keeps the reader code when nothing else is detected', async () => {
@@ -227,7 +245,7 @@ describe('the size limit', () => {
   });
 
   it('passes through a BCFZ header declaring more than the limit', async () => {
-    const error = await failure(read(bcfz(MAX_FILE_BYTES + 1, [])));
+    const error = await failure(read(bcfz(MAX_UNCOMPRESSED_BYTES + 1, [])));
     expect(error).toMatchObject({ code: 'too-large', format: 'gpx' });
     expect(error.cause).toBeInstanceOf(GpxError);
   });

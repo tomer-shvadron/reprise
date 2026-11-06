@@ -51,6 +51,12 @@ function folded(count: number): { count?: number } {
   return count > 1 ? { count } : {};
 }
 
+/** A binary reader warning in the shape every other format gives: `count` only above 1. */
+export function withFoldedCount(warning: Warning): Warning {
+  const { count, ...rest } = warning;
+  return { ...rest, ...folded(count ?? 1) };
+}
+
 export function fromGpifWarning(warning: GpifWarning): Warning {
   const { code, message, path, count } = warning;
   if (isGpifReaderCode(code)) {

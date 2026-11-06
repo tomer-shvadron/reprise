@@ -7,6 +7,7 @@ import {
   GPIF_SEVERITY,
   fromGpifDropped,
   fromGpifWarning,
+  withFoldedCount,
   fromParseWarning,
   parseModelPath,
 } from './warning-adapters';
@@ -99,6 +100,15 @@ describe('fromGpifDropped', () => {
       location: { path: ['tracks', 1] },
       count: 3,
     });
+  });
+});
+
+describe('withFoldedCount', () => {
+  it('drops a count of 1 and keeps a larger one', () => {
+    const base = { code: 'rse-dropped', severity: 'info', message: 'm', location: {} } as const;
+    expect(withFoldedCount({ ...base, count: 1 })).toEqual(base);
+    expect(withFoldedCount({ ...base, count: 3 })).toEqual({ ...base, count: 3 });
+    expect(withFoldedCount(base)).toEqual(base);
   });
 });
 

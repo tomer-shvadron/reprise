@@ -80,9 +80,9 @@ without complaint. When the chosen reader says the bytes are not its format at a
 the bytes are sniffed, and if they belong to another reader the error becomes `format-mismatch`
 with `format` (what was asked) and `detected` (what the bytes are).
 
-**Size limit.** `MAX_FILE_BYTES` is 256 MiB, the cap the gp and gpx readers already put on a
-declared inflated size; the largest real file known is about 1.5 MB, and a file at the limit could
-not be shown within the 400 MB renderer budget anyway. `too-large` has three sources: the file
+**Size limit.** `MAX_FILE_BYTES` (`src/limits.ts`) is 256 MiB, the one number the gp and gpx
+readers' caps on a declared inflated size are derived from; the largest real file known is about
+1.5 MB, and a file at the limit could not be shown within the 400 MB renderer budget anyway. `too-large` has three sources: the file
 itself (checked before anything is read, no `cause`), a gp zip entry declaring more (`GpError`),
 and a gpx header declaring more (`GpxError`).
 
@@ -103,7 +103,7 @@ reader's is a bug and is rethrown untouched.
 | `invalid-utf8`, `invalid-json`, `wrong-format`, `invalid-version`, `newer-version`, `migration-failed`, `invalid-document` | `parseNative`, `serializeNative` | A `.reprise` file that cannot be read, or a score that cannot be written. |
 
 **Warnings** come back in the one `Warning` shape below ("Warnings"). The binary reader's pass
-through unchanged. A gpif warning keeps its code and message; its element path goes to
+through with only `count` normalised: set only when it is above 1, as for every other format. A gpif warning keeps its code and message; its element path goes to
 `location.element`, or, for a `validateScore` rule, its model path to `location.path` without the
 leading `score`; `count` is set only when it is above 1. Its severity comes from an exhaustive
 table, so a new gpif code fails to compile until it has one:
