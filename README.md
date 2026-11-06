@@ -32,6 +32,7 @@ pnpm typecheck      # tsc -b across every package, incremental
 pnpm test           # Vitest, every package as its own project
 pnpm test:watch
 pnpm format         # Prettier; format:check verifies without writing
+pnpm bench          # the roadmap's budgets, measured one file at a time
 pnpm dev            # the web app in the browser, Vite dev server with hot reload
 pnpm build          # production build of the web app into apps/web/dist
 pnpm desktop:dev    # the Electron app around the same web core, with hot reload

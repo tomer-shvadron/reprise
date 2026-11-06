@@ -222,13 +222,13 @@ export function repeatCount(
   sink: LayoutSink,
   masterBar: MasterBar,
   right: number,
-  staffTop: number,
+  lane: Band,
   space: number,
 ): void {
   const plays = masterBar.repeat.endCount;
   if (plays <= 2) return;
   sink.primitives.push(
-    text(`x${String(plays)}`, right, staffTop - space * 0.6, VOLTA_TEXT_SIZE * space, {
+    text(`x${String(plays)}`, right, lane.bottom - space * 0.35, VOLTA_TEXT_SIZE * space, {
       anchor: 'end',
       node: masterBar.id,
     }),

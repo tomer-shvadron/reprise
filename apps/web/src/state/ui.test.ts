@@ -68,3 +68,18 @@ describe('ui store panels and zoom', () => {
     expect(store.getState().zoom).toBe(0.5);
   });
 });
+
+describe('the ui view', () => {
+  it('defaults to paged A4 and replaces the view only on a change', () => {
+    const store = createUiStore('dark');
+    const initial = store.getState().view;
+    expect(initial).toEqual({ mode: 'paged', paper: 'a4' });
+
+    store.getState().setViewMode('paged');
+    expect(store.getState().view).toBe(initial);
+
+    store.getState().setViewMode('continuous');
+    store.getState().setPaper('letter');
+    expect(store.getState().view).toEqual({ mode: 'continuous', paper: 'letter' });
+  });
+});

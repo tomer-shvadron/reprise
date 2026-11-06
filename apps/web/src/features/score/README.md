@@ -20,7 +20,7 @@ Paints a `LayoutResult` from `@reprise/layout` as SVG (WP-024, ADR-0010). React 
 
 `onScorePointer` receives `{ type: 'down' | 'move' | 'up' | 'leave' | 'cancel', point, anchor, event }`: the point in layout px, the anchor `hitTest` finds there (none on `leave` and `cancel`), and the native event for buttons and modifiers. `cancel` ends a drag that gets no `up`.
 
-The app mounts `ScoreView` in its score region when it has a layout, and a placeholder until then (WP-050 supplies the layout).
+The app's `ScorePane` (`apps/web/src/app/score-pane.tsx`) mounts `ScoreView` in the score region with the layout store's result, and an empty state until there is one.
 
 ```text
 ScoreView            region: scroll container, virtualization, zoom anchoring, pointer → hitTest
@@ -49,7 +49,7 @@ ScoreView            region: scroll container, virtualization, zoom anchoring, p
 
 Zoom is display only: each system `<svg>` keeps its `viewBox` in layout px and takes `width`/`height` × zoom, and pages and canvas are sized and placed × zoom. Vector-crisp at every zoom, with exact scrollbars, which a CSS transform would not give. A zoom change re-renders sizes only; nothing inside a system changes (tested). The view keeps the layout point at the viewport's centre where it was.
 
-Layout happens at zoom 1 and re-runs only when the width changes (mode, paper). Continuous mode lays out in fixed 640 px segments (`CONTINUOUS_SYSTEM_WIDTH`) rather than at the viewport width: the segments join seamlessly, so their width is invisible, but at zoom 0.5 on a 1 920 px viewport a viewport-wide segment would hold about 9 200 elements and three or four mounted ones would break the 20 000-element budget. With fixed segments the long score stays under 12 600 at every zoom (`budget.measure.test.ts`).
+Layout happens at zoom 1 and re-runs only when the width changes (mode, paper). Continuous mode lays out in fixed 640 px segments (`CONTINUOUS_SYSTEM_WIDTH`) rather than at the viewport width: the segments join seamlessly, so their width is invisible, but at zoom 0.5 on a 1 920 px viewport a viewport-wide segment would hold about 9 200 elements and three or four mounted ones would break the 20 000-element budget. With fixed segments the long score stays under 12 600 at every zoom (`budget.test.ts`).
 
 ## Demo: `/dev/score`
 
@@ -100,4 +100,4 @@ Auto-scroll moves the region 2 000 px/s for 10 s, recording every frame interval
 | continuous | 0.5  | default  | 601    | 60.1     | 16.7 ms      | 0                    | 8 484            |
 | continuous | 0.5  | both     | 601    | 60.1     | 16.8 ms      | 0                    | 11 195           |
 
-The long-score measurements stay out of the unit run until `pnpm bench` (#90) takes them: `REPRISE_MEASURE=1 pnpm vitest run --project web measure` runs them. `budget.measure.test.ts` bounds the mounted elements of the long score at every zoom, both modes and both notations, at the start, middle and end: at most 6 459 paged and 12 541 continuous against the 20 000 budget. `performance.measure.test.tsx` annotates the jsdom mount and repaint, which are not a browser's costs, and asserts that a repaint after an edit changes only the edited system. The unit tests use a 2-track, 40-bar score, and an 8-track, 6-bar one whose systems are taller than A4.
+`budget.test.ts` asserts the roadmap's element budget in the unit suite, since a count does not vary with load: it bounds the mounted elements of the long score at every zoom, both modes and both notations, at the start, middle and end: at most 6 459 paged and 12 541 continuous against the 20 000 budget. `performance.test.tsx` annotates the jsdom mount and repaint, which are not a browser's costs, and asserts that a repaint after an edit changes only the edited system. The unit tests use a 2-track, 40-bar score, and an 8-track, 6-bar one whose systems are taller than A4.

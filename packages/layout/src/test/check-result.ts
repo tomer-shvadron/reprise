@@ -1,6 +1,6 @@
 import { expect } from 'vitest';
 
-import type { Anchor, LayoutResult, Rect } from '../types';
+import type { Anchor, LayoutResult, Primitive, Rect } from '../types';
 
 const EPSILON = 0.02;
 
@@ -106,4 +106,73 @@ export function expectValid(result: LayoutResult): void {
 export function stable(result: LayoutResult): string {
   const { pages, systems, primitives, anchors } = result;
   return JSON.stringify({ pages, systems, primitives, anchors });
+}
+
+const MARK_GLYPHS = [
+  'artic',
+  'tremolo',
+  'strings',
+  'guitarFade',
+  'guitarVolume',
+  'ornamentTrill',
+  'dynamic',
+] as const;
+
+function isMark(primitive: Primitive): boolean {
+  if (primitive.kind === 'text') return true;
+  return (
+    primitive.kind === 'glyph' && MARK_GLYPHS.some((prefix) => primitive.glyph.startsWith(prefix))
+  );
+}
+
+/**
+ * Text and effect glyphs that overlap within one staff of one system, among those lying wholly
+ * above its top line or below its bottom line: lane items, words and letters. Each mark belongs
+ * to the staff whose anchor holds its centre; a mark in no staff's anchor is skipped.
+ */
+export function overlappingMarks(result: LayoutResult): [Primitive, Primitive][] {
+  const found: [Primitive, Primitive][] = [];
+  for (const system of result.systems) {
+    const staves = result.anchors
+      .slice(system.anchors.start, system.anchors.end)
+      .filter((anchor) => anchor.kind === 'staff');
+    const groups = new Map<number, Primitive[]>();
+    for (const primitive of result.primitives.slice(
+      system.primitives.start,
+      system.primitives.end,
+    )) {
+      if (!isMark(primitive)) continue;
+      const { bbox } = primitive;
+      const cx = bbox.x + bbox.width / 2;
+      const cy = bbox.y + bbox.height / 2;
+      const index = staves.findIndex(
+        (anchor) =>
+          cx >= anchor.bbox.x &&
+          cx <= anchor.bbox.x + anchor.bbox.width &&
+          cy >= anchor.bbox.y &&
+          cy <= anchor.bbox.y + anchor.bbox.height,
+      );
+      const anchor = staves[index];
+      const staff = system.staves.find(
+        (placement) => placement.track === anchor?.track && placement.type === anchor.staff,
+      );
+      if (!staff) continue;
+      const outside =
+        bbox.y + bbox.height <= staff.top + EPSILON || bbox.y >= staff.bottom - EPSILON;
+      if (!outside) continue;
+      const members = groups.get(index);
+      if (members) members.push(primitive);
+      else groups.set(index, [primitive]);
+    }
+    for (const marks of groups.values()) {
+      const sorted = [...marks].sort((a, b) => a.bbox.x - b.bbox.x);
+      for (const [i, mark] of sorted.entries()) {
+        for (const other of sorted.slice(i + 1)) {
+          if (other.bbox.x >= mark.bbox.x + mark.bbox.width) break;
+          if (overlaps(mark.bbox, other.bbox)) found.push([mark, other]);
+        }
+      }
+    }
+  }
+  return found;
 }

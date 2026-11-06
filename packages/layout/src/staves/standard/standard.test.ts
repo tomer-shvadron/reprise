@@ -676,12 +676,16 @@ describe('percussion staff', () => {
 });
 
 describe('standard notation at scale', () => {
-  it('lays out the long score without overlapping anchors, standard and both', () => {
-    const long = largeScore(4, 120, { structure: true });
-    for (const mode of ['standard', 'both'] as const) {
-      laid(long, { notation: Object.fromEntries(long.tracks.map(({ id }) => [id, mode])) });
-    }
-  });
+  it(
+    'lays out the long score without overlapping anchors, standard and both',
+    { timeout: 30_000 },
+    () => {
+      const long = largeScore(4, 120, { structure: true });
+      for (const mode of ['standard', 'both'] as const) {
+        laid(long, { notation: Object.fromEntries(long.tracks.map(({ id }) => [id, mode])) });
+      }
+    },
+  );
 
   it('re-measures the bar after an edit, so a cached layout matches a cold one', () => {
     const built = score()

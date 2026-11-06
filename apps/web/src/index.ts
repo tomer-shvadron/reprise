@@ -2,6 +2,7 @@ export type {
   EventChannel,
   EventChannels,
   FileFilter,
+  FileHandle,
   InvokeArgs,
   InvokeChannel,
   InvokeChannels,

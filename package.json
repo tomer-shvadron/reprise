@@ -17,6 +17,7 @@
     "test:watch": "vitest",
     "test:visual": "vitest run --config apps/web/vitest.visual.config.ts",
     "visual:accept": "node scripts/visual/accept.ts",
+    "bench": "vitest bench --reporter=verbose --reporter=./scripts/bench/budget-reporter.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "fixtures:describe": "node scripts/fixtures/describe.ts",

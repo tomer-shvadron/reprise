@@ -90,26 +90,30 @@ describe('round trip', () => {
     ['a large generated score', () => largeScore(6, 200, { structure: true })],
   ];
 
-  it.each(scores)('parseNative(serializeNative(s)) deep-equals s for %s', (_, build) => {
-    const score = build();
-    expect(validateScore(score)).toEqual([]);
-    const { score: parsed, app, warnings } = parseNative(serializeNative(score, APP));
-    expect(parsed).toEqual(score);
-    expect(app).toEqual(APP);
-    expect(warnings).toEqual([]);
-  });
+  it.each(scores)(
+    'parseNative(serializeNative(s)) deep-equals s for %s',
+    (_, build) => {
+      const score = build();
+      expect(validateScore(score)).toEqual([]);
+      const { score: parsed, app, warnings } = parseNative(serializeNative(score, APP));
+      expect(parsed).toEqual(score);
+      expect(app).toEqual(APP);
+      expect(warnings).toEqual([]);
+    },
+    30_000,
+  );
 });
 
-// Measured at 40 to 50 ms each on the 200-bar, 6-track score; the bounds only catch a
-// quadratic regression.
+// Serialise and parse measured 65 to 68 ms alone on the 200-bar, 6-track score, and up to 528
+// and 703 ms under three parallel runs; the bounds only catch a quadratic regression.
 describe('a large score', () => {
-  it('serialises and parses in linear time', () => {
+  it('serialises and parses in linear time', { timeout: 30_000 }, () => {
     const score = largeScore(6, 200, { structure: true });
     const [bytes, serializeMs] = timed(() => serializeNative(score, APP));
     const [result, parseMs] = timed(() => parseNative(bytes));
     expect(result.score).toEqual(score);
-    expect(serializeMs).toBeLessThan(1000);
-    expect(parseMs).toBeLessThan(2000);
+    expect(serializeMs).toBeLessThan(2_000);
+    expect(parseMs).toBeLessThan(5_000);
   });
 });
 

@@ -54,6 +54,8 @@ The roadmap's rule 6, review before merge, is the review flow in [AGENTS.md](AGE
 - `vitest related --run` on the staged TypeScript: every test that imports those files, directly or through other modules, in every Vitest project except the browser-mode `audio` project, which joins only when a file under `packages/audio` is staged (every audio test imports the model, so a model-only commit would otherwise launch Chromium).
 - `tsc -b`, incremental, on every commit, including one that only deletes files.
 
+Bench files (`*.bench.ts`) never run here: `pnpm bench` runs them, and CI runs it after the tests.
+
 Measured: a docs-only commit about one second, a one-file change in `packages/model` about five seconds (it rebuilds the downstream types and runs every test that imports the model), a one-file `packages/audio` change about three. If the hook takes much longer, something is wrong; say so on the issue rather than skipping it.
 
 The hook is per worktree: Husky writes its shim under `.husky/_/` (ignored), and git skips a missing hook without a word, so **run `pnpm install` in every new worktree before committing**. A git GUI that starts with a minimal `PATH` may not find `node`; put your Node install on the `PATH` in `~/.config/husky/init.sh`, which the hook sources.
@@ -64,7 +66,7 @@ The hook is per worktree: Husky writes its shim under `.husky/_/` (ignored), and
 
 - One PR per work package, filled from the PR template, squash-merged into `main`. The PR title becomes the squash commit, so it is a conventional commit line too.
 - The body links the issue (`Closes #n`), says what changed and **how it was verified**: the commands run and what they showed, not just "tests pass".
-- Include before and after measurements for anything the [budgets table](docs/plans/roadmap.md#budgets) covers, screenshots for any UI change, and any deviation from the plan with its reason.
+- Include the `pnpm bench` table before and after for anything the [budgets table](docs/plans/roadmap.md#budgets) covers, screenshots for any UI change, and any deviation from the plan with its reason.
 - Open questions go on the issue as comments, not as assumptions buried in code.
 - Before opening it, this passes locally, and CI must be green on the PR (lint, typecheck, tests, build, per [ADR-0014](docs/decisions/0014-repo-and-process.md)):
 

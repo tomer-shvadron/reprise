@@ -14,7 +14,8 @@ import { measureBar, type BarMeasure } from './measure';
 import { resolveOptions, type ResolvedOptions } from './options';
 import { rect, round, type LayoutSink } from './primitives';
 import { renderSystem } from './render';
-import { staffSlots, type StaffSlot } from './slots';
+import { staffBar, staffSlots, trackBar, type StaffSlot } from './slots';
+import { LANE_HEIGHT, mergeLanes, type LaneRequests } from './staves/lanes';
 import type { Anchor, LayoutOptions, LayoutResult, Page, Primitive, Range, System } from './types';
 import { verticalLayout, type VerticalLayout } from './vertical';
 
@@ -97,6 +98,37 @@ function stillValid(
   if (verticalKey !== undefined && system.verticalKey !== verticalKey) return false;
   const ids = barIds(score, system.plan);
   return sameInputs(ids, system.barIds);
+}
+
+/**
+ * Per staff slot, the lanes bars `start` to `end` (exclusive) draw into, each at its tallest
+ * request. Never cached: a bar's lanes may depend on earlier bars (a dynamic shows only where it
+ * changes), and only the systems being built ask.
+ */
+function laneRequests(
+  score: Score,
+  contexts: readonly BarContext[],
+  slots: readonly StaffSlot[],
+  options: ResolvedOptions,
+  start: number,
+  end: number,
+): LaneRequests[] {
+  const requests = slots.map((): LaneRequests => ({}));
+  for (let index = start; index < end; index++) {
+    const context = contexts[index];
+    if (!context) continue;
+    for (const [i, slot] of slots.entries()) {
+      const bar = trackBar(slot, index);
+      const into = requests[i];
+      if (!bar || !into) continue;
+      mergeLanes(into, slot.module.lanes(staffBar(score, slot, bar, context, options.space)));
+    }
+    const first = requests[0];
+    if (first && context.masterBar.repeat.endCount > 2) {
+      mergeLanes(first, { repeatCount: LANE_HEIGHT.repeatCount * options.space });
+    }
+  }
+  return requests;
 }
 
 /** Where the next system goes: paged systems flow down pages, continuous ones run rightwards. */
@@ -187,7 +219,13 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
 
   const global: VerticalLayout | undefined =
     resolved.mode === 'continuous'
-      ? verticalLayout(score.masterBars, measures, slots, resolved)
+      ? verticalLayout(
+          score.masterBars,
+          measures,
+          slots,
+          resolved,
+          laneRequests(score, contexts, slots, resolved, 0, contexts.length),
+        )
       : undefined;
 
   const kept: CachedSystem[] = [];
@@ -224,6 +262,7 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
           measures.slice(plan.start, plan.end),
           slots,
           resolved,
+          laneRequests(score, contexts, slots, resolved, plan.start, plan.end),
         );
       cursor = place(resolved, cursor, vertical.height);
       const index = systems.length;

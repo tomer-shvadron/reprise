@@ -1,3 +1,4 @@
+import type { LayoutOptions, PAGE_SIZES } from '@reprise/layout';
 import { create } from 'zustand';
 
 import { initialTheme, writeStoredTheme, type Theme } from './theme';
@@ -11,8 +12,15 @@ export const PANEL_WIDTH = {
 
 export const ZOOM = { min: 0.5, max: 3, default: 1 } as const;
 
+/** The score's view mode and paper; what layout reads from the ui. */
+export interface UiView {
+  mode: LayoutOptions['mode'];
+  paper: keyof typeof PAGE_SIZES;
+}
+
 export interface UiState {
   theme: Theme;
+  view: UiView;
   panels: Record<PanelId, boolean>;
   panelWidths: Record<PanelId, number>;
   zoom: number;
@@ -24,6 +32,8 @@ export interface UiState {
   setPanelWidth: (panel: PanelId, width: number) => void;
   setZoom: (zoom: number) => void;
   setPaletteOpen: (open: boolean) => void;
+  setViewMode: (mode: UiView['mode']) => void;
+  setPaper: (paper: UiView['paper']) => void;
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -31,6 +41,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 export function createUiStore(theme: Theme = initialTheme()) {
   return create<UiState>()((set, get) => ({
     theme,
+    view: { mode: 'paged', paper: 'a4' },
     panels: { sidebar: true, rightPanel: false },
     panelWidths: {
       sidebar: PANEL_WIDTH.sidebar.default,
@@ -60,6 +71,12 @@ export function createUiStore(theme: Theme = initialTheme()) {
     },
     setPaletteOpen: (open) => {
       set({ paletteOpen: open });
+    },
+    setViewMode: (mode) => {
+      if (get().view.mode !== mode) set((state) => ({ view: { ...state.view, mode } }));
+    },
+    setPaper: (paper) => {
+      if (get().view.paper !== paper) set((state) => ({ view: { ...state.view, paper } }));
     },
   }));
 }

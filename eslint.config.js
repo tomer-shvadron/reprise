@@ -69,7 +69,7 @@ const WORKSPACES = [
   { name: 'desktop', dir: 'apps/desktop', allowed: [], typeOnly: ['web'] },
 ];
 const ENGINES = new Set(['formats', 'layout', 'audio']);
-const TEST_FILES = ['**/*.test.{ts,tsx}', '**/test/**/*.{ts,tsx}'];
+const TEST_FILES = ['**/*.test.{ts,tsx}', '**/*.bench.{ts,tsx}', '**/test/**/*.{ts,tsx}'];
 const UI_LIBRARIES = ['react', 'react-dom', 'zustand', 'dexie'];
 
 /** @param {string} self @param {string} other */

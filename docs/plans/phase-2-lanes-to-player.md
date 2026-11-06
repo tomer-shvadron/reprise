@@ -62,6 +62,8 @@ Owns `packages/layout` and `apps/web/src/features/score`. Reference: `../referen
 
 - Each effect has a snapshot test; a fixture with every effect renders without overlaps on the anchors.
 
+**Split** (the lead's ruling on #28): WP-022 delivers the effect lanes, every effect on the tab staff and one dynamics rule on every staff, at size L. The standard and percussion staves' effects (diamond heads, articulations, tremolo strokes on their stems, slides, slurs, and the lanes of a standard-only staff) are #86.
+
 ## WP-023: Standard and drum staves
 
 - **Size**: L · **Blocked by**: WP-020

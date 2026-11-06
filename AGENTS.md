@@ -87,6 +87,7 @@ pnpm lint                  # ESLint with the boundary rules, --max-warnings 0
 pnpm typecheck             # tsc -b across every workspace
 pnpm test                  # Vitest, every workspace as its own project
 pnpm format:check          # Prettier check; pnpm format writes
+pnpm bench                 # the budgets table, one bench file at a time; scaled on CI, see the budgets note
 pnpm dev                   # the web app on the Vite dev server
 pnpm build                 # production build of the web app
 pnpm desktop:dev           # the Electron app around the web core
@@ -97,17 +98,18 @@ pnpm layout:metrics:check  # fails when the committed layout font metrics are st
 pnpm test:visual           # painter screenshots against CI's baselines; pnpm visual:accept takes a failed run's
 ```
 
-The PR gate is `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check`; CI also runs `pnpm fixtures:check` and `pnpm build` ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
+The PR gate is `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check`; CI also runs `pnpm bench`, `pnpm fixtures:check` and `pnpm build` ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
 
 ## Testing
 
-Vitest, one project per workspace, defined in [vitest.config.ts](vitest.config.ts): `model`, `formats`, `layout`, `audio-node`, `desktop` and `scripts` run in node, `web` in jsdom, and `audio` in browser mode on the Playwright Chromium headless shell. `pnpm install` downloads the shell locally; in CI the install skips it and a later step installs it without `--with-deps` (#75), so a new browser-mode test needs no workflow change. `audio-node` runs the audio package's `*.node.test.ts` files in plain Node, proving the SF2 parser and the signal measurements stay DOM-free.
+Vitest, one project per workspace, defined in [vitest.config.ts](vitest.config.ts): `model`, `formats`, `layout`, `audio-node`, `desktop` and `scripts` run in node, `web` in jsdom, and `audio` and `web-browser` in browser mode on the Playwright Chromium headless shell. `web-browser` runs the web app's `*.browser.test.{ts,tsx}` files, the ones that need real Web Audio (the audio service, the open-paint-play integration test); every other web test stays in jsdom. `pnpm install` downloads the shell locally; in CI the install skips it and a later step installs it without `--with-deps` (#75), so a new browser-mode test needs no workflow change. `audio-node` runs the audio package's `*.node.test.ts` files in plain Node, proving the SF2 parser and the signal measurements stay DOM-free.
 
 - Build scores in tests with the builders from `@reprise/model/testing` (`score`, `note`, `ScoreBuilder`, `fullScore`, `largeScore`, `beatOf`, `noteOf`), not by hand.
 - The format readers are checked against alphaTab by the oracle under `packages/formats/test/oracle/`.
 - Automated tests use only the open-licensed corpus in `fixtures/` ([LICENSES.md](fixtures/LICENSES.md), `manifest.json`). `local-tabs/` holds downloaded tabs for manual testing and is never committed; a bug a local tab exposes is reproduced in a licensable fixture before it gets a test.
 - The GeneralUser GS soundfont is fetched by hash with `pnpm sounds:fetch` (pins in `scripts/sounds/gm.json`) into `apps/web/public/sounds/gm/`, and never committed.
-- Performance budgets live in the [budgets table](docs/plans/roadmap.md#budgets); a PR touching them reports before and after measurements.
+- Performance budgets live in the [budgets table](docs/plans/roadmap.md#budgets), the single source of their numbers, and are measured only by `*.bench.ts` files under `pnpm bench`, which runs each project in bench mode as `<name> (bench)`, one file at a time, never in `pnpm test` or the pre-commit hook. A PR touching them pastes the `pnpm bench` table before and after.
+- A wall-clock check left in a `*.test.ts` is a sanity bound: at least 10× the reference machine's alone measurement and 3× the worst seen in CI or under three parallel `pnpm test` runs, rounded up to the 1–2–5 series. Such a test, and any whose worst run passes 30% of its project's default timeout (5 s in Node and jsdom, 15 s in the browser), declares its own timeout, at least 4× that worst run and rounded up to 30, 60 or 120 s, so the bound fires first. Timeouts are set per test, never by raising a project default, and the unit suite uses no `retry`.
 
 ## Conventions
 

@@ -1,26 +1,20 @@
-import type { LayoutResult } from '@reprise/layout';
-import { PanelLeftIcon, PanelRightIcon, PlayIcon } from 'lucide-react';
+import { PanelLeftIcon, PanelRightIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import { Button } from '@/components/ui/button';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { ScoreView } from '@/features/score';
 import { PANEL_WIDTH, type PanelId, type UiStore } from '@/state/ui';
 
 import { ResizeHandle } from './resize-handle';
 
-// A4 at 96 dpi, the size the paper surface is laid out at 100% zoom.
-const PAGE = { width: 794, height: 1123 };
-
 interface AppFrameProps {
   ui: UiStore;
-  /** The laid-out score to paint; none until WP-050 feeds it from the document store. */
-  layout?: LayoutResult | undefined;
-  /** What the score region shows while there is no score. */
-  placeholder: ReactNode;
+  /** The score region's content: the painter, or its empty state. */
+  score: ReactNode;
+  /** The footer's playback controls. */
+  transport?: ReactNode;
 }
 
 function PanelToggle({ ui, panel, label }: { ui: UiStore; panel: PanelId; label: string }) {
@@ -48,7 +42,7 @@ function PanelToggle({ ui, panel, label }: { ui: UiStore; panel: PanelId; label:
   );
 }
 
-export function AppFrame({ ui, layout, placeholder }: AppFrameProps) {
+export function AppFrame({ ui, score, transport }: AppFrameProps) {
   const panels = useStore(ui, (state) => state.panels);
   const widths = useStore(ui, (state) => state.panelWidths);
   const zoom = useStore(ui, (state) => state.zoom);
@@ -81,22 +75,11 @@ export function AppFrame({ ui, layout, placeholder }: AppFrameProps) {
           </>
         )}
 
-        <main aria-label="Score" className="bg-muted dark:bg-muted/40 min-w-0 flex-1">
-          {layout ? (
-            <ScoreView layout={layout} zoom={zoom} className="h-full" />
-          ) : (
-            <ScrollArea className="h-full">
-              <div className="w-max min-w-full p-8">
-                <div
-                  className="bg-paper text-ink mx-auto p-12 shadow-md"
-                  style={{ width: PAGE.width * zoom, minHeight: PAGE.height * zoom }}
-                >
-                  {placeholder}
-                </div>
-              </div>
-              <ScrollBar orientation="horizontal" />
-            </ScrollArea>
-          )}
+        <main
+          aria-label="Score"
+          className="bg-muted dark:bg-muted/40 relative min-w-0 flex-1 overflow-hidden"
+        >
+          {score}
         </main>
 
         {panels.rightPanel && (
@@ -130,9 +113,7 @@ export function AppFrame({ ui, layout, placeholder }: AppFrameProps) {
       >
         <PanelToggle ui={ui} panel="sidebar" label="Toggle tracks" />
         <Separator orientation="vertical" className="h-6!" />
-        <Button variant="ghost" size="icon-sm" aria-label="Play" disabled>
-          <PlayIcon />
-        </Button>
+        {transport}
         <span className="text-muted-foreground ml-auto text-xs tabular-nums">
           {Math.round(zoom * 100)}%
         </span>
