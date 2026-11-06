@@ -242,7 +242,7 @@ Owns `packages/audio`. Reference: `../reference/sound-packs.md`, ADR-0004, ADR-0
 
 **Acceptance criteria**
 
-- `pnpm test --filter @reprise/audio` runs in CI without a sound device.
+- `pnpm --filter @reprise/audio test` runs in CI without a sound device. (Written `pnpm test --filter @reprise/audio` originally, which hands `--filter` to Vitest; corrected in WP-035.)
 
 ---
 

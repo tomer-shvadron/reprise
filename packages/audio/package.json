@@ -6,6 +6,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "test": "vitest run --root ../.. --project audio --project audio-node"
+  },
   "dependencies": {
     "@reprise/model": "workspace:*"
   }

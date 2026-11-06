@@ -15,6 +15,7 @@ import {
   sineInstrument,
   toneLevel,
 } from '../../sampler/test/offline';
+import { detectOnsets } from '../../test/signal';
 
 /** Playback starts this long after `play`; at the default 120 BPM, quarter `k` is at `T0 + k / 2`. */
 export const T0 = 0.1;
@@ -72,17 +73,7 @@ export function noiseInstrument(): Instrument {
 
 /** Seconds at which the signal rises above `floor` after at least `gap` seconds below it. */
 export function onsets(data: Float32Array, gap = 0.01, floor = 1e-3): number[] {
-  const found: number[] = [];
-  let quiet = Number.POSITIVE_INFINITY;
-  for (const [index, sample] of data.entries()) {
-    if (Math.abs(sample) > floor) {
-      if (quiet > gap * SAMPLE_RATE) found.push(index / SAMPLE_RATE);
-      quiet = 0;
-    } else {
-      quiet += 1;
-    }
-  }
-  return found;
+  return detectOnsets({ data, sampleRate: SAMPLE_RATE }, { gap, floor });
 }
 
 /** Root-sum-square of the tone levels from `low` up to 10 kHz in 250 Hz steps. */

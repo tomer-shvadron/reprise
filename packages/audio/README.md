@@ -658,3 +658,40 @@ GM budget is 80 MiB.
 | Every zone of song A's 6 sample sets | 6.9 MiB                                                        |
 | The whole GM set, every sample       | 71.5 MiB resident (121.6 MiB counted per preset), fits         |
 | Song A under half its needs          | peak at the budget, notes skipped and reloaded, nothing thrown |
+
+## Tests and the offline harness
+
+`pnpm --filter @reprise/audio test` runs the package's two Vitest projects from the root config,
+with no sound device:
+
+- **`audio`**, in Vitest browser mode on headless Chromium (Playwright): the real
+  `OfflineAudioContext`, driven through `suspend` points so the scheduler's timers fire
+  deterministically. Chosen over a Node polyfill
+  (`../../docs/research/2026-11-05-vitest-web-audio-environment.md`): a polyfill would test its
+  own `BiquadFilter` and compressor rather than the browser's. CI installs Chromium with its
+  system libraries (`playwright install --with-deps`).
+- **`audio-node`**, files named `*.node.test.ts`, in plain Node: proves that what claims to be
+  DOM-free (the signal measurements) is.
+
+`src/test/` is the shared harness, for test files only:
+
+| Helper                                    | What it does                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `renderScore(score, options)`             | A fresh engine over the real sampler and articulations, play at time 0, rendered offline. `instruments` is GeneralUser GS (the GM tier, through the memory manager, every sample decoded first) or a function per track. `tap: 'strips'` records before the master bus, without its 6 ms pre-delay; `actions` call the engine at a context time. Returns the signal, the sampler, the memory manager and every `missed` note. |
+| `loadGeneralUser()`                       | The fetched bank, parsed once; `undefined` until `pnpm sounds:fetch`, and the GM suites skip with a message.                                                                                                                                                                                                                                                                                                                  |
+| `detectOnsets(signal, { rise? })`         | Sounds after silence; with `rise`, also re-attacks over a ringing note, read off the first difference (a pick is a burst of highs).                                                                                                                                                                                                                                                                                           |
+| `pitchAt(signal, time)`                   | The fundamental by YIN, within a cent on a tone whose harmonics fool a zero-crossing count; `undefined` on noise or silence.                                                                                                                                                                                                                                                                                                  |
+| `bandEnergy(signal, low, high, from, to)` | RMS of a frequency band from a Hann-windowed FFT (a sine of amplitude `a` reads `a / √2`).                                                                                                                                                                                                                                                                                                                                    |
+| `rms`, `peak`, `toneLevel`, `cents`       | As before; `sampler/test/offline.ts` keeps its sample-array signatures over these.                                                                                                                                                                                                                                                                                                                                            |
+
+**The corpus smoke** (`src/test/fixtures.test.ts`) plays every fixture of `fixtures/` through
+the GM tier at 22.05 kHz and asserts no missed note, finite samples, a peak at most 1, sound
+when the fixture has notes, and decoded memory within the 80 MiB GM budget. Audio may not import
+`@reprise/formats`, so the project's global setup (`scripts/fixtures/provide-scores.ts`) reads the
+fixtures in Node and hands them to the browser as native documents through Vitest's `provide`;
+a format without a reader yet (gpx, WP-043) is listed as skipped. Measured: the heaviest
+fixtures are the drum ones, `percussion-all.gp5` at 5.2 MiB over 34 kit pieces and
+`drum-tabs.gp` at 4.6 MiB; the 27 fixtures render in under two seconds together.
+
+It found one gap, fixed here: `planInstruments` planned a harmonic's written key, not the
+overtone `planNote` strikes, so the first natural harmonic above the planned range skipped.
