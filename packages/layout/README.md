@@ -67,6 +67,8 @@ interface StaffModule {
 - `measure` reports, for every onset it draws (ticks from the bar start, as `beatTicks` sums them), the px it needs left and right of the onset's x, and the room it needs above the top line and below the bottom line. The engine takes the widest request per onset across all staves, so tab numbers, note heads and accidentals on different staves all push the same column apart.
 - `render` gets the bar's content area, the staff's line positions, its system index, `onsetX(tick)` and, when the bar before or after it is in the same system, that bar's content area and `onsetX` as `previous` and `next`, so a tie, slide or extent that crosses the bar line is drawn in one piece and a bar line can be told from a system break. It pushes primitives and anchors (`note` and `beat`) into the sink and must stay inside the room it measured.
 
+Every staff type has its module now; WP-022 adds effect glyphs inside the tab module's measure and render. None of them needs to touch spacing or breaking.
+
 ### Tab (`src/staves/tab/`)
 
 `tabModule({ tiedNotes })` draws one line per string, fret numbers over `paper` knockouts, rests, grace notes, the rhythm notation of each voice (voice 1 below the staff, the others above when voice 1 is present), ties, chord names, fingering, beat text, lyrics and dynamics; under a standard staff (both mode, read from `StaffBar.staves`) it draws the numbers, ties and words only. `staffSlots` builds it per layout from `LayoutOptions.tiedNotes`, which is part of the bar cache key. Its rules and numbers are in [`notation.md`](../../docs/reference/notation.md) under "Tab staff" and "Rhythm notation". It emits a `note` anchor per note (the knockout box, grace notes included) and a `beat` anchor per beat, voice by voice.
@@ -77,16 +79,15 @@ interface StaffModule {
 
 ### Rhythm notation (`src/staves/rhythm/`)
 
-Staff-agnostic helpers for any staff that draws rhythm, so WP-023 can reuse them: they take x positions, y positions and a `StemDirection`, and push primitives into the sink.
+The grouping rules every staff shares (`grouping.ts`: the beat-grouping table, beam groups and tuplet groups by alphaTab's rule) and the tab's drawing helpers (`draw.ts`: stems, flags, horizontal beams, dots, tuplet marks and ties, taking x positions, y positions and a `StemDirection`, pushing primitives into the sink). The five-line staves draw with `src/staves/standard/rhythm/`, whose beams slope; folding the two drawing sets into one is open.
 
-| Export                                                                                                                                                      | What it does                                                                                |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `RhythmEvent`, `beamCount(duration)`                                                                                                                        | A beat as rhythm sees it (tick, ticks, duration, dots, tuplet, silent); beams per duration. |
-| `beamGrouping(timeSignature)`, `beamGroups(events, signature)`                                                                                              | The beat-grouping table, and the beamed groups of a voice by index (a group of one flags).  |
-| `tupletGroups(events)`                                                                                                                                      | Runs of beats under one tuplet number.                                                      |
-| `drawStem`, `drawFlag`, `flagWidth`, `drawBeams`, `BEAM_PITCH`                                                                                              | Stems, flags by their SMuFL stem anchor, horizontal beams with partial beams.               |
-| `drawDots`, `dotsWidth`, `drawTuplet`, `drawTie`                                                                                                            | Augmentation dots, tuplet numbers with an optional bracket, ties as filled crescents.       |
-| Every staff type has its module now; WP-022 adds effect glyphs inside the tab module's measure and render. None of them needs to touch spacing or breaking. |
+| Export                                                         | What it does                                                                                |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `RhythmEvent`, `beamCount(duration)`                           | A beat as rhythm sees it (tick, ticks, duration, dots, tuplet, silent); beams per duration. |
+| `beamGrouping(timeSignature)`, `beamGroups(events, signature)` | The beat-grouping table, and the beamed groups of a voice by index (a group of one flags).  |
+| `tupletGroups(events)`                                         | Runs of beats under one tuplet number.                                                      |
+| `drawStem`, `drawFlag`, `flagWidth`, `drawBeams`, `BEAM_PITCH` | Stems, flags by their SMuFL stem anchor, horizontal beams with partial beams.               |
+| `drawDots`, `dotsWidth`, `drawTuplet`, `drawTie`               | Augmentation dots, tuplet numbers with an optional bracket, ties as filled crescents.       |
 
 ### Standard and percussion staves
 
@@ -95,7 +96,7 @@ Staff-agnostic helpers for any staff that draws rhythm, so WP-023 can reuse them
 - `standardModule({ courtesyAccidentals })` is the configuration point; the registered module has courtesy accidentals on.
 - A bar's plan reads the bar before it (courtesy accidentals, ties coming in, dynamics) and the key it cancels, so the cache keys every bar of a five-line staff on its predecessor and the previous key signature as well.
 - **Both mode**: when `StaffBar.staves` is `['standard', 'tab']`, the standard staff draws all the rhythm notation and the tab module must draw fret numbers only (`staves.includes('standard')`), and leave dynamics and fingering to the standard staff. This is the contract WP-021's tab module follows.
-- `src/staves/standard/rhythm/` is staff-agnostic rhythm notation (stems, flags, beams and beam grouping, dots, ties, tuplet marks) taking x positions, note-head y extents, directions and durations as parameters, ready to merge with the tab module's own.
+- `src/staves/standard/rhythm/` draws the five-line staves' rhythm notation (stems, flags, sloped beams, dots, ties, tuplet marks) from x positions, note-head y extents, directions and durations; beam and tuplet grouping come from the shared `src/staves/rhythm/`.
 - Anchors: one `note` anchor per head (grace notes included) with the head's box, less any width it shares with a neighbour across a stem; one `beat` anchor per beat and voice.
 
 ## Metrics pipeline
