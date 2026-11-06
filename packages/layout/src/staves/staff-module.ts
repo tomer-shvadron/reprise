@@ -1,8 +1,23 @@
-import type { Bar, Clef, KeySignature, MasterBar, Score, Track } from '@reprise/model';
+import {
+  TIE_REACH_BARS,
+  type Bar,
+  type Clef,
+  type KeySignature,
+  type MasterBar,
+  type Score,
+  type Track,
+} from '@reprise/model';
 
 import type { LayoutSink } from '../primitives';
 import type { StaffType } from '../types';
 import type { LaneBands, LaneRequests } from './lanes';
+
+/**
+ * How many bars either side of its own a module's `render` may read: a tie half at a system end
+ * looks up to `TIE_REACH_BARS` ahead for its continuation. The cache rebuilds every system within
+ * this many bars of a re-measured one.
+ */
+export const BAR_REACH = TIE_REACH_BARS;
 
 /** Vertical shape of a staff: `lines` lines, `lineSpacing` px apart. */
 export interface StaffGeometry {
@@ -88,14 +103,12 @@ export interface StaffModule {
   geometry(track: Track, space: number): StaffGeometry;
   /** Horizontal room and the room next to the staff. Reads this bar only, so the engine caches it. */
   measure(input: StaffBar): StaffBarMeasure;
-  /**
-   * The lanes the bar draws into and their heights. May read earlier bars, never later ones; the
-   * engine calls it for every bar of each system it builds and caches nothing.
-   */
+  /** The lanes the bar draws into and their heights. Reads this bar and the dynamic entering it. */
   lanes(input: StaffBar): LaneRequests;
   /**
-   * Reads this bar, for what crosses a bar line the bars up to three before and one after, and for
-   * dynamics every earlier bar; nothing beyond the next bar.
+   * Reads its own track's bars up to `BAR_REACH` either side (ties, slides, runs across bar
+   * lines), the master bars one either side, and the dynamic entering this bar; nothing else of
+   * other bars.
    */
   render(input: StaffBar, placement: StaffBarPlacement, sink: LayoutSink): void;
 }

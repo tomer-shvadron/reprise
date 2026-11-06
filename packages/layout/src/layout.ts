@@ -7,6 +7,7 @@ import {
   writeCache,
   type CachedBar,
   type CachedSystem,
+  type Cursor,
   type LayoutCache,
 } from './cache';
 import { barContexts, type BarContext } from './context';
@@ -14,8 +15,17 @@ import { measureBar, type BarMeasure } from './measure';
 import { resolveOptions, type ResolvedOptions } from './options';
 import { rect, round, type LayoutSink } from './primitives';
 import { renderSystem } from './render';
+import {
+  enteringDynamics,
+  isClean,
+  reposition,
+  sameCursor,
+  samePlan,
+  type ChangedBars,
+} from './reuse';
 import { staffBar, staffSlots, trackBar, type StaffSlot } from './slots';
 import { LANE_HEIGHT, mergeLanes, type LaneRequests } from './staves/lanes';
+import { BAR_REACH } from './staves/staff-module';
 import type { Anchor, LayoutOptions, LayoutResult, Page, Primitive, Range, System } from './types';
 import { verticalLayout, type VerticalLayout } from './vertical';
 
@@ -52,6 +62,15 @@ function barInputs(score: Score, context: BarContext, options: ResolvedOptions):
   ];
 }
 
+interface Measured {
+  measures: BarMeasure[];
+  bars: Map<Id, CachedBar>;
+  measured: number;
+  changed: ChangedBars;
+  /** Index of the last bar re-measured in this call; -1 when none was. */
+  lastChanged: number;
+}
+
 function measureAll(
   score: Score,
   contexts: readonly BarContext[],
@@ -59,45 +78,36 @@ function measureAll(
   options: ResolvedOptions,
   previous: ReadonlyMap<Id, CachedBar> | undefined,
   dirty: ReadonlySet<Id>,
-): { measures: BarMeasure[]; bars: Map<Id, CachedBar>; measured: number; firstDirty: number } {
+): Measured {
   const bars = new Map<Id, CachedBar>();
   const measures: BarMeasure[] = [];
+  const changed: ChangedBars = new Int32Array(contexts.length + 1);
   let measured = 0;
-  let firstDirty = Infinity;
+  let lastChanged = -1;
   for (const context of contexts) {
     const { id } = context.masterBar;
     const inputs = barInputs(score, context, options);
     const cached = previous?.get(id);
+    changed[context.index] = measured;
     let entry: CachedBar;
     if (cached && !dirty.has(id) && sameInputs(cached.inputs, inputs)) {
       entry = cached;
     } else {
       entry = { inputs, measure: measureBar(score, context, slots, options.space) };
       measured += 1;
-      firstDirty = Math.min(firstDirty, context.index);
+      lastChanged = context.index;
     }
     bars.set(id, entry);
     measures.push(entry.measure);
   }
-  return { measures, bars, measured, firstDirty };
+  changed[contexts.length] = measured;
+  return { measures, bars, measured, changed, lastChanged };
 }
 
 function barIds(score: Score, plan: SystemPlan): (Id | undefined)[] {
   const ids: (Id | undefined)[] = [];
   for (let i = plan.start; i <= plan.end; i++) ids.push(score.masterBars[i]?.id);
   return ids;
-}
-
-function stillValid(
-  score: Score,
-  system: CachedSystem,
-  firstDirty: number,
-  verticalKey: string | undefined,
-): boolean {
-  if (system.plan.end >= firstDirty) return false;
-  if (verticalKey !== undefined && system.verticalKey !== verticalKey) return false;
-  const ids = barIds(score, system.plan);
-  return sameInputs(ids, system.barIds);
 }
 
 /**
@@ -129,14 +139,6 @@ function laneRequests(
     }
   }
   return requests;
-}
-
-/** Where the next system goes: paged systems flow down pages, continuous ones run rightwards. */
-interface Cursor {
-  page: number;
-  x: number;
-  y: number;
-  empty: boolean;
 }
 
 function pageTop(options: ResolvedOptions, page: number): number {
@@ -192,7 +194,8 @@ function pages(options: ResolvedOptions, systems: readonly System[]): Page[] {
 /**
  * Lays out `score` for `options`. With a cache from an earlier call on the same document, bars
  * whose content is unchanged (by identity) and not listed in `options.dirtyBars` keep their
- * measurements, and systems before the first re-measured bar are reused as they were.
+ * measurements, and every system more than `BAR_REACH` bars from a re-measured bar is reused
+ * where it breaks, sits and enters with the same dynamics as before.
  */
 export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache): LayoutResult {
   const started = clock.now();
@@ -202,7 +205,7 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
 
   let state = cache ? readCache(cache) : undefined;
   if (state && state.measureKey !== resolved.measureKey) state = undefined;
-  const { measures, bars, measured, firstDirty } = measureAll(
+  const { measures, bars, measured, changed, lastChanged } = measureAll(
     score,
     contexts,
     slots,
@@ -222,32 +225,64 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
         )
       : undefined;
 
-  const kept: CachedSystem[] = [];
-  if (state && state.systemKey === resolved.systemKey) {
-    for (const system of state.systems) {
-      if (!stillValid(score, system, firstDirty, global?.key)) break;
-      kept.push(system);
-    }
-  }
-
-  const systems: CachedSystem[] = [...kept];
+  const previous = state && state.systemKey === resolved.systemKey ? state.systems : [];
+  const sameBarCount = state?.barCount === score.masterBars.length;
+  const systems: CachedSystem[] = [];
+  let reused = 0;
   let primitiveCount = 0;
   let anchorCount = 0;
-  for (const entry of kept) {
-    primitiveCount += entry.primitives.length;
-    anchorCount += entry.anchors.length;
+  const keep = (entry: CachedSystem): void => {
+    const primitives = { start: primitiveCount, end: primitiveCount + entry.primitives.length };
+    const anchors = { start: anchorCount, end: anchorCount + entry.anchors.length };
+    systems.push(reposition(entry, systems.length, primitives, anchors));
+    primitiveCount = primitives.end;
+    anchorCount = anchors.end;
+    reused += 1;
+  };
+  const unchanged = (old: CachedSystem, plan: SystemPlan): boolean =>
+    isClean(changed, plan.start, plan.end) &&
+    sameInputs(barIds(score, plan), old.barIds) &&
+    (global === undefined || old.verticalKey === global.key);
+
+  // Systems before the first change stay as they were, objects and all.
+  let next = 0;
+  for (const old of previous) {
+    if (!unchanged(old, old.plan)) break;
+    keep(old);
+    next += 1;
   }
 
   if (slots.length > 0) {
-    const last = kept.at(-1);
+    const last = systems.at(-1);
     let cursor: Cursor = last
-      ? advance(
-          resolved,
-          { page: last.system.page, x: resolved.margins.left, y: last.system.bbox.y, empty: false },
-          last.system,
-        )
+      ? advance(resolved, last.at, last.system)
       : { page: 0, x: resolved.margins.left, y: resolved.margins.top, empty: true };
+    const byStart = new Map<number, number>();
+    for (let i = next; i < previous.length; i++) {
+      const old = previous[i];
+      if (old) byStart.set(old.plan.start, i);
+    }
     for (const plan of breakSystems(measures, contexts, slots, resolved, last?.plan.end ?? 0)) {
+      const position = byStart.get(plan.start);
+      const old = position === undefined ? undefined : previous[position];
+      if (old && position !== undefined && samePlan(old.plan, plan) && unchanged(old, plan)) {
+        const at = place(resolved, cursor, old.height);
+        if (
+          sameCursor(at, old.at) &&
+          enteringDynamics(resolved.tracks, plan.start) === old.entering
+        ) {
+          keep(old);
+          cursor = advance(resolved, at, old.system);
+          // Past the last change by more than any module reads, the breaks, placements and
+          // entering dynamics all follow from this system's, so the rest is as it was.
+          if (sameBarCount && plan.start - BAR_REACH > lastChanged) {
+            for (const later of previous.slice(position + 1)) keep(later);
+            break;
+          }
+          continue;
+        }
+      }
+
       const vertical =
         global ??
         verticalLayout(
@@ -257,7 +292,7 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
           resolved,
           laneRequests(score, contexts, slots, resolved, plan.start, plan.end),
         );
-      cursor = place(resolved, cursor, vertical.height);
+      const at = place(resolved, cursor, vertical.height);
       const index = systems.length;
       const id = `system:${score.masterBars[plan.start]?.id ?? String(index)}`;
       const sink: LayoutSink = { primitives: [], anchors: [] };
@@ -270,8 +305,8 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
           options: resolved,
           plan,
           vertical,
-          x: cursor.x,
-          y: cursor.y,
+          x: at.x,
+          y: at.y,
           index,
           id,
         },
@@ -280,7 +315,7 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
       const system: System = {
         id,
         index,
-        page: cursor.page,
+        page: at.page,
         bars: { start: plan.start, end: plan.end },
         bbox: rendered.bbox,
         staves: rendered.staves,
@@ -293,11 +328,14 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
         plan,
         barIds: barIds(score, plan),
         verticalKey: vertical.key,
+        at,
+        height: vertical.height,
+        entering: cache ? enteringDynamics(resolved.tracks, plan.start) : '',
         system,
         primitives: sink.primitives,
         anchors: sink.anchors,
       });
-      cursor = advance(resolved, cursor, system);
+      cursor = advance(resolved, at, system);
     }
   }
   const systemList = systems.map(({ system }) => system);
@@ -312,6 +350,7 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
       measureKey: resolved.measureKey,
       systemKey: resolved.systemKey,
       bars,
+      barCount: score.masterBars.length,
       systems,
     });
   }
@@ -326,7 +365,7 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
       primitives: primitives.length,
       anchors: anchors.length,
       measuredBars: measured,
-      reusedSystems: kept.length,
+      reusedSystems: reused,
     },
   };
 }

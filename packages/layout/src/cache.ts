@@ -10,11 +10,24 @@ export interface CachedBar {
   measure: BarMeasure;
 }
 
+/** Where the next system goes: paged systems flow down pages, continuous ones run rightwards. */
+export interface Cursor {
+  page: number;
+  x: number;
+  y: number;
+  empty: boolean;
+}
+
 export interface CachedSystem {
   plan: SystemPlan;
   /** Master-bar ids from the system's first bar through the bar after its last. */
   barIds: (Id | undefined)[];
   verticalKey: string;
+  /** Where the system was placed, and the unrounded height it was placed with. */
+  at: Cursor;
+  height: number;
+  /** `enteringDynamics` at its first bar; empty when laid out without a cache. */
+  entering: string;
   system: System;
   primitives: Primitive[];
   anchors: Anchor[];
@@ -24,6 +37,7 @@ export interface CacheState {
   measureKey: string;
   systemKey: string;
   bars: Map<Id, CachedBar>;
+  barCount: number;
   systems: CachedSystem[];
 }
 
@@ -31,8 +45,8 @@ const states = new WeakMap<LayoutCache, CacheState>();
 
 /**
  * Per-bar measurements and the systems built from them, carried between `layout()` calls of one
- * document so an edit re-measures only the bars it touched and re-breaks from the first of them.
- * Drop it with the document.
+ * document so an edit re-measures only the bars it touched and rebuilds only the systems within
+ * reach of them. Drop it with the document.
  */
 export class LayoutCache {
   /** Master bars with a measurement held. */
