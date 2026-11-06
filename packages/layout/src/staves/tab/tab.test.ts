@@ -543,6 +543,60 @@ describe('tab staff: both mode', () => {
     expect(measured.below).toBeCloseTo(TAB.lyricRow * STAFF_SPACE, 5);
     expect({ primitives: drawn, anchors: sink.anchors.map(describeAnchor) }).toMatchSnapshot();
   });
+
+  it('leaves rhythm to the standard staff through layout()', () => {
+    const rhythm = (notation: 'tab' | 'both') => {
+      const builder = score()
+        .track('guitar', { display: { notation, octaveShift: 1 } })
+        .bar()
+        .beat('8', [note(1, 0, { dynamics: 'pp' })])
+        .beat('8', [note(1, 2)])
+        .beat('16', [note(2, 0)])
+        .beat('16', [note(2, 1)])
+        .beat('8.', [note(3, 0)])
+        .beat('32', [note(3, 2)])
+        .beat('32', [note(3, 3)])
+        .beat('8t', [note(1, 0, { dynamics: 'mf' })])
+        .beat('8t', [note(1, 1)])
+        .beat('8t', [note(1, 2)])
+        .rest('16')
+        .beat('16', [note(1, 3)]);
+      builder
+        .voice(1)
+        .beat('2', [note(5, 0)])
+        .beat('2', [note(5, 2)]);
+      const result = laid(builder.build({ ids: 'sequential' }));
+      // Sorted by the staff anchors' boxes, so each staff's own glyphs stay out of the other's.
+      const staves = result.anchors.filter((anchor) => anchor.kind === 'staff');
+      const counts = new Map<string, Record<string, number>>();
+      for (const p of result.primitives) {
+        if (!p.node || !(p.node.startsWith('beat') || p.node.startsWith('note'))) continue;
+        const middle = p.bbox.y + p.bbox.height / 2;
+        const staff = staves.find(({ bbox }) => middle >= bbox.y && middle <= bbox.y + bbox.height);
+        let part: string | undefined;
+        if (p.kind === 'line' && p.x === p.x2) part = 'stems';
+        else if (p.kind === 'path' && p.fill && p.role === 'ink') part = 'beams';
+        else if (p.kind === 'glyph') {
+          part = ['flag', 'rest', 'augmentationDot', 'tuplet', 'dynamic'].find((prefix) =>
+            p.glyph.startsWith(prefix),
+          );
+        }
+        if (!staff?.staff || part === undefined) continue;
+        const row = counts.get(staff.staff) ?? {};
+        row[part] = (row[part] ?? 0) + 1;
+        counts.set(staff.staff, row);
+      }
+      return Object.fromEntries(counts);
+    };
+    const tab = rhythm('tab');
+    const both = rhythm('both');
+    const drawn = { stems: 13, beams: 7, flag: 1, rest: 1, augmentationDot: 1, tuplet: 1 };
+    expect(both['tab']).toBeUndefined();
+    // The two staves still compare dynamics differently: per voice on the tab, in reading order
+    // on the standard staff.
+    expect(both['standard']).toEqual({ ...drawn, dynamic: 3 });
+    expect(tab['tab']).toEqual({ ...drawn, dynamic: 4 });
+  });
 });
 
 describe('tab staff: spacing', () => {
