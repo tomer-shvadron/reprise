@@ -39,9 +39,10 @@ Enforced by lint. In addition:
 
 ```
 apps/web/src/
-  app/            shell, routing, theme, command palette, keyboard map
+  app/            shell, routing, theme, command palette, keyboard map, services (the stores wired together)
+    audio/        the audio service: AudioContext, GM bank, sampler, memory manager, engine
   platform/       Platform interface + browser and electron implementations
-  state/          zustand stores: document, selection, playback, ui
+  state/          zustand stores: document, selection, playback, layout (derived), ui
   features/
     score/        SVG painter, cursor overlay, selection rendering, print view     (score lane)
     transport/    transport bar, tempo, loop, count-in, metronome controls         (lead)
@@ -452,9 +453,10 @@ Internals: a lookahead scheduler on the main thread (schedule ~200 ms ahead on a
 
 ```ts
 interface Platform {
-  openFile(filters): Promise<{ name; bytes } | undefined>;
+  openFile(filters): Promise<{ name; bytes; handle? } | undefined>;   // handle: opaque, for writeHandle
   saveFile(suggestedName, bytes, filters): Promise<string | undefined>;
   readFile(path): Promise<Uint8Array>; writeFile(path, bytes): Promise<void>;
+  writeHandle(handle, bytes): Promise<void>;   // over an opened file's handle or a path saveFile returned
   libraryDir(): Promise<string>;     // ~/Music/Reprise on desktop; OPFS root in the browser
   dataDir(): Promise<string>;        // Electron userData; OPFS in the browser
   print(): Promise<void>;
