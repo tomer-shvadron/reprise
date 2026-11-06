@@ -47,9 +47,12 @@ interface Capture {
   theme: Theme;
 }
 
-function capturesOf(scene: Scene): Capture[] {
-  const pages = scene.pages ?? [0];
+function capturesOf(scene: Scene, pageCount: (notation: NotationChoice) => number): Capture[] {
   return scene.notations.flatMap((notation) => {
+    const pages =
+      scene.pages === 'all'
+        ? Array.from({ length: pageCount(notation) }, (_, page) => page)
+        : (scene.pages ?? [0]);
     const themes: Theme[] = [
       DEFAULT_THEME,
       ...(scene.light?.includes(notation) ? ['light' as const] : []),
@@ -73,10 +76,19 @@ for (const scene of SCENES) {
     let built: Score | undefined;
     const scoreFor = () => (built ??= scoreOf(scene));
 
-    for (const capture of capturesOf(scene)) {
+    const layoutFor = (notation: NotationChoice) => {
+      const source = scoreFor();
+      return layout(source, optionsOf(scene, source, notation));
+    };
+    const pageCount = (notation: NotationChoice) => layoutFor(notation).pages.length;
+
+    for (const capture of capturesOf(scene, pageCount)) {
       it(`${capture.name}: ${scene.covers}`, async () => {
-        const source = scoreFor();
-        const result = layout(source, optionsOf(scene, source, capture.notation));
+        const result = layoutFor(capture.notation);
+        if (scene.pages === undefined) {
+          // Otherwise a scene that grows a page is cropped to page 0 without a word.
+          expect(result.pages, 'a scene without pages must fit on one page').toHaveLength(1);
+        }
         scene.guard?.(result);
         const locator = paintPage(result, capture.page, capture.theme);
         await expect.element(locator).toMatchScreenshot(capture.name);

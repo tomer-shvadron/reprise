@@ -9,8 +9,9 @@ import { longScore } from '@/features/score/test/long-score';
 import type { Theme } from './paint-page';
 
 /**
- * One scene of the reference set. Each `notations` entry is captured once per page in `pages`, in
- * the dark theme, and again in light for the entries in `light`. A guard runs on the layout
+ * One scene of the reference set. Each `notations` entry is captured once per page in `pages`
+ * (every page its layout has, for `'all'`; page 0 alone, which must be the only one, without it),
+ * in the dark theme, and again in light for the entries in `light`. A guard runs on the layout
  * before painting and proves the scene shows what it claims: when one fails, change the scene's
  * content, not the guard.
  */
@@ -22,7 +23,7 @@ export interface Scene {
   mode?: 'paged' | 'continuous';
   /** A narrower paged width than A4, to force a system break. */
   width?: number;
-  pages?: readonly number[];
+  pages?: readonly number[] | 'all';
   light?: readonly NotationChoice[];
   guard?: (result: LayoutResult) => void;
 }
@@ -381,6 +382,7 @@ export const SCENES: readonly Scene[] = [
     covers: 'Bends, slides, hammer-ons, harmonics, palm muting as Guitar Pro writes them',
     source: { fixture: 'gp5/effects.gp5' },
     notations: ALL,
+    pages: 'all',
   },
   {
     id: 'multivoice',
