@@ -6,7 +6,19 @@ import { LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from './index';
 
 /** The roadmap's budget for a cold layout of the long score; WP-027 adds the re-layout budget. */
 const COLD_BUDGET_MS = 250;
+/** The CI runner measured about 3.5× slower than a laptop on this test; WP-027 sets the final factor. */
+const CI_FACTOR = 2;
 const RUNS = 5;
+
+/** `process` is untyped here (`types: []`), so the CI flag is read without assuming it exists. */
+function onCi(): boolean {
+  const proc: unknown = Reflect.get(globalThis, 'process');
+  if (typeof proc !== 'object' || proc === null) return false;
+  const env: unknown = Reflect.get(proc, 'env');
+  if (typeof env !== 'object' || env === null) return false;
+  const ci: unknown = Reflect.get(env, 'CI');
+  return ci !== undefined && ci !== '' && ci !== 'false';
+}
 
 const options: LayoutOptions = {
   mode: 'paged',
@@ -24,14 +36,19 @@ function median(values: number[]): number {
 describe('layout budget', () => {
   const long = largeScore(8, 300, { structure: true });
 
-  it(`lays out the long score cold in under ${String(COLD_BUDGET_MS)} ms`, async ({ annotate }) => {
-    const times = Array.from({ length: RUNS }, () => layout(long, options).metrics.layoutMs);
-    const cold = median(times);
-    await annotate(
-      `cold layout of 8 tracks x 300 bars: median ${String(cold)} ms of ${times.join(', ')}`,
-    );
-    expect(cold).toBeLessThan(COLD_BUDGET_MS);
-  });
+  it(
+    `lays out the long score cold in under ${String(COLD_BUDGET_MS)} ms`,
+    { timeout: 30_000 },
+    async ({ annotate }) => {
+      const times = Array.from({ length: RUNS }, () => layout(long, options).metrics.layoutMs);
+      const cold = median(times);
+      const budget = COLD_BUDGET_MS * (onCi() ? CI_FACTOR : 1);
+      await annotate(
+        `cold layout of 8 tracks x 300 bars: median ${String(cold)} ms of ${times.join(', ')}, budget ${String(budget)} ms`,
+      );
+      expect(cold).toBeLessThan(budget);
+    },
+  );
 
   it('re-lays out a single-note edit from the cache', async ({ annotate }) => {
     const cache = new LayoutCache();
