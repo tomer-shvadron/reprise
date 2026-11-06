@@ -50,7 +50,8 @@ export default defineConfig({
           name: 'web',
           root: 'apps/web',
           environment: 'jsdom',
-          exclude: [...configDefaults.exclude, ...(measuring ? [] : [MEASURE_TESTS])],
+          // e2e/ is the visual suite, which only `pnpm test:visual` runs.
+          exclude: [...configDefaults.exclude, 'e2e/**', ...(measuring ? [] : [MEASURE_TESTS])],
           setupFiles: ['./src/test/setup.ts'],
           // Vitest empties CSS imports; score-css.test.ts reads the painter's stylesheet as text.
           css: { include: [/score\.css/] },

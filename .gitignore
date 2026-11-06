@@ -14,6 +14,9 @@ coverage/
 playwright-report/
 test-results/
 .vitest/
+# visual baselines are CI's Linux images; a developer's own references stay local
+**/__screenshots__/**/*-darwin.png
+**/__screenshots__/**/*-win32.png
 
 # local only
 local-tabs/*
