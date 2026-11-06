@@ -102,12 +102,14 @@ describe('layout', () => {
     expect(narrow.slice(1)).toEqual(wide.slice(1));
   });
 
-  it('spaces a bar with no beats like a single quarter, as alphaTab does', () => {
+  it('spaces a bar with no beats, or only empty ones, like a single quarter, as alphaTab does', () => {
     const built = score()
       .track('guitar')
       .bar()
       .rest('1')
       .bar()
+      .bar()
+      .beat('4')
       .bar()
       .masterBar({ timeSignature: { numerator: 1, denominator: 4 } })
       .rest('4')
@@ -119,7 +121,8 @@ describe('layout', () => {
     const widths = layout(built, continuous)
       .anchors.filter((anchor) => anchor.kind === 'bar' && anchor.track === undefined)
       .map((anchor) => anchor.bbox.width);
-    expect(widths[1]).toBeCloseTo(widths[3] ?? 0, 6);
+    expect(widths[1]).toBeCloseTo(widths[4] ?? 0, 6);
+    expect(widths[2]).toBeCloseTo(widths[4] ?? 0, 6);
   });
 
   it('breaks pages by system height', () => {

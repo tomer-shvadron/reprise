@@ -94,6 +94,8 @@ function columnOnsets(score: Score, slots: readonly StaffSlot[], index: number):
     if (seen.has(slot.group)) continue;
     seen.add(slot.group);
     for (const voice of trackBar(slot, index)?.voices ?? []) {
+      // Guitar Pro's unused voices, and its tacet bars, hold only empty beats.
+      if (!voice.beats.some((beat) => beat.rest || beat.notes.length > 0)) continue;
       let tick = 0;
       for (const beat of voice.beats) {
         const ticks = beatTicks(beat);
