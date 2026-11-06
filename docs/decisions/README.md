@@ -5,7 +5,7 @@ architecture decision record (ADR): the context that forced the decision, what w
 the alternatives that were rejected and why, and the consequences. The records exist so that
 anyone, including an agent picking up an issue, can see why things are the way they are
 without re-deriving or re-litigating them. The first seventeen were written from the planning
-session of 2026-11-05, 0018 and 0019 from the phase-0 reviews the same day, 0020 from the switch off Fable on 2026-11-06, 0021 from the lead's ruling on PR #68 the same day, and 0022 from the lead's ruling on #28; see `../specs/shared-understanding.md` for the session's summary.
+session of 2026-11-05, 0018 and 0019 from the phase-0 reviews the same day, 0020 from the switch off Fable on 2026-11-06, 0021 from the lead's ruling on PR #68 the same day, 0022 from the lead's ruling on #28, and 0023 from the lead's ruling on #32; see `../specs/shared-understanding.md` for the session's summary.
 
 Rules:
 
@@ -33,7 +33,7 @@ Rules:
 | 0012 | A library app, with metadata in IndexedDB through Dexie             | Accepted                                                             |
 | 0013 | Guitar Pro's arrangement, a modern minimal style, dark by default   | Accepted                                                             |
 | 0014 | Public repository, issue-driven work, PR review in GitHub           | Accepted; label families and credential notes superseded by ADR-0018 |
-| 0015 | Testing that fits a notation and audio app                          | Accepted                                                             |
+| 0015 | Testing that fits a notation and audio app                          | Accepted, superseded in part by ADR-0023                             |
 | 0016 | Serial foundation and model core, then three parallel lanes         | Accepted                                                             |
 | 0017 | The project is called Reprise                                       | Accepted                                                             |
 | 0018 | Label families and repository credentials                           | Accepted                                                             |
@@ -41,3 +41,4 @@ Rules:
 | 0020 | Plan and review with Opus at xhigh effort                           | Accepted                                                             |
 | 0021 | Rhythm on the standard staff in both mode                           | Accepted, extended by ADR-0022                                       |
 | 0022 | In both mode, lane effects are drawn once, on the tab staff         | Accepted                                                             |
+| 0023 | Visual regression in Vitest browser mode                            | Accepted                                                             |
