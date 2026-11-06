@@ -524,7 +524,7 @@ quotes.
 | `accent` normal, heavy                               | +1, +2 steps of 16, capped at 127.                                                                                                                                                                                                                                        |
 | `ghost`                                              | -2 steps.                                                                                                                                                                                                                                                                 |
 | `hammerPull` (on the destination)                    | -1 step, and the sample starts 20 ms in (`offset`), past the pick transient. After a legato slide it is no attack at all (below).                                                                                                                                         |
-| `bend`                                               | Points to a sampled detune curve (2 ms resolution, linear between points): `position` 0 to 60 across the note's own beat, `value` / 2 semitones. Prebend, release and hold shapes are the points; `kind` adds nothing. Holds after the beat.                              |
+| `bend`                                               | Points to a sampled detune curve (2 ms resolution, linear between points): `position` 0 to 60 across the note's own beat, `value` / 2 semitones. Prebend, release and hold shapes are the points; `kind` adds nothing. Holds after the beat. On a tie chain, see `tie`.   |
 | `Beat.effects.whammy`                                | The same, added to the bend (negative values dive).                                                                                                                                                                                                                       |
 | `vibrato` slight, wide; `Beat.effects.vibrato`       | A sine on detune from the onset: slight 5.5 Hz ±0.25 semitone, wide 5 Hz ±0.6; the wider of note and beat wins.                                                                                                                                                           |
 | `slide` `shift`                                      | A linear glide into `nextOnString`'s pitch over the last 25% of the note, at most 200 ms, ending on the next onset; the next note is struck.                                                                                                                              |
@@ -542,7 +542,7 @@ quotes.
 | `Beat.effects.fadeIn`, `fadeOut`                     | Level from -48 dB to 0 (or back) across the beat, linear in dB.                                                                                                                                                                                                           |
 | `Beat.effects.volumeSwell`                           | -48 dB to 0 at half the beat and back to -48 dB at its end.                                                                                                                                                                                                               |
 | `Beat.grace`                                         | Played by the sink with their own effects: grace notes `before` end on the beat (squeezed into a quarter note, the scheduler's lead); on-beat ones start on it and delay the main note (squeezed into half the beat).                                                     |
-| `tie`                                                | Nothing: the scheduler folds the continuation into the origin.                                                                                                                                                                                                            |
+| `tie`                                                | The scheduler folds the chain into the origin. A bend on the origin spans the whole tied length when no later link bends on its own, as Guitar Pro plays it (`PlanInput.bendLength`); the links' own effects are #72.                                                     |
 | `Beat.mix` volume, pan                               | From `mix`, scheduled on the strip at the beat (`setTrack(..., { at, ramp })`), a linear glide over `duration` quarter notes when given; `allTracks` applies it to every track. Rests and tied continuations included.                                                    |
 
 On drum tracks only velocity (dynamics, accents, ghost), fades, trills and tremolo apply; drum
@@ -579,9 +579,9 @@ vibrato, trills, tremolo, dynamics and fades stay automation in both tiers.
 
 ### Known and deliberate
 
-- **Effects of a tied continuation are not played.** The scheduler folds the continuation into
-  its origin and never sends it, so a bend or vibrato written on the tied note is lost; the
-  origin's bend holds its last value across the tie.
+- **Effects written on a tied link are not played yet** (#72). The event carries the links as
+  `continuations`, but the planner reads the origin's effects only, so a bend or vibrato written
+  on a later link is lost. The one rule already in place is the bend span above.
 - **A legato slide's destination keeps its origin's tone.** A `BiquadFilter`'s type switches at
   once, not at a time, so a carried voice cannot change from a palm-muted low-pass to a
   harmonic's shelf without affecting the note still sounding.

@@ -162,13 +162,18 @@ export function createSamplerSink(
       const secondsPerTick = event.durationTicks > 0 ? event.duration / event.durationTicks : 0;
       const { graces, delay } = placeGraces(event, secondsPerTick, sampler.context.currentTime);
       for (const grace of graces) play(track.id, grace);
+      const length = Math.max(0, event.duration - delay);
+      const beatLength = Math.max(0, beatTicks(beat) * secondsPerTick - delay);
+      // Guitar Pro spans a bend over the tied length unless a later link bends on its own.
+      const bendLength = event.continuations.some((link) => link.note.bend) ? beatLength : length;
       play(track.id, {
         track,
         note,
         effects: beat.effects,
         when: event.when + delay,
-        length: Math.max(0, event.duration - delay),
-        beatLength: Math.max(0, beatTicks(beat) * secondsPerTick - delay),
+        length,
+        beatLength,
+        bendLength,
         secondsPerTick,
         barEnd: event.barEnd,
         next: event.nextOnString,

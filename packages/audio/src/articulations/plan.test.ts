@@ -86,6 +86,25 @@ describe('planNote', () => {
     expect(plan.strikes[0]).toMatchObject({ key: 69, detune: 2 });
   });
 
+  it('spans a bend over the tied length it is given, and over the beat otherwise', () => {
+    const bent = note(1, 5, {
+      bend: {
+        kind: 'bend',
+        points: [
+          { position: 0, value: 0 },
+          { position: 60, value: 4 },
+        ],
+      },
+    });
+    const beat = planNote(input(guitar, bent, { length: 2 }));
+    const chain = planNote(input(guitar, bent, { length: 2, bendLength: 2 }));
+
+    // Half a second in, the beat-long bend has arrived and the chain-long one is a quarter way.
+    expect(beat.pitch?.(1.5)).toBeCloseTo(2, 9);
+    expect(chain.pitch?.(1.5)).toBeCloseTo(0.5, 9);
+    expect(chain.pitch?.(3)).toBeCloseTo(2, 9);
+  });
+
   it('skips the attack of a hammer-on and plays it a step softer', () => {
     const [strike] = planNote(input(guitar, note(1, 7, { hammerPull: true }))).strikes;
     expect(strike?.offset).toBe(ARTICULATION.hammerOffset);
