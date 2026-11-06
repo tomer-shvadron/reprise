@@ -185,7 +185,7 @@ Budgets are starting points. Changing one is a one-line PR to this table plus th
 3. A lane works in its own git worktree on a branch named `wp-0NN-short-slug` and opens one PR per work package.
 4. A PR's description states what was verified and how, links its issue, and includes measurements for anything the budgets table covers.
 5. Integration PRs are lead-only and are where lanes first meet. A lane does not wire its output into the app shell; it exposes the contract and ships a demo route or a story under its feature folder instead.
-6. Every PR is reviewed by an Opus agent at xhigh effort before merge: it posts its findings on the PR as review comments and changes nothing on the branch; an Opus agent at medium effort fixes the blockers and shoulds on the branch with new commits and answers each thread; the lead merges in dependency order once CI is green, and a stacked branch is brought up to date by merging `main` in, never by rewriting history (ADR-0019).
+6. Every PR is reviewed by an Opus agent at xhigh effort before merge: it posts its findings on the PR as review comments and changes nothing on the branch; an Opus agent at medium effort fixes the blockers and shoulds on the branch with new commits and answers each thread; the lead merges in dependency order once CI is green, and a stacked branch is brought up to date by merging `main` in, never by rewriting history (ADR-0019, ADR-0020).
 
 ## From work package to issue
 

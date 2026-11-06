@@ -17,16 +17,17 @@ The rule, in the owner's words:
 
 > Whenever the owner gives a coding task: 1) create a GitHub issue for it; 2) plan the implementation with an Opus sub-agent at xhigh effort, posting the plan on the issue; 3) implement the plan with an Opus sub-agent at medium effort that commits, pushes and opens the PR; 4) review the PR with an Opus sub-agent at xhigh effort that posts findings as PR review comments; 5) fix the review comments with an Opus sub-agent at medium effort. The lead merges after CI is green.
 
-Amended on 2026-11-06 from Fable to Opus at xhigh effort, when the Fable monthly limit ran out; Fable is not used unless the owner says so.
+Amended on 2026-11-06 from Fable to Opus at xhigh effort, when the Fable monthly limit ran out; Fable is not used unless the owner says so ([ADR-0020](docs/decisions/0020-plan-and-review-with-opus-at-xhigh-effort.md)).
+
+A coding task is any change to code, tests, configuration, scripts or the build, and gets all five steps. A change that touches only Markdown files skips the plan step (step 2) and keeps implement, review and fix.
 
 "The lead" is the Claude session the owner talks to. Around the rule:
 
 - Issues map to the work packages in [docs/plans/](docs/plans/), one issue per work package, filed as [CONTRIBUTING.md](CONTRIBUTING.md#from-plan-to-issue) describes.
-- Every PR is reviewed at a higher reasoning effort (xhigh) than the one it was written at (medium) ([ADR-0019](docs/decisions/0019-review-by-a-stronger-model-before-merge.md)).
-- Docs-only changes skip the plan step (step 2) but keep implement, review and fix.
-- Review (step 4): the reviewer changes nothing on the branch. It posts one PR review with inline comments tagged `[blocker]`, `[should]` or `[nit]`, and a summary.
+- Every PR is reviewed at xhigh effort, above the medium effort it was written at ([ADR-0020](docs/decisions/0020-plan-and-review-with-opus-at-xhigh-effort.md)).
+- Review (step 4): the reviewer changes nothing on the branch. It posts its findings as one PR review with inline comments tagged `[blocker]`, `[should]` or `[nit]`, and a summary.
 - Fix (step 5): the fixer commits on the PR branch in small commits, answers each review thread with what it did or why not, and reports back.
-- The lead merges when every `[blocker]` and `[should]` is resolved and CI is green, with `gh pr merge --squash --auto --delete-branch`. The squash subject is `<PR title> (#N)`; the body is a short summary plus the `Co-Authored-By` trailers of both the implementing and the reviewing model and the `Claude-Session` line. `main` changes no other way.
+- The lead merges when every `[blocker]` and `[should]` is resolved and CI is green, with `gh pr merge --squash --auto --delete-branch`. The squash subject is `<PR title> (#N)`; the body is a short summary plus one `Co-Authored-By` line per distinct model that wrote commits on the branch (today only Opus) and the `Claude-Session` line. `main` changes no other way.
 - The lead moves the issue's item on the **Reprise** board: Backlog, Ready, In progress, In review, Done.
 - A stacked branch is brought up to date by merging `origin/main` into it, never by rebasing.
 - Branches are deleted at merge time, which closes every PR stacked on the base. Retarget stacked PRs to `main` before the base PR is merged. A PR closed that way is reopened before anything is pushed to its head (GitHub refuses to reopen a PR whose head moved), and otherwise recreated.
@@ -120,4 +121,4 @@ Vitest, one project per workspace, defined in [vitest.config.ts](vitest.config.t
 
 ## Quota
 
-Running many heavy sub-agents at once (nine review agents in parallel) exhausted the account's 5-hour limit twice. Stagger reviews rather than launching them together. After a 429, resume each stopped agent by sending it a message, which continues its transcript, instead of restarting it, and check each worktree's `git status` first so no work is redone or lost. When a model's limit is exhausted outright rather than for five hours, stopped agents cannot be resumed on it: brief fresh agents on the PR's review comments and the worktree's `git status` instead.
+Running many heavy sub-agents at once (nine review agents in parallel) exhausted the account's 5-hour limit twice. Stagger reviews rather than launching them together. After a 429, resume each stopped agent by sending it a message, which continues its transcript, instead of restarting it, and check each worktree's `git status` first so no work is redone or lost. When a model's limit is exhausted outright rather than for five hours, stopped agents cannot be resumed on it: brief fresh agents, on the workflow's model, on the PR, its comments and the worktree's `git status` instead.
