@@ -15,7 +15,7 @@ const WHITESPACE = new Set([0x20, 0x09, 0x0a, 0x0d]);
 
 /** Whether the bytes open with a JSON object, past an optional BOM and leading whitespace. */
 function opensJsonObject(bytes: Uint8Array): boolean {
-  let at = startsWith(bytes, 'ï»¿') ? 3 : 0;
+  let at = startsWith(bytes, '\u00ef\u00bb\u00bf') ? 3 : 0;
   while (at < bytes.length && WHITESPACE.has(bytes[at] ?? 0)) at++;
   return bytes[at] === 0x7b;
 }
