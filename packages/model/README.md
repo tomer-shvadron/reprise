@@ -177,7 +177,7 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   there is none.
 - **Mixer changes** (`Beat.mix`): `volume`, `pan`, `chorus`, `reverb`, `phaser`, `tremolo` are
   each `{ value, duration?, allTracks? }`, `tempo` is a `TempoMark` plus `duration`, plus an
-  optional `program` change. `duration` is the transition length in beats (absent = immediate).
+  optional `program` change; `duration` is the transition, in quarter notes (absent = immediate).
   `allTracks` mirrors GP5's per-field "apply to all tracks" bit; tempo is global anyway. gpif's
   linear tempo ramps run from the previous automation into the new one; a reader approximates
   them as a change at the ramp's start with `duration` set to the distance.

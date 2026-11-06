@@ -31,7 +31,7 @@ Score ─ id, meta (title, artist, … , notices)
 - **Chords.** `Beat.chord.name` alone is a chord symbol written above the beat; `diagram` adds the grid (`baseFret`, one absolute fret per string from string 1, `null` muted, 0 open, optional `barres` and `fingering`).
 - **Grace notes** are `Beat.grace`, an array of grace beats (16th, 32nd or 64th), played `before` the beat's time or on it. Their connection to the main note uses ordinary note fields: a slide or bend on the grace note, `hammerPull` on the main note. A grace note is never tied (`GraceNoteSchema` refuses `tie: true`).
 - **Lyrics** exist twice. `Track.lyrics` is Guitar Pro's raw block (up to five lines of `{ startBar, text }`, `startBar` 0-based), kept for lossless import and export. `Beat.lyrics` is what layout draws: one syllable per line, index = line, `''` where a line has nothing on that beat.
-- **Mixer changes** (`Beat.mix`) are mid-song changes of program, volume, pan, chorus, reverb, phaser, tremolo and tempo, each with an optional transition `duration` in beats (quarter notes for tempo); absent is immediate.
+- **Mixer changes** (`Beat.mix`) are mid-song changes of program, volume, pan, chorus, reverb, phaser, tremolo and tempo, each with an optional transition `duration` in quarter notes; absent is immediate.
 
 The empty score (`createEmptyScore()`) is one fretted track in E standard, one 4/4 bar at 120 BPM, and four empty voices. Factories (`createTrack(kind, options)`, `createMasterBar`, `createBar`, `createBeat`, `createNote`, `createVoice`, `createScoreMeta`) fill every required field with its default.
 

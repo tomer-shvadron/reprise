@@ -74,7 +74,7 @@ file bytes --formats.read--> Score --------+--> layout.layout(score, options) --
 
 **Frozen on 2026-11-05 at WP-015.** Changes after this date are `type:contract` issues owned by the lead.
 
-Changed by #62 (2026-11-05): a tie's origin is the most recent note on its string in its voice within three bars, not only the previous beat (`tieOriginOf`, `TIE_REACH_BARS`); `newId()` draws its random bytes from a pooled buffer, with the same format and distribution. Widened by #65 (2026-11-05): `tieChainOf`, the forward walk in score order, is exported; a grace note may not carry `tie` (`GraceNoteSchema`).
+Changed by #62 (2026-11-05): a tie's origin is the most recent note on its string in its voice within three bars, not only the previous beat (`tieOriginOf`, `TIE_REACH_BARS`); `newId()` draws its random bytes from a pooled buffer, with the same format and distribution. Widened by #65 (2026-11-05): `tieChainOf`, the forward walk in score order, is exported; a grace note may not carry `tie` (`GraceNoteSchema`); `ChannelMixChange.duration` counts quarter notes, the unit the #66 review ruled; and the audio sink contract (`packages/audio/README.md`) gains `InstrumentSink.mix?(MixEvent)` for beat-level mixer changes, replayed at each run start, and `NoteEvent.continuations`, the tied links folded into an onset.
 
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
 
@@ -167,7 +167,7 @@ interface Beat {
   lyrics?: string[];             // one syllable per lyric line, index = line, up to five; '' where a line has none
 }
 interface Stroke           { direction: 'up' | 'down'; duration?: 4 | 8 | 16 | 32 | 64 | 128 }   // spread of the stroke
-interface ChannelMixChange { value: number; duration?: number; allTracks?: boolean }   // value 0..127; duration >= 1 in beats, absent = immediate
+interface ChannelMixChange { value: number; duration?: number; allTracks?: boolean }   // value 0..127; duration >= 1 in quarter notes, absent = immediate
 interface BendPoint        { position: number; value: number }   // position 0..60 across the note's duration; value in quarter tones; a bend or whammy has at least two
 
 interface ChordDiagram {

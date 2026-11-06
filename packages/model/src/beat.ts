@@ -81,7 +81,7 @@ export const GraceBeatSchema = z.object({
 });
 export type GraceBeat = z.infer<typeof GraceBeatSchema>;
 
-/** Transition length in beats; absent = immediate. */
+/** Transition length in quarter notes; absent = immediate. */
 const MixTransitionSchema = z.int().min(1).exactOptional();
 
 export const ChannelMixChangeSchema = z.object({
