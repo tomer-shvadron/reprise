@@ -164,19 +164,21 @@ flowchart TB
 
 ## Budgets
 
-Asserted by the benchmark test from WP-027 onward, on the reference "long score": 8 tracks, 300 bars, mixed notation.
+Measured on the reference "long score": 8 tracks, 300 bars, mixed notation.
 
-| Metric                                      | Budget |
-| ------------------------------------------- | ------ |
-| Full layout, cold                           | 250 ms |
-| Re-layout after a single-note edit          | 16 ms  |
-| Mounted SVG elements at any zoom            | 20 000 |
-| Decoded audio resident, GM tier, any song   | 80 MB  |
-| Decoded audio resident, HQ tier, default    | 300 MB |
-| Renderer heap after opening the long score  | 400 MB |
-| Time from file drop to first paint          | 500 ms |
+| Metric                                      | Budget | Asserted by                                          |
+| ------------------------------------------- | ------ | ---------------------------------------------------- |
+| Full layout, cold                           | 250 ms | `packages/layout/src/layout.bench.ts`                |
+| Re-layout after a single-note edit          | 16 ms  | `packages/layout/src/layout.bench.ts`                |
+| Mounted SVG elements at any zoom            | 20 000 | `apps/web/src/features/score/budget.test.ts`         |
+| Decoded audio resident, GM tier, any song   | 80 MB  | `packages/audio/src/samples/memory-budget.test.ts`   |
+| Decoded audio resident, HQ tier, default    | 300 MB | WP-094                                               |
+| Renderer heap after opening the long score  | 400 MB | WP-055                                               |
+| Time from file drop to first paint          | 500 ms | WP-055                                               |
 
-Budgets are starting points. Changing one is a one-line PR to this table plus the test, with the measurement in the PR body.
+Measured by `pnpm bench`: the `*.bench.ts` files run one at a time after three warm-up iterations, never inside the parallel `pnpm test`, and CI runs them as their own step after the tests. A time budget holds on the reference machine, an Apple M4 Pro (14 cores) on Node 24, and is multiplied by 3 on CI, a GitHub-hosted `ubuntu-latest` runner (4 vCPU x64): steps that have the runner to themselves measured 1.6 to 2.6 times slower there (#90). Byte and element budgets are deterministic and never scaled. A `.test.ts` in the last column asserts its budget in the unit suite; a work package there has not measured it yet. The re-layout row is reported, not enforced, until WP-027 brings it under 16 ms (about 30 ms today).
+
+Budgets are starting points. Changing one is a one-line PR to this table, with `pnpm bench` before and after in the PR body.
 
 ## Lane rules
 

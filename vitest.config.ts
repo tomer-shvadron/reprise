@@ -3,16 +3,23 @@ import { fileURLToPath } from 'node:url';
 import { playwright } from '@vitest/browser-playwright';
 import { configDefaults, defineConfig } from 'vitest/config';
 
+import { loadBudgets } from './scripts/bench/budgets.ts';
+
 // Audio runs in the browser; files named `*.node.test.ts` prove a module also runs under Node.
 const AUDIO_NODE_TESTS = '**/*.node.test.ts';
 
-// Long-score measurements, kept out of the parallel unit run until `pnpm bench` (#90) takes them.
-const MEASURE_TESTS = '**/*.measure.test.{ts,tsx}';
-const measuring = Boolean(process.env['REPRISE_MEASURE']);
+const { budgets, error: budgetsError } = loadBudgets(
+  fileURLToPath(new URL('docs/plans/roadmap.md', import.meta.url)),
+  process.env,
+);
 
 export default defineConfig({
   test: {
     reporters: ['verbose'],
+    // Read by the *.bench.ts files through inject(); those run only under `pnpm bench`.
+    provide: { budgets, budgetsError },
+    // The export-getter tracker this turns off added half again to cold layout (110 ms against 70).
+    benchmark: { suppressExportGetterWarnings: true },
     projects: [
       { test: { name: 'model', root: 'packages/model', environment: 'node' } },
       { test: { name: 'formats', root: 'packages/formats', environment: 'node' } },
@@ -50,7 +57,6 @@ export default defineConfig({
           name: 'web',
           root: 'apps/web',
           environment: 'jsdom',
-          exclude: [...configDefaults.exclude, ...(measuring ? [] : [MEASURE_TESTS])],
           setupFiles: ['./src/test/setup.ts'],
           // Vitest empties CSS imports; score-css.test.ts reads the painter's stylesheet as text.
           css: { include: [/score\.css/] },
