@@ -20,3 +20,4 @@ export function staffModule(type: StaffType, display: StaffDisplay): StaffModule
 }
 
 export type * from './staff-module';
+export * from './lanes';

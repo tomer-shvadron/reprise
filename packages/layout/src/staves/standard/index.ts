@@ -1,8 +1,14 @@
+import { LANE_HEIGHT, type LaneRequests } from '../lanes';
 import type { StaffBar, StaffBarMeasure, StaffBarPlacement, StaffModule } from '../staff-module';
-import { planBar, type BarPlan, type NotationOptions } from './plan';
+import { glyphWidth } from '../../primitives';
+import { DYNAMICS_GLYPHS, beatDynamics, reservedDynamics, shownDynamics } from '../dynamics';
+import { MIN_ROOM, planBar, type BarPlan, type NotationOptions } from './plan';
 import { renderBar } from './render';
 
 export type { NotationOptions } from './plan';
+
+/** Room kept either side of a dynamic beyond its glyph, in staff spaces. */
+const DYNAMICS_SIDE = 0.2;
 
 const DEFAULTS: NotationOptions = { percussion: false, courtesyAccidentals: true };
 
@@ -38,15 +44,30 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
   };
   return {
     type,
+    minRoom: { above: MIN_ROOM, below: MIN_ROOM },
     geometry: (_track, space) => ({ lines: 5, lineSpacing: space }),
     measure(input: StaffBar): StaffBarMeasure {
       const plan = planned(input);
-      const onsets = plan.beats.map((beat) =>
-        beat.rest?.centred
+      const reserved = reservedDynamics(input.bar);
+      const onsets = plan.beats.map((beat) => {
+        const onset = beat.rest?.centred
           ? { tick: beat.tick, left: beat.rest.width / 2, right: beat.rest.width / 2 }
-          : { tick: beat.tick, left: -beat.left, right: beat.right },
-      );
+          : { tick: beat.tick, left: -beat.left, right: beat.right };
+        const dynamics = reserved.has(beat.beat.id) ? beatDynamics(beat.beat) : undefined;
+        if (dynamics) {
+          const half = glyphWidth(DYNAMICS_GLYPHS[dynamics], input.space) / 2;
+          const room = half + DYNAMICS_SIDE * input.space;
+          onset.left = Math.max(onset.left, room);
+          onset.right = Math.max(onset.right, room);
+        }
+        return onset;
+      });
       return { onsets, above: plan.above, below: plan.below };
+    },
+    lanes(input: StaffBar): LaneRequests {
+      return shownDynamics(input.track, input.barIndex).size > 0
+        ? { dynamics: LANE_HEIGHT.dynamics * input.space }
+        : {};
     },
     render(input: StaffBar, placement: StaffBarPlacement, sink): void {
       renderBar(input, placement, sink, planned(input), type);

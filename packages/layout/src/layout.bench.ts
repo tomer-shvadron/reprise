@@ -4,6 +4,7 @@ import { expect, test } from 'vitest';
 
 import { LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from './index';
 import { checkBudget, recordMeasurement } from './test/budget';
+import { withEffects } from './test/effects';
 
 // tinybench: exactly 15 timed iterations after 3 untimed ones; #90's prototype found one too few.
 const RUN = { iterations: 15, time: 0, warmupIterations: 3, warmupTime: 0 };
@@ -101,4 +102,23 @@ test('Full layout, cold, standard notation', BENCH, async (context) => {
     )
     .run(RUN);
   await recordMeasurement(context, 'Full layout, cold, standard notation', result.latency.p50);
+});
+
+test('Full layout, cold, with note effects', BENCH, async (context) => {
+  const effectScore = (): Score => withEffects(longScore());
+  let fresh = effectScore();
+  const result = await context
+    .bench(
+      'Full layout, cold, with note effects',
+      {
+        beforeEach() {
+          fresh = effectScore();
+        },
+      },
+      () => {
+        layout(fresh, options);
+      },
+    )
+    .run(RUN);
+  await recordMeasurement(context, 'Full layout, cold, with note effects', result.latency.p50);
 });

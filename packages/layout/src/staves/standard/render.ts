@@ -3,7 +3,7 @@ import { beatTicks, type Id } from '@reprise/model';
 import { engraving } from '../../metrics';
 import { glyph, glyphWidth, line, rect, union, type LayoutSink } from '../../primitives';
 import type { Rect, StaffType } from '../../types';
-import { DYNAMICS_GLYPHS } from '../dynamics';
+import { DYNAMICS_GLYPHS, dynamicsBaseline, shownDynamics } from '../dynamics';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
 import type { ChordPlan } from './chord';
 import { GRACE_SCALE, noteMatches, type BarPlan, type BeatPlan } from './plan';
@@ -267,13 +267,16 @@ export function renderBar(
 
   drawTies(context, fretted);
 
+  const shown = shownDynamics(input.track, input.barIndex);
+  const lane = placement.lanes.dynamics;
   for (const beat of plan.beats) {
     const x = beatX(context, beat);
-    if (beat.dynamics) {
-      const name = DYNAMICS_GLYPHS[beat.dynamics.value];
+    const dynamics = shown.get(beat.beat.id);
+    if (dynamics && lane) {
+      const name = DYNAMICS_GLYPHS[dynamics];
       sink.primitives.push(
-        glyph(name, x - glyphWidth(name, space) / 2, top + plan.dynamicsY, space, {
-          node: beat.dynamics.note.id,
+        glyph(name, x - glyphWidth(name, space) / 2, dynamicsBaseline(lane.top, space), space, {
+          node: beat.beat.id,
         }),
       );
     }

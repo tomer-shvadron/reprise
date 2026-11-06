@@ -2,7 +2,7 @@ import type { Duration, Id } from '@reprise/model';
 
 import bravura from '../../metrics/bravura.json' with { type: 'json' };
 import { engraving, glyphMetrics, type GlyphName } from '../../metrics';
-import { glyph, line, polyline, rect, round, type LayoutSink } from '../../primitives';
+import { glyph, line, path, polyline, rect, round, type LayoutSink } from '../../primitives';
 import type { PathPrimitive, Rect, ThemeRole } from '../../types';
 
 /** Which way stems point from the notes: `down` hangs below them, `up` rises above. */
@@ -25,27 +25,7 @@ const DOT_SPACING = 0.5;
 /** Tie height as a share of its span, and the limits it keeps within, in staff spaces. */
 const TIE_RISE = 0.12;
 const TIE_MIN_HEIGHT = 0.3;
-const TIE_MAX_HEIGHT = 0.6;
-
-function path(
-  d: string,
-  bbox: Rect,
-  fill: boolean,
-  thickness: number,
-  options: Drawn,
-): PathPrimitive {
-  return {
-    kind: 'path',
-    x: bbox.x,
-    y: bbox.y,
-    d,
-    fill,
-    thickness: round(thickness),
-    bbox,
-    role: options.role ?? 'ink',
-    ...(options.node !== undefined && { node: options.node }),
-  };
-}
+export const TIE_MAX_HEIGHT = 0.6;
 
 const p = (x: number, y: number): string => `${String(round(x))} ${String(round(y))}`;
 
@@ -277,6 +257,11 @@ export function drawTuplet(
   );
 }
 
+/** How far a tie or slur spanning `span` px bulges from its ends. */
+export function tieHeight(span: number, space: number): number {
+  return Math.min(TIE_MAX_HEIGHT * space, Math.max(TIE_MIN_HEIGHT * space, TIE_RISE * span));
+}
+
 /**
  * A tie from (`left`, `y`) to (`right`, `y`), bulging `direction`: a filled crescent, thin at the
  * ends and Bravura's tie midpoint thickness at the middle.
@@ -292,10 +277,7 @@ export function drawTie(
 ): void {
   if (right - left < space * 0.2) return;
   const s = sign(direction);
-  const height = Math.min(
-    TIE_MAX_HEIGHT * space,
-    Math.max(TIE_MIN_HEIGHT * space, TIE_RISE * (right - left)),
-  );
+  const height = tieHeight(right - left, space);
   // A symmetric cubic reaches three quarters of its control points' offset.
   const outer = (height * 4) / 3;
   const inner = ((height - engraving.tieMidpointThickness * space) * 4) / 3;

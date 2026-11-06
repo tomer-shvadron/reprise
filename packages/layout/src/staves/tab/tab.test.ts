@@ -491,6 +491,41 @@ describe('tab staff: words', () => {
   });
 });
 
+describe('tab staff: lanes', () => {
+  it('lines up words and dynamics across the bars of a system, whatever each bar holds', () => {
+    const built = guitar()
+      .bar()
+      .beat('2', [note(1, 0)], { chord: { name: 'Am' }, lyrics: ['one'] })
+      .beat('2', [note(1, 0, { dynamics: 'p' })])
+      .bar()
+      .beat('2', [note(1, 0, { dynamics: 'mf' })], { chord: { name: 'C' }, lyrics: ['two'] })
+      .beat('2', [note(1, 0)])
+      .voice(1)
+      .beat('8', [note(3, 2)])
+      .beat('8', [note(3, 2)])
+      .beat('4', [note(3, 2)])
+      .beat('2', [note(3, 2)])
+      .bar()
+      .beat('2', [note(1, 0)], { chord: { name: 'G' }, lyrics: ['three'] })
+      .beat('2', [note(1, 0, { dynamics: 'ff' })])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    expect(result.systems).toHaveLength(1);
+    const ys = (keep: (p: LayoutResult['primitives'][number]) => boolean) =>
+      new Set(result.primitives.filter(keep).map((p) => p.y));
+    const chords = ys((p) => p.kind === 'text' && ['Am', 'C', 'G'].includes(p.text));
+    const lyrics = ys((p) => p.kind === 'text' && ['one', 'two', 'three'].includes(p.text));
+    const dynamics = ys((p) => p.kind === 'glyph' && p.glyph.startsWith('dynamic'));
+    expect([chords.size, lyrics.size, dynamics.size]).toEqual([1, 1, 1]);
+    const [chordY] = chords;
+    const upperStems = result.primitives.flatMap((p) =>
+      p.kind === 'line' && p.node === 'beat00000008' && p.y2 < p.y ? [p.y2] : [],
+    );
+    expect(upperStems.length).toBeGreaterThan(0);
+    expect(chordY).toBeLessThan(Math.min(...upperStems));
+  });
+});
+
 describe('tab staff: both mode', () => {
   it('shows numbers, ties and words only under a standard staff', () => {
     const built = score()
@@ -512,16 +547,28 @@ describe('tab staff: both mode', () => {
     const geometry = module.geometry(input.track, STAFF_SPACE);
     const sink: LayoutSink = { primitives: [], anchors: [] };
     const measured = module.measure(input);
+    const lanes = module.lanes(input);
+    const bottom = geometry.lineSpacing * (geometry.lines - 1);
+    const chord = lanes.chord ?? 0;
     module.render(
       input,
       {
         x: 0,
         width: 200,
         top: 0,
-        bottom: geometry.lineSpacing * (geometry.lines - 1),
+        bottom,
         geometry,
         system: 0,
         onsetX: (tick) => 20 + tick / 24,
+        lanes: {
+          chord: { top: -measured.above - chord, bottom: -measured.above },
+          text: {
+            top: -measured.above - chord - (lanes.text ?? 0),
+            bottom: -measured.above - chord,
+          },
+          lyrics: { top: bottom, bottom: bottom + (lanes.lyrics ?? 0) },
+        },
+        lineStart: true,
       },
       sink,
     );
@@ -540,7 +587,8 @@ describe('tab staff: both mode', () => {
     expect(
       sink.primitives.filter((p) => p.kind === 'path' && p.fill && p.role === 'ink'),
     ).toHaveLength(1);
-    expect(measured.below).toBeCloseTo(TAB.lyricRow * STAFF_SPACE, 5);
+    expect(measured.below).toBe(0);
+    expect(lanes.lyrics).toBeCloseTo(TAB.lyricRow * STAFF_SPACE, 5);
     expect({ primitives: drawn, anchors: sink.anchors.map(describeAnchor) }).toMatchSnapshot();
   });
 
@@ -592,9 +640,8 @@ describe('tab staff: both mode', () => {
     const both = rhythm('both');
     const drawn = { stems: 13, beams: 7, flag: 1, rest: 1, augmentationDot: 1, tuplet: 1 };
     expect(both['tab']).toBeUndefined();
-    // The two staves still compare dynamics differently: per voice on the tab, in reading order
-    // on the standard staff.
-    expect(both['standard']).toEqual({ ...drawn, dynamic: 3 });
+    // One dynamics rule on every staff (#76).
+    expect(both['standard']).toEqual({ ...drawn, dynamic: 4 });
     expect(tab['tab']).toEqual({ ...drawn, dynamic: 4 });
   });
 });

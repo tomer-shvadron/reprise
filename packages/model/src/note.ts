@@ -65,7 +65,11 @@ export type HarmonicKind = z.infer<typeof HarmonicKindSchema>;
 
 export const HarmonicSchema = z.object({
   kind: HarmonicKindSchema,
-  /** The harmonic's fret position, fractional for in-between nodes (2.7, 3.2, 5.8). */
+  /**
+   * Fractional for in-between nodes (2.7, 3.2, 5.8). For a natural harmonic, the node's fret
+   * position; for every other kind, the node's offset above the fretted note (layout writes
+   * `fret + value`).
+   */
   value: z.number().min(0).exactOptional(),
 });
 export type Harmonic = z.infer<typeof HarmonicSchema>;
