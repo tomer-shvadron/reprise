@@ -97,13 +97,19 @@ describe('fetchSoundfont', () => {
     ).toBe('network');
   });
 
-  it('tells the user how to fetch a missing bank', async () => {
-    await expect(
-      fetchSoundfont(
-        'sf2',
-        () => undefined,
-        () => Promise.resolve(new Response(null, { status: 404 })),
-      ),
-    ).rejects.toThrow('Run pnpm sounds:fetch');
+  it('tells the user to restore a missing bank, and only the developer how to fetch it', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const failure = fetchSoundfont(
+      'sf2',
+      () => undefined,
+      () => Promise.resolve(new Response(null, { status: 404 })),
+    );
+
+    await expect(failure).rejects.toThrow(
+      'The sound bank is missing. Reinstall Reprise or restore sounds/gm/GeneralUser-GS.sf2.',
+    );
+    await expect(failure).rejects.not.toThrow('pnpm');
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining('pnpm sounds:fetch'));
+    logged.mockRestore();
   });
 });

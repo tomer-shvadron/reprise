@@ -17,8 +17,14 @@ export type SoundfontLoader = (onProgress: SoundfontProgress) => Promise<Uint8Ar
 
 export const GM_SOUNDFONT_PATH = 'sounds/gm/GeneralUser-GS.sf2';
 
-const MISSING_MESSAGE = `The General MIDI sound bank is missing (${GM_SOUNDFONT_PATH}). Run pnpm sounds:fetch.`;
+const MISSING_MESSAGE = `The sound bank is missing. Reinstall Reprise or restore ${GM_SOUNDFONT_PATH}.`;
+const MISSING_DEV_HINT = 'Run pnpm sounds:fetch to download the General MIDI sound bank.';
 const MEBIBYTE = 1024 * 1024;
+
+function missing(): SoundfontError {
+  if (import.meta.env.DEV) console.error(MISSING_DEV_HINT);
+  return new SoundfontError('missing', MISSING_MESSAGE);
+}
 
 export function gmSoundfontUrl(): URL {
   return new URL(`${import.meta.env.BASE_URL}${GM_SOUNDFONT_PATH}`, document.baseURI);
@@ -55,7 +61,7 @@ export async function fetchSoundfont(
       cause: error,
     });
   }
-  if (response.status === 404) throw new SoundfontError('missing', MISSING_MESSAGE);
+  if (response.status === 404) throw missing();
   if (!response.ok) {
     throw new SoundfontError(
       'network',
@@ -96,7 +102,7 @@ export async function fetchSoundfont(
   }
   const bytes = concat(chunks, loaded);
   // The dev server answers a missing file with index.html and a 200.
-  if (!isRiff(bytes)) throw new SoundfontError('missing', MISSING_MESSAGE);
+  if (!isRiff(bytes)) throw missing();
   return bytes;
 }
 
