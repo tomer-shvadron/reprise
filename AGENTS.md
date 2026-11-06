@@ -87,7 +87,7 @@ pnpm lint                  # ESLint with the boundary rules, --max-warnings 0
 pnpm typecheck             # tsc -b across every workspace
 pnpm test                  # Vitest, every workspace as its own project
 pnpm format:check          # Prettier check; pnpm format writes
-pnpm bench                 # the budgets table, one bench file at a time; ×3 on CI
+pnpm bench                 # the budgets table, one bench file at a time; ×4 on CI
 pnpm dev                   # the web app on the Vite dev server
 pnpm build                 # production build of the web app
 pnpm desktop:dev           # the Electron app around the web core
