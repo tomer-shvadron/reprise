@@ -139,6 +139,23 @@ export const GLYPHS = [
   'fingeringMLower',
   'fingeringALower',
   'fingeringCLower',
+  'articStaccatoAbove',
+  'articStaccatoBelow',
+  'articAccentAbove',
+  'articAccentBelow',
+  'articMarcatoAbove',
+  'articMarcatoBelow',
+  'tremolo1',
+  'tremolo2',
+  'tremolo3',
+  'stringsDownBow',
+  'stringsUpBow',
+  'guitarFadeIn',
+  'guitarFadeOut',
+  'guitarVolumeSwell',
+  'ornamentTrill',
+  'noteheadParenthesisLeft',
+  'noteheadParenthesisRight',
 ] as const;
 
 /** Printable ASCII plus what tab and effect labels use beyond it. */

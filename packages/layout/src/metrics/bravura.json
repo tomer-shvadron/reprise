@@ -610,6 +610,91 @@
       "codepoint": 60700,
       "advance": 0.888,
       "bbox": { "left": 0, "bottom": -0.028, "right": 0.888, "top": 1.044 }
+    },
+    "articStaccatoAbove": {
+      "codepoint": 58530,
+      "advance": 0.336,
+      "bbox": { "left": 0, "bottom": 0, "right": 0.336, "top": 0.336 }
+    },
+    "articStaccatoBelow": {
+      "codepoint": 58531,
+      "advance": 0.336,
+      "bbox": { "left": 0, "bottom": -0.336, "right": 0.336, "top": 0 }
+    },
+    "articAccentAbove": {
+      "codepoint": 58528,
+      "advance": 1.356,
+      "bbox": { "left": 0, "bottom": 0.004, "right": 1.356, "top": 0.98 }
+    },
+    "articAccentBelow": {
+      "codepoint": 58529,
+      "advance": 1.356,
+      "bbox": { "left": 0, "bottom": -0.976, "right": 1.356, "top": 0 }
+    },
+    "articMarcatoAbove": {
+      "codepoint": 58540,
+      "advance": 0.944,
+      "bbox": { "left": -0.004, "bottom": -0.004, "right": 0.94, "top": 1.012 }
+    },
+    "articMarcatoBelow": {
+      "codepoint": 58541,
+      "advance": 0.944,
+      "bbox": { "left": -0.004, "bottom": -1.016, "right": 0.94, "top": 0 }
+    },
+    "tremolo1": {
+      "codepoint": 57888,
+      "advance": 0.6,
+      "bbox": { "left": -0.6, "bottom": -0.372, "right": 0.6, "top": 0.376 }
+    },
+    "tremolo2": {
+      "codepoint": 57889,
+      "advance": 0.596,
+      "bbox": { "left": -0.604, "bottom": -0.748, "right": 0.596, "top": 0.748 }
+    },
+    "tremolo3": {
+      "codepoint": 57890,
+      "advance": 0.6,
+      "bbox": { "left": -0.6, "bottom": -1.12, "right": 0.6, "top": 1.112 }
+    },
+    "stringsDownBow": {
+      "codepoint": 58896,
+      "advance": 1.248,
+      "bbox": { "left": 0, "bottom": 0, "right": 1.248, "top": 1.272 }
+    },
+    "stringsUpBow": {
+      "codepoint": 58898,
+      "advance": 1,
+      "bbox": { "left": 0.004, "bottom": 0.004, "right": 0.996, "top": 1.98 }
+    },
+    "guitarFadeIn": {
+      "codepoint": 59459,
+      "advance": 1.448,
+      "bbox": { "left": 0, "bottom": 0, "right": 1.448, "top": 1.46 }
+    },
+    "guitarFadeOut": {
+      "codepoint": 59460,
+      "advance": 1.448,
+      "bbox": { "left": 0, "bottom": 0, "right": 1.448, "top": 1.46 }
+    },
+    "guitarVolumeSwell": {
+      "codepoint": 59461,
+      "advance": 2.896,
+      "bbox": { "left": 0, "bottom": 0, "right": 2.896, "top": 1.46 }
+    },
+    "ornamentTrill": {
+      "codepoint": 58726,
+      "advance": 2.084,
+      "bbox": { "left": 0, "bottom": -0.04, "right": 2.084, "top": 1.56 }
+    },
+    "noteheadParenthesisLeft": {
+      "codepoint": 57589,
+      "advance": 0.292,
+      "bbox": { "left": 0, "bottom": -0.724, "right": 0.436, "top": 0.724 }
+    },
+    "noteheadParenthesisRight": {
+      "codepoint": 57590,
+      "advance": 0.292,
+      "bbox": { "left": -0.144, "bottom": -0.724, "right": 0.292, "top": 0.724 }
     }
   }
 }
