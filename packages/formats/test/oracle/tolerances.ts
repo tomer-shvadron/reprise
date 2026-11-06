@@ -3,7 +3,7 @@
  * oracle, and an entry that accepts no difference in its formats fails too, so the list stays
  * as short as the corpus allows. Sources: the classified comparison in the review of PR #56,
  * the reader's mapping decisions in `packages/formats/README.md`, and alphaTab 1.8.4's
- * `Gp3To5Importer` and model `finish` methods (`node_modules/@coderline/alphatab/dist/alphaTab.core.mjs`).
+ * `Gp3To5Importer`, `GpifParser` and model `finish` methods (`node_modules/@coderline/alphatab/dist/alphaTab.core.mjs`).
  */
 import type { Difference } from './compare';
 import type { BeatProjection, ScoreProjection } from './projection';
@@ -23,6 +23,8 @@ export interface Tolerance {
 }
 
 const GP3_TO_5: readonly FixtureFormat[] = ['gp3', 'gp4', 'gp5'];
+/** The gpif reader is one code path for gp and gpx, so a decision of its own covers both. */
+const WITH_GPIF: readonly FixtureFormat[] = [...GP3_TO_5, 'gp', 'gpx'];
 
 const BEAT_FIELD = /\.beats\[\d+\]\.(?<field>\w+)$/;
 const NOTE_FIELD = /\.beats\[\d+\]\.notes\[\d+\]\.(?<field>\w+)$/;
@@ -74,8 +76,8 @@ const GP3_DIP: Readonly<Record<string, (value: number) => boolean>> = {
 export const TOLERANCES: readonly Tolerance[] = [
   {
     id: 'grace-duration',
-    formats: GP3_TO_5,
-    why: "We read the grace duration byte (1, 2, 3 as a 64th, 32nd, 16th), as TuxGuitar and PyGuitarPro do (lead ruling, PR #56); alphaTab's `readGrace` skips the byte and `Beat.finish` sets the duration from the grace group's size: an eighth for one grace beat, a sixteenth for two, a 32nd for more.",
+    formats: WITH_GPIF,
+    why: "We read the grace duration byte (1, 2, 3 as a 64th, 32nd, 16th), as TuxGuitar and PyGuitarPro do (lead ruling, PR #56); alphaTab's `readGrace` skips the byte and `Beat.finish` sets the duration from the grace group's size: an eighth for one grace beat, a sixteenth for two, a 32nd for more. In gpif the grace beat's own `Rhythm` is kept (`32nd` in effects.gpx); `GpifParser._buildModel` reads it too, and the same `Beat.finish` overrides it.",
     applies: (d) =>
       /\.graces\[\d+\]\.duration$/.test(d.path) &&
       d.beat !== undefined &&
@@ -83,8 +85,8 @@ export const TOLERANCES: readonly Tolerance[] = [
   },
   {
     id: 'bend-points-kept',
-    formats: GP3_TO_5,
-    why: 'The model keeps each bend as the file stores it (score-model reference, "Bend and whammy points"); alphaTab\'s `Note.finish` rewrites a three- or four-point list to the shape of the bend type it detects: two points for a bend, release, prebend or hold (PR #56: `[0,0],[15,4],[60,4]` against `[0,0],[60,4]`), four for a three-point bend-release. The ends and `maxBendPoint` survive, so the values are still compared.',
+    formats: WITH_GPIF,
+    why: 'The model keeps each bend as the file stores it (score-model reference, "Bend and whammy points"); alphaTab\'s `Note.finish` rewrites a three- or four-point list to the shape of the bend type it detects: two points for a bend, release, prebend or hold (PR #56: `[0,0],[15,4],[60,4]` against `[0,0],[60,4]`), four for a three-point bend-release. The ends and `maxBendPoint` survive, so the values are still compared. gpif stores origin, middle and destination values, kept as three points; `GpifParser` builds the same three and `Note.finish` splices the duplicate middle point of a bend-release in (effects.gpx, bars[7]).',
     applies: (d) =>
       isNoteField(d, 'bendPoints') &&
       ((d.alphaTab === 2 && (d.ours === 3 || d.ours === 4)) || (d.alphaTab === 4 && d.ours === 3)),
@@ -155,8 +157,8 @@ export const TOLERANCES: readonly Tolerance[] = [
   },
   {
     id: 'voltas-on-every-bar',
-    formats: GP3_TO_5,
-    why: 'The model puts the volta numbers on every bar of the bracket, through the bar that closes the repeat (score-model reference, "Volta numbers"); alphaTab\'s `readMasterBar` marks the bracket\'s first bar only.',
+    formats: WITH_GPIF,
+    why: 'The model puts the volta numbers on every bar of the bracket, through the bar that closes the repeat (score-model reference, "Volta numbers"); alphaTab\'s `readMasterBar` marks the bracket\'s first bar only. The gpif reader copies the numbers the same way (README, "Volta brackets"); `GpifParser._parseMasterBar` reads `AlternateEndings` on that bar alone.',
     applies: (d, { ours, alphaTab }) => {
       const bar = Number(MASTER_BAR_ENDINGS.exec(d.path)?.groups?.['bar']);
       const numbers = ours.masterBars[bar]?.alternateEndings;

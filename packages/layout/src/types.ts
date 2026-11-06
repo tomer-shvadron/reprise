@@ -15,6 +15,9 @@ export type ThemeRole = 'ink' | 'paper' | 'accent' | 'muted';
 
 export type StaffType = 'tab' | 'standard' | 'percussion';
 
+/** How a tab staff writes a note tied from the one before it: its fret in parentheses, or nothing but the tie. */
+export type TiedNotes = 'parentheses' | 'hidden';
+
 export interface Margins {
   top: number;
   right: number;
@@ -33,6 +36,8 @@ export interface LayoutOptions {
   tracks: Id[] | 'all';
   /** Per-track override of `Track.display.notation`. Drum tracks always show a percussion staff. */
   notation: Record<Id, Notation>;
+  /** Tied notes on tab staves; `parentheses` unless given. */
+  tiedNotes?: TiedNotes;
   /** Page margins, unscaled; see `DEFAULT_MARGINS`. */
   margins?: Partial<Margins>;
   /** Vertical space between stacked pages in paged mode, unscaled. */

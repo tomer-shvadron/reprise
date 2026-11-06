@@ -56,3 +56,10 @@ export * from './articulations/index';
 
 // Memory manager (WP-034)
 export * from './samples/index';
+
+// Tied continuations and mixer changes on beats (#65)
+export type { MixEvent } from './sink';
+export type { RecordedMix } from './recording-sink';
+export type { ScheduledContinuation, ScheduledMix } from './scheduler';
+export { mixesInRange } from './timeline';
+export type { MixOnset, TiedContinuation } from './timeline';

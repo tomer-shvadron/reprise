@@ -440,6 +440,88 @@ describe('AudioEngine transport (OfflineAudioContext)', () => {
     expect(h.sink.volume).toBe(0.5);
   });
 
+  it('hands a volume change on a rest beat to the sink at the rest', async () => {
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .beat('2', [note(1, 0)])
+      .rest('2', { mix: { volume: { value: 40, duration: 2 } } })
+      .bar()
+      .beat('1', [note(1, 2)])
+      .build();
+    const h = await harness(song, 4.5);
+    h.engine.play();
+    await h.render();
+
+    expect(h.sink.notes).toHaveLength(2);
+    expect(h.sink.mixes).toHaveLength(1);
+    const [mix] = h.sink.mixes;
+    expect(mix).toMatchObject({ beatIndex: 1, masterBarIndex: 0, playbackTick: 2 * PPQ });
+    expect(mix?.mix.volume).toEqual({ value: 40, duration: 2 });
+    expect(mix?.when).toBeCloseTo(LATENCY + 1, 9);
+    expect(mix?.secondsPerTick).toBeCloseTo(0.5 / PPQ, 12);
+    expect(mix?.calledAt).toBeLessThanOrEqual(mix?.when ?? 0);
+  });
+
+  it('starts from the middle with the mixer changes before it in effect', async () => {
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .rest('2', { mix: { volume: { value: 40, duration: 2 } } })
+      .rest('2')
+      .bar()
+      .beat('1', [note(1, 2)])
+      .build();
+    const h = await harness(song, 3);
+    h.engine.play(4 * PPQ);
+    await h.render();
+
+    expect(h.sink.notes.map((n) => n.when)).toEqual([expect.closeTo(LATENCY, 9)]);
+    expect(h.sink.mixes.map((m) => [m.playbackTick, m.when, m.mix])).toEqual([
+      [0, expect.closeTo(LATENCY, 9), { volume: { value: 40 } }],
+    ]);
+    expect(h.sink.mixes[0]?.calledAt).toBeLessThanOrEqual(h.sink.mixes[0]?.when ?? 0);
+  });
+
+  it('carries the tied notes of a held note, each with its own onset', async () => {
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .beat('4', [note(6, 5), note(1, 0)])
+      .beat('4', [note(1, 3)])
+      .beat('4', [note(1, 5)])
+      .beat('4', [note(1, 7)])
+      .bar()
+      .beat('4', [note(6, 5, { tie: true, vibrato: 'wide' }), note(1, 8)])
+      .beat('4', [note(1, 0)])
+      .beat('2', [note(6, 5, { tie: true, slide: ['outDown'] })])
+      .build();
+    const h = await harness(song, 4.5);
+    h.engine.play();
+    await h.render();
+
+    const held = h.sink.notes.filter((n) => n.note.string === 6);
+    expect(held).toHaveLength(1);
+    expect(held[0]?.duration).toBeCloseTo(4, 9);
+    expect(
+      held[0]?.continuations.map((c) => [
+        c.when - LATENCY,
+        c.durationTicks,
+        c.note.vibrato,
+        c.note.slide,
+      ]),
+    ).toEqual([
+      [expect.closeTo(2, 9), PPQ, 'wide', undefined],
+      [expect.closeTo(3, 9), 2 * PPQ, 'none', ['outDown']],
+    ]);
+    expect(
+      h.sink.notes.filter((n) => n.note.string === 1).every((n) => n.continuations.length === 0),
+    ).toBe(true);
+  });
+
   it('honours a tempo change written in the score', async () => {
     const song = bars(4, (builder, bar) => (bar === 2 ? builder.tempo(60) : builder));
     const h = await harness(song, 13);

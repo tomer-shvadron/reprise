@@ -1,6 +1,6 @@
 # ADR-0019: Review by a stronger model before merge
 
-- **Status**: Accepted
+- **Status**: Accepted, superseded in part by [ADR-0020](0020-plan-and-review-with-opus-at-xhigh-effort.md)
 - **Date**: 2026-11-05
 - **Deciders**: Tomer Shvadron, with Claude
 

@@ -194,7 +194,7 @@ function checkTrackKind(track: Track, path: ViolationPath, report: Report): void
     }
     return;
   }
-  // A pitched track may keep the tuning a GP5 keyboard part was written against.
+  // A pitched track may keep the tuning a GP3 to GP5 keyboard part was written against.
   if (track.kind !== 'drums') return;
   if (track.tuning.length > 0) {
     report('track-kind', [...path, 'tuning'], 'a drums track has no strings to tune');

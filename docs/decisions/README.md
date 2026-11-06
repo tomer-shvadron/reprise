@@ -5,7 +5,7 @@ architecture decision record (ADR): the context that forced the decision, what w
 the alternatives that were rejected and why, and the consequences. The records exist so that
 anyone, including an agent picking up an issue, can see why things are the way they are
 without re-deriving or re-litigating them. The first seventeen were written from the planning
-session of 2026-11-05, and 0018 and 0019 from the phase-0 reviews the same day; see `../specs/shared-understanding.md` for the session's summary.
+session of 2026-11-05, 0018 and 0019 from the phase-0 reviews the same day, 0020 from the switch off Fable on 2026-11-06, and 0021 from the lead's ruling on PR #68 the same day; see `../specs/shared-understanding.md` for the session's summary.
 
 Rules:
 
@@ -25,7 +25,7 @@ Rules:
 | 0004 | One sampler engine of our own, fed by SF2 and SFZ loaders           | Accepted                                                             |
 | 0005 | Memory is a first-class requirement                                 | Accepted                                                             |
 | 0006 | What the score model represents                                     | Accepted                                                             |
-| 0007 | Per-track notation toggle, rhythm stems under tab always            | Accepted                                                             |
+| 0007 | Per-track notation toggle, rhythm stems under tab always            | Accepted, superseded in part by ADR-0021                             |
 | 0008 | Read every Guitar Pro format, save native, export gp                | Accepted                                                             |
 | 0009 | pnpm workspace monorepo with six packages, no build orchestrator    | Accepted                                                             |
 | 0010 | SVG painter with virtualized systems and geometry-based hit-testing | Accepted                                                             |
@@ -37,4 +37,6 @@ Rules:
 | 0016 | Serial foundation and model core, then three parallel lanes         | Accepted                                                             |
 | 0017 | The project is called Reprise                                       | Accepted                                                             |
 | 0018 | Label families and repository credentials                           | Accepted                                                             |
-| 0019 | Review by a stronger model before merge                             | Accepted                                                             |
+| 0019 | Review by a stronger model before merge                             | Accepted, superseded in part by ADR-0020                             |
+| 0020 | Plan and review with Opus at xhigh effort                           | Accepted                                                             |
+| 0021 | Rhythm on the standard staff in both mode                           | Accepted                                                             |

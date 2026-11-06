@@ -31,7 +31,12 @@ export interface Render {
  */
 export async function render(
   song: Score,
-  options: { instrument?: () => Instrument; seconds?: number; sink?: SamplerSinkOptions } = {},
+  options: {
+    instrument?: () => Instrument;
+    seconds?: number;
+    sink?: SamplerSinkOptions;
+    fromTick?: number;
+  } = {},
 ): Promise<Render> {
   const context = offline(options.seconds ?? 2.5);
   const sampler = new Sampler(context);
@@ -50,7 +55,7 @@ export async function render(
     startLatency: T0,
   });
   await engine.load(song, { tier: 'gm', packs: [] });
-  engine.play();
+  engine.play(options.fromTick);
   const buffer = await drive(context, { tickers: [scheduler, frames] });
   return { data: buffer.getChannelData(0), sampler };
 }

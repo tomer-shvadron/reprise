@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { PPQ } from '@reprise/model';
 import type { Dynamics, Note } from '@reprise/model';
 import { midi, note, score } from '@reprise/model/testing';
 
@@ -35,6 +36,16 @@ const E4 = midiToFrequency(64);
 /** String 1 of a guitar in E standard: fret 5 is A4, fret 7 is B4. */
 const a = (spec: Parameters<typeof note>[2] = {}): Note => note(1, 5, spec);
 const b = (spec: Parameters<typeof note>[2] = {}): Note => note(1, 7, spec);
+
+/** Program 30 in the program-change tests: every key a fifth up, so A4 sounds at E5. */
+function fifthUp(): Instrument {
+  return {
+    regions: new RegionMap([region({ sample: 'e5' })]),
+    source: new SynthSampleSource(SAMPLE_RATE, {
+      e5: { kind: 'sine', frequency: A4 * 1.5, duration: 6 },
+    }),
+  };
+}
 
 function pitchAt(data: Float32Array, from: number, to: number, expected: number): number {
   return cents(zeroCrossingFrequency(data, from, to), expected);
@@ -523,19 +534,12 @@ describe('beat mixer changes', () => {
       .beat('2', [a()])
       .beat('2', [a()], { mix: { program: 30 } })
       .build();
-    // Program 30 plays every key a fifth up: A4 sounds at E5.
-    const fifthUp: Instrument = {
-      regions: new RegionMap([region({ sample: 'e5' })]),
-      source: new SynthSampleSource(SAMPLE_RATE, {
-        e5: { kind: 'sine', frequency: A4 * 1.5, duration: 6 },
-      }),
-    };
     const programs: number[] = [];
     const { data } = await render(song, {
       sink: {
         instrumentOf: (_track, program) => {
           programs.push(program);
-          return program === 30 ? fifthUp : undefined;
+          return program === 30 ? fifthUp() : undefined;
         },
       },
     });
@@ -544,6 +548,40 @@ describe('beat mixer changes', () => {
     expect(toneLevel(data, A4 * 1.5, T0 + 0.2, T0 + 0.9)).toBeLessThan(0.001);
     expect(toneLevel(data, A4 * 1.5, T0 + 1.2, T0 + 1.9)).toBeGreaterThan(0.1);
     expect(toneLevel(data, A4, T0 + 1.2, T0 + 1.9)).toBeLessThan(0.001);
+  });
+
+  it('plays a run started past a program change in the new program from its first note', async () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('2', [a()], { mix: { program: 30 } })
+      .beat('2', [a()])
+      .bar()
+      .beat('2', [a()])
+      .rest('2')
+      .build();
+    const { data } = await render(song, {
+      fromTick: 4 * PPQ,
+      sink: { instrumentOf: (_track, program) => (program === 30 ? fifthUp() : undefined) },
+    });
+    expect(toneLevel(data, A4 * 1.5, T0 + 0.05, T0 + 0.4)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, A4, T0 + 0.05, T0 + 0.4)).toBeLessThan(0.001);
+  });
+
+  it('applies a program change written on a rest beat', async () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('2', [a()])
+      .rest('4', { mix: { program: 30 } })
+      .beat('4', [a()])
+      .build();
+    const { data } = await render(song, {
+      sink: { instrumentOf: (_track, program) => (program === 30 ? fifthUp() : undefined) },
+    });
+    expect(toneLevel(data, A4, T0 + 0.2, T0 + 0.9)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, A4 * 1.5, T0 + 1.6, T0 + 1.9)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, A4, T0 + 1.6, T0 + 1.9)).toBeLessThan(0.001);
   });
 
   it('glides a volume change over its transition', async () => {
