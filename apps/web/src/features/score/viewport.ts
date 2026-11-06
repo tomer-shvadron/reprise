@@ -72,6 +72,14 @@ export function scrollFromCentre(
   };
 }
 
+/** A scroll position the browser can reach: within 0 and the content less the viewport. */
+export function clampScroll(scroll: Point, content: Size, viewport: Size): Point {
+  return {
+    x: Math.min(Math.max(0, scroll.x), Math.max(0, content.width - viewport.width)),
+    y: Math.min(Math.max(0, scroll.y), Math.max(0, content.height - viewport.height)),
+  };
+}
+
 /** The viewport in layout px; no centre means the scroll origin. */
 export function visibleWindow(
   centre: Point | undefined,

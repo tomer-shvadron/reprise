@@ -1,0 +1,124 @@
+/* Score tokens come from the paper family in index.css; nothing here names a colour. */
+.score-view,
+.score-pages {
+  --score-paper: var(--paper);
+  --score-ink: var(--ink);
+  --score-muted: var(--ink-muted);
+  --score-accent: var(--paper-accent);
+  --score-cursor: var(--paper-accent);
+  --score-highlight: color-mix(in oklch, var(--paper-accent) 12%, transparent);
+  --score-selection: color-mix(in oklch, var(--paper-accent) 22%, transparent);
+  --score-hover: color-mix(in oklch, var(--paper-accent) 10%, transparent);
+}
+
+.score-sizer {
+  position: relative;
+}
+
+.score-canvas {
+  position: absolute;
+}
+
+.score-page {
+  position: relative;
+  flex: none;
+  background: var(--score-paper);
+}
+
+/*
+ * overflow: visible overrides the UA's svg clipping, so nothing past a system box is cut off;
+ * pointer-events: none spares the browser hit-testing thousands of nodes per pointer move, since
+ * the canvas resolves pointers from layout geometry.
+ */
+.score-system {
+  position: absolute;
+  overflow: visible;
+  color: var(--score-ink);
+  pointer-events: none;
+  user-select: none;
+  text-rendering: geometricPrecision;
+  contain: layout style;
+}
+
+.score-role-paper {
+  color: var(--score-paper);
+}
+
+.score-role-muted {
+  color: var(--score-muted);
+}
+
+.score-role-accent {
+  color: var(--score-accent);
+}
+
+.score-glyph {
+  font-family: Bravura;
+  font-kerning: none;
+}
+
+/* As layout measured Geist: weight 400, no kerning or ligatures, spaces kept. */
+.score-text {
+  font-family: 'Geist Variable', sans-serif;
+  font-weight: 400;
+  font-kerning: none;
+  font-variant-ligatures: none;
+  white-space: pre;
+}
+
+.score-italic {
+  font-style: italic;
+}
+
+.score-overlays {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.score-overlays > * {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.score-bar-highlight {
+  background: var(--score-highlight);
+}
+
+.score-cursor {
+  width: 2px;
+  background: var(--score-cursor);
+}
+
+.score-selection {
+  border-radius: 2px;
+  background: var(--score-selection);
+}
+
+.score-hover {
+  border-radius: 2px;
+  background: var(--score-hover);
+}
+
+.score-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+}
+
+/* break-before rather than break-after on every page, which leaves Chrome a blank last page. */
+.score-page + .score-page {
+  break-before: page;
+}
+
+@media print {
+  .score-pages {
+    gap: 0;
+  }
+
+  .score-overlays {
+    display: none;
+  }
+}
