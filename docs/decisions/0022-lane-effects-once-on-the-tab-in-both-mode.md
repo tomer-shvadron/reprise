@@ -16,10 +16,22 @@ vibrato, trills, the whammy graph, pick strokes, fades, tapping, slapping and po
 a row of their own (a *lane*) above the staff, sized per system so the rows line up across bars.
 In both mode a track has two staves, and each lane could be drawn on either or on both.
 
-alphaTab (`@coderline/alphatab` 1.8.4, our reference for Guitar Pro's layout) draws most of these
-on both staves; it puts palm mute only on the tab, and fades on the tab whenever there is one.
-Guitar Pro itself draws the tab's effect bands under the standard staff and leaves the standard
-staff with what is attached to its note heads.
+alphaTab (`@coderline/alphatab` 1.8.4, our reference for Guitar Pro's layout) assigns its effect
+bands per staff in `Environment.defaultRenderers` (`dist/alphaTab.core.mjs`, line 64914):
+
+- The standard staff's list (`ScoreBarRendererFactory`, from line 64954) has bands for the
+  whammy, trills, tapping and both kinds of beat and note vibrato. Its fade, let ring, pick
+  stroke and pick slide bands carry `shouldCreate: (staff) => !staff.showTablature`, so they
+  exist only when the staff has no tab under it. It has no palm-mute band and no harmonics band.
+- The tab's list (`TabBarRendererFactory`, from line 65065) has all of these, palm mute and
+  the harmonic kinds included, with no such condition, so its bands are drawn in both mode,
+  above the tab and so between the two staves.
+- Bends are glyphs on the beat, not bands, and each staff draws its own: `ScoreBendGlyph`,
+  created in `ScoreBeatContainerGlyph` (line 63022), and `TabBendGlyph`, created in
+  `TabBeatContainerGlyph` (line 64412).
+
+So in both mode alphaTab draws trills, tapping, both vibratos, the whammy and bends on both
+staves, and palm mute, let ring, pick strokes, fades and harmonic labels on the tab only.
 
 The implementation plan on #28 asked whether to record the answer in `notation.md` only or in
 an ADR; the lead ruled (ruling 2 on #28) that, ADRs being append-only, it is a new ADR that
@@ -46,15 +58,16 @@ standard staff in both mode.
 
 In both mode the tab sits under the standard staff on the same horizontal spacing, so a lane
 on the tab is as close to its notes as one on the standard staff would be, and the bands sit
-between the two staves where Guitar Pro puts them. Most lane effects are guitar techniques
+between the two staves, where alphaTab already draws its tab-only ones. Most lane effects are guitar techniques
 written in tab terms (P.M., let ring, harmonic kinds, whammy bar); the tab is where a guitarist
 reads them.
 
 ## Alternatives considered
 
-- **Lane effects on both staves**, as alphaTab draws most of them: every label, wave and bend
-  twice, one staff apart, in a mode that already costs twice the vertical space, and the same
-  duplication ADR-0021 removed for rhythm and dynamics. Rejected.
+- **Lane effects on both staves**, as alphaTab draws trills, tapping, vibratos, the whammy and
+  bends: every label, wave and bend twice, one staff apart, in a mode that already costs twice
+  the vertical space, and the same duplication ADR-0021 removed for rhythm and dynamics.
+  Rejected.
 - **Lane effects on the standard staff**: the rows would sit above the standard staff, away
   from the fret numbers that bends start from, and a bend would have to be drawn from note
   heads up to the lane while the tab shows the fret. Rejected.
