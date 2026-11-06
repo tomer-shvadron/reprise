@@ -1,10 +1,12 @@
 /**
  * Random edit sequences against a warm cache: after every step the cached layout must equal a
- * cold one byte for byte, in every notation and both modes.
+ * cold one byte for byte, in every notation and both modes. Undo and redo go through the model's
+ * history, which replays patches into new objects as the app does, and option steps change what
+ * the same cache lays out between edits.
  */
 import {
   CommandError,
-  applyCommand,
+  createHistory,
   insertBar,
   insertBeat,
   removeBar,
@@ -42,7 +44,11 @@ type Edit =
   | { kind: 'removeBar'; bar: number }
   | { kind: 'masterBar'; bar: number; change: 'time' | 'key' | 'repeat' }
   | { kind: 'chord'; at: Where }
-  | { kind: 'undo' };
+  | { kind: 'undo' }
+  | { kind: 'redo' }
+  | { kind: 'options'; change: OptionChange };
+
+type OptionChange = 'subset' | 'notation' | 'width' | 'zoom';
 
 /** Indices taken modulo what the score has when the edit applies. */
 interface Where {
@@ -86,6 +92,11 @@ const edit: Arbitrary<Edit> = oneof(
   }),
   record({ kind: constantFrom('chord' as const), at: where }),
   record({ kind: constantFrom('undo' as const) }),
+  record({ kind: constantFrom('redo' as const) }),
+  record({
+    kind: constantFrom('options' as const),
+    change: constantFrom<OptionChange>('subset', 'notation', 'width', 'zoom'),
+  }),
 );
 
 function beatAt(score: Score, at: Where) {
@@ -143,6 +154,8 @@ function command(score: Score, step: Edit): Command | undefined {
       );
     }
     case 'undo':
+    case 'redo':
+    case 'options':
       return undefined;
     default:
       break;
@@ -214,6 +227,32 @@ function optionsFor(
   };
 }
 
+const NOTATIONS: readonly Notation[] = ['tab', 'standard', 'both'];
+
+/** Toggles one option the cache keys on; the track ids are the score's, which edits keep. */
+function changeOptions(score: Score, options: LayoutOptions, change: OptionChange): LayoutOptions {
+  switch (change) {
+    case 'subset':
+      return {
+        ...options,
+        tracks:
+          options.tracks === 'all'
+            ? score.tracks.filter((_, i) => i % 3 !== 1).map(({ id }) => id)
+            : 'all',
+      };
+    case 'notation': {
+      const id = score.tracks[0]?.id ?? '';
+      const current = options.notation[id] ?? 'tab';
+      const next = NOTATIONS[(NOTATIONS.indexOf(current) + 1) % NOTATIONS.length] ?? 'tab';
+      return { ...options, notation: { ...options.notation, [id]: next } };
+    }
+    case 'width':
+      return { ...options, width: options.width === 480 ? PAGE_SIZES.a4.width : 480 };
+    case 'zoom':
+      return { ...options, zoom: options.zoom === 1 ? 1.25 : 1 };
+  }
+}
+
 describe('LayoutCache: random edits', () => {
   const cases = (['tab', 'standard', 'both'] as const).flatMap((notation) =>
     (['paged', 'continuous'] as const).map((mode) => [notation, mode] as const),
@@ -228,32 +267,31 @@ describe('LayoutCache: random edits', () => {
           array(edit, { minLength: 1, maxLength: 8 }),
           (which, subsetDie, edits) => {
             let score = SCORES[which]();
-            const options = optionsFor(score, notation, mode, subsetDie === 0);
+            let options = optionsFor(score, notation, mode, subsetDie === 0);
             const cache = new LayoutCache();
             layout(score, options, cache);
-            const history: { score: Score; touched: string[] }[] = [];
+            const history = createHistory();
             for (const step of edits) {
-              let next: Score;
-              let touched: string[];
-              if (step.kind === 'undo') {
-                const last = history.pop();
-                if (!last) continue;
-                next = last.score;
-                touched = last.touched;
+              let touched: string[] = [];
+              if (step.kind === 'options') {
+                options = changeOptions(score, options, step.change);
+              } else if (step.kind === 'undo' || step.kind === 'redo') {
+                const replayed = step.kind === 'undo' ? history.undo() : history.redo();
+                if (!replayed) continue;
+                score = replayed.score;
+                touched = replayed.change.touchedBars;
               } else {
                 const made = command(score, step);
                 if (!made) continue;
                 try {
-                  const applied = applyCommand(score, made);
-                  history.push({ score, touched: applied.change.touchedBars });
-                  next = applied.score;
+                  const applied = history.apply(score, made);
+                  score = applied.score;
                   touched = applied.change.touchedBars;
                 } catch (error) {
                   if (error instanceof CommandError) continue;
                   throw error;
                 }
               }
-              score = next;
               const cached = layout(score, { ...options, dirtyBars: touched }, cache);
               expect(stable(cached), JSON.stringify(step)).toBe(stable(layout(score, options)));
               expectValid(cached);
