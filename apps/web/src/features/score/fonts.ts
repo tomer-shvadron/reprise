@@ -1,7 +1,8 @@
 import { useEffect, useSyncExternalStore } from 'react';
 
 /** Geist is declared by @fontsource-variable/geist; layout measured it at weight 400. */
-const GEIST = '400 16px "Geist Variable"';
+const GEIST_FAMILY = 'Geist Variable';
+const GEIST = `400 16px "${GEIST_FAMILY}"`;
 
 let ready =
   typeof FontFace === 'undefined' || typeof document === 'undefined' || !('fonts' in document);
@@ -26,7 +27,7 @@ export function loadScoreFonts(): Promise<void> {
     { display: 'block' },
   );
   document.fonts.add(bravura);
-  loading = Promise.allSettled([bravura.load(), document.fonts.load(GEIST)]).then((results) => {
+  loading = Promise.allSettled([bravura.load(), ...loadGeist()]).then((results) => {
     for (const result of results) {
       if (result.status === 'rejected') {
         console.warn('A score font failed to load; painting with a fallback.', result.reason);
@@ -36,6 +37,18 @@ export function loadScoreFonts(): Promise<void> {
     for (const listener of listeners) listener();
   });
   return loading;
+}
+
+/**
+ * Every declared Geist face, one per unicode-range subset: `fonts.load` alone fetches only the
+ * faces covering its sample text, so names and lyrics in latin-ext or cyrillic would reflow later.
+ */
+function loadGeist(): Promise<unknown>[] {
+  const loads: Promise<unknown>[] = [];
+  document.fonts.forEach((face) => {
+    if (face.family.replaceAll('"', '') === GEIST_FAMILY) loads.push(face.load());
+  });
+  return loads.length > 0 ? loads : [document.fonts.load(GEIST)];
 }
 
 function subscribe(listener: () => void): () => void {

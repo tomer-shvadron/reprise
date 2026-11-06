@@ -23,8 +23,13 @@ function deferred(): Deferred {
   return { promise, resolve, reject };
 }
 
+interface DeclaredFace {
+  family: string;
+  load: () => Promise<unknown>;
+}
+
 /** Stubs FontFace and document.fonts; returns the pending Bravura and Geist loads. */
-function stubFontApis() {
+function stubFontApis(declared: DeclaredFace[] = []) {
   const bravura = deferred();
   const geist = deferred();
   const constructed: string[] = [];
@@ -39,7 +44,13 @@ function stubFontApis() {
       }
     },
   );
-  const fonts = { add: vi.fn(), load: vi.fn(() => geist.promise) };
+  const fonts = {
+    add: vi.fn(),
+    load: vi.fn(() => geist.promise),
+    forEach: (visit: (face: DeclaredFace) => void) => {
+      declared.forEach(visit);
+    },
+  };
   Object.defineProperty(document, 'fonts', { value: fonts, configurable: true });
   return { bravura, geist, fonts, constructed };
 }
@@ -83,6 +94,25 @@ describe('score fonts', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(result.current).toBe(true);
+  });
+
+  it('waits for every declared Geist subset', async () => {
+    const face = (family: string) => {
+      const load = vi.fn(() => Promise.resolve());
+      return { face: { family, load }, load };
+    };
+    const latin = face('"Geist Variable"');
+    const cyrillic = face('Geist Variable');
+    const other = face('Inter');
+    const { bravura, fonts } = stubFontApis([latin.face, cyrillic.face, other.face]);
+    const { loadScoreFonts } = await fontsModule();
+    const done = loadScoreFonts();
+    bravura.resolve();
+    await done;
+    expect(latin.load).toHaveBeenCalledOnce();
+    expect(cyrillic.load).toHaveBeenCalledOnce();
+    expect(other.load).not.toHaveBeenCalled();
+    expect(fonts.load).not.toHaveBeenCalled();
   });
 
   it('ends ready with one warning when a load fails', async () => {
