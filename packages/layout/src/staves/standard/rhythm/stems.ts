@@ -50,7 +50,7 @@ export function drawStem(
   scale: number,
   node: Id,
 ): void {
-  sink.primitives.push(line(x, from, x, to, stemThickness(space, scale), { node }));
+  sink.primitives.push(line(x + 2, from, x + 2, to, stemThickness(space, scale), { node }));
 }
 
 const FLAGS: readonly (readonly [GlyphName, GlyphName])[] = [

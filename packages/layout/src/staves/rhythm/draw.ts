@@ -59,7 +59,7 @@ export function drawStem(
   options: Drawn & { scale?: number } = {},
 ): void {
   sink.primitives.push(
-    line(x, from, x, to, engraving.stemThickness * space * (options.scale ?? 1), options),
+    line(x + 2, from, x + 2, to, engraving.stemThickness * space * (options.scale ?? 1), options),
   );
 }
 
