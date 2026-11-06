@@ -22,7 +22,7 @@ const updated = layout(next, { ...options, dirtyBars: change.touchedBars }, cach
 
 - **CSS px, y down.** The origin is the top left corner of the first page. In paged mode the pages stack vertically, `pageGap` (32 px) apart, and each `Page.bbox` says where its page sits, so a print view subtracts `page.bbox.y` to get page-relative coordinates. Continuous mode has one page as wide and tall as its content.
 - **Staff space.** Notation is sized in staff spaces, the distance between two lines of a five-line staff: `STAFF_SPACE` (7 px) times `zoom`. Glyph metrics are in staff spaces, as SMuFL defines them; a glyph primitive's `size` is its font size, four staff spaces.
-- **`zoom` scales the notation, not the paper.** Staff space, text and the staff, track and system gaps scale with it; `width`, `pageHeight`, the margins and `pageGap` are taken as given. A higher zoom therefore fits fewer bars on a line. The painter's own zoom transform is separate (WP-024).
+- **`zoom` scales the notation, not the paper.** Staff space, text and the staff, track and system gaps scale with it; `width`, `pageHeight`, the margins and `pageGap` are taken as given. A higher zoom therefore fits fewer bars on a line. The painter lays out at zoom 1 and zooms by scaling each system's SVG viewBox, never by re-laying out; see [the score feature's README](../../apps/web/src/features/score/README.md#zoom).
 - **Rounding.** Every coordinate is rounded to 1/100 px when it is emitted, so results serialise compactly and compare exactly.
 
 ## API
@@ -48,7 +48,7 @@ const updated = layout(next, { ...options, dirtyBars: change.touchedBars }, cach
 
 ### Continuous mode
 
-One line, natural widths. It is still cut into systems: consecutive segments of about `width` px, side by side on one page, so the painter can virtualize a long line the same way it virtualizes pages. Only the first segment carries track names, clefs and key; the others continue the staff seamlessly. All segments share the vertical layout of the whole line.
+One line, natural widths. It is still cut into systems: consecutive segments of about `width` px, side by side on one page, so the painter can virtualize a long line the same way it virtualizes pages. The painter passes a fixed `width` of 640 px (`CONTINUOUS_SYSTEM_WIDTH`), not the viewport's, which bounds the elements a mounted segment brings; see [the score feature's README](../../apps/web/src/features/score/README.md#zoom). Only the first segment carries track names, clefs and key; the others continue the staff seamlessly. All segments share the vertical layout of the whole line.
 
 ## Staff modules
 
