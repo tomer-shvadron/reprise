@@ -87,10 +87,21 @@ describe('staff furniture', () => {
       .bar()
       .build({ ids: 'sequential' });
     const result = laid(built);
-    const accidentals = glyphs(result).filter((name) => name.startsWith('accidental'));
+    const accidentals = result.primitives.flatMap((primitive) =>
+      primitive.kind === 'glyph' &&
+      primitive.glyph.startsWith('accidental') &&
+      primitive.node?.startsWith('mbar')
+        ? [primitive.glyph]
+        : [],
+    );
+    const change = [
+      ...Array.from({ length: 3 }, () => 'accidentalNatural'),
+      ...Array.from({ length: 4 }, () => 'accidentalFlat'),
+    ];
     expect(accidentals).toEqual([
       ...Array.from({ length: 6 }, () => 'accidentalSharp'),
-      ...Array.from({ length: 8 }, () => 'accidentalFlat'),
+      ...change,
+      ...change,
     ]);
     expect(summarise(result)).toMatchSnapshot();
   });
