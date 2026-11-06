@@ -15,6 +15,8 @@ describe('TempoControl', () => {
     renderBar();
     expect(field()).toBeDisabled();
     expect(field()).toHaveValue('');
+    // A dotted-quarter mark still reads in quarter notes, so the field says which.
+    expect(field()).toHaveAttribute('title', 'Quarter notes per minute · Set tempo… (⌥T)');
     expect(percentButton()).toBeDisabled();
   });
 

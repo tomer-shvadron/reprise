@@ -59,7 +59,7 @@ describe('TransportBar', () => {
     expect(screen.getByRole('button', { name: 'Metronome' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Master volume' })).toBeEnabled();
     expect(screen.getByRole('group', { name: 'Position' })).toHaveTextContent(
-      'Bar –·Beat –·Time 0:00 / 0:00',
+      'Bar –·Beat –·Time at the written tempo 0:00 / 0:00',
     );
   });
 

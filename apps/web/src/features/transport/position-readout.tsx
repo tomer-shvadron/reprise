@@ -58,7 +58,7 @@ export function PositionReadout() {
       <Tooltip>
         <TooltipTrigger asChild>
           <span>
-            <span className="sr-only">Time </span>
+            <span className="sr-only">Time at the written tempo </span>
             <span ref={time} data-field="time" className="inline-block min-w-[11ch]" />
           </span>
         </TooltipTrigger>

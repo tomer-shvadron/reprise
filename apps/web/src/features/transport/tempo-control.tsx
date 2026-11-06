@@ -137,7 +137,11 @@ export function TempoControl() {
           inputMode="numeric"
           aria-label="Tempo in BPM"
           aria-keyshortcuts={setTempoCommand.ariaKeys}
-          title={setTempoCommand.keys && `${setTempoCommand.title} (${setTempoCommand.keys})`}
+          title={
+            setTempoCommand.keys
+              ? `Quarter notes per minute · ${setTempoCommand.title} (${setTempoCommand.keys})`
+              : 'Quarter notes per minute'
+          }
           placeholder="–"
           disabled={!hasScore}
           className="w-10 text-right tabular-nums"
