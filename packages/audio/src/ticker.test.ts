@@ -14,7 +14,9 @@ describe('tickers', () => {
     const cancel = ticker(() => {
       ticks += 1;
     });
-    await wait(150);
+    // A worker's first tick waits for its spawn, which a busy test page (the GM renders running
+    // beside this file) can hold past a fixed window; poll instead, up to two seconds.
+    for (let waited = 0; ticks <= 3 && waited < 2000; waited += 25) await wait(25);
     cancel();
     const atCancel = ticks;
     await wait(60);
