@@ -33,7 +33,7 @@ jobs:
           cache: pnpm
 
       # Read from the lockfile rather than node_modules so the browser cache can be restored
-      # before `pnpm install`, whose postinstall would otherwise download Chromium every run.
+      # before `pnpm install`.
       - name: Resolve Playwright version
         id: playwright
         run: |
@@ -47,19 +47,39 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
+      # The browser download waits until the deterministic checks have passed.
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      # The postinstall fetches the browser only; the audio tests' headless Chromium also needs
-      # its system libraries, which only `--with-deps` installs on the runner.
-      - name: Install Chromium and its system dependencies
-        run: pnpm exec playwright install --with-deps chromium --only-shell
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
       - name: Lint
         run: pnpm lint
 
       - name: Typecheck
         run: pnpm typecheck
+
+      - name: Format
+        run: pnpm format:check
+
+      # No `--with-deps`: ubuntu-latest already carries the shell's libraries, and its apt font
+      # install from the Azure mirror has taken over 11 minutes.
+      - name: Install Chromium headless shell
+        timeout-minutes: 5
+        run: pnpm exec playwright install chromium --only-shell
+
+      # About 32 MB from GitHub, cached on the pins, so the GeneralUser GS suite runs in CI too.
+      - name: Cache the GM soundfont
+        uses: actions/cache@v6
+        with:
+          # The fetched files only: restoring the directory would overwrite its committed README.
+          path: |
+            apps/web/public/sounds/gm/GeneralUser-GS.sf2
+            apps/web/public/sounds/gm/LICENSE.txt
+          key: gm-soundfont-${{ hashFiles('scripts/sounds/gm.json') }}
+
+      - name: Fetch the GM soundfont
+        run: pnpm sounds:fetch
 
       - name: Test
         run: pnpm test
@@ -68,9 +88,6 @@ jobs:
       # fixtures/manifest.json no longer matches the files.
       - name: Fixtures
         run: pnpm fixtures:check
-
-      - name: Format
-        run: pnpm format:check
 
       - name: Build
         run: pnpm build

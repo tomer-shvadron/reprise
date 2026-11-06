@@ -13,12 +13,25 @@ function smooth(param: AudioParam, value: number, context: BaseAudioContext): vo
   param.setTargetAtTime(value, context.currentTime, PARAM_SMOOTHING);
 }
 
+/** A change at `at`: a linear glide from `from` over `ramp` seconds, or a smoothed step. */
+function schedule(param: AudioParam, from: number, value: number, at: number, ramp: number): void {
+  if (ramp > 0) {
+    param.setValueAtTime(from, at);
+    param.linearRampToValueAtTime(value, at + ramp);
+  } else {
+    param.setTargetAtTime(value, at, PARAM_SMOOTHING);
+  }
+}
+
 /**
- * input -> insert (input, output) -> fader -> panner -> mute gate -> master. The insert pair is
- * wired straight through until the effects chain replaces the connection between them.
+ * input -> mute gate -> insert (input, output) -> fader -> panner -> master, and previewInput
+ * joining at the insert, past the gate. The insert pair is wired straight through until the
+ * effects chain replaces the connection between them.
  */
 export class ChannelStrip {
   readonly input: GainNode;
+  /** Bypasses mute and solo, for notes previewed while editing. */
+  readonly previewInput: GainNode;
   readonly insert: { readonly input: GainNode; readonly output: GainNode };
   readonly #context: BaseAudioContext;
   readonly #fader: GainNode;
@@ -32,14 +45,15 @@ export class ChannelStrip {
   constructor(context: BaseAudioContext, destination: AudioNode) {
     this.#context = context;
     this.input = context.createGain();
+    this.previewInput = context.createGain();
     this.insert = { input: context.createGain(), output: context.createGain() };
     this.#fader = context.createGain();
     this.#panner = context.createStereoPanner();
     this.#gate = context.createGain();
-    this.input.connect(this.insert.input);
+    this.input.connect(this.#gate).connect(this.insert.input);
+    this.previewInput.connect(this.insert.input);
     this.insert.input.connect(this.insert.output);
-    this.insert.output.connect(this.#fader).connect(this.#panner).connect(this.#gate);
-    this.#gate.connect(destination);
+    this.insert.output.connect(this.#fader).connect(this.#panner).connect(destination);
   }
 
   get mute(): boolean {
@@ -58,15 +72,19 @@ export class ChannelStrip {
     return this.#pan;
   }
 
-  /** Mute and solo take effect through the mixer, which knows every strip's solo. */
-  set(settings: StripSettings): void {
+  /**
+   * Gain and pan now, or at `at` (gliding over `ramp` seconds) for a mixer change scheduled on a
+   * beat. Mute and solo take effect now, through the mixer, which knows every strip's solo.
+   */
+  set(settings: StripSettings, at?: number, ramp = 0): void {
     if (settings.gain !== undefined) {
+      this.#apply(this.#fader.gain, this.#gain, settings.gain, at, ramp);
       this.#gain = settings.gain;
-      smooth(this.#fader.gain, this.#gain, this.#context);
     }
     if (settings.pan !== undefined) {
-      this.#pan = Math.min(1, Math.max(-1, settings.pan));
-      smooth(this.#panner.pan, this.#pan, this.#context);
+      const pan = Math.min(1, Math.max(-1, settings.pan));
+      this.#apply(this.#panner.pan, this.#pan, pan, at, ramp);
+      this.#pan = pan;
     }
     if (settings.mute !== undefined) this.#mute = settings.mute;
     if (settings.solo !== undefined) this.#solo = settings.solo;
@@ -76,8 +94,25 @@ export class ChannelStrip {
     smooth(this.#gate.gain, audible ? 1 : 0, this.#context);
   }
 
+  #apply(
+    param: AudioParam,
+    from: number,
+    value: number,
+    at: number | undefined,
+    ramp: number,
+  ): void {
+    if (at === undefined) smooth(param, value, this.#context);
+    else schedule(param, from, value, at, ramp);
+  }
+
   dispose(): void {
-    for (const node of [this.input, this.insert.input, this.insert.output, this.#fader]) {
+    for (const node of [
+      this.input,
+      this.previewInput,
+      this.insert.input,
+      this.insert.output,
+      this.#fader,
+    ]) {
       node.disconnect();
     }
     this.#panner.disconnect();

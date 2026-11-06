@@ -1,10 +1,11 @@
 import type { Score } from '@reprise/model';
 
 import { buildScore } from './build-score';
+import type { GpifDocument } from './document';
 import { GpifError } from './errors';
 import { readPartConfiguration, type TrackNotation } from './part-configuration';
 import { readDocument } from './read-document';
-import { WarningCollector, type GpifWarning } from './warnings';
+import { WarningCollector, type GpifWarning, type WarningSink } from './warnings';
 import { XmlError, parseXml, type XmlElement } from './xml';
 
 declare const TextDecoder: new (
@@ -35,6 +36,24 @@ export function readGpif(
   input: string | Uint8Array,
   options: GpifReadOptions = {},
 ): GpifReadResult {
+  return readGpifWith(input, options);
+}
+
+/**
+ * A container's fix-ups for one Guitar Pro version, so its differences stay in that container's
+ * code: `beforeRead` rewrites the XML into the vocabulary the reader knows, `afterRead` adjusts
+ * the read document before it becomes a score.
+ */
+export interface GpifVersionHooks {
+  beforeRead?: (root: XmlElement, sink: WarningSink) => void;
+  afterRead?: (document: GpifDocument, sink: WarningSink) => void;
+}
+
+export function readGpifWith(
+  input: string | Uint8Array,
+  options: GpifReadOptions,
+  hooks: GpifVersionHooks = {},
+): GpifReadResult {
   let source: string;
   if (typeof input === 'string') source = input;
   else {
@@ -59,7 +78,9 @@ export function readGpif(
   }
 
   const collector = new WarningCollector();
+  hooks.beforeRead?.(root, collector);
   const document = readDocument(collector, root);
+  hooks.afterRead?.(document, collector);
   let notation: TrackNotation[] | undefined;
   if (options.partConfiguration) {
     notation = readPartConfiguration(options.partConfiguration);
