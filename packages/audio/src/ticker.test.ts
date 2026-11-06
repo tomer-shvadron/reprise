@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { intervalTicker, workerTicker } from './ticker';
 
@@ -14,9 +14,14 @@ describe('tickers', () => {
     const cancel = ticker(() => {
       ticks += 1;
     });
-    // A worker's first tick waits for its spawn, which a busy test page (the GM renders running
-    // beside this file) can hold past a fixed window; poll instead, up to two seconds.
-    for (let waited = 0; ticks <= 3 && waited < 2000; waited += 25) await wait(25);
+    // This waits out the worker's start-up latency, not tick accuracy: other files' main-thread
+    // work in the page delays its spawn and first messages, 150 to 180 ms on main.
+    await vi.waitFor(
+      () => {
+        expect(ticks).toBeGreaterThan(3);
+      },
+      { timeout: 2000 },
+    );
     cancel();
     const atCancel = ticks;
     await wait(60);
