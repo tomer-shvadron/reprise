@@ -2,18 +2,18 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { TransportBar } from '@/features/transport';
 import type { RepriseBridge } from '@/platform/bridge';
 
 import { AppFrame } from './app-frame';
 import { CommandPalette } from './command-palette';
-import { CommandRegistry, runCommand } from './command-registry';
-import { appCommands } from './commands';
+import { createAppRegistry } from './app-registry';
+import { runCommand } from './command-registry';
 import { DropZone } from './drop-zone';
 import { installFirstGesture } from './first-gesture';
 import { formatShortcut, type KeyboardPlatform } from './keyboard';
 import { Notices } from './notices';
 import { SavePromptDialog } from './save-prompt';
-import { PlaybackControls } from './playback-controls';
 import { ScorePane } from './score-pane';
 import type { AppServices } from './services';
 import { AppServicesProvider } from './services-context';
@@ -28,11 +28,7 @@ interface AppProps {
 
 export function App({ services, keyboard, onMenuCommand }: AppProps) {
   const { ui, audio } = services;
-  const [registry] = useState(() => {
-    const commands = new CommandRegistry();
-    for (const command of appCommands(services)) commands.register(command);
-    return commands;
-  });
+  const [registry] = useState(() => createAppRegistry(services));
   const theme = useStore(ui, (state) => state.theme);
 
   useLayoutEffect(() => {
@@ -70,7 +66,11 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   return (
     <AppServicesProvider services={services}>
       <TooltipProvider>
-        <AppFrame ui={ui} score={<ScorePane hint={hint} />} transport={<PlaybackControls />} />
+        <AppFrame
+          ui={ui}
+          score={<ScorePane hint={hint} />}
+          transport={<TransportBar registry={registry} keyboard={keyboard} />}
+        />
         <CommandPalette registry={registry} ui={ui} keyboard={keyboard} />
         <DropZone />
         <Notices />

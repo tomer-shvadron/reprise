@@ -61,6 +61,11 @@ export interface AudioService {
   setLoop(range?: BarRange): void;
   setCountIn(on: boolean): void;
   setMetronome(on: boolean, volume: number): void;
+  /**
+   * The master bus level, 0 to 1, mirrored into `settings.masterVolume`. The metronome feeds the
+   * bus, so it scales the clicks too. Throws a `RangeError` outside 0 to 1.
+   */
+  setMasterVolume(volume: number): void;
   /** A user override over the track's channel, kept through every baseline reset. */
   setTrack(id: Id, params: TrackParams): void;
   /** After a sound, song or output error. */
@@ -332,6 +337,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     made.setCountIn(settings.countIn);
     made.setMetronome(settings.metronome.on, settings.metronome.volume);
     made.setLoop(settings.loop);
+    live.master.gain = settings.masterVolume;
     sampler = live;
     engine = made;
     cleanups.push(
@@ -452,6 +458,14 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     setMetronome(on, volume) {
       engine?.setMetronome(on, volume);
       setSettings({ metronome: { on, volume } });
+    },
+
+    setMasterVolume(volume) {
+      if (!Number.isFinite(volume) || volume < 0 || volume > 1) {
+        throw new RangeError(`setMasterVolume: volume must be 0 to 1, got ${String(volume)}`);
+      }
+      if (sampler) sampler.master.gain = volume;
+      setSettings({ masterVolume: volume });
     },
 
     setTrack(id, params) {

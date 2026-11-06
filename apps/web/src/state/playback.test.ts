@@ -15,6 +15,7 @@ describe('the playback store', () => {
       loop: undefined,
       countIn: false,
       metronome: { on: false, volume: 0.7 },
+      masterVolume: 1,
     });
   });
 

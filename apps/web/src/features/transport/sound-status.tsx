@@ -1,12 +1,10 @@
-import { PauseIcon, PlayIcon } from 'lucide-react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 
+import { useAppServices } from '@/app/services-context';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { selectCanPlay, selectRunning, type PlaybackStoreState } from '@/state/playback';
-
-import { useAppServices } from './services-context';
+import type { PlaybackStoreState } from '@/state/playback';
 
 const MB = 1024 * 1024;
 
@@ -16,35 +14,39 @@ export function megabytes(bytes: number): string {
   return mb < 10 ? mb.toFixed(1) : mb.toFixed(0);
 }
 
+export interface SoundStatusLine {
+  text: string;
+  /** The text without its progress, which the announcer speaks once per stage. */
+  stage: string;
+  retry: boolean;
+}
+
+const line = (text: string, retry: boolean): SoundStatusLine => ({ text, stage: text, retry });
+
 /** What the sound status line says, and whether it offers Retry. */
-export function soundStatus(
-  state: PlaybackStoreState,
-): { text: string; retry: boolean } | undefined {
-  if (state.output.status === 'error') return { text: 'Audio output unavailable', retry: true };
-  if (state.sounds.status === 'error') return { text: 'Sounds unavailable', retry: true };
+export function soundStatus(state: PlaybackStoreState): SoundStatusLine | undefined {
+  if (state.output.status === 'error') return line('Audio output unavailable', true);
+  if (state.sounds.status === 'error') return line('Sounds unavailable', true);
   if (state.sounds.status === 'loading') {
     const { loaded, total } = state.sounds;
-    return {
-      text: total
-        ? `Loading sounds… ${String(Math.floor((loaded / total) * 100))}%`
-        : 'Loading sounds…',
-      retry: false,
-    };
+    const stage = 'Loading sounds…';
+    return total
+      ? { text: `${stage} ${String(Math.floor((loaded / total) * 100))}%`, stage, retry: false }
+      : line(stage, false);
   }
-  if (state.song.status === 'error') return { text: 'Sounds unavailable', retry: true };
-  if (state.song.status === 'loading') return { text: 'Preparing instruments…', retry: false };
+  if (state.song.status === 'error') return line('Sounds unavailable', true);
+  if (state.song.status === 'loading') return line('Preparing instruments…', false);
   return undefined;
 }
 
-export function PlaybackControls() {
+/** The sound bank's and the song's load state, the decoded memory, and Retry after an error. */
+export function SoundStatus() {
   const { playback, audio } = useAppServices();
-  const { canPlay, running, text, retry, memory, instruments } = useStore(
+  const { text, retry, memory, instruments } = useStore(
     playback,
     useShallow((state) => {
       const status = soundStatus(state);
       return {
-        canPlay: selectCanPlay(state),
-        running: selectRunning(state),
         text: status?.text,
         retry: status?.retry ?? false,
         memory: state.memory,
@@ -52,25 +54,18 @@ export function PlaybackControls() {
       };
     }),
   );
-  const label = running ? 'Pause' : 'Play';
-  const Icon = running ? PauseIcon : PlayIcon;
 
   return (
-    <>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={label}
-        disabled={!canPlay}
-        onClick={() => {
-          audio.togglePlay();
-        }}
-      >
-        <Icon />
-      </Button>
+    <div className="flex min-w-0 flex-1 items-center gap-1">
       <Tooltip>
         <TooltipTrigger asChild>
-          <span role="status" className="text-muted-foreground min-w-0 truncate text-xs">
+          {/* Not a live region: progress would be read out at every percent; the announcer
+              speaks each stage once. */}
+          <span
+            aria-live="off"
+            data-sound-status
+            className="text-muted-foreground min-w-0 truncate text-xs"
+          >
             {text ?? (memory.decodedBytes > 0 && `${megabytes(memory.decodedBytes)} MB`)}
           </span>
         </TooltipTrigger>
@@ -90,6 +85,6 @@ export function PlaybackControls() {
           Retry
         </Button>
       )}
-    </>
+    </div>
   );
 }

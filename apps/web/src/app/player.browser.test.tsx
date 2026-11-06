@@ -1,79 +1,14 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { waitFor } from '@testing-library/react';
 import { createTimeline, type PlaybackState } from '@reprise/audio';
 import { secondsAtTick, type Id } from '@reprise/model';
 import { describe, expect, it } from 'vitest';
 
-import { createUiStore } from '@/state/ui';
-import { fetchFixture, fetchGeneralUser, fetchSyntheticSf2, fixturePaths } from '@/test/assets';
-import { drive, manualTicker, rms } from '@/test/offline';
-import { fakePlatform } from '@/test/services';
+import { fetchFixture, fetchGeneralUser, fixturePaths } from '@/test/assets';
+import { rms } from '@/test/offline';
+import { player, PLAYER_START } from '@/test/player-harness';
 
-import { App } from './app';
-import { createAudioService } from './audio/audio-service';
-import { createAppServices } from './services';
-
-const SAMPLE_RATE = 44_100;
-const START = 0.1;
+const START = PLAYER_START;
 const generalUser = await fetchGeneralUser();
-
-function player(soundfont: () => Promise<Uint8Array> = fetchSyntheticSf2) {
-  const next: { file: { name: string; bytes: Uint8Array } | undefined } = { file: undefined };
-  const contexts: OfflineAudioContext[] = [];
-  let context: OfflineAudioContext | undefined;
-  const scheduler = manualTicker();
-  const frames = manualTicker();
-  const services = createAppServices({
-    platform: fakePlatform({ openFile: () => Promise.resolve(next.file) }),
-    ui: createUiStore('light'),
-    audio: (playback) =>
-      createAudioService({
-        playback,
-        loadSoundfont: soundfont,
-        createContext: () => {
-          if (!context) throw new Error('the test has not made a context yet');
-          contexts.push(context);
-          return context;
-        },
-        scheduler: scheduler.ticker,
-        frames: frames.ticker,
-        startLatency: START,
-        defer: (run) => {
-          run();
-        },
-      }),
-  });
-  render(<App services={services} keyboard="mac" />);
-
-  async function open(path: string) {
-    next.file = { name: path.split('/').pop() ?? path, bytes: await fetchFixture(path) };
-    await services.document.getState().open();
-    await painted();
-  }
-
-  async function painted() {
-    await waitFor(() => {
-      const region = screen.getByRole('region', { name: /^Score: / });
-      expect(region).toHaveAttribute('aria-busy', 'false');
-      expect(region.querySelector('[data-system-id]')).not.toBeNull();
-    });
-    await services.audio.settled();
-  }
-
-  /** Makes the context the next gesture or Play creates, `seconds` long. */
-  function prepare(seconds: number): OfflineAudioContext {
-    context = new OfflineAudioContext({
-      numberOfChannels: 2,
-      length: Math.round(seconds * SAMPLE_RATE),
-      sampleRate: SAMPLE_RATE,
-    });
-    return context;
-  }
-
-  const renderAudio = (offline: OfflineAudioContext) =>
-    drive(offline, { tickers: [scheduler, frames] });
-
-  return { services, open, painted, prepare, renderAudio, contexts };
-}
 
 /** Plays bar 1 of the open score and reports what was heard and seen. */
 async function playBarOne(p: ReturnType<typeof player>) {

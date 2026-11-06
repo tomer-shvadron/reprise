@@ -364,4 +364,21 @@ describe('the audio service', () => {
     expect(playback.getState().song.status).toBe('ready');
     audio.dispose();
   });
+
+  it('sets the master volume before and after the engine exists', async () => {
+    const { playback, audio, render, debug } = setup({ seconds: 2.2 });
+    audio.setMasterVolume(0.5);
+    expect(playback.getState().settings.masterVolume).toBe(0.5);
+    expect(() => {
+      audio.setMasterVolume(1.5);
+    }).toThrow(RangeError);
+    await open(audio, quarters(1));
+    audio.unlock();
+    expect(debug().sampler.master.gain).toBe(0.5);
+
+    audio.setMasterVolume(0);
+    audio.play();
+    const buffer = await render();
+    expect(rms(buffer, START + 0.1, 2.1)).toBeLessThan(1e-6);
+  });
 });

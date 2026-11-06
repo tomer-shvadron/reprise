@@ -14,11 +14,18 @@ import type { BarRange } from './selection';
 
 export type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
+export interface TempoSetting {
+  mode: TempoMode;
+  value: number;
+}
+
 export interface TransportSettings {
-  tempo: { mode: TempoMode; value: number };
+  tempo: TempoSetting;
   loop: BarRange | undefined;
   countIn: boolean;
   metronome: { on: boolean; volume: number };
+  /** The output level, 0 to 1, over notes and clicks alike; the mixer (WP-052) binds it too. */
+  masterVolume: number;
 }
 
 /** A mirror of the audio service: only the service writes it, through `setState`. */
@@ -67,6 +74,7 @@ export function initialPlaybackState(): PlaybackStoreState {
       loop: undefined,
       countIn: false,
       metronome: { on: false, volume: 0.7 },
+      masterVolume: 1,
     },
     mixer: {},
   };
