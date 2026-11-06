@@ -300,6 +300,31 @@ describe.skipIf(!font)('GeneralUser GS', () => {
     expect(ratio).toBeLessThan(0.5);
   });
 
+  it('lowers a resonant zone by half its peak: Music Box', async () => {
+    if (!font) return;
+    const regions = font.regionMapFor(0, 10);
+    if (!regions) throw new Error('No Music Box');
+    const layers = regions.resolveAll(A4, 127);
+    // Both layers: 170 cB of resonance at the open cutoff, so 8.5 dB off the DC gain.
+    expect(layers).toHaveLength(2);
+    for (const layer of layers) {
+      expect(layer.filter?.q).toBeCloseTo(17 - 3.0103, 9);
+      expect(layer.filter?.cutoffHz).toBeGreaterThan(19_000);
+    }
+    const strikes = [{ key: A4, when: 0, off: 1.2 }];
+    const level = rms(await playMap(font, regions, strikes), 0.05, 1);
+    // As main played it: no region filter and the zone's own attenuation.
+    const unfiltered = without(regions, (region) => {
+      const open = { ...region, attenuation: (region.attenuation ?? 0) - 8.5 };
+      delete open.filter;
+      return open;
+    });
+    const before = rms(await playMap(font, unfiltered, strikes), 0.05, 1);
+    const db = 20 * Math.log10(level / before);
+    console.info(`Music Box A4: ${db.toFixed(2)} dB against the unfiltered zone`);
+    expect(Math.abs(db + 8.5)).toBeLessThan(1);
+  });
+
   it('delays the volume envelope where a GM zone does: Synth Strings 2', async () => {
     if (!font) return;
     const regions = font.regionMapFor(0, 51);

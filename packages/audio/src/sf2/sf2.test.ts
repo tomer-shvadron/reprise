@@ -148,6 +148,8 @@ describe('Sf2Soundfont regions', () => {
     expect(high?.filter?.cutoffHz).toBeCloseTo(440 * 2 ** ((5400 - 6900) / 1200), 9);
     // 60 cB of resonance over FluidSynth's Butterworth floor.
     expect(high?.filter?.q).toBeCloseTo(6 - 3.0103, 9);
+    // Half of the 6 dB peak comes off the DC gain.
+    expect(high?.attenuation).toBeCloseTo(3, 9);
     expect(high?.envelope.delay).toBeCloseTo(2 ** (-3600 / 1200), 12);
     // The other zones keep the spec's open filter and 1 ms delay, which carry nothing.
     const [low] = regionsOf(0, 25);

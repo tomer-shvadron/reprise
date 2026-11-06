@@ -498,10 +498,12 @@ function buildRegions(
     header.pitchCorrection +
     value(pitch, Gen.modEnvToPitch) * held;
   const scale = value(pitch, Gen.scaleTuning);
-  const attenuation = value(generators, Gen.initialAttenuation) / 10;
+  const lowpass = filter(generators);
+  // SF2 8.1.3 #9: the resonance lowers the DC gain by half of it, as FluidSynth's 1 / sqrt(Q) does.
+  const resonanceCut = lowpass ? value(generators, Gen.initialFilterQ) / 20 : 0;
+  const attenuation = value(generators, Gen.initialAttenuation) / 10 + resonanceCut;
   const pan = zone.samples.length === 1 ? value(generators, Gen.pan) / 500 : 0;
   const rate = zone.sample.sampleRate;
-  const lowpass = filter(generators);
   const exclusiveClass = value(generators, Gen.exclusiveClass);
 
   const base = {
