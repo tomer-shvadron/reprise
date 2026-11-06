@@ -12,6 +12,7 @@ import { DropZone } from './drop-zone';
 import { installFirstGesture } from './first-gesture';
 import { formatShortcut, type KeyboardPlatform } from './keyboard';
 import { Notices } from './notices';
+import { SavePromptDialog } from './save-prompt';
 import { PlaybackControls } from './playback-controls';
 import { ScorePane } from './score-pane';
 import type { AppServices } from './services';
@@ -73,6 +74,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
         <CommandPalette registry={registry} ui={ui} keyboard={keyboard} />
         <DropZone />
         <Notices />
+        <SavePromptDialog />
       </TooltipProvider>
     </AppServicesProvider>
   );

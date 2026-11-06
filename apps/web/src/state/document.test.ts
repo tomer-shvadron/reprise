@@ -6,7 +6,13 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Platform } from '@/platform/platform';
 import { fakePlatform } from '@/test/services';
 
-import { createDocumentStore, REPRISE_FILES, SCORE_FILES } from './document';
+import {
+  createDocumentStore,
+  GP_FILES,
+  REPRISE_FILES,
+  SCORE_FILES,
+  type SaveAnswer,
+} from './document';
 
 // Any bytes `detect` recognises; the injected `read` decides what they hold.
 const GP5 = new TextEncoder().encode('\u0018FICHIER GUITAR PRO v5.00');
@@ -20,6 +26,23 @@ function song(title = 'Song'): Score {
     .build();
 }
 
+const GP = new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+const REPRISE_BYTES = new Uint8Array([1]);
+const GP_BYTES = new Uint8Array([2]);
+
+const dynamicsDropped: Warning = {
+  code: 'note-dynamics',
+  severity: 'warning',
+  message: 'notes of one beat with different dynamics',
+  location: { track: 0, bar: 0 },
+};
+const rseNotModelled: Warning = {
+  code: 'rse-dropped',
+  severity: 'info',
+  message: 'RSE settings',
+  location: {},
+};
+
 const warning = (severity: Warning['severity']): Warning => ({
   code: 'invalid-value',
   severity,
@@ -32,10 +55,17 @@ function setup(
     read?: (bytes: Uint8Array) => Promise<ReadResult>;
     saveFile?: () => Promise<string | undefined>;
     writeHandle?: () => Promise<void>;
+    gpDropped?: Warning[];
   } = {},
 ) {
   const read = vi.fn(options.read ?? (() => Promise.resolve({ score: song(), warnings: [] })));
-  const write = vi.fn(() => Promise.resolve({ bytes: new Uint8Array([1]), dropped: [] }));
+  const write = vi.fn((_score: Score, format: 'reprise' | 'gp') =>
+    Promise.resolve(
+      format === 'gp'
+        ? { bytes: GP_BYTES, dropped: options.gpDropped ?? [] }
+        : { bytes: REPRISE_BYTES, dropped: [] },
+    ),
+  );
   const openFile = vi.fn<Platform['openFile']>(() =>
     Promise.resolve({ name: 'song.gp5', bytes: GP5 }),
   );
@@ -47,6 +77,21 @@ function setup(
     write,
   });
   return { store, read, write, openFile, saveFile, writeHandle };
+}
+
+/** Runs a save, answers the question it asks, and waits for it to finish. */
+async function answering(
+  store: ReturnType<typeof setup>['store'],
+  saving: Promise<void>,
+  answer: SaveAnswer,
+) {
+  await vi.waitFor(() => {
+    expect(store.getState().savePrompt).toBeDefined();
+  });
+  const prompt = store.getState().savePrompt;
+  store.getState().answerSavePrompt(answer);
+  await saving;
+  return prompt;
 }
 
 function editOf(store: ReturnType<typeof setup>['store'], fret: number) {
@@ -225,7 +270,7 @@ describe('the document store', () => {
     const { store } = setup();
     await store.getState().openBytes('song.gp5', GP5);
     store.getState().apply(editOf(store, 5));
-    await store.getState().saveAs();
+    await answering(store, store.getState().saveAs(), 'reprise');
     expect(store.getState().dirty).toBe(false);
 
     store.getState().undo();
@@ -235,15 +280,21 @@ describe('the document store', () => {
     expect(store.getState().dirty).toBe(true);
   });
 
-  it('saves as .reprise, then saves in place to the chosen path', async () => {
-    const { store, write, saveFile, writeHandle } = setup();
-    await store.getState().openBytes('song.gp5', GP5);
+  it('sends Save on a gp5 to Save As, saying why, then saves in place to the chosen .reprise', async () => {
+    const { store, write, saveFile, writeHandle } = setup({ gpDropped: [dynamicsDropped] });
+    await store.getState().openBytes('song.gp5', GP5, { kind: 'file' });
     store.getState().apply(editOf(store, 5));
 
-    await store.getState().save();
+    const prompt = await answering(store, store.getState().save(), 'reprise');
 
+    expect(prompt).toEqual({
+      kind: 'save-as',
+      reason:
+        "Reprise can't write Guitar Pro 5 (.gp5) files, so this saves a copy as Reprise or as Guitar Pro 7–8.",
+      gpLosses: [dynamicsDropped],
+    });
     expect(write).toHaveBeenCalledWith(store.getState().score, 'reprise');
-    expect(saveFile).toHaveBeenCalledWith('song.reprise', new Uint8Array([1]), REPRISE_FILES);
+    expect(saveFile).toHaveBeenCalledWith('song.reprise', REPRISE_BYTES, REPRISE_FILES);
     expect(store.getState().file).toEqual({
       name: 'song.reprise',
       format: 'reprise',
@@ -253,9 +304,45 @@ describe('the document store', () => {
 
     store.getState().apply(editOf(store, 6));
     await store.getState().save();
-    expect(writeHandle).toHaveBeenCalledWith('/music/song.reprise', new Uint8Array([1]));
+    expect(store.getState().savePrompt).toBeUndefined();
+    expect(writeHandle).toHaveBeenCalledWith('/music/song.reprise', REPRISE_BYTES);
     expect(saveFile).toHaveBeenCalledOnce();
     expect(store.getState().dirty).toBe(false);
+  });
+
+  it('saves a gp5 as Guitar Pro 7–8, then saves the new .gp in place without asking again', async () => {
+    const { store, saveFile, writeHandle } = setup({
+      read: () => Promise.resolve({ score: song(), warnings: [rseNotModelled] }),
+      saveFile: () => Promise.resolve('/music/song.gp'),
+    });
+    await store.getState().openBytes('song.gp5', GP5);
+    store.getState().apply(editOf(store, 5));
+
+    await answering(store, store.getState().saveAs(), 'gp');
+
+    expect(saveFile).toHaveBeenCalledWith('song.gp', GP_BYTES, GP_FILES);
+    expect(store.getState().file).toEqual({
+      name: 'song.gp',
+      format: 'gp',
+      handle: '/music/song.gp',
+    });
+    expect(store.getState().dirty).toBe(false);
+
+    // The new file never held what the gp5's read dropped, so overwriting it loses nothing.
+    store.getState().apply(editOf(store, 6));
+    await store.getState().save();
+    expect(store.getState().savePrompt).toBeUndefined();
+    expect(writeHandle).toHaveBeenCalledWith('/music/song.gp', GP_BYTES);
+    expect(store.getState().dirty).toBe(false);
+  });
+
+  it('gives no reason in Save As for a format Reprise writes', async () => {
+    const { store } = setup({ saveFile: () => Promise.resolve(undefined) });
+    await store.getState().openBytes('song.reprise', new TextEncoder().encode('{}'));
+
+    const prompt = await answering(store, store.getState().saveAs(), 'reprise');
+
+    expect(prompt).toMatchObject({ kind: 'save-as', reason: undefined });
   });
 
   it('saves an opened .reprise file in place through its handle', async () => {
@@ -265,16 +352,85 @@ describe('the document store', () => {
 
     await store.getState().save();
 
+    expect(store.getState().savePrompt).toBeUndefined();
     expect(saveFile).not.toHaveBeenCalled();
-    expect(writeHandle).toHaveBeenCalledWith(handle, new Uint8Array([1]));
+    expect(writeHandle).toHaveBeenCalledWith(handle, REPRISE_BYTES);
   });
 
-  it('changes nothing on a cancelled Save As', async () => {
-    const { store } = setup({ saveFile: () => Promise.resolve(undefined) });
+  it('overwrites an opened .gp with the gp writer once its losses are confirmed', async () => {
+    const handle = { kind: 'file' };
+    const { store, write, saveFile, writeHandle } = setup({
+      read: () => Promise.resolve({ score: song(), warnings: [rseNotModelled, warning('error')] }),
+      gpDropped: [dynamicsDropped],
+    });
+    await store.getState().openBytes('song.gp', GP, handle);
+    store.getState().apply(editOf(store, 5));
+
+    const saving = store.getState().save();
+    await vi.waitFor(() => {
+      expect(store.getState().savePrompt).toBeDefined();
+    });
+    expect(store.getState().savePrompt).toEqual({
+      kind: 'overwrite',
+      fileName: 'song.gp',
+      losses: [dynamicsDropped, rseNotModelled],
+    });
+    expect(writeHandle).not.toHaveBeenCalled();
+    store.getState().answerSavePrompt('overwrite');
+    await saving;
+
+    expect(write).toHaveBeenCalledWith(store.getState().score, 'gp');
+    expect(write).not.toHaveBeenCalledWith(expect.anything(), 'reprise');
+    expect(writeHandle).toHaveBeenCalledWith(handle, GP_BYTES);
+    expect(saveFile).not.toHaveBeenCalled();
+    expect(store.getState().file).toEqual({ name: 'song.gp', format: 'gp', handle });
+    expect(store.getState().dirty).toBe(false);
+    expect(store.getState().savePrompt).toBeUndefined();
+
+    // The original is gone, so the next overwrite asks only about the writer's drops.
+    store.getState().apply(editOf(store, 6));
+    const again = await answering(store, store.getState().save(), 'overwrite');
+    expect(again).toMatchObject({ losses: [dynamicsDropped] });
+  });
+
+  it('writes nothing when the overwrite of a .gp is cancelled', async () => {
+    const handle = { kind: 'file' };
+    const { store, saveFile, writeHandle } = setup({ gpDropped: [dynamicsDropped] });
+    await store.getState().openBytes('song.gp', GP, handle);
+    store.getState().apply(editOf(store, 5));
+
+    await answering(store, store.getState().save(), 'cancel');
+
+    expect(writeHandle).not.toHaveBeenCalled();
+    expect(saveFile).not.toHaveBeenCalled();
+    expect(store.getState().file).toEqual({ name: 'song.gp', format: 'gp', handle });
+    expect(store.getState().dirty).toBe(true);
+    expect(store.getState().saving).toBe(false);
+  });
+
+  it('overwrites a .gp that loses nothing without asking', async () => {
+    const handle = { kind: 'file' };
+    const { store, writeHandle } = setup();
+    await store.getState().openBytes('song.gp', GP, handle);
+    store.getState().apply(editOf(store, 5));
+
+    await store.getState().save();
+
+    expect(store.getState().savePrompt).toBeUndefined();
+    expect(writeHandle).toHaveBeenCalledWith(handle, GP_BYTES);
+    expect(store.getState().file).toEqual({ name: 'song.gp', format: 'gp', handle });
+    expect(store.getState().dirty).toBe(false);
+  });
+
+  it('changes nothing when Save As is cancelled in the app or in the platform dialog', async () => {
+    const { store, saveFile } = setup({ saveFile: () => Promise.resolve(undefined) });
     await store.getState().openBytes('song.gp5', GP5);
     store.getState().apply(editOf(store, 5));
 
-    await store.getState().saveAs();
+    await answering(store, store.getState().saveAs(), 'cancel');
+    expect(saveFile).not.toHaveBeenCalled();
+    await answering(store, store.getState().saveAs(), 'gp');
+    expect(saveFile).toHaveBeenCalledWith('song.gp', GP_BYTES, GP_FILES);
 
     expect(store.getState().file).toEqual({ name: 'song.gp5', format: 'gp5' });
     expect(store.getState().dirty).toBe(true);
@@ -286,7 +442,7 @@ describe('the document store', () => {
     vi.spyOn(console, 'error').mockImplementationOnce(() => undefined);
     await store.getState().openBytes('song.gp5', GP5);
 
-    await store.getState().saveAs();
+    await answering(store, store.getState().saveAs(), 'reprise');
 
     expect(store.getState().error).toEqual({
       action: 'save',
@@ -305,8 +461,13 @@ describe('the document store', () => {
     });
     await store.getState().openBytes('song.gp5', GP5);
     const saving = store.getState().saveAs();
-    await Promise.resolve();
-    await Promise.resolve();
+    await vi.waitFor(() => {
+      expect(store.getState().savePrompt).toBeDefined();
+    });
+    store.getState().answerSavePrompt('reprise');
+    await vi.waitFor(() => {
+      expect(saveFile).toHaveBeenCalledOnce();
+    });
 
     await store.getState().save();
     store.getState().apply(editOf(store, 5));
@@ -315,6 +476,64 @@ describe('the document store', () => {
 
     expect(saveFile).toHaveBeenCalledOnce();
     expect(store.getState().dirty).toBe(true);
+  });
+
+  it('drops a save that outlives its document', async () => {
+    let finish: (path: string) => void = () => undefined;
+    const { store, saveFile } = setup({
+      saveFile: () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    });
+    await store.getState().openBytes('first.gp5', GP5);
+    store.getState().apply(editOf(store, 5));
+    const saving = store.getState().saveAs();
+    await vi.waitFor(() => {
+      expect(store.getState().savePrompt).toBeDefined();
+    });
+    store.getState().answerSavePrompt('reprise');
+    await vi.waitFor(() => {
+      expect(saveFile).toHaveBeenCalledOnce();
+    });
+
+    await store.getState().openBytes('second.gp5', GP5);
+    store.getState().apply(editOf(store, 6));
+    finish('/music/first.reprise');
+    await saving;
+
+    expect(store.getState().file).toEqual({ name: 'second.gp5', format: 'gp5' });
+    expect(store.getState().dirty).toBe(true);
+  });
+
+  it('cancels a pending question when the document closes', async () => {
+    const { store, writeHandle } = setup({ gpDropped: [dynamicsDropped] });
+    await store.getState().openBytes('song.gp', GP, { kind: 'file' });
+    const saving = store.getState().save();
+    await vi.waitFor(() => {
+      expect(store.getState().savePrompt).toBeDefined();
+    });
+
+    store.getState().close();
+    await saving;
+
+    expect(store.getState().savePrompt).toBeUndefined();
+    expect(store.getState().saving).toBe(false);
+    expect(writeHandle).not.toHaveBeenCalled();
+  });
+
+  it('opens the import details expanded from the command, and collapses them on the next open', async () => {
+    const { store } = setup({
+      read: () => Promise.resolve({ score: song(), warnings: [warning('warning')] }),
+    });
+    await store.getState().openBytes('song.gp5', GP5);
+    store.getState().setWarningsOpen(false);
+
+    store.getState().showImportDetails();
+    expect(store.getState()).toMatchObject({ warningsOpen: true, detailsOpen: true });
+
+    await store.getState().openBytes('other.gp5', GP5);
+    expect(store.getState()).toMatchObject({ warningsOpen: true, detailsOpen: false });
   });
 
   it('closes to the empty state', async () => {

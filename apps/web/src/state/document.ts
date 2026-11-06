@@ -25,11 +25,37 @@ export const SCORE_FILES: readonly FileFilter[] = [
   { name: 'Scores', extensions: ['reprise', 'gp', 'gpx', 'gp5', 'gp4', 'gp3'] },
 ];
 export const REPRISE_FILES: readonly FileFilter[] = [{ name: 'Reprise', extensions: ['reprise'] }];
+export const GP_FILES: readonly FileFilter[] = [{ name: 'Guitar Pro 7–8', extensions: ['gp'] }];
+
+/** The formats Reprise can write; every other opened format is saved as a copy in one of these. */
+export type SaveFormat = 'reprise' | 'gp';
+
+const SAVE_FILTERS: Record<SaveFormat, readonly FileFilter[]> = {
+  reprise: REPRISE_FILES,
+  gp: GP_FILES,
+};
+
+export const FORMAT_NAMES: Record<Format, string> = {
+  gp3: 'Guitar Pro 3 (.gp3)',
+  gp4: 'Guitar Pro 4 (.gp4)',
+  gp5: 'Guitar Pro 5 (.gp5)',
+  gpx: 'Guitar Pro 6 (.gpx)',
+  gp: 'Guitar Pro 7–8 (.gp)',
+  reprise: 'Reprise (.reprise)',
+};
+
+export type SavePrompt =
+  /** Overwriting a `.gp` loses these: the writer's drops, and what the read never kept. */
+  | { kind: 'overwrite'; fileName: string; losses: readonly Warning[] }
+  /** Save As asks for the format before the platform dialog, which takes the bytes up front. */
+  | { kind: 'save-as'; reason: string | undefined; gpLosses: readonly Warning[] };
+
+export type SaveAnswer = 'cancel' | 'overwrite' | SaveFormat;
 
 export interface DocumentFile {
   name: string;
   format: Format;
-  /** From the platform's open or from a Save As; Save writes over it when the file is `.reprise`. */
+  /** From the platform's open or from a Save As; Save writes over it when the format is a `SaveFormat`. */
   handle?: FileHandle;
 }
 
@@ -63,6 +89,10 @@ export interface DocumentState {
   /** From the last successful read. */
   warnings: readonly Warning[];
   warningsOpen: boolean;
+  /** Whether the warnings notice shows its list; reset by every open. */
+  detailsOpen: boolean;
+  /** A question the pending save waits on; `answerSavePrompt` settles it. */
+  savePrompt: SavePrompt | undefined;
   /** The name of the file being read. */
   opening: string | undefined;
   saving: boolean;
@@ -78,6 +108,10 @@ export interface DocumentState {
   setVisibleTracks(tracks: Id[] | 'all'): void;
   setNotation(trackId: Id, notation: Notation | undefined): void;
   setWarningsOpen(open: boolean): void;
+  setDetailsOpen(open: boolean): void;
+  /** Reopens the warnings notice with its list expanded. */
+  showImportDetails(): void;
+  answerSavePrompt(answer: SaveAnswer): void;
   dismissError(): void;
   /** Sets an open error from outside the read, such as a dropped file that is too large. */
   failOpen(fileName: string, message: string, code?: string): void;
@@ -108,6 +142,22 @@ function lastSegment(path: string): string {
   return path.split(/[/\\]/).pop() ?? path;
 }
 
+function isSaveFormat(format: string | undefined): format is SaveFormat {
+  return format === 'reprise' || format === 'gp';
+}
+
+/** What the read did not keep, which an overwrite of the original therefore loses. */
+export function readLosses(warnings: readonly Warning[]): Warning[] {
+  return warnings.filter(
+    (warning) => warning.severity === 'info' || warning.code.endsWith('-dropped'),
+  );
+}
+
+function saveAsReason(format: Format | undefined): string | undefined {
+  if (format === undefined || isSaveFormat(format)) return undefined;
+  return `Reprise can't write ${FORMAT_NAMES[format]} files, so this saves a copy as Reprise or as Guitar Pro 7–8.`;
+}
+
 export function createDocumentStore(deps: DocumentStoreDeps) {
   const { platform, read = readScore, write = writeScore } = deps;
   let history: History = createHistory();
@@ -115,6 +165,11 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
   let depth = 0;
   let savedDepth = 0;
   let openToken = 0;
+  // Bumped by every open and close, so a save that outlives its document drops its result.
+  let documentToken = 0;
+  // Whether the file on disk still holds what the read dropped; false once Reprise wrote it as gp.
+  let originalHasMore = true;
+  let resolvePrompt: ((answer: SaveAnswer) => void) | undefined;
 
   return create<DocumentState>()((set, get) => {
     const snapshot = () => ({
@@ -137,25 +192,55 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       }));
     };
 
+    const ask = (prompt: SavePrompt) =>
+      new Promise<SaveAnswer>((resolve) => {
+        resolvePrompt = resolve;
+        set({ savePrompt: prompt });
+      });
+
+    const settlePrompt = (answer: SaveAnswer) => {
+      const resolve = resolvePrompt;
+      resolvePrompt = undefined;
+      if (get().savePrompt !== undefined) set({ savePrompt: undefined });
+      resolve?.(answer);
+    };
+
+    const forgetDocument = () => {
+      documentToken += 1;
+      originalHasMore = true;
+      settlePrompt('cancel');
+    };
+
     const saveAs = async () => {
       const { score, file, saving } = get();
       if (!score || saving) return;
       const at = depth;
+      const token = documentToken;
       const name = file ? baseName(file.name) : 'Untitled';
+      let target = `${name}.reprise`;
       set({ saving: true });
       try {
-        const { bytes } = await write(score, 'reprise');
-        const path = await platform.saveFile(`${name}.reprise`, bytes, REPRISE_FILES);
+        const gp = await write(score, 'gp');
+        const answer = await ask({
+          kind: 'save-as',
+          reason: saveAsReason(file?.format),
+          gpLosses: gp.dropped,
+        });
+        if (token !== documentToken || !isSaveFormat(answer)) return;
+        target = `${name}.${answer}`;
+        const { bytes } = answer === 'gp' ? gp : await write(score, 'reprise');
+        const path = await platform.saveFile(target, bytes, SAVE_FILTERS[answer]);
         // A cancel and a browser download look the same: nothing to write to again.
-        if (path !== undefined) {
+        if (path !== undefined && token === documentToken) {
           savedDepth = at;
+          if (answer === 'gp') originalHasMore = false;
           set({
-            file: { name: lastSegment(path), format: 'reprise', handle: path },
+            file: { name: lastSegment(path), format: answer, handle: path },
             ...snapshot(),
           });
         }
       } catch (error) {
-        set({ error: errorOf('save', `${name}.reprise`, error) });
+        set({ error: errorOf('save', target, error) });
       } finally {
         set({ saving: false });
       }
@@ -175,6 +260,8 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       redoLabel: undefined,
       warnings: [],
       warningsOpen: false,
+      detailsOpen: false,
+      savePrompt: undefined,
       opening: undefined,
       saving: false,
       error: undefined,
@@ -204,6 +291,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           history = createHistory();
           depth = 0;
           savedDepth = 0;
+          forgetDocument();
           set((state) => ({
             id: newId(),
             score,
@@ -213,6 +301,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
             revision: state.revision + 1,
             warnings,
             warningsOpen: warnings.some((warning) => warning.severity !== 'info'),
+            detailsOpen: false,
             opening: undefined,
             ...snapshot(),
           }));
@@ -224,6 +313,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
 
       close() {
         openToken += 1;
+        forgetDocument();
         history = createHistory();
         depth = 0;
         savedDepth = 0;
@@ -236,6 +326,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           revision: state.revision + 1,
           warnings: [],
           warningsOpen: false,
+          detailsOpen: false,
           opening: undefined,
           error: undefined,
           ...snapshot(),
@@ -268,16 +359,27 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       async save() {
         const { score, file, saving } = get();
         if (!score || saving) return;
-        if (file?.handle === undefined || file.format !== 'reprise') {
+        const format = file?.format;
+        if (file?.handle === undefined || !isSaveFormat(format)) {
           await saveAs();
           return;
         }
         const at = depth;
+        const token = documentToken;
         set({ saving: true });
         try {
-          const { bytes } = await write(score, 'reprise');
+          const { bytes, dropped } = await write(score, format);
+          if (format === 'gp') {
+            const losses = originalHasMore ? [...dropped, ...readLosses(get().warnings)] : dropped;
+            if (losses.length > 0) {
+              const answer = await ask({ kind: 'overwrite', fileName: file.name, losses });
+              if (answer !== 'overwrite' || token !== documentToken) return;
+            }
+          }
           await platform.writeHandle(file.handle, bytes);
+          if (token !== documentToken) return;
           savedDepth = at;
+          if (format === 'gp') originalHasMore = false;
           set(snapshot());
         } catch (error) {
           set({ error: errorOf('save', file.name, error) });
@@ -303,7 +405,19 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       },
 
       setWarningsOpen(open) {
-        set({ warningsOpen: open });
+        set(open ? { warningsOpen: true } : { warningsOpen: false, detailsOpen: false });
+      },
+
+      setDetailsOpen(open) {
+        set({ detailsOpen: open });
+      },
+
+      showImportDetails() {
+        set({ warningsOpen: true, detailsOpen: true });
+      },
+
+      answerSavePrompt(answer) {
+        settlePrompt(answer);
       },
 
       dismissError() {

@@ -63,7 +63,7 @@ export function appCommands(
       id: 'file.showImportDetails',
       title: 'Show import details',
       run: () => {
-        document.getState().setWarningsOpen(true);
+        document.getState().showImportDetails();
       },
     },
     {

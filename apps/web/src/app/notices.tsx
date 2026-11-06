@@ -51,13 +51,19 @@ export function locationOf(warning: Warning): string {
     .join(' · ');
 }
 
-function WarningList({ warnings }: { warnings: readonly Warning[] }) {
+export function WarningList({
+  warnings,
+  label = 'Import details',
+}: {
+  warnings: readonly Warning[];
+  label?: string;
+}) {
   const sorted = [...warnings].sort(
     (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
   );
   const rows = sorted.slice(0, MAX_ROWS);
   return (
-    <ul aria-label="Import details" className="mt-2 max-h-64 space-y-1 overflow-y-auto text-xs">
+    <ul aria-label={label} className="mt-2 max-h-64 space-y-1 overflow-y-auto text-xs">
       {rows.map((warning, index) => {
         const where = locationOf(warning);
         return (
@@ -78,15 +84,15 @@ function WarningList({ warnings }: { warnings: readonly Warning[] }) {
 
 function WarningsNotice() {
   const { document } = useAppServices();
-  const { open, warnings, fileName } = useStore(
+  const { open, details, warnings, fileName } = useStore(
     document,
     useShallow((state) => ({
       open: state.warningsOpen,
+      details: state.detailsOpen,
       warnings: state.warnings,
       fileName: state.file?.name,
     })),
   );
-  const [details, setDetails] = useState(false);
   if (!open || fileName === undefined) return null;
   const count = warnings.filter((warning) => warning.severity !== 'info').length;
   const title =
@@ -98,7 +104,6 @@ function WarningsNotice() {
       kind="warning"
       title={title}
       onDismiss={() => {
-        setDetails(false);
         document.getState().setWarningsOpen(false);
       }}
       actions={
@@ -108,7 +113,7 @@ function WarningsNotice() {
             size="xs"
             aria-expanded={details}
             onClick={() => {
-              setDetails(!details);
+              document.getState().setDetailsOpen(!details);
             }}
           >
             Details

@@ -61,6 +61,34 @@ describe('Notices', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
+  it('opens the list from Show import details, and shows the next file collapsed', () => {
+    const { services } = renderWithServices(<Notices />);
+    act(() => {
+      services.document.setState({
+        file: { name: 'song.gp5', format: 'gp5' },
+        warnings: [warning('warning', 'A bend was clamped')],
+      });
+      services.document.getState().showImportDetails();
+    });
+
+    expect(screen.getByRole('list', { name: 'Import details' })).toHaveTextContent(
+      'A bend was clamped',
+    );
+    expect(screen.getByRole('button', { name: 'Details' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+
+    act(() => {
+      services.document.setState({
+        file: { name: 'other.gp5', format: 'gp5' },
+        detailsOpen: false,
+      });
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('Opened other.gp5 with 1 warning');
+    expect(screen.queryByRole('list', { name: 'Import details' })).not.toBeInTheDocument();
+  });
+
   it('caps the details list', async () => {
     const { services } = renderWithServices(<Notices />);
     const user = userEvent.setup();

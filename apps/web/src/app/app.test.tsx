@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { write } from '@reprise/formats';
 import { score } from '@reprise/model/testing';
@@ -116,13 +116,18 @@ describe('App', () => {
       writeHandle,
       print,
     });
-    const { services, send } = renderApp(platform);
+    const { services, send, user } = renderApp(platform);
 
     await send('file.open');
     await waitFor(() => {
       expect(services.document.getState().score).toBeDefined();
     });
     await send('file.save');
+    const dialog = await screen.findByRole('dialog', { name: 'Save as' });
+    await user.click(within(dialog).getByRole('button', { name: 'Reprise' }));
+    await waitFor(() => {
+      expect(services.document.getState().saving).toBe(false);
+    });
     await send('file.save');
     await send('file.print');
     await send('view.zoomIn');
@@ -136,5 +141,41 @@ describe('App', () => {
     expect(print).toHaveBeenCalledOnce();
     expect(services.ui.getState().zoom).toBe(1.1);
     expect(services.ui.getState().panels.rightPanel).toBe(true);
+  });
+
+  it('asks before overwriting an opened .gp with what will be lost, and keeps it a .gp', async () => {
+    const { bytes } = await write(score().title('Timer').build(), 'gp');
+    const handle = { kind: 'file' };
+    const writeHandle = vi.fn(() => Promise.resolve());
+    const platform = fakePlatform({
+      openFile: () => Promise.resolve({ name: 'timer.gp', bytes, handle }),
+      writeHandle,
+    });
+    const { services, send, user } = renderApp(platform);
+    await send('file.open');
+    await waitFor(() => {
+      expect(services.document.getState().score).toBeDefined();
+    });
+    // What a real Guitar Pro file's read reports: something the model does not hold.
+    act(() => {
+      services.document.setState({
+        warnings: [
+          { code: 'rse-dropped', severity: 'info', message: 'RSE settings', location: {} },
+        ],
+      });
+    });
+
+    await send('file.save');
+    const dialog = await screen.findByRole('dialog', { name: 'Save timer.gp?' });
+    expect(dialog).toHaveTextContent('RSE settings');
+    expect(within(dialog).getByRole('list', { name: 'What will be lost' })).toBeInTheDocument();
+    expect(writeHandle).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(writeHandle).toHaveBeenCalledWith(handle, expect.any(Uint8Array));
+    });
+    expect(services.document.getState().file).toMatchObject({ name: 'timer.gp', format: 'gp' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
