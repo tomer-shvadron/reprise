@@ -85,7 +85,7 @@ Measured in the demo on production React (`demo:build`, `demo:preview`), Chrome 
 | of which the frame                 | 1.4 ms               | 1.8 ms                 |
 | Systems whose DOM changed per edit | 1                    | 1                      |
 
-First paint runs from the score being ready to the frame after the commit that mounted its systems; an edit from `applyCommand` to the frame after. "Render and commit" is from handing React the layout to the demo's layout effect, measured with `performance.now()` because `<Profiler>` reports nothing on production React; "frame" is from there to a `setTimeout` after the next `requestAnimationFrame`. The re-layout after an edit is WP-027's to bring under 16 ms; the painter's share is 6 to 8 ms, most of it comparing the systems layout rebuilt with equal values, which WP-027's reuse of them removes. In jsdom, an edit renders the edited system alone (`render-count.test.tsx`).
+First paint runs from the score being ready to the frame after the commit that mounted its systems; an edit from `applyCommand` to the frame after. "Render and commit" is from handing React the layout to the demo's layout effect, measured with `performance.now()` because `<Profiler>` reports nothing on production React; "frame" is from there to a `setTimeout` after the next `requestAnimationFrame`. The re-layout after an edit is WP-027's to bring under 16 ms; the painter's share (render, commit and frame) is 5.8 ms paged and 8.2 ms continuous. In jsdom, an edit renders the edited system alone (`render-count.test.tsx`).
 
 Auto-scroll moves the region 2 000 px/s for 10 s, recording every frame interval (measured before pages grew to hold their systems):
 
