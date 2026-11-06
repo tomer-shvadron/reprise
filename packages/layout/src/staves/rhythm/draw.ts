@@ -277,12 +277,6 @@ export function drawTuplet(
   );
 }
 
-/** How far a tuplet number reaches either side of its line, in px. */
-export function tupletHalfHeight(space: number): number {
-  const { top, bottom } = glyphMetrics('tuplet3').bbox;
-  return ((top - bottom) / 2) * space;
-}
-
 /**
  * A tie from (`left`, `y`) to (`right`, `y`), bulging `direction`: a filled crescent, thin at the
  * ends and Bravura's tie midpoint thickness at the middle.

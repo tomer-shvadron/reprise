@@ -3,13 +3,13 @@ import { fullScore, largeScore, note, score, type ScoreBuilder } from '@reprise/
 import { describe, expect, it } from 'vitest';
 
 import {
+  LayoutCache,
   PAGE_SIZES,
   STAFF_SPACE,
   layout,
   type LayoutOptions,
   type LayoutResult,
 } from '../../index';
-import type { LayoutSink } from '../../primitives';
 import { expectValid, overlappingAnchors } from '../../test/check-result';
 import { describeAnchor, describePrimitive } from '../../test/describe';
 import type { StaffBar } from '../staff-module';
@@ -56,6 +56,37 @@ function texts(result: LayoutResult): string[] {
   );
 }
 
+/** Filled ink paths of the tab's content: ties and beams. */
+function filled(result: LayoutResult) {
+  return result.primitives.filter((p) => p.kind === 'path' && p.fill && p.role === 'ink');
+}
+
+function anchorOf(result: LayoutResult, kind: 'note' | 'beat' | 'bar', id: string) {
+  const found = result.anchors.find((anchor) => anchor.kind === kind && anchor.id === id);
+  if (!found) throw new Error(`no ${kind} anchor ${id}`);
+  return found.bbox;
+}
+
+/** The first bar of `built` as the tab module sees it, for measuring directly. */
+function firstBar(built: Score): StaffBar {
+  const track = built.tracks[0];
+  const bar = track?.bars[0];
+  const masterBar = built.masterBars[0];
+  if (!track || !bar || !masterBar) throw new Error('fixture');
+  return {
+    score: built,
+    track,
+    trackIndex: 0,
+    staves: ['tab'],
+    bar,
+    masterBar,
+    barIndex: 0,
+    clef: 'treble',
+    keySignature: masterBar.keySignature,
+    space: STAFF_SPACE,
+  };
+}
+
 describe('tab staff: strings and fret numbers', () => {
   it('draws one line per string for any string count', () => {
     for (const tuning of [
@@ -95,53 +126,41 @@ describe('tab staff: strings and fret numbers', () => {
     expect(texts(result)).toEqual(['x', '(3)', '7', '(7)', '(x)']);
   });
 
-  it('can hide tied notes and keep their tie and anchor', () => {
+  it('hides tied notes through the layout option, keeping their tie and anchor', () => {
     const built = guitar()
       .bar()
       .beat('2', [note(3, 7)])
       .beat('2', [note(3, 7, { tie: true })])
       .build({ ids: 'sequential' });
-    const track = built.tracks[0];
-    const bar = track?.bars[0];
-    const masterBar = built.masterBars[0];
-    if (!track || !bar || !masterBar) throw new Error('fixture');
-    const module = tabModule({ tiedNotes: 'hidden' });
-    const space = STAFF_SPACE;
-    const input: StaffBar = {
-      score: built,
-      track,
-      trackIndex: 0,
-      staves: ['tab'],
-      bar,
-      masterBar,
-      barIndex: 0,
-      clef: 'treble',
-      keySignature: masterBar.keySignature,
-      space,
-    };
-    const geometry = module.geometry(track, space);
-    const sink: LayoutSink = { primitives: [], anchors: [] };
-    module.render(
-      input,
-      {
-        x: 0,
-        width: 200,
-        top: 0,
-        bottom: geometry.lineSpacing * (geometry.lines - 1),
-        geometry,
-        system: 0,
-        onsetX: (tick) => 10 + tick / 20,
-      },
-      sink,
-    );
-    expect(sink.primitives.flatMap((p) => (p.kind === 'text' ? [p.text] : []))).toEqual(['7']);
-    expect(
-      sink.primitives.filter((p) => p.kind === 'path' && p.fill && p.role === 'ink'),
-    ).toHaveLength(1);
-    expect(sink.anchors.filter((a) => a.kind === 'note').map((a) => a.id)).toEqual([
+    const result = laid(built, { tiedNotes: 'hidden' });
+    expect(texts(result)).toEqual(['7']);
+    expect(filled(result)).toHaveLength(1);
+    expect(result.anchors.filter((a) => a.kind === 'note').map((a) => a.id)).toEqual([
       'note00000001',
       'note00000002',
     ]);
+    // The option is part of the bar cache key, so flipping it re-measures.
+    const cache = new LayoutCache();
+    layout(built, paged, cache);
+    expect(layout(built, { ...paged, tiedNotes: 'hidden' }, cache).metrics.measuredBars).toBe(1);
+  });
+
+  it('ignores a voice of empty beats, as Guitar Pro leaves an unused voice', () => {
+    const plain = guitar()
+      .bar()
+      .beat('4', [note(1, 0)])
+      .beat('2.', [note(1, 2)]);
+    const withEmpty = guitar()
+      .bar()
+      .beat('4', [note(1, 0)])
+      .beat('2.', [note(1, 2)]);
+    withEmpty.voice(1).beat('1');
+    const expected = laid(plain.build({ ids: 'sequential' }));
+    const result = laid(withEmpty.build({ ids: 'sequential' }));
+    expect(content(result).primitives).toEqual(content(expected).primitives);
+    expect(anchorOf(result, 'bar', 'mbar00000001')).toEqual(
+      anchorOf(expected, 'bar', 'mbar00000001'),
+    );
   });
 
   it('reserves room for the fret numbers it draws', () => {
@@ -159,6 +178,26 @@ describe('tab staff: strings and fret numbers', () => {
 });
 
 describe('tab staff: rests', () => {
+  it('centres a rest alone in its voice in the bar', () => {
+    const result = laid(
+      guitar()
+        .bar()
+        .beat('4', [note(1, 0)])
+        .rest('2.')
+        .bar()
+        .rest('1')
+        .build({ ids: 'sequential' }),
+    );
+    const whole = anchorOf(result, 'beat', 'beat00000003');
+    const bar = anchorOf(result, 'bar', 'mbar00000002');
+    expect(Math.abs(whole.x + whole.width / 2 - (bar.x + bar.width / 2))).toBeLessThan(STAFF_SPACE);
+    // A rest with company stays at its onset.
+    const dotted = anchorOf(result, 'beat', 'beat00000002');
+    const first = anchorOf(result, 'beat', 'beat00000001');
+    expect(dotted.x).toBeGreaterThan(first.x + first.width);
+    expect(dotted.x).toBeLessThan(first.x + first.width + 5 * STAFF_SPACE);
+  });
+
   it('draws every rest glyph in the middle of the staff, with its dots', () => {
     expect(
       snapshot(
@@ -296,6 +335,34 @@ describe('tab staff: rhythm notation', () => {
 });
 
 describe('tab staff: ties', () => {
+  it('ties from the origin the model names, past rests, other strings and the previous bar', () => {
+    const result = laid(
+      guitar()
+        .bar()
+        .beat('4', [note(2, 5), note(3, 7)])
+        .rest('4')
+        .beat('4', [note(2, 5, { tie: true })])
+        .beat('4', [note(3, 7, { tie: true })])
+        .bar()
+        .beat('2', [note(5, 8), note(6, 3)])
+        .beat('2', [note(5, 8)])
+        .bar()
+        .beat('4', [note(6, 3, { tie: true })])
+        .rest('2.')
+        .build({ ids: 'sequential' }),
+    );
+    const ties = filled(result);
+    expect(ties.map((tie) => tie.node)).toEqual(['note00000003', 'note00000004', 'note00000008']);
+    for (const [tie, origin] of [
+      [ties[0], 'note00000001'],
+      [ties[1], 'note00000002'],
+      [ties[2], 'note00000006'],
+    ] as const) {
+      const from = anchorOf(result, 'note', origin);
+      expect(tie?.bbox.x).toBeCloseTo(from.x + from.width, 1);
+    }
+  });
+
   it('ties consecutive beats with an arc under the numbers', () => {
     expect(
       snapshot(
@@ -352,6 +419,15 @@ describe('tab staff: two voices', () => {
 });
 
 describe('tab staff: words', () => {
+  it('measures room for a dynamic at the first played beat, which render may write', () => {
+    const builder = guitar().bar();
+    for (let i = 0; i < 8; i++) builder.beat('8', [note(1, 0, { dynamics: 'fff' })]);
+    const { onsets } = tabModule().measure(firstBar(builder.build({ ids: 'sequential' })));
+    const [first, second] = onsets;
+    expect(first?.left).toBeGreaterThan(second?.left ?? Infinity);
+    expect(first?.right).toBeGreaterThan(second?.right ?? Infinity);
+  });
+
   it('writes chord names and beat text above the staff', () => {
     expect(
       snapshot(
@@ -410,6 +486,35 @@ describe('tab staff: words', () => {
       'dynamicMF <beat00000005>',
       'dynamicForte <beat00000006>',
     ]);
+  });
+});
+
+describe('tab staff: both mode', () => {
+  it('shows numbers, ties and words only under a standard staff', () => {
+    const built = score()
+      .track('guitar', { display: { notation: 'both', octaveShift: 1 } })
+      .bar()
+      .beat('8', [note(1, 0, { leftHandFinger: 'index', dynamics: 'pp' })], {
+        chord: { name: 'D' },
+        text: 'riff',
+        lyrics: ['la'],
+      })
+      .beat('8', [note(1, 0, { tie: true })])
+      .rest('4')
+      .beat('4.', [note(2, 3)], { grace: [{ duration: 16, before: true, notes: [note(2, 1)] }] })
+      .rest('8')
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const { primitives } = content(result);
+    expect(primitives.filter((line) => line.startsWith('line'))).toEqual([]);
+    expect(
+      primitives.filter((line) => /^glyph (rest|flag|dynamic|augmentationDot)/.test(line)),
+    ).toEqual([]);
+    expect(texts(result)).toEqual(['0', '(0)', '3', '1']);
+    const words = result.primitives.flatMap((p) => (p.kind === 'text' ? [p.text] : []));
+    expect(words).toEqual(expect.arrayContaining(['D', 'riff', 'la']));
+    expect(filled(result)).toHaveLength(1);
+    expect(content(result)).toMatchSnapshot();
   });
 });
 

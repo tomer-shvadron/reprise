@@ -8,10 +8,11 @@ export { feelWidth } from './spacing';
 
 /**
  * The tab staff: one line per string, fret numbers on them, and rhythm notation below (voice 1)
- * and above (the other voices when voice 1 has beats), with the words a beat carries around it.
+ * and above (the other voices when voice 1 is present), with the words a beat carries around it.
+ * Under a standard staff (both mode) it shows the numbers, ties and words only.
  */
 export function tabModule(options: Partial<TabOptions> = {}): StaffModule {
-  const resolved: TabOptions = { tiedNotes: options.tiedNotes ?? 'parenthesised' };
+  const resolved: TabOptions = { tiedNotes: options.tiedNotes ?? 'parentheses' };
   return {
     type: 'tab',
     geometry: (track, space) => ({

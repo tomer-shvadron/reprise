@@ -5,9 +5,11 @@ import {
   type Dynamics,
   type Finger,
   type Note,
+  type Voice,
 } from '@reprise/model';
 
 import { glyphMetrics, textExtent, textWidth, type GlyphName } from '../../metrics';
+import type { TiedNotes } from '../../types';
 import {
   BEAM_PITCH,
   beamCount,
@@ -121,6 +123,8 @@ export interface TabRows {
 }
 
 export interface TabBar {
+  /** Whether the tab carries the rhythm notation; false in both mode, where the standard staff does. */
+  rhythm: boolean;
   voices: TabVoice[];
   beats: TabBeat[];
   rows: TabRows;
@@ -131,7 +135,17 @@ export interface TabBar {
 
 export interface TabOptions {
   /** How a tied note shows on its string: in parentheses, or not at all (the tie still shows). */
-  tiedNotes: 'parenthesised' | 'hidden';
+  tiedNotes: TiedNotes;
+}
+
+/** Rhythm lives on the standard staff when a track shows both (the plan's reading of ADR-0007). */
+export function rhythmOnTab(input: StaffBar): boolean {
+  return !input.staves.includes('standard');
+}
+
+/** Guitar Pro's unused voices hold empty beats; a voice counts only when it has a note or a rest. */
+export function voicePresent(voice: Voice): boolean {
+  return voice.beats.some((beat) => beat.rest || beat.notes.length > 0);
 }
 
 const FINGERS: Readonly<Record<Finger, string>> = {
@@ -224,9 +238,9 @@ function event(beat: Beat, tick: number): RhythmEvent {
   };
 }
 
-/** Voice 1 stems down; any other voice stems up when voice 1 has beats too. */
+/** Voice 1 stems down; any other voice stems up when voice 1 is present too. */
 export function voiceDirection(bar: Bar, voice: number): StemDirection {
-  return voice === 0 || bar.voices[0].beats.length === 0 ? 'down' : 'up';
+  return voice === 0 || !voicePresent(bar.voices[0]) ? 'down' : 'up';
 }
 
 function analyseBeat(
@@ -237,6 +251,7 @@ function analyseBeat(
   direction: StemDirection,
   space: number,
   options: TabOptions,
+  rhythmShown: boolean,
 ): TabBeat {
   const size = TAB.fretSize * space;
   const graceSize = size * TAB.graceScale;
@@ -255,12 +270,13 @@ function analyseBeat(
   let half: number;
   let right: number;
   if (beat.rest) {
-    half = (glyphMetrics(restGlyph(beat.duration)).advance * space) / 2;
-    right = half + (beat.dots > 0 ? TAB.restSpacing * space + dotsWidth(beat.dots, space) : 0);
+    half = rhythmShown ? (glyphMetrics(restGlyph(beat.duration)).advance * space) / 2 : 0;
+    const dots = rhythmShown && beat.dots > 0;
+    right = half + (dots ? TAB.restSpacing * space + dotsWidth(beat.dots, space) : 0);
   } else {
     half = Math.max(0, ...labels.map((label) => labelHalf(label, size)));
     right = half;
-    if (!rhythm.silent || labels.length > 0) {
+    if (rhythmShown && labels.length > 0) {
       if (beat.dots > 0) right = Math.max(right, TAB.dotX * space + dotsWidth(beat.dots, space));
       right = Math.max(right, flagWidth(beat.duration, space));
     }
@@ -283,8 +299,9 @@ function analyseBeat(
   };
 }
 
+/** The first played beat always counts: render compares it with the bar before, which measure cannot see. */
 function markDynamicsChanges(beats: readonly TabBeat[]): void {
-  let current = DEFAULT_DYNAMICS;
+  let current: Dynamics | undefined;
   for (const analysed of beats) {
     const dynamics = beatDynamics(analysed.beat);
     if (dynamics === undefined) continue;
@@ -307,7 +324,8 @@ const analyses = new WeakMap<Bar, Map<string, TabBar>>();
 export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   const { bar, space } = input;
   const signature = input.masterBar.timeSignature;
-  const key = `${String(space)} ${options.tiedNotes} ${String(signature.numerator)}/${String(signature.denominator)}`;
+  const rhythm = rhythmOnTab(input);
+  const key = `${String(space)} ${options.tiedNotes} ${String(signature.numerator)}/${String(signature.denominator)} ${rhythm ? 'rhythm' : 'numbers'}`;
   const cached = analyses.get(bar)?.get(key);
   if (cached) return cached;
 
@@ -318,12 +336,12 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   let chord = false;
   let text = false;
   for (const [index, voice] of bar.voices.entries()) {
-    if (voice.beats.length === 0) continue;
+    if (!voicePresent(voice)) continue;
     const direction = voiceDirection(bar, index);
     const voiceBeats: TabBeat[] = [];
     let tick = 0;
     for (const [b, beat] of voice.beats.entries()) {
-      const analysed = analyseBeat(beat, index, b, tick, direction, space, options);
+      const analysed = analyseBeat(beat, index, b, tick, direction, space, options, rhythm);
       voiceBeats.push(analysed);
       tick += analysed.event.ticks;
       if (beat.chord) chord = true;
@@ -331,12 +349,14 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
       for (const [line, syllable] of (beat.lyrics ?? []).entries()) {
         if (syllable !== '') lyricLines = Math.max(lyricLines, line + 1);
       }
-      maxFingers = Math.max(
-        maxFingers,
-        beat.notes.filter((note) => fingering(note) !== undefined).length,
-      );
+      if (rhythm) {
+        maxFingers = Math.max(
+          maxFingers,
+          beat.notes.filter((note) => fingering(note) !== undefined).length,
+        );
+      }
     }
-    markDynamicsChanges(voiceBeats);
+    if (rhythm) markDynamicsChanges(voiceBeats);
     const events = voiceBeats.map((analysed) => analysed.event);
     const tuplets = tupletGroups(events);
     const beams = beamGroups(events, signature, tuplets);
@@ -360,18 +380,18 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
     0,
     ...voices.filter((v) => v.direction === 'down').map((v) => v.extraStem),
   );
-  const uppers = voices.filter((v) => v.direction === 'up');
+  const uppers = rhythm ? voices.filter((v) => v.direction === 'up') : [];
   const rows: TabRows = {
     upper: uppers.length > 0 ? stemZone(Math.max(...uppers.map((v) => v.extraStem)), space) : 0,
     clearance: uppers.length > 0 ? 0 : TAB.wordClearance * space,
     fingering: maxFingers * TAB.fingerRow * space,
     chord: chord ? TAB.chordRow * space : 0,
     text: text ? TAB.textRow * space : 0,
-    lower: stemZone(lowerExtra, space),
+    lower: rhythm ? stemZone(lowerExtra, space) : 0,
     lowerExtra,
     lyrics: lyricLines * TAB.lyricRow * space,
   };
-  const analysed: TabBar = { voices, beats, rows, lyricLines, maxFingers };
+  const analysed: TabBar = { rhythm, voices, beats, rows, lyricLines, maxFingers };
   let byKey = analyses.get(bar);
   if (!byKey) {
     byKey = new Map();

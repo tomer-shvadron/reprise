@@ -1,4 +1,15 @@
-import { VOICE_COUNT, type Dynamics, type Note, type Track } from '@reprise/model';
+import {
+  TIE_REACH_BARS,
+  VOICE_COUNT,
+  beatTicks,
+  tieOriginOf,
+  type Beat,
+  type Dynamics,
+  type Note,
+  type TieLink,
+  type TiePosition,
+  type Track,
+} from '@reprise/model';
 
 import { glyphMetrics, textExtent } from '../../metrics';
 import { box, glyph, rect, text, type LayoutSink } from '../../primitives';
@@ -118,13 +129,15 @@ function drawGraces(context: Context, beat: TabBeat, x: number): void {
   for (const column of [...beat.graces].reverse()) {
     const centre = cursor - column.width / 2;
     for (const label of column.labels) drawLabel(context, label, centre, size, beat.voice);
-    const end = base + sign(beat.direction) * TAB.graceStem * space;
-    const node = beat.beat.id;
-    drawStem(sink, centre, base, end, space, { scale: TAB.graceScale, node });
-    drawFlag(sink, column.duration, centre, end, beat.direction, space, {
-      scale: TAB.graceScale * 0.85,
-      node,
-    });
+    if (context.analysed.rhythm) {
+      const end = base + sign(beat.direction) * TAB.graceStem * space;
+      const node = beat.beat.id;
+      drawStem(sink, centre, base, end, space, { scale: TAB.graceScale, node });
+      drawFlag(sink, column.duration, centre, end, beat.direction, space, {
+        scale: TAB.graceScale * 0.85,
+        node,
+      });
+    }
     cursor -= column.width + TAB.graceGap * space;
   }
 }
@@ -232,43 +245,81 @@ function trackVoiceBeats(track: Track, barIndex: number, voice: number) {
   return track.bars[barIndex]?.voices[voice]?.beats ?? [];
 }
 
+function tickOf(beats: readonly Beat[], index: number): number {
+  let tick = 0;
+  for (const beat of beats.slice(0, index)) tick += beatTicks(beat);
+  return tick;
+}
+
+/**
+ * The note that continues `note` by a tie, the inverse of `tieOriginOf`: the next note on the
+ * string within the tie's reach, when it is tied on the same fret back to this one.
+ */
+function continuedBy(track: Track, at: TiePosition, note: Note): TieLink | undefined {
+  for (let bar = at.bar; bar <= at.bar + TIE_REACH_BARS && bar < track.bars.length; bar++) {
+    const beats = trackVoiceBeats(track, bar, at.voice);
+    for (let i = bar === at.bar ? at.beat + 1 : 0; i < beats.length; i++) {
+      const beat = beats[i];
+      if (!beat || beat.rest) continue;
+      const next = beat.notes.find((candidate) => candidate.string === note.string);
+      if (!next) continue;
+      if (!next.tie || next.fret !== note.fret) return undefined;
+      const origin = tieOriginOf(track, { bar, voice: at.voice, beat: i }, next);
+      return origin?.note === note ? { note: next, bar, beat: i } : undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Every tie is drawn by the bar holding its target note, from the origin `tieOriginOf` finds: in
+ * one piece when the origin is in this bar or in the previous bar of the system, otherwise as a
+ * half from the bar's left edge. A bar ending a system draws the other half, to its right edge,
+ * for each of its notes a later bar continues.
+ */
 function drawTies(context: Context, voice: TabVoice, xs: readonly number[]): void {
   const { input, placement, sink, options, space } = context;
+  const { track, barIndex } = input;
   const size = TAB.fretSize * space;
+  const at = (beat: number): TiePosition => ({ bar: barIndex, voice: voice.index, beat });
   for (const [i, beat] of voice.beats.entries()) {
     const x = xs[i];
     if (x === undefined) continue;
     for (const label of beat.labels) {
-      if (!label.note.tie) continue;
-      const y = tieY(context, label.note, beat.direction);
-      const right = x - labelEdge(label, size);
-      const previous = voice.beats[i - 1];
-      const previousX = xs[i - 1];
-      if (previous && previousX !== undefined) {
-        const origin = previous.labels.find((other) => other.note.string === label.note.string);
-        drawTie(sink, previousX + labelEdge(origin, size), right, y, beat.direction, space, {
-          node: label.note.id,
+      const { note } = label;
+      const y = tieY(context, note, beat.direction);
+      const origin = note.tie ? tieOriginOf(track, at(beat.index), note) : undefined;
+      if (origin) {
+        const right = x - labelEdge(label, size);
+        const drawn = { node: note.id };
+        if (origin.bar === barIndex) {
+          const from = voice.beats[origin.beat];
+          const fromX = xs[origin.beat];
+          if (from && fromX !== undefined) {
+            const edge = labelEdge(
+              from.labels.find((other) => other.note === origin.note),
+              size,
+            );
+            drawTie(sink, fromX + edge, right, y, beat.direction, space, drawn);
+          }
+        } else if (origin.bar === barIndex - 1 && placement.previous) {
+          const beats = trackVoiceBeats(track, origin.bar, voice.index);
+          const fromX = placement.previous.onsetX(tickOf(beats, origin.beat));
+          const edge = labelEdge(labelOf(origin.note, size, options), size);
+          drawTie(sink, fromX + edge, right, y, beat.direction, space, drawn);
+        } else {
+          drawTie(sink, placement.x, right, y, beat.direction, space, drawn);
+        }
+      }
+      if (placement.next) continue;
+      const next = continuedBy(track, at(beat.index), note);
+      if (next && next.bar !== barIndex) {
+        const left = x + labelEdge(label, size);
+        drawTie(sink, left, placement.x + placement.width, y, beat.direction, space, {
+          node: next.note.id,
         });
-      } else if (i === 0 && !placement.previous) {
-        drawTie(sink, placement.x, right, y, beat.direction, space, { node: label.note.id });
       }
     }
-  }
-
-  const last = voice.beats.at(-1);
-  const lastX = xs.at(-1);
-  if (!last || lastX === undefined) return;
-  const following = trackVoiceBeats(input.track, input.barIndex + 1, voice.index)[0];
-  for (const label of last.labels) {
-    const target = following?.notes.find((note) => note.tie && note.string === label.note.string);
-    if (!target) continue;
-    const left = lastX + labelEdge(label, size);
-    const right = placement.next
-      ? placement.next.onsetX(0) - labelEdge(labelOf(target, size, options), size)
-      : placement.x + placement.width;
-    drawTie(sink, left, right, tieY(context, label.note, last.direction), last.direction, space, {
-      node: target.id,
-    });
   }
 }
 
@@ -327,10 +378,12 @@ function drawWords(context: Context, xs: Map<TabBeat, number>): void {
       if (beat.beat.text) {
         sink.primitives.push(text(beat.beat.text, x + wordStart(beat), textY, size, { node }));
       }
-      const fingered = beat.labels.flatMap(({ note }) => {
-        const label = fingering(note);
-        return label === undefined ? [] : [{ note, label }];
-      });
+      const fingered = analysed.rhythm
+        ? beat.labels.flatMap(({ note }) => {
+            const label = fingering(note);
+            return label === undefined ? [] : [{ note, label }];
+          })
+        : [];
       for (const [j, { note, label }] of fingered.entries()) {
         const k = fingered.length - 1 - j;
         const y = fingeringBottom - k * TAB.fingerRow * space - 0.25 * space;
@@ -342,7 +395,7 @@ function drawWords(context: Context, xs: Map<TabBeat, number>): void {
         sink.primitives.push(text(syllable, x, y, size, { anchor: 'middle', node }));
       }
       const dynamics = beatDynamics(beat.beat);
-      if (dynamics && dynamics !== current) {
+      if (dynamics && dynamics !== current && analysed.rhythm) {
         const key = Math.round(beat.tick * 1000);
         if (!shownDynamics.has(key)) {
           shownDynamics.add(key);
@@ -379,19 +432,25 @@ export function renderTab(
   const context: Context = { input, placement, sink, options, analysed, space };
   const size = TAB.fretSize * space;
   const positions = new Map<TabBeat, number>();
+  const reach = BEAT_REACH * space;
 
   for (const voice of analysed.voices) {
-    const xs = voice.beats.map((beat) => placement.onsetX(beat.tick));
+    // A rest alone in its voice is centred in the bar, as Guitar Pro draws a whole-bar rest.
+    const [only] = voice.beats;
+    const alone = voice.beats.length === 1 && only !== undefined && only.beat.rest;
+    const xs = voice.beats.map((beat) =>
+      alone ? placement.x + placement.width / 2 : placement.onsetX(beat.tick),
+    );
     for (const [i, beat] of voice.beats.entries()) {
       const x = xs[i];
       if (x === undefined) continue;
       positions.set(beat, x);
-      if (beat.beat.rest) drawRest(context, beat, x);
+      if (beat.beat.rest && analysed.rhythm) drawRest(context, beat, x);
       for (const label of beat.labels) drawLabel(context, label, x, size, beat.voice);
       drawGraces(context, beat, x);
       const upper = beat.direction === 'up';
-      const top = placement.top - (upper ? analysed.rows.upper : BEAT_REACH * space);
-      const bottom = placement.bottom + (upper ? BEAT_REACH * space : analysed.rows.lower);
+      const top = placement.top - (upper && analysed.rhythm ? analysed.rows.upper : reach);
+      const bottom = placement.bottom + (upper || !analysed.rhythm ? reach : analysed.rows.lower);
       anchor(
         context,
         'beat',
@@ -400,7 +459,7 @@ export function renderTab(
         beat.voice,
       );
     }
-    drawRhythm(context, voice, xs);
+    if (analysed.rhythm) drawRhythm(context, voice, xs);
     drawTies(context, voice, xs);
   }
   drawWords(context, positions);
