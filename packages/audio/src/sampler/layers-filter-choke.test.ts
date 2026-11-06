@@ -91,6 +91,45 @@ describe('layered regions', () => {
     expect(peak(data, 0.6, 1)).toBe(0);
   });
 
+  it('fans detune, a detune curve, a filter and let-ring out to every layer', async () => {
+    const { context, sampler } = setup(1.2);
+    sampler.addTrack(TRACK, layered());
+    const handle = sampler.noteOn('t', { key: 69, velocity: 127, when: 0, letRing: true });
+    expect(handle?.letRing).toBe(true);
+    handle?.setDetune(12, 0.2);
+    handle?.detuneCurve([-12, -12], 0.45, 0.1);
+    if (handle) sampler.noteOff(handle, 0.3);
+    handle?.setFilter({ type: 'lowpass', frequency: 300 }, 0.8);
+    handle?.release(1.1);
+    const data = await render(context);
+
+    expect(toneLevel(data, 880, 0.25, 0.4)).toBeGreaterThan(0.5);
+    expect(toneLevel(data, 2640, 0.25, 0.4)).toBeGreaterThan(0.2);
+    expect(toneLevel(data, 1320, 0.25, 0.4)).toBeLessThan(0.001);
+    // The curve holds its last value, and the note-off at 0.3 s passed a let-ring note by.
+    const body = toneLevel(data, 220, 0.6, 0.75);
+    const air = toneLevel(data, 660, 0.6, 0.75);
+    expect(body).toBeGreaterThan(0.5);
+    expect(air).toBeGreaterThan(0.2);
+    const filtered = toneLevel(data, 660, 0.85, 1) / toneLevel(data, 220, 0.85, 1);
+    expect(filtered).toBeLessThan((air / body) * 0.4);
+  });
+
+  it('plays no note when no layer is resident, and counts each missing sample', () => {
+    const misses: string[] = [];
+    const sampler = new Sampler(offline(0.5), { onMiss: (_track, sample) => misses.push(sample) });
+    const source = new SynthSampleSource(
+      SAMPLE_RATE,
+      { x: sine(440), y: sine(660), z: sine(880) },
+      { deferred: true },
+    );
+    const regions = new RegionMap(['x', 'y', 'z'].map((sample) => region({ sample })));
+    sampler.addTrack(TRACK, { regions, source });
+    expect(sampler.noteOn('t', { key: 69, velocity: 100, when: 0 })).toBeUndefined();
+    expect(misses).toEqual(['x', 'y', 'z']);
+    expect(sampler.misses).toBe(3);
+  });
+
   it('plays the resident layers when one is missing, and reports the missing one', async () => {
     const misses: string[] = [];
     const context = offline(0.5);
@@ -204,6 +243,20 @@ describe('exclusive class', () => {
     expect(toneLevel(data, 5000, 0.42, 0.9)).toBeLessThan(0.001);
     expect(toneLevel(data, 700, 0.42, 0.9)).toBeGreaterThan(0.5);
     expect(toneLevel(data, 3000, 0.42, 0.9)).toBeGreaterThan(0.5);
+  });
+
+  it('chokes within one track only when two tracks share a kit', async () => {
+    const { context, sampler } = setup(1);
+    const drums = kit();
+    sampler.addTrack(TRACK, drums);
+    sampler.addTrack({ ...TRACK, id: 'u' }, drums);
+    sampler.noteOn('t', { key: 46, velocity: 127, when: 0 });
+    sampler.noteOn('u', { key: 42, velocity: 127, when: 0.2 });
+    sampler.noteOn('t', { key: 42, velocity: 127, when: 0.5 });
+    const data = await render(context);
+
+    expect(toneLevel(data, 5000, 0.25, 0.45)).toBeGreaterThan(0.5);
+    expect(toneLevel(data, 5000, 0.52, 0.9)).toBeLessThan(0.001);
   });
 });
 

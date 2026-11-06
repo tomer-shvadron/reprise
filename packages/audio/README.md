@@ -406,7 +406,8 @@ soloed one; it still goes through the insert, the fader and the panner.
 - **A non-resident sample is a skipped note, not a late one.** A scheduled note cannot wait for a
   decode; `noteOn` returns `undefined`, requests the load and reports through `onMiss`. Playback
   start pre-warms with `preload` (ADR-0005), which loads every layer. A layered note with some
-  layers resident plays those and reports each missing one.
+  layers resident plays those and reports each missing one, so `Sampler.misses` counts missing
+  samples, one per layer, not notes.
 - **Channel units.** `setTrack` takes the model's 0..127 volume and pan; volume follows the MIDI
   curve `(v / 127)^2`, pan 64 is centre. `ChannelStrip.set(settings, at?, ramp?)` takes linear gain
   and -1..1 pan; without `at` a change is smoothed in now, with it the change lands at `at`, as a

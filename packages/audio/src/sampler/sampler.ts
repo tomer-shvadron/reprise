@@ -164,6 +164,7 @@ export class Sampler {
     this.pool = new VoicePool(options.polyphony ?? DEFAULT_POLYPHONY);
   }
 
+  /** Samples found not resident at a note: one per missing layer, not per note. */
   get misses(): number {
     return this.#misses;
   }
