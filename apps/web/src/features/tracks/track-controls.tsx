@@ -165,10 +165,12 @@ function ChannelSlider({
   onCommit,
   showText = true,
 }: ChannelSliderProps) {
-  const [draft, setDraft] = useState<number | undefined>(undefined);
+  // A draft remembers the value it was drawn over: Radix commits nothing when a drag ends where it
+  // began, so a draft is only shown while the score's value is still the one it started from.
+  const [draft, setDraft] = useState<{ value: number; over: number } | undefined>(undefined);
   // Radix reports a keyboard step's change after its commit, which must not leave a draft.
   const committed = useRef<number | undefined>(undefined);
-  const shown = draft ?? value;
+  const shown = draft?.over === value ? draft.value : value;
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
       <Slider
@@ -182,7 +184,7 @@ function ChannelSlider({
           if (next === undefined) return;
           const echo = next === committed.current;
           committed.current = undefined;
-          if (!echo) setDraft(next);
+          if (!echo) setDraft({ value: next, over: value });
           onPreview(next);
         }}
         onValueCommit={([next]) => {

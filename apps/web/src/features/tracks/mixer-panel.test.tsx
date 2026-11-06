@@ -1,6 +1,6 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { MixerPanel } from './mixer-panel';
 import { renderTracks, threeTracks } from './test/render-tracks';
@@ -53,6 +53,37 @@ describe('MixerPanel', () => {
       'aria-valuetext',
       '2% left',
     );
+  });
+
+  it('shows an undo after a drag that ends where it began', async () => {
+    const { open, user, services } = setup();
+    await open();
+    const thumb = within(strip('Lead')).getByRole('slider', { name: 'Volume of Lead' });
+    const root = thumb.closest<HTMLElement>('[data-slot="slider"]');
+    if (!root) throw new Error('no slider root');
+    // jsdom has no layout or pointer capture: one pixel per step, and the thumb always holds it.
+    vi.spyOn(root, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 127, 10));
+    Object.assign(thumb, {
+      setPointerCapture: vi.fn(),
+      releasePointerCapture: vi.fn(),
+      hasPointerCapture: () => true,
+    });
+
+    thumb.focus();
+    await user.keyboard('{ArrowRight}');
+    const stepped = services.document.getState().score?.tracks[0]?.channel.volume ?? 0;
+    const revision = services.document.getState().revision;
+
+    fireEvent.pointerDown(thumb, { pointerId: 1, clientX: stepped });
+    fireEvent.pointerMove(thumb, { pointerId: 1, clientX: stepped - 30 });
+    fireEvent.pointerMove(thumb, { pointerId: 1, clientX: stepped });
+    fireEvent.pointerUp(thumb, { pointerId: 1, clientX: stepped });
+    expect(services.document.getState().revision).toBe(revision);
+
+    act(() => {
+      services.document.getState().undo();
+    });
+    expect(thumb).toHaveAttribute('aria-valuenow', String(stepped - 1));
   });
 
   it('changes the instrument as an undoable edit, and lists kits for drums', async () => {
