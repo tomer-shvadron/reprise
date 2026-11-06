@@ -8,7 +8,7 @@ import { LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from './index';
 const COLD_BUDGET_MS = 250;
 /**
  * The CI runner, sharing two cores with the other projects' test workers, measured medians of
- * 222 and 414 ms (one sample 959 ms) where a laptop measures 60; WP-027 sets the final factor.
+ * 222 and 414 ms (one sample 959 ms) where a laptop measured 60 before fresh scores, 85 since; WP-027 sets the final factor.
  */
 const CI_FACTOR = 3;
 const RUNS = 5;
@@ -43,7 +43,9 @@ describe('layout budget', () => {
     `lays out the long score cold in under ${String(COLD_BUDGET_MS)} ms`,
     { timeout: 30_000 },
     async ({ annotate }) => {
-      const times = Array.from({ length: RUNS }, () => layout(long, options).metrics.layoutMs);
+      // A fresh score each run: the tab module memoises its bar analysis per `Bar` object.
+      const scores = Array.from({ length: RUNS }, () => largeScore(8, 300, { structure: true }));
+      const times = scores.map((fresh) => layout(fresh, options).metrics.layoutMs);
       const cold = median(times);
       const budget = COLD_BUDGET_MS * (onCi() ? CI_FACTOR : 1);
       await annotate(
