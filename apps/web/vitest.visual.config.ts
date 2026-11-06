@@ -1,3 +1,4 @@
+import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,6 +12,9 @@ const viewport = { width: 1600, height: 2000 };
 
 const ci = process.env['GITHUB_ACTIONS'] === 'true';
 const LOCAL_REFERENCES = '__local__';
+const BASELINES = fileURLToPath(
+  new URL('e2e/visual/__screenshots__/score.visual.test.tsx', import.meta.url),
+);
 
 /**
  * Pixel screenshots of the score painter in Chromium. Kept out of the root config, so `pnpm test`,
@@ -24,6 +28,8 @@ export default mergeConfig(
       name: 'visual',
       include: ['e2e/visual/**/*.visual.test.tsx'],
       globalSetup: ['../../scripts/fixtures/provide-scores.ts'],
+      // Only CI's run reads the committed baselines, so only it can call one orphaned.
+      provide: { checkOrphanBaselines: ci },
       // A hang guard, not a budget: no visual test asserts on time (#90).
       testTimeout: 60_000,
       reporters: ['verbose', ...(ci ? ['github-actions', 'json'] : [])],
@@ -41,6 +47,9 @@ export default mergeConfig(
         headless: true,
         viewport,
         screenshotFailures: false,
+        commands: {
+          baselineFiles: () => (existsSync(BASELINES) ? readdirSync(BASELINES) : []),
+        },
         instances: [{ browser: 'chromium' }],
         expect: {
           toMatchScreenshot: {

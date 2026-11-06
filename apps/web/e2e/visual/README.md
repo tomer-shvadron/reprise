@@ -49,6 +49,9 @@ When a PR changes pixels on purpose:
 4. Open the accepted PNGs, commit them, and say in the PR which scenes changed and why. The
    review sees them in Files changed with GitHub's 2-up, swipe and onion-skin views.
 
+When a scene is renamed or dropped, `git rm` its old baselines: on CI the suite fails after its
+tests on any committed baseline that no scene captures, and `visual:accept` refuses such a run.
+
 A Playwright bump that changes Chromium re-accepts every baseline in its own PR.
 
 ## Tolerance

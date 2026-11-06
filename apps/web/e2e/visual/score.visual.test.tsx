@@ -1,7 +1,8 @@
 import { cleanup } from '@testing-library/react';
 import { layout, type LayoutOptions } from '@reprise/layout';
 import { parseNative, type Score } from '@reprise/model';
-import { afterEach, beforeAll, describe, expect, inject, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest';
+import { commands } from 'vitest/browser';
 
 import { uniformNotation, viewLayoutOptions, type NotationChoice } from '@/features/score';
 
@@ -17,6 +18,14 @@ interface ScoreFixture {
 declare module 'vitest' {
   export interface ProvidedContext {
     scoreFixtures: ScoreFixture[];
+    checkOrphanBaselines: boolean;
+  }
+}
+
+declare module 'vitest/browser' {
+  interface BrowserCommands {
+    /** The file names in the committed baselines' directory. */
+    baselineFiles: () => Promise<string[]>;
   }
 }
 
@@ -68,8 +77,17 @@ function capturesOf(scene: Scene, pageCount: (notation: NotationChoice) => numbe
   });
 }
 
+const captureNames = new Set<string>();
+
 beforeAll(expectScoreFonts);
 afterEach(cleanup);
+afterAll(async () => {
+  if (!inject('checkOrphanBaselines')) return;
+  const orphans = (await commands.baselineFiles()).filter(
+    (file) => !captureNames.has(file.replace(/-chromium-linux\.png$/, '')),
+  );
+  expect(orphans, 'baselines that no scene captures any more; git rm them').toEqual([]);
+});
 
 for (const scene of SCENES) {
   describe(scene.id, () => {
@@ -83,6 +101,7 @@ for (const scene of SCENES) {
     const pageCount = (notation: NotationChoice) => layoutFor(notation).pages.length;
 
     for (const capture of capturesOf(scene, pageCount)) {
+      captureNames.add(capture.name);
       it(`${capture.name}: ${scene.covers}`, async () => {
         const result = layoutFor(capture.notation);
         if (scene.pages === undefined) {
