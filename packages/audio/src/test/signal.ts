@@ -78,7 +78,10 @@ export function toneLevel(signal: Signal, frequency: number, from: number, to: n
 }
 
 export interface OnsetOptions {
-  /** Level a sample must exceed to count as sound. */
+  /**
+   * Level a sample must exceed to count as sound; `FLOOR_DB` under the signal's peak by default,
+   * so a quiet render's attacks and a loud one's release tails both land on the right side of it.
+   */
   floor?: number;
   /** Seconds below `floor` that make the next sound an onset. */
   gap?: number;
@@ -91,6 +94,9 @@ export interface OnsetOptions {
   /** Seconds after an onset in which no other is reported. */
   refractory?: number;
 }
+
+/** The default floor relative to the peak: a filtered attack crosses it within a millisecond. */
+export const FLOOR_DB = -50;
 
 /** Envelope hop: 32 frames is 0.7 ms at 44.1 kHz, the resolution of a re-attack. */
 const HOP = 32;
@@ -158,7 +164,8 @@ function riseOnsets(signal: Signal, floor: number, rise: number, lookback: numbe
  * `rise`, also a re-attack over a note still sounding, which a real instrument's tail needs.
  */
 export function detectOnsets(signal: Signal, options: OnsetOptions = {}): number[] {
-  const { floor = 1e-3, gap = 0.01, rise, lookback = 0.02, refractory = 0.03 } = options;
+  const { gap = 0.01, rise, lookback = 0.02, refractory = 0.03 } = options;
+  const floor = options.floor ?? peak(signal, 0, Number.POSITIVE_INFINITY) * 10 ** (FLOOR_DB / 20);
   const candidates =
     rise === undefined
       ? silenceOnsets(signal, floor, gap)

@@ -106,7 +106,8 @@ if (!generalUser) {
 describe.skipIf(!generalUser)('renderScore through the GM tier', () => {
   it('plays a guitar scale on the grid and in tune, within the GM budget', async () => {
     if (!generalUser) return;
-    const song = scale();
+    // Detached, since the region filter leaves a re-attack over a ringing string no pick burst.
+    const song = scale(true);
     const track = song.tracks[0];
     if (!track) throw new Error('no track');
     const rendered = await renderScore(song, { instruments: generalUser, tap: 'strips' });
@@ -115,19 +116,18 @@ describe.skipIf(!generalUser)('renderScore through the GM tier', () => {
     expect(rendered.source?.memory().decodedBytes).toBeGreaterThan(0);
     expect(rendered.source?.memory().decodedBytes).toBeLessThanOrEqual(GM_BUDGET_BYTES);
 
-    // Each sample takes its own few milliseconds to rise from its first frame to audible.
-    const onsets = detectOnsets(rendered, { rise: 2 });
+    const onsets = detectOnsets(rendered);
     expect(onsets).toHaveLength(GRID.length);
     for (const [index, at] of onsets.entries()) {
       const late = at - (GRID[index] ?? 0);
       expect(late).toBeGreaterThanOrEqual(0);
-      expect(late).toBeLessThan(0.02);
+      expect(late).toBeLessThan(0.002);
     }
     for (const [index, [string, fret]] of NOTES.entries()) {
       const expected = midiToFrequency(midiNote(track, { string, fret }));
-      const found = pitchAt(rendered, (GRID[index] ?? 0) + 0.25, { window: 0.15 });
-      // A sampled string is not a tuner: GeneralUser GS's open E2 reads 16 cents sharp here.
-      // A wrong key would be 100 off.
+      // Past the attack, whose transient YIN reads an octave or two low, and before the release.
+      const found = pitchAt(rendered, (GRID[index] ?? 0) + 0.1, { window: 0.1 });
+      // A sampled string is not a tuner, but a wrong key would be 100 off.
       expect(Math.abs(cents(found ?? 0, expected))).toBeLessThan(25);
     }
   });

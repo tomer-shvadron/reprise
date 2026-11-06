@@ -92,6 +92,25 @@ describe('detectOnsets', () => {
     }
   });
 
+  it.each([0.03, 1])('sets its floor by the peak, here %f', (amplitude) => {
+    // A filtered attack, slow to leave silence, and tails 60 dB down when the next note starts.
+    const envelope = (time: number): number => {
+      const start = GRID.filter((at) => at <= time).at(-1);
+      if (start === undefined) return 0;
+      const since = time - start;
+      if (since < 0.02) return (since / 0.02) ** 2;
+      return since < 0.1 ? 1 : 10 ** ((-60 * (since - 0.1)) / 0.15 / 20);
+    };
+    const signal = synth(1.2, (time) => amplitude * envelope(time) * sine(1000)(time));
+    const found = detectOnsets(signal);
+    expect(found).toHaveLength(GRID.length);
+    for (const [index, at] of found.entries()) {
+      const late = at - (GRID[index] ?? 0);
+      expect(late).toBeGreaterThanOrEqual(0);
+      expect(late).toBeLessThan(0.002);
+    }
+  });
+
   it('reports one onset for a slow attack, not one per hop', () => {
     const signal = synth(0.5, (time) => Math.min(1, time / 0.02) * sine(330)(time));
     expect(detectOnsets(signal, { rise: 2 })).toHaveLength(1);
