@@ -16,13 +16,16 @@ export interface BeamableBeat {
 }
 
 /**
- * Which beam window of the bar a tick falls in: a beat in simple time (a quarter at most), a
- * dotted quarter in compound time, and in other eighth-based meters pairs of eighths with the
- * odd one joining the last pair (5/8 as 2+3, 7/8 as 2+2+3).
+ * Which beam window of the bar a tick falls in: a beat in simple time (the half note in x/2 and
+ * x/1, a quarter at most otherwise), a dotted quarter in compound time, and in other eighth-based
+ * meters pairs of eighths with the odd one joining the last pair (5/8 as 2+3, 7/8 as 2+2+3).
  */
 export function beamWindow(tick: number, time: TimeSignature): number {
   const unit = (PPQ * 4) / time.denominator;
-  if (time.denominator < 8) return Math.floor(tick / Math.min(unit, PPQ));
+  if (time.denominator < 8) {
+    const beat = time.denominator <= 2 ? PPQ * 2 : Math.min(unit, PPQ);
+    return Math.floor(tick / beat);
+  }
   if (time.numerator % 3 === 0) return Math.floor(tick / (unit * 3));
   const pairs = Math.max(1, Math.floor(time.numerator / 2));
   return Math.min(Math.floor(tick / (unit * 2)), pairs - 1);

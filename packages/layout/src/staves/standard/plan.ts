@@ -1,4 +1,5 @@
 import {
+  PPQ,
   beatTicks,
   type Beat,
   type Duration,
@@ -156,29 +157,52 @@ function directionByPosition(positions: readonly number[]): StemDirection {
   return below > above ? 'up' : 'down';
 }
 
-/** Each beat's tuplet run: consecutive beats of one ratio filling `of` notes of the first's value. */
+/** The values a tuplet of unequal beats closes on, in ticks: a half note down to a 256th. */
+const PLAIN_VALUES = [2, 4, 8, 16, 32, 64, 128, 256].map((duration) => (PPQ * 4) / duration);
+const TICK_EPSILON = 1e-6;
+
+/**
+ * Each beat's tuplet run, grouped as alphaTab groups them so brackets match Guitar Pro's:
+ * consecutive beats of one ratio, closed after `n` beats of one value, or once beats of unequal
+ * values add up to a plain note value (a quarter-and-eighth triplet is one group, the quarter
+ * triplets after it another).
+ */
 function tupletRuns(beats: readonly Beat[]): (number | undefined)[] {
   const runs: (number | undefined)[] = [];
   let run = -1;
-  let filled = 0;
-  let target = 0;
+  let open = false;
   let ratio = '';
+  let count = 0;
+  let filled = 0;
+  let first = 0;
+  let equal = true;
   for (const beat of beats) {
     const { tuplet } = beat;
     if (!tuplet) {
       runs.push(undefined);
-      target = 0;
+      open = false;
       continue;
     }
     const key = `${String(tuplet.n)}:${String(tuplet.of)}`;
-    if (filled >= target - 1e-6 || key !== ratio) {
+    const ticks = beatTicks(beat);
+    if (!open || key !== ratio) {
       run += 1;
-      filled = 0;
+      open = true;
       ratio = key;
-      target = ((960 * 4) / beat.duration) * tuplet.of;
+      count = 0;
+      filled = 0;
+      first = ticks;
+      equal = true;
     }
-    filled += beatTicks(beat);
+    count += 1;
+    filled += ticks;
+    if (Math.abs(ticks - first) > TICK_EPSILON) equal = false;
     runs.push(run);
+    const factor = Math.max(1, Math.floor(tuplet.n / tuplet.of));
+    const full = equal
+      ? count === tuplet.n
+      : PLAIN_VALUES.some((value) => Math.abs(filled - value * factor) < TICK_EPSILON);
+    if (full) open = false;
   }
   return runs;
 }

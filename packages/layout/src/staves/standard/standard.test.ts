@@ -1,4 +1,11 @@
-import { applyCommand, setNote, type Clef, type Note, type Score } from '@reprise/model';
+import {
+  applyCommand,
+  setMasterBar,
+  setNote,
+  type Clef,
+  type Note,
+  type Score,
+} from '@reprise/model';
 import { beatOf, largeScore, midi, note, score, type ScoreBuilder } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
@@ -162,6 +169,25 @@ describe('standard staff', () => {
     expect(accidentals(plan(built, 1))).toEqual(['accidentalSharp']);
   });
 
+  it('prints a plain natural after a tied-in sharp, and restates the sharp', () => {
+    const built = score()
+      .track('piano', piano)
+      .bar()
+      .beat('1', [midi(61)])
+      .bar()
+      .beat('4', [midi(61, { tie: true })])
+      .beat('4', [midi(60)])
+      .beat('4', [midi(61)])
+      .beat('4', [midi(61)])
+      .build({ ids: 'sequential' });
+    for (const courtesy of [true, false]) {
+      expect(accidentals(plan(built, 1, courtesy))).toEqual([
+        'accidentalNatural',
+        'accidentalSharp',
+      ]);
+    }
+  });
+
   it('moves a head a second from its neighbour to the other side of the stem', () => {
     const built = score()
       .track('piano', piano)
@@ -247,6 +273,16 @@ describe('standard staff', () => {
     expect(plan(built, 0).groups.map(({ beats }) => beats.length)).toEqual([2, 2, 2]);
     expect(plan(built, 1).groups.map(({ beats }) => beats.length)).toEqual([3, 3]);
     expect(content(laid(built))).toMatchSnapshot();
+  });
+
+  it('beams 2/2 by the half note', () => {
+    const builder = score().timeSignature(2, 2).track('piano', piano).bar();
+    for (let i = 0; i < 8; i++) builder.beat('8', [midi(60 + i)]);
+    builder.bar();
+    for (let i = 0; i < 16; i++) builder.beat('16', [midi(72 - (i % 4))]);
+    const built = builder.build({ ids: 'sequential' });
+    expect(plan(built, 0).groups.map(({ beats }) => beats.length)).toEqual([4, 4]);
+    expect(plan(built, 1).groups.map(({ beats }) => beats.length)).toEqual([8, 8]);
   });
 
   it('keeps beams of repeated pitches horizontal and others within a space', () => {
@@ -341,6 +377,39 @@ describe('standard staff', () => {
     const result = laid(built);
     expect(glyphNames(result, /^tuplet/)).toEqual(['tuplet3', 'tuplet3']);
     expect(content(result)).toMatchSnapshot();
+  });
+
+  it('closes a tuplet of unequal values on a plain note value and one of equal values at n', () => {
+    const quintuplet = { tuplet: { n: 5, of: 4 } };
+    const built = score()
+      .track('piano', piano)
+      .bar()
+      .beat('4t', [midi(64)])
+      .beat('8t', [midi(65)])
+      .beat('4t', [midi(67)])
+      .beat('4t', [midi(69)])
+      .beat('4t', [midi(71)])
+      .bar()
+      .beat('8t', [midi(72)])
+      .beat('8t', [midi(72)])
+      .beat('8t', [midi(72)])
+      .beat('16', [midi(72)], quintuplet)
+      .beat('16', [midi(74)], quintuplet)
+      .beat('16', [midi(76)], quintuplet)
+      .beat('16', [midi(77)], quintuplet)
+      .beat('16', [midi(79)], quintuplet)
+      .rest('2')
+      .build({ ids: 'sequential' });
+    const sizes = (bar: number) =>
+      plan(built, bar).tuplets.map(({ beats, n }) => [n, beats.length]);
+    expect(sizes(0)).toEqual([
+      [3, 2],
+      [3, 3],
+    ]);
+    expect(sizes(1)).toEqual([
+      [3, 3],
+      [5, 5],
+    ]);
   });
 
   it('draws grace notes small, a single one slashed and several beamed', () => {
@@ -587,6 +656,29 @@ describe('standard notation at scale', () => {
     expect(accidentals(plan(edited, 1))).toEqual([
       'accidentalParensLeft+accidentalNatural+accidentalParensRight',
     ]);
+    expect(stable(cached)).toBe(stable(layout(edited, paged)));
+  });
+
+  it('re-measures a bar whose predecessor changed key, so its naturals are measured', () => {
+    const built = score()
+      .key(2)
+      .track('piano', piano)
+      .bar()
+      .beat('1', [midi(66)])
+      .bar()
+      .key(-1)
+      .beat('1', [midi(65)])
+      .build({ ids: 'sequential' });
+    const first = built.masterBars[0];
+    if (!first) throw new Error('no first bar');
+    const cache = new LayoutCache();
+    layout(built, paged, cache);
+    const { score: edited, change } = applyCommand(
+      built,
+      setMasterBar({ masterBarId: first.id }, { keySignature: { fifths: 3, minor: false } }),
+    );
+    const cached = layout(edited, { ...paged, dirtyBars: change.touchedBars }, cache);
+    expect(cached.metrics.measuredBars).toBe(2);
     expect(stable(cached)).toBe(stable(layout(edited, paged)));
   });
 });

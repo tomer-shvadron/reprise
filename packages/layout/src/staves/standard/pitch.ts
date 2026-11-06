@@ -106,9 +106,10 @@ type Memory = Map<string, Alter>;
 /**
  * Walks a bar in reading order with measure memory: an accidental holds for its letter and
  * octave until the bar line, so it is not repeated, and a return to the key's alteration needs
- * a natural (or the key's sign). A tied note shows nothing and changes nothing. With `previous`
- * (what the bar before printed), the first note of a letter and octave that bar altered gets a
- * courtesy accidental when it no longer needs one.
+ * a natural (or the key's sign). A tied note shows nothing, but the alteration it carries in
+ * holds until the next untied note of its letter and octave, which prints its own when it
+ * differs. With `previous` (what the bar before printed), the first note of a letter and octave
+ * that bar altered gets a courtesy accidental when it no longer needs one.
  */
 function walk(
   track: Pick<Track, 'kind' | 'tuning' | 'capo'>,
@@ -118,19 +119,25 @@ function walk(
   shown: Map<Id, ShownAccidental> | undefined,
 ): Memory {
   const printed: Memory = new Map();
+  const carried: Memory = new Map();
   const seen = new Set<string>();
   for (const { note } of timedNotes(bar)) {
-    if (note.tie) continue;
     const { letter, octave, alter } = spelled(track, note, key);
     const slot = `${letter}${String(octave)}`;
+    if (note.tie) {
+      if (!printed.has(slot)) carried.set(slot, alter);
+      continue;
+    }
     const current = printed.get(slot) ?? keyAlter(key, letter);
     const before = previous?.get(slot);
-    if (alter !== current) {
+    const tied = carried.get(slot);
+    if (alter !== current || (tied !== undefined && tied !== alter)) {
       shown?.set(note.id, { alter, courtesy: false });
       printed.set(slot, alter);
     } else if (before !== undefined && before !== alter && !seen.has(slot)) {
       shown?.set(note.id, { alter, courtesy: true });
     }
+    carried.delete(slot);
     seen.add(slot);
   }
   return printed;
