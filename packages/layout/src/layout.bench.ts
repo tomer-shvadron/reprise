@@ -5,7 +5,7 @@ import { expect, test } from 'vitest';
 import { LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from './index';
 import { checkBudget, recordMeasurement } from './test/budget';
 
-// tinybench: exactly 15 timed iterations after 3 untimed ones; one warm-up left writeGp cold.
+// tinybench: exactly 15 timed iterations after 3 untimed ones; #90's prototype found one too few.
 const RUN = { iterations: 15, time: 0, warmupIterations: 3, warmupTime: 0 };
 // A real regression fails both attempts; a one-off noisy neighbour on a CI VM passes the retry.
 const BENCH = { timeout: 120_000, retry: 1 };
