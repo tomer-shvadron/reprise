@@ -257,15 +257,15 @@ export function drawTuplet(
   );
 }
 
-/**
- * A tie from (`left`, `y`) to (`right`, `y`), bulging `direction`: a filled crescent, thin at the
- * ends and Bravura's tie midpoint thickness at the middle.
- */
 /** How far a tie or slur spanning `span` px bulges from its ends. */
 export function tieHeight(span: number, space: number): number {
   return Math.min(TIE_MAX_HEIGHT * space, Math.max(TIE_MIN_HEIGHT * space, TIE_RISE * span));
 }
 
+/**
+ * A tie from (`left`, `y`) to (`right`, `y`), bulging `direction`: a filled crescent, thin at the
+ * ends and Bravura's tie midpoint thickness at the middle.
+ */
 export function drawTie(
   sink: LayoutSink,
   left: number,

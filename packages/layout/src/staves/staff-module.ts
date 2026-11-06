@@ -93,6 +93,9 @@ export interface StaffModule {
    * engine calls it for every bar of each system it builds and caches nothing.
    */
   lanes(input: StaffBar): LaneRequests;
-  /** Reads this bar and, for what crosses a bar line, the bars up to three before and one after. */
+  /**
+   * Reads this bar, for what crosses a bar line the bars up to three before and one after, and for
+   * dynamics every earlier bar; nothing beyond the next bar.
+   */
   render(input: StaffBar, placement: StaffBarPlacement, sink: LayoutSink): void;
 }

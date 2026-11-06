@@ -156,7 +156,7 @@ export function point(x: number, y: number): string {
 const ARROW_WIDTH = 0.7;
 export const ARROW_LENGTH = 0.8;
 
-/** A filled triangular arrowhead with its tip at (x, y), pointing up, down, left or right. */
+/** A filled triangular arrowhead with its tip at (x, y), pointing up or down. */
 export function arrowhead(
   x: number,
   y: number,

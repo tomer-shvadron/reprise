@@ -181,7 +181,7 @@ Everything above or below a staff that is not attached to a note head goes in a 
 | 1 | `dynamics` | tab 2.4, five-line 2.9 |
 | 2 | `lyrics` | 2.0 per line |
 
-The room around a staff is the larger of its floor (tab 2 above and 1 below, five-line 1.5 each) and the inner room plus the lanes. In a lane, text (1.0 spaces) has its baseline 0.35 above the lane's bottom, a glyph its bottom edge 0.25 above it, a wave its centre line in the middle; dynamics hang 0.5 below the lane's top on one baseline.
+The room around a staff is the larger of its floor (tab 2 above and 1 below, five-line 1.5 each) and the inner room plus the lanes. In a lane, effect text (1.0 spaces) has its baseline 0.35 above the lane's bottom, a glyph its bottom edge 0.25 above it, a wave its centre line in the middle; dynamics hang 0.5 below the lane's top on one baseline.
 
 ### Effects on the tab
 
