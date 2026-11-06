@@ -793,4 +793,39 @@ describe('note effect lanes', () => {
     expect(afterVibrato.metrics.measuredBars).toBe(1);
     expect(stable(afterVibrato)).toBe(stable(layout(vibrato.score, options)));
   });
+
+  it('reuses the systems before an edit that adds a lane to a middle system, and grows that one', () => {
+    let builder = guitar();
+    for (let bar = 0; bar < 12; bar++) {
+      builder = builder.bar();
+      for (let beat = 0; beat < 4; beat++) builder = builder.beat('4', [note(3, 5)]);
+    }
+    const built = builder.build({ ids: 'sequential' });
+    const options = { ...paged, width: 400 };
+    const cache = new LayoutCache();
+    const before = layout(built, options, cache);
+    expect(before.systems.length).toBeGreaterThanOrEqual(3);
+    const middle = before.systems[1];
+    if (!middle) throw new Error('middle');
+    // Not the system's first bar: the bar before it reads this one, for runs carried across.
+    const bar = middle.bars.start + 1;
+    expect(bar).toBeLessThan(middle.bars.end);
+    const edit = applyCommand(
+      built,
+      setNoteEffect({ noteId: noteOf(built, 0, bar, 0).id }, { palmMute: true }),
+    );
+    const after = layout(edit.score, { ...options, dirtyBars: edit.change.touchedBars }, cache);
+    expect(after.metrics.measuredBars).toBe(1);
+    expect(after.metrics.reusedSystems).toBeGreaterThan(0);
+    expect(after.systems[1]?.bbox.height).toBeGreaterThan(middle.bbox.height);
+    expect(stable(after)).toBe(stable(layout(edit.score, options)));
+    const undo = applyCommand(
+      edit.score,
+      setNoteEffect({ noteId: noteOf(edit.score, 0, bar, 0).id }, { palmMute: false }),
+    );
+    const back = layout(undo.score, { ...options, dirtyBars: undo.change.touchedBars }, cache);
+    expect(back.metrics.reusedSystems).toBeGreaterThan(0);
+    expect(back.systems[1]?.bbox.height).toBe(middle.bbox.height);
+    expect(stable(back)).toBe(stable(layout(undo.score, options)));
+  });
 });
