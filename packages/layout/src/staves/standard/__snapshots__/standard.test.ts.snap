@@ -533,9 +533,9 @@ exports[`standard staff > shows dynamics below where they change and fingering a
   "line @200.27,112.62 -> 200.27,89.3 w 0.84 <beat00000003>",
   "glyph noteheadBlack @219.03,110.3 size 28 <note00000004>",
   "line @226.87,109.12 -> 226.87,85.8 w 0.84 <beat00000004>",
-  "glyph dynamicPP @159.78,145.13 size 28 <note00000002>",
+  "glyph dynamicPP @159.78,142.33 size 28 <note00000002>",
   "glyph fingering3 @193.41,83 size 28 <note00000003>",
-  "glyph dynamicMF @212,145.13 size 28 <note00000004>",
+  "glyph dynamicMF @212,142.33 size 28 <note00000004>",
   "glyph fingeringILower @220.86,83 size 28 <note00000004>",
 ]
 `;

@@ -2,6 +2,7 @@ import type { Bar, Clef, KeySignature, MasterBar, Score, Track } from '@reprise/
 
 import type { LayoutSink } from '../primitives';
 import type { StaffType } from '../types';
+import type { LaneBands, LaneRequests } from './lanes';
 
 /** Vertical shape of a staff: `lines` lines, `lineSpacing` px apart. */
 export interface StaffGeometry {
@@ -36,7 +37,10 @@ export interface OnsetExtent {
 export interface StaffBarMeasure {
   /** Ticks into the bar of every onset this staff draws, each with the room it needs. */
   onsets: OnsetExtent[];
-  /** Room needed above the top line and below the bottom line, in px. */
+  /**
+   * Room needed above the top line and below the bottom line, in px: what sits next to the
+   * staff, inside the lanes.
+   */
   above: number;
   below: number;
 }
@@ -66,6 +70,10 @@ export interface StaffBarPlacement {
    */
   readonly previous?: NeighbourBar;
   readonly next?: NeighbourBar;
+  /** Where each lane this system has on this staff lies; a module draws a lane's items only into its band. */
+  readonly lanes: LaneBands;
+  /** The bar opens a line: a paged system's first bar, or the first bar of the continuous line. */
+  readonly lineStart: boolean;
 }
 
 /**
@@ -75,7 +83,16 @@ export interface StaffBarPlacement {
  */
 export interface StaffModule {
   readonly type: StaffType;
+  /** Room kept around the lines whatever the bars hold, in staff spaces. */
+  readonly minRoom: { above: number; below: number };
   geometry(track: Track, space: number): StaffGeometry;
+  /** Horizontal room and the room next to the staff. Reads this bar only, so the engine caches it. */
   measure(input: StaffBar): StaffBarMeasure;
+  /**
+   * The lanes the bar draws into and their heights. May read earlier bars, never later ones; the
+   * engine calls it for every bar of each system it builds and caches nothing.
+   */
+  lanes(input: StaffBar): LaneRequests;
+  /** Reads this bar and, for what crosses a bar line, the bars up to three before and one after. */
   render(input: StaffBar, placement: StaffBarPlacement, sink: LayoutSink): void;
 }

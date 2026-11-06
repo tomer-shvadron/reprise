@@ -1,5 +1,6 @@
 import type { StaffModule } from '../staff-module';
 import { TAB, type TabOptions } from './analysis';
+import { tabLanes } from './lanes';
 import { measureTab } from './measure';
 import { renderTab } from './render';
 
@@ -15,11 +16,13 @@ export function tabModule(options: Partial<TabOptions> = {}): StaffModule {
   const resolved: TabOptions = { tiedNotes: options.tiedNotes ?? 'parentheses' };
   return {
     type: 'tab',
+    minRoom: { above: TAB.minAbove, below: TAB.beatReach },
     geometry: (track, space) => ({
       lines: track.tuning.length,
       lineSpacing: TAB.lineSpacing * space,
     }),
     measure: (input) => measureTab(input, resolved),
+    lanes: (input) => tabLanes(input, resolved),
     render: (input, placement, sink) => {
       renderTab(input, placement, sink, resolved);
     },

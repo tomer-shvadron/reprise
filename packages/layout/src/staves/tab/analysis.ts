@@ -1,12 +1,4 @@
-import {
-  beatTicks,
-  type Bar,
-  type Beat,
-  type Dynamics,
-  type Finger,
-  type Note,
-  type Voice,
-} from '@reprise/model';
+import { beatTicks, type Bar, type Beat, type Finger, type Note, type Voice } from '@reprise/model';
 
 import { glyphMetrics, textExtent, textWidth, type GlyphName } from '../../metrics';
 import type { TiedNotes } from '../../types';
@@ -21,6 +13,7 @@ import {
   type StemDirection,
   type TupletGroup,
 } from '../rhythm';
+import { reservedDynamics } from '../dynamics';
 import type { StaffBar } from '../staff-module';
 
 /** Every size and distance of the tab staff, in staff spaces. */
@@ -89,11 +82,7 @@ export interface TabBeat {
   /** Room the beat's own drawing takes either side of its onset, in px. */
   left: number;
   right: number;
-  /**
-   * Whether the beat's dynamic differs from the one before it in the bar, or from Guitar Pro's
-   * default at the bar's first; render compares across the bar line instead, and the row has
-   * room for either.
-   */
+  /** Whether measure keeps room for the beat's dynamic: `reservedDynamics` holds it. */
   dynamicsChange: boolean;
 }
 
@@ -111,13 +100,11 @@ export interface TabVoice {
 export interface TabRows {
   /** Upper voices' stems, beams and rests, above the top string. */
   upper: number;
-  /** Between the top string and the words when there is no upper voice. */
-  clearance: number;
-  /** Word rows above the staff, upwards in this order: the most common nearest, so it aligns. */
+  /** The word lanes' heights. */
   chord: number;
   fingering: number;
   text: number;
-  /** Voice 1's stems, beams, tuplets and the bar's dynamics, below the bottom string. */
+  /** Voice 1's stems, beams and tuplets, below the bottom string. */
   lower: number;
   /** How far voice 1's stems reach past the standard length, within `lower`. */
   lowerExtra: number;
@@ -210,11 +197,6 @@ export function restGlyph(duration: number): GlyphName {
   return RESTS[duration] ?? 'restQuarter';
 }
 
-/** The dynamic a beat plays at: its first note's, or none for a rest or empty beat. */
-export function beatDynamics(beat: Beat): Dynamics | undefined {
-  return beat.notes[0]?.dynamics;
-}
-
 function event(beat: Beat, tick: number): RhythmEvent {
   return {
     tick,
@@ -287,17 +269,6 @@ function analyseBeat(
   };
 }
 
-/** The first played beat always counts: render compares it with the bar before, which measure cannot see. */
-function markDynamicsChanges(beats: readonly TabBeat[]): void {
-  let current: Dynamics | undefined;
-  for (const analysed of beats) {
-    const dynamics = beatDynamics(analysed.beat);
-    if (dynamics === undefined) continue;
-    analysed.dynamicsChange = dynamics !== current;
-    current = dynamics;
-  }
-}
-
 function stemZone(extraStem: number, space: number): number {
   return (TAB.stemGap + TAB.stem + TAB.tupletRoom) * space + extraStem;
 }
@@ -319,6 +290,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
 
   const voices: TabVoice[] = [];
   const beats: TabBeat[] = [];
+  const reserved: ReadonlySet<string> = rhythm ? reservedDynamics(bar) : new Set();
   let lyricLines = 0;
   let maxFingers = 0;
   let chord = false;
@@ -330,6 +302,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
     let tick = 0;
     for (const [b, beat] of voice.beats.entries()) {
       const analysed = analyseBeat(beat, index, b, tick, direction, space, options, rhythm);
+      analysed.dynamicsChange = reserved.has(beat.id);
       voiceBeats.push(analysed);
       tick += analysed.event.ticks;
       if (beat.chord) chord = true;
@@ -344,7 +317,6 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
         );
       }
     }
-    if (rhythm) markDynamicsChanges(voiceBeats);
     const events = voiceBeats.map((analysed) => analysed.event);
     const tuplets = tupletGroups(events);
     const beams = beamGroups(events, signature, tuplets);
@@ -371,7 +343,6 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   const uppers = rhythm ? voices.filter((v) => v.direction === 'up') : [];
   const rows: TabRows = {
     upper: uppers.length > 0 ? stemZone(Math.max(...uppers.map((v) => v.extraStem)), space) : 0,
-    clearance: uppers.length > 0 ? 0 : TAB.wordClearance * space,
     fingering: maxFingers * TAB.fingerRow * space,
     chord: chord ? TAB.chordRow * space : 0,
     text: text ? TAB.textRow * space : 0,

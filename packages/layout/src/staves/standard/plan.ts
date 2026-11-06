@@ -1,17 +1,9 @@
-import {
-  beatTicks,
-  type Beat,
-  type Duration,
-  type Dynamics,
-  type Finger,
-  type Note,
-} from '@reprise/model';
+import { beatTicks, type Beat, type Duration, type Finger, type Note } from '@reprise/model';
 
 import { glyphMetrics, type GlyphName } from '../../metrics';
 import { glyphWidth } from '../../primitives';
 import type { StaffBar } from '../staff-module';
 import { planChord, positionY, type ChordNote, type ChordPlan } from './chord';
-import { shownDynamics } from './dynamics';
 import { barAccidentals, placeNote, type ShownAccidental } from './pitch';
 import { beamCount, beamGroups, tupletGroups, type RhythmEvent } from '../rhythm';
 import {
@@ -36,11 +28,10 @@ export const GRACE_SCALE = 0.6;
 const GRACE_GAP = 0.3;
 const GRACE_STEP = 0.2;
 /** Room every bar keeps above and below the staff, in staff spaces. */
-const MIN_ROOM = 1.5;
+export const MIN_ROOM = 1.5;
 const MARGIN = 0.3;
 const FINGERING_GAP = 0.4;
 const FINGERING_STEP = 1.1;
-const DYNAMICS_GAP = 1.2;
 
 export interface GracePlan {
   /** The grace chord's x, from the beat's. */
@@ -73,7 +64,6 @@ export interface BeatPlan {
   graceBeam?: BeamLine;
   group?: number;
   tuplet?: number;
-  dynamics?: { value: Dynamics; note: Note };
   /** Fingering, top to bottom. */
   fingering: { glyph: GlyphName; note: Note }[];
   left: number;
@@ -101,12 +91,11 @@ export interface BarPlan {
   groups: GroupPlan[];
   tuplets: TupletPlan[];
   multiVoice: boolean;
-  /** Content bounds from the top line, before fingering and dynamics, the beams at their furthest. */
+  /** Content bounds from the top line, before fingering, the beams at their furthest. */
   top: number;
   bottom: number;
-  /** Bottom of the fingering stack and baseline of the dynamics. */
+  /** Bottom of the fingering stack. */
   fingeringY: number;
-  dynamicsY: number;
   above: number;
   below: number;
 }
@@ -193,8 +182,8 @@ export function noteMatches(a: Note, b: Note, fretted: boolean): boolean {
 
 /**
  * Everything about a bar that does not depend on where its onsets land: heads, accidentals,
- * stems, rests, graces, beam groups with their beams at the furthest they can reach, tuplets,
- * fingering and dynamics, all from each onset's x and the staff's top line. `measure` reads its
+ * stems, rests, graces, beam groups with their beams at the furthest they can reach, tuplets and
+ * fingering, all from each onset's x and the staff's top line. `measure` reads its
  * extents; `render` places it.
  */
 export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
@@ -228,7 +217,6 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
   const voices: BeatPlan[][] = [];
   const groups: GroupPlan[] = [];
   const tuplets: TupletPlan[] = [];
-  const dynamics = shownDynamics(track, input.barIndex);
 
   for (const [voice, { beats: voiceBeats }] of bar.voices.entries()) {
     const notes = voiceBeats.map((beat) => chordNotes(beat.notes));
@@ -331,8 +319,6 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
             plan.fingering.push({ glyph: LEFT_HAND[leftHandFinger], note: head.note });
         }
       }
-      const shown = dynamics.get(beat.id);
-      if (shown) plan.dynamics = shown;
       return plan;
     });
 
@@ -392,11 +378,6 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
   const fingers = Math.max(0, ...beats.map(({ fingering }) => fingering.length));
   const fingeringY = top - FINGERING_GAP * space;
   const fingeringTop = fingers > 0 ? fingeringY - fingers * FINGERING_STEP * space : top;
-  const hasDynamics = beats.some(({ dynamics: shown }) => shown);
-  const dynamicsY = bottom + DYNAMICS_GAP * space + glyphMetrics('dynamicForte').bbox.top * space;
-  const dynamicsBottom = hasDynamics
-    ? dynamicsY - glyphMetrics('dynamicForte').bbox.bottom * space
-    : bottom;
   return {
     beats,
     voices,
@@ -406,9 +387,8 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
     top,
     bottom,
     fingeringY,
-    dynamicsY,
-    above: Math.max(MIN_ROOM * space, -fingeringTop + MARGIN * space),
-    below: Math.max(MIN_ROOM * space, dynamicsBottom - positionY(0, space) + MARGIN * space),
+    above: -fingeringTop + MARGIN * space,
+    below: bottom - positionY(0, space) + MARGIN * space,
   };
 }
 

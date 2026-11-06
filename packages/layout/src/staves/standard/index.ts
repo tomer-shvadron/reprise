@@ -1,5 +1,7 @@
+import { LANE_HEIGHT, type LaneRequests } from '../lanes';
 import type { StaffBar, StaffBarMeasure, StaffBarPlacement, StaffModule } from '../staff-module';
-import { planBar, type BarPlan, type NotationOptions } from './plan';
+import { shownDynamics } from './dynamics';
+import { MIN_ROOM, planBar, type BarPlan, type NotationOptions } from './plan';
 import { renderBar } from './render';
 
 export type { NotationOptions } from './plan';
@@ -38,6 +40,7 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
   };
   return {
     type,
+    minRoom: { above: MIN_ROOM, below: MIN_ROOM },
     geometry: (_track, space) => ({ lines: 5, lineSpacing: space }),
     measure(input: StaffBar): StaffBarMeasure {
       const plan = planned(input);
@@ -47,6 +50,11 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
           : { tick: beat.tick, left: -beat.left, right: beat.right },
       );
       return { onsets, above: plan.above, below: plan.below };
+    },
+    lanes(input: StaffBar): LaneRequests {
+      return shownDynamics(input.track, input.barIndex).size > 0
+        ? { dynamics: LANE_HEIGHT.dynamics * input.space }
+        : {};
     },
     render(input: StaffBar, placement: StaffBarPlacement, sink): void {
       renderBar(input, placement, sink, planned(input), type);

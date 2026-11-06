@@ -1,25 +1,12 @@
 import { glyphMetrics, textWidth } from '../../metrics';
 import type { OnsetExtent, StaffBar, StaffBarMeasure } from '../staff-module';
-import { DYNAMICS_GLYPHS } from '../dynamics';
-import {
-  TAB,
-  analyseBar,
-  beatDynamics,
-  type TabBeat,
-  type TabOptions,
-  type TabRows,
-} from './analysis';
+import { DYNAMICS_GLYPHS, beatDynamics } from '../dynamics';
+import { TAB, analyseBar, type TabBeat, type TabOptions } from './analysis';
 import { feelRight } from './spacing';
 
 const TICK_EPSILON = 1e-6;
 /** Room between a beat's words and the next onset's, in staff spaces. */
 const WORD_GAP = 0.4;
-
-/** The bottom of the word rows above the staff, up from the top string, in px. */
-export function wordsBase(rows: TabRows): number {
-  const words = rows.fingering + rows.chord + rows.text;
-  return rows.upper + (words > 0 ? rows.clearance : 0);
-}
 
 /** Where a chord name or beat text starts: at the left edge of the beat's fret numbers. */
 export function wordStart(beat: TabBeat): number {
@@ -87,10 +74,7 @@ export function measureTab(input: StaffBar, options: TabOptions): StaffBarMeasur
   const { rows } = analysed;
   return {
     onsets,
-    above: Math.max(
-      TAB.minAbove * space,
-      wordsBase(rows) + rows.fingering + rows.chord + rows.text,
-    ),
-    below: Math.max(rows.lower + rows.lyrics, TAB.beatReach * space),
+    above: rows.upper > 0 ? rows.upper : TAB.wordClearance * space,
+    below: rows.lower,
   };
 }

@@ -1,10 +1,8 @@
 import {
   TIE_REACH_BARS,
-  VOICE_COUNT,
   beatTicks,
   tieOriginOf,
   type Beat,
-  type Dynamics,
   type Note,
   type TieLink,
   type TiePosition,
@@ -26,11 +24,10 @@ import {
   type StemDirection,
 } from '../rhythm';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
-import { DEFAULT_DYNAMICS, DYNAMICS_GLYPHS } from '../dynamics';
+import { DYNAMICS_GLYPHS, dynamicsBaseline, shownDynamics } from '../dynamics';
 import {
   TAB,
   analyseBar,
-  beatDynamics,
   fingering,
   labelHalf,
   labelHalfHeight,
@@ -42,7 +39,7 @@ import {
   type TabOptions,
   type TabVoice,
 } from './analysis';
-import { wordStart, wordsBase } from './measure';
+import { wordStart } from './measure';
 
 const sign = (direction: StemDirection): number => (direction === 'down' ? 1 : -1);
 /** A tuplet of one beat still gets a bracket this wide either side of it, in staff spaces. */
@@ -320,100 +317,54 @@ function drawTies(context: Context, voice: TabVoice, xs: readonly number[]): voi
   }
 }
 
-const dynamicsIn = new WeakMap<Track, Map<number, Dynamics>>();
-
-/**
- * The dynamic in effect before the bar in `voice`: the last one played in earlier bars. Memoised
- * per track, so a voice of rests does not walk back to the start for every bar.
- */
-function dynamicsBefore(track: Track, barIndex: number, voice: number): Dynamics {
-  let memo = dynamicsIn.get(track);
-  if (!memo) {
-    memo = new Map();
-    dynamicsIn.set(track, memo);
-  }
-  let start = barIndex - 1;
-  let found: Dynamics = DEFAULT_DYNAMICS;
-  while (start >= 0) {
-    const known = memo.get(start * VOICE_COUNT + voice);
-    if (known !== undefined) {
-      found = known;
-      break;
-    }
-    start--;
-  }
-  for (let b = start + 1; b < barIndex; b++) {
-    for (const beat of trackVoiceBeats(track, b, voice)) found = beatDynamics(beat) ?? found;
-    memo.set(b * VOICE_COUNT + voice, found);
-  }
-  return found;
-}
-
 function drawWords(context: Context, xs: Map<TabBeat, number>): void {
   const { input, placement, sink, analysed, space } = context;
-  const { rows } = analysed;
+  const { lanes } = placement;
   const size = TAB.textSize * space;
   const fingerSize = TAB.fingerSize * space;
-  const stackBottom = placement.top - wordsBase(rows);
-  const chordY = stackBottom - WORD_LIFT * space;
-  const fingeringBottom = stackBottom - rows.chord;
-  const textY = fingeringBottom - rows.fingering - WORD_LIFT * space;
-  const lyricsTop = placement.bottom + rows.lower;
-  const dynamicsY =
-    placement.bottom + (TAB.stemGap + TAB.stem + TAB.tupletGap) * space + rows.lowerExtra;
-  const shownDynamics = new Set<number>();
+  const shown = analysed.rhythm ? shownDynamics(input.track, input.barIndex) : undefined;
 
-  for (const voice of analysed.voices) {
-    let current = dynamicsBefore(input.track, input.barIndex, voice.index);
-    for (const beat of voice.beats) {
-      const x = xs.get(beat);
-      if (x === undefined) continue;
-      const node = beat.beat.id;
-      const { chord, lyrics } = beat.beat;
-      if (chord)
-        sink.primitives.push(text(chord.name, x + wordStart(beat), chordY, size, { node }));
-      if (beat.beat.text) {
-        sink.primitives.push(text(beat.beat.text, x + wordStart(beat), textY, size, { node }));
-      }
-      const fingered = analysed.rhythm
-        ? beat.labels.flatMap(({ note }) => {
-            const label = fingering(note);
-            return label === undefined ? [] : [{ note, label }];
-          })
-        : [];
-      for (const [j, { note, label }] of fingered.entries()) {
-        const k = fingered.length - 1 - j;
-        const y = fingeringBottom - k * TAB.fingerRow * space - 0.25 * space;
-        sink.primitives.push(text(label, x, y, fingerSize, { anchor: 'middle', node: note.id }));
-      }
-      for (const [line, syllable] of (lyrics ?? []).entries()) {
-        if (syllable === '') continue;
-        const y = lyricsTop + (line + 1) * TAB.lyricRow * space - DESCENT * space;
-        sink.primitives.push(text(syllable, x, y, size, { anchor: 'middle', node }));
-      }
-      const dynamics = beatDynamics(beat.beat);
-      if (dynamics && dynamics !== current && analysed.rhythm) {
-        const key = Math.round(beat.tick * 1000);
-        if (!shownDynamics.has(key)) {
-          shownDynamics.add(key);
-          const name = DYNAMICS_GLYPHS[dynamics];
-          const { advance, bbox } = glyphMetrics(name);
-          const unit = TAB.dynamicsScale * space;
-          sink.primitives.push(
-            glyph(
-              name,
-              x - (advance * unit) / 2,
-              dynamicsY + ((bbox.top + bbox.bottom) / 2) * unit,
-              space,
-              {
-                scale: TAB.dynamicsScale,
-                node,
-              },
-            ),
-          );
-        }
-      }
-      if (dynamics) current = dynamics;
+  for (const beat of analysed.beats) {
+    const x = xs.get(beat);
+    if (x === undefined) continue;
+    const node = beat.beat.id;
+    const { chord, lyrics } = beat.beat;
+    if (chord && lanes.chord) {
+      const y = lanes.chord.bottom - WORD_LIFT * space;
+      sink.primitives.push(text(chord.name, x + wordStart(beat), y, size, { node }));
+    }
+    if (beat.beat.text && lanes.text) {
+      const y = lanes.text.bottom - WORD_LIFT * space;
+      sink.primitives.push(text(beat.beat.text, x + wordStart(beat), y, size, { node }));
+    }
+    const fingered = analysed.rhythm
+      ? beat.labels.flatMap(({ note }) => {
+          const label = fingering(note);
+          return label === undefined ? [] : [{ note, label }];
+        })
+      : [];
+    for (const [j, { note, label }] of fingered.entries()) {
+      if (!lanes.fingering) break;
+      const k = fingered.length - 1 - j;
+      const y = lanes.fingering.bottom - k * TAB.fingerRow * space - 0.25 * space;
+      sink.primitives.push(text(label, x, y, fingerSize, { anchor: 'middle', node: note.id }));
+    }
+    for (const [line, syllable] of (lyrics ?? []).entries()) {
+      if (syllable === '' || !lanes.lyrics) continue;
+      const y = lanes.lyrics.top + (line + 1) * TAB.lyricRow * space - DESCENT * space;
+      sink.primitives.push(text(syllable, x, y, size, { anchor: 'middle', node }));
+    }
+    const dynamics = shown?.get(node);
+    if (dynamics && lanes.dynamics) {
+      const name = DYNAMICS_GLYPHS[dynamics];
+      const unit = TAB.dynamicsScale * space;
+      const y = dynamicsBaseline(lanes.dynamics.top, unit);
+      sink.primitives.push(
+        glyph(name, x - (glyphMetrics(name).advance * unit) / 2, y, space, {
+          scale: TAB.dynamicsScale,
+          node,
+        }),
+      );
     }
   }
 }
