@@ -130,7 +130,7 @@ describe('createSamplerSink', () => {
     expect(toneLevel(data, frequency, 0.7, 1)).toBeLessThan(0.001);
   });
 
-  it('spans a bend over a tie chain unless a later link bends on its own', async () => {
+  it('spans a bend over a tie chain up to the first link that bends or vibrates', async () => {
     const bend = {
       kind: 'bend' as const,
       points: [
@@ -145,7 +145,11 @@ describe('createSamplerSink', () => {
       when: 0.6,
       durationTicks: 3 * PPQ,
     });
-    const centsAfterOneSecond = async (continuations: NoteEvent['continuations']) => {
+    const centsAround = async (
+      continuations: NoteEvent['continuations'],
+      from: number,
+      to: number,
+    ) => {
       const context = offline(2.2);
       const sampler = new Sampler(context);
       sampler.addTrack(guitar, sineInstrument());
@@ -153,13 +157,20 @@ describe('createSamplerSink', () => {
       const held = { note: note(1, 5, { bend }), beat: first, when: 0.1, duration: 2 };
       sink.noteOn(event({ ...held, durationTicks: 4 * PPQ, continuations }));
       const data = (await context.startRendering()).getChannelData(0);
-      return cents(zeroCrossingFrequency(data, 1.05, 1.15), midiToFrequency(69));
+      return cents(zeroCrossingFrequency(data, from, to), midiToFrequency(69));
     };
 
     // Half way along the chain, a chain-long bend is half way up its two semitones.
-    expect(Math.abs((await centsAfterOneSecond([link()])) - 100)).toBeLessThan(3);
-    // A link bending on its own keeps the origin's bend on the origin's beat, held after it.
-    expect(Math.abs((await centsAfterOneSecond([link({ bend })])) - 200)).toBeLessThan(1);
+    expect(Math.abs((await centsAround([link()], 1.05, 1.15)) - 100)).toBeLessThan(3);
+    // Half way through the origin's beat, a bend spanning only that beat is half way up; spread
+    // over the chain it would be an eighth of the way, 25 cents.
+    const hold = {
+      kind: 'hold' as const,
+      points: bend.points.map((point) => ({ ...point, value: 4 })),
+    };
+    for (const stop of [link({ bend: hold }), link({ vibrato: 'wide' })]) {
+      expect(Math.abs((await centsAround([stop], 0.3, 0.4)) - 100)).toBeLessThan(3);
+    }
   });
 
   it('cancels a note scheduled ahead when allNotesOff comes first', async () => {

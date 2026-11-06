@@ -73,6 +73,7 @@ export function placeGraces(
         when: slot.when,
         length: slot.length,
         beatLength: slot.length,
+        links: [],
         secondsPerTick,
         barEnd: event.barEnd,
         next: nextOnString(grace, slots, index, event.note, mainWhen),

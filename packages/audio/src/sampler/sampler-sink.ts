@@ -6,6 +6,8 @@ import { placeGraces } from '../articulations/grace';
 import { ARTICULATION } from '../articulations/parameters';
 import { planNote } from '../articulations/plan';
 import type { GainPoint, NotePlan, PlanInput, Strike } from '../articulations/plan';
+import { levelAt } from '../articulations/tie-chain';
+import type { FilterSettings } from './voice';
 import type { InstrumentSink, MixEvent, NoteEvent } from '../sink';
 import type { Instrument, Sampler, TrackParams, VoiceHandle } from './sampler';
 
@@ -27,25 +29,13 @@ export interface SamplerSinkOptions {
 interface Chain {
   voice: VoiceHandle;
   at: number;
+  /** The filter type the voice was left with, which the note it carries into keeps. */
+  filterType: BiquadFilterType;
 }
 
 const CHAIN_TOLERANCE = 1e-4;
 /** A pitch curve ends this long before the next note's events: one inside a curve's span throws. */
 const CURVE_GAP = 2 * CHAIN_TOLERANCE;
-
-function gainAt(points: readonly GainPoint[], time: number): number {
-  let previous = points[0];
-  if (!previous) return 0;
-  if (time <= previous.at) return previous.db;
-  for (const point of points) {
-    if (time <= point.at) {
-      const share = point.at > previous.at ? (time - previous.at) / (point.at - previous.at) : 1;
-      return previous.db + (point.db - previous.db) * share;
-    }
-    previous = point;
-  }
-  return previous.db;
-}
 
 function shapeGain(
   voice: VoiceHandle,
@@ -54,12 +44,43 @@ function shapeGain(
   to: number,
 ): void {
   if (points.length === 0) return;
-  voice.setGain(gainAt(points, from), from);
-  for (const point of points) {
-    if (point.at > from && point.at <= to) voice.rampGain(point.db, point.at);
+  voice.setGain(levelAt(points, from), from);
+  for (const [index, point] of points.entries()) {
+    if (point.at <= from || point.at > to) continue;
+    // Two points at one time are a step, which a ramp would turn into a glide from the last event.
+    if (points[index - 1]?.at === point.at) voice.setGain(point.db, point.at);
+    else voice.rampGain(point.db, point.at);
   }
   const last = points.at(-1);
-  if (last && last.at > to) voice.rampGain(gainAt(points, to), to);
+  if (last && last.at > to) voice.rampGain(levelAt(points, to), to);
+}
+
+/**
+ * Returns the filter type the voice is left with. A type switches at once, not at a time, so a
+ * carried voice keeps its type and takes only the timed changes that need no switch.
+ */
+function shapeFilter(
+  voice: VoiceHandle,
+  plan: NotePlan,
+  from: number,
+  to: number,
+  carried: BiquadFilterType | undefined,
+): BiquadFilterType {
+  let type = carried ?? 'lowpass';
+  if (carried === undefined) {
+    let onset: FilterSettings | undefined = plan.filter;
+    for (const change of plan.filterChanges) if (change.at <= from) onset = change.filter;
+    if (onset) voice.setFilter(onset, from);
+    type = onset?.type ?? type;
+  }
+  for (const change of plan.filterChanges) {
+    if (change.at <= from || change.at >= to) continue;
+    const next = change.filter.type ?? type;
+    if (carried !== undefined && next !== type) continue;
+    voice.setFilter(change.filter, change.at);
+    type = next;
+  }
+  return type;
 }
 
 function shapePitch(
@@ -136,12 +157,17 @@ export function createSamplerSink(
       if (!voice) continue;
       const isCarried = voice === carried;
       const until = last && plan.legatoInto !== undefined ? plan.legatoInto : strike.end;
-      // A filter's type switches at once, so a carried voice keeps the tone it was struck with.
-      if (plan.filter && !isCarried) voice.setFilter(plan.filter, strike.when);
+      const filterType = shapeFilter(
+        voice,
+        plan,
+        strike.when,
+        until,
+        isCarried ? chain?.filterType : undefined,
+      );
       shapeGain(voice, plan.gain, strike.when, until);
       shapePitch(voice, plan, strike, until, isCarried);
       if (last && plan.legatoInto !== undefined) {
-        chains.set(chainKey, { voice, at: plan.legatoInto });
+        chains.set(chainKey, { voice, at: plan.legatoInto, filterType });
       } else if (last && plan.letRingUntil !== undefined) {
         if (isCarried) voice.release(plan.letRingUntil);
       } else {
@@ -172,8 +198,6 @@ export function createSamplerSink(
       for (const grace of graces) play(track.id, grace);
       const length = Math.max(0, event.duration - delay);
       const beatLength = Math.max(0, beatTicks(beat) * secondsPerTick - delay);
-      // Guitar Pro spans a bend over the tied length unless a later link bends on its own.
-      const bendLength = event.continuations.some((link) => link.note.bend) ? beatLength : length;
       play(track.id, {
         track,
         note,
@@ -181,7 +205,12 @@ export function createSamplerSink(
         when: event.when + delay,
         length,
         beatLength,
-        bendLength,
+        links: event.continuations.map((link) => ({
+          note: link.note,
+          effects: link.beat.effects,
+          when: link.when,
+          length: link.durationTicks * secondsPerTick,
+        })),
         secondsPerTick,
         barEnd: event.barEnd,
         next: event.nextOnString,
