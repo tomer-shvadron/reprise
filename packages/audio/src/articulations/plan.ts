@@ -79,9 +79,9 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
-/** Whether the chain runs uncut to its last link, the only one whose slide aims past it. */
+/** Whether the last link is heard, even staccato: only its slide aims past the chain. */
 function reachesLastLink(input: PlanInput, chain: TieChain): boolean {
-  return !chain.cut && chain.segments.length === input.links.length + 1;
+  return chain.segments.length === input.links.length + 1;
 }
 
 function slideTerms(input: PlanInput, key: number, chain: TieChain): PitchTerm[] {

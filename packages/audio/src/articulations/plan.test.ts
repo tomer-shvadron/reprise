@@ -240,6 +240,23 @@ describe('planNote over a tie chain', () => {
     expect(plan(undefined, 'legato').legatoInto).toBe(2);
   });
 
+  it('glides from a staccato last link before its release, as from an untied staccato note', () => {
+    const next = { note: note(1, 7), when: 2 };
+    const plan = (slide: 'shift' | 'legato') =>
+      planNote(
+        input(guitar, origin(), {
+          length: 1,
+          next,
+          links: [link({ staccato: true, slide: [slide] }, 1.5)],
+        }),
+      );
+
+    // Released at 1.75 s, half the link's beat: the glide takes the last 62.5 ms before it.
+    expect(pitch(plan('shift'), 1.6875)).toBeCloseTo(0, 9);
+    expect(pitch(plan('shift'), 1.71875)).toBeCloseTo(1, 9);
+    expect(plan('legato').legatoInto).toBe(2);
+  });
+
   it('ends the chain at a dead or staccato link, and a staccato origin at half its beat', () => {
     const dead = planNote(
       input(guitar, origin({ letRing: true }), { length: 1.5, links: [link({ dead: true }, 1.5)] }),
