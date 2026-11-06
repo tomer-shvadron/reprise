@@ -21,3 +21,7 @@ interface Window {
   showOpenFilePicker?: (options?: OpenFilePickerOptions) => Promise<FileSystemFileHandle[]>;
   showSaveFilePicker?: (options?: SaveFilePickerOptions) => Promise<FileSystemFileHandle>;
 }
+
+interface DataTransferItem {
+  getAsFileSystemHandle?: () => Promise<FileSystemHandle | null>;
+}

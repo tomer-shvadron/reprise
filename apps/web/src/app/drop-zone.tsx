@@ -5,6 +5,20 @@ import { useAppServices } from './services-context';
 
 const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes('Files') === true;
 
+const MB = 1024 * 1024;
+
+/**
+ * The dropped file's handle, so Save can write back to it. It must be asked for before the drop
+ * handler's first await. Electron's main denies file-system permission, so there it stays absent.
+ */
+function droppedHandle(event: DragEvent): Promise<FileSystemHandle | null> {
+  const item = event.dataTransfer?.items[0];
+  if (window.reprise || item?.kind !== 'file' || !item.getAsFileSystemHandle) {
+    return Promise.resolve(null);
+  }
+  return item.getAsFileSystemHandle().catch(() => null);
+}
+
 /** Drag and drop anywhere in the window opens the first dropped file. */
 export function DropZone() {
   const { document } = useAppServices();
@@ -38,13 +52,21 @@ export function DropZone() {
           .getState()
           .failOpen(
             file.name,
-            `The file is ${String(file.size)} bytes; the limit is ${String(MAX_FILE_BYTES)}`,
+            `The file is ${String(Math.ceil(file.size / MB))} MB; the limit is ${String(Math.floor(MAX_FILE_BYTES / MB))} MB`,
             'too-large',
           );
         return;
       }
-      void file.arrayBuffer().then(
-        (buffer) => document.getState().openBytes(file.name, new Uint8Array(buffer)),
+      const handle = droppedHandle(event);
+      void Promise.all([file.arrayBuffer(), handle]).then(
+        ([buffer, picked]) =>
+          document
+            .getState()
+            .openBytes(
+              file.name,
+              new Uint8Array(buffer),
+              picked?.kind === 'file' ? picked : undefined,
+            ),
         (error: unknown) => {
           document
             .getState()

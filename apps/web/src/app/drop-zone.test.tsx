@@ -1,15 +1,21 @@
 import { act, screen, waitFor } from '@testing-library/react';
-import { MAX_FILE_BYTES, write } from '@reprise/formats';
+import { write } from '@reprise/formats';
 import { score } from '@reprise/model/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithServices } from '@/test/render';
 
 import { DropZone } from './drop-zone';
 
-function dragEvent(type: string, files: File[], types: string[] = ['Files']) {
+function dragEvent(
+  type: string,
+  files: File[],
+  types: string[] = ['Files'],
+  handle?: () => Promise<unknown>,
+) {
   const event = new Event(type, { bubbles: true, cancelable: true });
-  Object.defineProperty(event, 'dataTransfer', { value: { types, files } });
+  const items = files.map(() => ({ kind: 'file', getAsFileSystemHandle: handle }));
+  Object.defineProperty(event, 'dataTransfer', { value: { types, files, items } });
   return event;
 }
 
@@ -44,6 +50,22 @@ describe('DropZone', () => {
     expect(services.document.getState().file?.name).toBe('riff.reprise');
   });
 
+  it('keeps the dropped file handle so Save can write back to it', async () => {
+    const { services } = renderWithServices(<DropZone />);
+    const handle = { kind: 'file', name: 'riff.reprise' };
+    const getHandle = vi.fn(() => Promise.resolve(handle));
+    const file = await riff();
+
+    act(() => {
+      window.dispatchEvent(dragEvent('drop', [file], ['Files'], getHandle));
+    });
+
+    expect(getHandle).toHaveBeenCalledOnce();
+    await waitFor(() => {
+      expect(services.document.getState().file?.handle).toBe(handle);
+    });
+  });
+
   it('ignores drags that carry no files', () => {
     renderWithServices(<DropZone />);
 
@@ -60,7 +82,7 @@ describe('DropZone', () => {
   it('refuses a file over the size limit before reading it', () => {
     const { services } = renderWithServices(<DropZone />);
     const huge = new File(['x'], 'huge.gp5');
-    Object.defineProperty(huge, 'size', { value: MAX_FILE_BYTES + 1 });
+    Object.defineProperty(huge, 'size', { value: 300_000_000 });
 
     act(() => {
       window.dispatchEvent(dragEvent('drop', [huge]));
@@ -70,6 +92,7 @@ describe('DropZone', () => {
       action: 'open',
       fileName: 'huge.gp5',
       code: 'too-large',
+      message: 'The file is 287 MB; the limit is 256 MB',
     });
   });
 });
