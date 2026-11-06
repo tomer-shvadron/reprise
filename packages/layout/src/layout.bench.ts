@@ -60,12 +60,23 @@ async function coldBench(
   name: string,
   setup: () => { score: Score; options: LayoutOptions },
 ): Promise<number> {
-  // A fresh score each iteration: the modules memoise their bar analysis per `Bar` object.
+  // A fresh score each iteration: the modules memoise their bar analysis per `Bar` object. The
+  // fresh cache is what the app passes when it opens a document, and it costs the lane pass.
   let fresh = setup();
+  let cache = new LayoutCache();
   const result = await context
-    .bench(name, { beforeEach: () => void (fresh = setup()) }, () => {
-      layout(fresh.score, fresh.options);
-    })
+    .bench(
+      name,
+      {
+        beforeEach() {
+          fresh = setup();
+          cache = new LayoutCache();
+        },
+      },
+      () => {
+        layout(fresh.score, fresh.options, cache);
+      },
+    )
     .run(RUN);
   return result.latency.p50;
 }
