@@ -250,7 +250,7 @@ describe('standard staff', () => {
     expect(content(laid(built))).toMatchSnapshot();
   });
 
-  it('beams eighths and sixteenths by the beat in 4/4', () => {
+  it('beams eighths by the half bar and sixteenths by the beat in 4/4', () => {
     const builder = score().track('piano', piano).bar();
     for (let i = 0; i < 4; i++) builder.beat('8', [midi(64 + i)]);
     builder
@@ -260,7 +260,7 @@ describe('standard staff', () => {
       .beat('16', [midi(77)]);
     builder.beat('8.', [midi(67)]).beat('16', [midi(65)]);
     const built = builder.build({ ids: 'sequential' });
-    expect(plan(built).groups.map(({ beats }) => beats.length)).toEqual([2, 2, 4, 2]);
+    expect(plan(built).groups.map(({ beats }) => beats.length)).toEqual([4, 4, 2]);
     expect(content(laid(built))).toMatchSnapshot();
   });
 
@@ -275,21 +275,26 @@ describe('standard staff', () => {
     expect(content(laid(built))).toMatchSnapshot();
   });
 
-  it('beams 2/2 by the half note', () => {
+  it('beams 2/2 eighths by the half note and sixteenths by the quarter', () => {
     const builder = score().timeSignature(2, 2).track('piano', piano).bar();
     for (let i = 0; i < 8; i++) builder.beat('8', [midi(60 + i)]);
     builder.bar();
     for (let i = 0; i < 16; i++) builder.beat('16', [midi(72 - (i % 4))]);
     const built = builder.build({ ids: 'sequential' });
     expect(plan(built, 0).groups.map(({ beats }) => beats.length)).toEqual([4, 4]);
-    expect(plan(built, 1).groups.map(({ beats }) => beats.length)).toEqual([8, 8]);
+    expect(plan(built, 1).groups.map(({ beats }) => beats.length)).toEqual([4, 4, 4, 4]);
   });
 
   it('keeps beams of repeated pitches horizontal and others within a space', () => {
     const builder = score().track('piano', piano).bar();
-    builder.beat('8', [midi(67)]).beat('8', [midi(67)]);
-    builder.beat('8', [midi(60)]).beat('8', [midi(79)]);
-    builder.rest('2');
+    builder
+      .beat('8', [midi(67)])
+      .beat('8', [midi(67)])
+      .rest('4');
+    builder
+      .beat('8', [midi(60)])
+      .beat('8', [midi(79)])
+      .rest('4');
     const result = laid(builder.build({ ids: 'sequential' }));
     const beams = result.primitives.filter(
       (primitive) => primitive.kind === 'path' && primitive.fill,
@@ -457,12 +462,7 @@ describe('standard staff', () => {
       .beat('4', [midi(69, { dynamics: 'mf', rightHandFinger: 'index' })])
       .build({ ids: 'sequential' });
     const result = laid(built);
-    expect(glyphNames(result, /^dynamic/)).toEqual([
-      'dynamicPiano',
-      'dynamicPiano',
-      'dynamicMezzo',
-      'dynamicForte',
-    ]);
+    expect(glyphNames(result, /^dynamic/)).toEqual(['dynamicPP', 'dynamicMF']);
     expect(glyphNames(result, /^fingering/)).toEqual(['fingering3', 'fingeringILower']);
     expect(content(result)).toMatchSnapshot();
   });
