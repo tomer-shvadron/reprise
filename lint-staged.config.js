@@ -39,7 +39,7 @@ export default {
   '*.{json,md,yaml,yml,css,html}': live((files) => `prettier --write ${args(files)}`),
   '*.{ts,mts,cts,tsx}': live(
     (files) =>
-      `vitest related --run ${files.some((file) => AUDIO.test(file)) ? '' : '--project=!audio '}${args(files)}`,
+      `vitest related --run --no-fsModuleCache ${files.some((file) => AUDIO.test(file)) ? '' : '--project=!audio '}${args(files)}`,
   ),
   '*': () => 'tsc -b',
 };
