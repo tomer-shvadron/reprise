@@ -35,7 +35,8 @@ interface PendingPaint {
   layoutMs: number;
   /** When React was handed the layout. */
   handedAt: number;
-  observer?: MutationObserver;
+  /** Watches the region during an edit; its callback keeps the records it is handed. */
+  observer?: { observer: MutationObserver; records: MutationRecord[] };
 }
 
 const SCROLL_SPEED = 2000;
@@ -183,8 +184,10 @@ export function ScoreDemo({ initial }: { initial: DemoParams }) {
     requestAnimationFrame(() => {
       setTimeout(() => {
         const now = performance.now();
-        const changed = job.observer && changedSystems(job.observer.takeRecords());
-        job.observer?.disconnect();
+        const watch = job.observer;
+        const changed =
+          watch && changedSystems([...watch.records, ...watch.observer.takeRecords()]);
+        watch?.observer.disconnect();
         const record: PaintRecord = {
           label: job.label,
           layoutMs: job.layoutMs,
@@ -238,7 +241,10 @@ export function ScoreDemo({ initial }: { initial: DemoParams }) {
       setNote({ beatId: beat.id }, { string: 1, fret: edits.current % MAX_FRET }),
     );
     const target = region();
-    const observer = new MutationObserver(() => undefined);
+    const records: MutationRecord[] = [];
+    const observer = new MutationObserver((batch) => {
+      records.push(...batch);
+    });
     if (target) {
       observer.observe(target, {
         subtree: true,
@@ -248,7 +254,7 @@ export function ScoreDemo({ initial }: { initial: DemoParams }) {
       });
     }
     relayout(score, doc.cache, 'edit one note', params, change.touchedBars);
-    if (pending.current) pending.current.observer = observer;
+    if (pending.current) pending.current.observer = { observer, records };
   };
 
   const path = useMemo(() => (doc ? cursorPath(doc.result) : []), [doc]);
