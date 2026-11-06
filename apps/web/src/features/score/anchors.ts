@@ -57,10 +57,19 @@ export function cursorForBeat(layout: LayoutResult, beatId: Id): PlaybackCursor 
   return first ? cursorAt(layout, first) : undefined;
 }
 
-/** A short description for screen readers: "300 bars, 100 pages". */
+/**
+ * A short description for screen readers: "300 bars, 100 pages". Pages are counted only where
+ * systems stack down the page; a continuous layout's single page is an artifact of layout.
+ */
 export function describeLayout(layout: LayoutResult): string {
   const bars = layout.systems.at(-1)?.bars.end ?? 0;
   const pages = layout.pages.length;
+  const first = layout.systems[0];
+  const continuous = layout.systems.some(
+    ({ bbox }) => first !== undefined && bbox.x > first.bbox.x && bbox.y === first.bbox.y,
+  );
   const plural = (n: number, word: string) => `${String(n)} ${word}${n === 1 ? '' : 's'}`;
-  return pages > 0 ? `${plural(bars, 'bar')}, ${plural(pages, 'page')}` : plural(bars, 'bar');
+  return pages > 0 && !continuous
+    ? `${plural(bars, 'bar')}, ${plural(pages, 'page')}`
+    : plural(bars, 'bar');
 }

@@ -68,5 +68,8 @@ describe('anchors', () => {
   it('describes the layout', () => {
     expect(describeLayout(result)).toBe(`${String(score.masterBars.length)} bars, 1 page`);
     expect(describeLayout(layout(largeScore(1, 40), options))).toMatch(/^40 bars, \d+ pages$/);
+    const continuous = layout(largeScore(1, 40), { ...options, mode: 'continuous', width: 640 });
+    expect(continuous.systems.length).toBeGreaterThan(1);
+    expect(describeLayout(continuous)).toBe('40 bars');
   });
 });
