@@ -59,13 +59,15 @@ function projectNote(note: Note, kind: TrackKind): NoteProjection {
 function chordOf(beat: Beat): ChordProjection | null {
   if (!beat.chord) return null;
   const diagram = beat.chord.diagram;
+  // A grid of muted strings alone is no grid, as the alphaTab projection has it.
+  if (!diagram || !diagram.frets.some((fret) => fret !== null)) {
+    return { name: beat.chord.name, baseFret: null, frets: null, barres: null };
+  }
   return {
     name: beat.chord.name,
-    baseFret: diagram?.baseFret ?? null,
-    frets: diagram ? [...diagram.frets] : null,
-    barres: diagram
-      ? (diagram.barres ?? []).map((barre) => barre.fret).sort((a, b) => a - b)
-      : null,
+    baseFret: diagram.baseFret,
+    frets: [...diagram.frets],
+    barres: (diagram.barres ?? []).map((barre) => barre.fret).sort((a, b) => a - b),
   };
 }
 

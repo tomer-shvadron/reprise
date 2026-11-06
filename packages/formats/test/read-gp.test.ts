@@ -1,113 +1,14 @@
-import { readFileSync } from 'node:fs';
-
-import { parseNative, serializeNative, type Score } from '@reprise/model';
+import { parseNative, serializeNative } from '@reprise/model';
 import { zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
-import { GpifError } from '../gpif/errors';
-import { GpError, readGp } from './read-gp';
+import { GpError, GpifError, readGp } from '../src/index';
+import { countNotes, featuresOf, fixtureBytes, manifestEntries } from './corpus';
 
-const FIXTURES = new URL('../../../../fixtures/', import.meta.url);
 const APP = { name: 'reprise-test', version: '0.0.0' };
 
-interface ManifestEntry {
-  path: string;
-  format: string;
-  features: string[];
-  tracks: number;
-  bars: number;
-  notes: number;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function isEntry(value: unknown): value is ManifestEntry {
-  return (
-    isRecord(value) &&
-    typeof value['path'] === 'string' &&
-    typeof value['format'] === 'string' &&
-    Array.isArray(value['features']) &&
-    value['features'].every((feature) => typeof feature === 'string') &&
-    typeof value['tracks'] === 'number' &&
-    typeof value['bars'] === 'number' &&
-    typeof value['notes'] === 'number'
-  );
-}
-
-function gpFixtures(): ManifestEntry[] {
-  const manifest: unknown = JSON.parse(readFileSync(new URL('manifest.json', FIXTURES), 'utf8'));
-  if (!isRecord(manifest) || !Array.isArray(manifest['fixtures'])) throw new Error('bad manifest');
-  return manifest['fixtures'].filter(isEntry).filter((entry) => entry.format === 'gp');
-}
-
-const fixtureBytes = (path: string): Uint8Array =>
-  new Uint8Array(readFileSync(new URL(path, FIXTURES)));
-
-/** Every beat of every voice, with grace notes counted as notes, as the oracle counts them. */
-function countNotes(score: Score): number {
-  let notes = 0;
-  for (const track of score.tracks) {
-    for (const bar of track.bars) {
-      for (const voice of bar.voices) {
-        for (const beat of voice.beats) {
-          notes += beat.notes.length;
-          for (const grace of beat.grace ?? []) notes += grace.notes.length;
-        }
-      }
-    }
-  }
-  return notes;
-}
-
-/** The manifest's feature vocabulary, read off the model the way the oracle reads alphaTab's. */
-function features(score: Score): Set<string> {
-  const found = new Set<string>();
-  const tempos = new Set<number>();
-  score.masterBars.forEach((masterBar, index) => {
-    if (masterBar.repeat.start || masterBar.repeat.endCount > 0) found.add('repeats');
-    if (masterBar.alternateEndings.length > 0) found.add('alternate-endings');
-    if (masterBar.jumps.length > 0 || masterBar.targets.length > 0) found.add('jumps');
-    if (masterBar.tempo) tempos.add(masterBar.tempo.bpm);
-    const previous = score.masterBars[index - 1];
-    if (previous) {
-      const [a, b] = [previous.timeSignature, masterBar.timeSignature];
-      if (a.numerator !== b.numerator || a.denominator !== b.denominator)
-        found.add('time-signature-change');
-      if (previous.keySignature.fifths !== masterBar.keySignature.fifths) found.add('key-change');
-    }
-  });
-  if (score.tracks.length > 1) found.add('multiple-tracks');
-  for (const track of score.tracks) {
-    if (track.kind === 'drums') found.add('drums-track');
-    if (track.kind === 'pitched') found.add('pitched-non-fretted-track');
-    for (const bar of track.bars) {
-      bar.voices.forEach((voice, voiceIndex) => {
-        for (const beat of voice.beats) {
-          if (voiceIndex > 0 && beat.notes.length > 0) found.add('multiple-voices');
-          if (beat.tuplet) found.add('tuplets');
-          if (beat.lyrics?.some((line) => line.trim() !== '') === true) found.add('lyrics');
-          if (beat.mix?.tempo) tempos.add(beat.mix.tempo.bpm);
-          if (beat.chord?.diagram?.frets.some((fret) => fret !== null) === true)
-            found.add('chord-diagrams');
-          for (const note of beat.notes) {
-            if (note.bend) found.add('bends');
-            if (note.slide) found.add('slides');
-            if (note.hammerPull) found.add('hammer-ons');
-            if (note.harmonic) found.add('harmonics');
-            if (note.palmMute) found.add('palm-mute');
-          }
-        }
-      });
-    }
-  }
-  if (tempos.size > 1) found.add('tempo-change');
-  return found;
-}
-
 describe('readGp on the fixture corpus', () => {
-  const entries = gpFixtures();
+  const entries = manifestEntries(['gp']);
 
   it('covers every gp fixture in the manifest', () => {
     expect(entries.map((entry) => entry.path).sort()).toEqual([
@@ -131,7 +32,7 @@ describe('readGp on the fixture corpus', () => {
     });
 
     it('shows the manifest features in the model', () => {
-      expect([...features(score)].sort()).toEqual([...entry.features].sort());
+      expect([...featuresOf(score)].sort()).toEqual([...entry.features].sort());
     });
 
     it('reports nothing it does not recognise', () => {
