@@ -54,7 +54,7 @@ export function App({ ui, platform, keyboard, onMenuCommand }: AppProps) {
     <TooltipProvider>
       <AppFrame
         ui={ui}
-        score={
+        placeholder={
           opened ? (
             <p>
               {opened.name}{' '}
