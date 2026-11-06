@@ -9,7 +9,7 @@ import {
   InputGroupText,
 } from '@/components/ui/input-group';
 import { Slider } from '@/components/ui/slider';
-import { startPositionReader } from '@/state/position-reader';
+import { startPositionReader, type PositionReader } from '@/state/position-reader';
 import { timelineOf, writtenBpmAt } from '@/state/timeline';
 
 import { TransportButton } from './controls';
@@ -36,6 +36,7 @@ export function TempoControl() {
   };
   const input = useRef<HTMLInputElement>(null);
   const returnFocus = useRef<Element | null>(null);
+  const readerRef = useRef<PositionReader | undefined>(undefined);
 
   // The written tempo moves with the playhead through tempo marks, so the reader feeds it; React
   // renders only when it changes, which a constant section never does.
@@ -54,14 +55,22 @@ export function TempoControl() {
       last = next;
       setWritten(next);
     });
+    readerRef.current = reader;
     const unsubscribe = document.subscribe((state, previous) => {
       if (state.score !== previous.score) reader.refresh();
     });
     return () => {
       unsubscribe();
       reader.stop();
+      readerRef.current = undefined;
     };
   }, [playback, document]);
+
+  // The reader skipped a written tempo whose display matched at the old speed; at the new one it
+  // may not, so a paused field would otherwise keep the old mark's BPM.
+  useLayoutEffect(() => {
+    readerRef.current?.refresh();
+  }, [tempo]);
 
   useEffect(() => {
     if (focus?.target !== 'tempo') return;
