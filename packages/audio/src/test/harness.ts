@@ -145,7 +145,8 @@ async function gmInstruments(
 
 /**
  * Loads `score` into a fresh engine over the real sampler, presses play at time 0 and renders.
- * Deterministic: the scheduler and position timers are fired at every 1024-frame suspension.
+ * The scheduler and position timers fire at every 1024-frame suspension, so timing is
+ * deterministic; the samples match across runs only to within float jitter (about 2e-6).
  */
 export async function renderScore(score: Score, options: RenderOptions): Promise<Rendered> {
   const sampleRate = options.sampleRate ?? SAMPLE_RATE;
