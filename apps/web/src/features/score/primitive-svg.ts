@@ -117,9 +117,20 @@ export function primitiveToSvg(p: Primitive): SvgShape {
   }
 }
 
+/** Deep equality over plain data: numbers, strings, arrays and records, as layout emits. */
+export function sameValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  const entries = Object.entries(a);
+  if (entries.length !== Object.keys(b).length) return false;
+  const other = new Map<string, unknown>(Object.entries(b));
+  return entries.every(([key, value]) => other.has(key) && sameValue(value, other.get(key)));
+}
+
 /**
- * Whether two slices hold the same primitive objects. Layout hands a reused system's primitives
- * over by reference, possibly at shifted indices, so identity is exact and cheaper than values.
+ * Whether two slices draw the same primitives. Layout hands a reused system's primitives over by
+ * reference, possibly at shifted indices, and rebuilds the systems after an edit with equal values,
+ * so identity is checked first and values only where it fails.
  */
 export function samePrimitives(
   a: readonly Primitive[],
@@ -131,7 +142,9 @@ export function samePrimitives(
   if (length !== rangeB.end - rangeB.start) return false;
   if (a === b && rangeA.start === rangeB.start) return true;
   for (let i = 0; i < length; i++) {
-    if (a[rangeA.start + i] !== b[rangeB.start + i]) return false;
+    const p = a[rangeA.start + i];
+    const q = b[rangeB.start + i];
+    if (p !== q && !sameValue(p, q)) return false;
   }
   return true;
 }

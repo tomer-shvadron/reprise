@@ -109,32 +109,35 @@ describe('samePrimitives', () => {
     expect(samePrimitives(primitives, range, shifted, { start: 5, end: 12 })).toBe(true);
   });
 
-  it('fails on a different object or length', () => {
-    const copy = primitives.map((p) => ({ ...p }));
-    expect(samePrimitives(primitives, range, copy, range)).toBe(false);
+  it('holds for equal copies and fails on a changed value or length', () => {
+    const copy = primitives.map((p) => ({ ...p, bbox: { ...p.bbox } }));
+    expect(samePrimitives(primitives, range, copy, range)).toBe(true);
+    const moved = copy.map((p, i) =>
+      i === 5 ? { ...p, bbox: { ...p.bbox, x: p.bbox.x + 1 } } : p,
+    );
+    expect(samePrimitives(primitives, range, moved, range)).toBe(false);
     expect(samePrimitives(primitives, range, primitives, { start: 3, end: 9 })).toBe(false);
   });
 
-  it('holds for every system layout reuses after an edit and fails for the edited one', () => {
-    const score = largeScore(2, 60, { structure: true });
+  it('holds for every system after an edit but the edited one', () => {
+    const score = largeScore(2, 24, { structure: true });
     const cache = new LayoutCache();
     const before = layout(score, options, cache);
     const { score: next, change } = applyCommand(
       score,
-      setNote({ beatId: beatOf(score, 0, 30, 0).id }, { string: 1, fret: 9 }),
+      setNote({ beatId: beatOf(score, 0, 10, 0).id }, { string: 1, fret: 9 }),
     );
     const after = layout(next, { ...options, dirtyBars: change.touchedBars }, cache);
-    const reused = after.metrics.reusedSystems;
-    expect(reused).toBeGreaterThan(0);
-    for (let i = 0; i < reused; i++) {
+    expect(after.metrics.reusedSystems).toBeGreaterThan(0);
+    expect(after.metrics.reusedSystems).toBeLessThan(after.systems.length - 1);
+    const edited = after.systems.find((s) => s.bars.start <= 10 && 10 < s.bars.end);
+    for (const [i, b] of after.systems.entries()) {
       const a = before.systems[i];
-      const b = after.systems[i];
-      if (!a || !b) throw new Error(`system ${String(i)} missing`);
+      if (!a) throw new Error(`system ${String(i)} missing`);
       expect(samePrimitives(before.primitives, a.primitives, after.primitives, b.primitives)).toBe(
-        true,
+        b !== edited,
       );
     }
-    const edited = after.systems.find((s) => s.bars.start <= 30 && 30 < s.bars.end);
     const old = before.systems.find((s) => s.id === edited?.id);
     if (!edited || !old) throw new Error('edited system missing');
     expect(
