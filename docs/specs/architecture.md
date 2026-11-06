@@ -39,9 +39,10 @@ Enforced by lint. In addition:
 
 ```
 apps/web/src/
-  app/            shell, routing, theme, command palette, keyboard map
+  app/            shell, routing, theme, command palette, keyboard map, services (the stores wired together)
+    audio/        the audio service: AudioContext, GM bank, sampler, memory manager, engine
   platform/       Platform interface + browser and electron implementations
-  state/          zustand stores: document, selection, playback, ui
+  state/          zustand stores: document, selection, playback, layout (derived), ui
   features/
     score/        SVG painter, cursor overlay, selection rendering, print view     (score lane)
     transport/    transport bar, tempo, loop, count-in, metronome controls         (lead)
@@ -79,6 +80,8 @@ Changed by #62 (2026-11-05): a tie's origin is the most recent note on its strin
 Changed by #82 (2026-11-06): `write` takes an optional third argument, `write(score, format, options?: { app?: AppInfo })`, the app stamped into a `.reprise` file, defaulting to `{ name: 'reprise', version: '0.0.0' }`.
 
 Changed by #79 (2026-11-06): a region map resolves every layered region of a key and velocity (`RegionMap.resolveAll`) and a note starts one voice per region behind one handle; `Region` gains `filter` (a static low-pass at the filter envelope's held level, its resonance lowering the DC gain by half its peak) and `exclusiveClass` (choke groups within a track's instrument), `Envelope` gains `delay`; the voice pool stays a hard cap and ranks stealing victims by their audible level, articulation gain included, taking a voice that starts with or after the new note only when no other is left; `Sampler.setInstrument` takes an optional time, `Sampler.instrumentAt(trackId, when)` returns the instrument a note at `when` plays, and `Sampler.allNotesOff` drops the instrument changes scheduled after its time; the sampler sink switches a track's instrument from `InstrumentSink.mix` (`MixEvent.mix.program`) through its `instrumentOf` option.
+
+Changed by #96 (2026-11-06): `OpenedFile` (and the `file:open` result) gains an optional opaque `handle`, the picked path in Electron and the `FileSystemFileHandle` in a browser with the File System Access API, and `Platform` gains `writeHandle(handle, bytes)`, which writes over that file or over a path `saveFile` returned; Save writes a `.reprise` in place through it, and a `.gp` with the gp writer once the user confirms what it loses; gp3, gp4, gp5 and gpx have no writer of their own, so Save sends them to Save As, which asks for Reprise or Guitar Pro 7–8 before the platform dialog.
 
 Synced by #74 (2026-11-06), no contract change: the Layout sketch lists the `LayoutOptions`, `LayoutMetrics` and `Anchor` fields #59 shipped and the `tiedNotes` option #68 added, and the Audio sketch names the `InstrumentSink` #55 shipped and #73 widened.
 
@@ -452,9 +455,10 @@ Internals: a lookahead scheduler on the main thread (schedule ~200 ms ahead on a
 
 ```ts
 interface Platform {
-  openFile(filters): Promise<{ name; bytes } | undefined>;
+  openFile(filters): Promise<{ name; bytes; handle? } | undefined>;   // handle: opaque, for writeHandle
   saveFile(suggestedName, bytes, filters): Promise<string | undefined>;
   readFile(path): Promise<Uint8Array>; writeFile(path, bytes): Promise<void>;
+  writeHandle(handle, bytes): Promise<void>;   // over an opened file's handle or a path saveFile returned
   libraryDir(): Promise<string>;     // ~/Music/Reprise on desktop; OPFS root in the browser
   dataDir(): Promise<string>;        // Electron userData; OPFS in the browser
   print(): Promise<void>;

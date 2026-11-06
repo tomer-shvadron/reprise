@@ -9,6 +9,11 @@ import { loadBudgets } from './scripts/bench/budgets.ts';
 const AUDIO_NODE_TESTS = '**/*.node.test.ts';
 const AUDIO_NODE_BENCHES = '**/*.node.bench.ts';
 
+// Web code that needs real Web Audio runs in the browser; the rest of web stays in jsdom.
+const WEB_BROWSER_TESTS = 'src/**/*.browser.test.{ts,tsx}';
+
+const webAlias = { '@': fileURLToPath(new URL('apps/web/src', import.meta.url)) };
+
 const { budgets, error: budgetsError } = loadBudgets(
   fileURLToPath(new URL('docs/plans/roadmap.md', import.meta.url)),
   process.env,
@@ -55,14 +60,31 @@ export default defineConfig({
         },
       },
       {
-        resolve: { alias: { '@': fileURLToPath(new URL('apps/web/src', import.meta.url)) } },
+        resolve: { alias: webAlias },
         test: {
           name: 'web',
           root: 'apps/web',
           environment: 'jsdom',
+          exclude: [...configDefaults.exclude, WEB_BROWSER_TESTS],
           setupFiles: ['./src/test/setup.ts'],
           // Vitest empties CSS imports; score-css.test.ts reads the painter's stylesheet as text.
           css: { include: [/score\.css/] },
+        },
+      },
+      {
+        resolve: { alias: webAlias },
+        test: {
+          name: 'web-browser',
+          root: 'apps/web',
+          include: [WEB_BROWSER_TESTS],
+          setupFiles: ['./src/test/browser-setup.ts'],
+          browser: {
+            enabled: true,
+            provider: playwright(),
+            headless: true,
+            screenshotFailures: false,
+            instances: [{ browser: 'chromium' }],
+          },
         },
       },
       { test: { name: 'desktop', root: 'apps/desktop', environment: 'node' } },

@@ -101,7 +101,7 @@ The PR gate is `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check`; 
 
 ## Testing
 
-Vitest, one project per workspace, defined in [vitest.config.ts](vitest.config.ts): `model`, `formats`, `layout`, `audio-node`, `desktop` and `scripts` run in node, `web` in jsdom, and `audio` in browser mode on the Playwright Chromium headless shell. `pnpm install` downloads the shell locally; in CI the install skips it and a later step installs it without `--with-deps` (#75), so a new browser-mode test needs no workflow change. `audio-node` runs the audio package's `*.node.test.ts` files in plain Node, proving the SF2 parser and the signal measurements stay DOM-free.
+Vitest, one project per workspace, defined in [vitest.config.ts](vitest.config.ts): `model`, `formats`, `layout`, `audio-node`, `desktop` and `scripts` run in node, `web` in jsdom, and `audio` and `web-browser` in browser mode on the Playwright Chromium headless shell. `web-browser` runs the web app's `*.browser.test.{ts,tsx}` files, the ones that need real Web Audio (the audio service, the open-paint-play integration test); every other web test stays in jsdom. `pnpm install` downloads the shell locally; in CI the install skips it and a later step installs it without `--with-deps` (#75), so a new browser-mode test needs no workflow change. `audio-node` runs the audio package's `*.node.test.ts` files in plain Node, proving the SF2 parser and the signal measurements stay DOM-free.
 
 - Build scores in tests with the builders from `@reprise/model/testing` (`score`, `note`, `ScoreBuilder`, `fullScore`, `largeScore`, `beatOf`, `noteOf`), not by hand.
 - The format readers are checked against alphaTab by the oracle under `packages/formats/test/oracle/`.

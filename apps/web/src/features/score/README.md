@@ -20,7 +20,7 @@ Paints a `LayoutResult` from `@reprise/layout` as SVG (WP-024, ADR-0010). React 
 
 `onScorePointer` receives `{ type: 'down' | 'move' | 'up' | 'leave' | 'cancel', point, anchor, event }`: the point in layout px, the anchor `hitTest` finds there (none on `leave` and `cancel`), and the native event for buttons and modifiers. `cancel` ends a drag that gets no `up`.
 
-The app mounts `ScoreView` in its score region when it has a layout, and a placeholder until then (WP-050 supplies the layout).
+The app's `ScorePane` (`apps/web/src/app/score-pane.tsx`) mounts `ScoreView` in the score region with the layout store's result, and an empty state until there is one.
 
 ```text
 ScoreView            region: scroll container, virtualization, zoom anchoring, pointer → hitTest

@@ -9,9 +9,17 @@ export interface FileFilter {
   extensions: readonly string[];
 }
 
+/**
+ * Opaque to the app: whatever lets the platform write over a file it opened, a path in Electron
+ * and a `FileSystemFileHandle` in a browser with the File System Access API.
+ */
+export type FileHandle = unknown;
+
 export interface OpenedFile {
   name: string;
   bytes: Uint8Array;
+  /** Pass it back to `Platform.writeHandle` to save in place; absent when the platform cannot. */
+  handle?: FileHandle;
 }
 
 /** Renderer-to-main request channels: the renderer invokes, main handles and replies. */

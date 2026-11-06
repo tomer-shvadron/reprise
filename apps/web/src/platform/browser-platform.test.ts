@@ -38,6 +38,31 @@ describe('browser platform', () => {
     });
   });
 
+  it('hands out the picked file’s handle and writes over it in place', async () => {
+    const write = vi.fn(() => Promise.resolve());
+    const close = vi.fn(() => Promise.resolve());
+    const handle = {
+      name: 'song.reprise',
+      getFile: () => Promise.resolve(new File([new Uint8Array([7])], 'song.reprise')),
+      createWritable: vi.fn(() => Promise.resolve({ write, close })),
+    };
+    window.showOpenFilePicker = vi.fn(() =>
+      Promise.resolve([handle as unknown as FileSystemFileHandle]),
+    );
+    const platform = createBrowserPlatform();
+
+    const opened = await platform.openFile(filters);
+    expect(opened).toEqual({ name: 'song.reprise', bytes: new Uint8Array([7]), handle });
+    await platform.writeHandle(opened?.handle, new Uint8Array([8]));
+
+    expect(handle.createWritable).toHaveBeenCalledOnce();
+    expect(write).toHaveBeenCalledWith(new Uint8Array([8]));
+    expect(close).toHaveBeenCalledOnce();
+    await expect(platform.writeHandle(42, new Uint8Array([8]))).rejects.toThrow(
+      /Not a file handle/,
+    );
+  });
+
   it('downloads when there is no save picker, with no path to write back to', async () => {
     URL.createObjectURL = vi.fn(() => 'blob:song');
     URL.revokeObjectURL = vi.fn();

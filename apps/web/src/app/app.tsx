@@ -3,31 +3,34 @@ import { useStore } from 'zustand';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { RepriseBridge } from '@/platform/bridge';
-import type { OpenedFile, Platform } from '@/platform/platform';
-import type { UiStore } from '@/state/ui';
 
 import { AppFrame } from './app-frame';
 import { CommandPalette } from './command-palette';
 import { CommandRegistry, runCommand } from './command-registry';
 import { appCommands } from './commands';
+import { DropZone } from './drop-zone';
+import { installFirstGesture } from './first-gesture';
 import { formatShortcut, type KeyboardPlatform } from './keyboard';
+import { Notices } from './notices';
+import { SavePromptDialog } from './save-prompt';
+import { PlaybackControls } from './playback-controls';
+import { ScorePane } from './score-pane';
+import type { AppServices } from './services';
+import { AppServicesProvider } from './services-context';
 import { installShortcutDispatcher } from './shortcut-dispatcher';
 
 interface AppProps {
-  ui: UiStore;
-  platform: Platform;
+  services: AppServices;
   keyboard: KeyboardPlatform;
   /** The native menu's command feed; absent outside Electron. */
   onMenuCommand?: RepriseBridge['onMenuCommand'] | undefined;
 }
 
-export function App({ ui, platform, keyboard, onMenuCommand }: AppProps) {
-  const [opened, setOpened] = useState<OpenedFile | undefined>(undefined);
+export function App({ services, keyboard, onMenuCommand }: AppProps) {
+  const { ui, audio } = services;
   const [registry] = useState(() => {
     const commands = new CommandRegistry();
-    for (const command of appCommands({ ui, platform, onFileOpened: setOpened })) {
-      commands.register(command);
-    }
+    for (const command of appCommands(services)) commands.register(command);
     return commands;
   });
   const theme = useStore(ui, (state) => state.theme);
@@ -40,6 +43,14 @@ export function App({ ui, platform, keyboard, onMenuCommand }: AppProps) {
 
   useEffect(
     () =>
+      installFirstGesture(window, () => {
+        audio.unlock();
+      }),
+    [audio],
+  );
+
+  useEffect(
+    () =>
       onMenuCommand?.((id) => {
         const command = registry.get(id);
         if (command) runCommand(command);
@@ -49,26 +60,22 @@ export function App({ ui, platform, keyboard, onMenuCommand }: AppProps) {
 
   const openShortcut = registry.get('file.open')?.shortcut;
   const paletteShortcut = registry.get('app.commandPalette')?.shortcut;
+  const hint = (
+    <p className="text-ink-muted">
+      Open a file{openShortcut && ` (${formatShortcut(openShortcut, keyboard)})`} or drop one here,
+      or press {paletteShortcut && formatShortcut(paletteShortcut, keyboard)} for every command.
+    </p>
+  );
 
   return (
-    <TooltipProvider>
-      <AppFrame
-        ui={ui}
-        placeholder={
-          opened ? (
-            <p>
-              {opened.name}{' '}
-              <span className="text-ink-muted">({opened.bytes.byteLength} bytes)</span>
-            </p>
-          ) : (
-            <p className="text-ink-muted">
-              Open a file{openShortcut && ` (${formatShortcut(openShortcut, keyboard)})`}, or press{' '}
-              {paletteShortcut && formatShortcut(paletteShortcut, keyboard)} for every command.
-            </p>
-          )
-        }
-      />
-      <CommandPalette registry={registry} ui={ui} keyboard={keyboard} />
-    </TooltipProvider>
+    <AppServicesProvider services={services}>
+      <TooltipProvider>
+        <AppFrame ui={ui} score={<ScorePane hint={hint} />} transport={<PlaybackControls />} />
+        <CommandPalette registry={registry} ui={ui} keyboard={keyboard} />
+        <DropZone />
+        <Notices />
+        <SavePromptDialog />
+      </TooltipProvider>
+    </AppServicesProvider>
   );
 }

@@ -83,6 +83,10 @@ async function writeHandle(handle: FileSystemFileHandle, bytes: Uint8Array): Pro
   await writable.close();
 }
 
+function isFileHandle(value: unknown): value is FileSystemFileHandle {
+  return typeof value === 'object' && value !== null && 'createWritable' in value;
+}
+
 export function requestMicrophone(win: Window = window): Promise<MediaStream> {
   return win.navigator.mediaDevices.getUserMedia({ audio: true });
 }
@@ -108,9 +112,10 @@ export function createBrowserPlatform(win: Window = window): Platform {
   return {
     async openFile(filters): Promise<OpenedFile | undefined> {
       let file: File | undefined;
+      let handle: FileSystemFileHandle | undefined;
       if (win.showOpenFilePicker) {
         try {
-          const [handle] = await win.showOpenFilePicker({ types: pickerTypes(filters) });
+          [handle] = await win.showOpenFilePicker({ types: pickerTypes(filters) });
           file = await handle?.getFile();
         } catch (error) {
           if (isAbort(error)) return undefined;
@@ -120,7 +125,8 @@ export function createBrowserPlatform(win: Window = window): Platform {
         file = await pickWithInput(win.document, filters);
       }
       if (!file) return undefined;
-      return { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) };
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      return handle ? { name: file.name, bytes, handle } : { name: file.name, bytes };
     },
 
     async saveFile(suggestedName, bytes, filters) {
@@ -148,6 +154,15 @@ export function createBrowserPlatform(win: Window = window): Platform {
 
     async writeFile(path, bytes) {
       await writeHandle(await storageFile(path, true), bytes);
+    },
+
+    async writeHandle(handle, bytes) {
+      if (typeof handle === 'string') {
+        await writeHandle(await storageFile(handle, true), bytes);
+        return;
+      }
+      if (!isFileHandle(handle)) throw new Error('Not a file handle this platform issued');
+      await writeHandle(handle, bytes);
     },
 
     libraryDir: () => ensureDir(BROWSER_LIBRARY_DIR),
