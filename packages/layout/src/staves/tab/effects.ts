@@ -2,6 +2,7 @@ import {
   TIE_REACH_BARS,
   beatTicks,
   tieOriginOf,
+  type Bar,
   type Beat,
   type Note,
   type TiePosition,
@@ -80,6 +81,26 @@ function nextOnString(
     }
   }
   return undefined;
+}
+
+const connectionsMemo = new WeakMap<Bar, { shifts: boolean; hammers: boolean }>();
+
+/** Whether a bar holds the origin of a shift or legato slide, or the target of a hammer-on. */
+function connections(bar: Bar | undefined): { shifts: boolean; hammers: boolean } {
+  if (!bar) return { shifts: false, hammers: false };
+  const known = connectionsMemo.get(bar);
+  if (known) return known;
+  const found = { shifts: false, hammers: false };
+  for (const { beats } of bar.voices) {
+    for (const beat of beats) {
+      for (const note of beat.notes) {
+        if (shifts(note)) found.shifts = true;
+        if (note.hammerPull) found.hammers = true;
+      }
+    }
+  }
+  connectionsMemo.set(bar, found);
+  return found;
 }
 
 function shifts(note: Note): boolean {
@@ -317,11 +338,17 @@ export function drawNoteEffects(context: TabContext, voice: TabVoice, xs: readon
   const { track, barIndex } = input;
   const size = TAB.fretSize * space;
   const graceSize = size * TAB.graceScale;
+  const here = connections(track.bars[barIndex]);
+  // Most bars connect nothing: finding each note's neighbours on its string is skipped for them.
+  const slidesIn = here.shifts || connections(track.bars[barIndex - 1]).shifts;
+  const endsLine = !placement.next;
+  const leavesLine = endsLine && (here.shifts || connections(track.bars[barIndex + 1]).hammers);
   for (const [i, beat] of voice.beats.entries()) {
     const x = xs[i];
     if (x === undefined || beat.beat.rest) continue;
+    if (!beat.connects && !slidesIn && !leavesLine) continue;
     const next = xs[i + 1] ?? contentEnd(context);
-    drawBends(context, beat, x, next);
+    if (beat.connects) drawBends(context, beat, x, next);
     const at: TiePosition = { bar: barIndex, voice: voice.index, beat: beat.index };
     const letters = lettered(context, beat);
     const centres = graceCentres(beat, x, space);
@@ -338,7 +365,7 @@ export function drawNoteEffects(context: TabContext, voice: TabVoice, xs: readon
           const letter = letters.has(note) ? hammerLetter(grace.note, note) : undefined;
           drawArc(context, note, lastCentre + origin.edge, x - leftEdge(label, size), letter);
         }
-      } else {
+      } else if (note.hammerPull || slidesIn) {
         const found = tieOriginOf(track, at, note);
         const near = found && found.bar >= barIndex - TIE_REACH_BARS ? found : undefined;
         if (near && (shifts(near.note) || note.hammerPull)) {
@@ -353,7 +380,7 @@ export function drawNoteEffects(context: TabContext, voice: TabVoice, xs: readon
           }
         }
       }
-      if (placement.next) continue;
+      if (!leavesLine) continue;
       const target = nextOnString(track, at, note);
       if (target && target.bar !== barIndex && (target.note.hammerPull || shifts(note))) {
         drawOriginHalf(context, note, label, x, target.note);

@@ -92,6 +92,7 @@ export function shownDynamics(track: Track, barIndex: number): ReadonlyMap<Id, D
   const out = new Map<Id, Dynamics>();
   const taken = new Set<number>();
   for (const [voice, { beats }] of (track.bars[barIndex]?.voices ?? []).entries()) {
+    if (beats.length === 0) continue;
     let current = dynamicsBefore(track, barIndex, voice);
     let tick = 0;
     for (const beat of beats) {

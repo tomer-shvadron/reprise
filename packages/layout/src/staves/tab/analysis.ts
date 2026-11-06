@@ -100,6 +100,8 @@ export interface TabBeat {
   right: number;
   /** Room for an arpeggio or brush arrow left of the numbers, in px; zero without one. */
   stroke: number;
+  /** Whether a note or grace note of the beat bends, slides or is hammered on. */
+  connects: boolean;
   /** Whether measure keeps room for the beat's dynamic: `reservedDynamics` holds it. */
   dynamicsChange: boolean;
 }
@@ -283,23 +285,31 @@ function analyseBeat(
       right = Math.max(right, flagWidth(beat.duration, space));
     }
   }
-  const notes = beat.rest ? [] : beat.notes;
-  const slides = notes.flatMap((note) => note.slide ?? []);
-  if (slides.includes('outDown') || slides.includes('outUp')) {
-    right = Math.max(right, half + TAB.slideRoom * space);
+  let slideIn = false;
+  let slideOut = false;
+  let bent = false;
+  let drawn = false;
+  for (const note of beat.rest ? [] : beat.notes) {
+    for (const kind of note.slide ?? []) {
+      if (kind === 'intoFromBelow' || kind === 'intoFromAbove') slideIn = true;
+      if (kind === 'outDown' || kind === 'outUp') slideOut = true;
+    }
+    if (note.bend && note.bend.kind !== 'prebend') bent = true;
+    if (note.bend || note.slide || note.hammerPull) drawn = true;
   }
-  if (notes.some((note) => note.bend && note.bend.kind !== 'prebend')) {
-    right = Math.max(right, half + TAB.bendRoom * space);
+  for (const grace of beat.grace ?? []) {
+    for (const note of grace.notes) if (note.bend || note.slide) drawn = true;
   }
+  if (slideOut) right = Math.max(right, half + TAB.slideRoom * space);
+  if (bent) right = Math.max(right, half + TAB.bendRoom * space);
   for (const label of labels) {
-    right = Math.max(right, labelHalf(label, size) + suffixRoom(label, size));
+    if (label.suffix) right = Math.max(right, labelHalf(label, size) + suffixRoom(label, size));
   }
+  const played = !beat.rest && beat.notes.length > 0;
   const stroke =
-    notes.length > 0 && (beat.effects.arpeggio || beat.effects.brush) ? TAB.strokeRoom * space : 0;
+    played && (beat.effects.arpeggio || beat.effects.brush) ? TAB.strokeRoom * space : 0;
   let left = half + stroke;
-  if (slides.includes('intoFromBelow') || slides.includes('intoFromAbove')) {
-    left += TAB.slideRoom * space;
-  }
+  if (slideIn) left += TAB.slideRoom * space;
   for (const column of graces) left += TAB.graceGap * space + column.width;
   return {
     voice,
@@ -314,6 +324,7 @@ function analyseBeat(
     left,
     right,
     stroke,
+    connects: drawn,
     dynamicsChange: false,
   };
 }

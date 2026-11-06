@@ -53,9 +53,11 @@ export const LANE_HEIGHT = {
   dynamics: 2.9,
 } as const;
 
+const ALL_LANES: readonly LaneId[] = [...LANES_ABOVE, ...LANES_BELOW];
+
 /** Raises each lane in `into` to the height `from` asks for. */
 export function mergeLanes(into: LaneRequests, from: LaneRequests): void {
-  for (const lane of [...LANES_ABOVE, ...LANES_BELOW]) {
+  for (const lane of ALL_LANES) {
     const height = from[lane];
     if (height !== undefined) into[lane] = Math.max(into[lane] ?? 0, height);
   }

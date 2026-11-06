@@ -83,6 +83,26 @@ function waveWidth(lane: RunLane, beat: Beat): Exclude<Vibrato, 'none'> {
   return playedNotes(beat).some((note) => note.vibrato === 'wide') ? 'wide' : 'slight';
 }
 
+function hasRunEffect(beat: Beat): boolean {
+  if (beat.rest) return false;
+  if ((beat.effects.vibrato ?? 'none') !== 'none' || beat.effects.whammy) return true;
+  return beat.notes.some(
+    (note) =>
+      note.palmMute || note.letRing || note.harmonic || note.trill || note.vibrato !== 'none',
+  );
+}
+
+/** Whether anything at a beat goes into an item lane or the bend lane. */
+function hasItemEffect(beat: Beat): boolean {
+  if (beat.rest || beat.notes.length === 0) return false;
+  const { effects } = beat;
+  if (effects.pickStroke || effects.tapping || effects.slapping || effects.popping) return true;
+  if (effects.fadeIn || effects.fadeOut || effects.volumeSwell) return true;
+  return beat.notes.some(
+    (note) => note.staccato || note.accent !== 'none' || note.bend !== undefined,
+  );
+}
+
 const RUN_LANES: readonly RunLane[] = [
   'palmMute',
   'letRing',
@@ -100,7 +120,11 @@ interface Timed {
   ticks: number;
 }
 
+const timedMemo = new WeakMap<Bar, Timed[]>();
+
 function timedBeats(bar: Bar): Timed[] {
+  const known = timedMemo.get(bar);
+  if (known) return known;
   const out: Timed[] = [];
   for (const [voice, { beats }] of bar.voices.entries()) {
     let tick = 0;
@@ -110,7 +134,9 @@ function timedBeats(bar: Bar): Timed[] {
       tick += ticks;
     }
   }
-  return out.sort((a, b) => a.tick - b.tick || a.voice - b.voice);
+  out.sort((a, b) => a.tick - b.tick || a.voice - b.voice);
+  timedMemo.set(bar, out);
+  return out;
 }
 
 const runsMemo = new WeakMap<Bar, BarRuns>();
@@ -123,13 +149,14 @@ export function barRuns(bar: Bar): BarRuns {
   let end = 0;
   for (const { tick, ticks } of timed) end = Math.max(end, tick + ticks);
   const runs: Run[] = [];
-  for (const lane of RUN_LANES) {
-    const open = new Map<string, Run>();
-    for (const { beat, tick, ticks } of timed) {
+  const open = new Map<string, Run>();
+  for (const { beat, tick, ticks } of timed) {
+    if (!hasRunEffect(beat)) continue;
+    for (const lane of RUN_LANES) {
       const key = runKey(lane, beat);
       if (key === undefined) continue;
       const width = waveWidth(lane, beat);
-      const current = open.get(key);
+      const current = open.get(`${lane} ${key}`);
       if (current && tick <= current.end + TICK_EPSILON) {
         current.end = Math.max(current.end, tick + ticks);
         current.last = Math.max(current.last, tick);
@@ -137,7 +164,7 @@ export function barRuns(bar: Bar): BarRuns {
         continue;
       }
       const run: Run = { lane, key, start: tick, end: tick + ticks, last: tick, width, beat };
-      open.set(key, run);
+      open.set(`${lane} ${key}`, run);
       runs.push(run);
     }
   }
@@ -246,19 +273,17 @@ export function analyseEffects(bar: Bar, space: number, options: EffectOptions):
   const textSpan = (content: string, size: number): number =>
     textWidth(content, size * space) / space;
 
-  const byOnset = new Map<number, Timed[]>();
-  for (const entry of timed) {
-    const tick = Math.round(entry.tick * 1000);
-    const list = byOnset.get(tick);
-    if (list) list.push(entry);
-    else byOnset.set(tick, [entry]);
-  }
-  for (const group of byOnset.values()) {
-    const first = group[0];
-    if (!first) continue;
+  for (let start = 0; start < timed.length;) {
+    const first = timed[start];
+    if (!first) break;
+    let stop = start + 1;
+    while (stop < timed.length && (timed[stop]?.tick ?? Infinity) - first.tick < TICK_EPSILON)
+      stop++;
+    const group = timed.slice(start, stop);
+    start = stop;
+    if (!group.some(({ beat }) => hasItemEffect(beat))) continue;
     const { tick } = first;
     const notes = group.flatMap(({ beat }) => playedNotes(beat));
-    if (notes.length === 0) continue;
     const played = group.filter(({ beat }) => playedNotes(beat).length > 0);
     const glyphs = options.articulations ? articulation(notes) : [];
     if (glyphs.length > 0) {
