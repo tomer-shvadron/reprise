@@ -13,26 +13,12 @@ import {
   rms,
   zeroCrossingFrequency,
 } from '../sampler/test/offline';
+import { loadGeneralUserBytes } from '../test/harness';
 import type { PresetReport, ResolvedPreset } from './resolve';
 import { PERCUSSION_BANK, Sf2Soundfont } from './soundfont';
 
 // Fetched by `pnpm sounds:fetch`, never committed; without it this suite skips.
-const BANK = new URL('../../../../apps/web/public/sounds/gm/GeneralUser-GS.sf2', import.meta.url);
-
-async function load(): Promise<Uint8Array | undefined> {
-  try {
-    const response = await fetch(BANK);
-    if (!response.ok) return undefined;
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    // A dev server may answer a missing file with its HTML fallback rather than a 404.
-    const riff = String.fromCodePoint(...bytes.subarray(0, 4));
-    return riff === 'RIFF' ? bytes : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-const bytes = await load();
+const bytes = await loadGeneralUserBytes();
 if (!bytes) {
   console.warn('GeneralUser GS is not present; run `pnpm sounds:fetch` to include its suite.');
 }

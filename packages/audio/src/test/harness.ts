@@ -32,22 +32,24 @@ const GENERAL_USER = new URL(
   import.meta.url,
 );
 
+/** GeneralUser GS's bytes; `undefined` until `pnpm sounds:fetch` has run. */
+export async function loadGeneralUserBytes(): Promise<Uint8Array | undefined> {
+  try {
+    const response = await fetch(GENERAL_USER);
+    if (!response.ok) return undefined;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    // A dev server may answer a missing file with its HTML fallback rather than a 404.
+    return String.fromCodePoint(...bytes.subarray(0, 4)) === 'RIFF' ? bytes : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 let generalUser: Promise<Sf2Soundfont | undefined> | undefined;
 
 /** GeneralUser GS, parsed once per test file; `undefined` until `pnpm sounds:fetch` has run. */
 export function loadGeneralUser(): Promise<Sf2Soundfont | undefined> {
-  generalUser ??= (async () => {
-    try {
-      const response = await fetch(GENERAL_USER);
-      if (!response.ok) return undefined;
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      // A dev server may answer a missing file with its HTML fallback rather than a 404.
-      if (String.fromCodePoint(...bytes.subarray(0, 4)) !== 'RIFF') return undefined;
-      return Sf2Soundfont.parse(bytes);
-    } catch {
-      return undefined;
-    }
-  })();
+  generalUser ??= loadGeneralUserBytes().then((bytes) => bytes && Sf2Soundfont.parse(bytes));
   return generalUser;
 }
 
