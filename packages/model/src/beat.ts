@@ -64,15 +64,24 @@ export const BeatEffectsSchema = z.object({
 });
 export type BeatEffects = z.infer<typeof BeatEffectsSchema>;
 
+/**
+ * A grace note is struck as an ornament and never continues a note: a tie would silence it, and
+ * Guitar Pro 3 to 5 store no tie on one. The check keeps the field a plain `boolean`, so a grace
+ * note is still a `Note`.
+ */
+export const GraceNoteSchema = NoteSchema.extend({
+  tie: z.boolean().refine((tie) => !tie, { message: 'a grace note cannot be tied' }),
+});
+
 export const GraceBeatSchema = z.object({
   duration: z.literal([16, 32, 64]),
   /** Played before the beat's time position (true) or on it, stealing from the beat (false). */
   before: z.boolean(),
-  notes: z.array(NoteSchema),
+  notes: z.array(GraceNoteSchema),
 });
 export type GraceBeat = z.infer<typeof GraceBeatSchema>;
 
-/** Transition length in beats; absent = immediate. */
+/** Transition length in quarter notes; absent = immediate. */
 const MixTransitionSchema = z.int().min(1).exactOptional();
 
 export const ChannelMixChangeSchema = z.object({

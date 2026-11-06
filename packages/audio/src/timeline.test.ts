@@ -3,7 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { PPQ } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 
-import { clicksInRange, countInTicks, createTimeline, loopRange, notesInRange } from './timeline';
+import {
+  clicksInRange,
+  countInTicks,
+  createTimeline,
+  loopRange,
+  mixesInRange,
+  notesInRange,
+} from './timeline';
 
 const BAR = PPQ * 4;
 
@@ -90,6 +97,114 @@ describe('notesInRange', () => {
     });
 
     expect(onsets.map((o) => [o.tick, o.durationTicks])).toEqual([[2 * PPQ, PPQ]]);
+  });
+});
+
+/** A bass note on string 6 held under a melody on string 1, tied twice across the bar line. */
+function heldUnderMelody() {
+  return score()
+    .track('guitar')
+    .bar()
+    .beat('4', [note(6, 5), note(1, 0)])
+    .beat('4', [note(1, 3)])
+    .rest('4')
+    .beat('4', [note(1, 5)])
+    .bar()
+    .beat('4', [note(6, 5, { tie: true }), note(1, 7)])
+    .beat('4', [note(1, 8)])
+    .beat('4', [note(6, 5, { tie: true, vibrato: 'slight' })])
+    .beat('4', [note(1, 0)])
+    .build();
+}
+
+describe('tie chains', () => {
+  const run = (from: number, limitTick = 2 * BAR) =>
+    notesInRange(createTimeline(heldUnderMelody()), from, 2 * BAR, {
+      runStartTick: from,
+      limitTick,
+    }).filter((onset) => onset.note.string === 6);
+
+  it('holds a note under a melody for its whole chain, its links as continuations', () => {
+    const [held, ...others] = run(0);
+
+    expect(others).toEqual([]);
+    expect(held).toMatchObject({ tick: 0, durationTicks: BAR + 3 * PPQ });
+    expect(held?.continuations.map((c) => [c.tick, c.durationTicks, c.note.vibrato])).toEqual([
+      [BAR, PPQ, 'none'],
+      [BAR + 2 * PPQ, PPQ, 'slight'],
+    ]);
+    // The beat after the last link has nothing on string 6.
+    expect(held?.next).toBeUndefined();
+  });
+
+  it('sounds a link whose origin played before the run started, with the rest of the chain', () => {
+    const onsets = run(PPQ);
+
+    expect(onsets.map((o) => [o.tick, o.durationTicks, o.continuations.length])).toEqual([
+      [BAR, 3 * PPQ, 1],
+    ]);
+  });
+
+  it('clips the chain and its continuations to the limit', () => {
+    const [held] = run(0, BAR + 2.5 * PPQ);
+
+    expect(held?.durationTicks).toBe(BAR + 2.5 * PPQ);
+    expect(held?.continuations.map((c) => [c.tick, c.durationTicks])).toEqual([
+      [BAR, PPQ],
+      [BAR + 2 * PPQ, PPQ / 2],
+    ]);
+  });
+
+  it('ends a hold where a repeat jumps back, and sounds a tie it jumps back to', () => {
+    // b0 | |: b1 | b2 :| b3, the string-6 note tied from b0 into b1 and from b2 into b3.
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('1', [note(6, 5)])
+      .bar()
+      .repeatStart()
+      .beat('1', [note(6, 5, { tie: true })])
+      .bar()
+      .repeatEnd(2)
+      .beat('1', [note(6, 7)])
+      .bar()
+      .beat('1', [note(6, 7, { tie: true })])
+      .build();
+    const timeline = createTimeline(song);
+    const onsets = notesInRange(timeline, 0, 6 * BAR, { runStartTick: 0, limitTick: 6 * BAR });
+
+    // Playback: b0 b1 b2 b1 b2 b3. b2 does not hold into b1; b1's second play has no origin before it.
+    expect(onsets.map((o) => [o.tick / BAR, o.durationTicks / BAR, o.note.fret])).toEqual([
+      [0, 2, 5],
+      [2, 1, 7],
+      [3, 1, 5],
+      [4, 2, 7],
+    ]);
+  });
+});
+
+describe('mixesInRange', () => {
+  it('reports a mixer change on a rest beat and on a tied continuation', () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('2', [note(1, 5)])
+      .beat('2', [note(1, 5, { tie: true })], { mix: { pan: { value: 0 } } })
+      .bar()
+      .rest('1', { mix: { volume: { value: 30 } } })
+      .build();
+    const mixes = mixesInRange(createTimeline(song), 0, 2 * BAR, {
+      runStartTick: 0,
+      limitTick: 2 * BAR,
+    });
+
+    expect(mixes.map((m) => [m.tick, m.beatIndex, m.mix])).toEqual([
+      [2 * PPQ, 1, { pan: { value: 0 } }],
+      [BAR, 0, { volume: { value: 30 } }],
+    ]);
+    expect(
+      mixesInRange(createTimeline(song), 0, 2 * BAR, { runStartTick: 3 * PPQ, limitTick: BAR }),
+    ).toEqual([]);
   });
 });
 

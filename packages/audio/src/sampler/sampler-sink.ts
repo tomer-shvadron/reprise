@@ -6,7 +6,7 @@ import { placeGraces } from '../articulations/grace';
 import { ARTICULATION } from '../articulations/parameters';
 import { planNote } from '../articulations/plan';
 import type { GainPoint, NotePlan, PlanInput, Strike } from '../articulations/plan';
-import type { InstrumentSink, NoteEvent } from '../sink';
+import type { InstrumentSink, MixEvent, NoteEvent } from '../sink';
 import type { Instrument, Sampler, TrackParams, VoiceHandle } from './sampler';
 
 export interface SamplerSinkOptions {
@@ -81,8 +81,8 @@ function shapePitch(
 /**
  * The scheduler's `InstrumentSink` over the sampler, with the articulation layer: each event,
  * and each grace note before or on its beat, becomes a `NotePlan` of attacks, pitch and level
- * automation, a filter and a release (`src/articulations/`). A beat's mixer change is scheduled
- * on the strip at the beat.
+ * automation, a filter and a release (`src/articulations/`). A beat's mixer change arrives
+ * through `mix` and is scheduled on the strip at the beat.
  */
 export function createSamplerSink(
   sampler: Sampler,
@@ -90,7 +90,6 @@ export function createSamplerSink(
 ): InstrumentSink {
   let deadNote = options.deadNote;
   const chains = new Map<string, Chain>();
-  const mixed = new Map<Id, string>();
 
   function start(
     trackId: Id,
@@ -145,18 +144,13 @@ export function createSamplerSink(
     }
   }
 
-  function mix(event: NoteEvent, secondsPerTick: number): void {
-    const { beat, track } = event;
-    const volume = beat.mix?.volume;
-    const pan = beat.mix?.pan;
-    if (!volume && !pan) return;
-    const key = `${beat.id}:${String(event.playbackTick)}`;
-    if (mixed.get(track.id) === key) return;
-    mixed.set(track.id, key);
+  function mix(event: MixEvent): void {
+    const { track, when, secondsPerTick } = event;
+    const { volume, pan } = event.mix;
     const apply = (change: ChannelMixChange, params: TrackParams): void => {
       const ramp = (change.duration ?? 0) * PPQ * secondsPerTick;
       const ids = change.allTracks ? sampler.trackIds : [track.id];
-      for (const id of ids) sampler.setTrack(id, params, { at: event.when, ramp });
+      for (const id of ids) sampler.setTrack(id, params, { at: when, ramp });
     };
     if (volume) apply(volume, { volume: volume.value });
     if (pan) apply(pan, { pan: pan.value });
@@ -166,24 +160,28 @@ export function createSamplerSink(
     noteOn(event: NoteEvent): void {
       const { track, beat, note } = event;
       const secondsPerTick = event.durationTicks > 0 ? event.duration / event.durationTicks : 0;
-      mix(event, secondsPerTick);
       const { graces, delay } = placeGraces(event, secondsPerTick, sampler.context.currentTime);
       for (const grace of graces) play(track.id, grace);
+      const length = Math.max(0, event.duration - delay);
+      const beatLength = Math.max(0, beatTicks(beat) * secondsPerTick - delay);
+      // Guitar Pro spans a bend over the tied length unless a later link bends on its own.
+      const bendLength = event.continuations.some((link) => link.note.bend) ? beatLength : length;
       play(track.id, {
         track,
         note,
         effects: beat.effects,
         when: event.when + delay,
-        length: Math.max(0, event.duration - delay),
-        beatLength: Math.max(0, beatTicks(beat) * secondsPerTick - delay),
+        length,
+        beatLength,
+        bendLength,
         secondsPerTick,
         barEnd: event.barEnd,
         next: event.nextOnString,
       });
     },
+    mix,
     allNotesOff(when: number): void {
       chains.clear();
-      mixed.clear();
       sampler.allNotesOff(when);
     },
   };

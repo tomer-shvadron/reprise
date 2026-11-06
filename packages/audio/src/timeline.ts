@@ -5,10 +5,13 @@ import {
   beatTicks,
   expandPlaybackSequence,
   tempoMap,
+  tieChainOf,
+  tieOriginOf,
 } from '@reprise/model';
 import type {
   Beat,
   Id,
+  MixerChange,
   Note,
   PlaybackWarning,
   Score,
@@ -48,6 +51,29 @@ export interface NoteOnset {
   note: Note;
   /** The note on the same string in the beat after this note ends, in playback order. */
   next: NextOnString | undefined;
+  /** The tied notes folded into this one, in order, each up to `limitTick`. */
+  continuations: TiedContinuation[];
+}
+
+export interface TiedContinuation {
+  note: Note;
+  beat: Beat;
+  tick: number;
+  durationTicks: number;
+}
+
+/** A beat carrying a mixer change, rest or not. */
+export interface MixOnset {
+  tick: number;
+  sequenceIndex: number;
+  masterBarIndex: number;
+  passIndex: number;
+  trackIndex: number;
+  voiceIndex: number;
+  beatIndex: number;
+  track: Track;
+  beat: Beat;
+  mix: MixerChange;
 }
 
 export interface NextOnString {
@@ -109,10 +135,6 @@ function passesOverlapping(timeline: Timeline, from: number, to: number): [numbe
   return found;
 }
 
-function sameNote(a: Note, b: Note): boolean {
-  return a.string === b.string && a.fret === b.fret;
-}
-
 interface VoicePosition {
   sequenceIndex: number;
   trackIndex: number;
@@ -121,41 +143,109 @@ interface VoicePosition {
   tick: number;
 }
 
+function offsetOf(beats: readonly Beat[], index: number): number {
+  let ticks = 0;
+  for (let i = 0; i < index; i++) {
+    const beat = beats[i];
+    if (beat) ticks += beatTicks(beat);
+  }
+  return ticks;
+}
+
+/** Whether passes `from` to `to` play consecutive master bars, so a tie can hold across them. */
+function contiguous(passes: readonly TempoMapPass[], from: number, to: number): boolean {
+  for (let index = from; index < to; index++) {
+    const pass = passes[index];
+    const next = passes[index + 1];
+    if (!pass || next?.masterBarIndex !== pass.masterBarIndex + 1) return false;
+  }
+  return true;
+}
+
 /**
- * Follows a note's ties through its voice in playback order: the ticks they add, and the beat
- * that ends the chain with its tick, or `undefined` where the voice runs out.
+ * Whether a tied note is already sounding as part of an earlier onset in this run: its origin
+ * (`tieOriginOf`) is on the same fret, the bars between were played in score order, and the
+ * origin is at or after `runStartTick`. Otherwise the tied note sounds on its own.
+ */
+function heldFromOrigin(
+  timeline: Timeline,
+  track: Track,
+  at: VoicePosition,
+  note: Note,
+  runStartTick: number,
+): boolean {
+  const { passes } = timeline.map;
+  const pass = passes[at.sequenceIndex];
+  if (!pass) return false;
+  const position = { bar: pass.masterBarIndex, voice: at.voiceIndex, beat: at.beatIndex };
+  const origin = tieOriginOf(track, position, note);
+  if (origin?.note.fret !== note.fret) return false;
+  const originIndex = at.sequenceIndex - (pass.masterBarIndex - origin.bar);
+  const originPass = passes[originIndex];
+  if (!originPass || !contiguous(passes, originIndex, at.sequenceIndex)) return false;
+  const beats = track.bars[origin.bar]?.voices[at.voiceIndex]?.beats ?? [];
+  return originPass.startTick + offsetOf(beats, origin.beat) >= runStartTick - EPSILON;
+}
+
+/** The beat after `beatIndex` in its voice in playback order, or `undefined` where it runs out. */
+function beatAfter(
+  timeline: Timeline,
+  track: Track,
+  voiceIndex: number,
+  from: { sequenceIndex: number; beatIndex: number },
+): { beat: Beat; tick: number } | undefined {
+  const { passes } = timeline.map;
+  let sequenceIndex = from.sequenceIndex;
+  let beatIndex = from.beatIndex + 1;
+  for (;;) {
+    const pass = passes[sequenceIndex];
+    if (!pass) return undefined;
+    const beats = track.bars[pass.masterBarIndex]?.voices[voiceIndex]?.beats ?? [];
+    const beat = beats[beatIndex];
+    if (beat) return { beat, tick: pass.startTick + offsetOf(beats, beatIndex) };
+    if (beatIndex === 0) return undefined;
+    sequenceIndex += 1;
+    beatIndex = 0;
+  }
+}
+
+/**
+ * Follows a note's tie chain (`tieChainOf`) in playback order, while the bars play in score
+ * order: the tied notes with their ticks, where the last one ends, and the beat after it.
  */
 function followTies(
   timeline: Timeline,
+  track: Track,
   start: VoicePosition,
   beat: Beat,
   note: Note,
-): { ticks: number; after: { beat: Beat; tick: number } | undefined } {
+): {
+  end: number;
+  continuations: TiedContinuation[];
+  after: { beat: Beat; tick: number } | undefined;
+} {
   const { passes } = timeline.map;
-  const track = timeline.score.tracks[start.trackIndex];
+  const continuations: TiedContinuation[] = [];
+  let end = start.tick + beatTicks(beat);
+  let last = { sequenceIndex: start.sequenceIndex, beatIndex: start.beatIndex };
+  const bar = passes[start.sequenceIndex]?.masterBarIndex ?? 0;
+  const chain = tieChainOf(track, { bar, voice: start.voiceIndex, beat: start.beatIndex }, note);
   let sequenceIndex = start.sequenceIndex;
-  let beatIndex = start.beatIndex + 1;
-  let tick = start.tick + beatTicks(beat);
-  let ticks = 0;
-  for (;;) {
-    const pass = passes[sequenceIndex];
-    if (!pass || !track) return { ticks, after: undefined };
-    const beats = track.bars[pass.masterBarIndex]?.voices[start.voiceIndex]?.beats ?? [];
-    const candidate = beats[beatIndex];
-    if (!candidate) {
-      if (beatIndex === 0) return { ticks, after: undefined };
-      sequenceIndex += 1;
-      beatIndex = 0;
-      tick = passes[sequenceIndex]?.startTick ?? tick;
-      continue;
-    }
-    if (candidate.rest || !candidate.notes.some((next) => next.tie && sameNote(next, note))) {
-      return { ticks, after: { beat: candidate, tick } };
-    }
-    ticks += beatTicks(candidate);
-    tick += beatTicks(candidate);
-    beatIndex += 1;
+  for (const link of chain) {
+    const target = sequenceIndex + (link.bar - (passes[sequenceIndex]?.masterBarIndex ?? 0));
+    const pass = passes[target];
+    if (!pass || !contiguous(passes, sequenceIndex, target)) break;
+    sequenceIndex = target;
+    const beats = track.bars[link.bar]?.voices[start.voiceIndex]?.beats ?? [];
+    const linkBeat = beats[link.beat];
+    if (!linkBeat) break;
+    const tick = pass.startTick + offsetOf(beats, link.beat);
+    const durationTicks = beatTicks(linkBeat);
+    continuations.push({ note: link.note, beat: linkBeat, tick, durationTicks });
+    end = tick + durationTicks;
+    last = { sequenceIndex, beatIndex: link.beat };
   }
+  return { end, continuations, after: beatAfter(timeline, track, start.voiceIndex, last) };
 }
 
 /** Ticks the grace notes played before `beat` take, which the sink needs before `when`. */
@@ -179,9 +269,11 @@ function nextOnString(
 
 /**
  * Every note due in `[from, to)`: its onset, or earlier by the grace notes before it (never
- * before `runStartTick`), so the sink gets those in time. Tied continuations are skipped, their
- * length folded into the origin, except one starting exactly at `runStartTick`, where playback
- * began or a loop wrapped. Durations are clipped to `limitTick`, and nothing at or past it is due.
+ * before `runStartTick`), so the sink gets those in time. A tied note held from its origin in
+ * this run is skipped, its length and the note itself folded into the origin's onset; a tie
+ * whose origin did not play just before it (playback started or a loop wrapped after the origin,
+ * or a repeat jumped back) sounds as an onset. Durations are clipped to `limitTick`, and nothing
+ * at or past it is due.
  */
 export function notesInRange(
   timeline: Timeline,
@@ -190,6 +282,7 @@ export function notesInRange(
   options: { runStartTick: number; limitTick: number },
 ): NoteOnset[] {
   const onsets: NoteOnset[] = [];
+  const { limitTick } = options;
   for (const [sequenceIndex, pass] of passesOverlapping(timeline, from, to + MAX_GRACE_LEAD)) {
     const barEndTick = pass.startTick + pass.ticks;
     for (const [trackIndex, track] of timeline.score.tracks.entries()) {
@@ -200,27 +293,31 @@ export function notesInRange(
         for (const [beatIndex, beat] of voice.beats.entries()) {
           const tick = pass.startTick + offset;
           offset += beatTicks(beat);
-          if (beat.rest || tick < options.runStartTick || tick >= options.limitTick - EPSILON) {
-            continue;
-          }
+          if (beat.rest || tick < options.runStartTick || tick >= limitTick - EPSILON) continue;
           const due = Math.max(tick - graceLeadTicks(beat), options.runStartTick);
           if (due < from || due >= to) continue;
+          const position = { sequenceIndex, trackIndex, voiceIndex, beatIndex, tick };
           for (const note of beat.notes) {
-            const startsRun = Math.abs(tick - options.runStartTick) < EPSILON;
-            if (note.tie && !startsRun) continue;
-            const position = { sequenceIndex, trackIndex, voiceIndex, beatIndex, tick };
-            const { ticks, after } = followTies(timeline, position, beat, note);
-            const length = beatTicks(beat) + ticks;
+            if (note.tie && heldFromOrigin(timeline, track, position, note, options.runStartTick)) {
+              continue;
+            }
+            const { end, continuations, after } = followTies(timeline, track, position, beat, note);
             onsets.push({
               ...position,
               masterBarIndex: pass.masterBarIndex,
               passIndex: pass.passIndex,
               barEndTick,
-              durationTicks: Math.max(0, Math.min(length, options.limitTick - tick)),
+              durationTicks: Math.max(0, Math.min(end, limitTick) - tick),
               track,
               beat,
               note,
               next: nextOnString(note, after),
+              continuations: continuations
+                .filter((link) => link.tick < limitTick - EPSILON)
+                .map((link) => ({
+                  ...link,
+                  durationTicks: Math.min(link.durationTicks, limitTick - link.tick),
+                })),
             });
           }
         }
@@ -228,6 +325,48 @@ export function notesInRange(
     }
   }
   return onsets.sort((a, b) => a.tick - b.tick);
+}
+
+/**
+ * Every beat carrying `Beat.mix` whose tick is in `[from, to)`, from `runStartTick` up to
+ * `limitTick`: rests and tied continuations too, which send no note.
+ */
+export function mixesInRange(
+  timeline: Timeline,
+  from: number,
+  to: number,
+  options: { runStartTick: number; limitTick: number },
+): MixOnset[] {
+  const mixes: MixOnset[] = [];
+  const low = Math.max(from, options.runStartTick);
+  const high = Math.min(to, options.limitTick);
+  for (const [sequenceIndex, pass] of passesOverlapping(timeline, low, high)) {
+    for (const [trackIndex, track] of timeline.score.tracks.entries()) {
+      const bar = track.bars[pass.masterBarIndex];
+      if (!bar) continue;
+      for (const [voiceIndex, voice] of bar.voices.entries()) {
+        let offset = 0;
+        for (const [beatIndex, beat] of voice.beats.entries()) {
+          const tick = pass.startTick + offset;
+          offset += beatTicks(beat);
+          if (!beat.mix || tick < low - EPSILON || tick >= high - EPSILON) continue;
+          mixes.push({
+            tick,
+            sequenceIndex,
+            masterBarIndex: pass.masterBarIndex,
+            passIndex: pass.passIndex,
+            trackIndex,
+            voiceIndex,
+            beatIndex,
+            track,
+            beat,
+            mix: beat.mix,
+          });
+        }
+      }
+    }
+  }
+  return mixes.sort((a, b) => a.tick - b.tick);
 }
 
 function beatUnit(denominator: number): number {

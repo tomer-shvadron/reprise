@@ -1,7 +1,11 @@
-import type { InstrumentSink, MetronomeSink, NoteEvent } from './sink';
+import type { InstrumentSink, MetronomeSink, MixEvent, NoteEvent } from './sink';
 
 export interface RecordedNote extends NoteEvent {
   /** The clock's `currentTime` when `noteOn` was called. */
+  calledAt: number;
+}
+
+export interface RecordedMix extends MixEvent {
   calledAt: number;
 }
 
@@ -20,6 +24,7 @@ export interface RecordedCut {
 /** Collects what the scheduler hands out, with the time it did, for tests. Makes no sound. */
 export class RecordingSink implements InstrumentSink, MetronomeSink {
   readonly notes: RecordedNote[] = [];
+  readonly mixes: RecordedMix[] = [];
   readonly clicks: RecordedClick[] = [];
   readonly cuts: RecordedCut[] = [];
   volume = 1;
@@ -28,6 +33,10 @@ export class RecordingSink implements InstrumentSink, MetronomeSink {
 
   noteOn(event: NoteEvent): void {
     this.notes.push({ ...event, calledAt: this.clock.currentTime });
+  }
+
+  mix(event: MixEvent): void {
+    this.mixes.push({ ...event, calledAt: this.clock.currentTime });
   }
 
   allNotesOff(when: number): void {

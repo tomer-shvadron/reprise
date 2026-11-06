@@ -11,6 +11,7 @@ export type GpifWarningCode =
   | 'simile-expanded'
   | 'grace-without-beat'
   | 'grace-duration-clamped'
+  | 'grace-tie-released'
   | 'hammer-pull-without-destination'
   | 'tempo-moved'
   | 'automation-dropped'
