@@ -31,6 +31,8 @@ export default defineConfig({
           root: 'apps/web',
           environment: 'jsdom',
           setupFiles: ['./src/test/setup.ts'],
+          // Vitest empties CSS imports; score-css.test.ts reads the painter's stylesheet as text.
+          css: { include: [/score\.css/] },
         },
       },
       { test: { name: 'desktop', root: 'apps/desktop', environment: 'node' } },
