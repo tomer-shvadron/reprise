@@ -3,6 +3,7 @@ import { beatOf, largeScore } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from './index';
+import { withEffects } from './test/effects';
 
 /** The roadmap's budget for a cold layout of the long score; WP-027 adds the re-layout budget. */
 const COLD_BUDGET_MS = 250;
@@ -69,6 +70,17 @@ describe('layout budget', () => {
     );
     await annotate(
       `cold standard-notation layout of 8 tracks x 300 bars: median ${String(median(times))} ms of ${times.join(', ')}`,
+    );
+  }, 30_000);
+
+  it('lays out the long score with note effects cold', async ({ annotate }) => {
+    const scores = Array.from({ length: RUNS }, () =>
+      withEffects(largeScore(8, 300, { structure: true })),
+    );
+    const results = scores.map((fresh) => layout(fresh, options));
+    const times = results.map(({ metrics }) => metrics.layoutMs);
+    await annotate(
+      `cold layout with an effect on every fourth beat: median ${String(median(times))} ms of ${times.join(', ')}, ${String(results[0]?.metrics.primitives)} primitives`,
     );
   }, 30_000);
 
