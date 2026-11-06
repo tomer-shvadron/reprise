@@ -2,15 +2,9 @@ import type { Alter, Duration, Note, NoteHead } from '@reprise/model';
 
 import { engraving, glyphAnchor, glyphMetrics, type GlyphName } from '../../metrics';
 import { glyphWidth } from '../../primitives';
+import { beamCount } from '../rhythm';
 import type { ShownAccidental } from './pitch';
-import {
-  beamCount,
-  dotsWidth,
-  flagGlyph,
-  stemThickness,
-  stemTip,
-  type StemDirection,
-} from './rhythm';
+import { dotsWidth, flagGlyph, stemThickness, stemTip, type StemDirection } from './rhythm';
 
 /** y of staff position `position` below the top line of a five-line staff, in px. */
 export function positionY(position: number, space: number): number {

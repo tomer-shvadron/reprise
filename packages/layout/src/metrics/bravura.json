@@ -453,6 +453,42 @@
       "bbox": { "left": 0, "bottom": -3.004, "right": 1.196, "top": 3.252 },
       "anchors": { "stemDownSW": [0, -2.812] }
     },
+    "dynamicPP": {
+      "codepoint": 58667,
+      "advance": 2.908,
+      "bbox": { "left": -0.328, "bottom": -0.568, "right": 2.912, "top": 1.096 },
+      "anchors": { "opticalCenter": [1.708, 0] }
+    },
+    "dynamicPPP": {
+      "codepoint": 58666,
+      "advance": 4.288,
+      "bbox": { "left": -0.368, "bottom": -0.568, "right": 4.292, "top": 1.096 },
+      "anchors": { "opticalCenter": [2.368, 0] }
+    },
+    "dynamicMP": {
+      "codepoint": 58668,
+      "advance": 3.304,
+      "bbox": { "left": -0.08, "bottom": -0.568, "right": 3.3, "top": 1.096 },
+      "anchors": { "opticalCenter": [1.848, 0] }
+    },
+    "dynamicMF": {
+      "codepoint": 58669,
+      "advance": 3.188,
+      "bbox": { "left": -0.08, "bottom": -0.66, "right": 3.272, "top": 1.724 },
+      "anchors": { "opticalCenter": [1.796, 0] }
+    },
+    "dynamicFF": {
+      "codepoint": 58671,
+      "advance": 2.436,
+      "bbox": { "left": -0.54, "bottom": -0.608, "right": 2.44, "top": 1.776 },
+      "anchors": { "opticalCenter": [1.852, 0] }
+    },
+    "dynamicFFF": {
+      "codepoint": 58672,
+      "advance": 3.324,
+      "bbox": { "left": -0.62, "bottom": -0.608, "right": 3.32, "top": 1.776 },
+      "anchors": { "opticalCenter": [2.472, 0] }
+    },
     "accidentalParensLeft": {
       "codepoint": 57962,
       "advance": 0.564,
@@ -518,12 +554,6 @@
       "advance": 1.46,
       "bbox": { "left": -0.356, "bottom": -0.568, "right": 1.464, "top": 1.096 },
       "anchors": { "opticalCenter": [1.22, 0] }
-    },
-    "dynamicMezzo": {
-      "codepoint": 58657,
-      "advance": 1.748,
-      "bbox": { "left": -0.08, "bottom": -0.04, "right": 1.784, "top": 1.096 },
-      "anchors": { "opticalCenter": [0.872, 0] }
     },
     "dynamicForte": {
       "codepoint": 58658,

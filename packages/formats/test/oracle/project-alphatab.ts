@@ -129,8 +129,10 @@ function projectNote(note: AtNote, kind: TrackKind): NoteProjection {
     const articulations = note.beat.voice.bar.staff.track.percussionArticulations;
     value =
       articulations[note.percussionArticulation]?.outputMidiNumber ?? note.percussionArticulation;
-  } else if (kind === 'pitched') value = note.fret + note.stringTuning;
-  else string = tuning.length - note.string + 1;
+  } else if (kind === 'pitched') {
+    // GP6's `Octave`/`Tone` form has no string; `realValue` is the note either way.
+    value = note.isPiano ? note.realValue : note.fret + note.stringTuning;
+  } else string = tuning.length - note.string + 1;
   // `Note.finish` splices the point list but keeps its ends and `maxBendPoint`.
   const bend = note.hasBend ? values(note.bendPoints) : null;
   return {

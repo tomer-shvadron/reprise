@@ -42,11 +42,7 @@ vi.mock(import('./index'), async (importOriginal) => {
   });
   return {
     ...original,
-    STAFF_MODULES: {
-      tab: recording(original.STAFF_MODULES.tab),
-      standard: recording(original.STAFF_MODULES.standard),
-      percussion: recording(original.STAFF_MODULES.percussion),
-    },
+    staffModule: (type, display) => recording(original.staffModule(type, display)),
   };
 });
 

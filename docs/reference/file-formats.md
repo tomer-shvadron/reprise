@@ -13,6 +13,21 @@ Notes for the formats lane. The authoritative descriptions of the Guitar Pro for
 | `.gp`     | Guitar Pro 7, 8  | zip                                         | `Content/score.gpif` XML      | yes     | yes (v1)     |
 | `.reprise`| Reprise          | none                                        | JSON, versioned               | yes     | yes (native) |
 
+## Detection
+
+`detect(bytes)` in `@reprise/formats` names a file's format from its first bytes; the extension is never consulted ([ADR-0008](../decisions/0008-file-formats.md): detected from the file's bytes, not its extension). First match wins:
+
+| Format          | Signature                                                                                       | Offset                     |
+| --------------- | ----------------------------------------------------------------------------------------------- | -------------------------- |
+| gp3, gp4, gp5   | `0x18`, `FICHIER GUITAR PRO `, one letter (`v`, or `L` in some exports), then `3.`, `4.` or `5.` | bytes 0 to 22               |
+| gp              | `50 4B 03 04` (`PK\x03\x04`, a zip local file header)                                           | 0                          |
+| gpx             | `BCFZ`, or `BCFS` (the uncompressed image Guitar Pro 6 also reads)                               | 0                          |
+| reprise         | `{`, after an optional UTF-8 BOM and ASCII whitespace                                            | first non-whitespace byte  |
+
+- The binary family is decided by the major digit alone, so an unknown minor (`v5.20`) detects as gp5 and the reader's `unknown-version` names the header; `v6.00` detects as nothing.
+- Any zip detects as gp and any JSON object as reprise; the reader then tells a zip without `Content/score.gpif` (`missing-score`) or a JSON object that is not a Reprise document (`wrong-format`) apart.
+- An extension is a fallback only: when the bytes match nothing, a caller with a file name may retry with `formatOfExtension(name)`.
+
 ## gp3, gp4, gp5
 
 - Starts with a Pascal string version header such as `FICHIER GUITAR PRO v3.00`, `v4.06`, `v5.00`, `v5.10`. Branch on it.

@@ -3,7 +3,7 @@ import type { Bar, Score } from '@reprise/model';
 import type { BarContext } from './context';
 import type { StaffBox } from './furniture';
 import type { ResolvedOptions, VisibleTrack } from './options';
-import { STAFF_MODULES, type StaffBar, type StaffGeometry, type StaffModule } from './staves';
+import { staffModule, type StaffBar, type StaffGeometry, type StaffModule } from './staves';
 import type { StaffType } from './types';
 
 /** One staff of one visible track, in top-to-bottom order across the system. */
@@ -21,7 +21,7 @@ export interface StaffSlot {
 export function staffSlots(options: ResolvedOptions): StaffSlot[] {
   return options.tracks.flatMap((visible, group) =>
     visible.staves.map((type): StaffSlot => {
-      const module = STAFF_MODULES[type];
+      const module = staffModule(type, { tiedNotes: options.tiedNotes });
       const geometry = module.geometry(visible.track, options.space);
       return {
         visible,

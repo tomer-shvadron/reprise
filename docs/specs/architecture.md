@@ -74,7 +74,9 @@ file bytes --formats.read--> Score --------+--> layout.layout(score, options) --
 
 **Frozen on 2026-11-05 at WP-015.** Changes after this date are `type:contract` issues owned by the lead.
 
-Changed by #62 (2026-11-05): a tie's origin is the most recent note on its string in its voice within three bars, not only the previous beat (`tieOriginOf`, `TIE_REACH_BARS`); `newId()` draws its random bytes from a pooled buffer, with the same format and distribution.
+Changed by #62 (2026-11-05): a tie's origin is the most recent note on its string in its voice within three bars, not only the previous beat (`tieOriginOf`, `TIE_REACH_BARS`); `newId()` draws its random bytes from a pooled buffer, with the same format and distribution. Widened by #65 (2026-11-05): `tieChainOf`, the forward walk in score order, is exported; a grace note may not carry `tie` (`GraceNoteSchema`); `ChannelMixChange.duration` counts quarter notes, the unit the #66 review ruled; and the audio sink contract (`packages/audio/README.md`) gains `InstrumentSink.mix?(MixEvent)` for beat-level mixer changes, replayed at each run start, and `NoteEvent.continuations`, the tied links folded into an onset.
+
+Changed by #82 (2026-11-06): `write` takes an optional third argument, `write(score, format, options?: { app?: AppInfo })`, the app stamped into a `.reprise` file, defaulting to `{ name: 'reprise', version: '0.0.0' }`.
 
 Changed by #74 (2026-11-06): additive only, so the Layout and Audio sketches match their packages. `LayoutOptions` gains `margins`, the four gaps and `dirtyBars`; `metrics` gains `anchors`, `measuredBars` and `reusedSystems`; `Anchor` is spelled out with `system`, `track`, `staff`, `voice` and `masterBar`; Audio names `InstrumentSink` and `NoteEvent`.
 
@@ -169,7 +171,7 @@ interface Beat {
   lyrics?: string[];             // one syllable per lyric line, index = line, up to five; '' where a line has none
 }
 interface Stroke           { direction: 'up' | 'down'; duration?: 4 | 8 | 16 | 32 | 64 | 128 }   // spread of the stroke
-interface ChannelMixChange { value: number; duration?: number; allTracks?: boolean }   // value 0..127; duration >= 1 in beats, absent = immediate
+interface ChannelMixChange { value: number; duration?: number; allTracks?: boolean }   // value 0..127; duration >= 1 in quarter notes, absent = immediate
 interface BendPoint        { position: number; value: number }   // position 0..60 across the note's duration; value in quarter tones; a bend or whammy has at least two
 
 interface ChordDiagram {
@@ -214,11 +216,12 @@ const TIE_REACH_BARS = 3;
 interface TiePosition { bar: number; voice: number; beat: number }   // indices within one track
 interface TieLink { note: Note; bar: number; beat: number }
 function tieOriginOf(track: Pick<Track, 'kind' | 'bars'>, at: TiePosition, note: Pick<Note, 'string' | 'fret'>): TieLink | undefined;
+function tieChainOf(track: Pick<Track, 'kind' | 'bars'>, at: TiePosition, note: Note): TieLink[];   // the notes tied on from `note`, in score order
 ```
 
 `validateScore` assumes schema-valid input and checks what the schemas cannot express: unique ids, a tempo mark on the first bar, one bar per master bar, the track-kind constraints, no overfull voice (incomplete bars are allowed), no notes on a rest, string and fret ranges, no two notes on one string, tie targets and tied notes on their origin's fret, the tuplet window (strictly between 1:2 and 2:1, not 1:1), chord diagrams with one fret per string, and voltas unique, ascending and inside a repeat. The table with each rule's exact check is in `packages/model/README.md`.
 
-A tied note's origin (`tieOriginOf`) is the most recent note in its slot (its string; its MIDI note on drum and pitched tracks) in the same voice, searching back from the previous beat to the start of the bar `TIE_REACH_BARS` (three, alphaTab's bound) before its own. Rests and notes on other strings in between are passed over; a note on the same string in between is itself the origin, so it ends the hold. Grace notes are never origins. `tie-target` fails when there is no origin, `tie-pitch` when the origin is on another fret, and the command layer's tie chains follow the same definition.
+A tied note's origin (`tieOriginOf`) is the most recent note in its slot (its string; its MIDI note on drum and pitched tracks) in the same voice, searching back from the previous beat to the start of the bar `TIE_REACH_BARS` (three, alphaTab's bound) before its own. Rests and notes on other strings in between are passed over; a note on the same string in between is itself the origin, so it ends the hold. Grace notes are never origins and never tied: `GraceBeat.notes` is `GraceNoteSchema`, which refuses `tie: true`. `tieChainOf` walks the other way, from a note to the tied notes that continue it in score order. `tie-target` fails when there is no origin, `tie-pitch` when the origin is on another fret, and the command layer's tie chains follow the same definition.
 
 ### Timing (`@reprise/model`)
 
@@ -392,7 +395,7 @@ Usage is in `../reference/score-model.md`.
 type Format = 'gp3' | 'gp4' | 'gp5' | 'gp' | 'gpx' | 'reprise';
 function detect(bytes: Uint8Array): Format | undefined;
 function read(bytes: Uint8Array, format?: Format): Promise<{ score: Score; warnings: Warning[] }>;
-function write(score: Score, format: 'reprise' | 'gp'): Promise<{ bytes: Uint8Array; dropped: Warning[] }>;
+function write(score: Score, format: 'reprise' | 'gp', options?: { app?: AppInfo }): Promise<{ bytes: Uint8Array; dropped: Warning[] }>;
 ```
 
 ### Layout (`@reprise/layout`)

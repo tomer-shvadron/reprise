@@ -1,4 +1,7 @@
-import type { ViolationPath, ViolationRule } from '@reprise/model';
+import type { ParseWarningCode, ViolationPath, ViolationRule } from '@reprise/model';
+
+import type { GpifDropCode } from './gpif/dropped';
+import type { GpifWarningCode } from './gpif/warnings';
 
 /**
  * What a reader reports about a file it read anyway. `error` means content was lost (the file
@@ -31,11 +34,14 @@ export type ReaderWarningCode =
   | 'note-off-string'
   | 'hammer-pull-without-destination'
   | 'tie-without-origin'
-  | 'tie-beyond-previous-beat'
   | 'lyrics-unplaced';
 
-/** A reader code, or a `validateScore` rule the finished score breaks. */
-export type WarningCode = ReaderWarningCode | ViolationRule;
+/**
+ * A reader code, or a `validateScore` rule the finished score breaks. `read` reports the gpif
+ * and native codes under the same type, and `write` the gp writer's drop codes.
+ */
+export type WarningCode =
+  ReaderWarningCode | GpifWarningCode | ParseWarningCode | ViolationRule | GpifDropCode;
 
 /** Where in the file, and where in the parsed score, a warning applies; any part may be absent. */
 export interface WarningLocation {
@@ -46,8 +52,13 @@ export interface WarningLocation {
   bar?: number;
   voice?: number;
   beat?: number;
-  /** Path from the score root, for invariant violations. */
+  /** Path from the score root, always: an invariant violation, a native score field, an export loss. */
   path?: ViolationPath;
+  /**
+   * Where in the file rather than in the score: the gpif element a gp or gpx warning is about
+   * (`Notes/Note[3]/Properties/Property[Slide]`), or a native field outside the score (`app.extra`).
+   */
+  element?: string;
 }
 
 export interface Warning {
@@ -55,7 +66,7 @@ export interface Warning {
   severity: WarningSeverity;
   message: string;
   location: WarningLocation;
-  /** How many times an `info` warning occurred; only its first location is kept. */
+  /** How many times a folded warning occurred; only its first location is kept. */
   count?: number;
 }
 
