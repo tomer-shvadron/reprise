@@ -10,6 +10,12 @@ import { useAppServices } from './services-context';
 
 const MB = 1024 * 1024;
 
+/** Megabytes with one decimal below 10, so 0.63 MB does not read as 1 MB. */
+export function megabytes(bytes: number): string {
+  const mb = bytes / MB;
+  return mb < 10 ? mb.toFixed(1) : mb.toFixed(0);
+}
+
 /** What the sound status line says, and whether it offers Retry. */
 export function soundStatus(
   state: PlaybackStoreState,
@@ -32,7 +38,7 @@ export function soundStatus(
 
 export function PlaybackControls() {
   const { playback, audio } = useAppServices();
-  const { canPlay, running, text, retry, memory } = useStore(
+  const { canPlay, running, text, retry, memory, instruments } = useStore(
     playback,
     useShallow((state) => {
       const status = soundStatus(state);
@@ -42,6 +48,7 @@ export function PlaybackControls() {
         text: status?.text,
         retry: status?.retry ?? false,
         memory: state.memory,
+        instruments: state.instruments,
       };
     }),
   );
@@ -64,12 +71,12 @@ export function PlaybackControls() {
       <Tooltip>
         <TooltipTrigger asChild>
           <span role="status" className="text-muted-foreground min-w-0 truncate text-xs">
-            {text ?? (memory.decodedBytes > 0 && `${(memory.decodedBytes / MB).toFixed(0)} MB`)}
+            {text ?? (memory.decodedBytes > 0 && `${megabytes(memory.decodedBytes)} MB`)}
           </span>
         </TooltipTrigger>
         <TooltipContent>
-          {(memory.decodedBytes / MB).toFixed(1)} of {(memory.budgetBytes / MB).toFixed(0)} MB
-          decoded · {memory.residents.length} instruments
+          {megabytes(memory.decodedBytes)} of {megabytes(memory.budgetBytes)} MB decoded ·{' '}
+          {instruments} {instruments === 1 ? 'instrument' : 'instruments'}
         </TooltipContent>
       </Tooltip>
       {retry && (

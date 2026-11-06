@@ -84,6 +84,7 @@ describe('the audio service', () => {
     expect(playback.getState().song.status).toBe('ready');
     expect(playback.getState().sounds.status).toBe('ready');
     expect(playback.getState().output.status).toBe('locked');
+    expect(playback.getState().instruments).toBe(1);
     await new Promise((resolve) => requestAnimationFrame(resolve));
     expect(playback.getState().memory.residents).toContain('gm:0:25');
 

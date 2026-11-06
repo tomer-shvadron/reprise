@@ -39,6 +39,8 @@ export interface PlaybackStoreState {
   };
   /** The open document's opening bars, decoded. */
   song: { status: LoadStatus; error: string | undefined };
+  /** The open song's planned instruments; the memory report's residents also count preset aliases. */
+  instruments: number;
   settings: TransportSettings;
   /** The user's overrides over each track's `channel`; cleared on a switch. */
   mixer: Readonly<Record<Id, TrackParams>>;
@@ -59,6 +61,7 @@ export function initialPlaybackState(): PlaybackStoreState {
     output: { status: 'locked', error: undefined },
     sounds: { status: 'idle', loaded: 0, total: undefined, error: undefined },
     song: { status: 'idle', error: undefined },
+    instruments: 0,
     settings: {
       tempo: { mode: 'percent', value: 100 },
       loop: undefined,

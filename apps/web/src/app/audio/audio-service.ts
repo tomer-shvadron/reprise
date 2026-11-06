@@ -193,7 +193,9 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   function loadSong(loaded: GmBank, score: Score, gen: number): Promise<void> {
     return track(
       loaded.source.load(score, loaded.regionMap, { instrumentOf: loaded.instrumentId }).then(
-        () => undefined,
+        (plan) => {
+          if (gen === generation) set({ instruments: plan.instruments.length });
+        },
         (error: unknown) => {
           if (gen === generation) set({ song: { status: 'error', error: messageOf(error) } });
         },
@@ -245,8 +247,12 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
       if (gen !== generation || !doc) return;
       const { score } = doc;
       if (engine) attach(score, 'replace');
-      await loaded.source.load(score, loaded.regionMap, { instrumentOf: loaded.instrumentId });
-      if (gen === generation) set({ song: { status: 'ready', error: undefined } });
+      const plan = await loaded.source.load(score, loaded.regionMap, {
+        instrumentOf: loaded.instrumentId,
+      });
+      if (gen === generation) {
+        set({ song: { status: 'ready', error: undefined }, instruments: plan.instruments.length });
+      }
     } catch (error) {
       if (gen === generation) set({ song: { status: 'error', error: messageOf(error) } });
     }
@@ -298,7 +304,12 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     doc = undefined;
     attached = undefined;
     overrides = {};
-    set({ song: { status: 'idle', error: undefined }, position: undefined, mixer: {} });
+    set({
+      song: { status: 'idle', error: undefined },
+      instruments: 0,
+      position: undefined,
+      mixer: {},
+    });
   }
 
   function createEngine(created: BaseAudioContext): void {
