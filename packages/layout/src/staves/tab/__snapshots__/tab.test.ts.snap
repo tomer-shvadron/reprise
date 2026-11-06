@@ -1,40 +1,5 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`tab staff: both mode > shows numbers, ties and words only under a standard staff 1`] = `
-{
-  "anchors": [
-    "beat beat00000001 [147.91,80.2 11.76x42] track0000001 standard 0",
-    "beat beat00000002 [169.61,80.2 11.76x42] track0000001 standard 0",
-    "beat beat00000003 [191.31,80.2 11.76x42] track0000001 standard 0",
-    "beat beat00000004 [217.91,80.2 11.76x42] track0000001 standard 0",
-    "beat beat00000005 [261.33,80.2 11.76x42] track0000001 standard 0",
-    "note note00000001 [149.68,171.8 8.22x8.1] track0000001 tab 0",
-    "beat beat00000001 [149.68,168.85 8.22x66.5] track0000001 tab 0",
-    "note note00000002 [168.88,171.8 13.2x8.1] track0000001 tab 0",
-    "beat beat00000002 [168.88,168.85 13.2x66.5] track0000001 tab 0",
-    "beat beat00000003 [197.19,168.85 0x66.5] track0000001 tab 0",
-    "note note00000003 [219.91,182.3 7.76x8.1] track0000001 tab 0",
-    "note note00000004 [214.18,183.52 3.97x5.67] track0000001 tab 0",
-    "beat beat00000004 [214.18,168.85 13.49x66.5] track0000001 tab 0",
-    "beat beat00000005 [267.21,168.85 0x66.5] track0000001 tab 0",
-  ],
-  "primitives": [
-    "path filled M149.68 171.8h8.22v8.1h-8.22Z (paper) <note00000001>",
-    "text "0" @153.79,179.08 size 9.1 middle <note00000001>",
-    "path filled M168.88 171.8h13.2v8.1h-13.2Z (paper) <note00000002>",
-    "text "(0)" @175.49,179.08 size 9.1 middle <note00000002>",
-    "path filled M219.91 182.3h7.76v8.1h-7.76Z (paper) <note00000003>",
-    "text "3" @223.79,189.58 size 9.1 middle <note00000003>",
-    "path filled M214.18 183.52h3.97v5.67h-3.97Z (paper) <note00000004>",
-    "text "1" @216.17,188.61 size 6.37 middle <note00000004>",
-    "path filled M157.9 179.9C160.64 182.7 166.14 182.7 168.88 179.9C166.14 180.65 160.64 180.65 157.9 179.9Z <note00000002>",
-    "text "D" @149.68,165 size 8.4 start <beat00000001>",
-    "text "riff" @149.68,149.6 size 8.4 start <beat00000001>",
-    "text "la" @153.79,238.15 size 8.4 middle <beat00000001>",
-  ],
-}
-`;
-
 exports[`tab staff: rests > draws every rest glyph in the middle of the staff, with its dots 1`] = `
 {
   "anchors": [

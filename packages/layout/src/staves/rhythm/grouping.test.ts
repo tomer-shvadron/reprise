@@ -106,6 +106,15 @@ describe('tuplet groups', () => {
     ]);
   });
 
+  it('closes unequal values on a plain note value, as alphaTab and Guitar Pro do', () => {
+    expect(tupletGroups(voice('4t', '8t', '4t', '4t', '4t', '8t', '16t', '16t', '8t'))).toEqual([
+      { start: 0, end: 1, n: 3, of: 2 },
+      { start: 2, end: 4, n: 3, of: 2 },
+      { start: 5, end: 6, n: 3, of: 2 },
+      { start: 7, end: 8, n: 3, of: 2 },
+    ]);
+  });
+
   it('counts rests inside a tuplet', () => {
     expect(tupletGroups(voice('8t', '8tr', '8t', '4'))).toEqual([
       { start: 0, end: 2, n: 3, of: 2 },

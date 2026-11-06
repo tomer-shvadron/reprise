@@ -26,9 +26,8 @@ import {
   type StemDirection,
 } from '../rhythm';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
+import { DEFAULT_DYNAMICS, DYNAMICS_GLYPHS } from '../dynamics';
 import {
-  DEFAULT_DYNAMICS,
-  DYNAMICS_GLYPHS,
   TAB,
   analyseBar,
   beatDynamics,

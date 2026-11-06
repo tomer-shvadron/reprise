@@ -84,34 +84,59 @@ export interface TupletGroup {
   of: number;
 }
 
+/** The values a tuplet of unequal beats closes on, in ticks: a half note down to a 256th. */
+const PLAIN_VALUES = [2, 4, 8, 16, 32, 64, 128, 256].map((duration) => WHOLE / duration);
+
+interface OpenTuplet extends TupletGroup {
+  count: number;
+  filled: number;
+  first: number;
+  equal: boolean;
+}
+
 /**
- * Consecutive beats with the same tuplet ratio, cut whenever their written lengths add up to `n`
- * of the shortest among them: three triplet eighths, or a triplet quarter and eighth.
+ * Consecutive beats of one ratio, grouped as alphaTab groups them so brackets match Guitar Pro's:
+ * closed after `n` beats of one value, or once beats of unequal values add up to a plain note
+ * value times ⌊n/of⌋ (a quarter-and-eighth triplet is one group, the quarter triplets after it
+ * another).
  */
 export function tupletGroups(events: readonly RhythmEvent[]): TupletGroup[] {
   const groups: TupletGroup[] = [];
-  let open: (TupletGroup & { written: number; unit: number }) | undefined;
+  let open: OpenTuplet | undefined;
   const close = (): void => {
     if (open) groups.push({ start: open.start, end: open.end, n: open.n, of: open.of });
     open = undefined;
   };
   for (const [i, event] of events.entries()) {
-    const { tuplet } = event;
+    const { tuplet, ticks } = event;
     if (!tuplet) {
       close();
       continue;
     }
     if (open && (open.n !== tuplet.n || open.of !== tuplet.of)) close();
-    const written = (WHOLE / event.duration) * (2 - 1 / 2 ** event.dots);
-    const unit = WHOLE / event.duration;
     if (open) {
       open.end = i;
-      open.written += written;
-      open.unit = Math.min(open.unit, unit);
+      open.count += 1;
+      open.filled += ticks;
+      if (Math.abs(ticks - open.first) > TICK_EPSILON) open.equal = false;
     } else {
-      open = { start: i, end: i, n: tuplet.n, of: tuplet.of, written, unit };
+      open = {
+        start: i,
+        end: i,
+        n: tuplet.n,
+        of: tuplet.of,
+        count: 1,
+        filled: ticks,
+        first: ticks,
+        equal: true,
+      };
     }
-    if (open.written + TICK_EPSILON >= open.n * open.unit) close();
+    const factor = Math.max(1, Math.floor(tuplet.n / tuplet.of));
+    const { filled } = open;
+    const full = open.equal
+      ? open.count === tuplet.n
+      : PLAIN_VALUES.some((value) => Math.abs(filled - value * factor) < TICK_EPSILON);
+    if (full) close();
   }
   close();
   return groups;

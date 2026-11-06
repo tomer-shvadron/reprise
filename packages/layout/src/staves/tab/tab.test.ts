@@ -10,9 +10,11 @@ import {
   type LayoutOptions,
   type LayoutResult,
 } from '../../index';
+import type { LayoutSink } from '../../primitives';
 import { expectValid, overlappingAnchors } from '../../test/check-result';
 import { describeAnchor, describePrimitive } from '../../test/describe';
 import type { StaffBar } from '../staff-module';
+import { TAB } from './analysis';
 import { tabModule } from './index';
 import { feelWidth } from './spacing';
 
@@ -504,17 +506,40 @@ describe('tab staff: both mode', () => {
       .beat('4.', [note(2, 3)], { grace: [{ duration: 16, before: true, notes: [note(2, 1)] }] })
       .rest('8')
       .build({ ids: 'sequential' });
-    const result = laid(built);
-    const { primitives } = content(result);
-    expect(primitives.filter((line) => line.startsWith('line'))).toEqual([]);
-    expect(
-      primitives.filter((line) => /^glyph (rest|flag|dynamic|augmentationDot)/.test(line)),
-    ).toEqual([]);
-    expect(texts(result)).toEqual(['0', '(0)', '3', '1']);
-    const words = result.primitives.flatMap((p) => (p.kind === 'text' ? [p.text] : []));
-    expect(words).toEqual(expect.arrayContaining(['D', 'riff', 'la']));
-    expect(filled(result)).toHaveLength(1);
-    expect(content(result)).toMatchSnapshot();
+    laid(built);
+    const input: StaffBar = { ...firstBar(built), staves: ['standard', 'tab'] };
+    const module = tabModule();
+    const geometry = module.geometry(input.track, STAFF_SPACE);
+    const sink: LayoutSink = { primitives: [], anchors: [] };
+    const measured = module.measure(input);
+    module.render(
+      input,
+      {
+        x: 0,
+        width: 200,
+        top: 0,
+        bottom: geometry.lineSpacing * (geometry.lines - 1),
+        geometry,
+        system: 0,
+        onsetX: (tick) => 20 + tick / 24,
+      },
+      sink,
+    );
+    const drawn = sink.primitives.map(describePrimitive);
+    expect(drawn.filter((line) => line.startsWith('line'))).toEqual([]);
+    expect(drawn.filter((line) => /^glyph/.test(line))).toEqual([]);
+    expect(sink.primitives.flatMap((p) => (p.kind === 'text' ? [p.text] : []))).toEqual([
+      '0',
+      '(0)',
+      '3',
+      '1',
+      'D',
+      'riff',
+      'la',
+    ]);
+    expect(drawn.filter((line) => line.startsWith('path filled'))).toHaveLength(1);
+    expect(measured.below).toBeCloseTo(TAB.lyricRow * STAFF_SPACE, 5);
+    expect({ primitives: drawn, anchors: sink.anchors.map(describeAnchor) }).toMatchSnapshot();
   });
 });
 

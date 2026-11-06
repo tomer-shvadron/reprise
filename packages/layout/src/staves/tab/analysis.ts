@@ -213,20 +213,6 @@ export function beatDynamics(beat: Beat): Dynamics | undefined {
   return beat.notes[0]?.dynamics;
 }
 
-export const DYNAMICS_GLYPHS: Readonly<Record<Dynamics, GlyphName>> = {
-  ppp: 'dynamicPPP',
-  pp: 'dynamicPP',
-  p: 'dynamicPiano',
-  mp: 'dynamicMP',
-  mf: 'dynamicMF',
-  f: 'dynamicForte',
-  ff: 'dynamicFF',
-  fff: 'dynamicFFF',
-};
-
-/** Guitar Pro's default: a dynamic is only written where it changes from this. */
-export const DEFAULT_DYNAMICS: Dynamics = 'f';
-
 function event(beat: Beat, tick: number): RhythmEvent {
   return {
     tick,

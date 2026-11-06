@@ -1,7 +1,7 @@
 import { glyphMetrics, textWidth } from '../../metrics';
 import type { OnsetExtent, StaffBar, StaffBarMeasure } from '../staff-module';
+import { DYNAMICS_GLYPHS } from '../dynamics';
 import {
-  DYNAMICS_GLYPHS,
   TAB,
   analyseBar,
   beatDynamics,
