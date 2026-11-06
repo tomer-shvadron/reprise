@@ -19,7 +19,7 @@ The rule, in the owner's words:
 
 Amended on 2026-11-06 from Fable to Opus at xhigh effort, when the Fable monthly limit ran out; Fable is not used unless the owner says so ([ADR-0020](docs/decisions/0020-plan-and-review-with-opus-at-xhigh-effort.md)).
 
-A coding task is any change to code, tests, configuration, scripts or the build, and gets all five steps. A change that touches only Markdown files skips the plan step (step 2) and keeps implement, review and fix.
+The lead's ruling on PR #84, which the owner can overrule: a coding task is any change to code, tests, configuration, scripts or the build, and gets all five steps. A change that touches only Markdown files skips the plan step (step 2) and keeps implement, review and fix.
 
 "The lead" is the Claude session the owner talks to. Around the rule:
 

@@ -26,19 +26,20 @@ has to answer the rejection rather than step around it.
 
 ## Decision
 
-Taken by the owner on 2026-11-06. It supersedes ADR-0019's reviewer, fixer and cost clauses;
-the rest of ADR-0019 stands.
+Each part has its own source, named in its bullet. It supersedes ADR-0019's reviewer, fixer
+and cost clauses; the rest of ADR-0019 stands.
 
 - **Planning and review run on Opus at xhigh effort; implementation and fixing run on Opus at
-  medium effort.** Fable is not used unless the owner says so. This is the model change, and
-  its cause is the Fable limit and the owner's instruction in #83.
+  medium effort.** Fable is not used unless the owner says so. This is the model change: the
+  owner's instruction in #83, given on 2026-11-06 when the Fable limit ran out.
 - **The reviewer posts findings only and changes nothing on the branch.** A separate fixer
   applies the `[blocker]` and `[should]` items in new commits and answers each review thread
   with what it did or why not. This split, and the plan step before implementation, come from
   the owner's five-step rule in `AGENTS.md` (#78), not from the model change.
 - **The five steps apply to coding tasks, and a Markdown-only change skips the plan step.**
-  What counts as a coding task, and the exception, are stated once in `../../AGENTS.md`
-  ("Task workflow"); this record does not restate them.
+  The owner's rule says "coding task" without defining it; the definition and the exception
+  are the lead's ruling on PR #84, which the owner can overrule. They are stated once in
+  `../../AGENTS.md` ("Task workflow"); this record does not restate them.
 
 ### Same-model review
 
