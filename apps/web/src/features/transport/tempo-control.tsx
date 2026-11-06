@@ -25,6 +25,9 @@ export function TempoControl() {
   const remembered = useStore(transport, (state) => state.rememberedSpeed);
   const focus = useStore(transport, (state) => state.focus);
   const setTempoCommand = useCommand('transport.setTempo');
+  const slowDown = useCommand('transport.slowDown');
+  const speedUp = useCommand('transport.speedUp');
+  const stepKeys = [slowDown.ariaKeys, speedUp.ariaKeys].filter(Boolean).join(' ') || undefined;
 
   const [written, setWritten] = useState<number | undefined>(undefined);
   const [draft, setDraftState] = useState<string | undefined>(undefined);
@@ -154,7 +157,10 @@ export function TempoControl() {
           <InputGroupText className="text-xs">BPM</InputGroupText>
         </InputGroupAddon>
       </InputGroup>
-      <div className="hidden w-20 items-center lg:flex" data-command="transport.speedUp">
+      <div
+        className="hidden w-20 items-center lg:flex"
+        data-commands="transport.slowDown transport.speedUp"
+      >
         <Slider
           value={[percent]}
           min={TEMPO_PERCENT.min}
@@ -162,6 +168,7 @@ export function TempoControl() {
           step={1}
           disabled={!hasScore}
           thumbLabel="Speed"
+          thumbKeys={stepKeys}
           valueText={(value) => `${String(Math.round(value))}%`}
           onValueChange={([value]) => {
             if (value !== undefined) audio.setTempo('percent', value);

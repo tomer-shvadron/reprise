@@ -28,12 +28,26 @@ describe('TransportBar', () => {
     ];
     expect(controls.length).toBeGreaterThanOrEqual(10);
     for (const control of controls) {
-      const id = control.closest('[data-command]')?.getAttribute('data-command');
-      const command = id ? registry.get(id) : undefined;
-      expect(command, control.outerHTML).toBeDefined();
-      expect(command?.shortcut, id ?? '').toBeDefined();
-      expect(command?.inPalette, id ?? '').not.toBe(false);
+      // A value control such as the speed slider is backed by the step commands that move it.
+      const ids = (
+        control.closest('[data-command]')?.getAttribute('data-command') ??
+        control.closest('[data-commands]')?.getAttribute('data-commands') ??
+        ''
+      )
+        .split(' ')
+        .filter(Boolean);
+      expect(ids, control.outerHTML).not.toEqual([]);
+      for (const id of ids) {
+        const command = registry.get(id);
+        expect(command, control.outerHTML).toBeDefined();
+        expect(command?.shortcut, id).toBeDefined();
+        expect(command?.inPalette, id).not.toBe(false);
+      }
     }
+    expect(screen.getByRole('slider', { name: 'Speed' })).toHaveAttribute(
+      'aria-keyshortcuts',
+      '[ ]',
+    );
   });
 
   it('shows the empty state with no song', () => {
@@ -61,6 +75,11 @@ describe('TransportBar', () => {
     await user.click(screen.getByRole('button', { name: 'Pause' }));
     await user.click(screen.getByRole('button', { name: 'Stop' }));
     expect(services.fakeAudio.stop).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole('button', { name: 'Loop' }));
+    expect(screen.getByRole('button', { name: 'Loop bars 1–4' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
     await user.click(screen.getByRole('button', { name: 'Count-in' }));
     expect(services.fakeAudio.setCountIn).toHaveBeenLastCalledWith(true);
     expect(screen.getByRole('button', { name: 'Count-in' })).toHaveAttribute(

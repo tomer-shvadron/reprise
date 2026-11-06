@@ -28,8 +28,7 @@ export function PracticeToggles() {
     <div role="group" aria-label="Practice" className="flex items-center gap-0.5">
       <TransportToggle
         command="transport.toggleLoop"
-        label="Loop"
-        tip={range ? `Loop bars ${range}` : 'Loop'}
+        label={range ? `Loop bars ${range}` : 'Loop'}
         pressed={loop !== undefined}
         disabled={!score}
       >
