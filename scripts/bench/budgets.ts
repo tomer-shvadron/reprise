@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 
 /** Time budgets are multiplied by this on CI; the roadmap's note under the table says why. */
-export const CI_FACTOR = 4;
+export const CI_FACTOR = 3.4;
 
 export type BudgetUnit = 'ms' | 'MB' | 'count';
 
