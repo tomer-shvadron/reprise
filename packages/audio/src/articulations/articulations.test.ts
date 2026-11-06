@@ -9,6 +9,7 @@ import type { Instrument } from '../sampler/sampler';
 import { SynthSampleSource, midiToFrequency } from '../sampler/sample-source';
 import {
   SAMPLE_RATE,
+  bandEnergy,
   cents,
   peak,
   region,
@@ -19,15 +20,7 @@ import {
 import { velocityGain } from '../sampler/voice';
 import { harmonicInterval } from './harmonics';
 import { ARTICULATION, DYNAMICS_VELOCITY } from './parameters';
-import {
-  T0,
-  energyAbove,
-  noiseInstrument,
-  onsets,
-  pitchTrack,
-  pluckedInstrument,
-  render,
-} from './test/render';
+import { T0, noiseInstrument, onsets, pitchTrack, pluckedInstrument, render } from './test/render';
 
 const A4 = 440;
 const B4 = midiToFrequency(71);
@@ -47,7 +40,8 @@ function fifthUp(): Instrument {
   };
 }
 
-function pitchAt(data: Float32Array, from: number, to: number, expected: number): number {
+/** Cents off `expected` by zero crossings, exact on a sine; not `signal.pitchAt`, which is YIN in Hz. */
+function centsFrom(data: Float32Array, from: number, to: number, expected: number): number {
   return cents(zeroCrossingFrequency(data, from, to), expected);
 }
 
@@ -124,8 +118,8 @@ describe('bends and whammy', () => {
       .build();
     const { data } = await render(song);
 
-    expect(Math.abs(pitchAt(data, T0 + 0.01, T0 + 0.05, A4))).toBeLessThan(25);
-    expect(Math.abs(pitchAt(data, T0 + 0.35, T0 + 0.95, A4 * 2 ** (2 / 12)))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 0.01, T0 + 0.05, A4))).toBeLessThan(25);
+    expect(Math.abs(centsFrom(data, T0 + 0.35, T0 + 0.95, A4 * 2 ** (2 / 12)))).toBeLessThan(1);
   });
 
   it('starts a prebend up and comes back down on the release', async () => {
@@ -146,8 +140,8 @@ describe('bends and whammy', () => {
       .build();
     const { data } = await render(song);
 
-    expect(Math.abs(pitchAt(data, T0 + 0.01, T0 + 0.3, A4 * 2 ** (2 / 12)))).toBeLessThan(1);
-    expect(Math.abs(pitchAt(data, T0 + 0.7, T0 + 0.95, A4))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 0.01, T0 + 0.3, A4 * 2 ** (2 / 12)))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 0.7, T0 + 0.95, A4))).toBeLessThan(1);
   });
 
   it('dives with the whammy bar across the beat', async () => {
@@ -167,7 +161,7 @@ describe('bends and whammy', () => {
       .build();
     const { data } = await render(song);
 
-    expect(Math.abs(pitchAt(data, T0 + 0.55, T0 + 0.95, A4 / 2 ** (4 / 12)))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 0.55, T0 + 0.95, A4 / 2 ** (4 / 12)))).toBeLessThan(1);
   });
 });
 
@@ -183,8 +177,8 @@ describe('palm mute and dead notes', () => {
       .build();
     const { data } = await render(song, { instrument: noiseInstrument });
 
-    const muted = energyAbove(data, 2000, T0 + 0.02, T0 + 0.2);
-    const open = energyAbove(data, 2000, T0 + 1.02, T0 + 1.2);
+    const muted = bandEnergy(data, 2000, 10_000, T0 + 0.02, T0 + 0.2);
+    const open = bandEnergy(data, 2000, 10_000, T0 + 1.02, T0 + 1.2);
     expect(muted).toBeLessThan(open * 0.25);
     // The shortened envelope: the muted note has decayed by the end of its beat; the open one has not.
     expect(rms(data, T0 + 0.4, T0 + 0.48) / rms(data, T0 + 0.02, T0 + 0.1)).toBeLessThan(0.2);
@@ -280,7 +274,7 @@ describe('slides', () => {
     const { data } = await render(song, { instrument: () => pluckedInstrument(3) });
 
     const target = 1200 * Math.log2(B4 / A4);
-    expect(Math.abs(pitchAt(data, T0 + 0.3, T0 + 0.75, A4))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 0.3, T0 + 0.75, A4))).toBeLessThan(1);
     const glide = pitchTrack(data, A4, T0 + 0.8, T0 + 1)
       .filter(([time]) => time > T0 + 0.81 && time < T0 + 0.99)
       .map(([, value]) => value);
@@ -288,7 +282,7 @@ describe('slides', () => {
     for (const [index, value] of glide.entries()) {
       if (index > 0) expect(value).toBeGreaterThan((glide[index - 1] ?? 0) - 2);
     }
-    expect(Math.abs(pitchAt(data, T0 + 1.05, T0 + 1.4, B4))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 1.05, T0 + 1.4, B4))).toBeLessThan(1);
     // Struck again: the level jumps back up at the second note.
     expect(rms(data, T0 + 1.01, T0 + 1.05) / rms(data, T0 + 0.95, T0 + 0.99)).toBeGreaterThan(1.3);
   });
@@ -302,7 +296,7 @@ describe('slides', () => {
       .build();
     const { data } = await render(song, { instrument: () => pluckedInstrument(3) });
 
-    expect(Math.abs(pitchAt(data, T0 + 1.05, T0 + 1.4, B4))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 1.05, T0 + 1.4, B4))).toBeLessThan(1);
     expect(rms(data, T0 + 1.01, T0 + 1.05) / rms(data, T0 + 0.95, T0 + 0.99)).toBeLessThan(1.05);
     expect(onsets(data)).toHaveLength(1);
   });
@@ -316,9 +310,9 @@ describe('slides', () => {
       .build();
     const { data } = await render(song);
 
-    expect(pitchAt(data, T0 + 0.005, T0 + 0.03, A4)).toBeLessThan(-100);
-    expect(Math.abs(pitchAt(data, T0 + 0.2, T0 + 0.8, A4))).toBeLessThan(1);
-    expect(pitchAt(data, T0 + 0.96, T0 + 0.995, A4)).toBeLessThan(-100);
+    expect(centsFrom(data, T0 + 0.005, T0 + 0.03, A4)).toBeLessThan(-100);
+    expect(Math.abs(centsFrom(data, T0 + 0.2, T0 + 0.8, A4))).toBeLessThan(1);
+    expect(centsFrom(data, T0 + 0.96, T0 + 0.995, A4)).toBeLessThan(-100);
   });
 });
 
@@ -367,7 +361,7 @@ describe('trill and tremolo picking', () => {
     for (const [index, onset] of found.entries()) {
       expect(Math.abs(onset - (T0 + index * 0.0625))).toBeLessThan(0.002);
       const expected = index % 2 === 0 ? A4 : B4;
-      expect(Math.abs(pitchAt(data, onset + 0.001, onset + 0.015, expected))).toBeLessThan(5);
+      expect(Math.abs(centsFrom(data, onset + 0.001, onset + 0.015, expected))).toBeLessThan(5);
     }
   });
 
@@ -400,9 +394,9 @@ describe('harmonics', () => {
       .build();
     const { data } = await render(song);
 
-    expect(Math.abs(pitchAt(data, T0 + 0.05, T0 + 0.45, E4 * 2))).toBeLessThan(1);
-    expect(Math.abs(pitchAt(data, T0 + 0.55, T0 + 0.95, E4 * 3))).toBeLessThan(1);
-    expect(Math.abs(pitchAt(data, T0 + 1.05, T0 + 1.45, E4 * 4))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 0.05, T0 + 0.45, E4 * 2))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 0.55, T0 + 0.95, E4 * 3))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 1.05, T0 + 1.45, E4 * 4))).toBeLessThan(1);
   });
 
   it('raises an artificial harmonic by its stated interval', async () => {
@@ -414,7 +408,7 @@ describe('harmonics', () => {
       .build();
     const { data } = await render(song);
 
-    expect(Math.abs(pitchAt(data, T0 + 0.05, T0 + 0.9, A4 * 2))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 0.05, T0 + 0.9, A4 * 2))).toBeLessThan(1);
   });
 
   it('maps the frets of the common nodes to their overtones', () => {
@@ -448,8 +442,8 @@ describe('grace notes', () => {
       .build();
     const { data } = await render(song);
 
-    expect(Math.abs(pitchAt(data, T0 + 0.39, T0 + 0.49, A4))).toBeLessThan(1);
-    expect(Math.abs(pitchAt(data, T0 + 0.52, T0 + 0.9, B4))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 0.39, T0 + 0.49, A4))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 0.52, T0 + 0.9, B4))).toBeLessThan(1);
     expect(peak(data, T0 + 0.2, T0 + 0.37)).toBeLessThan(1e-4);
   });
 
@@ -465,8 +459,8 @@ describe('grace notes', () => {
     const { data } = await render(song);
 
     expect(peak(data, T0 + 0.2, T0 + 0.49)).toBeLessThan(1e-4);
-    expect(Math.abs(pitchAt(data, T0 + 0.51, T0 + 0.61, A4))).toBeLessThan(1);
-    expect(Math.abs(pitchAt(data, T0 + 0.65, T0 + 0.95, B4))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 0.51, T0 + 0.61, A4))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 0.65, T0 + 0.95, B4))).toBeLessThan(1);
   });
 });
 

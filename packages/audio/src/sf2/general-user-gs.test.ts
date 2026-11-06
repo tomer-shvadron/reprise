@@ -1,32 +1,24 @@
 import { describe, expect, it } from 'vitest';
 
-import { energyAbove } from '../articulations/test/render';
 import { RegionMap } from '../sampler/region-map';
 import type { Region, SampleRef } from '../sampler/region-map';
 import type { SampleSource } from '../sampler/sample-source';
 import { Sampler } from '../sampler/sampler';
 import type { SamplerTrack } from '../sampler/sampler';
-import { cents, offline, peak, rms, zeroCrossingFrequency } from '../sampler/test/offline';
+import {
+  bandEnergy,
+  cents,
+  offline,
+  peak,
+  rms,
+  zeroCrossingFrequency,
+} from '../sampler/test/offline';
+import { loadGeneralUserBytes } from '../test/harness';
 import type { PresetReport, ResolvedPreset } from './resolve';
 import { PERCUSSION_BANK, Sf2Soundfont } from './soundfont';
 
 // Fetched by `pnpm sounds:fetch`, never committed; without it this suite skips.
-const BANK = new URL('../../../../apps/web/public/sounds/gm/GeneralUser-GS.sf2', import.meta.url);
-
-async function load(): Promise<Uint8Array | undefined> {
-  try {
-    const response = await fetch(BANK);
-    if (!response.ok) return undefined;
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    // A dev server may answer a missing file with its HTML fallback rather than a 404.
-    const riff = String.fromCodePoint(...bytes.subarray(0, 4));
-    return riff === 'RIFF' ? bytes : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-const bytes = await load();
+const bytes = await loadGeneralUserBytes();
 if (!bytes) {
   console.warn('GeneralUser GS is not present; run `pnpm sounds:fetch` to include its suite.');
 }
@@ -292,7 +284,8 @@ describe.skipIf(!font)('GeneralUser GS', () => {
       }),
       strikes,
     );
-    const ratio = energyAbove(filtered, 3000, 0.1, 0.6) / energyAbove(open, 3000, 0.1, 0.6);
+    const ratio =
+      bandEnergy(filtered, 3000, 10_000, 0.1, 0.6) / bandEnergy(open, 3000, 10_000, 0.1, 0.6);
     console.info(
       `Synth Bass 1 C3: cutoffs ${cutoffs.map((c) => (c ?? 0).toFixed(0)).join(', ')} Hz, ` +
         `energy above 3 kHz ×${ratio.toFixed(3)}`,
