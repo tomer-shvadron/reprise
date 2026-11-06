@@ -1,5 +1,5 @@
 import { channelVolumeToGain } from '@reprise/audio';
-import { applyCommand, createTrack, newId, setNote, type Score } from '@reprise/model';
+import { applyCommand, createTrack, newId, PPQ, setNote, type Score } from '@reprise/model';
 import { beatOf, note, score, type BeatSpec } from '@reprise/model/testing';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -229,6 +229,41 @@ describe('the audio service', () => {
       ]);
 
       expect(afterSeek).toBeCloseTo(channelVolumeToGain(100));
+      audio.dispose();
+    });
+
+    it('is restored when a seek lands during a count-in', async () => {
+      const song = mixed();
+      const trackId = song.tracks[0]?.id ?? '';
+      const { playback, audio, render, debug } = setup({ seconds: 2.9 });
+      await open(audio, song);
+      audio.unlock();
+      const { sampler } = debug();
+      // From bar 3, so the count-in's last beat already carries bar 2's volume 20.
+      audio.seek(2 * 4 * PPQ);
+      audio.setCountIn(true);
+      audio.play();
+      let state: string | undefined;
+      let inBarOne = 0;
+
+      await render([
+        {
+          at: 2,
+          run: () => {
+            state = playback.getState().transport;
+            audio.seek(0);
+          },
+        },
+        {
+          at: 2.8,
+          run: () => {
+            inBarOne = sampler.strip(trackId)?.gain ?? 0;
+          },
+        },
+      ]);
+
+      expect(state).toBe('counting-in');
+      expect(inBarOne).toBeCloseTo(channelVolumeToGain(100));
       audio.dispose();
     });
 

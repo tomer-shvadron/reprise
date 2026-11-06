@@ -417,7 +417,10 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     },
 
     seek(tick) {
-      if (engine && doc) engine.seek(tick);
+      if (!engine || !doc) return;
+      // A seek during a count-in emits `playing` after `counting-in`, which skips the reset there.
+      if (isRunning(transport)) resetBaseline();
+      engine.seek(tick);
     },
 
     setTempo(mode, value) {
