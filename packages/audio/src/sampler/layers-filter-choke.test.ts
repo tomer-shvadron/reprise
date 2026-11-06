@@ -226,7 +226,7 @@ describe('stealing by audible level', () => {
     expect(sampler.pool.active(0.5)).not.toContain(fading);
   });
 
-  it('never steals a voice starting with the new note, such as its own layer', () => {
+  it('steals a started voice before one starting with the new note, such as its own layer', () => {
     const { sampler } = setup(1, 2);
     sampler.addTrack(
       TRACK,
@@ -239,6 +239,17 @@ describe('stealing by audible level', () => {
     sampler.noteOn('t', { key: 64, velocity: 100, when: 0.1 });
     expect(sampler.pool.stolen).toBe(2);
     expect(sampler.pool.active(0.1).map((voice) => voice.key)).toEqual([64, 64]);
+  });
+
+  it('holds the polyphony for a chord, stealing its quietest partner when nothing else is left', () => {
+    const { sampler } = setup(1, 2);
+    sampler.addTrack(TRACK, instrument([region()], { a440: sine(440) }));
+    sampler.noteOn('t', { key: 60, velocity: 100, when: 0 });
+    sampler.noteOn('t', { key: 64, velocity: 40, when: 0 });
+    sampler.noteOn('t', { key: 67, velocity: 80, when: 0 });
+    expect(sampler.pool.active(0)).toHaveLength(2);
+    expect(sampler.pool.stolen).toBe(1);
+    expect(sampler.pool.active(0).map((voice) => voice.key)).toEqual([60, 67]);
   });
 });
 

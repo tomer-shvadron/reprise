@@ -257,6 +257,12 @@ export class Voice {
     return this.#gainAt(time) * this.#envelopeAt(time);
   }
 
+  /** What a steal ranks the voice by: `levelAt`, or before its onset the level it starts at. */
+  stealLevelAt(time: number): number {
+    if (time <= this.startTime) return this.#gainAt(this.startTime);
+    return this.levelAt(time);
+  }
+
   /** The level gain's automation evaluated as Web Audio does: a step, or an exponential ramp from the previous point. */
   #gainAt(time: number): number {
     const events = this.#gainEvents;

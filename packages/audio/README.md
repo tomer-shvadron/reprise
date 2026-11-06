@@ -382,7 +382,9 @@ soloed one; it still goes through the insert, the fader and the panner.
 - **Stealing** is released voices first, then the quietest at the new note's time, then the
   oldest. Quietest is what the voice plays: envelope × velocity × the articulation gain automation
   (a palm mute's -18 dB, a fade-in from -48 dB), all computed analytically. A note that has not
-  started yet, or starts with the new one (its own layers, a chord), is never stolen. The stolen
+  started yet, or starts with the new one (its own layers, a chord), is stolen only when every
+  other voice is gone, the quietest at its onset first, so `polyphony` is a hard cap: a
+  three-note chord at polyphony 2 keeps its two louder notes. The stolen
   voice fades over 5 ms from its level at that moment, release in progress included, and no longer
   counts against the limit. Each layer of a note is a voice of its own and counts as one.
 - **Strings choke.** A new note on a string damps whatever sounds on that string, let-ring or
