@@ -20,6 +20,12 @@ export { readGpif } from './gpif/read-gpif';
 export type { GpifReadOptions, GpifReadResult } from './gpif/read-gpif';
 export type { GpifWarning, GpifWarningCode } from './gpif/warnings';
 
+// gpx (Guitar Pro 6): the BCFZ/BCFS container around the same gpif document.
+export { GpxError } from './gpx/errors';
+export type { GpxErrorCode } from './gpx/errors';
+export { readGpx } from './gpx/read-gpx';
+export type { GpxReadResult } from './gpx/read-gpx';
+
 // The gp writer: the model as a gpif document, and the Guitar Pro 7 and 8 zip around it.
 export { writeGp } from './gp/write-gp';
 export type { GpWriteOptions, GpWriteResult } from './gp/write-gp';
