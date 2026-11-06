@@ -9,8 +9,7 @@ import { peak } from './signal';
 /** What `scripts/fixtures/provide-scores.ts` provides: each fixture read in Node, as a native document. */
 interface ScoreFixture {
   path: string;
-  native?: string;
-  skipped?: string;
+  native: string;
 }
 
 declare module 'vitest' {
@@ -36,37 +35,34 @@ describe('the fixture corpus', () => {
   });
 
   for (const fixture of fixtures) {
-    const { native, skipped } = fixture;
-    it.skipIf(!generalUser || native === undefined)(
-      `${fixture.path} renders through the GM tier${skipped ? ` (skipped: ${skipped})` : ''}`,
-      async () => {
-        if (!generalUser || native === undefined) return;
-        const { score } = parseNative(new TextEncoder().encode(native));
-        const rendered = await renderScore(score, {
-          instruments: generalUser,
-          sampleRate: SAMPLE_RATE,
-          tail: 0.5,
-        });
-        const notes = score.tracks.some((track) =>
-          track.bars.some((bar) =>
-            bar.voices.some((voice) => voice.beats.some((beat) => beat.notes.length > 0)),
-          ),
-        );
-        const memory = rendered.source?.memory();
-        console.info(
-          `${fixture.path}: ${rendered.songSeconds.toFixed(1)} s, ` +
-            `${((memory?.decodedBytes ?? 0) / MEGABYTE).toFixed(1)} MiB decoded, ` +
-            `${String(memory?.residents.length ?? 0)} instruments`,
-        );
+    const { native } = fixture;
+    it.skipIf(!generalUser)(`${fixture.path} renders through the GM tier`, async () => {
+      if (!generalUser) return;
+      const { score } = parseNative(new TextEncoder().encode(native));
+      const rendered = await renderScore(score, {
+        instruments: generalUser,
+        sampleRate: SAMPLE_RATE,
+        tail: 0.5,
+      });
+      const notes = score.tracks.some((track) =>
+        track.bars.some((bar) =>
+          bar.voices.some((voice) => voice.beats.some((beat) => beat.notes.length > 0)),
+        ),
+      );
+      const memory = rendered.source?.memory();
+      console.info(
+        `${fixture.path}: ${rendered.songSeconds.toFixed(1)} s, ` +
+          `${((memory?.decodedBytes ?? 0) / MEGABYTE).toFixed(1)} MiB decoded, ` +
+          `${String(memory?.residents.length ?? 0)} instruments`,
+      );
 
-        expect(rendered.missed).toEqual([]);
-        expect(memory?.decodedBytes ?? 0).toBeLessThanOrEqual(GM_BUDGET_BYTES);
-        expect(rendered.data.every(Number.isFinite)).toBe(true);
-        const loudest = peak(rendered, 0, rendered.data.length / SAMPLE_RATE);
-        expect(loudest).toBeLessThanOrEqual(1);
-        if (notes) expect(loudest).toBeGreaterThan(1e-3);
-        else expect(loudest).toBe(0);
-      },
-    );
+      expect(rendered.missed).toEqual([]);
+      expect(memory?.decodedBytes ?? 0).toBeLessThanOrEqual(GM_BUDGET_BYTES);
+      expect(rendered.data.every(Number.isFinite)).toBe(true);
+      const loudest = peak(rendered, 0, rendered.data.length / SAMPLE_RATE);
+      expect(loudest).toBeLessThanOrEqual(1);
+      if (notes) expect(loudest).toBeGreaterThan(1e-3);
+      else expect(loudest).toBe(0);
+    });
   }
 });
