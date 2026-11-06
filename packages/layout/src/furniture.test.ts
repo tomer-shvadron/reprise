@@ -159,6 +159,7 @@ describe('staff furniture', () => {
         : [],
     );
     expect(clefs).toEqual(['gClef 28', 'fClef 21', 'gClef 21']);
+    expect(summarise(result).primitives.filter((line) => /Clef/.test(line))).toMatchSnapshot();
   });
 
   it('stacks the standard staff above the tab for a track shown in both', () => {
@@ -255,6 +256,10 @@ describe('master-bar markings', () => {
       (primitive) => primitive.kind === 'path' && !primitive.fill,
     );
     expect(brackets.length).toBe(result.systems.length);
+    expect({
+      brackets: brackets.map(describePrimitive),
+      labels: summarise(result).primitives.filter((line) => line.includes('"1."')),
+    }).toMatchSnapshot();
   });
 
   it('draws jumps as words at the bar end and targets as symbols at its start', () => {
@@ -311,6 +316,9 @@ describe('master-bar markings', () => {
     };
     expect(names(0).slice(0, 2)).toEqual(['Lead Guitar', 'Bass']);
     expect(names(1).slice(0, 2)).toEqual(['L.Gt.', 'Bs.']);
+    expect(
+      summarise(result).primitives.filter((line) => /Lead Guitar|L\.Gt\.|Bass|Bs\./.test(line)),
+    ).toMatchSnapshot();
   });
 });
 
