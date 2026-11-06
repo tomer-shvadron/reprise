@@ -164,16 +164,14 @@ exports[`percussion staff > stems one voice up and splits two by voice 1`] = `
   "glyph noteheadXBlack @288.03,99.8 size 28 <note00000015>",
   "line @143.97,126.62 -> 143.97,75.3 w 0.84 <beat00000001>",
   "line @165.67,112.62 -> 165.67,75.3 w 0.84 <beat00000002>",
-  "path filled M143.55 75.3L166.09 75.3L166.09 78.8L143.55 78.8Z <beat00000001>",
   "line @187.37,126.62 -> 187.37,75.3 w 0.84 <beat00000003>",
   "line @209.07,112.62 -> 209.07,75.3 w 0.84 <beat00000004>",
-  "path filled M186.95 75.3L209.49 75.3L209.49 78.8L186.95 78.8Z <beat00000003>",
+  "path filled M143.55 75.3L209.49 75.3L209.49 78.8L143.55 78.8Z <beat00000001>",
   "line @230.77,126.62 -> 230.77,75.3 w 0.84 <beat00000005>",
   "line @252.47,112.62 -> 252.47,75.3 w 0.84 <beat00000006>",
-  "path filled M230.35 75.3L252.89 75.3L252.89 78.8L230.35 78.8Z <beat00000005>",
   "line @274.17,126.62 -> 274.17,75.3 w 0.84 <beat00000007>",
   "line @295.87,112.62 -> 295.87,75.3 w 0.84 <beat00000008>",
-  "path filled M273.75 75.3L296.29 75.3L296.29 78.8L273.75 78.8Z <beat00000007>",
+  "path filled M230.35 75.3L296.29 75.3L296.29 78.8L230.35 78.8Z <beat00000005>",
   "glyph noteheadXBlack @322.12,99.8 size 28 <note00000017>",
   "glyph noteheadXBlack @343.82,99.8 size 28 <note00000018>",
   "glyph noteheadXBlack @365.52,99.8 size 28 <note00000019>",
@@ -192,16 +190,14 @@ exports[`percussion staff > stems one voice up and splits two by voice 1`] = `
   "line @452.67,114.98 -> 452.67,138.3 w 0.84 <beat00000020>",
   "line @329.82,96.69 -> 329.82,75.3 w 0.84 <beat00000009>",
   "line @351.52,96.69 -> 351.52,75.3 w 0.84 <beat00000010>",
-  "path filled M329.4 75.3L351.94 75.3L351.94 78.8L329.4 78.8Z <beat00000009>",
   "line @373.22,96.69 -> 373.22,75.3 w 0.84 <beat00000011>",
   "line @394.92,96.69 -> 394.92,75.3 w 0.84 <beat00000012>",
-  "path filled M372.8 75.3L395.34 75.3L395.34 78.8L372.8 78.8Z <beat00000011>",
+  "path filled M329.4 75.3L395.34 75.3L395.34 78.8L329.4 78.8Z <beat00000009>",
   "line @416.62,96.69 -> 416.62,75.3 w 0.84 <beat00000013>",
   "line @438.32,96.69 -> 438.32,75.3 w 0.84 <beat00000014>",
-  "path filled M416.2 75.3L438.74 75.3L438.74 78.8L416.2 78.8Z <beat00000013>",
   "line @460.02,96.69 -> 460.02,75.3 w 0.84 <beat00000015>",
   "line @481.72,96.69 -> 481.72,75.3 w 0.84 <beat00000016>",
-  "path filled M459.6 75.3L482.14 75.3L482.14 78.8L459.6 78.8Z <beat00000015>",
+  "path filled M416.2 75.3L482.14 75.3L482.14 78.8L416.2 78.8Z <beat00000013>",
 ]
 `;
 
@@ -247,7 +243,7 @@ exports[`standard staff > beams 3/4 by the beat and 6/8 by the dotted quarter 1`
 ]
 `;
 
-exports[`standard staff > beams eighths and sixteenths by the beat in 4/4 1`] = `
+exports[`standard staff > beams eighths by the half bar and sixteenths by the beat in 4/4 1`] = `
 [
   "glyph noteheadBlack @139.23,111.7 size 28 <note00000001>",
   "glyph noteheadBlack @160.93,108.2 size 28 <note00000002>",
@@ -263,11 +259,10 @@ exports[`standard staff > beams eighths and sixteenths by the beat in 4/4 1`] = 
   "glyph accidentalNatural @315.27,108.2 size 28 <note00000010>",
   "glyph noteheadBlack @321.38,108.2 size 28 <note00000010>",
   "line @147.07,110.52 -> 147.07,87.2 w 0.84 <beat00000001>",
-  "line @168.77,107.02 -> 168.77,83.7 w 0.84 <beat00000002>",
-  "path filled M146.65 87.27L169.19 83.63L169.19 87.13L146.65 90.77Z <beat00000001>",
-  "line @194.05,107.02 -> 194.05,83.7 w 0.84 <beat00000003>",
+  "line @168.77,107.02 -> 168.77,84.99 w 0.84 <beat00000002>",
+  "line @194.05,107.02 -> 194.05,82.41 w 0.84 <beat00000003>",
   "line @215.75,103.52 -> 215.75,80.2 w 0.84 <beat00000004>",
-  "path filled M193.63 83.77L216.17 80.13L216.17 83.63L193.63 87.27Z <beat00000003>",
+  "path filled M146.65 87.24L216.17 80.16L216.17 83.66L146.65 90.74Z <beat00000001>",
   "line @230.03,95.38 -> 230.03,118.7 w 0.84 <beat00000005>",
   "line @246.83,91.88 -> 246.83,116.37 w 0.84 <beat00000006>",
   "line @263.63,88.38 -> 263.63,114.03 w 0.84 <beat00000007>",
@@ -331,16 +326,17 @@ exports[`standard staff > keeps beams of repeated pitches horizontal and others 
 [
   "glyph noteheadBlack @139.23,124.3 size 28 <note00000001>",
   "glyph noteheadBlack @160.93,124.3 size 28 <note00000002>",
-  "line @179.83,138.3 -> 193.69,138.3 w 1.12 <beat00000003>",
-  "glyph noteheadBlack @182.63,138.3 size 28 <note00000003>",
-  "glyph noteheadBlack @204.33,99.8 size 28 <note00000004>",
-  "glyph restHalf @226.21,117.3 size 28 <beat00000005>",
+  "glyph restQuarter @182.99,117.3 size 28 <beat00000003>",
+  "line @206.43,138.3 -> 220.29,138.3 w 1.12 <beat00000004>",
+  "glyph noteheadBlack @209.23,138.3 size 28 <note00000003>",
+  "glyph noteheadBlack @230.93,99.8 size 28 <note00000004>",
+  "glyph restQuarter @252.99,117.3 size 28 <beat00000006>",
   "line @147.07,123.12 -> 147.07,99.8 w 0.84 <beat00000001>",
   "line @168.77,123.12 -> 168.77,99.8 w 0.84 <beat00000002>",
   "path filled M146.65 99.8L169.19 99.8L169.19 103.3L146.65 103.3Z <beat00000001>",
-  "line @190.47,137.12 -> 190.47,82.3 w 0.84 <beat00000003>",
-  "line @212.17,98.62 -> 212.17,75.3 w 0.84 <beat00000004>",
-  "path filled M190.05 82.44L212.59 75.16L212.59 78.66L190.05 85.94Z <beat00000003>",
+  "line @217.07,137.12 -> 217.07,82.3 w 0.84 <beat00000004>",
+  "line @238.77,98.62 -> 238.77,75.3 w 0.84 <beat00000005>",
+  "path filled M216.65 82.44L239.19 75.16L239.19 78.66L216.65 85.94Z <beat00000004>",
 ]
 `;
 
@@ -537,11 +533,9 @@ exports[`standard staff > shows dynamics below where they change and fingering a
   "line @200.27,112.62 -> 200.27,89.3 w 0.84 <beat00000003>",
   "glyph noteheadBlack @219.03,110.3 size 28 <note00000004>",
   "line @226.87,109.12 -> 226.87,85.8 w 0.84 <beat00000004>",
-  "glyph dynamicPiano @159.74,145.13 size 28 <note00000002>",
-  "glyph dynamicPiano @169.96,145.13 size 28 <note00000002>",
+  "glyph dynamicPP @159.78,145.13 size 28 <note00000002>",
   "glyph fingering3 @193.41,83 size 28 <note00000003>",
-  "glyph dynamicMezzo @211.94,145.13 size 28 <note00000004>",
-  "glyph dynamicForte @224.18,145.13 size 28 <note00000004>",
+  "glyph dynamicMF @212,145.13 size 28 <note00000004>",
   "glyph fingeringILower @220.86,83 size 28 <note00000004>",
 ]
 `;

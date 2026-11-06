@@ -1,5 +1,4 @@
 import {
-  PPQ,
   beatTicks,
   type Beat,
   type Duration,
@@ -14,9 +13,8 @@ import type { StaffBar } from '../staff-module';
 import { planChord, positionY, type ChordNote, type ChordPlan } from './chord';
 import { shownDynamics } from './dynamics';
 import { barAccidentals, placeNote, type ShownAccidental } from './pitch';
+import { beamCount, beamGroups, tupletGroups, type RhythmEvent } from '../rhythm';
 import {
-  beamCount,
-  beamGroups,
   beamLine,
   dotsWidth,
   tieReach,
@@ -157,56 +155,6 @@ function directionByPosition(positions: readonly number[]): StemDirection {
   return below > above ? 'up' : 'down';
 }
 
-/** The values a tuplet of unequal beats closes on, in ticks: a half note down to a 256th. */
-const PLAIN_VALUES = [2, 4, 8, 16, 32, 64, 128, 256].map((duration) => (PPQ * 4) / duration);
-const TICK_EPSILON = 1e-6;
-
-/**
- * Each beat's tuplet run, grouped as alphaTab groups them so brackets match Guitar Pro's:
- * consecutive beats of one ratio, closed after `n` beats of one value, or once beats of unequal
- * values add up to a plain note value (a quarter-and-eighth triplet is one group, the quarter
- * triplets after it another).
- */
-function tupletRuns(beats: readonly Beat[]): (number | undefined)[] {
-  const runs: (number | undefined)[] = [];
-  let run = -1;
-  let open = false;
-  let ratio = '';
-  let count = 0;
-  let filled = 0;
-  let first = 0;
-  let equal = true;
-  for (const beat of beats) {
-    const { tuplet } = beat;
-    if (!tuplet) {
-      runs.push(undefined);
-      open = false;
-      continue;
-    }
-    const key = `${String(tuplet.n)}:${String(tuplet.of)}`;
-    const ticks = beatTicks(beat);
-    if (!open || key !== ratio) {
-      run += 1;
-      open = true;
-      ratio = key;
-      count = 0;
-      filled = 0;
-      first = ticks;
-      equal = true;
-    }
-    count += 1;
-    filled += ticks;
-    if (Math.abs(ticks - first) > TICK_EPSILON) equal = false;
-    runs.push(run);
-    const factor = Math.max(1, Math.floor(tuplet.n / tuplet.of));
-    const full = equal
-      ? count === tuplet.n
-      : PLAIN_VALUES.some((value) => Math.abs(filled - value * factor) < TICK_EPSILON);
-    if (full) open = false;
-  }
-  return runs;
-}
-
 function restPlan(
   beat: Beat,
   voice: number,
@@ -284,24 +232,27 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
 
   for (const [voice, { beats: voiceBeats }] of bar.voices.entries()) {
     const notes = voiceBeats.map((beat) => chordNotes(beat.notes));
-    const runs = tupletRuns(voiceBeats);
     const ticks: number[] = [];
     let tick = 0;
     for (const beat of voiceBeats) {
       ticks.push(tick);
       tick += beatTicks(beat);
     }
-    const grouped = beamGroups(
-      voiceBeats.map((beat, i) => {
-        const run = runs[i];
-        return {
-          tick: ticks[i] ?? 0,
-          beamable: !beat.rest && beat.notes.length > 0 && beamCount(beat.duration) > 0,
-          ...(run !== undefined && { tuplet: run }),
-        };
-      }),
-      time,
-    );
+    const events = voiceBeats.map((beat, i): RhythmEvent => ({
+      tick: ticks[i] ?? 0,
+      ticks: beatTicks(beat),
+      duration: beat.duration,
+      dots: beat.dots,
+      ...(beat.tuplet && { tuplet: beat.tuplet }),
+      silent: beat.rest || beat.notes.length === 0,
+    }));
+    const tupletList = tupletGroups(events);
+    const runs: (number | undefined)[] = voiceBeats.map(() => undefined);
+    for (const [g, group] of tupletList.entries()) {
+      for (let i = group.start; i <= group.end; i++) runs[i] = g;
+    }
+    // A group of one takes a flag, which the chord plan draws by itself.
+    const grouped = beamGroups(events, time, tupletList).filter((members) => members.length > 1);
     const groupOf = new Map<number, number>();
     const directions = voiceBeats.map((beat, i): StemDirection => {
       if (multiVoice) return voiceDirection(voice);

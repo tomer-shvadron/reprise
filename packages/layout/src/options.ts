@@ -1,6 +1,6 @@
 import type { Id, Notation, Score, Track } from '@reprise/model';
 
-import type { LayoutOptions, Margins, StaffType } from './types';
+import type { LayoutOptions, Margins, StaffType, TiedNotes } from './types';
 
 /** Paper sizes in CSS px at 96 dpi. */
 export const PAGE_SIZES = {
@@ -35,6 +35,7 @@ export interface ResolvedOptions {
   trackGap: number;
   systemGap: number;
   tracks: VisibleTrack[];
+  tiedNotes: TiedNotes;
   /** Everything a cached bar measurement depends on besides the bars themselves. */
   measureKey: string;
   /** Everything else a cached system depends on. */
@@ -96,7 +97,8 @@ export function resolveOptions(score: Score, options: LayoutOptions): ResolvedOp
   const nameKey = tracks.map(({ track }) => [track.name, track.shortName]);
   const margins = { ...DEFAULT_MARGINS[options.mode], ...options.margins };
   const pageGap = options.pageGap ?? DEFAULT_GAPS.pageGap;
-  const measureKey = JSON.stringify([space, trackKey]);
+  const tiedNotes = options.tiedNotes ?? 'parentheses';
+  const measureKey = JSON.stringify([space, tiedNotes, trackKey]);
   return {
     mode: options.mode,
     width,
@@ -106,6 +108,7 @@ export function resolveOptions(score: Score, options: LayoutOptions): ResolvedOp
     space,
     ...gaps,
     tracks,
+    tiedNotes,
     measureKey,
     systemKey: JSON.stringify([
       measureKey,

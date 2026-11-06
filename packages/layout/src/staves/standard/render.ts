@@ -1,8 +1,9 @@
-import { beatTicks, type Dynamics, type Id } from '@reprise/model';
+import { beatTicks, type Id } from '@reprise/model';
 
-import { engraving, type GlyphName } from '../../metrics';
+import { engraving } from '../../metrics';
 import { glyph, glyphWidth, line, rect, union, type LayoutSink } from '../../primitives';
 import type { Rect, StaffType } from '../../types';
+import { DYNAMICS_GLYPHS } from '../dynamics';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
 import type { ChordPlan } from './chord';
 import { GRACE_SCALE, noteMatches, type BarPlan, type BeatPlan } from './plan';
@@ -21,16 +22,6 @@ import {
 
 const TIE_GAP = 0.15;
 const FINGERING_STEP = 1.1;
-
-const DYNAMIC_LETTERS: Record<string, GlyphName> = {
-  p: 'dynamicPiano',
-  m: 'dynamicMezzo',
-  f: 'dynamicForte',
-};
-
-function dynamicGlyphs(value: Dynamics): GlyphName[] {
-  return Array.from(value, (letter) => DYNAMIC_LETTERS[letter] ?? 'dynamicForte');
-}
 
 interface Context {
   input: StaffBar;
@@ -279,15 +270,12 @@ export function renderBar(
   for (const beat of plan.beats) {
     const x = beatX(context, beat);
     if (beat.dynamics) {
-      const names = dynamicGlyphs(beat.dynamics.value);
-      const width = names.reduce((sum, name) => sum + glyphWidth(name, space), 0);
-      let cursor = x - width / 2;
-      for (const name of names) {
-        sink.primitives.push(
-          glyph(name, cursor, top + plan.dynamicsY, space, { node: beat.dynamics.note.id }),
-        );
-        cursor += glyphWidth(name, space);
-      }
+      const name = DYNAMICS_GLYPHS[beat.dynamics.value];
+      sink.primitives.push(
+        glyph(name, x - glyphWidth(name, space) / 2, top + plan.dynamicsY, space, {
+          node: beat.dynamics.note.id,
+        }),
+      );
     }
     for (const [i, { glyph: name, note }] of [...beat.fingering].reverse().entries()) {
       const width = glyphWidth(name, space);

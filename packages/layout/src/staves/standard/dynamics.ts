@@ -1,7 +1,6 @@
 import { beatTicks, type Bar, type Dynamics, type Id, type Note, type Track } from '@reprise/model';
 
-/** A note's dynamics when nothing earlier says otherwise: the model's default. */
-const DEFAULT_DYNAMICS: Dynamics = 'f';
+import { DEFAULT_DYNAMICS } from '../dynamics';
 
 interface Sounding {
   tick: number;
