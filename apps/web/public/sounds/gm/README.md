@@ -1,7 +1,8 @@
 # GM tier soundfont
 
 This directory holds the General MIDI soundfont the GM tier plays, served by the web app at
-`/sounds/gm/GeneralUser-GS.sf2`. Only this README is committed; the soundfont and its license
+`/sounds/gm/GeneralUser-GS.sf2`, and in the packaged desktop app at
+`reprise://app/sounds/gm/GeneralUser-GS.sf2`. Only this README is committed; the soundfont and its license
 are fetched:
 
 ```sh

@@ -91,7 +91,8 @@ pnpm bench                 # the budgets table, one bench file at a time; scaled
 pnpm dev                   # the web app on the Vite dev server
 pnpm build                 # production build of the web app
 pnpm desktop:dev           # the Electron app around the web core
-pnpm desktop:build         # electron-vite build plus electron-builder installers
+pnpm desktop:build         # fetches the GM sound bank first, then electron-vite build plus electron-builder installers
+pnpm desktop:smoke         # launches the packaged app, opens a fixture and plays it (after desktop:build, macOS and Windows)
 pnpm fixtures:check        # re-describes fixtures/ with alphaTab, fails on a stale manifest
 pnpm sounds:fetch          # downloads the GM soundfont, verified by SHA-256
 pnpm layout:metrics:check  # fails when the committed layout font metrics are stale

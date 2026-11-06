@@ -1,12 +1,13 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 import {
   app,
   BrowserWindow,
   dialog,
   Menu,
+  protocol,
   screen,
   session,
   shell,
@@ -17,6 +18,7 @@ import {
 
 import type { FileFilter, MenuCommandId } from '@reprise/web';
 
+import { APP_INDEX_URL, APP_SCHEME, createAppProtocolHandler } from './app-protocol';
 import { isAppUrl } from './app-url';
 import { registerInvokeHandlers, sendEvent } from './ipc';
 import { menuTemplate } from './menu';
@@ -33,10 +35,15 @@ import {
 
 const DOCS_URL = 'https://github.com/tomer-shvadron/reprise/tree/main/docs';
 const PRELOAD = fileURLToPath(new URL('../preload/index.cjs', import.meta.url));
-const RENDERER_HTML = fileURLToPath(new URL('../renderer/index.html', import.meta.url));
+const RENDERER_DIR = fileURLToPath(new URL('../renderer/', import.meta.url));
 // Only a development build follows the dev server; a shipped app must not be pointed elsewhere.
 const RENDERER_URL = app.isPackaged ? undefined : process.env['ELECTRON_RENDERER_URL'];
-const APP_URL = RENDERER_URL ?? pathToFileURL(RENDERER_HTML).href;
+const APP_URL = RENDERER_URL ?? APP_INDEX_URL;
+
+// Before ready, so it stays above every await in this module.
+protocol.registerSchemesAsPrivileged([
+  { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
 
 const libraryDir = join(app.getPath('music'), 'Reprise');
 const dataDir = app.getPath('userData');
@@ -178,8 +185,7 @@ async function createWindow(): Promise<BrowserWindow> {
   trackWindowState(window);
   restrictNavigation(window);
 
-  if (RENDERER_URL) await window.loadURL(RENDERER_URL);
-  else await window.loadFile(RENDERER_HTML);
+  await window.loadURL(APP_URL);
   return window;
 }
 
@@ -207,6 +213,7 @@ function allowMicrophoneOnly(): void {
 async function start(): Promise<void> {
   await app.whenReady();
   await mkdir(libraryDir, { recursive: true });
+  protocol.handle(APP_SCHEME, createAppProtocolHandler(RENDERER_DIR));
   allowMicrophoneOnly();
   Menu.setApplicationMenu(
     Menu.buildFromTemplate(
