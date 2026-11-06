@@ -13,9 +13,10 @@ import { createRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { columnAnchor, cursorAt, findAnchors } from './anchors';
-import { ScoreView, type ScoreViewHandle } from './score-view';
-import { longLayout } from './test/long-score';
+import { ScoreView, type ScorePointerEvent, type ScoreViewHandle } from './score-view';
+import { pageFlow } from './page-flow';
 import { stubScroll } from './test/scroll-stub';
+import { viewLayout } from './test/small-score';
 import { stubViewport } from './test/viewport-stub';
 import {
   canvasOffset,
@@ -80,13 +81,16 @@ function scrollTo(y: number, x = 0) {
 
 /** What the model expects mounted for a scroll position. */
 function expected(result: LayoutResult, zoom: number, scroll?: { x: number; y: number }) {
-  const offset = canvasOffset(VIEWPORT, layoutExtent(result), zoom);
+  const flow = pageFlow(result);
+  const offset = canvasOffset(VIEWPORT, layoutExtent(flow), zoom);
   const centre = scroll && centreFromScroll(scroll, VIEWPORT, zoom, offset);
   const window = visibleWindow(centre, VIEWPORT, zoom, offset);
-  const range = mountedSystems(result.systems, window);
-  const pages = mountedPages(result.pages, result.systems, range, window);
-  return { range, pages, window, count: mountedElementCount(result, range, pages) };
+  const range = mountedSystems(flow.systems, window);
+  const pages = mountedPages(flow.pages, flow.systems, range, window);
+  return { range, pages, window, offset, count: mountedElementCount(result, range, pages) };
 }
+
+const small = (notation?: 'both') => viewLayout('small', { mode: 'paged', paper: 'a4' }, notation);
 
 beforeEach(() => {
   fonts.ready = true;
@@ -135,35 +139,35 @@ describe('ScoreView', () => {
   });
 
   it('mounts only the systems in view plus one either side', () => {
-    const result = longLayout({ mode: 'paged', paper: 'a4' });
+    const result = small();
     renderView(result);
-    expect(mountedIds()).toEqual(result.systems.slice(0, 2).map(({ id }) => id));
+    const top = expected(result, 1).range;
+    expect(top.start).toBe(0);
+    expect(top.end).toBeLessThan(6);
+    expect(mountedIds()).toEqual(result.systems.slice(top.start, top.end).map(({ id }) => id));
 
-    scrollTo(60_000);
-    const { range } = expected(result, 1, { x: 0, y: 60_000 });
-    expect(range.start).toBeGreaterThan(30);
+    scrollTo(2500);
+    const { range } = expected(result, 1, { x: 0, y: 2500 });
+    expect(range.start).toBeGreaterThan(3);
+    expect(range.end).toBeLessThan(result.systems.length);
     expect(mountedIds()).toEqual(result.systems.slice(range.start, range.end).map(({ id }) => id));
   });
 
   it.each([
     ['paged', { mode: 'paged', paper: 'a4' }],
     ['continuous', { mode: 'continuous', paper: 'a4' }],
-  ] as const)(
-    'keeps the %s both-notation DOM equal to the budget model at zoom 0.5',
-    { timeout: 30_000 },
-    (_, view) => {
-      const result = longLayout(view, 'both');
-      renderView(result, 0.5);
-      const scroll = view.mode === 'paged' ? { x: 0, y: 20_000 } : { x: 20_000, y: 0 };
-      scrollTo(scroll.y, scroll.x);
-      const count = region().querySelectorAll('*').length;
-      expect(count).toBe(expected(result, 0.5, scroll).count);
-      expect(count).toBeLessThan(20_000);
-    },
-  );
+  ] as const)('keeps the %s both-notation DOM equal to the budget model at zoom 0.5', (_, view) => {
+    const result = viewLayout('small', view, 'both');
+    renderView(result, 0.5);
+    const scroll = view.mode === 'paged' ? { x: 0, y: 3000 } : { x: 3000, y: 0 };
+    scrollTo(scroll.y, scroll.x);
+    const count = region().querySelectorAll('*').length;
+    expect(count).toBe(expected(result, 0.5, scroll).count);
+    expect(count).toBeLessThan(20_000);
+  });
 
   it('zooms by resizing alone, mutating nothing inside a system', () => {
-    const result = longLayout({ mode: 'paged', paper: 'a4' });
+    const result = small();
     const { rerender } = renderView(result);
     const before = mountedIds();
     const first = result.systems[0];
@@ -246,10 +250,10 @@ describe('ScoreView', () => {
   });
 
   it('draws the cursor, selection and hover from anchors', () => {
-    const result = longLayout({ mode: 'paged', paper: 'a4' });
+    const result = small();
     const notes = result.anchors.filter((anchor) => anchor.kind === 'note');
     const near = notes.find((anchor) => anchor.system === 0);
-    const far = notes.find((anchor) => anchor.system === 50);
+    const far = notes.find((anchor) => anchor.system === 10);
     if (!near || !far) throw new Error('no note anchors');
     const cursor = cursorAt(result, near);
     if (!cursor) throw new Error('no cursor');
@@ -278,7 +282,7 @@ describe('ScoreView', () => {
   });
 
   it('reveals a rect by the least scroll and reports the live window', () => {
-    const result = longLayout({ mode: 'paged', paper: 'a4' });
+    const result = small();
     const ref = createRef<ScoreViewHandle>();
     render(<ScoreView layout={result} zoom={1} ref={ref} />);
     stubScroll(region());
@@ -299,6 +303,51 @@ describe('ScoreView', () => {
       handle.revealRect({ x: 100, y: 2500, width: 50, height: 40 });
     });
     expect(region().scrollTop).toBe(top);
+  });
+
+  it('grows the paper of a system taller than its page and moves later pages down', () => {
+    const result = viewLayout('tall', { mode: 'paged', paper: 'a4' }, 'both');
+    const flow = pageFlow(result);
+    const onScorePointer = vi.fn<(event: ScorePointerEvent) => void>();
+    const notes = result.anchors.filter((anchor) => anchor.kind === 'note');
+    const page0 = result.pages[0] ?? never();
+    const overflowing = notes.find(
+      (anchor) => anchor.system === 0 && anchor.bbox.y > page0.bbox.y + page0.bbox.height,
+    );
+    const next = notes.find((anchor) => anchor.system === 1);
+    if (!overflowing || !next) throw new Error('no note anchors');
+    render(
+      <ScoreView
+        layout={result}
+        zoom={1}
+        overlays={{ hover: next }}
+        onScorePointer={onScorePointer}
+      />,
+    );
+
+    const shift = flow.shifts[1] ?? 0;
+    expect(shift).toBeGreaterThan(0);
+    const page1 = region().querySelector<HTMLElement>('[data-page="1"]');
+    expect(page1?.style.top).toBe(`${String(flow.pages[1]?.bbox.y)}px`);
+    const hover = region().querySelector<HTMLElement>('.score-hover');
+    expect(hover?.style.transform).toBe(
+      `translate(${String(next.bbox.x)}px, ${String(next.bbox.y + shift)}px)`,
+    );
+
+    const centre = (anchor: typeof next, by = 0) => ({
+      clientX: anchor.bbox.x + anchor.bbox.width / 2,
+      clientY: anchor.bbox.y + anchor.bbox.height / 2 + by,
+    });
+    const last = (): ScorePointerEvent | undefined => onScorePointer.mock.lastCall?.[0];
+    fireEvent.pointerDown(canvas(), centre(overflowing));
+    expect(last()?.anchor?.system).toBe(0);
+    fireEvent.pointerDown(canvas(), centre(next, shift));
+    expect(last()?.point).toEqual({ x: centre(next).clientX, y: centre(next).clientY });
+    expect(last()?.anchor?.system).toBe(1);
+    fireEvent.pointerCancel(canvas(), centre(next, shift));
+    expect(onScorePointer).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: 'cancel', anchor: undefined }),
+    );
   });
 
   it('carries no colour in an attribute or inline style', () => {

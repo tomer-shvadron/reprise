@@ -13,6 +13,17 @@ describe('score.css', () => {
     expect(withoutMixes).not.toMatch(LITERAL);
   });
 
+  it('declares the score tokens on a bare page too', () => {
+    expect(css).toMatch(/\.score-view,\s*\.score-pages,\s*\.score-page\s*{\s*--score-paper:/);
+  });
+
+  it('keeps the page size in print while the screen paper grows', () => {
+    expect(css).toMatch(/\.score-page\s*{[^}]*height: var\(--score-paper-height\);/);
+    expect(css).toMatch(
+      /@media print\s*{[\s\S]*\.score-page\s*{\s*height: var\(--score-page-height\);/,
+    );
+  });
+
   it('hides overlays and breaks pages in print', () => {
     expect(css).toMatch(/@media print\s*{[\s\S]*\.score-overlays\s*{\s*display: none;/);
     expect(css).toMatch(/\.score-page \+ \.score-page\s*{\s*break-before: page;/);

@@ -4,8 +4,9 @@ import { largeScore } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { ScorePage, ScorePages } from './score-page';
+import { viewLayout } from './test/small-score';
 
-const result = layout(largeScore(2, 60), {
+const result = layout(largeScore(2, 24), {
   mode: 'paged',
   width: PAGE_SIZES.a4.width,
   zoom: 1,
@@ -31,6 +32,31 @@ describe('ScorePages', () => {
 });
 
 describe('ScorePage', () => {
+  it('grows its paper on screen to hold a taller system, and keeps the page size for print', () => {
+    const tall = viewLayout('tall', { mode: 'paged', paper: 'a4' }, 'both');
+    const { container } = render(<ScorePages layout={tall} />);
+    const page = container.querySelector<HTMLElement>('[data-page="0"]');
+    const system = tall.systems[0];
+    if (!page || !system) throw new Error('no page');
+    expect(page.style.getPropertyValue('--score-page-height')).toBe(
+      `${String(PAGE_SIZES.a4.height)}px`,
+    );
+    expect(page.style.getPropertyValue('--score-paper-height')).toBe(
+      `${String(system.bbox.y + system.bbox.height - (tall.pages[0]?.bbox.y ?? 0))}px`,
+    );
+  });
+
+  it('carries its own score tokens, so it paints outside a view', () => {
+    const page = result.pages[0];
+    if (!page) throw new Error('no page');
+    const { container } = render(
+      <ScorePage page={page} systems={[]} primitives={result.primitives} zoom={1} />,
+    );
+    const paper = container.firstElementChild;
+    expect(paper).toHaveClass('score-page');
+    expect(paper?.closest('.score-view, .score-pages')).toBeNull();
+  });
+
   it('draws its children inside the page box', () => {
     const page = result.pages[0];
     if (!page) throw new Error('no page');

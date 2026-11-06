@@ -22,8 +22,8 @@ const OVERSCAN = 1;
 const right = (rect: Rect) => rect.x + rect.width;
 const bottom = (rect: Rect) => rect.y + rect.height;
 
-/** The layout's drawn area from the origin: every page and every system, which may overflow its page. */
-export function layoutExtent(layout: LayoutResult): Rect {
+/** The drawn area from the origin: every page and every system, which may overflow its page. */
+export function layoutExtent(layout: { pages: readonly Page[]; systems: readonly System[] }): Rect {
   let width = 0;
   let height = 0;
   for (const { bbox } of [...layout.pages, ...layout.systems]) {

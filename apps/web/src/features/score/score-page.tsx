@@ -2,6 +2,7 @@ import type { LayoutResult, Page, Primitive, System } from '@reprise/layout';
 import type { CSSProperties, ReactNode } from 'react';
 
 import { useScoreFonts } from './fonts';
+import { paperHeight } from './page-flow';
 import { SystemSvg } from './system-svg';
 
 import './score.css';
@@ -13,18 +14,36 @@ export interface ScorePageProps {
   /** The layout's flat primitive array. */
   primitives: readonly Primitive[];
   zoom: number;
+  /** The paper's height on screen in layout px; by default it holds `systems`. Print keeps the page's. */
+  height?: number;
   style?: CSSProperties;
   /** Drawn inside the page box, above the systems: a print header, a page number. */
   children?: ReactNode;
 }
 
-/** A paper rectangle and its systems, placed relative to the page. */
-export function ScorePage({ page, systems, primitives, zoom, style, children }: ScorePageProps) {
+/**
+ * A paper rectangle and its systems, placed relative to the page. It carries the score tokens
+ * itself, so it paints alone, outside a `ScoreView` or `ScorePages`.
+ */
+export function ScorePage({
+  page,
+  systems,
+  primitives,
+  zoom,
+  height = paperHeight(page, systems),
+  style,
+  children,
+}: ScorePageProps) {
+  const size: CSSProperties & Record<`--${string}`, string> = {
+    width: page.bbox.width * zoom,
+    '--score-paper-height': `${String(height * zoom)}px`,
+    '--score-page-height': `${String(page.bbox.height * zoom)}px`,
+  };
   return (
     <div
       className="score-page shadow-md print:shadow-none"
       data-page={page.index}
-      style={{ width: page.bbox.width * zoom, height: page.bbox.height * zoom, ...style }}
+      style={{ ...size, ...style }}
     >
       {systems.map((system) => (
         <SystemSvg
