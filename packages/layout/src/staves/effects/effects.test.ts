@@ -362,6 +362,32 @@ describe('note effects on the tab: lanes', () => {
     expect(content(result)).toMatchSnapshot();
   });
 
+  it('labels one harmonic kind per onset when two voices start different kinds together', () => {
+    const result = laid(
+      guitar()
+        .bar()
+        .beat('1', [note(1, 12, { harmonic: { kind: 'natural' } })])
+        .voice(1)
+        .beat('2', [note(4, 5, { harmonic: { kind: 'artificial' } })])
+        .beat('2', [note(4, 5, { harmonic: { kind: 'artificial' } })])
+        .build({ ids: 'sequential' }),
+    );
+    expect(texts(result).filter((t) => t.endsWith('.H.'))).toEqual(['N.H.']);
+  });
+
+  it('covers the gap between a number and its suffix with their knockouts', () => {
+    const built = guitar()
+      .bar()
+      .beat('1', [note(3, 5, { harmonic: { kind: 'artificial' } })])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const [number, suffix] = result.primitives.filter(
+      (p) => p.node === noteOf(built, 0, 0, 0).id && p.role === 'paper',
+    );
+    if (!number || !suffix) throw new Error('knockouts');
+    expect(suffix.bbox.x).toBeCloseTo(number.bbox.x + number.bbox.width, 1);
+  });
+
   it('draws beat marks: tapping, slapping, popping, pick strokes and fades', () => {
     const built = guitar()
       .bar()

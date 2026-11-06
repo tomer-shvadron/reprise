@@ -153,6 +153,9 @@ export function barRuns(bar: Bar): BarRuns {
   for (const { tick, ticks } of timed) end = Math.max(end, tick + ticks);
   const runs: Run[] = [];
   const open = new Map<string, Run>();
+  // The first voice keeps a lane at an onset: a run of another key starting there is joined up
+  // as usual but never drawn, so two harmonic kinds do not label one x twice.
+  const shown = new Map<RunLane, Run>();
   for (const { beat, tick, ticks } of timed) {
     if (!hasRunEffect(beat)) continue;
     for (const lane of RUN_LANES) {
@@ -168,6 +171,9 @@ export function barRuns(bar: Bar): BarRuns {
       }
       const run: Run = { lane, key, start: tick, end: tick + ticks, last: tick, width, beat };
       open.set(`${lane} ${key}`, run);
+      const taken = shown.get(lane);
+      if (taken && taken.key !== key && Math.abs(taken.start - tick) < TICK_EPSILON) continue;
+      shown.set(lane, run);
       runs.push(run);
     }
   }

@@ -106,11 +106,18 @@ function drawLabel(
   if (label.suffix) {
     const small = size * TAB.graceScale;
     const knockX = TAB.knockoutX * small;
-    const left = x + half + TAB.suffixGap * size;
+    const gap = TAB.suffixGap * size;
+    const left = x + half + gap;
     const smallHalfHeight = labelHalfHeight(small);
+    // The knockout covers the gap too, so no stub of string shows between number and suffix.
     sink.primitives.push(
       box(
-        rect(left, y - smallHalfHeight, label.suffix.width + 2 * knockX, smallHalfHeight * 2),
+        rect(
+          x + half,
+          y - smallHalfHeight,
+          gap + label.suffix.width + 2 * knockX,
+          smallHalfHeight * 2,
+        ),
         0,
         { fill: true, role: 'paper', node: label.note.id },
       ),
