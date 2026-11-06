@@ -10,7 +10,7 @@ import { createUiStore } from '@/state/ui';
 
 import { fetchFixture, fetchSyntheticSf2 } from './assets';
 import { drive, manualTicker } from './offline';
-import { fakePlatform } from './services';
+import { fakePlatform, memoryStorage } from './services';
 
 const SAMPLE_RATE = 44_100;
 export const PLAYER_START = 0.1;
@@ -22,7 +22,10 @@ export function player(soundfont: () => Promise<Uint8Array> = fetchSyntheticSf2)
   let context: OfflineAudioContext | undefined;
   const scheduler = manualTicker();
   const frames = manualTicker();
+  // Each player its own storage, so one test's stored preferences never reach the next.
+  const storage = memoryStorage();
   const services = createAppServices({
+    storage: () => storage,
     platform: fakePlatform({ openFile: () => Promise.resolve(next.file) }),
     ui: createUiStore('light'),
     audio: (playback) =>
@@ -44,8 +47,9 @@ export function player(soundfont: () => Promise<Uint8Array> = fetchSyntheticSf2)
   });
   render(<App services={services} keyboard="mac" />);
 
-  async function open(path: string) {
-    next.file = { name: path.split('/').pop() ?? path, bytes: await fetchFixture(path) };
+  /** Opens a fixture, under `name` in place of its own file name when one is given. */
+  async function open(path: string, name = path.split('/').pop() ?? path) {
+    next.file = { name, bytes: await fetchFixture(path) };
     await services.document.getState().open();
     await painted();
   }

@@ -1,5 +1,5 @@
 import type { PlaybackState } from '@reprise/audio';
-import { screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { timelineOf } from '@/state/timeline';
@@ -92,5 +92,17 @@ describe('the transport bar on the real engine', () => {
     expect(playingAt).toBeLessThanOrEqual(2.15);
     expect(rms(buffer, 0.1, 0.14)).toBeGreaterThan(1e-4);
     p.services.dispose();
+  });
+
+  it('gives each player its own stored preferences', () => {
+    const first = player();
+    press('c', { code: 'KeyC', altKey: true });
+    expect(first.services.playback.getState().settings.countIn).toBe(true);
+    first.services.dispose();
+    cleanup();
+
+    const second = player();
+    expect(second.services.playback.getState().settings.countIn).toBe(false);
+    second.services.dispose();
   });
 });
