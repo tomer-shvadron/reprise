@@ -44,7 +44,7 @@ Notes for the formats lane. The authoritative descriptions of the Guitar Pro for
 
 ## Oracle
 
-alphaTab is a dev-only dependency. It is used to (a) describe fixtures for the manifest, (b) compare parse results note by note, and (c) read back files our gp writer produces. Today it is imported only under `scripts/` (`scripts/fixtures/describe.ts`, which `pnpm fixtures:check` runs in CI); WP-041 adds the lint boundary that keeps it out of everything but test files and scripts.
+alphaTab is a dev-only dependency. It is used to (a) describe fixtures for the manifest, (b) compare parse results note by note, and (c) read back files our gp writer produces. The lint boundary `alphatab-only-in-oracle-tests` (root `eslint.config.js`) lets it be imported only under `packages/formats/test/` and `scripts/`, statically or with `import()`; anywhere else, test files of other packages and `packages/formats/src` included, the import fails lint with a message naming the boundary. Two places use it: `scripts/fixtures/describe.ts`, which `pnpm fixtures:check` runs in CI, and the oracle test in `packages/formats/test/oracle/`, which runs in `pnpm test` (its harness and tolerance list are described in `packages/formats/README.md`, "Oracle").
 
 **Verify format facts against alphaTab's readers, not memory.** Before the formats lane builds a model mapping on a claim about what a format carries, it checks the claim in `node_modules/@coderline/alphatab/dist/alphaTab.core.mjs`: the gpif parser (`_parseRhythm`, the automation parser) and the `Gp3To5Importer`'s beat and note readers. The review of WP-010 (PR #19) found three facts the sketch had wrong from memory:
 

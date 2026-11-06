@@ -130,10 +130,33 @@ function keyStep(fifths: number, space: number): number {
   return glyphWidth(keyAccidental(fifths), space) + space * 0.1;
 }
 
-/** Width of a key signature with `fifths` sharps (positive) or flats, its trailing gap included. */
-export function keyWidth(fifths: number, space: number): number {
-  if (fifths === 0) return 0;
-  return Math.abs(fifths) * keyStep(fifths, space) + space * 0.6;
+function naturalStep(space: number): number {
+  return glyphWidth('accidentalNatural', space) + space * 0.1;
+}
+
+/**
+ * Which of the `previous` key's accidentals a change to `fifths` cancels with naturals, as
+ * indices in the order they were added: all of them when the key goes to C or changes between
+ * sharps and flats, the ones dropped when it keeps fewer of the same kind.
+ */
+export function cancelledAccidentals(previous: number, fifths: number): number[] {
+  const count = Math.abs(previous);
+  if (count === 0) return [];
+  const sameKind = Math.sign(previous) === Math.sign(fifths);
+  const from = sameKind ? Math.min(count, Math.abs(fifths)) : 0;
+  return Array.from({ length: count - from }, (_, i) => from + i);
+}
+
+/**
+ * Width of a key signature with `fifths` sharps (positive) or flats, its trailing gap included,
+ * after the naturals cancelling a `previous` key.
+ */
+export function keyWidth(fifths: number, space: number, previous = 0): number {
+  const naturals = cancelledAccidentals(previous, fifths).length;
+  if (fifths === 0 && naturals === 0) return 0;
+  const cancel =
+    naturals > 0 ? naturals * naturalStep(space) + (fifths === 0 ? 0 : space * 0.4) : 0;
+  return cancel + Math.abs(fifths) * keyStep(fifths, space) + space * 0.6;
 }
 
 export function drawKey(
@@ -144,13 +167,31 @@ export function drawKey(
   x: number,
   space: number,
   node: Id,
+  previous = 0,
 ): void {
-  if (staff.type !== 'standard' || clef === 'percussion' || fifths === 0) return;
+  if (staff.type !== 'standard' || clef === 'percussion') return;
+  let cursor = x;
+  const naturals = cancelledAccidentals(previous, fifths);
+  if (naturals.length > 0) {
+    const old = (previous > 0 ? SHARP_POSITIONS : FLAT_POSITIONS)[clef];
+    for (const index of naturals) {
+      const position = old[index];
+      if (position === undefined) continue;
+      sink.primitives.push(
+        glyph('accidentalNatural', cursor, positionY(staff, position), space, { node }),
+      );
+      cursor += naturalStep(space);
+    }
+    cursor += space * 0.4;
+  }
+  if (fifths === 0) return;
   const positions = (fifths > 0 ? SHARP_POSITIONS : FLAT_POSITIONS)[clef];
   const name = keyAccidental(fifths);
   const step = keyStep(fifths, space);
   for (const [i, position] of positions.slice(0, Math.abs(fifths)).entries()) {
-    sink.primitives.push(glyph(name, x + i * step, positionY(staff, position), space, { node }));
+    sink.primitives.push(
+      glyph(name, cursor + i * step, positionY(staff, position), space, { node }),
+    );
   }
 }
 
