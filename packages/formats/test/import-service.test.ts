@@ -1,9 +1,10 @@
-import { ScoreSchema, parseNative } from '@reprise/model';
+import { NativeFormatError, ScoreSchema, parseNative } from '@reprise/model';
 import { fullScore } from '@reprise/model/testing';
 import { zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
 import {
+  FORMATS,
   FormatError,
   GpError,
   GpxError,
@@ -17,7 +18,13 @@ import {
   write,
 } from '../src/index';
 import type { Format, Warning } from '../src/index';
-import { countNotes, featuresOf, fixtureBytes, manifestEntries } from './corpus';
+import {
+  allManifestEntries,
+  countNotes,
+  featuresOf,
+  fixtureBytes,
+  manifestEntries,
+} from './corpus';
 import { bcfz, gpx } from './gpx-builder';
 import { kitchenSink } from './kitchen-sink';
 
@@ -63,9 +70,15 @@ function expectWellFormed(warnings: Warning[]): void {
 }
 
 describe('the import service on the fixture corpus', () => {
-  it('covers every format in the manifest', () => {
-    expect(entries).toHaveLength(manifestEntries(entries.map((e) => e.format)).length);
-    expect(manifestEntries(FAMILIES).length).toBe(27);
+  const manifest = allManifestEntries();
+
+  it('tests every fixture in the manifest', () => {
+    expect(entries).toHaveLength(manifest.length);
+  });
+
+  it.each(manifest)('reads $path as a format it supports ($format)', ({ format }) => {
+    expect(FAMILIES).toContain(format);
+    expect(FORMATS).toContain(format);
   });
 
   describe.each(entries)('$path', (entry) => {
@@ -271,6 +284,25 @@ describe('the native format', () => {
     expect(warnings.filter((w) => w.code === 'unknown-field')).toEqual([
       expect.objectContaining({ location: { element: 'extra' } }),
     ]);
+  });
+
+  it('rejects a document from a newer Reprise as newer-version', async () => {
+    const { score } = await read(fixtureBytes('gp3/notes.gp3'));
+    const { bytes } = await write(score, 'reprise');
+    const newer = encode(decode(bytes).replace(/"version": 1\b/, '"version": 2'));
+    for (const format of [undefined, 'reprise'] as const) {
+      const error = await failure(read(newer, format));
+      expect(error).toMatchObject({ code: 'newer-version', format: 'reprise' });
+      expect(error.cause).toBeInstanceOf(NativeFormatError);
+    }
+  });
+
+  it('rejects a truncated document as invalid JSON', async () => {
+    const { score } = await read(fixtureBytes('gp3/notes.gp3'));
+    const { bytes } = await write(score, 'reprise');
+    const error = await failure(read(bytes.slice(0, bytes.length / 2)));
+    expect(error).toMatchObject({ code: 'invalid-json', format: 'reprise' });
+    expect(error.cause).toBeInstanceOf(NativeFormatError);
   });
 
   it('rejects an invalid score as a FormatError', async () => {
