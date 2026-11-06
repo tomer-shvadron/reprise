@@ -6,8 +6,11 @@ import { LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from './index';
 
 /** The roadmap's budget for a cold layout of the long score; WP-027 adds the re-layout budget. */
 const COLD_BUDGET_MS = 250;
-/** The CI runner measured about 3.5× slower than a laptop on this test; WP-027 sets the final factor. */
-const CI_FACTOR = 2;
+/**
+ * The CI runner, sharing two cores with the other projects' test workers, measured medians of
+ * 222 and 414 ms (one sample 959 ms) where a laptop measures 60; WP-027 sets the final factor.
+ */
+const CI_FACTOR = 3;
 const RUNS = 5;
 
 /** `process` is untyped here (`types: []`), so the CI flag is read without assuming it exists. */
