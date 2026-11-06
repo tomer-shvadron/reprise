@@ -65,6 +65,7 @@ jobs:
       # No `--with-deps`: ubuntu-latest already carries the shell's libraries, and its apt font
       # install from the Azure mirror has taken over 11 minutes.
       - name: Install Chromium headless shell
+        id: chromium
         timeout-minutes: 5
         run: pnpm exec playwright install chromium --only-shell
 
@@ -91,3 +92,19 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      # Pixel baselines are CI's own (Linux); runs even when Test failed, so one run shows both.
+      - name: Visual
+        id: visual
+        if: ${{ !cancelled() && steps.chromium.outcome == 'success' }}
+        timeout-minutes: 5
+        run: pnpm test:visual
+
+      - name: Upload visual diffs
+        if: ${{ !cancelled() && steps.visual.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: visual-diff
+          path: apps/web/.vitest/attachments/
+          retention-days: 14
+          if-no-files-found: warn
