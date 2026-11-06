@@ -1,6 +1,6 @@
 import type { MasterBar, Score } from '@reprise/model';
 
-import { NAME_SIZE, type SystemPlan } from './breaking';
+import { COURTESY_LEAD, NAME_SIZE, type SystemPlan } from './breaking';
 import type { BarContext } from './context';
 import {
   CLEF_CHANGE_SCALE,
@@ -10,6 +10,7 @@ import {
   drawKey,
   drawRepeatStart,
   drawTime,
+  keyWidth,
   staffLines,
   thinBarline,
   type StaffBox,
@@ -114,7 +115,7 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
   const { score, contexts, measures, slots, options, plan, vertical } = input;
   const { space } = options;
   const x0 = input.x + plan.indent;
-  const xEnd = x0 + plan.prefix + plan.width;
+  const xEnd = x0 + plan.prefix + plan.width + plan.courtesy;
   const boxes: StaffBox[] = slots.map((slot, i) => {
     const offsets = vertical.staves[i] ?? { top: 0, bottom: 0 };
     return { ...slot.box, top: input.y + offsets.top, bottom: input.y + offsets.bottom };
@@ -219,6 +220,7 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
           cursor + space * 0.3,
           space,
           masterBar.id,
+          score.masterBars[index - 1]?.keySignature.fifths,
         );
       }
       cursor += measure.keyChange;
@@ -254,6 +256,14 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
         sink,
       );
       drawEndBarline(sink, measure.endKind, barEnd, staff, space, masterBar.id);
+      const below = slots[i + 1];
+      const lower = boxes[i + 1];
+      if (below?.group === slot.group && lower) {
+        // The bar line runs on through the gap between a track's staves; its dots stay inside them.
+        const kind = measure.endKind === 'repeat' ? 'final' : measure.endKind;
+        const gap: StaffBox = { ...staff, top: staff.bottom, bottom: lower.top };
+        drawEndBarline(sink, kind, barEnd, gap, space, masterBar.id);
+      }
     }
     if (firstBox) repeatCount(sink, masterBar, barEnd, firstBox.top, space);
 
@@ -317,6 +327,38 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
         track: track.id,
         masterBar: masterBar.id,
       });
+    }
+  }
+
+  const lastColumn = bars.at(-1);
+  const nextContext = contexts[plan.end];
+  if (plan.courtesy > 0 && lastColumn && nextContext) {
+    const { masterBar } = nextContext;
+    let cursor = lastColumn.barEnd + COURTESY_LEAD * space;
+    if (nextContext.keyChange) {
+      const previous = contexts[plan.end - 1]?.masterBar.keySignature.fifths;
+      let widest = 0;
+      for (const [i, slot] of slots.entries()) {
+        const staff = boxes[i];
+        if (!staff || slot.type !== 'standard') continue;
+        const clef = nextContext.clefs[slot.group] ?? 'treble';
+        drawKey(
+          sink,
+          staff,
+          clef,
+          masterBar.keySignature.fifths,
+          cursor,
+          space,
+          masterBar.id,
+          previous,
+        );
+        widest = keyWidth(masterBar.keySignature.fifths, space, previous);
+      }
+      cursor += widest;
+    }
+    if (nextContext.showTime) {
+      for (const staff of boxes)
+        drawTime(sink, staff, masterBar.timeSignature, cursor, space, masterBar.id);
     }
   }
 

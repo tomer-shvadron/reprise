@@ -1,5 +1,5 @@
 import type { BarContext } from './context';
-import { clefWidth, keyWidth } from './furniture';
+import { clefWidth, keyWidth, timeWidth } from './furniture';
 import { barWidth, fixedWidth, springTotal, type BarMeasure } from './measure';
 import { textWidth } from './metrics';
 import type { ResolvedOptions } from './options';
@@ -11,6 +11,8 @@ export const NAME_SIZE = 1.6;
 const JUSTIFY_LAST = 0.75;
 const PREFIX_LEAD = 0.5;
 const CLEF_TRAIL = 0.8;
+/** Gap between a system's last bar line and the courtesy signatures after it, in staff spaces. */
+export const COURTESY_LEAD = 0.6;
 
 export interface SystemPlan {
   /** Master-bar indices, end exclusive. */
@@ -27,6 +29,11 @@ export interface SystemPlan {
   factor: number;
   /** Width of the bars once stretched. */
   width: number;
+  /**
+   * Width of the courtesy key and time signatures after the last bar line, announcing a change
+   * at the next system's first bar; 0 when it has none.
+   */
+  courtesy: number;
 }
 
 export function nameIndent(options: ResolvedOptions, full: boolean): number {
@@ -53,6 +60,31 @@ export function prefixWidth(
   return (PREFIX_LEAD + CLEF_TRAIL) * space + clefs + key;
 }
 
+/**
+ * Width of the courtesy signatures a paged system ending before bar `index` carries: the key
+ * (with its cancelling naturals) and the time signature that bar changes to.
+ */
+export function courtesyWidth(
+  contexts: readonly BarContext[],
+  index: number,
+  slots: readonly StaffSlot[],
+  options: ResolvedOptions,
+): number {
+  const context = contexts[index];
+  if (options.mode !== 'paged' || !context || index === 0) return 0;
+  const { space } = options;
+  const { keySignature, timeSignature } = context.masterBar;
+  const previous = contexts[index - 1]?.masterBar.keySignature.fifths;
+  const key =
+    context.keyChange && slots.some((slot) => slot.type === 'standard')
+      ? keyWidth(keySignature.fifths, space, previous)
+      : 0;
+  const time = context.showTime
+    ? Math.max(0, ...slots.map((slot) => timeWidth(slot.box, timeSignature, space)))
+    : 0;
+  return key + time > 0 ? COURTESY_LEAD * space + key + time : 0;
+}
+
 function finish(
   plan: Omit<SystemPlan, 'factor' | 'width'>,
   measures: readonly BarMeasure[],
@@ -67,7 +99,8 @@ function finish(
     fixed += fixedWidth(measure, plan.opensLine && i === plan.start);
     springs += springTotal(measure);
   }
-  const factor = fit && springs > 0 ? Math.max(0, (available - fixed) / springs) : 1;
+  const room = available - plan.courtesy;
+  const factor = fit && springs > 0 ? Math.max(0, (room - fixed) / springs) : 1;
   let width = 0;
   for (let i = plan.start; i < plan.end; i++) {
     const measure = measures[i];
@@ -108,14 +141,18 @@ export function breakSystems(
       const measure = measures[end];
       if (!measure) break;
       const width = barWidth(measure, opensLine && end === start);
-      if (end > start && used + width > available) break;
+      const courtesy = courtesyWidth(contexts, end + 1, slots, options);
+      if (end > start && used + width + courtesy > available) break;
       used += width;
       end += 1;
     }
 
     const last = end >= measures.length;
-    const fit = mode === 'paged' && (!last || used >= available * JUSTIFY_LAST);
-    plans.push(finish({ start, end, opensLine, first, indent, prefix }, measures, available, fit));
+    const courtesy = courtesyWidth(contexts, end, slots, options);
+    const fit = mode === 'paged' && (!last || used + courtesy >= available * JUSTIFY_LAST);
+    plans.push(
+      finish({ start, end, opensLine, first, indent, prefix, courtesy }, measures, available, fit),
+    );
     start = end;
   }
   return plans;
