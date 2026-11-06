@@ -798,3 +798,42 @@ GM budget is 80 MiB.
 | Every zone of song A's 6 sample sets | 6.9 MiB                                                        |
 | The whole GM set, every sample       | 71.5 MiB resident (121.6 MiB counted per preset), fits         |
 | Song A under half its needs          | peak at the budget, notes skipped and reloaded, nothing thrown |
+
+## Tests and the offline harness
+
+`pnpm --filter @reprise/audio test` runs the package's two Vitest projects from the root config,
+with no sound device:
+
+- **`audio`**, in Vitest browser mode on headless Chromium (Playwright), for the reasons under
+  Decisions. CI installs the headless shell without `--with-deps`, as the root `AGENTS.md`
+  describes.
+- **`audio-node`**, files named `*.node.test.ts`, in plain Node: proves that what claims to be
+  DOM-free is. `sf2/sf2.node.test.ts` parses the synthetic bank (its bytes provided by
+  `scripts/sounds/provide-sf2.ts`, since the package is typed without Node's modules), resolves
+  presets and reads a sample; `test/signal.node.test.ts` covers the signal measurements.
+
+`src/test/` is the shared harness, for test files only:
+
+| Helper                                    | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `renderScore(score, options)`             | A fresh engine over the real sampler and articulations, play at time 0, rendered offline. `instruments` is GeneralUser GS (the GM tier, through the memory manager, every sample decoded first, program changes honoured) or a function per track. `tap: 'strips'` records before the master bus, without its 6 ms pre-delay; `actions` call the engine at a context time. Returns the signal, the sampler, the memory manager and every `missed` note. |
+| `loadGeneralUser()`                       | The fetched bank, parsed once; `undefined` until `pnpm sounds:fetch`, and the GM suites skip with a message.                                                                                                                                                                                                                                                                                                                                            |
+| `detectOnsets(signal, { rise? })`         | Sounds after silence, above a floor 50 dB under the signal's peak unless `floor` is given; with `rise`, also re-attacks over a ringing note, read off the first difference (a pick is a burst of highs, which a filtered GM region may not keep).                                                                                                                                                                                                       |
+| `pitchAt(signal, time)`                   | The fundamental by YIN, within a cent on a tone whose harmonics fool a zero-crossing count; `undefined` on noise or silence.                                                                                                                                                                                                                                                                                                                            |
+| `bandEnergy(signal, low, high, from, to)` | RMS of a frequency band from a Hann-windowed FFT (a sine of amplitude `a` reads `a / √2`).                                                                                                                                                                                                                                                                                                                                                              |
+| `rms`, `peak`, `toneLevel`, `cents`       | As before; `sampler/test/offline.ts` keeps its sample-array signatures over these.                                                                                                                                                                                                                                                                                                                                                                      |
+
+**The corpus smoke** (`src/test/fixtures.test.ts`) plays every fixture of `fixtures/` through
+the GM tier at 22.05 kHz and asserts no missed note, finite samples, a peak at most 1, sound
+when the fixture has notes, and decoded memory within the 80 MiB GM budget. Audio may not import
+`@reprise/formats`, so the project's global setup (`scripts/fixtures/provide-scores.ts`) reads the
+fixtures in Node through `read`, the dispatcher the app uses, and hands them to the browser as
+native documents through Vitest's `provide`. A fixture that fails to read fails the setup rather
+than shrinking the smoke. Measured: the heaviest fixtures are the drum ones,
+`percussion-all.gp5` at 5.5 MiB over 35 instruments and `drum-tabs.gp` at 4.8 MiB over 30; the
+27 fixtures render in about two seconds together. The timing a test measures is deterministic;
+the samples themselves match across runs only to within float jitter (about 2e-6 relative), so
+a test compares measurements, never a hash of the output.
+
+The smoke found the harmonic gap in `planInstruments` independently of #79, which fixed it (see
+Planning and preload).

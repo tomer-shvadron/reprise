@@ -11,6 +11,7 @@ import { Sampler } from './sampler/sampler';
 import { createSamplerSink } from './sampler/sampler-sink';
 import { SAMPLE_RATE, offline, peak, sineInstrument, toneLevel } from './sampler/test/offline';
 import type { InstrumentSink } from './sink';
+import { detectOnsets } from './test/signal';
 
 const LATENCY = 0.1;
 const BEATS = 16;
@@ -32,19 +33,9 @@ function rests(): Score {
   return builder.build();
 }
 
-/** Seconds at which the signal rises above the floor after at least 50 ms of silence. */
+/** Seconds at which the signal rises above 1e-3 after at least 50 ms of silence. */
 function onsets(data: Float32Array): number[] {
-  const found: number[] = [];
-  let silent = Number.POSITIVE_INFINITY;
-  for (const [index, sample] of data.entries()) {
-    if (Math.abs(sample) > 1e-3) {
-      if (silent > 0.05 * SAMPLE_RATE) found.push(index / SAMPLE_RATE);
-      silent = 0;
-    } else {
-      silent += 1;
-    }
-  }
-  return found;
+  return detectOnsets({ data, sampleRate: SAMPLE_RATE }, { gap: 0.05, floor: 1e-3 });
 }
 
 interface Rendered {

@@ -8,5 +8,6 @@
     "checkJs": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["*.ts", "*.js", "scripts/**/*.ts"]
+  "include": ["*.ts", "*.js", "scripts/**/*.ts"],
+  "references": [{ "path": "./packages/model" }, { "path": "./packages/formats" }]
 }
