@@ -25,3 +25,14 @@ export { GpxError } from './gpx/errors';
 export type { GpxErrorCode } from './gpx/errors';
 export { readGpx } from './gpx/read-gpx';
 export type { GpxReadResult } from './gpx/read-gpx';
+
+// The Formats contract: detection and the read and write dispatchers over every format.
+export { detect } from './detect';
+export { FormatError } from './errors';
+export type { FormatErrorCode, FormatErrorOptions } from './errors';
+export { FORMATS, formatOfExtension } from './format';
+export type { Format } from './format';
+export { MAX_FILE_BYTES, read } from './read';
+export type { ReadResult } from './read';
+export { write } from './write';
+export type { WriteOptions, WriteResult } from './write';
