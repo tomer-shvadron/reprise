@@ -8,6 +8,8 @@ import viteConfig from './vite.config.ts';
 // The size every scene is captured in; the crop of each page has to fit inside it.
 const viewport = { width: 1600, height: 2000 };
 
+const ci = process.env['GITHUB_ACTIONS'] === 'true';
+
 /**
  * Pixel screenshots of the score painter in Chromium. Kept out of the root config, so `pnpm test`,
  * `vitest related` and the pre-commit hook never launch it; `pnpm test:visual` and CI do.
@@ -22,10 +24,9 @@ export default mergeConfig(
       globalSetup: ['../../scripts/fixtures/provide-scores.ts'],
       // A hang guard, not a budget: no visual test asserts on time (#90).
       testTimeout: 60_000,
-      reporters: [
-        'verbose',
-        ...(process.env['GITHUB_ACTIONS'] === 'true' ? ['github-actions'] : []),
-      ],
+      reporters: ['verbose', ...(ci ? ['github-actions', 'json'] : [])],
+      // Uploaded with the diffs, so `pnpm visual:accept` can tell image differences from failures.
+      ...(ci ? { outputFile: { json: '.vitest/attachments/visual-report.json' } } : {}),
       browser: {
         enabled: true,
         provider: playwright({
