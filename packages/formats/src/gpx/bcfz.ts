@@ -1,3 +1,4 @@
+import { MAX_FILE_BYTES } from '../limits';
 import { BitReader } from './bit-reader';
 import { GpxError } from './errors';
 
@@ -8,7 +9,7 @@ const HEADER_BYTES = 8;
  * The cap on a declared uncompressed size, as the gp container caps a zip entry: the output is
  * allocated up front, so a forged length would otherwise allocate that much.
  */
-export const MAX_UNCOMPRESSED_BYTES = 256 * 1024 * 1024;
+export const MAX_UNCOMPRESSED_BYTES = MAX_FILE_BYTES;
 
 /** True when the bytes start with the 4-byte ASCII magic. */
 export function hasMagic(bytes: Uint8Array, magic: string): boolean {

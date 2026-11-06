@@ -9,12 +9,12 @@ and the reader conventions every format follows are in
 Guitar Pro files". The package imports `@reprise/model` and `fflate` (the gp zip, pinned) and nothing else, and
 runs anywhere: no DOM, no Node APIs.
 
-| Format          | Reader              | Work package |
-| --------------- | ------------------- | ------------ |
-| gp3, gp4, gp5   | `readGp3To5` (here) | WP-040       |
-| gp (GP7 and 8)  | `readGp` (here)     | WP-042       |
-| gpx (GP6)       | `readGpx` (here)    | WP-043       |
-| `detect`/`read` | not yet             | WP-045       |
+| Format                  | Reader              | Work package |
+| ----------------------- | ------------------- | ------------ |
+| gp3, gp4, gp5           | `readGp3To5` (here) | WP-040       |
+| gp (GP7 and 8)          | `readGp` (here)     | WP-042       |
+| gpx (GP6)               | `readGpx` (here)    | WP-043       |
+| `detect`/`read`/`write` | here                | WP-045       |
 
 ```ts
 import { GpVersionError, readGp3To5 } from '@reprise/formats';
@@ -28,6 +28,102 @@ beat count, 3,000 tracks) stops reading the same way with `corrupt-file`. The on
 is `GpVersionError` (`code: 'unknown-version'`), whose message and `version` field carry the
 header text, when the bytes do not start with a version it knows. Every score it returns passes
 `ScoreSchema`; the fuzz test holds it to that.
+
+## Import and export (the Formats contract)
+
+```ts
+import { FormatError, detect, formatOfExtension, read, write } from '@reprise/formats';
+
+const { score, warnings } = await read(file.bytes); // the bytes decide the format
+detect(file.bytes); // 'gp5', or undefined; reads the signature only
+
+// The extension is a fallback only, for bytes that match no signature.
+try {
+  await read(file.bytes);
+} catch (error) {
+  if (error instanceof FormatError && error.code === 'unknown-format') {
+    const claimed = formatOfExtension(file.name);
+    if (claimed) await read(file.bytes, claimed);
+  }
+}
+
+const { bytes, dropped } = await write(score, 'reprise', { app: { name: 'reprise', version } });
+const gp = await write(score, 'gp'); // gp.dropped: what Guitar Pro's format cannot hold
+```
+
+`read` and `write` return promises and never throw synchronously, so a worker can take them over
+behind the same signatures; today they run on the caller's thread. `read` resolves to exactly
+`{ score, warnings }`: the readers' `format`, `version` and the native file's `app` are not
+passed on, and a caller that wants the format calls `detect`. `write`'s third argument is the
+`app` stamped into a `.reprise` file, `{ name: 'reprise', version: '0.0.0' }` by default; `gp`
+ignores it. `write(score, 'gp')` calls `writeGp` and maps each `GpifDropped` to a `Warning` of
+severity `warning`, its model path to `location.path` without the leading `score`, and `count`
+only when it is above 1.
+
+**Detection** reads the signature only, first match wins:
+
+| Format        | Signature                                                                                        | Offset                    |
+| ------------- | ------------------------------------------------------------------------------------------------ | ------------------------- |
+| gp3, gp4, gp5 | `0x18`, `FICHIER GUITAR PRO `, one letter (`v`, or `L` in some exports), then `3.`, `4.` or `5.` | bytes 0 to 22             |
+| gp            | `PK\x03\x04`, a zip local file header                                                            | 0                         |
+| gpx           | `BCFZ` or `BCFS`                                                                                 | 0                         |
+| reprise       | `{` after an optional UTF-8 BOM and ASCII whitespace                                             | first non-whitespace byte |
+
+The binary family is told apart by its major digit only, so `v5.20` detects as gp5 and the reader
+then names the header (`unknown-version`). The same table is in
+[`docs/reference/file-formats.md`](../../docs/reference/file-formats.md), "Detection".
+
+**The `format` argument** picks the reader and is not checked against the signature first. gp3,
+gp4 and gp5 share one reader whose header decides the version, so `read(gp4Bytes, 'gp5')` reads
+without complaint. When the chosen reader says the bytes are not its format at all
+(`unknown-version`, `invalid-zip`, `not-bcfz`, `invalid-utf8`, `invalid-json`, `wrong-format`),
+the bytes are sniffed, and if they belong to another reader the error becomes `format-mismatch`
+with `format` (what was asked) and `detected` (what the bytes are).
+
+**Size limit.** `MAX_FILE_BYTES` (`src/limits.ts`) is 256 MiB, the one number the gp and gpx
+readers' caps on a declared inflated size are derived from; the largest real file known is about
+1.5 MB, and a file at the limit could not be shown within the 400 MB renderer budget anyway. `too-large` has three sources: the file
+itself (checked before anything is read, no `cause`), a gp zip entry declaring more (`GpError`),
+and a gpx header declaring more (`GpxError`).
+
+**Errors.** Every failure is a `FormatError` with a kebab-case `code`, the `format` whose reader or
+writer failed, and the reader's own error as `cause` (so `GpifError.line`, `NativeFormatError.path`
+and `GpVersionError.version` stay reachable). The message is the reader's. An error that is not a
+reader's is a bug and is rethrown untouched.
+
+| Code                                                                                                                       | From                             | Meaning                                                                   |
+| -------------------------------------------------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------- |
+| `unknown-format`                                                                                                           | `read`                           | No format given and the bytes match no signature.                         |
+| `format-mismatch`                                                                                                          | `read`                           | The given format's reader refused the bytes, which are `detected`.        |
+| `too-large`                                                                                                                | `read`, `readGp`, `readGpx`      | Over `MAX_FILE_BYTES`, or a container declaring more.                     |
+| `unknown-version`                                                                                                          | `readGp3To5`                     | A header the binary reader does not know, or none.                        |
+| `invalid-zip`, `missing-score`                                                                                             | `readGp`                         | Not a readable zip; no `Content/score.gpif`.                              |
+| `not-bcfz`, `truncated`, `corrupt`, `missing-score`                                                                        | `readGpx`                        | See "gpx (GP6)" below.                                                    |
+| `invalid-utf8`, `invalid-xml`, `not-gpif`, `empty-score`                                                                   | the gpif reader                  | A `score.gpif` that cannot become a score.                                |
+| `invalid-utf8`, `invalid-json`, `wrong-format`, `invalid-version`, `newer-version`, `migration-failed`, `invalid-document` | `parseNative`, `serializeNative` | A `.reprise` file that cannot be read, or a score that cannot be written. |
+
+**Warnings** come back in the one `Warning` shape below ("Warnings"). The binary reader's pass
+through with only `count` normalised: set only when it is above 1, as for every other format. A gpif warning keeps its code and message; its element path goes to
+`location.element`, or, for a `validateScore` rule, its model path to `location.path` without the
+leading `score`; `count` is set only when it is above 1. Its severity comes from an exhaustive
+table, so a new gpif code fails to compile until it has one:
+
+| Severity  | gpif codes                                                                                                                                                                                                                                                                                                |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `error`   | `voice-dropped`                                                                                                                                                                                                                                                                                           |
+| `warning` | `unknown-element`, `unknown-value`, `invalid-value`, `missing-reference`, `multiple-staves`, `simile-expanded`, `grace-without-beat`, `grace-duration-clamped`, `grace-tie-released`, `hammer-pull-without-destination`, `tempo-moved`, `automation-dropped`, `default-tempo`, every `validateScore` rule |
+| `info`    | `not-modelled`, `long-note-tied`, `drum-articulation`                                                                                                                                                                                                                                                     |
+
+A native `unknown-field` or violation is a `warning`. A field inside `score` goes to
+`location.path` less the leading `score`; one outside it (`extra`, `app.extra`) goes to
+`location.element` as text, so `location.path` always starts at the score root. No fixture produces an `error` warning.
+
+**Known gaps.**
+
+- Nothing runs off-thread yet.
+- Any zip detects as gp and any JSON object as reprise; the reader tells them apart.
+- `read` has no file name, so it reports no extension mismatch; a caller can compare `detect`
+  with `formatOfExtension` itself.
 
 ## What the gp3, gp4 and gp5 reader covers
 
@@ -151,7 +247,8 @@ specifics and the places the file is ambiguous.
 
 `Warning` is `{ code, severity, message, location, count? }`. `location` holds the byte
 `offset` where the construct starts and the 0-based `track`, `bar`, `voice` and `beat` it ended
-up in, or the `path` of an invariant violation. `info` warnings are folded by code: one entry,
+up in, or the `path` of an invariant violation; through `read`, a gp or gpx warning carries the
+gpif `element` instead. `info` warnings are folded by code: one entry,
 the first location, and `count`.
 
 | Code                              | Severity | Meaning                                                                                                                                                        |
@@ -206,7 +303,7 @@ const fromXml = readGpif(xml, { partConfiguration }); // score.gpif from any con
 - `src/gp/` is the Guitar Pro 7 and 8 container: a zip read with `fflate` (pinned, the package's one runtime dependency besides the model). Only `Content/score.gpif` and `Content/PartConfiguration` are inflated, and only when the central directory declares them under 256 MB, since fflate allocates the declared size up front; the stylesheets, layout and preferences are Guitar Pro's view state.
 - `src/gpif/` is the XML model shared with Guitar Pro 6. `readGpif` takes the document as a string or UTF-8 bytes, plus the container's `PartConfiguration` bytes when it has them. The gpx container finds those two entries in its file system and calls it (see "gpx (GP6)" below).
 - Reading runs in two passes: `read-document.ts` turns every section into id-keyed maps (`GpifDocument`), and `build-score.ts` resolves the references into a score through the model's factories and `newId()`, then runs `validateScore` and reports each violation as a warning.
-- Both readers are synchronous; the async `read()` dispatcher of the Formats contract (WP-045) wraps them.
+- Both readers are synchronous; the async `read()` of the Formats contract wraps them ("Import and export" above).
 - Errors: `GpError` (`invalid-zip`, `missing-score`, `too-large`) for the container, `GpifError` (`invalid-utf8`, `invalid-xml` with `line` and `column`, `not-gpif`, `empty-score`) for a document that cannot become a score. Everything else is a `GpifWarning`.
 
 ### Coverage
@@ -428,7 +525,7 @@ const { bytes, dropped } = writeGp(score); // a .gp file Guitar Pro 7 and 8 open
 const { xml } = writeGpif(score); // just the score.gpif document
 ```
 
-Both are synchronous and deterministic: ids are sequential per gpif section and the zip entries carry a fixed timestamp, so one score always gives the same bytes. `dropped` lists the score features the file cannot carry, one `GpifDropped` (`{ code, message, path, count }`) per kind of loss with the first model path it was found on (`score.tracks[0].bars[2].voices[0].beats[1]`); it is what the export dialog (WP-061) shows. The `write()` dispatcher (WP-045) wraps `writeGp`.
+Both are synchronous and deterministic: ids are sequential per gpif section and the zip entries carry a fixed timestamp, so one score always gives the same bytes. `dropped` lists the score features the file cannot carry, one `GpifDropped` (`{ code, message, path, count }`) per kind of loss with the first model path it was found on (`score.tracks[0].bars[2].voices[0].beats[1]`); it is what the export dialog (WP-061) shows. The `write()` dispatcher wraps `writeGp` and maps `dropped` to `Warning`s.
 
 `src/gpif/write-gpif.ts` is the inverse of the reader's mapping; `write-tracks.ts`, `write-notes.ts` and `write-tempo.ts` hold the track, note and tempo parts, and `xml-writer.ts` a small serializer (escaped text, CDATA for free text, one element per line as Guitar Pro writes them). `src/gp/write-gp.ts` assembles the zip.
 
