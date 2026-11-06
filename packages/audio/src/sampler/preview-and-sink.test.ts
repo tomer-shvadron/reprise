@@ -1,4 +1,4 @@
-import { midiNote } from '@reprise/model';
+import { PPQ, midiNote } from '@reprise/model';
 import type { Beat, Note, Track } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
@@ -37,6 +37,8 @@ function event(spec: {
   when: number;
   duration: number;
   barEnd?: number;
+  durationTicks?: number;
+  continuations?: NoteEvent['continuations'];
 }): NoteEvent {
   return {
     track: guitarTrack,
@@ -48,12 +50,13 @@ function event(spec: {
     when: spec.when,
     duration: spec.duration,
     playbackTick: 0,
-    durationTicks: 0,
+    durationTicks: spec.durationTicks ?? 0,
     sequenceIndex: 0,
     masterBarIndex: 0,
     passIndex: 0,
     barEnd: spec.barEnd ?? spec.when + spec.duration,
     nextOnString: undefined,
+    continuations: spec.continuations ?? [],
   };
 }
 
@@ -125,6 +128,38 @@ describe('createSamplerSink', () => {
     const frequency = midiToFrequency(midiNote(guitar, ringingNote));
     expect(toneLevel(data, frequency, 0.3, 0.55)).toBeGreaterThan(0.1);
     expect(toneLevel(data, frequency, 0.7, 1)).toBeLessThan(0.001);
+  });
+
+  it('spans a bend over a tie chain unless a later link bends on its own', async () => {
+    const bend = {
+      kind: 'bend' as const,
+      points: [
+        { position: 0, value: 0 },
+        { position: 60, value: 4 },
+      ],
+    };
+    // A quarter-note origin at 0.1 s tied into a dotted half: a 2 s chain of 4 × PPQ ticks.
+    const link = (spec: Parameters<typeof note>[2] = {}): NoteEvent['continuations'][number] => ({
+      note: note(1, 5, { tie: true, ...spec }),
+      beat: first,
+      when: 0.6,
+      durationTicks: 3 * PPQ,
+    });
+    const centsAfterOneSecond = async (continuations: NoteEvent['continuations']) => {
+      const context = offline(2.2);
+      const sampler = new Sampler(context);
+      sampler.addTrack(guitar, sineInstrument());
+      const sink = createSamplerSink(sampler);
+      const held = { note: note(1, 5, { bend }), beat: first, when: 0.1, duration: 2 };
+      sink.noteOn(event({ ...held, durationTicks: 4 * PPQ, continuations }));
+      const data = (await context.startRendering()).getChannelData(0);
+      return cents(zeroCrossingFrequency(data, 1.05, 1.15), midiToFrequency(69));
+    };
+
+    // Half way along the chain, a chain-long bend is half way up its two semitones.
+    expect(Math.abs((await centsAfterOneSecond([link()])) - 100)).toBeLessThan(3);
+    // A link bending on its own keeps the origin's bend on the origin's beat, held after it.
+    expect(Math.abs((await centsAfterOneSecond([link({ bend })])) - 200)).toBeLessThan(1);
   });
 
   it('cancels a note scheduled ahead when allNotesOff comes first', async () => {

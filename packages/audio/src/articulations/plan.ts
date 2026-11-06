@@ -17,8 +17,10 @@ export interface PlanInput {
   when: number;
   /** Seconds to the release, ties folded in. */
   length: number;
-  /** Seconds of the note's own beat, which bends, whammy and fades span. */
+  /** Seconds of the note's own beat, which whammy and fades span. */
   beatLength: number;
+  /** Seconds a bend spans when it outlives the beat (a tie chain); the beat when absent. */
+  bendLength?: number;
   secondsPerTick: number;
   barEnd: number;
   next: { note: Note; when: number } | undefined;
@@ -122,7 +124,7 @@ function slideTerms(input: PlanInput, key: number, end: number): PitchTerm[] {
 function pitchTerms(input: PlanInput, key: number, end: number): PitchTerm[] {
   const { note, effects, when, beatLength } = input;
   const terms: PitchTerm[] = [];
-  if (note.bend) terms.push(pointsCurve(note.bend.points, when, beatLength));
+  if (note.bend) terms.push(pointsCurve(note.bend.points, when, input.bendLength ?? beatLength));
   if (effects.whammy) terms.push(pointsCurve(effects.whammy.points, when, beatLength));
   const vibrato = wider(note.vibrato, effects.vibrato);
   if (vibrato !== 'none') {
