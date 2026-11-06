@@ -1,62 +1,9 @@
-import { PPQ, type Id, type TimeSignature } from '@reprise/model';
+import type { Id } from '@reprise/model';
 
 import { engraving } from '../../../metrics';
 import type { LayoutSink } from '../../../primitives';
 import { polygon } from './shapes';
 import { stemLength, stemThickness, type StemDirection } from './stems';
-
-/** What beam grouping needs to know of a beat. */
-export interface BeamableBeat {
-  /** Ticks from the bar start. */
-  tick: number;
-  /** Rests, empty beats and notes of a quarter or longer break a beam. */
-  beamable: boolean;
-  /** Beats of one tuplet share a run index and are beamed only with each other. */
-  tuplet?: number;
-}
-
-/**
- * Which beam window of the bar a tick falls in: a beat in simple time (the half note in x/2 and
- * x/1, a quarter at most otherwise), a dotted quarter in compound time, and in other eighth-based
- * meters pairs of eighths with the odd one joining the last pair (5/8 as 2+3, 7/8 as 2+2+3).
- */
-export function beamWindow(tick: number, time: TimeSignature): number {
-  const unit = (PPQ * 4) / time.denominator;
-  if (time.denominator < 8) {
-    const beat = time.denominator <= 2 ? PPQ * 2 : Math.min(unit, PPQ);
-    return Math.floor(tick / beat);
-  }
-  if (time.numerator % 3 === 0) return Math.floor(tick / (unit * 3));
-  const pairs = Math.max(1, Math.floor(time.numerator / 2));
-  return Math.min(Math.floor(tick / (unit * 2)), pairs - 1);
-}
-
-/** Runs of two or more consecutive beamable beats in one window or tuplet, as beat indices. */
-export function beamGroups(beats: readonly BeamableBeat[], time: TimeSignature): number[][] {
-  const groups: number[][] = [];
-  let current: number[] = [];
-  let key: string | undefined;
-  const close = (): void => {
-    if (current.length > 1) groups.push(current);
-    current = [];
-    key = undefined;
-  };
-  for (const [i, beat] of beats.entries()) {
-    if (!beat.beamable) {
-      close();
-      continue;
-    }
-    const beatKey =
-      beat.tuplet === undefined
-        ? `w${String(beamWindow(beat.tick, time))}`
-        : `t${String(beat.tuplet)}`;
-    if (beatKey !== key) close();
-    key = beatKey;
-    current.push(i);
-  }
-  close();
-  return groups;
-}
 
 /** One stem of a beamed group: its centre line and the y of the note head nearest the beam. */
 export interface BeamStem {
