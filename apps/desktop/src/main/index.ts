@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
@@ -20,6 +20,7 @@ import type { FileFilter, MenuCommandId } from '@reprise/web';
 import { isAppUrl } from './app-url';
 import { registerInvokeHandlers, sendEvent } from './ipc';
 import { menuTemplate } from './menu';
+import { openedFile } from './opened-file';
 import { PathAccess } from './path-access';
 import {
   DEFAULT_WINDOW_STATE,
@@ -72,10 +73,7 @@ registerInvokeHandlers(
         properties: ['openFile'],
         filters: dialogFilters(filters),
       });
-      const path = result.filePaths[0];
-      if (result.canceled || path === undefined) return undefined;
-      access.grant(path);
-      return { name: basename(path), bytes: await readFile(path), handle: path };
+      return openedFile(result, access, (path) => readFile(path));
     },
     'file:save': async (event, suggestedName, bytes, filters) => {
       const result = await dialog.showSaveDialog(ownerWindow(event), {
