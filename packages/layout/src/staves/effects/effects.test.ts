@@ -244,6 +244,7 @@ describe('note effects on the tab: lanes', () => {
         p.kind === 'line' && p.x === p.x2 && p.node === 'beat00000001' && Math.abs(p.y2 - p.y) < 7,
     );
     expect(ticks).toHaveLength(1);
+    expect(content(result)).toMatchSnapshot();
   });
 
   it('labels harmonics on the tab and in their lane, by kind', () => {
@@ -259,32 +260,30 @@ describe('note effects on the tab: lanes', () => {
       .beat('8', [note(3, 5, { trill: { fret: 7, speed: 16 }, harmonic: { kind: 'pinch' } })])
       .build({ ids: 'sequential' });
     const result = laid(built);
-    expect(texts(result)).toEqual(
-      [
-        '<12>',
-        '<2.7>',
-        '5',
-        '<17>',
-        '5',
-        '<12>',
-        '5',
-        '<17>',
-        '5',
-        '<17>',
-        '5',
-        '<17>',
-        '5',
-        '(7)',
-        'N.H.',
-        'A.H.',
-        'T.H.',
-        'P.H.',
-        'S.H.',
-        'Fdbk.',
-        'P.H.',
-        'tr',
-      ].filter((t) => t !== 'tr'),
-    );
+    expect(texts(result)).toEqual([
+      '<12>',
+      '<2.7>',
+      '5',
+      '<17>',
+      '5',
+      '<12>',
+      '5',
+      '<17>',
+      '5',
+      '<17>',
+      '5',
+      '<17>',
+      '5',
+      '(7)',
+      'N.H.',
+      'A.H.',
+      'T.H.',
+      'P.H.',
+      'S.H.',
+      'Fdbk.',
+      'P.H.',
+    ]);
+    expect(content(result)).toMatchSnapshot();
   });
 
   it('draws beat marks: tapping, slapping, popping, pick strokes and fades', () => {
@@ -371,6 +370,7 @@ describe('note effects on the tab: lanes', () => {
     const result = laid(built);
     expect(result.primitives.filter(isText('w/bar'))).toHaveLength(2);
     expect(texts(result).filter((t) => t.startsWith('-'))).toEqual(['-2', '-full', '-full']);
+    expect(content(result)).toMatchSnapshot();
   });
 
   it('stacks articulations in tab mode, staccato nearest, and leaves them to the standard staff in both mode', () => {
@@ -393,6 +393,7 @@ describe('note effects on the tab: lanes', () => {
     const [staccato, accent] = glyphs;
     if (!staccato || !accent) throw new Error('glyphs');
     expect(accent.bbox.y + accent.bbox.height).toBeLessThan(staccato.bbox.y);
+    expect(content(tab)).toMatchSnapshot();
     const both = laid(accented(guitar('both')));
     expect(both.primitives.some((p) => p.kind === 'glyph' && p.glyph.startsWith('artic'))).toBe(
       false,
@@ -416,6 +417,7 @@ describe('note effects on the tab: lanes', () => {
       p.kind === 'glyph' && p.glyph.startsWith('tremolo') ? [p] : [],
     );
     expect(strokes.map((p) => p.glyph)).toEqual(['tremolo1', 'tremolo3', 'tremolo2', 'tremolo3']);
+    expect(content(result)).toMatchSnapshot();
     const plain = laid(
       guitar()
         .bar()
