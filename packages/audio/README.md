@@ -346,7 +346,9 @@ detune, gain, filter and release reach every layer, and `endTime` is the last on
 with the articulation layer described under [Articulations](#articulations): each event becomes
 attacks, pitch and level automation, a filter and a release; `allNotesOff(when)` releases every
 voice, the ones scheduled after `when` included (a release before a voice's start time is a 0-to-0
-fade, so it never sounds), and forgets any legato slide waiting for its next note. A
+fade, so it never sounds), forgets any legato slide waiting for its next note, and drops the
+program changes scheduled after `when` (the scheduler sends each again when playback reaches its
+beat, so a pause or seek inside the lookahead never plays a later program early). A
 `MixEvent`'s `mix.program` switches the track's instrument at the beat through `setInstrument`, to what
 `instrumentOf(track, program)` returns (the caller's region map and source for that program;
 `undefined` keeps the current one), the same playback-order attribution the memory planner uses.

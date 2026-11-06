@@ -269,4 +269,16 @@ describe('scheduled instrument changes', () => {
     sampler.setInstrument('t', first);
     expect(sampler.instrumentAt('t', 0.9)).toBe(first);
   });
+
+  it('drops the changes scheduled after an all-notes-off, and keeps the ones before it', () => {
+    const { sampler } = setup(1);
+    const first = instrument([region()], { a440: sine(440) });
+    const second = instrument([region()], { a440: sine(660) });
+    const third = instrument([region()], { a440: sine(880) });
+    sampler.addTrack(TRACK, first);
+    sampler.setInstrument('t', second, 0.2);
+    sampler.setInstrument('t', third, 0.5);
+    sampler.allNotesOff(0.3);
+    expect(sampler.instrumentAt('t', 0.9)).toBe(second);
+  });
 });

@@ -584,6 +584,43 @@ describe('beat mixer changes', () => {
     expect(toneLevel(data, A4, T0 + 1.6, T0 + 1.9)).toBeLessThan(0.001);
   });
 
+  it('keeps the old program up to its beat after a pause inside the lookahead', async () => {
+    let builder = score().track('guitar').bar();
+    for (let k = 0; k < 16; k++) builder = builder.beat('16', [a()]);
+    const song = builder
+      .bar()
+      .beat('1', [a()], { mix: { program: 30 } })
+      .build();
+    // The change on bar 2 is at T0 + 2; the pause lands inside the 200 ms lookahead before it.
+    const pauseAt = T0 + 1.83;
+    const resumeAt = 3;
+    const { data } = await render(song, {
+      seconds: 4.5,
+      sink: { instrumentOf: (_track, program) => (program === 30 ? fifthUp() : undefined) },
+      actions: (engine) => [
+        {
+          at: pauseAt,
+          run: () => {
+            engine.pause();
+          },
+        },
+        {
+          at: resumeAt,
+          run: () => {
+            engine.play();
+          },
+        },
+      ],
+    });
+    const found = onsets(data, 0.3).filter((onset) => onset > resumeAt);
+    const resumed = found[0] ?? Number.NaN;
+    // The sixteenths left in bar 1, then the change on bar 2.
+    const change = resumed + Math.round((T0 + 2 - pauseAt) / 0.125) * 0.125;
+    expect(toneLevel(data, A4, resumed + 0.01, change - 0.01)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, A4 * 1.5, resumed + 0.01, change - 0.01)).toBeLessThan(0.001);
+    expect(toneLevel(data, A4 * 1.5, change + 0.05, change + 0.5)).toBeGreaterThan(0.1);
+  });
+
   it('glides a volume change over its transition', async () => {
     const song = score()
       .track('guitar')

@@ -1,6 +1,7 @@
 import type { Score } from '@reprise/model';
 
 import { createAudioEngine } from '../../engine';
+import type { AudioEngine } from '../../engine';
 import { drive, manualTicker } from '../../offline-driver';
 import { RegionMap } from '../../sampler/region-map';
 import type { Envelope } from '../../sampler/region-map';
@@ -36,6 +37,8 @@ export async function render(
     seconds?: number;
     sink?: SamplerSinkOptions;
     fromTick?: number;
+    /** Transport calls at context times, e.g. a pause and a resume. */
+    actions?: (engine: AudioEngine) => { at: number; run: () => void }[];
   } = {},
 ): Promise<Render> {
   const context = offline(options.seconds ?? 2.5);
@@ -56,7 +59,8 @@ export async function render(
   });
   await engine.load(song, { tier: 'gm', packs: [] });
   engine.play(options.fromTick);
-  const buffer = await drive(context, { tickers: [scheduler, frames] });
+  const actions = options.actions?.(engine) ?? [];
+  const buffer = await drive(context, { tickers: [scheduler, frames], actions });
   return { data: buffer.getChannelData(0), sampler };
 }
 

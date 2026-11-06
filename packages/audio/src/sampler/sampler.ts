@@ -336,11 +336,16 @@ export class Sampler {
     if (!voice.letRing) voice.release(when);
   }
 
-  /** Releases every voice, let-ring included, on one track or all of them. */
+  /**
+   * Releases every voice, let-ring included, on one track or all of them, and drops the
+   * instrument changes scheduled after `when`: the scheduler sends a change again when playback
+   * reaches its beat, so one left over from a pause or seek would only play early.
+   */
   allNotesOff(when: number, id?: Id): void {
     const states = id === undefined ? [...this.#tracks.values()] : [this.#state(id)];
     for (const state of states) {
       for (const voice of state.voices) voice.release(when);
+      state.changes = state.changes.filter((change) => change.at <= when);
     }
   }
 
