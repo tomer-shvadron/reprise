@@ -449,6 +449,30 @@ describe('note effects on the tab: lanes', () => {
     expect(content(result)).toMatchSnapshot();
   });
 
+  it('keeps whammy labels clear of w/bar at either extreme', () => {
+    const point = (position: number, value: number) => ({ position, value });
+    const result = laid(
+      guitar()
+        .bar()
+        .beat('2', [note(3, 0)], {
+          effects: { whammy: { kind: 'dive', points: [point(0, 4), point(60, 4)] } },
+        })
+        .beat('2', [note(3, 0)])
+        .bar()
+        .beat('2', [note(3, 0)], {
+          effects: { whammy: { kind: 'dive', points: [point(0, -4), point(60, -4)] } },
+        })
+        .beat('2', [note(3, 0)])
+        .build({ ids: 'sequential' }),
+    );
+    const bar = result.primitives.find(isText('w/bar'));
+    const [high, low] = ['full', '-full'].map((t) => result.primitives.find(isText(t)));
+    const staff = result.systems[0]?.staves[0];
+    if (!bar || !high || !low || !staff) throw new Error('whammy');
+    expect(high.bbox.y).toBeGreaterThan(bar.bbox.y + bar.bbox.height);
+    expect(low.bbox.y + low.bbox.height).toBeLessThan(staff.top);
+  });
+
   it('stacks articulations in tab mode, staccato nearest, and leaves them to the standard staff in both mode', () => {
     const accented = (built: ScoreBuilder) =>
       built

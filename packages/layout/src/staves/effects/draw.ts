@@ -29,10 +29,10 @@ const RUN_LINE = 0.16;
 const END_TICK = 0.8;
 /** The shortest dashed line worth drawing after a label, in staff spaces. */
 const MIN_LINE = 0.3;
-/** The whammy lane: its text row, the graph's middle, its scale and its labels, in staff spaces. */
+/** The whammy lane: its text row, the clearance under it, its scale and its labels, in staff spaces. */
 const WHAMMY = {
-  baseline: 0.85,
-  middle: 2.6,
+  baseline: 0.8,
+  clear: 0.05,
   step: 0.25,
   limit: 4,
   label: 0.8,
@@ -157,8 +157,11 @@ function drawWaveRun(context: LaneDraw, run: Run, band: LaneBand, labelled: bool
 
 function drawWhammies(context: LaneDraw, band: LaneBand): void {
   const { placement, sink, space, effects } = context;
-  const middle = band.top + WHAMMY.middle * space;
   const labelSize = WHAMMY.label * space;
+  // Low enough that a label over the graph's highest point stays clear of `w/bar`.
+  const row = (WHAMMY.baseline + WHAMMY.clear) * space + textExtent(WHAMMY_TEXT * space).descent;
+  const highest = WHAMMY.gap * space + textExtent(labelSize).ascent;
+  const middle = band.top + row + highest + WHAMMY.limit * WHAMMY.step * space;
   const level = (value: number): number =>
     middle - Math.max(-WHAMMY.limit, Math.min(WHAMMY.limit, value)) * WHAMMY.step * space;
   for (const { beat, tick, next } of effects.whammies) {

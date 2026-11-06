@@ -250,14 +250,14 @@ exports[`note effects on the tab: lanes > graphs whammy dives, dips and returns 
   "line @171.91,171.2 -> 171.91,193.95 w 0.84 <beat00000002>",
   "line @198.51,171.2 -> 198.51,193.95 w 0.84 <beat00000003>",
   "line @225.11,171.2 -> 225.11,193.95 w 0.84 <beat00000004>",
-  "text "w/bar" @145.31,79.15 size 6.3 start <beat00000001>",
-  "text "w/bar" @225.11,79.15 size 6.3 start <beat00000004>",
-  "path stroked M145.31 91.4L169.81 98.4 <beat00000001>",
-  "text "-2" @169.81,103.78 size 5.6 middle <beat00000001>",
-  "path stroked M171.91 91.4L184.16 98.4L196.41 91.4 <beat00000002>",
-  "text "-full" @184.16,103.78 size 5.6 middle <beat00000002>",
-  "path stroked M225.11 98.4L253.81 91.4 <beat00000004>",
-  "text "-full" @225.11,103.78 size 5.6 middle <beat00000004>",
+  "text "w/bar" @145.31,78.8 size 6.3 start <beat00000001>",
+  "text "w/bar" @225.11,78.8 size 6.3 start <beat00000004>",
+  "path stroked M145.31 93.38L169.81 100.38 <beat00000001>",
+  "text "-2" @169.81,105.76 size 5.6 middle <beat00000001>",
+  "path stroked M171.91 93.38L184.16 100.38L196.41 93.38 <beat00000002>",
+  "text "-full" @184.16,105.76 size 5.6 middle <beat00000002>",
+  "path stroked M225.11 100.38L253.81 93.38 <beat00000004>",
+  "text "-full" @225.11,105.76 size 5.6 middle <beat00000004>",
 ]
 `;
 

@@ -197,7 +197,7 @@ The room around a staff is the larger of its floor (tab 2 above and 1 below, fiv
 | Palm mute, let ring | `Note.palmMute`, `Note.letRing` | `P.M.` and `let ring` at the run's first onset, a dashed line (0.6 dash, 0.4 gap, 0.16 thick) to its last onset and an end tick 0.8 tall. A line shorter than 0.3 is left out, so a one-beat run is its label. |
 | Vibrato | `Note.vibrato` | A wave from the onset to the run's end less 0.2: slight λ 0.9, amplitude 0.22; wide λ 1.4, amplitude 0.45. The widest in the run wins. |
 | Whammy-bar vibrato | `Beat.effects.vibrato` | A sawtooth, slight λ 0.9, amplitude 0.35; wide λ 1.4, amplitude 0.6. |
-| Whammy | `Beat.effects.whammy` | `w/bar` (0.9 text) at the run's first onset; per beat a polyline from its onset to the next onset less 0.3, 0.25 per quarter tone around the lane's middle (clamped at 4); labels (0.8 text) at the extreme point and at a non-zero final point that differs from it. |
+| Whammy | `Beat.effects.whammy` | `w/bar` (0.9 text) at the run's first onset; per beat a polyline from its onset to the next onset less 0.3, 0.25 per quarter tone around a middle low enough that a label over the highest point clears `w/bar` (clamped at 4); labels (0.8 text) at the extreme point and at a non-zero final point that differs from it. |
 | Tapping, slapping, popping | `Beat.effects` | `T`, `S` or `P` centred on the beat in the tap lane; the first of the three that is set. |
 | Pick stroke | `Beat.effects.pickStroke` | `stringsDownBow` or `stringsUpBow`, centred. |
 | Fade in, fade out, volume swell | `Beat.effects` | `guitarFadeIn`, `guitarFadeOut` or `guitarVolumeSwell`, centred. |
