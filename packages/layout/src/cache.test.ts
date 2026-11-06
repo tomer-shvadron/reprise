@@ -186,32 +186,30 @@ describe('LayoutCache', () => {
   });
 
   it('reuses the systems past an edit that changes the system count, at their new indices', () => {
-    // A bar almost as wide as the page takes a system of its own, so the edit adds one; the page
-    // height is the first that leaves room for it on its page, so the next page keeps its systems.
+    // A bar almost as wide as the page takes a system of its own, so the edit adds one; at this
+    // page height its page has room for it, so the next page keeps its systems.
     const wide = 'C'.repeat(75);
     const score = largeScore(1, 48, { structure: true });
     const { score: edited, change } = applyCommand(
       score,
       setBeatEffect({ beatId: beatOf(score, 0, 5, 0).id }, { chord: { name: wide } }),
     );
-    for (let pageHeight = 400; pageHeight <= 1600; pageHeight += 4) {
-      const options = { ...paged, pageHeight };
-      const { cache, first } = warm(score, options);
-      const result = layout(edited, { ...options, dirtyBars: change.touchedBars }, cache);
-      expect(stable(result)).toBe(stable(layout(edited, options)));
-      const moved = result.systems.filter(
-        (system) => system.bars.start > 5 + BAR_REACH && kept(first, result, system.id),
-      );
-      if (result.systems.length === first.systems.length || moved.length === 0) continue;
-      const old = first.systems.find(({ id }) => id === moved[0]?.id);
-      expect(moved[0]?.index).not.toBe(old?.index);
-      expect(result.anchors.filter(({ system }) => system === moved[0]?.index).length).toBe(
-        (moved[0]?.anchors.end ?? 0) - (moved[0]?.anchors.start ?? 0),
-      );
-      expectValid(result);
-      return;
-    }
-    throw new Error('no page height let the added system fit');
+    const options = { ...paged, pageHeight: 1300 };
+    const { cache, first } = warm(score, options);
+    const result = layout(edited, { ...options, dirtyBars: change.touchedBars }, cache);
+    expect(stable(result)).toBe(stable(layout(edited, options)));
+    expect(result.systems.length).toBeGreaterThan(first.systems.length);
+    const moved = result.systems.filter(
+      (system) => system.bars.start > 5 + BAR_REACH && kept(first, result, system.id),
+    );
+    expect(moved.length).toBeGreaterThan(0);
+    const [system] = moved;
+    const old = first.systems.find(({ id }) => id === system?.id);
+    expect(system?.index).toBe((old?.index ?? 0) + result.systems.length - first.systems.length);
+    expect(result.anchors.filter((anchor) => anchor.system === system?.index)).toHaveLength(
+      (system?.anchors.end ?? 0) - (system?.anchors.start ?? 0),
+    );
+    expectValid(result);
   });
 
   it('notices an edited bar by identity when no dirty bars are given', () => {
