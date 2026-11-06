@@ -9,6 +9,11 @@ export const APP_SCHEME = 'reprise';
 export const APP_HOST = 'app';
 export const APP_INDEX_URL = `${APP_SCHEME}://${APP_HOST}/index.html`;
 
+// The longest built asset path is under 60 characters. Without a cap, a megabyte of `a/`
+// segments keeps the guard's per-segment realpath walk busy for over a minute inside the asar.
+const MAX_PATH_LENGTH = 1024;
+const MAX_URL_LENGTH = 4 * MAX_PATH_LENGTH;
+
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -34,6 +39,7 @@ export function contentTypeOf(path: string): string {
 
 /** The file under `root` an app URL names, or undefined when it names nothing there. */
 export function resolveAppPath(url: string, root: string, access: PathAccess): string | undefined {
+  if (url.length > MAX_URL_LENGTH) return undefined;
   const { protocol, host, pathname } = new URL(url);
   if (protocol !== `${APP_SCHEME}:` || host !== APP_HOST) return undefined;
   let path: string;
@@ -43,7 +49,7 @@ export function resolveAppPath(url: string, root: string, access: PathAccess): s
   } catch {
     return undefined;
   }
-  if (path.includes('\0')) return undefined;
+  if (path.length > MAX_PATH_LENGTH || path.includes('\0')) return undefined;
   const target = resolve(root, `.${path === '' || path === '/' ? '/index.html' : path}`);
   return access.allows(target) ? target : undefined;
 }
@@ -58,7 +64,12 @@ export function createAppProtocolHandler(root: string): (request: Request) => Pr
   const access = new PathAccess([root]);
   return async (request) => {
     if (request.method !== 'GET') return new Response(null, { status: 405 });
-    const path = resolveAppPath(request.url, root, access);
+    let path: string | undefined;
+    try {
+      path = resolveAppPath(request.url, root, access);
+    } catch {
+      return notFound();
+    }
     if (path === undefined) return notFound();
     let size: number;
     try {

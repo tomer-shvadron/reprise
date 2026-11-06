@@ -69,6 +69,18 @@ describe('the app protocol', () => {
     expect((await get(url)).status).toBe(404);
   });
 
+  it('answers 404 to a 1 MB path without walking it', async () => {
+    const started = performance.now();
+    const response = await get(`reprise://app/${'a/'.repeat(500_000)}index.html`);
+    expect(response.status).toBe(404);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
+  it('refuses an over-long decoded path even when the URL is short enough', () => {
+    const access = new PathAccess([root]);
+    expect(resolveAppPath(`reprise://app/${'a/'.repeat(600)}x`, root, access)).toBeUndefined();
+  });
+
   it('answers 405 to anything but GET', async () => {
     const response = await handle(new Request('reprise://app/index.html', { method: 'POST' }));
     expect(response.status).toBe(405);
