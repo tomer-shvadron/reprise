@@ -173,8 +173,10 @@ function readProperties(
         notModelled(sink, at, 'A string number shown on the staff');
         break;
       case 'Element':
+        note.drumElement = parseIntOr(childText(property, 'Element'), 0);
+        break;
       case 'Variation':
-        // The drum element and variation duplicate `InstrumentArticulation`, which is read.
+        note.drumVariation = parseIntOr(childText(property, 'Variation'), 0);
         break;
       default:
         unknownElement(sink, at);
