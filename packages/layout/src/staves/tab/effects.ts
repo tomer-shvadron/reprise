@@ -27,7 +27,7 @@ import { lineY, type TabContext } from './context';
 
 /** Gaps and sizes of the on-string effects, in staff spaces. */
 const SLIDE = { gap: 0.15, rise: 0.3, length: 1.3, clear: 0.2, thickness: 0.12 };
-const BEND = { gap: 0.15, tip: 1.6, stop: 0.6, min: 1, graceStop: 0.3 };
+const BEND = { gap: 0.15, stop: 0.6, min: 1, graceStop: 0.3 };
 const STROKE = { reach: 0.4, thickness: 0.12 };
 
 /** The x of each grace column's centre, in column order, for a beat at `x`. */
@@ -35,6 +35,7 @@ export function graceCentres(beat: TabBeat, x: number, space: number): number[] 
   const centres: number[] = [];
   let cursor = x - beat.half - beat.stroke - TAB.graceGap * space;
   for (const column of [...beat.graces].reverse()) {
+    cursor -= column.room;
     centres.unshift(cursor - column.width / 2);
     cursor -= column.width + TAB.graceGap * space;
   }
@@ -262,48 +263,65 @@ function lettered(context: TabContext, beat: TabBeat): Set<Note> {
   return out;
 }
 
-function drawBends(context: TabContext, beat: TabBeat, x: number, next: number): void {
+/**
+ * One frame for all the bends of a beat or grace column, so equal bends in a chord meet at one
+ * tip whatever their numbers' widths, and releases to zero end above the topmost bent number.
+ */
+function drawBendGroup(
+  context: TabContext,
+  labels: readonly NoteLabel[],
+  at: number,
+  size: number,
+  stop: number,
+  min: number,
+  drawn: Set<string>,
+): void {
   const { placement, sink, space } = context;
   const band = placement.lanes.bend;
-  if (!band) return;
-  const size = TAB.fretSize * space;
-  const drawn = new Set<string>();
-  const frame = (label: NoteLabel, at: number, labelSize: number, stop: number) => {
-    const y = lineY(context, label.note.string);
-    const x0 = at + rightEdge(label, labelSize) + BEND.gap * space;
-    return {
-      x0,
-      xEnd: Math.max(stop, x0 + BEND.min * space),
-      yBase: y,
-      tipY: band.bottom - BEND.tip * space,
-      onset: at,
-      numberTop: y - labelHalfHeight(labelSize),
-      tied: label.note.tie,
-    };
-  };
-  for (const label of beat.labels) {
+  const bent = labels.filter((label) => label.note.bend);
+  const [top] = bent;
+  if (!band || !top) return;
+  const x0 = at + Math.max(...bent.map((label) => rightEdge(label, size))) + BEND.gap * space;
+  const xEnd = Math.max(stop, x0 + min * space);
+  const releaseTop = lineY(context, top.note.string) - labelHalfHeight(size);
+  for (const label of bent) {
     const { bend } = label.note;
     if (!bend) continue;
-    drawBend(
-      sink,
-      bend,
-      frame(label, x, size, next - BEND.stop * space),
-      space,
-      label.note.id,
-      drawn,
-    );
+    const y = lineY(context, label.note.string);
+    const frame = {
+      x0,
+      xEnd,
+      yBase: y,
+      laneBottom: band.bottom,
+      onset: at,
+      numberTop: y - labelHalfHeight(size),
+      releaseTop,
+      tied: label.note.tie,
+    };
+    drawBend(sink, bend, frame, space, label.note.id, drawn);
   }
+}
+
+function drawBends(context: TabContext, beat: TabBeat, x: number, next: number): void {
+  const { space } = context;
+  const size = TAB.fretSize * space;
+  const drawn = new Set<string>();
+  drawBendGroup(context, beat.labels, x, size, next - BEND.stop * space, BEND.min, drawn);
   const centres = graceCentres(beat, x, space);
   const graceSize = size * TAB.graceScale;
   for (const [g, column] of beat.graces.entries()) {
     const centre = centres[g];
     if (centre === undefined) continue;
-    const stop = x - beat.half - beat.stroke - BEND.graceStop * space;
-    for (const label of column.labels) {
-      const { bend } = label.note;
-      if (bend)
-        drawBend(sink, bend, frame(label, centre, graceSize, stop), space, label.note.id, drawn);
-    }
+    const following = beat.graces[g + 1];
+    const nextCentre = centres[g + 1];
+    const nextLeft =
+      following && nextCentre !== undefined
+        ? nextCentre - following.width / 2
+        : x - beat.half - beat.stroke;
+    // A grace bend gets no minimum length: it would reach into the number it leads to.
+    const stop = nextLeft - BEND.graceStop * space;
+    const sorted = [...column.labels].sort((a, b) => a.note.string - b.note.string);
+    drawBendGroup(context, sorted, centre, graceSize, stop, 0, drawn);
   }
 }
 

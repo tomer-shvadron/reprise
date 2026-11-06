@@ -40,7 +40,6 @@ export type LaneBands = Readonly<Partial<Record<LaneId, LaneBand>>>;
 
 /** Fixed lane heights, in staff spaces; the others are measured. */
 export const LANE_HEIGHT = {
-  bend: 3,
   run: 1.4,
   fade: 1.9,
   tap: 1.3,

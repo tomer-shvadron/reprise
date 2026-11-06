@@ -54,6 +54,17 @@ const dashed = (p: Primitive) => p.kind === 'line' && p.dash !== undefined;
 const arrows = (p: Primitive) => p.kind === 'path' && p.fill && p.d.split('L').length === 3;
 const strokedPaths = (p: Primitive) => p.kind === 'path' && !p.fill;
 
+/** The paper knockout under a note's number. */
+function knockout(result: LayoutResult, node: string): Primitive['bbox'] {
+  const found = result.primitives.find((p) => p.node === node && p.role === 'paper');
+  if (!found) throw new Error(`no knockout for ${node}`);
+  return found.bbox;
+}
+
+function intersects(a: Primitive['bbox'], b: Primitive['bbox']): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
 describe('note effects on the tab: bends', () => {
   it('labels bends by amount: ¼ ½ ¾ full 1¼ 1½ 2', () => {
     expect([1, 2, 3, 4, 5, 6, 8, 0, -4, -2].map(bendLabel)).toEqual([
@@ -118,6 +129,71 @@ describe('note effects on the tab: bends', () => {
     expect(result.primitives.filter(arrows)).toHaveLength(1);
     expect(result.primitives.filter(isText('½'))).toHaveLength(1);
     expect(result.primitives.filter(strokedPaths)).toHaveLength(2);
+  });
+
+  it('draws equal bends of a chord once whatever the widths of their numbers', () => {
+    const result = laid(
+      guitar()
+        .bar()
+        .beat('1', [note(2, 12, { bend: BENDS.full }), note(3, 7, { bend: BENDS.full })])
+        .build({ ids: 'sequential' }),
+    );
+    expect(result.primitives.filter(arrows)).toHaveLength(1);
+    expect(result.primitives.filter(isText('full'))).toHaveLength(1);
+    expect(result.primitives.filter(dashed)).toHaveLength(1);
+  });
+
+  it('ends every release to zero of a chord at its topmost bent number, with one arrowhead', () => {
+    const built = guitar()
+      .bar()
+      .beat('1', [
+        note(2, 12, { bend: BENDS.bendRelease }),
+        note(3, 7, { bend: BENDS.bendRelease }),
+      ])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const top = knockout(result, noteOf(built, 0, 0, 0).id);
+    expect(result.primitives.filter(arrows)).toHaveLength(2);
+    for (const p of result.primitives.filter(arrows)) {
+      expect(p.bbox.y + p.bbox.height).toBeLessThanOrEqual(top.y);
+    }
+  });
+
+  it('keeps every raised bend value above the staff, measured from its top', () => {
+    const result = laid(
+      guitar()
+        .bar()
+        .beat('2', [note(6, 7, { bend: BENDS.custom })])
+        .beat('2', [note(1, 7)])
+        .build({ ids: 'sequential' }),
+    );
+    const staff = result.systems[0]?.staves[0];
+    if (!staff) throw new Error('staff');
+    const labels = result.primitives.filter(
+      (p) => p.kind === 'text' && ['½', 'full', '¾'].includes(p.text),
+    );
+    expect(labels).toHaveLength(3);
+    for (const label of labels)
+      expect(label.bbox.y + label.bbox.height).toBeLessThanOrEqual(staff.top);
+  });
+
+  it('keeps the bend of a grace note clear of the number it leads to', () => {
+    const built = guitar()
+      .bar()
+      .beat('1', [note(3, 9)], {
+        grace: [{ duration: 16, before: true, notes: [note(3, 7, { bend: BENDS.full })] }],
+      })
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const main = noteOf(built, 0, 0, 0);
+    const grace = built.tracks[0]?.bars[0]?.voices[0]?.beats[0]?.grace?.[0]?.notes[0];
+    if (!grace) throw new Error('grace');
+    const number = knockout(result, main.id);
+    const drawn = result.primitives.filter(
+      (p) => p.node === grace.id && p.role !== 'paper' && !(p.kind === 'text' && p.text === '7'),
+    );
+    expect(drawn.filter(arrows)).toHaveLength(1);
+    for (const p of drawn) expect(intersects(p.bbox, number)).toBe(false);
   });
 
   it('draws bends on the tab in both mode and nothing of them on the standard staff', () => {

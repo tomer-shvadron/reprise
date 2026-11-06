@@ -12,7 +12,7 @@ import {
   text,
   type LayoutSink,
 } from '../../primitives';
-import { EFFECT_TEXT } from './analysis';
+import { BEND_STEP, EFFECT_TEXT } from './analysis';
 import { bendLabel } from './labels';
 
 /** Shaft thickness, the gaps around labels and a hold's dashes, in staff spaces. */
@@ -27,12 +27,14 @@ export interface BendFrame {
   /** Where the shaft starts: right of the number, or its centre for a pre-bend. */
   x0: number;
   xEnd: number;
-  /** The string (or head) the bend starts from, and the level of its largest value. */
+  /** The string the bend starts from, and the bend lane's bottom, which raised values rise from. */
   yBase: number;
-  tipY: number;
-  /** The onset's x and the top of the number's knockout, for pre-bends and releases to zero. */
+  laneBottom: number;
+  /** The onset's x and the top of the number's knockout, for pre-bends. */
   onset: number;
   numberTop: number;
+  /** The top of the beat's topmost bent number, where every release to zero ends. */
+  releaseTop: number;
   /** A tied note continues its bend and gets no pre-bend arrow. */
   tied: boolean;
 }
@@ -55,8 +57,10 @@ export function drawBend(
   const [first] = points;
   if (top <= 0 || !first) return;
   const size = EFFECT_TEXT * space;
+  // As in alphaTab, a raised value is a fixed rise above the staff rather than a share of the way
+  // from the note's string, so intermediate values stay above the staff's numbers.
   const level = (value: number): number =>
-    frame.yBase + (frame.tipY - frame.yBase) * Math.max(0, Math.min(1, value / top));
+    value <= 0 ? frame.yBase : frame.laneBottom - BEND_STEP * value * space;
   const prebend = first.value > 0;
   const x0 = prebend ? frame.onset : frame.x0;
   const x = (position: number): number => x0 + (position / 60) * (frame.xEnd - x0);
@@ -98,7 +102,7 @@ export function drawBend(
       shaft(sink, xp, yp, xq, tip + arrow, space, node);
       raised(xq, tip, q.value);
     } else if (q.value < p.value) {
-      const tip = q.value <= 0 ? frame.numberTop - RELEASE_STOP * space : level(q.value);
+      const tip = q.value <= 0 ? frame.releaseTop - RELEASE_STOP * space : level(q.value);
       shaft(sink, xp, yp, xq, tip - arrow, space, node);
       once(`arrow ${String(round(xq))} ${String(round(tip))} down`, () => {
         sink.primitives.push(arrowhead(xq, tip, 'down', space, { node }));
@@ -112,8 +116,10 @@ export function drawBend(
         });
       }
     } else if (p.value > 0 && xq > xp) {
-      const dash: [number, number] = [HOLD_DASH * space, HOLD_DASH * space];
-      sink.primitives.push(line(xp, yp, xq, yp, SHAFT * space, { dash, node }));
+      once(`hold ${String(round(xp))} ${String(round(xq))} ${String(round(yp))}`, () => {
+        const dash: [number, number] = [HOLD_DASH * space, HOLD_DASH * space];
+        sink.primitives.push(line(xp, yp, xq, yp, SHAFT * space, { dash, node }));
+      });
     }
   }
 }

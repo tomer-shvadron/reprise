@@ -9,6 +9,9 @@ const TICK_EPSILON = 1e-6;
 /** Effect text in the lanes, and the whammy's smaller text, in staff spaces. */
 export const EFFECT_TEXT = 1;
 export const WHAMMY_TEXT = 0.9;
+/** A bend's rise per quarter tone above the staff, and the room its label takes above the tip, in staff spaces. */
+export const BEND_STEP = 0.55;
+const BEND_LABEL_ROOM = 1.3;
 /** Room kept either side of an item centred on an onset, beyond its own width, in staff spaces. */
 const ITEM_SIDE = 0.2;
 /** Gaps in a stack of articulations and around it, in staff spaces. */
@@ -230,8 +233,14 @@ export interface BarEffects extends BarRuns {
   reserved: { tick: number; left: number; right: number }[];
 }
 
-function hasBend(note: Note): boolean {
-  return note.bend?.points.some((p) => p.value !== 0) ?? false;
+/** A note's highest bend value, 0 when it does not bend. */
+function bendTop(note: Note): number {
+  return Math.max(0, ...(note.bend?.points.map((p) => p.value) ?? []));
+}
+
+function bendLane(notes: readonly Note[]): number | undefined {
+  const top = Math.max(0, ...notes.map(bendTop));
+  return top > 0 ? BEND_STEP * top + BEND_LABEL_ROOM : undefined;
 }
 
 export function glyphHeight(name: GlyphName): number {
@@ -313,10 +322,12 @@ export function analyseEffects(bar: Bar, space: number, options: EffectOptions):
       raise('tap', LANE_HEIGHT.tap);
       centred(tick, textSpan(letter, EFFECT_TEXT));
     }
-    if (notes.some(hasBend)) raise('bend', LANE_HEIGHT.bend);
+    const bent = bendLane(notes);
+    if (bent !== undefined) raise('bend', bent);
   }
   for (const { beat } of timed) {
-    if (beat.grace?.some((grace) => grace.notes.some(hasBend))) raise('bend', LANE_HEIGHT.bend);
+    const bent = bendLane(beat.grace?.flatMap((grace) => grace.notes) ?? []);
+    if (bent !== undefined) raise('bend', bent);
   }
 
   for (const run of runs) {

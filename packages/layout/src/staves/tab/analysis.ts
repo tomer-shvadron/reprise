@@ -59,6 +59,8 @@ export const TAB = {
   strokeRoom: 1,
   slideRoom: 1.5,
   bendRoom: 2.2,
+  /** Room right of a grace column holding a bend, so its arrow stays clear of the main number. */
+  graceBendRoom: 1.2,
   /** Free stem kept between the strings and tremolo strokes, and around the strokes, in staff spaces. */
   tremoloGap: 0.5,
   tremoloRoom: 1,
@@ -82,6 +84,8 @@ export interface GraceColumn {
   labels: NoteLabel[];
   /** Widest label, in px. */
   width: number;
+  /** Room kept right of the column for a bend, in px. */
+  room: number;
 }
 
 export interface TabBeat {
@@ -268,6 +272,7 @@ function analyseBeat(
       duration: grace.duration,
       labels: graceLabels,
       width: Math.max(0, ...graceLabels.map((label) => labelHalf(label, graceSize) * 2)),
+      room: grace.notes.some((note) => note.bend) ? TAB.graceBendRoom * space : 0,
     };
   });
   const rhythm = event(beat, tick);
@@ -310,7 +315,7 @@ function analyseBeat(
     played && (beat.effects.arpeggio || beat.effects.brush) ? TAB.strokeRoom * space : 0;
   let left = half + stroke;
   if (slideIn) left += TAB.slideRoom * space;
-  for (const column of graces) left += TAB.graceGap * space + column.width;
+  for (const column of graces) left += TAB.graceGap * space + column.width + column.room;
   return {
     voice,
     index,
