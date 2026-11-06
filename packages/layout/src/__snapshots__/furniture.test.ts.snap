@@ -3,12 +3,12 @@
 exports[`master-bar markings > continues a bracket across a system break without a second label 1`] = `
 {
   "brackets": [
-    "path stroked M219.62 90L219.62 77.4L743.2 77.4 <mbar00000002>",
+    "path stroked M277.66 90L277.66 77.4L743.2 77.4 <mbar00000002>",
     "path stroked M99.18 240.65L743.2 240.65 <mbar00000004>",
     "path stroked M99.18 403.9L743.2 403.9L743.2 416.5 <mbar00000007>",
   ],
   "labels": [
-    "text "1." @223.12,87.9 size 9.1 start <mbar00000002>",
+    "text "1." @281.16,87.9 size 9.1 start <mbar00000002>",
   ],
 }
 `;
@@ -103,8 +103,8 @@ exports[`master-bar markings > writes full track names on the first system and s
 exports[`staff furniture > draws clef changes inside a system smaller, on standard staves 1`] = `
 [
   "glyph gClef @91.11,104.7 size 28 <track0000001>",
-  "glyph fClef @187.18,90.7 size 21 <mbar00000002>",
-  "glyph gClef @303.18,104.7 size 21 <mbar00000004>",
+  "glyph fClef @237.2,90.7 size 21 <mbar00000002>",
+  "glyph gClef @453.25,104.7 size 21 <mbar00000004>",
 ]
 `;
 
