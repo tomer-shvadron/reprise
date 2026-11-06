@@ -1,11 +1,13 @@
 import type { Command } from './command-registry';
-import { formatShortcut } from './keyboard';
+import { formatShortcut, type KeyboardPlatform } from './keyboard';
 
 const CATEGORIES: Record<string, string> = {
   app: 'App',
   file: 'File',
+  edit: 'Edit',
   view: 'View',
   transport: 'Transport',
+  track: 'Track',
 };
 
 const categoryOf = (id: string) => CATEGORIES[id.split('.')[0] ?? ''] ?? 'Other';
@@ -19,8 +21,12 @@ export function shortcutTable(commands: readonly Command[]): string {
     .sort((a, b) => order.indexOf(a.category) - order.indexOf(b.category) || a.index - b.index)
     .map(({ command, category }) => {
       const { shortcut } = command;
-      const mac = shortcut ? formatShortcut(shortcut, 'mac') : '—';
-      const other = shortcut ? formatShortcut(shortcut, 'other') : '—';
+      const on = (platform: KeyboardPlatform) =>
+        shortcut && (shortcut.only ?? platform) === platform
+          ? formatShortcut(shortcut, platform)
+          : '—';
+      const mac = on('mac');
+      const other = on('other');
       return `| ${cell(command.title)} | ${category} | Global | ${cell(mac)} | ${cell(other)} |`;
     });
   return [

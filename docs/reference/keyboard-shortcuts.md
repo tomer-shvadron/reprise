@@ -5,6 +5,7 @@ Shortcuts follow Guitar Pro where Guitar Pro has one.
 The table below is checked against the command registry in `apps/web` by `apps/web/src/app/shortcut-doc.test.ts`, which fails on any difference and prints the table to paste in. WP-101 adds the script that writes it, the contexts and the cheat sheet. Until then, edit it only by pasting the table that test prints.
 
 - A bare key (no Cmd or Ctrl) never fires while typing in a text field.
+- Undo and redo in a focused text field undo the field's typing, not the score.
 - Space and Enter on a focused button or toggle activate that control; transport buttons do not take focus on click, so Space keeps playing after one.
 
 <!-- shortcuts:start -->
@@ -17,12 +18,16 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Close file | File | Global | — | — |
 | Show import details | File | Global | — | — |
 | Print… | File | Global | ⌘P | Ctrl+P |
+| Undo | Edit | Global | ⌘Z | Ctrl+Z |
+| Redo | Edit | Global | ⇧⌘Z | Ctrl+Shift+Z |
+| Redo | Edit | Global | — | Ctrl+Y |
 | Zoom in | View | Global | ⌘= | Ctrl+= |
 | Zoom out | View | Global | ⌘- | Ctrl+- |
 | Actual size | View | Global | ⌘0 | Ctrl+0 |
 | Toggle light and dark theme | View | Global | ⇧⌘L | Ctrl+Shift+L |
 | Toggle tracks | View | Global | — | — |
-| Toggle panel | View | Global | — | — |
+| Toggle mixer | View | Global | F8 | F8 |
+| Toggle multitrack view | View | Global | F3 | F3 |
 | Play or pause | Transport | Global | Space | Space |
 | Stop | Transport | Global | ↩ | Enter |
 | Play from start | Transport | Global | ⇧Space | Shift+Space |
@@ -36,4 +41,13 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Speed up 5% | Transport | Global | ] | ] |
 | Toggle relative speed | Transport | Global | ⌘F9 | Ctrl+F9 |
 | Announce position | Transport | Global | ⌥P | Alt+P |
+| Previous track | Track | Global | ⌘↑ | Ctrl+↑ |
+| Next track | Track | Global | ⌘↓ | Ctrl+↓ |
+| Mute or unmute current track | Track | Global | — | — |
+| Solo or unsolo current track | Track | Global | — | — |
+| Unmute and unsolo all tracks | Track | Global | — | — |
+| Show all tracks | Track | Global | — | — |
+| Show current track as tab | Track | Global | — | — |
+| Show current track as standard notation | Track | Global | — | — |
+| Show current track as tab and standard notation | Track | Global | — | — |
 <!-- shortcuts:end -->

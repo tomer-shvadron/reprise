@@ -15,6 +15,10 @@ interface AppFrameProps {
   score: ReactNode;
   /** The footer's playback controls. */
   transport?: ReactNode;
+  /** The left sidebar's content: the track list. */
+  sidebar?: ReactNode;
+  /** The right panel's content: the mixer. */
+  panel?: ReactNode;
 }
 
 function PanelToggle({ ui, panel, label }: { ui: UiStore; panel: PanelId; label: string }) {
@@ -42,7 +46,7 @@ function PanelToggle({ ui, panel, label }: { ui: UiStore; panel: PanelId; label:
   );
 }
 
-export function AppFrame({ ui, score, transport }: AppFrameProps) {
+export function AppFrame({ ui, score, transport, sidebar, panel }: AppFrameProps) {
   const panels = useStore(ui, (state) => state.panels);
   const widths = useStore(ui, (state) => state.panelWidths);
   const zoom = useStore(ui, (state) => state.zoom);
@@ -58,9 +62,11 @@ export function AppFrame({ ui, score, transport }: AppFrameProps) {
               className="bg-sidebar text-sidebar-foreground flex shrink-0 flex-col border-r"
               style={{ width: widths.sidebar }}
             >
-              <h2 className="text-muted-foreground px-3 py-2 text-xs font-medium tracking-wide uppercase">
-                Tracks
-              </h2>
+              {sidebar ?? (
+                <h2 className="text-muted-foreground px-3 py-2 text-xs font-medium tracking-wide uppercase">
+                  Tracks
+                </h2>
+              )}
             </aside>
             <ResizeHandle
               label="Resize tracks"
@@ -99,9 +105,11 @@ export function AppFrame({ ui, score, transport }: AppFrameProps) {
               className="bg-sidebar text-sidebar-foreground flex shrink-0 flex-col border-l"
               style={{ width: widths.rightPanel }}
             >
-              <h2 className="text-muted-foreground px-3 py-2 text-xs font-medium tracking-wide uppercase">
-                Fretboard · Mixer · Trainer
-              </h2>
+              {panel ?? (
+                <h2 className="text-muted-foreground px-3 py-2 text-xs font-medium tracking-wide uppercase">
+                  Mixer
+                </h2>
+              )}
             </aside>
           </>
         )}
@@ -118,7 +126,7 @@ export function AppFrame({ ui, score, transport }: AppFrameProps) {
           {Math.round(zoom * 100)}%
         </span>
         <Separator orientation="vertical" className="h-6!" />
-        <PanelToggle ui={ui} panel="rightPanel" label="Toggle panel" />
+        <PanelToggle ui={ui} panel="rightPanel" label="Toggle mixer" />
       </footer>
     </div>
   );

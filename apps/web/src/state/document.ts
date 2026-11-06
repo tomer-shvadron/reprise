@@ -70,10 +70,17 @@ export interface DocumentError {
   code?: string;
 }
 
-/** What is shown, not what the score is: never undoable and never dirtying. */
+/**
+ * What is shown, not what the score is: never undoable. Notation is the one part Save writes
+ * (into each track's `display.notation`), so a change to it marks the document modified.
+ */
 export interface DocumentView {
+  /** The multitrack set; `'all'` follows tracks added later. */
   tracks: Id[] | 'all';
+  /** Overrides of `display.notation`; an entry equal to the track's own is never kept. */
   notation: Record<Id, Notation>;
+  /** The track shown alone in single-track view; absent in multitrack view. */
+  only?: Id;
 }
 
 export interface DocumentState {
@@ -111,6 +118,10 @@ export interface DocumentState {
   saveAs(): Promise<void>;
   setVisibleTracks(tracks: Id[] | 'all'): void;
   setNotation(trackId: Id, notation: Notation | undefined): void;
+  /** Single-track view of `id`, or multitrack view with `undefined`. */
+  setSingleTrack(id: Id | undefined): void;
+  /** Replaces the whole view in one set, for restoring a session. */
+  setView(view: DocumentView): void;
   setWarningsOpen(open: boolean): void;
   setDetailsOpen(open: boolean): void;
   /** Reopens the warnings notice with its list expanded. */
@@ -128,6 +139,42 @@ export interface DocumentStoreDeps {
 }
 
 const emptyView = (): DocumentView => ({ tracks: 'all', notation: {} });
+
+/** The single-track view's track while the score still has it. */
+export function singleTrackOf(view: DocumentView, score: Score | undefined): Id | undefined {
+  const { only } = view;
+  return only !== undefined && score?.tracks.some((track) => track.id === only) ? only : undefined;
+}
+
+/** The tracks to lay out: the single track, else the multitrack set the score still has. */
+export function visibleTrackIds(view: DocumentView, score: Score | undefined): Id[] | 'all' {
+  if (!score) return view.tracks;
+  const only = singleTrackOf(view, score);
+  if (only !== undefined) return [only];
+  if (view.tracks === 'all') return 'all';
+  const wanted = new Set(view.tracks);
+  const kept = score.tracks.filter((track) => wanted.has(track.id)).map((track) => track.id);
+  return kept.length > 0 ? kept : 'all';
+}
+
+/** The score as Save writes it: the view's notation folded into each track's display. */
+export function withViewNotation(score: Score, notation: Record<Id, Notation>): Score {
+  if (Object.keys(notation).length === 0) return score;
+  return {
+    ...score,
+    tracks: score.tracks.map((track) => {
+      const chosen = notation[track.id];
+      return chosen === undefined || chosen === track.display.notation
+        ? track
+        : { ...track, display: { ...track.display, notation: chosen } };
+    }),
+  };
+}
+
+function sameNotation(a: Record<Id, Notation>, b: Record<Id, Notation>): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+}
 
 function errorOf(action: DocumentError['action'], fileName: string, error: unknown): DocumentError {
   if (error instanceof FormatError) {
@@ -175,6 +222,8 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
   // Undo depth, and the depth the file on disk matches; -1 once that point cannot be reached.
   let depth = 0;
   let savedDepth = 0;
+  // The view's notation as last saved: Save writes it, so a change since makes the document dirty.
+  let savedNotation: Record<Id, Notation> = {};
   let openToken = 0;
   // Bumped by every open and close, so a save that outlives its document drops its result.
   let documentToken = 0;
@@ -183,8 +232,8 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
   let resolvePrompt: ((answer: SaveAnswer) => void) | undefined;
 
   return create<DocumentState>()((set, get) => {
-    const snapshot = () => ({
-      dirty: depth !== savedDepth,
+    const snapshot = (notation: Record<Id, Notation> = get().view.notation) => ({
+      dirty: depth !== savedDepth || !sameNotation(notation, savedNotation),
       canUndo: history.canUndo,
       canRedo: history.canRedo,
       undoLabel: history.undoLabel,
@@ -223,9 +272,11 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
     };
 
     const saveAs = async () => {
-      const { score, file, saving } = get();
-      if (!score || saving) return;
+      const { score: current, file, saving, view } = get();
+      if (!current || saving) return;
       const at = depth;
+      const notation = view.notation;
+      const score = withViewNotation(current, notation);
       const token = documentToken;
       const name = file ? baseName(file.name) : 'Untitled';
       let target = `${name}.reprise`;
@@ -247,6 +298,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
         // A cancel and a browser download look the same: nothing to write to again.
         if (path !== undefined && token === documentToken) {
           savedDepth = at;
+          savedNotation = notation;
           if (answer === 'gp') originalHasMore = false;
           set({
             file: {
@@ -311,6 +363,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           history = createHistory();
           depth = 0;
           savedDepth = 0;
+          savedNotation = {};
           forgetDocument();
           set((state) => ({
             id: newId(),
@@ -326,7 +379,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
             warningsOpen: warnings.some((warning) => warning.severity !== 'info'),
             detailsOpen: false,
             opening: undefined,
-            ...snapshot(),
+            ...snapshot({}),
           }));
         } catch (error) {
           if (token !== openToken) return;
@@ -340,6 +393,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
         history = createHistory();
         depth = 0;
         savedDepth = 0;
+        savedNotation = {};
         set((state) => ({
           id: undefined,
           score: undefined,
@@ -352,7 +406,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           detailsOpen: false,
           opening: undefined,
           error: undefined,
-          ...snapshot(),
+          ...snapshot({}),
         }));
       },
 
@@ -380,18 +434,19 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       },
 
       async save() {
-        const { score, file, saving } = get();
-        if (!score || saving) return;
+        const { score: current, file, saving, view } = get();
+        if (!current || saving) return;
         const format = file?.format;
         if (file?.handle === undefined || !isSaveFormat(format)) {
           await saveAs();
           return;
         }
         const at = depth;
+        const notation = view.notation;
         const token = documentToken;
         set({ saving: true });
         try {
-          const { bytes, dropped } = await write(score, format);
+          const { bytes, dropped } = await write(withViewNotation(current, notation), format);
           if (format === 'gp') {
             const losses = originalHasMore ? [...dropped, ...readLosses(get().warnings)] : dropped;
             if (losses.length > 0) {
@@ -405,6 +460,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           ]);
           if (token !== documentToken) return;
           savedDepth = at;
+          savedNotation = notation;
           if (format === 'gp') originalHasMore = false;
           set({ file: { ...file, savedKeys: [...file.savedKeys, savedKey] }, ...snapshot() });
         } catch (error) {
@@ -421,13 +477,27 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       },
 
       setNotation(trackId, notation) {
-        set((state) => {
-          const rest = Object.fromEntries(
-            Object.entries(state.view.notation).filter(([id]) => id !== trackId),
-          );
-          const next = notation === undefined ? rest : { ...rest, [trackId]: notation };
-          return { view: { ...state.view, notation: next } };
-        });
+        const { view, score } = get();
+        const own = score?.tracks.find((track) => track.id === trackId)?.display.notation;
+        const kept = notation === own ? undefined : notation;
+        if (view.notation[trackId] === kept) return;
+        const rest = Object.fromEntries(
+          Object.entries(view.notation).filter(([id]) => id !== trackId),
+        );
+        const next = kept === undefined ? rest : { ...rest, [trackId]: kept };
+        set({ view: { ...view, notation: next }, dirty: snapshot(next).dirty });
+      },
+
+      setSingleTrack(id) {
+        const { view } = get();
+        if (view.only === id) return;
+        const next: DocumentView = { tracks: view.tracks, notation: view.notation };
+        if (id !== undefined) next.only = id;
+        set({ view: next });
+      },
+
+      setView(view) {
+        set({ view, dirty: snapshot(view.notation).dirty });
       },
 
       setWarningsOpen(open) {

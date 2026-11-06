@@ -1,9 +1,7 @@
 import { createContext, use } from 'react';
 
-import { runCommand, type CommandRegistry } from '@/app/command-registry';
-import { ariaKeyShortcuts, formatShortcut, type KeyboardPlatform } from '@/app/keyboard';
-
-import type { TransportCommandId } from './commands';
+import { runCommand, type CommandRegistry } from './command-registry';
+import { ariaKeyShortcuts, formatShortcut, type KeyboardPlatform } from './keyboard';
 
 export interface CommandSource {
   registry: CommandRegistry;
@@ -22,12 +20,15 @@ export interface BoundCommand {
 }
 
 /** A registered command, so a click, the palette and the shortcut share one code path. */
-export function useCommand(id: TransportCommandId): BoundCommand {
+export function useCommand(id: string): BoundCommand {
   const source = use(CommandSourceContext);
   if (!source) throw new Error('useCommand needs a CommandSourceContext');
   const command = source.registry.get(id);
   if (!command) throw new Error(`Command "${id}" is not registered`);
-  const { shortcut } = command;
+  const shortcut =
+    command.shortcut?.only === undefined || command.shortcut.only === source.keyboard
+      ? command.shortcut
+      : undefined;
   return {
     run: () => {
       runCommand(command);

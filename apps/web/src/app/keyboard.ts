@@ -11,6 +11,8 @@ export interface Shortcut {
   mod?: boolean;
   shift?: boolean;
   alt?: boolean;
+  /** Bound on this platform only, such as Ctrl+Y for redo on Windows. */
+  only?: KeyboardPlatform;
 }
 
 type KeyEventLike = Pick<
@@ -55,6 +57,7 @@ export function matchesShortcut(
   shortcut: Shortcut,
   platform: KeyboardPlatform,
 ): boolean {
+  if (shortcut.only !== undefined && shortcut.only !== platform) return false;
   const mod = platform === 'mac' ? event.metaKey : event.ctrlKey;
   const otherModifier = platform === 'mac' ? event.ctrlKey : event.metaKey;
   if (otherModifier || mod !== Boolean(shortcut.mod)) return false;
@@ -67,6 +70,8 @@ export function matchesShortcut(
 function keyName(key: string, platform: KeyboardPlatform): string {
   if (key === ' ') return 'Space';
   if (key === 'Enter') return platform === 'mac' ? '↩' : 'Enter';
+  if (key === 'ArrowUp') return '↑';
+  if (key === 'ArrowDown') return '↓';
   return key.length === 1 ? key.toUpperCase() : key;
 }
 

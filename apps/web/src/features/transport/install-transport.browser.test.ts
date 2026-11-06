@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { fetchFixture } from '@/test/assets';
+import { mirrorAudio } from '@/test/mirror-audio';
 import { createTestServices } from '@/test/services';
-
-import { mirrorAudio } from './test/mirror-audio';
 
 // In a browser only because it reads fixtures; the audio is the fake one.
 describe('installTransport over fixtures', () => {
