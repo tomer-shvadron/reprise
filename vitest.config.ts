@@ -36,6 +36,8 @@ export default defineConfig({
           root: 'packages/audio',
           environment: 'node',
           include: [AUDIO_NODE_TESTS],
+          // Reads the SF2 fixture in Node, since audio is typed without Node's modules.
+          globalSetup: ['../../scripts/sounds/provide-sf2.ts'],
         },
       },
       {
