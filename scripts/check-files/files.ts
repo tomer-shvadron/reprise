@@ -74,7 +74,8 @@ export function discover(
   const empty: string[] = [];
   const counts = { skipped: 0 };
   targets.forEach((target, i) => {
-    const given = defaults ? (DEFAULT_PATHS[i] ?? target) : (paths[i] ?? target);
+    const typed = defaults ? (DEFAULT_PATHS[i] ?? target) : (paths[i] ?? target);
+    const given = typed.length > 1 ? typed.replace(/[\\/]+$/, '') : typed;
     if (!existsSync(target)) {
       if (defaults) empty.push(given);
       else missing.push(given);

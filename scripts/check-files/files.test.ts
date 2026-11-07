@@ -57,6 +57,11 @@ describe('discover', () => {
     expect(found).toMatchObject({ files: [], empty: ['local-tabs'], missing: ['nowhere'] });
   });
 
+  it('names a folder given with a trailing slash without it', () => {
+    mkdirSync(join(root, 'local-tabs'));
+    expect(discover(['local-tabs/'], root, root).empty).toEqual(['local-tabs']);
+  });
+
   it('treats a missing default folder as empty, not missing', () => {
     touch('fixtures/a.gp3');
     const found = discover([], root, root);

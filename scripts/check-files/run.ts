@@ -70,6 +70,8 @@ const found = discover(paths);
 if (found.missing.length > 0) usage(`no such path: ${found.missing.join(', ')}`);
 for (const folder of found.empty) console.info(`${folder}/ has no Guitar Pro files yet`);
 if (found.files.length === 0) {
+  // A previous run's summary must not be left looking current.
+  wipe();
   console.info('Nothing to check.');
   process.exit(0);
 }

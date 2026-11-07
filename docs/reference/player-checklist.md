@@ -27,7 +27,7 @@ pnpm check:files local-tabs           # only your tabs
 pnpm check:files local-tabs/song.gp5 --only audio   # one file, one project (formats, layout, audio)
 ```
 
-Paths resolve against the directory you run it from. Folders are walked recursively for `.gp3`, `.gp4`, `.gp5`, `.gpx` and `.gp` files, in any case; an empty or missing `local-tabs/` is reported and skipped. A path that does not exist exits with code 2. The command exits 0 only when no check fails, crashes or leaves a known entry stale. CI runs `pnpm check:files fixtures` as the "Real-file pass" step and uploads `.check-files/` when it fails.
+Paths resolve against the directory you run it from. Folders are walked recursively for `.gp3`, `.gp4`, `.gp5`, `.gpx` and `.gp` files, in any case; an empty `local-tabs/`, or a missing one when you give no path, is reported and skipped, and the previous run's reports are cleared. A path you give that does not exist exits with code 2. The command exits 0 only when no check fails, crashes or leaves a known entry stale. CI runs `pnpm check:files fixtures` as the "Real-file pass" step and uploads `.check-files/` when it fails.
 
 | Check | Where it runs | What it proves | What it cannot see |
 | --- | --- | --- | --- |
