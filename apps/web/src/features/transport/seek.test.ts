@@ -106,14 +106,19 @@ describe('keyboard steps', () => {
     expect(stepTick(t, 0, 'lastBar', stopped)).toBe(last);
   });
 
-  it('stop on the overflow beats of an over-full bar', () => {
+  it('stop on the overflow beats of an over-full bar, and a click seeks to one', () => {
+    // Bar 1 is two halves, so a step through it instead of bar 0's overflow lands elsewhere.
     const builder = score().tempo(120).track('guitar').bar();
     for (let fret = 0; fret < 6; fret++) builder.beat('4', [note(1, fret)]);
-    builder.bar();
-    for (let fret = 0; fret < 4; fret++) builder.beat('4', [note(2, fret)]);
+    builder
+      .bar()
+      .beat('2', [note(2, 0)])
+      .beat('2', [note(2, 1)]);
     const overfull = timelineOf(builder.build({ validate: false }));
     expect(stepTick(overfull, BAR, 'nextBeat', stopped)).toBe(4800);
     expect(stepTick(overfull, 4800, 'nextBeat', stopped)).toBe(5760);
+    expect(passIndexAt(overfull, 4800)).toBe(0);
+    expect(seekTick(overfull, { masterBarIndex: 0, tick: 4800 }, 0)).toBe(4800);
   });
 
   it('stop at the first voice’s onsets, or every voice’s, or the bar start', () => {
