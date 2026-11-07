@@ -1,8 +1,6 @@
 import {
   TIE_REACH_BARS,
-  beatTicks,
   tieOriginOf,
-  type Beat,
   type Note,
   type TieLink,
   type TiePosition,
@@ -25,7 +23,7 @@ import {
 } from '../rhythm';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
 import { DYNAMICS_GLYPHS, dynamicsBaseline, shownDynamics } from '../dynamics';
-import { analyseEffects, drawLanes } from '../effects';
+import { analyseEffects, drawLanes, tickOf, tremoloGlyph } from '../effects';
 import {
   TAB,
   analyseBar,
@@ -35,7 +33,6 @@ import {
   freeStem,
   labelOf,
   restGlyph,
-  tremoloGlyph,
   type NoteLabel,
   type TabBeat,
   type TabOptions,
@@ -260,12 +257,6 @@ function labelEdge(label: NoteLabel | undefined, size: number): number {
 
 function trackVoiceBeats(track: Track, barIndex: number, voice: number) {
   return track.bars[barIndex]?.voices[voice]?.beats ?? [];
-}
-
-function tickOf(beats: readonly Beat[], index: number): number {
-  let tick = 0;
-  for (const beat of beats.slice(0, index)) tick += beatTicks(beat);
-  return tick;
 }
 
 /**

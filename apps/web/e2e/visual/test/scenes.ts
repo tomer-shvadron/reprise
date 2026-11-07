@@ -307,6 +307,87 @@ function furniture(): Score {
   return builder.build({ ids: 'sequential' });
 }
 
+function noteMarks(): Score {
+  const builder = score().track('guitar', { name: 'Guitar' });
+  builder
+    .bar()
+    .beat('4', [note(1, 12, { staccato: true, accent: 'accent' })])
+    .beat('4', [note(6, 0, { staccato: true, accent: 'heavy' })])
+    .beat('8', [note(3, 2)], { effects: { tremoloPicking: 16 } })
+    .beat('8', [note(3, 4)])
+    .beat('4', [note(2, 1)], { effects: { tremoloPicking: 32 } });
+  builder
+    .bar()
+    .beat('2', [note(4, 4, { ghost: true }), note(3, 2, { ghost: true })])
+    .beat('4', [note(1, 12, { harmonic: { kind: 'natural' } })])
+    .beat('4', [note(2, 7, { harmonic: { kind: 'natural' } })]);
+  builder
+    .bar()
+    .beat('4', [note(6, 0, { harmonic: { kind: 'natural', value: 2.7 } })])
+    .beat('4', [note(1, 2, { harmonic: { kind: 'artificial', value: 12 } })])
+    .beat('4', [note(3, 5, { harmonic: { kind: 'pinch', value: 7 } })])
+    .beat('4', [note(3, 5, { slide: ['shift'] })]);
+  builder
+    .bar()
+    .beat('8', [note(3, 7)])
+    .beat('8', [note(3, 5, { slide: ['legato'] })])
+    .beat('8', [note(3, 7)])
+    .beat('8', [note(2, 5)])
+    .beat('8', [note(2, 7, { hammerPull: true })])
+    .beat('8', [note(2, 5, { hammerPull: true })])
+    .beat('4', [note(4, 5, { slide: ['intoFromBelow'] })]);
+  builder
+    .bar()
+    .beat('4', [note(4, 7, { slide: ['outDown'] })])
+    .beat('4', [note(3, 7, { hammerPull: true })], {
+      grace: [{ duration: 16, before: true, notes: [note(3, 5)] }],
+    })
+    .beat('4', [note(1, 0), note(2, 1), note(3, 0)], {
+      effects: { arpeggio: { direction: 'down' } },
+    })
+    .beat('4', [note(1, 0), note(2, 1), note(3, 2)], { effects: { brush: { direction: 'up' } } });
+  builder.bar().beat('1', [note(2, 5)], { effects: { tremoloPicking: 8 } });
+  builder
+    .bar()
+    .beat('8', [note(1, 5, { accent: 'accent' })])
+    .beat('8', [note(1, 7, { staccato: true })])
+    .beat('4', [note(2, 6, { staccato: true })])
+    .beat('2', [note(1, 8, { accent: 'heavy' })])
+    .voice(1)
+    .beat('2', [note(5, 3, { staccato: true })])
+    .beat('2', [note(6, 0, { accent: 'accent' })]);
+  builder.track('drums', { name: 'Drums' });
+  builder
+    .bar()
+    .beat('8', [midi(36, { accent: 'accent' })])
+    .beat('8', [midi(38, { ghost: true })])
+    .beat('4', [midi(38)], { effects: { tremoloPicking: 16 } })
+    .beat('4', [midi(38, { staccato: true })], {
+      grace: [{ duration: 32, before: true, notes: [midi(38)] }],
+    })
+    .beat('4', [midi(42, { accent: 'heavy' })]);
+  builder
+    .bar()
+    .beat('8', [midi(42, { accent: 'accent' })])
+    .beat('8', [midi(42)])
+    .beat('8', [midi(42, { staccato: true })])
+    .beat('8', [midi(42)])
+    .beat('2', [midi(46, { accent: 'heavy' })])
+    .voice(1)
+    .beat('4', [midi(36, { accent: 'accent' })])
+    .beat('4', [midi(38, { ghost: true })])
+    .beat('2', [midi(36)]);
+  for (let b = 0; b < 5; b++) builder.bar().rest('1');
+  return builder.build({ ids: 'sequential' });
+}
+
+function hasGlyph(result: LayoutResult, prefix: string): void {
+  expect(
+    result.primitives.some((p) => p.kind === 'glyph' && p.glyph.startsWith(prefix)),
+    `the scene must draw a ${prefix} glyph`,
+  ).toBe(true);
+}
+
 function atLeastTwoSystems(result: LayoutResult): void {
   expect(result.systems.length, 'the scene must break into at least two systems').toBeGreaterThan(
     1,
@@ -398,6 +479,22 @@ export const SCENES: readonly Scene[] = [
     covers: 'A real drum part',
     source: { fixture: 'gp/drum-tabs.gp' },
     notations: ['default'],
+    guard: (result) => {
+      hasGlyph(result, 'artic');
+    },
+  },
+  {
+    id: 'note-marks',
+    covers:
+      'Articulations by voice, tremolo strokes, ghost parentheses, harmonic diamonds, slurs, slides and strokes on the standard staff; drum accents, ghosts, rolls and flams',
+    source: { build: noteMarks },
+    notations: ['standard', 'both'],
+    light: ['standard'],
+    guard: (result) => {
+      for (const prefix of ['artic', 'tremolo', 'noteheadParenthesis', 'noteheadDiamond']) {
+        hasGlyph(result, prefix);
+      }
+    },
   },
   {
     id: 'percussion-all',

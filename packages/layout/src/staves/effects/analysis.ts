@@ -3,6 +3,7 @@ import { beatTicks, type Bar, type Beat, type Note, type Vibrato } from '@repris
 import { glyphMetrics, textExtent, textWidth, type GlyphName } from '../../metrics';
 import { LANE_HEIGHT, type LaneRequests } from '../lanes';
 import { HARMONIC_LABELS } from './labels';
+import { articulationMarks } from './marks';
 
 const TICK_EPSILON = 1e-6;
 
@@ -202,10 +203,11 @@ export function sameRun(a: Run, b: Run): boolean {
 }
 
 function articulation(notes: readonly Note[]): GlyphName[] {
+  const { staccato, accent } = articulationMarks(notes);
   const glyphs: GlyphName[] = [];
-  if (notes.some((note) => note.staccato)) glyphs.push('articStaccatoAbove');
-  if (notes.some((note) => note.accent === 'heavy')) glyphs.push('articMarcatoAbove');
-  else if (notes.some((note) => note.accent === 'accent')) glyphs.push('articAccentAbove');
+  if (staccato) glyphs.push('articStaccatoAbove');
+  if (accent === 'heavy') glyphs.push('articMarcatoAbove');
+  else if (accent === 'accent') glyphs.push('articAccentAbove');
   return glyphs;
 }
 
