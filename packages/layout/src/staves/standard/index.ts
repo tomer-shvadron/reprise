@@ -1,4 +1,5 @@
-import { LANE_HEIGHT, type LaneRequests } from '../lanes';
+import { analyseEffects, drawLanes } from '../effects';
+import { LANE_HEIGHT, mergeLanes, type LaneRequests } from '../lanes';
 import type { StaffBar, StaffBarMeasure, StaffBarPlacement, StaffModule } from '../staff-module';
 import { glyphWidth } from '../../primitives';
 import { DYNAMICS_GLYPHS, beatDynamics, reservedDynamics, shownDynamics } from '../dynamics';
@@ -11,6 +12,16 @@ export type { NotationOptions } from './plan';
 const DYNAMICS_SIDE = 0.2;
 
 const DEFAULTS: NotationOptions = { percussion: false, courtesyAccidentals: true };
+const TICK_EPSILON = 1e-6;
+
+/**
+ * A standard staff shown alone draws the lane effects the tab draws in both mode, articulations
+ * apart, which it draws at the notes.
+ */
+function laneEffects(input: StaffBar, percussion: boolean) {
+  if (percussion || input.staves.length > 1) return undefined;
+  return analyseEffects(input.bar, input.space, { articulations: false });
+}
 
 interface Planned {
   inputs: unknown[];
@@ -69,15 +80,25 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
         }
         return onset;
       });
+      for (const reserved of laneEffects(input, options.percussion)?.reserved ?? []) {
+        const onset = onsets.find((o) => Math.abs(o.tick - reserved.tick) < TICK_EPSILON);
+        if (!onset) continue;
+        onset.left = Math.max(onset.left, reserved.left);
+        onset.right = Math.max(onset.right, reserved.right);
+      }
       return { onsets, above: plan.above, below: plan.below };
     },
     lanes(input: StaffBar): LaneRequests {
-      return shownDynamics(input.track, input.barIndex).size > 0
-        ? { dynamics: LANE_HEIGHT.dynamics * input.space }
-        : {};
+      const lanes: LaneRequests = { ...laneEffects(input, options.percussion)?.lanes };
+      if (shownDynamics(input.track, input.barIndex).size > 0) {
+        mergeLanes(lanes, { dynamics: LANE_HEIGHT.dynamics * input.space });
+      }
+      return lanes;
     },
     render(input: StaffBar, placement: StaffBarPlacement, sink): void {
       renderBar(input, placement, sink, planned(input), type);
+      const effects = laneEffects(input, options.percussion);
+      if (effects) drawLanes({ input, placement, sink, space: input.space, effects });
     },
   };
 }

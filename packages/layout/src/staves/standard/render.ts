@@ -9,6 +9,7 @@ import { headEdges, mainHeads, tieDirection, type ChordPlan } from './chord';
 import {
   beamedTremoloY,
   drawArticulation,
+  drawBends,
   drawConnections,
   drawStrokes,
   drawTremolo,
@@ -324,6 +325,9 @@ export function renderBar(
     };
     for (const [voice, beats] of plan.voices.entries()) drawConnections(connecting, voice, beats);
     drawStrokes(connecting);
+    if (input.staves.length === 1) {
+      for (const beats of plan.voices) drawBends(connecting, beats);
+    }
   }
 
   const shown = shownDynamics(input.track, input.barIndex);

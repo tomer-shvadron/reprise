@@ -4,6 +4,7 @@ import { glyphMetrics, type GlyphName } from '../../metrics';
 import { glyphWidth } from '../../primitives';
 import type { StaffBar } from '../staff-module';
 import {
+  headEdges,
   mainHeads,
   planChord,
   positionY,
@@ -31,7 +32,7 @@ import {
   type ShownAccidental,
 } from './pitch';
 import { beamCount, beamGroups, tupletGroups, type RhythmEvent } from '../rhythm';
-import { letterReach } from '../effects';
+import { BEND_ROOM, letterReach } from '../effects';
 import {
   beamLine,
   dotsWidth,
@@ -352,7 +353,15 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
         plan.bottom = Math.max(plan.bottom, ...heads.map(({ y }) => y + tieReach(space)));
       }
       if (!percussion) planBeside(plan, beat, heads, lone, space);
-      planGraces(plan, chordNotes, space, multiVoice);
+      if (
+        lone &&
+        !percussion &&
+        heads.some(({ note }) => note.bend && note.bend.kind !== 'prebend')
+      ) {
+        const right = Math.max(...heads.map((head) => headEdges(planned, head).right));
+        plan.right = Math.max(plan.right, right + BEND_ROOM.main * space);
+      }
+      planGraces(plan, chordNotes, space, multiVoice, lone && !percussion);
       if (!percussion) {
         for (const head of [...heads].reverse()) {
           const { leftHandFinger, rightHandFinger } = head.note;
@@ -547,6 +556,7 @@ function planGraces(
   chordNotes: (notes: readonly Note[]) => ChordNote[],
   space: number,
   multiVoice: boolean,
+  bends: boolean,
 ): void {
   const graces = plan.beat.grace ?? [];
   if (graces.length === 0 || !plan.chord) return;
@@ -568,7 +578,9 @@ function planGraces(
   for (let g = chords.length - 1; g >= 0; g--) {
     const chord = chords[g];
     if (!chord) continue;
-    const offset = cursor - chord.right;
+    // A grace note's bend, drawn when the staff is alone, keeps room before what follows it.
+    const bent = bends && (graces[g]?.notes.some((note) => note.bend) ?? false);
+    const offset = cursor - chord.right - (bent ? BEND_ROOM.grace * space : 0);
     placed.unshift({ offset, chord, slash: single });
     cursor = offset + chord.left - GRACE_STEP * space;
     plan.top = Math.min(plan.top, chord.top);

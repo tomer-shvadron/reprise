@@ -12,8 +12,10 @@ import {
 import { glyphMetrics, type GlyphName } from '../../metrics';
 import { glyph, glyphWidth, line, type LayoutSink } from '../../primitives';
 import {
+  BEND_FRAME,
   articulationMarks,
   connections,
+  drawBend,
   drawLetter,
   drawStroke,
   glyphHeight,
@@ -611,6 +613,97 @@ export function drawStrokes(context: ConnectionContext): void {
       { direction: stroke.direction, arpeggio: beat.beat.effects.arpeggio !== undefined },
       space,
       beat.beat.id,
+    );
+  }
+}
+
+/**
+ * Bends of one voice on a staff shown alone, one frame per beat and per grace column so equal
+ * bends in a chord share their arrows: from right of the bent heads up into the bend lane, with
+ * releases to zero ending above the highest bent head.
+ */
+export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]): void {
+  const { placement, space } = context;
+  const band = placement.lanes.bend;
+  if (!band) return;
+  const contentEnd = placement.x + placement.width;
+  for (const [i, beat] of beats.entries()) {
+    const { chord } = beat;
+    if (!chord) continue;
+    const x = context.beatX(beat);
+    const drawn = new Set<string>();
+    const following = beats[i + 1];
+    const next = following ? context.beatX(following) : contentEnd;
+    bendFrame(
+      context,
+      chord,
+      x,
+      beat.beat.dots,
+      next - BEND_FRAME.stop * space,
+      BEND_FRAME.min,
+      band.bottom,
+      drawn,
+    );
+    for (const [g, grace] of beat.graces.entries()) {
+      const after = beat.graces[g + 1];
+      const nextLeft = after ? x + after.offset + after.chord.left : x + chord.left;
+      // A grace bend gets no minimum length: it would reach into the head it leads to.
+      bendFrame(
+        context,
+        grace.chord,
+        x + grace.offset,
+        0,
+        nextLeft - BEND_FRAME.graceStop * space,
+        0,
+        band.bottom,
+        drawn,
+      );
+    }
+  }
+}
+
+function bendFrame(
+  context: ConnectionContext,
+  chord: ChordPlan,
+  x: number,
+  dots: number,
+  stop: number,
+  min: number,
+  laneBottom: number,
+  drawn: Set<string>,
+): void {
+  const { sink, space, placement } = context;
+  const bent = mainHeads(chord).filter((head) => head.note.bend);
+  if (bent.length === 0) return;
+  const spots = bent.map((head) => spotOf(context, chord, head, x, dots));
+  const x0 = Math.max(...spots.map((spot) => spot.right)) + BEND_FRAME.gap * space;
+  const xEnd = Math.max(stop, x0 + min * space);
+  const unit = space * chord.scale;
+  const tops = bent.map(
+    (head) => placement.top + head.y - glyphMetrics(head.glyph).bbox.top * unit,
+  );
+  const releaseTop = Math.min(...tops);
+  for (const [j, head] of bent.entries()) {
+    const { bend } = head.note;
+    const spot = spots[j];
+    const numberTop = tops[j];
+    if (!bend || !spot || numberTop === undefined) continue;
+    drawBend(
+      sink,
+      bend,
+      {
+        x0,
+        xEnd,
+        yBase: spot.y,
+        laneBottom,
+        onset: x,
+        numberTop,
+        releaseTop,
+        tied: head.note.tie,
+      },
+      space,
+      head.note.id,
+      drawn,
     );
   }
 }
