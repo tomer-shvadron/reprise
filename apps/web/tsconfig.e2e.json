@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "outDir": ".tsbuild/e2e"
+  },
+  "include": ["e2e/player", "playwright.config.ts"],
+  "references": [
+    { "path": "../../packages/model" },
+    { "path": "../../packages/formats" },
+    { "path": "../../tsconfig.tooling.json" }
+  ]
+}

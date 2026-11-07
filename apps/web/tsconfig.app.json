@@ -7,7 +7,7 @@
     "outDir": ".tsbuild/app",
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src", "e2e"],
+  "include": ["src", "e2e/visual"],
   "references": [
     { "path": "../../packages/model" },
     { "path": "../../packages/formats" },

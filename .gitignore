@@ -16,6 +16,8 @@ test-results/
 .vitest/
 # visual baselines are CI's Linux images; a developer's own references stay local
 apps/web/e2e/visual/__local__/
+# the player flows' scores, written by their global setup
+apps/web/e2e/player/.generated/
 
 # local only
 local-tabs/*

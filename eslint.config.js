@@ -208,4 +208,17 @@ export default defineConfig(
     languageOptions: { globals: globals.browser },
     settings: { react: { version: 'detect' } },
   },
+  {
+    files: ['apps/web/e2e/player/**/*.ts'],
+    languageOptions: { globals: globals.node },
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          property: 'waitForTimeout',
+          message: 'Wait on app state, never on time: apps/web/e2e/player/README.md',
+        },
+      ],
+    },
+  },
 );
