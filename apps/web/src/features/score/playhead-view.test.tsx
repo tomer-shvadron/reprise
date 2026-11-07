@@ -250,6 +250,9 @@ describe('a smooth scroll in flight', () => {
     expect(region()).toHaveAttribute('data-scrolling');
     region().scrollTop = smooth[1]?.top ?? Number.NaN;
     fireEvent.scroll(region());
+    // One frame at the destination may be a retarget passing it.
+    expect(region()).toHaveAttribute('data-scrolling');
+    fireEvent.scroll(region());
     expect(region()).not.toHaveAttribute('data-scrolling');
     expect(handle.viewport().y).toBeCloseTo((result.systems[0]?.bbox.y ?? 0) - FOLLOW_MARGIN, 0);
   });

@@ -226,6 +226,8 @@ export function ScoreView({
   const flight = useRef<Point | undefined>(undefined);
   /** The view wrote the position instantly since the last `scrollend`, which that write fires. */
   const wroteInstantly = useRef(false);
+  /** The position at the last scroll event. */
+  const lastScroll = useRef<Point | undefined>(undefined);
   const land = useCallback((target: HTMLElement | null, destination?: Point) => {
     flight.current = destination;
     if (!target) return;
@@ -277,7 +279,13 @@ export function ScoreView({
   // requested centre makes, so a scroll back before that commits still wins.
   const onScroll = (event: UIEvent<HTMLDivElement>) => {
     const scroll = readScroll(event.currentTarget);
-    if (flight.current && near(scroll, flight.current, 1)) land(event.currentTarget);
+    const previous = lastScroll.current;
+    lastScroll.current = scroll;
+    // Two frames in a row: a retarget carries its speed and may pass the destination once.
+    const aim = flight.current;
+    if (aim && near(scroll, aim, 1) && previous && near(previous, aim, 1)) {
+      land(event.currentTarget);
+    }
     const next = centreFromScroll(scroll, viewport, zoom, offset);
     liveCentre.current = next;
     const window = visibleWindow(next, viewport, zoom, offset);
