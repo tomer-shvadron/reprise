@@ -27,6 +27,7 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Toggle light and dark theme | View | Global | ⇧⌘L | Ctrl+Shift+L |
 | Toggle tracks | View | Global | — | — |
 | Toggle mixer | View | Global | F8 | F8 |
+| Toggle page and continuous view | View | Global | F4 | F4 |
 | Follow playback | View | Global | — | — |
 | Toggle multitrack view | View | Global | F3 | F3 |
 | Play or pause | Transport | Global | Space | Space |

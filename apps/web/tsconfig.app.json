@@ -7,7 +7,7 @@
     "outDir": ".tsbuild/app",
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src", "e2e"],
+  "include": ["src", "e2e/visual"],
   // Node-side: the visual suite's global setup and browser commands, in tsconfig.node.json.
   "exclude": ["e2e/**/*.node.ts"],
   "references": [

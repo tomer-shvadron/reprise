@@ -39,16 +39,11 @@ pnpm desktop:dev    # the Electron app around the same web core, with hot reload
 pnpm desktop:build  # fetches the GM sound bank, electron-vite build, then electron-builder for the current platform
 pnpm desktop:smoke  # launches the packaged app, opens a fixture and plays it
 pnpm check:files    # the real-file pass over fixtures/ and local-tabs/ (docs/reference/player-checklist.md)
+pnpm e2e            # the player flows: Playwright Test against the production build (vite preview) in headless Chromium; needs pnpm sounds:fetch
 ```
 
 `pnpm --filter @reprise/web preview` serves the last build.
 
 `pnpm desktop:build` writes installers to `apps/desktop/release/`: on macOS a `.dmg` and a `.zip` for both arm64 and x64, on Windows an NSIS installer. The builds are unsigned, so the first time you open the macOS app, right-click it in Finder and choose **Open**, then confirm. After that it opens normally.
 
-Not yet available (prints a notice and exits successfully until its work package lands):
-
-```
-pnpm e2e            # Playwright against the Electron build (WP-055)
-```
-
-`pnpm install` also downloads the headless Chromium shell (about 100 MB) that the `audio` tests run in. `pnpm exec playwright install chromium` adds the full browser, needed only to watch those tests with `--browser.headless=false`. The Electron binary is downloaded the first time `pnpm desktop:dev` or `pnpm desktop:build` runs.
+`pnpm install` also downloads the headless Chromium shell (about 100 MB) that the `audio` tests run in. `pnpm exec playwright install chromium` adds the full browser, needed only to watch those tests with `--browser.headless=false`, or the player flows with `pnpm e2e --headed` or `--ui`. The Electron binary is downloaded the first time `pnpm desktop:dev` or `pnpm desktop:build` runs.

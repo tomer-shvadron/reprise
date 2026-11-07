@@ -46,7 +46,7 @@ Serial, done by the lead. Exit condition: v1 tagged, macOS and Windows installer
   - `GrantFileProtocolExtraPrivileges` is already off, in the `electronFuses` block of `apps/desktop/electron-builder.yml`: since #93 nothing loads from `file://`. Measured: with it off, a `file://` build does not start, and the `reprise://` build plays.
   - electron-builder 26's `electronFuses` option, which #93 uses, can carry the other fuses instead of an `afterPack` hook. With `identity: null`, electron-builder skips signing, so it needs `resetAdHocDarwinSignature: true` on arm64, which that block sets.
   - The CSP's `'self'` is `reprise://app`, and `apps/desktop/src/main/app-protocol.ts` can send the policy as a header on `text/html` responses. The audio ticker's blob worker needs `worker-src blob:`.
-  - `EnableNodeCliInspectArguments` off stops Playwright's `_electron.launch` (measured: it times out), so `pnpm desktop:smoke` and WP-055's e2e need a build without that fuse, or another way in.
+  - `EnableNodeCliInspectArguments` off stops Playwright's `_electron.launch` (measured: it times out), so `pnpm desktop:smoke` needs a build without that fuse, or another way in (the e2e suite runs on the web build, ADR-0025).
 - A Content-Security-Policy on the renderer. A `script-src` without `'unsafe-inline'` blocks the inline theme bootstrap in `apps/web/index.html` and brings back the dark flash for light-theme users: either hash that script in the policy or move it to a classic (non-module) script file, with a test pinning whichever is chosen, as `theme.test.ts` pins the bootstrap today.
 - Local `pnpm desktop:build` packages the host architecture only; CI builds both macOS architectures and Windows.
 
