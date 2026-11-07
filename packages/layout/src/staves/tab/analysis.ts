@@ -364,10 +364,11 @@ function tremoloShortfall(beat: Beat): number {
 
 /**
  * How far arcs and their letters reach past the outer strings. A hammer-on's target and a legato
- * slide's origin, grace notes included, keep room for the arc and the letter beyond its apex.
- * Below the bottom string, where only the floor separates the tab from the next staff, every note
- * also keeps room for a bare arc on its string's side and on its voice's tie side: an origin half,
- * a tie or a cut legato slide's second half has its other end in a bar measure does not read.
+ * slide's origin, a grace note's legato slide included, keep room for the arc and the letter
+ * beyond its apex; a grace hammer-on is covered by its main note. Below the bottom string, where
+ * only the floor separates the tab from the next staff, every note also keeps room for a bare arc
+ * on its string's side and on its voice's tie side: an origin half, a tie or a cut legato slide's
+ * second half has its other end in a bar that measure does not read.
  */
 function arcRoom(
   bar: Bar,
