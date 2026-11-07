@@ -1,4 +1,4 @@
-import { expect, test, type App } from './test/app';
+import { SONG_READY_MS, expect, test, type App } from './test/app';
 import { generated } from './test/scores';
 
 /** Opens the song with the mixer shown, looping the whole song so it keeps playing. */
@@ -20,9 +20,12 @@ test.beforeEach(async ({ app }) => {
   await app.openWithPicker(generated('song.gp'));
 });
 
+const muteOf = (app: App, n: number) =>
+  app.strip(n).getByRole('button', { name: `Mute Track ${String(n)}` });
+
 test('mute, solo and volume, with undo and redo', async ({ app, page }) => {
   await playLooped(app);
-  const mute = (n: number) => app.strip(n).getByRole('button', { name: `Mute Track ${String(n)}` });
+  const mute = (n: number) => muteOf(app, n);
 
   await mute(1).click();
   await mute(2).click();
@@ -35,6 +38,13 @@ test('mute, solo and volume, with undo and redo', async ({ app, page }) => {
   await mute(2).click();
   await app.expectSound();
 
+  // Track 1 at zero first, so the silence after Solo comes from the click alone.
+  const volume = app.strip(1).getByRole('slider', { name: 'Volume of Track 1' });
+  await volume.focus();
+  await volume.press('Home');
+  await expect(volume).toHaveAttribute('aria-valuenow', '0');
+  await app.expectSound();
+
   const solo = app.strip(1).getByRole('button', { name: 'Solo Track 1' });
   await solo.click();
   await expect
@@ -44,12 +54,6 @@ test('mute, solo and volume, with undo and redo', async ({ app, page }) => {
         .evaluateAll((elements) => elements.map((element) => element.getAttribute('data-audible'))),
     )
     .toEqual(['true', 'false', 'true', 'false']);
-
-  // With Track 2 soloed away, Track 1 at zero is the whole song at zero.
-  const volume = app.strip(1).getByRole('slider', { name: 'Volume of Track 1' });
-  await volume.focus();
-  await volume.press('Home');
-  await expect(volume).toHaveAttribute('aria-valuenow', '0');
   await app.expectSilence();
 
   await page.locator('body').focus();
@@ -68,20 +72,26 @@ test('instrument, with undo and redo', async ({ app, page }) => {
   await playLooped(app);
   const instrument = app.strip(1).getByRole('combobox', { name: 'Instrument of Track 1' });
   const status = app.strip(1).getByRole('status');
+  // Track 2 muted, so every sound below is Track 1 on its current instrument.
+  await muteOf(app, 2).click();
+  await expect(muteOf(app, 2)).toHaveAttribute('aria-pressed', 'true');
+  await app.expectSound();
 
   await instrument.selectOption('29');
   await expect(instrument).toHaveValue('29');
   await expect(app.playButton).toHaveAccessibleName('Pause');
-  await expect(status).toBeEmpty({ timeout: 15_000 });
+  await expect(status).toBeEmpty({ timeout: SONG_READY_MS });
   await app.expectSound();
 
   await page.locator('body').focus();
   await page.keyboard.press('ControlOrMeta+z');
   await expect(instrument).toHaveValue('25');
   await expect(app.playButton).toHaveAccessibleName('Pause');
+  await app.expectSound();
   await page.keyboard.press('ControlOrMeta+Shift+z');
   await expect(instrument).toHaveValue('29');
   await expect(app.playButton).toHaveAccessibleName('Pause');
+  await app.expectSound();
 });
 
 test('notation per track', async ({ page }) => {
