@@ -120,10 +120,9 @@ function columnOnsets(score: Score, slots: readonly StaffSlot[], index: number):
 function endTick(score: Score, index: number, onsets: readonly Onset[]): number {
   const masterBar = score.masterBars[index];
   const written = masterBar ? barTicks(masterBar) : 0;
-  const played = playedBarTicks(score, index);
   const last = onsets.at(-1);
   const contentEnd = last ? last.tick + last.governing : 0;
-  if (masterBar?.anacrusis && played > 0) return Math.max(played, contentEnd);
+  if (masterBar?.anacrusis) return Math.max(playedBarTicks(score, index), contentEnd);
   return Math.max(written, contentEnd);
 }
 
