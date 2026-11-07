@@ -11,6 +11,7 @@ import {
   tieDirection,
   type ChordNote,
   type ChordPlan,
+  type HeadPlan,
 } from './chord';
 import {
   articulationHalf,
@@ -59,6 +60,8 @@ export const MIN_ROOM = 1.5;
 const MARGIN = 0.3;
 const FINGERING_GAP = 0.4;
 const FINGERING_STEP = 1.1;
+/** Gap between two voices' chords at one onset when the later moves right, in spaces. */
+const VOICE_GAP = 0.2;
 
 export interface GracePlan {
   /** The grace chord's x, from the beat's. */
@@ -97,6 +100,8 @@ export interface BeatPlan {
   tremolo?: TremoloPlan;
   /** The arpeggio or brush column's centre, from the beat's x. */
   strokeX?: number;
+  /** How far right of its onset the beat is drawn, clear of an earlier voice's chord there. */
+  shift?: number;
   left: number;
   right: number;
   top: number;
@@ -451,6 +456,7 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
     beats.push(...planned);
     voices.push(planned);
   }
+  separateVoices(beats, space);
 
   let top = 0;
   let bottom = positionY(0, space);
@@ -473,6 +479,113 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
     above: -fingeringTop + MARGIN * space,
     below: bottom - positionY(0, space) + MARGIN * space,
   };
+}
+
+/** Whether a head of each chord is a unison or second from one of the other's, overlapping it. */
+function collide(a: BeatPlan, b: BeatPlan): boolean {
+  if (!a.chord || !b.chord) return false;
+  const shiftA = a.shift ?? 0;
+  const shiftB = b.shift ?? 0;
+  return a.chord.heads.some((p) =>
+    (b.chord?.heads ?? []).some(
+      (q) =>
+        Math.abs(p.position - q.position) <= 1 &&
+        Math.min(shiftA + p.left + p.width, shiftB + q.left + q.width) -
+          Math.max(shiftA + p.left, shiftB + q.left) >
+          1e-6,
+    ),
+  );
+}
+
+/**
+ * The up- and down-stem heads two chords at one onset can share: stemmed opposite ways, the up
+ * chord's lowest head alone on the down chord's highest head's position, both plain heads on the
+ * normal side with one glyph, alteration and dot count.
+ */
+function sharedHeads(
+  earlier: BeatPlan,
+  later: BeatPlan,
+): { up: HeadPlan; down: HeadPlan } | undefined {
+  if ((earlier.shift ?? 0) > 0) return undefined;
+  const a = earlier.chord;
+  const b = later.chord;
+  if (!a?.stem || !b?.stem || a.direction === b.direction) return undefined;
+  if (earlier.beat.dots !== later.beat.dots) return undefined;
+  const [upChord, downChord] = a.direction === 'up' ? [a, b] : [b, a];
+  const up = upChord.heads[0];
+  const down = downChord.heads.at(-1);
+  if (!up || !down || up.position !== down.position) return undefined;
+  const alone = (chord: ChordPlan, head: HeadPlan): boolean =>
+    chord.heads.every((other) => other === head || other.position !== head.position);
+  const plain = (head: HeadPlan): boolean => head.column === 0 && !head.ghost && !head.sounding;
+  if (!alone(upChord, up) || !alone(downChord, down) || !plain(up) || !plain(down)) {
+    return undefined;
+  }
+  if (up.glyph !== down.glyph || up.alter !== down.alter) return undefined;
+  return { up, down };
+}
+
+/**
+ * Draws a moved chord's ledger lines back to an earlier voice's on the same row, which its
+ * extent kept a gap short of, so each row reads as one line.
+ */
+function bridgeLedgers(earlier: readonly BeatPlan[], later: BeatPlan): void {
+  const shift = later.shift ?? 0;
+  for (const ledger of later.chord?.ledgers ?? []) {
+    for (const beat of earlier) {
+      const offset = (beat.shift ?? 0) - shift;
+      for (const other of beat.chord?.ledgers ?? []) {
+        const right = other.right + offset;
+        if (Math.abs(other.y - ledger.y) < 1e-6 && right < ledger.left) {
+          ledger.left = right;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Keeps two voices' chords at one onset apart: an identical head the two share splits its anchor
+ * at its centre, and otherwise the later voice moves right of the earlier's extent.
+ */
+function separateVoices(beats: readonly BeatPlan[], space: number): void {
+  const byTick = new Map<number, BeatPlan[]>();
+  for (const beat of beats) {
+    if (!beat.chord) continue;
+    const at = byTick.get(beat.tick);
+    if (at) at.push(beat);
+    else byTick.set(beat.tick, [beat]);
+  }
+  for (const onset of byTick.values()) {
+    for (const [i, later] of onset.entries()) {
+      const shares: { up: HeadPlan; down: HeadPlan }[] = [];
+      let moved = true;
+      while (moved) {
+        moved = false;
+        shares.length = 0;
+        for (const earlier of onset.slice(0, i)) {
+          if (!collide(earlier, later)) continue;
+          const shared = (later.shift ?? 0) > 0 ? undefined : sharedHeads(earlier, later);
+          if (shared) {
+            shares.push(shared);
+            continue;
+          }
+          const shift = earlier.right - later.left + VOICE_GAP * space;
+          if (shift <= 0) continue;
+          later.shift = (later.shift ?? 0) + shift;
+          later.left += shift;
+          later.right += shift;
+          moved = true;
+        }
+      }
+      if ((later.shift ?? 0) > 0) bridgeLedgers(onset.slice(0, i), later);
+      for (const { up, down } of shares) {
+        const at = up.left + up.width / 2;
+        up.half = { side: 'right', at };
+        down.half = { side: 'left', at };
+      }
+    }
+  }
 }
 
 /** Room left of the chord for a slide into it and a stroke arrow, and right for a slide out. */

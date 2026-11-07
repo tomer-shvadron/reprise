@@ -28,6 +28,8 @@ export interface ShownAccidental {
 export interface PlacedNote {
   position: number;
   head: NoteHead;
+  /** The written alteration; 0 on a percussion staff. */
+  alter: Alter;
 }
 
 type SpellTrack = Pick<Track, 'kind' | 'tuning' | 'capo'>;
@@ -100,12 +102,14 @@ export function placeNote(
     return {
       position: instrument?.staffPosition ?? UNMAPPED_POSITION,
       head: note.dead ? 'cross' : (instrument?.noteHead ?? 'normal'),
+      alter: 0,
     };
   }
   const spelling = spelled(track, note, key);
   return {
     position: staffPosition(spelling, pitchedClef(clef), track.display.octaveShift),
     head: note.dead ? 'cross' : naturalDiamond(note) ? 'diamond' : 'normal',
+    alter: spelling.alter,
   };
 }
 
@@ -121,6 +125,7 @@ export function harmonicHead(
   return {
     position: staffPosition(spelling, pitchedClef(clef), track.display.octaveShift),
     head: 'diamond',
+    alter: spelling.alter,
   };
 }
 
@@ -128,6 +133,8 @@ interface TimedNote {
   tick: number;
   voice: number;
   order: number;
+  /** The chord it sounds in: every voice's beat notes at one onset, or one grace group. */
+  chord: string;
   note: Note;
   /** The extra diamond at the harmonic's sounding pitch, right after its note. */
   sounding: boolean;
@@ -139,19 +146,20 @@ interface TimedNote {
  */
 function timedNotes(track: Pick<Track, 'kind'>, bar: Bar): TimedNote[] {
   const out: TimedNote[] = [];
-  const push = (tick: number, voice: number, order: number, note: Note): void => {
-    out.push({ tick, voice, order, note, sounding: false });
-    if (soundsApart(track, note)) out.push({ tick, voice, order, note, sounding: true });
+  const push = (tick: number, voice: number, order: number, chord: string, note: Note): void => {
+    out.push({ tick, voice, order, chord, note, sounding: false });
+    if (soundsApart(track, note)) out.push({ tick, voice, order, chord, note, sounding: true });
   };
   for (const [voice, { beats }] of bar.voices.entries()) {
     let tick = 0;
     for (const beat of beats) {
       let order = 0;
       for (const grace of beat.grace ?? []) {
-        for (const note of grace.notes) push(tick, voice, order, note);
+        const chord = `${String(tick)}:${String(voice)}:${String(order)}`;
+        for (const note of grace.notes) push(tick, voice, order, chord, note);
         order += 1;
       }
-      for (const note of beat.notes) push(tick, voice, order, note);
+      for (const note of beat.notes) push(tick, voice, order, String(tick), note);
       tick += beatTicks(beat);
     }
   }
@@ -167,8 +175,10 @@ type Memory = Map<string, Alter>;
  * octave until the bar line, so it is not repeated, and a return to the key's alteration needs
  * a natural (or the key's sign). A tied note shows nothing, but the alteration it carries in
  * holds until the next untied note of its letter and octave, which prints its own when it
- * differs. With `previous` (what the bar before printed), the first note of a letter and octave
- * that bar altered gets a courtesy accidental when it no longer needs one.
+ * differs. A letter and octave sounding at two alterations in one chord prints every sign, and
+ * the next note on it after that chord prints its own, since memory cannot tell which held. With
+ * `previous` (what the bar before printed), the first note of a letter and octave that bar
+ * altered gets a courtesy accidental when it no longer needs one.
  */
 function walk(
   track: Pick<Track, 'kind' | 'tuning' | 'capo'>,
@@ -180,10 +190,27 @@ function walk(
   const printed: Memory = new Map();
   const carried: Memory = new Map();
   const seen = new Set<string>();
-  for (const { note, sounding } of timedNotes(track, bar)) {
-    const { letter, octave, alter } = sounding
-      ? soundingSpelling(track, note, key)
-      : spelled(track, note, key);
+  const timed = timedNotes(track, bar);
+  const written = timed.map(({ note, sounding }) =>
+    sounding ? soundingSpelling(track, note, key) : spelled(track, note, key),
+  );
+  // Slots of a chord at two or more alterations, by `chord|slot`: the first alteration seen, or
+  // true once a second differs.
+  const alters = new Map<string, Alter | true>();
+  for (const [i, { note, sounding, chord }] of timed.entries()) {
+    const spelling = written[i];
+    if (!spelling || (note.tie && !sounding)) continue;
+    const at = `${chord}|${spelling.letter}${String(spelling.octave)}`;
+    const first = alters.get(at);
+    if (first === undefined) alters.set(at, spelling.alter);
+    else if (first !== true && first !== spelling.alter) alters.set(at, true);
+  }
+  // Slots left ambiguous by a split chord, with the chord that split them.
+  const unsettled = new Map<string, string>();
+  for (const [i, { note, sounding, chord }] of timed.entries()) {
+    const spelling = written[i];
+    if (!spelling) continue;
+    const { letter, octave, alter } = spelling;
     const slot = `${letter}${String(octave)}`;
     const id = sounding ? soundingKey(note.id) : note.id;
     if (note.tie && !sounding) {
@@ -193,12 +220,17 @@ function walk(
     const current = printed.get(slot) ?? keyAlter(key, letter);
     const before = previous?.get(slot);
     const tied = carried.get(slot);
-    if (alter !== current || (tied !== undefined && tied !== alter)) {
+    const split = alters.get(`${chord}|${slot}`) === true;
+    const settledBy = unsettled.get(slot);
+    const owed = settledBy !== undefined && settledBy !== chord;
+    if (alter !== current || (tied !== undefined && tied !== alter) || split || owed) {
       shown?.set(id, { alter, courtesy: false });
       printed.set(slot, alter);
     } else if (before !== undefined && before !== alter && !seen.has(slot)) {
       shown?.set(id, { alter, courtesy: true });
     }
+    if (split) unsettled.set(slot, chord);
+    else if (owed) unsettled.delete(slot);
     carried.delete(slot);
     seen.add(slot);
   }
