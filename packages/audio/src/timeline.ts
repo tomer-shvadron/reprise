@@ -383,9 +383,12 @@ export function clicksInRange(timeline: Timeline, from: number, to: number): Cli
     const masterBar = timeline.score.masterBars[pass.masterBarIndex];
     if (!masterBar) continue;
     const unit = beatUnit(masterBar.timeSignature.denominator);
-    const missing = Math.max(0, barTicks(masterBar) - pass.ticks);
+    const written = barTicks(masterBar);
+    const missing = Math.max(0, written - pass.ticks);
     const first = Math.ceil(missing / unit - EPSILON) * unit - missing;
     for (let local = first; local < pass.ticks - EPSILON; local += unit) {
+      // An overflow beat the next downbeat would cut short is a flam, not a beat.
+      if (local > written - EPSILON && local + unit > pass.ticks + EPSILON) break;
       const tick = pass.startTick + local;
       if (tick < from || tick >= to) continue;
       clicks.push({ tick, accent: Math.abs(local + missing) < EPSILON });

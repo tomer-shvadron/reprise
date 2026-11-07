@@ -275,7 +275,10 @@ objects (`context`, `sampler`, `source`, `bank`, `transport`); it is not part of
   an anacrusis, the count-in is shortened by the pickup so the two make one bar: a one-beat
   pickup in 4/4 gets three clicks. The count-in sounds whether or not the metronome is on.
 - **Metronome beats** follow the time signature's denominator: 6/8 clicks six eighths. An
-  anacrusis bar is aligned to the end of its bar, so a one-beat pickup clicks beat four.
+  anacrusis bar is aligned to the end of its bar, so a one-beat pickup clicks beat four. An
+  over-full bar keeps clicking its time signature's beats until it ends, accented only on its first;
+  an overflow beat that would end past the bar line is not clicked, so no click flams the next
+  downbeat.
 - **Loop start.** Pressing play outside the loop starts at the loop start, as Guitar Pro does.
   Seeking before the loop while playing plays from there into it. Seeking past its end, or setting
   a loop that is already behind the playhead, jumps to the loop start without counting a pass or

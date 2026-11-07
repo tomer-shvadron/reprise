@@ -53,8 +53,8 @@ The empty score (`createEmptyScore()`) is one fretted track in E standard, one 4
 - **`PPQ` is 960**: a quarter note is 960 ticks, a whole note 3840.
 - `Beat.duration` is the note value as a denominator: 1 whole, 2 half, 4 quarter, down to 256. `dots` is 0 to 2. `tuplet: { n, of }` is `n` notes in the time of `of` (a triplet is `{ n: 3, of: 2 }`); the ratio must lie strictly between 1:2 and 2:1 and not be 1:1.
 - `beatTicks(beat) = 3840 / duration × (2 − 1/2^dots) × of / n`. **Ticks are never rounded**: a sixteenth septuplet is 960 / 7. Comparisons use a tolerance; only code that needs integers (MIDI export) rounds, at its own boundary.
-- `barTicks(masterBar)` is the written length from the time signature. `playedBarTicks(score, i)` is how long the bar lasts in playback: the written length, except an **anacrusis** (pickup) bar lasts as long as its longest voice in any track. A short ordinary bar still lasts its full written length.
-- A voice may hold **less** than the bar (incomplete bars are allowed) but never more (`voice-overfull`). A beat with `rest: false` and no notes is Guitar Pro's "empty beat", an unfilled slot rather than a rest.
+- `barTicks(masterBar)` is the written length from the time signature. `playedBarTicks(score, i)` is how long the bar lasts in playback: the written length, except that a bar lasts as long as its longest voice in any track when that is longer (an **over-full** bar), and an **anacrusis** (pickup) bar when that is shorter. A voice of only empty beats, the placeholder the gp3–gp5 readers keep for Guitar Pro's unused voice, is not counted, as alphaTab and the layout ignore it. A short ordinary bar still lasts its full written length.
+- A voice may hold **less** than the bar (incomplete bars are allowed). An edit never makes it hold more (`voice-overfull`), but an imported file can: the reader keeps every beat and reports the violation as a warning, and playback plays every beat, the bar lasting its longest voice so the bars after it start later. A beat with `rest: false` and no notes is Guitar Pro's "empty beat", an unfilled slot rather than a rest.
 - Positions in **written order** (ignoring repeats): `beatStartTicks(voice, index)` is a beat's offset in its bar (`beats.length` gives the voice's end); `tickOf(score, { bar, beat?, track?, voice? })` is the absolute tick; `barStartTicks(score)` is the prefix sum of every bar's start, with the score's end as the last entry.
 
 ## Repeats, voltas and jumps
@@ -80,6 +80,7 @@ alphaTab is the oracle the expander was checked against, and Guitar Pro's own or
 | Voltas in a section with several repeat ends | numbered by the last repeat end taken    | numbered by the next repeat end             |
 | `Beat.mix.tempo.duration`                    | a linear ramp in BPM                     | a step at the beat                          |
 | Seconds                                      | exact                                    | each bar truncated to whole milliseconds    |
+| An over-full bar                             | lasts its longest voice; later bars start after it | keeps its written length; beats past it sound over the next bars |
 
 The reasons for each row are in the README's "Deviations from alphaTab".
 
@@ -95,7 +96,7 @@ The reasons for each row are in the README's "Deviations from alphaTab".
 Lookups:
 
 - `secondsAt(map, sequenceIndex, tick)`: seconds at `tick` ticks into a pass.
-- `secondsAtTick(map, playbackTick)`: the same from a playback tick (`startTick` + tick), for the scheduler; clamped to the map. A beat sounds at `pass.startTick + beatStartTicks(voice, i)` on each pass of its bar, with `voice = score.tracks[t].bars[pass.masterBarIndex].voices[v]`; `pass.ticks` (`playedBarTicks`) is how long the pass lasts, so an anacrusis pass is short.
+- `secondsAtTick(map, playbackTick)`: the same from a playback tick (`startTick` + tick), for the scheduler; clamped to the map. A beat sounds at `pass.startTick + beatStartTicks(voice, i)` on each pass of its bar, with `voice = score.tracks[t].bars[pass.masterBarIndex].voices[v]`; `pass.ticks` (`playedBarTicks`) is how long the pass lasts, so an anacrusis pass is short and an over-full one long.
 - `positionAtSeconds(map, seconds, { track?, voice? })`: the inverse, clamped to the map and `undefined` only for an empty one. It returns `sequenceIndex`, `masterBarIndex`, `passIndex`, `tick` (into the pass), `playbackTick`, `barProgress` (0 to 1), `beatIndex` (the sounding beat in that track and voice, `undefined` when the voice is empty) and `beatProgress`.
 
 ## Commands and history
@@ -139,7 +140,7 @@ The schemas (`ScoreSchema` and one per node) check shape and per-field ranges. `
 | `first-bar-tempo`                 | The first master bar carries a tempo mark.                                                                                   |
 | `bar-count`                       | Every track has one bar per master bar.                                                                                      |
 | `track-kind`                      | Fretted tracks have strings and frets; drum tracks have no tuning, capo or frets.                                            |
-| `voice-overfull`                  | A voice's beats sum to at most the bar length.                                                                               |
+| `voice-overfull`                  | A voice's beats sum to at most the bar length; an imported over-full voice is kept, reported as a warning, and played in full. |
 | `rest-with-notes`                 | A rest carries no notes.                                                                                                     |
 | `string-range`                    | Fretted notes use strings 1 to the string count; drum and pitched notes use string 0.                                       |
 | `fret-range`                      | Fretted notes sit on frets 0 to `fretCount`.                                                                                 |

@@ -25,7 +25,8 @@ const NONE: PositionText = { bar: '–', beat: '–', time: '0:00 / 0:00', sente
 
 /**
  * The readout for a position: the written bar number (a repeat's second pass shows the same bar),
- * the metronome's beat within it, and song time at the written tempo, whatever the speed.
+ * the metronome's beat within it, and song time at the written tempo, whatever the speed. The
+ * beat stops at the numerator: an over-full bar's extra clicks all read as its last beat.
  */
 export function describePosition(
   timeline: Timeline | undefined,

@@ -305,3 +305,93 @@ describe('loopRange', () => {
     );
   });
 });
+
+describe('an over-full bar', () => {
+  /** 4/4 at 120: bar 0 holds six quarters on string 1 (over-full by two), bar 1 four on string 2. */
+  function overfull() {
+    const builder = score().tempo(120).track('guitar').bar();
+    for (let fret = 0; fret < 6; fret++) builder.beat('4', [note(1, fret)]);
+    builder.bar();
+    for (let fret = 0; fret < 4; fret++) builder.beat('4', [note(2, fret)]);
+    return builder.build({ validate: false });
+  }
+
+  it('lasts its longest voice and plays every beat before the next bar', () => {
+    const timeline = createTimeline(overfull());
+    expect(timeline.endTick).toBe(9600);
+    const onsets = notesInRange(timeline, 0, 9600, { runStartTick: 0, limitTick: 9600 });
+
+    expect(onsets.map((o) => o.tick)).toEqual(Array.from({ length: 10 }, (_, i) => i * PPQ));
+    expect(onsets.slice(0, 6).map((o) => o.barEndTick)).toEqual(Array(6).fill(5760));
+  });
+
+  it('reports a mixer change on an overflow beat from a window past the written bar line', () => {
+    const builder = score().tempo(120).track('guitar').bar();
+    for (let fret = 0; fret < 6; fret++) {
+      builder.beat('4', [note(1, fret)], fret === 5 ? { mix: { volume: { value: 30 } } } : {});
+    }
+    builder.bar();
+    for (let fret = 0; fret < 4; fret++) builder.beat('4', [note(2, fret)]);
+    const mixes = mixesInRange(createTimeline(builder.build({ validate: false })), BAR, 6 * PPQ, {
+      runStartTick: 0,
+      limitTick: 10 * PPQ,
+    });
+
+    expect(mixes.map((m) => [m.tick, m.sequenceIndex, m.beatIndex, m.mix])).toEqual([
+      [5 * PPQ, 0, 5, { volume: { value: 30 } }],
+    ]);
+  });
+
+  it('reaches the overflow from a window that starts past the written bar line', () => {
+    const onsets = notesInRange(createTimeline(overfull()), BAR, 6 * PPQ, {
+      runStartTick: 0,
+      limitTick: 9600,
+    });
+
+    expect(onsets.map((o) => [o.note.string, o.note.fret])).toEqual([
+      [1, 4],
+      [1, 5],
+    ]);
+  });
+
+  it('plays every beat of a song whose only bar is over-full', () => {
+    const builder = score().tempo(120).track('guitar').bar();
+    for (let fret = 0; fret < 6; fret++) builder.beat('4', [note(1, fret)]);
+    const timeline = createTimeline(builder.build({ validate: false }));
+
+    expect(timeline.endTick).toBe(6 * PPQ);
+    const onsets = notesInRange(timeline, 0, timeline.endTick, {
+      runStartTick: 0,
+      limitTick: timeline.endTick,
+    });
+    expect(onsets.map((o) => o.note.fret)).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it('keeps clicking the time signature through the stretch, accenting only the bar start', () => {
+    const clicks = clicksInRange(createTimeline(overfull()), 0, 9600);
+
+    expect(clicks.map((c) => c.tick)).toEqual(Array.from({ length: 10 }, (_, i) => i * PPQ));
+    expect(clicks.filter((c) => c.accent).map((c) => c.tick)).toEqual([0, 6 * PPQ]);
+  });
+
+  it('skips an overflow click the next downbeat would cut short', () => {
+    const builder = score().tempo(120).track('guitar').bar();
+    for (let fret = 0; fret < 4; fret++) builder.beat('4', [note(1, fret)]);
+    builder
+      .beat('32', [note(1, 4)])
+      .bar()
+      .beat('1', [note(2, 0)]);
+    const clicks = clicksInRange(createTimeline(builder.build({ validate: false })), 0, 3960 + BAR);
+
+    expect(clicks.map((c) => [c.tick, c.accent])).toEqual([
+      [0, true],
+      [960, false],
+      [1920, false],
+      [2880, false],
+      [3960, true],
+      [3960 + 960, false],
+      [3960 + 1920, false],
+      [3960 + 2880, false],
+    ]);
+  });
+});
