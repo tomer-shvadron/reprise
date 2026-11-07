@@ -35,7 +35,7 @@ describe('track commands', () => {
     const shortcut = (id: string) => registry.get(id)?.shortcut;
     expect(shortcut('track.next')).toEqual({ key: 'ArrowDown', mod: true });
     expect(formatShortcut({ key: 'ArrowDown', mod: true }, 'mac')).toBe('⌘↓');
-    expect(formatShortcut({ key: 'ArrowDown', mod: true }, 'other')).toBe('Ctrl+↓');
+    expect(formatShortcut({ key: 'ArrowDown', mod: true }, 'other')).toBe('Ctrl+Down');
     expect(shortcut('view.toggleMultitrack')).toEqual({ key: 'F3' });
     expect(registry.get('view.togglePanel')).toMatchObject({
       title: 'Toggle mixer',

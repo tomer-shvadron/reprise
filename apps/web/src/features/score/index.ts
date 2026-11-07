@@ -1,5 +1,22 @@
 export { ScoreView } from './score-view';
-export type { ScorePointerEvent, ScoreViewHandle, ScoreViewProps } from './score-view';
+export type {
+  FollowPolicy,
+  ScorePointerEvent,
+  ScrollAxis,
+  ScoreViewHandle,
+  ScoreViewProps,
+} from './score-view';
+export {
+  barColumns,
+  masterBarIndexOf,
+  nearestColumn,
+  playheadAt,
+  pointerTarget,
+  staffBand,
+} from './playhead';
+export type { PointerTarget } from './playhead';
+export { createGestureTracker } from './gestures';
+export type { Gesture } from './gestures';
 export { ScorePage, ScorePages } from './score-page';
 export type { ScorePageProps, ScorePagesProps } from './score-page';
 export type { ScoreOverlays } from './overlay-layer';

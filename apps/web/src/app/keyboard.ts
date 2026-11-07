@@ -75,11 +75,21 @@ export function matchesShortcut(
   return matchesKey(event, shortcut.key);
 }
 
+// As Guitar Pro prints them on macOS; elsewhere the key's own name without "Arrow".
+const MAC_KEYS: Readonly<Record<string, string>> = {
+  ArrowLeft: '←',
+  ArrowRight: '→',
+  ArrowUp: '↑',
+  ArrowDown: '↓',
+  Home: '↖',
+  End: '↘',
+};
+
 function keyName(key: string, platform: KeyboardPlatform): string {
   if (key === ' ') return 'Space';
   if (key === 'Enter') return platform === 'mac' ? '↩' : 'Enter';
-  if (key === 'ArrowUp') return '↑';
-  if (key === 'ArrowDown') return '↓';
+  const mac = MAC_KEYS[key];
+  if (mac !== undefined) return platform === 'mac' ? mac : key.replace(/^Arrow/, '');
   return key.length === 1 ? key.toUpperCase() : key;
 }
 

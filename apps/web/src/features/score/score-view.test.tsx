@@ -9,12 +9,13 @@ import {
 } from '@reprise/layout';
 import { applyCommand, setNote } from '@reprise/model';
 import { beatOf, fullScore, largeScore } from '@reprise/model/testing';
-import { createRef } from 'react';
+import { createRef, Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { columnAnchor, cursorAt, findAnchors } from './anchors';
 import { ScoreView, type ScorePointerEvent, type ScoreViewHandle } from './score-view';
 import { pageFlow } from './page-flow';
+import { longLayout } from './test/long-score';
 import { stubScroll } from './test/scroll-stub';
 import { viewLayout } from './test/small-score';
 import { stubViewport } from './test/viewport-stub';
@@ -153,6 +154,44 @@ describe('ScoreView', () => {
     expect(mountedIds()).toEqual(result.systems.slice(range.start, range.end).map(({ id }) => id));
   });
 
+  it('mounts what is in view after a fast scroll away and back, committing only on a new set', () => {
+    const result = longLayout({ mode: 'paged', paper: 'a4' });
+    let commits = 0;
+    render(
+      <Profiler id="view" onRender={() => (commits += 1)}>
+        <ScoreView layout={result} zoom={1} />
+      </Profiler>,
+    );
+    stubScroll(region());
+    const element = region();
+    const scroll = (y: number) => {
+      element.scrollTop = y;
+      element.dispatchEvent(new Event('scroll', { bubbles: true }));
+    };
+    const shown = (y: number) => {
+      const { range } = expected(result, 1, { x: 0, y });
+      return result.systems.slice(range.start, range.end).map(({ id }) => id);
+    };
+    for (const y of [9000, 12_000, 24_000, 27_000]) {
+      act(() => {
+        scroll(y);
+      });
+      // Away into another set and back into this one, before the first transition commits.
+      act(() => {
+        scroll(y + 2400);
+        scroll(y);
+      });
+      expect(mountedIds(), String(y)).toEqual(shown(y));
+    }
+
+    const before = commits;
+    act(() => {
+      for (let step = 1; step <= 30; step++) scroll(27_000 + step);
+    });
+    expect(commits).toBe(before);
+    expect(mountedIds()).toEqual(shown(27_030));
+  });
+
   it.each([
     ['paged', { mode: 'paged', paper: 'a4' }],
     ['continuous', { mode: 'continuous', paper: 'a4' }],
@@ -253,7 +292,7 @@ describe('ScoreView', () => {
     );
   });
 
-  it('draws the cursor, selection and hover from anchors', () => {
+  it('draws the playhead through its handle, and selection, loop and hover from anchors', () => {
     const result = small();
     const notes = result.anchors.filter((anchor) => anchor.kind === 'note');
     const near = notes.find((anchor) => anchor.system === 0);
@@ -261,26 +300,40 @@ describe('ScoreView', () => {
     if (!near || !far) throw new Error('no note anchors');
     const cursor = cursorAt(result, near);
     if (!cursor) throw new Error('no cursor');
+    const ref = createRef<ScoreViewHandle>();
     render(
       <ScoreView
+        ref={ref}
         layout={result}
         zoom={2}
-        overlays={{ cursor, selection: [near, far], hover: near }}
+        overlays={{ selection: [near, far], loop: [cursor.bar], hover: near }}
       />,
     );
-    const layer = region().querySelector('.score-overlays');
+    const layer = region().querySelector('[data-playhead]');
     expect(layer).toHaveAttribute('aria-hidden', 'true');
+    const line = () => layer?.querySelector<HTMLElement>('.score-cursor');
+    expect(line()?.style.display).toBe('none');
+    act(() => {
+      ref.current?.setPlayhead(cursor);
+    });
+    expect(line()?.style.display).toBe('block');
+    expect(line()?.dataset['masterBar']).toBe(cursor.bar.id);
     const highlight = layer?.querySelector<HTMLElement>('.score-bar-highlight');
     expect(highlight?.style.transform).toBe(
       `translate(${String(cursor.bar.bbox.x * 2)}px, ${String(cursor.bar.bbox.y * 2)}px)`,
     );
     expect(highlight?.style.height).toBe(`${String(cursor.bar.bbox.height * 2)}px`);
-    const line = layer?.querySelector<HTMLElement>('.score-cursor');
-    expect(line?.style.transform).toBe(
+    expect(line()?.style.transform).toBe(
       `translate(${String(cursor.x * 2 - 1)}px, ${String(cursor.bar.bbox.y * 2)}px)`,
     );
-    expect(layer?.querySelectorAll('.score-selection')).toHaveLength(1);
-    expect(layer?.querySelectorAll('.score-hover')).toHaveLength(1);
+    const overlays = region().querySelector('.score-overlays');
+    expect(overlays?.querySelectorAll('.score-selection')).toHaveLength(1);
+    expect(overlays?.querySelectorAll('.score-loop')).toHaveLength(1);
+    expect(overlays?.querySelectorAll('.score-hover')).toHaveLength(1);
+    act(() => {
+      ref.current?.setPlayhead(undefined);
+    });
+    expect(line()?.style.display).toBe('none');
     expect(cursor.bar).toBe(columnAnchor(result, near.masterBar ?? '', 0));
     expect(findAnchors(result, near.id)).toContain(near);
   });
@@ -357,7 +410,18 @@ describe('ScoreView', () => {
   it('carries no colour in an attribute or inline style', () => {
     const result = layout(fullScore(), paged);
     const cursor = cursorAt(result, result.anchors[0] ?? never());
-    render(<ScoreView layout={result} zoom={1} overlays={cursor ? { cursor } : {}} />);
+    const ref = createRef<ScoreViewHandle>();
+    render(
+      <ScoreView
+        ref={ref}
+        layout={result}
+        zoom={1}
+        overlays={{ loop: cursor ? [cursor.bar] : [] }}
+      />,
+    );
+    act(() => {
+      ref.current?.setPlayhead(cursor);
+    });
     for (const element of region().querySelectorAll('*')) {
       for (const name of ['fill', 'stroke']) {
         const value = element.getAttribute(name);

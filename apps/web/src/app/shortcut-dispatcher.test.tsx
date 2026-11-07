@@ -1,5 +1,7 @@
-import { fireEvent } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { Slider } from '@/components/ui/slider';
 
 import { CommandRegistry } from './command-registry';
 import { formatShortcut, type KeyboardPlatform } from './keyboard';
@@ -168,6 +170,57 @@ describe('bare keys on focused controls', () => {
 
     fireEvent.keyDown(document.body, { key: '[', code: 'BracketLeft', repeat: true });
     expect(slower).toHaveBeenCalledOnce();
+  });
+});
+
+describe('navigation keys', () => {
+  function arrows() {
+    const registry = new CommandRegistry();
+    const next = vi.fn();
+    const previousBar = vi.fn();
+    registry.register({ id: 'next', title: 'Next', shortcut: { key: 'ArrowRight' }, run: next });
+    registry.register({
+      id: 'previousBar',
+      title: 'Previous bar',
+      shortcut: { key: 'ArrowLeft', mod: true },
+      run: previousBar,
+    });
+    uninstall = installShortcutDispatcher(window, registry, 'mac');
+    return { next, previousBar };
+  }
+
+  it('stay with a text field whatever the modifiers, and move the playhead elsewhere', () => {
+    const { next, previousBar } = arrows();
+    const input = document.createElement('input');
+    document.body.append(input);
+    fireEvent.keyDown(input, { key: 'ArrowLeft', metaKey: true });
+    fireEvent.keyDown(input, { key: 'ArrowRight' });
+    expect(previousBar).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+    input.remove();
+
+    fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+    fireEvent.keyDown(document.body, { key: 'ArrowLeft', metaKey: true });
+    expect(next).toHaveBeenCalledOnce();
+    expect(previousBar).toHaveBeenCalledOnce();
+  });
+
+  it('stay with a slider, which handles them first', () => {
+    const { next } = arrows();
+    const onValueChange = vi.fn();
+    render(
+      <Slider
+        aria-label="Speed"
+        defaultValue={[100]}
+        min={25}
+        max={200}
+        onValueChange={onValueChange}
+      />,
+    );
+    const thumb = screen.getByRole('slider');
+    fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+    expect(onValueChange).toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
   });
 });
 

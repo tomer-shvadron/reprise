@@ -1,15 +1,12 @@
 import type { Anchor, Range, Rect } from '@reprise/layout';
 import type { CSSProperties } from 'react';
 
-import type { PlaybackCursor } from './anchors';
-
 export interface ScoreOverlays {
-  cursor?: PlaybackCursor;
   selection?: readonly Anchor[];
+  /** The active loop's bar columns. */
+  loop?: readonly Anchor[];
   hover?: Anchor;
 }
-
-const CURSOR_WIDTH = 2;
 
 function box(rect: Rect, zoom: number): CSSProperties {
   return {
@@ -33,31 +30,21 @@ export interface OverlayLayerProps {
  * highlight underneath would show as holes. A translucent tint on top colours both alike.
  */
 export function OverlayLayer({ overlays, zoom, range, place }: OverlayLayerProps) {
-  const { cursor, selection = [], hover } = overlays ?? {};
-  const bar = cursor && place(cursor.bar.bbox, cursor.bar.system);
+  const { selection = [], loop = [], hover } = overlays ?? {};
+  const boxes = (anchors: readonly Anchor[], className: string) =>
+    anchors
+      .filter((anchor) => anchor.system >= range.start && anchor.system < range.end)
+      .map((anchor, index) => (
+        <div
+          key={`${className}-${String(index)}`}
+          className={className}
+          style={box(place(anchor.bbox, anchor.system), zoom)}
+        />
+      ));
   return (
     <div className="score-overlays" aria-hidden="true">
-      {cursor && bar && (
-        <>
-          <div className="score-bar-highlight" style={box(bar, zoom)} />
-          <div
-            className="score-cursor"
-            style={{
-              transform: `translate(${String(cursor.x * zoom - CURSOR_WIDTH / 2)}px, ${String(bar.y * zoom)}px)`,
-              height: bar.height * zoom,
-            }}
-          />
-        </>
-      )}
-      {selection
-        .filter((anchor) => anchor.system >= range.start && anchor.system < range.end)
-        .map((anchor, index) => (
-          <div
-            key={index}
-            className="score-selection"
-            style={box(place(anchor.bbox, anchor.system), zoom)}
-          />
-        ))}
+      {boxes(loop, 'score-loop')}
+      {boxes(selection, 'score-selection')}
       {hover && <div className="score-hover" style={box(place(hover.bbox, hover.system), zoom)} />}
     </div>
   );
