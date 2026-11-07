@@ -34,6 +34,7 @@ function planInputs(input: StaffBar): unknown[] {
     input.clef,
     input.space,
     barIndex,
+    input.staves.length,
   ];
 }
 

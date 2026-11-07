@@ -4,7 +4,14 @@ import { engraving, glyphAnchor, glyphMetrics, type GlyphName } from '../../metr
 import { glyphWidth } from '../../primitives';
 import { beamCount } from '../rhythm';
 import type { ShownAccidental } from './pitch';
-import { dotsWidth, flagGlyph, stemThickness, stemTip, type StemDirection } from './rhythm';
+import {
+  dotsWidth,
+  flagGlyph,
+  stemThickness,
+  stemTip,
+  type ArcDirection,
+  type StemDirection,
+} from './rhythm';
 
 /** y of staff position `position` below the top line of a five-line staff, in px. */
 export function positionY(position: number, space: number): number {
@@ -367,4 +374,20 @@ export function planChord(notes: readonly ChordNote[], options: ChordOptions): C
     top,
     bottom,
   };
+}
+
+/** The heads drawn for the chord's notes, without harmonics' sounding diamonds. */
+export function mainHeads(chord: ChordPlan): HeadPlan[] {
+  return chord.heads.filter((head) => !head.sounding);
+}
+
+/** The side a tie or slur on `head` bulges: away from the stem, the outer heads outward. */
+export function tieDirection(chord: ChordPlan, head: HeadPlan, multiVoice: boolean): ArcDirection {
+  const up = chord.direction === 'up';
+  if (multiVoice) return up ? 'up' : 'down';
+  const heads = mainHeads(chord);
+  const index = heads.indexOf(head);
+  const count = heads.length;
+  if (count === 1 || (count % 2 === 1 && index === (count - 1) / 2)) return up ? 'down' : 'up';
+  return index >= count / 2 ? 'up' : 'down';
 }

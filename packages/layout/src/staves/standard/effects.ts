@@ -1,10 +1,51 @@
-import type { Beat } from '@reprise/model';
+import {
+  TIE_REACH_BARS,
+  tieOriginOf,
+  type Bar,
+  type Beat,
+  type Note,
+  type TieLink,
+  type TiePosition,
+  type Track,
+} from '@reprise/model';
 
 import { glyphMetrics, type GlyphName } from '../../metrics';
-import { glyph, type LayoutSink } from '../../primitives';
-import { articulationMarks, glyphHeight, tremoloGlyph } from '../effects';
-import { positionY, type ChordPlan } from './chord';
-import { SHORTENING, beamStep, stemLength, type StemDirection } from './rhythm';
+import { glyph, glyphWidth, line, type LayoutSink } from '../../primitives';
+import {
+  articulationMarks,
+  connections,
+  drawLetter,
+  drawStroke,
+  glyphHeight,
+  hammerLetter,
+  nextOnString,
+  shifts,
+  targetIsHigher,
+  tickOf,
+  tremoloGlyph,
+  voiceBeats,
+} from '../effects';
+import type { StaffBar, StaffBarPlacement } from '../staff-module';
+import {
+  headEdges,
+  headGlyph,
+  mainHeads,
+  positionY,
+  tieDirection,
+  type ChordPlan,
+  type HeadPlan,
+} from './chord';
+import { placeNote } from './pitch';
+import type { BarPlan, BeatPlan } from './plan';
+import {
+  SHORTENING,
+  beamStep,
+  dotsWidth,
+  drawSlur,
+  stemLength,
+  type ArcDirection,
+  type StemDirection,
+} from './rhythm';
 
 /**
  * Articulations, in staff spaces: the gap from the note or stem, between stacked marks and
@@ -251,4 +292,325 @@ export function beamedTremoloY(
 ): number {
   const inner = tip - sign(chord.direction) * chord.beams * beamStep(space);
   return (plan.start + inner) / 2;
+}
+
+/**
+ * Slides, in staff spaces: the gap at a head, a loose slide's length, its gap from the head and
+ * its drop, the line's thickness, and the room it takes beside the chord.
+ */
+export const SLIDE = {
+  gap: 0.15,
+  length: 1.3,
+  clear: 0.2,
+  drop: 0.5,
+  thickness: 0.12,
+  room: 1.5,
+} as const;
+/** The arpeggio or brush column's width and how far it reaches past the outer heads, in spaces. */
+export const STROKE = { width: 1, reach: 0.9 } as const;
+const TIE_GAP = 0.15;
+
+/**
+ * `tieOriginOf` within this bar and the one before: the origin a connection is drawn from in one
+ * piece. Measuring reads no further back.
+ */
+export function nearOrigin(
+  track: Track,
+  barIndex: number,
+  voice: number,
+  beat: number,
+  note: Note,
+): TieLink | undefined {
+  const here = track.bars[barIndex];
+  if (!here) return undefined;
+  const before = track.bars[barIndex - 1];
+  const bars: Bar[] = before ? [before, here] : [here];
+  const found = tieOriginOf(
+    { kind: track.kind, bars },
+    { bar: bars.length - 1, voice, beat },
+    note,
+  );
+  return found && { ...found, bar: found.bar + barIndex - (bars.length - 1) };
+}
+
+export interface ConnectionContext {
+  input: StaffBar;
+  placement: StaffBarPlacement;
+  plan: BarPlan;
+  sink: LayoutSink;
+  space: number;
+  beatX: (beat: BeatPlan) => number;
+}
+
+/** A head's place for a connection, in px: its centre's y and its outer edges, accidental and dots included. */
+interface HeadSpot {
+  y: number;
+  left: number;
+  right: number;
+  direction: ArcDirection;
+}
+
+function spotOf(
+  context: ConnectionContext,
+  chord: ChordPlan,
+  head: HeadPlan,
+  x: number,
+  dots: number,
+): HeadSpot {
+  const { placement, plan, space } = context;
+  const edges = headEdges(chord, head);
+  const left = Math.min(edges.left, head.accidental?.left ?? edges.left);
+  const right =
+    dots > 0
+      ? Math.max(edges.right, chord.dots.x + dotsWidth(dots, space, chord.scale))
+      : edges.right;
+  return {
+    y: placement.top + head.y,
+    left: x + left,
+    right: x + right,
+    direction: tieDirection(chord, head, plan.multiVoice),
+  };
+}
+
+/** Where the origin of a connection is drawn from, or undefined when it arrives as a half. */
+function locate(
+  context: ConnectionContext,
+  beats: readonly BeatPlan[],
+  voice: number,
+  found: TieLink,
+): HeadSpot | undefined {
+  const { input, placement, space } = context;
+  if (found.bar === input.barIndex) {
+    const beat = beats[found.beat];
+    const chord = beat?.chord;
+    const head = chord && mainHeads(chord).find((other) => other.note === found.note);
+    return beat && chord && head
+      ? spotOf(context, chord, head, context.beatX(beat), beat.beat.dots)
+      : undefined;
+  }
+  const { previous } = placement;
+  const key = input.score.masterBars[found.bar]?.keySignature;
+  if (found.bar !== input.barIndex - 1 || !previous || input.bar.clef !== undefined || !key) {
+    return undefined;
+  }
+  const others = voiceBeats(input.track, found.bar, voice);
+  const duration = others[found.beat]?.duration ?? 4;
+  const x = previous.onsetX(tickOf(others, found.beat));
+  const half = glyphWidth(headGlyph('normal', duration), space) / 2;
+  const { position } = placeNote(input.track, found.note, key, input.clef, false);
+  return {
+    y: placement.top + positionY(position, space),
+    left: x - half,
+    right: x + half,
+    direction: 'down',
+  };
+}
+
+function slideLine(
+  context: ConnectionContext,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  node: string,
+): void {
+  const { sink, space } = context;
+  if (x1 - x0 < space * 0.2) return;
+  sink.primitives.push(line(x0, y0, x1, y1, SLIDE.thickness * space, { node }));
+}
+
+function slur(
+  context: ConnectionContext,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  direction: ArcDirection,
+  node: string,
+  letter: string | undefined,
+): void {
+  const { sink, space, input } = context;
+  const apex = drawSlur(sink, x1, y1, x2, y2, direction, space, node);
+  // Letters only when the staff is alone: in both mode the tab writes them (ADR-0022).
+  if (apex === undefined || letter === undefined || input.staves.length > 1) return;
+  drawLetter(sink, (x1 + x2) / 2, apex, direction, space, node, letter);
+}
+
+/** A slide into or out of a note from nowhere. */
+function looseSlides(context: ConnectionContext, note: Note, spot: HeadSpot): void {
+  const { space } = context;
+  const before = spot.left - SLIDE.clear * space;
+  const after = spot.right + SLIDE.clear * space;
+  const length = SLIDE.length * space;
+  const drop = SLIDE.drop * space;
+  for (const kind of note.slide ?? []) {
+    if (kind === 'intoFromBelow')
+      slideLine(context, before - length, spot.y + drop, before, spot.y, note.id);
+    if (kind === 'intoFromAbove')
+      slideLine(context, before - length, spot.y - drop, before, spot.y, note.id);
+    if (kind === 'outDown')
+      slideLine(context, after, spot.y, after + length, spot.y + drop, note.id);
+    if (kind === 'outUp') slideLine(context, after, spot.y, after + length, spot.y - drop, note.id);
+  }
+}
+
+/**
+ * A shift or legato slide from `origin` to `target`, whole, or from the bar's left edge when the
+ * origin is not in reach; a legato slide adds its slur.
+ */
+function slideTo(
+  context: ConnectionContext,
+  originNote: Note,
+  origin: HeadSpot | undefined,
+  target: Note,
+  spot: HeadSpot,
+  slurDirection: ArcDirection,
+): void {
+  const { placement, space } = context;
+  const gap = SLIDE.gap * space;
+  const higher = targetIsHigher(originNote, target);
+  const end = spot.left - gap;
+  if (origin) slideLine(context, origin.right + gap, origin.y, end, spot.y, target.id);
+  else {
+    const from = spot.y + (higher ? 1 : -1) * SLIDE.drop * space;
+    slideLine(context, placement.x, from, end, spot.y, target.id);
+  }
+  if (!originNote.slide?.includes('legato')) return;
+  const tie = TIE_GAP * space;
+  const x1 = origin ? origin.right + tie : placement.x;
+  const y1 = origin ? origin.y : spot.y;
+  slur(context, x1, y1, spot.left - tie, spot.y, slurDirection, target.id, 'sl.');
+}
+
+/** Of a beat's hammer-on slurs going one way, only the outermost carries the letter. */
+function lettered(chord: ChordPlan, multiVoice: boolean): Set<Note> {
+  const out = new Set<Note>();
+  const hammered = mainHeads(chord).filter((head) => head.note.hammerPull);
+  const up = hammered.filter((head) => tieDirection(chord, head, multiVoice) === 'up');
+  const down = hammered.filter((head) => tieDirection(chord, head, multiVoice) === 'down');
+  const top = up.sort((a, b) => a.y - b.y)[0];
+  const bottom = down.sort((a, b) => b.y - a.y)[0];
+  if (top) out.add(top.note);
+  if (bottom) out.add(bottom.note);
+  return out;
+}
+
+/**
+ * Slides, hammer-ons and pull-offs of one voice, drawn by the bar holding the target: in one
+ * piece when the origin is in this bar, or in the previous bar of the system when this bar sets
+ * no clef, and as a half from the bar's left edge otherwise; a bar ending a system draws the
+ * origin half of each connection whose target is in the next bar. Shift, legato and hammer-on
+ * connections follow a string, so only a fretted track draws them.
+ */
+export function drawConnections(
+  context: ConnectionContext,
+  voice: number,
+  beats: readonly BeatPlan[],
+): void {
+  const { input, placement, plan, space } = context;
+  const { track, barIndex } = input;
+  const fretted = track.kind === 'fretted';
+  const here = connections(track.bars[barIndex]);
+  const slidesIn = fretted && (here.shifts || connections(track.bars[barIndex - 1]).shifts);
+  const leavesLine =
+    fretted && !placement.next && (here.shifts || connections(track.bars[barIndex + 1]).hammers);
+  const tie = TIE_GAP * space;
+  const contentEnd = placement.x + placement.width;
+  for (const beat of beats) {
+    const { chord } = beat;
+    if (!chord) continue;
+    const x = context.beatX(beat);
+    const at: TiePosition = { bar: barIndex, voice, beat: beat.index };
+    const letters = lettered(chord, plan.multiVoice);
+    const lastGrace = beat.graces.at(-1);
+    for (const head of mainHeads(chord)) {
+      const { note } = head;
+      const spot = spotOf(context, chord, head, x, beat.beat.dots);
+      looseSlides(context, note, spot);
+      if (!fretted) continue;
+      const grace = lastGrace?.chord.heads.find(
+        (other) => !other.sounding && other.note.string === note.string,
+      );
+      if (grace && lastGrace) {
+        const origin = spotOf(context, lastGrace.chord, grace, x + lastGrace.offset, 0);
+        // A grace note's stem points up, so its slur bends down, away from it.
+        if (shifts(grace.note)) slideTo(context, grace.note, origin, note, spot, 'down');
+        if (note.hammerPull && !grace.note.slide?.includes('legato')) {
+          const letter = letters.has(note) ? hammerLetter(grace.note, note) : undefined;
+          slur(
+            context,
+            origin.right + tie,
+            origin.y,
+            spot.left - tie,
+            spot.y,
+            'down',
+            note.id,
+            letter,
+          );
+        }
+      } else if (note.hammerPull || slidesIn) {
+        const found = tieOriginOf(track, at, note);
+        const near = found && found.bar >= barIndex - TIE_REACH_BARS ? found : undefined;
+        if (near && (shifts(near.note) || note.hammerPull)) {
+          const origin = locate(context, beats, voice, near);
+          if (shifts(near.note) && near.bar >= barIndex - 1)
+            slideTo(context, near.note, origin, note, spot, spot.direction);
+          // A legato slide already draws its slur, labelled `sl.`.
+          if (note.hammerPull && !near.note.slide?.includes('legato')) {
+            const letter = letters.has(note) ? hammerLetter(near.note, note) : undefined;
+            const x1 = origin ? origin.right + tie : placement.x;
+            const y1 = origin ? origin.y : spot.y;
+            slur(context, x1, y1, spot.left - tie, spot.y, spot.direction, note.id, letter);
+          }
+        }
+      }
+      if (!leavesLine) continue;
+      const target = nextOnString(track, at, note);
+      if (!target || target.bar === barIndex) continue;
+      const hammer = target.note.hammerPull;
+      if (shifts(note)) {
+        const drop = (targetIsHigher(note, target.note) ? -1 : 1) * SLIDE.drop * space;
+        slideLine(
+          context,
+          spot.right + SLIDE.gap * space,
+          spot.y,
+          contentEnd,
+          spot.y + drop,
+          note.id,
+        );
+      }
+      if (hammer || note.slide?.includes('legato')) {
+        slur(
+          context,
+          spot.right + tie,
+          spot.y,
+          contentEnd,
+          spot.y,
+          spot.direction,
+          note.id,
+          undefined,
+        );
+      }
+    }
+  }
+}
+
+/** Arpeggio waves and brush lines left of the chords, with their arrowheads. */
+export function drawStrokes(context: ConnectionContext): void {
+  const { plan, placement, sink, space } = context;
+  for (const beat of plan.beats) {
+    const { chord, strokeX } = beat;
+    const stroke = beat.beat.effects.arpeggio ?? beat.beat.effects.brush;
+    if (!chord || strokeX === undefined || !stroke) continue;
+    const ys = mainHeads(chord).map((head) => placement.top + head.y);
+    drawStroke(
+      sink,
+      context.beatX(beat) + strokeX,
+      Math.min(...ys) - STROKE.reach * space,
+      Math.max(...ys) + STROKE.reach * space,
+      { direction: stroke.direction, arpeggio: beat.beat.effects.arpeggio !== undefined },
+      space,
+      beat.beat.id,
+    );
+  }
 }

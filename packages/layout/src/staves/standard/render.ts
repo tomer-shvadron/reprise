@@ -5,8 +5,15 @@ import { glyph, glyphWidth, line, rect, union, type LayoutSink } from '../../pri
 import type { Rect, StaffType } from '../../types';
 import { DYNAMICS_GLYPHS, dynamicsBaseline, shownDynamics } from '../dynamics';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
-import { headEdges, type ChordPlan, type HeadPlan } from './chord';
-import { beamedTremoloY, drawArticulation, drawTremolo } from './effects';
+import { headEdges, mainHeads, tieDirection, type ChordPlan } from './chord';
+import {
+  beamedTremoloY,
+  drawArticulation,
+  drawConnections,
+  drawStrokes,
+  drawTremolo,
+  type ConnectionContext,
+} from './effects';
 import { GRACE_SCALE, noteMatches, type BarPlan, type BeatPlan } from './plan';
 import {
   beamY,
@@ -17,7 +24,6 @@ import {
   drawStem,
   drawTie,
   drawTuplet,
-  type ArcDirection,
   type BeamStem,
 } from './rhythm';
 
@@ -106,22 +112,6 @@ function beatX(context: Context, beat: BeatPlan): number {
   const { placement } = context;
   if (beat.rest?.centred) return placement.x + placement.width / 2;
   return placement.onsetX(beat.tick);
-}
-
-/** The heads drawn for the chord's notes, without harmonics' sounding diamonds. */
-export function mainHeads(chord: ChordPlan): HeadPlan[] {
-  return chord.heads.filter((head) => !head.sounding);
-}
-
-/** The side a tie or slur on `head` bulges: away from the stem, the outer heads outward. */
-export function tieDirection(chord: ChordPlan, head: HeadPlan, multiVoice: boolean): ArcDirection {
-  const up = chord.direction === 'up';
-  if (multiVoice) return up ? 'up' : 'down';
-  const heads = mainHeads(chord);
-  const index = heads.indexOf(head);
-  const count = heads.length;
-  if (count === 1 || (count % 2 === 1 && index === (count - 1) / 2)) return up ? 'down' : 'up';
-  return index >= count / 2 ? 'up' : 'down';
 }
 
 function drawGraces(context: Context, beat: BeatPlan, x: number): void {
@@ -322,6 +312,19 @@ export function renderBar(
   }
 
   drawTies(context, fretted);
+
+  if (type === 'standard') {
+    const connecting: ConnectionContext = {
+      input,
+      placement,
+      plan,
+      sink,
+      space,
+      beatX: (beat) => beatX(context, beat),
+    };
+    for (const [voice, beats] of plan.voices.entries()) drawConnections(connecting, voice, beats);
+    drawStrokes(connecting);
+  }
 
   const shown = shownDynamics(input.track, input.barIndex);
   const lane = placement.lanes.dynamics;

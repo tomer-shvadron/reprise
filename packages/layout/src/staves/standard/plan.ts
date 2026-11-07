@@ -3,11 +3,21 @@ import { beatTicks, type Beat, type Duration, type Finger, type Note } from '@re
 import { glyphMetrics, type GlyphName } from '../../metrics';
 import { glyphWidth } from '../../primitives';
 import type { StaffBar } from '../staff-module';
-import { planChord, positionY, type ChordNote, type ChordPlan } from './chord';
+import {
+  mainHeads,
+  planChord,
+  positionY,
+  tieDirection,
+  type ChordNote,
+  type ChordPlan,
+} from './chord';
 import {
   articulationHalf,
   articulationReach,
+  SLIDE,
+  STROKE,
   beamedShortfall,
+  nearOrigin,
   planArticulation,
   planTremolo,
   type ArticulationPlan,
@@ -21,6 +31,7 @@ import {
   type ShownAccidental,
 } from './pitch';
 import { beamCount, beamGroups, tupletGroups, type RhythmEvent } from '../rhythm';
+import { letterReach } from '../effects';
 import {
   beamLine,
   dotsWidth,
@@ -83,6 +94,8 @@ export interface BeatPlan {
   fingering: { glyph: GlyphName; note: Note }[];
   articulation?: ArticulationPlan;
   tremolo?: TremoloPlan;
+  /** The arpeggio or brush column's centre, from the beat's x. */
+  strokeX?: number;
   left: number;
   right: number;
   top: number;
@@ -222,6 +235,8 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
           : undefined,
       );
   const multiVoice = bar.voices.filter((voice) => voice.beats.some(hasContent)).length > 1;
+  // The track's only staff: it also carries what both mode leaves to the tab.
+  const lone = input.staves.length === 1;
   const middle = positionY(4, space);
   const time = input.masterBar.timeSignature;
 
@@ -330,15 +345,16 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
       plan.right = planned.right;
       plan.top = planned.top;
       plan.bottom = planned.bottom;
-      const mainHeads = planned.heads.filter((head) => !head.sounding);
-      const tied = mainHeads.some(({ note }) => note.tie) || index === voiceBeats.length - 1;
+      const heads = mainHeads(planned);
+      const tied = heads.some(({ note }) => note.tie) || index === voiceBeats.length - 1;
       if (tied) {
-        plan.top = Math.min(plan.top, ...mainHeads.map(({ y }) => y - tieReach(space)));
-        plan.bottom = Math.max(plan.bottom, ...mainHeads.map(({ y }) => y + tieReach(space)));
+        plan.top = Math.min(plan.top, ...heads.map(({ y }) => y - tieReach(space)));
+        plan.bottom = Math.max(plan.bottom, ...heads.map(({ y }) => y + tieReach(space)));
       }
+      if (!percussion) planBeside(plan, beat, heads, lone, space);
       planGraces(plan, chordNotes, space, multiVoice);
       if (!percussion) {
-        for (const head of [...mainHeads].reverse()) {
+        for (const head of [...heads].reverse()) {
           const { leftHandFinger, rightHandFinger } = head.note;
           if (rightHandFinger)
             plan.fingering.push({ glyph: RIGHT_HAND[rightHandFinger], note: head.note });
@@ -348,6 +364,10 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
       }
       return plan;
     });
+
+    if (track.kind === 'fretted' && !percussion) {
+      for (const plan of planned) planSlurs(plan, planned, input, voice, multiVoice, lone);
+    }
 
     for (const members of grouped) {
       const groupBeats = members.flatMap((i) => planned[i] ?? []);
@@ -444,6 +464,82 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
     above: -fingeringTop + MARGIN * space,
     below: bottom - positionY(0, space) + MARGIN * space,
   };
+}
+
+/** Room left of the chord for a slide into it and a stroke arrow, and right for a slide out. */
+function planBeside(
+  plan: BeatPlan,
+  beat: Beat,
+  heads: readonly { y: number }[],
+  lone: boolean,
+  space: number,
+): void {
+  const slides = beat.notes.flatMap((note) => note.slide ?? []);
+  if (slides.some((kind) => kind === 'intoFromBelow' || kind === 'intoFromAbove')) {
+    plan.left -= SLIDE.room * space;
+  }
+  if (slides.some((kind) => kind === 'outDown' || kind === 'outUp')) {
+    plan.right += SLIDE.room * space;
+  }
+  // In both mode the tab draws the brush; an arpeggio's wave belongs beside the heads.
+  const { arpeggio, brush } = beat.effects;
+  if (!arpeggio && !(brush && lone)) return;
+  plan.strokeX = plan.left - (STROKE.width * space) / 2;
+  plan.left -= STROKE.width * space;
+  const ys = heads.map(({ y }) => y);
+  plan.top = Math.min(plan.top, Math.min(...ys) - STROKE.reach * space);
+  plan.bottom = Math.max(plan.bottom, Math.max(...ys) + STROKE.reach * space);
+}
+
+/**
+ * Room for the slurs of hammer-ons and legato slides ending at the beat: past the higher or
+ * lower of its two heads when the origin is in this bar or the one before, past the target
+ * alone when the slur arrives as a half, and for the letter over it when the staff is alone.
+ */
+function planSlurs(
+  plan: BeatPlan,
+  planned: readonly BeatPlan[],
+  input: StaffBar,
+  voice: number,
+  multiVoice: boolean,
+  lone: boolean,
+): void {
+  const { chord } = plan;
+  if (!chord) return;
+  const { track, space } = input;
+  const reach = tieReach(space) + (lone ? letterReach(space) : 0);
+  const lastGrace = plan.graces.at(-1);
+  for (const head of mainHeads(chord)) {
+    const { note } = head;
+    const grace = lastGrace?.chord.heads.find(
+      (other) => !other.sounding && other.note.string === note.string,
+    );
+    let ys = [head.y];
+    let direction = tieDirection(chord, head, multiVoice);
+    if (grace) {
+      if (!note.hammerPull && !grace.note.slide?.includes('legato')) continue;
+      ys = [head.y, grace.y];
+      direction = 'down';
+    } else {
+      const origin = nearOrigin(track, input.barIndex, voice, plan.index, note);
+      const legato = origin?.note.slide?.includes('legato') ?? false;
+      if (!note.hammerPull && !legato) continue;
+      if (origin?.bar === input.barIndex) {
+        const from = planned[origin.beat]?.chord?.heads.find(
+          (other) => !other.sounding && other.note === origin.note,
+        );
+        if (from) ys.push(from.y);
+      } else if (origin && input.bar.clef === undefined) {
+        const key = input.score.masterBars[input.barIndex - 1]?.keySignature;
+        if (key) {
+          const placed = placeNote(track, origin.note, key, input.clef, false);
+          ys.push(positionY(placed.position, space));
+        }
+      }
+    }
+    if (direction === 'up') plan.top = Math.min(plan.top, Math.min(...ys) - reach);
+    else plan.bottom = Math.max(plan.bottom, Math.max(...ys) + reach);
+  }
 }
 
 function planGraces(
