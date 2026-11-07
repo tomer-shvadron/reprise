@@ -24,17 +24,15 @@ export interface OverlayLayerProps {
   zoom: number;
   /** Mounted systems; selection outside them is not drawn. */
   range: Range;
-  /** A layout rect of a system in view px, where its page has moved down. */
-  place: (rect: Rect, system: number) => Rect;
 }
 
 /**
  * Above the notation rather than under it: tab numbers sit on opaque paper knockouts, which a
  * highlight underneath would show as holes. A translucent tint on top colours both alike.
  */
-export function OverlayLayer({ overlays, zoom, range, place }: OverlayLayerProps) {
+export function OverlayLayer({ overlays, zoom, range }: OverlayLayerProps) {
   const { cursor, selection = [], hover } = overlays ?? {};
-  const bar = cursor && place(cursor.bar.bbox, cursor.bar.system);
+  const bar = cursor?.bar.bbox;
   return (
     <div className="score-overlays" aria-hidden="true">
       {cursor && bar && (
@@ -52,13 +50,9 @@ export function OverlayLayer({ overlays, zoom, range, place }: OverlayLayerProps
       {selection
         .filter((anchor) => anchor.system >= range.start && anchor.system < range.end)
         .map((anchor, index) => (
-          <div
-            key={index}
-            className="score-selection"
-            style={box(place(anchor.bbox, anchor.system), zoom)}
-          />
+          <div key={index} className="score-selection" style={box(anchor.bbox, zoom)} />
         ))}
-      {hover && <div className="score-hover" style={box(place(hover.bbox, hover.system), zoom)} />}
+      {hover && <div className="score-hover" style={box(hover.bbox, zoom)} />}
     </div>
   );
 }

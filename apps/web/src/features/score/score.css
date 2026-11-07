@@ -20,7 +20,7 @@
   position: absolute;
 }
 
-/* On screen the paper grows to hold a system taller than the page (#85); print keeps the page. */
+/* On screen the paper is the page unless a caller crops it; print keeps the page. */
 .score-page {
   position: relative;
   flex: none;

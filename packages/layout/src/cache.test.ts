@@ -297,4 +297,79 @@ describe('LayoutCache', () => {
     const capo = applyCommand(renamed, setTrackProperties({ trackId }, { capo: 3 })).score;
     expect(layout(capo, paged, cache).metrics.measuredBars).toBe(10);
   });
+
+  describe('with systems split across pages', () => {
+    const split = largeScore(8, 40, { structure: true });
+    const tab: LayoutOptions = {
+      ...paged,
+      notation: Object.fromEntries(split.tracks.map(({ id }) => [id, 'tab'])),
+    };
+    /** The first parts of systems within `BAR_REACH` bars of bar `index`. */
+    const plansInReach = (result: LayoutResult, index: number): number =>
+      result.systems.filter(
+        ({ bars, part }) =>
+          (part ?? 0) === 0 &&
+          !(bars.end - 1 + BAR_REACH < index || bars.start - BAR_REACH > index),
+      ).length;
+
+    it('rebuilds both parts of the systems within reach of an edit in a continuation', () => {
+      const { cache, first } = warm(split, tab);
+      expect(first.systems.some(({ part }) => part === 1)).toBe(true);
+      const bar = 20;
+      const { score: edited, change } = applyCommand(
+        split,
+        setNote({ beatId: beatOf(split, 7, bar, 0).id }, { string: 6, fret: 7 }),
+      );
+      const result = layout(edited, { ...tab, dirtyBars: change.touchedBars }, cache);
+      expectValid(result);
+      expect(stable(result)).toBe(stable(layout(edited, tab)));
+      expect(result.systems.length - result.metrics.reusedSystems).toBe(
+        2 * plansInReach(result, bar),
+      );
+    });
+
+    it('moves a cut when a lane grows a part, and reuses the next split system', () => {
+      const { cache, first } = warm(split, tab);
+      const target = first.systems.find(({ part, bars }) => part === 0 && bars.start > 10);
+      if (!target) throw new Error('no split system');
+      let edited = split;
+      // Chord lanes on the first part's tracks and a section row outgrow the room it had left.
+      for (let track = 0; track < 5; track++) {
+        ({ score: edited } = applyCommand(
+          edited,
+          setBeatEffect(
+            { beatId: beatOf(edited, track, target.bars.start, 0).id },
+            { chord: { name: 'Am7' } },
+          ),
+        ));
+      }
+      ({ score: edited } = applyCommand(
+        edited,
+        setMasterBar(
+          { masterBarId: edited.masterBars[target.bars.start]?.id ?? '' },
+          { section: { name: 'Solo' } },
+        ),
+      ));
+      const dirtyBars = [split.masterBars[target.bars.start]?.id ?? ''];
+      const result = layout(edited, { ...tab, dirtyBars }, cache);
+      expectValid(result);
+      expect(stable(result)).toBe(stable(layout(edited, tab)));
+      const moved = result.systems.find(({ id }) => id === target.id);
+      expect(moved?.staves.length).toBeLessThan(target.staves.length);
+      const later = first.systems.find(
+        ({ part, bars }) => part === 0 && bars.start - BAR_REACH > target.bars.end,
+      );
+      if (!later) throw new Error('no later split system');
+      expect(kept(first, result, later.id)).toBe(true);
+      expect(kept(first, result, `${later.id}/1`)).toBe(true);
+    });
+
+    it('inserts a bar in a split layout as a cold layout would', () => {
+      const { cache } = warm(split, tab);
+      const { score: edited, change } = applyCommand(split, insertBar({ index: 12 }));
+      const result = layout(edited, { ...tab, dirtyBars: change.touchedBars }, cache);
+      expectValid(result);
+      expect(stable(result)).toBe(stable(layout(edited, tab)));
+    });
+  });
 });

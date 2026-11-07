@@ -20,7 +20,6 @@ import { cn } from '@/lib/utils';
 import { describeLayout } from './anchors';
 import { useScoreFonts } from './fonts';
 import { OverlayLayer, type ScoreOverlays } from './overlay-layer';
-import { pageFlow, toLayoutY, toViewRect } from './page-flow';
 import { ScorePage } from './score-page';
 import {
   canvasOffset,
@@ -51,15 +50,9 @@ export interface ScorePointerEvent {
 }
 
 export interface ScoreViewHandle {
-  /**
-   * Scrolls the least distance that shows `rect` (layout px) with `margin`; no-op when it shows.
-   * `system` is the rect's system index, which places a rect inside a system taller than its page.
-   */
-  revealRect(
-    rect: Rect,
-    options?: { margin?: number; behavior?: 'auto' | 'smooth'; system?: number },
-  ): void;
-  /** The visible window in layout px, from the live scroll position, on the page at its centre. */
+  /** Scrolls the least distance that shows `rect` (layout px) with `margin`; no-op when it shows. */
+  revealRect(rect: Rect, options?: { margin?: number; behavior?: 'auto' | 'smooth' }): void;
+  /** The visible window in layout px, from the live scroll position. */
   viewport(): Rect;
 }
 
@@ -133,9 +126,7 @@ export function ScoreView({
   const fontsReady = useScoreFonts();
   const descriptionId = useId();
 
-  // Everything on screen is placed in the flow's view px; the public API speaks layout px.
-  const flow = useMemo(() => pageFlow(layout), [layout]);
-  const extent = useMemo(() => layoutExtent(flow), [flow]);
+  const extent = useMemo(() => layoutExtent(layout), [layout]);
   const offset = canvasOffset(viewport, extent, zoom);
   const size = contentSize(offset, extent, zoom);
   // The browser clamps the scroll position, so a centre it cannot reach at this zoom moves too.
@@ -148,8 +139,8 @@ export function ScoreView({
       offset,
     );
   const visible = visibleWindow(centre, viewport, zoom, offset);
-  const range = mountedSystems(flow.systems, visible);
-  const pages = mountedPages(flow.pages, flow.systems, range, visible);
+  const range = mountedSystems(layout.systems, visible);
+  const pages = mountedPages(layout.pages, layout.systems, range, visible);
 
   const onScroll = (event: UIEvent<HTMLDivElement>) => {
     const next = centreFromScroll(readScroll(event.currentTarget), viewport, zoom, offset);
@@ -178,22 +169,13 @@ export function ScoreView({
         zoom,
         offset,
       );
-    const toLayoutWindow = (window: Rect): Rect => {
-      const centre = { x: window.x + window.width / 2, y: window.y + window.height / 2 };
-      const { point } = toLayoutY(flow, centre);
-      return { ...window, y: window.y - centre.y + point.y };
-    };
     return {
-      viewport: () => toLayoutWindow(scroller.current ? live(scroller.current) : visible),
+      viewport: () => (scroller.current ? live(scroller.current) : visible),
       revealRect: (rect, options = {}) => {
         const target = scroller.current;
         if (!target) return;
         const current = live(target);
-        const origin = revealScroll(
-          current,
-          toViewRect(flow, layout, rect, options.system),
-          options.margin ?? DEFAULT_REVEAL_MARGIN,
-        );
+        const origin = revealScroll(current, rect, options.margin ?? DEFAULT_REVEAL_MARGIN);
         if (!origin) return;
         const left = origin.x * zoom + offset.x;
         const top = origin.y * zoom + offset.y;
@@ -205,29 +187,19 @@ export function ScoreView({
         }
       },
     };
-  }, [viewport, zoom, offset, visible, flow, layout]);
+  }, [viewport, zoom, offset, visible]);
 
   const pointer =
     (type: ScorePointerEvent['type']) => (event: ReactPointerEvent<HTMLDivElement>) => {
       if (!onScorePointer) return;
       const canvas = event.currentTarget.getBoundingClientRect();
-      const { point, page } = toLayoutY(
-        flow,
-        toLayoutPoint(
-          { x: event.clientX, y: event.clientY },
-          { x: canvas.left, y: canvas.top },
-          zoom,
-        ),
+      const point = toLayoutPoint(
+        { x: event.clientX, y: event.clientY },
+        { x: canvas.left, y: canvas.top },
+        zoom,
       );
-      // Only the page under the pointer: an overflowing system shares layout y with the next page.
-      const onPage = page && {
-        ...layout,
-        systems: layout.systems.slice(page.systems.start, page.systems.end),
-      };
       const anchor =
-        type === 'leave' || type === 'cancel' || !onPage
-          ? undefined
-          : hitTest(onPage, point.x, point.y);
+        type === 'leave' || type === 'cancel' ? undefined : hitTest(layout, point.x, point.y);
       onScorePointer({ type, point, anchor, event: event.nativeEvent });
     };
 
@@ -266,8 +238,7 @@ export function ScoreView({
         >
           {pages.map((index) => {
             const page = layout.pages[index];
-            const drawn = flow.pages[index];
-            if (!page || !drawn) return null;
+            if (!page) return null;
             const systems = fontsReady
               ? layout.systems
                   .slice(range.start, range.end)
@@ -280,21 +251,15 @@ export function ScoreView({
                 systems={systems}
                 primitives={layout.primitives}
                 zoom={zoom}
-                height={drawn.bbox.height}
                 style={{
                   position: 'absolute',
-                  left: drawn.bbox.x * zoom,
-                  top: drawn.bbox.y * zoom,
+                  left: page.bbox.x * zoom,
+                  top: page.bbox.y * zoom,
                 }}
               />
             );
           })}
-          <OverlayLayer
-            overlays={overlays}
-            zoom={zoom}
-            range={range}
-            place={(rect, system) => toViewRect(flow, layout, rect, system)}
-          />
+          <OverlayLayer overlays={overlays} zoom={zoom} range={range} />
         </div>
       </div>
     </div>

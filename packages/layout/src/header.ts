@@ -218,6 +218,22 @@ export function drawVolta(sink: LayoutSink, span: VoltaSpan, band: Band, space: 
   }
 }
 
+/** A continuation's bar number, `masterBarIndex + 1` as Guitar Pro counts, anacrusis included. */
+export function drawBarNumber(
+  sink: LayoutSink,
+  masterBar: MasterBar,
+  number: number,
+  x: number,
+  band: Band,
+  space: number,
+): void {
+  sink.primitives.push(
+    text(String(number), x + space * 0.2, band.bottom - space * 0.5, VOLTA_TEXT_SIZE * space, {
+      node: masterBar.id,
+    }),
+  );
+}
+
 export function repeatCount(
   sink: LayoutSink,
   masterBar: MasterBar,

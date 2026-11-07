@@ -1,9 +1,9 @@
-import { applyCommand, createEmptyScore, setBeatDuration } from '@reprise/model';
+import { applyCommand, createEmptyScore, setBeatDuration, type Notation } from '@reprise/model';
 import { beatOf, largeScore, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_MARGINS, LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from './index';
-import { expectValid, overlappingAnchors, stable } from './test/check-result';
+import { expectInsidePages, expectValid, overlappingAnchors, stable } from './test/check-result';
 
 const paged: LayoutOptions = {
   mode: 'paged',
@@ -69,6 +69,45 @@ describe('layout', () => {
         0,
       );
       expect(beats).toHaveLength(total);
+    },
+    30_000,
+  );
+
+  it.each([
+    ['tab', 'a4'],
+    ['standard', 'a4'],
+    ['both', 'a4'],
+    ['mixed', 'a4'],
+    ['mixed', 'letter'],
+  ] as const)(
+    'lays out the long score in page view in %s on %s with no system crossing a page edge',
+    (notation, paper) => {
+      const long = largeScore(8, 300, { structure: true });
+      const mixed: readonly Notation[] = ['tab', 'standard', 'both'];
+      const options: LayoutOptions = {
+        ...paged,
+        width: PAGE_SIZES[paper].width,
+        pageHeight: PAGE_SIZES[paper].height,
+        notation: Object.fromEntries(
+          long.tracks.map(({ id }, i) => [
+            id,
+            notation === 'mixed' ? (mixed[i % mixed.length] ?? 'tab') : notation,
+          ]),
+        ),
+      };
+      const result = layout(long, options);
+      expectValid(result);
+      expectInsidePages(result, DEFAULT_MARGINS.paged);
+      expect(result.systems.at(-1)?.bars.end).toBe(300);
+      if (paper === 'a4' && notation !== 'standard') {
+        // Every system splits in two, each part at its page's top.
+        for (const system of result.systems) {
+          expect(system.part).toBe(system.index % 2);
+          expect(system.bbox.y).toBe(
+            (result.pages[system.page]?.bbox.y ?? 0) + DEFAULT_MARGINS.paged.top,
+          );
+        }
+      }
     },
     30_000,
   );

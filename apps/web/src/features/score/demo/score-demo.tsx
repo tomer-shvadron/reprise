@@ -105,7 +105,8 @@ function countElements(frame: HTMLElement | null): number {
 function cursorPath(result: LayoutResult): Anchor[] {
   return result.systems.flatMap((system) => {
     const staff = system.staves[0];
-    if (!staff) return [];
+    // A continuation part repeats the bars of the part before; the cursor reads the first part.
+    if (!staff || (system.part ?? 0) > 0) return [];
     return result.anchors
       .slice(system.anchors.start, system.anchors.end)
       .filter((a) => a.kind === 'beat' && a.track === staff.track && a.staff === staff.type)

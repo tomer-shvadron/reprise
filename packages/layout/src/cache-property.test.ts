@@ -210,17 +210,21 @@ const SCORES: Record<'large' | 'sparse', () => Score> = {
   sparse: sparseScore,
 };
 
+/** A page short enough that the large score's systems split across pages (#85). */
+const SPLIT_PAGE_HEIGHT = 300;
+
 function optionsFor(
   score: Score,
   notation: Notation,
   mode: LayoutOptions['mode'],
   subset: boolean,
+  pageHeight: number = PAGE_SIZES.a4.height,
 ): LayoutOptions {
   const tracks = subset ? score.tracks.filter((_, i) => i % 3 !== 1).map(({ id }) => id) : 'all';
   return {
     mode,
     width: mode === 'paged' ? PAGE_SIZES.a4.width : 640,
-    pageHeight: PAGE_SIZES.a4.height,
+    pageHeight,
     zoom: 1,
     tracks,
     notation: Object.fromEntries(score.tracks.map(({ id }) => [id, notation])),
@@ -259,7 +263,7 @@ function changeOptions(score: Score, options: LayoutOptions, change: OptionChang
 
 describe('LayoutCache: random edits', () => {
   const cases = (['tab', 'standard', 'both'] as const).flatMap((notation) =>
-    (['paged', 'continuous'] as const).map((mode) => [notation, mode] as const),
+    (['paged', 'continuous', 'split'] as const).map((mode) => [notation, mode] as const),
   );
   it.each(cases)(
     'keeps cached equal to cold in %s notation, %s mode',
@@ -271,9 +275,15 @@ describe('LayoutCache: random edits', () => {
           array(edit, { minLength: 1, maxLength: 8 }),
           (which, subsetDie, edits) => {
             let score = SCORES[which]();
-            let options = optionsFor(score, notation, mode, subsetDie === 0);
+            let options =
+              mode === 'split'
+                ? optionsFor(score, notation, 'paged', subsetDie === 0, SPLIT_PAGE_HEIGHT)
+                : optionsFor(score, notation, mode, subsetDie === 0);
             const cache = new LayoutCache();
-            layout(score, options, cache);
+            const first = layout(score, options, cache);
+            if (mode === 'split' && which === 'large' && subsetDie !== 0) {
+              expect(first.systems.some(({ part }) => part !== undefined)).toBe(true);
+            }
             const history = createHistory();
             for (const step of edits) {
               let touched: string[] = [];
