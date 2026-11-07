@@ -246,6 +246,73 @@ describe('createAudioEngine', () => {
     });
   });
 
+  describe('a mixer ramp running at a cut', () => {
+    // Bar 2 ramps from volume 100 to 20 between 2.1 s and 3.1 s; every cut lands at 2.5 s.
+    const ramped = (withChange: boolean) =>
+      quarters(4, {
+        volume: 100,
+        beat: (bar, beat) =>
+          withChange && bar === 1 && beat === 0
+            ? { mix: { volume: { value: 20, duration: 2 } } }
+            : {},
+      });
+
+    /** After a stop a preview sounds at 3.3 s; a seek or a resume from the top plays bar 1. */
+    async function levelAfter(cut: 'stop' | 'pause' | 'seek', withChange: boolean) {
+      const song = ramped(withChange);
+      const { engine, render } = await setup({ seconds: 4 });
+      await engine.load(song, GM);
+      engine.play();
+      const actions = {
+        stop: [
+          {
+            at: 2.5,
+            run: () => {
+              engine.stop();
+            },
+          },
+          {
+            at: 3.3,
+            run: () => {
+              engine.previewNote(trackOf(song), { string: 1, fret: 3 });
+            },
+          },
+        ],
+        pause: [
+          {
+            at: 2.5,
+            run: () => {
+              engine.pause();
+            },
+          },
+          {
+            at: 2.6,
+            run: () => {
+              engine.play(0);
+            },
+          },
+        ],
+        seek: [
+          {
+            at: 2.5,
+            run: () => {
+              engine.seek(0);
+            },
+          },
+        ],
+      }[cut];
+      const buffer = await render(actions);
+      engine.dispose();
+      return cut === 'stop' ? rms(buffer, 3.31, 3.8) : rms(buffer, 3.2, 3.9);
+    }
+
+    it.each(['stop', 'pause', 'seek'] as const)('does not land after a %s', async (cut) => {
+      const ratio = (await levelAfter(cut, true)) / (await levelAfter(cut, false));
+      expect(ratio).toBeGreaterThan(0.8);
+      expect(ratio).toBeLessThan(1.25);
+    });
+  });
+
   describe('a load over the loaded song', () => {
     const edited = (song: Score) =>
       applyCommand(song, setNote({ beatId: beatOf(song, 0, 2, 0).id }, { string: 1, fret: 5 }))
