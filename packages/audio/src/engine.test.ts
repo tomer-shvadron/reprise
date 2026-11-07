@@ -1,4 +1,4 @@
-import { applyCommand, createTrack, setNote, setTrackProperties } from '@reprise/model';
+import { applyCommand, createTrack, PPQ, setNote, setTrackProperties } from '@reprise/model';
 import type { Score } from '@reprise/model';
 import { beatOf, note, score } from '@reprise/model/testing';
 import type { BeatSpec } from '@reprise/model/testing';
@@ -504,7 +504,10 @@ describe('createAudioEngine', () => {
   it('keeps the settings given before the context and applies them when it is made', async () => {
     const song = quarters(1);
     const id = trackOf(song);
-    const { engine, factory, states, live } = await setup({ lazy: true });
+    const { engine, factory, states, positions, render, live } = await setup({
+      lazy: true,
+      seconds: 5.5,
+    });
     engine.setTempo('percent', 50);
     engine.setCountIn(true);
     engine.setMetronome(true, 0.5);
@@ -526,6 +529,21 @@ describe('createAudioEngine', () => {
     expect(sampler.strip(id)?.mute).toBe(true);
     engine.play();
     expect(states.at(-1)).toBe('counting-in');
+
+    // At half of 120 BPM the count-in bar lasts 4 s, so the song starts at 4.1 s.
+    let stateAt3 = '';
+    const ticks: number[] = [];
+    const sample = () => ticks.push(tickOf(positions) ?? 0);
+    const buffer = await render([
+      { at: 3, run: () => (stateAt3 = states.at(-1) ?? '') },
+      { at: 4.4, run: sample },
+      { at: 5.4, run: sample },
+    ]);
+    expect(stateAt3).toBe('counting-in');
+    const [early = 0, late = 0] = ticks;
+    expect((late - early) / PPQ).toBeCloseTo(1, 1);
+    // The track is muted, so only the metronome's clicks sound once the song starts.
+    expect(rms(buffer, 4.2, 5.4)).toBeGreaterThan(0.001);
     engine.dispose();
   });
 
