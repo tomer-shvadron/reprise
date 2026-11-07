@@ -23,7 +23,7 @@ test('opens with the shortcut through the picker and renders', async ({ app, pag
 test('opens from the palette', async ({ app }) => {
   await app.openFromPalette(fixture('gp5/chords.gp5'));
 
-  expect(await app.description()).toBe('2 bars, 1 page');
+  expect(await app.description()).toBe('3 bars, 1 page');
   await expect(app.playButton).toBeEnabled();
 });
 
