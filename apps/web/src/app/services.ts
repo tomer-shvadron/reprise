@@ -9,6 +9,7 @@ import {
   type DocumentStore,
   type DocumentStoreDeps,
 } from '@/state/document';
+import { createHeardRef, type HeardRef } from '@/state/heard';
 import { createLayoutStore, type LayoutStore } from '@/state/layout';
 import { createPlaybackStore, type PlaybackStore } from '@/state/playback';
 import { createSelectionStore, type SelectionStore } from '@/state/selection';
@@ -26,6 +27,8 @@ export interface AppServices {
   audio: AudioService;
   /** The transport bar's UI state, reachable from its commands. */
   transport: TransportUiStore;
+  /** Where the drawn playhead is, so clicks and steps decide from what the user sees. */
+  heard: HeardRef;
   dispose(): void;
 }
 
@@ -96,6 +99,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     layout,
     audio,
     transport,
+    heard: createHeardRef(),
     dispose() {
       uninstallTransport();
       unsubscribe();

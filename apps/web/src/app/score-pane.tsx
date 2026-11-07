@@ -20,7 +20,7 @@ import {
 import { orderedRange } from '@/features/transport/bar-range';
 import { loopBarNumbers } from '@/features/transport/loop';
 import { seekTick } from '@/features/transport/seek';
-import { playheadTick, seekTo } from '@/features/transport/seek-commands';
+import { playheadBar, playheadTick, seekTo } from '@/features/transport/seek-commands';
 import { selectRunning } from '@/state/playback';
 import type { BarRange } from '@/state/selection';
 import { timelineOf } from '@/state/timeline';
@@ -65,10 +65,7 @@ function clickBar(
   const target = pointerTarget(result, score, event);
   if (!target) return;
   if (shift) {
-    const from =
-      selection.getState().barsAnchor ??
-      playback.getState().position?.masterBarId ??
-      target.masterBarId;
+    const from = selection.getState().barsAnchor ?? playheadBar(services) ?? target.masterBarId;
     const range = orderedRange(score, from, target.masterBarId);
     if (range) selection.getState().selectBars(range, from);
     return;

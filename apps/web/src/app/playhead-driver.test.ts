@@ -222,6 +222,11 @@ describe('output latency', () => {
           tick - BAR - latency * TICKS_PER_SECOND,
         );
         expect(cursor?.x).toBeCloseTo(lagged?.x ?? Number.NaN, 6);
+        // What it drew is what clicks and steps decide from.
+        expect(services.heard.current?.playbackTick).toBeCloseTo(
+          tick - latency * TICKS_PER_SECOND,
+          6,
+        );
       });
 
       it('shows a seek’s target at once, not the bar before it in playback order', async () => {

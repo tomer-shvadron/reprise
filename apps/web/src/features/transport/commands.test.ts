@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createAppRegistry } from '@/app/app-registry';
 import { mirrorAudio } from '@/test/mirror-audio';
-import { fourBars } from '@/test/position';
+import { fourBars, positionEventAt } from '@/test/position';
 import { createTestServices } from '@/test/services';
 
 async function setup(song?: Score) {
@@ -142,6 +142,23 @@ describe('transport commands', () => {
     const announced = transport.getState().announcement;
     await run('transport.nextBar');
     expect(transport.getState().announcement).toBe(announced);
+  });
+
+  it('step from the drawn playhead while playing, which lags the engine', async () => {
+    const { services, run } = await setup(fourBars());
+    const score = services.document.getState().score;
+    if (!score) throw new Error('no score');
+    services.playback.setState({
+      transport: 'playing',
+      position: positionEventAt(score, 2 * 3840 + 100),
+    });
+    services.heard.current = {
+      masterBarId: score.masterBars[1]?.id ?? '',
+      tick: 3800,
+      playbackTick: 3840 + 3800,
+    };
+    await run('transport.nextBar');
+    expect(services.fakeAudio.seek).toHaveBeenLastCalledWith(2 * 3840);
   });
 
   it('extend the bar selection from its anchor and announce it', async () => {

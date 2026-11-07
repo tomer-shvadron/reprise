@@ -22,7 +22,7 @@ type SeekCommand = Command & { id: SeekCommandId };
 
 export type SeekServices = Pick<
   AppServices,
-  'audio' | 'playback' | 'document' | 'selection' | 'transport' | 'ui'
+  'audio' | 'playback' | 'document' | 'selection' | 'transport' | 'ui' | 'heard'
 >;
 
 /** Every seek the app makes: following resumes, then the audio service moves the playhead. */
@@ -31,9 +31,27 @@ export function seekTo(services: Pick<SeekServices, 'audio' | 'ui'>, tick: numbe
   services.audio.seek(tick);
 }
 
-/** The playhead's playback tick; 0 with no position. */
-export function playheadTick(services: Pick<SeekServices, 'playback'>): number {
-  return services.playback.getState().position?.position.playbackTick ?? 0;
+/** The drawn playhead's position while playing, which lags the engine's; else the engine's. */
+function drawnPlayhead(services: Pick<SeekServices, 'playback' | 'heard'>) {
+  const state = services.playback.getState();
+  const drawn = selectRunning(state) ? services.heard.current : undefined;
+  const exact = state.position && {
+    masterBarId: state.position.masterBarId,
+    playbackTick: state.position.position.playbackTick,
+  };
+  return drawn ?? exact;
+}
+
+/** The playhead's playback tick, as drawn; 0 with no position. */
+export function playheadTick(services: Pick<SeekServices, 'playback' | 'heard'>): number {
+  return drawnPlayhead(services)?.playbackTick ?? 0;
+}
+
+/** The playhead's master bar, as drawn. */
+export function playheadBar(
+  services: Pick<SeekServices, 'playback' | 'heard'>,
+): string | undefined {
+  return drawnPlayhead(services)?.masterBarId;
 }
 
 /** The keyboard's seek and bar-selection commands, on Guitar Pro's keys. */
@@ -66,8 +84,7 @@ export function seekCommands(services: SeekServices): SeekCommand[] {
     if (!score) return;
     const { bars, barsAnchor } = selection.getState();
     const from =
-      (bars ? (barsAnchor ?? bars.startBar) : playback.getState().position?.masterBarId) ??
-      score.masterBars[0]?.id;
+      (bars ? (barsAnchor ?? bars.startBar) : playheadBar(services)) ?? score.masterBars[0]?.id;
     if (from === undefined) return;
     const range = extendRange(score, bars, from, by);
     if (!range) return;

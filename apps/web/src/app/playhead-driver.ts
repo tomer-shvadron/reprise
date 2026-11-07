@@ -1,7 +1,8 @@
 import { bpmAtTick, type PositionEvent, type Timeline } from '@reprise/audio';
-import { positionAtSeconds, type Id } from '@reprise/model';
+import { positionAtSeconds } from '@reprise/model';
 
 import { playheadAt, type FollowPolicy, type PlaybackCursor } from '@/features/score';
+import type { HeardPosition } from '@/state/heard';
 import { selectRunning, type TempoSetting } from '@/state/playback';
 import { animationFrames, startPositionReader, type FrameScheduler } from '@/state/position-reader';
 import { timelineOf } from '@/state/timeline';
@@ -14,13 +15,7 @@ export interface PlayheadView {
   followPlayhead(policy: FollowPolicy): void;
 }
 
-export interface Heard {
-  masterBarId: Id;
-  /** Ticks into the bar. */
-  tick: number;
-  /** Ticks across every pass, as the engine counts them. */
-  playbackTick: number;
-}
+export type Heard = HeardPosition;
 
 /** Written seconds per real second: the speed in percent, or the BPM over the written tempo. */
 export function speedAt(timeline: Timeline, tempo: TempoSetting, playbackTick: number): number {
@@ -91,7 +86,10 @@ export interface PlayheadDriver {
  * every frame while running, and on a follow request otherwise (a seek, Play, Stop, the button).
  */
 export function startPlayhead(options: {
-  services: Pick<AppServices, 'audio' | 'playback' | 'document' | 'layout' | 'ui' | 'selection'>;
+  services: Pick<
+    AppServices,
+    'audio' | 'playback' | 'document' | 'layout' | 'ui' | 'selection' | 'heard'
+  >;
   view: () => PlayheadView | null | undefined;
   frames?: FrameScheduler;
   /** Real seconds, for telling a jump from playback running on. */
@@ -103,7 +101,7 @@ export function startPlayhead(options: {
     frames = animationFrames,
     now = () => performance.now() / 1000,
   } = options;
-  const { audio, playback, document, layout, ui, selection } = services;
+  const { audio, playback, document, layout, ui, selection, heard: drawn } = services;
   let last: PositionEvent | undefined;
   let run: Run | undefined;
   let requested = false;
@@ -116,6 +114,7 @@ export function startPlayhead(options: {
     const state = playback.getState();
     const running = selectRunning(state);
     if (!score || !result || !last) {
+      drawn.current = undefined;
       target.setPlayhead(undefined);
       return;
     }
@@ -128,6 +127,7 @@ export function startPlayhead(options: {
       run?.floor,
     );
     const cursor = playheadAt(result, score, heard.masterBarId, heard.tick);
+    drawn.current = heard;
     target.setPlayhead(cursor);
     if (!follow || !cursor || !ui.getState().follow.on) return;
     if (!running && !requested) return;
@@ -185,6 +185,7 @@ export function startPlayhead(options: {
     },
     stop() {
       reader.stop();
+      drawn.current = undefined;
       unsubscribeUi();
       unsubscribePlayback();
       unsubscribeDocument();
