@@ -93,6 +93,16 @@ describe('PrintDialog', () => {
     });
   });
 
+  it('names the groups by their visible captions', async () => {
+    await setup(twoTracks());
+    const tracks = screen.getByRole('group', { name: 'Tracks' });
+    expect(tracks).toHaveAttribute('aria-labelledby');
+    expect(tracks).not.toHaveAttribute('aria-label');
+    const paper = screen.getByRole('radiogroup', { name: 'Paper' });
+    expect(paper).toHaveAttribute('aria-labelledby');
+    expect(paper).not.toHaveAttribute('aria-label');
+  });
+
   it('disables Print… with no track on', async () => {
     const { user } = await setup(twoTracks());
     await user.click(screen.getByRole('switch', { name: 'Lead' }));

@@ -53,6 +53,8 @@ export function PrintDialog({ store }: { store: PrintStore }) {
   const preparing = useStore(store, (state) => state.preparing);
   const printButton = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<Element | null>(null);
+  const tracksLabel = useId();
+  const paperLabel = useId();
   if (!dialog) return null;
   const { settings, choices, error } = dialog;
   const update = (change: Partial<PrintSettings>) => {
@@ -94,8 +96,10 @@ export function PrintDialog({ store }: { store: PrintStore }) {
           </DialogDescription>
         </DialogHeader>
         {choices.length > 1 && (
-          <div role="group" aria-label="Tracks" className="flex flex-col gap-2">
-            <p className="text-sm font-medium">Tracks</p>
+          <div role="group" aria-labelledby={tracksLabel} className="flex flex-col gap-2">
+            <p id={tracksLabel} className="text-sm font-medium">
+              Tracks
+            </p>
             {choices.map((choice) => (
               <SwitchRow
                 key={choice.id}
@@ -110,11 +114,13 @@ export function PrintDialog({ store }: { store: PrintStore }) {
           </div>
         )}
         <div className="flex items-center justify-between gap-4">
-          <p className="text-sm font-medium">Paper</p>
+          <p id={paperLabel} className="text-sm font-medium">
+            Paper
+          </p>
           <ToggleGroup
             type="single"
             variant="outline"
-            aria-label="Paper"
+            aria-labelledby={paperLabel}
             value={settings.paper}
             disabled={preparing}
             onValueChange={(value) => {
