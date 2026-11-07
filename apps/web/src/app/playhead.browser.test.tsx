@@ -1,4 +1,5 @@
 import { write } from '@reprise/formats';
+import type { LayoutResult } from '@reprise/layout';
 import { beatTicks, positionAtSeconds, secondsAtTick, type Score } from '@reprise/model';
 import { largeScore } from '@reprise/model/testing';
 import { act, render, screen, waitFor } from '@testing-library/react';
@@ -30,6 +31,13 @@ function beatStart(score: Score, id: string): { masterBarIndex: number; tick: nu
 }
 
 const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+
+/** A ⌘ shortcut, as the window's dispatcher receives it. */
+function press(key: string): void {
+  window.dispatchEvent(
+    new KeyboardEvent('keydown', { key, metaKey: true, bubbles: true, cancelable: true }),
+  );
+}
 
 function region(): HTMLElement {
   return screen.getByRole('region', { name: /^Score: / });
@@ -229,5 +237,61 @@ describe('the playhead in the app', () => {
     expect(topOf(system)).toBeGreaterThanOrEqual(-1);
     expect(topOf(system)).toBeLessThan(200);
     expect(lineInView()).toBe(true);
+  }, 30_000);
+
+  /** ⌘Home, then the presses that start a smooth scroll down to a system below the fold. */
+  async function scrollDown(result: LayoutResult) {
+    press('Home');
+    for (let i = 0; i < 3; i++) await frame();
+    const view = region();
+    expect(view.scrollTop).toBe(0);
+    const bottom = view.getBoundingClientRect().bottom;
+    const far = result.systems.find((system) => {
+      const svg = view.querySelector(`[data-system-id="${system.id}"]`);
+      return svg === null || svg.getBoundingClientRect().top > bottom;
+    });
+    if (!far) throw new Error('no system below the fold');
+    const ended = new Promise((resolve) => {
+      view.addEventListener('scrollend', resolve, { once: true });
+    });
+    for (let i = 0; i < far.bars.start; i++) press('ArrowRight');
+    return { view, ended };
+  }
+
+  it('follows the last of rapid seeks made while a smooth scroll is in flight', async () => {
+    const { result } = await setup(largeScore(1, 40));
+    // One task: forward to a system below the fold, which starts a smooth scroll down, then back
+    // to bar 1, which the window still shows because the scroll has not moved yet.
+    const { view, ended } = await scrollDown(result);
+    press('Home');
+    await ended;
+    expect(lineInView()).toBe(true);
+    expect(view).not.toHaveAttribute('data-scrolling');
+  }, 30_000);
+
+  it('keeps following the smooth scroll through a wheel, which does not stop it', async () => {
+    const { result } = await setup(largeScore(1, 40));
+    const { view, ended } = await scrollDown(result);
+    await frame();
+    view.dispatchEvent(new WheelEvent('wheel', { deltaY: -40, bubbles: true }));
+    expect(view).toHaveAttribute('data-scrolling');
+    press('Home');
+    await ended;
+    expect(lineInView()).toBe(true);
+    expect(view).not.toHaveAttribute('data-scrolling');
+  }, 30_000);
+
+  it('keeps following the smooth scroll through a viewport change, which does not stop it', async () => {
+    const { result } = await setup(largeScore(1, 40));
+    const { view, ended } = await scrollDown(result);
+    await frame();
+    view.style.height = '600px';
+    for (let i = 0; i < 2; i++) await frame();
+    expect(view.clientHeight).toBe(600);
+    expect(view).toHaveAttribute('data-scrolling');
+    press('Home');
+    await ended;
+    expect(lineInView()).toBe(true);
+    expect(view).not.toHaveAttribute('data-scrolling');
   }, 30_000);
 });

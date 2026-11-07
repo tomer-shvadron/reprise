@@ -38,8 +38,9 @@ test('paged view follows the playhead with page turns', async ({ app, page }) =>
   expect(until).toBeLessThanOrEqual(FIRST_PASS);
 
   await page.keyboard.press('ControlOrMeta+Home');
-  await app.nextBars(start - 1);
+  for (let n = 1; n < start; n += 1) await page.keyboard.press('ControlOrMeta+ArrowRight');
   await expect(app.field('bar')).toHaveText(bar(start));
+  await app.settle();
   const watch = app.watchFollow(bar(until));
   await page.keyboard.press('Space');
   const { outside, top, timedOut, frames, firstOutside } = await watch;
