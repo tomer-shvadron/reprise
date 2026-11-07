@@ -219,6 +219,18 @@ export default defineConfig(
           property: 'waitForTimeout',
           message: 'Wait on app state, never on time: apps/web/e2e/player/README.md',
         },
+        {
+          object: 'window',
+          property: 'setTimeout',
+          message: 'Wait on app state, never on time: apps/web/e2e/player/README.md',
+        },
+      ],
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'setTimeout',
+          message: 'Wait on app state, never on time: apps/web/e2e/player/README.md',
+        },
       ],
     },
   },
