@@ -23,7 +23,7 @@ pnpm exec playwright show-trace path/to/trace.zip
 
 - **Master-bus tap.** `AudioNode.prototype.connect` is wrapped so that a connection to a realtime context's destination goes through a gain that also feeds an `AnalyserNode`. The sampler, the metronome and the count-in all reach the destination that way, so `level()` hears everything the user would. "Sounding" is RMS above 1e-3 (the song measures about 0.02); "silent" is a peak below 1e-4.
 - **Context count.** `AudioContext` is wrapped in a `Proxy` that records each one constructed; the app must make exactly one.
-- **Pickers.** `showOpenFilePicker` returns the next name pushed to `picks` from origin-private storage, or throws `AbortError` (the user's cancel) when there is none; `showSaveFilePicker` records its options in `saves` and creates the file there. They are real `FileSystemFileHandle`s, so Save in place runs the app's own write path.
+- **Pickers.** `showOpenFilePicker` counts its calls in `opens` and returns the next name pushed to `picks` from origin-private storage, or throws `AbortError` (the user's cancel) when there is none; `showSaveFilePicker` records its options in `saves` and creates the file there. They are real `FileSystemFileHandle`s, so Save in place runs the app's own write path.
 - **Write log.** `createWritable().close()` is wrapped to push `{ name, size }` to `writes` once it resolves. Read a saved file only after its entry appears: reading earlier races the browser's swap file (`NotFoundError` or `NotReadableError`).
 - **Probes** sample every animation frame with a 20 s guard that resolves rather than hangs: `peakWhile` (the loudest frame while a readout field shows a text), `beatInterval`, `barTrail` and `watchFollow`.
 
@@ -31,9 +31,10 @@ pnpm exec playwright show-trace path/to/trace.zip
 
 ## Rules
 
-- **No sleeps.** Wait on app state: web-first `expect(locator)` assertions, `expect.poll` on the analyser, or `page.waitForFunction` on the probes and the write log. `waitForTimeout` is an ESLint error here.
-- **Click in content coordinates.** A seek scrolls the score, smoothly. Learn a box with `contentBox` or `barBox` (scroll-content coordinates) and click it with `clickContent`, which waits for the scroll to settle and the point to be in view, then maps it to the viewport.
-- **Seek bar by bar before a click.** `nextBars` waits for each ⌘→ seek's scroll to settle: a seek pressed while the previous one's scroll is still moving leaves the view where the earlier seek put it, an app bug the suite works around.
+- **No sleeps.** Wait on app state: web-first `expect(locator)` assertions, `expect.poll` on the analyser, or `page.waitForFunction` on the probes and the write log. `waitForTimeout` and `setTimeout` are ESLint errors here.
+- **Click in content coordinates.** A seek scrolls the score, smoothly. Learn a box with `contentBox` or `barBox` (scroll-content coordinates) and click it with `clickContent`, which waits for the scroll to settle and the point to be in view, then maps it to the viewport. `settle()` throws if the score is still scrolling after 5 s.
+- **Seek bar by bar before a click.** `nextBars` waits for each ⌘→ seek's scroll to settle: a seek pressed while the previous one's scroll is still moving leaves the view where the earlier seek put it, an app bug recorded on [#76](https://github.com/tomer-shvadron/reprise/issues/76#issuecomment-6705653330). `seek.spec.ts` pins it with a `test.fail()` that flips to a failure once it is fixed; then drop the `test.fail()` and the helper.
+- **Press a key before a flow that needs audio without Play.** The first key or pointer press builds the one `AudioContext`; `gesture()` presses a key that is no shortcut and waits for the context to run.
 - **Scope mixer controls to the strip** (`app.strip(n)`): Mute, Solo and Volume exist in the sidebar row too.
 - **Press `ControlOrMeta`**, never `Meta` or `Control`, and keep the real user agent (no `devices[...]`): the app picks its modifier from the user agent.
 - **No screenshots compared.** Pixels belong to the visual suite (`../visual/`).
@@ -52,7 +53,7 @@ The committed fixtures give one file per format (`FORMATS` in `scores.ts`), with
 
 ## Budgets
 
-`budgets.spec.ts` measures the roadmap's two renderer rows against the table itself (`scripts/bench/budgets.ts`, with the CI factor on the time row): drop to first paint as the median of three fresh pages, and V8's used heap after a forced garbage collection once the long score's song is ready. Each prints a `budget:` line and, on CI, a row in the job summary.
+`budgets.spec.ts` measures the roadmap's two renderer rows against the table itself (`scripts/bench/budgets.ts`, with the CI factor on the time row): drop to first paint as the median of three fresh pages, and V8's used heap after a forced garbage collection, with the audio engine built by a first key press and the long score's song loaded and played for a moment. Each prints a `budget:` line and, on CI, a row in the job summary.
 
 ## Running in CI's Linux browser locally
 

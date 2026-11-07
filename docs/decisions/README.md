@@ -41,6 +41,6 @@ Rules:
 | 0020 | Plan and review with Opus at xhigh effort                           | Accepted                                                             |
 | 0021 | Rhythm on the standard staff in both mode                           | Accepted, extended by ADR-0022                                       |
 | 0022 | In both mode, lane effects are drawn once, on the tab staff         | Accepted                                                             |
-| 0023 | Visual regression in Vitest browser mode                            | Accepted                                                             |
+| 0023 | Visual regression in Vitest browser mode                            | Accepted, superseded in part by ADR-0025                             |
 | 0024 | Mixer values are score data; mute and solo are session state        | Accepted                                                             |
 | 0025 | End-to-end flows on the web build in Chromium                       | Accepted                                                             |

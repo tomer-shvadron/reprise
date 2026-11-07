@@ -45,6 +45,7 @@ It supersedes ADR-0015's **App** bullet and ADR-0023's remark that the Electron 
   `main`, on the pinned Linux runner.
 - **Print checks move to WP-025** (Printing), whose acceptance already names print to PDF from
   Electron.
+- **The editing flows ("edit a note") join this suite in WP-086** (Editor end-to-end).
 
 ## Alternatives considered
 
@@ -61,8 +62,12 @@ It supersedes ADR-0015's **App** bullet and ADR-0023's remark that the Electron 
   (`apps/web/playwright.config.ts`).
 - The two renderer budget rows (heap after opening the long score, drop to first paint) are
   measured by this suite rather than `pnpm bench`.
-- A regression only Electron shows is caught by `pnpm desktop:smoke`, which runs by hand and in
-  the release workflow, not on every PR.
+- A regression only Electron shows is caught by `pnpm desktop:smoke`, which runs by hand, and in
+  the release workflow once WP-102 adds it, not on every PR.
+- WP-071 (Tuner) asks for "the e2e opens the tuner panel and asserts the mic permission flow in
+  Electron", which this rules out: its flow joins this suite, with the browser's microphone
+  permission granted or denied by Playwright, and the lead rewrites that criterion when WP-071 is
+  filed.
 
 ## Related
 
