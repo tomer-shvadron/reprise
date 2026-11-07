@@ -1,8 +1,8 @@
 import type { AppServices } from '@/app/services';
 import type { TransportSettings } from '@/state/playback';
-import type { FakeAudioService } from '@/test/services';
+import type { FakeAudioService } from './services';
 
-/** Makes the fake's setters write `settings` as the real service does, so the bar follows. */
+/** Makes the fake's setters write `settings` and `mixer` as the real service does, so the UI follows. */
 export function mirrorAudio(services: AppServices & { fakeAudio: FakeAudioService }): void {
   const { fakeAudio, playback } = services;
   const settings = (partial: Partial<TransportSettings>) => {
@@ -22,5 +22,9 @@ export function mirrorAudio(services: AppServices & { fakeAudio: FakeAudioServic
   });
   fakeAudio.setMasterVolume.mockImplementation((masterVolume) => {
     settings({ masterVolume });
+  });
+  fakeAudio.setTrack.mockImplementation((id, params) => {
+    const { mixer } = playback.getState();
+    playback.setState({ mixer: { ...mixer, [id]: { ...mixer[id], ...params } } });
   });
 }

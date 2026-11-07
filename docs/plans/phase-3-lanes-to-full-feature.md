@@ -22,7 +22,7 @@ Lane ownership in this phase:
 
 **Deliverables**
 
-- Dexie database `reprise` with tables: `songs` (id, title, artist, album, source format, native path, original path, imported at, last opened, duration in bars, track summary, per-song settings such as mixer state and notation modes), `practiceSessions` (added by WP-073 via a migration owned by this lane's schema file), `settings` (key-value).
+- Dexie database `reprise` with tables: `songs` (id, title, artist, album, source format, native path, original path, imported at, last opened, duration in bars, track summary, per-song settings: `TrackSession` from `apps/web/src/features/tracks/session.ts`, holding visibility, single-track view, the mute and solo toggles and the current track; volume, pan, instrument and notation live in the score, and restoring a session never marks the document modified), `practiceSessions` (added by WP-073 via a migration owned by this lane's schema file), `settings` (key-value).
 - Import flow: a file dropped or opened is parsed, saved as native into `libraryDir()/songs/<id>.reprise`, the original copied to `libraryDir()/originals/`, and indexed. Batch import of a folder.
 - Library screen: list with title, artist, album, format badge, last opened; search as you type; sort by title, artist, last opened, imported; open on enter or double-click; delete with confirmation (moves files to a `trash/` folder rather than deleting); recent list in the File menu and on the empty state.
 - Open-without-import: a file opened with a modifier or from the palette's "Open without importing" shows with a banner offering to import.

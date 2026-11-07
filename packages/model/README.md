@@ -232,8 +232,9 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   Guitar Pro's T 1 2 3 4 and p i m a c onto it.
 - **`Note.accidental`** (new, optional) records an explicit spelling for standard notation, so
   WP-014's `respell` has somewhere to store its result; absent = spell from the key.
-- **Harmonics** add `feedback` (gpif) to the sketch's kinds; `value` is the harmonic's fret,
-  fractional where needed.
+- **Harmonics** add `feedback` (gpif) to the sketch's kinds; `value`, fractional where needed,
+  is the node's fret for a natural harmonic and the node's offset in frets above the fretted note
+  for every other kind.
 - **Colours** are lower-case `#rrggbb`.
 - **Clefs** are `treble`, `bass`, `alto`, `tenor`, `percussion` (gpif's G2, F4, C3, C4, Neutral).
 
@@ -337,6 +338,23 @@ Pure helpers over the model, with no state of their own.
 capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro writes them;
   `note.fret` as stored on drum and pitched tracks, even when a pitched track keeps a GP5
   tuning. A fretted note on a string the track lacks throws a `RangeError`.
+- **`soundingPitch(track, note)`** is the pitch a note sounds at, as a fractional MIDI note:
+  `midiNote`, except for a harmonic on a fretted track. A natural harmonic sounds its node's
+  overtone of the open string (`value` names the node, else the fret); every other kind sounds
+  the fretted note raised by the overtone of the node `value` frets above it. The intervals are
+  pure (`12·log2(n)`), because a string's overtones are, and audio measures them to under a
+  cent; round the result for a key or a staff position. Nodes are the k/n points of the string
+  up to the 8th partial, matched within 0.35 of a fret (3.2 finds 3.16, 9 finds 8.84).
+  Fallbacks: a natural harmonic on no node sounds as fretted, and any other kind with no
+  `value` or one on no node sounds the octave. alphaTab (1.8.4's `Note.harmonicPitch`) maps
+  ranges of the position to fixed intervals instead; rounded, the two agree at every position
+  the Guitar Pro 3–5 readers write except 21.7, where we sound the 7th partial (33.69
+  semitones) and alphaTab adds the 8th's 36. Elsewhere they can part: at 2 we find the 8th
+  partial's node (+36) where alphaTab adds nothing; a position on none of our nodes sounds as
+  fretted (natural) or the octave (every other kind), where alphaTab adds nothing or its
+  range's interval (+34 at 14, +24 at 23); and every kind but natural with no `value` sounds
+  the octave, where alphaTab adds nothing.
+  It moved here from audio in #87 so layout can place a harmonic's head where it sounds.
 - **`transpose(track, note, semitones)`** moves the note on its own string and returns
   `{ ok: true, note, warnings }` or `{ ok: false, reason, midi, alternatives }`, never throwing
   for a note that falls off. `reason` is `belowOpenString`, `aboveLastFret` (past `fretCount`,
@@ -449,23 +467,25 @@ except where noted:
 
 ### Deviations from alphaTab
 
-alphaTab (`MidiPlaybackController`, `MidiFileGenerator`) is the oracle the fixtures are checked
+alphaTab (`MidiPlaybackController`, `MidiFileGenerator`, `Note.harmonicPitch`) is the oracle the fixtures are checked
 against; these are the places this package knowingly differs, and why. Guitar Pro's own order
 wins over both: WP-054 compares `fixtures/gp5/directions.gp5` and
 `fixtures/gp5/repeat-close-alternate-endings.gp5` against it once the reader lands, and the
 expander follows Guitar Pro wherever the two disagree.
 
-| Case                                         | Here                                     | alphaTab                                    | Why                                                          |
-| -------------------------------------------- | ---------------------------------------- | ------------------------------------------- | ------------------------------------------------------------ |
-| D.S. or D.C. on a bar with a repeat end      | taken on the last pass, after the repeat | taken on the first pass, before it          | the musical convention                                       |
-| Voltas after a D.C. or D.S.                  | only the final ending of each run        | every volta bar                             | the musical convention (senza repetizione)                   |
-| Jumps on a skipped volta bar                 | not read                                 | read                                        | a jump inside a skipped bracket is not seen                  |
-| A jump instruction                           | fires once                               | no guard; a D.S. after a coda loops there   | the finite-sequence guarantee                                |
-| Unmatched repeat end after landing on a coda | repeats from the coda, with a warning    | ignored: its section's start was not passed | the plan: the song start or the last repeat start            |
-| Nested repeat starts `\|: A \|: B :\| C :\|` | A B B C B B C: the latest start wins     | A B B C A B B C                             | Guitar Pro has no nested repeats; a start closes the section |
-| Voltas in a section with several repeat ends | numbered by the last repeat end taken    | numbered by the next repeat end             | rare; revisited on a real file                               |
-| `Beat.mix.tempo.duration`                    | a linear ramp in BPM                     | a step at the beat; `isLinear` is ignored   | the ruling on tempo transitions                              |
-| Seconds                                      | exact                                    | each bar truncated to whole milliseconds    | nothing to round for                                         |
+| Case                                         | Here                                               | alphaTab                                    | Why                                                          |
+| -------------------------------------------- | -------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------ |
+| D.S. or D.C. on a bar with a repeat end      | taken on the last pass, after the repeat           | taken on the first pass, before it          | the musical convention                                       |
+| Voltas after a D.C. or D.S.                  | only the final ending of each run                  | every volta bar                             | the musical convention (senza repetizione)                   |
+| Jumps on a skipped volta bar                 | not read                                           | read                                        | a jump inside a skipped bracket is not seen                  |
+| A jump instruction                           | fires once                                         | no guard; a D.S. after a coda loops there   | the finite-sequence guarantee                                |
+| Unmatched repeat end after landing on a coda | repeats from the coda, with a warning              | ignored: its section's start was not passed | the plan: the song start or the last repeat start            |
+| Nested repeat starts `\|: A \|: B :\| C :\|` | A B B C B B C: the latest start wins               | A B B C A B B C                             | Guitar Pro has no nested repeats; a start closes the section |
+| Voltas in a section with several repeat ends | numbered by the last repeat end taken              | numbered by the next repeat end             | rare; revisited on a real file                               |
+| `Beat.mix.tempo.duration`                    | a linear ramp in BPM                               | a step at the beat; `isLinear` is ignored   | the ruling on tempo transitions                              |
+| Seconds                                      | exact                                              | each bar truncated to whole milliseconds    | nothing to round for                                         |
+| A natural harmonic at 21.7                   | the 7th partial, +33.69 semitones                  | +36                                         | the physics: the node is 5/7 of the string                   |
+| A harmonic with no `value`, or off our nodes | fretted (natural) or the octave (every other kind) | nothing, or its range's interval            | our fallbacks; alphaTab buckets ranges of the position       |
 
 ### Tempo map
 

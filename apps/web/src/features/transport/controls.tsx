@@ -1,11 +1,11 @@
 import type { ComponentProps, MouseEvent, ReactNode } from 'react';
 
+import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import type { TransportCommandId } from './commands';
-import { useCommand } from './use-command';
 
 // A click must not take focus from the page, or the next Space would press the button again.
 const keepFocus = (event: MouseEvent) => {

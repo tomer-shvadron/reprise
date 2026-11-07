@@ -4,6 +4,8 @@ import {
   createSamplerSink,
   GM_BUDGET_BYTES,
   ManagedSampleSource,
+  planInstruments,
+  planSamples,
   Sampler,
   Sf2ParseError,
   Sf2Soundfont,
@@ -22,6 +24,7 @@ import type { BarRange } from '@/state/selection';
 
 import { GmBank } from './gm-bank';
 import { loadGmSoundfont, SoundfontError, type SoundfontLoader } from './soundfont-loader';
+import { timelineNeutral } from './timeline-neutral';
 
 export interface AudioServiceOptions {
   playback: PlaybackStore;
@@ -46,6 +49,7 @@ export interface AudioServiceDebug {
   sampler?: Sampler;
   source?: ManagedSampleSource;
   engine?: AudioEngine;
+  bank?: GmBank;
 }
 
 export interface AudioService {
@@ -68,6 +72,11 @@ export interface AudioService {
   setMasterVolume(volume: number): void;
   /** A user override over the track's channel, kept through every baseline reset. */
   setTrack(id: Id, params: TrackParams): void;
+  /**
+   * Sets the strip's volume or pan for a slider being dragged: no override and no store write, so
+   * the next baseline reset or the committed edit replaces it.
+   */
+  previewTrack(id: Id, params: Pick<TrackParams, 'volume' | 'pan'>): void;
   /** After a sound, song or output error. */
   retry(): void;
   /** Resolves with no rebuild pending, the document's load done and no decode in flight. */
@@ -120,6 +129,8 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   let transport: PlaybackState = 'stopped';
   let rebuildQueued = false;
   let disposed = false;
+  // Per track, so a second instrument change drops the first one's progress writes.
+  const loadTokens = new Map<Id, number>();
   const inflight = new Set<Promise<unknown>>();
   const cleanups: (() => void)[] = [];
 
@@ -263,6 +274,74 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     }
   }
 
+  const setLoad = (id: Id, load: { loaded: number; total: number } | undefined) => {
+    const rest = Object.fromEntries(
+      Object.entries(playback.getState().instrumentLoads).filter(([key]) => key !== id),
+    );
+    set({ instrumentLoads: load ? { ...rest, [id]: load } : rest });
+  };
+
+  /** Decodes one track's samples for its new instrument, counting them into `instrumentLoads`. */
+  function loadInstrument(loaded: GmBank, score: Score, id: Id, gen: number): Promise<void> {
+    const token = (loadTokens.get(id) ?? 0) + 1;
+    loadTokens.set(id, token);
+    const current = () => gen === generation && loadTokens.get(id) === token;
+    const plan = planInstruments(score, { instrumentOf: loaded.instrumentId });
+    const trackPlan = plan.tracks.find((entry) => entry.track === id);
+    const refs = trackPlan
+      ? planSamples({ instruments: plan.instruments, tracks: [trackPlan] }, loaded.regionMap)
+      : [];
+    if (refs.length === 0) {
+      if (current()) setLoad(id, undefined);
+      return Promise.resolve();
+    }
+    const total = refs.length;
+    let count = 0;
+    setLoad(id, { loaded: 0, total });
+    return track(
+      Promise.all(
+        refs.map((ref) =>
+          loaded.source.getBuffer(ref).then(() => {
+            count += 1;
+            if (current() && count < total) setLoad(id, { loaded: count, total });
+          }),
+        ),
+      ).then(
+        () => {
+          if (current()) setLoad(id, undefined);
+        },
+        (error: unknown) => {
+          if (!current()) return;
+          setLoad(id, undefined);
+          set({ song: { status: 'error', error: messageOf(error) } });
+        },
+      ),
+    );
+  }
+
+  /** A timeline-neutral edit: channel and program changes go straight to the strips. */
+  function applyTrackChanges(previous: Score, score: Score): void {
+    if (!bank) return;
+    if (sampler) attached = score;
+    const held = new Set(sampler?.trackIds);
+    const reprogrammed: Id[] = [];
+    score.tracks.forEach((scoreTrack, index) => {
+      const old = previous.tracks[index];
+      if (!old || old === scoreTrack) return;
+      if (old.program !== scoreTrack.program) reprogrammed.push(scoreTrack.id);
+      if (!sampler || !held.has(scoreTrack.id) || !bank) return;
+      if (old.channel !== scoreTrack.channel) {
+        sampler.setTrack(scoreTrack.id, baselineOf(scoreTrack));
+      }
+      if (old.program !== scoreTrack.program) {
+        sampler.setInstrument(scoreTrack.id, bank.instrument(scoreTrack, scoreTrack.program));
+      }
+    });
+    if (reprogrammed.length === 0) return;
+    void loadSong(bank, score, generation);
+    for (const id of reprogrammed) void loadInstrument(bank, score, id, generation);
+  }
+
   function rebuild(): void {
     if (!doc || !bank) return;
     const { score } = doc;
@@ -309,11 +388,13 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     doc = undefined;
     attached = undefined;
     overrides = {};
+    loadTokens.clear();
     set({
       song: { status: 'idle', error: undefined },
       instruments: 0,
       position: undefined,
       mixer: {},
+      instrumentLoads: {},
     });
   }
 
@@ -396,8 +477,13 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
       }
       if (doc?.id === next.id) {
         if (doc.score === next.score) return;
+        const previous = doc.score;
         doc = next;
-        scheduleRebuild();
+        if (!rebuildQueued && timelineNeutral(previous, next.score)) {
+          applyTrackChanges(previous, next.score);
+        } else {
+          scheduleRebuild();
+        }
         return;
       }
       engine?.stop();
@@ -405,8 +491,10 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
       generation += 1;
       doc = next;
       overrides = {};
+      loadTokens.clear();
       set({
         mixer: {},
+        instrumentLoads: {},
         position: undefined,
         song: { status: 'loading', error: undefined },
         settings: { ...playback.getState().settings, loop: undefined },
@@ -474,6 +562,10 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
       if (sampler?.trackIds.includes(id)) sampler.setTrack(id, params);
     },
 
+    previewTrack(id, params) {
+      if (sampler?.trackIds.includes(id)) sampler.setTrack(id, params);
+    },
+
     retry() {
       const { sounds, song, output } = playback.getState();
       if (output.status === 'error') {
@@ -499,6 +591,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
         ...(sampler && { sampler }),
         ...(bank && { source: bank.source }),
         ...(engine && { engine }),
+        ...(bank && { bank }),
       };
     },
 

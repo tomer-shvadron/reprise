@@ -2,6 +2,7 @@ import { useRef, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import { useAppServices } from '@/app/services-context';
+import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Slider } from '@/components/ui/slider';
@@ -10,7 +11,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type { TransportCommandId } from './commands';
 import { keepFocus, tooltipText } from './controls';
 import type { TransportPopover } from './transport-ui';
-import { useCommand } from './use-command';
 
 interface LevelPopoverProps {
   popover: TransportPopover;

@@ -70,6 +70,7 @@ file bytes --formats.read--> Score --------+--> layout.layout(score, options) --
 - The **document store** holds the current `Score`, the undo history and the selection. All edits go through commands.
 - **Layout** is a pure function of the score and view options, cached per bar; a patch marks bars dirty and only those re-flow, systems within three bars of a re-measured bar are rebuilt, re-breaking stops where the breaks re-converge, and the rest are reused.
 - **Audio** reads the score through the tempo map and the playback sequence; it never holds a reference to React state.
+- **Mixer**: volume, pan and instrument are score edits through `setTrackProperties`; mute and solo are the audio service's per-song overrides; visibility and single-track view are the document's view state, and notation per track is view state that Save writes into the file (ADR-0024). A timeline-neutral edit reaches the sampler without rebuilding the sequence.
 
 ## Contracts
 
@@ -82,6 +83,8 @@ Changed by #82 (2026-11-06): `write` takes an optional third argument, `write(sc
 Changed by #79 (2026-11-06): a region map resolves every layered region of a key and velocity (`RegionMap.resolveAll`) and a note starts one voice per region behind one handle; `Region` gains `filter` (a static low-pass at the filter envelope's held level, its resonance lowering the DC gain by half its peak) and `exclusiveClass` (choke groups within a track's instrument), `Envelope` gains `delay`; the voice pool stays a hard cap and ranks stealing victims by their audible level, articulation gain included, taking a voice that starts with or after the new note only when no other is left; `Sampler.setInstrument` takes an optional time, `Sampler.instrumentAt(trackId, when)` returns the instrument a note at `when` plays, and `Sampler.allNotesOff` drops the instrument changes scheduled after its time; the sampler sink switches a track's instrument from `InstrumentSink.mix` (`MixEvent.mix.program`) through its `instrumentOf` option.
 
 Changed by #96 (2026-11-06): `OpenedFile` (and the `file:open` result) gains an optional opaque `handle`, the picked path in Electron and the `FileSystemFileHandle` in a browser with the File System Access API, and `Platform` gains `writeHandle(handle, bytes)`, which writes over that file or over a path `saveFile` returned; Save writes a `.reprise` in place through it, and a `.gp` with the gp writer once the user confirms what it loses; gp3, gp4, gp5 and gpx have no writer of their own, so Save sends them to Save As, which asks for Reprise or Guitar Pro 7–8 before the platform dialog.
+
+Changed by #87 (2026-11-07), widening the model and narrowing audio: `soundingPitch(track, note)`, the pitch a note sounds at as a fractional MIDI note, moves from `@reprise/audio` (where it was `soundingKey`) to the model's root export, so layout can place a harmonic where it sounds; its results are unchanged. `@reprise/audio` no longer exports `soundingKey` or `harmonicInterval`. The Note sketch's `harmonic.value` comment states the convention #92 documented: the node's fret for a natural harmonic, the offset above the fretted note for every other kind.
 
 Changed by #109 (2026-11-07): in paged mode a system taller than the page's content area is split between its staves (between tracks where it can, never through a staff) into parts on consecutive pages, each starting at a page top; `LayoutResult.systems` lists each part as a `System` on one page, consecutive parts sharing `bars`; `System.part` (0, 1, …) marks the parts of a split system, and a part after the first has the id `system:<first master-bar id>/<part>`.
 
@@ -200,7 +203,7 @@ interface Note {
   hammerPull: boolean;           // hammered on or pulled off from the previous note on the string; readers move GP5's origin flag here
   vibrato: 'none' | 'slight' | 'wide';
   palmMute: boolean; letRing: boolean;
-  harmonic?: { kind: 'natural' | 'artificial' | 'tapped' | 'pinch' | 'semi' | 'feedback'; value?: number };   // value >= 0 is the fret, fractional where needed
+  harmonic?: { kind: 'natural' | 'artificial' | 'tapped' | 'pinch' | 'semi' | 'feedback'; value?: number };   // value >= 0, fractional where needed: the node's fret (natural), else the node's offset above the fretted note
   trill?: { fret: number; speed: 16 | 32 | 64 };   // alternate fret, or MIDI note off fretted tracks
   leftHandFinger?: Finger; rightHandFinger?: Finger;
   dynamics: 'ppp' | 'pp' | 'p' | 'mp' | 'mf' | 'f' | 'ff' | 'fff';
@@ -348,6 +351,7 @@ function migrate(score: unknown, fromVersion: number, toVersion?: number, table?
 
 ```ts
 function midiNote(track, note: Pick<Note, 'string' | 'fret'>): number;   // tuning[tuning.length - string] + capo + fret; note.fret off fretted tracks
+function soundingPitch(track, note: Pick<Note, 'string' | 'fret' | 'harmonic'>): number;   // fractional MIDI; a harmonic on a fretted track sounds its node's pure overtone
 function openStringPitch(track, string: number): number | undefined;
 function transpose(track, note: Note, semitones: number): TransposeResult;   // stays on the string; drum notes unchanged
 type TransposeResult =
