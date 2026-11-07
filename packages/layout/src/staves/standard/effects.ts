@@ -408,6 +408,11 @@ function locate(
   };
 }
 
+/** Where a connection arriving from an earlier system starts: a space before the content, as a tie. */
+function lineStart(context: ConnectionContext): number {
+  return context.placement.x - context.space;
+}
+
 function slideLine(
   context: ConnectionContext,
   x0: number,
@@ -468,18 +473,18 @@ function slideTo(
   spot: HeadSpot,
   slurDirection: ArcDirection,
 ): void {
-  const { placement, space } = context;
+  const { space } = context;
   const gap = SLIDE.gap * space;
   const higher = targetIsHigher(originNote, target);
   const end = spot.left - gap;
   if (origin) slideLine(context, origin.right + gap, origin.y, end, spot.y, target.id);
   else {
     const from = spot.y + (higher ? 1 : -1) * SLIDE.drop * space;
-    slideLine(context, placement.x, from, end, spot.y, target.id);
+    slideLine(context, lineStart(context), from, end, spot.y, target.id);
   }
   if (!originNote.slide?.includes('legato')) return;
   const tie = TIE_GAP * space;
-  const x1 = origin ? origin.right + tie : placement.x;
+  const x1 = origin ? origin.right + tie : lineStart(context);
   const y1 = origin ? origin.y : spot.y;
   slur(context, x1, y1, spot.left - tie, spot.y, slurDirection, target.id, 'sl.');
 }
@@ -560,7 +565,7 @@ export function drawConnections(
           // A legato slide already draws its slur, labelled `sl.`.
           if (note.hammerPull && !near.note.slide?.includes('legato')) {
             const letter = letters.has(note) ? hammerLetter(near.note, note) : undefined;
-            const x1 = origin ? origin.right + tie : placement.x;
+            const x1 = origin ? origin.right + tie : lineStart(context);
             const y1 = origin ? origin.y : spot.y;
             slur(context, x1, y1, spot.left - tie, spot.y, spot.direction, note.id, letter);
           }
