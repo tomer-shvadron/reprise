@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { ROOT_DIR } from './files.ts';
-import { ALWAYS, CHECKLIST, FEATURES, listeningSheet } from './listening.ts';
+import { ALWAYS, CHECKLIST, FEATURES, listeningSheet, plainWords } from './listening.ts';
 
 /** GitHub's heading slug: lowercase, punctuation dropped, spaces as hyphens. */
 const slug = (heading: string): string =>
@@ -29,6 +29,15 @@ const keys = [
   ...(/FEATURE_KEYS = \[([^\]]*)\]/.exec(source)?.[1] ?? '').matchAll(/'([^']+)'/g),
 ].map((match) => match[1]);
 
+describe('plainWords', () => {
+  it('puts model names in words a player knows', () => {
+    expect(plainWords('intoFromAbove, releaseUp')).toBe('into from above, release up');
+    expect(plainWords('dottedSixteenth')).toBe('dotted sixteenth');
+    expect(plainWords('dsAlCoda, segno, program')).toBe('D.S. al Coda, segno, instrument');
+    expect(plainWords('36 Acoustic Bass Drum')).toBe('36 acoustic bass drum');
+  });
+});
+
 describe('the listening table', () => {
   it('links every row to a heading of the checklist', () => {
     for (const item of [...ALWAYS, ...Object.values(FEATURES)]) {
@@ -44,11 +53,14 @@ describe('the listening table', () => {
   it('builds a sheet with the fixed rows and one per feature', () => {
     const sheet = listeningSheet(
       'fixtures/gp5/effects.gp5',
-      [{ key: 'bends', bars: [7, 8], detail: 'bend' }],
+      [{ key: 'bends', bars: [7, 8], detail: 'bend, bendReleaseBend' }],
       'x.md',
+      'r.md',
     );
     expect(sheet).toContain('| [B1 Opens](x.md#b1-opens) |');
     expect(sheet).toContain('| [Bends](x.md#b4-effects) | 7, 8 |');
+    expect(sheet).toContain('(bend, bend release bend)');
+    expect(sheet).toContain("[the tab's report](r.md)");
     expect(sheet.match(/^\| \[/gm)).toHaveLength(ALWAYS.length + 1);
   });
 });

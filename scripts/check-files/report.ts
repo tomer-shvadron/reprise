@@ -584,8 +584,16 @@ export function writeReports(run: RunReport, env: Environment, out: string, root
     write(`${base}.md`, renderFile(report, run, env));
     const sheet = join(out, 'listening', `${sheetPath(report.file)}.md`);
     if (!existsSync(sheet)) {
-      const link = relative(dirname(sheet), join(root, CHECKLIST)).split('\\').join('/');
-      write(sheet, listeningSheet(report.label, report.checks.read?.record.features ?? [], link));
+      const posix = (path: string): string => relative(dirname(sheet), path).split('\\').join('/');
+      write(
+        sheet,
+        listeningSheet(
+          report.label,
+          report.checks.read?.record.features ?? [],
+          posix(join(root, CHECKLIST)),
+          posix(`${base}.md`),
+        ),
+      );
     }
   }
   for (const draft of run.drafts)

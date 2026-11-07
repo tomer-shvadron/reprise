@@ -11,4 +11,5 @@ before writing the test.
 `pnpm check:files local-tabs` runs the automated real-file pass over this folder; reports go to the
 gitignored `.check-files/`, and the listening checklist is
 [`docs/reference/player-checklist.md`](../docs/reference/player-checklist.md). Never name a tab in an
-issue, a PR or a comment: refer to it by its number in `.check-files/summary.md`.
+issue, a PR or a comment: refer to it by its label in `.check-files/summary.md` (`local-3 (sha256 …)`),
+which is all the pass itself ever prints or writes about it.

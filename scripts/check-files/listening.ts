@@ -19,12 +19,12 @@ export const ALWAYS: readonly ListeningItem[] = [
   {
     title: 'B1 Opens',
     anchor: 'b1-opens',
-    listenFor: 'opens; import details match the Read section; names, instruments, tunings',
+    listenFor: 'opens with no error; tracks, names and instruments look right',
   },
   {
     title: 'B2 Order',
     anchor: 'b2-order',
-    listenFor: 'the cursor follows the Order section of the report',
+    listenFor: "the cursor follows the play order in the tab's report",
   },
   {
     title: 'B3 Tempo',
@@ -129,23 +129,55 @@ export const FEATURES: Readonly<Record<string, ListeningItem>> = {
 
 const cell = (text: string): string => text.replaceAll('|', '\\|');
 
-/** The sheet for one file; `checklistLink` is the checklist's path relative to the sheet. */
+/** Words a player knows for the model's names that camel-case splitting would get wrong. */
+const PLAIN: Readonly<Record<string, string>> = {
+  daCapo: 'D.C.',
+  dcAlCoda: 'D.C. al Coda',
+  dcAlDoubleCoda: 'D.C. al Double Coda',
+  dcAlFine: 'D.C. al Fine',
+  dalSegno: 'D.S.',
+  dsAlCoda: 'D.S. al Coda',
+  dsAlDoubleCoda: 'D.S. al Double Coda',
+  dsAlFine: 'D.S. al Fine',
+  dalSegnoSegno: 'D.S.S.',
+  dssAlCoda: 'D.S.S. al Coda',
+  dssAlDoubleCoda: 'D.S.S. al Double Coda',
+  dssAlFine: 'D.S.S. al Fine',
+  segnoSegno: 'double segno',
+  program: 'instrument',
+};
+
+/** `bendReleaseBend` as `bend release bend`, `dalSegno` as `D.S.`. */
+export function plainWords(detail: string): string {
+  return detail
+    .split(', ')
+    .map((word) => PLAIN[word] ?? word.replaceAll(/([a-z])([A-Z])/g, '$1 $2').toLowerCase())
+    .join(', ');
+}
+
+/**
+ * The sheet for one file; `checklistLink` is the checklist's path and `reportLink` the file's
+ * report, both relative to the sheet.
+ */
 export function listeningSheet(
   heading: string,
   features: readonly ListeningFeature[],
   checklistLink: string,
+  reportLink: string,
 ): string {
   const rows = [
     ...ALWAYS.map((item) => ({ item, bars: '', detail: '' })),
     ...features.flatMap((feature) => {
       const item = FEATURES[feature.key];
-      return item ? [{ item, bars: feature.bars.join(', '), detail: feature.detail ?? '' }] : [];
+      return item
+        ? [{ item, bars: feature.bars.join(', '), detail: plainWords(feature.detail ?? '') }]
+        : [];
     }),
   ];
   return [
     `# Listening sheet: ${heading}`,
     '',
-    `Mark each row \`pass\`, \`fail\` or \`n/a\`; for a fail, put the bar and what you heard in Note. See [the checklist](${checklistLink}).`,
+    `Play the tab in the app and go down the rows from the top. Mark each row \`pass\`, \`fail\` or \`n/a\` in Result; for a fail, put the bar and what you heard in Note. [The checklist](${checklistLink}) says what each row means and what wrong sounds like; [the tab's report](${reportLink}) holds the read warnings, the play order and the tempo that B1 to B3 refer to.`,
     '',
     '| Item | Bars | Listen for | Result | Note |',
     '| --- | --- | --- | --- | --- |',
