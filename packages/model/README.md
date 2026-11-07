@@ -232,8 +232,9 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   Guitar Pro's T 1 2 3 4 and p i m a c onto it.
 - **`Note.accidental`** (new, optional) records an explicit spelling for standard notation, so
   WP-014's `respell` has somewhere to store its result; absent = spell from the key.
-- **Harmonics** add `feedback` (gpif) to the sketch's kinds; `value` is the harmonic's fret,
-  fractional where needed.
+- **Harmonics** add `feedback` (gpif) to the sketch's kinds; `value`, fractional where needed,
+  is the node's fret for a natural harmonic and the node's offset in frets above the fretted note
+  for every other kind.
 - **Colours** are lower-case `#rrggbb`.
 - **Clefs** are `treble`, `bass`, `alto`, `tenor`, `percussion` (gpif's G2, F4, C3, C4, Neutral).
 
@@ -337,6 +338,17 @@ Pure helpers over the model, with no state of their own.
 capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro writes them;
   `note.fret` as stored on drum and pitched tracks, even when a pitched track keeps a GP5
   tuning. A fretted note on a string the track lacks throws a `RangeError`.
+- **`soundingPitch(track, note)`** is the pitch a note sounds at, as a fractional MIDI note:
+  `midiNote`, except for a harmonic on a fretted track. A natural harmonic sounds its node's
+  overtone of the open string (`value` names the node, else the fret); every other kind sounds
+  the fretted note raised by the overtone of the node `value` frets above it. The intervals are
+  pure (`12·log2(n)`), because a string's overtones are, and audio measures them to under a
+  cent; round the result for a key or a staff position. Nodes are the k/n points of the string
+  up to the 8th overtone, matched within 0.35 of a fret (3.2 finds 3.16, 9 finds 8.84).
+  Fallbacks: a natural harmonic on no node sounds as fretted, and any other kind with no
+  `value` or one on no node sounds the octave. It departs from alphaTab at node 21.7 (the 7th
+  overtone, where alphaTab adds the 8th's 36 semitones) and off the nodes (alphaTab adds 0).
+  It moved here from audio in #87 so layout can place a harmonic's head where it sounds.
 - **`transpose(track, note, semitones)`** moves the note on its own string and returns
   `{ ok: true, note, warnings }` or `{ ok: false, reason, midi, alternatives }`, never throwing
   for a note that falls off. `reason` is `belowOpenString`, `aboveLastFret` (past `fretCount`,

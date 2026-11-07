@@ -83,6 +83,8 @@ Changed by #79 (2026-11-06): a region map resolves every layered region of a key
 
 Changed by #96 (2026-11-06): `OpenedFile` (and the `file:open` result) gains an optional opaque `handle`, the picked path in Electron and the `FileSystemFileHandle` in a browser with the File System Access API, and `Platform` gains `writeHandle(handle, bytes)`, which writes over that file or over a path `saveFile` returned; Save writes a `.reprise` in place through it, and a `.gp` with the gp writer once the user confirms what it loses; gp3, gp4, gp5 and gpx have no writer of their own, so Save sends them to Save As, which asks for Reprise or Guitar Pro 7–8 before the platform dialog.
 
+Changed by #87 (2026-11-07), a widening: `soundingPitch(track, note)`, the pitch a note sounds at as a fractional MIDI note, moves from `@reprise/audio` (where it was `soundingKey`) to the model's root export, so layout can place a harmonic where it sounds; its results are unchanged. `@reprise/audio` no longer exports `soundingKey` or `harmonicInterval`. The Note sketch's `harmonic.value` comment states the convention #92 documented: the node's fret for a natural harmonic, the offset above the fretted note for every other kind.
+
 Synced by #74 (2026-11-06), no contract change: the Layout sketch lists the `LayoutOptions`, `LayoutMetrics` and `Anchor` fields #59 shipped and the `tiedNotes` option #68 added, and the Audio sketch names the `InstrumentSink` #55 shipped and #73 widened.
 
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
@@ -198,7 +200,7 @@ interface Note {
   hammerPull: boolean;           // hammered on or pulled off from the previous note on the string; readers move GP5's origin flag here
   vibrato: 'none' | 'slight' | 'wide';
   palmMute: boolean; letRing: boolean;
-  harmonic?: { kind: 'natural' | 'artificial' | 'tapped' | 'pinch' | 'semi' | 'feedback'; value?: number };   // value >= 0 is the fret, fractional where needed
+  harmonic?: { kind: 'natural' | 'artificial' | 'tapped' | 'pinch' | 'semi' | 'feedback'; value?: number };   // value >= 0, fractional where needed: the node's fret (natural), else the node's offset above the fretted note
   trill?: { fret: number; speed: 16 | 32 | 64 };   // alternate fret, or MIDI note off fretted tracks
   leftHandFinger?: Finger; rightHandFinger?: Finger;
   dynamics: 'ppp' | 'pp' | 'p' | 'mp' | 'mf' | 'f' | 'ff' | 'fff';
@@ -346,6 +348,7 @@ function migrate(score: unknown, fromVersion: number, toVersion?: number, table?
 
 ```ts
 function midiNote(track, note: Pick<Note, 'string' | 'fret'>): number;   // tuning[tuning.length - string] + capo + fret; note.fret off fretted tracks
+function soundingPitch(track, note: Pick<Note, 'string' | 'fret' | 'harmonic'>): number;   // fractional MIDI; a harmonic on a fretted track sounds its node's pure overtone
 function openStringPitch(track, string: number): number | undefined;
 function transpose(track, note: Note, semitones: number): TransposeResult;   // stays on the string; drum notes unchanged
 type TransposeResult =
