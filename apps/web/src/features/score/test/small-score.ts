@@ -14,7 +14,7 @@ export function smallScore(): Score {
   return largeScore(2, 40);
 }
 
-/** Eight tracks in both notations: every system is taller than an A4 page (#85). */
+/** Eight tracks in both notations: every system is split across two A4 pages (#85). */
 export function tallScore(): Score {
   return largeScore(8, 6);
 }

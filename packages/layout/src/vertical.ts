@@ -11,13 +11,17 @@ import {
   type LaneRequests,
 } from './staves/lanes';
 
-/** The bands above a system's first staff, top to bottom, for what the master bars carry. */
-export type HeaderRow = 'section' | 'tempo' | 'direction' | 'volta';
+/**
+ * The bands above a system's first staff, top to bottom, for what the master bars carry. Only a
+ * split system's continuation has `barNumber`, above its `volta`.
+ */
+export type HeaderRow = 'section' | 'tempo' | 'direction' | 'barNumber' | 'volta';
 
-const ROW_HEIGHT: Record<HeaderRow, number> = {
+export const ROW_HEIGHT: Record<HeaderRow, number> = {
   section: 3.2,
   tempo: 3.6,
   direction: 3,
+  barNumber: 2.4,
   volta: 2.6,
 };
 

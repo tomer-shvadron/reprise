@@ -2,7 +2,6 @@ import type { LayoutResult, Page, Primitive, System } from '@reprise/layout';
 import type { CSSProperties, ReactNode } from 'react';
 
 import { useScoreFonts } from './fonts';
-import { paperHeight } from './page-flow';
 import { SystemSvg } from './system-svg';
 
 import './score.css';
@@ -14,7 +13,7 @@ export interface ScorePageProps {
   /** The layout's flat primitive array. */
   primitives: readonly Primitive[];
   zoom: number;
-  /** The paper's height on screen in layout px; by default it holds `systems`. Print keeps the page's. */
+  /** The paper's height in layout px: the page's unless a caller crops it. */
   height?: number;
   style?: CSSProperties;
   /** Drawn inside the page box, above the systems: a print header, a page number. */
@@ -30,7 +29,7 @@ export function ScorePage({
   systems,
   primitives,
   zoom,
-  height = paperHeight(page, systems),
+  height = page.bbox.height,
   style,
   children,
 }: ScorePageProps) {

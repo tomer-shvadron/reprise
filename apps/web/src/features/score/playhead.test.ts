@@ -7,7 +7,15 @@ import { timelineOf } from '@/state/timeline';
 import { repeatSong } from '@/test/position';
 
 import { columnAnchor } from './anchors';
-import { barColumns, nearestColumn, playheadAt, pointerTarget, staffBand } from './playhead';
+import {
+  barColumns,
+  followedSystem,
+  nearestColumn,
+  playheadAt,
+  pointerTarget,
+  staffBand,
+} from './playhead';
+import { longLayout, sharedLongScore } from './test/long-score';
 import { uniformNotation } from './view-options';
 
 const paged: LayoutOptions = {
@@ -176,5 +184,39 @@ describe('pointer targets', () => {
     if (!band || !system) throw new Error('no band');
     expect(band.y).toBeGreaterThan(system.bbox.y);
     expect(band.height).toBeLessThan(system.bbox.height);
+  });
+});
+
+describe('split systems', () => {
+  const song = sharedLongScore();
+  const result = longLayout({ mode: 'paged', paper: 'a4' });
+  const [first, second] = song.masterBars;
+  const track = (index: number) => song.tracks[index]?.id ?? '';
+  const holds = (system: number, index: number) =>
+    result.systems[system]?.staves.some((staff) => staff.track === track(index));
+  if (!first || !second) throw new Error('no bars');
+
+  it('puts the playhead in the part that holds the followed track, at the same x', () => {
+    const top = playheadAt(result, song, first.id, 0, track(0));
+    const bottom = playheadAt(result, song, first.id, 0, track(7));
+    const none = playheadAt(result, song, first.id, 0);
+    expect(top && holds(top.bar.system, 0)).toBe(true);
+    expect(bottom && holds(bottom.bar.system, 7)).toBe(true);
+    expect(bottom?.bar.system).not.toBe(top?.bar.system);
+    expect(bottom?.x).toBe(top?.x);
+    expect(none?.bar).toBe(top?.bar);
+  });
+
+  it('tints every part of a bar range', () => {
+    const columns = barColumns(result, song, { startBar: first.id, endBar: first.id });
+    expect(columns.map((column) => result.systems[column.system]?.part)).toEqual([0, 1]);
+  });
+
+  it('moves on to the next system’s part that holds the track, not the continuation', () => {
+    const next = result.systems.findIndex((system) => system.bars.start > 0);
+    expect(followedSystem(result, 0, track(0))).toBe(next);
+    expect(followedSystem(result, 1, track(7))).toBe(next + 1);
+    expect(followedSystem(result, 0, undefined)).toBe(next);
+    expect(followedSystem(result, result.systems.length - 1, track(7))).toBeUndefined();
   });
 });

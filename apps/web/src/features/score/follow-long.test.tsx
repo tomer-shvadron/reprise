@@ -39,10 +39,18 @@ afterEach(() => {
 
 const song = sharedLongScore();
 const { map } = timelineOf(song);
-const track = song.tracks[0]?.id ?? '';
+const trackAt = (index: number) => song.tracks[index]?.id ?? '';
 
-/** Plays the whole long score at 0.1 s steps and returns the steps where the playhead was hidden. */
-function play(mode: 'paged' | 'continuous', zoom: number, reducedMotion: boolean): string[] {
+/**
+ * Plays the whole long score at 0.1 s steps following `track`, and returns the steps where the
+ * playhead was hidden or not on the part of a split system that holds the track.
+ */
+function play(
+  mode: 'paged' | 'continuous',
+  zoom: number,
+  reducedMotion: boolean,
+  track: string,
+): string[] {
   stubMatchMedia(reducedMotion);
   const result = longLayout({ mode, paper: 'a4' });
   const ref = createRef<ScoreViewHandle>();
@@ -58,7 +66,7 @@ function play(mode: 'paged' | 'continuous', zoom: number, reducedMotion: boolean
     const position = positionAtSeconds(map, seconds);
     const masterBar = position && song.masterBars[position.masterBarIndex];
     if (!position || !masterBar) throw new Error('no position');
-    const cursor = playheadAt(result, song, masterBar.id, position.tick);
+    const cursor = playheadAt(result, song, masterBar.id, position.tick, track);
     if (!cursor) throw new Error(`no playhead in bar ${String(position.masterBarIndex)}`);
     handle.setPlayhead(cursor);
     handle.followPlayhead({ mode, running: true, track });
@@ -73,7 +81,15 @@ function play(mode: 'paged' | 'continuous', zoom: number, reducedMotion: boolean
       (mode === 'paged'
         ? band.y >= window.y - 0.5 && band.y + band.height <= window.y + window.height + 0.5
         : band.y < window.y + window.height && band.y + band.height > window.y);
-    if (!inX || !inY)
+    const system = result.systems[cursor.bar.system];
+    const onPart = system?.staves.some((staff) => staff.track === track) ?? false;
+    const page = system && result.pages[system.page];
+    const onPage =
+      page !== undefined &&
+      band !== undefined &&
+      band.y >= page.bbox.y &&
+      band.y + band.height <= page.bbox.y + page.bbox.height;
+    if (!inX || !inY || !onPart || !onPage)
       misses.push(`${seconds.toFixed(1)} s, bar ${String(position.masterBarIndex + 1)}`);
   }
   unmount();
@@ -81,12 +97,24 @@ function play(mode: 'paged' | 'continuous', zoom: number, reducedMotion: boolean
 }
 
 describe('following the long score', () => {
+  it('splits every A4 system, with tracks 1 to 5 in its first part and 6 to 8 in its second', () => {
+    const { systems } = longLayout({ mode: 'paged', paper: 'a4' });
+    const partOf = (track: number) =>
+      systems.find((system) => system.staves.some((staff) => staff.track === trackAt(track)))?.part;
+    expect(systems.every((system) => system.part !== undefined)).toBe(true);
+    expect([0, 4, 5, 7].map(partOf)).toEqual([0, 0, 1, 1]);
+  });
+
+  // Track 1 sits in the first part of each split A4 system, tracks 6 and 8 in the second.
   for (const mode of ['paged', 'continuous'] as const) {
     for (const zoom of [1, 2]) {
-      it(`keeps the playhead in view for its whole length, ${mode} at zoom ${String(zoom)}`, () => {
-        expect(play(mode, zoom, false)).toEqual([]);
-        expect(play(mode, zoom, true)).toEqual([]);
-      }, 60_000);
+      for (const index of mode === 'paged' ? [0, 5, 7] : [0, 7]) {
+        it(`keeps the playhead in view following track ${String(index + 1)}, ${mode} at zoom ${String(zoom)}`, () => {
+          const track = trackAt(index);
+          expect(play(mode, zoom, false, track)).toEqual([]);
+          expect(play(mode, zoom, true, track)).toEqual([]);
+        }, 60_000);
+      }
     }
   }
 });

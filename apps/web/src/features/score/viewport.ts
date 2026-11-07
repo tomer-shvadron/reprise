@@ -25,7 +25,10 @@ const OVERSCAN = 1;
 const right = (rect: Rect) => rect.x + rect.width;
 const bottom = (rect: Rect) => rect.y + rect.height;
 
-/** The drawn area from the origin: every page and every system, which may overflow its page. */
+/**
+ * The drawn area from the origin: every page and every system, which may still overflow its page
+ * to the right (a bar wider than the page).
+ */
 export function layoutExtent(layout: { pages: readonly Page[]; systems: readonly System[] }): Rect {
   let width = 0;
   let height = 0;

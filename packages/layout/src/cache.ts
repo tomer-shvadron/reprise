@@ -3,7 +3,8 @@ import type { Id } from '@reprise/model';
 import type { SystemPlan } from './breaking';
 import type { BarMeasure } from './measure';
 import type { LaneRequests } from './staves/lanes';
-import type { Anchor, Primitive, System } from './types';
+import type { Anchor, Primitive, Range, System } from './types';
+import type { VerticalLayout } from './vertical';
 
 export interface CachedBar {
   /** What the measurement was made from, compared by identity: Immer keeps unchanged nodes. */
@@ -24,19 +25,29 @@ export interface Cursor {
   empty: boolean;
 }
 
+/** Where one part of a system went, and the staff slots it holds. */
+export interface PartPlacement extends Cursor {
+  slots: Range;
+}
+
+/** One part of a system as it went into the result: the whole system unless it was split. */
+export interface CachedPart {
+  system: System;
+  primitives: Primitive[];
+  anchors: Anchor[];
+}
+
 export interface CachedSystem {
   plan: SystemPlan;
   /** Master-bar ids from the system's first bar through the bar after its last. */
   barIds: (Id | undefined)[];
   verticalKey: string;
-  /** Where the system was placed, and the unrounded height it was placed with. */
-  at: Cursor;
-  height: number;
+  /** Where each part was placed, and the unrounded stack they were placed from. */
+  at: PartPlacement[];
+  vertical: VerticalLayout;
   /** `enteringDynamics` at its first bar; empty when laid out without a cache. */
   entering: string;
-  system: System;
-  primitives: Primitive[];
-  anchors: Anchor[];
+  parts: CachedPart[];
 }
 
 export interface CacheState {

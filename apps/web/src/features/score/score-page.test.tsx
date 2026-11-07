@@ -32,18 +32,14 @@ describe('ScorePages', () => {
 });
 
 describe('ScorePage', () => {
-  it('grows its paper on screen to hold a taller system, and keeps the page size for print', () => {
+  it('keeps the paper at the page size on screen and in print', () => {
     const tall = viewLayout('tall', { mode: 'paged', paper: 'a4' }, 'both');
     const { container } = render(<ScorePages layout={tall} />);
     const page = container.querySelector<HTMLElement>('[data-page="0"]');
-    const system = tall.systems[0];
-    if (!page || !system) throw new Error('no page');
-    expect(page.style.getPropertyValue('--score-page-height')).toBe(
-      `${String(PAGE_SIZES.a4.height)}px`,
-    );
-    expect(page.style.getPropertyValue('--score-paper-height')).toBe(
-      `${String(system.bbox.y + system.bbox.height - (tall.pages[0]?.bbox.y ?? 0))}px`,
-    );
+    if (!page) throw new Error('no page');
+    const height = `${String(PAGE_SIZES.a4.height)}px`;
+    expect(page.style.getPropertyValue('--score-page-height')).toBe(height);
+    expect(page.style.getPropertyValue('--score-paper-height')).toBe(height);
   });
 
   it('carries its own score tokens, so it paints outside a view', () => {

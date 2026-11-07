@@ -413,9 +413,15 @@ export const SCENES: readonly Scene[] = [
   },
   {
     id: 'long',
-    covers: 'Paged breaking and justification; an 8-track system taller than A4',
+    covers:
+      "Paged breaking and justification; an 8-track system split across A4 pages, its continuation's bar numbers",
     source: { build: longScore },
     notations: ['default'],
     pages: [0, 1],
+    guard: (result) => {
+      const continuation = result.systems[1];
+      expect(continuation?.part).toBe(1);
+      expect(continuation?.page).toBe(1);
+    },
   },
 ];
