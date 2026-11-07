@@ -22,7 +22,7 @@ Paths resolve against the directory you run it from. Folders are walked recursiv
 | `read` | Node | The file reads through the app's own dispatcher with no `error`-severity warning. Records the version, counts, the features the listening sheet asks about, and a `.gp` export of our writer's output. | Whether what was read is what the author wrote; that is the oracle's job, and Guitar Pro's. |
 | `oracle` | Node | The read matches alphaTab 1.8.4, except where `packages/formats/test/oracle/tolerances.ts` documents a difference. | Files alphaTab cannot read (skipped), and anything both readers get wrong the same way. |
 | `order` | Node | The play order (repeats, voltas, jumps) matches alphaTab's MIDI generator, except for the documented deviations in the model README's "Deviations from alphaTab". | Whether alphaTab matches Guitar Pro; that is C1. |
-| `tempo` | Node | Every pass lasts as long as alphaTab's, with the same tempo changes, except ramps and moved mid-beat changes. Runs only on an identical order. | How a ramp should sound. |
+| `tempo` | Node | Every pass lasts as long as alphaTab's, with the same tempo changes, except ramps, moved mid-beat changes and over-full bars (which last their longest voice here, while alphaTab plays the overflow over the following bars; #118). Runs only on an identical order. | How a ramp should sound. |
 | `layout` | Chromium | On A4 pages in tab, standard and both: finite numbers, nothing outside the page or the margins, no overlapping anchors of one kind, no overlapping marks in a lane. | Collisions between voices' note heads or rests (#70), and anything inside a system that the anchors do not cover (#116). |
 | `audio` | Chromium | A GM render with finite samples and no clipping, within the memory budget; every untied note of every pass reached the sampler once, on time to 1 ms; every strike found a region; every scheduled attack is audible. | Timbre, and whether an effect sounds right: that is Part B. |
 
@@ -116,6 +116,7 @@ These need Guitar Pro 7 or 8; a trial installation is enough. They are optional 
 - **C4:** open `.check-files/exports/<file>.gp` for two or three songs: one with drums, one with a tuning-less pitched track such as piano, one with several tracks. Check that each opens, then the drum kit, the instruments and the page layout (#50, the WP-044 comment; the #71 review).
 - **C5:** any GP4 file with chord diagrams: the report's `version` (400 or 406), and whether the diagrams match Guitar Pro's (#50, comment (b)).
 - **C6:** bar 24 of `fixtures/gp5/effects.gp5`: does Guitar Pro play all ten quarter notes of the over-full bar, and how long does the bar last? This is the evidence #118 needs.
+- **C7:** play `fixtures/gp3/notes.gp3` (a single over-full bar) in Guitar Pro and in Reprise: does Guitar Pro stretch the bar to its longest voice, as Reprise does after #118, or play the overflow over what follows, as alphaTab does?
 
 ## Part D: from findings to issues
 

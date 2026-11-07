@@ -4,7 +4,13 @@
  * a divergence it explains is reported as explained rather than failed.
  */
 import * as alphaTab from '@coderline/alphatab';
-import { PLAYBACK_LENGTH_FACTOR, beatStartTicks, beatTicks, tempoMap } from '@reprise/model';
+import {
+  PLAYBACK_LENGTH_FACTOR,
+  barTicks,
+  beatStartTicks,
+  beatTicks,
+  tempoMap,
+} from '@reprise/model';
 import type { BarPass, PlaybackWarning, Score } from '@reprise/model';
 
 import type { CheckExplained, CheckViolation } from './check-meta';
@@ -326,6 +332,18 @@ function alphaTabSeconds(pass: AlphaTabPass, running: number): number {
   return seconds + ((pass.end - tick) * 60) / (960 * bpm);
 }
 
+/** A voice in any track holds more than the bar's written length. */
+export function isOverfull(score: Score, masterBarIndex: number): boolean {
+  const masterBar = score.masterBars[masterBarIndex];
+  if (!masterBar) return false;
+  const written = barTicks(masterBar);
+  return score.tracks.some((track) =>
+    (track.bars[masterBarIndex]?.voices ?? []).some(
+      (voice) => beatStartTicks(voice, voice.beats.length) > written + TICK_TOLERANCE,
+    ),
+  );
+}
+
 /** Whether alphaTab's tick lies strictly inside a beat of the bar that starts at our tick. */
 function insideBeatStartingAt(
   score: Score,
@@ -382,7 +400,9 @@ export function compareTempo(
     if (!at) return;
     const where = `bar ${String(pass.masterBarIndex + 1)} (pass ${String(p + 1)})`;
     const theirLength = at.end - at.start;
-    if (Math.abs(theirLength - pass.ticks) > TICK_TOLERANCE) {
+    const overfull =
+      Math.abs(theirLength - pass.ticks) > TICK_TOLERANCE && isOverfull(score, pass.masterBarIndex);
+    if (Math.abs(theirLength - pass.ticks) > TICK_TOLERANCE && !overfull) {
       const anacrusis = score.masterBars[pass.masterBarIndex]?.anacrusis === true;
       if (anacrusis && theirLength > pass.ticks) {
         explain(
@@ -433,6 +453,13 @@ export function compareTempo(
     const { events: alphaTabChanges, end } = alphaTabEvents(at, theirsRunning);
     theirsRunning = end;
     const oursEvents = ours.map(({ tick, bpm }) => ({ tick, bpm }));
+    if (overfull) {
+      explain(
+        'overfull-bar',
+        'an over-full bar lasts its longest voice; alphaTab plays the overflow over the next bars (#118)',
+      );
+      return;
+    }
     const equal = sameEvents(oursEvents, alphaTabChanges);
     if (equal && Math.abs(theirSeconds - pass.durationSeconds) <= SECONDS_TOLERANCE) return;
     if (equal && ramped) {

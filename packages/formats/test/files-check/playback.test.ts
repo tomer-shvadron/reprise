@@ -1,4 +1,4 @@
-import { expandPlaybackSequence } from '@reprise/model';
+import { expandPlaybackSequence, tempoMap } from '@reprise/model';
 import type { Score } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
@@ -12,6 +12,7 @@ import {
   compareTempo,
   detectDeviations,
   guardTickLookup,
+  isOverfull,
   runLength,
 } from './playback';
 
@@ -99,6 +100,34 @@ describe('the tempo check', () => {
     builder = bar(builder).tempo(140);
     const { tempo } = await compare(writeGp(builder.build()).bytes);
     expect(tempo()).toMatchObject({ violations: [], explained: [] });
+  });
+
+  it('explains a pass of an over-full bar that alphaTab plays shorter', () => {
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .beat('2', [note(1, 0)])
+      .beat('2', [note(1, 1)])
+      .beat('4', [note(1, 2)])
+      .bar()
+      .beat('1', [note(1, 3)])
+      .build({ validate: false });
+    expect(isOverfull(song, 0)).toBe(true);
+    expect(isOverfull(song, 1)).toBe(false);
+    const sequence = expandPlaybackSequence(song).sequence;
+    const ours = tempoMap(song, sequence).passes;
+    const first = ours[0]?.ticks ?? 0;
+    const playback = {
+      guardFired: false,
+      passes: [
+        { masterBarIndex: 0, start: 0, end: first - 960, tempoChanges: [{ tick: 0, tempo: 120 }] },
+        { masterBarIndex: 1, start: first - 960, end: first + 2880, tempoChanges: [] },
+      ],
+    };
+    const result = compareTempo(song, sequence, playback, false);
+    expect(result.violations).toEqual([]);
+    expect(result.explained.map((entry) => entry.id)).toEqual(['overfull-bar']);
   });
 });
 

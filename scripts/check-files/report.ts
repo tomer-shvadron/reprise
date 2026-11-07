@@ -261,7 +261,7 @@ const CODE_TEXT: Readonly<Record<string, CodeText>> = {
   'tempo-differs': {
     title: 'the tempo map differs from alphaTab',
     should:
-      "The tempo changes and durations match alphaTab 1.8.4's, except a ramp (README) or a moved mid-beat change (`tempo-moved`).",
+      "The tempo changes and durations match alphaTab 1.8.4's, except a ramp (README), a moved mid-beat change (`tempo-moved`) or an over-full bar (#118).",
   },
   'layout-threw': {
     title: 'layout throws on a real file',
