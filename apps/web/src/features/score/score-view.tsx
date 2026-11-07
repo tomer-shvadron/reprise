@@ -301,11 +301,15 @@ export function ScoreView({
   // Zoom keeps the notation at the viewport centre where it was.
   const anchorZoom = useEffectEvent(() => {
     const target = scroller.current;
+    if (!target) return;
     const at = liveCentre.current ?? centre;
-    if (!target || !at) return;
-    const scroll = scrollFromCentre(at, viewport, zoom, offset);
+    const from = readScroll(target);
+    // With no centre yet, writing the position as it is still stops a smooth scroll.
+    const scroll = at ? scrollFromCentre(at, viewport, zoom, offset) : from;
     target.scrollLeft = scroll.x;
     target.scrollTop = scroll.y;
+    const to = readScroll(target);
+    if (to.x !== from.x || to.y !== from.y) wroteInstantly.current = true;
     land(target);
   });
   useLayoutEffect(() => {
