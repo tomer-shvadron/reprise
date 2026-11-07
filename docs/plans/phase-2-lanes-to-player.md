@@ -434,12 +434,14 @@ Lead only. Starts as soon as WP-024, WP-032 and WP-045 are merged; the remaining
 
 **Deliverables**
 
-- Playwright against the Electron build: open a fixture, play two seconds and assert the cursor moved, set a loop and assert position wraps, change tempo, mute a track, print to PDF.
-- CI job for e2e on pull requests touching `apps/`.
+- Playwright Test against the production web build in the Chromium headless shell (ADR-0025), in `apps/web/e2e/player/`: open by shortcut, palette and drop, every format, a cancelled picker, an unknown and a damaged file; play, pause, stop and play from start, tempo in BPM and percent, count-in; a loop by drag, seek by keys through a repeat and by click with the repeat pass rule; following in paged and continuous view; mute, solo, volume and instrument with undo and redo, notation per track; Save in place and Save As with the format choice, then reopen.
+- The two renderer budget rows, heap after opening the long score and drop to first paint, asserted against the roadmap table.
+- An `e2e` CI job on every pull request and push to `main`, a required check.
+- Print to PDF is WP-025's, whose acceptance already names it.
 
 **Acceptance criteria**
 
-- Green in CI on macOS runners.
+- Green in the `e2e` job on the pinned Linux runner, with both renderer budget rows asserted.
 
 ## WP-056: Phase 3 fan-out preparation
 
