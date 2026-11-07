@@ -94,12 +94,13 @@ pnpm desktop:dev           # the Electron app around the web core
 pnpm desktop:build         # fetches the GM sound bank first, then electron-vite build plus electron-builder installers
 pnpm desktop:smoke         # launches the packaged app, opens a fixture and plays it (after desktop:build, macOS and Windows)
 pnpm fixtures:check        # re-describes fixtures/ with alphaTab, fails on a stale manifest
+pnpm check:files [paths]   # the real-file pass (fixtures/ and local-tabs/ by default); reports in .check-files/
 pnpm sounds:fetch          # downloads the GM soundfont, verified by SHA-256
 pnpm layout:metrics:check  # fails when the committed layout font metrics are stale
 pnpm test:visual           # painter screenshots; locally against your own references in e2e/visual/__local__/ (gitignored, made by the first run), on CI against the committed Linux baselines; pnpm visual:accept adopts a failed CI run's images
 ```
 
-The PR gate is `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check`; CI also runs `pnpm bench`, `pnpm fixtures:check`, `pnpm build` and `pnpm test:visual` ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
+The PR gate is `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check`; CI also runs `pnpm bench`, `pnpm fixtures:check`, `pnpm check:files fixtures`, `pnpm build` and `pnpm test:visual` ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
 
 ## Testing
 
@@ -108,6 +109,7 @@ Vitest, one project per workspace, defined in [vitest.config.ts](vitest.config.t
 - Build scores in tests with the builders from `@reprise/model/testing` (`score`, `note`, `ScoreBuilder`, `fullScore`, `largeScore`, `beatOf`, `noteOf`), not by hand.
 - The format readers are checked against alphaTab by the oracle under `packages/formats/test/oracle/`.
 - Automated tests use only the open-licensed corpus in `fixtures/` ([LICENSES.md](fixtures/LICENSES.md), `manifest.json`). `local-tabs/` holds downloaded tabs for manual testing and is never committed; a bug a local tab exposes is reproduced in a licensable fixture before it gets a test.
+- `*.check.ts` files run only under `pnpm check:files` ([docs/reference/player-checklist.md](docs/reference/player-checklist.md)), never in `pnpm test`; keep their pure logic in modules a `*.test.ts` covers. A fix PR deletes its own entry in `scripts/check-files/known.ts`.
 - The GeneralUser GS soundfont is fetched by hash with `pnpm sounds:fetch` (pins in `scripts/sounds/gm.json`) into `apps/web/public/sounds/gm/`, and never committed.
 - Performance budgets live in the [budgets table](docs/plans/roadmap.md#budgets), the single source of their numbers, and are measured only by `*.bench.ts` files under `pnpm bench`, which runs each project in bench mode as `<name> (bench)`, one file at a time, never in `pnpm test` or the pre-commit hook. A PR touching them pastes the `pnpm bench` table before and after.
 - A wall-clock check left in a `*.test.ts` is a sanity bound: at least 10× the reference machine's alone measurement and 3× the worst seen in CI or under three parallel `pnpm test` runs, rounded up to the 1–2–5 series. Such a test, and any whose worst run passes 30% of its project's default timeout (5 s in Node and jsdom, 15 s in the browser), declares its own timeout, at least 4× that worst run and rounded up to 30, 60 or 120 s, so the bound fires first. Timeouts are set per test, never by raising a project default, and the unit suite uses no `retry`.

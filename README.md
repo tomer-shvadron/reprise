@@ -38,6 +38,7 @@ pnpm build          # production build of the web app into apps/web/dist
 pnpm desktop:dev    # the Electron app around the same web core, with hot reload
 pnpm desktop:build  # fetches the GM sound bank, electron-vite build, then electron-builder for the current platform
 pnpm desktop:smoke  # launches the packaged app, opens a fixture and plays it
+pnpm check:files    # the real-file pass over fixtures/ and local-tabs/ (docs/reference/player-checklist.md)
 ```
 
 `pnpm --filter @reprise/web preview` serves the last build.
