@@ -45,3 +45,26 @@ export function drawTie(
     ),
   );
 }
+
+/**
+ * A slur from a head centred at (x1, y1) to one at (x2, y2), its ends `TIE_OFFSET` off the heads
+ * on the side it bulges. Returns its apex's y, or undefined when it is too short to draw.
+ */
+export function drawSlur(
+  sink: LayoutSink,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  direction: ArcDirection,
+  space: number,
+  node: Id,
+): number | undefined {
+  if (x2 - x1 < space * 0.2) return undefined;
+  const sign = direction === 'up' ? -1 : 1;
+  const height = tieHeight(x2 - x1, space) * sign;
+  const from = y1 + sign * TIE_OFFSET * space;
+  const to = y2 + sign * TIE_OFFSET * space;
+  sink.primitives.push(arc(x1, x2, from, height, engraving.tieMidpointThickness * space, node, to));
+  return (from + to) / 2 + height;
+}

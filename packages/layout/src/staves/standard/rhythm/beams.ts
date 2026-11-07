@@ -29,12 +29,14 @@ export interface BeamOptions {
    * on the exact line, for measuring before the bar is spaced.
    */
   exact: boolean;
+  /** Moves the whole line outward by this much, in px: room for tremolo strokes on its stems. */
+  extend?: number;
 }
 
 /** The longest a beam may rise or fall over its length, in staff spaces. */
 const MAX_SLOPE = 1;
 /** A stem under a beam may be this much shorter than an unbeamed one, in staff spaces. */
-const SHORTENING = 0.5;
+export const SHORTENING = 0.5;
 
 /**
  * Places a beam over `stems`: each end `stemLength` from its note (and reaching the middle line),
@@ -83,6 +85,8 @@ export function beamLine(
     else shift = up ? Math.max(0, slope) : Math.min(0, slope);
     offset = up ? Math.min(offset, required - shift) : Math.max(offset, required - shift);
   }
+  const extend = options.extend ?? 0;
+  if (extend > 0) offset += up ? -extend : extend;
   return { start: offset, end: offset + slope };
 }
 

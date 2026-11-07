@@ -1,17 +1,19 @@
-import {
-  TIE_REACH_BARS,
-  beatTicks,
-  tieOriginOf,
-  type Bar,
-  type Beat,
-  type Note,
-  type TiePosition,
-  type Track,
-} from '@reprise/model';
+import { TIE_REACH_BARS, tieOriginOf, type Note, type TiePosition } from '@reprise/model';
 
-import { textExtent, textWidth } from '../../metrics';
-import { ARROW_LENGTH, arrowhead, box, line, rect, text } from '../../primitives';
-import { WAVES, drawBend, verticalWave } from '../effects';
+import {
+  BEND_FRAME,
+  connections,
+  drawBend,
+  drawLetter,
+  drawStroke,
+  hammerLetter,
+  nextOnString,
+  shifts,
+  targetIsHigher,
+  tickOf,
+  voiceBeats,
+} from '../effects';
+import { line } from '../../primitives';
 import { drawTie, tieHeight, type StemDirection } from '../rhythm';
 import {
   TAB,
@@ -27,8 +29,8 @@ import { lineY, type TabContext } from './context';
 
 /** Gaps and sizes of the on-string effects, in staff spaces. */
 const SLIDE = { gap: 0.15, rise: 0.3, length: 1.3, clear: 0.2, thickness: 0.12 };
-const BEND = { gap: 0.15, stop: 0.6, min: 1, graceStop: 0.3 };
-const STROKE = { reach: 0.4, thickness: 0.12 };
+const BEND = BEND_FRAME;
+const STROKE = { reach: 0.4 };
 
 /** The x of each grace column's centre, in column order, for a beat at `x`. */
 export function graceCentres(beat: TabBeat, x: number, space: number): number[] {
@@ -54,58 +56,6 @@ function rightEdge(label: NoteLabel | undefined, size: number): number {
 
 function leftEdge(label: NoteLabel | undefined, size: number): number {
   return label?.text === undefined ? 0 : labelHalf(label, size);
-}
-
-function voiceBeats(track: Track, bar: number, voice: number): readonly Beat[] {
-  return track.bars[bar]?.voices[voice]?.beats ?? [];
-}
-
-function tickOf(beats: readonly Beat[], index: number): number {
-  let tick = 0;
-  for (const beat of beats.slice(0, index)) tick += beatTicks(beat);
-  return tick;
-}
-
-/** The next note on `note`'s string in the voice: later in its bar, else in the next bar. */
-function nextOnString(
-  track: Track,
-  at: TiePosition,
-  note: Note,
-): { note: Note; bar: number; beat: number } | undefined {
-  for (let bar = at.bar; bar <= at.bar + 1; bar++) {
-    const beats = voiceBeats(track, bar, at.voice);
-    for (let i = bar === at.bar ? at.beat + 1 : 0; i < beats.length; i++) {
-      const beat = beats[i];
-      if (!beat || beat.rest) continue;
-      const found = beat.notes.find((candidate) => candidate.string === note.string);
-      if (found) return { note: found, bar, beat: i };
-    }
-  }
-  return undefined;
-}
-
-const connectionsMemo = new WeakMap<Bar, { shifts: boolean; hammers: boolean }>();
-
-/** Whether a bar holds the origin of a shift or legato slide, or the target of a hammer-on. */
-function connections(bar: Bar | undefined): { shifts: boolean; hammers: boolean } {
-  if (!bar) return { shifts: false, hammers: false };
-  const known = connectionsMemo.get(bar);
-  if (known) return known;
-  const found = { shifts: false, hammers: false };
-  for (const { beats } of bar.voices) {
-    for (const beat of beats) {
-      for (const note of beat.notes) {
-        if (shifts(note)) found.shifts = true;
-        if (note.hammerPull) found.hammers = true;
-      }
-    }
-  }
-  connectionsMemo.set(bar, found);
-  return found;
-}
-
-function shifts(note: Note): boolean {
-  return note.slide?.some((kind) => kind === 'shift' || kind === 'legato') ?? false;
 }
 
 function arcDirection(context: TabContext, note: Note): StemDirection {
@@ -138,27 +88,8 @@ function drawArc(
   const y = lineY(context, note.string) + s * labelHalfHeight(size);
   drawTie(sink, left, right, y, direction, space, { node: note.id });
   if (letter === undefined || right - left < space * 0.2) return;
-  const letterSize = TAB.letterSize * space;
-  const { ascent } = textExtent(letterSize);
   const apex = y + s * tieHeight(right - left, space);
-  const baseline = s < 0 ? apex - TAB.letterGap * space : apex + TAB.letterGap * space + ascent;
-  const x = (left + right) / 2;
-  const width = textWidth(letter, letterSize);
-  const knockX = TAB.knockoutX * letterSize;
-  const knockY = TAB.knockoutY * letterSize;
-  sink.primitives.push(
-    box(
-      rect(
-        x - width / 2 - knockX,
-        baseline - ascent - knockY,
-        width + 2 * knockX,
-        ascent + 2 * knockY,
-      ),
-      0,
-      { fill: true, role: 'paper', node: note.id },
-    ),
-    text(letter, x, baseline, letterSize, { anchor: 'middle', node: note.id }),
-  );
+  drawLetter(sink, (left + right) / 2, apex, direction, space, note.id, letter);
 }
 
 function drawSlideLine(
@@ -179,11 +110,7 @@ function drawSlideLine(
 
 /** Rises (negative y) towards a higher fret, falls towards a lower one. */
 function slideRise(origin: Note, target: Note): number {
-  return target.fret > origin.fret ? -SLIDE.rise : SLIDE.rise;
-}
-
-function hammerLetter(origin: Note, target: Note): string {
-  return target.fret >= origin.fret ? 'H' : 'P';
+  return targetIsHigher(origin, target) ? -SLIDE.rise : SLIDE.rise;
 }
 
 /** Draws a shift or legato slide from `origin` to `target`, whole or as a destination half. */
@@ -418,18 +345,15 @@ export function drawStrokes(context: TabContext, voice: TabVoice, xs: readonly n
     const top = lineY(context, Math.min(...strings)) - STROKE.reach * space;
     const bottom = lineY(context, Math.max(...strings)) + STROKE.reach * space;
     const at = x - beat.half - beat.stroke / 2;
-    const node = beat.beat.id;
-    const arrow = ARROW_LENGTH * space;
-    const towardTop = stroke.direction === 'down';
-    const [from, to] = towardTop ? [bottom, top + arrow] : [top, bottom - arrow];
-    if (beat.beat.effects.arpeggio) {
-      const wave = verticalWave(from, to, at, WAVES.slight, space, { node });
-      if (wave) sink.primitives.push(wave);
-    } else {
-      sink.primitives.push(line(at, from, at, to, STROKE.thickness * space, { node }));
-    }
-    sink.primitives.push(
-      arrowhead(at, towardTop ? top : bottom, towardTop ? 'up' : 'down', space, { node }),
+    const arpeggio = beat.beat.effects.arpeggio !== undefined;
+    drawStroke(
+      sink,
+      at,
+      top,
+      bottom,
+      { direction: stroke.direction, arpeggio },
+      space,
+      beat.beat.id,
     );
   }
 }
