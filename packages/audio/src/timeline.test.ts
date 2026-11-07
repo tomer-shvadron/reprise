@@ -356,4 +356,25 @@ describe('an over-full bar', () => {
     expect(clicks.map((c) => c.tick)).toEqual(Array.from({ length: 10 }, (_, i) => i * PPQ));
     expect(clicks.filter((c) => c.accent).map((c) => c.tick)).toEqual([0, 6 * PPQ]);
   });
+
+  it('skips an overflow click the next downbeat would cut short', () => {
+    const builder = score().tempo(120).track('guitar').bar();
+    for (let fret = 0; fret < 4; fret++) builder.beat('4', [note(1, fret)]);
+    builder
+      .beat('32', [note(1, 4)])
+      .bar()
+      .beat('1', [note(2, 0)]);
+    const clicks = clicksInRange(createTimeline(builder.build({ validate: false })), 0, 3960 + BAR);
+
+    expect(clicks.map((c) => [c.tick, c.accent])).toEqual([
+      [0, true],
+      [960, false],
+      [1920, false],
+      [2880, false],
+      [3960, true],
+      [3960 + 960, false],
+      [3960 + 1920, false],
+      [3960 + 2880, false],
+    ]);
+  });
 });

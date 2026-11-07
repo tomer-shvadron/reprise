@@ -4,7 +4,7 @@ import { beatStartTicks, parseNative, secondsAt } from '@reprise/model';
 
 import { advance, startRun } from '../scheduler';
 import type { ScheduledNote } from '../scheduler';
-import { createTimeline } from '../timeline';
+import { clicksInRange, createTimeline } from '../timeline';
 import type { Timeline } from '../timeline';
 
 const fixtures = inject('scoreFixtures');
@@ -92,4 +92,19 @@ describe('scheduling the fixture corpus', () => {
       expect(timeline.map.durationSeconds).toBe(68);
     });
   }
+
+  it('gp/multivoice-rhythm.gp clicks no flam before the downbeat after its over-full bar 2', () => {
+    const timeline = timelineOf('gp/multivoice-rhythm.gp');
+    const bar2 = timeline.map.passes[1];
+    expect(bar2).toMatchObject({ masterBarIndex: 1, ticks: 3960 });
+    const start = bar2?.startTick ?? 0;
+    const clicks = clicksInRange(timeline, start, start + 3960 + 1);
+    expect(clicks.map((c) => [c.tick - start, c.accent])).toEqual([
+      [0, true],
+      [960, false],
+      [1920, false],
+      [2880, false],
+      [3960, true],
+    ]);
+  });
 });
