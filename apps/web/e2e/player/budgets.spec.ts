@@ -91,8 +91,16 @@ test('Time from file drop to first paint', async ({ browser, baseURL }) => {
 
 test('Renderer heap after opening the long score', async ({ app, page }) => {
   const row = budget('Renderer heap after opening the long score');
+  // A user's first gesture builds the audio engine, which then loads the song: measure with it.
+  await app.gesture();
   await app.drop(generated(LONG_SCORE), LONG_SCORE);
   await app.waitReady(LONG_SCORE);
+  await page.keyboard.press('Space');
+  await expect(app.playButton).toHaveAccessibleName('Pause');
+  await app.expectSound();
+  await page.keyboard.press('Space');
+  await expect(app.playButton).toHaveAccessibleName('Play');
+  expect(await app.contexts()).toBe(1);
 
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('HeapProfiler.collectGarbage');
