@@ -1,4 +1,4 @@
-import type { Id, Notation, Score, Track } from '@reprise/model';
+import { shownNotation, type Id, type Notation, type Score, type Track } from '@reprise/model';
 
 import type { LayoutOptions, Margins, StaffType, TiedNotes } from './types';
 
@@ -45,15 +45,19 @@ export interface ResolvedOptions {
 }
 
 /**
- * The staves a track shows, top to bottom. A tab staff needs strings, so a track without a
- * tuning falls back to standard notation, and drums always read from a percussion staff.
+ * The staves a track shows, top to bottom. Drums always read from a percussion staff, and a track
+ * that cannot show tab (`canShowTab`) falls back to standard notation whatever it asks for.
  */
 export function stavesFor(track: Track, notation: Notation): StaffType[] {
   if (track.kind === 'drums') return ['percussion'];
-  const hasStrings = track.tuning.length > 0;
-  if (notation === 'tab' && hasStrings) return ['tab'];
-  if (notation === 'both' && hasStrings) return ['standard', 'tab'];
-  return ['standard'];
+  switch (shownNotation(track, notation)) {
+    case 'tab':
+      return ['tab'];
+    case 'both':
+      return ['standard', 'tab'];
+    case 'standard':
+      return ['standard'];
+  }
 }
 
 function positive(value: number, name: string): number {
