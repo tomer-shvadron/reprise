@@ -88,7 +88,7 @@ const rows: Row[] = [
   natural(2, 100, 100, 2.4),
   natural(8, 100, 100, 8.2),
   natural(17, 100, 100, 17),
-  // alphaTab maps 21.7 to the 8th overtone (36); the node is 5/7 of the string, the 7th.
+  // alphaTab maps 21.7 to the 8th partial (36); the node is 5/7 of the string, the 7th.
   {
     name: 'natural, fret 22, value 21.7',
     string: 1,
