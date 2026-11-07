@@ -576,8 +576,8 @@ quotes.
 | `Beat.effects.tremoloPicking`                        | Retriggers every 8th, 16th or 32nd at the full velocity; a remainder is a shorter last stroke.                                                                                                                                                                                                                                                                                                                           |
 | `palmMute`                                           | Low-pass at 900 Hz (Butterworth), and the level falls to -18 dB over 250 ms: the shortened envelope. On a tied link of an open string, both from the link's onset.                                                                                                                                                                                                                                                       |
 | `dead`                                               | A noise burst instead of the instrument: the `fx:dead` region (100 ms of seeded noise, 1 ms attack, 50 ms decay to silence), low-pass at 2.5 kHz, cut at 80 ms. It damps the string like any note. A dead tied link ends the chain 80 ms after its onset, with no burst.                                                                                                                                                 |
-| `harmonic` natural                                   | The node's overtone of the open string: frets 12 (+12), 7 and 19 (+19.02), 5 and 24 (+24), 4, 9 and 16 (+27.86), 3.2 (+31.02), 2.7 (+33.69); a fret on no node plays fretted. Pure intervals, not tempered. +6 dB high shelf at 2 kHz.                                                                                                                                                                                   |
-| `harmonic` artificial, pinch, tapped, semi, feedback | The fretted note raised by the overtone at `value` frets from it (12 when absent), with the same shelf.                                                                                                                                                                                                                                                                                                                  |
+| `harmonic` natural                                   | The node's overtone of the open string: frets 12 (+12), 7 and 19 (+19.02), 5 and 24 (+24), 4, 9 and 16 (+27.86), 3.2 (+31.02), 2.7 (+33.69); a fret on no node plays fretted. Pure intervals, not tempered (`soundingPitch`, `@reprise/model`). +6 dB high shelf at 2 kHz.                                                                                                                                               |
+| `harmonic` artificial, pinch, tapped, semi, feedback | The fretted note raised by the overtone at `value` frets from it (12 when absent; `soundingPitch`, `@reprise/model`), with the same shelf.                                                                                                                                                                                                                                                                               |
 | `staccato`                                           | Released at half the note's own beat, ties ignored, as alphaTab's `_getNoteDuration` does. A staccato tied link ends the chain at half its beat.                                                                                                                                                                                                                                                                         |
 | `letRing`                                            | Rings to the next note on its string or `barEnd`, whichever comes first.                                                                                                                                                                                                                                                                                                                                                 |
 | `Beat.effects.fadeIn`, `fadeOut`                     | Level from -48 dB to 0 (or back) across the beat, linear in dB.                                                                                                                                                                                                                                                                                                                                                          |
@@ -626,20 +626,21 @@ has the open string it needs.
 
 ### Measured (`articulations.test.ts`, the engine driving the real sampler, tapped before the bus)
 
-| Property                            | Measured                                                           |
-| ----------------------------------- | ------------------------------------------------------------------ |
-| Full bend, held part                | 2 semitones up, 0.00001 cent off                                   |
-| Natural harmonics at 12, 7, 5, 4    | 2, 3, 4, 5 × the open string within 0.0001 cent                    |
-| Palm mute, energy above 2 kHz       | 0.033 × the unmuted note's                                         |
-| Tie                                 | one onset                                                          |
-| Hammer-on                           | -3.2 dB against the picked note before it                          |
-| Shift and legato slide              | 197 cents of 200 at 1 ms before the next onset; on pitch after it  |
-| Legato vs shift, level at the onset | ×0.84 (still decaying) vs ×17.9 (struck again)                     |
-| Vibrato slight, wide                | 5.5 Hz ±25.0 cents, 5 Hz ±60.0 cents                               |
-| Trill (32nds), tremolo (16ths)      | 8 and 8 onsets, each within 0.06 ms of the grid                    |
-| Dead note                           | a 35 ms burst; the note's pitch carries 3% of its level            |
-| Staccato quarter at 120 BPM         | silent 292 ms after the onset (release at 250 ms)                  |
-| Beat volume change to 50            | lands 5 ms after the beat (the strip's smoothing), ×0.25 the level |
+| Property                                       | Measured                                                           |
+| ---------------------------------------------- | ------------------------------------------------------------------ |
+| Full bend, held part                           | 2 semitones up, 0.00001 cent off                                   |
+| Natural harmonics at 12, 7, 5, 4               | 2, 3, 4, 5 × the open string within 0.0001 cent                    |
+| Natural harmonic at 2.7 (low E), artificial +7 | 7 × the open string and 3 × the fretted note, within 0.0001 cent   |
+| Palm mute, energy above 2 kHz                  | 0.033 × the unmuted note's                                         |
+| Tie                                            | one onset                                                          |
+| Hammer-on                                      | -3.2 dB against the picked note before it                          |
+| Shift and legato slide                         | 197 cents of 200 at 1 ms before the next onset; on pitch after it  |
+| Legato vs shift, level at the onset            | ×0.84 (still decaying) vs ×17.9 (struck again)                     |
+| Vibrato slight, wide                           | 5.5 Hz ±25.0 cents, 5 Hz ±60.0 cents                               |
+| Trill (32nds), tremolo (16ths)                 | 8 and 8 onsets, each within 0.06 ms of the grid                    |
+| Dead note                                      | a 35 ms burst; the note's pitch carries 3% of its level            |
+| Staccato quarter at 120 BPM                    | silent 292 ms after the onset (release at 250 ms)                  |
+| Beat volume change to 50                       | lands 5 ms after the beat (the strip's smoothing), ×0.25 the level |
 
 Tied links (`tied-links.test.ts`, same rig, A4 quarter tied at 120 BPM):
 
@@ -764,8 +765,9 @@ planSamples(plan, regionMapOf); // the SampleRefs those keys reach
 `planInstruments` walks the playback sequence, not written order, so a `Beat.mix` program change
 reached through a repeat or a jump is attributed to the bars it actually sounds in. Each track
 plans its own program even when it has no notes (it costs nothing until a note asks for it).
-Keys are the ones the sink strikes: the note's sounding key rounded (`soundingKey`, so a harmonic
-plans the overtone it plays, not the fretted key), plus grace notes and the trill's alternate fret.
+Keys are the ones the sink strikes: the note's sounding pitch rounded (`soundingPitch` from
+`@reprise/model`, so a harmonic plans the overtone it plays, not the fretted key), plus grace notes
+and the trill's alternate fret.
 `planSamples` takes every layered region of a key (`resolveAll`).
 
 `load` decodes every sample the opening `bars` (default 4) can reach before it resolves, at every

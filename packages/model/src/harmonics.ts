@@ -1,5 +1,6 @@
-import { midiNote } from '@reprise/model';
-import type { Note, Track } from '@reprise/model';
+import type { Note } from './note';
+import { midiNote } from './pitch';
+import type { Track } from './track';
 
 const HIGHEST_OVERTONE = 8;
 /** How far a written harmonic fret may sit from a node, in frets: 3 for 3.16, 9 for 8.84. */
@@ -45,12 +46,16 @@ export function harmonicInterval(fret: number): number | undefined {
 type PitchTrack = Pick<Track, 'kind' | 'tuning' | 'capo'>;
 
 /**
- * The pitch a note sounds at, as a fractional MIDI note. A natural harmonic sounds its node's
- * overtone of the open string (the fret is the node); artificial, pinch, tapped, semi and
- * feedback harmonics sound the fretted note raised by the overtone of `harmonic.value`, the
- * distance in frets from the fretting hand to the node, 12 when absent.
+ * The pitch a note sounds at, as a fractional MIDI note: `midiNote`, except for a harmonic on a
+ * fretted track. A natural harmonic sounds its node's overtone of the open string, capo included
+ * (`value` is the node, else the fret; a fret on no node sounds as fretted); every other kind
+ * sounds the fretted note raised by the overtone of the node `value` frets above it, 12 when
+ * absent or on no node. Overtones are pure, so round the result for a key or a staff position.
  */
-export function soundingKey(track: PitchTrack, note: Note): number {
+export function soundingPitch(
+  track: PitchTrack,
+  note: Pick<Note, 'string' | 'fret' | 'harmonic'>,
+): number {
   const fretted = midiNote(track, note);
   const { harmonic } = note;
   if (!harmonic || track.kind !== 'fretted') return fretted;
