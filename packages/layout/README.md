@@ -146,8 +146,6 @@ What still re-renders every later system: a continuous edit that changes a bar's
 
 Where the contract left something open:
 
-<<<<<<< HEAD
-
 | Question                              | Decision                                                                                                                                       |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | Several pages in one coordinate space | Stacked vertically, `pageGap` apart; `Page.bbox` places each.                                                                                  |
@@ -175,31 +173,6 @@ Where the contract left something open:
 | System reuse after an edit            | Every system more than `BAR_REACH` bars from a re-measured bar, placed and entered as before, is reused by identity.                           |
 | Continuous width changes              | Re-render every later segment; translating rounded coordinates would not give a cold layout's bytes (#101).                                    |
 | Long-note spacing                     | One curve in the engine for every staff, Guitar Pro's feel beyond a quarter, so switching notation keeps bar widths.                           |
-| =======                               |
-| Question                              | Decision                                                                                                                                       |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------   |
-| Several pages in one coordinate space | Stacked vertically, `pageGap` apart; `Page.bbox` places each.                                                                                  |
-| What `zoom` scales                    | The notation; paper size and margins stay as given.                                                                                            |
-| Continuous mode and virtualization    | Systems are segments of the one line, about `width` px each.                                                                                   |
-| `Bar.clef` without a later change     | Holds until the next bar that sets a clef.                                                                                                     |
-| Notation a track cannot show          | Drums always percussion; tab without strings falls back to standard.                                                                           |
-| Justifying the last paged system      | Only when it is at least three quarters full.                                                                                                  |
-| Signatures at a line start            | Clef and key on every line; the time signature only at the start and on a change.                                                              |
-| Courtesy signatures                   | Paged systems end with the next system's key and time change after the last bar line; `SystemPlan.courtesy` reserves the room when breaking.   |
-| Repeat counts                         | `xN` above the end repeat for N > 2 plays, in its own lane above the system's first staff.                                                     |
-| Rows above and below a staff          | Lanes in a fixed order, sized per system so they line up across bars; two kinds never share a row.                                             |
-| Effects in both mode                  | Lane effects once, on the tab (ADR-0022); articulations and tremolo strokes on the standard staff (#86).                                       |
-| Waves                                 | Procedural paths, one per run and bar, not repeated SMuFL wiggle glyphs.                                                                       |
-| Dynamics                              | One rule on every staff: per voice, against the voice's previous played beat in any earlier bar.                                               |
-| Double coda and segno segno           | The single glyph drawn twice; SMuFL has no double form.                                                                                        |
-| Tempo in another unit                 | The number shown against `unit` is `bpm` converted from quarters, rounded to 0.01.                                                             |
-| Bar lines in a track with two staves  | End bar lines run on through the gap between the staves; repeat dots stay inside each.                                                         |
-| Determinism                           | Byte-identical results for identical input, except `metrics.layoutMs`.                                                                         |
-| System reuse after an edit            | Every system more than `BAR_REACH` bars from a re-measured bar, placed and entered as before, is reused by identity.                           |
-| Continuous width changes              | Re-render every later segment; translating rounded coordinates would not give a cold layout's bytes (#101).                                    |
-| Long-note spacing                     | One curve in the engine for every staff, Guitar Pro's feel beyond a quarter, so switching notation keeps bar widths.                           |
 | A system taller than the page         | Split between tracks into parts at page tops, never through a staff and never scaled; no reference splits or scales automatically (#85).       |
 | A continuation's header               | Bar numbers, then voltas when the system has them; sections, tempo, jumps and `xN` stay on the first part.                                     |
 | Bar numbers                           | On continuations only, every bar, `masterBarIndex + 1`.                                                                                        |
-
-> > > > > > > origin/main
