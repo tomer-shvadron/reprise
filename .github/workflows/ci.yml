@@ -101,6 +101,24 @@ jobs:
       - name: Fixtures
         run: pnpm fixtures:check
 
+      # The real-file pass over the fixture corpus: reading, alphaTab parity of reading, playback
+      # order and tempo, A4 layout invariants and a GM render (docs/reference/player-checklist.md).
+      - name: Real-file pass
+        id: files
+        timeout-minutes: 5
+        run: pnpm check:files fixtures
+
+      - name: Upload the real-file report
+        if: ${{ !cancelled() && steps.files.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: check-files
+          path: |
+            .check-files/
+            !.check-files/natives/
+          retention-days: 14
+          if-no-files-found: warn
+
       - name: Build
         run: pnpm build
 

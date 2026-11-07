@@ -115,8 +115,14 @@ const finger = (value: number): string | null => (value < 0 ? null : named(FINGE
 const values = (points: readonly AtBendPoint[] | null): number[] | null =>
   points === null ? null : points.map((point) => point.value);
 
-export function loadWithAlphaTab(bytes: Uint8Array): alphaTab.model.Score {
-  return alphaTab.importer.ScoreLoader.loadScoreFromBytes(bytes, new alphaTab.Settings());
+/** `encoding` overrides alphaTab's UTF-8 default for the strings of the file. */
+export function loadWithAlphaTab(
+  bytes: Uint8Array,
+  options: { encoding?: string } = {},
+): alphaTab.model.Score {
+  const settings = new alphaTab.Settings();
+  if (options.encoding !== undefined) settings.importer.encoding = options.encoding;
+  return alphaTab.importer.ScoreLoader.loadScoreFromBytes(bytes, settings);
 }
 
 function projectNote(note: AtNote, kind: TrackKind): NoteProjection {
