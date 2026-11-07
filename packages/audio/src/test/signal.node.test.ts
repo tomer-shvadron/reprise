@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  attackRatios,
   bandEnergy,
   cents,
   detectOnsets,
   peak,
   pitchAt,
   rms,
+  spectralFlux,
   toneLevel,
   zeroCrossingFrequency,
 } from './signal';
@@ -168,5 +170,44 @@ describe('bandEnergy', () => {
     const lower = bandEnergy(signal, 0, RATE / 4, 0, 1) ** 2;
     const upper = bandEnergy(signal, RATE / 4, RATE / 2, 0, 1) ** 2;
     expect(lower / upper).toBeCloseTo(1, 1);
+  });
+});
+
+describe('spectralFlux and attackRatios', () => {
+  const struck = (period: number, frequency: number) => (time: number) =>
+    Math.exp(-12 * (time % period)) * Math.sin(2 * Math.PI * frequency * time);
+
+  it('hears a note struck again at the same pitch', () => {
+    const signal = synth(3, struck(0.25, 330));
+    const attacks = Array.from({ length: 11 }, (_, k) => 0.25 * (k + 1));
+    const ratios = attackRatios(spectralFlux(signal), attacks);
+    for (const ratio of ratios) expect(ratio).toBeGreaterThanOrEqual(5);
+  });
+
+  it('hears nothing at fake attack times in one held tone', () => {
+    // Every render has a noise floor; over digital stillness the ratio is noise over noise.
+    const hiss = noise(7);
+    const signal = synth(3, (time) => sine(330, 0.5)(time) + 0.001 * hiss());
+    const ratios = attackRatios(spectralFlux(signal), [0.6, 1.2, 1.8, 2.4]);
+    for (const ratio of ratios) expect(ratio).toBeLessThan(1.2);
+  });
+
+  it('hears a third tone entering under two that keep ringing', () => {
+    const signal = synth(
+      3,
+      (time) =>
+        0.3 * Math.sin(2 * Math.PI * 220 * time) +
+        0.3 * Math.sin(2 * Math.PI * 277 * time) +
+        (time >= 1.5 ? 0.3 * Math.exp(-3 * (time - 1.5)) * Math.sin(2 * Math.PI * 659 * time) : 0),
+    );
+    const [ratio] = attackRatios(spectralFlux(signal), [1.5]);
+    expect(ratio).toBeGreaterThanOrEqual(1.5);
+  });
+
+  it('times each frame at its centre', () => {
+    const flux = spectralFlux(synth(1, sine(440)), { frame: 1024, hop: 256 });
+    expect(flux.times[0]).toBeCloseTo(512 / RATE, 6);
+    expect(flux.times[1]).toBeCloseTo((512 + 256) / RATE, 6);
+    expect(flux.values.length).toBe(Math.floor((RATE - 1024) / 256) + 1);
   });
 });

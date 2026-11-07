@@ -296,3 +296,112 @@ export function bandEnergy(
   }
   return Math.sqrt((2 * power) / (size * weights));
 }
+
+export interface SpectralFlux {
+  values: Float32Array;
+  /** Each frame's centre, in seconds. */
+  times: Float32Array;
+}
+
+/**
+ * Onset strength per frame: Hann-windowed magnitudes compressed with `log1p(1000·|X|)`, and the
+ * half-wave-rectified rise from the previous frame summed over bins 1 to N/2. Unlike
+ * `detectOnsets` it hears a new note under others still ringing, as on a mix.
+ */
+export function spectralFlux(
+  signal: Signal,
+  { frame: size = 1024, hop = 256 }: { frame?: number; hop?: number } = {},
+): SpectralFlux {
+  const count = Math.max(0, Math.floor((signal.data.length - size) / hop) + 1);
+  const values = new Float32Array(count);
+  const times = new Float32Array(count);
+  const window = new Float64Array(size);
+  for (let i = 0; i < size; i += 1)
+    window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (size - 1));
+  const re = new Float64Array(size);
+  const im = new Float64Array(size);
+  const half = size / 2;
+  let previous = new Float64Array(half + 1);
+  let current = new Float64Array(half + 1);
+  for (let f = 0; f < count; f += 1) {
+    const start = f * hop;
+    for (let i = 0; i < size; i += 1) {
+      re[i] = (signal.data[start + i] ?? 0) * (window[i] ?? 0);
+      im[i] = 0;
+    }
+    fft(re, im);
+    let flux = 0;
+    for (let bin = 1; bin <= half; bin += 1) {
+      const magnitude = Math.log1p(1000 * Math.hypot(re[bin] ?? 0, im[bin] ?? 0));
+      current[bin] = magnitude;
+      if (f > 0) flux += Math.max(0, magnitude - (previous[bin] ?? 0));
+    }
+    values[f] = flux;
+    times[f] = (start + size / 2) / signal.sampleRate;
+    [previous, current] = [current, previous];
+  }
+  return { values, times };
+}
+
+/** The attack-ratio windows, in seconds around each attack cluster. */
+export const ATTACK_WINDOW = { before: 0.02, after: 0.04, context: 0.5, guardAfter: 0.06 };
+
+const median = (values: number[]): number => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1
+    ? (sorted[middle] ?? 0)
+    : ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
+};
+
+/**
+ * For each attack time, the peak flux just around it over the median flux of the surrounding
+ * second, leaving out frames near any attack; where too few frames remain, the median of every
+ * frame near no attack stands in. `attacks` must be sorted.
+ */
+export function attackRatios(flux: SpectralFlux, attacks: readonly number[]): number[] {
+  const { before, after, context, guardAfter } = ATTACK_WINDOW;
+  const { values, times } = flux;
+  const nearAttack = new Uint8Array(values.length);
+  let a = 0;
+  for (let f = 0; f < values.length; f += 1) {
+    const t = times[f] ?? 0;
+    while (a < attacks.length && (attacks[a] ?? 0) + guardAfter < t) a += 1;
+    const next = attacks[a];
+    if (next !== undefined && t >= next - before && t <= next + guardAfter) nearAttack[f] = 1;
+  }
+  const quiet: number[] = [];
+  for (let f = 0; f < values.length; f += 1) if (nearAttack[f] === 0) quiet.push(values[f] ?? 0);
+  const fallback = median(quiet);
+  const frameAt = (t: number): number => {
+    let low = 0;
+    let high = times.length;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if ((times[mid] ?? 0) < t) low = mid + 1;
+      else high = mid;
+    }
+    return low;
+  };
+  return attacks.map((attack) => {
+    let peakFlux = 0;
+    for (
+      let f = frameAt(attack - before);
+      f < values.length && (times[f] ?? 0) <= attack + after;
+      f += 1
+    ) {
+      peakFlux = Math.max(peakFlux, values[f] ?? 0);
+    }
+    const around: number[] = [];
+    for (
+      let f = frameAt(attack - context);
+      f < values.length && (times[f] ?? 0) <= attack + context;
+      f += 1
+    ) {
+      if (nearAttack[f] === 0) around.push(values[f] ?? 0);
+    }
+    const background = around.length >= 10 ? median(around) : fallback;
+    return peakFlux / Math.max(background, 1e-9);
+  });
+}

@@ -58,6 +58,33 @@ function sine(): Instrument {
   };
 }
 
+describe('renderScore records what reached the sink and the sampler', () => {
+  it('lists one scheduled event per untied note', async () => {
+    const song = scale();
+    const rendered = await renderScore(song, { instruments: sine, seconds: 5 });
+    expect(rendered.scheduled).toHaveLength(NOTES.length);
+    for (const [index, event] of rendered.scheduled.entries()) {
+      expect(event.when).toBeCloseTo(GRID[index] ?? 0, 6);
+    }
+    expect(rendered.strikes.every((strike) => strike.sounded)).toBe(true);
+  });
+
+  it('marks a strike no region covers as not sounded', async () => {
+    // A region map falls back to its nearest region, so only an empty one leaves a key bare.
+    const empty = (): Instrument => ({ source: sine().source, regions: new RegionMap([]) });
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .beat('1', [note(1, 0)])
+      .build();
+    const rendered = await renderScore(song, { instruments: empty, seconds: 3 });
+    expect(rendered.strikes).toEqual([
+      expect.objectContaining({ key: 64, sounded: false, missedSample: false }),
+    ]);
+  });
+});
+
 describe('renderScore with a synthetic instrument', () => {
   it('plays every note on the grid at its pitch', async () => {
     const song = scale(true);

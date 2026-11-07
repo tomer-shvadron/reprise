@@ -17,6 +17,7 @@ import { createSamplerSink } from '../sampler/sampler-sink';
 import { GM_BUDGET_BYTES, ManagedSampleSource } from '../samples/managed-sample-source';
 import type { InstrumentId } from '../samples/types';
 import { PERCUSSION_BANK, Sf2Soundfont } from '../sf2/soundfont';
+import type { InstrumentSink, NoteEvent } from '../sink';
 import { createTimeline } from '../timeline';
 import { signalOf } from './signal';
 import type { Signal } from './signal';
@@ -85,10 +86,26 @@ export interface Miss {
   sample: SampleRef;
 }
 
+/** One `Sampler.noteOn` call. */
+export interface Strike {
+  track: Id;
+  key: number;
+  velocity: number;
+  when: number;
+  /** A voice started. */
+  sounded: boolean;
+  /** No voice started because a sample was not decoded (also in `missed`). */
+  missedSample: boolean;
+}
+
 export interface Rendered extends Signal {
   buffer: AudioBuffer;
   sampler: Sampler;
   missed: Miss[];
+  /** Every note the transport handed the sink, in order. */
+  scheduled: NoteEvent[];
+  /** Every key the sink struck on the sampler, with whether a region sounded it. */
+  strikes: Strike[];
   /** The memory manager, when a soundfont played. */
   source: ManagedSampleSource | undefined;
   /** Seconds of the song at its written tempo, from `START`. */
@@ -175,6 +192,22 @@ export async function renderScore(score: Score, options: RenderOptions): Promise
   const sampler = new Sampler(context, {
     onMiss: (track, sample) => missed.push({ track, sample }),
   });
+  const strikes: Strike[] = [];
+  const noteOn = sampler.noteOn.bind(sampler);
+  // The sampler returns no handle when no region matches, so this is the only place to see it.
+  sampler.noteOn = (track, request) => {
+    const misses = missed.length;
+    const handle = noteOn(track, request);
+    strikes.push({
+      track,
+      key: request.key,
+      velocity: request.velocity,
+      when: request.when,
+      sounded: handle !== undefined,
+      missedSample: missed.length > misses,
+    });
+    return handle;
+  };
   if (options.tap === 'strips') {
     sampler.master.input.disconnect();
     sampler.master.input.connect(context.destination);
@@ -182,9 +215,26 @@ export async function renderScore(score: Score, options: RenderOptions): Promise
   for (const track of score.tracks) sampler.addTrack(track, instrumentOf(track));
   const scheduler = manualTicker();
   const frames = manualTicker();
+  const scheduled: NoteEvent[] = [];
+  const samplerSink = createSamplerSink(sampler, programOf ? { instrumentOf: programOf } : {});
+  const sink: InstrumentSink = {
+    noteOn(event) {
+      scheduled.push(event);
+      samplerSink.noteOn(event);
+    },
+    mix(event) {
+      samplerSink.mix?.(event);
+    },
+    allNotesOff(when) {
+      samplerSink.allNotesOff(when);
+    },
+    dispose() {
+      samplerSink.dispose?.();
+    },
+  };
   const engine = createTransport({
     context,
-    sink: createSamplerSink(sampler, programOf ? { instrumentOf: programOf } : {}),
+    sink,
     metronome: new ClickSynth(context, sampler.master.input),
     scheduler: scheduler.ticker,
     frames: frames.ticker,
@@ -203,5 +253,14 @@ export async function renderScore(score: Score, options: RenderOptions): Promise
     })),
   });
   engine.dispose();
-  return { ...signalOf(buffer), buffer, sampler, missed, source, songSeconds: song };
+  return {
+    ...signalOf(buffer),
+    buffer,
+    sampler,
+    missed,
+    scheduled,
+    strikes,
+    source,
+    songSeconds: song,
+  };
 }
