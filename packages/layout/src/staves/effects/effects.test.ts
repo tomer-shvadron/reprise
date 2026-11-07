@@ -2,7 +2,13 @@ import { applyCommand, setBeatEffect, setNoteEffect, type Note, type Score } fro
 import { beatOf, note, noteOf, type ScoreBuilder } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
-import { LayoutCache, layout, type LayoutResult, type Primitive } from '../../index';
+import {
+  LayoutCache,
+  layout,
+  type LayoutResult,
+  type Primitive,
+  type StaffPlacement,
+} from '../../index';
 import { overlappingMarks, stable, strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
 import { BENDS, content, everyEffectScore, guitar, laid, paged, texts } from '../../test/effects';
@@ -806,18 +812,22 @@ describe('note effects on the tab: arcs and letters in the measured room', () =>
   const tabStrays = (result: LayoutResult, built: Score) =>
     strayPrimitives(result, built, 'tab').map(describePrimitive);
 
-  /** The tab's staff anchor in `system` and the room it keeps below the bottom string, in px. */
+  /** The tab's staff anchor and placement in `system`, and the room it keeps below the bottom string, in px. */
   function tabBelow(
     result: LayoutResult,
     system: number,
-  ): { anchor: Primitive['bbox']; below: number } {
+  ): { anchor: Primitive['bbox']; tab: StaffPlacement; below: number } {
     const found = result.systems[system];
     const anchor = result.anchors
       .slice(found?.anchors.start, found?.anchors.end)
       .find((candidate) => candidate.kind === 'staff' && candidate.staff === 'tab');
     const placement = found?.staves.find((staff) => staff.type === 'tab');
     if (!anchor || !placement) throw new Error(`no tab in system ${String(system)}`);
-    return { anchor: anchor.bbox, below: anchor.bbox.y + anchor.bbox.height - placement.bottom };
+    return {
+      anchor: anchor.bbox,
+      tab: placement,
+      below: anchor.bbox.y + anchor.bbox.height - placement.bottom,
+    };
   }
 
   /** Bars of two halves, `[2: first, 2: 3/0]`, one per system at width 300. */
@@ -859,14 +869,18 @@ describe('note effects on the tab: arcs and letters in the measured room', () =>
     const result = laid(built, { width: 300 });
     expect(result.systems[1]?.bars.start).toBe(1);
     expect(tabStrays(result, built)).toEqual([]);
-    const { anchor, below } = tabBelow(result, 0);
+    const { anchor, tab, below } = tabBelow(result, 0);
     expect(below).toBeCloseTo(1.1785 * 7, 1);
     const origin = noteOf(built, 0, 0, 0).id;
-    const arcs = result.primitives.filter((p) => p.kind === 'path' && p.node === origin);
-    expect(arcs.length).toBeGreaterThan(0);
-    for (const arc of arcs) {
-      expect(arc.bbox.y + arc.bbox.height).toBeLessThanOrEqual(anchor.y + anchor.height + 0.02);
-    }
+    // The standard staff's slur and the knockout under the origin's number carry its id too.
+    const arcs = result.primitives.filter(
+      (p) => p.kind === 'path' && p.role === 'ink' && p.node === origin && p.bbox.y >= tab.top,
+    );
+    expect(arcs).toHaveLength(1);
+    const [arc] = arcs;
+    expect(arc && arc.bbox.y + arc.bbox.height).toBeLessThanOrEqual(
+      anchor.y + anchor.height + 0.02,
+    );
   });
 
   it('keeps room for ties on the bottom string in both mode, within a bar and across a break', () => {
