@@ -6,9 +6,10 @@
  *   node scripts/conflicts/check.ts <file>  # the given files (the pre-commit hook)
  */
 import { execFileSync } from 'node:child_process';
-import { lstatSync, readFileSync } from 'node:fs';
+import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import process, { argv } from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 const ROOT = join(import.meta.dirname, '../..');
 
@@ -139,4 +140,8 @@ function main(): void {
   process.exitCode = 1;
 }
 
-if (import.meta.main) main();
+// Not import.meta.main: it arrived in Node 24.2, and on 24.0 and 24.1 the hook would pass silently.
+const entry = argv[1];
+if (entry !== undefined && realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url))) {
+  main();
+}

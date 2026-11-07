@@ -1,9 +1,17 @@
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+
 import { format, resolveConfig } from 'prettier';
 import { describe, expect, it } from 'vitest';
 
 import { findMarkers, isAllowed, isBinary, staleEntries } from './check.ts';
 
 // Built at run time, so no line of this file holds a marker and it passes the check itself.
+const CLI = fileURLToPath(new URL('check.ts', import.meta.url));
 const LT = '<'.repeat(7);
 const EQ = '='.repeat(7);
 const GT = '>'.repeat(7);
@@ -21,6 +29,11 @@ const conflict = (diff3: boolean): string[] => [
 
 const rules = (path: string, lines: readonly string[], eol = '\n'): [number, string][] =>
   findMarkers(path, lines.join(eol)).map(({ line, rule }) => [line, rule]);
+
+const EOLS: readonly (readonly [string, string])[] = [
+  ['LF', '\n'],
+  ['CRLF', '\r\n'],
+];
 
 describe('raw markers', () => {
   const paths = [
@@ -41,21 +54,20 @@ describe('raw markers', () => {
     'docs/a.md',
   ];
   const cases = paths.flatMap((path) =>
-    [false, true].flatMap((diff3) =>
-      [
-        ['LF', '\n'],
-        ['CRLF', '\r\n'],
-      ].map(([name, eol]) => ({ path, diff3, name, eol: eol ?? '\n' })),
-    ),
+    [false, true].flatMap((diff3) => EOLS.map(([name, eol]) => ({ path, diff3, name, eol }))),
   );
 
-  it.each(cases)('flags every marker in $path (diff3 $diff3, $name)', ({ path, diff3, eol }) => {
-    const lines = ['before', ...conflict(diff3), 'after'];
-    const expected = lines.flatMap((line, index): [number, string][] =>
-      /^[<=>|]{7}/.test(line) ? [[index + 1, 'raw']] : [],
-    );
-    expect(rules(path, lines, eol)).toEqual(expected);
-  });
+  it.each(cases)(
+    'flags every marker in $path (diff3 $diff3, $name)',
+    ({ path, diff3, name, eol }) => {
+      expect(eol).toBe(name === 'CRLF' ? '\r\n' : '\n');
+      const lines = ['before', ...conflict(diff3), 'after'];
+      const expected = lines.flatMap((line, index): [number, string][] =>
+        /^[<=>|]{7}/.test(line) ? [[index + 1, 'raw']] : [],
+      );
+      expect(rules(path, lines, eol)).toEqual(expected);
+    },
+  );
 });
 
 describe('forms Prettier wrote', () => {
@@ -183,6 +195,44 @@ describe('forms Prettier wrote', () => {
 
   it('flags a setext underline of exactly seven, by design', () => {
     expect(rules('a.md', ['Title', EQ])).toEqual([[2, 'raw']]);
+  });
+
+  it('flags a Markdown run of eight or more > or |, which the nesting prefix absorbs, by design', () => {
+    expect(
+      rules('a.md', ['>'.repeat(8) + ' x', '|'.repeat(8), '<'.repeat(8), '='.repeat(8)]),
+    ).toEqual([
+      [1, 'markdown-nested'],
+      [2, 'markdown-nested'],
+    ]);
+  });
+});
+
+describe('the command line', () => {
+  const run = (name: string, content: string | Uint8Array) => {
+    const dir = mkdtempSync(join(tmpdir(), 'conflicts-'));
+    const file = join(dir, name);
+    writeFileSync(file, content);
+    const result = spawnSync(process.execPath, [CLI, file], { encoding: 'utf8' });
+    rmSync(dir, { recursive: true, force: true });
+    return result;
+  };
+
+  it('exits non-zero on a file with a marker', () => {
+    const { status, stderr } = run('a.txt', ['ours', EQ, 'theirs', ''].join('\n'));
+    expect(status).toBe(1);
+    expect(stderr).toMatch(/a\.txt:2: ={7} \(raw\)/);
+  });
+
+  it('skips a binary file', () => {
+    const { status, stdout } = run('a.bin', Buffer.from(`\0${EQ}\n`));
+    expect(status).toBe(0);
+    expect(stdout).toContain('No conflict markers in 0 text files.');
+  });
+
+  it('passes a clean file', () => {
+    const { status, stdout } = run('a.txt', 'clean\n');
+    expect(status).toBe(0);
+    expect(stdout).toContain('No conflict markers in 1 text files.');
   });
 });
 

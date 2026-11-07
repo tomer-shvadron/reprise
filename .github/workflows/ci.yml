@@ -54,7 +54,8 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
-      # Before Lint: Prettier rewrites conflict markers in Markdown into forms format:check accepts.
+      # First of the checks, so a conflict fails with path:line rather than a parse error; format:check
+      # accepts the forms Prettier rewrites markers into in Markdown.
       - name: Conflict markers
         run: pnpm conflicts:check
 
