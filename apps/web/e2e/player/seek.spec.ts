@@ -97,3 +97,19 @@ test('a click seeks to a bar or a beat, and a repeated bar to the pass nearest t
   await expect(app.field('bar')).toHaveText('2/16');
   await expect(app.field('time')).toHaveText(`${SONG.bar2First} ${SONG.total}`);
 });
+
+// The bug `nextBars` works around: when this starts passing, drop `test.fail` and the helper.
+test('rapid bar seeks keep the cursor in view', async ({ app, page }) => {
+  test.fail(true, 'https://github.com/tomer-shvadron/reprise/issues/76#issuecomment-6705653330');
+  await page.keyboard.press('ControlOrMeta+Home');
+  await expect(app.field('bar')).toHaveText('1/16');
+  for (let i = 0; i < 10; i += 1) await page.keyboard.press('ControlOrMeta+ArrowRight');
+  await expect(app.field('bar')).toHaveText('3/16');
+  // The second pass, past 0:20, not the first.
+  await expect(app.field('time')).toHaveText(/^0:2\d /);
+  await app.settle();
+  const line = await page.locator(CURSOR).boundingBox();
+  const { rect } = await app.regionScroll();
+  expect(line).not.toBeNull();
+  expect(line && line.y >= rect.y && line.y + line.height <= rect.y + rect.height).toBe(true);
+});
