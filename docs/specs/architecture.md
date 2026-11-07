@@ -68,8 +68,9 @@ file bytes --formats.read--> Score --------+--> layout.layout(score, options) --
 ```
 
 - The **document store** holds the current `Score`, the undo history and the selection. All edits go through commands.
-- **Layout** is a pure function of the score and view options, cached per bar; a patch marks bars dirty and only those re-flow, then systems re-break from the first dirty bar onward.
+- **Layout** is a pure function of the score and view options, cached per bar; a patch marks bars dirty and only those re-flow, systems within three bars of a re-measured bar are rebuilt, re-breaking stops where the breaks re-converge, and the rest are reused.
 - **Audio** reads the score through the tempo map and the playback sequence; it never holds a reference to React state.
+- **Mixer**: volume, pan and instrument are score edits through `setTrackProperties`; mute and solo are the audio service's per-song overrides; visibility and single-track view are the document's view state, and notation per track is view state that Save writes into the file (ADR-0024). A timeline-neutral edit reaches the sampler without rebuilding the sequence.
 
 ## Contracts
 
@@ -466,13 +467,13 @@ interface Platform {
 }
 ```
 
-The browser implementation exists so `pnpm dev` works without Electron; the Electron implementation goes through the preload bridge.
+The browser implementation exists so `pnpm dev` works without Electron; the Electron implementation goes through the preload bridge. The packaged renderer is served by main from `reprise://app/`, so the app's own static files (the GM bank, the fonts) load with `fetch` the same way in the browser and in Electron.
 
 ## Runtime shape
 
 - **Renderer process**: React, the document store, layout (main thread first, worker-ready), the audio scheduler.
 - **Audio thread**: Web Audio's native graph does all mixing. The main thread only schedules.
-- **Electron main**: file dialogs, file IO, menus, window state, printing, app paths.
+- **Electron main**: file dialogs, file IO, menus, window state, printing, app paths, and serving the built renderer over `reprise://app`.
 - **Threads we may add later**: a layout worker if layout time exceeds its budget; an AudioWorklet scheduler if main-thread jank ever causes gaps. Both are isolated by the contracts above.
 
 ## Memory model

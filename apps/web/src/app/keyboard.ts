@@ -11,6 +11,8 @@ export interface Shortcut {
   mod?: boolean;
   shift?: boolean;
   alt?: boolean;
+  /** Bound on this platform only, such as Ctrl+Y for redo off macOS. */
+  only?: KeyboardPlatform;
 }
 
 type KeyEventLike = Pick<
@@ -50,11 +52,20 @@ export function shortcutId(shortcut: Shortcut): string {
   return [...parts.filter(Boolean), shortcut.key.toLowerCase()].join('+');
 }
 
+/** The shortcut if it is bound on `platform`, for every place that matches, prints or lists it. */
+export function shortcutOn(
+  shortcut: Shortcut | undefined,
+  platform: KeyboardPlatform,
+): Shortcut | undefined {
+  return shortcut && (shortcut.only ?? platform) === platform ? shortcut : undefined;
+}
+
 export function matchesShortcut(
   event: KeyEventLike,
   shortcut: Shortcut,
   platform: KeyboardPlatform,
 ): boolean {
+  if (!shortcutOn(shortcut, platform)) return false;
   const mod = platform === 'mac' ? event.metaKey : event.ctrlKey;
   const otherModifier = platform === 'mac' ? event.ctrlKey : event.metaKey;
   if (otherModifier || mod !== Boolean(shortcut.mod)) return false;

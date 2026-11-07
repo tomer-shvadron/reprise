@@ -3,7 +3,12 @@ import { viewLayoutOptions } from '@/features/score';
 import { installTransport } from '@/features/transport/install-transport';
 import { createTransportUi, type TransportUiStore } from '@/features/transport/transport-ui';
 import type { Platform } from '@/platform/platform';
-import { createDocumentStore, type DocumentStore, type DocumentStoreDeps } from '@/state/document';
+import {
+  createDocumentStore,
+  visibleTrackIds,
+  type DocumentStore,
+  type DocumentStoreDeps,
+} from '@/state/document';
 import { createLayoutStore, type LayoutStore } from '@/state/layout';
 import { createPlaybackStore, type PlaybackStore } from '@/state/playback';
 import { createSelectionStore, type SelectionStore } from '@/state/selection';
@@ -49,7 +54,10 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     document,
     ui,
     options: (view, content) =>
-      viewLayoutOptions(view, { tracks: content.tracks, notation: content.notation }),
+      viewLayoutOptions(view, {
+        tracks: visibleTrackIds(content, document.getState().score),
+        notation: content.notation,
+      }),
   });
   const audio = (options.audio ?? ((store) => createAudioService({ playback: store })))(playback);
 

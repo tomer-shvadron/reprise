@@ -33,6 +33,10 @@ Terms used across the docs, the model and the UI. When two names exist, the one 
 - **Region**: one sample mapping in a soundfont: key range, velocity range, root key, loop, envelope.
 - **Voice (audio)**: one playing instance of a sample in the sampler. Distinct from a notation voice.
 - **Keyswitch**: a note outside the playable range that selects an articulation layer in an SFZ pack.
+- **Current track**: the track the track list highlights; track commands and single-track view act on it.
+- **Multitrack view / single-track view**: the score shows the tracks in the multitrack set, or the current track alone (F3, Guitar Pro's "Multitrack").
+- **View state**: what the score shows rather than what it is (visible tracks, single-track view, notation per track): never undoable.
+- **Mixer override**: a session's mute or solo over a track's own `channel` flags; never written to the file.
 - **Lane**: one parallel stream of work owning one package and, where applicable, one feature folder.
 - **Checkpoint**: a milestone where lane output is integrated into a usable app state: Player, Library, Trainer, Editor, HQ Sound, Release.
 - **Work package** (WP): one unit of work in a phase plan, mapped to one GitHub issue.

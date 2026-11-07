@@ -5,6 +5,7 @@
     { "path": "./packages/formats" },
     { "path": "./packages/formats/test" },
     { "path": "./packages/layout" },
+    { "path": "./packages/layout/test" },
     { "path": "./packages/audio" },
     { "path": "./apps/web" },
     { "path": "./apps/desktop" },

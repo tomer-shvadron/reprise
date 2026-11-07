@@ -51,6 +51,13 @@ export interface PlaybackStoreState {
   settings: TransportSettings;
   /** The user's overrides over each track's `channel`; cleared on a switch. */
   mixer: Readonly<Record<Id, TrackParams>>;
+  /** Tracks whose newly chosen instrument is still decoding; cleared on a switch. */
+  instrumentLoads: Readonly<Record<Id, InstrumentLoad>>;
+}
+
+export interface InstrumentLoad {
+  loaded: number;
+  total: number;
 }
 
 export const selectCanPlay = (state: PlaybackStoreState): boolean =>
@@ -77,6 +84,7 @@ export function initialPlaybackState(): PlaybackStoreState {
       masterVolume: 1,
     },
     mixer: {},
+    instrumentLoads: {},
   };
 }
 

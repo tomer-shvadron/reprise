@@ -6,7 +6,7 @@ import { note, score } from '@reprise/model/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { stubViewport } from '@/features/score/test/viewport-stub';
-import { mirrorAudio } from '@/features/transport/test/mirror-audio';
+import { mirrorAudio } from '@/test/mirror-audio';
 import { renderWithServices } from '@/test/render';
 import { positionEventAt } from '@/test/position';
 import { createTestServices } from '@/test/services';

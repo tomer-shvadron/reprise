@@ -1,12 +1,6 @@
 import { runCommand, type CommandRegistry } from './command-registry';
 import { matchesShortcut, type KeyboardPlatform } from './keyboard';
-
-function isEditable(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
-  );
-}
+import { isEditable } from './text-field';
 
 // Sliders are left out on purpose: Space plays while one has focus.
 const ACTIVATES_ON_SPACE = [

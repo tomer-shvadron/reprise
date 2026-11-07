@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { MixerPanel, TrackSidebar } from '@/features/tracks';
 import { TransportBar } from '@/features/transport';
 import type { RepriseBridge } from '@/platform/bridge';
 
@@ -70,6 +71,8 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
           ui={ui}
           score={<ScorePane hint={hint} />}
           transport={<TransportBar registry={registry} keyboard={keyboard} />}
+          sidebar={<TrackSidebar registry={registry} keyboard={keyboard} />}
+          panel={<MixerPanel />}
         />
         <CommandPalette registry={registry} ui={ui} keyboard={keyboard} />
         <DropZone />

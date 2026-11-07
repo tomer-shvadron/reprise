@@ -46,6 +46,8 @@ export type MenuCommandId =
   | 'file.save'
   | 'file.saveAs'
   | 'file.print'
+  | 'edit.undo'
+  | 'edit.redo'
   | 'view.zoomIn'
   | 'view.zoomOut'
   | 'view.zoomReset'

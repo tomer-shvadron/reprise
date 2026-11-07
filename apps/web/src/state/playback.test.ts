@@ -17,6 +17,8 @@ describe('the playback store', () => {
       metronome: { on: false, volume: 0.7 },
       masterVolume: 1,
     });
+    expect(state.mixer).toEqual({});
+    expect(state.instrumentLoads).toEqual({});
   });
 
   it('can play once the song is ready, unless audio output failed', () => {

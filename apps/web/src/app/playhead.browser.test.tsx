@@ -6,7 +6,7 @@ import { Profiler } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { playheadAt } from '@/features/score';
-import { mirrorAudio } from '@/features/transport/test/mirror-audio';
+import { mirrorAudio } from '@/test/mirror-audio';
 import { seekTick } from '@/features/transport/seek';
 import { timelineOf } from '@/state/timeline';
 import { createTestServices } from '@/test/services';

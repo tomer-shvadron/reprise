@@ -1,8 +1,8 @@
-import { createEmptyScore } from '@reprise/model';
-import { largeScore, note, score } from '@reprise/model/testing';
+import { applyCommand, createEmptyScore, setBeatDuration } from '@reprise/model';
+import { beatOf, largeScore, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_MARGINS, PAGE_SIZES, layout, type LayoutOptions } from './index';
+import { DEFAULT_MARGINS, LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from './index';
 import { expectValid, overlappingAnchors, stable } from './test/check-result';
 
 const paged: LayoutOptions = {
@@ -102,6 +102,29 @@ describe('layout', () => {
     expect(narrow.slice(1)).toEqual(wide.slice(1));
   });
 
+  it('spaces a bar with no beats, or only empty ones, like a single quarter, as alphaTab does', () => {
+    const built = score()
+      .track('guitar')
+      .bar()
+      .rest('1')
+      .bar()
+      .bar()
+      .beat('4')
+      .bar()
+      .masterBar({ timeSignature: { numerator: 1, denominator: 4 } })
+      .rest('4')
+      .bar()
+      .rest('4')
+      .bar()
+      .rest('4')
+      .build({ ids: 'sequential' });
+    const widths = layout(built, continuous)
+      .anchors.filter((anchor) => anchor.kind === 'bar' && anchor.track === undefined)
+      .map((anchor) => anchor.bbox.width);
+    expect(widths[1]).toBeCloseTo(widths[4] ?? 0, 6);
+    expect(widths[2]).toBeCloseTo(widths[4] ?? 0, 6);
+  });
+
   it('breaks pages by system height', () => {
     const result = layout(largeScore(2, 120), paged);
     expectValid(result);
@@ -179,6 +202,30 @@ describe('layout', () => {
     const none = layout(built, { ...paged, tracks: [] });
     expect(none.systems).toEqual([]);
     expect(none.pages).toHaveLength(1);
+  });
+
+  it('spaces the visible tracks alone, whatever a hidden track plays', () => {
+    const builder = score().track('guitar');
+    for (let b = 0; b < 6; b++)
+      builder
+        .bar()
+        .beat('2', [note(1, b)])
+        .beat('4', [note(2, 0)])
+        .beat('4');
+    builder.track('bass');
+    for (let b = 0; b < 6; b++) builder.bar().beat('1', [note(1, b)]);
+    const built = builder.build({ ids: 'sequential' });
+    const options: LayoutOptions = { ...continuous, tracks: [built.tracks[0]?.id ?? ''] };
+    const cache = new LayoutCache();
+    const before = layout(built, options, cache);
+    const { score: edited } = applyCommand(
+      built,
+      setBeatDuration({ beatId: beatOf(built, 1, 2, 0).id }, { duration: 16 }),
+    );
+    const after = layout(edited, options, cache);
+    expect(after.metrics.measuredBars).toBe(0);
+    expect(stable(after)).toBe(stable(before));
+    expect(stable(after)).toBe(stable(layout(edited, options)));
   });
 
   it('is deterministic: identical input gives byte-identical output', () => {

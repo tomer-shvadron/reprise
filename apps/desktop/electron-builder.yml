@@ -7,6 +7,11 @@ files:
   - out/**
   - package.json
 npmRebuild: false
+# The renderer loads from reprise://app, so file:// needs no privileges; the other fuses are WP-102's.
+# Flipping a fuse breaks the ad-hoc signature, which identity null would otherwise leave invalid on arm64.
+electronFuses:
+  grantFileProtocolExtraPrivileges: false
+  resetAdHocDarwinSignature: true
 mac:
   category: public.app-category.music
   identity: null

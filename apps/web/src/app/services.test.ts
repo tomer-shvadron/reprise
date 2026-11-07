@@ -66,4 +66,42 @@ describe('the app services', () => {
     expect(services.fakeAudio.setDocument).not.toHaveBeenCalled();
     expect(services.fakeAudio.dispose).toHaveBeenCalledOnce();
   });
+
+  it('lay out the visible tracks and their notation, and not on a selection', async () => {
+    const services = createTestServices();
+    const { document, layout, selection } = services;
+    const three = score()
+      .track('guitar')
+      .bar()
+      .beat('1', [note(1, 0)])
+      .track('bass')
+      .bar()
+      .beat('1', [note(1, 0)])
+      .track('guitar')
+      .bar()
+      .beat('1', [note(1, 0)])
+      .build();
+    await document.getState().openBytes('a.reprise', await bytes(three));
+    const [t1 = '', t2 = '', t3 = ''] = document.getState().score?.tracks.map((t) => t.id) ?? [];
+    const staves = () =>
+      layout
+        .getState()
+        .result?.systems.flatMap((system) => system.staves.map((staff) => staff.track)) ?? [];
+    const tracksShown = () => [...new Set(staves())];
+
+    document.getState().setSingleTrack(t2);
+    expect(tracksShown()).toEqual([t2]);
+
+    document.getState().setSingleTrack(undefined);
+    document.getState().setVisibleTracks([t1, t3]);
+    expect(tracksShown()).toEqual([t1, t3]);
+
+    const before = staves().filter((track) => track === t1).length;
+    document.getState().setNotation(t1, 'both');
+    expect(staves().filter((track) => track === t1).length).toBe(before * 2);
+
+    const result = layout.getState().result;
+    selection.getState().setCurrentTrack(t3);
+    expect(layout.getState().result).toBe(result);
+  });
 });

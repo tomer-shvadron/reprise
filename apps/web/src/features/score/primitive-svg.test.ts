@@ -128,8 +128,10 @@ describe('samePrimitives', () => {
       setNote({ beatId: beatOf(score, 0, 10, 0).id }, { string: 1, fret: 9 }),
     );
     const after = layout(next, { ...options, dirtyBars: change.touchedBars }, cache);
-    expect(after.metrics.reusedSystems).toBeGreaterThan(0);
-    expect(after.metrics.reusedSystems).toBeLessThan(after.systems.length - 1);
+    // The systems within three bars of bar 10 are rebuilt, as equal objects but the edited one.
+    const rebuilt = after.systems.length - after.metrics.reusedSystems;
+    expect(rebuilt).toBeGreaterThanOrEqual(2);
+    expect(rebuilt).toBeLessThanOrEqual(3);
     const edited = after.systems.find((s) => s.bars.start <= 10 && 10 < s.bars.end);
     for (const [i, b] of after.systems.entries()) {
       const a = before.systems[i];

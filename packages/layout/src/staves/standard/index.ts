@@ -17,11 +17,17 @@ interface Planned {
   plan: BarPlan;
 }
 
-/** What a bar's plan is made from besides the bar itself. */
+/**
+ * What a bar's plan is made from besides the bar itself. Of the track, only the fields `planBar`
+ * reads, which keep their objects across note edits; a new read of the track joins this list.
+ */
 function planInputs(input: StaffBar): unknown[] {
   const { track, score, barIndex } = input;
   return [
-    track,
+    track.kind,
+    track.tuning,
+    track.capo,
+    track.display,
     input.masterBar,
     track.bars[barIndex - 1],
     score.masterBars[barIndex - 1]?.keySignature,

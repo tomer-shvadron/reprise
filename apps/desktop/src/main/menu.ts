@@ -13,12 +13,15 @@ export const MENU_COMMANDS = {
   'file.save': { label: 'Save', accelerator: 'CmdOrCtrl+S' },
   'file.saveAs': { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S' },
   'file.print': { label: 'Print…', accelerator: 'CmdOrCtrl+P' },
+  // The renderer replays a focused text field's own undo, so these replace the native roles.
+  'edit.undo': { label: 'Undo', accelerator: 'CmdOrCtrl+Z' },
+  'edit.redo': { label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z' },
   'view.zoomIn': { label: 'Zoom In', accelerator: 'CmdOrCtrl+=' },
   'view.zoomOut': { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-' },
   'view.zoomReset': { label: 'Actual Size', accelerator: 'CmdOrCtrl+0' },
   'view.toggleTheme': { label: 'Toggle Theme', accelerator: 'CmdOrCtrl+Shift+L' },
   'view.toggleSidebar': { label: 'Toggle Tracks' },
-  'view.togglePanel': { label: 'Toggle Panel' },
+  'view.togglePanel': { label: 'Toggle Mixer', accelerator: 'F8' },
 } satisfies Record<MenuCommandId, MenuCommand>;
 
 export interface MenuOptions {
@@ -62,8 +65,8 @@ export function menuTemplate({
     {
       label: 'Edit',
       submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
+        command('edit.undo'),
+        command('edit.redo'),
         separator,
         { role: 'cut' },
         { role: 'copy' },

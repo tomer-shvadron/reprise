@@ -13,7 +13,7 @@ import {
 import type { UiStore } from '@/state/ui';
 
 import { runCommand, type CommandRegistry } from './command-registry';
-import { formatShortcut, type KeyboardPlatform } from './keyboard';
+import { formatShortcut, shortcutOn, type KeyboardPlatform } from './keyboard';
 
 interface CommandPaletteProps {
   registry: CommandRegistry;
@@ -33,22 +33,25 @@ export function CommandPalette({ registry, ui, keyboard }: CommandPaletteProps) 
         <CommandList>
           <CommandEmpty>No matching command.</CommandEmpty>
           <CommandGroup heading="Commands">
-            {commands.map((command) => (
-              <CommandItem
-                key={command.id}
-                value={command.id}
-                keywords={[command.title]}
-                onSelect={() => {
-                  setOpen(false);
-                  runCommand(command);
-                }}
-              >
-                {command.title}
-                {command.shortcut && (
-                  <CommandShortcut>{formatShortcut(command.shortcut, keyboard)}</CommandShortcut>
-                )}
-              </CommandItem>
-            ))}
+            {commands.map((command) => {
+              const shortcut = shortcutOn(command.shortcut, keyboard);
+              return (
+                <CommandItem
+                  key={command.id}
+                  value={command.id}
+                  keywords={[command.title]}
+                  onSelect={() => {
+                    setOpen(false);
+                    runCommand(command);
+                  }}
+                >
+                  {command.title}
+                  {shortcut && (
+                    <CommandShortcut>{formatShortcut(shortcut, keyboard)}</CommandShortcut>
+                  )}
+                </CommandItem>
+              );
+            })}
           </CommandGroup>
         </CommandList>
       </Command>

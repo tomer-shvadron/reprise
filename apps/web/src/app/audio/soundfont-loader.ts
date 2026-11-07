@@ -12,7 +12,7 @@ export class SoundfontError extends Error {
 
 export type SoundfontProgress = (loaded: number, total: number | undefined) => void;
 
-/** Fetches the GM bank; injected so the packaged desktop app can serve it another way (#93). */
+/** Fetches the GM bank; injected so tests can supply their own bank. */
 export type SoundfontLoader = (onProgress: SoundfontProgress) => Promise<Uint8Array>;
 
 export const GM_SOUNDFONT_PATH = 'sounds/gm/GeneralUser-GS.sf2';
