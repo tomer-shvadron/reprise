@@ -140,6 +140,7 @@ function check(
   for (const overflow of outsideItsPage(result, MARGINS)) {
     const where = `page ${String(overflow.page + 1)}, system ${String(overflow.system + 1)}, ${barsOf(result, overflow.system)}`;
     const count = overflow.primitives + overflow.anchors;
+    const bars = result.systems[overflow.system]?.bars;
     if (count > 0) {
       record.violations.push({
         code: 'outside-page',
@@ -150,6 +151,7 @@ function check(
           count,
           overflowPx: Math.round(overflow.overflowPx * 10) / 10,
           systemOverflowPx: Math.round(overflow.systemOverflowPx * 10) / 10,
+          systemBars: bars ? bars.end - bars.start : 0,
         },
       });
     }

@@ -124,6 +124,18 @@ describe('the known list', () => {
     expect(notRun.summary.stale).toEqual([]);
   });
 
+  it('accepts as #107 only a one-bar system past the right margin', () => {
+    const outside = (data: CheckViolation['data']) =>
+      classify(
+        [fixture(target)],
+        ['layout'],
+        [record(target, 'layout', { violations: [violation('outside-page', data)] })],
+      ).files[0]?.checks.layout?.status;
+    expect(outside(ONE_WIDE_BAR)).toBe('known');
+    expect(outside({ systemOverflowPx: 4.7, systemBars: 5 })).toBe('fail');
+    expect(outside({ systemOverflowPx: 0, systemBars: 1 })).toBe('fail');
+  });
+
   it('has unique ids and an issue number for each entry', () => {
     expect(new Set(KNOWN_ISSUES.map((entry) => entry.id)).size).toBe(KNOWN_ISSUES.length);
     for (const entry of KNOWN_ISSUES) expect(entry.issue).toBeGreaterThan(0);
