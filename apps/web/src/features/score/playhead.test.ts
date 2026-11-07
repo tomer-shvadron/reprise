@@ -75,6 +75,28 @@ describe('playheadAt', () => {
     expect(at(9.4).cursor?.x).toBeCloseTo(centre(b4) + ((end - centre(b4)) * (3584 - 2880)) / 960);
   });
 
+  it('follows through an over-full bar into its overflow, then into the next bar', () => {
+    const builder = score().tempo(120).track('guitar').bar();
+    for (let fret = 0; fret < 6; fret++) builder.beat('4', [note(1, fret)]);
+    builder.bar();
+    for (let fret = 0; fret < 4; fret++) builder.beat('4', [note(2, fret)]);
+    const overfull = builder.build({ validate: false });
+    const overfullLayout = layout(overfull, paged);
+    const overfullMap = timelineOf(overfull).map;
+    const bar1 = overfull.masterBars[0]?.id ?? '';
+    const beats = beatAnchors(overfullLayout, bar1);
+    expect(beats).toHaveLength(6);
+    const [, , , , b5, b6] = beats;
+    if (!b5 || !b6) throw new Error('no beats');
+
+    const inOverflow = positionAtSeconds(overfullMap, 2.25);
+    expect(inOverflow).toMatchObject({ masterBarIndex: 0, tick: 4320 });
+    expect(playheadAt(overfullLayout, overfull, bar1, inOverflow?.tick ?? 0)?.x).toBeCloseTo(
+      (centre(b5) + centre(b6)) / 2,
+    );
+    expect(positionAtSeconds(overfullMap, 3.1)?.masterBarIndex).toBe(1);
+  });
+
   it('merges the staves’ anchors at one onset, skips lone rests and spans an empty bar', () => {
     const two = repeatSong();
     const twoLayout = layout(two, { ...paged, notation: uniformNotation(two, 'both') });
