@@ -25,9 +25,10 @@ const FIRST_WHERE = 5;
 export const ATTACK_THRESHOLDS = {
   heard: 1.5,
   missed: 1.2,
-  /** A run fails above this share of missed clusters (and above `minMisses`)… */
+  /** A run fails above this share of missed clusters, at least `minMisses`, at most `maxMisses`… */
   missShare: 0.02,
   minMisses: 2,
+  maxMisses: 10,
   /** …or on this many missed clusters in a row. */
   consecutive: 3,
   /** Attacks this close to the first of a cluster merge into it. */
@@ -268,6 +269,12 @@ export function ratioStats(ratios: readonly number[]): {
   return { min: sorted[0] ?? 0, p10: quantile(sorted, 0.1), median: quantile(sorted, 0.5) };
 }
 
+/** How many isolated missed attacks a song of `clusters` attacks may have before it fails. */
+export function missAllowance(clusters: number): number {
+  const { missShare, minMisses, maxMisses } = ATTACK_THRESHOLDS;
+  return Math.min(maxMisses, Math.max(minMisses, missShare * clusters));
+}
+
 /** Spectral-flux attack ratios at every cluster of the mono mix. */
 export function verifyAttacks(
   left: Signal,
@@ -282,13 +289,7 @@ export function verifyAttacks(
     flux,
     clusters.map((cluster) => cluster.when),
   );
-  const {
-    heard: heardAt,
-    missed: missedBelow,
-    missShare,
-    minMisses,
-    consecutive,
-  } = ATTACK_THRESHOLDS;
+  const { heard: heardAt, missed: missedBelow, consecutive } = ATTACK_THRESHOLDS;
   let heard = 0;
   let weak = 0;
   let run = 0;
@@ -312,7 +313,7 @@ export function verifyAttacks(
   });
   const missed = ratios.length - heard - weak;
   const result: AttackVerification = { clusters: clusters.length, heard, weak, missed, ratios };
-  if (missed > Math.max(minMisses, missShare * clusters.length) || longest >= consecutive) {
+  if (missed > missAllowance(clusters.length) || longest >= consecutive) {
     result.violation = {
       code: 'attack-missed',
       message: `${String(missed)} of ${String(clusters.length)} scheduled attacks are not heard in the render`,

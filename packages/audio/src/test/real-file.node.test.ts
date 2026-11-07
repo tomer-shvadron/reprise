@@ -6,7 +6,7 @@ import { note, score } from '@reprise/model/testing';
 import type { NoteEvent } from '../sink';
 import { START } from './harness';
 import type { Strike } from './harness';
-import { completeness, expectedAttacks, strikeTiming } from './real-file';
+import { completeness, expectedAttacks, missAllowance, strikeTiming } from './real-file';
 
 /** The sink event for one note, at its written time (120 BPM, so a quarter is half a second). */
 function eventOf(
@@ -222,5 +222,14 @@ describe('strikeTiming', () => {
     const [event] = [eventOf(song, 0, 0)];
     expect(timing(song, [event], [[strikeOf(event, 0.05)]])).toEqual([]);
     expect(timing(song, [event], [[strikeOf(event, 0.6)]])).toEqual(['strike-late']);
+  });
+});
+
+describe('missAllowance', () => {
+  it('allows 2 % of the attacks, at least 2 and at most 10, however long the song', () => {
+    expect(missAllowance(0)).toBe(2);
+    expect(missAllowance(76)).toBe(2);
+    expect(missAllowance(400)).toBe(8);
+    expect(missAllowance(1500)).toBe(10);
   });
 });

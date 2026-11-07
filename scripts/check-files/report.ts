@@ -471,6 +471,27 @@ export function renderSummary(run: RunReport, env: Environment): string {
         .join(', ')}`,
     );
   }
+  const ratios = run.files.flatMap((report) => {
+    const facts = report.checks.audio?.record.facts;
+    return report.file.source === 'local' && facts?.['ratioMin'] !== undefined
+      ? [{ label: report.label, facts }]
+      : [];
+  });
+  if (ratios.length > 0) {
+    lines.push(
+      '',
+      '## Attack ratios of the local tabs',
+      '',
+      'The audio thresholds (heard at 1.5, missed under 1.2) are calibrated on the fixtures only, which hold one band mix; these numbers are what a retune starts from.',
+      '',
+      '| Tab | Attacks | Weak | Missed | Ratio min | Ratio p10 |',
+      '| --- | --- | --- | --- | --- | --- |',
+      ...ratios.map(
+        ({ label, facts }) =>
+          `| ${cell(label)} | ${['clusters', 'weak', 'missed', 'ratioMin', 'ratioP10'].map((key) => String(facts[key] ?? '?')).join(' | ')} |`,
+      ),
+    );
+  }
   if (run.stale.length > 0) {
     lines.push(
       '',

@@ -269,5 +269,15 @@ describe('the summary', () => {
     expect(text).toContain('| File | read | audio | Overall |');
     expect(text).toContain('| fixtures/a.gp5 | pass | pass | pass |');
     expect(text).toContain('Totals: 0 failed, 0 known, 0 crashed, 0 stale known entries.');
+    expect(text).not.toContain('Attack ratios');
+  });
+
+  it('lists the attack ratios of each local tab', () => {
+    const file = local('/repo/local-tabs/a.gp5', 1);
+    const facts = { clusters: 120, weak: 3, missed: 0, ratioMin: 1.31, ratioP10: 2.4 };
+    const run = classify([file], ['audio'], [record(file.file, 'audio', { facts })]);
+    expect(renderSummary(run, env)).toContain(
+      '| local-1 (sha256 1a2b3c4d5e6f) | 120 | 3 | 0 | 1.31 | 2.4 |',
+    );
   });
 });
