@@ -759,6 +759,13 @@ planSamples(plan, regionMapOf); // the SampleRefs those keys reach
   a sample it shares with a pinned instrument stays.
 - **The instruments of the sample being loaded are never its victims**, so the budget is exceeded
   only when they alone are larger than the whole budget.
+- **A resident is an instrument the song plans that holds decoded samples, or a leftover.** A
+  decoded buffer makes resident only the owners the current plan pins (all of them when none is
+  pinned, so the buffer always has an owner to free it), and a preset that merely shares the song's
+  samples (a bank variation, an alias) is not counted. A switch to a song on such a preset makes it
+  resident with the shared buffers before the old owner is evicted, so nothing is fetched again.
+- **An eviction is counted only when it frees a buffer**: dropping an alias whose samples another
+  resident still holds leaves `counters.evictions` and `pinnedEvictions` alone.
 
 ### Planning and preload
 
