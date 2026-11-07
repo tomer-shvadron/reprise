@@ -107,6 +107,12 @@ export function resolveOptions(score: Score, options: LayoutOptions): ResolvedOp
   const margins = { ...DEFAULT_MARGINS[options.mode], ...options.margins };
   const headerHeight =
     options.mode === 'paged' ? nonNegative(options.headerHeight ?? 0, 'headerHeight') : 0;
+  const room = pageHeight - margins.top - margins.bottom;
+  if (headerHeight > 0 && headerHeight >= room) {
+    throw new RangeError(
+      `layout option headerHeight (${String(headerHeight)}) must be less than the first page's content area (${String(room)})`,
+    );
+  }
   const pageGap = options.pageGap ?? DEFAULT_GAPS.pageGap;
   const tiedNotes = options.tiedNotes ?? 'parentheses';
   const measureKey = JSON.stringify([space, tiedNotes, trackKey]);

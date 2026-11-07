@@ -345,6 +345,17 @@ describe('layout', () => {
       );
       expect(() => layout(built, { ...paged, headerHeight: -1 })).toThrow(RangeError);
     });
+
+    it('rejects a header that leaves no room on the first page', () => {
+      const built = largeScore(2, 4);
+      const room = PAGE_SIZES.a4.height - margins.top - margins.bottom;
+      for (const headerHeight of [room, 2000]) {
+        expect(() => layout(built, { ...paged, headerHeight })).toThrow(
+          /headerHeight .* must be less than the first page's content area/,
+        );
+      }
+      expect(() => layout(built, { ...paged, headerHeight: room - 1 })).not.toThrow();
+    });
   });
 
   it('rejects a zoom or width that is not positive', () => {

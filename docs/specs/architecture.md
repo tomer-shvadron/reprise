@@ -418,7 +418,7 @@ interface LayoutOptions {
   mode: 'paged' | 'continuous'; width: number; pageHeight?: number; zoom: number; tracks: Id[] | 'all'; notation: Record<Id, 'tab'|'standard'|'both'>;
   tiedNotes?: 'parentheses' | 'hidden'; // tied notes on tab staves, parentheses unless given
   margins?: Partial<Margins>;         // page margins, unscaled
-  headerHeight?: number;              // paged: room kept free at the top of the first page for a header the caller draws, unscaled
+  headerHeight?: number;              // paged: room kept free at the top of the first page for a header the caller draws, unscaled; less than the page's content area, else RangeError
   pageGap?: number; staffGap?: number; trackGap?: number; systemGap?: number; // pageGap unscaled, the rest at zoom 1
   dirtyBars?: readonly Id[];          // master bars to re-measure when a cache is given, usually Change.touchedBars
 }
