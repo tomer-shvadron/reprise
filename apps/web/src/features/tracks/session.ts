@@ -1,18 +1,22 @@
 import type { Id } from '@reprise/model';
 
 import type { AppServices } from '@/app/services';
-import type { DocumentView } from '@/state/document';
+import type { TrackLayoutView } from '@/state/document';
 
 /**
- * A song's track session, for the library to keep per song (WP-060). Volume, pan and instrument
- * are not here: they are score data and travel with the saved song.
+ * A song's track session, for the library to keep per song (WP-060). Volume, pan, instrument and
+ * notation are not here: they are score data and travel with the saved song.
  */
 export interface TrackSession {
   version: 1;
-  view: DocumentView;
+  view: TrackLayoutView;
   /** The session's mute and solo overrides only, never the file's own flags. */
   mixer: Record<Id, { mute?: boolean; solo?: boolean }>;
   currentTrack?: Id;
+}
+
+function layoutOf({ tracks, only }: TrackLayoutView): TrackLayoutView {
+  return only === undefined ? { tracks } : { tracks, only };
 }
 
 type SessionServices = Pick<AppServices, 'document' | 'playback' | 'selection'>;
@@ -28,7 +32,7 @@ export function captureTrackSession(services: SessionServices): TrackSession | u
     if (Object.keys(entry).length > 0) mixer[id] = entry;
   }
   const { currentTrack } = services.selection.getState();
-  const session: TrackSession = { version: 1, view, mixer };
+  const session: TrackSession = { version: 1, view: layoutOf(view), mixer };
   if (currentTrack !== undefined) session.currentTrack = currentTrack;
   return session;
 }
@@ -42,11 +46,8 @@ export function restoreTrackSession(
   if (!score) return;
   const ids = new Set(score.tracks.map((track) => track.id));
   const known = (id: Id) => ids.has(id);
-  const { tracks, notation, only } = session.view;
-  const view: DocumentView = {
-    tracks: tracks === 'all' ? 'all' : tracks.filter(known),
-    notation: Object.fromEntries(Object.entries(notation).filter(([id]) => known(id))),
-  };
+  const { tracks, only } = session.view;
+  const view: TrackLayoutView = { tracks: tracks === 'all' ? 'all' : tracks.filter(known) };
   if (view.tracks !== 'all' && view.tracks.length === 0) view.tracks = 'all';
   if (only !== undefined && known(only)) view.only = only;
   services.document.getState().setView(view);
@@ -83,7 +84,10 @@ export function watchTrackSession(
   };
   const unsubscribers = [
     document.subscribe((state, previous) => {
-      if (state.id !== previous.id || state.view !== previous.view) changed();
+      const { view } = state;
+      const layoutChanged =
+        view.tracks !== previous.view.tracks || view.only !== previous.view.only;
+      if (state.id !== previous.id || layoutChanged) changed();
     }),
     playback.subscribe((state, previous) => {
       if (state.mixer !== previous.mixer) changed();

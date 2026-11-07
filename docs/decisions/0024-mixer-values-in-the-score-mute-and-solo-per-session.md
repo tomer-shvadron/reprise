@@ -27,7 +27,9 @@ revert it" and "does Save write it", and a path to the audio engine that does no
   gpif records the per-track staff flags). It stays out of the undo history, but a change marks
   the document modified until the next save.
 - **Visibility and single-track view are view state**: never undoable, never dirtying, kept per
-  song by the library (WP-060) through `features/tracks/session.ts`.
+  song by the library (WP-060) through `features/tracks/session.ts`. The saved session never
+  carries notation, which lives in the file, so restoring a song's view, mute and solo after Save
+  and reopen leaves the document unmodified.
 - **A timeline-neutral edit reaches the sampler without rebuilding the sequence.** An edit that
   changes only track properties the timeline never reads (name, colour, display, channel,
   program, lyrics) is applied to the channel strips and instruments directly, so volume, pan and
@@ -51,7 +53,8 @@ revert it" and "does Save write it", and a path to the audio engine that does no
   point while a notation change is unsaved still leaves it modified.
 - A beat's mixer change in the file overrides a committed volume or pan from its beat until the
   next stop, run start or loop wrap, as in Guitar Pro.
-- WP-060 persists `TrackSession` (view, mute and solo overrides, current track) per song.
+- WP-060 persists `TrackSession` per song: visibility and single-track view, the mute and solo
+  overrides and the current track, never notation.
 
 ## Related
 

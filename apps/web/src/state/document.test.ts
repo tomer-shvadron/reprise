@@ -633,14 +633,22 @@ describe('the document store', () => {
     expect(store.getState().dirty).toBe(false);
   });
 
-  it('replaces the view in one set', async () => {
+  it('replaces the visible tracks in one set, keeping notation and the modified flag', async () => {
     const { store } = setup();
     await store.getState().openBytes('song.gp5', GP5);
+    const trackId = store.getState().score?.tracks[0]?.id ?? '';
+    store.getState().setNotation(trackId, 'both');
     const listener = vi.fn();
     const unsubscribe = store.subscribe(listener);
-    store.getState().setView({ tracks: 'all', notation: {}, only: 'x' });
+    store.getState().setView({ tracks: 'all', only: 'x' });
     unsubscribe();
     expect(listener).toHaveBeenCalledOnce();
+    expect(store.getState().view).toEqual({
+      tracks: 'all',
+      notation: { [trackId]: 'both' },
+      only: 'x',
+    });
+    expect(store.getState().dirty).toBe(true);
   });
 });
 

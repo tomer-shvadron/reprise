@@ -4,12 +4,12 @@ The track list in the left sidebar and the mixer in the right panel (WP-052, ADR
 store: every control writes the document, selection or playback store through the actions in
 `track-actions.ts`, which the commands in `commands.ts` call too.
 
-| Export                                                            | What it is                                                                                                              |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `TrackSidebar`                                                    | Each track's colour, name, instrument, visibility, mute, solo, notation and compact volume; the multitrack toggle.      |
-| `MixerPanel`                                                      | Per track: instrument, volume, pan, mute and solo, with the load status of a new instrument; the master volume.         |
-| `captureTrackSession`, `restoreTrackSession`, `watchTrackSession` | The per-song session the library keeps (WP-060): the view, the mute and solo overrides and the current track.           |
-| `trackCommands` (`./commands`)                                    | Previous and next track (⌘↑ ⌘↓), multitrack view (F3), mute, solo, clear, show all, and notation for the current track. |
+| Export                                                            | What it is                                                                                                                    |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `TrackSidebar`                                                    | Each track's colour, name, instrument, visibility, mute, solo, notation and compact volume; the multitrack toggle.            |
+| `MixerPanel`                                                      | Per track: instrument, volume, pan, mute and solo, with the load status of a new instrument; the master volume.               |
+| `captureTrackSession`, `restoreTrackSession`, `watchTrackSession` | The per-song session the library keeps (WP-060): visibility, single-track view, mute and solo, current track; never notation. |
+| `trackCommands` (`./commands`)                                    | Previous and next track (⌘↑ ⌘↓), multitrack view (F3), mute, solo, clear, show all, and notation for the current track.       |
 
 ## Where each value lives
 

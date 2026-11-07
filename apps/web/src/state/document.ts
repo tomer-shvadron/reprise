@@ -83,6 +83,9 @@ export interface DocumentView {
   only?: Id;
 }
 
+/** The part of the view a session keeps: which tracks are shown, not how they are written. */
+export type TrackLayoutView = Omit<DocumentView, 'notation'>;
+
 export interface DocumentState {
   /** A new one per opened document; subscribers tell a switch from an edit by it. */
   id: Id | undefined;
@@ -120,8 +123,11 @@ export interface DocumentState {
   setNotation(trackId: Id, notation: Notation | undefined): void;
   /** Single-track view of `id`, or multitrack view with `undefined`. */
   setSingleTrack(id: Id | undefined): void;
-  /** Replaces the whole view in one set, for restoring a session. */
-  setView(view: DocumentView): void;
+  /**
+   * Replaces the multitrack set and the single track in one set. Notation is the file's, so it is
+   * kept as it is and the modified flag never moves.
+   */
+  setView(view: TrackLayoutView): void;
   setWarningsOpen(open: boolean): void;
   setDetailsOpen(open: boolean): void;
   /** Reopens the warnings notice with its list expanded. */
@@ -496,8 +502,9 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
         set({ view: next });
       },
 
-      setView(view) {
-        set({ view, dirty: snapshot(view.notation).dirty });
+      setView({ tracks, only }) {
+        const { notation } = get().view;
+        set({ view: only === undefined ? { tracks, notation } : { tracks, notation, only } });
       },
 
       setWarningsOpen(open) {
