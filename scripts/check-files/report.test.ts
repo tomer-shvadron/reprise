@@ -52,6 +52,9 @@ const violation = (code: string, data: CheckViolation['data'] = {}): CheckViolat
   data,
 });
 
+/** #107's symptom: one bar, alone on its system, wider than the content width. */
+const ONE_WIDE_BAR = { systemOverflowPx: 50, systemBars: 1 };
+
 describe('statuses', () => {
   it('rank fail over known over skipped over explained over pass', () => {
     expect(worst(['pass', 'explained', 'skipped'])).toBe('skipped');
@@ -64,7 +67,7 @@ describe('statuses', () => {
     const file = fixture('fixtures/a.gp5');
     const run = classify(
       [file],
-      ['read', 'oracle', 'order', 'tempo', 'audio'],
+      ['read', 'oracle', 'order', 'tempo', 'layout'],
       [
         record(file.file, 'read'),
         record(file.file, 'oracle', {
@@ -72,7 +75,7 @@ describe('statuses', () => {
         }),
         record(file.file, 'order', { skipped: 'no' }),
         record(file.file, 'tempo', { violations: [violation('tempo-differs')] }),
-        record(file.file, 'audio', { violations: [violation('beyond-bar-end')] }),
+        record(file.file, 'layout', { violations: [violation('outside-page', ONE_WIDE_BAR)] }),
       ],
     );
     const checks = run.files[0]?.checks;
@@ -80,8 +83,8 @@ describe('statuses', () => {
     expect(checks?.oracle?.status).toBe('explained');
     expect(checks?.order?.status).toBe('skipped');
     expect(checks?.tempo?.status).toBe('fail');
-    expect(checks?.audio?.status).toBe('known');
-    expect(checks?.audio?.known[0]?.entry.issue).toBe(118);
+    expect(checks?.layout?.status).toBe('known');
+    expect(checks?.layout?.known[0]?.entry.issue).toBe(107);
     expect(run.files[0]?.status).toBe('fail');
     expect(run.summary).toMatchObject({ failed: 1, known: 1, crashed: 0 });
   });
@@ -101,19 +104,19 @@ describe('statuses', () => {
 });
 
 describe('the known list', () => {
-  const [overfull] = KNOWN_ISSUES.filter((entry) => entry.id === 'overfull-voice-playback');
-  const target = overfull?.fixtures[0] ?? '';
+  const [wide] = KNOWN_ISSUES.filter((entry) => entry.id === 'bar-wider-than-page');
+  const target = wide?.fixtures[0] ?? '';
 
   it('is stale when a covered fixture no longer fires it', () => {
-    const run = classify([fixture(target)], ['audio'], [record(target, 'audio')]);
-    expect(run.summary.stale).toEqual(['overfull-voice-playback']);
+    const run = classify([fixture(target)], ['layout'], [record(target, 'layout')]);
+    expect(run.summary.stale).toEqual(['bar-wider-than-page']);
   });
 
   it('is not stale where it fires, or where its check did not run', () => {
     const fired = classify(
       [fixture(target)],
-      ['audio'],
-      [record(target, 'audio', { violations: [violation('beyond-bar-end')] })],
+      ['layout'],
+      [record(target, 'layout', { violations: [violation('outside-page', ONE_WIDE_BAR)] })],
     );
     expect(fired.summary.stale).toEqual([]);
     const notRun = classify([fixture(target)], ['read'], [record(target, 'read')]);

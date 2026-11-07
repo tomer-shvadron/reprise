@@ -256,12 +256,12 @@ const CODE_TEXT: Readonly<Record<string, CodeText>> = {
   'pass-length': {
     title: 'a pass lasts a different length than in alphaTab',
     should:
-      "Each pass lasts as many ticks as alphaTab 1.8.4's (an anacrusis is capped at its written length).",
+      "Each pass lasts as many ticks as alphaTab 1.8.4's, except that an anacrusis is capped at its written length and an over-full bar lasts exactly its longest voice (#121) where alphaTab keeps the written length.",
   },
   'tempo-differs': {
     title: 'the tempo map differs from alphaTab',
     should:
-      "The tempo changes and durations match alphaTab 1.8.4's, except a ramp (README), a moved mid-beat change (`tempo-moved`) or an over-full bar (#118).",
+      "The tempo changes and durations match alphaTab 1.8.4's, except a ramp (README), a moved mid-beat change (`tempo-moved`) or the overflow of an over-full bar, which alphaTab plays over the next bars.",
   },
   'layout-threw': {
     title: 'layout throws on a real file',
@@ -341,7 +341,7 @@ const CODE_TEXT: Readonly<Record<string, CodeText>> = {
   },
   'beyond-bar-end': {
     title: 'beats past the end of an over-full bar',
-    should: 'A decision: play them or drop them with a visible warning.',
+    should: 'Every beat of an over-full bar plays, and the bar lasts its longest voice (#121).',
   },
   'attack-missed': {
     title: 'scheduled notes are not heard in the render',

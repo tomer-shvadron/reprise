@@ -16,15 +16,6 @@ export interface KnownIssue {
   applies: (violation: CheckViolation) => boolean;
 }
 
-const OVERFULL_FIXTURES = [
-  'fixtures/gp3/effects.gp3',
-  'fixtures/gp4/effects.gp4',
-  'fixtures/gp5/effects.gp5',
-  'fixtures/gpx/effects.gpx',
-  'fixtures/gp3/notes.gp3',
-  'fixtures/gp4/notes.gp4',
-];
-
 const num = (violation: CheckViolation, key: string): number => {
   const value = violation.data?.[key];
   return typeof value === 'number' ? value : 0;
@@ -39,14 +30,6 @@ export const KNOWN_ISSUES: readonly KnownIssue[] = [
     fixtures: ['fixtures/gp3/notes.gp3', 'fixtures/gp4/notes.gp4'],
     applies: (violation) =>
       violation.code === 'outside-page' && num(violation, 'systemOverflowPx') > 0,
-  },
-  {
-    id: 'overfull-voice-playback',
-    issue: 118,
-    check: 'audio',
-    why: 'beats that start past the end of an over-full bar are never scheduled',
-    fixtures: OVERFULL_FIXTURES,
-    applies: (violation) => violation.code === 'beyond-bar-end',
   },
   {
     id: 'unison-anchors',

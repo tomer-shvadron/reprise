@@ -332,16 +332,50 @@ function alphaTabSeconds(pass: AlphaTabPass, running: number): number {
   return seconds + ((pass.end - tick) * 60) / (960 * bpm);
 }
 
+/**
+ * The longest voice of a master bar in any track, written independently of the model's
+ * `playedBarTicks` so the check does not grade the model against itself. A voice of only empty
+ * beats (Guitar Pro's unused voice) has no length.
+ */
+export function longestVoiceTicks(score: Score, masterBarIndex: number): number {
+  let longest = 0;
+  for (const track of score.tracks) {
+    for (const voice of track.bars[masterBarIndex]?.voices ?? []) {
+      if (!voice.beats.some((beat) => beat.rest || beat.notes.length > 0)) continue;
+      longest = Math.max(longest, beatStartTicks(voice, voice.beats.length));
+    }
+  }
+  return longest;
+}
+
 /** A voice in any track holds more than the bar's written length. */
 export function isOverfull(score: Score, masterBarIndex: number): boolean {
   const masterBar = score.masterBars[masterBarIndex];
   if (!masterBar) return false;
+  return longestVoiceTicks(score, masterBarIndex) > barTicks(masterBar) + TICK_TOLERANCE;
+}
+
+/**
+ * The over-full pass is explained only in its expected shape: ours lasts the longest voice and
+ * alphaTab the written length. Anything else is a `pass-length` violation.
+ */
+export function overfullShape(
+  score: Score,
+  masterBarIndex: number,
+  oursTicks: number,
+  alphaTabTicks: number,
+): string | undefined {
+  const masterBar = score.masterBars[masterBarIndex];
+  if (!masterBar) return 'the master bar does not exist';
+  const longest = longestVoiceTicks(score, masterBarIndex);
   const written = barTicks(masterBar);
-  return score.tracks.some((track) =>
-    (track.bars[masterBarIndex]?.voices ?? []).some(
-      (voice) => beatStartTicks(voice, voice.beats.length) > written + TICK_TOLERANCE,
-    ),
-  );
+  if (Math.abs(oursTicks - longest) > TICK_TOLERANCE) {
+    return `the over-full pass lasts ${String(oursTicks)} ticks, not its longest voice's ${String(longest)}`;
+  }
+  if (Math.abs(alphaTabTicks - written) > TICK_TOLERANCE) {
+    return `alphaTab plays the over-full pass for ${String(alphaTabTicks)} ticks, not the written ${String(written)}`;
+  }
+  return undefined;
 }
 
 /** Whether alphaTab's tick lies strictly inside a beat of the bar that starts at our tick. */
@@ -400,8 +434,13 @@ export function compareTempo(
     if (!at) return;
     const where = `bar ${String(pass.masterBarIndex + 1)} (pass ${String(p + 1)})`;
     const theirLength = at.end - at.start;
-    const overfull =
-      Math.abs(theirLength - pass.ticks) > TICK_TOLERANCE && isOverfull(score, pass.masterBarIndex);
+    const overfull = isOverfull(score, pass.masterBarIndex);
+    const misshapen = overfull
+      ? overfullShape(score, pass.masterBarIndex, pass.ticks, theirLength)
+      : undefined;
+    if (misshapen !== undefined && violations.length < MAX_TEMPO_VIOLATIONS) {
+      violations.push({ code: 'pass-length', message: misshapen, where });
+    }
     if (Math.abs(theirLength - pass.ticks) > TICK_TOLERANCE && !overfull) {
       const anacrusis = score.masterBars[pass.masterBarIndex]?.anacrusis === true;
       if (anacrusis && theirLength > pass.ticks) {
@@ -452,15 +491,23 @@ export function compareTempo(
     totalTheirs += theirSeconds;
     const { events: alphaTabChanges, end } = alphaTabEvents(at, theirsRunning);
     theirsRunning = end;
-    const oursEvents = ours.map(({ tick, bpm }) => ({ tick, bpm }));
-    if (overfull) {
-      explain(
-        'overfull-bar',
-        'an over-full bar lasts its longest voice; alphaTab plays the overflow over the next bars (#118)',
-      );
+    // In an over-full bar only the written length is comparable: alphaTab plays the overflow,
+    // and any change in it, over the next bars.
+    const masterBar = score.masterBars[pass.masterBarIndex];
+    const written = masterBar ? barTicks(masterBar) : Number.POSITIVE_INFINITY;
+    const oursEvents = ours
+      .map(({ tick, bpm }) => ({ tick, bpm }))
+      .filter((event) => !overfull || event.tick < written - TICK_TOLERANCE);
+    const equal = sameEvents(oursEvents, alphaTabChanges);
+    if (overfull && equal) {
+      if (misshapen === undefined) {
+        explain(
+          'overfull-bar',
+          'an over-full bar lasts its longest voice; alphaTab plays the overflow over the next bars',
+        );
+      }
       return;
     }
-    const equal = sameEvents(oursEvents, alphaTabChanges);
     if (equal && Math.abs(theirSeconds - pass.durationSeconds) <= SECONDS_TOLERANCE) return;
     if (equal && ramped) {
       explain(
