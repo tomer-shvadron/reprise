@@ -129,8 +129,10 @@ function drawSlide(
   const from = origin.x === undefined ? 0 : -rise;
   drawSlideLine(context, target, start, end, from, rise);
   if (origin.note.slide?.includes('legato')) {
-    const arcStart = origin.x === undefined ? placement.x : origin.x + origin.edge;
-    drawArc(context, origin.note, arcStart, targetX - leftEdge(targetLabel, size), 'sl.');
+    // Cut by a break, the letter goes on the origin half, whose bar measured it.
+    const arcEnd = targetX - leftEdge(targetLabel, size);
+    if (origin.x === undefined) drawArc(context, origin.note, placement.x, arcEnd, undefined);
+    else drawArc(context, origin.note, origin.x + origin.edge, arcEnd, 'sl.');
   }
 }
 
@@ -146,12 +148,10 @@ function drawOriginHalf(
   const size = TAB.fretSize * space;
   const left = x + rightEdge(label, size);
   const right = contentEnd(context);
-  if (target.hammerPull) drawArc(context, note, left, right, undefined);
+  const legato = note.slide?.includes('legato') ?? false;
+  if (target.hammerPull || legato) drawArc(context, note, left, right, legato ? 'sl.' : undefined);
   if (shifts(note)) {
     drawSlideLine(context, note, left + SLIDE.gap * space, right, -slideRise(note, target), 0);
-    if (note.slide?.includes('legato') && !target.hammerPull) {
-      drawArc(context, note, left, right, undefined);
-    }
   }
 }
 
