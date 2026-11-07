@@ -5,10 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { Sampler } from '../sampler/sampler';
 import { offline } from '../sampler/test/offline';
 import { ManagedSampleSource, bufferBytes } from './managed-sample-source';
-import type { MemoryReport } from '../engine';
 import { SyntheticProvider } from './test/synthetic';
 import type { SyntheticOptions } from './test/synthetic';
-import type { SampleProvider } from './types';
+import type { MemoryReport, SampleProvider } from './types';
 
 const factory = new OfflineAudioContext({ numberOfChannels: 1, length: 1, sampleRate: 44_100 });
 /** Four zones of 32 keys, 4,000 decoded bytes each. */
@@ -200,9 +199,12 @@ describe('ManagedSampleSource eviction', () => {
     });
     const source = new ManagedSampleSource(provider, factory);
     await source.load(songA, provider.regionMap);
-    expect(source.memory().residents).toEqual(['gm:0:24', 'gm:0:25', 'gm:0:33']);
+    // gm:0:24 only shares gm:0:25's samples: no song plays it, so it is not resident.
+    expect(source.memory().residents).toEqual(['gm:0:25', 'gm:0:33']);
     const shared = source.peekBuffer(provider.ref('gm:0:25', 64));
     const fetches = source.counters.fetches;
+    await source.load(songA, provider.regionMap);
+    expect(source.counters.evictions).toBe(0);
 
     const songC = score()
       .track('guitar', { program: 24 })
@@ -213,6 +215,8 @@ describe('ManagedSampleSource eviction', () => {
     expect(source.memory().residents).toEqual(['gm:0:24']);
     expect(source.peekBuffer(provider.ref('gm:0:24', 64))).toBe(shared);
     expect(source.counters.fetches).toBe(fetches);
+    // gm:0:33 freed its buffers; gm:0:25 handed its own to gm:0:24 and freed nothing.
+    expect(source.counters.evictions).toBe(1);
   });
 
   it('reserves room for loads in flight, so a burst cannot overshoot the budget', async () => {

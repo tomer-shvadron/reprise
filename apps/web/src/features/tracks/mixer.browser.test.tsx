@@ -35,7 +35,6 @@ async function setup() {
   const offline = p.prepare(6.3);
   p.services.audio.unlock();
   const { engine } = p.services.audio.debug();
-  if (!engine) throw new Error('no engine');
   const load = vi.spyOn(engine, 'load');
   return { p, offline, load };
 }

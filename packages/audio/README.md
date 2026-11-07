@@ -1,10 +1,11 @@
 # @reprise/audio
 
 The playback engine: the transport and lookahead scheduler (WP-030), the sampler (WP-031), the
-SF2 loader (WP-032), articulations (WP-033) and the memory manager (WP-034). This README covers
-what exists so far: the transport and the contract the sampler plugs into first, then the
-sampler itself, the SF2 loader, the articulation layer between the scheduler and the sampler, and
-the memory manager.
+SF2 loader (WP-032), articulations (WP-033) and the memory manager (WP-034), composed by
+`createAudioEngine` into the frozen `AudioEngine` contract (#94). This README covers the transport
+and the contract the sampler plugs into first, then the engine that owns them all, the sampler
+itself, the SF2 loader, the articulation layer between the scheduler and the sampler, and the
+memory manager.
 
 ## Architecture
 
@@ -27,7 +28,11 @@ animation frame -> currentTime -> position event
   `setInterval`.
 - **The core is pure.** `advance`, `startRun`, `retime` and `withLoop` (`src/scheduler.ts`) take
   and return plain data and never touch Web Audio or a timer, so moving the scheduler into a
-  worker or an AudioWorklet (ADR-0004's documented mitigation) changes only `engine.ts`.
+  worker or an AudioWorklet (ADR-0004's documented mitigation) changes only `transport.ts`.
+- **Two layers.** `createTransport` (`src/transport.ts`) is the sink-driven core: timeline,
+  scheduler, clock and events, over any `InstrumentSink`. `createAudioEngine` (`src/engine.ts`)
+  composes it with the `AudioContext`, the sampler, the metronome on the master bus, the memory
+  manager and the GM bank, and is what the app uses.
 - **Time is an anchor plus the model's tempo map.** A `Timeline` is the score expanded with
   `expandPlaybackSequence` and timed with `tempoMap`. The run's anchor says "playback tick _t_
   sounds at context time _T_, at rate _r_"; a later tick sounds at
@@ -125,14 +130,17 @@ interface MixEvent {
   scheduled to start after it**: the scheduler has handed out up to 200 ms of the future. Stop
   the source nodes rather than only muting them, or every cancelled note keeps a node running
   until its original stop time; `stop(when)` on a node whose start time is later makes it
-  produce nothing and end at once, and a second `stop` replaces the first. It is called with
+  produce nothing and end at once, and a second `stop` replaces the first. It must also drop
+  every mixer change scheduled after `when` (a strip's volume and pan, a program change): the
+  scheduler sends each again when playback reaches its beat. It is called with
   `when = currentTime` on pause, stop and seek.
 - `MetronomeSink` (`click(when, accent)`, `silence(when)`, `setVolume(volume)`) is the same
   idea for the metronome and the count-in; `ClickSynth` is the built-in one. **Route it through
   the sampler's master bus**, `new ClickSynth(context, sampler.master.input)`: the bus's limiter
   delays everything through it by about 6 ms (see the sampler's "limiter" note), so a click sent
-  straight to the destination lands 6 ms ahead of the notes. The engine's default `ClickSynth`
-  goes to the destination only because the engine has no sampler of its own.
+  straight to the destination lands 6 ms ahead of the notes. `createTransport`'s default
+  `ClickSynth` goes to the destination only because the transport has no sampler of its own;
+  `createAudioEngine` routes its own through the bus.
 
 Stand-ins shipped here: `RecordingSink` (implements both sinks, makes no sound, records each
 event with the `currentTime` it was handed out at) for tests, and `ToneSink` (one oscillator
@@ -140,33 +148,40 @@ per note at the note's MIDI pitch) for listening before the sampler exists.
 
 ## Transport API
 
-`createAudioEngine({ context, sink, metronome?, scheduler?, frames?, lookahead?, startLatency? })`
-returns the frozen `AudioEngine` contract. `scheduler` and `frames` are injectable `Ticker`s so
-offline tests drive the engine deterministically (`src/offline-driver.ts` suspends an
-`OfflineAudioContext` every 1024 frames and fires both).
+`createTransport({ context, sink, metronome?, scheduler?, frames?, lookahead?, startLatency?, onRunStart? })`
+returns a `Transport`, the core of the engine over any sink (it was `createAudioEngine` before
+#94). `scheduler` and `frames` are injectable `Ticker`s so offline tests drive it
+deterministically (`src/offline-driver.ts` suspends an `OfflineAudioContext` every 1024 frames
+and fires both). `onRunStart` runs as each run starts (play, resume, a seek or a load while
+running), before its first window is handed out; the engine resets the channel baseline there.
 
-| Method                          | Behaviour                                                                                                                                                                   |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `load(score)`                   | Builds the timeline and resolves. Instrument decoding arrives with WP-034; the options are accepted and ignored until then.                                                 |
-| `play(fromTick?)`               | Starts from `fromTick`, the paused tick, or the start. A tick outside the loop starts at the loop start. Counts in when count-in is on. Resumes a suspended `AudioContext`. |
-| `pause()`                       | Keeps the current tick, cuts every scheduled note and click.                                                                                                                |
-| `stop()`                        | Cuts everything, returns to the loop start or the song start.                                                                                                               |
-| `seek(tick)`                    | While playing: cuts, restarts from `tick` after `startLatency`, no count-in. Otherwise moves the resume point. Past the loop end, playback restarts at the loop start.      |
-| `setTempo('percent', p)`        | Scales the whole tempo map: 50 plays at half speed.                                                                                                                         |
-| `setTempo('bpm', b)`            | Scales the whole map so the tempo at the current position plays at `b`; other tempo regions keep their ratio to it. The factor is fixed until the next `setTempo`.          |
-| `setLoop({ startBar, endBar })` | Master-bar ids, inclusive. In playback order the occurrence holding the playhead wins, then the next one, then the first. `undefined` clears the loop.                      |
-| `setCountIn(on)`                | One bar of clicks before the first beat (see below).                                                                                                                        |
-| `setMetronome(on, volume)`      | A click per beat of the time signature, accented on the downbeat; `volume` 0 to 1 also sets the count-in's level.                                                           |
-| `on(event, handler)`            | `position`, `state`, `loop`, `memory`; returns an unsubscribe.                                                                                                              |
-| `dispose()`                     | Cuts everything, stops the timers, drops handlers, disposes the sinks.                                                                                                      |
+| Method                          | Behaviour                                                                                                                                                                                 |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `load(score)`                   | Builds the timeline. The first load is `stopped` at tick 0; a load over a loaded timeline keeps the position and the state by the placement rule below, and the loop if its bars survive. |
+| `unload()`                      | Cuts if running, drops the timeline and the loop, `stopped` at tick 0. `seek` throws until the next `load`.                                                                               |
+| `play(fromTick?)`               | Starts from `fromTick`, the paused tick, or the start. A tick outside the loop starts at the loop start. Counts in when count-in is on. Resumes a suspended `AudioContext`.               |
+| `pause()`                       | Keeps the current tick, cuts every scheduled note and click.                                                                                                                              |
+| `stop()`                        | Cuts everything, returns to the loop start or the song start.                                                                                                                             |
+| `seek(tick)`                    | While playing: cuts, restarts from `tick` after `startLatency`, no count-in. Otherwise moves the resume point. Past the loop end, playback restarts at the loop start.                    |
+| `setTempo('percent', p)`        | Scales the whole tempo map: 50 plays at half speed.                                                                                                                                       |
+| `setTempo('bpm', b)`            | Scales the whole map so the tempo at the current position plays at `b`; other tempo regions keep their ratio to it. The factor is fixed until the next `setTempo`.                        |
+| `setLoop({ startBar, endBar })` | Master-bar ids, inclusive. In playback order the occurrence holding the playhead wins, then the next one, then the first. `undefined` clears the loop.                                    |
+| `setCountIn(on)`                | One bar of clicks before the first beat (see below).                                                                                                                                      |
+| `setMetronome(on, volume)`      | A click per beat of the time signature, accented on the downbeat; `volume` 0 to 1 also sets the count-in's level.                                                                         |
+| `on(event, handler)`            | `position`, `state`, `loop`; returns an unsubscribe.                                                                                                                                      |
+| `dispose()`                     | Cuts everything, stops the timers, drops handlers, disposes the sinks.                                                                                                                    |
 
 Ticks given to `play` and `seek` are **playback ticks** (`PlaybackPosition.playbackTick`), which
 count every pass of a repeat; a written-order tick from `tickOf` is the same thing in a score
 without repeats or jumps.
 
-Not yet implemented, and why: `setTrack` and `previewNote` throw (they belong to the sampler's
-channel strips, WP-031); `memory()` reports zero bytes against the 300 MB default budget and
-the `memory` event never fires (WP-034).
+**One placement rule for `seek` and for a `load` over a loaded song** (#94's Q5): the tick (for a
+load, the playhead's tick on the old timeline) is clamped to the new score; if running, the sound
+is cut and a run starts there after `startLatency`, with no count-in, as `playing`; otherwise the
+resume point moves there and the state stays what it was (`paused` stays `paused`, `stopped`
+stays `stopped`). A running transport whose tick falls past the new end restarts there and
+finishes at once, so playback stops. A load during playback therefore emits `playing`, never
+`stopped`, unless the new score ends before the playhead.
 
 Events:
 
@@ -177,6 +192,61 @@ Events:
   (unscaled), so it can be fed back to `positionAtSeconds` for another track's `beatIndex`.
 - `loop`: `{ pass, when }` each time the scheduler wraps the loop, `pass` counting from 1.
 
+## Engine API
+
+`createAudioEngine({ context, budgetBytes?, scheduleMemory?, scheduler?, frames?, lookahead?, startLatency? })`
+returns the `AudioEngine` contract of `docs/specs/architecture.md`. `context` is a context or a
+factory; a factory is called on the first `unlock()`, `play()` or `previewNote()`, never in `load`,
+so a song is decoded before the first gesture. `budgetBytes` is the memory manager's
+(`GM_BUDGET_BYTES` by default); `scheduleMemory` runs the coalesced `memory` event (the next
+animation frame by default); the rest go to the transport.
+
+| Object                                                                | Made                                                                   | Lives until                               |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------- |
+| `ManagedSampleSource` (constructed `AudioBuffer`s) and `GmBank`       | `setSoundfont(font)`                                                   | `dispose`                                 |
+| the `AudioContext`                                                    | construction (an instance) or the first unlock, play or preview        | `dispose`, which closes one it made       |
+| `Sampler`, `ClickSynth` on its bus, the sampler sink, the `Transport` | with the context                                                       | `dispose`                                 |
+| the sampler's tracks                                                  | a new song's load once live, or the unlock for a song loaded before it | `unload`, or an edit that drops the track |
+| overrides and settings                                                | their setters, before or after the context                             | overrides and the loop: `unload`          |
+
+| Method                                                                 | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setSoundfont(font)`                                                   | The parsed GM bank. Fetching it, and its errors, belong to the app. A second call throws; `load` before it rejects.                                                                                                                                                                                                                                                                                           |
+| `load(score, options)`                                                 | Resolves `{ instruments }`, the song plan's, once the opening bars are decoded. A new song is `stopped` at tick 0. Over a loaded song it is an edit: the placement rule above, the overrides kept, the tracks synced; a timeline-neutral edit (`timelineNeutral`) reaches the strips and instruments at once, with no rebuild. Loading the same score object again decodes it again and changes nothing else. |
+| `unload({ evict? })`                                                   | Stops, drops the song, its tracks, overrides, loop and instrument loads; `evict` frees every instrument too.                                                                                                                                                                                                                                                                                                  |
+| `unlock()`                                                             | Makes the context (and everything that needs it), applies the settings, attaches a loaded song; resumes a suspended context.                                                                                                                                                                                                                                                                                  |
+| `play`, `pause`, `stop`, `seek`                                        | The transport's. `play` unlocks first; the others are no-ops before the context.                                                                                                                                                                                                                                                                                                                              |
+| `setTempo`, `setLoop`, `setCountIn`, `setMetronome`, `setMasterVolume` | Validated, kept, and applied now or when the context is made. The master volume scales the bus, the metronome included.                                                                                                                                                                                                                                                                                       |
+| `setTrack(id, params)`                                                 | A user override over the track's channel, applied at once and kept through every baseline reset and edit until `unload`.                                                                                                                                                                                                                                                                                      |
+| `previewTrack(id, params)`                                             | Volume or pan for a slider being dragged: no override, so the next baseline reset or edit replaces it.                                                                                                                                                                                                                                                                                                        |
+| `previewNote(track, note)`                                             | One note through the track's strip, past mute and solo. Throws with no song, and a `RangeError` for a track the song lacks.                                                                                                                                                                                                                                                                                   |
+| `memory()`                                                             | The memory manager's report; zero bytes against the budget before the bank.                                                                                                                                                                                                                                                                                                                                   |
+| `outputLatency()`                                                      | `baseLatency + outputLatency` of the context (`outputLatencyOf`), 0 before it.                                                                                                                                                                                                                                                                                                                                |
+| `settled()`                                                            | Resolves with no load, instrument load or fetch in flight.                                                                                                                                                                                                                                                                                                                                                    |
+
+Events: the transport's `position`, `state` and `loop`; `memory` (the manager's, coalesced);
+`instrumentLoads`, `{ [trackId]: { loaded, total } }` for each track whose new instrument is
+decoding after a program edit, counted over that track's own samples, `{}` when done. A failed
+decode rejects the `load` that started it.
+
+**The channel baseline.** A beat's mixer change must not outlive the run it played in, so the
+engine puts every strip back on its track's program and channel, with the user's overrides on
+top, as each run starts, on every `stopped`, and at each loop wrap (scheduled at the wrap's time).
+
+`debugAudioEngine(engine)`, from the test-only `@reprise/audio/testing` entry, returns the live
+objects (`context`, `sampler`, `source`, `bank`, `transport`); it is not part of the contract.
+
+### Known gaps
+
+- The memory budget has no setter on the engine; it arrives with the HQ tier (phase 3, WP-094).
+  The architecture's Memory model section describes the HQ default, 300 MB.
+- `previewNote` of a sample not yet decoded is silent the first time (a miss that requests it)
+  and sounds once decoded; the editor (phase 3, WP-081) will preload.
+- A load over a loaded song cuts the notes sounding at that moment and restarts after
+  `startLatency`, as a seek does; only a timeline-neutral edit is seamless.
+- `ChannelStrip.cancelAfter` holds a ramp's level with `cancelAndHoldAtTime`; Firefox lacks it,
+  so there a ramp cut midway steps back to its start before gliding to its target.
+
 ## Timing guarantees
 
 - Every event is handed out with `when >= currentTime`. An event the timer reached up to 50 ms
@@ -184,7 +254,7 @@ Events:
   later one is dropped rather than played out of time.
 - Onsets are exact to the tempo map: the offline tests measure every onset of a four-bar score
   at 120 BPM at its expected sample, and through `RecordingSink` the times match to 1e-9 s.
-  Through the real sampler (`engine-sampler.test.ts`) every onset lands at `when` plus the
+  Through the real sampler (`transport-sampler.test.ts`) every onset lands at `when` plus the
   master bus's pre-delay, on the grid within 1 ms, and the metronome's clicks through the same
   bus carry the same delay to within 0.5 ms; a test that measures onsets behind the bus reads the
   delay off the first onset and subtracts it.
@@ -348,8 +418,9 @@ with the articulation layer described under [Articulations](#articulations): eac
 attacks, pitch and level automation, a filter and a release; `allNotesOff(when)` releases every
 voice, the ones scheduled after `when` included (a release before a voice's start time is a 0-to-0
 fade, so it never sounds), forgets any legato slide waiting for its next note, and drops the
-program changes scheduled after `when` (the scheduler sends each again when playback reaches its
-beat, so a pause or seek inside the lookahead never plays a later program early). A
+program changes and the strips' volume and pan changes scheduled after `when` (the scheduler
+sends each again when playback reaches its beat, so a stop, pause or seek inside the lookahead
+never lands a later change early, or over the baseline a stop restores). A
 `MixEvent`'s `mix.program` switches the track's instrument at the beat through `setInstrument`, to what
 `instrumentOf(track, program)` returns (the caller's region map and source for that program;
 `undefined` keeps the current one), the same playback-order attribution the memory planner uses.
@@ -759,6 +830,13 @@ planSamples(plan, regionMapOf); // the SampleRefs those keys reach
   a sample it shares with a pinned instrument stays.
 - **The instruments of the sample being loaded are never its victims**, so the budget is exceeded
   only when they alone are larger than the whole budget.
+- **A resident is an instrument the song plans that holds decoded samples, or a leftover.** A
+  decoded buffer makes resident only the owners the current plan pins (all of them when none is
+  pinned, so the buffer always has an owner to free it), and a preset that merely shares the song's
+  samples (a bank variation, an alias) is not counted. A switch to a song on such a preset makes it
+  resident with the shared buffers before the old owner is evicted, so nothing is fetched again.
+- **An eviction is counted only when it frees a buffer**: dropping an alias whose samples another
+  resident still holds leaves `counters.evictions` and `pinnedEvictions` alone.
 
 ### Planning and preload
 
@@ -816,14 +894,14 @@ with no sound device:
 
 `src/test/` is the shared harness, for test files only:
 
-| Helper                                    | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `renderScore(score, options)`             | A fresh engine over the real sampler and articulations, play at time 0, rendered offline. `instruments` is GeneralUser GS (the GM tier, through the memory manager, every sample decoded first, program changes honoured) or a function per track. `tap: 'strips'` records before the master bus, without its 6 ms pre-delay; `actions` call the engine at a context time. Returns the signal, the sampler, the memory manager and every `missed` note. |
-| `loadGeneralUser()`                       | The fetched bank, parsed once; `undefined` until `pnpm sounds:fetch`, and the GM suites skip with a message.                                                                                                                                                                                                                                                                                                                                            |
-| `detectOnsets(signal, { rise? })`         | Sounds after silence, above a floor 50 dB under the signal's peak unless `floor` is given; with `rise`, also re-attacks over a ringing note, read off the first difference (a pick is a burst of highs, which a filtered GM region may not keep).                                                                                                                                                                                                       |
-| `pitchAt(signal, time)`                   | The fundamental by YIN, within a cent on a tone whose harmonics fool a zero-crossing count; `undefined` on noise or silence.                                                                                                                                                                                                                                                                                                                            |
-| `bandEnergy(signal, low, high, from, to)` | RMS of a frequency band from a Hann-windowed FFT (a sine of amplitude `a` reads `a / √2`).                                                                                                                                                                                                                                                                                                                                                              |
-| `rms`, `peak`, `toneLevel`, `cents`       | As before; `sampler/test/offline.ts` keeps its sample-array signatures over these.                                                                                                                                                                                                                                                                                                                                                                      |
+| Helper                                    | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `renderScore(score, options)`             | A fresh transport over the real sampler and articulations, play at time 0, rendered offline. `instruments` is GeneralUser GS (the GM tier, through the memory manager, every sample decoded first, program changes honoured) or a function per track. `tap: 'strips'` records before the master bus, without its 6 ms pre-delay; `actions` call the engine at a context time. Returns the signal, the sampler, the memory manager and every `missed` note. |
+| `loadGeneralUser()`                       | The fetched bank, parsed once; `undefined` until `pnpm sounds:fetch`, and the GM suites skip with a message.                                                                                                                                                                                                                                                                                                                                               |
+| `detectOnsets(signal, { rise? })`         | Sounds after silence, above a floor 50 dB under the signal's peak unless `floor` is given; with `rise`, also re-attacks over a ringing note, read off the first difference (a pick is a burst of highs, which a filtered GM region may not keep).                                                                                                                                                                                                          |
+| `pitchAt(signal, time)`                   | The fundamental by YIN, within a cent on a tone whose harmonics fool a zero-crossing count; `undefined` on noise or silence.                                                                                                                                                                                                                                                                                                                               |
+| `bandEnergy(signal, low, high, from, to)` | RMS of a frequency band from a Hann-windowed FFT (a sine of amplitude `a` reads `a / √2`).                                                                                                                                                                                                                                                                                                                                                                 |
+| `rms`, `peak`, `toneLevel`, `cents`       | As before; `sampler/test/offline.ts` keeps its sample-array signatures over these.                                                                                                                                                                                                                                                                                                                                                                         |
 
 **The corpus smoke** (`src/test/fixtures.test.ts`) plays every fixture of `fixtures/` through
 the GM tier at 22.05 kHz and asserts no missed note, finite samples, a peak at most 1, sound
