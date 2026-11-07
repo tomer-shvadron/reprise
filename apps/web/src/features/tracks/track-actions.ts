@@ -61,8 +61,7 @@ export function setTrackVisible(services: TrackServices, id: Id, visible: boolea
 export function showAllTracks(services: TrackServices): void {
   const { document } = services;
   if (!document.getState().score) return;
-  document.getState().setSingleTrack(undefined);
-  document.getState().setVisibleTracks('all');
+  document.getState().setView({ tracks: 'all' });
 }
 
 export function toggleMultitrack(services: TrackServices): void {

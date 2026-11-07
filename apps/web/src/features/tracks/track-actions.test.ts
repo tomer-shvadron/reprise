@@ -13,6 +13,7 @@ import {
   setProgram,
   setTrackNotation,
   setTrackVisible,
+  showAllTracks,
   toggleMultitrack,
   toggleMute,
   toggleSolo,
@@ -139,6 +140,20 @@ describe('track actions', () => {
     setTrackVisible(services, bass, true);
     setTrackVisible(services, drums, true);
     expect(services.document.getState().view.tracks).toBe('all');
+  });
+
+  it('show every track from single-track view in one layout', async () => {
+    const { services, ids } = await open(song());
+    const [lead = '', bass = ''] = ids;
+    setTrackVisible(services, bass, false);
+    selectTrack(services, lead);
+    toggleMultitrack(services);
+    const layouts = vi.fn();
+    const unsubscribe = services.layout.subscribe(layouts);
+    showAllTracks(services);
+    unsubscribe();
+    expect(layouts).toHaveBeenCalledOnce();
+    expect(services.document.getState().view).toEqual({ tracks: 'all', notation: {} });
   });
 
   it('keep notation out of the history, mark the document modified, and drop the default', async () => {
