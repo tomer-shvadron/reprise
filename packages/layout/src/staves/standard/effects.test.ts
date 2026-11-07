@@ -451,6 +451,29 @@ describe('harmonics on the standard staff', () => {
     expect(content(result)).toMatchSnapshot();
   });
 
+  it('places tapped, feedback and node 21.7 diamonds at the rounded sounding pitch', () => {
+    const built = guitar('standard')
+      .bar()
+      .beat('4', [note(6, 0, { harmonic: { kind: 'natural', value: 21.7 } })])
+      .beat('4', [note(1, 2, { harmonic: { kind: 'tapped', value: 12 } })])
+      .beat('4', [note(1, 0, { harmonic: { kind: 'feedback', value: 7 } })])
+      .beat('4', [note(1, 0)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const diamond = (beat: number) =>
+      centreY(
+        one(
+          glyphs(result, 'noteheadDiamond').filter((p) => p.node === noteOf(built, 0, 0, beat).id),
+          `diamond ${String(beat)}`,
+        ).bbox,
+      );
+    // E2 and 34 semitones is D5 (alphaTab's node table gives 36, E5): notation.md's documented difference.
+    expect(diamond(0)).toBeCloseTo(at(result, written(40 + 34)), 1);
+    // F#4 and an octave; E4 and an octave and a fifth.
+    expect(diamond(1)).toBeCloseTo(at(result, written(66 + 12)), 1);
+    expect(diamond(2)).toBeCloseTo(at(result, written(64 + 19)), 1);
+  });
+
   it('sets an extra diamond flush against an up-stem, as the black head beside it is', () => {
     const built = guitar('standard')
       .bar()
