@@ -22,12 +22,12 @@ describe('the roadmap budgets table', () => {
     for (const budget of budgets) expect(budget.value).toBeGreaterThan(0);
   });
 
-  it('names files that exist, and each bench file names its metric verbatim', () => {
+  it('names files that exist, and each bench or e2e file names its metric verbatim', () => {
     for (const { metric, assertedBy } of budgets) {
       if (assertedBy.kind === 'pending') continue;
       const path = join(ROOT, assertedBy.path);
       expect(existsSync(path), `${metric}: ${assertedBy.path} does not exist`).toBe(true);
-      if (assertedBy.kind === 'bench') {
+      if (assertedBy.kind === 'bench' || assertedBy.kind === 'e2e') {
         expect(readFileSync(path, 'utf8'), `${assertedBy.path} never names "${metric}"`).toContain(
           `'${metric}'`,
         );
@@ -41,13 +41,14 @@ describe('the roadmap budgets table', () => {
 });
 
 describe('parseBudgets', () => {
-  it('reads units, thousands separators and the three kinds of asserter', () => {
+  it('reads units, thousands separators and the four kinds of asserter', () => {
     expect(
       parseBudgets(
         table([
           '| Cold | 250 ms | `a/b.bench.ts` |',
           '| Elements | 20 000 | `a/c.test.tsx`, once #91 merges |',
           '| Heap | 400 MB | WP-055, Playwright |',
+          '| Paint | 500 ms | `a/d.spec.ts` |',
         ]),
       ),
     ).toEqual([
@@ -68,6 +69,12 @@ describe('parseBudgets', () => {
         value: 400,
         unit: 'MB',
         assertedBy: { kind: 'pending', workPackage: 'WP-055' },
+      },
+      {
+        metric: 'Paint',
+        value: 500,
+        unit: 'ms',
+        assertedBy: { kind: 'e2e', path: 'a/d.spec.ts' },
       },
     ]);
   });

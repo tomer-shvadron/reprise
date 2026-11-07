@@ -12,6 +12,7 @@ export type BudgetUnit = 'ms' | 'MB' | 'count';
 export type AssertedBy =
   | { kind: 'bench'; path: string }
   | { kind: 'unit'; path: string }
+  | { kind: 'e2e'; path: string }
   | { kind: 'pending'; workPackage: string };
 
 export interface Budget {
@@ -67,9 +68,13 @@ function assertedBy(metric: string, cell: string): AssertedBy {
   const path = PATH.exec(cell)?.[1];
   if (path?.endsWith('.bench.ts')) return { kind: 'bench', path };
   if (path !== undefined && /\.test\.tsx?$/.test(path)) return { kind: 'unit', path };
+  if (path?.endsWith('.spec.ts')) return { kind: 'e2e', path };
   const workPackage = WORK_PACKAGE.exec(cell)?.[0];
   if (workPackage !== undefined) return { kind: 'pending', workPackage };
-  throw rowError(metric, `"${cell}" is neither a .bench.ts or .test.ts path nor a WP-0NN`);
+  throw rowError(
+    metric,
+    `"${cell}" is neither a .bench.ts, .test.ts or .spec.ts path nor a WP-0NN`,
+  );
 }
 
 export function parseBudgets(markdown: string): Budget[] {
