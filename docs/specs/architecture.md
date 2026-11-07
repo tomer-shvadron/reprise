@@ -83,6 +83,8 @@ Changed by #79 (2026-11-06): a region map resolves every layered region of a key
 
 Changed by #96 (2026-11-06): `OpenedFile` (and the `file:open` result) gains an optional opaque `handle`, the picked path in Electron and the `FileSystemFileHandle` in a browser with the File System Access API, and `Platform` gains `writeHandle(handle, bytes)`, which writes over that file or over a path `saveFile` returned; Save writes a `.reprise` in place through it, and a `.gp` with the gp writer once the user confirms what it loses; gp3, gp4, gp5 and gpx have no writer of their own, so Save sends them to Save As, which asks for Reprise or Guitar Pro 7–8 before the platform dialog.
 
+Changed by #109 (2026-11-07): in paged mode a system taller than the page's content area is split between its staves (between tracks where it can, never through a staff) into parts on consecutive pages, each starting at a page top; `LayoutResult.systems` lists each part as a `System` on one page, consecutive parts sharing `bars`; `System.part` (0, 1, …) marks the parts of a split system, and a part after the first has the id `system:<first master-bar id>/<part>`.
+
 Synced by #74 (2026-11-06), no contract change: the Layout sketch lists the `LayoutOptions`, `LayoutMetrics` and `Anchor` fields #59 shipped and the `tiedNotes` option #68 added, and the Audio sketch names the `InstrumentSink` #55 shipped and #73 widened.
 
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
