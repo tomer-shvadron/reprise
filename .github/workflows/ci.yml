@@ -203,7 +203,7 @@ jobs:
       - name: E2E
         id: e2e
         timeout-minutes: 6
-        run: pnpm e2e seek.spec.ts --repeat-each 10
+        run: pnpm e2e
 
       - name: Upload e2e traces and videos
         if: ${{ !cancelled() && steps.e2e.outcome == 'failure' }}
