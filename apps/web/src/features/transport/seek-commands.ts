@@ -16,8 +16,7 @@ export type SeekCommandId =
   | 'transport.firstBar'
   | 'transport.lastBar'
   | 'transport.selectPreviousBar'
-  | 'transport.selectNextBar'
-  | 'view.followPlayback';
+  | 'transport.selectNextBar';
 
 type SeekCommand = Command & { id: SeekCommandId };
 
@@ -37,9 +36,9 @@ export function playheadTick(services: Pick<SeekServices, 'playback'>): number {
   return services.playback.getState().position?.position.playbackTick ?? 0;
 }
 
-/** The keyboard's seek and bar-selection commands, Guitar Pro's keys, and Follow playback. */
+/** The keyboard's seek and bar-selection commands, on Guitar Pro's keys. */
 export function seekCommands(services: SeekServices): SeekCommand[] {
-  const { playback, document, selection, transport, ui } = services;
+  const { playback, document, selection, transport } = services;
 
   const step = (kind: SeekStep) => () => {
     const { score } = document.getState();
@@ -142,13 +141,6 @@ export function seekCommands(services: SeekServices): SeekCommand[] {
       title: 'Extend selection to next bar',
       shortcut: { key: 'ArrowRight', mod: true, shift: true },
       run: extend(1),
-    },
-    {
-      id: 'view.followPlayback',
-      title: 'Follow playback',
-      run: () => {
-        ui.getState().requestFollow();
-      },
     },
   ];
 }
