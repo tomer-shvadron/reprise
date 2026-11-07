@@ -2,7 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-11-07
-- **Deciders**: Tomer Shvadron, with Claude
+- **Deciders**: the lead's rulings on #48, which the owner can overrule
 
 ## Context
 
@@ -11,6 +11,11 @@ The track sidebar and the mixer (WP-052) change four kinds of thing: what a trac
 (visibility, single-track view, notation per track), and which track is current. Guitar Pro keeps
 volume, pan, instrument, mute and solo in its file. Each needs one owner, an answer to "does undo
 revert it" and "does Save write it", and a path to the audio engine that does not stop playback.
+
+The plan on #48 proposed the split; the lead's rulings on its questions settled it. The decisions
+below record ruling 3 (the instrument is score data), ruling 2 (mute and solo are never written),
+ruling 1 (notation is saved into the file, as ADR-0007 says) and ruling 4 (undo and redo as
+commands). Visibility as view state follows the lead's ruling on #46 Q6.
 
 ## Decision
 

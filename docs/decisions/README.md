@@ -5,7 +5,7 @@ architecture decision record (ADR): the context that forced the decision, what w
 the alternatives that were rejected and why, and the consequences. The records exist so that
 anyone, including an agent picking up an issue, can see why things are the way they are
 without re-deriving or re-litigating them. The first seventeen were written from the planning
-session of 2026-11-05, 0018 and 0019 from the phase-0 reviews the same day, 0020 from the switch off Fable on 2026-11-06, 0021 from the lead's ruling on PR #68 the same day, 0022 from the lead's ruling on #28, and 0023 from the lead's ruling on #32; see `../specs/shared-understanding.md` for the session's summary.
+session of 2026-11-05, 0018 and 0019 from the phase-0 reviews the same day, 0020 from the switch off Fable on 2026-11-06, 0021 from the lead's ruling on PR #68 the same day, 0022 from the lead's ruling on #28, 0023 from the lead's ruling on #32, and 0024 from the lead's rulings on #48; see `../specs/shared-understanding.md` for the session's summary.
 
 Rules:
 
