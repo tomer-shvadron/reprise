@@ -29,6 +29,7 @@ test('opens from the palette', async ({ app }) => {
 
 test('a cancelled picker changes nothing', async ({ app, page }) => {
   await page.keyboard.press('ControlOrMeta+o');
+  await expect.poll(() => app.opens()).toBe(1);
 
   await expect(page.getByText('No file open.')).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
@@ -36,6 +37,8 @@ test('a cancelled picker changes nothing', async ({ app, page }) => {
 });
 
 test('a drop opens every format, each replacing the last', async ({ app }) => {
+  // A user has pressed something by now, and that gesture builds the one AudioContext.
+  await app.gesture();
   const opened: [path: string, bars: number][] = [
     ...FORMATS.map((path): [string, number] => [fixture(path), manifestEntry(path).bars]),
     [generated('song.reprise'), SONG.bars],
@@ -51,7 +54,7 @@ test('a drop opens every format, each replacing the last', async ({ app }) => {
   await app.drop(fixture('gp5/percussion-all.gp5'));
   await app.waitReady('percussion-all.gp5');
   expect(await app.description()).not.toBe(before);
-  expect(await app.contexts()).toBeLessThanOrEqual(1);
+  expect(await app.contexts()).toBe(1);
 });
 
 test('an unknown file shows an error and keeps the song', async ({ app, page }) => {
