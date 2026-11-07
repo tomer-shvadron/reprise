@@ -5,7 +5,7 @@ import { glyph, glyphWidth, line, rect, union, type LayoutSink } from '../../pri
 import type { Rect, StaffType } from '../../types';
 import { DYNAMICS_GLYPHS, dynamicsBaseline, shownDynamics } from '../dynamics';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
-import type { ChordPlan } from './chord';
+import { headEdges, type ChordPlan, type HeadPlan } from './chord';
 import { GRACE_SCALE, noteMatches, type BarPlan, type BeatPlan } from './plan';
 import {
   beamY,
@@ -73,13 +73,29 @@ function drawChord(
       node: head.note.id,
     });
     sink.primitives.push(drawn);
-    const { x: bx, y: by, width: bw, height: bh } = drawn.bbox;
+    if (head.ghost && chord.parens) {
+      for (const [name, at] of [
+        ['noteheadParenthesisLeft', chord.parens.left],
+        ['noteheadParenthesisRight', chord.parens.right],
+      ] as const) {
+        sink.primitives.push(
+          glyph(name, x + at, top + head.y, space, { scale, node: head.note.id }),
+        );
+      }
+    }
+    box = box ? union(box, drawn.bbox) : drawn.bbox;
+    if (head.sounding) continue;
+    // A diamond is taller than a staff space; its anchor keeps to one, as other heads' do, so
+    // diamonds a third apart do not overlap.
+    const diamond = head.glyph.startsWith('noteheadDiamond');
+    const { x: bx, width: bw } = drawn.bbox;
+    const by = diamond ? top + head.y - (space * scale) / 2 : drawn.bbox.y;
+    const bh = diamond ? space * scale : drawn.bbox.height;
     const bbox =
       head.shared > 0
         ? rect(bx + head.shared, by, bw - head.shared, bh)
         : rect(bx, by, bw + head.shared, bh);
     sink.anchors.push({ kind: 'note', id: head.note.id, bbox, ...anchorBase(context, voice) });
-    box = box ? union(box, drawn.bbox) : drawn.bbox;
   }
   return box;
 }
@@ -91,10 +107,18 @@ function beatX(context: Context, beat: BeatPlan): number {
   return placement.onsetX(beat.tick);
 }
 
-function tieDirection(chord: ChordPlan, index: number, multiVoice: boolean): ArcDirection {
+/** The heads drawn for the chord's notes, without harmonics' sounding diamonds. */
+export function mainHeads(chord: ChordPlan): HeadPlan[] {
+  return chord.heads.filter((head) => !head.sounding);
+}
+
+/** The side a tie or slur on `head` bulges: away from the stem, the outer heads outward. */
+export function tieDirection(chord: ChordPlan, head: HeadPlan, multiVoice: boolean): ArcDirection {
   const up = chord.direction === 'up';
   if (multiVoice) return up ? 'up' : 'down';
-  const count = chord.heads.length;
+  const heads = mainHeads(chord);
+  const index = heads.indexOf(head);
+  const count = heads.length;
   if (count === 1 || (count % 2 === 1 && index === (count - 1) / 2)) return up ? 'down' : 'up';
   return index >= count / 2 ? 'up' : 'down';
 }
@@ -301,17 +325,19 @@ function drawTies(context: Context, fretted: boolean): void {
       const { chord } = beat;
       if (!chord) continue;
       const x = beatX(context, beat);
-      for (const [i, head] of chord.heads.entries()) {
+      for (const head of mainHeads(chord)) {
         if (!head.note.tie) continue;
-        const direction = tieDirection(chord, i, plan.multiVoice);
-        const end = x + head.left - gap;
+        const direction = tieDirection(chord, head, plan.multiVoice);
+        const end = x + headEdges(chord, head).left - gap;
         let start: number | undefined;
         const before = beats[beat.index - 1];
         if (before) {
-          const source = before.chord?.heads.find((other) =>
-            noteMatches(other.note, head.note, fretted),
-          );
-          if (source) start = beatX(context, before) + source.left + source.width + gap;
+          const sourceChord = before.chord;
+          const source =
+            sourceChord &&
+            mainHeads(sourceChord).find((other) => noteMatches(other.note, head.note, fretted));
+          if (sourceChord && source)
+            start = beatX(context, before) + headEdges(sourceChord, source).right + gap;
         } else if (previousBar) {
           const voiceBeats = previousBar.voices[voice]?.beats ?? [];
           const last = voiceBeats.at(-1);
@@ -334,13 +360,13 @@ function drawTies(context: Context, fretted: boolean): void {
     const following = nextBar?.voices[voice]?.beats[0];
     if (placement.next || !last?.chord || !following) continue;
     const x = beatX(context, last);
-    for (const [i, head] of last.chord.heads.entries()) {
+    for (const head of mainHeads(last.chord)) {
       if (!following.notes.some((note) => note.tie && noteMatches(note, head.note, fretted)))
         continue;
-      const direction = tieDirection(last.chord, i, plan.multiVoice);
+      const direction = tieDirection(last.chord, head, plan.multiVoice);
       drawTie(
         sink,
-        x + head.left + head.width + gap,
+        x + headEdges(last.chord, head).right + gap,
         placement.x + placement.width,
         top + head.y,
         direction,

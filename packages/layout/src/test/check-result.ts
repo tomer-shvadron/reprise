@@ -1,5 +1,7 @@
 import { expect } from 'vitest';
 
+import type { Id, Score } from '@reprise/model';
+
 import type { Anchor, LayoutResult, Primitive, Rect } from '../types';
 
 const EPSILON = 0.02;
@@ -175,4 +177,54 @@ export function overlappingMarks(result: LayoutResult): [Primitive, Primitive][]
     }
   }
   return found;
+}
+
+/** Every beat, note and grace note id of the score, with the id of the track it belongs to. */
+function owners(score: Score): Map<Id, Id> {
+  const owner = new Map<Id, Id>();
+  for (const track of score.tracks) {
+    for (const bar of track.bars) {
+      for (const voice of bar.voices) {
+        for (const beat of voice.beats) {
+          owner.set(beat.id, track.id);
+          for (const note of beat.notes) owner.set(note.id, track.id);
+          for (const grace of beat.grace ?? []) {
+            for (const note of grace.notes) owner.set(note.id, track.id);
+          }
+        }
+      }
+    }
+  }
+  return owner;
+}
+
+/**
+ * Primitives a beat or note drew outside every staff of its track in its system: a staff's anchor
+ * spans the staff, the room it measured and its lanes, so a primitive outside them is drawn
+ * where nothing was measured for it and can land on another staff or another page.
+ */
+export function strayPrimitives(result: LayoutResult, score: Score): Primitive[] {
+  const owner = owners(score);
+  const stray: Primitive[] = [];
+  for (const system of result.systems) {
+    const staves = result.anchors
+      .slice(system.anchors.start, system.anchors.end)
+      .filter((anchor) => anchor.kind === 'staff');
+    for (const primitive of result.primitives.slice(
+      system.primitives.start,
+      system.primitives.end,
+    )) {
+      const track = primitive.node === undefined ? undefined : owner.get(primitive.node);
+      if (track === undefined) continue;
+      const { y, height } = primitive.bbox;
+      const held = staves.some(
+        (anchor) =>
+          anchor.track === track &&
+          y >= anchor.bbox.y - EPSILON &&
+          y + height <= anchor.bbox.y + anchor.bbox.height + EPSILON,
+      );
+      if (!held) stray.push(primitive);
+    }
+  }
+  return stray;
 }

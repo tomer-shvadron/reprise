@@ -4,7 +4,13 @@ import { glyphMetrics, type GlyphName } from '../../metrics';
 import { glyphWidth } from '../../primitives';
 import type { StaffBar } from '../staff-module';
 import { planChord, positionY, type ChordNote, type ChordPlan } from './chord';
-import { barAccidentals, placeNote, type ShownAccidental } from './pitch';
+import {
+  barAccidentals,
+  harmonicHead,
+  placeNote,
+  soundingKey,
+  type ShownAccidental,
+} from './pitch';
 import { beamCount, beamGroups, tupletGroups, type RhythmEvent } from '../rhythm';
 import {
   beamLine,
@@ -207,11 +213,18 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
   const time = input.masterBar.timeSignature;
 
   const chordNotes = (notes: readonly Note[]): ChordNote[] =>
-    notes.map((note) => {
+    notes.flatMap((note) => {
       const placed = placeNote(track, note, key, input.clef, percussion);
       const accidental = accidentals.get(note.id);
-      return { note, ...placed, ...(accidental && { accidental }) };
+      const main: ChordNote = { note, ...placed, ...(accidental && { accidental }) };
+      const diamond = percussion ? undefined : harmonicHead(track, note, key, input.clef);
+      if (!diamond) return [main];
+      const shown = accidentals.get(soundingKey(note.id));
+      return [main, { note, ...diamond, sounding: true, ...(shown && { accidental: shown }) }];
     });
+  // A harmonic's sounding diamond never turns its stem.
+  const mainPositions = (chord: readonly ChordNote[]): number[] =>
+    chord.flatMap(({ position, sounding }) => (sounding ? [] : [position]));
 
   const beats: BeatPlan[] = [];
   const voices: BeatPlan[][] = [];
@@ -245,16 +258,14 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
     const directions = voiceBeats.map((beat, i): StemDirection => {
       if (multiVoice) return voiceDirection(voice);
       if (percussion) return 'up';
-      return directionByPosition((notes[i] ?? []).map(({ position }) => position));
+      return directionByPosition(mainPositions(notes[i] ?? []));
     });
     for (const [g, members] of grouped.entries()) {
       const direction = multiVoice
         ? voiceDirection(voice)
         : percussion
           ? 'up'
-          : directionByPosition(
-              members.flatMap((i) => (notes[i] ?? []).map(({ position }) => position)),
-            );
+          : directionByPosition(members.flatMap((i) => mainPositions(notes[i] ?? [])));
       for (const i of members) {
         groupOf.set(i, groups.length + g);
         directions[i] = direction;
@@ -304,14 +315,15 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
       plan.right = planned.right;
       plan.top = planned.top;
       plan.bottom = planned.bottom;
-      const tied = planned.heads.some(({ note }) => note.tie) || index === voiceBeats.length - 1;
+      const mainHeads = planned.heads.filter((head) => !head.sounding);
+      const tied = mainHeads.some(({ note }) => note.tie) || index === voiceBeats.length - 1;
       if (tied) {
-        plan.top = Math.min(plan.top, ...planned.heads.map(({ y }) => y - tieReach(space)));
-        plan.bottom = Math.max(plan.bottom, ...planned.heads.map(({ y }) => y + tieReach(space)));
+        plan.top = Math.min(plan.top, ...mainHeads.map(({ y }) => y - tieReach(space)));
+        plan.bottom = Math.max(plan.bottom, ...mainHeads.map(({ y }) => y + tieReach(space)));
       }
       planGraces(plan, chordNotes, space, multiVoice);
       if (!percussion) {
-        for (const head of [...planned.heads].reverse()) {
+        for (const head of [...mainHeads].reverse()) {
           const { leftHandFinger, rightHandFinger } = head.note;
           if (rightHandFinger)
             plan.fingering.push({ glyph: RIGHT_HAND[rightHandFinger], note: head.note });
