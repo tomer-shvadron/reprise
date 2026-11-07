@@ -126,6 +126,33 @@ describe('the print store', () => {
     expect(store.getState().preparing).toBe(false);
   });
 
+  it('lays out paged at zoom 1 on the paper, whatever the screen zoom and view mode', async () => {
+    const { services, store, run, renderJob } = await setup();
+    const printOnce = async () => {
+      store.getState().open();
+      const printing = store.getState().print();
+      const job = await renderJob();
+      await printing;
+      return job;
+    };
+    const atDefaults = await printOnce();
+    services.ui.getState().setZoom(2);
+    services.ui.getState().setViewMode('continuous');
+    expect(services.ui.getState().zoom).toBe(2);
+    expect(services.ui.getState().view.mode).toBe('continuous');
+    const zoomed = await printOnce();
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(run.mock.calls[1]?.[1]).toMatchObject({
+      mode: 'paged',
+      zoom: 1,
+      width: PAGE_SIZES.a4.width,
+      pageHeight: PAGE_SIZES.a4.height,
+    });
+    expect(run.mock.calls[1]?.[1]).toEqual(run.mock.calls[0]?.[1]);
+    expect(zoomed.result.pages.length).toBe(atDefaults.result.pages.length);
+    expect(zoomed.result.pages[0]?.bbox).toEqual(atDefaults.result.pages[0]?.bbox);
+  });
+
   it('waits for the rendered signal of its own job, and prints once', async () => {
     const { store, print, renderJob } = await setup();
     store.getState().open();
