@@ -58,6 +58,74 @@ describe('the order check', () => {
     expect(order.explained.map((entry) => entry.id)).toContain('return-jump-on-repeat-end');
   });
 
+  /** 1, |: 2, [1. 3 :|, [2. 4, 5 (segno), 6, 7 (D.S.), 8, 9: a D.S. in a song with voltas. */
+  const dalSegnoWithVoltas = (): Score => {
+    let builder = score().tempo(120).track('guitar');
+    builder = bar(builder);
+    builder = bar(builder).repeatStart();
+    builder = bar(builder).volta([1]).repeatEnd(2);
+    builder = bar(builder).volta([2]);
+    builder = bar(builder).target('segno');
+    builder = bar(builder);
+    builder = bar(builder).jump('dalSegno');
+    builder = bar(builder);
+    builder = bar(builder);
+    return builder.build();
+  };
+
+  it('fails an unrelated divergence after a bar a detector flags', async () => {
+    const song = dalSegnoWithVoltas();
+    const bytes = writeGp(song).bytes;
+    const { score: ours } = await read(bytes);
+    const sequence = expandPlaybackSequence(ours);
+    const playback = alphaTabPlayback(loadWithAlphaTab(bytes));
+    const deviations = detectDeviations(ours, sequence.warnings);
+    expect([...deviations.keys()]).toContain('voltas-after-return-jump');
+    const order = sequence.sequence.map((pass) => pass.masterBarIndex);
+    const counts = { ours: ours.masterBars.length, alphaTab: ours.masterBars.length };
+    expect(compareOrder(order, playback, deviations, counts).identical).toBe(true);
+    // One extra pass of the last bar: a bug at pass 14, away from any volta.
+    const result = compareOrder([...order, 8], playback, deviations, counts);
+    expect(result.explained).toEqual([]);
+    expect(result.violations).toEqual([
+      expect.objectContaining({
+        code: 'order-differs',
+        where: 'pass 14: ours bar 9, alphaTab end',
+      }),
+    ]);
+  });
+
+  it('explains a divergence at a volta after a return jump', async () => {
+    // 1 (segno), |: 2, [1. 3 :|, [2. 4, 5 (D.S.), 6: after the D.S. ours plays only ending 2.
+    let builder = score().tempo(120).track('guitar');
+    builder = bar(builder).target('segno');
+    builder = bar(builder).repeatStart();
+    builder = bar(builder).volta([1]).repeatEnd(2);
+    builder = bar(builder).volta([2]);
+    builder = bar(builder).jump('dalSegno');
+    builder = bar(builder);
+    const { order } = await compare(writeGp(builder.build()).bytes);
+    expect(order.identical).toBe(false);
+    expect(order.violations).toEqual([]);
+    expect(order.explained.map((entry) => entry.id)).toEqual(['voltas-after-return-jump']);
+  });
+
+  it('fails a divergence at a volta when no return jump was taken before it', () => {
+    const song = dalSegnoWithVoltas();
+    const deviations = detectDeviations(song, []);
+    const playback = {
+      guardFired: false,
+      passes: [0, 1, 2].map((masterBarIndex) => ({
+        masterBarIndex,
+        start: 0,
+        end: 0,
+        tempoChanges: [],
+      })),
+    };
+    const result = compareOrder([0, 1, 3], playback, deviations, { ours: 9, alphaTab: 9 });
+    expect(result.violations.map((v) => v.code)).toEqual(['order-differs']);
+  });
+
   it('reports a divergence no detector explains', () => {
     const playback = {
       guardFired: false,
@@ -237,7 +305,9 @@ describe('the deviation detectors', () => {
     expect(
       detectDeviations(built, [
         { code: 'repeat-end-without-start', masterBarIndex: 3, message: '' },
-      ]).get('unmatched-end-after-coda'),
+      ])
+        .get('unmatched-end-after-coda')
+        ?.map((deviation) => deviation.bar),
     ).toEqual([3]);
   });
 

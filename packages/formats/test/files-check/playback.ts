@@ -138,23 +138,57 @@ export type DetectorId =
 const hasReturnJump = (bar: Score['masterBars'][number]): boolean =>
   bar.jumps.some((jump) => RETURN_JUMPS.has(jump.kind));
 
+/** Where the two orders part: both agree on `ours[0..index-1]`. */
+export interface Divergence {
+  index: number;
+  ours: readonly number[];
+  alphaTab: readonly number[];
+}
+
+/** A flagged bar, and whether the divergence is the one its rule describes. */
+export interface Deviation {
+  bar: number;
+  matches: (divergence: Divergence) => boolean;
+}
+
+/** The bar whose jump or repeat decision differed, or either target of it, is `bar`. */
+const decidedAt =
+  (bar: number) =>
+  ({ index, ours, alphaTab }: Divergence): boolean =>
+    ours[index - 1] === bar || ours[index] === bar || alphaTab[index] === bar;
+
+/** `bar` was played and its jump taken before the divergence. */
+function jumpTakenBefore(bar: number, { index, ours }: Divergence): boolean {
+  for (let i = 0; i + 1 < index; i += 1) {
+    if (ours[i] === bar && ours[i + 1] !== bar + 1) return true;
+  }
+  return false;
+}
+
 /** One detector per row of the model README's "Deviations from alphaTab" that touches order. */
 export function detectDeviations(
   score: Score,
   warnings: readonly PlaybackWarning[],
-): Map<DetectorId, number[]> {
+): Map<DetectorId, Deviation[]> {
   const bars = score.masterBars;
-  const found = new Map<DetectorId, number[]>();
-  const flag = (id: DetectorId, index: number): void => {
-    found.set(id, [...(found.get(id) ?? []), index]);
+  const found = new Map<DetectorId, Deviation[]>();
+  const flag = (id: DetectorId, bar: number, matches = decidedAt(bar)): void => {
+    found.set(id, [...(found.get(id) ?? []), { bar, matches }]);
   };
+  const isVolta = (bar: number | undefined): boolean =>
+    bar !== undefined && (bars[bar]?.alternateEndings.length ?? 0) > 0;
   bars.forEach((bar, i) => {
     if (hasReturnJump(bar) && bar.repeat.endCount >= 2) flag('return-jump-on-repeat-end', i);
     if (bar.jumps.length > 0 && bar.alternateEndings.length > 0) flag('jump-on-volta', i);
   });
-  const firstReturn = bars.findIndex(hasReturnJump);
-  if (firstReturn >= 0 && bars.some((bar) => bar.alternateEndings.length > 0)) {
-    flag('voltas-after-return-jump', firstReturn);
+  if (bars.some((bar) => bar.alternateEndings.length > 0)) {
+    bars.forEach((bar, i) => {
+      if (!hasReturnJump(bar)) return;
+      flag('voltas-after-return-jump', i, (divergence) => {
+        const { index, ours, alphaTab } = divergence;
+        return jumpTakenBefore(i, divergence) && (isVolta(ours[index]) || isVolta(alphaTab[index]));
+      });
+    });
   }
   let openStart: number | undefined;
   bars.forEach((bar, i) => {
@@ -167,10 +201,17 @@ export function detectDeviations(
   });
   const starts = bars.flatMap((bar, i) => (bar.repeat.start || i === 0 ? [i] : []));
   starts.forEach((start, k) => {
-    const section = bars.slice(start, starts[k + 1] ?? bars.length);
+    const end = starts[k + 1] ?? bars.length;
+    const section = bars.slice(start, end);
     const ends = section.filter((bar) => bar.repeat.endCount > 0).length;
     if (ends >= 2 && section.some((bar) => bar.alternateEndings.length > 0)) {
-      flag('several-repeat-ends-with-voltas', start);
+      const inSection = (bar: number | undefined): boolean =>
+        bar !== undefined && bar >= start && bar < end && isVolta(bar);
+      flag(
+        'several-repeat-ends-with-voltas',
+        start,
+        ({ index, ours, alphaTab }) => inSection(ours[index]) || inSection(alphaTab[index]),
+      );
     }
   });
   const coda = bars.findIndex(
@@ -196,7 +237,7 @@ export interface OrderComparison {
 export function compareOrder(
   ours: readonly number[],
   theirs: AlphaTabPlayback,
-  deviations: ReadonlyMap<DetectorId, number[]>,
+  deviations: ReadonlyMap<DetectorId, readonly Deviation[]>,
   masterBarCount: { ours: number; alphaTab: number },
 ): OrderComparison {
   if (masterBarCount.ours !== masterBarCount.alphaTab) {
@@ -235,13 +276,10 @@ export function compareOrder(
       ],
     };
   }
-  const seen = new Set([
-    ...ours.slice(0, divergence + 1),
-    ...alphaTabOrder.slice(0, divergence + 1),
-  ]);
+  const at: Divergence = { index: divergence, ours, alphaTab: alphaTabOrder };
   const explained: CheckExplained[] = [];
-  for (const [id, bars] of deviations) {
-    const hits = bars.filter((bar) => seen.has(bar));
+  for (const [id, flagged] of deviations) {
+    const hits = flagged.filter((deviation) => deviation.matches(at)).map(({ bar }) => bar);
     if (hits.length > 0) {
       explained.push({
         id,
