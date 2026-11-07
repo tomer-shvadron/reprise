@@ -21,6 +21,11 @@ async function measureBeat(app: App, page: Page): Promise<number> {
 }
 
 const barNumber = (text: string | null) => Number((text ?? '').split('/')[0]);
+/** The elapsed half of the time field, `m:ss / m:ss`, in seconds. */
+const seconds = (text: string | null) => {
+  const [minutes = '', secs = ''] = (text ?? '').split(' ')[0]?.split(':') ?? [];
+  return Number(minutes) * 60 + Number(secs);
+};
 
 test.beforeEach(async ({ app }) => {
   await app.openWithPicker(generated('song.gp'));
@@ -34,15 +39,21 @@ test('play, pause, resume, stop and play from start', async ({ app, page }) => {
   expect(await app.contexts()).toBe(1);
   expect((await app.level()).state).toBe('running');
 
+  // Paused past the start, a resume from 0:00 shows.
+  await expect(app.field('bar')).toHaveText('2/16');
   await page.keyboard.press('Space');
   await expect(app.playButton).toHaveAccessibleName('Play');
   await app.expectSilence();
   const held = barNumber(await app.field('bar').textContent());
-  expect(held).toBeGreaterThanOrEqual(1);
+  const heldAt = seconds(await app.field('time').textContent());
+  expect(held).toBeGreaterThanOrEqual(2);
+  expect(heldAt).toBeGreaterThan(0);
 
   await page.keyboard.press('Space');
   await expect(app.playButton).toHaveAccessibleName('Pause');
+  await app.expectSound();
   expect(barNumber(await app.field('bar').textContent())).toBeGreaterThanOrEqual(held);
+  expect(seconds(await app.field('time').textContent())).toBeGreaterThanOrEqual(heldAt);
 
   await page.keyboard.press('Enter');
   await expect(app.playButton).toHaveAccessibleName('Play');
