@@ -214,27 +214,12 @@ export class App {
     });
   }
 
-  /** Waits until the score's smooth scroll after a seek has stopped for a few frames. */
+  /** Waits until the score's own smooth scroll has landed: the region drops `data-scrolling`. */
   async settle(): Promise<void> {
-    const settled = await this.score().evaluate(
-      (region, guard) =>
-        new Promise<boolean>((resolve) => {
-          let last = '';
-          let still = 0;
-          const start = performance.now();
-          const frame = () => {
-            const now = `${String(region.scrollLeft)},${String(region.scrollTop)}`;
-            still = now === last ? still + 1 : 0;
-            last = now;
-            if (still >= 5) resolve(true);
-            else if (performance.now() - start > guard) resolve(false);
-            else requestAnimationFrame(frame);
-          };
-          requestAnimationFrame(frame);
-        }),
-      SETTLE_MS,
-    );
-    if (!settled) throw new Error(`The score kept scrolling for ${String(SETTLE_MS)} ms`);
+    await expect(
+      this.score(),
+      `The score kept scrolling for ${String(SETTLE_MS)} ms`,
+    ).not.toHaveAttribute('data-scrolling', { timeout: SETTLE_MS });
   }
 
   /** An element's box in the score's scroll-content coordinates, which a seek's scroll keeps. */
@@ -259,39 +244,15 @@ export class App {
     return this.contentBox('[data-playhead] .score-bar-highlight');
   }
 
-  /**
-   * Presses ⌘→ `times` times, each after the last seek's scroll has settled: a seek pressed
-   * while the previous one's smooth scroll is in flight leaves the view behind, an app bug
-   * recorded on #76 (https://github.com/tomer-shvadron/reprise/issues/76#issuecomment-6705653330)
-   * and pinned by `seek.spec.ts`. Fixing it makes this a plain loop.
-   */
-  async nextBars(times: number): Promise<void> {
-    for (let i = 0; i < times; i += 1) {
-      const time = (await this.field('time').textContent()) ?? '';
-      await this.page.keyboard.press('ControlOrMeta+ArrowRight');
-      await expect(this.field('time')).not.toHaveText(time);
-      await this.settle();
-    }
-  }
-
   /** Maps a content point to the viewport at the time of the call; it must be in view. */
   async toViewport(point: Point): Promise<Point> {
-    const map = async () => {
-      await this.settle();
-      const { rect, left, top } = await this.regionScroll();
-      const x = rect.x + point.x - left;
-      const y = rect.y + point.y - top;
-      const inside =
-        x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
-      return { x, y, inside };
-    };
-    // A seek's follow scroll can start a few frames after the key, past a settled view.
-    await expect
-      .poll(async () => (await map()).inside, {
-        message: `Content point ${JSON.stringify(point)} is outside the visible score`,
-      })
-      .toBe(true);
-    const { x, y } = await map();
+    await this.settle();
+    const { rect, left, top } = await this.regionScroll();
+    const x = rect.x + point.x - left;
+    const y = rect.y + point.y - top;
+    if (x < rect.x || x > rect.x + rect.width || y < rect.y || y > rect.y + rect.height) {
+      throw new Error(`Content point ${JSON.stringify(point)} is outside the visible score`);
+    }
     return { x, y };
   }
 

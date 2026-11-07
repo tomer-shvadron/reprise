@@ -3,6 +3,7 @@ import type { Id } from '@reprise/model';
 import {
   startTransition,
   useCallback,
+  useEffect,
   useEffectEvent,
   useId,
   useImperativeHandle,
@@ -103,8 +104,6 @@ export interface ScoreViewProps {
 
 const DEFAULT_REVEAL_MARGIN = 24;
 const CURSOR_WIDTH = 2;
-/** Longer than any smooth scroll the browser runs; a turn not done by then was interrupted. */
-const TURN_TIMEOUT = 1000;
 
 const KEY_AXES: Readonly<Record<string, ScrollAxis>> = {
   ArrowLeft: 'x',
@@ -147,6 +146,10 @@ function prefersReducedMotion(): boolean {
 
 function readScroll(target: HTMLElement): Point {
   return { x: target.scrollLeft, y: target.scrollTop };
+}
+
+function near(a: Point, b: Point, tolerance: number): boolean {
+  return Math.abs(a.x - b.x) < tolerance && Math.abs(a.y - b.y) < tolerance;
 }
 
 /** The systems on the page under `point`, or every system when it is between pages. */
@@ -214,13 +217,17 @@ export function ScoreView({
   const barBox = useRef<HTMLDivElement | null>(null);
   const lineBox = useRef<HTMLDivElement | null>(null);
   const playhead = useRef<PlaybackCursor | undefined>(undefined);
-  const followed = useRef<{
-    system?: number;
-    time?: number | undefined;
-    x?: number;
-    /** A smooth page turn in flight: where it is going, and when to stop waiting for it. */
-    turn?: { x: number; y: number; until: number } | undefined;
-  }>({});
+  const followed = useRef<{ system?: number; time?: number | undefined; x?: number }>({});
+  /** The destination of the view's own smooth scroll while it is in flight, in scroll px. */
+  const flight = useRef<Point | undefined>(undefined);
+  /** The view wrote the position instantly since the last `scrollend`, which that write fires. */
+  const wroteInstantly = useRef(false);
+  const land = useCallback((target: HTMLElement | null, destination?: Point) => {
+    flight.current = destination;
+    if (!target) return;
+    if (destination) target.dataset['scrolling'] = '';
+    else delete target.dataset['scrolling'];
+  }, []);
 
   const extent = useMemo(() => layoutExtent(layout), [layout]);
   const offset = canvasOffset(viewport, extent, zoom);
@@ -245,16 +252,19 @@ export function ScoreView({
   useLayoutEffect(() => {
     if (pending.current?.centre === scrolledCentre) pending.current = undefined;
   }, [scrolledCentre]);
-  // Its mounted set was for the old geometry.
+  // Its mounted set was for the old geometry, and so was a flight's destination.
   useLayoutEffect(() => {
     pending.current = undefined;
-  }, [zoom, viewport, layout]);
+    land(scroller.current);
+  }, [zoom, viewport, layout, land]);
 
   // Rendering only when the mounted systems or pages change keeps following, which scrolls
   // every frame, from re-rendering the view every frame. The comparison is with the set the last
   // requested centre makes, so a scroll back before that commits still wins.
   const onScroll = (event: UIEvent<HTMLDivElement>) => {
-    const next = centreFromScroll(readScroll(event.currentTarget), viewport, zoom, offset);
+    const scroll = readScroll(event.currentTarget);
+    if (flight.current && near(scroll, flight.current, 1)) land(event.currentTarget);
+    const next = centreFromScroll(scroll, viewport, zoom, offset);
     liveCentre.current = next;
     const window = visibleWindow(next, viewport, zoom, offset);
     const nextRange = mountedSystems(layout.systems, window);
@@ -282,6 +292,7 @@ export function ScoreView({
     const scroll = scrollFromCentre(at, viewport, zoom, offset);
     target.scrollLeft = scroll.x;
     target.scrollTop = scroll.y;
+    land(target);
   });
   useLayoutEffect(() => {
     anchorZoom();
@@ -294,32 +305,51 @@ export function ScoreView({
     followed.current = {};
   }, [layout]);
 
+  // eslint-plugin-react does not know `onScrollEnd` yet, so the listener is added by hand.
+  useEffect(() => {
+    if (!element) return;
+    const onScrollEnd = () => {
+      const instant = wroteInstantly.current;
+      wroteInstantly.current = false;
+      const aim = flight.current;
+      // Chromium ends an instant write on the next frame, even with a smooth scroll begun since.
+      if (!aim || (instant && !near(readScroll(element), aim, 1))) return;
+      land(element);
+    };
+    element.addEventListener('scrollend', onScrollEnd);
+    return () => {
+      element.removeEventListener('scrollend', onScrollEnd);
+    };
+  }, [element, land]);
+
   useImperativeHandle(ref, () => {
-    const live = (target: HTMLElement) =>
-      visibleWindow(
-        centreFromScroll(readScroll(target), viewport, zoom, offset),
-        viewport,
-        zoom,
-        offset,
-      );
+    const windowAt = (scroll: Point) =>
+      visibleWindow(centreFromScroll(scroll, viewport, zoom, offset), viewport, zoom, offset);
+    const live = (target: HTMLElement) => windowAt(readScroll(target));
+    /** The window the view is headed for: its smooth scroll's destination while one is in flight. */
+    const settled = (target: HTMLElement) => windowAt(flight.current ?? readScroll(target));
     const scrollTo = (target: HTMLElement, origin: Point, smooth: boolean) => {
       const scroll = clampScroll(
         { x: origin.x * zoom + offset.x, y: origin.y * zoom + offset.y },
         size,
         viewport,
       );
-      if (
-        Math.abs(scroll.x - target.scrollLeft) < 0.5 &&
-        Math.abs(scroll.y - target.scrollTop) < 0.5
-      ) {
+      const from = readScroll(target);
+      // Already there, or already on the way: a second call would only restart the easing.
+      if (near(scroll, flight.current ?? from, 0.5)) return;
+      // Under a pixel, Chromium may round the destination to where it is and fire no event at all.
+      if (smooth && !near(scroll, from, 1)) {
+        // Chromium retargets a smooth scroll in flight to the new destination.
+        target.scrollTo({ left: scroll.x, top: scroll.y, behavior: 'smooth' });
+        land(target, scroll);
         return;
       }
-      if (smooth) {
-        target.scrollTo({ left: scroll.x, top: scroll.y, behavior: 'smooth' });
-      } else {
-        target.scrollLeft = scroll.x;
-        target.scrollTop = scroll.y;
-      }
+      // Any write stops a smooth scroll in flight, even one that leaves the position unchanged.
+      target.scrollLeft = scroll.x;
+      target.scrollTop = scroll.y;
+      const to = readScroll(target);
+      if (to.x !== from.x || to.y !== from.y) wroteInstantly.current = true;
+      land(target);
     };
     return {
       setPlayhead: (cursor) => {
@@ -330,7 +360,9 @@ export function ScoreView({
         const target = scroller.current;
         const cursor = playhead.current;
         if (!target || !cursor) return;
-        const window = live(target);
+        // The glide writes every frame and owns the axis; everything else is measured from where
+        // the view is headed, so a seek during a smooth scroll is not judged from mid-flight.
+        const window = mode === 'continuous' && running ? live(target) : settled(target);
         const reduced = prefersReducedMotion();
         const memory = followed.current;
         const bandOf = (index: number): Rect | undefined => {
@@ -341,17 +373,11 @@ export function ScoreView({
         };
         const index = cursor.bar.system;
         let { x, y } = window;
-        let smooth = false;
+        // A move made while the view's smooth scroll is in flight joins it rather than stopping it.
+        let smooth = flight.current !== undefined;
         if (mode === 'paged') {
           const current = bandOf(index);
           if (!current) return;
-          const now = performance.now();
-          const previous = memory.turn;
-          const flying =
-            previous && now < previous.until && Math.abs(previous.y - window.y) * zoom >= 1
-              ? previous
-              : undefined;
-          memory.turn = undefined;
           if (!running) {
             y = revealAxis(window.y, window.height, current.y, current.height, FOLLOW_MARGIN);
             smooth = !reduced;
@@ -362,18 +388,9 @@ export function ScoreView({
               y = turn.y;
               smooth = !turn.instant && !reduced;
             }
-          } else if (flying) {
-            // An instant write now would cancel the turn; reveal from where the turn ends instead.
-            x = revealAxis(flying.x, window.width, cursor.x, 0, FOLLOW_MARGIN);
-            memory.turn = flying;
-            if (Math.abs(x - flying.x) * zoom < 0.5) return;
-            memory.turn = { ...flying, x };
-            scrollTo(target, { x, y: flying.y }, true);
-            return;
           }
           memory.system = index;
           x = revealAxis(window.x, window.width, cursor.x, 0, FOLLOW_MARGIN);
-          if (smooth && running) memory.turn = { x, y, until: now + TURN_TIMEOUT };
         } else if (running) {
           const now = performance.now();
           const dt = memory.time === undefined ? 0 : now - memory.time;
@@ -385,6 +402,7 @@ export function ScoreView({
           x = glide(from, window.width, cursor.x, dt, reduced);
           memory.time = now;
           memory.x = x;
+          smooth = false;
         } else {
           x = revealAxis(window.x, window.width, cursor.x, 0, FOLLOW_MARGIN);
           smooth = !reduced;
@@ -396,20 +414,12 @@ export function ScoreView({
       revealRect: (rect, options = {}) => {
         const target = scroller.current;
         if (!target) return;
-        const current = live(target);
-        const origin = revealScroll(current, rect, options.margin ?? DEFAULT_REVEAL_MARGIN);
+        const origin = revealScroll(settled(target), rect, options.margin ?? DEFAULT_REVEAL_MARGIN);
         if (!origin) return;
-        const left = origin.x * zoom + offset.x;
-        const top = origin.y * zoom + offset.y;
-        if (options.behavior === 'smooth' && !prefersReducedMotion()) {
-          target.scrollTo({ left, top, behavior: 'smooth' });
-        } else {
-          target.scrollLeft = left;
-          target.scrollTop = top;
-        }
+        scrollTo(target, origin, options.behavior === 'smooth' && !prefersReducedMotion());
       },
     };
-  }, [viewport, zoom, offset, size, visible, layout]);
+  }, [viewport, zoom, offset, size, visible, layout, land]);
 
   const pointer =
     (type: ScorePointerEvent['type']) => (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -439,33 +449,39 @@ export function ScoreView({
       onScorePointer({ type, point, anchor, column, event: event.nativeEvent });
     };
 
+  /** A hand scroll stops the view's smooth scroll, so its destination no longer says anything. */
+  const handScroll = (target: HTMLElement, axis: ScrollAxis) => {
+    land(target);
+    onUserScroll?.(axis);
+  };
+
   const onWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     // Ctrl with the wheel is a pinch, which zooms.
-    if (!onUserScroll || event.ctrlKey) return;
+    if (event.ctrlKey) return;
     const sideways = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY);
-    onUserScroll(sideways ? 'x' : 'y');
+    handScroll(event.currentTarget, sideways ? 'x' : 'y');
   };
 
   const onRegionPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!onUserScroll) return;
     if (event.button === 1) {
-      onUserScroll('both');
+      handScroll(event.currentTarget, 'both');
       return;
     }
     // A press on the region itself, not the canvas, is a press on a scrollbar.
     if (event.target !== event.currentTarget) return;
     const { offsetX, offsetY } = event.nativeEvent;
-    if (offsetX >= event.currentTarget.clientWidth) onUserScroll('y');
-    else if (offsetY >= event.currentTarget.clientHeight) onUserScroll('x');
+    if (offsetX >= event.currentTarget.clientWidth) handScroll(event.currentTarget, 'y');
+    else if (offsetY >= event.currentTarget.clientHeight) handScroll(event.currentTarget, 'x');
   };
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const axis = KEY_AXES[event.key];
-    if (!onUserScroll || !axis) return;
+    if (!axis) return;
+    const target = event.currentTarget;
     const native = event.nativeEvent;
     // After the window's shortcut dispatcher, which prevents the keys a command took.
     setTimeout(() => {
-      if (!native.defaultPrevented) onUserScroll(axis);
+      if (!native.defaultPrevented) handScroll(target, axis);
     }, 0);
   };
 
@@ -485,12 +501,9 @@ export function ScoreView({
       onScroll={onScroll}
       onWheel={onWheel}
       onPointerDown={onRegionPointerDown}
-      onTouchMove={
-        onUserScroll &&
-        (() => {
-          onUserScroll('both');
-        })
-      }
+      onTouchMove={(event) => {
+        handScroll(event.currentTarget, 'both');
+      }}
       onKeyDown={onKeyDown}
     >
       <p id={descriptionId} className="sr-only">

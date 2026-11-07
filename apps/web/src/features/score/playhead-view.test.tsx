@@ -191,6 +191,83 @@ describe('following', () => {
   });
 });
 
+describe('a smooth scroll in flight', () => {
+  /** Smooth calls only record their destination, as a browser's would mid-flight; instant writes land. */
+  function setup(mode: 'paged' | 'continuous') {
+    const smooth: ScrollToOptions[] = [];
+    Element.prototype.scrollTo = function scrollTo(options?: ScrollToOptions | number) {
+      if (typeof options === 'object' && options.behavior === 'smooth') smooth.push(options);
+    };
+    const result = mode === 'paged' ? paged() : continuous();
+    const ref = createRef<ScoreViewHandle>();
+    render(<ScoreView ref={ref} layout={result} zoom={1} />);
+    stubScroll(region());
+    const handle = ref.current;
+    if (!handle) throw new Error('no handle');
+    const seek = (cursor: PlaybackCursor | undefined) => {
+      act(() => {
+        handle.setPlayhead(cursor);
+        handle.followPlayhead({ mode, running: false, force: true });
+      });
+    };
+    return { smooth, seek, cursors: barCursors(result), result, handle };
+  }
+
+  it('is retargeted by a seek the window shows only because the scroll has not moved yet', () => {
+    const { smooth, seek, cursors, result, handle } = setup('paged');
+    const first = cursors[0];
+    const late = cursors.at(-1);
+    if (!first || !late) throw new Error('no cursors');
+    seek(late);
+    expect(smooth).toHaveLength(1);
+    expect(region().scrollTop).toBe(0);
+
+    // Bar 1 shows from where the view still is, but not from where it is going.
+    seek(first);
+    expect(smooth).toHaveLength(2);
+    expect(region()).toHaveAttribute('data-scrolling');
+    region().scrollTop = smooth[1]?.top ?? Number.NaN;
+    fireEvent.scroll(region());
+    expect(region()).not.toHaveAttribute('data-scrolling');
+    expect(handle.viewport().y).toBeCloseTo((result.systems[0]?.bbox.y ?? 0) - FOLLOW_MARGIN, 0);
+  });
+
+  it('is left alone by a seek its destination already shows', () => {
+    const { smooth, seek, cursors } = setup('paged');
+    const late = cursors.at(-1);
+    // The system above the late one: a reveal from above leaves the late system at the bottom.
+    const above = cursors.filter((cursor) => cursor.bar.system === (late?.bar.system ?? 0) - 1);
+    const neighbour = above.at(-1);
+    if (!late || !neighbour) throw new Error('no cursors');
+    seek(late);
+    seek(neighbour);
+    expect(smooth).toHaveLength(1);
+  });
+
+  it('ends with a hand scroll, after which seeks are measured from the live position', () => {
+    const { smooth, seek, cursors } = setup('paged');
+    const first = cursors[0];
+    const late = cursors.at(-1);
+    if (!first || !late) throw new Error('no cursors');
+    seek(late);
+    fireEvent.wheel(region(), { deltaY: -100 });
+    expect(region()).not.toHaveAttribute('data-scrolling');
+    seek(first);
+    expect(smooth).toHaveLength(1);
+  });
+
+  it('is retargeted on x in continuous view', () => {
+    const { smooth, seek, cursors } = setup('continuous');
+    const first = cursors[0];
+    const late = cursors.at(-1);
+    if (!first || !late) throw new Error('no cursors');
+    seek(late);
+    seek(first);
+    expect(smooth).toHaveLength(2);
+    expect(smooth[1]?.left).toBeLessThan(smooth[0]?.left ?? 0);
+  });
+});
+
 describe('hand scrolls', () => {
   it('are told from input: the wheel, a scrollbar press and keys no command took', () => {
     vi.useFakeTimers();

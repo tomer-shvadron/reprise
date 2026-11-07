@@ -230,4 +230,33 @@ describe('the playhead in the app', () => {
     expect(topOf(system)).toBeLessThan(200);
     expect(lineInView()).toBe(true);
   }, 30_000);
+
+  it('follows the last of rapid seeks made while a smooth scroll is in flight', async () => {
+    const { result } = await setup(largeScore(1, 40));
+    const press = (key: string) => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key, metaKey: true, bubbles: true, cancelable: true }),
+      );
+    };
+    press('Home');
+    for (let i = 0; i < 3; i++) await frame();
+    const view = region();
+    expect(view.scrollTop).toBe(0);
+    const bottom = view.getBoundingClientRect().bottom;
+    const far = result.systems.find((system) => {
+      const svg = view.querySelector(`[data-system-id="${system.id}"]`);
+      return svg === null || svg.getBoundingClientRect().top > bottom;
+    });
+    if (!far) throw new Error('no system below the fold');
+    const ended = new Promise((resolve) => {
+      view.addEventListener('scrollend', resolve, { once: true });
+    });
+    // One task: forward to a system below the fold, which starts a smooth scroll down, then back
+    // to bar 1, which the window still shows because the scroll has not moved yet.
+    for (let i = 0; i < far.bars.start; i++) press('ArrowRight');
+    press('Home');
+    await ended;
+    expect(lineInView()).toBe(true);
+    expect(view).not.toHaveAttribute('data-scrolling');
+  }, 30_000);
 });
