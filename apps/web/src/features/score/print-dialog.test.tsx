@@ -25,7 +25,13 @@ async function setup(song: Score) {
     nextPaint: () => Promise.resolve(),
     layout: run,
   });
-  render(<PrintDialog store={store} />);
+  render(
+    <>
+      <button type="button">Score</button>
+      <PrintDialog store={store} />
+    </>,
+  );
+  screen.getByRole('button', { name: 'Score' }).focus();
   act(() => {
     store.getState().open();
   });
@@ -57,6 +63,34 @@ describe('PrintDialog', () => {
     expect(store.getState().job?.settings).toMatchObject({ paper: 'letter', pageNumbers: false });
     expect(store.getState().job?.settings.tracks).toHaveLength(1);
     expect(screen.queryByRole('dialog', { name: 'Print' })).not.toBeInTheDocument();
+  });
+
+  it('focuses Print… on open', async () => {
+    await setup(twoTracks());
+    expect(screen.getByRole('button', { name: 'Print…' })).toHaveFocus();
+  });
+
+  it.each([
+    ['Escape', async (user: ReturnType<typeof userEvent.setup>) => user.keyboard('{Escape}')],
+    [
+      'Cancel',
+      async (user: ReturnType<typeof userEvent.setup>) =>
+        user.click(screen.getByRole('button', { name: 'Cancel' })),
+    ],
+    [
+      'a print',
+      async (user: ReturnType<typeof userEvent.setup>) =>
+        user.click(screen.getByRole('button', { name: 'Print…' })),
+    ],
+  ])('gives focus back to where it was after %s', async (_, close) => {
+    const { user } = await setup(twoTracks());
+    await close(user);
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Print' })).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Score' })).toHaveFocus();
+    });
   });
 
   it('disables Print… with no track on', async () => {

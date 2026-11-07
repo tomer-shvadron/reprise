@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useId, useRef } from 'react';
 import { useStore } from 'zustand';
 
 import { Button } from '@/components/ui/button';
@@ -51,6 +51,8 @@ function SwitchRow({
 export function PrintDialog({ store }: { store: PrintStore }) {
   const dialog = useStore(store, (state) => state.dialog);
   const preparing = useStore(store, (state) => state.preparing);
+  const printButton = useRef<HTMLButtonElement>(null);
+  const returnFocus = useRef<Element | null>(null);
   if (!dialog) return null;
   const { settings, choices, error } = dialog;
   const update = (change: Partial<PrintSettings>) => {
@@ -70,7 +72,21 @@ export function PrintDialog({ store }: { store: PrintStore }) {
         if (!next) cancel();
       }}
     >
-      <DialogContent showCloseButton={false}>
+      <DialogContent
+        showCloseButton={false}
+        onOpenAutoFocus={(event) => {
+          // A modal Radix dialog returns focus only to its trigger, and this one has none.
+          returnFocus.current = document.activeElement;
+          event.preventDefault();
+          printButton.current?.focus();
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          const target = returnFocus.current;
+          returnFocus.current = null;
+          if (target instanceof HTMLElement && target.isConnected) target.focus();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Print</DialogTitle>
           <DialogDescription>
@@ -143,7 +159,7 @@ export function PrintDialog({ store }: { store: PrintStore }) {
             Cancel
           </Button>
           <Button
-            autoFocus
+            ref={printButton}
             disabled={preparing || settings.tracks.length === 0}
             onClick={() => {
               void store.getState().print().catch(console.error);
