@@ -30,11 +30,12 @@ describe('discover', () => {
     touch('local-tabs/.DS_Store');
     touch('local-tabs/.hidden/x.gp3');
     const found = discover(['local-tabs'], root, root);
-    expect(found.files.map((file) => file.file)).toEqual([
-      'local-tabs/a.gpx',
-      'local-tabs/b/song.GP5',
-      'local-tabs/c.gp',
+    expect(found.files.map((file) => file.absolute)).toEqual([
+      join(root, 'local-tabs/a.gpx'),
+      join(root, 'local-tabs/b/song.GP5'),
+      join(root, 'local-tabs/c.gp'),
     ]);
+    expect(found.files.map((file) => file.file)).toEqual(['local-1', 'local-2', 'local-3']);
     expect(found.skipped).toBe(3);
     expect(found.files.every((file) => file.source === 'local')).toBe(true);
   });
@@ -66,7 +67,13 @@ describe('discover', () => {
   it('resolves paths against the directory pnpm was started from', () => {
     touch('local-tabs/sub/a.gp4');
     const found = discover(['a.gp4'], join(root, 'local-tabs/sub'), root);
-    expect(found.files.map((file) => file.file)).toEqual(['local-tabs/sub/a.gp4']);
+    expect(found.files.map((file) => file.absolute)).toEqual([join(root, 'local-tabs/sub/a.gp4')]);
+  });
+
+  it('names a local file only by its number and the start of its hash', () => {
+    writeFileSync(join(root, 'Secret Song.gp5'), 'bytes');
+    const [file] = discover(['Secret Song.gp5'], root, root).files;
+    expect(file).toMatchObject({ file: 'local-1', source: 'local', hash: '277089d91c0b' });
   });
 });
 

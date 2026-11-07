@@ -13,7 +13,8 @@ import type { TestProject } from 'vitest/node';
 import { ROOT_DIR } from './files.ts';
 import type { CheckFile } from './meta.ts';
 
-export const OUT_DIR = join(ROOT_DIR, '.check-files');
+/** Fixed, whatever the output folder: the browser projects fetch natives from the dev server. */
+const NATIVES_DIR = join(ROOT_DIR, '.check-files', 'natives');
 
 export const FILES_ENV = 'REPRISE_CHECK_FILES';
 
@@ -40,7 +41,7 @@ export function filesFromEnv(env: NodeJS.ProcessEnv = process.env): Omit<CheckFi
 
 export default async function setup(project: TestProject): Promise<void> {
   const browser = project.config.browser.enabled;
-  const dir = join(OUT_DIR, 'natives', project.name);
+  const dir = join(NATIVES_DIR, project.name);
   if (browser) mkdirSync(dir, { recursive: true });
   const files: CheckFile[] = [];
   for (const [index, entry] of filesFromEnv().entries()) {

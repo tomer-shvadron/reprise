@@ -11,9 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 import { startVitest } from 'vitest/node';
 
-import { ROOT_DIR, discover } from './files.ts';
-
-const OUT = join(ROOT_DIR, '.check-files');
+import { OUT_DIR as OUT, ROOT_DIR, discover } from './files.ts';
 const PROJECTS = ['formats', 'layout', 'audio'];
 
 function usage(message: string): never {

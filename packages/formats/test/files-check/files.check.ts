@@ -22,6 +22,7 @@ import { toleranceFor } from '../oracle/tolerances';
 import { emptyRecord } from './check-meta';
 import type { CheckFile, CheckId, CheckRecord } from './check-meta';
 import { listeningFeatures } from './read-facts';
+import { shownValue } from './redact';
 import {
   alphaTabPlayback,
   compareOrder,
@@ -32,7 +33,7 @@ import {
 import type { AlphaTabPlayback } from './playback';
 
 const ROOT = join(import.meta.dirname, '..', '..', '..', '..');
-const OUT = join(ROOT, '.check-files');
+const OUT = process.env['REPRISE_CHECK_OUT'] ?? join(ROOT, '.check-files');
 const MAX_ORACLE_VIOLATIONS = 200;
 
 interface Loaded {
@@ -74,13 +75,11 @@ function withAlphaTab(loaded: Loaded): alphaTab.model.Score | undefined {
   return loaded.alphaTab;
 }
 
-const json = (value: unknown): string =>
-  value === undefined ? 'undefined' : JSON.stringify(value);
-
 const plural = (count: number, noun: string): string =>
   `${String(count)} ${noun}${count === 1 ? '' : 's'}`;
 
-function warningTable(warnings: readonly Warning[]): string {
+/** A local file's table leaves out the messages, which may quote the file's text. */
+function warningTable(warnings: readonly Warning[], local: boolean): string {
   const rows = new Map<string, { severity: string; count: number; message: string }>();
   for (const warning of warnings) {
     const key = `${warning.code}|${warning.severity}`;
@@ -89,6 +88,15 @@ function warningTable(warnings: readonly Warning[]): string {
     rows.set(key, row);
   }
   if (rows.size === 0) return 'No warnings.';
+  if (local) {
+    return [
+      '| Code | Severity | Count |',
+      '| --- | --- | --- |',
+      ...[...rows.entries()].map(
+        ([key, row]) => `| ${key.split('|')[0] ?? ''} | ${row.severity} | ${String(row.count)} |`,
+      ),
+    ].join('\n');
+  }
   return [
     '| Code | Severity | Count | First message |',
     '| --- | --- | --- | --- |',
@@ -112,7 +120,7 @@ function chordDiagrams(score: Score): number {
 }
 
 function checkRead(file: CheckFile, loaded: Loaded, record: CheckRecord, ms: number): void {
-  const extension = file.file.split('.').pop()?.toLowerCase() ?? '';
+  const extension = file.absolute.split('.').pop()?.toLowerCase() ?? '';
   record.facts['extension'] = extension;
   const detected = detect(loaded.bytes);
   if (detected) record.facts['format'] = detected;
@@ -147,31 +155,39 @@ function checkRead(file: CheckFile, loaded: Loaded, record: CheckRecord, ms: num
   const notes = countNotes(score);
   const sequence = expandPlaybackSequence(score);
   const durationSeconds = tempoMap(score, sequence.sequence).durationSeconds;
-  const exported = writeGp(score);
-  const exportPath = join(
-    OUT,
-    'exports',
-    `${file.source === 'local' ? `local-${String(file.index)}` : file.file}.gp`,
-  );
-  mkdirSync(dirname(exportPath), { recursive: true });
-  writeFileSync(exportPath, exported.bytes);
+  let exported: ReturnType<typeof writeGp> | undefined;
+  try {
+    exported = writeGp(score);
+    const exportPath = join(OUT, 'exports', `${file.file}.gp`);
+    mkdirSync(dirname(exportPath), { recursive: true });
+    writeFileSync(exportPath, exported.bytes);
+  } catch (error) {
+    // The file read; a failing export is its own finding and must not cost the read's facts.
+    record.violations.push({
+      code: 'export-failed',
+      message: `the .gp export throws: ${error instanceof Error ? error.name : 'an error'}`,
+    });
+  }
   Object.assign(record.facts, {
     tracks: score.tracks.length,
     bars: score.masterBars.length,
     notes,
     durationSeconds: Math.round(durationSeconds * 10) / 10,
     chordDiagrams: chordDiagrams(score),
-    writerDropped: new Set(exported.dropped.map((drop) => drop.code)).size,
     readMs: Math.round(ms),
-    title: score.meta.title,
-    trackNames: score.tracks.map((track) => track.name).join(', '),
   });
+  if (exported) {
+    record.facts['writerDropped'] = new Set(exported.dropped.map((drop) => drop.code)).size;
+  }
   record.features = listeningFeatures(score);
   const mismatch =
     detected !== undefined && detected !== extension ? `; the bytes are ${detected}` : '';
   record.summary = `${plural(score.tracks.length, 'track')}, ${plural(score.masterBars.length, 'bar')}, ${plural(notes, 'note')}, ${plural(warnings.length, 'warning')}${mismatch}`;
-  record.sections.push({ title: 'Read warnings', markdown: warningTable(warnings) });
-  if (exported.dropped.length > 0) {
+  record.sections.push({
+    title: 'Read warnings',
+    markdown: warningTable(warnings, file.source === 'local'),
+  });
+  if (exported && exported.dropped.length > 0) {
     record.sections.push({
       title: 'Not carried by the gp export',
       markdown: exported.dropped
@@ -219,15 +235,14 @@ function checkOracle(file: CheckFile, loaded: Loaded, record: CheckRecord): void
     }
     unexplained += 1;
     if (record.violations.length < MAX_ORACLE_VIOLATIONS) {
+      const local = file.source === 'local';
+      const ours = shownValue(difference.ours, local);
+      const theirs = shownValue(difference.alphaTab, local);
       record.violations.push({
         code: 'oracle-difference',
-        message: `${difference.field}: ours ${json(difference.ours)}, alphaTab ${json(difference.alphaTab)}`,
+        message: `${difference.field}: ours ${ours}, alphaTab ${theirs}`,
         where: difference.path,
-        data: {
-          group: difference.field,
-          ours: json(difference.ours),
-          alphaTab: json(difference.alphaTab),
-        },
+        data: { group: difference.field, ours, alphaTab: theirs },
       });
     }
   }

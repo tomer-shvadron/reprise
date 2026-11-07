@@ -1,7 +1,8 @@
 /**
  * Judges the records the checks emit and writes the reports: statuses against the known list,
  * stale known entries, per-file Markdown and JSON, the summary, listening sheets and draft
- * issues. Drafts never name a local tab, its title or its tracks (the repo is public).
+ * issues. Nothing written or printed names a local tab or carries its text: a local file is
+ * `local-<n>` with its hash, and the checks leave its text out of their records.
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
@@ -27,7 +28,7 @@ export interface FileReport {
   file: CheckFile;
   checks: Partial<Record<CheckId, Classified>>;
   status: Status;
-  /** `local tab 3 (gp5 v510, 4 tracks, 120 bars; repeats, bends)` for a local file; the path otherwise. */
+  /** `local-3 (sha256 1a2b3c4d5e6f)` for a local file; the path otherwise. */
   label: string;
 }
 
@@ -99,21 +100,8 @@ export function scrub(text: string, file: CheckFile): string {
     .reduce((out, part) => out.split(part).join('<local tab>'), text);
 }
 
-const count = (value: unknown, noun: string): string =>
-  typeof value === 'number' ? `${String(value)} ${noun}${value === 1 ? '' : 's'}` : '';
-
-function localLabel(number: number, read: CheckRecord | undefined): string {
-  if (!read || read.skipped !== undefined) return `local tab ${String(number)}`;
-  const { facts } = read;
-  const format =
-    typeof facts['format'] === 'string' ? facts['format'] : String(facts['extension'] ?? '?');
-  const version = facts['version'] === undefined ? '' : ` v${String(facts['version'])}`;
-  const size = [count(facts['tracks'], 'track'), count(facts['bars'], 'bar')].filter(
-    (part) => part !== '',
-  );
-  const features = (read.features ?? []).slice(0, 6).map((feature) => feature.key);
-  const details = [`${format}${version}`, ...size].join(', ');
-  return `local tab ${String(number)} (${details}${features.length > 0 ? `; ${features.join(', ')}` : ''})`;
+function localLabel(file: CheckFile): string {
+  return file.hash === undefined ? file.file : `${file.file} (sha256 ${file.hash})`;
 }
 
 export function classify(
@@ -123,7 +111,6 @@ export function classify(
   crashes: ReadonlyMap<string, string> = new Map(),
 ): RunReport {
   const byKey = new Map(records.map((record) => [`${record.file}|${record.check}`, record]));
-  let local = 0;
   const reports = files.map((file): FileReport => {
     const classified: Partial<Record<CheckId, Classified>> = {};
     for (const check of checks) {
@@ -143,8 +130,7 @@ export function classify(
       classified[check] = { record, status: statusOf(record, unknown.length), known, unknown };
     }
     const status = worst(Object.values(classified).map((entry) => entry.status));
-    if (file.source === 'local') local += 1;
-    const label = file.source === 'local' ? localLabel(local, classified.read?.record) : file.file;
+    const label = file.source === 'local' ? localLabel(file) : file.file;
     return { file, checks: classified, status, label };
   });
 
@@ -238,6 +224,11 @@ const CODE_TEXT: Readonly<Record<string, CodeText>> = {
     title: 'the reader loses content ({group})',
     should:
       'An `error`-severity warning means content was lost; a file Guitar Pro opens whole should read whole.',
+  },
+  'export-failed': {
+    title: 'the .gp export throws on a file that reads',
+    should:
+      'Every score the readers produce exports to .gp, dropping only what the writer reports.',
   },
   'oracle-difference': {
     title: 'reading differs from alphaTab on {group}',
@@ -435,9 +426,12 @@ export function draftFileName(draft: Draft): string {
 
 /** Where a file's reports live under the output folder, without an extension. */
 export function reportPath(file: CheckFile): string {
-  return file.file.startsWith('/') || /^[A-Za-z]:/.test(file.file)
-    ? join('external', basename(file.file))
-    : file.file;
+  return file.source === 'local' ? join('local', file.file) : file.file;
+}
+
+/** Keyed by content for a local file, so a marked sheet stays with its tab when numbers shift. */
+export function sheetPath(file: CheckFile): string {
+  return file.source === 'local' ? join('local', file.hash ?? file.file) : file.file;
 }
 
 const cell = (text: string): string => text.replaceAll('|', '\\|').replaceAll('\n', ' ');
@@ -499,12 +493,8 @@ export function renderFile(report: FileReport, run: RunReport, env: Environment)
   const lines = [
     `# ${local ? report.label : report.file.file}`,
     '',
-    ...(local
-      ? [
-          `- File: ${report.file.file}`,
-          `- Title: ${fact('title')}`,
-          `- Tracks: ${fact('trackNames')}`,
-        ]
+    ...(local && report.file.hash !== undefined
+      ? [`- SHA-256, first 12 hex digits: ${report.file.hash}`]
       : []),
     `- Format: ${fact('format')}${read['version'] === undefined ? '' : `, version ${fact('version')}`}`,
     `- ${fact('tracks')} tracks, ${fact('bars')} bars, ${fact('notes')} notes, ${fact('durationSeconds')} s`,
@@ -563,12 +553,10 @@ export function writeReports(run: RunReport, env: Environment, out: string, root
       `${JSON.stringify({ file: report.file.file, status: report.status, records }, null, 2)}\n`,
     );
     write(`${base}.md`, renderFile(report, run, env));
-    const sheet = join(out, 'listening', `${reportPath(report.file)}.md`);
+    const sheet = join(out, 'listening', `${sheetPath(report.file)}.md`);
     if (!existsSync(sheet)) {
       const link = relative(dirname(sheet), join(root, CHECKLIST)).split('\\').join('/');
-      const heading =
-        report.file.source === 'local' ? `${report.label}, ${report.file.file}` : report.file.file;
-      write(sheet, listeningSheet(heading, report.checks.read?.record.features ?? [], link));
+      write(sheet, listeningSheet(report.label, report.checks.read?.record.features ?? [], link));
     }
   }
   for (const draft of run.drafts)

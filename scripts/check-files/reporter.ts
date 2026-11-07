@@ -6,10 +6,10 @@ import { platform, release } from 'node:os';
 
 import type { Reporter, SerializedError, TestModule } from 'vitest/node';
 
-import { ROOT_DIR } from './files.ts';
+import { OUT_DIR, ROOT_DIR } from './files.ts';
 import { isCheckRecord } from './meta.ts';
 import type { CheckFile, CheckId, CheckRecord } from './meta.ts';
-import { FILES_ENV, OUT_DIR, filesFromEnv } from './provide-files.ts';
+import { FILES_ENV, filesFromEnv } from './provide-files.ts';
 import {
   classify,
   draftFileName,

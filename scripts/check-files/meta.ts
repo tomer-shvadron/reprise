@@ -17,18 +17,21 @@ export const CHECK_IDS: readonly CheckId[] = [
 
 /** One file the pass covers; `index` names its native document under `.check-files/natives/`. */
 export interface CheckFile {
-  /** Repo-relative POSIX path inside the repo, the absolute path otherwise. */
+  /** A fixture's repo-relative POSIX path; `local-<n>` for any other file. */
   file: string;
   source: 'fixtures' | 'local';
+  /** Only for reading the bytes: a local file's path names it, so it never reaches a report. */
   absolute: string;
   index: number;
+  /** A local file's SHA-256, first 12 hex digits. */
+  hash?: string;
   readError?: string;
 }
 
 export interface CheckViolation {
   /** Kebab-case, `outside-page`. */
   code: string;
-  /** One line; never a file, track or song name. */
+  /** One line; never a file name or any text from a local file. */
   message: string;
   /** `bar 12 (pass 2), track 2 (fretted, program 30), beat 3`. */
   where?: string;

@@ -25,11 +25,12 @@ const fixture = (file: string, index = 0): CheckFile => ({
   index,
 });
 
-const local = (file: string, index: number): CheckFile => ({
-  file,
+const local = (absolute: string, n: number): CheckFile => ({
+  file: `local-${String(n)}`,
   source: 'local',
-  absolute: `/repo/${file}`,
-  index,
+  absolute,
+  index: n - 1,
+  hash: '1a2b3c4d5e6f',
 });
 
 function record(file: string, check: CheckId, extra: Partial<CheckRecord> = {}): CheckRecord {
@@ -159,23 +160,13 @@ describe('drafts', () => {
     expect(text).toContain('- **Build**: `pnpm check:files` at commit abc1234');
   });
 
-  it('never name a local tab, its title or its tracks', () => {
-    const file = local('local-tabs/Secret Song.gp5', 0);
+  it('never name a local tab in a draft', () => {
+    const file = local('/repo/local-tabs/Secret Song.gp5', 1);
     const run = classify(
       [file],
       ['read', 'oracle'],
       [
-        record(file.file, 'read', {
-          facts: {
-            format: 'gp5',
-            version: 510,
-            tracks: 2,
-            bars: 40,
-            title: 'Secret Song',
-            trackNames: 'Lead Riff, Bass Line',
-          },
-          features: [{ key: 'bends', bars: [3] }],
-        }),
+        record(file.file, 'read', { facts: { format: 'gp5', tracks: 2, bars: 40 } }),
         record(file.file, 'oracle', {
           violations: [violation('oracle-difference', { group: 'vibrato' })],
         }),
@@ -185,13 +176,12 @@ describe('drafts', () => {
     const draft = run.drafts[0];
     if (!draft) throw new Error('no draft');
     const text = renderDraft(draft, env);
-    for (const secret of ['Secret Song', 'Lead Riff', 'Bass Line', 'local-tabs'])
-      expect(text).not.toContain(secret);
-    expect(text).toContain('local tab 1 (gp5 v510, 2 tracks, 40 bars; bends)');
+    for (const secret of ['Secret Song', 'local-tabs']) expect(text).not.toContain(secret);
+    expect(text).toContain('local-1 (sha256 1a2b3c4d5e6f)');
   });
 
   it('scrub a local path out of a crash message', () => {
-    const file = local('local-tabs/Secret Song.gp5', 0);
+    const file = local('/repo/local-tabs/Secret Song.gp5', 1);
     expect(scrub(`failed on /repo/local-tabs/Secret Song.gp5 at line 2`, file)).toBe(
       'failed on <local tab> at line 2',
     );
@@ -245,16 +235,12 @@ describe('writeReports', () => {
     expect(readFileSync(sheet, 'utf8')).toBe('marked');
   });
 
-  it('puts a file outside the repository under external/', () => {
+  it('puts a local file under local/ and its listening sheet under its hash', () => {
     out = mkdtempSync(join(tmpdir(), 'check-files-out-'));
-    const file: CheckFile = {
-      file: '/elsewhere/tab.gp5',
-      source: 'local',
-      absolute: '/elsewhere/tab.gp5',
-      index: 0,
-    };
+    const file = local('/elsewhere/tab.gp5', 2);
     writeReports(classify([file], ['read'], [record(file.file, 'read')]), env, out, '/repo');
-    expect(existsSync(join(out, 'external/tab.gp5.md'))).toBe(true);
+    expect(existsSync(join(out, 'local/local-2.md'))).toBe(true);
+    expect(existsSync(join(out, 'listening/local/1a2b3c4d5e6f.md'))).toBe(true);
   });
 });
 
