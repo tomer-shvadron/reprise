@@ -90,6 +90,8 @@ Changed by #109 (2026-11-07): in paged mode a system taller than the page's cont
 
 Changed by #112 (2026-11-07): `createAudioEngine({ context, budgetBytes?, scheduleMemory?, scheduler?, frames?, lookahead?, startLatency? })` owns the `AudioContext` (a factory is called on the first `unlock`, `play` or `previewNote`), the GM bank (`setSoundfont`), the sampler, the memory manager, the metronome on the master bus and the master level; `setTrack`, `previewNote(track, { string, fret })`, `memory()` and the `memory` event work as sketched. `load` resolves `{ instruments }`, the song plan's, once the opening bars are decoded; over a loaded song it keeps the position, clamped to the new score, and the transport state by the rule `seek` uses, and applies a timeline-neutral edit without rebuilding; loading the same score again decodes it again; `unload({ evict? })` ends a song. New: `unlock`, `setSoundfont`, `unload`, `setMasterVolume`, `previewTrack`, `outputLatency`, `settled` and the `instrumentLoads` event. What `createAudioEngine({ sink })` was is now `createTransport`. `InstrumentSink.allNotesOff(when)` also cancels the mixer changes scheduled after `when`, and `Sampler.allNotesOff` the strips' volume and pan. A preset that only shares a song's samples is resident only when a song plays it, and an eviction is counted only when it frees a buffer (#99).
 
+Changed by #113 (2026-11-07): `LayoutOptions.headerHeight` keeps room at the top of the first page for a header the caller draws. That page's smaller room splits a system taller than it, as #85 splits a system taller than a page. `Platform.print` takes an optional `{ pageSize: 'A4' | 'Letter' }`, which the Electron implementation passes to `webContents.print` so the system dialog opens on the chosen paper; the browser relies on the print's `@page` size.
+
 Synced by #74 (2026-11-06), no contract change: the Layout sketch lists the `LayoutOptions`, `LayoutMetrics` and `Anchor` fields #59 shipped and the `tiedNotes` option #68 added, and the Audio sketch names the `InstrumentSink` #55 shipped and #73 widened.
 
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
@@ -418,6 +420,7 @@ interface LayoutOptions {
   mode: 'paged' | 'continuous'; width: number; pageHeight?: number; zoom: number; tracks: Id[] | 'all'; notation: Record<Id, 'tab'|'standard'|'both'>;
   tiedNotes?: 'parentheses' | 'hidden'; // tied notes on tab staves, parentheses unless given
   margins?: Partial<Margins>;         // page margins, unscaled
+  headerHeight?: number;              // paged: room kept free at the top of the first page for a header the caller draws, unscaled; less than the page's content area, else RangeError
   pageGap?: number; staffGap?: number; trackGap?: number; systemGap?: number; // pageGap unscaled, the rest at zoom 1
   dirtyBars?: readonly Id[];          // master bars to re-measure when a cache is given, usually Change.touchedBars
 }
@@ -476,7 +479,7 @@ interface Platform {
   writeHandle(handle, bytes): Promise<void>;   // over an opened file's handle or a path saveFile returned
   libraryDir(): Promise<string>;     // ~/Music/Reprise on desktop; OPFS root in the browser
   dataDir(): Promise<string>;        // Electron userData; OPFS in the browser
-  print(): Promise<void>;
+  print(options?: { pageSize: 'A4' | 'Letter' }): Promise<void>;   // Electron opens the system dialog on that paper
   microphone(): Promise<MediaStream>;
 }
 ```

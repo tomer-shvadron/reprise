@@ -1,6 +1,6 @@
-import type { FileFilter, FileHandle, OpenedFile } from './bridge';
+import type { FileFilter, FileHandle, OpenedFile, PrintOptions } from './bridge';
 
-export type { FileFilter, FileHandle, OpenedFile } from './bridge';
+export type { FileFilter, FileHandle, OpenedFile, PrintOptions } from './bridge';
 
 export interface Platform {
   /** Resolves undefined when the user cancels. */
@@ -22,6 +22,7 @@ export interface Platform {
   libraryDir(): Promise<string>;
   /** Electron userData on desktop; a directory in origin-private storage in the browser. */
   dataDir(): Promise<string>;
-  print(): Promise<void>;
+  /** Opens the system print dialog, on `options.pageSize` where the platform can preselect it. */
+  print(options?: PrintOptions): Promise<void>;
   microphone(): Promise<MediaStream>;
 }

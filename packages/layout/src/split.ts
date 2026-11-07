@@ -73,13 +73,14 @@ export function partVertical(
 /**
  * The parts of a system taller than `room`: each holds as many whole tracks as fit, a track's
  * staves part only when the track alone is taller than `room`, and a staff taller than `room` is
- * a part of its own.
+ * a part of its own. The first part fits `firstRoom`, the room left under a first page's header.
  */
 export function splitSlots(
   vertical: VerticalLayout,
   groups: readonly number[],
   room: number,
   space: number,
+  firstRoom = room,
 ): Range[] {
   const parts: Range[] = [];
   const count = vertical.staves.length;
@@ -88,7 +89,9 @@ export function splitSlots(
     let trackEnd = -1;
     let fits = -1;
     for (let e = start; e < count; e++) {
-      if (partHeight(vertical, { start, end: e + 1 }, space) > room) break;
+      if (partHeight(vertical, { start, end: e + 1 }, space) > (start === 0 ? firstRoom : room)) {
+        break;
+      }
       fits = e;
       if (groups[e + 1] !== groups[e]) trackEnd = e;
     }

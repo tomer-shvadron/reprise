@@ -58,6 +58,11 @@
 
 :root {
   --radius: 0.625rem;
+  /* The light theme's score surface, which print uses in every theme. */
+  --paper-light: oklch(0.99 0.006 85);
+  --ink-light: oklch(0.18 0.01 70);
+  --ink-muted-light: oklch(0.52 0.012 70);
+  --paper-accent-light: oklch(0.52 0.18 250);
 }
 
 /* Dark is the default: it applies before the theme script runs and when no preference exists. */
@@ -141,10 +146,10 @@
   --sidebar-accent-muted-foreground: oklch(0.5 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
-  --paper: oklch(0.99 0.006 85);
-  --ink: oklch(0.18 0.01 70);
-  --ink-muted: oklch(0.52 0.012 70);
-  --paper-accent: oklch(0.52 0.18 250);
+  --paper: var(--paper-light);
+  --ink: var(--ink-light);
+  --ink-muted: var(--ink-muted-light);
+  --paper-accent: var(--paper-accent-light);
   --mute: oklch(0.55 0.21 27);
   --mute-foreground: oklch(1 0 0);
   --solo: oklch(0.82 0.16 80);

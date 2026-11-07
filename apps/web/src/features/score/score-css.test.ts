@@ -1,3 +1,4 @@
+import { PAGE_SIZES } from '@reprise/layout';
 import { describe, expect, it } from 'vitest';
 
 import css from './score.css?raw';
@@ -27,5 +28,35 @@ describe('score.css', () => {
   it('hides overlays and breaks pages in print', () => {
     expect(css).toMatch(/@media print\s*{[\s\S]*\.score-overlays\s*{\s*display: none;/);
     expect(css).toMatch(/\.score-page \+ \.score-page\s*{\s*break-before: page;/);
+  });
+
+  it("names one page per paper at exactly layout's page size, with no margin", () => {
+    for (const [paper, { width, height }] of Object.entries(PAGE_SIZES)) {
+      const rule = new RegExp(`@page reprise-${paper}\\s*{([^}]*)}`).exec(css)?.[1] ?? '';
+      expect(rule).toContain(`size: ${String(width)}px ${String(height)}px;`);
+      expect(rule).toContain('margin: 0;');
+      expect(css).toMatch(
+        new RegExp(`\\.score-print\\[data-paper='${paper}'\\]\\s*{\\s*page: reprise-${paper};`),
+      );
+    }
+  });
+
+  it('prints in the light paper whatever the theme', () => {
+    const rule = /\.score-print\s*{([^}]*)}/.exec(css)?.[1] ?? '';
+    for (const token of ['paper', 'ink', 'ink-muted', 'paper-accent']) {
+      expect(rule).toContain(`--${token}: var(--${token}-light);`);
+    }
+    expect(rule).toContain('display: none;');
+  });
+
+  it('hides the app and lets html and body grow in print', () => {
+    const print = css.slice(css.indexOf('@media print'));
+    expect(print).toMatch(
+      /body:has\(> \.score-print\) > :not\(\.score-print\)\s*{\s*display: none;/,
+    );
+    expect(print).toMatch(
+      /html:has\(> body > \.score-print\),\s*body:has\(> \.score-print\)\s*{\s*height: auto;\s*overflow: visible;/,
+    );
+    expect(print).toMatch(/\.score-print \.score-page\s*{\s*overflow: clip;/);
   });
 });

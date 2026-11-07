@@ -8,6 +8,6 @@
     "checkJs": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["*.ts", "*.js", "scripts/**/*.ts"],
+  "include": ["*.ts", "*.js", "scripts/**/*.ts", "apps/web/e2e/visual/test/pdf-pages.node.ts"],
   "references": [{ "path": "./packages/model" }, { "path": "./packages/formats" }]
 }

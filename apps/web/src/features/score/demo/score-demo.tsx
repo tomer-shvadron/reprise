@@ -17,17 +17,26 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
 
 import { useScoreFonts } from '../fonts';
 import type { ScoreOverlays } from '../overlay-layer';
+import { PrintDocument } from '../print-document';
+import { layoutForPrint, type PrintContent } from '../print-layout';
 import { playheadAt, pointerTarget } from '../playhead';
 import { ScorePages } from '../score-page';
 import { ScoreView, type ScorePointerEvent, type ScoreViewHandle } from '../score-view';
 import { uniformNotation, viewLayoutOptions } from '../view-options';
 import { intersects } from '../viewport';
-import { DEMO_CHOICES, LONG_FIXTURE, serializeDemoParams, type DemoParams } from './demo-params';
+import {
+  DEMO_CHOICES,
+  LONG_FIXTURE,
+  demoFileName,
+  serializeDemoParams,
+  type DemoParams,
+} from './demo-params';
 import { FIXTURES, loadFixture } from './fixtures';
 import { PerfPanel } from './perf-panel';
 import { changedSystems, frameStats, type PaintRecord, type ScrollRecord } from './perf-stats';
@@ -36,6 +45,8 @@ interface Doc {
   score: Score;
   cache: LayoutCache;
   result: LayoutResult;
+  /** The print layout, in the `print` view only. */
+  print?: PrintContent;
 }
 
 interface PendingPaint {
@@ -142,7 +153,21 @@ export function ScoreDemo({ initial }: { initial: DemoParams }) {
     });
     const result = layout(score, dirtyBars ? { ...options, dirtyBars } : options, cache);
     pending.current = { label, layoutMs: result.metrics.layoutMs, handedAt: performance.now() };
-    setDoc({ score, cache, result });
+    const print =
+      next.view === 'print'
+        ? layoutForPrint(
+            score,
+            {
+              tracks: score.tracks.map(({ id }) => id),
+              paper: next.paper,
+              header: true,
+              pageNumbers: true,
+            },
+            uniformNotation(score, next.notation),
+            demoFileName(next.fixture),
+          )
+        : undefined;
+    setDoc({ score, cache, result, ...(print && { print }) });
     setOverlays({});
   };
 
@@ -212,7 +237,7 @@ export function ScoreDemo({ initial }: { initial: DemoParams }) {
   const update = (change: Partial<DemoParams>) => {
     const next = { ...params, ...change };
     setParams(next);
-    const relays = (['mode', 'paper', 'notation'] as const).some((key) => key in change);
+    const relays = (['mode', 'paper', 'notation', 'view'] as const).some((key) => key in change);
     if (doc && relays && next.fixture === params.fixture) {
       relayout(doc.score, doc.cache, `relayout ${next.mode} ${next.notation}`, next);
     }
@@ -339,6 +364,12 @@ export function ScoreDemo({ initial }: { initial: DemoParams }) {
   };
 
   const fixtures = [LONG_FIXTURE, ...FIXTURES];
+
+  if (params.view === 'print') {
+    return doc?.print
+      ? createPortal(<PrintDocument preview content={doc.print} />, document.body)
+      : null;
+  }
 
   return (
     <div className="bg-background text-foreground flex h-full flex-col">

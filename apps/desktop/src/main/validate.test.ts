@@ -18,12 +18,20 @@ describe('payload validators', () => {
     expect(parsers['app:library-dir']([])).toEqual([]);
     expect(parsers['app:data-dir']([])).toEqual([]);
     expect(parsers['app:print']([])).toEqual([]);
+    expect(parsers['app:print']([{ pageSize: 'Letter' }])).toEqual([{ pageSize: 'Letter' }]);
   });
 
   it('rejects the wrong number of arguments', () => {
-    expect(() => parsers['app:print'](['extra'])).toThrow(PayloadError);
+    expect(() => parsers['app:print']([{ pageSize: 'A4' }, 'extra'])).toThrow(PayloadError);
     expect(() => parsers['file:write'](['/tmp/a'])).toThrow(PayloadError);
   });
+
+  it.each([['extra'], [{}], [{ pageSize: 'A3' }], [null]])(
+    'rejects the print options %j',
+    (value) => {
+      expect(() => parsers['app:print']([value])).toThrow(PayloadError);
+    },
+  );
 
   it.each([
     ['not an array', 'gp'],

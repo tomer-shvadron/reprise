@@ -1,6 +1,6 @@
 import { isAbsolute } from 'node:path';
 
-import type { FileFilter, InvokeArgs, InvokeChannel } from '@reprise/web';
+import type { FileFilter, InvokeArgs, InvokeChannel, PrintOptions } from '@reprise/web';
 
 /** Thrown when the renderer sends a payload that does not match its channel's type. */
 export class PayloadError extends Error {
@@ -71,6 +71,14 @@ export function parseFilters(value: unknown): FileFilter[] {
   });
 }
 
+export function parsePrintOptions(value: unknown): PrintOptions {
+  const pageSize = isRecord(value) ? value['pageSize'] : undefined;
+  if (pageSize !== 'A4' && pageSize !== 'Letter') {
+    throw new PayloadError("Expected print options with pageSize 'A4' or 'Letter'");
+  }
+  return { pageSize };
+}
+
 export type Parsers = { [C in InvokeChannel]: (args: readonly unknown[]) => InvokeArgs<C> };
 
 /** One parser per channel, so a channel added to the map without a validator fails typecheck. */
@@ -100,7 +108,8 @@ export const parsers: Parsers = {
     return [];
   },
   'app:print': (args) => {
-    arity(args, 0, 'app:print');
-    return [];
+    if (args.length === 0) return [];
+    arity(args, 1, 'app:print');
+    return [parsePrintOptions(args[0])];
   },
 };

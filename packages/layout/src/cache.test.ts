@@ -71,6 +71,24 @@ describe('LayoutCache', () => {
     expect(stable(again)).toBe(stable(first));
   });
 
+  it('matches a cold layout after edits with a first-page header, and never reuses across header heights', () => {
+    const options: LayoutOptions = { ...paged, headerHeight: 68 };
+    const score = largeScore(2, 60);
+    const { cache } = warm(score, options);
+    let edited = score;
+    for (const bar of [1, 30]) {
+      const beat = beatOf(edited, 0, bar, 0);
+      const fret = beat.notes[0]?.fret === 1 ? 2 : 1;
+      const step = applyCommand(edited, setNote({ beatId: beat.id }, { string: 1, fret }));
+      edited = step.score;
+      const result = layout(edited, { ...options, dirtyBars: step.change.touchedBars }, cache);
+      expect(stable(result)).toBe(stable(layout(edited, options)));
+    }
+    const other = layout(edited, { ...options, headerHeight: 48 }, cache);
+    expect(other.metrics.reusedSystems).toBe(0);
+    expect(stable(other)).toBe(stable(layout(edited, { ...options, headerHeight: 48 })));
+  });
+
   it('re-measures only the dirty bar and rebuilds only the systems within reach of it', () => {
     const score = largeScore(2, 60, { structure: true });
     const { cache, first } = warm(score);

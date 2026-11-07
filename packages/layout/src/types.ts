@@ -40,6 +40,11 @@ export interface LayoutOptions {
   tiedNotes?: TiedNotes;
   /** Page margins, unscaled; see `DEFAULT_MARGINS`. */
   margins?: Partial<Margins>;
+  /**
+   * Paged only: the height kept free at the top of the first page's content area, under the top
+   * margin, for a header the caller draws (a print's title). Unscaled; 0 unless given.
+   */
+  headerHeight?: number;
   /** Vertical space between stacked pages in paged mode, unscaled. */
   pageGap?: number;
   /** Space between the staves of one track (standard above tab), at zoom 1. */
