@@ -23,6 +23,29 @@ function schedule(param: AudioParam, from: number, value: number, at: number, ra
   }
 }
 
+/** A value a parameter takes from `at` on; an immediate set is at the time of the call. */
+interface Target {
+  at: number;
+  value: number;
+}
+
+/** The target in effect at `when`: the latest at or before it, the later one set on a tie. */
+function targetAt(targets: readonly Target[], when: number): Target | undefined {
+  let found: Target | undefined;
+  for (const target of targets) if (target.at <= when) found = target;
+  return found;
+}
+
+/** Keeps the target in effect now and every later one, then adds `next` in time order. */
+function addTarget(targets: Target[], next: Target, now: number): Target[] {
+  const current = targetAt(targets, now);
+  const kept = targets.filter((target) => target === current || target.at > now);
+  const index = kept.findIndex((target) => target.at > next.at);
+  if (index < 0) kept.push(next);
+  else kept.splice(index, 0, next);
+  return kept;
+}
+
 /**
  * input -> mute gate -> insert (input, output) -> fader -> panner -> master, and previewInput
  * joining at the insert, past the gate. The insert pair is wired straight through until the
@@ -39,6 +62,8 @@ export class ChannelStrip {
   readonly #gate: GainNode;
   #gain = 1;
   #pan = 0;
+  #gainTargets: Target[] = [{ at: -Infinity, value: 1 }];
+  #panTargets: Target[] = [{ at: -Infinity, value: 0 }];
   #mute = false;
   #solo = false;
 
@@ -82,17 +107,47 @@ export class ChannelStrip {
    * beat. Mute and solo take effect now, through the mixer, which knows every strip's solo.
    */
   set(settings: StripSettings, at?: number, ramp = 0): void {
+    const now = this.#context.currentTime;
     if (settings.gain !== undefined) {
       this.#apply(this.#fader.gain, this.#gain, settings.gain, at, ramp);
       this.#gain = settings.gain;
+      this.#gainTargets = addTarget(
+        this.#gainTargets,
+        { at: at ?? now, value: settings.gain },
+        now,
+      );
     }
     if (settings.pan !== undefined) {
       const pan = Math.min(1, Math.max(-1, settings.pan));
       this.#apply(this.#panner.pan, this.#pan, pan, at, ramp);
       this.#pan = pan;
+      this.#panTargets = addTarget(this.#panTargets, { at: at ?? now, value: pan }, now);
     }
     if (settings.mute !== undefined) this.#mute = settings.mute;
     if (settings.solo !== undefined) this.#solo = settings.solo;
+  }
+
+  /**
+   * Drops the gain and pan changes scheduled after `when` and glides from there to the value in
+   * effect at `when`, so a ramp cut midway neither freezes nor jumps back to where it began.
+   */
+  cancelAfter(when: number): void {
+    this.#gainTargets = this.#cancel(this.#fader.gain, this.#gainTargets, when);
+    this.#panTargets = this.#cancel(this.#panner.pan, this.#panTargets, when);
+    this.#gain = this.#gainTargets.at(-1)?.value ?? this.#gain;
+    this.#pan = this.#panTargets.at(-1)?.value ?? this.#pan;
+  }
+
+  #cancel(param: AudioParam, targets: readonly Target[], when: number): Target[] {
+    const kept = targets.filter((target) => target.at <= when);
+    if (kept.length === targets.length) return kept;
+    // Firefox has no cancelAndHoldAtTime; there a ramp cut midway steps back before gliding.
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- missing in Firefox, whatever lib.dom says
+    if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(when);
+    else param.cancelScheduledValues(when);
+    const target = targetAt(kept, when);
+    if (target) param.setTargetAtTime(target.value, when, PARAM_SMOOTHING);
+    return kept;
   }
 
   setAudible(audible: boolean): void {

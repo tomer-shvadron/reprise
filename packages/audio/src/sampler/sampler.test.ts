@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { RegionMap } from './region-map';
 import { SynthSampleSource, midiToFrequency } from './sample-source';
-import { Sampler } from './sampler';
+import { Sampler, channelVolumeToGain } from './sampler';
 import type { SamplerTrack } from './sampler';
 import {
   SAMPLE_RATE,
@@ -388,6 +388,61 @@ describe('mixer', () => {
     }
     // Eight in-phase sines at -3 dB per side would peak near 5.7 unlimited.
     expect(peak(await render(context), 0.2, 0.6)).toBeLessThan(1.2);
+  });
+});
+
+describe('allNotesOff and scheduled strip changes', () => {
+  /** Level of a note at 0.4 s on a volume 100 track, after `arrange` scheduled and cancelled. */
+  async function levelAfter(arrange: (sampler: Sampler) => void): Promise<number> {
+    const context = offline(0.7);
+    const sampler = new Sampler(context);
+    sampler.addTrack(samplerTrack('a', { volume: 100 }), sineInstrument());
+    arrange(sampler);
+    sampler.noteOn('a', { key: 69, velocity: 127, when: 0.4 });
+    return rms(await render(context), 0.5, 0.6);
+  }
+
+  const ratio = channelVolumeToGain(20) / channelVolumeToGain(100);
+
+  it('drops a volume change scheduled after the cut', async () => {
+    const reference = await levelAfter(() => undefined);
+    let gain = 0;
+    const level = await levelAfter((sampler) => {
+      sampler.setTrack('a', { volume: 20 }, { at: 0.3 });
+      sampler.allNotesOff(0.1);
+      gain = sampler.strip('a')?.gain ?? 0;
+    });
+    expect(level / reference).toBeCloseTo(1, 2);
+    expect(gain).toBeCloseTo(channelVolumeToGain(100), 9);
+  });
+
+  it('keeps a change scheduled before the cut', async () => {
+    const reference = await levelAfter(() => undefined);
+    const level = await levelAfter((sampler) => {
+      sampler.setTrack('a', { volume: 20 }, { at: 0.05 });
+      sampler.allNotesOff(0.1);
+    });
+    expect(level / reference).toBeCloseTo(ratio, 2);
+  });
+
+  it('glides a ramp cut midway to its target, not back to its start', async () => {
+    const reference = await levelAfter(() => undefined);
+    const level = await levelAfter((sampler) => {
+      sampler.setTrack('a', { volume: 20 }, { at: 0.1, ramp: 0.4 });
+      sampler.allNotesOff(0.3);
+    });
+    expect(level / reference).toBeCloseTo(ratio, 2);
+  });
+
+  it("leaves another track's pending change in place when given a track", () => {
+    const sampler = new Sampler(offline(0.1));
+    sampler.addTrack(samplerTrack('a', { volume: 100 }), sineInstrument());
+    sampler.addTrack(samplerTrack('b', { volume: 100 }), sineInstrument());
+    sampler.setTrack('a', { volume: 20 }, { at: 0.3 });
+    sampler.setTrack('b', { volume: 20 }, { at: 0.3 });
+    sampler.allNotesOff(0.1, 'a');
+    expect(sampler.strip('a')?.gain).toBeCloseTo(channelVolumeToGain(100), 9);
+    expect(sampler.strip('b')?.gain).toBeCloseTo(channelVolumeToGain(20), 9);
   });
 });
 
