@@ -3,6 +3,7 @@ import { generated } from './test/scores';
 
 const BARS = 48;
 const bar = (n: number) => `${String(n)}/${String(BARS)}`;
+const CURSOR = '[data-playhead] .score-cursor';
 
 test.beforeEach(async ({ app, page }) => {
   await app.openWithPicker(generated('song48.gp'));
@@ -14,22 +15,32 @@ test.beforeEach(async ({ app, page }) => {
 
 test('paged view follows the playhead with page turns', async ({ app, page }) => {
   await page.keyboard.press('ControlOrMeta+Home');
-  // A start in the lower part of the view, wholly visible, so the next system needs a turn.
-  const cursor = page.locator('[data-playhead] .score-cursor');
-  let start = 1;
+  const cursor = page.locator(CURSOR);
   // Bars 1 to 8 come first on the first pass; ⌘→ from bar 8 repeats bar 1.
-  for (; start <= 8; start += 1) {
-    await expect(app.field('bar')).toHaveText(bar(start));
-    await app.settle();
+  const FIRST_PASS = 8;
+  const tops: number[] = [];
+  let start = 0;
+  for (let n = 1; n <= FIRST_PASS; n += 1) {
+    await expect(app.field('bar')).toHaveText(bar(n));
+    tops.push((await app.contentBox(CURSOR)).y);
+    // A start in the lower part of the view, wholly visible, so the next system needs a turn.
     const box = await cursor.boundingBox();
     const { rect } = await app.regionScroll();
     const bottom = box ? box.y + box.height - rect.y : 0;
-    if (bottom > rect.height * 0.6 && bottom <= rect.height) break;
-    await page.keyboard.press('ControlOrMeta+ArrowRight');
+    if (start === 0 && bottom > rect.height * 0.6 && bottom <= rect.height) start = n;
+    if (n < FIRST_PASS) await page.keyboard.press('ControlOrMeta+ArrowRight');
   }
-  expect(start, 'no bar of the first 8 sits low in the view').toBeLessThanOrEqual(8);
+  expect(start, 'no bar of the first 8 sits low in the view').toBeGreaterThan(0);
+  // One bar into the next system: unfollowed, the line has left the view by then.
+  const next = tops.findIndex((top, index) => index >= start && top > (tops[start - 1] ?? 0)) + 1;
+  expect(next, `no system after bar ${String(start)}'s in the first pass`).toBeGreaterThan(start);
+  const until = next + 1;
+  expect(until).toBeLessThanOrEqual(FIRST_PASS);
 
-  const watch = app.watchFollow(bar(start + 3));
+  await page.keyboard.press('ControlOrMeta+Home');
+  await app.nextBars(start - 1);
+  await expect(app.field('bar')).toHaveText(bar(start));
+  const watch = app.watchFollow(bar(until));
   await page.keyboard.press('Space');
   const { outside, top, timedOut, frames, firstOutside } = await watch;
   expect(timedOut).toBe(false);
