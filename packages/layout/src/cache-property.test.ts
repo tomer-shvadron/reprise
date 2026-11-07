@@ -210,8 +210,12 @@ const SCORES: Record<'large' | 'sparse', () => Score> = {
   sparse: sparseScore,
 };
 
-/** A page short enough that the large score's systems split across pages (#85). */
-const SPLIT_PAGE_HEIGHT = 300;
+/**
+ * Pages short enough that the large score's systems split across pages (#85): at 300 every system
+ * splits, some through a track and some with a staff taller than the room; at 420 standard
+ * notation splits most systems and keeps some whole, so whole and split systems share pages.
+ */
+const SPLIT_PAGE_HEIGHTS = [300, 420] as const;
 
 function optionsFor(
   score: Score,
@@ -262,12 +266,20 @@ function changeOptions(score: Score, options: LayoutOptions, change: OptionChang
 }
 
 describe('LayoutCache: random edits', () => {
+  const modes = [
+    ['paged', 'paged', undefined],
+    ['continuous', 'continuous', undefined],
+    ...SPLIT_PAGE_HEIGHTS.map(
+      (height) => [`paged at ${String(height)} px high`, 'paged', height] as const,
+    ),
+  ] as const;
   const cases = (['tab', 'standard', 'both'] as const).flatMap((notation) =>
-    (['paged', 'continuous', 'split'] as const).map((mode) => [notation, mode] as const),
+    modes.map(([label, mode, height]) => [notation, label, mode, height] as const),
   );
   it.each(cases)(
-    'keeps cached equal to cold in %s notation, %s mode',
-    (notation, mode) => {
+    'keeps cached equal to cold in %s notation, %s',
+    (notation, _label, mode, height) => {
+      const split = height !== undefined;
       assert(
         property(
           constantFrom<'large' | 'sparse'>('large', 'sparse'),
@@ -275,14 +287,14 @@ describe('LayoutCache: random edits', () => {
           array(edit, { minLength: 1, maxLength: 8 }),
           (which, subsetDie, edits) => {
             let score = SCORES[which]();
-            let options =
-              mode === 'split'
-                ? optionsFor(score, notation, 'paged', subsetDie === 0, SPLIT_PAGE_HEIGHT)
-                : optionsFor(score, notation, mode, subsetDie === 0);
+            let options = optionsFor(score, notation, mode, subsetDie === 0, height);
             const cache = new LayoutCache();
             const first = layout(score, options, cache);
-            if (mode === 'split' && which === 'large' && subsetDie !== 0) {
+            if (split && which === 'large' && subsetDie !== 0) {
               expect(first.systems.some(({ part }) => part !== undefined)).toBe(true);
+              if (height === 420 && notation === 'standard') {
+                expect(first.systems.some(({ part }) => part === undefined)).toBe(true);
+              }
             }
             const history = createHistory();
             for (const step of edits) {
