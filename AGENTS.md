@@ -87,6 +87,7 @@ pnpm lint                  # ESLint with the boundary rules, --max-warnings 0
 pnpm typecheck             # tsc -b across every workspace
 pnpm test                  # Vitest, every workspace as its own project
 pnpm format:check          # Prettier check; pnpm format writes
+pnpm conflicts:check       # fails on merge conflict markers in tracked text files, git's or Prettier-rewritten
 pnpm bench                 # the budgets table, one bench file at a time; scaled on CI, see the budgets note
 pnpm dev                   # the web app on the Vite dev server
 pnpm build                 # production build of the web app
@@ -99,7 +100,7 @@ pnpm layout:metrics:check  # fails when the committed layout font metrics are st
 pnpm test:visual           # painter screenshots; locally against your own references in e2e/visual/__local__/ (gitignored, made by the first run), on CI against the committed Linux baselines; pnpm visual:accept adopts a failed CI run's images
 ```
 
-The PR gate is `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check`; CI also runs `pnpm bench`, `pnpm fixtures:check`, `pnpm build` and `pnpm test:visual` ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
+The PR gate is `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check`; CI also runs `pnpm conflicts:check`, `pnpm bench`, `pnpm fixtures:check`, `pnpm build` and `pnpm test:visual` ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
 
 ## Testing
 

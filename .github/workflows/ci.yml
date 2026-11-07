@@ -54,6 +54,10 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
+      # Before Lint: Prettier rewrites conflict markers in Markdown into forms format:check accepts.
+      - name: Conflict markers
+        run: pnpm conflicts:check
+
       - name: Lint
         run: pnpm lint
 
