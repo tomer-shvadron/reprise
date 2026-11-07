@@ -20,6 +20,7 @@
     "bench": "vitest bench --reporter=verbose --reporter=./scripts/bench/budget-reporter.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "conflicts:check": "node scripts/conflicts/check.ts",
     "fixtures:describe": "node scripts/fixtures/describe.ts",
     "fixtures:check": "node scripts/fixtures/describe.ts --check",
     "sounds:fetch": "node scripts/sounds/fetch-gm.ts",
