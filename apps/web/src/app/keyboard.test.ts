@@ -29,6 +29,17 @@ describe('keyboard', () => {
     expect(formatShortcut({ key: 'F9', mod: true }, 'other')).toBe('Ctrl+F9');
   });
 
+  it('names arrows, Home and End as Guitar Pro prints them on macOS', () => {
+    expect(formatShortcut({ key: 'ArrowRight' }, 'mac')).toBe('→');
+    expect(formatShortcut({ key: 'ArrowLeft', mod: true, shift: true }, 'mac')).toBe('⇧⌘←');
+    expect(formatShortcut({ key: 'Home', mod: true }, 'mac')).toBe('⌘↖');
+    expect(formatShortcut({ key: 'End', mod: true }, 'mac')).toBe('⌘↘');
+    expect(formatShortcut({ key: 'ArrowLeft', mod: true }, 'other')).toBe('Ctrl+Left');
+    expect(formatShortcut({ key: 'Home' }, 'other')).toBe('Home');
+    expect(ariaKeyShortcuts({ key: 'ArrowRight' }, 'mac')).toBe('ArrowRight');
+    expect(ariaKeyShortcuts({ key: 'Home', mod: true }, 'mac')).toBe('Meta+Home');
+  });
+
   it('writes aria-keyshortcuts syntax', () => {
     expect(ariaKeyShortcuts({ key: 'F9', mod: true }, 'mac')).toBe('Meta+F9');
     expect(ariaKeyShortcuts({ key: 'F9', mod: true }, 'other')).toBe('Control+F9');
@@ -38,7 +49,7 @@ describe('keyboard', () => {
 
   it('names the arrows and passes them to aria as KeyboardEvent names', () => {
     expect(formatShortcut({ key: 'ArrowDown', mod: true }, 'mac')).toBe('⌘↓');
-    expect(formatShortcut({ key: 'ArrowUp', mod: true }, 'other')).toBe('Ctrl+↑');
+    expect(formatShortcut({ key: 'ArrowUp', mod: true }, 'other')).toBe('Ctrl+Up');
     expect(ariaKeyShortcuts({ key: 'ArrowDown', mod: true }, 'mac')).toBe('Meta+ArrowDown');
   });
 

@@ -10,6 +10,7 @@
   --score-highlight: color-mix(in oklch, var(--paper-accent) 12%, transparent);
   --score-selection: color-mix(in oklch, var(--paper-accent) 22%, transparent);
   --score-hover: color-mix(in oklch, var(--paper-accent) 10%, transparent);
+  --score-loop: color-mix(in oklch, var(--paper-accent) 8%, transparent);
 }
 
 .score-sizer {
@@ -18,6 +19,7 @@
 
 .score-canvas {
   position: absolute;
+  user-select: none;
 }
 
 /* On screen the paper is the page unless a caller crops it; print keeps the page. */
@@ -90,9 +92,21 @@
   background: var(--score-highlight);
 }
 
+/* Hidden until `setPlayhead` places it; the handle writes `display`, never React. */
+.score-playhead > * {
+  display: none;
+}
+
+/* Its own compositor layer: a frame's move repaints nothing beneath it. */
 .score-cursor {
   width: 2px;
   background: var(--score-cursor);
+  will-change: transform;
+}
+
+.score-loop {
+  border-top: 2px solid var(--score-accent);
+  background: var(--score-loop);
 }
 
 .score-selection {

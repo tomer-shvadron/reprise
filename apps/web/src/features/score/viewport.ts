@@ -13,8 +13,11 @@ export interface Size {
 /** Screen px of empty space around the canvas. */
 export const GUTTER = 32;
 
-/** Elements the view renders besides pages and systems: description, sizer, canvas, overlays. */
-export const VIEW_CHROME_ELEMENTS = 4;
+/**
+ * Elements the view renders besides pages and systems: description, sizer, canvas, overlays, and
+ * the playhead layer with its bar highlight and line.
+ */
+export const VIEW_CHROME_ELEMENTS = 7;
 
 /** Systems mounted beyond the visible ones, on each side. */
 const OVERSCAN = 1;
@@ -100,7 +103,7 @@ export function intersects(a: Rect, b: Rect): boolean {
   return a.x < right(b) && b.x < right(a) && a.y < bottom(b) && b.y < bottom(a);
 }
 
-function distance(a: Rect, b: Rect): number {
+export function distance(a: Rect, b: Rect): number {
   const dx = Math.max(0, a.x - right(b), b.x - right(a));
   const dy = Math.max(0, a.y - bottom(b), b.y - bottom(a));
   return Math.hypot(dx, dy);
@@ -153,7 +156,14 @@ export function mountedPages(
   return [...mounted].sort((a, b) => a - b);
 }
 
-function revealAxis(start: number, size: number, from: number, length: number, margin: number) {
+/** The least move of a window origin along one axis that shows `from` to `from + length` with `margin`. */
+export function revealAxis(
+  start: number,
+  size: number,
+  from: number,
+  length: number,
+  margin: number,
+): number {
   if (from - margin < start || length + 2 * margin > size) return from - margin;
   if (from + length + margin > start + size) return from + length + margin - size;
   return start;

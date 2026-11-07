@@ -7,7 +7,11 @@ import type { AppServices } from './services';
 const ZOOM_STEP = 0.1;
 
 export type AppCommandId =
-  MenuCommandId | 'app.commandPalette' | 'file.close' | 'file.showImportDetails';
+  | MenuCommandId
+  | 'app.commandPalette'
+  | 'file.close'
+  | 'file.showImportDetails'
+  | 'view.followPlayback';
 
 type AppCommand = Command & { id: AppCommandId };
 
@@ -113,6 +117,13 @@ export function appCommands(
       shortcut: { key: 'F8' },
       run: () => {
         ui.getState().togglePanel('rightPanel');
+      },
+    },
+    {
+      id: 'view.followPlayback',
+      title: 'Follow playback',
+      run: () => {
+        ui.getState().requestFollow();
       },
     },
   ];

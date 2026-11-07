@@ -28,3 +28,19 @@ export function fourBars(): Score {
   }
   return builder.build();
 }
+
+/**
+ * Bars 1 and 2 repeated, then bar 3 with a tempo mark of 160 and bar 4, all quarter notes in 4/4
+ * at 120: the sequence is 1 2 1 2 3 4, lasting 8 + 3 seconds.
+ */
+export function repeatSong(): Score {
+  const builder = score().title('Repeat').tempo(120).track('guitar');
+  for (let bar = 0; bar < 4; bar++) {
+    builder.bar();
+    if (bar === 0) builder.repeatStart();
+    if (bar === 1) builder.repeatEnd(2);
+    if (bar === 2) builder.tempo(160);
+    for (let beat = 0; beat < 4; beat++) builder.beat('4', [note(1, bar + beat)]);
+  }
+  return builder.build();
+}

@@ -374,6 +374,26 @@ describe('the audio service', () => {
     audio.dispose();
   });
 
+  it('ignores a seek until the engine has the song, which waits on the sound bank', async () => {
+    let arrive: (bytes: Uint8Array) => void = () => undefined;
+    const late = new Promise<Uint8Array>((resolve) => {
+      arrive = resolve;
+    });
+    const { playback, audio } = setup({ loader: () => late });
+    audio.unlock();
+    audio.setDocument({ id: newId(), score: quarters(2) });
+    expect(() => {
+      audio.seek(PPQ);
+    }).not.toThrow();
+    expect(playback.getState().position).toBeUndefined();
+    expect(audio.outputLatency()).toBe(0);
+
+    arrive(await synthetic);
+    await audio.settled();
+    audio.seek(PPQ);
+    expect(playback.getState().position?.position.playbackTick).toBeCloseTo(PPQ);
+  });
+
   it('sets the master volume before and after the engine exists', async () => {
     const { playback, audio, render, debug } = setup({ seconds: 2.2 });
     audio.setMasterVolume(0.5);

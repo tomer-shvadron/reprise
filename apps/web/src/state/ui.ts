@@ -18,6 +18,12 @@ export interface UiView {
   paper: keyof typeof PAGE_SIZES;
 }
 
+/** Whether the view follows the playhead; a new `request` asks for one follow even while stopped. */
+export interface UiFollow {
+  on: boolean;
+  request: number;
+}
+
 export interface UiState {
   theme: Theme;
   view: UiView;
@@ -25,6 +31,7 @@ export interface UiState {
   panelWidths: Record<PanelId, number>;
   zoom: number;
   paletteOpen: boolean;
+  follow: UiFollow;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
   setPanelOpen: (panel: PanelId, open: boolean) => void;
@@ -34,6 +41,10 @@ export interface UiState {
   setPaletteOpen: (open: boolean) => void;
   setViewMode: (mode: UiView['mode']) => void;
   setPaper: (paper: UiView['paper']) => void;
+  /** Turns following on and asks for one follow now. */
+  requestFollow: () => void;
+  /** A hand scroll along the followed axis: the view stops following until a request. */
+  pauseFollow: () => void;
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -49,6 +60,7 @@ export function createUiStore(theme: Theme = initialTheme()) {
     },
     zoom: ZOOM.default,
     paletteOpen: false,
+    follow: { on: true, request: 0 },
     setTheme: (next) => {
       writeStoredTheme(next);
       set({ theme: next });
@@ -77,6 +89,12 @@ export function createUiStore(theme: Theme = initialTheme()) {
     },
     setPaper: (paper) => {
       if (get().view.paper !== paper) set((state) => ({ view: { ...state.view, paper } }));
+    },
+    requestFollow: () => {
+      set((state) => ({ follow: { on: true, request: state.follow.request + 1 } }));
+    },
+    pauseFollow: () => {
+      if (get().follow.on) set((state) => ({ follow: { ...state.follow, on: false } }));
     },
   }));
 }

@@ -1,6 +1,7 @@
 import { transportCommands } from '@/features/transport';
 // Not the feature's index: its components import the services context, which imports this file.
 import { trackCommands } from '@/features/tracks/commands';
+import { seekCommands } from '@/features/transport/seek-commands';
 
 import { CommandRegistry } from './command-registry';
 import { appCommands } from './commands';
@@ -13,6 +14,7 @@ export function createAppRegistry(services: AppServices): CommandRegistry {
   for (const command of [
     ...appCommands(services),
     ...transportCommands(services),
+    ...seekCommands(services),
     ...editCommands(services),
     ...trackCommands(services),
   ]) {

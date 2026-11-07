@@ -21,6 +21,18 @@ const ACTIVATES_ON_SPACE = [
   ].map((role) => `[role="${role}"]`),
 ].join(', ');
 
+/** Keys that move a caret, so a text field keeps them whatever the modifiers. */
+const NAVIGATION_KEYS = new Set([
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowUp',
+  'ArrowDown',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+]);
+
 /** A bare key the focused element handles itself: text in a field, Space or Enter on a control. */
 function leavesKeyToTarget(event: KeyboardEvent): boolean {
   const { target } = event;
@@ -40,6 +52,7 @@ export function dispatchShortcut(
 
   const command = registry.list().find(({ shortcut }) => {
     if (!shortcut) return false;
+    if (NAVIGATION_KEYS.has(event.key) && isEditable(event.target)) return false;
     if (!shortcut.mod && leavesKeyToTarget(event)) return false;
     return matchesShortcut(event, shortcut, platform);
   });
