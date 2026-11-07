@@ -4,13 +4,20 @@ import { describe, expect, it } from 'vitest';
 import { durationWidth, segmentWidth, stretch } from './spacing';
 
 describe('durationWidth', () => {
-  it('adds the same width for every doubling of the duration', () => {
+  it('adds the same width for every doubling of the duration up to a quarter', () => {
+    const sixteenth = durationWidth(PPQ / 4, 10);
     const eighth = durationWidth(PPQ / 2, 10);
     const quarter = durationWidth(PPQ, 10);
-    const half = durationWidth(PPQ * 2, 10);
     expect(quarter).toBeGreaterThan(eighth);
-    expect(half - quarter).toBeCloseTo(quarter - eighth, 9);
-    expect(half).toBeLessThan(quarter * 2);
+    expect(quarter - eighth).toBeCloseTo(eighth - sixteenth, 9);
+  });
+
+  it('follows a power curve beyond a quarter, continuous at the quarter', () => {
+    expect(durationWidth(PPQ, 1)).toBeCloseTo(3.8, 9);
+    expect(durationWidth(PPQ * 1.0001, 1)).toBeCloseTo(3.8, 3);
+    expect(durationWidth(PPQ * 2, 1)).toBeCloseTo(6.85, 2);
+    expect(durationWidth(PPQ * 4, 1)).toBeCloseTo(12.35, 1);
+    expect(durationWidth(PPQ * 2, 10)).toBeLessThan(durationWidth(PPQ, 10) * 2);
   });
 
   it('spaces anything shorter than a 64th like a 64th, and scales with the staff space', () => {

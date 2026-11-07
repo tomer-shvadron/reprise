@@ -301,7 +301,11 @@ describe('master-bar markings', () => {
       .track('guitar', { name: 'Lead Guitar', shortName: 'L.Gt.' })
       .bar()
       .bar()
+      .bar()
+      .bar()
       .track('bass', { name: 'Bass', shortName: 'Bs.' })
+      .bar()
+      .bar()
       .bar()
       .bar();
     const result = laid(builder.build({ ids: 'sequential' }), { width: 300 });

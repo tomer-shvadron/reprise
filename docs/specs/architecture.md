@@ -68,7 +68,7 @@ file bytes --formats.read--> Score --------+--> layout.layout(score, options) --
 ```
 
 - The **document store** holds the current `Score`, the undo history and the selection. All edits go through commands.
-- **Layout** is a pure function of the score and view options, cached per bar; a patch marks bars dirty and only those re-flow, then systems re-break from the first dirty bar onward.
+- **Layout** is a pure function of the score and view options, cached per bar; a patch marks bars dirty and only those re-flow, systems within three bars of a re-measured bar are rebuilt, re-breaking stops where the breaks re-converge, and the rest are reused.
 - **Audio** reads the score through the tempo map and the playback sequence; it never holds a reference to React state.
 - **Mixer**: volume, pan and instrument are score edits through `setTrackProperties`; mute and solo are the audio service's per-song overrides; visibility and single-track view are the document's view state, and notation per track is view state that Save writes into the file (ADR-0024). A timeline-neutral edit reaches the sampler without rebuilding the sequence.
 
