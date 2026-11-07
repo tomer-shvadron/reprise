@@ -141,9 +141,9 @@ export interface TabRows {
   lower: number;
   /** How far voice 1's stems reach past the standard length, within `lower`. */
   lowerExtra: number;
-  /** Hammer-on and slide letters reaching past the top and bottom strings, in px. */
-  lettersAbove: number;
-  lettersBelow: number;
+  /** Arcs and their letters reaching past the top and bottom strings, in px. */
+  arcsAbove: number;
+  arcsBelow: number;
   lyrics: number;
 }
 
@@ -363,36 +363,58 @@ function tremoloShortfall(beat: Beat): number {
 }
 
 /**
- * How far hammer-on and legato-slide letters reach past the outer strings: arcs go up from the
- * upper half of the strings and down from the rest, with the letter beyond the arc's apex.
+ * How far arcs and their letters reach past the outer strings. A hammer-on's target and a legato
+ * slide's origin, grace notes included, keep room for the arc and the letter beyond its apex.
+ * Below the bottom string, where only the floor separates the tab from the next staff, every note
+ * also keeps room for a bare arc on its string's side and on its voice's tie side: an origin half,
+ * a tie or a cut legato slide's second half has its other end in a bar measure does not read.
  */
-function letterRoom(
+function arcRoom(
   bar: Bar,
   strings: number,
   space: number,
-): { lettersAbove: number; lettersBelow: number } {
-  const size = TAB.fretSize * space;
+): { arcsAbove: number; arcsBelow: number } {
+  const bare = labelHalfHeight(TAB.fretSize * space) + TIE_MAX_HEIGHT * space;
   const letter = TAB.letterSize * space;
-  const reach =
-    labelHalfHeight(size) +
-    TIE_MAX_HEIGHT * space +
+  const { ascent, descent } = textExtent(letter);
+  const knockout = TAB.knockoutY * letter;
+  // A letter's text box ends at the font's descent, past the knockout under it.
+  const lettered = (side: StemDirection): number =>
+    bare +
     TAB.letterGap * space +
-    textExtent(letter).ascent +
-    TAB.knockoutY * letter;
+    ascent +
+    (side === 'up' ? knockout : Math.max(knockout, descent));
   const spacing = TAB.lineSpacing * space;
-  let lettersAbove = 0;
-  let lettersBelow = 0;
-  for (const { beats } of bar.voices) {
-    for (const beat of beats) {
-      for (const note of beat.rest ? [] : beat.notes) {
-        if (!note.hammerPull && !note.slide?.includes('legato')) continue;
-        const y = (note.string - 1) * spacing;
-        if (note.string <= strings / 2) lettersAbove = Math.max(lettersAbove, reach - y);
-        else lettersBelow = Math.max(lettersBelow, y + reach - (strings - 1) * spacing);
+  const bottom = (strings - 1) * spacing;
+  // Must match `arcDirection` in effects.ts.
+  const sideOf = (note: Note): StemDirection => (note.string <= strings / 2 ? 'up' : 'down');
+  let arcsAbove = 0;
+  let arcsBelow = 0;
+  const keep = (string: number, side: StemDirection, reach: number): void => {
+    const y = (string - 1) * spacing;
+    if (side === 'up') arcsAbove = Math.max(arcsAbove, reach - y);
+    else arcsBelow = Math.max(arcsBelow, y + reach - bottom);
+  };
+  for (const [index, voice] of bar.voices.entries()) {
+    if (!voicePresent(voice)) continue;
+    const tieSide = voiceDirection(bar, index);
+    for (const beat of voice.beats) {
+      if (beat.rest) continue;
+      for (const note of beat.notes) {
+        const side = sideOf(note);
+        if (note.hammerPull || note.slide?.includes('legato'))
+          keep(note.string, side, lettered(side));
+        if (side === 'down' || tieSide === 'down') keep(note.string, 'down', bare);
+      }
+      for (const grace of beat.grace ?? []) {
+        for (const note of grace.notes) {
+          const side = sideOf(note);
+          if (note.slide?.includes('legato')) keep(note.string, side, lettered(side));
+        }
       }
     }
   }
-  return { lettersAbove, lettersBelow };
+  return { arcsAbove, arcsBelow };
 }
 
 const analyses = new WeakMap<Bar, Map<string, TabBar>>();
@@ -475,7 +497,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
     lower: rhythm ? stemZone(lowerExtra, space) : 0,
     lowerExtra,
     lyrics: lyricLines * TAB.lyricRow * space,
-    ...letterRoom(bar, strings, space),
+    ...arcRoom(bar, strings, space),
   };
   const analysed: TabBar = { rhythm, voices, beats, rows, lyricLines, maxFingers };
   let byKey = analyses.get(bar);
