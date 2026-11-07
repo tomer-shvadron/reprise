@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ariaKeyShortcuts, formatShortcut, matchesShortcut } from './keyboard';
+import { ariaKeyShortcuts, formatShortcut, matchesShortcut, shortcutOn } from './keyboard';
 
 const key = (init: Partial<KeyboardEvent>) => ({
   key: '',
@@ -34,5 +34,29 @@ describe('keyboard', () => {
     expect(ariaKeyShortcuts({ key: 'F9', mod: true }, 'other')).toBe('Control+F9');
     expect(ariaKeyShortcuts({ key: ' ', shift: true }, 'mac')).toBe('Shift+Space');
     expect(ariaKeyShortcuts({ key: 'm', alt: true, shift: true }, 'mac')).toBe('Alt+Shift+M');
+  });
+
+  it('names the arrows and passes them to aria as KeyboardEvent names', () => {
+    expect(formatShortcut({ key: 'ArrowDown', mod: true }, 'mac')).toBe('⌘↓');
+    expect(formatShortcut({ key: 'ArrowUp', mod: true }, 'other')).toBe('Ctrl+↑');
+    expect(ariaKeyShortcuts({ key: 'ArrowDown', mod: true }, 'mac')).toBe('Meta+ArrowDown');
+  });
+
+  it('matches a platform-only shortcut on its platform alone', () => {
+    const redo = { key: 'y', mod: true, only: 'other' } as const;
+    expect(matchesShortcut(key({ key: 'y', code: 'KeyY', ctrlKey: true }), redo, 'other')).toBe(
+      true,
+    );
+    expect(matchesShortcut(key({ key: 'y', code: 'KeyY', metaKey: true }), redo, 'mac')).toBe(
+      false,
+    );
+  });
+
+  it('binds a platform-only shortcut, for every place that lists it, on its platform alone', () => {
+    const redo = { key: 'y', mod: true, only: 'other' } as const;
+    expect(shortcutOn(redo, 'other')).toBe(redo);
+    expect(shortcutOn(redo, 'mac')).toBeUndefined();
+    expect(shortcutOn({ key: 'z', mod: true }, 'mac')).toEqual({ key: 'z', mod: true });
+    expect(shortcutOn(undefined, 'mac')).toBeUndefined();
   });
 });

@@ -111,16 +111,16 @@ function finish(
 
 /**
  * Greedy line filling from bar `from`: each system takes bars while their natural widths fit,
- * and always at least one, so a bar wider than the page overflows rather than splitting.
+ * and always at least one, so a bar wider than the page overflows rather than splitting. Lazy, so
+ * a re-layout stops asking once the breaks meet the cached ones again.
  */
-export function breakSystems(
+export function* breakSystems(
   measures: readonly BarMeasure[],
   contexts: readonly BarContext[],
   slots: readonly StaffSlot[],
   options: ResolvedOptions,
   from: number,
-): SystemPlan[] {
-  const plans: SystemPlan[] = [];
+): Generator<SystemPlan, void, undefined> {
   const { space, margins, mode } = options;
   const lineWidth = options.width - margins.left - margins.right;
   let start = from;
@@ -150,10 +150,12 @@ export function breakSystems(
     const last = end >= measures.length;
     const courtesy = courtesyWidth(contexts, end, slots, options);
     const fit = mode === 'paged' && (!last || used + courtesy >= available * JUSTIFY_LAST);
-    plans.push(
-      finish({ start, end, opensLine, first, indent, prefix, courtesy }, measures, available, fit),
+    yield finish(
+      { start, end, opensLine, first, indent, prefix, courtesy },
+      measures,
+      available,
+      fit,
     );
     start = end;
   }
-  return plans;
 }

@@ -3,10 +3,9 @@ import type { Score } from '@reprise/model';
 import { describe, expect, it } from 'vitest';
 
 import { createAppRegistry } from '@/app/app-registry';
+import { mirrorAudio } from '@/test/mirror-audio';
 import { fourBars } from '@/test/position';
 import { createTestServices } from '@/test/services';
-
-import { mirrorAudio } from './test/mirror-audio';
 
 async function setup(song?: Score) {
   const services = createTestServices();

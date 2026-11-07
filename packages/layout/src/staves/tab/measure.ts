@@ -3,7 +3,6 @@ import type { OnsetExtent, StaffBar, StaffBarMeasure } from '../staff-module';
 import { DYNAMICS_GLYPHS, beatDynamics } from '../dynamics';
 import { analyseEffects } from '../effects';
 import { TAB, analyseBar, type TabBeat, type TabOptions } from './analysis';
-import { feelRight } from './spacing';
 
 const TICK_EPSILON = 1e-6;
 /** Room between a beat's words and the next onset's, in staff spaces. */
@@ -69,14 +68,6 @@ export function measureTab(input: StaffBar, options: TabOptions): StaffBarMeasur
     if (!onset) continue;
     onset.left = Math.max(onset.left, reserved.left);
     onset.right = Math.max(onset.right, reserved.right);
-  }
-  const nextLeft = (tick: number): number =>
-    onsets.find((onset) => Math.abs(onset.tick - tick) < TICK_EPSILON)?.left ?? 0;
-  for (const onset of onsets) {
-    onset.right = Math.max(
-      onset.right,
-      feelRight(input.score, input.barIndex, onset.tick, nextLeft, space),
-    );
   }
 
   const { rows } = analysed;

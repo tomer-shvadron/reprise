@@ -41,6 +41,7 @@ export function fakeAudioService(): FakeAudioService {
     setMetronome: vi.fn(),
     setMasterVolume: vi.fn(),
     setTrack: vi.fn(),
+    previewTrack: vi.fn(),
     retry: vi.fn(),
     settled: vi.fn(() => Promise.resolve()),
     debug: vi.fn(() => ({})),

@@ -15,8 +15,8 @@
  * - `meta`, `id` and `version` touch none.
  *
  * Ids are listed in score order, then any that only the score before the edit had. A bar that
- * only shifted is not listed: its content is unchanged, and layout re-breaks systems from the
- * first listed bar onward.
+ * only shifted is not listed: its content is unchanged, and layout re-measures the listed bars
+ * and re-renders the systems within reach of them.
  *
  * Immer writes an array splice as a `replace` of every element after it, so a bar inserted near
  * the start of a long score would be thousands of patches that each carry a whole bar, and undo

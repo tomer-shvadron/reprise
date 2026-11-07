@@ -273,8 +273,8 @@ const undone = history.undo(); // { score, change } with the patches it replayed
   that column; a track property other than `channel`, `sound`, `program`, `bank` and the raw
   `lyrics` touches every column, as does any change to a whole track or array; `meta` touches
   none. Ids come from the scores before and after the edit, so a removed bar is listed with the
-  bar that took its place; bars that only shifted are not, since layout re-breaks systems from
-  the first listed bar onward.
+  bar that took its place; bars that only shifted are not, since layout re-measures the listed
+  bars and re-renders the systems within reach of them.
 - **Addressing** is by id: beats, notes, voices, master bars and tracks. Commands that create a
   node take an optional `id` so the caller can select it afterwards. Grace notes are reached
   through their beat (`setBeatEffect`, or a `beatIds` selection), not by note id.

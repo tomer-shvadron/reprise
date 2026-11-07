@@ -2,11 +2,11 @@ import { write } from '@reprise/formats';
 import { removeBar } from '@reprise/model';
 import { describe, expect, it } from 'vitest';
 
+import { mirrorAudio } from '@/test/mirror-audio';
 import { fourBars } from '@/test/position';
 import { createTestServices, fakePlatform, memoryStorage } from '@/test/services';
 
 import { TRANSPORT_STORAGE_KEY } from './preferences';
-import { mirrorAudio } from './test/mirror-audio';
 
 // Each call builds the song afresh with new ids, so each returns different bytes.
 const bytes = async () => (await write(fourBars(), 'reprise')).bytes;

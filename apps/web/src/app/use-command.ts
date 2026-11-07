@@ -1,9 +1,16 @@
 import { createContext, use } from 'react';
 
-import { runCommand, type CommandRegistry } from '@/app/command-registry';
-import { ariaKeyShortcuts, formatShortcut, type KeyboardPlatform } from '@/app/keyboard';
+import type { TrackCommandId } from '@/features/tracks/commands';
+import type { TransportCommandId } from '@/features/transport/commands';
 
-import type { TransportCommandId } from './commands';
+import { runCommand, type CommandRegistry } from './command-registry';
+import type { AppCommandId } from './commands';
+import type { EditCommandId } from './edit-commands';
+import { ariaKeyShortcuts, formatShortcut, shortcutOn, type KeyboardPlatform } from './keyboard';
+
+/** Every id `createAppRegistry` registers, so a mistyped id fails typecheck, not at render. */
+export type RegisteredCommandId =
+  AppCommandId | TransportCommandId | EditCommandId | TrackCommandId;
 
 export interface CommandSource {
   registry: CommandRegistry;
@@ -22,12 +29,12 @@ export interface BoundCommand {
 }
 
 /** A registered command, so a click, the palette and the shortcut share one code path. */
-export function useCommand(id: TransportCommandId): BoundCommand {
+export function useCommand(id: RegisteredCommandId): BoundCommand {
   const source = use(CommandSourceContext);
   if (!source) throw new Error('useCommand needs a CommandSourceContext');
   const command = source.registry.get(id);
   if (!command) throw new Error(`Command "${id}" is not registered`);
-  const { shortcut } = command;
+  const shortcut = shortcutOn(command.shortcut, source.keyboard);
   return {
     run: () => {
       runCommand(command);

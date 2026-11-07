@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 
 import type { CommandRegistry } from '@/app/command-registry';
 import type { KeyboardPlatform } from '@/app/keyboard';
+import { CommandSourceContext } from '@/app/use-command';
 import { Separator } from '@/components/ui/separator';
 
 import { Announcer } from './announcer';
@@ -10,7 +11,6 @@ import { PositionReadout } from './position-readout';
 import { PracticeToggles } from './practice-toggles';
 import { SoundStatus } from './sound-status';
 import { TempoControl } from './tempo-control';
-import { CommandSourceContext } from './use-command';
 import { MasterVolume } from './volume-control';
 
 interface TransportBarProps {

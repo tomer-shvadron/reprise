@@ -31,7 +31,7 @@ beforeEach(() => {
 });
 
 describe('re-rendering after an edit', () => {
-  it('renders the edited system alone, though layout rebuilt those after it', () => {
+  it('renders the edited system alone, though layout rebuilt its neighbour', () => {
     const score = smallScore();
     const cache = new LayoutCache();
     const before = layout(score, paged, cache);
@@ -51,8 +51,10 @@ describe('re-rendering after an edit', () => {
         after.primitives[system.primitives.start] !==
         before.primitives[before.systems[i]?.primitives.start ?? -1],
     );
-    // The test means something only while layout hands over equal systems as new objects (WP-027).
-    expect(rebuilt.length).toBeGreaterThan(1);
+    // Layout rebuilds every system within three bars of the edit; the neighbour comes back as new,
+    // equal objects, which the painter must not draw again.
+    expect(rebuilt.length).toBeGreaterThanOrEqual(2);
+    expect(rebuilt.length).toBeLessThanOrEqual(3);
 
     const drawn = vi.mocked(primitiveToSvg);
     drawn.mockClear();

@@ -5,7 +5,6 @@ import { measureTab } from './measure';
 import { renderTab } from './render';
 
 export { TAB, type TabOptions } from './analysis';
-export { feelWidth } from './spacing';
 
 /**
  * The tab staff: one line per string, fret numbers on them, and rhythm notation below (voice 1)

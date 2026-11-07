@@ -4,11 +4,11 @@ import { act, type RenderResult } from '@testing-library/react';
 
 import { createAppRegistry } from '@/app/app-registry';
 import type { CommandRegistry } from '@/app/command-registry';
+import { mirrorAudio } from '@/test/mirror-audio';
 import { renderWithServices } from '@/test/render';
 import { createTestServices } from '@/test/services';
 
 import { TransportBar } from '../transport-bar';
-import { mirrorAudio } from './mirror-audio';
 
 type TestServices = ReturnType<typeof createTestServices>;
 
