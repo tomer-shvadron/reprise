@@ -325,6 +325,23 @@ describe('an over-full bar', () => {
     expect(onsets.slice(0, 6).map((o) => o.barEndTick)).toEqual(Array(6).fill(5760));
   });
 
+  it('reports a mixer change on an overflow beat from a window past the written bar line', () => {
+    const builder = score().tempo(120).track('guitar').bar();
+    for (let fret = 0; fret < 6; fret++) {
+      builder.beat('4', [note(1, fret)], fret === 5 ? { mix: { volume: { value: 30 } } } : {});
+    }
+    builder.bar();
+    for (let fret = 0; fret < 4; fret++) builder.beat('4', [note(2, fret)]);
+    const mixes = mixesInRange(createTimeline(builder.build({ validate: false })), BAR, 6 * PPQ, {
+      runStartTick: 0,
+      limitTick: 10 * PPQ,
+    });
+
+    expect(mixes.map((m) => [m.tick, m.sequenceIndex, m.beatIndex, m.mix])).toEqual([
+      [5 * PPQ, 0, 5, { volume: { value: 30 } }],
+    ]);
+  });
+
   it('reaches the overflow from a window that starts past the written bar line', () => {
     const onsets = notesInRange(createTimeline(overfull()), BAR, 6 * PPQ, {
       runStartTick: 0,
