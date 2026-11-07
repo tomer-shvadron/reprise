@@ -261,13 +261,17 @@ export function planTremolo(
 
 /**
  * How far a beamed stem's beam must move out to hold the stem's tremolo strokes, against the
- * shortest stem a beam allows: an upper bound on what the exact beam needs.
+ * shortest stem a beam allows, clamped to the middle line as `beamLine` clamps it: an upper bound
+ * on what the exact beam needs.
  */
 export function beamedShortfall(plan: TremoloPlan, chord: ChordPlan, space: number): number {
   if (!chord.stem) return 0;
   const s = sign(chord.direction);
   const shortest = (stemLength(chord.beams) - SHORTENING) * space;
-  const inner = chord.stem.head + s * shortest - s * chord.beams * beamStep(space);
+  const reached = chord.stem.head + s * shortest;
+  const middle = positionY(4, space);
+  const tip = s < 0 ? Math.min(reached, middle) : Math.max(reached, middle);
+  const inner = tip - s * chord.beams * beamStep(space);
   return shortfall(plan.glyph, plan.start, inner, space);
 }
 

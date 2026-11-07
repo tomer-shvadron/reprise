@@ -303,6 +303,37 @@ describe('tremolo strokes on the standard staff', () => {
     expect(glyphs(roll, 'tremolo3')).toHaveLength(1);
     expect(content(result)).toMatchSnapshot();
   });
+  it('leaves a beam in place when the stems already reach the middle line and hold the strokes', () => {
+    const group = (tremolo: boolean): Score =>
+      guitar('standard')
+        .bar()
+        .beat('8', [note(6, 3)], tremolo ? { effects: { tremoloPicking: 16 } } : {})
+        .beat('8', [note(6, 4)])
+        .beat('8', [note(6, 3)])
+        .beat('8', [note(6, 4)])
+        .beat('2', [note(6, 3)])
+        .build({ ids: 'sequential' });
+    const marked = group(true);
+    const plain = group(false);
+    const markedResult = laid(marked);
+    const plainResult = laid(plain);
+    for (let beat = 0; beat < 4; beat++) {
+      expect(stemLength(stem(markedResult, beatOf(marked, 0, 0, beat).id))).toBeCloseTo(
+        stemLength(stem(plainResult, beatOf(plain, 0, 0, beat).id)),
+        2,
+      );
+    }
+    const first = beatOf(marked, 0, 0, 0).id;
+    const strokes = one(
+      glyphs(markedResult, 'tremolo').filter((p) => p.node === first),
+      'strokes',
+    );
+    const beamed = stem(markedResult, first);
+    expect(strokes.bbox.y).toBeGreaterThan(Math.min(beamed.y, beamed.y2));
+    expect(bottomOf(strokes.bbox)).toBeLessThan(
+      head(markedResult, noteOf(marked, 0, 0, 0).id).bbox.y,
+    );
+  });
 });
 
 describe('ghost notes on the standard staff', () => {
