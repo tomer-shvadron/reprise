@@ -36,6 +36,13 @@ function finiteNumbers(value: unknown, path: string, out: string[]): void {
   }
 }
 
+/** Paths of every non-finite number in the result. */
+export function nonFinite(result: LayoutResult): string[] {
+  const bad: string[] = [];
+  finiteNumbers(result, 'result', bad);
+  return bad;
+}
+
 /** Anchors that may not overlap: one kind, in one system, staff and voice. */
 function group(anchor: Anchor): string {
   return [anchor.kind, anchor.system, anchor.track, anchor.staff, anchor.voice].join('|');
@@ -64,9 +71,7 @@ export function overlappingAnchors(result: LayoutResult): [Anchor, Anchor][] {
 
 /** The structural invariants every result keeps, whatever the score. */
 export function expectValid(result: LayoutResult): void {
-  const bad: string[] = [];
-  finiteNumbers(result, 'result', bad);
-  expect(bad).toEqual([]);
+  expect(nonFinite(result)).toEqual([]);
 
   let primitives = 0;
   let anchors = 0;
@@ -124,6 +129,83 @@ export function expectValid(result: LayoutResult): void {
   expect(overlappingAnchors(result)).toEqual([]);
 }
 
+export interface PageOverflow {
+  system: number;
+  page: number;
+  /** Primitives and anchors not inside the page box. */
+  primitives: number;
+  anchors: number;
+  /** How far the furthest of them reaches past the page box. */
+  overflowPx: number;
+  /** How far the system box reaches past the page's right margin. */
+  systemOverflowPx: number;
+  /** How far the system box crosses the top or bottom margin. */
+  marginOverflowPx: number;
+}
+
+function reach(inner: Rect, outer: Rect): number {
+  return Math.max(
+    0,
+    outer.x - inner.x,
+    outer.y - inner.y,
+    inner.x + inner.width - (outer.x + outer.width),
+    inner.y + inner.height - (outer.y + outer.height),
+  );
+}
+
+/**
+ * Systems that cross their page: a primitive or anchor outside the page box, or the system box
+ * outside the page less its top and bottom margins. A system missing its page throws.
+ */
+export function outsideItsPage(
+  result: LayoutResult,
+  margins: Pick<Margins, 'top' | 'bottom'> & Partial<Pick<Margins, 'right'>>,
+): PageOverflow[] {
+  const found: PageOverflow[] = [];
+  for (const system of result.systems) {
+    const page = result.pages[system.page];
+    if (!page) throw new Error(`${system.id} has no page`);
+    const { bbox } = page;
+    const top = bbox.y + margins.top;
+    const bottom = bbox.y + bbox.height - margins.bottom;
+    const marginOverflowPx = Math.max(
+      0,
+      top - system.bbox.y - EPSILON,
+      system.bbox.y + system.bbox.height - bottom - EPSILON,
+    );
+    const right = bbox.x + bbox.width - (margins.right ?? 0);
+    const systemOverflowPx = Math.max(0, system.bbox.x + system.bbox.width - right - EPSILON);
+    let primitives = 0;
+    let anchors = 0;
+    let overflowPx = 0;
+    for (const primitive of result.primitives.slice(
+      system.primitives.start,
+      system.primitives.end,
+    )) {
+      if (inside(primitive.bbox, bbox)) continue;
+      primitives += 1;
+      overflowPx = Math.max(overflowPx, reach(primitive.bbox, bbox));
+    }
+    for (const anchor of result.anchors.slice(system.anchors.start, system.anchors.end)) {
+      if (inside(anchor.bbox, bbox)) continue;
+      anchors += 1;
+      overflowPx = Math.max(overflowPx, reach(anchor.bbox, bbox));
+    }
+    if (primitives > 0 || anchors > 0 || marginOverflowPx > 0) {
+      found.push({
+        system: system.index,
+        page: page.index,
+        primitives,
+        anchors,
+        overflowPx,
+        systemOverflowPx,
+        marginOverflowPx,
+      });
+    }
+  }
+  return found;
+}
+
 /**
  * Every system box inside its page less the top and bottom margins, and every primitive and
  * anchor inside its page box: nothing crosses a page edge.
@@ -132,31 +214,18 @@ export function expectInsidePages(
   result: LayoutResult,
   margins: Pick<Margins, 'top' | 'bottom'>,
 ): void {
-  for (const system of result.systems) {
-    const page = result.pages[system.page];
-    if (!page) throw new Error(`${system.id} has no page`);
-    const { bbox } = page;
-    const content = {
-      ...bbox,
-      y: bbox.y + margins.top,
-      height: bbox.height - margins.top - margins.bottom,
-    };
-    const vertical = (rect: Rect) =>
-      rect.y >= content.y - EPSILON && rect.y + rect.height <= content.y + content.height + EPSILON;
-    expect(vertical(system.bbox), `${system.id} outside its page's margins`).toBe(true);
-    for (const primitive of result.primitives.slice(
-      system.primitives.start,
-      system.primitives.end,
-    )) {
-      if (!inside(primitive.bbox, bbox)) {
-        expect.fail(`${primitive.kind} of ${system.id} outside page ${String(page.index)}`);
-      }
-    }
-    for (const anchor of result.anchors.slice(system.anchors.start, system.anchors.end)) {
-      if (!inside(anchor.bbox, bbox)) {
-        expect.fail(`${anchor.kind} ${anchor.id} outside page ${String(page.index)}`);
-      }
-    }
+  for (const overflow of outsideItsPage(result, margins)) {
+    const system = result.systems[overflow.system];
+    const id = system?.id ?? String(overflow.system);
+    expect(overflow.marginOverflowPx > 0, `${id} outside its page's margins`).toBe(false);
+    if (overflow.primitives > 0)
+      expect.fail(
+        `${String(overflow.primitives)} primitives of ${id} outside page ${String(overflow.page)}`,
+      );
+    if (overflow.anchors > 0)
+      expect.fail(
+        `${String(overflow.anchors)} anchors of ${id} outside page ${String(overflow.page)}`,
+      );
   }
 }
 

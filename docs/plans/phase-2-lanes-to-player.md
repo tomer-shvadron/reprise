@@ -422,6 +422,7 @@ Lead only. Starts as soon as WP-024, WP-032 and WP-045 are merged; the remaining
 
 - A checklist run through Tomer's downloaded tabs in `local-tabs/`: every file opens, repeats and jumps play in the right order, tempo changes apply, effects sound right, nothing overlaps on screen. Each defect becomes a `type:bug` issue tagged with the lane, fixed by the lane or the lead depending on size.
 - The checklist itself committed as `docs/reference/player-checklist.md` for reuse at later checkpoints.
+- `pnpm check:files` automates what a machine can check (reading, alphaTab parity, play order, tempo, A4 layout invariants, a GM render); the checklist covers the listening, the looking and the Guitar Pro comparisons.
 
 **Acceptance criteria**
 
