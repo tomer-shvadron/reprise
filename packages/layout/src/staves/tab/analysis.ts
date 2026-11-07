@@ -15,7 +15,14 @@ import {
   type TupletGroup,
 } from '../rhythm';
 import { reservedDynamics } from '../dynamics';
-import { naturalHarmonicText, suffixText } from '../effects';
+import {
+  BEND_ROOM,
+  KNOCKOUT,
+  LETTER,
+  naturalHarmonicText,
+  suffixText,
+  tremoloGlyph,
+} from '../effects';
 import type { StaffBar } from '../staff-module';
 
 /** Every size and distance of the tab staff, in staff spaces. */
@@ -23,8 +30,8 @@ export const TAB = {
   lineSpacing: 1.5,
   fretSize: 1.3,
   /** Paper kept around a fret number so the string line stops short of it, in ems of the number. */
-  knockoutX: 0.12,
-  knockoutY: 0.09,
+  knockoutX: KNOCKOUT.x,
+  knockoutY: KNOCKOUT.y,
   graceScale: 0.7,
   graceGap: 0.25,
   /** From the outer string to where stems start, and a stem's length to its beam or flag. */
@@ -58,15 +65,15 @@ export const TAB = {
   /** Room for an arpeggio or brush arrow left of a beat, for a slide into or out of a note, and right of a bend. */
   strokeRoom: 1,
   slideRoom: 1.5,
-  bendRoom: 2.2,
+  bendRoom: BEND_ROOM.main,
   /** Room right of a grace column holding a bend, so its arrow stays clear of the main number. */
-  graceBendRoom: 1.2,
+  graceBendRoom: BEND_ROOM.grace,
   /** Free stem kept between the strings and tremolo strokes, and around the strokes, in staff spaces. */
   tremoloGap: 0.5,
   tremoloRoom: 1,
   /** A hammer-on's letter: its size, and its gap from the arc, in staff spaces. */
-  letterSize: 1,
-  letterGap: 0.25,
+  letterSize: LETTER.size,
+  letterGap: LETTER.gap,
 } as const;
 
 export interface NoteLabel {
@@ -336,17 +343,6 @@ function analyseBeat(
 
 function stemZone(extraStem: number, space: number): number {
   return (TAB.stemGap + TAB.stem + TAB.tupletRoom) * space + extraStem;
-}
-
-const TREMOLO: Readonly<Record<8 | 16 | 32, GlyphName>> = {
-  8: 'tremolo1',
-  16: 'tremolo2',
-  32: 'tremolo3',
-};
-
-export function tremoloGlyph(beat: Beat): GlyphName | undefined {
-  const speed = beat.effects.tremoloPicking;
-  return speed === undefined || beat.notes.length === 0 ? undefined : TREMOLO[speed];
 }
 
 /** Where a beat's free stem starts and ends, from the stem base out, in staff spaces. */

@@ -1,5 +1,45 @@
-import type { Bend, Note, Score } from '@reprise/model';
-import { midi, note, score } from '@reprise/model/testing';
+import type { Bend, Beat, Note, Score } from '@reprise/model';
+import { midi, note, score, type ScoreBuilder } from '@reprise/model/testing';
+import { expect } from 'vitest';
+
+import { PAGE_SIZES, layout, type LayoutOptions, type LayoutResult } from '../index';
+import { expectValid, overlappingMarks } from './check-result';
+import { describePrimitive } from './describe';
+
+export const paged: LayoutOptions = {
+  mode: 'paged',
+  width: PAGE_SIZES.a4.width,
+  zoom: 1,
+  tracks: 'all',
+  notation: {},
+};
+
+/** Lays out `built` and checks the result's invariants and that no two marks overlap. */
+export function laid(built: Score, options: Partial<LayoutOptions> = {}): LayoutResult {
+  const result = layout(built, { ...paged, ...options });
+  expectValid(result);
+  expect(
+    overlappingMarks(result).map(([a, b]) => [describePrimitive(a), describePrimitive(b)]),
+  ).toEqual([]);
+  return result;
+}
+
+export function guitar(notation: 'tab' | 'both' | 'standard' = 'tab'): ScoreBuilder {
+  return score().track('guitar', { display: { notation, octaveShift: 1 } });
+}
+
+/** What notes and beats drew, one line each, for data snapshots. */
+export function content(result: LayoutResult): string[] {
+  return result.primitives
+    .filter((p) => p.node !== undefined && (p.node.startsWith('beat') || p.node.startsWith('note')))
+    .map(describePrimitive);
+}
+
+export function texts(result: LayoutResult): string[] {
+  return result.primitives.flatMap((p) =>
+    p.kind === 'text' && (p.node?.startsWith('beat') || p.node?.startsWith('note')) ? [p.text] : [],
+  );
+}
 
 const bend = (kind: Bend['kind'], values: [number, number][]): Bend => ({
   kind,
@@ -156,8 +196,16 @@ export function everyEffectScore(): Score {
       grace: [{ duration: 32, before: false, notes: [note(4, 2)] }],
       effects: { tremoloPicking: 16 },
     });
+  builder
+    .bar()
+    .beat('4', [note(6, 0, { harmonic: { kind: 'natural', value: 2.7 } })])
+    .beat('4', [note(1, 2, { harmonic: { kind: 'artificial', value: 12 } })])
+    .beat('2', [note(4, 4, { ghost: true }), note(3, 2, { ghost: true })])
+    .voice(1)
+    .beat('2', [note(5, 3, { staccato: true })])
+    .beat('2', [note(6, 0, { accent: 'heavy' })]);
   builder.track('piano');
-  for (let b = 0; b < 5; b++) {
+  for (let b = 0; b < 6; b++) {
     builder
       .bar()
       .beat('4', [midi(60, { staccato: true, dynamics: b % 2 === 0 ? 'p' : 'f' })])
@@ -166,7 +214,7 @@ export function everyEffectScore(): Score {
       .beat('4', [midi(72, { ghost: true })]);
   }
   builder.track('drums');
-  for (let b = 0; b < 5; b++) {
+  for (let b = 0; b < 6; b++) {
     builder
       .bar()
       .beat('8', [midi(36, { accent: 'accent' })])
@@ -206,6 +254,50 @@ export function withEffects(built: Score): Score {
             continue;
           }
           beat.notes = beat.notes.map((n) => ({ ...n, ...effect(n) }));
+        }
+      }
+    }
+  }
+  return built;
+}
+
+const MARKS: readonly ((beat: Beat) => void)[] = [
+  (beat) => {
+    beat.notes = beat.notes.map((n) => ({ ...n, staccato: true }));
+  },
+  (beat) => {
+    beat.notes = beat.notes.map((n) => ({ ...n, accent: 'heavy' }));
+  },
+  (beat) => {
+    beat.notes = beat.notes.map((n) => ({ ...n, ghost: true }));
+  },
+  (beat) => {
+    beat.notes = beat.notes.map((n) => ({ ...n, harmonic: { kind: 'artificial', value: 12 } }));
+  },
+  (beat) => {
+    beat.effects = { ...beat.effects, tremoloPicking: 16 };
+  },
+  (beat) => {
+    beat.effects = { ...beat.effects, arpeggio: { direction: 'down' } };
+  },
+];
+
+/**
+ * Gives every fourth beat of `built`, two after `withEffects`' beats, one note mark in turn: a
+ * staccato, a heavy accent, ghost notes, an artificial harmonic, tremolo picking or an arpeggio.
+ * Changes `built` in place and returns it, so pass a fresh score.
+ */
+export function withNoteMarks(built: Score): Score {
+  let count = 0;
+  let mark = 0;
+  for (const track of built.tracks) {
+    for (const bar of track.bars) {
+      for (const voice of bar.voices) {
+        for (const beat of voice.beats) {
+          count += 1;
+          if (count % 4 !== 2 || beat.rest || beat.notes.length === 0) continue;
+          MARKS[mark % MARKS.length]?.(beat);
+          mark += 1;
         }
       }
     }

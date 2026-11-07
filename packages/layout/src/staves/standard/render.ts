@@ -5,7 +5,16 @@ import { glyph, glyphWidth, line, rect, union, type LayoutSink } from '../../pri
 import type { Rect, StaffType } from '../../types';
 import { DYNAMICS_GLYPHS, dynamicsBaseline, shownDynamics } from '../dynamics';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
-import type { ChordPlan } from './chord';
+import { headEdges, loneHeadRight, mainHeads, tieDirection, type ChordPlan } from './chord';
+import {
+  beamedTremoloY,
+  drawArticulation,
+  drawBends,
+  drawConnections,
+  drawStrokes,
+  drawTremolo,
+  type ConnectionContext,
+} from './effects';
 import { GRACE_SCALE, noteMatches, type BarPlan, type BeatPlan } from './plan';
 import {
   beamY,
@@ -16,7 +25,6 @@ import {
   drawStem,
   drawTie,
   drawTuplet,
-  type ArcDirection,
   type BeamStem,
 } from './rhythm';
 
@@ -73,13 +81,29 @@ function drawChord(
       node: head.note.id,
     });
     sink.primitives.push(drawn);
-    const { x: bx, y: by, width: bw, height: bh } = drawn.bbox;
+    if (head.ghost && chord.parens) {
+      for (const [name, at] of [
+        ['noteheadParenthesisLeft', chord.parens.left],
+        ['noteheadParenthesisRight', chord.parens.right],
+      ] as const) {
+        sink.primitives.push(
+          glyph(name, x + at, top + head.y, space, { scale, node: head.note.id }),
+        );
+      }
+    }
+    box = box ? union(box, drawn.bbox) : drawn.bbox;
+    if (head.sounding) continue;
+    // A harmonic's diamond is taller than a staff space; its anchor keeps to one, as other heads'
+    // do, so diamonds a third apart do not overlap. Percussion diamonds keep their glyph's box.
+    const diamond = head.glyph.startsWith('noteheadDiamond') && head.note.harmonic !== undefined;
+    const { x: bx, width: bw } = drawn.bbox;
+    const by = diamond ? top + head.y - (space * scale) / 2 : drawn.bbox.y;
+    const bh = diamond ? space * scale : drawn.bbox.height;
     const bbox =
       head.shared > 0
         ? rect(bx + head.shared, by, bw - head.shared, bh)
         : rect(bx, by, bw + head.shared, bh);
     sink.anchors.push({ kind: 'note', id: head.note.id, bbox, ...anchorBase(context, voice) });
-    box = box ? union(box, drawn.bbox) : drawn.bbox;
   }
   return box;
 }
@@ -89,14 +113,6 @@ function beatX(context: Context, beat: BeatPlan): number {
   const { placement } = context;
   if (beat.rest?.centred) return placement.x + placement.width / 2;
   return placement.onsetX(beat.tick);
-}
-
-function tieDirection(chord: ChordPlan, index: number, multiVoice: boolean): ArcDirection {
-  const up = chord.direction === 'up';
-  if (multiVoice) return up ? 'up' : 'down';
-  const count = chord.heads.length;
-  if (count === 1 || (count % 2 === 1 && index === (count - 1) / 2)) return up ? 'down' : 'up';
-  return index >= count / 2 ? 'up' : 'down';
 }
 
 function drawGraces(context: Context, beat: BeatPlan, x: number): void {
@@ -216,7 +232,12 @@ export function renderBar(
     }
     const first = group.beats[0];
     if (!first || stems.length === 0) continue;
-    const beam = beamLine(stems, group.direction, { space, middle: top + 2 * space, exact: true });
+    const beam = beamLine(stems, group.direction, {
+      space,
+      middle: top + 2 * space,
+      exact: true,
+      extend: group.extend,
+    });
     let i = 0;
     for (const beat of group.beats) {
       const stem = stems[i];
@@ -227,6 +248,30 @@ export function renderBar(
       tips.set(beat, tip);
     }
     drawBeams(sink, stems, group.direction, beam, space, { node: first.beat.id });
+  }
+
+  // The outer edge of each beat's articulation, for the tuplet beyond it.
+  const marked = new Map<BeatPlan, number>();
+  for (const beat of plan.beats) {
+    const { chord } = beat;
+    if (!chord) continue;
+    const x = beatX(context, beat);
+    const id = beat.beat.id;
+    const { tremolo, articulation } = beat;
+    if (tremolo) {
+      const tip = tips.get(beat);
+      const y =
+        tremolo.y ??
+        (tip === undefined ? undefined : beamedTremoloY(tremolo, chord, tip - top, space));
+      const stemX = chord.stem ? chord.stem.x : 0;
+      if (y !== undefined) drawTremolo(sink, tremolo.glyph, x + stemX, top + y, space, id);
+    }
+    if (articulation) {
+      const tip = tips.get(beat);
+      const edge =
+        articulation.stemSide && chord.stem && tip !== undefined ? tip - top : articulation.edge;
+      marked.set(beat, drawArticulation(sink, articulation, x, top, edge, space, id));
+    }
   }
 
   for (const tuplet of plan.tuplets) {
@@ -254,6 +299,8 @@ export function renderBar(
         ...(tip === undefined ? [] : [tip]),
       ];
       if (beat.rest) extremes.push(top + (tuplet.above ? beat.top : beat.bottom));
+      const mark = marked.get(beat);
+      if (mark !== undefined && beat.articulation?.above === tuplet.above) extremes.push(mark);
       if (extremes.length === 0) extremes.push(top + 2 * space);
       edge = tuplet.above ? Math.min(edge, ...extremes) : Math.max(edge, ...extremes);
     }
@@ -266,6 +313,22 @@ export function renderBar(
   }
 
   drawTies(context, fretted);
+
+  if (type === 'standard') {
+    const connecting: ConnectionContext = {
+      input,
+      placement,
+      plan,
+      sink,
+      space,
+      beatX: (beat) => beatX(context, beat),
+    };
+    for (const [voice, beats] of plan.voices.entries()) drawConnections(connecting, voice, beats);
+    drawStrokes(connecting);
+    if (input.staves.length === 1) {
+      for (const beats of plan.voices) drawBends(connecting, beats);
+    }
+  }
 
   const shown = shownDynamics(input.track, input.barIndex);
   const lane = placement.lanes.dynamics;
@@ -292,7 +355,7 @@ function drawTies(context: Context, fretted: boolean): void {
   const { input, placement, plan, sink, space } = context;
   const top = placement.top;
   const gap = TIE_GAP * space;
-  const blackHalf = glyphWidth('noteheadBlack', space) / 2;
+  const blackWidth = glyphWidth('noteheadBlack', space);
   const previousBar = input.barIndex > 0 ? input.track.bars[input.barIndex - 1] : undefined;
   const nextBar = input.track.bars[input.barIndex + 1];
 
@@ -301,25 +364,29 @@ function drawTies(context: Context, fretted: boolean): void {
       const { chord } = beat;
       if (!chord) continue;
       const x = beatX(context, beat);
-      for (const [i, head] of chord.heads.entries()) {
+      for (const head of mainHeads(chord)) {
         if (!head.note.tie) continue;
-        const direction = tieDirection(chord, i, plan.multiVoice);
-        const end = x + head.left - gap;
+        const direction = tieDirection(chord, head, plan.multiVoice);
+        const end = x + headEdges(chord, head).left - gap;
         let start: number | undefined;
         const before = beats[beat.index - 1];
         if (before) {
-          const source = before.chord?.heads.find((other) =>
-            noteMatches(other.note, head.note, fretted),
-          );
-          if (source) start = beatX(context, before) + source.left + source.width + gap;
+          const sourceChord = before.chord;
+          const source =
+            sourceChord &&
+            mainHeads(sourceChord).find((other) => noteMatches(other.note, head.note, fretted));
+          if (sourceChord && source)
+            start = beatX(context, before) + headEdges(sourceChord, source).right + gap;
         } else if (previousBar) {
           const voiceBeats = previousBar.voices[voice]?.beats ?? [];
           const last = voiceBeats.at(-1);
-          if (last?.notes.some((note) => noteMatches(note, head.note, fretted))) {
+          const source = last?.notes.find((note) => noteMatches(note, head.note, fretted));
+          if (last && source) {
             if (placement.previous) {
               let tick = 0;
               for (const b of voiceBeats.slice(0, -1)) tick += beatTicks(b);
-              start = placement.previous.onsetX(tick) + blackHalf + gap;
+              const reach = loneHeadRight(blackWidth, source.ghost, last.dots, space);
+              start = placement.previous.onsetX(tick) + reach + gap;
             } else {
               start = placement.x - space;
             }
@@ -334,13 +401,13 @@ function drawTies(context: Context, fretted: boolean): void {
     const following = nextBar?.voices[voice]?.beats[0];
     if (placement.next || !last?.chord || !following) continue;
     const x = beatX(context, last);
-    for (const [i, head] of last.chord.heads.entries()) {
+    for (const head of mainHeads(last.chord)) {
       if (!following.notes.some((note) => note.tie && noteMatches(note, head.note, fretted)))
         continue;
-      const direction = tieDirection(last.chord, i, plan.multiVoice);
+      const direction = tieDirection(last.chord, head, plan.multiVoice);
       drawTie(
         sink,
-        x + head.left + head.width + gap,
+        x + headEdges(last.chord, head).right + gap,
         placement.x + placement.width,
         top + head.y,
         direction,
