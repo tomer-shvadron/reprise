@@ -131,9 +131,116 @@
   break-before: page;
 }
 
+/*
+ * The print container: light paper in every theme, shown on screen only as a preview. Its tokens
+ * feed the score tokens above, which every page inside it derives again.
+ */
+.score-print {
+  --paper: var(--paper-light);
+  --ink: var(--ink-light);
+  --ink-muted: var(--ink-muted-light);
+  --paper-accent: var(--paper-accent-light);
+  display: none;
+}
+
+.score-print[data-paper='a4'] {
+  page: reprise-a4;
+}
+
+.score-print[data-paper='letter'] {
+  page: reprise-letter;
+}
+
+/* Exactly layout's PAGE_SIZES: ISO A4 is 0.5 px shorter, and a page box past it spills a sheet. */
+@page reprise-a4 {
+  size: 794px 1123px;
+  margin: 0;
+}
+
+@page reprise-letter {
+  size: 816px 1056px;
+  margin: 0;
+}
+
+.score-print-header {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--score-ink);
+  font-family: 'Geist Variable', sans-serif;
+}
+
+.score-print-title,
+.score-print-byline {
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.score-print-title {
+  font-weight: 600;
+}
+
+.score-print-byline {
+  color: var(--score-muted);
+}
+
+.score-print-page-number {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--score-muted);
+  font-family: 'Geist Variable', sans-serif;
+  font-size: 11px;
+}
+
+@media screen {
+  .score-print[data-preview] {
+    display: flex;
+    padding: 32px 0;
+  }
+
+  html:has(> body > .score-print[data-preview]),
+  body:has(> .score-print[data-preview]) {
+    height: auto;
+    overflow: auto;
+  }
+
+  body:has(> .score-print[data-preview]) > :not(.score-print) {
+    display: none;
+  }
+}
+
 @media print {
   .score-pages {
     gap: 0;
+  }
+
+  .score-print,
+  .score-print[data-preview] {
+    display: block;
+    padding: 0;
+  }
+
+  /* A bar wider than its page must not make the browser shrink the whole print to fit. */
+  .score-print .score-page {
+    overflow: clip;
+  }
+
+  body:has(> .score-print) > :not(.score-print) {
+    display: none;
+  }
+
+  /* index.css holds html and body to the window with no overflow, which would print one page. */
+  html:has(> body > .score-print),
+  body:has(> .score-print) {
+    height: auto;
+    overflow: visible;
+    background: none;
   }
 
   .score-page {
