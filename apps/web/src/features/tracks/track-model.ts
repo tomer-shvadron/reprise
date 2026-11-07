@@ -1,5 +1,5 @@
 import { channelPanToStereo, type TrackParams } from '@reprise/audio';
-import type { Id, Notation, Track } from '@reprise/model';
+import { canShowTab, shownNotation, type Id, type Notation, type Track } from '@reprise/model';
 
 export interface TrackMix {
   mute: boolean;
@@ -24,11 +24,12 @@ export function audibleTracks(
   return new Set(mixes.filter((mix) => !mix.mute && (!anySolo || mix.solo)).map((mix) => mix.id));
 }
 
+/** The notation the track is drawn in: the session's choice or the file's, as the layout shows it. */
 export function effectiveNotation(
   track: Track,
   notation: Readonly<Record<Id, Notation>>,
 ): Notation {
-  return notation[track.id] ?? track.display.notation;
+  return shownNotation(track, notation[track.id] ?? track.display.notation);
 }
 
 export const NOTATION_NAMES: Record<Notation, string> = {
@@ -37,10 +38,12 @@ export const NOTATION_NAMES: Record<Notation, string> = {
   both: 'Tab and standard notation',
 };
 
-/** What the notation menu offers: a tab staff needs strings, and drums always read percussion. */
+export const NO_TAB_REASON = 'This track has no strings, so it shows standard notation only.';
+
+/** What the notation menu enables: a tab staff needs strings, and drums get no menu at all. */
 export function notationChoices(track: Track): Notation[] {
-  if (track.kind === 'drums' || track.tuning.length === 0) return [];
-  return ['tab', 'standard', 'both'];
+  if (track.kind === 'drums') return [];
+  return canShowTab(track) ? ['tab', 'standard', 'both'] : ['standard'];
 }
 
 /** The ids shown in multitrack view. */

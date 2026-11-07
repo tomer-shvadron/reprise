@@ -5,7 +5,13 @@ import type { AppServices } from '@/app/services';
 import { useAppServices } from '@/app/services-context';
 import { singleTrackOf } from '@/state/document';
 
-import { effectiveMix, nextVisibility, stepTrackId } from './track-model';
+import {
+  effectiveMix,
+  effectiveNotation,
+  nextVisibility,
+  notationChoices,
+  stepTrackId,
+} from './track-model';
 
 export type TrackServices = Pick<AppServices, 'document' | 'selection' | 'playback' | 'audio'>;
 
@@ -76,8 +82,14 @@ export function toggleMultitrack(services: TrackServices): void {
   if (current !== undefined) document.getState().setSingleTrack(current);
 }
 
+/** Ignores a notation the track cannot show, and the one it already shows. */
 export function setTrackNotation(services: TrackServices, id: Id, notation: Notation): void {
-  if (trackOf(services, id)) services.document.getState().setNotation(id, notation);
+  const track = trackOf(services, id);
+  if (!track || !notationChoices(track).includes(notation)) return;
+  const document = services.document.getState();
+  if (notation !== effectiveNotation(track, document.view.notation)) {
+    document.setNotation(id, notation);
+  }
 }
 
 export function previewVolume(services: TrackServices, id: Id, volume: number): void {
