@@ -425,12 +425,51 @@ describe('allNotesOff and scheduled strip changes', () => {
     expect(level / reference).toBeCloseTo(ratio, 2);
   });
 
-  it('glides a ramp cut midway to its target, not back to its start', async () => {
-    const reference = await levelAfter(() => undefined);
-    const level = await levelAfter((sampler) => {
-      sampler.setTrack('a', { volume: 20 }, { at: 0.1, ramp: 0.4 });
-      sampler.allNotesOff(0.3);
+  /** A ramp to volume 20 over 0.1–0.5 s, cut at 0.3 s by `cut`; the level of a note at `note`. */
+  async function rampCut(
+    cut: ((sampler: Sampler, when: number) => void) | undefined,
+    note: number,
+    from: number,
+    to: number,
+  ): Promise<number> {
+    const context = offline(to + 0.05);
+    const sampler = new Sampler(context);
+    sampler.addTrack(samplerTrack('a', { volume: 100 }), sineInstrument());
+    if (cut) sampler.setTrack('a', { volume: 20 }, { at: 0.1, ramp: 0.4 });
+    // Cut at the render's own time, as the engine does from a stop or a seek.
+    void context.suspend(0.3).then(() => {
+      cut?.(sampler, context.currentTime);
+      sampler.noteOn('a', { key: 69, velocity: 127, when: note });
+      return context.resume();
     });
+    return rms(await render(context), from, to);
+  }
+
+  it('lets a set made at the cut win over a ramp still moving then', async () => {
+    const reference = await rampCut(undefined, 0.7, 0.8, 0.95);
+    const level = await rampCut(
+      (sampler, when) => {
+        sampler.allNotesOff(when);
+        sampler.setTrack('a', { volume: 100 });
+      },
+      0.7,
+      0.8,
+      0.95,
+    );
+    expect(level / reference).toBeCloseTo(1, 2);
+  });
+
+  it('glides a ramp cut midway to its target, not on along the ramp', async () => {
+    const reference = await rampCut(undefined, 0.31, 0.34, 0.37);
+    const level = await rampCut(
+      (sampler, when) => {
+        sampler.allNotesOff(when);
+      },
+      0.31,
+      0.34,
+      0.37,
+    );
+    // Carried on, the ramp would still be near 40 % of the way down here.
     expect(level / reference).toBeCloseTo(ratio, 2);
   });
 
