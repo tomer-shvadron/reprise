@@ -31,6 +31,7 @@ import type { StaffBar, StaffBarPlacement } from '../staff-module';
 import {
   headEdges,
   headGlyph,
+  loneHeadRight,
   mainHeads,
   positionY,
   tieDirection,
@@ -400,14 +401,14 @@ function locate(
     return undefined;
   }
   const others = voiceBeats(input.track, found.bar, voice);
-  const duration = others[found.beat]?.duration ?? 4;
+  const origin = others[found.beat];
   const x = previous.onsetX(tickOf(others, found.beat));
-  const half = glyphWidth(headGlyph('normal', duration), space) / 2;
+  const width = glyphWidth(headGlyph('normal', origin?.duration ?? 4), space);
   const { position } = placeNote(input.track, found.note, key, input.clef, false);
   return {
     y: placement.top + positionY(position, space),
-    left: x - half,
-    right: x + half,
+    left: x - width / 2,
+    right: x + loneHeadRight(width, found.note.ghost, origin?.dots ?? 0, space),
     direction: 'down',
   };
 }

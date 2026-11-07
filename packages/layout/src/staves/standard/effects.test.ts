@@ -650,6 +650,30 @@ describe('hammer-ons and pull-offs on the standard staff', () => {
     expect(letters.some((p) => within(p.bbox, standard))).toBe(false);
     expect(letters.every((p) => within(p.bbox, staffAnchor(result, 'tab')))).toBe(true);
   });
+  it("starts a slur or tie from the bar before outside a ghost's parenthesis and past its dot", () => {
+    const built = guitar('standard')
+      .bar()
+      .beat('8', [note(3, 5)])
+      .beat('2', [note(3, 5)])
+      .beat('4.', [note(3, 5, { ghost: true }), note(1, 3, { ghost: true })])
+      .bar()
+      .beat('4', [note(3, 7, { hammerPull: true }), note(1, 3, { tie: true })])
+      .beat('2.', [note(3, 7)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    expect(result.systems).toHaveLength(1);
+    const rightParen = (id: string) =>
+      rightOf(one(named(result, 'noteheadParenthesisRight', id), 'parenthesis').bbox);
+    const dotted = beatOf(built, 0, 0, 2).id;
+    const dot = Math.max(...named(result, 'augmentationDot', dotted).map((p) => rightOf(p.bbox)));
+    const [hammer] = arcs(result, noteOf(built, 0, 1, 0).id);
+    const [tie] = arcs(result, noteOf(built, 0, 1, 0, 1).id);
+    if (!hammer || !tie) throw new Error('arcs');
+    for (const arc of [hammer, tie]) {
+      expect(arc.bbox.x).toBeGreaterThan(rightParen(noteOf(built, 0, 0, 2).id));
+      expect(arc.bbox.x).toBeGreaterThan(dot);
+    }
+  });
 });
 
 describe('arpeggio and brush strokes on the standard staff', () => {

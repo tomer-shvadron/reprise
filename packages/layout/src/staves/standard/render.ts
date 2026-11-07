@@ -5,7 +5,7 @@ import { glyph, glyphWidth, line, rect, union, type LayoutSink } from '../../pri
 import type { Rect, StaffType } from '../../types';
 import { DYNAMICS_GLYPHS, dynamicsBaseline, shownDynamics } from '../dynamics';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
-import { headEdges, mainHeads, tieDirection, type ChordPlan } from './chord';
+import { headEdges, loneHeadRight, mainHeads, tieDirection, type ChordPlan } from './chord';
 import {
   beamedTremoloY,
   drawArticulation,
@@ -355,7 +355,7 @@ function drawTies(context: Context, fretted: boolean): void {
   const { input, placement, plan, sink, space } = context;
   const top = placement.top;
   const gap = TIE_GAP * space;
-  const blackHalf = glyphWidth('noteheadBlack', space) / 2;
+  const blackWidth = glyphWidth('noteheadBlack', space);
   const previousBar = input.barIndex > 0 ? input.track.bars[input.barIndex - 1] : undefined;
   const nextBar = input.track.bars[input.barIndex + 1];
 
@@ -380,11 +380,13 @@ function drawTies(context: Context, fretted: boolean): void {
         } else if (previousBar) {
           const voiceBeats = previousBar.voices[voice]?.beats ?? [];
           const last = voiceBeats.at(-1);
-          if (last?.notes.some((note) => noteMatches(note, head.note, fretted))) {
+          const source = last?.notes.find((note) => noteMatches(note, head.note, fretted));
+          if (last && source) {
             if (placement.previous) {
               let tick = 0;
               for (const b of voiceBeats.slice(0, -1)) tick += beatTicks(b);
-              start = placement.previous.onsetX(tick) + blackHalf + gap;
+              const reach = loneHeadRight(blackWidth, source.ghost, last.dots, space);
+              start = placement.previous.onsetX(tick) + reach + gap;
             } else {
               start = placement.x - space;
             }

@@ -63,6 +63,18 @@ export function headEdges(chord: ChordPlan, head: HeadPlan): { left: number; rig
   };
 }
 
+/**
+ * How far a lone head of `width` reaches right of its onset, its parentheses and dots included:
+ * for a connection whose origin is in a bar this one did not plan.
+ */
+export function loneHeadRight(width: number, ghost: boolean, dots: number, space: number): number {
+  const half = width / 2;
+  const parens = ghost ? half + (PAREN_GAP + PAREN_RIGHT.right - PAREN_RIGHT.left) * space : half;
+  if (dots === 0) return parens;
+  const room = ghost ? (PAREN_GAP + PAREN_LEFT.right - PAREN_LEFT.left) * space : 0;
+  return Math.max(parens, half + room + dotsWidth(dots, space));
+}
+
 export interface HeadPlan {
   note: Note;
   position: number;
