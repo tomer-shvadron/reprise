@@ -121,7 +121,9 @@ export function NotationMenu({
           size="sm"
           className="h-7 px-2 text-xs"
           aria-label={`Notation for ${label}: ${short[notation]}`}
-          aria-description={NOTATION_NAMES[notation]}
+          aria-description={
+            NOTATION_NAMES[notation] === short[notation] ? undefined : NOTATION_NAMES[notation]
+          }
         >
           {short[notation]}
         </Button>
