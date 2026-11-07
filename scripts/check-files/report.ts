@@ -394,9 +394,10 @@ export function renderDraft(draft: Draft, env: Environment): string {
       : '';
   return [
     `title: ${draftTitle(draft)}`,
-    `labels: type:bug, lane:${lane}, area:${area}, phase:2`,
+    // No spaces: `gh issue create --label` keeps one as part of the next label's name.
+    `labels: type:bug,lane:${lane},area:${area},phase:2`,
     'milestone: Player',
-    `search first: ${draft.code} ${area}`,
+    `search first: ${text.title}`,
     '---',
     '## What happened',
     '',

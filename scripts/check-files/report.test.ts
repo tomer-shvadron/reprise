@@ -167,7 +167,8 @@ describe('drafts', () => {
     if (!second) throw new Error('no second draft');
     const text = renderDraft(second, env);
     expect(text).toMatch(/^title: fix\(layout\): overlapping note anchors$/m);
-    expect(text).toContain('labels: type:bug, lane:score, area:layout, phase:2');
+    expect(text).toContain('labels: type:bug,lane:score,area:layout,phase:2');
+    expect(text).toContain('search first: overlapping note anchors');
     expect(text).toContain('`pnpm check:files fixtures/a.gp5`');
     expect(text).toContain('- **Build**: `pnpm check:files` at commit abc1234');
   });
