@@ -80,3 +80,16 @@ export const TrackSchema = z.object({
   bars: z.array(BarSchema),
 });
 export type Track = z.infer<typeof TrackSchema>;
+
+/**
+ * Whether the track can be shown as tab. Only a fretted track's notes sit on strings: a pitched
+ * track's are MIDI pitches on string 0, even when it keeps a GP3 to GP5 keyboard part's tuning.
+ */
+export function canShowTab(track: Pick<Track, 'kind' | 'tuning'>): boolean {
+  return track.kind === 'fretted' && track.tuning.length > 0;
+}
+
+/** The notation a track asking for `wanted` is drawn in; drums read percussion whatever it says. */
+export function shownNotation(track: Pick<Track, 'kind' | 'tuning'>, wanted: Notation): Notation {
+  return track.kind === 'drums' || canShowTab(track) ? wanted : 'standard';
+}

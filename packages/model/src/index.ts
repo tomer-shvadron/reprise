@@ -109,6 +109,8 @@ export {
   SoundOverrideSchema,
   TrackKindSchema,
   TrackSchema,
+  canShowTab,
+  shownNotation,
 } from './track';
 export type {
   ChannelSettings,

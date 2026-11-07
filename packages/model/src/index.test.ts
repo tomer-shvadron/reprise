@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ScoreSchema,
+  canShowTab,
   createEmptyScore,
   createNote,
   createTrack,
   newId,
+  shownNotation,
   soundingPitch,
   tieChainOf,
   validateScore,
@@ -26,5 +28,10 @@ describe('@reprise/model public API', () => {
   it('exports the harmonic sounding pitch', () => {
     const note = createNote({ string: 1, fret: 12, harmonic: { kind: 'natural' } });
     expect(soundingPitch(createTrack('fretted'), note)).toBe(76);
+  });
+
+  it('exports the tab rule', () => {
+    expect(canShowTab(createTrack('pitched'))).toBe(false);
+    expect(shownNotation(createTrack('fretted'), 'both')).toBe('both');
   });
 });
