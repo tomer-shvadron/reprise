@@ -329,6 +329,45 @@ describe('accidentals on unisons', () => {
     expect(later?.kind === 'glyph' && later.glyph).toBe('accidentalNatural');
   });
 
+  it('prints one sign per alteration in a split chord: G, G♯, G♯ prints ♮♯', () => {
+    for (const notes of [
+      [note(1, 3), note(2, 9), note(3, 13)],
+      [note(3, 13), note(2, 9), note(1, 3)],
+      [note(2, 9), note(1, 3), note(3, 13)],
+    ]) {
+      const built = guitar('standard').bar().beat('4', notes).build({ ids: 'sequential' });
+      const result = laid(built);
+      expect(accidentals(result)).toEqual(['accidentalNatural', 'accidentalSharp']);
+      // The ♯ belongs to the leftmost G♯ head, the higher string number's.
+      const sharp = result.primitives.find(
+        (p) => p.kind === 'glyph' && p.glyph === 'accidentalSharp',
+      );
+      const owner = built.tracks[0]?.bars[0]?.voices[0]?.beats[0]?.notes.find(
+        (n) => n.id === sharp?.node,
+      );
+      expect(owner?.string).toBe(3);
+    }
+  });
+
+  it('gives the next bar’s F a courtesy ♮ after F with F♯, whatever the beat order', () => {
+    const nextBar = (notes: Note[]) => {
+      const built = guitar('standard')
+        .bar()
+        .beat('1', notes)
+        .bar()
+        .beat('1', [note(1, 1)])
+        .build({ ids: 'sequential' });
+      const result = laid(built);
+      const id = noteOf(built, 0, 1, 0).id;
+      return result.primitives.flatMap((p) =>
+        p.kind === 'glyph' && p.glyph.startsWith('accidental') && p.node === id ? [p.glyph] : [],
+      );
+    };
+    const courtesy = ['accidentalParensLeft', 'accidentalNatural', 'accidentalParensRight'];
+    expect(nextBar([note(1, 1), note(2, 7)])).toEqual(courtesy);
+    expect(nextBar([note(2, 7), note(1, 1)])).toEqual(courtesy);
+  });
+
   it('prints both signs for F♯ in one voice against F in the other', () => {
     const { result } = checked(() =>
       guitar('standard')
