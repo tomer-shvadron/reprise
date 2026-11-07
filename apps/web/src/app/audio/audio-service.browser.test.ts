@@ -1,4 +1,5 @@
 import { channelPanToStereo, channelVolumeToGain } from '@reprise/audio';
+import { debugAudioEngine } from '@reprise/audio/testing';
 import {
   applyCommand,
   createHistory,
@@ -50,8 +51,9 @@ function setup(options: { seconds?: number; loader?: () => Promise<Uint8Array> }
   const render = (actions: { at: number; run: () => void }[] = []) =>
     drive(context, { tickers: [scheduler, frames], actions });
   const debug = () => {
-    const { sampler, source, engine, transport } = audio.debug();
-    if (!sampler || !source || !engine || !transport) {
+    const { engine } = audio.debug();
+    const { sampler, source, transport } = debugAudioEngine(engine);
+    if (!sampler || !source || !transport) {
       throw new Error('the audio service is not running');
     }
     return { sampler, source, engine, transport };
@@ -439,7 +441,9 @@ describe('the audio service', () => {
     audio.setDocument({ id: newId(), score: drumSong });
     await audio.settled();
 
-    expect(audio.debug().source?.memory().residents).toEqual(['gm:drums:0']);
+    expect(debugAudioEngine(audio.debug().engine).source?.memory().residents).toEqual([
+      'gm:drums:0',
+    ]);
     expect(playback.getState().song.status).toBe('ready');
     audio.dispose();
   });
@@ -568,7 +572,7 @@ describe('the audio service', () => {
       audio.setDocument({ id, score: edited });
 
       expect(load).not.toHaveBeenCalled();
-      const bank = audio.debug().bank;
+      const bank = debugAudioEngine(audio.debug().engine).bank;
       const track = edited.tracks[0];
       if (!bank || !track) throw new Error('no bank');
       expect(sampler.instrumentAt(trackId, context.currentTime)).toBe(bank.instrument(track, 0));
@@ -620,7 +624,7 @@ describe('the audio service', () => {
       });
       const id = await open(audio, song);
       audio.unlock();
-      const { sampler, transport } = audio.debug();
+      const { sampler, transport } = debugAudioEngine(audio.debug().engine);
       if (!sampler || !transport) throw new Error('no engine');
       const load = vi.spyOn(transport, 'load');
       const noted = applyCommand(

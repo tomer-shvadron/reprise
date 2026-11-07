@@ -232,8 +232,8 @@ decode rejects the `load` that started it.
 engine puts every strip back on its track's program and channel, with the user's overrides on
 top, as each run starts, on every `stopped`, and at each loop wrap (scheduled at the wrap's time).
 
-`debugAudioEngine(engine)` returns the live objects (`context`, `sampler`, `source`, `bank`,
-`transport`) for tests and diagnostics; it is not part of the contract.
+`debugAudioEngine(engine)`, from the test-only `@reprise/audio/testing` entry, returns the live
+objects (`context`, `sampler`, `source`, `bank`, `transport`); it is not part of the contract.
 
 ### Known gaps
 

@@ -45,7 +45,9 @@ export function fakeAudioService(): FakeAudioService {
     previewTrack: vi.fn(),
     retry: vi.fn(),
     settled: vi.fn(() => Promise.resolve()),
-    debug: vi.fn(() => ({})),
+    debug: vi.fn(() => {
+      throw new Error('the fake audio service has no engine');
+    }),
     dispose: vi.fn(),
   };
 }

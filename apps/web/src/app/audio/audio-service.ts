@@ -1,12 +1,10 @@
 import {
   createAudioEngine,
-  debugAudioEngine,
   GM_BUDGET_BYTES,
   Sf2ParseError,
   Sf2Soundfont,
   timelineNeutral,
   type AudioEngine,
-  type AudioEngineDebug,
   type LoadOptions,
   type PlaybackState,
   type TempoMode,
@@ -38,7 +36,10 @@ export interface OpenDocument {
   score: Score;
 }
 
-export type AudioServiceDebug = AudioEngineDebug & { engine?: AudioEngine };
+/** The engine behind the service; tests reach its live objects with `@reprise/audio/testing`. */
+export interface AudioServiceDebug {
+  engine: AudioEngine;
+}
 
 export interface AudioService {
   /** Creates the AudioContext on the first call, resumes a suspended one after. */
@@ -364,7 +365,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     },
 
     debug() {
-      return { ...debugAudioEngine(engine), engine };
+      return { engine };
     },
 
     dispose() {

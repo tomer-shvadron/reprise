@@ -1,7 +1,6 @@
-export { createAudioEngine, debugAudioEngine } from './engine';
+export { createAudioEngine } from './engine';
 export type {
   AudioEngine,
-  AudioEngineDebug,
   AudioEngineEvents,
   AudioEngineOptions,
   InstrumentId,
