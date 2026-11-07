@@ -89,7 +89,10 @@ export function canShowTab(track: Pick<Track, 'kind' | 'tuning'>): boolean {
   return track.kind === 'fretted' && track.tuning.length > 0;
 }
 
-/** The notation a track asking for `wanted` is drawn in; drums read percussion whatever it says. */
+/**
+ * The notation a track asking for `wanted` is drawn in: `standard` when it cannot show tab. Drums
+ * get `wanted` back unchanged; layout gives them a percussion staff whatever it says.
+ */
 export function shownNotation(track: Pick<Track, 'kind' | 'tuning'>, wanted: Notation): Notation {
   return track.kind === 'drums' || canShowTab(track) ? wanted : 'standard';
 }
