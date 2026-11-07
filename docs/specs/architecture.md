@@ -221,6 +221,8 @@ interface Note {
 function newId(): Id;
 function createEmptyScore(): Score;   // one fretted track in E standard (STANDARD_TUNING), one 4/4 bar at 120 BPM
 function createTrack(kind: TrackKind, options?: TrackOptions): Track;   // TrackOptions: any track field but id, kind; plus barCount or bars
+function canShowTab(track: Pick<Track, 'kind' | 'tuning'>): boolean;   // fretted with strings only; a pitched track's notes are MIDI pitches on string 0
+function shownNotation(track: Pick<Track, 'kind' | 'tuning'>, wanted: 'tab' | 'standard' | 'both'): 'tab' | 'standard' | 'both';   // wanted on fretted tracks with strings and on drums, else 'standard'
 // createMasterBar, createBar, createVoice, createBeat, createNote, createScoreMeta: every required field defaulted
 
 function validateScore(score: Score): Violation[];
@@ -421,7 +423,7 @@ function write(score: Score, format: 'reprise' | 'gp', options?: { app?: AppInfo
 
 ```ts
 interface LayoutOptions {
-  mode: 'paged' | 'continuous'; width: number; pageHeight?: number; zoom: number; tracks: Id[] | 'all'; notation: Record<Id, 'tab'|'standard'|'both'>;
+  mode: 'paged' | 'continuous'; width: number; pageHeight?: number; zoom: number; tracks: Id[] | 'all'; notation: Record<Id, 'tab'|'standard'|'both'>; // notation overrides display.notation; drums always get a percussion staff, a track that cannot show tab a standard one
   tiedNotes?: 'parentheses' | 'hidden'; // tied notes on tab staves, parentheses unless given
   margins?: Partial<Margins>;         // page margins, unscaled
   headerHeight?: number;              // paged: room kept free at the top of the first page for a header the caller draws, unscaled; less than the page's content area, else RangeError
