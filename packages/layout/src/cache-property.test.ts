@@ -246,8 +246,12 @@ function changeOptions(score: Score, options: LayoutOptions, change: OptionChang
       const next = NOTATIONS[(NOTATIONS.indexOf(current) + 1) % NOTATIONS.length] ?? 'tab';
       return { ...options, notation: { ...options.notation, [id]: next } };
     }
-    case 'width':
-      return { ...options, width: options.width === 480 ? PAGE_SIZES.a4.width : 480 };
+    case 'width': {
+      // Narrower than A4, a long bar at 1.25× zoom overflows the page in a cold layout too.
+      const [first, second] =
+        options.mode === 'paged' ? [PAGE_SIZES.a4.width, PAGE_SIZES.letter.width] : [640, 900];
+      return { ...options, width: options.width === first ? second : first };
+    }
     case 'zoom':
       return { ...options, zoom: options.zoom === 1 ? 1.25 : 1 };
   }
