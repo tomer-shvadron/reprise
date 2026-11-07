@@ -8,7 +8,6 @@ import { timelineOf } from '@/state/timeline';
 import { positionEventAt, repeatSong } from '@/test/position';
 import { createTestServices } from '@/test/services';
 
-import { outputLatencyOf } from './audio/output-latency';
 import { heardPosition, startPlayhead } from './playhead-driver';
 
 function manualFrames() {
@@ -160,14 +159,6 @@ describe('the playhead driver', () => {
 });
 
 describe('output latency', () => {
-  it('adds baseLatency and outputLatency, each where reported', () => {
-    expect(outputLatencyOf({ outputLatency: 0.032, baseLatency: 0.005 })).toBeCloseTo(0.037, 9);
-    expect(outputLatencyOf({ outputLatency: 0, baseLatency: 0.005 })).toBe(0.005);
-    expect(outputLatencyOf({ baseLatency: 0.01 })).toBe(0.01);
-    expect(outputLatencyOf({})).toBe(0);
-    expect(outputLatencyOf(undefined)).toBe(0);
-  });
-
   it('puts the playhead where the music is heard while running, scaled by the speed', () => {
     const song: Score = repeatSong();
     const timeline = timelineOf(song);

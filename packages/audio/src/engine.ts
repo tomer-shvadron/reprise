@@ -1,18 +1,30 @@
-import { positionAtSeconds, secondsAtTick } from '@reprise/model';
-import type { Id, Note, PlaybackPosition, Score } from '@reprise/model';
+import type { Id, Note, Score, Track } from '@reprise/model';
 
 import { ClickSynth } from './click-synth';
+import { GmBank } from './gm-bank';
+import { outputLatencyOf } from './output-latency';
+import { Sampler } from './sampler/sampler';
 import type { TrackParams } from './sampler/sampler';
-import { advance, retime, startRun, tickAtTime, withLoop } from './scheduler';
-import type { Anchor, Run } from './scheduler';
-import type { InstrumentSink, MetronomeSink } from './sink';
-import { frameTicker, workerTicker } from './ticker';
+import { createSamplerSink } from './sampler/sampler-sink';
+import { GM_BUDGET_BYTES, ManagedSampleSource } from './samples/managed-sample-source';
+import type { BufferFactory } from './samples/managed-sample-source';
+import { planInstruments, planSamples } from './samples/plan';
+import type { InstrumentId, MemoryReport } from './samples/types';
+import type { Sf2Soundfont } from './sf2/soundfont';
 import type { Ticker } from './ticker';
-import { bpmAtTick, createTimeline, loopRange } from './timeline';
-import type { TickRange, Timeline } from './timeline';
+import { timelineNeutral } from './timeline-neutral';
+import { createTransport } from './transport';
+import type { TempoMode, Transport, TransportEvents, Unsubscribe } from './transport';
 
-export type Unsubscribe = () => void;
-export type InstrumentId = string;
+export type { InstrumentId, MemoryReport } from './samples/types';
+export type {
+  LoopEvent,
+  PlaybackState,
+  PositionEvent,
+  TempoMode,
+  TransportEvents,
+  Unsubscribe,
+} from './transport';
 
 /** Placeholder until the HQ tier (phase 3) defines how packs are assigned to tracks. */
 export interface PackAssignment {
@@ -26,41 +38,31 @@ export interface LoadOptions {
   packs: PackAssignment[];
 }
 
-export interface MemoryReport {
-  decodedBytes: number;
-  budgetBytes: number;
-  residents: InstrumentId[];
+/** The song plan's instruments, in first-use order. */
+export interface LoadResult {
+  instruments: InstrumentId[];
 }
 
-export type PlaybackState = 'stopped' | 'counting-in' | 'playing' | 'paused';
-
-export interface PositionEvent {
-  /** Track 0, voice 0 for `beatIndex`; ask `positionAtSeconds` with `seconds` for another. */
-  position: PlaybackPosition;
-  masterBarId: Id;
-  /** Seconds into the written tempo map, before percent or BPM scaling. */
-  seconds: number;
-  countingIn: boolean;
+export interface InstrumentLoad {
+  loaded: number;
+  total: number;
 }
 
-export interface LoopEvent {
-  /** Completed passes of the loop, from 1. */
-  pass: number;
-  /** Context time of the wrap, up to the lookahead after the event fires. */
-  when: number;
-}
+/** The tracks whose new instrument is decoding, by track id. */
+export type InstrumentLoads = Readonly<Record<Id, InstrumentLoad>>;
 
-export interface AudioEngineEvents {
-  position: PositionEvent;
-  state: PlaybackState;
-  loop: LoopEvent;
+export interface AudioEngineEvents extends TransportEvents {
   memory: MemoryReport;
+  instrumentLoads: InstrumentLoads;
 }
-
-export type TempoMode = 'bpm' | 'percent';
 
 export interface AudioEngine {
-  load(score: Score, options: LoadOptions): Promise<void>;
+  /**
+   * Over a loaded song, an edit of it: keeps the position (clamped), the state, the loop and the
+   * overrides, and applies a timeline-neutral edit without rebuilding. Otherwise a new song,
+   * `stopped` at tick 0. Resolves once the opening bars are decoded.
+   */
+  load(score: Score, options: LoadOptions): Promise<LoadResult>;
   play(fromTick?: number): void;
   pause(): void;
   stop(): void;
@@ -69,21 +71,37 @@ export interface AudioEngine {
   setLoop(range?: { startBar: Id; endBar: Id }): void;
   setCountIn(on: boolean): void;
   setMetronome(on: boolean, volume: number): void;
+  /** A user override over the track's channel, kept through every baseline reset and edit. */
   setTrack(id: Id, params: TrackParams): void;
-  previewNote(track: Id, note: Note): void;
+  /** Past mute and solo; silent the first time a sample is needed, which it then decodes. */
+  previewNote(track: Id, note: Pick<Note, 'string' | 'fret'>): void;
   on<K extends keyof AudioEngineEvents>(
     event: K,
     handler: (payload: AudioEngineEvents[K]) => void,
   ): Unsubscribe;
   memory(): MemoryReport;
   dispose(): void;
+  /** Makes the context on the first call, from the factory; resumes a suspended one after. */
+  unlock(): void;
+  setSoundfont(font: Sf2Soundfont): void;
+  /** Ends the song; `evict` frees every instrument too, as closing it should. */
+  unload(options?: { evict?: boolean }): void;
+  setMasterVolume(volume: number): void;
+  /** A strip's volume or pan with no override: the next baseline reset or edit replaces it. */
+  previewTrack(id: Id, params: Pick<TrackParams, 'volume' | 'pan'>): void;
+  /** Seconds from the context's clock to the speaker; 0 with no context. */
+  outputLatency(): number;
+  /** Resolves with no load, instrument load or sample fetch in flight. */
+  settled(): Promise<void>;
 }
 
 export interface AudioEngineOptions {
-  context: BaseAudioContext;
-  sink: InstrumentSink;
-  /** Defaults to a `ClickSynth` on the context's destination. */
-  metronome?: MetronomeSink;
+  /** A context, or how to make one on the first unlock, play or previewNote. */
+  context: BaseAudioContext | (() => BaseAudioContext);
+  /** The memory manager's budget; `GM_BUDGET_BYTES` by default. */
+  budgetBytes?: number;
+  /** Runs the coalesced memory event; the next animation frame by default. */
+  scheduleMemory?: (callback: () => void) => void;
   /** Drives the lookahead scheduler; defaults to a 25 ms interval in a worker. */
   scheduler?: Ticker;
   /** Drives position events; defaults to animation frames. */
@@ -94,258 +112,321 @@ export interface AudioEngineOptions {
   startLatency?: number;
 }
 
-const DEFAULT_BUDGET_BYTES = 300 * 1024 * 1024;
+/** The live objects behind an engine, for tests and diagnostics; not part of the contract. */
+export interface AudioEngineDebug {
+  context?: BaseAudioContext;
+  sampler?: Sampler;
+  source?: ManagedSampleSource;
+  bank?: GmBank;
+  transport?: Transport;
+}
 
-function notYet(method: string, workPackage: string): Error {
-  return new Error(`AudioEngine.${method} is not implemented yet; it arrives with ${workPackage}`);
+const debuggers = new WeakMap<AudioEngine, () => AudioEngineDebug>();
+
+export function debugAudioEngine(engine: AudioEngine): AudioEngineDebug {
+  return debuggers.get(engine)?.() ?? {};
+}
+
+// The manager needs no context: buffers built this way play in any context of their rate.
+const CONSTRUCTED_BUFFERS: BufferFactory = {
+  createBuffer: (numberOfChannels, length, sampleRate) =>
+    new AudioBuffer({ numberOfChannels, length, sampleRate }),
+};
+
+function sameTuning(a: Track, b: Track): boolean {
+  return (
+    a.capo === b.capo &&
+    a.tuning.length === b.tuning.length &&
+    a.tuning.every((pitch, index) => pitch === b.tuning[index])
+  );
+}
+
+function checkVolume(method: string, volume: number): void {
+  if (!Number.isFinite(volume) || volume < 0 || volume > 1) {
+    throw new RangeError(`${method}: volume must be 0 to 1, got ${String(volume)}`);
+  }
+}
+
+interface Live {
+  context: BaseAudioContext;
+  sampler: Sampler;
+  transport: Transport;
 }
 
 export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
-  const { context, sink } = options;
-  const metronome = options.metronome ?? new ClickSynth(context);
-  const schedulerTicker = options.scheduler ?? workerTicker(25);
-  const frames = options.frames ?? frameTicker();
-  const lookahead = options.lookahead ?? 0.2;
-  const startLatency = options.startLatency ?? 0.03;
+  const factory = typeof options.context === 'function' ? options.context : undefined;
+  const budgetBytes = options.budgetBytes ?? GM_BUDGET_BYTES;
 
   const handlers: { [K in keyof AudioEngineEvents]: Set<(payload: AudioEngineEvents[K]) => void> } =
-    { position: new Set(), state: new Set(), loop: new Set(), memory: new Set() };
-  let timeline: Timeline | undefined;
-  let state: PlaybackState = 'stopped';
-  let run: Run | undefined;
-  let anchors: Anchor[] = [];
-  /** Context time the run's first tick sounds: when a count-in ends. */
-  let runStart = 0;
-  let restTick = 0;
+    {
+      position: new Set(),
+      state: new Set(),
+      loop: new Set(),
+      memory: new Set(),
+      instrumentLoads: new Set(),
+    };
+  let live: Live | undefined;
+  let source: ManagedSampleSource | undefined;
+  let bank: GmBank | undefined;
+  let score: Score | undefined;
+  /** The score the sampler's tracks were last built from. */
+  let attached: Score | undefined;
+  let latestDecode: Promise<LoadResult> | undefined;
+  let overrides: Record<Id, TrackParams> = {};
   let tempo: { mode: TempoMode; value: number } = { mode: 'percent', value: 100 };
-  let rate = 1;
   let loopBars: { startBar: Id; endBar: Id } | undefined;
-  let loop: TickRange | undefined;
   let countIn = false;
-  let metronomeOn = false;
-  let cancelScheduler: (() => void) | undefined;
-  let cancelFrames: (() => void) | undefined;
-
-  metronome.setVolume(0.7);
+  let metronome = { on: false, volume: 0.7 };
+  let masterVolume = 1;
+  let loads: InstrumentLoads = {};
+  // Per track, so a second instrument change drops the first one's progress.
+  const loadTokens = new Map<Id, number>();
+  /** Bumped by `unload`, so loads of an earlier song report nothing. */
+  let song = 0;
+  let disposed = false;
+  const inflight = new Set<Promise<unknown>>();
 
   function emit<K extends keyof AudioEngineEvents>(event: K, payload: AudioEngineEvents[K]): void {
     const set: Set<(payload: AudioEngineEvents[K]) => void> = handlers[event];
     for (const handler of [...set]) handler(payload);
   }
 
-  function setState(next: PlaybackState): void {
-    state = next;
-    emit('state', next);
+  function tracked<T>(promise: Promise<T>): Promise<T> {
+    const done = promise.then(
+      () => undefined,
+      () => undefined,
+    );
+    inflight.add(done);
+    void done.then(() => inflight.delete(done));
+    return promise;
   }
 
-  function requireTimeline(method: string): Timeline {
-    if (!timeline) throw new Error(`AudioEngine.${method}: load a score first`);
-    return timeline;
+  function baselineOf(track: Track): Required<TrackParams> {
+    const { volume, pan, mute, solo } = track.channel;
+    return { volume, pan, mute, solo, ...overrides[track.id] };
   }
 
-  function clampTick(line: Timeline, tick: number): number {
-    if (!Number.isFinite(tick)) throw new RangeError(`tick must be finite, got ${String(tick)}`);
-    return Math.min(Math.max(tick, 0), Math.max(line.endTick - 1e-6, 0));
-  }
-
-  /** The anchor in effect at `time`; anchors it has superseded are dropped. */
-  function anchorAt(time: number): Anchor | undefined {
-    let index = 0;
-    while (index + 1 < anchors.length && (anchors[index + 1]?.time ?? Infinity) <= time) {
-      index += 1;
+  /**
+   * Puts every strip back on its track's program and channel, with the user's overrides: a beat's
+   * mixer change must not outlive the run it played in. With `at`, volume and pan are scheduled.
+   */
+  function resetBaseline(at?: number): void {
+    if (!live || !bank || !attached) return;
+    const { sampler } = live;
+    const held = new Set(sampler.trackIds);
+    for (const track of attached.tracks) {
+      if (!held.has(track.id)) continue;
+      sampler.setInstrument(track.id, bank.instrument(track, track.program), at);
+      const params = baselineOf(track);
+      if (at === undefined) sampler.setTrack(track.id, params);
+      else sampler.setTrack(track.id, { volume: params.volume, pan: params.pan }, { at });
     }
-    if (index > 0) anchors.splice(0, index);
-    return anchors[0];
   }
 
-  function currentTick(): number {
-    if (!run || !timeline) return restTick;
-    const anchor = anchorAt(context.currentTime);
-    return anchor ? tickAtTime(timeline, anchor, context.currentTime) : restTick;
-  }
-
-  function emitPosition(): void {
-    if (!timeline) return;
-    const now = context.currentTime;
-    const tick = currentTick();
-    const seconds = secondsAtTick(timeline.map, tick);
-    const position = positionAtSeconds(timeline.map, seconds);
-    const masterBar = position && timeline.score.masterBars[position.masterBarIndex];
-    if (!position || !masterBar) return;
-    const countingIn = state === 'counting-in' && now < runStart;
-    emit('position', { position, masterBarId: masterBar.id, seconds, countingIn });
-  }
-
-  function rateFor(tick: number): number {
-    if (tempo.mode === 'percent') return 100 / tempo.value;
-    return timeline ? bpmAtTick(timeline, tick) / tempo.value : 1;
-  }
-
-  function silence(when: number): void {
-    sink.allNotesOff(when);
-    metronome.silence(when);
-  }
-
-  function halt(): void {
-    cancelScheduler?.();
-    cancelFrames?.();
-    cancelScheduler = undefined;
-    cancelFrames = undefined;
-    run = undefined;
-    anchors = [];
-  }
-
-  function finish(): void {
-    halt();
-    restTick = loop?.startTick ?? 0;
-    setState('stopped');
-    emitPosition();
-  }
-
-  function pump(): void {
-    if (!run || !timeline) return;
-    const now = context.currentTime;
-    for (;;) {
-      const result = advance(timeline, run, {
-        now,
-        horizon: now + lookahead,
-        metronome: metronomeOn,
-      });
-      run = result.run;
-      anchors.push(...result.anchors);
-      for (const click of result.clicks) metronome.click(click.when, click.accent);
-      for (const mix of result.mixes) {
-        sink.mix?.({
-          track: mix.track,
-          trackIndex: mix.trackIndex,
-          voiceIndex: mix.voiceIndex,
-          beat: mix.beat,
-          beatIndex: mix.beatIndex,
-          mix: mix.mix,
-          when: mix.when,
-          playbackTick: mix.tick,
-          secondsPerTick: mix.secondsPerTick,
-          sequenceIndex: mix.sequenceIndex,
-          masterBarIndex: mix.masterBarIndex,
-          passIndex: mix.passIndex,
-        });
-      }
-      for (const note of result.notes) {
-        sink.noteOn({
-          track: note.track,
-          trackIndex: note.trackIndex,
-          voiceIndex: note.voiceIndex,
-          beat: note.beat,
-          beatIndex: note.beatIndex,
-          note: note.note,
-          when: note.when,
-          duration: note.duration,
-          playbackTick: note.tick,
-          durationTicks: note.durationTicks,
-          sequenceIndex: note.sequenceIndex,
-          masterBarIndex: note.masterBarIndex,
-          passIndex: note.passIndex,
-          barEnd: note.barEnd,
-          nextOnString: note.nextOnString,
-          continuations: note.continuations,
-        });
-      }
-      if (!result.loop) break;
-      emit('loop', result.loop);
-      if (!isRunning()) return;
+  function attach(next: Score, mode: 'replace' | 'sync'): void {
+    if (!live || !bank) return;
+    const { sampler } = live;
+    const previous = mode === 'sync' ? attached : undefined;
+    const before = new Map(previous?.tracks.map((track) => [track.id, track]));
+    const ids = new Set(next.tracks.map((track) => track.id));
+    for (const id of sampler.trackIds) {
+      if (!previous || !ids.has(id)) sampler.removeTrack(id);
     }
-    if (state === 'counting-in' && now >= runStart) setState('playing');
-    if (run.finished && run.endTime !== undefined && now >= run.endTime) finish();
+    const held = new Set(sampler.trackIds);
+    for (const track of next.tracks) {
+      const old = before.get(track.id);
+      const base = bank.instrument(track, track.program);
+      if (!old || !held.has(track.id) || !sameTuning(old, track)) {
+        sampler.addTrack(track, base);
+        const override = overrides[track.id];
+        if (override) sampler.setTrack(track.id, override);
+        continue;
+      }
+      if (old === track) continue;
+      if (old.program !== track.program || old.bank !== track.bank || old.kind !== track.kind) {
+        sampler.setInstrument(track.id, base);
+      }
+      if (old.channel !== track.channel) sampler.setTrack(track.id, baselineOf(track));
+    }
+    attached = next;
   }
 
-  function frame(): void {
-    if (state === 'counting-in' && context.currentTime >= runStart) setState('playing');
-    emitPosition();
-  }
-
-  function begin(line: Timeline, tick: number, withCountIn: boolean): void {
-    run = startRun(line, {
-      tick,
-      time: context.currentTime + startLatency,
-      rate,
-      loop,
-      countIn: withCountIn,
+  function makeLive(context: BaseAudioContext): Live {
+    const sampler = new Sampler(context);
+    const sink = createSamplerSink(sampler, {
+      instrumentOf: (track, program) => bank?.instrument(track, program),
     });
-    anchors = [run.anchor];
-    runStart = run.anchor.time;
-    cancelScheduler ??= schedulerTicker(pump);
-    cancelFrames ??= frames(frame);
+    const transport = createTransport({
+      context,
+      sink,
+      // Through the bus, so clicks carry the limiter's pre-delay as the notes do.
+      metronome: new ClickSynth(context, sampler.master.input),
+      ...(options.scheduler && { scheduler: options.scheduler }),
+      ...(options.frames && { frames: options.frames }),
+      ...(options.lookahead !== undefined && { lookahead: options.lookahead }),
+      ...(options.startLatency !== undefined && { startLatency: options.startLatency }),
+      // Before the run's first window, so the mixer changes it replays land on top.
+      onRunStart: () => {
+        resetBaseline();
+      },
+    });
+    transport.setTempo(tempo.mode, tempo.value);
+    transport.setCountIn(countIn);
+    transport.setMetronome(metronome.on, metronome.volume);
+    transport.setLoop(loopBars);
+    sampler.master.gain = masterVolume;
+    transport.on('state', (state) => {
+      if (state === 'stopped') resetBaseline();
+      emit('state', state);
+    });
+    transport.on('position', (position) => {
+      emit('position', position);
+    });
+    transport.on('loop', (loop) => {
+      // Emitted before the next pass is scheduled, so its replayed changes win at `when`.
+      resetBaseline(loop.when);
+      emit('loop', loop);
+    });
+    live = { context, sampler, transport };
+    if (score) {
+      attach(score, 'replace');
+      transport.load(score);
+    }
+    return live;
   }
 
-  function isRunning(): boolean {
-    return state === 'playing' || state === 'counting-in';
+  function decode(next: Score): Promise<LoadResult> {
+    if (!source || !bank) return Promise.reject(new Error('AudioEngine.load: no sound bank'));
+    const decoding = source
+      .load(next, bank.regionMap, { instrumentOf: bank.instrumentId })
+      .then((plan) => ({ instruments: plan.instruments }));
+    latestDecode = decoding;
+    return decoding;
+  }
+
+  function setLoad(id: Id, load: InstrumentLoad | undefined): void {
+    const rest = Object.fromEntries(Object.entries(loads).filter(([key]) => key !== id));
+    loads = load ? { ...rest, [id]: load } : rest;
+    emit('instrumentLoads', loads);
+  }
+
+  /** Decodes one track's samples for its new instrument, counting them into `instrumentLoads`. */
+  function loadInstrument(next: Score, id: Id): Promise<void> {
+    if (!source || !bank) return Promise.resolve();
+    const managed = source;
+    const token = (loadTokens.get(id) ?? 0) + 1;
+    loadTokens.set(id, token);
+    const started = song;
+    const current = () => started === song && loadTokens.get(id) === token;
+    const plan = planInstruments(next, { instrumentOf: bank.instrumentId });
+    const trackPlan = plan.tracks.find((entry) => entry.track === id);
+    const refs = trackPlan
+      ? planSamples({ instruments: plan.instruments, tracks: [trackPlan] }, bank.regionMap)
+      : [];
+    if (refs.length === 0) {
+      if (current() && id in loads) setLoad(id, undefined);
+      return Promise.resolve();
+    }
+    const total = refs.length;
+    let count = 0;
+    setLoad(id, { loaded: 0, total });
+    return Promise.all(
+      refs.map((ref) =>
+        managed.getBuffer(ref).then(() => {
+          count += 1;
+          if (current() && count < total) setLoad(id, { loaded: count, total });
+        }),
+      ),
+    ).then(
+      () => {
+        if (current()) setLoad(id, undefined);
+      },
+      (error: unknown) => {
+        if (!current()) return;
+        setLoad(id, undefined);
+        throw error;
+      },
+    );
+  }
+
+  /** A timeline-neutral edit: channel and program changes go straight to the strips. */
+  function applyNeutral(previous: Score, next: Score): Promise<LoadResult> {
+    if (live) attached = next;
+    const sampler = live?.sampler;
+    const held = new Set(sampler?.trackIds);
+    const reprogrammed: Id[] = [];
+    next.tracks.forEach((track, index) => {
+      const old = previous.tracks[index];
+      if (!old || old === track) return;
+      if (old.program !== track.program) reprogrammed.push(track.id);
+      if (!sampler || !bank || !held.has(track.id)) return;
+      if (old.channel !== track.channel) sampler.setTrack(track.id, baselineOf(track));
+      if (old.program !== track.program) {
+        sampler.setInstrument(track.id, bank.instrument(track, track.program));
+      }
+    });
+    if (reprogrammed.length === 0) return latestDecode ?? decode(next);
+    // First: its switchSong pins the new programs before their samples are inserted.
+    const decoding = decode(next);
+    return Promise.all([decoding, ...reprogrammed.map((id) => loadInstrument(next, id))]).then(
+      ([result]) => result,
+    );
+  }
+
+  function unlock(): Live | undefined {
+    if (disposed) return undefined;
+    if (!live) {
+      if (!factory) return undefined;
+      makeLive(factory());
+    }
+    const context = live?.context;
+    if (context instanceof AudioContext && context.state === 'suspended') void context.resume();
+    return live;
+  }
+
+  function requireSong(method: string): Score {
+    if (!score) throw new Error(`AudioEngine.${method}: load a score first`);
+    return score;
   }
 
   const engine: AudioEngine = {
-    load(score) {
-      if (isRunning()) {
-        silence(context.currentTime);
-        halt();
+    load(next) {
+      if (disposed) return Promise.reject(new Error('AudioEngine.load: the engine was disposed'));
+      if (!source || !bank) {
+        return Promise.reject(
+          new Error('AudioEngine.load: no sound bank; call setSoundfont first'),
+        );
       }
-      timeline = createTimeline(score);
-      restTick = 0;
-      try {
-        loop = loopBars ? loopRange(timeline, loopBars, 0) : undefined;
-      } catch {
-        loopBars = undefined;
-        loop = undefined;
+      const previous = score;
+      score = next;
+      if (previous === next) return tracked(decode(next));
+      if (previous && timelineNeutral(previous, next)) {
+        return tracked(applyNeutral(previous, next));
       }
-      rate = rateFor(0);
-      if (state !== 'stopped') setState('stopped');
-      emitPosition();
-      return Promise.resolve();
+      if (live) {
+        attach(next, previous ? 'sync' : 'replace');
+        live.transport.load(next);
+      }
+      return tracked(decode(next));
     },
 
     play(fromTick) {
-      const line = requireTimeline('play');
-      if (isRunning()) {
-        if (fromTick !== undefined) engine.seek(fromTick);
-        return;
-      }
-      let tick = clampTick(line, fromTick ?? restTick);
-      if (loop && (tick < loop.startTick || tick >= loop.endTick)) tick = loop.startTick;
-      if (context instanceof AudioContext && context.state === 'suspended') void context.resume();
-      begin(line, tick, countIn);
-      setState(countIn ? 'counting-in' : 'playing');
-      pump();
-      emitPosition();
+      requireSong('play');
+      unlock()?.transport.play(fromTick);
     },
 
     pause() {
-      if (!isRunning()) return;
-      restTick = currentTick();
-      silence(context.currentTime);
-      halt();
-      setState('paused');
-      emitPosition();
+      live?.transport.pause();
     },
 
     stop() {
-      if (isRunning()) silence(context.currentTime);
-      halt();
-      restTick = loop?.startTick ?? 0;
-      setState('stopped');
-      emitPosition();
+      live?.transport.stop();
     },
 
     seek(tick) {
-      const line = requireTimeline('seek');
-      const target = clampTick(line, tick);
-      if (isRunning()) {
-        silence(context.currentTime);
-        begin(line, target, false);
-        setState('playing');
-        pump();
-      } else {
-        restTick = target;
-        setState(state);
-      }
-      emitPosition();
+      if (!live) return;
+      requireSong('seek');
+      live.transport.seek(tick);
     },
 
     setTempo(mode, value) {
@@ -353,39 +434,36 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
         throw new RangeError(`setTempo: value must be a positive number, got ${String(value)}`);
       }
       tempo = { mode, value };
-      rate = rateFor(currentTick());
-      if (run && timeline) {
-        run = retime(timeline, run, rate);
-        anchors.push(run.anchor);
-      }
+      live?.transport.setTempo(mode, value);
     },
 
     setLoop(range) {
+      live?.transport.setLoop(range);
       loopBars = range;
-      if (!range) loop = undefined;
-      else if (timeline) loop = loopRange(timeline, range, currentTick());
-      if (run) run = withLoop(run, loop);
     },
 
     setCountIn(on) {
       countIn = on;
+      live?.transport.setCountIn(on);
     },
 
     setMetronome(on, volume) {
-      if (!Number.isFinite(volume) || volume < 0 || volume > 1) {
-        throw new RangeError(`setMetronome: volume must be 0 to 1, got ${String(volume)}`);
+      checkVolume('setMetronome', volume);
+      metronome = { on, volume };
+      live?.transport.setMetronome(on, volume);
+    },
+
+    setTrack(id, params) {
+      overrides = { ...overrides, [id]: { ...overrides[id], ...params } };
+      if (live?.sampler.trackIds.includes(id)) live.sampler.setTrack(id, params);
+    },
+
+    previewNote(track, note) {
+      const current = requireSong('previewNote');
+      if (!current.tracks.some((entry) => entry.id === track)) {
+        throw new RangeError(`AudioEngine.previewNote: the song has no track ${track}`);
       }
-      metronomeOn = on;
-      metronome.setVolume(volume);
-      if (!on) metronome.silence(context.currentTime);
-    },
-
-    setTrack() {
-      throw notYet('setTrack', 'the sampler (WP-031)');
-    },
-
-    previewNote() {
-      throw notYet('previewNote', 'the sampler (WP-031)');
+      unlock()?.sampler.previewNote(track, note);
     },
 
     on(event, handler) {
@@ -397,18 +475,83 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     },
 
     memory() {
-      return { decodedBytes: 0, budgetBytes: DEFAULT_BUDGET_BYTES, residents: [] };
+      return source?.memory() ?? { decodedBytes: 0, budgetBytes, residents: [] };
+    },
+
+    unlock() {
+      unlock();
+    },
+
+    setSoundfont(font) {
+      if (disposed) return;
+      if (source) throw new Error('AudioEngine.setSoundfont: the sound bank is already set');
+      source = new ManagedSampleSource(font, CONSTRUCTED_BUFFERS, {
+        budgetBytes,
+        ...(options.scheduleMemory && { schedule: options.scheduleMemory }),
+      });
+      source.on('memory', (report) => {
+        emit('memory', report);
+      });
+      bank = new GmBank(font, source);
+    },
+
+    unload(unloadOptions = {}) {
+      if (disposed) return;
+      // Its `stopped` resets the baseline while the old song is still attached.
+      live?.transport.unload();
+      overrides = {};
+      loopBars = undefined;
+      song += 1;
+      loadTokens.clear();
+      if (Object.keys(loads).length > 0) {
+        loads = {};
+        emit('instrumentLoads', loads);
+      }
+      if (live) for (const id of live.sampler.trackIds) live.sampler.removeTrack(id);
+      // A song with no tracks plans no instruments, so the switch evicts every one.
+      if (unloadOptions.evict && score && source) source.switchSong({ ...score, tracks: [] });
+      score = undefined;
+      attached = undefined;
+      latestDecode = undefined;
+    },
+
+    setMasterVolume(volume) {
+      checkVolume('setMasterVolume', volume);
+      masterVolume = volume;
+      if (live) live.sampler.master.gain = volume;
+    },
+
+    previewTrack(id, params) {
+      if (live?.sampler.trackIds.includes(id)) live.sampler.setTrack(id, params);
+    },
+
+    outputLatency() {
+      return outputLatencyOf(live?.context);
+    },
+
+    async settled() {
+      while (inflight.size > 0) await Promise.all([...inflight]);
+      await source?.settled();
     },
 
     dispose() {
-      if (isRunning()) silence(context.currentTime);
-      halt();
+      if (disposed) return;
+      disposed = true;
+      song += 1;
+      live?.transport.dispose();
+      live?.sampler.dispose();
+      source?.dispose();
       for (const set of Object.values(handlers)) set.clear();
-      sink.dispose?.();
-      metronome.dispose?.();
-      state = 'stopped';
-      timeline = undefined;
+      const context = live?.context;
+      if (factory && context instanceof AudioContext) void context.close();
     },
   };
+
+  debuggers.set(engine, () => ({
+    ...(live && { context: live.context, sampler: live.sampler, transport: live.transport }),
+    ...(source && { source }),
+    ...(bank && { bank }),
+  }));
+  if (typeof options.context !== 'function') makeLive(options.context);
   return engine;
 }

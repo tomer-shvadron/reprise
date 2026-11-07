@@ -1,11 +1,10 @@
 import type { Score } from '@reprise/model';
 
-import type { MemoryReport } from '../engine';
 import type { RegionMap, SampleRef } from '../sampler/region-map';
 import type { SampleSource } from '../sampler/sample-source';
 import { planInstruments, planSamples } from './plan';
 import type { PlanOptions, SongPlan } from './plan';
-import type { InstrumentId, RawSample, SampleProvider } from './types';
+import type { InstrumentId, MemoryReport, RawSample, SampleProvider } from './types';
 
 export const MEGABYTE = 1024 * 1024;
 /** The roadmap's budgets: any song on the GM tier, and the HQ tier's default. */
@@ -87,7 +86,9 @@ function decode(factory: BufferFactory, raw: RawSample): AudioBuffer {
  * Accounting is per buffer, counted once however many presets share it; eviction is per
  * instrument (a half-evicted instrument would only trade a few bytes for skipped notes), least
  * recently used first, the current song's instruments last, and a buffer lives while any
- * resident instrument references it.
+ * resident instrument references it. A resident is an instrument the song plans that holds
+ * decoded samples, or a leftover from an earlier song; a preset that only shares the song's
+ * samples is not one. An eviction is counted only when it frees a buffer.
  */
 export class ManagedSampleSource implements SampleSource {
   readonly #provider: SampleProvider;
@@ -181,6 +182,11 @@ export class ManagedSampleSource implements SampleSource {
     const plan = planInstruments(score, options);
     this.#generation += 1;
     this.#pinned = new Set(plan.instruments);
+    // A planned preset whose samples are resident under an alias takes them over, or evicting
+    // the alias below would free the samples the new song needs.
+    for (const instrument of this.#pinned) {
+      if (this.#refsOf.has(instrument)) this.#touch(instrument);
+    }
     for (const instrument of [...this.#residents]) {
       if (!this.#pinned.has(instrument)) this.#evict(instrument);
     }
@@ -281,8 +287,10 @@ export class ManagedSampleSource implements SampleSource {
         this.#refsOf.set(owner, refs);
       }
       refs.add(ref);
-      this.#touch(owner);
     }
+    // With no planned owner every owner is resident, so the buffer always has one to free it.
+    const planned = owners.filter((owner) => this.#pinned.has(owner));
+    for (const owner of planned.length > 0 ? planned : owners) this.#touch(owner);
     this.#recent = ref;
     this.#reclaim(owners);
     this.#changed();
@@ -318,13 +326,17 @@ export class ManagedSampleSource implements SampleSource {
 
   #evict(instrument: InstrumentId): void {
     if (!this.#residents.delete(instrument)) return;
-    for (const ref of this.#refsOf.get(instrument) ?? []) {
+    let freed = false;
+    for (const ref of [...(this.#refsOf.get(instrument) ?? [])]) {
       const entry = this.#entries.get(ref);
       if (!entry || entry.owners.some((owner) => this.#residents.has(owner))) continue;
       this.#free(ref, entry);
+      freed = true;
     }
-    this.#counters.evictions += 1;
-    if (this.#pinned.has(instrument)) this.#counters.pinnedEvictions += 1;
+    if (freed) {
+      this.#counters.evictions += 1;
+      if (this.#pinned.has(instrument)) this.#counters.pinnedEvictions += 1;
+    }
     this.#changed();
   }
 

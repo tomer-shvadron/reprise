@@ -1,7 +1,13 @@
-import type { InstrumentId } from '../engine';
 import type { SampleRef } from '../sampler/region-map';
 
-export type { InstrumentId };
+export type InstrumentId = string;
+
+export interface MemoryReport {
+  decodedBytes: number;
+  budgetBytes: number;
+  residents: InstrumentId[];
+}
+
 export interface RawSample {
   sampleRate: number;
   channels: Float32Array[];
