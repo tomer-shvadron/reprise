@@ -9,6 +9,7 @@ import {
 import {
   createHistory,
   newId,
+  shownNotation,
   type Change,
   type Command,
   type CommandWarning,
@@ -72,7 +73,8 @@ export interface DocumentError {
 
 /**
  * What is shown, not what the score is: never undoable. Notation is the one part Save writes
- * (into each track's `display.notation`), so a change to it marks the document modified.
+ * (into each track's `display.notation`, as the track shows it), so a change to it marks the
+ * document modified.
  */
 export interface DocumentView {
   /** The multitrack set; `'all'` follows tracks added later. */
@@ -163,18 +165,20 @@ export function visibleTrackIds(view: DocumentView, score: Score | undefined): I
   return kept.length > 0 ? kept : 'all';
 }
 
-/** The score as Save writes it: the view's notation folded into each track's display. */
+/**
+ * The score as Save writes it: the notation each track shows folded into its display, so a track
+ * without strings a file asked to show as tab is saved as standard. Unchanged, the same object.
+ */
 export function withViewNotation(score: Score, notation: Record<Id, Notation>): Score {
-  if (Object.keys(notation).length === 0) return score;
-  return {
-    ...score,
-    tracks: score.tracks.map((track) => {
-      const chosen = notation[track.id];
-      return chosen === undefined || chosen === track.display.notation
-        ? track
-        : { ...track, display: { ...track.display, notation: chosen } };
-    }),
-  };
+  const tracks = score.tracks.map((track) => {
+    const saved = shownNotation(track, notation[track.id] ?? track.display.notation);
+    return saved === track.display.notation
+      ? track
+      : { ...track, display: { ...track.display, notation: saved } };
+  });
+  return tracks.every((track, index) => track === score.tracks[index])
+    ? score
+    : { ...score, tracks };
 }
 
 function sameNotation(a: Record<Id, Notation>, b: Record<Id, Notation>): boolean {

@@ -5,7 +5,7 @@ The engraving rules `@reprise/layout` follows, collected as the score lane imple
 ## Staves (WP-020)
 
 - A five-line staff has its lines one staff space apart. A tab staff has one line per string, 1.5 staff spaces apart so fret numbers fit between them; string 1, the highest, is the top line.
-- A track shows a tab staff, a standard staff, or both with the standard staff on top. Drums always read from a five-line percussion staff.
+- A track shows a tab staff, a standard staff, or both with the standard staff on top. Drums always read from a five-line percussion staff. A track whose notes carry no string (a pitched track, whatever tuning it keeps) has no tab staff: asked for tab or both, by its `display.notation` or a `LayoutOptions.notation` override, it shows its standard staff (`canShowTab`, `shownNotation` in `@reprise/model`, #125).
 - Staff positions count from the bottom line: 0 is the bottom line, 8 the top line of a five-line staff, odd numbers are spaces (the model's `staffPosition` uses the same numbering).
 
 ## Clefs (WP-020)

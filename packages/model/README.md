@@ -192,7 +192,9 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   one: GP5 stores keyboards as stringed tracks, so a GP5 track whose program is outside the
   fretted families (GM 24 to 39, plus 104 sitar, 105 banjo, 106 shamisen, 107 koto) and whose
   channel is not percussion becomes `pitched`, its notes converted to MIDI through the file's
-  tuning, and the track keeps that tuning and `fretCount` so gp5 export can re-finger it.
+  tuning, and the track keeps that tuning and `fretCount` so gp5 export can re-finger it. A
+  pitched track never shows tab (`canShowTab`, `shownNotation`), since its notes are MIDI pitches
+  on string 0.
 - **`Track.fretCount`** (new) is the neck length, 24 by default, for transposition and the
   fretboard view.
 - **`Track.display.octaveShift`** (new) is written minus sounding pitch, in octaves: `1` on

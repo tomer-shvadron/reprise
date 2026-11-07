@@ -117,6 +117,25 @@ describe('layoutForPrint', () => {
   });
 });
 
+describe('printing a track without strings', () => {
+  it('prints it on one standard staff when every track is asked for tab', () => {
+    const built = fullScore();
+    const content = layoutForPrint(
+      built,
+      { tracks: built.tracks.map(({ id }) => id), paper: 'a4', header: false, pageNumbers: false },
+      uniformNotation(built, 'tab'),
+      'x.gp',
+    );
+    const kindOf = new Map(built.tracks.map((track) => [track.id, track.kind]));
+    const staves = new Set(
+      content.result.systems.flatMap((system) =>
+        system.staves.map(({ track, type }) => `${kindOf.get(track) ?? ''}:${type}`),
+      ),
+    );
+    expect(staves).toEqual(new Set(['fretted:tab', 'drums:percussion', 'pitched:standard']));
+  });
+});
+
 describe('printHeading', () => {
   const meta = (title = '', artist = '', album = '') => ({ title, artist, album });
 

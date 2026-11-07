@@ -1,9 +1,12 @@
+import { STANDARD_TUNING } from '@reprise/model';
+import { score } from '@reprise/model/testing';
 import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Profiler } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { renderTracks, threeTracks } from './test/render-tracks';
+import { NO_TAB_REASON } from './track-model';
 import { TrackSidebar } from './track-sidebar';
 
 function setup() {
@@ -138,6 +141,68 @@ describe('TrackSidebar', () => {
     await user.click(await screen.findByRole('menuitemradio', { name: 'Tab' }));
     expect(services.document.getState().view.notation).toEqual({});
     expect(within(rowOf('Drums')).queryByRole('button', { name: /^Notation/ })).toBeNull();
+  });
+
+  it('offers a pitched track standard notation only, saying why', async () => {
+    const { open, user, services } = setup();
+    await open(
+      score()
+        .track('guitar', { name: 'Lead', program: 30 })
+        .track('piano', {
+          name: 'Keys',
+          tuning: [...STANDARD_TUNING],
+          fretCount: 24,
+          display: { notation: 'tab', clef: 'treble', octaveShift: 0 },
+        })
+        .track('drums', { name: 'Drums' })
+        .build(),
+    );
+    const trigger = within(rowOf('Keys')).getByRole('button', { name: 'Notation for Keys: Std' });
+    expect(trigger).toHaveAccessibleDescription(NO_TAB_REASON);
+    await user.click(trigger);
+    expect(await screen.findByRole('menuitemradio', { name: 'Tab' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(
+      screen.getByRole('menuitemradio', { name: 'Tab and standard notation' }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    const standard = screen.getByRole('menuitemradio', { name: 'Standard notation' });
+    expect(standard).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText(NO_TAB_REASON)).toBeInTheDocument();
+    // Disabled items are not clicked: `data-disabled` sets `pointer-events: none`.
+    await user.click(standard);
+    expect(services.document.getState().view.notation).toEqual({});
+    expect(services.document.getState().dirty).toBe(false);
+
+    await user.click(within(rowOf('Lead')).getByRole('button', { name: 'Notation for Lead: Tab' }));
+    const items = await screen.findAllByRole('menuitemradio');
+    expect(items).toHaveLength(3);
+    for (const item of items) expect(item).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('menu')).not.toHaveAttribute('aria-describedby');
+    await user.keyboard('{Escape}');
+    expect(within(rowOf('Drums')).queryByRole('button', { name: /^Notation/ })).toBeNull();
+  });
+
+  it('gives a violin and a piano the same reason, which names what tab needs', async () => {
+    const { open, user } = setup();
+    await open(
+      score()
+        .track('piano', { name: 'Violin', program: 40, tuning: [55, 62, 69, 76], fretCount: 24 })
+        .track('piano', { name: 'Piano', program: 0 })
+        .build(),
+    );
+    const reason = 'Tab needs a string and fret for each note, and this track’s notes have none.';
+    expect(NO_TAB_REASON).toBe(reason);
+    for (const name of ['Violin', 'Piano']) {
+      const trigger = within(rowOf(name)).getByRole('button', {
+        name: `Notation for ${name}: Std`,
+      });
+      expect(trigger).toHaveAccessibleDescription(reason);
+      await user.click(trigger);
+      expect(await screen.findByRole('menu')).toHaveAccessibleDescription(reason);
+      await user.keyboard('{Escape}');
+    }
   });
 
   it('previews then commits the compact volume as one undo step', async () => {

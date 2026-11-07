@@ -1,5 +1,5 @@
 import { write } from '@reprise/formats';
-import { setTrackProperties } from '@reprise/model';
+import { STANDARD_TUNING, setTrackProperties } from '@reprise/model';
 import { score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
@@ -94,6 +94,31 @@ describe('track commands', () => {
     await run('track.next');
     await run('track.notationStandard');
     expect(services.document.getState().view.notation).toEqual({});
+  });
+
+  it('never sets tab or both on a pitched track, even one stored as tab', async () => {
+    const services = createTestServices();
+    mirrorAudio(services);
+    const registry = createAppRegistry(services);
+    const song = score()
+      .track('piano', {
+        tuning: [...STANDARD_TUNING],
+        fretCount: 24,
+        display: { notation: 'tab', clef: 'treble', octaveShift: 0 },
+      })
+      .build();
+    await services.document
+      .getState()
+      .openBytes('song.reprise', (await write(song, 'reprise')).bytes);
+    services.selection.getState().setCurrentTrack(song.tracks[0]?.id ?? '');
+    for (const id of ['track.notationTab', 'track.notationBoth', 'track.notationStandard']) {
+      const command = registry.get(id);
+      if (!command) throw new Error(`no ${id}`);
+      runCommand(command);
+      await Promise.resolve();
+      expect(services.document.getState().view.notation).toEqual({});
+      expect(services.document.getState().dirty).toBe(false);
+    }
   });
 });
 

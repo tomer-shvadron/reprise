@@ -1,6 +1,6 @@
-import type { Id, Notation, Track } from '@reprise/model';
+import { NotationSchema, type Id, type Notation, type Track } from '@reprise/model';
 import { EyeIcon, EyeOffIcon } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -17,7 +17,7 @@ import type { InstrumentLoad } from '@/state/playback';
 
 import { GM_DRUM_KITS, GM_FAMILIES, GM_PROGRAMS } from './gm-programs';
 import type { TrackActions } from './track-actions';
-import { NOTATION_NAMES, notationChoices, panText, volumeText } from './track-model';
+import { NOTATION_NAMES, NO_TAB_REASON, notationChoices, panText, volumeText } from './track-model';
 
 interface Named {
   id: Id;
@@ -110,9 +110,12 @@ export function NotationMenu({
   notation: Notation;
   actions: TrackActions;
 }) {
+  const reasonId = useId();
   const choices = notationChoices(track);
   if (choices.length === 0) return null;
+  const limited = choices.length < NotationSchema.options.length;
   const short: Record<Notation, string> = { tab: 'Tab', standard: 'Std', both: 'Both' };
+  const named = NOTATION_NAMES[notation] === short[notation] ? undefined : NOTATION_NAMES[notation];
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -121,14 +124,12 @@ export function NotationMenu({
           size="sm"
           className="h-7 px-2 text-xs"
           aria-label={`Notation for ${label}: ${short[notation]}`}
-          aria-description={
-            NOTATION_NAMES[notation] === short[notation] ? undefined : NOTATION_NAMES[notation]
-          }
+          aria-description={limited ? NO_TAB_REASON : named}
         >
           {short[notation]}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent align="start" aria-describedby={limited ? reasonId : undefined}>
         <DropdownMenuRadioGroup
           value={notation}
           onValueChange={(value) => {
@@ -136,12 +137,17 @@ export function NotationMenu({
             if (chosen) actions.setTrackNotation(track.id, chosen);
           }}
         >
-          {choices.map((choice) => (
-            <DropdownMenuRadioItem key={choice} value={choice}>
+          {NotationSchema.options.map((choice) => (
+            <DropdownMenuRadioItem key={choice} value={choice} disabled={!choices.includes(choice)}>
               {NOTATION_NAMES[choice]}
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
+        {limited && (
+          <p id={reasonId} className="text-muted-foreground max-w-56 px-1.5 py-1 text-xs">
+            {NO_TAB_REASON}
+          </p>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

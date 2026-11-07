@@ -34,7 +34,10 @@ export interface LayoutOptions {
   /** Scales the notation (staff space, text, gaps); page size and margins stay as given. */
   zoom: number;
   tracks: Id[] | 'all';
-  /** Per-track override of `Track.display.notation`. Drum tracks always show a percussion staff. */
+  /**
+   * Per-track override of `Track.display.notation`. Drum tracks always show a percussion staff, and
+   * a track that cannot show tab (`canShowTab`) a standard one.
+   */
   notation: Record<Id, Notation>;
   /** Tied notes on tab staves; `parentheses` unless given. */
   tiedNotes?: TiedNotes;
