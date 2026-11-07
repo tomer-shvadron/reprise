@@ -180,7 +180,8 @@ load, the playhead's tick on the old timeline) is clamped to the new score; if r
 is cut and a run starts there after `startLatency`, with no count-in, as `playing`; otherwise the
 resume point moves there and the state stays what it was (`paused` stays `paused`, `stopped`
 stays `stopped`). A running transport whose tick falls past the new end restarts there and
-finishes at once, so playback stops. A load therefore never passes through `stopped`.
+finishes at once, so playback stops. A load during playback therefore emits `playing`, never
+`stopped`, unless the new score ends before the playhead.
 
 Events:
 
