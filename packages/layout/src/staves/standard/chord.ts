@@ -224,7 +224,11 @@ function headExtent(name: GlyphName, unit: number): { width: number; top: number
 export function planChord(notes: readonly ChordNote[], options: ChordOptions): ChordPlan {
   const { duration, direction, space, scale } = options;
   const unit = space * scale;
-  const sorted = [...notes].sort((a, b) => a.position - b.position);
+  // At one position, main heads first: a sounding diamond between a unison's heads would take the
+  // displaced side and leave the two heads, and their anchors, on top of each other.
+  const sorted = [...notes].sort(
+    (a, b) => a.position - b.position || Number(a.sounding ?? false) - Number(b.sounding ?? false),
+  );
   const stemmed = duration >= 2;
   const up = direction === 'up';
   const st = stemThickness(space, scale);

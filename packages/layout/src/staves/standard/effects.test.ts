@@ -474,6 +474,28 @@ describe('harmonics on the standard staff', () => {
     expect(diamond(2)).toBeCloseTo(at(result, written(64 + 19)), 1);
   });
 
+  it('keeps a unison apart when a sounding diamond shares its staff position', () => {
+    // D4 twice (string 2 fret 3, string 6 fret 22) and string 4's diamond at D#4, on the same line.
+    const built = guitar('standard')
+      .bar()
+      .beat('1', [
+        note(2, 3, { harmonic: { kind: 'artificial', value: 12 } }),
+        note(4, 1, { harmonic: { kind: 'artificial', value: 12 } }),
+        note(6, 22),
+      ])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const anchorOf = (index: number) =>
+      one(
+        result.anchors.filter(
+          (a) => a.kind === 'note' && a.id === noteOf(built, 0, 0, 0, index).id,
+        ),
+        `anchor ${String(index)}`,
+      ).bbox;
+    expect(anchorOf(2).y).toBeCloseTo(anchorOf(0).y, 1);
+    expect(Math.abs(anchorOf(2).x - anchorOf(0).x)).toBeGreaterThan(5);
+  });
+
   it('sets an extra diamond flush against an up-stem, as the black head beside it is', () => {
     const built = guitar('standard')
       .bar()
