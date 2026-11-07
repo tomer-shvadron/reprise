@@ -43,9 +43,13 @@ export function nonFinite(result: LayoutResult): string[] {
   return bad;
 }
 
-/** Anchors that may not overlap: one kind, in one system, staff and voice. */
+/**
+ * Anchors that may not overlap: one kind, in one system, staff and voice, and note anchors on a
+ * five-line staff whatever their voice.
+ */
 function group(anchor: Anchor): string {
-  return [anchor.kind, anchor.system, anchor.track, anchor.staff, anchor.voice].join('|');
+  const voice = anchor.kind === 'note' && anchor.staff !== 'tab' ? '' : anchor.voice;
+  return [anchor.kind, anchor.system, anchor.track, anchor.staff, voice].join('|');
 }
 
 export function overlappingAnchors(result: LayoutResult): [Anchor, Anchor][] {

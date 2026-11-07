@@ -89,6 +89,15 @@ export interface HeadPlan {
    * right (-) edge; its anchor leaves that part to the neighbour.
    */
   shared: number;
+  /** The head's written alteration, which orders heads at one position. */
+  alter: Alter;
+  /** 0 on the normal side, 1 across the stem, 2 and beyond further out. */
+  column: number;
+  /**
+   * A head shared with another voice's: its anchor keeps the part left or right of `at`, an x
+   * from the chord's.
+   */
+  half?: { side: 'left' | 'right'; at: number };
   accidental?: { glyphs: GlyphName[]; left: number };
   /** The extra diamond at a harmonic's sounding pitch: drawn, but no anchor, tie or slur. */
   sounding?: true;
@@ -128,6 +137,7 @@ export interface ChordNote {
   note: Note;
   position: number;
   head: NoteHead;
+  alter: Alter;
   accidental?: ShownAccidental;
   sounding?: boolean;
 }
@@ -179,16 +189,31 @@ function placeAccidentals(
 ): void {
   const marked = heads.flatMap((head, i) => {
     const accidental = shown[i];
-    return accidental ? [{ head, glyphs: accidentalGlyphs(accidental) }] : [];
+    if (!accidental) return [];
+    const glyphs = accidentalGlyphs(accidental);
+    const width = glyphs.reduce((sum, name) => sum + glyphWidth(name, unit), 0);
+    return [{ head, glyphs, width }];
   });
   if (marked.length === 0) return;
-  const headsLeft = Math.min(...heads.map((head) => head.left)) - clearance;
-  const columns: { spans: [number, number][]; width: number; members: typeof marked }[] = [];
-  for (const i of stackingOrder(marked.length)) {
-    const entry = marked[i];
-    if (!entry) continue;
+  // The signs at one position stack as one unit, in their heads' order left to right.
+  const units: { members: typeof marked; span: [number, number]; width: number }[] = [];
+  for (const entry of marked) {
     const span = verticalSpan(entry.glyphs, entry.head.y, unit);
-    const width = entry.glyphs.reduce((sum, name) => sum + glyphWidth(name, unit), 0);
+    const last = units.at(-1);
+    if (last && last.members[0]?.head.position === entry.head.position) {
+      last.members.push(entry);
+      last.span = [Math.min(last.span[0], span[0]), Math.max(last.span[1], span[1])];
+      last.width += COLUMN_GAP * unit + entry.width;
+    } else {
+      units.push({ members: [entry], span, width: entry.width });
+    }
+  }
+  const headsLeft = Math.min(...heads.map((head) => head.left)) - clearance;
+  const columns: { spans: [number, number][]; width: number; members: typeof units }[] = [];
+  for (const i of stackingOrder(units.length)) {
+    const entry = units[i];
+    if (!entry) continue;
+    const { span } = entry;
     let column = columns.find(({ spans }) =>
       spans.every(([top, bottom]) => span[1] <= top || span[0] >= bottom),
     );
@@ -197,14 +222,17 @@ function placeAccidentals(
       columns.push(column);
     }
     column.spans.push(span);
-    column.width = Math.max(column.width, width);
+    column.width = Math.max(column.width, entry.width);
     column.members.push(entry);
   }
   let right = headsLeft - ACCIDENTAL_GAP * unit;
   for (const column of columns) {
-    for (const { head, glyphs } of column.members) {
-      const width = glyphs.reduce((sum, name) => sum + glyphWidth(name, unit), 0);
-      head.accidental = { glyphs, left: right - width };
+    for (const { members } of column.members) {
+      let cursor = right;
+      for (const { head, glyphs, width } of [...members].reverse()) {
+        head.accidental = { glyphs, left: cursor - width };
+        cursor -= width + COLUMN_GAP * unit;
+      }
     }
     right -= column.width + COLUMN_GAP * unit;
   }
@@ -216,18 +244,23 @@ function headExtent(name: GlyphName, unit: number): { width: number; top: number
 }
 
 /**
- * Lays out the heads of one beat: stacked by staff position, a head a second (or unison) from
- * its neighbour moved to the other side of the stem (right of an up stem, left of a down one,
- * right when there is no stem), accidentals stacked in columns to the left, ledger lines, dots
+ * Lays out the heads of one beat: stacked by staff position and set in columns, walking from the
+ * stem's far end, each head taking the lowest column no placed head a second or unison away holds
+ * (column 0 the normal side, 1 across the stem, 2 and beyond further out: right of an up stem or
+ * of no stem, left of a down one); accidentals stacked in columns to the left, ledger lines, dots
  * and the unbeamed stem.
  */
 export function planChord(notes: readonly ChordNote[], options: ChordOptions): ChordPlan {
   const { duration, direction, space, scale } = options;
   const unit = space * scale;
-  // At one position, main heads first: a sounding diamond between a unison's heads would take the
-  // displaced side and leave the two heads, and their anchors, on top of each other.
+  // At one position, left to right: main heads before sounding diamonds, which draw no anchor;
+  // the flatter alteration; the higher string number, so the order ignores edit history.
   const sorted = [...notes].sort(
-    (a, b) => a.position - b.position || Number(a.sounding ?? false) - Number(b.sounding ?? false),
+    (a, b) =>
+      a.position - b.position ||
+      Number(a.sounding ?? false) - Number(b.sounding ?? false) ||
+      a.alter - b.alter ||
+      b.note.string - a.note.string,
   );
   const stemmed = duration >= 2;
   const up = direction === 'up';
@@ -237,23 +270,20 @@ export function planChord(notes: readonly ChordNote[], options: ChordOptions): C
   const column = Math.max(0, ...extents.map(({ width }) => width));
   const normalLeft = -column / 2;
 
-  const displaced = sorted.map(() => false);
-  if (stemmed && !up) {
-    for (let i = sorted.length - 2; i >= 0; i--) {
-      const above = sorted[i + 1];
-      const here = sorted[i];
-      if (above && here && above.position - here.position <= 1 && !displaced[i + 1]) {
-        displaced[i] = true;
-      }
+  const columns = sorted.map(() => 0);
+  const fromTop = stemmed && !up;
+  for (let k = 0; k < sorted.length; k++) {
+    const i = fromTop ? sorted.length - 1 - k : k;
+    const here = sorted[i]?.position ?? 0;
+    // A bit per column; a chord never has 31 heads within a second of each other.
+    let taken = 0;
+    for (let m = 0; m < k; m++) {
+      const j = fromTop ? sorted.length - 1 - m : m;
+      if (Math.abs((sorted[j]?.position ?? 0) - here) <= 1) taken |= 1 << (columns[j] ?? 0);
     }
-  } else {
-    for (let i = 1; i < sorted.length; i++) {
-      const below = sorted[i - 1];
-      const here = sorted[i];
-      if (below && here && here.position - below.position <= 1 && !displaced[i - 1]) {
-        displaced[i] = true;
-      }
-    }
+    let at = 0;
+    while (taken & (1 << at)) at += 1;
+    columns[i] = at;
   }
 
   const farIndex = up ? 0 : sorted.length - 1;
@@ -263,16 +293,19 @@ export function planChord(notes: readonly ChordNote[], options: ChordOptions): C
     ? normalLeft + (anchor?.[0] ?? column / unit) * unit - st / 2
     : normalLeft + (anchor?.[0] ?? 0) * unit + st / 2;
 
-  const heads: HeadPlan[] = sorted.map(({ note, position, sounding, head }, i) => {
+  const heads: HeadPlan[] = sorted.map(({ note, position, sounding, head, alter }, i) => {
     const { width } = extents[i] ?? { width: column };
+    const at = columns[i] ?? 0;
     // A harmonic's diamond is narrower than a black head; right-aligned, it still meets an up-stem.
     const narrow = head === 'diamond' && note.harmonic !== undefined && width < column;
     let left = stemmed && up && narrow ? stemX + st / 2 - width : normalLeft;
     let shared = 0;
-    if (displaced[i]) {
-      if (!stemmed) left = column / 2;
-      else left = up ? stemX - st / 2 : stemX + st / 2 - width;
-      shared = stemmed ? (up ? column / 2 - left : -(left + width - normalLeft)) : 0;
+    if (at > 0) {
+      const beyond = (at - 1) * column;
+      if (!stemmed) left = normalLeft + at * column;
+      else left = up ? stemX - st / 2 + beyond : stemX + st / 2 - width - beyond;
+      // Columns past the first abut rather than overlap.
+      if (stemmed && at === 1) shared = up ? column / 2 - left : -(left + width - normalLeft);
     }
     return {
       note,
@@ -282,6 +315,8 @@ export function planChord(notes: readonly ChordNote[], options: ChordOptions): C
       left,
       width,
       shared,
+      alter,
+      column: at,
       ...(sounding && { sounding: true as const }),
       ...(note.ghost && !sounding && { ghost: true as const }),
     };
@@ -392,6 +427,23 @@ export function planChord(notes: readonly ChordNote[], options: ChordOptions): C
     top,
     bottom,
   };
+}
+
+/**
+ * Whether one of the chord's accidentals or ghost parentheses, which stand left of its heads,
+ * reaches the ledger line at `y`.
+ */
+export function crossesLedger(chord: ChordPlan, y: number): boolean {
+  const unit = chord.space * chord.scale;
+  const half = (engraving.legerLineThickness * unit) / 2;
+  const crosses = ([top, bottom]: [number, number]): boolean => y + half > top && y - half < bottom;
+  return chord.heads.some(
+    (head) =>
+      (head.accidental !== undefined &&
+        crosses(verticalSpan(head.accidental.glyphs, head.y, unit))) ||
+      (head.ghost === true &&
+        crosses([head.y - PAREN_LEFT.top * unit, head.y - PAREN_LEFT.bottom * unit])),
+  );
 }
 
 /** The heads drawn for the chord's notes, without harmonics' sounding diamonds. */

@@ -34,16 +34,6 @@ export const KNOWN_ISSUES: readonly KnownIssue[] = [
       num(violation, 'systemBars') === 1 &&
       num(violation, 'systemOverflowPx') > 0,
   },
-  {
-    id: 'unison-anchors',
-    issue: 110,
-    check: 'layout',
-    why: 'unison notes on two strings give overlapping note anchors on a standard staff',
-    // No fixture holds a unison, so this entry cannot go stale; #110 carries the reminder.
-    fixtures: [],
-    applies: (violation) =>
-      violation.code === 'overlapping-anchors' && violation.data?.['unison'] === true,
-  },
 ];
 
 export function knownFor(check: CheckId, violation: CheckViolation): KnownIssue | undefined {

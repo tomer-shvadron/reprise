@@ -99,10 +99,18 @@ function drawChord(
     const { x: bx, width: bw } = drawn.bbox;
     const by = diamond ? top + head.y - (space * scale) / 2 : drawn.bbox.y;
     const bh = diamond ? space * scale : drawn.bbox.height;
-    const bbox =
+    let bbox =
       head.shared > 0
         ? rect(bx + head.shared, by, bw - head.shared, bh)
         : rect(bx, by, bw + head.shared, bh);
+    // One x splits a head two voices share, so the halves meet whatever their glyphs' widths.
+    if (head.half) {
+      const at = x + head.half.at;
+      bbox =
+        head.half.side === 'left'
+          ? rect(bbox.x, by, at - bbox.x, bh)
+          : rect(at, by, bbox.x + bbox.width - at, bh);
+    }
     sink.anchors.push({ kind: 'note', id: head.note.id, bbox, ...anchorBase(context, voice) });
   }
   return box;
@@ -112,7 +120,7 @@ function drawChord(
 function beatX(context: Context, beat: BeatPlan): number {
   const { placement } = context;
   if (beat.rest?.centred) return placement.x + placement.width / 2;
-  return placement.onsetX(beat.tick);
+  return placement.onsetX(beat.tick) + (beat.shift ?? 0);
 }
 
 function drawGraces(context: Context, beat: BeatPlan, x: number): void {
