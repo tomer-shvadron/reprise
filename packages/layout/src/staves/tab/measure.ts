@@ -73,7 +73,7 @@ export function measureTab(input: StaffBar, options: TabOptions): StaffBarMeasur
   const { rows } = analysed;
   return {
     onsets,
-    above: Math.max(rows.upper > 0 ? rows.upper : TAB.wordClearance * space, rows.lettersAbove),
-    below: Math.max(rows.lower, rows.lettersBelow),
+    above: Math.max(rows.upper > 0 ? rows.upper : TAB.wordClearance * space, rows.arcsAbove),
+    below: Math.max(rows.lower, rows.arcsBelow),
   };
 }

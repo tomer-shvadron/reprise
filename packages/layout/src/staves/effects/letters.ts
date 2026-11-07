@@ -40,7 +40,7 @@ export function drawLetter(
   );
 }
 
-/** How far a letter reaches past the apex it stands on, in px. */
+/** How far a letter's knockout reaches past the apex it stands on, in px. */
 export function letterReach(space: number): number {
   const size = LETTER.size * space;
   return LETTER.gap * space + textExtent(size).ascent + KNOCKOUT.y * size;
