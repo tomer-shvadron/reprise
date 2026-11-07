@@ -30,6 +30,7 @@ const amount = (value: number, unit: string): string =>
 export function status(budget: ResolvedBudget, outcome: Outcome | undefined): string {
   const by = budget.assertedBy;
   if (by.kind === 'unit') return `unit: ${by.path}`;
+  if (by.kind === 'e2e') return `e2e: ${by.path}`;
   if (by.kind === 'pending') return `pending: ${by.workPackage}`;
   if (!outcome) return 'not run';
   const { result, state, retried } = outcome;

@@ -19,9 +19,12 @@ const ran = (measured: number, state: string, enforced = true, retried = false):
 });
 
 describe('status', () => {
-  it('names the unit test or the work package for a row the bench does not measure', () => {
+  it('names the unit test, the e2e spec or the work package for a row the bench does not measure', () => {
     expect(status({ ...bench, assertedBy: { kind: 'unit', path: 'a/c.test.ts' } }, undefined)).toBe(
       'unit: a/c.test.ts',
+    );
+    expect(status({ ...bench, assertedBy: { kind: 'e2e', path: 'a/d.spec.ts' } }, undefined)).toBe(
+      'e2e: a/d.spec.ts',
     );
     expect(
       status({ ...bench, assertedBy: { kind: 'pending', workPackage: 'WP-055' } }, undefined),

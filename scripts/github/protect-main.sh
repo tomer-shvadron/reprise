@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Applies the repository's merge settings and the branch protection on `main`.
 # Idempotent: both calls replace the settings wholesale, so rerunning converges.
-# Apply only after ci.yml is on main: a PR whose merge ref lacks it can never produce the
-# required `ci` check, and enforce_admins leaves no bypass.
+# Apply only after ci.yml, with both its `ci` and `e2e` jobs, is on main: a PR whose merge ref
+# lacks a job can never produce that required check, and enforce_admins leaves no bypass.
 # Needs a token with admin rights on the repo, e.g. GH_TOKEN=$(gh auth token --user tomer-shvadron).
 set -euo pipefail
 
@@ -19,11 +19,11 @@ gh api --method PATCH "repos/${repo}" \
 
 # No required approving reviews: every PR here is opened from the owner's own account, and
 # GitHub does not let a PR's author approve it, so a required review would block every merge.
-# enforce_admins is on so the owner, who is also the only admin, cannot merge past a red `ci`.
+# enforce_admins is on so the owner, who is also the only admin, cannot merge past a red `ci` or `e2e`.
 gh api --method PUT "repos/${repo}/branches/${branch}/protection" \
   --input - --silent <<'JSON'
 {
-  "required_status_checks": { "strict": true, "contexts": ["ci"] },
+  "required_status_checks": { "strict": true, "contexts": ["ci", "e2e"] },
   "enforce_admins": true,
   "required_pull_request_reviews": null,
   "restrictions": null,
