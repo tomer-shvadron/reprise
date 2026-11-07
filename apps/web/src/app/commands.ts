@@ -108,7 +108,9 @@ export function appCommands(
     },
     {
       id: 'view.togglePanel',
-      title: 'Toggle panel',
+      title: 'Toggle mixer',
+      // Guitar Pro's "Show/Hide global view", which holds its mixer.
+      shortcut: { key: 'F8' },
       run: () => {
         ui.getState().togglePanel('rightPanel');
       },

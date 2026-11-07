@@ -40,12 +40,15 @@ describe('menuTemplate', () => {
     }
   });
 
-  it('uses roles for editing, and puts Quit in File only off macOS', () => {
+  it('uses roles for the clipboard, and puts Quit in File only off macOS', () => {
     const roles = (items: MenuItemConstructorOptions[]) => items.map(({ role }) => role);
 
     expect(roles(template().items)).toEqual(
-      expect.arrayContaining(['appMenu', 'undo', 'redo', 'cut', 'copy', 'paste', 'windowMenu']),
+      expect.arrayContaining(['appMenu', 'cut', 'copy', 'paste', 'windowMenu']),
     );
+    // Undo and redo are the renderer's commands, which leave a text field its own history.
+    expect(roles(template().items)).not.toContain('undo');
+    expect(roles(template().items)).not.toContain('redo');
     expect(roles(template().items)).not.toContain('quit');
     expect(roles(template({ isMac: false }).items)).toContain('quit');
     expect(roles(template({ isMac: false }).items)).not.toContain('appMenu');

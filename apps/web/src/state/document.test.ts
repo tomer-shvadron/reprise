@@ -12,6 +12,7 @@ import {
   GP_FILES,
   REPRISE_FILES,
   SCORE_FILES,
+  visibleTrackIds,
   type SaveAnswer,
 } from './document';
 
@@ -575,7 +576,7 @@ describe('the document store', () => {
     expect(state.canUndo).toBe(false);
   });
 
-  it('keeps view changes out of the history and the dirty flag', async () => {
+  it('keeps view changes out of the history, and the dirty flag back where it was', async () => {
     const { store } = setup();
     await store.getState().openBytes('song.gp5', GP5);
     const { revision, score: opened } = store.getState();
@@ -593,5 +594,78 @@ describe('the document store', () => {
     expect(store.getState().revision).toBe(revision);
     expect(store.getState().dirty).toBe(false);
     expect(store.getState().canUndo).toBe(false);
+  });
+
+  it('marks the document modified by a notation change and writes it on Save', async () => {
+    const { store, write } = setup();
+    await store.getState().openBytes('song.reprise', GP5, '/music/song.reprise');
+    store.setState({
+      file: { name: 'song.reprise', format: 'reprise', handle: '/x', key: 'k', savedKeys: [] },
+    });
+    const trackId = store.getState().score?.tracks[0]?.id ?? '';
+
+    store.getState().setNotation(trackId, 'both');
+    expect(store.getState()).toMatchObject({ dirty: true, canUndo: false });
+    await store.getState().save();
+
+    expect(write.mock.calls.at(-1)?.[0].tracks[0]?.display.notation).toBe('both');
+    expect(store.getState().dirty).toBe(false);
+    // The open score keeps the file's display as read; the view carries the choice.
+    expect(store.getState().score?.tracks[0]?.display.notation).toBe('tab');
+  });
+
+  it('sets and clears single-track view without dirtying, and skips a no-op', async () => {
+    const { store } = setup();
+    await store.getState().openBytes('song.gp5', GP5);
+    const trackId = store.getState().score?.tracks[0]?.id ?? '';
+    const listener = vi.fn();
+    const unsubscribe = store.subscribe(listener);
+
+    store.getState().setSingleTrack(trackId);
+    store.getState().setSingleTrack(trackId);
+    expect(store.getState().view.only).toBe(trackId);
+    store.getState().setSingleTrack(undefined);
+    expect(store.getState().view).not.toHaveProperty('only');
+    store.getState().setNotation(trackId, 'tab');
+    unsubscribe();
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    expect(store.getState().dirty).toBe(false);
+  });
+
+  it('replaces the visible tracks in one set, keeping notation and the modified flag', async () => {
+    const { store } = setup();
+    await store.getState().openBytes('song.gp5', GP5);
+    const trackId = store.getState().score?.tracks[0]?.id ?? '';
+    store.getState().setNotation(trackId, 'both');
+    const listener = vi.fn();
+    const unsubscribe = store.subscribe(listener);
+    store.getState().setView({ tracks: 'all', only: 'x' });
+    unsubscribe();
+    expect(listener).toHaveBeenCalledOnce();
+    expect(store.getState().view).toEqual({
+      tracks: 'all',
+      notation: { [trackId]: 'both' },
+      only: 'x',
+    });
+    expect(store.getState().dirty).toBe(true);
+  });
+});
+
+describe('visibleTrackIds', () => {
+  const three = score().track('guitar').track('bass').track('drums').build();
+  const [a = '', b = '', c = ''] = three.tracks.map((track) => track.id);
+
+  it('shows the single track, even one hidden in the multitrack set', () => {
+    expect(visibleTrackIds({ tracks: [a], notation: {}, only: c }, three)).toEqual([c]);
+  });
+
+  it('ignores a stale single track and stale ids, and never lays out nothing', () => {
+    expect(visibleTrackIds({ tracks: [b, 'gone'], notation: {}, only: 'gone' }, three)).toEqual([
+      b,
+    ]);
+    expect(visibleTrackIds({ tracks: ['gone'], notation: {} }, three)).toBe('all');
+    expect(visibleTrackIds({ tracks: 'all', notation: {} }, three)).toBe('all');
+    expect(visibleTrackIds({ tracks: [a], notation: {} }, undefined)).toEqual([a]);
   });
 });

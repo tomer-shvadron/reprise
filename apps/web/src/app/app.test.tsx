@@ -98,7 +98,7 @@ describe('App', () => {
   it('toggles the right panel from the transport', async () => {
     const { user } = renderApp();
 
-    await user.click(screen.getByRole('button', { name: 'Toggle panel' }));
+    await user.click(screen.getByRole('button', { name: 'Toggle mixer' }));
 
     expect(screen.getByRole('complementary', { name: 'Panel' })).toBeInTheDocument();
     expect(screen.getByRole('separator', { name: 'Resize panel' })).toHaveAttribute(
@@ -209,5 +209,40 @@ describe('App', () => {
     });
     expect(services.document.getState().file).toMatchObject({ name: 'timer.gp', format: 'gp' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('lists the opened file’s tracks, opens the mixer on F8, and undoes with ⌘Z', async () => {
+    const { services, user, send } = renderApp();
+    const song = score().title('Riff').track('guitar', { name: 'Lead' }).build();
+    await act(async () => {
+      await services.document
+        .getState()
+        .openBytes('riff.reprise', (await write(song, 'reprise')).bytes);
+    });
+    const tracks = screen.getByRole('complementary', { name: 'Tracks' });
+    expect(within(tracks).getByRole('button', { name: /^Lead/ })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+
+    await user.keyboard('{F8}');
+    const panel = screen.getByRole('complementary', { name: 'Panel' });
+    expect(within(panel).getByRole('heading', { name: 'Mixer' })).toBeInTheDocument();
+
+    await user.selectOptions(
+      within(panel).getByRole('combobox', { name: 'Instrument of Lead' }),
+      '29',
+    );
+    expect(services.document.getState().score?.tracks[0]?.program).toBe(29);
+    within(panel).getByRole('combobox', { name: 'Instrument of Lead' }).blur();
+    await user.keyboard('{Meta>}z{/Meta}');
+    expect(services.document.getState().score?.tracks[0]?.program).not.toBe(29);
+    await send('edit.redo');
+    expect(services.document.getState().score?.tracks[0]?.program).toBe(29);
+
+    await user.keyboard('{Meta>}k{/Meta}');
+    expect(await screen.findByRole('option', { name: /Toggle multitrack view/ })).toHaveTextContent(
+      'F3',
+    );
   });
 });

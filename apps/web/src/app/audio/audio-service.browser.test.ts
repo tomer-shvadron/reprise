@@ -1,5 +1,14 @@
-import { channelVolumeToGain } from '@reprise/audio';
-import { applyCommand, createTrack, newId, PPQ, setNote, type Score } from '@reprise/model';
+import { channelPanToStereo, channelVolumeToGain } from '@reprise/audio';
+import {
+  applyCommand,
+  createHistory,
+  createTrack,
+  newId,
+  PPQ,
+  setNote,
+  setTrackProperties,
+  type Score,
+} from '@reprise/model';
 import { beatOf, note, score, type BeatSpec } from '@reprise/model/testing';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -380,5 +389,170 @@ describe('the audio service', () => {
     audio.play();
     const buffer = await render();
     expect(rms(buffer, START + 0.1, 2.1)).toBeLessThan(1e-6);
+  });
+
+  describe('a timeline-neutral edit', () => {
+    const volume = (song: Score, value: number) =>
+      setTrackProperties({ trackId: song.tracks[0]?.id ?? '' }, { channel: { volume: value } });
+
+    it('reaches the strip at once with no rebuild, and its undo too', async () => {
+      const song = quarters(4);
+      const trackId = song.tracks[0]?.id ?? '';
+      const { playback, audio, render, debug } = setup({ seconds: 1.6 });
+      const id = await open(audio, song);
+      audio.unlock();
+      const { sampler, engine } = debug();
+      const load = vi.spyOn(engine, 'load');
+      audio.play();
+      const history = createHistory();
+      let gain = 0;
+      let state = '';
+      let tickBefore = 0;
+      let tickAfter = 0;
+
+      await render([
+        {
+          at: 1,
+          run: () => {
+            tickBefore = playback.getState().position?.position.playbackTick ?? 0;
+            const edited = history.apply(song, volume(song, 40)).score;
+            audio.setDocument({ id, score: edited });
+            gain = sampler.strip(trackId)?.gain ?? 0;
+            state = playback.getState().transport;
+          },
+        },
+        {
+          at: 1.1,
+          run: () => {
+            tickAfter = playback.getState().position?.position.playbackTick ?? 0;
+          },
+        },
+      ]);
+
+      expect(load).not.toHaveBeenCalled();
+      expect(gain).toBeCloseTo(channelVolumeToGain(40));
+      expect(state).toBe('playing');
+      expect(tickAfter).toBeGreaterThan(tickBefore);
+      audio.stop();
+      expect(sampler.strip(trackId)?.gain).toBeCloseTo(channelVolumeToGain(40));
+
+      const undone = history.undo()?.score;
+      if (!undone) throw new Error('no undo');
+      audio.setDocument({ id, score: undone });
+      expect(load).not.toHaveBeenCalled();
+      expect(sampler.strip(trackId)?.gain).toBeCloseTo(channelVolumeToGain(100));
+      audio.dispose();
+    });
+
+    it('moves the pan with no rebuild', async () => {
+      const song = quarters(1);
+      const trackId = song.tracks[0]?.id ?? '';
+      const { audio, debug } = setup();
+      const id = await open(audio, song);
+      audio.unlock();
+      const { sampler, engine } = debug();
+      const load = vi.spyOn(engine, 'load');
+      const edited = applyCommand(
+        song,
+        setTrackProperties({ trackId }, { channel: { pan: 0 } }),
+      ).score;
+      audio.setDocument({ id, score: edited });
+      expect(load).not.toHaveBeenCalled();
+      expect(sampler.strip(trackId)?.pan).toBeCloseTo(channelPanToStereo(0));
+      audio.dispose();
+    });
+
+    it('switches the instrument with no rebuild and counts its samples in', async () => {
+      const song = quarters(1);
+      const trackId = song.tracks[0]?.id ?? '';
+      const { playback, audio, context, debug } = setup();
+      const id = await open(audio, song);
+      audio.unlock();
+      const { sampler, engine } = debug();
+      const load = vi.spyOn(engine, 'load');
+      const loads: (number | undefined)[] = [];
+      const unsubscribe = playback.subscribe((state) => {
+        loads.push(state.instrumentLoads[trackId]?.loaded);
+      });
+      const edited = applyCommand(song, setTrackProperties({ trackId }, { program: 0 })).score;
+      audio.setDocument({ id, score: edited });
+
+      expect(load).not.toHaveBeenCalled();
+      const bank = audio.debug().bank;
+      const track = edited.tracks[0];
+      if (!bank || !track) throw new Error('no bank');
+      expect(sampler.instrumentAt(trackId, context.currentTime)).toBe(bank.instrument(track, 0));
+      await audio.settled();
+      unsubscribe();
+      expect(loads[0]).toBe(0);
+      expect(playback.getState().instrumentLoads).toEqual({});
+      expect(playback.getState().instruments).toBe(1);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      expect(playback.getState().memory.residents).toContain(bank.instrumentId(track, 0));
+      audio.dispose();
+    });
+
+    it('previews a strip without an override, until a stop restores the score', async () => {
+      const song = quarters(1);
+      const trackId = song.tracks[0]?.id ?? '';
+      const { playback, audio, debug } = setup();
+      await open(audio, song);
+      audio.unlock();
+      const { sampler } = debug();
+      audio.previewTrack(trackId, { volume: 30 });
+      expect(sampler.strip(trackId)?.gain).toBeCloseTo(channelVolumeToGain(30));
+      expect(playback.getState().mixer).toEqual({});
+      audio.play();
+      audio.stop();
+      expect(sampler.strip(trackId)?.gain).toBeCloseTo(channelVolumeToGain(100));
+      audio.dispose();
+    });
+
+    it('joins a rebuild already queued, which then applies it', async () => {
+      const song = quarters(1);
+      const trackId = song.tracks[0]?.id ?? '';
+      const queued: (() => void)[] = [];
+      const playback = createPlaybackStore();
+      const context = new OfflineAudioContext({
+        numberOfChannels: 2,
+        length: SAMPLE_RATE,
+        sampleRate: SAMPLE_RATE,
+      });
+      const audio = createAudioService({
+        playback,
+        loadSoundfont: () => synthetic,
+        createContext: () => context,
+        scheduler: manualTicker().ticker,
+        frames: manualTicker().ticker,
+        defer: (run) => {
+          queued.push(run);
+        },
+      });
+      const id = await open(audio, song);
+      audio.unlock();
+      const { sampler, engine } = audio.debug();
+      if (!sampler || !engine) throw new Error('no engine');
+      const load = vi.spyOn(engine, 'load');
+      const noted = applyCommand(
+        song,
+        setNote({ beatId: beatOf(song, 0, 0, 0).id }, { string: 1, fret: 5 }),
+      ).score;
+      audio.setDocument({ id, score: noted });
+      audio.setDocument({ id, score: applyCommand(noted, volume(noted, 40)).score });
+      expect(load).not.toHaveBeenCalled();
+      for (const run of queued.splice(0)) run();
+      expect(load).toHaveBeenCalledOnce();
+      expect(sampler.strip(trackId)?.gain).toBeCloseTo(channelVolumeToGain(40));
+      audio.dispose();
+    });
+
+    it('clears instrument loads on a switch', async () => {
+      const { playback, audio } = setup();
+      await open(audio, quarters(1));
+      playback.setState({ instrumentLoads: { x: { loaded: 1, total: 2 } } });
+      await open(audio, quarters(1));
+      expect(playback.getState().instrumentLoads).toEqual({});
+      audio.dispose();
+    });
   });
 });

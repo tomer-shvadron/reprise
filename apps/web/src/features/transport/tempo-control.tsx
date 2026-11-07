@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import { useStore } from 'zustand';
 
 import { useAppServices } from '@/app/services-context';
+import { useCommand } from '@/app/use-command';
 import {
   InputGroup,
   InputGroupAddon,
@@ -14,7 +15,6 @@ import { timelineOf, writtenBpmAt } from '@/state/timeline';
 
 import { TransportButton } from './controls';
 import { bpmFor, parseBpm, percentForBpm, percentOf, TEMPO_PERCENT } from './tempo';
-import { useCommand } from './use-command';
 
 /** The BPM field, the speed slider and the relative-speed button, linked through one percent. */
 export function TempoControl() {
