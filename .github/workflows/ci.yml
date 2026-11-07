@@ -106,6 +106,15 @@ jobs:
         timeout-minutes: 5
         run: pnpm test:visual
 
+      - name: Upload print PDFs
+        if: ${{ !cancelled() && steps.visual.outcome != 'skipped' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: print-pdfs
+          path: apps/web/.vitest/print/
+          retention-days: 14
+          if-no-files-found: warn
+
       - name: Upload visual diffs
         if: ${{ !cancelled() && steps.visual.outcome == 'failure' }}
         uses: actions/upload-artifact@v7
