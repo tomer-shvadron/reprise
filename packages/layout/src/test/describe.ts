@@ -33,7 +33,7 @@ export function describe(result: LayoutResult): {
   return {
     systems: result.systems.map(
       (system) =>
-        `${system.id} page ${n(system.page)} bars ${n(system.bars.start)}-${n(system.bars.end)} [${n(system.bbox.x)},${n(system.bbox.y)} ${n(system.bbox.width)}x${n(system.bbox.height)}]`,
+        `${system.id} page ${n(system.page)} bars ${n(system.bars.start)}-${n(system.bars.end)} [${n(system.bbox.x)},${n(system.bbox.y)} ${n(system.bbox.width)}x${n(system.bbox.height)}]${system.part === undefined ? '' : ` part ${n(system.part)}`}`,
     ),
     primitives: result.primitives.map(describePrimitive),
     anchors: result.anchors.map(describeAnchor),

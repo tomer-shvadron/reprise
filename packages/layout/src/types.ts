@@ -132,9 +132,17 @@ export interface StaffPlacement {
 }
 
 export interface System {
-  /** Stable across re-layouts while the system starts at the same bar: `system:<masterBarId>`. */
+  /**
+   * Stable across re-layouts while the system starts at the same bar: `system:<masterBarId>`, and
+   * `system:<masterBarId>/<part>` for a split system's parts after the first.
+   */
   id: string;
   index: number;
+  /**
+   * On every part of a system split across pages: 0, 1, …; absent on a whole system. Parts follow
+   * each other in `systems` and share `bars`.
+   */
+  part?: number;
   page: number;
   /** Master-bar indices, end exclusive. */
   bars: Range;

@@ -10,6 +10,7 @@ import { beatOf, midi, note, noteOf, score, type ScoreBuilder } from '@reprise/m
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_MARGINS,
   LayoutCache,
   layout,
   type Anchor,
@@ -17,9 +18,17 @@ import {
   type Primitive,
   type Rect,
 } from '../../index';
-import { stable, strayPrimitives } from '../../test/check-result';
+import { expectInsidePages, stable, strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
-import { BENDS, content, guitar, laid as laidOut, paged, texts } from '../../test/effects';
+import {
+  BENDS,
+  content,
+  everyEffectScore,
+  guitar,
+  laid as laidOut,
+  paged,
+  texts,
+} from '../../test/effects';
 import { positionY } from './chord';
 
 const EPSILON = 0.05;
@@ -745,6 +754,21 @@ describe('a standard staff shown alone', () => {
     const continuous = laid(score, { mode: 'continuous', width: 300 });
     expect(continuous.primitives.filter(isText('P.M.'))).toHaveLength(1);
   });
+});
+
+describe('effects on split pages', () => {
+  it.each(['standard', 'both'] as const)(
+    'keeps every effect inside its page when %s systems split across short pages',
+    (notation) => {
+      const built = everyEffectScore();
+      const result = laid(built, {
+        pageHeight: 400,
+        notation: Object.fromEntries(built.tracks.map(({ id }) => [id, notation])),
+      });
+      expect(result.systems.some((system) => (system.part ?? 0) > 0)).toBe(true);
+      expectInsidePages(result, DEFAULT_MARGINS.paged);
+    },
+  );
 });
 
 describe('effects in both mode', () => {

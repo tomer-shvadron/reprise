@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 
 import { ZOOM } from '@/state/ui';
 
-import { pageFlow } from './page-flow';
 import { longLayout } from './test/long-score';
 import type { NotationChoice, ViewSettings } from './view-options';
 import {
@@ -21,13 +20,16 @@ const BUDGET = 20_000;
 const viewport = { width: 1920, height: 1080 };
 
 function countAt(layout: LayoutResult, zoom: number, position: number): number {
-  const flow = pageFlow(layout);
-  const extent = layoutExtent(flow);
+  const extent = layoutExtent(layout);
   const offset = canvasOffset(viewport, extent, zoom);
   const centre: Point = { x: extent.width * position, y: extent.height * position };
   const window = visibleWindow(centre, viewport, zoom, offset);
-  const range = mountedSystems(flow.systems, window);
-  return mountedElementCount(layout, range, mountedPages(flow.pages, flow.systems, range, window));
+  const range = mountedSystems(layout.systems, window);
+  return mountedElementCount(
+    layout,
+    range,
+    mountedPages(layout.pages, layout.systems, range, window),
+  );
 }
 
 describe('mounted element budget on the long score', () => {

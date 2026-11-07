@@ -60,9 +60,12 @@ interface OnsetPoint {
   x: number;
 }
 
-/** A master bar's column and the x of each onset in it: what the playhead moves along. */
+/**
+ * A master bar's columns, one per part of its system, and the x of each onset in it: what the
+ * playhead moves along. The parts of a split system share their x, so one timeline serves all.
+ */
 interface BarOnsets {
-  column: Anchor;
+  columns: readonly Anchor[];
   /** The bar's played length. */
   ticks: number;
   points: readonly OnsetPoint[];
@@ -94,18 +97,35 @@ function layoutIndex(layout: LayoutResult, score: Score): LayoutIndex {
 
 const centre = (rect: Rect) => rect.x + rect.width / 2;
 
-/** The master bar's whole column: the `bar` anchor with no track, one per master bar. */
-function columnOf(layout: LayoutResult, masterBarId: Id): Anchor | undefined {
-  return findAnchors(layout, masterBarId, 'bar').find((anchor) => anchor.track === undefined);
+/** The master bar's columns: the `bar` anchors with no track, one per part of its system. */
+function columnsOf(layout: LayoutResult, masterBarId: Id): Anchor[] {
+  return findAnchors(layout, masterBarId, 'bar').filter((anchor) => anchor.track === undefined);
+}
+
+function holdsTrack(system: System | undefined, track: Id): boolean {
+  return system?.staves.some((staff) => staff.track === track) ?? false;
+}
+
+/** The column in the part whose staves hold `track`, else the first part's. */
+function columnFor(
+  layout: LayoutResult,
+  columns: readonly Anchor[],
+  track: Id | undefined,
+): Anchor | undefined {
+  if (track !== undefined) {
+    const held = columns.find((column) => holdsTrack(layout.systems[column.system], track));
+    if (held) return held;
+  }
+  return columns[0];
 }
 
 function barOnsets(layout: LayoutResult, score: Score, masterBarId: Id): BarOnsets | undefined {
   const index = layoutIndex(layout, score);
   const cached = index.bars.get(masterBarId);
   if (cached !== undefined) return cached ?? undefined;
-  const column = columnOf(layout, masterBarId);
+  const columns = columnsOf(layout, masterBarId);
   const masterBarIndex = masterBarIndexOf(score, masterBarId);
-  if (!column || masterBarIndex < 0) {
+  if (columns.length === 0 || masterBarIndex < 0) {
     index.bars.set(masterBarId, null);
     return undefined;
   }
@@ -113,7 +133,7 @@ function barOnsets(layout: LayoutResult, score: Score, masterBarId: Id): BarOnse
   const found: OnsetPoint[] = [];
   for (const anchor of index.beatAnchors.get(masterBarId) ?? []) {
     const beat = beats.get(anchor.id);
-    if (anchor.system !== column.system || !beat || beat.loneRest) continue;
+    if (!beat || beat.loneRest) continue;
     found.push({ tick: beat.tick, x: centre(anchor.bbox) });
   }
   // Stable, so among staves at one onset the first anchor, the top staff, stays.
@@ -123,14 +143,14 @@ function barOnsets(layout: LayoutResult, score: Score, masterBarId: Id): BarOnse
     const last = points.at(-1);
     if (!last || point.tick - last.tick > EPSILON) points.push(point);
   }
-  const bar = { column, ticks: playedBarTicks(score, masterBarIndex), points };
+  const bar = { columns, ticks: playedBarTicks(score, masterBarIndex), points };
   index.bars.set(masterBarId, bar);
   return bar;
 }
 
 /** x at `tick` into the bar: linear between onsets, then towards the column's right edge. */
-function xAt(bar: BarOnsets, tick: number): number {
-  const { column, ticks, points } = bar;
+function xAt(bar: BarOnsets, column: Anchor, tick: number): number {
+  const { ticks, points } = bar;
   const left = { tick: 0, x: column.bbox.x };
   const end = { tick: ticks, x: column.bbox.x + column.bbox.width };
   const first = points[0];
@@ -151,16 +171,42 @@ function xAt(bar: BarOnsets, tick: number): number {
 
 /**
  * The playhead `tick` into master bar `masterBarId`: x on the bar's onset timeline, which covers
- * every visible staff, and the column it highlights. Undefined for a bar the layout does not hold.
+ * every visible staff, and the column it highlights, in the part of a split system that holds
+ * `track` (else the first part). Undefined for a bar the layout does not hold.
  */
 export function playheadAt(
   layout: LayoutResult,
   score: Score,
   masterBarId: Id,
   tick: number,
+  track?: Id,
 ): PlaybackCursor | undefined {
   const bar = barOnsets(layout, score, masterBarId);
-  return bar && { x: xAt(bar, tick), bar: bar.column };
+  const column = bar && columnFor(layout, bar.columns, track);
+  return bar && column && { x: xAt(bar, column, tick), bar: column };
+}
+
+/**
+ * The system the playhead enters after system `index`: the next system's part that holds
+ * `track`, else its first part. Undefined after the last.
+ */
+export function followedSystem(
+  layout: LayoutResult,
+  index: number,
+  track: Id | undefined,
+): number | undefined {
+  const { systems } = layout;
+  const start = systems[index]?.bars.start;
+  let next = index + 1;
+  while (systems[next] !== undefined && systems[next]?.bars.start === start) next++;
+  const first = systems[next];
+  if (!first) return undefined;
+  if (track !== undefined) {
+    for (let i = next; systems[i]?.bars.start === first.bars.start; i++) {
+      if (holdsTrack(systems[i], track)) return i;
+    }
+  }
+  return next;
 }
 
 /**
@@ -254,7 +300,7 @@ export function pointerTarget(
   return { masterBarIndex, masterBarId, tick, ...(track !== undefined && { track }) };
 }
 
-/** The column of every master bar from `startBar` to `endBar`, in score order. */
+/** The columns of every master bar from `startBar` to `endBar`, every part's, in score order. */
 export function barColumns(
   layout: LayoutResult,
   score: Score,
@@ -266,8 +312,7 @@ export function barColumns(
   const columns: Anchor[] = [];
   for (let i = Math.min(start, end); i <= Math.max(start, end); i++) {
     const id = score.masterBars[i]?.id;
-    const column = id === undefined ? undefined : columnOf(layout, id);
-    if (column) columns.push(column);
+    if (id !== undefined) columns.push(...columnsOf(layout, id));
   }
   return columns;
 }
@@ -283,7 +328,7 @@ function union(a: Rect, b: Rect): Rect {
   };
 }
 
-/** The union of a track's staff anchors in a system: the band to keep in view when it is tall. */
+/** The union of a track's staff anchors in a system or part: the band to keep in view when it is tall. */
 export function staffBand(layout: LayoutResult, track: Id, system: number): Rect | undefined {
   let band: Rect | undefined;
   for (const anchor of findAnchors(layout, track, 'staff')) {

@@ -46,7 +46,7 @@ Standard staves only, in the order sharps (F C G D A E B) or flats (B E A D G C 
 
 - At the end of a bar, in priority order: a repeat end (light-heavy with dots in front), the score's final bar line (light-heavy), a double bar (two light lines), a single line. Thicknesses and separations are Bravura's engraving defaults.
 - A start repeat (heavy-light with dots after) follows the bar's clef change, key and time signature.
-- A system with two or more staves opens with a bar line joining them; a single staff starts without one.
+- A system with two or more staves opens with a bar line joining them; a single staff starts without one. Each part of a system split across pages opens with its own, from its first staff to its last, even a part of one staff, so it still reads as part of a system (#85).
 - The end bar lines of a track shown on two staves (standard above tab) run on through the gap between them (WP-023); repeat dots stay inside each staff. Separate tracks keep separate bar lines.
 - Repeat dots sit in the two spaces either side of the staff's middle; on a staff with an even number of lines, one line spacing either side of the middle.
 - A section played more than twice shows `xN` above the end repeat, in a lane of its own above the system's first staff (WP-022).
@@ -59,6 +59,20 @@ Drawn above a system's first staff, in bands that exist only when a bar of the s
 2. **Tempo**: the mark's label, a metronome note for its unit (dotted for the dotted units) and `= n`, where `n` is the quarter-note `bpm` converted to the unit.
 3. **Directions**: segno and coda symbols at the bar start (doubled for segno segno and double coda); `Fine` and the jump instructions (`D.S. al Coda`, `To Coda`, ...) in italics, right-aligned at the bar end, since jumps are read there.
 4. **Voltas**: one bracket per run of bars with the same endings, labelled `1., 2.`, with a hook down at the start and, when the run ends on a repeat, at the end. A bracket that continues into the next system carries on without a hook or label.
+
+The continuation of a system split across pages carries only bar numbers and, when the system has them, voltas: see [Systems taller than the page](#systems-taller-than-the-page-85).
+
+## Systems taller than the page (#85)
+
+In page view a system taller than the page's content area (the page height less the top and bottom margins) is split between its staves into parts, one per page. Nothing is scaled: no reference scales automatically (alphaTab lets the browser cut a tall system through a staff when printing, Guitar Pro documents only a manual "Overall proportions", MuseScore lets it run off the page), and scaling to fit has no lower bound.
+
+- **Where it splits.** Each part holds as many whole tracks as fit. A track's staves are separated only when that track alone is taller than the room, and a single staff with its lanes that is taller than the room becomes a part of its own and overflows the bottom margin, as a bar wider than the page overflows the right margin. Lanes and the room kept next to a staff go with their staff.
+- **Where the parts go.** A split system starts at the top of the current page when it is empty, and otherwise of the next page; each further part is at the top of the page after, so a system never starts mid-page, and on the long score never spans more than two pages. What follows the last part flows under it.
+- **What every part draws.** The system's horizontal positions (track-name indent, clef and key column, bar positions, courtesy signatures), and for its own staves: track names, staff lines, clefs and key, the bars' signature changes, repeat signs, content and bar lines, courtesy signatures and anchors.
+- **Header rows.** The first part keeps the system's rows (sections, tempo, directions, voltas) and the `xN` repeat counts. A continuation opens with a bar-number row 2.4 staff spaces tall, then the volta row when the system has one: voltas change what every player plays, while tempo, sections and jumps are read once, above the system.
+- **Bar numbers.** Only a continuation shows them, one per bar: `masterBarIndex + 1`, as Guitar Pro counts, a pickup bar included. UI-font text 1.3 staff spaces tall, upright, at the bar's start plus 0.2 staff space, its baseline 0.5 staff space above the row's bottom.
+
+Continuous mode never splits: it has one unbounded page.
 
 ## Spacing (WP-020)
 

@@ -86,6 +86,8 @@ Changed by #96 (2026-11-06): `OpenedFile` (and the `file:open` result) gains an 
 
 Changed by #87 (2026-11-07), widening the model and narrowing audio: `soundingPitch(track, note)`, the pitch a note sounds at as a fractional MIDI note, moves from `@reprise/audio` (where it was `soundingKey`) to the model's root export, so layout can place a harmonic where it sounds; its results are unchanged. `@reprise/audio` no longer exports `soundingKey` or `harmonicInterval`. The Note sketch's `harmonic.value` comment states the convention #92 documented: the node's fret for a natural harmonic, the offset above the fretted note for every other kind.
 
+Changed by #109 (2026-11-07): in paged mode a system taller than the page's content area is split between its staves (between tracks where it can, never through a staff) into parts on consecutive pages, each starting at a page top; `LayoutResult.systems` lists each part as a `System` on one page, consecutive parts sharing `bars`; `System.part` (0, 1, …) marks the parts of a split system, and a part after the first has the id `system:<first master-bar id>/<part>`; a master bar's column anchor (`bar` without `track`) and the `system` anchor are repeated in every part, each covering that part's staves, and `metrics.reusedSystems` counts parts.
+
 Synced by #74 (2026-11-06), no contract change: the Layout sketch lists the `LayoutOptions`, `LayoutMetrics` and `Anchor` fields #59 shipped and the `tiedNotes` option #68 added, and the Audio sketch names the `InstrumentSink` #55 shipped and #73 widened.
 
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
@@ -419,7 +421,7 @@ interface LayoutOptions {
 }
 interface LayoutResult {
   pages: Page[];                      // continuous mode = one infinitely wide page
-  systems: System[];                  // each with its bar range and bounding box
+  systems: System[];                  // each with its bar range and bounding box, on one page; a system taller than the page is split into parts
   primitives: Primitive[];            // glyph | line | path | text, with x, y, bbox, theme role
   anchors: Anchor[];                  // model-node id -> bbox, for hit-testing and cursor placement
   metrics: { layoutMs: number; primitives: number; anchors: number; measuredBars: number; reusedSystems: number };

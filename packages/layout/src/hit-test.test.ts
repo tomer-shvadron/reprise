@@ -1,4 +1,4 @@
-import { note, score } from '@reprise/model/testing';
+import { largeScore, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { PAGE_SIZES, hitTest, layout, type Anchor, type LayoutOptions } from './index';
@@ -59,5 +59,30 @@ describe('hitTest', () => {
   it('finds nothing outside every system', () => {
     expect(hitTest(result, 1, 1)).toBeUndefined();
     expect(hitTest(result, -100, 500)).toBeUndefined();
+  });
+
+  it('finds notes and the system in a continuation', () => {
+    const tall = largeScore(8, 6);
+    const split = layout(tall, {
+      ...paged,
+      notation: Object.fromEntries(tall.tracks.map(({ id }) => [id, 'both'])),
+    });
+    const part = split.systems[1];
+    if (part?.part !== 1) throw new Error('no continuation');
+    const notes = split.anchors
+      .slice(part.anchors.start, part.anchors.end)
+      .filter((anchor) => anchor.kind === 'note');
+    expect(notes.length).toBeGreaterThan(0);
+    for (const found of notes) {
+      expect(hitTest(split, ...centre(found))).toMatchObject({
+        kind: 'note',
+        id: found.id,
+        system: part.index,
+      });
+    }
+    expect(hitTest(split, part.bbox.x + part.bbox.width / 2, part.bbox.y + 1)).toMatchObject({
+      kind: 'system',
+      id: `${split.systems[0]?.id ?? ''}/1`,
+    });
   });
 });

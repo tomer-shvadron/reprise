@@ -2,7 +2,7 @@ import { expect } from 'vitest';
 
 import type { Id, Score } from '@reprise/model';
 
-import type { Anchor, LayoutResult, Primitive, Rect } from '../types';
+import type { Anchor, LayoutResult, Margins, Primitive, Rect } from '../types';
 
 const EPSILON = 0.02;
 
@@ -78,7 +78,15 @@ export function expectValid(result: LayoutResult): void {
     anchors = system.anchors.end;
     expect(system.bars.end).toBeGreaterThan(system.bars.start);
     const previous = result.systems[i - 1];
-    if (previous) expect(system.bars.start).toBe(previous.bars.end);
+    if ((system.part ?? 0) > 0) {
+      // A continuation shares its system's bars and sits on the next page.
+      expect(previous?.bars).toEqual(system.bars);
+      expect(previous?.part).toBe((system.part ?? 0) - 1);
+      expect(system.page).toBe((previous?.page ?? 0) + 1);
+    } else if (previous) {
+      expect(system.bars.start).toBe(previous.bars.end);
+    }
+    if (system.part === 0) expect(result.systems[i + 1]?.part).toBe(1);
     for (const anchor of result.anchors.slice(system.anchors.start, system.anchors.end)) {
       expect(anchor.system).toBe(i);
       expect(
@@ -96,12 +104,60 @@ export function expectValid(result: LayoutResult): void {
       );
     }
   }
+  const seen = new Map<string, Set<string>>();
+  for (const system of result.systems) {
+    if (system.part === undefined) continue;
+    const key = String(system.bars.start);
+    const staves = seen.get(key) ?? new Set<string>();
+    for (const staff of system.staves) {
+      const name = `${staff.track}:${staff.type}`;
+      expect(staves.has(name), `${name} in two parts of ${system.id}`).toBe(false);
+      staves.add(name);
+    }
+    seen.set(key, staves);
+  }
   expect(primitives).toBe(result.primitives.length);
   expect(anchors).toBe(result.anchors.length);
   expect(result.metrics.primitives).toBe(result.primitives.length);
   expect(result.metrics.anchors).toBe(result.anchors.length);
   expect(result.pages.length).toBeGreaterThan(0);
   expect(overlappingAnchors(result)).toEqual([]);
+}
+
+/**
+ * Every system box inside its page less the top and bottom margins, and every primitive and
+ * anchor inside its page box: nothing crosses a page edge.
+ */
+export function expectInsidePages(
+  result: LayoutResult,
+  margins: Pick<Margins, 'top' | 'bottom'>,
+): void {
+  for (const system of result.systems) {
+    const page = result.pages[system.page];
+    if (!page) throw new Error(`${system.id} has no page`);
+    const { bbox } = page;
+    const content = {
+      ...bbox,
+      y: bbox.y + margins.top,
+      height: bbox.height - margins.top - margins.bottom,
+    };
+    const vertical = (rect: Rect) =>
+      rect.y >= content.y - EPSILON && rect.y + rect.height <= content.y + content.height + EPSILON;
+    expect(vertical(system.bbox), `${system.id} outside its page's margins`).toBe(true);
+    for (const primitive of result.primitives.slice(
+      system.primitives.start,
+      system.primitives.end,
+    )) {
+      if (!inside(primitive.bbox, bbox)) {
+        expect.fail(`${primitive.kind} of ${system.id} outside page ${String(page.index)}`);
+      }
+    }
+    for (const anchor of result.anchors.slice(system.anchors.start, system.anchors.end)) {
+      if (!inside(anchor.bbox, bbox)) {
+        expect.fail(`${anchor.kind} ${anchor.id} outside page ${String(page.index)}`);
+      }
+    }
+  }
 }
 
 /** The result without its metrics, which report how it was made rather than what it is. */

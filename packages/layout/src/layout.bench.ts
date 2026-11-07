@@ -55,8 +55,11 @@ function allNotation(score: Score, notation: Notation, base: LayoutOptions): Lay
 
 const round = (ms: number): number => Math.round(ms * 10) / 10;
 
-/** More systems than an edit's own window renders: a sign it moved every later one. */
-const MANY_SYSTEMS = 10;
+/**
+ * More systems than an edit's own window renders: a sign it moved every later one. Counted in
+ * parts, and a long-score system splits into at most two, so it is twice the plans a window holds.
+ */
+const MANY_SYSTEMS = 20;
 
 const median = (values: readonly number[]): number => {
   const sorted = [...values].sort((a, b) => a - b);

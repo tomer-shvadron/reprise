@@ -61,8 +61,10 @@ describe('painter performance in jsdom', () => {
         }),
       );
       const region = screen.getByRole('region', { name: 'Score' });
-      const edited = result.systems[1];
-      if (!edited) throw new Error('no second system');
+      // The first system's first part, which holds track 0: the long score's systems split, so
+      // the second system starts on page 2, out of the mounted range.
+      const edited = result.systems[0];
+      if (!edited) throw new Error('no system');
       for (let run = 0; run < RUNS; run++) {
         const { score: next, change } = applyCommand(
           score,

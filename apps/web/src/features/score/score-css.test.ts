@@ -17,7 +17,7 @@ describe('score.css', () => {
     expect(css).toMatch(/\.score-view,\s*\.score-pages,\s*\.score-page\s*{\s*--score-paper:/);
   });
 
-  it('keeps the page size in print while the screen paper grows', () => {
+  it('sizes the paper by its own height on screen and by the page size in print', () => {
     expect(css).toMatch(/\.score-page\s*{[^}]*height: var\(--score-paper-height\);/);
     expect(css).toMatch(
       /@media print\s*{[\s\S]*\.score-page\s*{\s*height: var\(--score-page-height\);/,

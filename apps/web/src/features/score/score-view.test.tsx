@@ -14,7 +14,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { columnAnchor, cursorAt, findAnchors } from './anchors';
 import { ScoreView, type ScorePointerEvent, type ScoreViewHandle } from './score-view';
-import { pageFlow } from './page-flow';
 import { longLayout } from './test/long-score';
 import { stubScroll } from './test/scroll-stub';
 import { viewLayout } from './test/small-score';
@@ -82,12 +81,11 @@ function scrollTo(y: number, x = 0) {
 
 /** What the model expects mounted for a scroll position. */
 function expected(result: LayoutResult, zoom: number, scroll?: { x: number; y: number }) {
-  const flow = pageFlow(result);
-  const offset = canvasOffset(VIEWPORT, layoutExtent(flow), zoom);
+  const offset = canvasOffset(VIEWPORT, layoutExtent(result), zoom);
   const centre = scroll && centreFromScroll(scroll, VIEWPORT, zoom, offset);
   const window = visibleWindow(centre, VIEWPORT, zoom, offset);
-  const range = mountedSystems(flow.systems, window);
-  const pages = mountedPages(flow.pages, flow.systems, range, window);
+  const range = mountedSystems(result.systems, window);
+  const pages = mountedPages(result.pages, result.systems, range, window);
   return { range, pages, window, offset, count: mountedElementCount(result, range, pages) };
 }
 
@@ -362,46 +360,40 @@ describe('ScoreView', () => {
     expect(region().scrollTop).toBe(top);
   });
 
-  it('grows the paper of a system taller than its page and moves later pages down', () => {
+  it("draws a split system's parts on consecutive A4 pages and resolves pointers on the continuation", () => {
     const result = viewLayout('tall', { mode: 'paged', paper: 'a4' }, 'both');
-    const flow = pageFlow(result);
+    expect(result.systems[1]?.part).toBe(1);
     const onScorePointer = vi.fn<(event: ScorePointerEvent) => void>();
-    const notes = result.anchors.filter((anchor) => anchor.kind === 'note');
-    const page0 = result.pages[0] ?? never();
-    const overflowing = notes.find(
-      (anchor) => anchor.system === 0 && anchor.bbox.y > page0.bbox.y + page0.bbox.height,
-    );
-    const next = notes.find((anchor) => anchor.system === 1);
-    if (!overflowing || !next) throw new Error('no note anchors');
+    const note = result.anchors.find((anchor) => anchor.kind === 'note' && anchor.system === 1);
+    if (!note) throw new Error('no note in the continuation');
     render(
       <ScoreView
         layout={result}
         zoom={1}
-        overlays={{ hover: next }}
+        overlays={{ hover: note }}
         onScorePointer={onScorePointer}
       />,
     );
 
-    const shift = flow.shifts[1] ?? 0;
-    expect(shift).toBeGreaterThan(0);
     const page1 = region().querySelector<HTMLElement>('[data-page="1"]');
-    expect(page1?.style.top).toBe(`${String(flow.pages[1]?.bbox.y)}px`);
+    expect(page1?.style.top).toBe(`${String(result.pages[1]?.bbox.y)}px`);
+    expect(page1?.style.getPropertyValue('--score-paper-height')).toBe('1123px');
     const hover = region().querySelector<HTMLElement>('.score-hover');
     expect(hover?.style.transform).toBe(
-      `translate(${String(next.bbox.x)}px, ${String(next.bbox.y + shift)}px)`,
+      `translate(${String(note.bbox.x)}px, ${String(note.bbox.y)}px)`,
     );
 
-    const centre = (anchor: typeof next, by = 0) => ({
-      clientX: anchor.bbox.x + anchor.bbox.width / 2,
-      clientY: anchor.bbox.y + anchor.bbox.height / 2 + by,
+    const centre = {
+      clientX: note.bbox.x + note.bbox.width / 2,
+      clientY: note.bbox.y + note.bbox.height / 2,
+    };
+    fireEvent.pointerDown(canvas(), centre);
+    expect(onScorePointer.mock.lastCall?.[0].anchor).toMatchObject({
+      kind: 'note',
+      id: note.id,
+      system: 1,
     });
-    const last = (): ScorePointerEvent | undefined => onScorePointer.mock.lastCall?.[0];
-    fireEvent.pointerDown(canvas(), centre(overflowing));
-    expect(last()?.anchor?.system).toBe(0);
-    fireEvent.pointerDown(canvas(), centre(next, shift));
-    expect(last()?.point).toEqual({ x: centre(next).clientX, y: centre(next).clientY });
-    expect(last()?.anchor?.system).toBe(1);
-    fireEvent.pointerCancel(canvas(), centre(next, shift));
+    fireEvent.pointerCancel(canvas(), centre);
     expect(onScorePointer).toHaveBeenLastCalledWith(
       expect.objectContaining({ type: 'cancel', anchor: undefined }),
     );
