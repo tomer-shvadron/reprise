@@ -34,13 +34,18 @@ export function beatStartTicks(voice: Pick<Voice, 'beats'>, index: number): numb
   return ticks;
 }
 
-// The tolerance `voice-overfull` uses, so a bar stretches exactly when that rule fires.
+// The tolerance `voice-overfull` uses, so float error alone never stretches a bar.
 const TICK_EPSILON = 1e-6;
+
+/** Guitar Pro's unused voice is a run of empty beats; alphaTab and our layout give it no length. */
+function holdsContent(voice: Pick<Voice, 'beats'>): boolean {
+  return voice.beats.some((beat) => beat.rest || beat.notes.length > 0);
+}
 
 /**
  * How long a master bar lasts in playback: its written length, unless its longest voice in any
  * track is longer (an over-full bar, which only an imported file holds) or it is an anacrusis
- * holding less (the written length when every voice is empty); then that voice's length.
+ * holding less; then that voice's length. A voice of only empty beats is not counted.
  */
 export function playedBarTicks(
   score: Pick<Score, 'masterBars' | 'tracks'>,
@@ -54,6 +59,7 @@ export function playedBarTicks(
   let longest = 0;
   for (const track of score.tracks) {
     for (const voice of track.bars[masterBarIndex]?.voices ?? []) {
+      if (!holdsContent(voice)) continue;
       longest = Math.max(longest, beatStartTicks(voice, voice.beats.length));
     }
   }

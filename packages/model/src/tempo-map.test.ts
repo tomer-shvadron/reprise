@@ -23,7 +23,8 @@ function barWith(...beats: Beat[]): Bar {
   };
 }
 
-const quarters = (count: number): Beat[] => Array.from({ length: count }, () => createBeat());
+const quarters = (count: number): Beat[] =>
+  Array.from({ length: count }, () => createBeat({ rest: true }));
 
 function scoreOf(
   masterBars: MasterBar[],
@@ -85,7 +86,7 @@ describe('tempoMap', () => {
     const map = mapOf(
       scoreOf(
         [createMasterBar({ anacrusis: true }), createMasterBar()],
-        [barWith(createBeat()), barWith()],
+        [barWith(createBeat({ rest: true })), barWith()],
       ),
     );
     expect(starts(map)).toEqual([0, 0.5]);

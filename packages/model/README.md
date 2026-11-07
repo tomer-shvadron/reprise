@@ -419,7 +419,8 @@ secondsAtTick(map, 9600); // seconds at a playback tick, for the scheduler
 - `playedBarTicks(score, index)` is how long a bar lasts in playback: the written length, except
   that a bar lasts as long as its longest voice in any track when that is longer (an over-full
   bar, which only an imported file holds), and an anacrusis when that is shorter (the written
-  length when all are empty). A short ordinary bar still lasts its full written length.
+  length when all are empty). A voice of only empty beats, Guitar Pro's unused voice, is not
+  counted. A short ordinary bar still lasts its full written length.
 - `tickOf(score, { bar, beat, track?, voice? })` is the absolute tick in written order, ignoring
   repeats and jumps, using `playedBarTicks`. Out-of-range positions throw a `RangeError`.
 - `barStartTicks(score)` is the same for every bar at once, a prefix sum with

@@ -23,6 +23,9 @@ import {
 } from './ticks';
 import { validateScore } from './validate';
 
+const rest = (options: Partial<Omit<Beat, 'id'>> = {}): Beat =>
+  createBeat({ rest: true, ...options });
+
 function barWith(...beats: Beat[]): Bar {
   return {
     ...createBar(),
@@ -92,15 +95,15 @@ describe('beatStartTicks', () => {
 
 describe('playedBarTicks', () => {
   it('uses the written length for an ordinary bar, even when its voices are short', () => {
-    const score = scoreOf([createMasterBar()], [barWith(createBeat())]);
+    const score = scoreOf([createMasterBar()], [barWith(rest())]);
     expect(playedBarTicks(score, 0)).toBe(3840);
   });
 
   it('shortens an anacrusis to its longest voice in any track', () => {
     const masterBars = [createMasterBar({ anacrusis: true }), createMasterBar()];
-    const score = scoreOf(masterBars, [barWith(createBeat()), createBar()]);
+    const score = scoreOf(masterBars, [barWith(rest()), createBar()]);
     const second = createTrack('fretted', {
-      bars: [barWith(createBeat(), createBeat({ duration: 8 })), createBar()],
+      bars: [barWith(rest(), rest({ duration: 8 })), createBar()],
     });
     expect(playedBarTicks(score, 0)).toBe(960);
     expect(playedBarTicks({ ...score, tracks: [...score.tracks, second] }, 0)).toBe(1440);
@@ -110,13 +113,13 @@ describe('playedBarTicks', () => {
     expect(playedBarTicks(scoreOf([createMasterBar({ anacrusis: true })]), 0)).toBe(3840);
   });
 
-  const fiveQuarters = (): Beat[] => Array.from({ length: 5 }, () => createBeat());
+  const fiveQuarters = (): Beat[] => Array.from({ length: 5 }, () => rest());
 
   it('lasts an over-full bar as long as its longest voice in any track', () => {
     expect(playedBarTicks(scoreOf([createMasterBar()], [barWith(...fiveQuarters())]), 0)).toBe(
       4800,
     );
-    const score = scoreOf([createMasterBar()], [barWith(createBeat())]);
+    const score = scoreOf([createMasterBar()], [barWith(rest())]);
     const second = createTrack('fretted', {
       bars: [
         {
@@ -130,12 +133,27 @@ describe('playedBarTicks', () => {
 
   it('does not stretch a bar for float error alone', () => {
     const septuplets = Array.from({ length: 28 }, () =>
-      createBeat({ duration: 16, tuplet: { n: 7, of: 4 } }),
+      rest({ duration: 16, tuplet: { n: 7, of: 4 } }),
     );
     const score = scoreOf([createMasterBar()], [barWith(...septuplets)]);
     expect(beatStartTicks(score.tracks[0]?.bars[0]?.voices[0] ?? createVoice(), 28)).not.toBe(3840);
     expect(playedBarTicks(score, 0)).toBe(3840);
     expect(validateScore(score).filter((v) => v.rule === 'voice-overfull')).toEqual([]);
+  });
+
+  it('ignores a voice of empty beats, the placeholder Guitar Pro keeps for an unused voice', () => {
+    const withPlaceholder = (...beats: Beat[]): Bar => ({
+      ...createBar(),
+      voices: [createVoice(beats), createVoice([createBeat()]), createVoice(), createVoice()],
+    });
+    const threeSixteen = createMasterBar({ timeSignature: { numerator: 3, denominator: 16 } });
+    const sixteenths = Array.from({ length: 3 }, () => rest({ duration: 16 }));
+    expect(playedBarTicks(scoreOf([threeSixteen], [withPlaceholder(...sixteenths)]), 0)).toBe(720);
+    const pickup = scoreOf(
+      [createMasterBar({ anacrusis: true })],
+      [withPlaceholder(rest({ duration: 8 }))],
+    );
+    expect(playedBarTicks(pickup, 0)).toBe(480);
   });
 
   it('lasts an over-full anacrusis as long as its longest voice', () => {
@@ -151,11 +169,7 @@ describe('tickOf', () => {
       createMasterBar({ timeSignature: { numerator: 3, denominator: 4 } }),
       createMasterBar(),
     ],
-    [
-      barWith(createBeat()),
-      barWith(createBeat(), createBeat({ duration: 2 })),
-      barWith(createBeat(), createBeat()),
-    ],
+    [barWith(rest()), barWith(rest(), rest({ duration: 2 })), barWith(rest(), rest())],
   );
 
   it('counts written order from the start of the score', () => {
@@ -176,8 +190,8 @@ describe('tickOf', () => {
     const overfull = scoreOf(
       [createMasterBar(), createMasterBar()],
       [
-        barWith(...Array.from({ length: 5 }, () => createBeat())),
-        barWith(...Array.from({ length: 4 }, () => createBeat())),
+        barWith(...Array.from({ length: 5 }, () => rest())),
+        barWith(...Array.from({ length: 4 }, () => rest())),
       ],
     );
     expect(barStartTicks(overfull)).toEqual([0, 4800, 8640]);
