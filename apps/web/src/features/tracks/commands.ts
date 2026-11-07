@@ -12,7 +12,6 @@ import {
   toggleSolo,
   type TrackServices,
 } from './track-actions';
-import { notationChoices } from './track-model';
 
 export type TrackCommandId =
   | 'track.previous'
@@ -38,12 +37,10 @@ export function trackCommands(services: TrackServices): TrackCommand[] {
     const track = current();
     if (track) run(track.id);
   };
-  const notation = (choice: Notation) => () => {
-    const track = current();
-    if (track && notationChoices(track).includes(choice)) {
-      setTrackNotation(services, track.id, choice);
-    }
-  };
+  const notation = (choice: Notation) =>
+    onCurrent((id) => {
+      setTrackNotation(services, id, choice);
+    });
 
   return [
     {

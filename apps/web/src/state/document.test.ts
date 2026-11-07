@@ -1,5 +1,11 @@
-import { FormatError, type ReadResult, type Warning } from '@reprise/formats';
-import { CommandError, setNote, setTrackProperties, type Score } from '@reprise/model';
+import { FormatError, read, write, type ReadResult, type Warning } from '@reprise/formats';
+import {
+  CommandError,
+  STANDARD_TUNING,
+  setNote,
+  setTrackProperties,
+  type Score,
+} from '@reprise/model';
 import { beatOf, note, score } from '@reprise/model/testing';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -13,6 +19,7 @@ import {
   REPRISE_FILES,
   SCORE_FILES,
   visibleTrackIds,
+  withViewNotation,
   type SaveAnswer,
 } from './document';
 
@@ -667,5 +674,76 @@ describe('visibleTrackIds', () => {
     expect(visibleTrackIds({ tracks: ['gone'], notation: {} }, three)).toBe('all');
     expect(visibleTrackIds({ tracks: 'all', notation: {} }, three)).toBe('all');
     expect(visibleTrackIds({ tracks: [a], notation: {} }, undefined)).toEqual([a]);
+  });
+});
+
+describe('a track without strings that a file shows as tab', () => {
+  const keysAsTab = (): Score =>
+    score()
+      .track('guitar', { name: 'Lead' })
+      .bar()
+      .beat('4', [note(1, 0)])
+      .track('piano', {
+        name: 'Keys',
+        tuning: [...STANDARD_TUNING],
+        fretCount: 24,
+        display: { notation: 'tab', clef: 'treble', octaveShift: 0 },
+      })
+      .bar()
+      .bar()
+      .build();
+  const notations = (saved: Score) =>
+    saved.tracks.map((track) => `${track.kind}:${track.display.notation}`);
+
+  it('is folded to standard notation for Save, leaving drums and fretted tracks alone', () => {
+    const base = keysAsTab();
+    const drums = score()
+      .track('drums', { display: { notation: 'tab', octaveShift: 0 } })
+      .bar()
+      .build().tracks;
+    const song = { ...base, tracks: [...base.tracks, ...drums] };
+    const keys = song.tracks[1]?.id ?? '';
+    expect(notations(withViewNotation(song, {}))).toEqual([
+      'fretted:tab',
+      'pitched:standard',
+      'drums:tab',
+    ]);
+    expect(notations(withViewNotation(song, { [keys]: 'both' }))).toEqual([
+      'fretted:tab',
+      'pitched:standard',
+      'drums:tab',
+    ]);
+    const plain = score().track('guitar').track('piano', { tuning: [] }).track('drums').build();
+    expect(withViewNotation(plain, {})).toBe(plain);
+  });
+
+  it('opens unmodified and saves as standard to .reprise and gp, with no notation loss', async () => {
+    const song = keysAsTab();
+    const writeHandle = vi.fn<Platform['writeHandle']>(() => Promise.resolve());
+    const store = createDocumentStore({ platform: fakePlatform({ writeHandle }) });
+    const opened = (await write(song, 'reprise')).bytes;
+    await store.getState().openBytes('song.reprise', opened, '/music/song.reprise');
+    expect(store.getState().dirty).toBe(false);
+
+    await store.getState().save();
+    const reprise = await read(writeHandle.mock.calls.at(-1)?.[1] ?? new Uint8Array());
+    expect(notations(reprise.score)).toEqual(['fretted:tab', 'pitched:standard']);
+    expect(store.getState().score?.tracks[1]?.display.notation).toBe('tab');
+
+    const file = store.getState().file;
+    if (!file) throw new Error('no file');
+    store.setState({ file: { ...file, name: 'song.gp', format: 'gp', handle: '/music/song.gp' } });
+    await store.getState().save();
+    expect(store.getState().savePrompt).toBeUndefined();
+    expect(writeHandle).toHaveBeenCalledTimes(2);
+    const gp = await read(writeHandle.mock.calls.at(-1)?.[1] ?? new Uint8Array());
+    expect(notations(gp.score)).toEqual(['fretted:tab', 'pitched:standard']);
+
+    // Unfolded, the gp writer reports the notation it cannot keep, and .reprise keeps the value.
+    const unfolded = await write(song, 'gp');
+    expect(unfolded.dropped.map((loss) => loss.code)).toContain('notation');
+    expect(
+      (await read((await write(song, 'reprise')).bytes)).score.tracks[1]?.display.notation,
+    ).toBe('tab');
   });
 });

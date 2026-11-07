@@ -1,9 +1,11 @@
+import { STANDARD_TUNING } from '@reprise/model';
 import { score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import {
   audibleTracks,
   effectiveMix,
+  effectiveNotation,
   nextVisibility,
   notationChoices,
   panText,
@@ -55,11 +57,32 @@ describe('track model', () => {
     expect(nextVisibility(tracks, [c.id], c.id, false)).toBeUndefined();
   });
 
-  it('offers notation choices only to a track with strings that is not drums', () => {
+  it('offers tab only to a track with strings, standard to every other but drums', () => {
     const { a, c, d } = tracksOf();
+    const keys = score()
+      .track('piano', { tuning: [...STANDARD_TUNING], fretCount: 24 })
+      .build().tracks[0];
+    if (!keys) throw new Error('one track');
     expect(notationChoices(a)).toEqual(['tab', 'standard', 'both']);
     expect(notationChoices(c)).toEqual([]);
-    expect(notationChoices(d)).toEqual([]);
+    expect(notationChoices(d)).toEqual(['standard']);
+    expect(notationChoices(keys)).toEqual(['standard']);
+  });
+
+  it('reads the notation a track shows, standard for a track without strings', () => {
+    const built = score()
+      .track('guitar')
+      .track('piano', {
+        tuning: [...STANDARD_TUNING],
+        fretCount: 24,
+        display: { notation: 'tab', clef: 'treble', octaveShift: 0 },
+      })
+      .build();
+    const [guitar, keys] = built.tracks;
+    if (!guitar || !keys) throw new Error('two tracks');
+    expect(effectiveNotation(keys, {})).toBe('standard');
+    expect(effectiveNotation(keys, { [keys.id]: 'both' })).toBe('standard');
+    expect(effectiveNotation(guitar, { [guitar.id]: 'both' })).toBe('both');
   });
 
   it('steps the current track, clamped at both ends', () => {

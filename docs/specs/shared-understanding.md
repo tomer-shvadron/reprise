@@ -50,7 +50,7 @@ Six packages. `model` holds the score data model, stable IDs, commands and undo.
 
 ## Display
 
-- Per-track toggle between tab, standard notation and both. Default is tab for fretted instruments and standard for everything else. Rhythm stems under tab are always drawn, except in both mode, where rhythm is drawn on the standard staff (ADR-0021).
+- Per-track toggle between tab, standard notation and both. Default is tab for fretted instruments and standard for everything else. Tab needs strings: a pitched track shows standard notation only (#125). Rhythm stems under tab are always drawn, except in both mode, where rhythm is drawn on the standard staff (ADR-0021).
 - SVG painter with virtualized systems. Hit-testing uses layout geometry, not DOM events. Notation glyphs come from the Bravura font.
 - Two view modes, paged and continuous horizontal scroll, plus zoom. Show all tracks or one.
 - Printing via print CSS over the paged layout.

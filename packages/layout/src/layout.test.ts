@@ -1,5 +1,11 @@
-import { applyCommand, createEmptyScore, setBeatDuration, type Notation } from '@reprise/model';
-import { beatOf, largeScore, note, score } from '@reprise/model/testing';
+import {
+  STANDARD_TUNING,
+  applyCommand,
+  createEmptyScore,
+  setBeatDuration,
+  type Notation,
+} from '@reprise/model';
+import { beatOf, largeScore, midi, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_MARGINS, LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from './index';
@@ -257,6 +263,62 @@ describe('layout', () => {
     expect(none.systems).toEqual([]);
     expect(none.pages).toHaveLength(1);
   });
+
+  it.each([
+    ['paged', paged],
+    ['continuous', continuous],
+  ])(
+    'never gives a track without strings a tab staff, whatever its notation says (%s)',
+    (_, base) => {
+      const built = score()
+        .track('guitar', { id: 'guitar000001' })
+        .bar()
+        .beat('4', [note(1, 0)])
+        .track('piano', {
+          id: 'keystuning01',
+          tuning: [...STANDARD_TUNING],
+          fretCount: 24,
+          display: { notation: 'tab', clef: 'treble', octaveShift: 0 },
+        })
+        .bar()
+        .beat('4', [midi(60)])
+        .track('piano', {
+          id: 'keysnotune01',
+          tuning: [],
+          display: { notation: 'both', clef: 'treble', octaveShift: 0 },
+        })
+        .bar()
+        .beat('4', [midi(64)])
+        .track('drums', { id: 'drums0000001' })
+        .bar()
+        .build({ ids: 'sequential' });
+      const staves = (notation: LayoutOptions['notation']) =>
+        layout(built, { ...base, notation }).systems[0]?.staves.map(
+          ({ track, type }) => `${track}:${type}`,
+        );
+      const every = (wanted: Notation) =>
+        Object.fromEntries(built.tracks.map((track) => [track.id, wanted]));
+      expect(staves({})).toEqual([
+        'guitar000001:tab',
+        'keystuning01:standard',
+        'keysnotune01:standard',
+        'drums0000001:percussion',
+      ]);
+      expect(staves(every('tab'))).toEqual([
+        'guitar000001:tab',
+        'keystuning01:standard',
+        'keysnotune01:standard',
+        'drums0000001:percussion',
+      ]);
+      expect(staves(every('both'))).toEqual([
+        'guitar000001:standard',
+        'guitar000001:tab',
+        'keystuning01:standard',
+        'keysnotune01:standard',
+        'drums0000001:percussion',
+      ]);
+    },
+  );
 
   it('spaces the visible tracks alone, whatever a hidden track plays', () => {
     const builder = score().track('guitar');

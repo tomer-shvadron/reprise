@@ -122,6 +122,8 @@ export interface TrackSpec {
   channel?: number;
   percussion?: boolean;
   capo?: number;
+  /** GP5 staff flags: `0x01` tab, `0x02` standard; both unless given. */
+  staffFlags?: number;
 }
 
 export interface FileSpec {
@@ -192,7 +194,13 @@ export function buildGpFile(spec: FileSpec): Uint8Array {
       .int(track.capo ?? 0)
       .raw([255, 0, 0, 0]);
     if (version >= 500) {
-      w.raw([0x03, 0, 0, 0, 0]).int(0).int(0).int(0).zeros(10).raw([0, 0]).zeros(16);
+      w.raw([track.staffFlags ?? 0x03, 0, 0, 0, 0])
+        .int(0)
+        .int(0)
+        .int(0)
+        .zeros(10)
+        .raw([0, 0])
+        .zeros(16);
       if (version >= 510) w.zeros(4).intByteString('').intByteString('');
     }
   });
