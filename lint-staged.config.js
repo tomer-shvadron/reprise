@@ -30,13 +30,23 @@ const live =
 // audio test imports the model, so a model-only commit would otherwise launch Chromium.
 const AUDIO = /[\\/]packages[\\/]audio[\\/]/;
 
+const CODE = 'js,mjs,cjs,ts,mts,cts,tsx';
+const PRETTIER_ONLY = 'json,md,yaml,yml,css,html';
+
+// First in each list, so it reads every file before ESLint or Prettier can rewrite it; the three
+// globs split the staged files between them, since tasks for different globs run concurrently.
+/** @param {readonly string[]} files */
+const conflicts = (files) => `node scripts/conflicts/check.ts ${args(files)}`;
+
 /** @type {import('lint-staged').Configuration} */
 export default {
-  '*.{js,mjs,cjs,ts,mts,cts,tsx}': live(
+  [`*.{${CODE}}`]: live(
+    conflicts,
     (files) => `eslint --fix --max-warnings 0 ${args(files)}`,
     (files) => `prettier --write ${args(files)}`,
   ),
-  '*.{json,md,yaml,yml,css,html}': live((files) => `prettier --write ${args(files)}`),
+  [`*.{${PRETTIER_ONLY}}`]: live(conflicts, (files) => `prettier --write ${args(files)}`),
+  [`!(*.{${CODE},${PRETTIER_ONLY}})`]: live(conflicts),
   '*.{ts,mts,cts,tsx}': live(
     (files) =>
       `vitest related --run --no-fsModuleCache ${files.some((file) => AUDIO.test(file)) ? '' : '--project=!audio '}${args(files)}`,
