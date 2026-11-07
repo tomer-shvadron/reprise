@@ -106,6 +106,8 @@ export interface Rendered extends Signal {
   scheduled: NoteEvent[];
   /** Every key the sink struck on the sampler, with whether a region sounded it. */
   strikes: Strike[];
+  /** The strikes each scheduled note made, aligned with `scheduled` (a carried legato voice makes none). */
+  struck: Strike[][];
   /** The memory manager, when a soundfont played. */
   source: ManagedSampleSource | undefined;
   /** Seconds of the song at its written tempo, from `START`. */
@@ -216,11 +218,15 @@ export async function renderScore(score: Score, options: RenderOptions): Promise
   const scheduler = manualTicker();
   const frames = manualTicker();
   const scheduled: NoteEvent[] = [];
+  const struck: Strike[][] = [];
   const samplerSink = createSamplerSink(sampler, programOf ? { instrumentOf: programOf } : {});
   const sink: InstrumentSink = {
     noteOn(event) {
       scheduled.push(event);
+      // The sink strikes synchronously, graces and repeated attacks included.
+      const before = strikes.length;
       samplerSink.noteOn(event);
+      struck.push(strikes.slice(before));
     },
     mix(event) {
       samplerSink.mix?.(event);
@@ -260,6 +266,7 @@ export async function renderScore(score: Score, options: RenderOptions): Promise
     missed,
     scheduled,
     strikes,
+    struck,
     source,
     songSeconds: song,
   };

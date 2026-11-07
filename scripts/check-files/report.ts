@@ -203,7 +203,8 @@ export function labelsFor(check: CheckId, code: string): Labels {
     case 'layout':
       return { lane: 'score', area: 'layout' };
     case 'audio':
-      return code === 'beyond-bar-end' || code.startsWith('note-')
+      // The scheduler's findings go to the lead; the sampler sink's (note-not-struck) to audio.
+      return code.startsWith('note-') && code !== 'note-not-struck'
         ? { lane: 'lead', area: 'audio' }
         : { lane: 'audio', area: 'audio' };
   }
@@ -330,9 +331,15 @@ const CODE_TEXT: Readonly<Record<string, CodeText>> = {
     title: 'events that match no note',
     should: 'The sink receives only notes of the pass it plays.',
   },
-  'beyond-bar-end': {
-    title: 'beats past the end of an over-full bar',
-    should: 'Every beat of an over-full bar plays, and the bar lasts its longest voice (#121).',
+  'note-not-struck': {
+    title: 'scheduled notes the sampler never strikes',
+    should:
+      'Every note the sink receives on an audible track is struck on its track, except a legato destination, which continues the previous voice.',
+  },
+  'strike-late': {
+    title: 'notes struck off their scheduled time',
+    should:
+      'A note is struck at the time the sink received, within 1 ms; only graces and strokes move it, and then within its beat.',
   },
   'attack-missed': {
     title: 'scheduled notes are not heard in the render',

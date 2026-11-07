@@ -18,6 +18,7 @@ import {
   describeTrack,
   expectedAttacks,
   ratioStats,
+  strikeTiming,
   verifyAttacks,
 } from './real-file';
 import { peak, signalOf } from './signal';
@@ -164,7 +165,8 @@ describe.each(files)('$file', (file) => {
     strikeChecks(score, rendered, record);
     const scheduling = completeness(score, rendered.scheduled);
     record.violations.push(...scheduling.violations);
-    const clusters = expectedAttacks(score, rendered.scheduled, scheduling.beyond);
+    record.violations.push(...strikeTiming(score, rendered.scheduled, rendered.struck));
+    const clusters = expectedAttacks(score, rendered.scheduled);
     const attacks = verifyAttacks(
       signalOf(rendered.buffer, 0),
       signalOf(rendered.buffer, 1),

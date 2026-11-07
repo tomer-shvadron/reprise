@@ -4,8 +4,8 @@
  */
 import {
   beatStartTicks,
+  beatTicks,
   expandPlaybackSequence,
-  playedBarTicks,
   secondsAt,
   tempoMap,
 } from '@reprise/model';
@@ -14,6 +14,7 @@ import type { Score, Track } from '@reprise/model';
 import type { NoteEvent } from '../sink';
 import type { CheckViolation } from './check-meta';
 import { START } from './harness';
+import type { Strike } from './harness';
 import { attackRatios, spectralFlux } from './signal';
 import type { Signal } from './signal';
 
@@ -56,8 +57,6 @@ interface Expected {
 
 export interface Completeness {
   violations: CheckViolation[];
-  /** Keys of notes on beats that start at or after their bar's played length. */
-  beyond: Set<string>;
   expected: number;
 }
 
@@ -99,10 +98,8 @@ export function completeness(score: Score, scheduled: readonly NoteEvent[]): Com
   const map = tempoMap(score, sequence);
   const expected = new Map<string, Expected>();
   const tied = new Set<string>();
-  const beyond = new Set<string>();
   const folded = new PerTrack();
   sequence.forEach((pass, i) => {
-    const played = playedBarTicks(score, pass.masterBarIndex);
     score.tracks.forEach((track, t) => {
       track.bars[pass.masterBarIndex]?.voices.forEach((voice, v) => {
         voice.beats.forEach((beat, b) => {
@@ -111,15 +108,7 @@ export function completeness(score: Score, scheduled: readonly NoteEvent[]): Com
           const where = `bar ${String(pass.masterBarIndex + 1)} (pass ${String(i + 1)}), ${describeTrack(track, t)}, beat ${String(b + 1)}`;
           for (const note of beat.notes) {
             const key = eventKey(i, t, v, b, note.id);
-            if (start >= played) {
-              beyond.add(key);
-              folded.add(
-                'beyond-bar-end',
-                t,
-                'notes on beats past the end of an over-full bar',
-                where,
-              );
-            } else if (note.tie) {
+            if (note.tie) {
               tied.add(key);
             } else {
               expected.set(key, { when: START + secondsAt(map, i, start), where, track: t });
@@ -149,7 +138,7 @@ export function completeness(score: Score, scheduled: readonly NoteEvent[]): Com
           `${where}, ${(off * 1000).toFixed(1)} ms`,
         );
       }
-    } else if (!tied.has(key) && !beyond.has(key)) {
+    } else if (!tied.has(key)) {
       folded.add(
         'note-unexpected',
         event.trackIndex,
@@ -167,7 +156,64 @@ export function completeness(score: Score, scheduled: readonly NoteEvent[]): Com
         wanted.where,
       );
   }
-  return { violations: folded.list(score), beyond, expected: expected.size };
+  return { violations: folded.list(score), expected: expected.size };
+}
+
+/** True for a note the sampler sink carries on the previous voice instead of striking. */
+function carried(event: NoteEvent, previous: NoteEvent | undefined): boolean {
+  return (
+    event.note.hammerPull ||
+    (event.note.string > 0 && previous?.note.slide?.includes('legato') === true)
+  );
+}
+
+/**
+ * The step from the sink to the sampler: every scheduled note on an audible track is struck on
+ * its track. A plain note's strike lands on its beat within 1 ms; graces and strokes move strikes
+ * on purpose, so a beat with either needs one strike within a beat's length of its onset.
+ */
+export function strikeTiming(
+  score: Score,
+  scheduled: readonly NoteEvent[],
+  struck: readonly (readonly Strike[])[],
+): CheckViolation[] {
+  const folded = new PerTrack();
+  const lastOnString = new Map<string, NoteEvent>();
+  scheduled.forEach((event, i) => {
+    const stringKey = `${String(event.trackIndex)}:${String(event.note.string)}`;
+    const previous = lastOnString.get(stringKey);
+    lastOnString.set(stringKey, event);
+    if (!audible(score, event.track) || carried(event, previous)) return;
+    const strikes = (struck[i] ?? []).filter((strike) => strike.track === event.track.id);
+    const where = `bar ${String(event.masterBarIndex + 1)} (pass ${String(event.sequenceIndex + 1)}), ${describeTrack(event.track, event.trackIndex)}, beat ${String(event.beatIndex + 1)}`;
+    if (strikes.length === 0) {
+      folded.add(
+        'note-not-struck',
+        event.trackIndex,
+        'scheduled notes the sampler never struck',
+        where,
+      );
+      return;
+    }
+    const { effects, grace } = event.beat;
+    const moved =
+      (grace?.length ?? 0) > 0 || effects.brush !== undefined || effects.arpeggio !== undefined;
+    const secondsPerTick = event.durationTicks > 0 ? event.duration / event.durationTicks : 0;
+    const allowance = moved ? beatTicks(event.beat) * secondsPerTick : TIMING_TOLERANCE;
+    const nearest = strikes.reduce((best, strike) =>
+      Math.abs(strike.when - event.when) < Math.abs(best.when - event.when) ? strike : best,
+    );
+    const off = nearest.when - event.when;
+    if (Math.abs(off) > allowance) {
+      folded.add(
+        'strike-late',
+        event.trackIndex,
+        'notes struck off their scheduled time',
+        `${where}, ${(off * 1000).toFixed(1)} ms`,
+      );
+    }
+  });
+  return folded.list(score);
 }
 
 export interface Cluster {
@@ -177,14 +223,9 @@ export interface Cluster {
 
 /**
  * The attacks a listener should hear: scheduled notes on audible tracks, without hammer-on and
- * pull-off destinations, legato-slide destinations and beats past an over-full bar's end,
- * merged into clusters of ±30 ms.
+ * pull-off destinations and legato-slide destinations, merged into clusters of ±30 ms.
  */
-export function expectedAttacks(
-  score: Score,
-  scheduled: readonly NoteEvent[],
-  beyond: ReadonlySet<string>,
-): Cluster[] {
+export function expectedAttacks(score: Score, scheduled: readonly NoteEvent[]): Cluster[] {
   const ordered = [...scheduled].sort((a, b) => a.when - b.when);
   const lastOnString = new Map<string, NoteEvent>();
   const attacks: Cluster[] = [];
@@ -194,7 +235,6 @@ export function expectedAttacks(
     lastOnString.set(stringKey, event);
     if (!audible(score, event.track)) continue;
     if (event.note.hammerPull) continue;
-    if (beyond.has(keyOf(event))) continue;
     if (event.note.string > 0 && previous?.note.slide?.includes('legato') === true) continue;
     attacks.push({ when: event.when, event });
   }

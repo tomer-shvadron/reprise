@@ -209,7 +209,8 @@ describe('labels', () => {
     ['layout', 'outside-page', 'score', 'layout'],
     ['audio', 'attack-missed', 'audio', 'audio'],
     ['audio', 'note-not-scheduled', 'lead', 'audio'],
-    ['audio', 'beyond-bar-end', 'lead', 'audio'],
+    ['audio', 'note-not-struck', 'audio', 'audio'],
+    ['audio', 'strike-late', 'audio', 'audio'],
   ] as const)('%s %s goes to lane %s, area %s', (check, code, lane, area) => {
     expect(labelsFor(check, code)).toEqual({ lane, area });
   });

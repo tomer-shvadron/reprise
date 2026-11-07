@@ -5,7 +5,8 @@ import { note, score } from '@reprise/model/testing';
 
 import type { NoteEvent } from '../sink';
 import { START } from './harness';
-import { completeness, expectedAttacks } from './real-file';
+import type { Strike } from './harness';
+import { completeness, expectedAttacks, strikeTiming } from './real-file';
 
 /** The sink event for one note, at its written time (120 BPM, so a quarter is half a second). */
 function eventOf(
@@ -99,7 +100,7 @@ describe('completeness', () => {
     expect(codes(song, events)).toEqual(['note-unexpected']);
   });
 
-  it('counts the beats past the end of an over-full bar apart', () => {
+  it('expects every beat of an over-full bar, past its written end too', () => {
     const song = score()
       .tempo(120)
       .track('guitar')
@@ -108,12 +109,9 @@ describe('completeness', () => {
       .beat('2', [note(1, 1)])
       .beat('4', [note(1, 2)])
       .build({ validate: false });
-    const result = completeness(song, [
-      eventOf(song, 0, 0),
-      eventOf(song, 0, 1, 0, { when: START + 1 }),
-    ]);
-    expect(result.violations.map((violation) => violation.code)).toEqual(['beyond-bar-end']);
-    expect(result.beyond.size).toBe(1);
+    const first = [eventOf(song, 0, 0), eventOf(song, 0, 1, 0, { when: START + 1 })];
+    expect(codes(song, first)).toEqual(['note-not-scheduled']);
+    expect(codes(song, [...first, eventOf(song, 0, 2, 0, { when: START + 2 })])).toEqual([]);
   });
 });
 
@@ -131,7 +129,6 @@ describe('expectedAttacks', () => {
     const attacks = expectedAttacks(
       song,
       [0, 1, 2, 3].map((beat) => eventOf(song, 0, beat)),
-      new Set(),
     );
     expect(attacks.map((attack) => attack.event.beatIndex)).toEqual([0, 2]);
   });
@@ -153,24 +150,77 @@ describe('expectedAttacks', () => {
     };
     const plain = build({});
     const close = [eventOf(plain, 0, 0), eventOf(plain, 1, 0, 0, { when: START + 0.02 })];
-    expect(expectedAttacks(plain, close, new Set())).toHaveLength(1);
+    expect(expectedAttacks(plain, close)).toHaveLength(1);
     const apart = [eventOf(plain, 0, 0), eventOf(plain, 1, 0, 0, { when: START + 0.04 })];
-    expect(expectedAttacks(plain, apart, new Set())).toHaveLength(2);
+    expect(expectedAttacks(plain, apart)).toHaveLength(2);
     const muted = build({ mute: true });
     expect(
-      expectedAttacks(
-        muted,
-        [eventOf(muted, 0, 0), eventOf(muted, 1, 0, 0, { when: START + 0.04 })],
-        new Set(),
-      ),
+      expectedAttacks(muted, [
+        eventOf(muted, 0, 0),
+        eventOf(muted, 1, 0, 0, { when: START + 0.04 }),
+      ]),
     ).toHaveLength(1);
     const soloed = build({ solo: true });
-    const solo = expectedAttacks(
-      soloed,
-      [eventOf(soloed, 0, 0), eventOf(soloed, 1, 0, 0, { when: START + 0.04 })],
-      new Set(),
-    );
+    const solo = expectedAttacks(soloed, [
+      eventOf(soloed, 0, 0),
+      eventOf(soloed, 1, 0, 0, { when: START + 0.04 }),
+    ]);
     expect(solo.map((attack) => attack.event.trackIndex)).toEqual([1]);
     expect(muted.tracks[1]?.channel.mute).toBe(true);
+  });
+});
+
+describe('strikeTiming', () => {
+  const strikeOf = (event: NoteEvent, offset = 0): Strike => ({
+    track: event.track.id,
+    key: 60,
+    velocity: 100,
+    when: event.when + offset,
+    sounded: true,
+    missedSample: false,
+  });
+  const timing = (song: Score, events: NoteEvent[], struck: Strike[][]): string[] =>
+    strikeTiming(song, events, struck).map((violation) => violation.code);
+
+  it('accepts every note struck on its beat, and a legato destination not struck', () => {
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 2, { hammerPull: true })])
+      .beat('4', [note(2, 3)])
+      .build();
+    const events = [0, 1, 2].map((beat) => eventOf(song, 0, beat));
+    const [a, , c] = events;
+    if (!a || !c) throw new Error('three events');
+    expect(timing(song, events, [[strikeOf(a)], [], [strikeOf(c)]])).toEqual([]);
+  });
+
+  it('fails a note the sampler never struck, as when a track is dropped', () => {
+    const song = quarters();
+    const events = [0, 1, 3].map((beat) => eventOf(song, 0, beat));
+    const [a, b] = events;
+    if (!a || !b) throw new Error('three events');
+    expect(timing(song, events, [[strikeOf(a)], [strikeOf(b)], []])).toEqual(['note-not-struck']);
+  });
+
+  it('fails a strike 50 ms after its note', () => {
+    const song = quarters();
+    const events = [0, 1, 3].map((beat) => eventOf(song, 0, beat));
+    const struck = events.map((event, i) => [strikeOf(event, i === 1 ? 0.05 : 0)]);
+    expect(timing(song, events, struck)).toEqual(['strike-late']);
+  });
+
+  it('lets a grace or a stroke move the strike within its beat, and no further', () => {
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 0)], { effects: { brush: { direction: 'down', duration: 32 } } })
+      .build({ validate: false });
+    const [event] = [eventOf(song, 0, 0)];
+    expect(timing(song, [event], [[strikeOf(event, 0.05)]])).toEqual([]);
+    expect(timing(song, [event], [[strikeOf(event, 0.6)]])).toEqual(['strike-late']);
   });
 });

@@ -67,6 +67,9 @@ describe('renderScore records what reached the sink and the sampler', () => {
       expect(event.when).toBeCloseTo(GRID[index] ?? 0, 6);
     }
     expect(rendered.strikes.every((strike) => strike.sounded)).toBe(true);
+    expect(rendered.struck.map((strikes) => strikes.map((strike) => strike.when))).toEqual(
+      rendered.scheduled.map((event) => [event.when]),
+    );
   });
 
   it('marks a strike no region covers as not sounded', async () => {
