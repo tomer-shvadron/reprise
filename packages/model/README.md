@@ -32,7 +32,7 @@ validateScore(score); // cross-node invariants: [] when the score is sound
 | `first-bar-tempo`                 | The first master bar carries a tempo mark.                                                                                                                  |
 | `bar-count`                       | Every track has one bar per master bar.                                                                                                                     |
 | `track-kind`                      | Fretted tracks have strings and frets; drum tracks have no tuning, capo or frets.                                                                           |
-| `voice-overfull`                  | A voice's beats sum to at most the bar length. Incomplete bars are allowed.                                                                                 |
+| `voice-overfull`                  | A voice's beats sum to at most the bar length. Incomplete bars are allowed. An imported over-full voice is kept, reported as a warning, and played in full. |
 | `rest-with-notes`                 | A rest carries no notes.                                                                                                                                    |
 | `string-range`                    | Fretted notes use strings 1 to the string count; drum and pitched notes use string 0.                                                                       |
 | `fret-range`                      | Fretted notes sit on frets 0 to `track.fretCount`, whatever the capo, as Guitar Pro files hold them.                                                        |
@@ -417,8 +417,9 @@ secondsAtTick(map, 9600); // seconds at a playback tick, for the scheduler
   so (a sixteenth septuplet is 960 / 7). Comparisons use a tolerance; whatever needs
   integers (MIDI export) rounds at its own boundary.
 - `playedBarTicks(score, index)` is how long a bar lasts in playback: the written length, except
-  that an anacrusis lasts as long as its longest voice in any track (the written length when all
-  are empty). A short ordinary bar still lasts its full written length.
+  that a bar lasts as long as its longest voice in any track when that is longer (an over-full
+  bar, which only an imported file holds), and an anacrusis when that is shorter (the written
+  length when all are empty). A short ordinary bar still lasts its full written length.
 - `tickOf(score, { bar, beat, track?, voice? })` is the absolute tick in written order, ignoring
   repeats and jumps, using `playedBarTicks`. Out-of-range positions throw a `RangeError`.
 - `barStartTicks(score)` is the same for every bar at once, a prefix sum with
@@ -473,19 +474,20 @@ wins over both: WP-054 compares `fixtures/gp5/directions.gp5` and
 `fixtures/gp5/repeat-close-alternate-endings.gp5` against it once the reader lands, and the
 expander follows Guitar Pro wherever the two disagree.
 
-| Case                                         | Here                                               | alphaTab                                    | Why                                                          |
-| -------------------------------------------- | -------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------ |
-| D.S. or D.C. on a bar with a repeat end      | taken on the last pass, after the repeat           | taken on the first pass, before it          | the musical convention                                       |
-| Voltas after a D.C. or D.S.                  | only the final ending of each run                  | every volta bar                             | the musical convention (senza repetizione)                   |
-| Jumps on a skipped volta bar                 | not read                                           | read                                        | a jump inside a skipped bracket is not seen                  |
-| A jump instruction                           | fires once                                         | no guard; a D.S. after a coda loops there   | the finite-sequence guarantee                                |
-| Unmatched repeat end after landing on a coda | repeats from the coda, with a warning              | ignored: its section's start was not passed | the plan: the song start or the last repeat start            |
-| Nested repeat starts `\|: A \|: B :\| C :\|` | A B B C B B C: the latest start wins               | A B B C A B B C                             | Guitar Pro has no nested repeats; a start closes the section |
-| Voltas in a section with several repeat ends | numbered by the last repeat end taken              | numbered by the next repeat end             | rare; revisited on a real file                               |
-| `Beat.mix.tempo.duration`                    | a linear ramp in BPM                               | a step at the beat; `isLinear` is ignored   | the ruling on tempo transitions                              |
-| Seconds                                      | exact                                              | each bar truncated to whole milliseconds    | nothing to round for                                         |
-| A natural harmonic at 21.7                   | the 7th partial, +33.69 semitones                  | +36                                         | the physics: the node is 5/7 of the string                   |
-| A harmonic with no `value`, or off our nodes | fretted (natural) or the octave (every other kind) | nothing, or its range's interval            | our fallbacks; alphaTab buckets ranges of the position       |
+| Case                                         | Here                                               | alphaTab                                                         | Why                                                                                                                        |
+| -------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| D.S. or D.C. on a bar with a repeat end      | taken on the last pass, after the repeat           | taken on the first pass, before it                               | the musical convention                                                                                                     |
+| Voltas after a D.C. or D.S.                  | only the final ending of each run                  | every volta bar                                                  | the musical convention (senza repetizione)                                                                                 |
+| Jumps on a skipped volta bar                 | not read                                           | read                                                             | a jump inside a skipped bracket is not seen                                                                                |
+| A jump instruction                           | fires once                                         | no guard; a D.S. after a coda loops there                        | the finite-sequence guarantee                                                                                              |
+| Unmatched repeat end after landing on a coda | repeats from the coda, with a warning              | ignored: its section's start was not passed                      | the plan: the song start or the last repeat start                                                                          |
+| Nested repeat starts `\|: A \|: B :\| C :\|` | A B B C B B C: the latest start wins               | A B B C A B B C                                                  | Guitar Pro has no nested repeats; a start closes the section                                                               |
+| Voltas in a section with several repeat ends | numbered by the last repeat end taken              | numbered by the next repeat end                                  | rare; revisited on a real file                                                                                             |
+| `Beat.mix.tempo.duration`                    | a linear ramp in BPM                               | a step at the beat; `isLinear` is ignored                        | the ruling on tempo transitions                                                                                            |
+| Seconds                                      | exact                                              | each bar truncated to whole milliseconds                         | nothing to round for                                                                                                       |
+| A natural harmonic at 21.7                   | the 7th partial, +33.69 semitones                  | +36                                                              | the physics: the node is 5/7 of the string                                                                                 |
+| A harmonic with no `value`, or off our nodes | fretted (natural) or the octave (every other kind) | nothing, or its range's interval                                 | our fallbacks; alphaTab buckets ranges of the position                                                                     |
+| An over-full bar                             | lasts its longest voice; later bars start after it | keeps its written length; beats past it sound over the next bars | every written beat plays in order and the cursor can follow it; Guitar Pro reportedly drops the overflow, unverified (#50) |
 
 ### Tempo map
 

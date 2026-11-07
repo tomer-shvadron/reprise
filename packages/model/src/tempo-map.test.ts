@@ -269,3 +269,33 @@ describe('secondsAt and positionAtSeconds', () => {
     expect(() => secondsAt(map, 4, 0)).toThrow(RangeError);
   });
 });
+
+describe('an over-full bar', () => {
+  const overfull = (first: Beat[] = quarters(6)): Score =>
+    scoreOf([createMasterBar(), createMasterBar()], [barWith(...first), barWith(...quarters(4))]);
+
+  it('times the bar to its longest voice and starts the next bar after it', () => {
+    const map = mapOf(overfull());
+    expect(map.passes[0]).toMatchObject({ ticks: 5760, durationSeconds: 3 });
+    expect(map.passes[1]).toMatchObject({ startTick: 5760, startSeconds: 3 });
+    expect(map.durationSeconds).toBe(5);
+    expect(secondsAtTick(map, 4800)).toBe(2.5);
+  });
+
+  it('applies a tempo change on a beat past the written end', () => {
+    const beats = quarters(6);
+    beats[4] = createBeat({ mix: { tempo: { bpm: 60 } } });
+    const map = mapOf(overfull(beats));
+    expect(map.passes[0]?.durationSeconds).toBe(4);
+  });
+
+  it('finds positions inside the overflow', () => {
+    expect(positionAtSeconds(mapOf(overfull()), 2.25)).toMatchObject({
+      masterBarIndex: 0,
+      tick: 4320,
+      beatIndex: 4,
+      beatProgress: 0.5,
+      barProgress: 0.75,
+    });
+  });
+});

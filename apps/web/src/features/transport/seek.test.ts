@@ -106,6 +106,16 @@ describe('keyboard steps', () => {
     expect(stepTick(t, 0, 'lastBar', stopped)).toBe(last);
   });
 
+  it('stop on the overflow beats of an over-full bar', () => {
+    const builder = score().tempo(120).track('guitar').bar();
+    for (let fret = 0; fret < 6; fret++) builder.beat('4', [note(1, fret)]);
+    builder.bar();
+    for (let fret = 0; fret < 4; fret++) builder.beat('4', [note(2, fret)]);
+    const overfull = timelineOf(builder.build({ validate: false }));
+    expect(stepTick(overfull, BAR, 'nextBeat', stopped)).toBe(4800);
+    expect(stepTick(overfull, 4800, 'nextBeat', stopped)).toBe(5760);
+  });
+
   it('stop at the first voice’s onsets, or every voice’s, or the bar start', () => {
     const multi = score()
       .track('guitar')

@@ -21,6 +21,7 @@ import {
   playedBarTicks,
   tickOf,
 } from './ticks';
+import { validateScore } from './validate';
 
 function barWith(...beats: Beat[]): Bar {
   return {
@@ -108,6 +109,39 @@ describe('playedBarTicks', () => {
   it('keeps the written length for an empty anacrusis', () => {
     expect(playedBarTicks(scoreOf([createMasterBar({ anacrusis: true })]), 0)).toBe(3840);
   });
+
+  const fiveQuarters = (): Beat[] => Array.from({ length: 5 }, () => createBeat());
+
+  it('lasts an over-full bar as long as its longest voice in any track', () => {
+    expect(playedBarTicks(scoreOf([createMasterBar()], [barWith(...fiveQuarters())]), 0)).toBe(
+      4800,
+    );
+    const score = scoreOf([createMasterBar()], [barWith(createBeat())]);
+    const second = createTrack('fretted', {
+      bars: [
+        {
+          ...createBar(),
+          voices: [createVoice(), createVoice(fiveQuarters()), createVoice(), createVoice()],
+        },
+      ],
+    });
+    expect(playedBarTicks({ ...score, tracks: [...score.tracks, second] }, 0)).toBe(4800);
+  });
+
+  it('does not stretch a bar for float error alone', () => {
+    const septuplets = Array.from({ length: 28 }, () =>
+      createBeat({ duration: 16, tuplet: { n: 7, of: 4 } }),
+    );
+    const score = scoreOf([createMasterBar()], [barWith(...septuplets)]);
+    expect(beatStartTicks(score.tracks[0]?.bars[0]?.voices[0] ?? createVoice(), 28)).not.toBe(3840);
+    expect(playedBarTicks(score, 0)).toBe(3840);
+    expect(validateScore(score).filter((v) => v.rule === 'voice-overfull')).toEqual([]);
+  });
+
+  it('lasts an over-full anacrusis as long as its longest voice', () => {
+    const score = scoreOf([createMasterBar({ anacrusis: true })], [barWith(...fiveQuarters())]);
+    expect(playedBarTicks(score, 0)).toBe(4800);
+  });
 });
 
 describe('tickOf', () => {
@@ -136,6 +170,18 @@ describe('tickOf', () => {
     const starts = barStartTicks(score);
     expect(starts).toEqual([0, 960, 3840, 7680]);
     for (const bar of [0, 1, 2]) expect(starts[bar]).toBe(tickOf(score, { bar }));
+  });
+
+  it('starts the bar after an over-full bar where its longest voice ends', () => {
+    const overfull = scoreOf(
+      [createMasterBar(), createMasterBar()],
+      [
+        barWith(...Array.from({ length: 5 }, () => createBeat())),
+        barWith(...Array.from({ length: 4 }, () => createBeat())),
+      ],
+    );
+    expect(barStartTicks(overfull)).toEqual([0, 4800, 8640]);
+    expect(tickOf(overfull, { bar: 1 })).toBe(4800);
   });
 
   it('rejects positions that do not exist', () => {

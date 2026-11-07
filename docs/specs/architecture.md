@@ -92,6 +92,8 @@ Changed by #112 (2026-11-07): `createAudioEngine({ context, budgetBytes?, schedu
 
 Changed by #113 (2026-11-07): `LayoutOptions.headerHeight` keeps room at the top of the first page for a header the caller draws. That page's smaller room splits a system taller than it, as #85 splits a system taller than a page. `Platform.print` takes an optional `{ pageSize: 'A4' | 'Letter' }`, which the Electron implementation passes to `webContents.print` so the system dialog opens on the chosen paper; the browser relies on the print's `@page` size.
 
+Changed by #118 (2026-11-07): `playedBarTicks` lasts an over-full bar (a voice longer than its time signature, which only an imported file holds) as long as its longest voice in any track, as it already did for an anacrusis that holds less, so every written beat plays in order and the bars after it start later; the tempo map, the scheduler, the cursor and `tickOf` / `barStartTicks` follow it. `voice-overfull` stays an invariant: readers report it as a warning and commands still refuse to create one.
+
 Synced by #74 (2026-11-06), no contract change: the Layout sketch lists the `LayoutOptions`, `LayoutMetrics` and `Anchor` fields #59 shipped and the `tiedNotes` option #68 added, and the Audio sketch names the `InstrumentSink` #55 shipped and #73 widened.
 
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
@@ -243,7 +245,7 @@ A tied note's origin (`tieOriginOf`) is the most recent note in its slot (its st
 const PPQ = 960;
 function beatTicks(beat: Pick<Beat, 'duration' | 'dots' | 'tuplet'>): number;   // never rounded; tuplets can be fractional
 function barTicks(masterBar: Pick<MasterBar, 'timeSignature'>): number;          // written length
-function playedBarTicks(score, masterBarIndex: number): number;                  // an anacrusis lasts its longest voice
+function playedBarTicks(score, masterBarIndex: number): number;                  // an anacrusis or an over-full bar lasts its longest voice
 function beatStartTicks(voice: Pick<Voice, 'beats'>, index: number): number;     // index = beats.length gives the voice's end
 function barStartTicks(score): number[];                                         // written-order bar starts, masterBars.length + 1 entries
 function tickOf(score, position: { bar: number; beat?: number; track?: number; voice?: number }): number;   // written order; RangeError when out of range

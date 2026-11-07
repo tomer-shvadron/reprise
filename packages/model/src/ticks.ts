@@ -34,9 +34,13 @@ export function beatStartTicks(voice: Pick<Voice, 'beats'>, index: number): numb
   return ticks;
 }
 
+// The tolerance `voice-overfull` uses, so a bar stretches exactly when that rule fires.
+const TICK_EPSILON = 1e-6;
+
 /**
- * How long a master bar lasts in playback: its written length, except that an anacrusis lasts as
- * long as its longest voice in any track (the written length when every voice is empty).
+ * How long a master bar lasts in playback: its written length, unless its longest voice in any
+ * track is longer (an over-full bar, which only an imported file holds) or it is an anacrusis
+ * holding less (the written length when every voice is empty); then that voice's length.
  */
 export function playedBarTicks(
   score: Pick<Score, 'masterBars' | 'tracks'>,
@@ -47,14 +51,14 @@ export function playedBarTicks(
     throw new RangeError(`master bar ${String(masterBarIndex)} does not exist`);
   }
   const written = barTicks(masterBar);
-  if (!masterBar.anacrusis) return written;
   let longest = 0;
   for (const track of score.tracks) {
     for (const voice of track.bars[masterBarIndex]?.voices ?? []) {
       longest = Math.max(longest, beatStartTicks(voice, voice.beats.length));
     }
   }
-  return longest > 0 ? Math.min(longest, written) : written;
+  if (longest > written + TICK_EPSILON) return longest;
+  return masterBar.anacrusis && longest > 0 ? Math.min(longest, written) : written;
 }
 
 export interface ScorePosition {
