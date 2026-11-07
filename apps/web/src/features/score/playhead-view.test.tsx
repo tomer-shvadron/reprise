@@ -304,6 +304,18 @@ describe('a smooth scroll in flight', () => {
     expect(smooth).toHaveLength(1);
   });
 
+  it('keeps its destination through a viewport change, which does not stop it', () => {
+    const { smooth, seek, resize, cursors } = setup('paged');
+    const first = cursors[0];
+    const late = cursors.at(-1);
+    if (!first || !late) throw new Error('no cursors');
+    seek(late);
+    resize(VIEWPORT.width, VIEWPORT.height - 200);
+    expect(region()).toHaveAttribute('data-scrolling');
+    seek(first);
+    expect(smooth).toHaveLength(2);
+  });
+
   it('is retargeted on x in continuous view', () => {
     const { smooth, seek, cursors } = setup('continuous');
     const first = cursors[0];

@@ -256,11 +256,21 @@ export function ScoreView({
   useLayoutEffect(() => {
     if (pending.current?.centre === scrolledCentre) pending.current = undefined;
   }, [scrolledCentre]);
-  // Its mounted set was for the old geometry, and so was a flight's destination.
+  // The browser keeps scrolling to the same position through a resize or a new layout, clamped
+  // to the new content; a zoom's anchoring then stops it.
+  const reclamp = useEffectEvent(() => {
+    const target = scroller.current;
+    const aim = flight.current;
+    if (!target || !aim) return;
+    const clamped = clampScroll(aim, size, viewport);
+    if (near(clamped, readScroll(target), 1)) land(target);
+    else flight.current = clamped;
+  });
+  // The pending mounted set was for the old geometry.
   useLayoutEffect(() => {
     pending.current = undefined;
-    land(scroller.current);
-  }, [zoom, viewport, layout, land]);
+    reclamp();
+  }, [zoom, viewport, layout]);
 
   // Rendering only when the mounted systems or pages change keeps following, which scrolls
   // every frame, from re-rendering the view every frame. The comparison is with the set the last

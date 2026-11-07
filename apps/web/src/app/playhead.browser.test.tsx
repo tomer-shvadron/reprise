@@ -280,4 +280,18 @@ describe('the playhead in the app', () => {
     expect(lineInView()).toBe(true);
     expect(view).not.toHaveAttribute('data-scrolling');
   }, 30_000);
+
+  it('keeps following the smooth scroll through a viewport change, which does not stop it', async () => {
+    const { result } = await setup(largeScore(1, 40));
+    const { view, ended } = await scrollDown(result);
+    await frame();
+    view.style.height = '600px';
+    for (let i = 0; i < 2; i++) await frame();
+    expect(view.clientHeight).toBe(600);
+    expect(view).toHaveAttribute('data-scrolling');
+    press('Home');
+    await ended;
+    expect(lineInView()).toBe(true);
+    expect(view).not.toHaveAttribute('data-scrolling');
+  }, 30_000);
 });
