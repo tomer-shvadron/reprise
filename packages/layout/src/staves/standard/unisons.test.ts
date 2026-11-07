@@ -428,6 +428,50 @@ describe('ledger lines and ties on unisons', () => {
     expect(reach).toBeGreaterThanOrEqual(rightOf(later) + extension - EPSILON);
   });
 
+  it('stops a bridged ledger line short of a moved voice’s accidentals and parentheses', () => {
+    const cases: [Note[], Note[]][] = [
+      [[note(1, 15)], [note(1, 14)]],
+      [[note(1, 15)], [note(2, 19, { ghost: true })]],
+      [[note(1, 15)], [note(1, 14), note(2, 19, { ghost: true })]],
+      [[note(5, 0)], [note(5, 1)]],
+      [[note(6, 3)], [note(6, 2)]],
+    ];
+    for (const [first, second] of cases) {
+      // Standard only: the tab cannot hold two voices on one string at one onset.
+      const built = guitar('standard')
+        .bar()
+        .beat('1', first)
+        .voice(1)
+        .beat('1', second)
+        .build({ ids: 'sequential' });
+      const result = laid(built);
+      const moved = head(result, noteOf(built, 0, 0, 0, 0, 1).id);
+      expect(moved.x).toBeGreaterThan(head(result, noteOf(built, 0, 0, 0, 0, 0).id).x + 5);
+      const beats = built.tracks[0]?.bars[0]?.voices.map((v) => v.beats[0]?.id ?? '') ?? [];
+      const lines = beats.flatMap((id) => ledgers(result, id)).map((line) => line.bbox);
+      const signs = result.primitives.filter(
+        (p) =>
+          p.kind === 'glyph' &&
+          (p.glyph.startsWith('accidental') || p.glyph === 'noteheadParenthesisLeft'),
+      );
+      expect(signs.length).toBeGreaterThan(0);
+      // A ghost head's own ledger line may start inside its parenthesis; none may run into a
+      // sign left of the heads from its left.
+      for (const sign of signs) {
+        for (const line of lines) {
+          const across =
+            line.y + line.height / 2 > sign.bbox.y &&
+            line.y + line.height / 2 < sign.bbox.y + sign.bbox.height &&
+            line.x < sign.bbox.x &&
+            rightOf(line) > sign.bbox.x;
+          expect(across, `${sign.kind === 'glyph' ? sign.glyph : ''} at y ${String(line.y)}`).toBe(
+            false,
+          );
+        }
+      }
+    }
+  });
+
   it('ends a tie at a moved head’s edge', () => {
     const { built, result } = checked(() =>
       guitar('standard')

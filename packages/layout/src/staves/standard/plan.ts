@@ -4,6 +4,7 @@ import { glyphMetrics, type GlyphName } from '../../metrics';
 import { glyphWidth } from '../../primitives';
 import type { StaffBar } from '../staff-module';
 import {
+  crossesLedger,
   headEdges,
   mainHeads,
   planChord,
@@ -527,11 +528,16 @@ function sharedHeads(
 
 /**
  * Draws a moved chord's ledger lines back to an earlier voice's on the same row, which its
- * extent kept a gap short of, so each row reads as one line.
+ * extent kept a gap short of, so each row reads as one line. Only across empty room: a row one
+ * of its accidentals or parentheses reaches keeps that sign's clearance as its gap, and a beat
+ * with anything else left of its chord (grace notes, a stroke, a slide in) bridges no row.
  */
 function bridgeLedgers(onset: readonly BeatPlan[], count: number, later: BeatPlan): void {
   const shift = later.shift ?? 0;
-  for (const ledger of later.chord?.ledgers ?? []) {
+  const { chord } = later;
+  if (!chord || later.left - shift < chord.left - 1e-6) return;
+  for (const ledger of chord.ledgers) {
+    if (crossesLedger(chord, ledger.y)) continue;
     for (let e = 0; e < count; e++) {
       const beat = onset[e];
       if (!beat) continue;

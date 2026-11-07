@@ -429,6 +429,23 @@ export function planChord(notes: readonly ChordNote[], options: ChordOptions): C
   };
 }
 
+/**
+ * Whether one of the chord's accidentals or ghost parentheses, which stand left of its heads,
+ * reaches the ledger line at `y`.
+ */
+export function crossesLedger(chord: ChordPlan, y: number): boolean {
+  const unit = chord.space * chord.scale;
+  const half = (engraving.legerLineThickness * unit) / 2;
+  const crosses = ([top, bottom]: [number, number]): boolean => y + half > top && y - half < bottom;
+  return chord.heads.some(
+    (head) =>
+      (head.accidental !== undefined &&
+        crosses(verticalSpan(head.accidental.glyphs, head.y, unit))) ||
+      (head.ghost === true &&
+        crosses([head.y - PAREN_LEFT.top * unit, head.y - PAREN_LEFT.bottom * unit])),
+  );
+}
+
 /** The heads drawn for the chord's notes, without harmonics' sounding diamonds. */
 export function mainHeads(chord: ChordPlan): HeadPlan[] {
   return chord.heads.filter((head) => !head.sounding);
