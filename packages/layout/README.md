@@ -91,7 +91,7 @@ What every staff shares for effects; every staff uses it. The rules are in [`not
 
 `tabModule({ tiedNotes })` draws one line per string, fret numbers over `paper` knockouts, rests, grace notes, the rhythm notation of each voice (voice 1 below the staff, the others above when voice 1 is present), ties, the note effects, and in its lanes chord names, fingering, beat text, lyrics and dynamics; under a standard staff (both mode, read from `StaffBar.staves`) it draws the numbers, ties, words and lane effects only (ADR-0021, ADR-0022). `staffSlots` builds it per layout from `LayoutOptions.tiedNotes`, which is part of the bar cache key. Its rules and numbers are in [`notation.md`](../../docs/reference/notation.md) under "Tab staff" and "Rhythm notation". It emits a `note` anchor per note (the knockout box, grace notes included) and a `beat` anchor per beat, voice by voice.
 
-- `analysis.ts` turns a bar into what measure and render both need (labels with their harmonic and trill suffixes, extents including slides, bends and stroke arrows, beam and tuplet groups, tremolo stem lengths, the rows drawn above and below), cached per `Bar` object. It reads the bar alone, so a cached measurement stays true; render also reads other bars of the track (tie and hammer-on origins up to three bars back, slide origins one bar back, the dynamic in effect from every earlier bar, the next bar for runs and connections that cross the bar line), which is safe because the cache rebuilds every system within `BAR_REACH` bars of a re-measured bar, on either side.
+- `analysis.ts` turns a bar into what measure and render both need (labels with their harmonic and trill suffixes, extents including slides, bends and stroke arrows, beam and tuplet groups, tremolo stem lengths, the rows drawn above and below, including room for every arc and letter the bar can draw and a bare arc under the bottom string for each note), cached per `Bar` object. It reads the bar alone, so a cached measurement stays true; render also reads other bars of the track (tie and hammer-on origins up to three bars back, slide origins one bar back, the dynamic in effect from every earlier bar, the next bar for runs and connections that cross the bar line), which is safe because the cache rebuilds every system within `BAR_REACH` bars of a re-measured bar, on either side.
 - `lanes.ts` is the module's `lanes()`: the effect lanes, the word lanes, lyrics and, in tab mode, dynamics.
 - `effects.ts` draws what sits on the strings: bends, slides, hammer-on arcs with their letters, the halves of connections at a system break, and arpeggio and brush arrows, with the helpers it shares with the five-line staves from `src/staves/effects/`.
 - `measure.ts` and `render.ts` are the module's measure and render.
@@ -118,7 +118,7 @@ The grouping rules every staff shares (`grouping.ts`: the beat-grouping table, b
 - **Both mode**: when `StaffBar.staves` is `['standard', 'tab']`, the standard staff draws all the rhythm notation, dynamics and fingering and the effects attached to the notes, and the tab the lane effects and the letters; what the tab keeps is the tab's **Both mode** bullet in [`notation.md`](../../docs/reference/notation.md#tab-staff-wp-021).
 - `src/staves/standard/rhythm/` draws the five-line staves' rhythm notation (stems, flags, sloped beams, dots, ties, tuplet marks) from x positions, note-head y extents, directions and durations; beam and tuplet grouping come from the shared `src/staves/rhythm/`.
 - Anchors: one `note` anchor per main head (grace notes included) with the head's box, less any width it shares with a neighbour across a stem, a harmonic diamond's kept to one staff space tall (a percussion diamond keeps its glyph's); a sounding diamond has none; one `beat` anchor per beat and voice.
-- Known: the origin half of a hammer-on or legato slur cut by a system break keeps room only when it starts in its voice's last beat, so it can reach about 0.45 spaces past the measured room otherwise, as the tab's arcs can.
+- Known: the origin half of a hammer-on or legato slur cut by a system break keeps room only when it starts in its voice's last beat, so it can reach about 0.45 spaces past the measured room otherwise.
 
 ## Metrics pipeline
 
@@ -146,34 +146,35 @@ What still re-renders every later system: a continuous edit that changes a bar's
 
 Where the contract left something open:
 
-| Question                              | Decision                                                                                                                                       |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Several pages in one coordinate space | Stacked vertically, `pageGap` apart; `Page.bbox` places each.                                                                                  |
-| What `zoom` scales                    | The notation; paper size and margins stay as given.                                                                                            |
-| Continuous mode and virtualization    | Systems are segments of the one line, about `width` px each.                                                                                   |
-| `Bar.clef` without a later change     | Holds until the next bar that sets a clef.                                                                                                     |
-| Notation a track cannot show          | Drums always percussion; tab without strings falls back to standard.                                                                           |
-| Justifying the last paged system      | Only when it is at least three quarters full.                                                                                                  |
-| Signatures at a line start            | Clef and key on every line; the time signature only at the start and on a change.                                                              |
-| Courtesy signatures                   | Paged systems end with the next system's key and time change after the last bar line; `SystemPlan.courtesy` reserves the room when breaking.   |
-| Repeat counts                         | `xN` above the end repeat for N > 2 plays, in its own lane above the system's first staff.                                                     |
-| Rows above and below a staff          | Lanes in a fixed order, sized per system so they line up across bars; two kinds never share a row.                                             |
-| Effects in both mode                  | Lane effects once, on the tab (ADR-0022); articulations and tremolo strokes on the standard staff (#86).                                       |
-| Harmonics on five-line staves         | Diamonds at the rounded sounding pitch, `Math.round(soundingPitch(track, note))`; a natural harmonic's is its head, the others' an extra head. |
-| Articulations on five-line staves     | On the head side with one voice; on the stem side with several and on drums.                                                                   |
-| Ghost notes on five-line staves       | Parenthesis glyphs around each ghost head, outside both head columns.                                                                          |
-| Bends on a lone standard staff        | The tab's shafts, from the heads into the staff's bend lane; no target heads (#111).                                                           |
-| Arpeggio and brush                    | An arpeggio on both staves; a brush on the standard staff only when it is alone, since in both mode the tab draws it.                          |
-| Waves                                 | Procedural paths, one per run and bar, not repeated SMuFL wiggle glyphs.                                                                       |
-| Dynamics                              | One rule on every staff: per voice, against the voice's previous played beat in any earlier bar.                                               |
-| Double coda and segno segno           | The single glyph drawn twice; SMuFL has no double form.                                                                                        |
-| Tempo in another unit                 | The number shown against `unit` is `bpm` converted from quarters, rounded to 0.01.                                                             |
-| Bar lines in a track with two staves  | End bar lines run on through the gap between the staves; repeat dots stay inside each.                                                         |
-| Determinism                           | Byte-identical results for identical input, except `metrics.layoutMs`.                                                                         |
-| System reuse after an edit            | Every system more than `BAR_REACH` bars from a re-measured bar, placed and entered as before, is reused by identity.                           |
-| Continuous width changes              | Re-render every later segment; translating rounded coordinates would not give a cold layout's bytes (#101).                                    |
-| Long-note spacing                     | One curve in the engine for every staff, Guitar Pro's feel beyond a quarter, so switching notation keeps bar widths.                           |
-| A system taller than the page         | Split between tracks into parts at page tops, never through a staff and never scaled; no reference splits or scales automatically (#85).       |
-| A continuation's header               | Bar numbers, then voltas when the system has them; sections, tempo, jumps and `xN` stay on the first part.                                     |
-| Header room                           | An option (`headerHeight`), not a title block in layout: the caller draws the header, and layout's text metrics cover Geist 400 only.          |
-| Bar numbers                           | On continuations only, every bar, `masterBarIndex + 1`.                                                                                        |
+| Question                              | Decision                                                                                                                                        |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Several pages in one coordinate space | Stacked vertically, `pageGap` apart; `Page.bbox` places each.                                                                                   |
+| What `zoom` scales                    | The notation; paper size and margins stay as given.                                                                                             |
+| Continuous mode and virtualization    | Systems are segments of the one line, about `width` px each.                                                                                    |
+| `Bar.clef` without a later change     | Holds until the next bar that sets a clef.                                                                                                      |
+| Notation a track cannot show          | Drums always percussion; tab without strings falls back to standard.                                                                            |
+| Justifying the last paged system      | Only when it is at least three quarters full.                                                                                                   |
+| Signatures at a line start            | Clef and key on every line; the time signature only at the start and on a change.                                                               |
+| Courtesy signatures                   | Paged systems end with the next system's key and time change after the last bar line; `SystemPlan.courtesy` reserves the room when breaking.    |
+| Repeat counts                         | `xN` above the end repeat for N > 2 plays, in its own lane above the system's first staff.                                                      |
+| Rows above and below a staff          | Lanes in a fixed order, sized per system so they line up across bars; two kinds never share a row.                                              |
+| Effects in both mode                  | Lane effects once, on the tab (ADR-0022); articulations and tremolo strokes on the standard staff (#86).                                        |
+| Harmonics on five-line staves         | Diamonds at the rounded sounding pitch, `Math.round(soundingPitch(track, note))`; a natural harmonic's is its head, the others' an extra head.  |
+| Articulations on five-line staves     | On the head side with one voice; on the stem side with several and on drums.                                                                    |
+| Ghost notes on five-line staves       | Parenthesis glyphs around each ghost head, outside both head columns.                                                                           |
+| Bends on a lone standard staff        | The tab's shafts, from the heads into the staff's bend lane; no target heads (#111).                                                            |
+| Arpeggio and brush                    | An arpeggio on both staves; a brush on the standard staff only when it is alone, since in both mode the tab draws it.                           |
+| Waves                                 | Procedural paths, one per run and bar, not repeated SMuFL wiggle glyphs.                                                                        |
+| Dynamics                              | One rule on every staff: per voice, against the voice's previous played beat in any earlier bar.                                                |
+| Double coda and segno segno           | The single glyph drawn twice; SMuFL has no double form.                                                                                         |
+| Tempo in another unit                 | The number shown against `unit` is `bpm` converted from quarters, rounded to 0.01.                                                              |
+| Bar lines in a track with two staves  | End bar lines run on through the gap between the staves; repeat dots stay inside each.                                                          |
+| Determinism                           | Byte-identical results for identical input, except `metrics.layoutMs`.                                                                          |
+| System reuse after an edit            | Every system more than `BAR_REACH` bars from a re-measured bar, placed and entered as before, is reused by identity.                            |
+| Continuous width changes              | Re-render every later segment; translating rounded coordinates would not give a cold layout's bytes (#101).                                     |
+| Long-note spacing                     | One curve in the engine for every staff, Guitar Pro's feel beyond a quarter, so switching notation keeps bar widths.                            |
+| A system taller than the page         | Split between tracks into parts at page tops, never through a staff and never scaled; no reference splits or scales automatically (#85).        |
+| A continuation's header               | Bar numbers, then voltas when the system has them; sections, tempo, jumps and `xN` stay on the first part.                                      |
+| Header room                           | An option (`headerHeight`), not a title block in layout: the caller draws the header, and layout's text metrics cover Geist 400 only.           |
+| Room for tab arcs                     | From the bar alone: a lettered arc's letter box, and under the bottom string a bare arc per note; a cut legato slide's `sl.` on its first half. |
+| Bar numbers                           | On continuations only, every bar, `masterBarIndex + 1`.                                                                                         |

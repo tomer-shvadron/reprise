@@ -1,8 +1,8 @@
 /**
- * Vitest global setup for the audio suite: reads every fixture of the corpus with
- * `@reprise/formats` here, in Node, and hands the scores to the browser as native documents.
- * `@reprise/audio` may not import the readers (the engines stay isolated), but its smoke test
- * still plays the real corpus.
+ * Vitest global setup for the audio and layout suites: reads every fixture of the corpus with
+ * `@reprise/formats` here, in Node, and hands the scores to the tests as native documents.
+ * Neither engine may import the readers (the engines stay isolated), but the audio smoke test
+ * still plays the real corpus in the browser and the layout stray test lays it out in Node.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
