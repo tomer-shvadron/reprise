@@ -381,6 +381,39 @@ function noteMarks(): Score {
   return builder.build({ ids: 'sequential' });
 }
 
+/** Unisons in one voice and across two, and one letter at two alterations in a chord. */
+function unisons(): Score {
+  return score()
+    .track('guitar')
+    .bar()
+    .beat('4', [note(1, 0), note(2, 5)])
+    .beat('4', [note(1, 0, { dead: true }), note(2, 5)])
+    .beat('2', [note(1, 5), note(2, 8), note(4, 17)])
+    .bar()
+    .beat('4', [note(1, 0), note(2, 5), note(3, 9)])
+    .beat('4', [note(1, 0)])
+    .beat('2', [note(1, 0)])
+    .voice(1)
+    .rest('4')
+    .beat('4', [note(2, 5)])
+    .beat('4', [note(2, 5)])
+    .beat('4', [note(2, 5)])
+    .bar()
+    .beat('4', [note(1, 0, { dead: true })])
+    .beat('4.', [note(1, 0)])
+    .beat('8', [note(1, 3)])
+    .beat('4', [note(1, 3)])
+    .voice(1)
+    .beat('4', [note(2, 5)])
+    .beat('4', [note(2, 5)])
+    .beat('2', [note(2, 8)])
+    .bar()
+    .beat('4', [note(1, 1), note(2, 7)])
+    .beat('4', [note(1, 2), note(2, 7)])
+    .beat('2', [note(1, 1)])
+    .build({ ids: 'sequential' });
+}
+
 function hasGlyph(result: LayoutResult, prefix: string): void {
   expect(
     result.primitives.some((p) => p.kind === 'glyph' && p.glyph.startsWith(prefix)),
@@ -507,6 +540,41 @@ export const SCENES: readonly Scene[] = [
     covers: 'A pitched, non-fretted track on the standard staff',
     source: { fixture: 'gp/sustain.gp' },
     notations: ['default'],
+  },
+  {
+    id: 'unisons',
+    covers:
+      'Unisons in one voice (two and three strings, with a dead note, beside a second) and across two voices (shared heads, voices moved right); F with F sharp in one chord',
+    source: { build: unisons },
+    notations: ['standard', 'both'],
+    guard: (result) => {
+      const notes = result.anchors.filter(
+        (anchor) => anchor.kind === 'note' && anchor.staff === 'standard',
+      );
+      for (const [i, a] of notes.entries()) {
+        for (const b of notes.slice(i + 1)) {
+          const apart =
+            a.bbox.x + a.bbox.width <= b.bbox.x + 0.02 ||
+            b.bbox.x + b.bbox.width <= a.bbox.x + 0.02 ||
+            a.bbox.y + a.bbox.height <= b.bbox.y + 0.02 ||
+            b.bbox.y + b.bbox.height <= a.bbox.y + 0.02;
+          expect(apart, `note anchors ${a.id} and ${b.id} overlap`).toBe(true);
+        }
+      }
+      const rows = new Map<string, number[]>();
+      for (const { bbox } of notes) {
+        const key = bbox.y.toFixed(1);
+        rows.set(
+          key,
+          [...(rows.get(key) ?? []), bbox.x].sort((x, y) => x - y),
+        );
+      }
+      // Three heads of one pitch side by side span less than three head widths.
+      const three = [...rows.values()].some((xs) =>
+        xs.some((x, i) => (xs[i + 2] ?? Infinity) - x < 30),
+      );
+      expect(three, 'some beat must set three heads of one pitch side by side').toBe(true);
+    },
   },
   {
     id: 'long',

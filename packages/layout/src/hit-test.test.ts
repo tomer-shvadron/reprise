@@ -85,4 +85,36 @@ describe('hitTest', () => {
       id: `${split.systems[0]?.id ?? ''}/1`,
     });
   });
+  it('finds each note of a unison in one voice', () => {
+    const built = score()
+      .track('guitar', { display: { notation: 'standard', octaveShift: 1 } })
+      .bar()
+      .beat('4', [note(1, 0), note(2, 5), note(3, 9)])
+      .build({ ids: 'sequential' });
+    const laid = layout(built, paged);
+    const notes = laid.anchors.filter((anchor) => anchor.kind === 'note');
+    expect(notes).toHaveLength(3);
+    for (const found of notes) expect(hitTest(laid, ...centre(found))?.id).toBe(found.id);
+  });
+
+  it('finds each voice on its half of a head two voices share', () => {
+    const built = score()
+      .track('guitar', { display: { notation: 'standard', octaveShift: 1 } })
+      .bar()
+      .beat('4', [note(1, 0)])
+      .voice(1)
+      .beat('4', [note(2, 5)])
+      .build({ ids: 'sequential' });
+    const laid = layout(built, paged);
+    const notes = laid.anchors.filter((anchor) => anchor.kind === 'note');
+    expect(notes).toHaveLength(2);
+    for (const found of notes) expect(hitTest(laid, ...centre(found))?.id).toBe(found.id);
+    const [left, right] = [...notes].sort((a, b) => a.bbox.x - b.bbox.x);
+    if (!left || !right) throw new Error('no halves');
+    const y = left.bbox.y + left.bbox.height / 2;
+    expect(hitTest(laid, left.bbox.x + 1, y)?.id).toBe(left.id);
+    expect(hitTest(laid, right.bbox.x + right.bbox.width - 1, y)?.id).toBe(right.id);
+    // The up-stem voice, the first, keeps the right half.
+    expect(right.voice).toBe(0);
+  });
 });
