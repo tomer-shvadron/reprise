@@ -20,6 +20,8 @@ export interface FollowWatch {
 export interface E2eProbe {
   /** Names the stubbed open picker returns, oldest first; empty means the user cancels. */
   picks: string[];
+  /** Calls to the open picker, cancelled ones included. */
+  opens: number;
   saves: { suggestedName: string | undefined; types: unknown }[];
   /** Each completed `createWritable().close()`, with the file's size once closed. */
   writes: { name: string; size: number }[];
@@ -109,6 +111,7 @@ export function installPageHooks(): void {
   Object.defineProperty(window, 'showOpenFilePicker', {
     configurable: true,
     value: async () => {
+      window.__e2e.opens += 1;
       const name = picks.shift();
       if (name === undefined) throw new DOMException('The user aborted a request.', 'AbortError');
       return [await (await root()).getFileHandle(name)];
@@ -251,6 +254,7 @@ export function installPageHooks(): void {
 
   window.__e2e = {
     picks,
+    opens: 0,
     saves,
     writes,
     contexts,

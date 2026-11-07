@@ -7,8 +7,9 @@ import { installPageHooks, type FollowWatch, type ReadoutField } from './page-ho
 
 export { expect };
 
-/** Decoding the GM bank's presets for a song takes about a second locally. */
+/** Decoding a song's GM presets, or one new instrument, takes about a second locally. */
 export const SONG_READY_MS = 15_000;
+const SETTLE_MS = 5000;
 
 export interface Point {
   x: number;
@@ -168,6 +169,20 @@ export class App {
     await expect.poll(async () => (await this.level()).peak).toBeLessThan(1e-4);
   }
 
+  /** A key press that is no shortcut: the user's first gesture, which builds the AudioContext. */
+  async gesture(): Promise<void> {
+    await this.page.keyboard.press('x');
+    await expect.poll(() => this.contextState()).toBe('running');
+  }
+
+  async contextState(): Promise<string> {
+    return this.page.evaluate(() => window.__e2e.contexts[0]?.state ?? 'none');
+  }
+
+  async opens(): Promise<number> {
+    return this.page.evaluate(() => window.__e2e.opens);
+  }
+
   async contexts(): Promise<number> {
     return this.page.evaluate(() => window.__e2e.contexts.length);
   }
@@ -201,9 +216,9 @@ export class App {
 
   /** Waits until the score's smooth scroll after a seek has stopped for a few frames. */
   async settle(): Promise<void> {
-    await this.score().evaluate(
-      (region) =>
-        new Promise<void>((resolve) => {
+    const settled = await this.score().evaluate(
+      (region, guard) =>
+        new Promise<boolean>((resolve) => {
           let last = '';
           let still = 0;
           const start = performance.now();
@@ -211,12 +226,15 @@ export class App {
             const now = `${String(region.scrollLeft)},${String(region.scrollTop)}`;
             still = now === last ? still + 1 : 0;
             last = now;
-            if (still >= 5 || performance.now() - start > 5000) resolve();
+            if (still >= 5) resolve(true);
+            else if (performance.now() - start > guard) resolve(false);
             else requestAnimationFrame(frame);
           };
           requestAnimationFrame(frame);
         }),
+      SETTLE_MS,
     );
+    if (!settled) throw new Error(`The score kept scrolling for ${String(SETTLE_MS)} ms`);
   }
 
   /** An element's box in the score's scroll-content coordinates, which a seek's scroll keeps. */
@@ -243,7 +261,9 @@ export class App {
 
   /**
    * Presses ⌘→ `times` times, each after the last seek's scroll has settled: a seek pressed
-   * while the previous one's smooth scroll is in flight leaves the view behind (an app bug).
+   * while the previous one's smooth scroll is in flight leaves the view behind, an app bug
+   * recorded on #76 (https://github.com/tomer-shvadron/reprise/issues/76#issuecomment-6705653330)
+   * and pinned by `seek.spec.ts`. Fixing it makes this a plain loop.
    */
   async nextBars(times: number): Promise<void> {
     for (let i = 0; i < times; i += 1) {
