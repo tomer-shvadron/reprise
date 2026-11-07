@@ -16,6 +16,7 @@ import {
   setMasterBar,
   setNote,
   setNoteEffect,
+  type Beat,
   type Command,
   type Dynamics,
   type Notation,
@@ -28,7 +29,7 @@ import { describe, expect, it } from 'vitest';
 
 import { LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from './index';
 import { expectValid, stable } from './test/check-result';
-import { withEffects } from './test/effects';
+import { withEffects, withNoteMarks } from './test/effects';
 
 /** Raise locally to soak the cache; 20 keeps the unit suite fast. */
 const RUNS = 20;
@@ -44,11 +45,16 @@ type Edit =
   | { kind: 'removeBar'; bar: number }
   | { kind: 'masterBar'; bar: number; change: 'time' | 'key' | 'repeat' }
   | { kind: 'chord'; at: Where }
+  | { kind: 'mark'; at: Where; mark: Mark }
   | { kind: 'undo' }
   | { kind: 'redo' }
   | { kind: 'options'; change: OptionChange };
 
 type OptionChange = 'subset' | 'notation' | 'width' | 'zoom';
+
+/** A note effect the five-line staves draw at the notes, toggled on a beat's first note. */
+type Mark =
+  'staccato' | 'accent' | 'ghost' | 'hammer' | 'harmonic' | 'slide' | 'tremolo' | 'arpeggio';
 
 /** Indices taken modulo what the score has when the edit applies. */
 interface Where {
@@ -91,6 +97,20 @@ const edit: Arbitrary<Edit> = oneof(
     change: constantFrom<'time' | 'key' | 'repeat'>('time', 'key', 'repeat'),
   }),
   record({ kind: constantFrom('chord' as const), at: where }),
+  record({
+    kind: constantFrom('mark' as const),
+    at: where,
+    mark: constantFrom<Mark>(
+      'staccato',
+      'accent',
+      'ghost',
+      'hammer',
+      'harmonic',
+      'slide',
+      'tremolo',
+      'arpeggio',
+    ),
+  }),
   record({ kind: constantFrom('undo' as const) }),
   record({ kind: constantFrom('redo' as const) }),
   record({
@@ -186,6 +206,39 @@ function command(score: Score, step: Edit): Command | undefined {
       return removeBeat({ beatId: beat.id });
     case 'chord':
       return setBeatEffect({ beatId: beat.id }, { chord: { name: 'Cmaj7(add9,#11)/G' } });
+    case 'mark':
+      return markCommand(beat, step.mark);
+  }
+}
+
+function markCommand(beat: Beat, mark: Mark): Command | undefined {
+  const { effects } = beat;
+  if (mark === 'tremolo') {
+    const tremoloPicking = effects.tremoloPicking ? null : 32;
+    return setBeatEffect({ beatId: beat.id }, { effects: { tremoloPicking } });
+  }
+  if (mark === 'arpeggio') {
+    const arpeggio = effects.arpeggio ? null : { direction: 'down' as const };
+    return setBeatEffect({ beatId: beat.id }, { effects: { arpeggio } });
+  }
+  const first = beat.notes[0];
+  if (!first) return undefined;
+  const target = { noteId: first.id };
+  switch (mark) {
+    case 'staccato':
+      return setNoteEffect(target, { staccato: !first.staccato });
+    case 'accent':
+      return setNoteEffect(target, { accent: first.accent === 'none' ? 'accent' : 'none' });
+    case 'ghost':
+      return setNoteEffect(target, { ghost: !first.ghost });
+    case 'hammer':
+      return setNoteEffect(target, { hammerPull: !first.hammerPull });
+    case 'harmonic':
+      return setNoteEffect(target, {
+        harmonic: first.harmonic ? null : { kind: 'artificial', value: 12 },
+      });
+    case 'slide':
+      return setNoteEffect(target, { slide: first.slide ? null : ['shift'] });
   }
 }
 
@@ -206,7 +259,7 @@ function sparseScore(): Score {
 }
 
 const SCORES: Record<'large' | 'sparse', () => Score> = {
-  large: () => withEffects(largeScore(3, 32, { structure: true })),
+  large: () => withNoteMarks(withEffects(largeScore(3, 32, { structure: true }))),
   sparse: sparseScore,
 };
 

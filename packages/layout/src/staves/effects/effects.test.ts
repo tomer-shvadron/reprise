@@ -1,53 +1,12 @@
 import { applyCommand, setBeatEffect, setNoteEffect, type Score } from '@reprise/model';
-import { beatOf, note, noteOf, score, type ScoreBuilder } from '@reprise/model/testing';
+import { beatOf, note, noteOf, type ScoreBuilder } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
-import {
-  LayoutCache,
-  PAGE_SIZES,
-  layout,
-  type LayoutOptions,
-  type LayoutResult,
-  type Primitive,
-} from '../../index';
-import { expectValid, overlappingMarks, stable } from '../../test/check-result';
+import { LayoutCache, layout, type LayoutResult, type Primitive } from '../../index';
+import { overlappingMarks, stable, strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
-import { BENDS, everyEffectScore } from '../../test/effects';
+import { BENDS, content, everyEffectScore, guitar, laid, paged, texts } from '../../test/effects';
 import { bendLabel } from './labels';
-
-const paged: LayoutOptions = {
-  mode: 'paged',
-  width: PAGE_SIZES.a4.width,
-  zoom: 1,
-  tracks: 'all',
-  notation: {},
-};
-
-function laid(built: Score, options: Partial<LayoutOptions> = {}): LayoutResult {
-  const result = layout(built, { ...paged, ...options });
-  expectValid(result);
-  expect(
-    overlappingMarks(result).map(([a, b]) => [describePrimitive(a), describePrimitive(b)]),
-  ).toEqual([]);
-  return result;
-}
-
-function guitar(notation: 'tab' | 'both' | 'standard' = 'tab'): ScoreBuilder {
-  return score().track('guitar', { display: { notation, octaveShift: 1 } });
-}
-
-/** What notes and beats drew, one line each, for data snapshots. */
-function content(result: LayoutResult): string[] {
-  return result.primitives
-    .filter((p) => p.node !== undefined && (p.node.startsWith('beat') || p.node.startsWith('note')))
-    .map(describePrimitive);
-}
-
-function texts(result: LayoutResult): string[] {
-  return result.primitives.flatMap((p) =>
-    p.kind === 'text' && (p.node?.startsWith('beat') || p.node?.startsWith('note')) ? [p.text] : [],
-  );
-}
 
 const isText = (value: string) => (p: Primitive) => p.kind === 'text' && p.text === value;
 const dashed = (p: Primitive) => p.kind === 'line' && p.dash !== undefined;
@@ -772,9 +731,13 @@ describe('note effect lanes', () => {
     const built = everyEffectScore();
     const ids = built.tracks.map(({ id }) => id);
     for (const notation of ['tab', 'standard', 'both'] as const) {
-      laid(built, { notation: Object.fromEntries(ids.map((id) => [id, notation])) });
+      const result = laid(built, {
+        notation: Object.fromEntries(ids.map((id) => [id, notation])),
+      });
+      expect(strayPrimitives(result, built).map(describePrimitive)).toEqual([]);
     }
-    laid(built, { mode: 'continuous', width: 1200 });
+    const continuous = laid(built, { mode: 'continuous', width: 1200 });
+    expect(strayPrimitives(continuous, built).map(describePrimitive)).toEqual([]);
   });
 
   it('keeps a cached layout equal to a cold one when an effect changes on either side of a break', () => {
