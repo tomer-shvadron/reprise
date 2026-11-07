@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ariaKeyShortcuts, formatShortcut, matchesShortcut } from './keyboard';
+import { ariaKeyShortcuts, formatShortcut, matchesShortcut, shortcutOn } from './keyboard';
 
 const key = (init: Partial<KeyboardEvent>) => ({
   key: '',
@@ -50,5 +50,13 @@ describe('keyboard', () => {
     expect(matchesShortcut(key({ key: 'y', code: 'KeyY', metaKey: true }), redo, 'mac')).toBe(
       false,
     );
+  });
+
+  it('binds a platform-only shortcut, for every place that lists it, on its platform alone', () => {
+    const redo = { key: 'y', mod: true, only: 'other' } as const;
+    expect(shortcutOn(redo, 'other')).toBe(redo);
+    expect(shortcutOn(redo, 'mac')).toBeUndefined();
+    expect(shortcutOn({ key: 'z', mod: true }, 'mac')).toEqual({ key: 'z', mod: true });
+    expect(shortcutOn(undefined, 'mac')).toBeUndefined();
   });
 });

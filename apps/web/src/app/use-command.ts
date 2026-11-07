@@ -1,7 +1,7 @@
 import { createContext, use } from 'react';
 
 import { runCommand, type CommandRegistry } from './command-registry';
-import { ariaKeyShortcuts, formatShortcut, type KeyboardPlatform } from './keyboard';
+import { ariaKeyShortcuts, formatShortcut, shortcutOn, type KeyboardPlatform } from './keyboard';
 
 export interface CommandSource {
   registry: CommandRegistry;
@@ -25,10 +25,7 @@ export function useCommand(id: string): BoundCommand {
   if (!source) throw new Error('useCommand needs a CommandSourceContext');
   const command = source.registry.get(id);
   if (!command) throw new Error(`Command "${id}" is not registered`);
-  const shortcut =
-    command.shortcut?.only === undefined || command.shortcut.only === source.keyboard
-      ? command.shortcut
-      : undefined;
+  const shortcut = shortcutOn(command.shortcut, source.keyboard);
   return {
     run: () => {
       runCommand(command);

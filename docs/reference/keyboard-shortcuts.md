@@ -19,8 +19,7 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Show import details | File | Global | — | — |
 | Print… | File | Global | ⌘P | Ctrl+P |
 | Undo | Edit | Global | ⌘Z | Ctrl+Z |
-| Redo | Edit | Global | ⇧⌘Z | Ctrl+Shift+Z |
-| Redo | Edit | Global | — | Ctrl+Y |
+| Redo | Edit | Global | ⇧⌘Z | Ctrl+Shift+Z or Ctrl+Y |
 | Zoom in | View | Global | ⌘= | Ctrl+= |
 | Zoom out | View | Global | ⌘- | Ctrl+- |
 | Actual size | View | Global | ⌘0 | Ctrl+0 |
