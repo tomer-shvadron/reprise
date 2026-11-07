@@ -96,12 +96,16 @@ describe('track commands', () => {
     expect(services.document.getState().view.notation).toEqual({});
   });
 
-  it('never set tab or both on a track without strings', async () => {
+  it('never sets tab or both on a pitched track, even one stored as tab', async () => {
     const services = createTestServices();
     mirrorAudio(services);
     const registry = createAppRegistry(services);
     const song = score()
-      .track('piano', { tuning: [...STANDARD_TUNING], fretCount: 24 })
+      .track('piano', {
+        tuning: [...STANDARD_TUNING],
+        fretCount: 24,
+        display: { notation: 'tab', clef: 'treble', octaveShift: 0 },
+      })
       .build();
     await services.document
       .getState()
