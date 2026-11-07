@@ -1,6 +1,6 @@
 import { NotationSchema, type Id, type Notation, type Track } from '@reprise/model';
 import { EyeIcon, EyeOffIcon } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -110,6 +110,7 @@ export function NotationMenu({
   notation: Notation;
   actions: TrackActions;
 }) {
+  const reasonId = useId();
   const choices = notationChoices(track);
   if (choices.length === 0) return null;
   const limited = choices.length < NotationSchema.options.length;
@@ -128,7 +129,7 @@ export function NotationMenu({
           {short[notation]}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent align="start" aria-describedby={limited ? reasonId : undefined}>
         <DropdownMenuRadioGroup
           value={notation}
           onValueChange={(value) => {
@@ -143,7 +144,9 @@ export function NotationMenu({
           ))}
         </DropdownMenuRadioGroup>
         {limited && (
-          <p className="text-muted-foreground max-w-56 px-1.5 py-1 text-xs">{NO_TAB_REASON}</p>
+          <p id={reasonId} className="text-muted-foreground max-w-56 px-1.5 py-1 text-xs">
+            {NO_TAB_REASON}
+          </p>
         )}
       </DropdownMenuContent>
     </DropdownMenu>

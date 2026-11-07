@@ -179,12 +179,13 @@ describe('TrackSidebar', () => {
     const items = await screen.findAllByRole('menuitemradio');
     expect(items).toHaveLength(3);
     for (const item of items) expect(item).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('menu')).not.toHaveAttribute('aria-describedby');
     await user.keyboard('{Escape}');
     expect(within(rowOf('Drums')).queryByRole('button', { name: /^Notation/ })).toBeNull();
   });
 
   it('gives a violin and a piano the same reason, which names what tab needs', async () => {
-    const { open } = setup();
+    const { open, user } = setup();
     await open(
       score()
         .track('piano', { name: 'Violin', program: 40, tuning: [55, 62, 69, 76], fretCount: 24 })
@@ -198,6 +199,9 @@ describe('TrackSidebar', () => {
         name: `Notation for ${name}: Std`,
       });
       expect(trigger).toHaveAccessibleDescription(reason);
+      await user.click(trigger);
+      expect(await screen.findByRole('menu')).toHaveAccessibleDescription(reason);
+      await user.keyboard('{Escape}');
     }
   });
 
