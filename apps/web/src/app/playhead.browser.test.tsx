@@ -59,7 +59,7 @@ const frameStyle = Object.assign(document.createElement('style'), {
   textContent: '.score-view { position: relative; height: 760px; overflow: auto; }',
 });
 
-async function setup() {
+async function setup(song: Score = largeScore(2, 40, { structure: true })) {
   document.head.append(frameStyle);
   const services = createTestServices();
   mirrorAudio(services);
@@ -71,7 +71,6 @@ async function setup() {
       </div>
     </Profiler>,
   );
-  const song: Score = largeScore(2, 40, { structure: true });
   await act(async () => {
     await services.document
       .getState()
@@ -185,5 +184,50 @@ describe('the playhead in the app', () => {
     );
     await frame();
     expect(lineX()).toBeCloseTo(beat.bbox.x + beat.bbox.width / 2 - 1, 3);
+  }, 30_000);
+
+  it('finishes a smooth page turn when the page is wider than the region (zoom 2)', async () => {
+    const { services, score, result, clock } = await setup(largeScore(1, 40));
+    act(() => {
+      services.ui.getState().setZoom(2);
+    });
+    for (let i = 0; i < 3; i++) await frame();
+    const view = region();
+    expect(view.scrollWidth).toBeGreaterThan(view.clientWidth);
+    const systemOfLine = () => {
+      const bar = score.masterBars.findIndex((b) => b.id === line().dataset['masterBar']);
+      return result.systems.findIndex((s) => bar >= s.bars.start && bar < s.bars.end);
+    };
+    const topOf = (index: number) => {
+      const svg = view.querySelector(`[data-system-id="${result.systems[index]?.id ?? ''}"]`);
+      return (svg?.getBoundingClientRect().top ?? Number.NaN) - view.getBoundingClientRect().top;
+    };
+    // From bar 1 at 400%, one engine write a frame, until the line has entered three systems.
+    let seconds = 0;
+    clock(seconds);
+    let entries = 0;
+    let system = systemOfLine();
+    let frames = 0;
+    while (entries < 3 && frames < 400) {
+      seconds += 4 / 60;
+      clock(seconds);
+      await frame();
+      frames += 1;
+      if (systemOfLine() !== system) {
+        system = systemOfLine();
+        entries += 1;
+      }
+    }
+    expect(entries).toBe(3);
+    // Let the last turn run out: the system sits near the top (98 px), not where it began (471).
+    for (let i = 0; i < 25; i++) {
+      seconds += 1 / 600;
+      clock(seconds);
+      await frame();
+    }
+    expect(systemOfLine()).toBe(system);
+    expect(topOf(system)).toBeGreaterThanOrEqual(-1);
+    expect(topOf(system)).toBeLessThan(200);
+    expect(lineInView()).toBe(true);
   }, 30_000);
 });

@@ -110,6 +110,8 @@ export interface ScoreViewProps {
 
 const DEFAULT_REVEAL_MARGIN = 24;
 const CURSOR_WIDTH = 2;
+/** Longer than any smooth scroll the browser runs; a turn not done by then was interrupted. */
+const TURN_TIMEOUT = 1000;
 
 const KEY_AXES: Readonly<Record<string, ScrollAxis>> = {
   ArrowLeft: 'x',
@@ -211,7 +213,13 @@ export function ScoreView({
   const barBox = useRef<HTMLDivElement | null>(null);
   const lineBox = useRef<HTMLDivElement | null>(null);
   const playhead = useRef<PlaybackCursor | undefined>(undefined);
-  const followed = useRef<{ system?: number; time?: number | undefined; x?: number }>({});
+  const followed = useRef<{
+    system?: number;
+    time?: number | undefined;
+    x?: number;
+    /** A smooth page turn in flight: where it is going, and when to stop waiting for it. */
+    turn?: { x: number; y: number; until: number } | undefined;
+  }>({});
 
   // Everything on screen is placed in the flow's view px; the public API speaks layout px.
   const flow = useMemo(() => pageFlow(layout), [layout]);
@@ -347,6 +355,13 @@ export function ScoreView({
         if (mode === 'paged') {
           const current = bandOf(index);
           if (!current) return;
+          const now = performance.now();
+          const previous = memory.turn;
+          const flying =
+            previous && now < previous.until && Math.abs(previous.y - window.y) * zoom >= 1
+              ? previous
+              : undefined;
+          memory.turn = undefined;
           if (!running) {
             y = revealAxis(window.y, window.height, current.y, current.height, FOLLOW_MARGIN);
             smooth = !reduced;
@@ -356,9 +371,18 @@ export function ScoreView({
               y = turn.y;
               smooth = !turn.instant && !reduced;
             }
+          } else if (flying) {
+            // An instant write now would cancel the turn; reveal from where the turn ends instead.
+            x = revealAxis(flying.x, window.width, cursor.x, 0, FOLLOW_MARGIN);
+            memory.turn = flying;
+            if (Math.abs(x - flying.x) * zoom < 0.5) return;
+            memory.turn = { ...flying, x };
+            scrollTo(target, { x, y: flying.y }, true);
+            return;
           }
           memory.system = index;
           x = revealAxis(window.x, window.width, cursor.x, 0, FOLLOW_MARGIN);
+          if (smooth && running) memory.turn = { x, y, until: now + TURN_TIMEOUT };
         } else if (running) {
           const now = performance.now();
           const dt = memory.time === undefined ? 0 : now - memory.time;
