@@ -38,7 +38,8 @@ export const NOTATION_NAMES: Record<Notation, string> = {
   both: 'Tab and standard notation',
 };
 
-export const NO_TAB_REASON = 'This track has no strings, so it shows standard notation only.';
+export const NO_TAB_REASON =
+  'Tab needs a string and fret for each note, and this track’s notes have none.';
 
 /** What the notation menu enables: a tab staff needs strings, and drums get no menu at all. */
 export function notationChoices(track: Track): Notation[] {

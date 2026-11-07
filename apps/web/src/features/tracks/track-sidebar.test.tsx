@@ -143,7 +143,7 @@ describe('TrackSidebar', () => {
     expect(within(rowOf('Drums')).queryByRole('button', { name: /^Notation/ })).toBeNull();
   });
 
-  it('offers a track without strings standard notation only, saying why', async () => {
+  it('offers a pitched track standard notation only, saying why', async () => {
     const { open, user, services } = setup();
     await open(
       score()
@@ -181,6 +181,24 @@ describe('TrackSidebar', () => {
     for (const item of items) expect(item).not.toHaveAttribute('aria-disabled');
     await user.keyboard('{Escape}');
     expect(within(rowOf('Drums')).queryByRole('button', { name: /^Notation/ })).toBeNull();
+  });
+
+  it('gives a violin and a piano the same reason, which names what tab needs', async () => {
+    const { open } = setup();
+    await open(
+      score()
+        .track('piano', { name: 'Violin', program: 40, tuning: [55, 62, 69, 76], fretCount: 24 })
+        .track('piano', { name: 'Piano', program: 0 })
+        .build(),
+    );
+    const reason = 'Tab needs a string and fret for each note, and this track’s notes have none.';
+    expect(NO_TAB_REASON).toBe(reason);
+    for (const name of ['Violin', 'Piano']) {
+      const trigger = within(rowOf(name)).getByRole('button', {
+        name: `Notation for ${name}: Std`,
+      });
+      expect(trigger).toHaveAccessibleDescription(reason);
+    }
   });
 
   it('previews then commits the compact volume as one undo step', async () => {
