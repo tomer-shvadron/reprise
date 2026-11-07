@@ -4,15 +4,24 @@ export type {
   AudioEngineEvents,
   AudioEngineOptions,
   InstrumentId,
+  InstrumentLoad,
+  InstrumentLoads,
   LoadOptions,
+  LoadResult,
   LoopEvent,
   MemoryReport,
   PackAssignment,
   PlaybackState,
   PositionEvent,
   TempoMode,
+  TransportEvents,
   Unsubscribe,
 } from './engine';
+export { createTransport } from './transport';
+export type { Transport, TransportOptions } from './transport';
+export { GmBank } from './gm-bank';
+export { timelineNeutral } from './timeline-neutral';
+export { outputLatencyOf } from './output-latency';
 
 export type { InstrumentSink, MetronomeSink, NoteEvent } from './sink';
 export { ClickSynth } from './click-synth';

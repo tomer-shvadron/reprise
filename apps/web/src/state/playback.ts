@@ -46,7 +46,7 @@ export interface PlaybackStoreState {
   };
   /** The open document's opening bars, decoded. */
   song: { status: LoadStatus; error: string | undefined };
-  /** The open song's planned instruments; the memory report's residents also count preset aliases. */
+  /** The open song's planned instruments; the memory report's residents can add leftovers. */
   instruments: number;
   settings: TransportSettings;
   /** The user's overrides over each track's `channel`; cleared on a switch. */

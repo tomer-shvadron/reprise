@@ -1,5 +1,6 @@
 import { waitFor } from '@testing-library/react';
 import { createTimeline, type PlaybackState } from '@reprise/audio';
+import { debugAudioEngine } from '@reprise/audio/testing';
 import { secondsAtTick, type Id } from '@reprise/model';
 import { describe, expect, it } from 'vitest';
 
@@ -35,7 +36,7 @@ async function playBarOne(p: ReturnType<typeof player>) {
     bars,
     finite: samples.every(Number.isFinite),
     peak: samples.reduce((max, value) => Math.max(max, Math.abs(value)), 0),
-    misses: p.services.audio.debug().sampler?.misses,
+    misses: debugAudioEngine(p.services.audio.debug().engine).sampler?.misses,
   };
 }
 
@@ -74,7 +75,7 @@ describe('the player', () => {
     const first = p.services.document.getState().id;
     const firstLayout = p.services.layout.getState().result;
     const firstResidents = p.services.playback.getState().memory.residents;
-    const firstSource = p.services.audio.debug().source;
+    const firstSource = debugAudioEngine(p.services.audio.debug().engine).source;
     const bytes = await fetchFixture('gp5/percussion-all.gp5');
 
     const transfer = new DataTransfer();
@@ -86,7 +87,7 @@ describe('the player', () => {
     await p.painted();
 
     expect(p.services.layout.getState().result).not.toBe(firstLayout);
-    const source = p.services.audio.debug().source;
+    const source = debugAudioEngine(p.services.audio.debug().engine).source;
     expect(source).toBe(firstSource);
     const residents = source?.memory().residents ?? [];
     expect(residents.some((id) => firstResidents.includes(id) && !id.includes('drums'))).toBe(

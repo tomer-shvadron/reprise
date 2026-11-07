@@ -80,8 +80,9 @@ export interface MixEvent {
  *   state in effect there is restored; `track.channel` is the baseline they build on.
  * - `allNotesOff(when)` cancels every note sounding at `when` and every note already scheduled
  *   to start at or after it, by stopping their source nodes (`stop(when)` is valid before a
- *   node's start time), not only by muting them. Called on pause, stop and seek, with `when` =
- *   `currentTime`.
+ *   node's start time), not only by muting them, and every mixer change scheduled after it (a
+ *   strip's volume and pan, a program change): the scheduler sends each again when playback
+ *   reaches its beat. Called on pause, stop and seek, with `when` = `currentTime`.
  */
 export interface InstrumentSink {
   noteOn(event: NoteEvent): void;

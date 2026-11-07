@@ -4,7 +4,7 @@ import type { Score } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 
 import { ClickSynth } from './click-synth';
-import { createAudioEngine } from './engine';
+import { createTransport } from './transport';
 import { drive, manualTicker } from './offline-driver';
 import { RecordingSink } from './recording-sink';
 import { Sampler } from './sampler/sampler';
@@ -54,7 +54,7 @@ async function render(
   for (const track of song.tracks) sampler.addTrack(track, sineInstrument());
   const scheduler = manualTicker();
   const frames = manualTicker();
-  const engine = createAudioEngine({
+  const engine = createTransport({
     context,
     sink: createSamplerSink(sampler),
     metronome: new ClickSynth(context, sampler.master.input),
@@ -62,7 +62,7 @@ async function render(
     frames: frames.ticker,
     startLatency: LATENCY,
   });
-  await engine.load(song, { tier: 'gm', packs: [] });
+  engine.load(song);
   engine.setMetronome(options.metronome ?? false, 0.5);
   engine.play();
   let pausedAt = 0;
@@ -93,7 +93,7 @@ function expectOnGrid(rendered: Rendered): void {
   }
 }
 
-describe('AudioEngine through the real sampler', () => {
+describe('The transport through the real sampler', () => {
   it('lands every onset on the grid behind the master bus pre-delay, metronome aligned', async () => {
     const notes = await render(staccato());
     const clicks = await render(rests(), { metronome: true });
@@ -151,7 +151,7 @@ describe('AudioEngine through the real sampler', () => {
     };
     const scheduler = manualTicker();
     const frames = manualTicker();
-    const engine = createAudioEngine({
+    const engine = createTransport({
       context,
       sink,
       metronome: new ClickSynth(context, sampler.master.input),
@@ -159,7 +159,7 @@ describe('AudioEngine through the real sampler', () => {
       frames: frames.ticker,
       startLatency: LATENCY,
     });
-    await engine.load(song, { tier: 'gm', packs: [] });
+    engine.load(song);
     engine.play();
     const data = (await drive(context, { tickers: [scheduler, frames] })).getChannelData(0);
 
