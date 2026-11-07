@@ -451,6 +451,25 @@ describe('harmonics on the standard staff', () => {
     expect(content(result)).toMatchSnapshot();
   });
 
+  it('sets an extra diamond flush against an up-stem, as the black head beside it is', () => {
+    const built = guitar('standard')
+      .bar()
+      .beat('4', [note(5, 3, { harmonic: { kind: 'artificial', value: 12 } })])
+      .beat('4', [note(4, 7, { harmonic: { kind: 'pinch' } })])
+      .beat('2', [note(5, 3)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    for (const beat of [0, 1]) {
+      const id = noteOf(built, 0, 0, beat).id;
+      const shaft = stem(result, beatOf(built, 0, 0, beat).id);
+      const main = one(named(result, 'noteheadBlack', id), 'black head');
+      const diamond = one(named(result, 'noteheadDiamondBlack', id), 'diamond');
+      expect(shaft.y2).toBeLessThan(shaft.y);
+      expect(rightOf(diamond.bbox)).toBeCloseTo(rightOf(main.bbox), 1);
+      expect(rightOf(diamond.bbox)).toBeGreaterThan(shaft.x);
+    }
+  });
+
   it('draws the diamonds on the standard staff in both mode and keeps the tab numbers', () => {
     const built = guitar('both')
       .bar()

@@ -247,9 +247,11 @@ export function planChord(notes: readonly ChordNote[], options: ChordOptions): C
     ? normalLeft + (anchor?.[0] ?? column / unit) * unit - st / 2
     : normalLeft + (anchor?.[0] ?? 0) * unit + st / 2;
 
-  const heads: HeadPlan[] = sorted.map(({ note, position, sounding }, i) => {
+  const heads: HeadPlan[] = sorted.map(({ note, position, sounding, head }, i) => {
     const { width } = extents[i] ?? { width: column };
-    let left = normalLeft;
+    // A harmonic's diamond is narrower than a black head; right-aligned, it still meets an up-stem.
+    const narrow = head === 'diamond' && note.harmonic !== undefined && width < column;
+    let left = stemmed && up && narrow ? stemX + st / 2 - width : normalLeft;
     let shared = 0;
     if (displaced[i]) {
       if (!stemmed) left = column / 2;
