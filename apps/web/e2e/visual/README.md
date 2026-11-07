@@ -86,8 +86,10 @@ shows what it claims; when one fails, change the scene, not the guard.
 | `effects`           | `gp5/effects.gp5`         | tab, standard, both |
 | `multivoice`        | `gp/multivoice-rhythm.gp` | tab, standard, both |
 | `drums`             | `gp/drum-tabs.gp`         | default             |
+| `note-marks`        | builder                   | standard, both      |
 | `percussion-all`    | `gp5/percussion-all.gp5`  | default             |
 | `pitched`           | `gp/sustain.gp`           | default             |
+| `unisons`           | builder                   | standard, both      |
 | `long`              | `longScore()`, pages 0, 1 | default             |
 
 ## Size budget

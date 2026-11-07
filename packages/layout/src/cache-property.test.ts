@@ -9,6 +9,8 @@ import {
   createHistory,
   insertBar,
   insertBeat,
+  midiNote,
+  openStringPitch,
   removeBar,
   removeBeat,
   setBeatDuration,
@@ -21,6 +23,7 @@ import {
   type Dynamics,
   type Notation,
   type Score,
+  type Track,
 } from '@reprise/model';
 import { largeScore, note, score as scoreBuilder } from '@reprise/model/testing';
 import { array, assert, constantFrom, integer, oneof, property, record } from 'fast-check';
@@ -46,6 +49,9 @@ type Edit =
   | { kind: 'masterBar'; bar: number; change: 'time' | 'key' | 'repeat' }
   | { kind: 'chord'; at: Where }
   | { kind: 'mark'; at: Where; mark: Mark }
+  | { kind: 'unison'; at: Where; string: number }
+  | { kind: 'voiceUnison'; at: Where; string: number }
+  | { kind: 'voiceDuration'; at: Where; duration: 1 | 8 }
   | { kind: 'undo' }
   | { kind: 'redo' }
   | { kind: 'options'; change: OptionChange };
@@ -111,6 +117,17 @@ const edit: Arbitrary<Edit> = oneof(
       'arpeggio',
     ),
   }),
+  record({ kind: constantFrom('unison' as const), at: where, string: integer({ min: 1, max: 6 }) }),
+  record({
+    kind: constantFrom('voiceUnison' as const),
+    at: where,
+    string: integer({ min: 1, max: 6 }),
+  }),
+  record({
+    kind: constantFrom('voiceDuration' as const),
+    at: where,
+    duration: constantFrom<1 | 8>(1, 8),
+  }),
   record({ kind: constantFrom('undo' as const) }),
   record({ kind: constantFrom('redo' as const) }),
   record({
@@ -140,6 +157,24 @@ function previousFret(score: Score, at: Where, string: number): number | undefin
     }
   }
   return fret;
+}
+
+/**
+ * A note on `target` at the pitch of `source`'s first note: on the first string from `string`
+ * onward that `source` leaves free and that reaches the pitch within 24 frets.
+ */
+function unisonOn(track: Track, source: Beat, target: Beat, string: number): Command | undefined {
+  const first = source.notes[0];
+  if (track.kind !== 'fretted' || !first) return undefined;
+  const pitch = midiNote(track, first);
+  const used = new Set(source.notes.map((n) => n.string));
+  for (let s = string; s <= track.tuning.length; s++) {
+    const open = openStringPitch(track, s);
+    if (open === undefined || used.has(s)) continue;
+    const fret = pitch - open;
+    if (fret >= 0 && fret <= 24) return setNote({ beatId: target.id }, { string: s, fret });
+  }
+  return undefined;
 }
 
 function command(score: Score, step: Edit): Command | undefined {
@@ -182,6 +217,18 @@ function command(score: Score, step: Edit): Command | undefined {
   }
   const found = beatAt(score, step.at);
   const beat = found?.beat;
+  if (step.kind === 'voiceUnison' || step.kind === 'voiceDuration') {
+    const second = found?.bar.voices[1];
+    if (!found || !second) return undefined;
+    const other = second.beats[0];
+    // An empty second voice gets a beat first; the next such edit fills it.
+    if (!other) return insertBeat({ voiceId: second.id, index: 0 }, { duration: 4 });
+    if (step.kind === 'voiceDuration') {
+      return setBeatDuration({ beatId: other.id }, { duration: step.duration });
+    }
+    const first = found.bar.voices[0].beats[0];
+    return first && unisonOn(found.track, first, other, step.string);
+  }
   if (step.kind === 'insertBeat') {
     const voice = found?.bar.voices[0];
     return voice && insertBeat({ voiceId: voice.id, index: 0 }, { duration: 16 });
@@ -208,6 +255,8 @@ function command(score: Score, step: Edit): Command | undefined {
       return setBeatEffect({ beatId: beat.id }, { chord: { name: 'Cmaj7(add9,#11)/G' } });
     case 'mark':
       return markCommand(beat, step.mark);
+    case 'unison':
+      return unisonOn(found.track, beat, beat, step.string);
   }
 }
 

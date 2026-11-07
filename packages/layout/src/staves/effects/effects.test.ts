@@ -1,8 +1,14 @@
-import { applyCommand, setBeatEffect, setNoteEffect, type Score } from '@reprise/model';
+import { applyCommand, setBeatEffect, setNoteEffect, type Note, type Score } from '@reprise/model';
 import { beatOf, note, noteOf, type ScoreBuilder } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
-import { LayoutCache, layout, type LayoutResult, type Primitive } from '../../index';
+import {
+  LayoutCache,
+  layout,
+  type LayoutResult,
+  type Primitive,
+  type StaffPlacement,
+} from '../../index';
 import { overlappingMarks, stable, strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
 import { BENDS, content, everyEffectScore, guitar, laid, paged, texts } from '../../test/effects';
@@ -799,5 +805,152 @@ describe('note effect lanes', () => {
     expect(back.metrics.reusedSystems).toBeGreaterThan(0);
     expect(back.systems[3]?.bbox.height).toBe(middle.bbox.height);
     expect(stable(back)).toBe(stable(layout(undo.score, options)));
+  });
+});
+
+describe('note effects on the tab: arcs and letters in the measured room', () => {
+  const tabStrays = (result: LayoutResult, built: Score) =>
+    strayPrimitives(result, built, 'tab').map(describePrimitive);
+
+  /** The tab's staff anchor and placement in `system`, and the room it keeps below the bottom string, in px. */
+  function tabBelow(
+    result: LayoutResult,
+    system: number,
+  ): { anchor: Primitive['bbox']; tab: StaffPlacement; below: number } {
+    const found = result.systems[system];
+    const anchor = result.anchors
+      .slice(found?.anchors.start, found?.anchors.end)
+      .find((candidate) => candidate.kind === 'staff' && candidate.staff === 'tab');
+    const placement = found?.staves.find((staff) => staff.type === 'tab');
+    if (!anchor || !placement) throw new Error(`no tab in system ${String(system)}`);
+    return {
+      anchor: anchor.bbox,
+      tab: placement,
+      below: anchor.bbox.y + anchor.bbox.height - placement.bottom,
+    };
+  }
+
+  /** Bars of two halves, `[2: first, 2: 3/0]`, one per system at width 300. */
+  function pairs(firsts: readonly Note[][], notation: 'tab' | 'both'): Score {
+    let builder = guitar(notation);
+    for (const first of firsts)
+      builder = builder
+        .bar()
+        .beat('2', first)
+        .beat('2', [note(3, 0)]);
+    return builder.build({ ids: 'sequential' });
+  }
+
+  it("keeps room for a low-string H and P down to the letters' descent in both mode", () => {
+    const built = guitar('both')
+      .bar()
+      .beat('4', [note(6, 3)])
+      .beat('4', [note(6, 5, { hammerPull: true })])
+      .beat('4', [note(6, 3, { hammerPull: true })])
+      .beat('4', [note(6, 3)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    expect(texts(result).filter((text) => text === 'H')).toHaveLength(1);
+    expect(texts(result).filter((text) => text === 'P')).toHaveLength(1);
+    expect(tabStrays(result, built)).toEqual([]);
+    expect(tabBelow(result, 0).below).toBeCloseTo(2.4335 * 7, 1);
+  });
+
+  it("keeps room under the bottom string for a hammer-on's origin half at a break", () => {
+    const built = pairs(
+      [
+        [note(6, 3)],
+        [note(6, 5, { hammerPull: true })],
+        [note(6, 3)],
+        [note(6, 5, { hammerPull: true })],
+      ],
+      'both',
+    );
+    const result = laid(built, { width: 300 });
+    expect(result.systems[1]?.bars.start).toBe(1);
+    expect(tabStrays(result, built)).toEqual([]);
+    const { anchor, tab, below } = tabBelow(result, 0);
+    expect(below).toBeCloseTo(1.1785 * 7, 1);
+    const origin = noteOf(built, 0, 0, 0).id;
+    // The standard staff's slur and the knockout under the origin's number carry its id too.
+    const arcs = result.primitives.filter(
+      (p) => p.kind === 'path' && p.role === 'ink' && p.node === origin && p.bbox.y >= tab.top,
+    );
+    expect(arcs).toHaveLength(1);
+    const [arc] = arcs;
+    expect(arc && arc.bbox.y + arc.bbox.height).toBeLessThanOrEqual(
+      anchor.y + anchor.height + 0.02,
+    );
+  });
+
+  it('keeps room for ties on the bottom string in both mode, within a bar and across a break', () => {
+    const built = guitar('both')
+      .bar()
+      .beat('2', [note(6, 3)])
+      .beat('2', [note(6, 3, { tie: true })])
+      .bar()
+      .beat('2', [note(6, 3, { tie: true })])
+      .beat('2', [note(3, 0)])
+      .build({ ids: 'sequential' });
+    const result = laid(built, { width: 300 });
+    expect(result.systems[1]?.bars.start).toBe(1);
+    expect(tabStrays(result, built)).toEqual([]);
+  });
+
+  it("keeps room for a grace note's legato slide on the bottom string", () => {
+    const built = guitar('both')
+      .bar()
+      .beat('1', [note(6, 5)], {
+        grace: [{ duration: 16, before: true, notes: [note(6, 3, { slide: ['legato'] })] }],
+      })
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    expect(texts(result).filter((text) => text === 'sl.')).toHaveLength(1);
+    expect(tabStrays(result, built)).toEqual([]);
+  });
+
+  for (const [string, notation] of [
+    [1, 'tab'],
+    [6, 'both'],
+  ] as const) {
+    it(`writes a legato slide's sl. on its first half when a break cuts it, string ${String(string)} in ${notation}`, () => {
+      const built = guitar(notation)
+        .bar()
+        .beat('2', [note(3, 0)])
+        .beat('2', [note(string, 3, { slide: ['legato'] })])
+        .bar()
+        .beat('4', [note(3, 0)])
+        .beat('4', [note(3, 0)])
+        .beat('2', [note(string, 5)])
+        .build({ ids: 'sequential' });
+      const result = laid(built, { width: 300 });
+      const second = result.systems[1];
+      expect(second?.bars.start).toBe(1);
+      const letters = result.primitives.flatMap((p, i) =>
+        p.kind === 'text' && p.text === 'sl.' ? [i] : [],
+      );
+      expect(letters).toHaveLength(1);
+      expect(letters[0]).toBeLessThan(second?.primitives.start ?? 0);
+      expect(tabStrays(result, built)).toEqual([]);
+    });
+  }
+
+  it('keeps a cached layout equal to a cold one when a hammer-on adds an origin half to the system before', () => {
+    const built = pairs(
+      Array.from({ length: 8 }, () => [note(6, 3)]),
+      'both',
+    );
+    const options = { ...paged, width: 300 };
+    const cache = new LayoutCache();
+    const before = layout(built, options, cache);
+    const start = before.systems[1]?.bars.start;
+    if (start === undefined) throw new Error('one system');
+    const edit = applyCommand(
+      built,
+      setNoteEffect({ noteId: noteOf(built, 0, start, 0).id }, { hammerPull: true }),
+    );
+    const after = layout(edit.score, { ...options, dirtyBars: edit.change.touchedBars }, cache);
+    expect(after.metrics.measuredBars).toBeLessThanOrEqual(2);
+    expect(stable(after)).toBe(stable(layout(edit.score, options)));
   });
 });

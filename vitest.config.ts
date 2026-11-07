@@ -35,6 +35,8 @@ export default defineConfig({
           root: 'packages/layout',
           environment: 'node',
           exclude: [...configDefaults.exclude, 'test/**'],
+          // Reads the fixture corpus in Node, since layout may not import the readers.
+          globalSetup: ['../../scripts/fixtures/provide-scores.ts'],
         },
       },
       {

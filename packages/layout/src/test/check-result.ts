@@ -2,7 +2,7 @@ import { expect } from 'vitest';
 
 import type { Id, Score } from '@reprise/model';
 
-import type { Anchor, LayoutResult, Margins, Primitive, Rect } from '../types';
+import type { Anchor, LayoutResult, Margins, Primitive, Rect, StaffType } from '../types';
 
 const EPSILON = 0.02;
 
@@ -43,9 +43,13 @@ export function nonFinite(result: LayoutResult): string[] {
   return bad;
 }
 
-/** Anchors that may not overlap: one kind, in one system, staff and voice. */
+/**
+ * Anchors that may not overlap: one kind, in one system, staff and voice, and note anchors on a
+ * five-line staff whatever their voice.
+ */
 function group(anchor: Anchor): string {
-  return [anchor.kind, anchor.system, anchor.track, anchor.staff, anchor.voice].join('|');
+  const voice = anchor.kind === 'note' && anchor.staff !== 'tab' ? '' : anchor.voice;
+  return [anchor.kind, anchor.system, anchor.track, anchor.staff, voice].join('|');
 }
 
 export function overlappingAnchors(result: LayoutResult): [Anchor, Anchor][] {
@@ -323,12 +327,37 @@ function owners(score: Score): Map<Id, Id> {
   return owner;
 }
 
+/** The staff of `track` whose anchor lies nearest the vertical span `y` to `y + height`. */
+function nearestStaff(
+  staves: readonly Anchor[],
+  track: Id,
+  y: number,
+  height: number,
+): StaffType | undefined {
+  let nearest: Anchor | undefined;
+  let best = Infinity;
+  for (const anchor of staves) {
+    if (anchor.track !== track) continue;
+    const gap = Math.max(anchor.bbox.y - y, y + height - (anchor.bbox.y + anchor.bbox.height));
+    if (gap < best) {
+      best = gap;
+      nearest = anchor;
+    }
+  }
+  return nearest?.staff;
+}
+
 /**
  * Primitives a beat or note drew outside every staff of its track in its system: a staff's anchor
  * spans the staff, the room it measured and its lanes, so a primitive outside them is drawn
- * where nothing was measured for it and can land on another staff or another page.
+ * where nothing was measured for it and can land on another staff or another page. With `staff`,
+ * only the strays nearest a staff of that type.
  */
-export function strayPrimitives(result: LayoutResult, score: Score): Primitive[] {
+export function strayPrimitives(
+  result: LayoutResult,
+  score: Score,
+  staff?: StaffType,
+): Primitive[] {
   const owner = owners(score);
   const stray: Primitive[] = [];
   for (const system of result.systems) {
@@ -348,7 +377,10 @@ export function strayPrimitives(result: LayoutResult, score: Score): Primitive[]
           y >= anchor.bbox.y - EPSILON &&
           y + height <= anchor.bbox.y + anchor.bbox.height + EPSILON,
       );
-      if (!held) stray.push(primitive);
+      if (held) continue;
+      if (staff === undefined || nearestStaff(staves, track, y, height) === staff) {
+        stray.push(primitive);
+      }
     }
   }
   return stray;
