@@ -56,7 +56,7 @@ export const TrackRow = memo(function TrackRow({
       data-audible={audible}
       className={cn(
         'flex gap-2 border-b px-2 py-1.5',
-        current && 'bg-sidebar-accent text-sidebar-accent-foreground',
+        current && 'bg-sidebar-accent text-sidebar-accent-foreground muted-on-accent',
         !audible && 'text-muted-foreground',
       )}
     >

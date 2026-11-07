@@ -49,7 +49,7 @@ export const MixerStrip = memo(function MixerStrip({
         data-audible={audible}
         className={cn(
           'flex flex-col gap-1.5 border-b px-3 py-2',
-          current && 'bg-sidebar-accent text-sidebar-accent-foreground',
+          current && 'bg-sidebar-accent text-sidebar-accent-foreground muted-on-accent',
           !audible && 'text-muted-foreground',
         )}
       >

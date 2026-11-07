@@ -93,6 +93,7 @@
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-accent-muted-foreground: oklch(0.708 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
   --paper: oklch(0.965 0.012 85);
@@ -136,6 +137,8 @@
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
+  /* 5.5:1 on the accent; the shared muted foreground is 4.34:1 there. */
+  --sidebar-accent-muted-foreground: oklch(0.5 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
   --paper: oklch(0.99 0.006 85);
@@ -146,6 +149,11 @@
   --mute-foreground: oklch(1 0 0);
   --solo: oklch(0.82 0.16 80);
   --solo-foreground: oklch(0.2 0.02 70);
+}
+
+/* Muted text inside an accented row keeps AA contrast: every `text-muted-foreground` below follows. */
+@utility muted-on-accent {
+  --muted-foreground: var(--sidebar-accent-muted-foreground);
 }
 
 @layer base {
