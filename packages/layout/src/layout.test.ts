@@ -3,7 +3,14 @@ import { beatOf, largeScore, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_MARGINS, LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from './index';
-import { expectInsidePages, expectValid, overlappingAnchors, stable } from './test/check-result';
+import {
+  expectInsidePages,
+  expectValid,
+  nonFinite,
+  outsideItsPage,
+  overlappingAnchors,
+  stable,
+} from './test/check-result';
 
 const paged: LayoutOptions = {
   mode: 'paged',
@@ -361,5 +368,31 @@ describe('layout', () => {
   it('rejects a zoom or width that is not positive', () => {
     expect(() => layout(createEmptyScore(), { ...paged, zoom: 0 })).toThrow(RangeError);
     expect(() => layout(createEmptyScore(), { ...paged, width: Number.NaN })).toThrow(RangeError);
+  });
+});
+
+describe('the page checks', () => {
+  it('find nothing on an ordinary score', () => {
+    const result = layout(eighthsScore(8), paged);
+    expect(outsideItsPage(result, DEFAULT_MARGINS.paged)).toEqual([]);
+    expect(nonFinite(result)).toEqual([]);
+  });
+
+  it('find a bar wider than a narrow page, past its right margin', () => {
+    const builder = score().track('guitar').bar();
+    for (let i = 0; i < 64; i++) builder.beat('64', [note((i % 6) + 1, 12)]);
+    const result = layout(builder.build(), { ...paged, width: 300 });
+    const overflows = outsideItsPage(result, DEFAULT_MARGINS.paged);
+    expect(overflows.length).toBeGreaterThan(0);
+    expect(overflows[0]?.systemOverflowPx).toBeGreaterThan(0);
+    expect(overflows[0]?.primitives).toBeGreaterThan(0);
+  });
+
+  it('name every non-finite number by its path', () => {
+    const result = layout(eighthsScore(1), paged);
+    const [primitive] = result.primitives;
+    if (!primitive) throw new Error('no primitive');
+    primitive.bbox.x = Number.NaN;
+    expect(nonFinite(result)).toEqual(['result.primitives[0].bbox.x']);
   });
 });

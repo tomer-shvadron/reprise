@@ -7,7 +7,7 @@ Everything about how Reprise is planned, decided and built lives here. The code 
 | `specs/`     | The shared understanding, the v1 scope and the architecture: what we are building and how it fits together. | `specs/shared-understanding.md` |
 | `decisions/` | Architecture decision records, one numbered file per decision. Append-only: supersede, never rewrite.        | `decisions/README.md`           |
 | `plans/`     | The roadmap and the per-phase implementation plans. Every work package in a plan becomes one GitHub issue.   | `plans/roadmap.md`              |
-| `reference/` | Durable facts: the score model, file-format notes, sound pack sources and licenses, the glossary, keyboard shortcuts. | `reference/glossary.md`         |
+| `reference/` | Durable facts: the score model, file-format notes, sound pack sources and licenses, the glossary, keyboard shortcuts, the player checklist. | `reference/glossary.md`         |
 | `research/`  | Investigations and spikes, dated, each ending in a conclusion that a plan or an ADR then picks up.           | `research/README.md`            |
 
 ## Conventions
