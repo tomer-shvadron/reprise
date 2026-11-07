@@ -1,8 +1,8 @@
-import { bpmAtTick, loopRange, type PositionEvent, type Timeline } from '@reprise/audio';
-import { positionAtSeconds, secondsAtTick, type Id } from '@reprise/model';
+import { bpmAtTick, type PositionEvent, type Timeline } from '@reprise/audio';
+import { positionAtSeconds, type Id } from '@reprise/model';
 
 import { playheadAt, type FollowPolicy, type PlaybackCursor } from '@/features/score';
-import { selectRunning, type TransportSettings } from '@/state/playback';
+import { selectRunning, type TempoSetting } from '@/state/playback';
 import { animationFrames, startPositionReader, type FrameScheduler } from '@/state/position-reader';
 import { timelineOf } from '@/state/timeline';
 
@@ -18,41 +18,66 @@ export interface Heard {
   masterBarId: Id;
   /** Ticks into the bar. */
   tick: number;
+  /** Ticks across every pass, as the engine counts them. */
+  playbackTick: number;
+}
+
+/** Written seconds per real second: the speed in percent, or the BPM over the written tempo. */
+export function speedAt(timeline: Timeline, tempo: TempoSetting, playbackTick: number): number {
+  return tempo.mode === 'percent'
+    ? tempo.value / 100
+    : tempo.value / bpmAtTick(timeline, playbackTick);
 }
 
 /**
  * Where the music the listener hears is: `latency` seconds behind the engine's clock while it
- * runs, scaled by the speed into written seconds. Inside an active loop it never falls before the
- * loop's start, so a wrap waits there instead of flashing the bar before the loop.
+ * runs, scaled by the speed into written seconds, but never before `floor`, the start of the
+ * current stretch of continuous playback. Behind that start lies the pass before it in playback
+ * order, which after a seek, a loop wrap or a jump can be anywhere in the score.
  */
 export function heardPosition(
   timeline: Timeline,
   event: PositionEvent,
   latency: number,
-  settings: Pick<TransportSettings, 'tempo' | 'loop'>,
+  tempo: TempoSetting,
   running: boolean,
+  floor = Number.NEGATIVE_INFINITY,
 ): Heard {
-  const exact = { masterBarId: event.masterBarId, tick: event.position.tick };
+  const exact = {
+    masterBarId: event.masterBarId,
+    tick: event.position.tick,
+    playbackTick: event.position.playbackTick,
+  };
   if (!running || event.countingIn || latency <= 0) return exact;
-  const { tempo, loop } = settings;
-  const at = event.position.playbackTick;
-  // Written seconds per real second: the speed in percent, or the BPM over the written tempo.
-  const speed =
-    tempo.mode === 'percent' ? tempo.value / 100 : tempo.value / bpmAtTick(timeline, at);
-  let seconds = event.seconds - latency * speed;
-  if (loop) {
-    try {
-      const range = loopRange(timeline, loop, at);
-      if (at >= range.startTick && at < range.endTick) {
-        seconds = Math.max(seconds, secondsAtTick(timeline.map, range.startTick));
-      }
-    } catch {
-      // A loop the engine cannot play; nothing to hold the playhead inside.
-    }
-  }
+  const speed = speedAt(timeline, tempo, event.position.playbackTick);
+  const seconds = Math.max(event.seconds - latency * speed, floor);
+  if (seconds >= event.seconds) return exact;
   const position = positionAtSeconds(timeline.map, seconds);
   const masterBar = position && timeline.score.masterBars[position.masterBarIndex];
-  return position && masterBar ? { masterBarId: masterBar.id, tick: position.tick } : exact;
+  return position && masterBar
+    ? { masterBarId: masterBar.id, tick: position.tick, playbackTick: position.playbackTick }
+    : exact;
+}
+
+/** Written seconds a frame may advance beyond the elapsed time before it counts as a jump. */
+const JUMP_SLACK = 0.1;
+
+interface Run {
+  floor: number;
+  seconds: number;
+  at: number;
+}
+
+/**
+ * The start of the current stretch of continuous playback: the first running position after a
+ * start or a count-in, and any position that moved back or further than the elapsed time allows
+ * (a seek, a loop wrap).
+ */
+function nextRun(run: Run | undefined, event: PositionEvent, now: number, speed: number): Run {
+  if (!run) return { floor: event.seconds, seconds: event.seconds, at: now };
+  const advance = event.seconds - run.seconds;
+  const jumped = advance < 0 || advance > (now - run.at) * speed + JUMP_SLACK;
+  return { floor: jumped ? event.seconds : run.floor, seconds: event.seconds, at: now };
 }
 
 export interface PlayheadDriver {
@@ -69,10 +94,18 @@ export function startPlayhead(options: {
   services: Pick<AppServices, 'audio' | 'playback' | 'document' | 'layout' | 'ui' | 'selection'>;
   view: () => PlayheadView | null | undefined;
   frames?: FrameScheduler;
+  /** Real seconds, for telling a jump from playback running on. */
+  now?: () => number;
 }): PlayheadDriver {
-  const { services, view, frames = animationFrames } = options;
+  const {
+    services,
+    view,
+    frames = animationFrames,
+    now = () => performance.now() / 1000,
+  } = options;
   const { audio, playback, document, layout, ui, selection } = services;
   let last: PositionEvent | undefined;
+  let run: Run | undefined;
   let requested = false;
 
   const paint = (follow: boolean) => {
@@ -90,8 +123,9 @@ export function startPlayhead(options: {
       timelineOf(score),
       last,
       audio.outputLatency(),
-      state.settings,
+      state.settings.tempo,
       running,
+      run?.floor,
     );
     const cursor = playheadAt(result, score, heard.masterBarId, heard.tick);
     target.setPlayhead(cursor);
@@ -111,6 +145,15 @@ export function startPlayhead(options: {
     playback,
     (event) => {
       last = event;
+      const state = playback.getState();
+      const { score } = document.getState();
+      if (event && score && selectRunning(state) && !event.countingIn) {
+        const timeline = timelineOf(score);
+        const speed = speedAt(timeline, state.settings.tempo, event.position.playbackTick);
+        run = nextRun(run, event, now(), speed);
+      } else {
+        run = undefined;
+      }
       paint(true);
     },
     frames,
