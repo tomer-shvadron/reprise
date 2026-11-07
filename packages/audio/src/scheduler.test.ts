@@ -70,6 +70,34 @@ describe('advance', () => {
     expect(end.endTime).toBeCloseTo(10, 9);
   });
 
+  it('plays every beat of an over-full bar once, on time, and starts the next bar after it', () => {
+    let builder = score().tempo(120).track('guitar').bar();
+    for (let fret = 0; fret < 6; fret++) builder = builder.beat('4', [note(1, fret)]);
+    builder = builder.bar();
+    for (let fret = 0; fret < 4; fret++) builder = builder.beat('4', [note(2, fret)]);
+    const timeline = createTimeline(builder.build({ validate: false }));
+    const run = startRun(timeline, { tick: 0, time: 0, rate: 1, loop: undefined, countIn: false });
+    const { run: end, notes } = walk(timeline, run, 20);
+
+    expect(notes.map((n) => [n.note.string, n.note.fret])).toEqual([
+      [1, 0],
+      [1, 1],
+      [1, 2],
+      [1, 3],
+      [1, 4],
+      [1, 5],
+      [2, 0],
+      [2, 1],
+      [2, 2],
+      [2, 3],
+    ]);
+    for (const [index, scheduled] of notes.entries()) {
+      expect(scheduled.when).toBeCloseTo(index * 0.5, 9);
+    }
+    expect(end.finished).toBe(true);
+    expect(end.endTime).toBeCloseTo(5, 9);
+  });
+
   it('hands out both sides of the repeat in one window that spans it', () => {
     const timeline = repeated();
     const run = startRun(timeline, {

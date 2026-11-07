@@ -48,6 +48,22 @@ describe('describePosition', () => {
     expect(describePosition(timelineOf(pickup), positionEventAt(pickup, 0)).beat).toBe('4/4');
   });
 
+  it('stops the beat at the numerator through an over-full bar’s overflow', () => {
+    const builder = score().track('guitar').bar();
+    for (let fret = 0; fret < 6; fret++) builder.beat('4', [note(1, fret)]);
+    builder.bar().beat('1', [note(2, 0)]);
+    const overfull = builder.build({ validate: false });
+    const timeline = timelineOf(overfull);
+    const beats = [3, 4, 5].map((i) =>
+      describePosition(timeline, positionEventAt(overfull, i * 960)),
+    );
+    expect(beats.map((text) => [text.bar, text.beat])).toEqual([
+      ['1/2', '4/4'],
+      ['1/2', '4/4'],
+      ['1/2', '4/4'],
+    ]);
+  });
+
   it('shows the written bar on a repeat’s second pass', () => {
     const song = score()
       .track('guitar')
