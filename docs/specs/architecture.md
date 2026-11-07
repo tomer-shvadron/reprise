@@ -415,7 +415,7 @@ interface LayoutOptions {
 }
 interface LayoutResult {
   pages: Page[];                      // continuous mode = one infinitely wide page
-  systems: System[];                  // each with its bar range and bounding box
+  systems: System[];                  // each with its bar range and bounding box, on one page; a system taller than the page is split into parts
   primitives: Primitive[];            // glyph | line | path | text, with x, y, bbox, theme role
   anchors: Anchor[];                  // model-node id -> bbox, for hit-testing and cursor placement
   metrics: { layoutMs: number; primitives: number; anchors: number; measuredBars: number; reusedSystems: number };
