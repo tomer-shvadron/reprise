@@ -81,9 +81,9 @@ function slantedArc(
   const d =
     `M${f(x1)} ${f(y1)}C${f(a)} ${f(ya + outer)} ${f(b)} ${f(yb + outer)} ${f(x2)} ${f(y2)}` +
     `C${f(b)} ${f(yb + inner)} ${f(a)} ${f(ya + inner)} ${f(x1)} ${f(y1)}Z`;
-  const apex = (y1 + y2) / 2 + height;
-  const top = Math.min(y1, y2, apex);
-  const bottom = Math.max(y1, y2, apex);
+  const extremes = outerExtremes(y1, rise, height);
+  const top = Math.min(y1, y2, ...extremes);
+  const bottom = Math.max(y1, y2, ...extremes);
   return {
     kind: 'path',
     x: round(x1),
@@ -95,4 +95,19 @@ function slantedArc(
     role: 'ink',
     ...(node !== undefined && { node }),
   };
+}
+
+/**
+ * The outer curve's turning points between its ends, where a slanted arc peaks past its midpoint:
+ * the curve is `y1 + rise·(3t + 3t² − 2t³)/4 + 4·height·t(1 − t)`.
+ */
+function outerExtremes(y1: number, rise: number, height: number): number[] {
+  const a = -1.5 * rise;
+  const b = 1.5 * rise - 8 * height;
+  const c = 0.75 * rise + 4 * height;
+  const disc = b * b - 4 * a * c;
+  if (a === 0 || disc < 0) return [];
+  return [(-b - Math.sqrt(disc)) / (2 * a), (-b + Math.sqrt(disc)) / (2 * a)]
+    .filter((t) => t > 0 && t < 1)
+    .map((t) => y1 + (rise * (3 * t + 3 * t * t - 2 * t ** 3)) / 4 + 4 * height * t * (1 - t));
 }
