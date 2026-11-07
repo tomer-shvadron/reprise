@@ -283,6 +283,70 @@ describe('layout', () => {
     expect(stable(layout(sequential(), continuous))).toBe(stable(layout(sequential(), continuous)));
   });
 
+  describe("keeps the first page's header room", () => {
+    const header = 68;
+    const margins = DEFAULT_MARGINS.paged;
+    const both = (built: ReturnType<typeof largeScore>): LayoutOptions['notation'] =>
+      Object.fromEntries(built.tracks.map(({ id }) => [id, 'both']));
+
+    it('starts page 0 under the header and every later page at its margin', () => {
+      const result = layout(largeScore(2, 40), { ...paged, headerHeight: header });
+      expectValid(result);
+      expectInsidePages(result, margins);
+      expect(result.pages.length).toBeGreaterThan(1);
+      const firstOn = (page: number) => result.systems.find((system) => system.page === page);
+      expect(firstOn(0)?.bbox.y).toBe(margins.top + header);
+      expect(firstOn(1)?.bbox.y).toBe((result.pages[1]?.bbox.y ?? 0) + margins.top);
+      for (const system of result.systems.filter(({ page }) => page === 0)) {
+        expect(system.bbox.y).toBeGreaterThanOrEqual(margins.top + header);
+        for (const primitive of result.primitives.slice(
+          system.primitives.start,
+          system.primitives.end,
+        )) {
+          expect(primitive.bbox.y).toBeGreaterThanOrEqual(margins.top + header - 0.01);
+        }
+      }
+    });
+
+    it('splits an 8-track system on page 0 below the header, between whole tracks', () => {
+      const tall = largeScore(8, 6);
+      const result = layout(tall, { ...paged, notation: both(tall), headerHeight: header });
+      expectValid(result);
+      expectInsidePages(result, margins);
+      const first = result.systems[0];
+      if (!first) throw new Error('no system');
+      expect(first.part).toBe(0);
+      expect(first.page).toBe(0);
+      expect(first.bbox.y).toBe(margins.top + header);
+      const types = (track: string) =>
+        first.staves.filter((staff) => staff.track === track).map(({ type }) => type);
+      for (const { track } of first.staves) expect(types(track)).toEqual(['standard', 'tab']);
+    });
+
+    it('splits a system that fits a full page but not the first page under its header', () => {
+      const built = largeScore(4, 2);
+      const options = { ...paged, notation: both(built) };
+      const height = layout(built, { ...options, pageHeight: 100_000 }).systems[0]?.bbox.height;
+      if (height === undefined) throw new Error('no system');
+      const pageHeight = height + margins.top + margins.bottom + header / 2;
+      const whole = layout(built, { ...options, pageHeight });
+      expect(whole.systems[0]?.part).toBeUndefined();
+      const result = layout(built, { ...options, pageHeight, headerHeight: header });
+      expect(result.systems[0]?.part).toBe(0);
+      expect(result.systems[0]?.page).toBe(0);
+      expect(result.systems[1]?.page).toBe(1);
+      expectInsidePages(result, margins);
+    });
+
+    it('ignores the header in continuous mode and rejects a negative one', () => {
+      const built = largeScore(2, 8);
+      expect(stable(layout(built, { ...continuous, headerHeight: header }))).toBe(
+        stable(layout(built, continuous)),
+      );
+      expect(() => layout(built, { ...paged, headerHeight: -1 })).toThrow(RangeError);
+    });
+  });
+
   it('rejects a zoom or width that is not positive', () => {
     expect(() => layout(createEmptyScore(), { ...paged, zoom: 0 })).toThrow(RangeError);
     expect(() => layout(createEmptyScore(), { ...paged, width: Number.NaN })).toThrow(RangeError);

@@ -88,6 +88,8 @@ Changed by #87 (2026-11-07), widening the model and narrowing audio: `soundingPi
 
 Changed by #109 (2026-11-07): in paged mode a system taller than the page's content area is split between its staves (between tracks where it can, never through a staff) into parts on consecutive pages, each starting at a page top; `LayoutResult.systems` lists each part as a `System` on one page, consecutive parts sharing `bars`; `System.part` (0, 1, …) marks the parts of a split system, and a part after the first has the id `system:<first master-bar id>/<part>`; a master bar's column anchor (`bar` without `track`) and the `system` anchor are repeated in every part, each covering that part's staves, and `metrics.reusedSystems` counts parts.
 
+Changed by #PRNUM (2026-11-07): `LayoutOptions.headerHeight` keeps room at the top of the first page for a header the caller draws. That page's smaller room splits a system taller than it, as #85 splits a system taller than a page. `Platform.print` takes an optional `{ pageSize: 'A4' | 'Letter' }`, which the Electron implementation passes to `webContents.print` so the system dialog opens on the chosen paper; the browser relies on the print's `@page` size.
+
 Synced by #74 (2026-11-06), no contract change: the Layout sketch lists the `LayoutOptions`, `LayoutMetrics` and `Anchor` fields #59 shipped and the `tiedNotes` option #68 added, and the Audio sketch names the `InstrumentSink` #55 shipped and #73 widened.
 
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
@@ -416,6 +418,7 @@ interface LayoutOptions {
   mode: 'paged' | 'continuous'; width: number; pageHeight?: number; zoom: number; tracks: Id[] | 'all'; notation: Record<Id, 'tab'|'standard'|'both'>;
   tiedNotes?: 'parentheses' | 'hidden'; // tied notes on tab staves, parentheses unless given
   margins?: Partial<Margins>;         // page margins, unscaled
+  headerHeight?: number;              // paged: room kept free at the top of the first page for a header the caller draws, unscaled
   pageGap?: number; staffGap?: number; trackGap?: number; systemGap?: number; // pageGap unscaled, the rest at zoom 1
   dirtyBars?: readonly Id[];          // master bars to re-measure when a cache is given, usually Change.touchedBars
 }
@@ -467,7 +470,7 @@ interface Platform {
   writeHandle(handle, bytes): Promise<void>;   // over an opened file's handle or a path saveFile returned
   libraryDir(): Promise<string>;     // ~/Music/Reprise on desktop; OPFS root in the browser
   dataDir(): Promise<string>;        // Electron userData; OPFS in the browser
-  print(): Promise<void>;
+  print(options?: { pageSize: 'A4' | 'Letter' }): Promise<void>;   // Electron opens the system dialog on that paper
   microphone(): Promise<MediaStream>;
 }
 ```

@@ -29,6 +29,8 @@ export interface ResolvedOptions {
   width: number;
   pageHeight: number;
   margins: Margins;
+  /** Paged: the room above the first page's systems for the caller's header; 0 in continuous mode. */
+  headerHeight: number;
   pageGap: number;
   space: number;
   staffGap: number;
@@ -57,6 +59,13 @@ export function stavesFor(track: Track, notation: Notation): StaffType[] {
 function positive(value: number, name: string): number {
   if (!Number.isFinite(value) || value <= 0) {
     throw new RangeError(`layout option ${name} must be a positive number`);
+  }
+  return value;
+}
+
+function nonNegative(value: number, name: string): number {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new RangeError(`layout option ${name} must be a non-negative number`);
   }
   return value;
 }
@@ -96,6 +105,8 @@ export function resolveOptions(score: Score, options: LayoutOptions): ResolvedOp
   ]);
   const nameKey = tracks.map(({ track }) => [track.name, track.shortName]);
   const margins = { ...DEFAULT_MARGINS[options.mode], ...options.margins };
+  const headerHeight =
+    options.mode === 'paged' ? nonNegative(options.headerHeight ?? 0, 'headerHeight') : 0;
   const pageGap = options.pageGap ?? DEFAULT_GAPS.pageGap;
   const tiedNotes = options.tiedNotes ?? 'parentheses';
   const measureKey = JSON.stringify([space, tiedNotes, trackKey]);
@@ -104,6 +115,7 @@ export function resolveOptions(score: Score, options: LayoutOptions): ResolvedOp
     width,
     pageHeight,
     margins,
+    headerHeight,
     pageGap,
     space,
     ...gaps,
@@ -117,6 +129,7 @@ export function resolveOptions(score: Score, options: LayoutOptions): ResolvedOp
       width,
       pageHeight,
       margins,
+      headerHeight,
       pageGap,
       gaps,
     ]),
