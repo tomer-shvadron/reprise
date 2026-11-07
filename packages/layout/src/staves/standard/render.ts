@@ -93,9 +93,9 @@ function drawChord(
     }
     box = box ? union(box, drawn.bbox) : drawn.bbox;
     if (head.sounding) continue;
-    // A diamond is taller than a staff space; its anchor keeps to one, as other heads' do, so
-    // diamonds a third apart do not overlap.
-    const diamond = head.glyph.startsWith('noteheadDiamond');
+    // A harmonic's diamond is taller than a staff space; its anchor keeps to one, as other heads'
+    // do, so diamonds a third apart do not overlap. Percussion diamonds keep their glyph's box.
+    const diamond = head.glyph.startsWith('noteheadDiamond') && head.note.harmonic !== undefined;
     const { x: bx, width: bw } = drawn.bbox;
     const by = diamond ? top + head.y - (space * scale) / 2 : drawn.bbox.y;
     const bh = diamond ? space * scale : drawn.bbox.height;

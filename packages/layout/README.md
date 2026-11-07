@@ -117,7 +117,7 @@ The grouping rules every staff shares (`grouping.ts`: the beat-grouping table, b
 - **Alone**: a standard staff that is its track's only staff also requests the effect lanes (`analyseEffects` without articulations), reserves their room in `measure` and draws them with `drawLanes`; its bends go from the heads into its bend lane.
 - **Both mode**: when `StaffBar.staves` is `['standard', 'tab']`, the standard staff draws all the rhythm notation, dynamics and fingering and the effects attached to the notes, and the tab the lane effects and the letters; what the tab keeps is the tab's **Both mode** bullet in [`notation.md`](../../docs/reference/notation.md#tab-staff-wp-021).
 - `src/staves/standard/rhythm/` draws the five-line staves' rhythm notation (stems, flags, sloped beams, dots, ties, tuplet marks) from x positions, note-head y extents, directions and durations; beam and tuplet grouping come from the shared `src/staves/rhythm/`.
-- Anchors: one `note` anchor per main head (grace notes included) with the head's box, less any width it shares with a neighbour across a stem, a diamond's kept to one staff space tall; a sounding diamond has none; one `beat` anchor per beat and voice.
+- Anchors: one `note` anchor per main head (grace notes included) with the head's box, less any width it shares with a neighbour across a stem, a harmonic diamond's kept to one staff space tall (a percussion diamond keeps its glyph's); a sounding diamond has none; one `beat` anchor per beat and voice.
 - Known: the origin half of a hammer-on or legato slur cut by a system break keeps room only when it starts in its voice's last beat, so it can reach about 0.45 spaces past the measured room otherwise, as the tab's arcs can.
 
 ## Metrics pipeline

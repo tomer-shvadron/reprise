@@ -912,6 +912,24 @@ describe('effects on the percussion staff', () => {
     expect(staff(result)).toEqual(staff(layout(kit(false), paged)));
     expect(content(result)).toMatchSnapshot();
   });
+  it("keeps a percussion diamond's anchor its glyph's height, unlike a harmonic's", () => {
+    const built = drums()
+      .bar()
+      .beat('2', [midi(53)])
+      .beat('2', [midi(38)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const id = noteOf(built, 0, 0, 0).id;
+    const bell = one(
+      glyphs(result, 'noteheadDiamond').filter((p) => p.node === id),
+      'bell',
+    );
+    const anchor = one(
+      result.anchors.filter((a) => a.kind === 'note' && a.id === id),
+      'bell anchor',
+    );
+    expect(anchor.bbox.height).toBeCloseTo(bell.bbox.height, 1);
+  });
 });
 
 describe('effects on five-line staves with a cache', () => {
