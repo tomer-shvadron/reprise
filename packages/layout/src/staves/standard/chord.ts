@@ -7,6 +7,7 @@ import type { ShownAccidental } from './pitch';
 import {
   dotsWidth,
   flagGlyph,
+  stemEnd,
   stemThickness,
   stemTip,
   type ArcDirection,
@@ -405,8 +406,9 @@ export function planChord(notes: readonly ChordNote[], options: ChordOptions): C
     bottom = Math.max(bottom, accBottom);
   }
   if (stem) {
-    top = Math.min(top, tip);
-    bottom = Math.max(bottom, tip);
+    const end = stemEnd(tip, beams, direction, space, scale);
+    top = Math.min(top, end);
+    bottom = Math.max(bottom, end);
     const flag = flagGlyph(beams, direction);
     if (flag) right = Math.max(right, stem.x - st / 2 + glyphWidth(flag, unit));
   }

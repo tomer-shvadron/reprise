@@ -3,6 +3,7 @@ import {
   setMasterBar,
   setNote,
   type Clef,
+  type Dynamics,
   type Note,
   type Score,
 } from '@reprise/model';
@@ -15,8 +16,9 @@ import {
   layout,
   type LayoutOptions,
   type LayoutResult,
+  type Rect,
 } from '../../index';
-import { expectValid, stable } from '../../test/check-result';
+import { expectValid, stable, strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
 import type { StaffBar } from '../staff-module';
 import { planBar, type BarPlan } from './plan';
@@ -729,5 +731,175 @@ describe('standard notation at scale', () => {
     const cached = layout(edited, { ...paged, dirtyBars: change.touchedBars }, cache);
     expect(cached.metrics.measuredBars).toBe(2);
     expect(stable(cached)).toBe(stable(layout(edited, paged)));
+  });
+});
+
+describe('room for everything the five-line staves draw', () => {
+  const strays = (result: LayoutResult, built: Score): string[] =>
+    strayPrimitives(result, built).map(describePrimitive);
+  const guitar = (notation: 'standard' | 'both'): ScoreBuilder =>
+    score().track('guitar', { display: { notation, octaveShift: 1 } });
+  const glyphOf = (result: LayoutResult, name: string): Rect => {
+    const found = result.primitives.find((p) => p.kind === 'glyph' && p.glyph === name);
+    if (!found) throw new Error(`no ${name}`);
+    return found.bbox;
+  };
+  /** Flags whose box reaches into a staff's 0.3-space margin: a flag is measured, not absorbed. */
+  const flagsInMargin = (result: LayoutResult): string[] => {
+    const margin = 0.3 * 7;
+    const staves = result.anchors.filter((anchor) => anchor.kind === 'staff');
+    return result.primitives.flatMap((primitive) => {
+      if (primitive.kind !== 'glyph' || !primitive.glyph.startsWith('flag')) return [];
+      const { y, height } = primitive.bbox;
+      const held = staves.some(
+        ({ bbox }) =>
+          y >= bbox.y + margin - 0.02 && y + height <= bbox.y + bbox.height - margin + 0.02,
+      );
+      return held ? [] : [describePrimitive(primitive)];
+    });
+  };
+
+  it('keeps every dynamic inside the dynamics lane, on the standard and percussion staves', () => {
+    const marks: Dynamics[] = ['mf', 'ppp', 'pp', 'p', 'mp', 'ff', 'fff', 'f'];
+    for (const [kind, pitch] of [
+      ['piano', 72],
+      ['drums', 38],
+    ] as const) {
+      const builder = kind === 'piano' ? score().track('piano', piano) : score().track('drums');
+      for (const [i, dynamics] of marks.entries()) {
+        if (i % 4 === 0) builder.bar();
+        builder.beat('4', [midi(pitch, { dynamics })]);
+      }
+      const built = builder.build({ ids: 'sequential' });
+      const result = laid(built);
+      expect(glyphNames(result, /^dynamic/), kind).toHaveLength(8);
+      expect(strays(result, built), kind).toEqual([]);
+    }
+  });
+
+  it('keeps room for a flag past its stem tip, up and down, and past a tremolo-lengthened stem', () => {
+    const lone = (builder: ScoreBuilder, value: '32' | '64', pitch: number, spec = {}): void => {
+      builder.rest(value === '32' ? '16.' : '16..');
+      builder.beat(value, [midi(pitch)], spec);
+      builder.rest('8');
+    };
+    for (const [kind, high, low] of [
+      ['piano', 69, 72],
+      ['drums', 38, 42],
+    ] as const) {
+      const start = (): ScoreBuilder =>
+        (kind === 'piano' ? score().track('piano', piano) : score().track('drums')).bar();
+      const plain = start();
+      lone(plain, '32', high);
+      lone(plain, '32', low);
+      lone(plain, '64', high);
+      lone(plain, '64', low);
+      // Apart from the 64ths, whose room would hide the lengthened stems'.
+      const tremolo = start();
+      lone(tremolo, '32', low, { effects: { tremoloPicking: 32 } });
+      lone(tremolo, '32', high, { effects: { tremoloPicking: 32 } });
+      tremolo.rest('2');
+      for (const builder of [plain, tremolo]) {
+        const built = builder.build({ ids: 'sequential' });
+        const result = laid(built);
+        expect(glyphNames(result, /^flag/).length, kind).toBeGreaterThan(0);
+        expect(strays(result, built), kind).toEqual([]);
+        expect(flagsInMargin(result), kind).toEqual([]);
+      }
+    }
+  });
+
+  it('measures a tuplet number from a rest it holds by the rest itself, above and below', () => {
+    const five = { tuplet: { n: 5, of: 4 } };
+    for (const notation of ['standard', 'both'] as const) {
+      const builder = guitar(notation).bar().rest('16', five);
+      for (let i = 0; i < 4; i++) builder.beat('16', [note(3, 2)], five);
+      builder.rest('4').rest('2');
+      builder
+        .bar()
+        .beat('1', [note(1, 1)])
+        .voice(1)
+        .rest('16', five);
+      for (let i = 0; i < 4; i++) builder.beat('16', [note(5, 3)], five);
+      builder.rest('4').rest('2');
+      const built = builder.build({ ids: 'sequential' });
+      const result = laid(built);
+      expect(glyphNames(result, /^tuplet/), notation).toEqual(['tuplet5', 'tuplet5']);
+      expect(strays(result, built), notation).toEqual([]);
+    }
+  });
+
+  it('puts a tuplet number past the flag of an unbeamed note', () => {
+    const t = { tuplet: { n: 3, of: 2 } };
+    const built = score()
+      .track('piano', piano)
+      .bar()
+      .rest('32', t)
+      .beat('32', [midi(69)], t)
+      .rest('32', t)
+      .rest('16')
+      .rest('8')
+      .rest('4')
+      .rest('2')
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const number = glyphOf(result, 'tuplet3');
+    expect(number.y + number.height).toBeLessThanOrEqual(glyphOf(result, 'flag32ndUp').y + 0.02);
+    expect(strays(result, built)).toEqual([]);
+  });
+
+  it("keeps room for the right hand's i over the fingering stack", () => {
+    const built = score()
+      .track('piano', piano)
+      .bar()
+      .beat('4', [midi(74, { rightHandFinger: 'index' })])
+      .rest('4')
+      .rest('2')
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    expect(glyphNames(result, /^fingering/)).toEqual(['fingeringILower']);
+    expect(strays(result, built)).toEqual([]);
+  });
+
+  const originHalves = (notation: 'standard' | 'both'): Score => {
+    const builder = guitar(notation);
+    for (let b = 0; b < 4; b++) {
+      builder.bar().beat('8', [note(1, 17, { hammerPull: b > 0 })]);
+      for (let i = 0; i < 7; i++) builder.beat('8', [note(3, 2)]);
+    }
+    return builder.build({ ids: 'sequential' });
+  };
+
+  it("keeps room for a slur's origin half at a break from a note before its voice's last beat", () => {
+    for (const [notation, arcs] of [
+      ['standard', 1],
+      ['both', 2],
+    ] as const) {
+      const built = originHalves(notation);
+      const result = laid(built, { width: 300 });
+      expect(result.systems, notation).toHaveLength(4);
+      const origin = beatOf(built, 0, 0, 0).notes[0]?.id;
+      const system = result.systems[0];
+      if (!system) throw new Error('no system');
+      const drawn = result.primitives
+        .slice(system.primitives.start, system.primitives.end)
+        .filter((p) => p.kind === 'path' && p.node === origin && p.d.includes('C'));
+      expect(drawn, notation).toHaveLength(arcs);
+      expect(strays(result, built), notation).toEqual([]);
+    }
+  });
+
+  it('re-measures only the edited bar when a later note on the string takes the slur room', () => {
+    const built = originHalves('standard');
+    const options = { ...paged, width: 300 };
+    const cache = new LayoutCache();
+    layout(built, options, cache);
+    const { score: edited, change } = applyCommand(
+      built,
+      setNote({ beatId: beatOf(built, 0, 0, 7).id }, { string: 1, fret: 15 }),
+    );
+    const cached = layout(edited, { ...options, dirtyBars: change.touchedBars }, cache);
+    expect(cached.metrics.measuredBars).toBeLessThanOrEqual(2);
+    expect(stable(cached)).toBe(stable(layout(edited, options)));
   });
 });

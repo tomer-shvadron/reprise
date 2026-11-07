@@ -45,6 +45,7 @@ import {
   beamStep,
   dotsWidth,
   drawSlur,
+  stemEnd,
   stemLength,
   type ArcDirection,
   type StemDirection,
@@ -255,8 +256,9 @@ export function planTremolo(
   const inner = chord.tip - s * chord.beams * beamStep(space);
   const grow = shortfall(name, start, inner, space);
   chord.tip += s * grow;
-  if (s < 0) chord.top = Math.min(chord.top, chord.tip);
-  else chord.bottom = Math.max(chord.bottom, chord.tip);
+  const end = stemEnd(chord.tip, chord.beams, chord.direction, chord.space, chord.scale);
+  if (s < 0) chord.top = Math.min(chord.top, end);
+  else chord.bottom = Math.max(chord.bottom, end);
   return { glyph: name, start, y: (start + inner + s * grow) / 2 };
 }
 
