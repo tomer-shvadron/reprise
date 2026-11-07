@@ -126,7 +126,8 @@ export function startPlayhead(options: {
       running,
       run?.floor,
     );
-    const cursor = playheadAt(result, score, heard.masterBarId, heard.tick);
+    const track = selection.getState().currentTrack;
+    const cursor = playheadAt(result, score, heard.masterBarId, heard.tick, track);
     drawn.current = heard;
     target.setPlayhead(cursor);
     if (!follow || !cursor || !ui.getState().follow.on) return;
@@ -136,7 +137,7 @@ export function startPlayhead(options: {
     target.followPlayhead({
       mode: ui.getState().view.mode,
       running,
-      track: selection.getState().currentTrack,
+      track,
       force,
     });
   };

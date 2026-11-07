@@ -21,15 +21,13 @@ export interface OverlayLayerProps {
   zoom: number;
   /** Mounted systems; selection outside them is not drawn. */
   range: Range;
-  /** A layout rect of a system in view px, where its page has moved down. */
-  place: (rect: Rect, system: number) => Rect;
 }
 
 /**
  * Above the notation rather than under it: tab numbers sit on opaque paper knockouts, which a
  * highlight underneath would show as holes. A translucent tint on top colours both alike.
  */
-export function OverlayLayer({ overlays, zoom, range, place }: OverlayLayerProps) {
+export function OverlayLayer({ overlays, zoom, range }: OverlayLayerProps) {
   const { selection = [], loop = [], hover } = overlays ?? {};
   const boxes = (anchors: readonly Anchor[], className: string) =>
     anchors
@@ -38,14 +36,14 @@ export function OverlayLayer({ overlays, zoom, range, place }: OverlayLayerProps
         <div
           key={`${className}-${String(index)}`}
           className={className}
-          style={box(place(anchor.bbox, anchor.system), zoom)}
+          style={box(anchor.bbox, zoom)}
         />
       ));
   return (
     <div className="score-overlays" aria-hidden="true">
       {boxes(loop, 'score-loop')}
       {boxes(selection, 'score-selection')}
-      {hover && <div className="score-hover" style={box(place(hover.bbox, hover.system), zoom)} />}
+      {hover && <div className="score-hover" style={box(hover.bbox, zoom)} />}
     </div>
   );
 }

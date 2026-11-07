@@ -6,9 +6,11 @@ import {
   sameInputs,
   writeCache,
   type CachedBar,
+  type CachedPart,
   type CachedSystem,
   type Cursor,
   type LayoutCache,
+  type PartPlacement,
 } from './cache';
 import { barContexts, type BarContext } from './context';
 import { measureBar, type BarMeasure } from './measure';
@@ -19,11 +21,12 @@ import {
   enteringDynamics,
   isClean,
   reposition,
-  sameCursor,
+  samePlacement,
   samePlan,
   type ChangedBars,
 } from './reuse';
 import { staffBar, staffSlots, trackBar, type StaffSlot } from './slots';
+import { partVertical, splitSlots } from './split';
 import { LANE_HEIGHT, mergeLanes, type LaneRequests } from './staves/lanes';
 import { BAR_REACH } from './staves/staff-module';
 import type { Anchor, LayoutOptions, LayoutResult, Page, Primitive, Range, System } from './types';
@@ -186,17 +189,40 @@ function pageTop(options: ResolvedOptions, page: number): number {
   return page * (options.pageHeight + options.pageGap);
 }
 
-function place(options: ResolvedOptions, cursor: Cursor, height: number): Cursor {
-  if (options.mode === 'continuous') return cursor;
-  const limit = pageTop(options, cursor.page) + options.pageHeight - options.margins.bottom;
-  if (cursor.empty || cursor.y + height <= limit) return cursor;
-  const page = cursor.page + 1;
+function pageStart(options: ResolvedOptions, page: number): Cursor {
   return {
     page,
     x: options.margins.left,
     y: pageTop(options, page) + options.margins.top,
     empty: true,
   };
+}
+
+/**
+ * Where a system's parts go. One that fits a page's content area flows on; a taller one is split
+ * between its staves, its first part at the top of the current page if empty, else the next, and
+ * each further part at the top of the page after. `vertical.height` is compared unrounded.
+ */
+function placeSystem(
+  options: ResolvedOptions,
+  cursor: Cursor,
+  vertical: VerticalLayout,
+  groups: readonly number[],
+): PartPlacement[] {
+  const all = { start: 0, end: groups.length };
+  if (options.mode === 'continuous') return [{ ...cursor, slots: all }];
+  const { margins, pageHeight } = options;
+  const room = pageHeight - margins.top - margins.bottom;
+  if (vertical.height > room) {
+    const first = cursor.empty ? cursor.page : cursor.page + 1;
+    return splitSlots(vertical, groups, room, options.space).map((slots, j) => ({
+      ...pageStart(options, first + j),
+      slots,
+    }));
+  }
+  const limit = pageTop(options, cursor.page) + pageHeight - margins.bottom;
+  if (cursor.empty || cursor.y + vertical.height <= limit) return [{ ...cursor, slots: all }];
+  return [{ ...pageStart(options, cursor.page + 1), slots: all }];
 }
 
 function advance(options: ResolvedOptions, cursor: Cursor, system: System): Cursor {
@@ -282,13 +308,27 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
   let reused = 0;
   let primitiveCount = 0;
   let anchorCount = 0;
+  let systemCount = 0;
   const keep = (entry: CachedSystem): void => {
-    const primitives = { start: primitiveCount, end: primitiveCount + entry.primitives.length };
-    const anchors = { start: anchorCount, end: anchorCount + entry.anchors.length };
-    systems.push(reposition(entry, systems.length, primitives, anchors));
-    primitiveCount = primitives.end;
-    anchorCount = anchors.end;
-    reused += 1;
+    const parts = entry.parts.map((part) => {
+      const primitives = { start: primitiveCount, end: primitiveCount + part.primitives.length };
+      const anchors = { start: anchorCount, end: anchorCount + part.anchors.length };
+      const placed = reposition(part, systemCount, primitives, anchors);
+      primitiveCount = primitives.end;
+      anchorCount = anchors.end;
+      systemCount += 1;
+      return placed;
+    });
+    const moved = parts.some((part, i) => part !== entry.parts[i]);
+    systems.push(moved ? { ...entry, parts } : entry);
+    reused += parts.length;
+  };
+  const groups = slots.map(({ group }) => group);
+  /** The cursor after a system's last part. */
+  const after = (entry: CachedSystem): Cursor => {
+    const placement = entry.at.at(-1);
+    const part = entry.parts.at(-1);
+    return placement && part ? advance(resolved, placement, part.system) : pageStart(resolved, 0);
   };
   const unchanged = (old: CachedSystem, plan: SystemPlan): boolean =>
     isClean(changed, plan.start, plan.end) &&
@@ -305,9 +345,7 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
 
   if (slots.length > 0) {
     const last = systems.at(-1);
-    let cursor: Cursor = last
-      ? advance(resolved, last.at, last.system)
-      : { page: 0, x: resolved.margins.left, y: resolved.margins.top, empty: true };
+    let cursor: Cursor = last ? after(last) : pageStart(resolved, 0);
     const byStart = new Map<number, number>();
     for (let i = next; i < previous.length; i++) {
       const old = previous[i];
@@ -317,10 +355,12 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
       const position = byStart.get(plan.start);
       const old = position === undefined ? undefined : previous[position];
       if (old && position !== undefined && samePlan(old.plan, plan) && unchanged(old, plan)) {
-        const at = place(resolved, cursor, old.height);
-        if (sameCursor(at, old.at) && entering(plan.start) === old.entering) {
+        // The next placement follows from this one, the system's stack (its slots' extents and
+        // rows) and the page geometry in `systemKey`, so equal placements converge.
+        const at = placeSystem(resolved, cursor, old.vertical, groups);
+        if (samePlacement(at, old.at) && entering(plan.start) === old.entering) {
           keep(old);
-          cursor = advance(resolved, at, old.system);
+          cursor = after(old);
           // Past the last change by more than any module reads, the breaks, placements and
           // entering dynamics all follow from this system's, so the rest is as it was.
           if (sameBarCount && plan.start - BAR_REACH > lastChanged) {
@@ -340,58 +380,68 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
           resolved,
           laneRequests(slots, lanesOf, plan.start, plan.end),
         );
-      const at = place(resolved, cursor, vertical.height);
-      const index = systems.length;
-      const id = `system:${score.masterBars[plan.start]?.id ?? String(index)}`;
-      const sink: LayoutSink = { primitives: [], anchors: [] };
-      const rendered = renderSystem(
-        {
-          score,
-          contexts,
-          measures,
-          slots,
-          options: resolved,
-          plan,
-          vertical,
-          x: at.x,
-          y: at.y,
-          index,
+      const at = placeSystem(resolved, cursor, vertical, groups);
+      const split = at.length > 1;
+      const baseId = `system:${score.masterBars[plan.start]?.id ?? String(systemCount)}`;
+      const parts = at.map((placement, j): CachedPart => {
+        const index = systemCount;
+        const id = j === 0 ? baseId : `${baseId}/${String(j)}`;
+        const sink: LayoutSink = { primitives: [], anchors: [] };
+        const rendered = renderSystem(
+          {
+            score,
+            contexts,
+            measures,
+            slots,
+            options: resolved,
+            plan,
+            vertical: split
+              ? partVertical(vertical, groups, placement.slots, resolved.space)
+              : vertical,
+            x: placement.x,
+            y: placement.y,
+            index,
+            id,
+            part: placement.slots,
+          },
+          sink,
+        );
+        const system: System = {
           id,
-        },
-        sink,
-      );
-      const system: System = {
-        id,
-        index,
-        page: at.page,
-        bars: { start: plan.start, end: plan.end },
-        bbox: rendered.bbox,
-        staves: rendered.staves,
-        primitives: { start: primitiveCount, end: primitiveCount + sink.primitives.length },
-        anchors: { start: anchorCount, end: anchorCount + sink.anchors.length },
-      };
-      primitiveCount += sink.primitives.length;
-      anchorCount += sink.anchors.length;
-      systems.push({
+          index,
+          page: placement.page,
+          ...(split && { part: j }),
+          bars: { start: plan.start, end: plan.end },
+          bbox: rendered.bbox,
+          staves: rendered.staves,
+          primitives: { start: primitiveCount, end: primitiveCount + sink.primitives.length },
+          anchors: { start: anchorCount, end: anchorCount + sink.anchors.length },
+        };
+        primitiveCount += sink.primitives.length;
+        anchorCount += sink.anchors.length;
+        systemCount += 1;
+        return { system, primitives: sink.primitives, anchors: sink.anchors };
+      });
+      const entry: CachedSystem = {
         plan,
         barIds: barIds(score, plan),
         verticalKey: vertical.key,
         at,
-        height: vertical.height,
+        vertical,
         entering: entering(plan.start),
-        system,
-        primitives: sink.primitives,
-        anchors: sink.anchors,
-      });
-      cursor = advance(resolved, at, system);
+        parts,
+      };
+      systems.push(entry);
+      cursor = after(entry);
     }
   }
-  const systemList = systems.map(({ system }) => system);
+  const parts = systems.flatMap((entry) => entry.parts);
+  const systemList = parts.map(({ system }) => system);
   // One copy per array: pushing item by item cost several times as much on the long score.
   const noPrimitives: Primitive[] = [];
   const noAnchors: Anchor[] = [];
-  const primitives = noPrimitives.concat(...systems.map((entry) => entry.primitives));
-  const anchors = noAnchors.concat(...systems.map((entry) => entry.anchors));
+  const primitives = noPrimitives.concat(...parts.map((part) => part.primitives));
+  const anchors = noAnchors.concat(...parts.map((part) => part.anchors));
 
   if (cache) {
     writeCache(cache, {

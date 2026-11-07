@@ -15,7 +15,14 @@ import {
   thinBarline,
   type StaffBox,
 } from './furniture';
-import { drawDirections, drawSection, drawTempo, drawVolta, repeatCount } from './header';
+import {
+  drawBarNumber,
+  drawDirections,
+  drawSection,
+  drawTempo,
+  drawVolta,
+  repeatCount,
+} from './header';
 import type { Band, VoltaSpan } from './header';
 import { onsetIndex, type BarMeasure } from './measure';
 import { textExtent } from './metrics';
@@ -24,7 +31,7 @@ import { line, rect, round, text, type LayoutSink } from './primitives';
 import { staffBar, trackBar, type StaffSlot } from './slots';
 import { stretch } from './spacing';
 import type { LaneBands, NeighbourBar } from './staves';
-import type { Rect, StaffPlacement } from './types';
+import type { Range, Rect, StaffPlacement } from './types';
 import type { VerticalLayout } from './vertical';
 
 export interface SystemInput {
@@ -40,6 +47,8 @@ export interface SystemInput {
   y: number;
   index: number;
   id: string;
+  /** The staff slots this part of the system draws: all of them for a whole system. */
+  part: Range;
 }
 
 export interface RenderedSystem {
@@ -125,14 +134,16 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
   const { space } = options;
   const x0 = input.x + plan.indent;
   const xEnd = x0 + plan.prefix + plan.width + plan.courtesy;
-  const boxes: StaffBox[] = slots.map((slot, i) => {
+  const { part } = input;
+  const boxes: (StaffBox | undefined)[] = slots.map((slot, i) => {
+    if (i < part.start || i >= part.end) return undefined;
     const offsets = vertical.staves[i] ?? { top: 0, bottom: 0 };
     return { ...slot.box, top: input.y + offsets.top, bottom: input.y + offsets.bottom };
   });
-  const firstBox = boxes[0];
-  const lastBox = boxes.at(-1);
-  const firstExtent = vertical.staves[0];
-  const lastExtent = vertical.staves.at(-1);
+  const firstBox = boxes[part.start];
+  const lastBox = boxes[part.end - 1];
+  const firstExtent = vertical.staves[part.start];
+  const lastExtent = vertical.staves[part.end - 1];
   const columnTop = (firstBox?.top ?? input.y) - (firstExtent?.above ?? 0);
   const columnBottom = (lastBox?.bottom ?? input.y) + (lastExtent?.below ?? 0);
 
@@ -156,8 +167,8 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
   const startContext = contexts[plan.start];
   const firstMasterBar = startContext?.masterBar;
   if (plan.opensLine && firstBox && lastBox && firstMasterBar) {
-    // A single staff opens without a bar line; two or more are joined by one.
-    if (boxes.length > 1) {
+    // A single staff opens without a bar line; two or more are joined by one, in every part.
+    if (slots.length > 1) {
       sink.primitives.push(
         line(
           x0 + thinBarline(space) / 2,
@@ -235,12 +246,15 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
       cursor += measure.keyChange;
     }
     if (measure.time > 0) {
-      for (const staff of boxes)
-        drawTime(sink, staff, masterBar.timeSignature, cursor, space, masterBar.id);
+      for (const staff of boxes) {
+        if (staff) drawTime(sink, staff, masterBar.timeSignature, cursor, space, masterBar.id);
+      }
       cursor += measure.time;
     }
     if (measure.repeatStart > 0) {
-      for (const staff of boxes) drawRepeatStart(sink, cursor, staff, space, masterBar.id);
+      for (const staff of boxes) {
+        if (staff) drawRepeatStart(sink, cursor, staff, space, masterBar.id);
+      }
     }
 
     const previous = neighbour(bars[index - plan.start - 1]);
@@ -277,8 +291,12 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
         drawEndBarline(sink, kind, barEnd, gap, space, masterBar.id);
       }
     }
-    const countBand = laneBands(vertical, 0, input.y).repeatCount;
+    // The count is slot 0's, whose offsets only the first part keeps.
+    const countBand = part.start === 0 ? laneBands(vertical, 0, input.y).repeatCount : undefined;
     if (countBand) repeatCount(sink, masterBar, barEnd, countBand, space);
+
+    const numberBand = band(vertical, 'barNumber', input.y);
+    if (numberBand) drawBarNumber(sink, masterBar, index + 1, barX, numberBand, space);
 
     const sectionBand = band(vertical, 'section', input.y);
     if (sectionBand) drawSection(sink, masterBar, barX + space * 0.2, sectionBand, space);
@@ -326,7 +344,9 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
     for (const [g, { track }] of options.tracks.entries()) {
       const bar = track.bars[index];
       const group = vertical.groups[g];
-      const groupSlots = slots.flatMap((slot, i) => (slot.group === g ? [i] : []));
+      const groupSlots = slots.flatMap((slot, i) =>
+        slot.group === g && i >= part.start && i < part.end ? [i] : [],
+      );
       const top = groupSlots[0];
       const bottom = groupSlots.at(-1);
       if (!bar || !group || top === undefined || bottom === undefined) continue;
@@ -353,7 +373,10 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
       let widest = 0;
       for (const [i, slot] of slots.entries()) {
         const staff = boxes[i];
-        if (!staff || slot.type !== 'standard') continue;
+        if (slot.type !== 'standard') continue;
+        // Every part keeps the system's courtesy column, whichever staves it holds.
+        widest = keyWidth(masterBar.keySignature.fifths, space, previous);
+        if (!staff) continue;
         const clef = nextContext.clefs[slot.group] ?? 'treble';
         drawKey(
           sink,
@@ -365,13 +388,13 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
           masterBar.id,
           previous,
         );
-        widest = keyWidth(masterBar.keySignature.fifths, space, previous);
       }
       cursor += widest;
     }
     if (nextContext.showTime) {
-      for (const staff of boxes)
-        drawTime(sink, staff, masterBar.timeSignature, cursor, space, masterBar.id);
+      for (const staff of boxes) {
+        if (staff) drawTime(sink, staff, masterBar.timeSignature, cursor, space, masterBar.id);
+      }
     }
   }
 

@@ -1,7 +1,7 @@
 import { VOICE_COUNT } from '@reprise/model';
 
 import type { SystemPlan } from './breaking';
-import type { CachedSystem, Cursor } from './cache';
+import type { CachedPart, Cursor, PartPlacement } from './cache';
 import type { VisibleTrack } from './options';
 import { dynamicsBefore } from './staves/dynamics';
 import { BAR_REACH } from './staves/staff-module';
@@ -67,21 +67,32 @@ function sameFields<T>(keys: readonly (keyof T)[], a: T, b: T): boolean {
 
 export const samePlan = (a: SystemPlan, b: SystemPlan): boolean => sameFields(PLAN_KEYS, a, b);
 
-export const sameCursor = (a: Cursor, b: Cursor): boolean => sameFields(CURSOR_KEYS, a, b);
+const sameCursor = (a: Cursor, b: Cursor): boolean => sameFields(CURSOR_KEYS, a, b);
 
 const sameRange = (a: Range, b: Range): boolean => a.start === b.start && a.end === b.end;
 
+/** The same parts, each at the same place and holding the same staff slots. */
+export function samePlacement(a: readonly PartPlacement[], b: readonly PartPlacement[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((part, i) => {
+      const other = b[i];
+      return other !== undefined && sameCursor(part, other) && sameRange(part.slots, other.slots);
+    })
+  );
+}
+
 /**
- * A reused system at its place in the new result. Never mutates what the previous result holds:
+ * A reused part at its place in the new result. Never mutates what the previous result holds:
  * the system keeps its object while its index and ranges hold, and its anchors are copied only
  * when systems before it were added or removed.
  */
 export function reposition(
-  entry: CachedSystem,
+  entry: CachedPart,
   index: number,
   primitives: Range,
   anchors: Range,
-): CachedSystem {
+): CachedPart {
   const { system } = entry;
   if (
     system.index === index &&
