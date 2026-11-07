@@ -94,6 +94,8 @@ Changed by #113 (2026-11-07): `LayoutOptions.headerHeight` keeps room at the top
 
 Changed by #118 (2026-11-07): `playedBarTicks` lasts an over-full bar (a voice longer than its time signature, which only an imported file holds) as long as its longest voice in any track, as it already did for an anacrusis that holds less, so every written beat plays in order and the bars after it start later; the tempo map, the scheduler, the cursor and `tickOf` / `barStartTicks` follow it. `voice-overfull` stays an invariant: readers report it as a warning and commands still refuse to create one. The gp writer still places bars by their written length, so it moves a tempo change on an overflow beat into the next bar (#123).
 
+Changed by #125 (2026-11-07): the model's root export gains `canShowTab(track)`, true only for a fretted track with strings, and `shownNotation(track, wanted)`, the notation a track is drawn in: `wanted` on fretted tracks with strings and on drums, `standard` otherwise. Layout gives a pitched track a standard staff whatever its `display.notation` or a `LayoutOptions.notation` override asks for, and the app saves it as standard.
+
 Synced by #74 (2026-11-06), no contract change: the Layout sketch lists the `LayoutOptions`, `LayoutMetrics` and `Anchor` fields #59 shipped and the `tiedNotes` option #68 added, and the Audio sketch names the `InstrumentSink` #55 shipped and #73 widened.
 
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
