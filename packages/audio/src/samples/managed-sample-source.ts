@@ -1,11 +1,10 @@
 import type { Score } from '@reprise/model';
 
-import type { MemoryReport } from '../engine';
 import type { RegionMap, SampleRef } from '../sampler/region-map';
 import type { SampleSource } from '../sampler/sample-source';
 import { planInstruments, planSamples } from './plan';
 import type { PlanOptions, SongPlan } from './plan';
-import type { InstrumentId, RawSample, SampleProvider } from './types';
+import type { InstrumentId, MemoryReport, RawSample, SampleProvider } from './types';
 
 export const MEGABYTE = 1024 * 1024;
 /** The roadmap's budgets: any song on the GM tier, and the HQ tier's default. */

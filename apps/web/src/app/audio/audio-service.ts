@@ -1,31 +1,24 @@
 import {
-  ClickSynth,
   createAudioEngine,
-  createSamplerSink,
+  debugAudioEngine,
   GM_BUDGET_BYTES,
-  ManagedSampleSource,
-  planInstruments,
-  planSamples,
-  Sampler,
   Sf2ParseError,
   Sf2Soundfont,
+  timelineNeutral,
   type AudioEngine,
-  type BufferFactory,
+  type AudioEngineDebug,
   type LoadOptions,
   type PlaybackState,
   type TempoMode,
   type Ticker,
   type TrackParams,
 } from '@reprise/audio';
-import type { Id, Score, Track } from '@reprise/model';
+import type { Id, Score } from '@reprise/model';
 
 import { selectCanPlay, type PlaybackStore, type PlaybackStoreState } from '@/state/playback';
 import type { BarRange } from '@/state/selection';
 
-import { GmBank } from './gm-bank';
-import { outputLatencyOf } from './output-latency';
 import { loadGmSoundfont, SoundfontError, type SoundfontLoader } from './soundfont-loader';
-import { timelineNeutral } from './timeline-neutral';
 
 export interface AudioServiceOptions {
   playback: PlaybackStore;
@@ -45,13 +38,7 @@ export interface OpenDocument {
   score: Score;
 }
 
-export interface AudioServiceDebug {
-  context?: BaseAudioContext;
-  sampler?: Sampler;
-  source?: ManagedSampleSource;
-  engine?: AudioEngine;
-  bank?: GmBank;
-}
+export type AudioServiceDebug = AudioEngineDebug & { engine?: AudioEngine };
 
 export interface AudioService {
   /** Creates the AudioContext on the first call, resumes a suspended one after. */
@@ -91,25 +78,11 @@ export interface AudioService {
 
 const GM: LoadOptions = { tier: 'gm', packs: [] };
 
-// The manager needs no context: buffers built this way play in any context of their rate.
-const CONSTRUCTED_BUFFERS: BufferFactory = {
-  createBuffer: (numberOfChannels, length, sampleRate) =>
-    new AudioBuffer({ numberOfChannels, length, sampleRate }),
-};
-
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
 const isRunning = (state: PlaybackState) => state === 'playing' || state === 'counting-in';
-
-function sameTuning(a: Track, b: Track): boolean {
-  return (
-    a.capo === b.capo &&
-    a.tuning.length === b.tuning.length &&
-    a.tuning.every((pitch, index) => pitch === b.tuning[index])
-  );
-}
 
 export function createAudioService(options: AudioServiceOptions): AudioService {
   const {
@@ -120,23 +93,28 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     defer = (run) => setTimeout(run, 0),
   } = options;
 
-  let context: BaseAudioContext | undefined;
-  let sampler: Sampler | undefined;
-  let engine: AudioEngine | undefined;
-  let bank: GmBank | undefined;
-  let bankLoad: Promise<GmBank> | undefined;
+  const engine = createAudioEngine({
+    context: createContext,
+    budgetBytes,
+    ...(options.scheduler && { scheduler: options.scheduler }),
+    ...(options.frames && { frames: options.frames }),
+    ...(options.startLatency !== undefined && { startLatency: options.startLatency }),
+  });
+  const initial = playback.getState().settings;
+  engine.setTempo(initial.tempo.mode, initial.tempo.value);
+  engine.setCountIn(initial.countIn);
+  engine.setMetronome(initial.metronome.on, initial.metronome.volume);
+  engine.setMasterVolume(initial.masterVolume);
+  let bankLoad: Promise<void> | undefined;
   let doc: OpenDocument | undefined;
-  /** The score the sampler's tracks were last built from. */
-  let attached: Score | undefined;
-  let overrides: Record<Id, TrackParams> = {};
+  /** The engine has this document's song. */
+  let loaded = false;
+  let mixer: Record<Id, TrackParams> = {};
   let generation = 0;
   let transport: PlaybackState = 'stopped';
   let rebuildQueued = false;
   let disposed = false;
-  // Per track, so a second instrument change drops the first one's progress writes.
-  const loadTokens = new Map<Id, number>();
   const inflight = new Set<Promise<unknown>>();
-  const cleanups: (() => void)[] = [];
 
   const track = <T>(promise: Promise<T>): Promise<T> => {
     const settled = promise.then(
@@ -155,75 +133,26 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     set({ settings: { ...playback.getState().settings, ...partial } });
   };
 
-  function baselineOf(score: Track): Required<TrackParams> {
-    const { volume, pan, mute, solo } = score.channel;
-    return { volume, pan, mute, solo, ...overrides[score.id] };
-  }
+  const cleanups = [
+    engine.on('state', (state) => {
+      transport = state;
+      set({ transport: state });
+    }),
+    engine.on('position', (position) => {
+      set({ position });
+    }),
+    engine.on('loop', (loop) => {
+      set({ lastLoop: loop });
+    }),
+    engine.on('memory', (memory) => {
+      set({ memory });
+    }),
+    engine.on('instrumentLoads', (instrumentLoads) => {
+      set({ instrumentLoads });
+    }),
+  ];
 
-  /**
-   * Puts every strip back on its track's program and channel, with the user's overrides: a beat's
-   * mixer change must not outlive the run it played in. With `at`, volume and pan are scheduled.
-   */
-  function resetBaseline(at?: number): void {
-    if (!sampler || !bank || !attached) return;
-    const held = new Set(sampler.trackIds);
-    for (const scoreTrack of attached.tracks) {
-      if (!held.has(scoreTrack.id)) continue;
-      sampler.setInstrument(scoreTrack.id, bank.instrument(scoreTrack, scoreTrack.program), at);
-      const params = baselineOf(scoreTrack);
-      if (at === undefined) sampler.setTrack(scoreTrack.id, params);
-      else sampler.setTrack(scoreTrack.id, { volume: params.volume, pan: params.pan }, { at });
-    }
-  }
-
-  function attach(score: Score, mode: 'replace' | 'sync'): void {
-    if (!sampler || !engine || !bank) return;
-    const previous = mode === 'sync' ? attached : undefined;
-    const before = new Map(previous?.tracks.map((t) => [t.id, t]));
-    const ids = new Set(score.tracks.map((t) => t.id));
-    for (const id of sampler.trackIds) {
-      if (!previous || !ids.has(id)) sampler.removeTrack(id);
-    }
-    const held = new Set(sampler.trackIds);
-    for (const scoreTrack of score.tracks) {
-      const old = before.get(scoreTrack.id);
-      const base = bank.instrument(scoreTrack, scoreTrack.program);
-      if (!old || !held.has(scoreTrack.id) || !sameTuning(old, scoreTrack)) {
-        sampler.addTrack(scoreTrack, base);
-        const override = overrides[scoreTrack.id];
-        if (override) sampler.setTrack(scoreTrack.id, override);
-        continue;
-      }
-      if (old === scoreTrack) continue;
-      if (
-        old.program !== scoreTrack.program ||
-        old.bank !== scoreTrack.bank ||
-        old.kind !== scoreTrack.kind
-      ) {
-        sampler.setInstrument(scoreTrack.id, base);
-      }
-      if (old.channel !== scoreTrack.channel) {
-        sampler.setTrack(scoreTrack.id, baselineOf(scoreTrack));
-      }
-    }
-    attached = score;
-    void engine.load(score, GM);
-  }
-
-  function loadSong(loaded: GmBank, score: Score, gen: number): Promise<void> {
-    return track(
-      loaded.source.load(score, loaded.regionMap, { instrumentOf: loaded.instrumentId }).then(
-        (plan) => {
-          if (gen === generation) set({ instruments: plan.instruments.length });
-        },
-        (error: unknown) => {
-          if (gen === generation) set({ song: { status: 'error', error: messageOf(error) } });
-        },
-      ),
-    );
-  }
-
-  function ensureBank(): Promise<GmBank> {
+  function ensureBank(): Promise<void> {
     bankLoad ??= (async () => {
       const sounds = (partial: Partial<PlaybackStoreState['sounds']>) => {
         set({ sounds: { ...playback.getState().sounds, ...partial } });
@@ -243,16 +172,9 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
           });
         }
         if (disposed) throw new Error('The audio service was disposed');
-        const source = new ManagedSampleSource(font, CONSTRUCTED_BUFFERS, { budgetBytes });
-        cleanups.push(
-          source.on('memory', (memory) => {
-            set({ memory });
-          }),
-        );
-        set({ memory: source.memory() });
-        bank = new GmBank(font, source);
+        engine.setSoundfont(font);
+        set({ memory: engine.memory() });
         sounds({ status: 'ready', loaded: bytes.length, total: bytes.length, error: undefined });
-        return bank;
       } catch (error) {
         sounds({ status: 'error', error: messageOf(error) });
         throw error;
@@ -263,107 +185,32 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
 
   async function loadDocument(gen: number): Promise<void> {
     try {
-      const loaded = await ensureBank();
+      await ensureBank();
       if (gen !== generation || !doc) return;
-      const { score } = doc;
-      if (engine) attach(score, 'replace');
-      const plan = await loaded.source.load(score, loaded.regionMap, {
-        instrumentOf: loaded.instrumentId,
-      });
+      loaded = true;
+      const { instruments } = await engine.load(doc.score, GM);
       if (gen === generation) {
-        set({ song: { status: 'ready', error: undefined }, instruments: plan.instruments.length });
+        set({ song: { status: 'ready', error: undefined }, instruments: instruments.length });
       }
     } catch (error) {
       if (gen === generation) set({ song: { status: 'error', error: messageOf(error) } });
     }
   }
 
-  const setLoad = (id: Id, load: { loaded: number; total: number } | undefined) => {
-    const rest = Object.fromEntries(
-      Object.entries(playback.getState().instrumentLoads).filter(([key]) => key !== id),
-    );
-    set({ instrumentLoads: load ? { ...rest, [id]: load } : rest });
-  };
-
-  /** Decodes one track's samples for its new instrument, counting them into `instrumentLoads`. */
-  function loadInstrument(loaded: GmBank, score: Score, id: Id, gen: number): Promise<void> {
-    const token = (loadTokens.get(id) ?? 0) + 1;
-    loadTokens.set(id, token);
-    const current = () => gen === generation && loadTokens.get(id) === token;
-    const plan = planInstruments(score, { instrumentOf: loaded.instrumentId });
-    const trackPlan = plan.tracks.find((entry) => entry.track === id);
-    const refs = trackPlan
-      ? planSamples({ instruments: plan.instruments, tracks: [trackPlan] }, loaded.regionMap)
-      : [];
-    if (refs.length === 0) {
-      if (current()) setLoad(id, undefined);
-      return Promise.resolve();
-    }
-    const total = refs.length;
-    let count = 0;
-    setLoad(id, { loaded: 0, total });
-    return track(
-      Promise.all(
-        refs.map((ref) =>
-          loaded.source.getBuffer(ref).then(() => {
-            count += 1;
-            if (current() && count < total) setLoad(id, { loaded: count, total });
-          }),
-        ),
-      ).then(
-        () => {
-          if (current()) setLoad(id, undefined);
+  /** Hands the engine the document's latest score; the engine keeps the position (Q5). */
+  function reload(): void {
+    if (!doc || !loaded) return;
+    const gen = generation;
+    void track(
+      engine.load(doc.score, GM).then(
+        ({ instruments }) => {
+          if (gen === generation) set({ instruments: instruments.length });
         },
         (error: unknown) => {
-          if (!current()) return;
-          setLoad(id, undefined);
-          set({ song: { status: 'error', error: messageOf(error) } });
+          if (gen === generation) set({ song: { status: 'error', error: messageOf(error) } });
         },
       ),
     );
-  }
-
-  /** A timeline-neutral edit: channel and program changes go straight to the strips. */
-  function applyTrackChanges(previous: Score, score: Score): void {
-    if (!bank) return;
-    if (sampler) attached = score;
-    const held = new Set(sampler?.trackIds);
-    const reprogrammed: Id[] = [];
-    score.tracks.forEach((scoreTrack, index) => {
-      const old = previous.tracks[index];
-      if (!old || old === scoreTrack) return;
-      if (old.program !== scoreTrack.program) reprogrammed.push(scoreTrack.id);
-      if (!sampler || !held.has(scoreTrack.id) || !bank) return;
-      if (old.channel !== scoreTrack.channel) {
-        sampler.setTrack(scoreTrack.id, baselineOf(scoreTrack));
-      }
-      if (old.program !== scoreTrack.program) {
-        sampler.setInstrument(scoreTrack.id, bank.instrument(scoreTrack, scoreTrack.program));
-      }
-    });
-    if (reprogrammed.length === 0) return;
-    void loadSong(bank, score, generation);
-    for (const id of reprogrammed) void loadInstrument(bank, score, id, generation);
-  }
-
-  function rebuild(): void {
-    if (!doc || !bank) return;
-    const { score } = doc;
-    if (engine) {
-      const { position, settings } = playback.getState();
-      const wasRunning = isRunning(transport);
-      const wasPaused = transport === 'paused';
-      const tick = position?.position.playbackTick ?? 0;
-      attach(score, 'sync');
-      if (wasRunning) {
-        engine.setCountIn(false);
-        engine.play(tick);
-        engine.setCountIn(settings.countIn);
-      } else if (wasPaused) {
-        engine.seek(tick);
-      }
-    }
-    void loadSong(bank, score, generation);
   }
 
   function scheduleRebuild(): void {
@@ -374,7 +221,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
         defer(() => {
           rebuildQueued = false;
           try {
-            if (!disposed) rebuild();
+            if (!disposed) reload();
           } finally {
             resolve();
           }
@@ -383,123 +230,51 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     );
   }
 
-  function close(): void {
-    generation += 1;
-    engine?.stop();
-    if (sampler) for (const id of sampler.trackIds) sampler.removeTrack(id);
-    // A song with no tracks plans no instruments, so the switch evicts every one.
-    if (bank && doc) bank.source.switchSong({ ...doc.score, tracks: [] });
-    doc = undefined;
-    attached = undefined;
-    overrides = {};
-    loadTokens.clear();
-    set({
-      song: { status: 'idle', error: undefined },
-      instruments: 0,
-      position: undefined,
-      mixer: {},
-      instrumentLoads: {},
-    });
+  function clear(partial: Partial<PlaybackStoreState>): void {
+    loaded = false;
+    mixer = {};
+    set({ mixer: {}, instrumentLoads: {}, position: undefined, ...partial });
   }
-
-  function createEngine(created: BaseAudioContext): void {
-    const live = new Sampler(created);
-    const metronome = new ClickSynth(created, live.master.input);
-    const sink = createSamplerSink(live, {
-      instrumentOf: (scoreTrack, program) => bank?.instrument(scoreTrack, program),
-    });
-    const made = createAudioEngine({
-      context: created,
-      sink,
-      // Through the bus, so clicks carry the limiter's pre-delay as the notes do.
-      metronome,
-      ...(options.scheduler && { scheduler: options.scheduler }),
-      ...(options.frames && { frames: options.frames }),
-      ...(options.startLatency !== undefined && { startLatency: options.startLatency }),
-    });
-    const { settings } = playback.getState();
-    made.setTempo(settings.tempo.mode, settings.tempo.value);
-    made.setCountIn(settings.countIn);
-    made.setMetronome(settings.metronome.on, settings.metronome.volume);
-    made.setLoop(settings.loop);
-    live.master.gain = settings.masterVolume;
-    sampler = live;
-    engine = made;
-    cleanups.push(
-      made.on('state', (state) => {
-        const previous = transport;
-        transport = state;
-        // The engine emits `state` before it replays the run's mixer changes, so they land on top.
-        if (state === 'stopped' || (isRunning(state) && previous !== 'counting-in')) {
-          resetBaseline();
-        }
-        set({ transport: state });
-      }),
-      made.on('position', (position) => {
-        set({ position });
-      }),
-      made.on('loop', (loop) => {
-        // Emitted before the next pass is scheduled, so its replayed changes win at `when`.
-        resetBaseline(loop.when);
-        set({ lastLoop: loop });
-      }),
-    );
-  }
-
-  const resume = () => {
-    if (context instanceof AudioContext && context.state === 'suspended') void context.resume();
-  };
 
   const service: AudioService = {
     unlock() {
       if (disposed) return;
-      if (context) {
-        resume();
-        return;
-      }
-      let created: BaseAudioContext;
       try {
-        created = createContext();
+        engine.unlock();
       } catch (error) {
         set({
           output: { status: 'error', error: `Audio output is unavailable: ${messageOf(error)}` },
         });
         return;
       }
-      context = created;
-      createEngine(created);
-      set({ output: { status: 'ready', error: undefined } });
-      if (bank && doc) attach(doc.score, 'replace');
-      resume();
+      if (playback.getState().output.status !== 'ready') {
+        set({ output: { status: 'ready', error: undefined } });
+      }
     },
 
     setDocument(next) {
       if (disposed) return;
       if (!next) {
-        if (doc) close();
+        if (!doc) return;
+        generation += 1;
+        engine.unload({ evict: true });
+        doc = undefined;
+        clear({ song: { status: 'idle', error: undefined }, instruments: 0 });
         return;
       }
       if (doc?.id === next.id) {
         if (doc.score === next.score) return;
         const previous = doc.score;
         doc = next;
-        if (!rebuildQueued && timelineNeutral(previous, next.score)) {
-          applyTrackChanges(previous, next.score);
-        } else {
-          scheduleRebuild();
-        }
+        if (!loaded) return;
+        if (!rebuildQueued && timelineNeutral(previous, next.score)) reload();
+        else scheduleRebuild();
         return;
       }
-      engine?.stop();
-      engine?.setLoop(undefined);
+      engine.unload();
       generation += 1;
       doc = next;
-      overrides = {};
-      loadTokens.clear();
-      set({
-        mixer: {},
-        instrumentLoads: {},
-        position: undefined,
+      clear({
         song: { status: 'loading', error: undefined },
         settings: { ...playback.getState().settings, loop: undefined },
       });
@@ -508,12 +283,12 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
 
     play() {
       service.unlock();
-      if (!engine || !selectCanPlay(playback.getState())) return;
+      if (!loaded || !selectCanPlay(playback.getState())) return;
       engine.play();
     },
 
     pause() {
-      engine?.pause();
+      engine.pause();
     },
 
     togglePlay() {
@@ -522,56 +297,51 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     },
 
     stop() {
-      engine?.stop();
+      engine.stop();
     },
 
     seek(tick) {
-      if (!engine || !doc || !attached) return;
-      // A seek during a count-in emits `playing` after `counting-in`, which skips the reset there.
-      if (isRunning(transport)) resetBaseline();
+      if (!loaded) return;
       engine.seek(tick);
     },
 
     outputLatency() {
-      return outputLatencyOf(context);
+      return engine.outputLatency();
     },
 
     setTempo(mode, value) {
-      engine?.setTempo(mode, value);
+      engine.setTempo(mode, value);
       setSettings({ tempo: { mode, value } });
     },
 
     setLoop(range) {
-      engine?.setLoop(range);
+      engine.setLoop(range);
       setSettings({ loop: range });
     },
 
     setCountIn(on) {
-      engine?.setCountIn(on);
+      engine.setCountIn(on);
       setSettings({ countIn: on });
     },
 
     setMetronome(on, volume) {
-      engine?.setMetronome(on, volume);
+      engine.setMetronome(on, volume);
       setSettings({ metronome: { on, volume } });
     },
 
     setMasterVolume(volume) {
-      if (!Number.isFinite(volume) || volume < 0 || volume > 1) {
-        throw new RangeError(`setMasterVolume: volume must be 0 to 1, got ${String(volume)}`);
-      }
-      if (sampler) sampler.master.gain = volume;
+      engine.setMasterVolume(volume);
       setSettings({ masterVolume: volume });
     },
 
     setTrack(id, params) {
-      overrides = { ...overrides, [id]: { ...overrides[id], ...params } };
-      set({ mixer: overrides });
-      if (sampler?.trackIds.includes(id)) sampler.setTrack(id, params);
+      engine.setTrack(id, params);
+      mixer = { ...mixer, [id]: { ...mixer[id], ...params } };
+      set({ mixer });
     },
 
     previewTrack(id, params) {
-      if (sampler?.trackIds.includes(id)) sampler.setTrack(id, params);
+      engine.previewTrack(id, params);
     },
 
     retry() {
@@ -590,17 +360,11 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
 
     async settled() {
       while (inflight.size > 0) await Promise.all([...inflight]);
-      await bank?.source.settled();
+      await engine.settled();
     },
 
     debug() {
-      return {
-        ...(context && { context }),
-        ...(sampler && { sampler }),
-        ...(bank && { source: bank.source }),
-        ...(engine && { engine }),
-        ...(bank && { bank }),
-      };
+      return { ...debugAudioEngine(engine), engine };
     },
 
     dispose() {
@@ -608,10 +372,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
       disposed = true;
       generation += 1;
       for (const cleanup of cleanups.splice(0)) cleanup();
-      engine?.dispose();
-      sampler?.dispose();
-      bank?.source.dispose();
-      if (context instanceof AudioContext) void context.close();
+      engine.dispose();
     },
   };
   return service;

@@ -27,8 +27,8 @@ store: every control writes the document, selection or playback store through th
 - **A slider previews while dragging and commits once.** `onValueChange` calls
   `audio.previewTrack`, which moves the strip only; `onValueCommit` applies one command. A drag is
   one undo step and one layout run; each keyboard step is one of each.
-- **No rebuild for a mixer edit.** The audio service applies an edit that touches only track
-  properties the timeline never reads (`app/audio/timeline-neutral.ts`) to the strips and
+- **No rebuild for a mixer edit.** An edit that touches only track properties the timeline never
+  reads (`timelineNeutral` in `@reprise/audio`) is applied by `AudioEngine.load` to the strips and
   instruments directly, so a change and its undo are heard at once during playback. A new
   instrument decodes its samples with progress in `playback.instrumentLoads`.
 - **Rows take primitives.** The list computes each row's mute, solo and audibility, so a frame

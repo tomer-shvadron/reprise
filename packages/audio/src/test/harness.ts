@@ -1,5 +1,5 @@
 /**
- * The offline harness: a score rendered through the real engine, scheduler, articulations and
+ * The offline harness: a score rendered through the real transport, scheduler, articulations and
  * sampler into an `OfflineAudioContext`, with GeneralUser GS behind the GM tier or any
  * instrument a test supplies. What to listen for is in `./signal`.
  */
@@ -7,8 +7,8 @@ import type { Id, Score, Track } from '@reprise/model';
 import { secondsAtTick } from '@reprise/model';
 
 import { ClickSynth } from '../click-synth';
-import { createAudioEngine } from '../engine';
-import type { AudioEngine } from '../engine';
+import { createTransport } from '../transport';
+import type { Transport } from '../transport';
 import { drive, manualTicker } from '../offline-driver';
 import type { RegionMap, SampleRef } from '../sampler/region-map';
 import { Sampler } from '../sampler/sampler';
@@ -76,7 +76,7 @@ export interface RenderOptions {
   tap?: 'master' | 'strips';
   metronome?: boolean;
   /** Calls into the engine at a context time, run at the first suspension after it. */
-  actions?: readonly { at: number; run: (engine: AudioEngine) => void }[];
+  actions?: readonly { at: number; run: (engine: Transport) => void }[];
 }
 
 /** A note the sampler skipped because its sample was not decoded. */
@@ -146,7 +146,7 @@ async function gmInstruments(
 }
 
 /**
- * Loads `score` into a fresh engine over the real sampler, presses play at time 0 and renders.
+ * Loads `score` into a fresh transport over the real sampler, presses play at time 0 and renders.
  * The scheduler and position timers fire at every 1024-frame suspension, so timing is
  * deterministic; the samples match across runs only to within float jitter (about 2e-6).
  */
@@ -182,7 +182,7 @@ export async function renderScore(score: Score, options: RenderOptions): Promise
   for (const track of score.tracks) sampler.addTrack(track, instrumentOf(track));
   const scheduler = manualTicker();
   const frames = manualTicker();
-  const engine = createAudioEngine({
+  const engine = createTransport({
     context,
     sink: createSamplerSink(sampler, programOf ? { instrumentOf: programOf } : {}),
     metronome: new ClickSynth(context, sampler.master.input),
@@ -190,7 +190,7 @@ export async function renderScore(score: Score, options: RenderOptions): Promise
     frames: frames.ticker,
     startLatency: START,
   });
-  await engine.load(score, { tier: 'gm', packs: [] });
+  engine.load(score);
   if (options.metronome) engine.setMetronome(true, 1);
   engine.play();
   const buffer = await drive(context, {

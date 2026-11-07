@@ -50,9 +50,11 @@ function setup(options: { seconds?: number; loader?: () => Promise<Uint8Array> }
   const render = (actions: { at: number; run: () => void }[] = []) =>
     drive(context, { tickers: [scheduler, frames], actions });
   const debug = () => {
-    const { sampler, source, engine } = audio.debug();
-    if (!sampler || !source || !engine) throw new Error('the audio service is not running');
-    return { sampler, source, engine };
+    const { sampler, source, engine, transport } = audio.debug();
+    if (!sampler || !source || !engine || !transport) {
+      throw new Error('the audio service is not running');
+    }
+    return { sampler, source, engine, transport };
   };
   return { playback, audio, context, createContext, render, debug };
 }
@@ -161,17 +163,85 @@ describe('the audio service', () => {
     audio.dispose();
   });
 
-  it('leaves a stopped transport stopped at tick 0 after an edit', async () => {
+  it('keeps a stopped transport where it was through an edit', async () => {
     const song = quarters(2);
     const { playback, audio } = setup();
     const id = await open(audio, song);
     audio.unlock();
 
-    audio.setDocument({ id, score: { ...song, meta: { ...song.meta, title: 'Edited' } } });
+    const titled = { ...song, meta: { ...song.meta, title: 'Edited' } };
+    audio.setDocument({ id, score: titled });
     await audio.settled();
-
     expect(playback.getState().transport).toBe('stopped');
     expect(playback.getState().position?.position.playbackTick ?? 0).toBe(0);
+
+    audio.seek(2 * PPQ);
+    const noted = applyCommand(
+      titled,
+      setNote({ beatId: beatOf(titled, 0, 0, 0).id }, { string: 1, fret: 5 }),
+    ).score;
+    audio.setDocument({ id, score: noted });
+    await audio.settled();
+    expect(playback.getState().transport).toBe('stopped');
+    expect(playback.getState().position?.position.playbackTick).toBeCloseTo(2 * PPQ);
+    audio.dispose();
+  });
+
+  it('keeps a paused transport paused at its tick through an edit', async () => {
+    const song = quarters(4);
+    const { playback, audio, render } = setup({ seconds: 1.4 });
+    const id = await open(audio, song);
+    audio.unlock();
+    audio.play();
+    let paused = 0;
+    let state = '';
+    let tick = 0;
+
+    await render([
+      {
+        at: 1,
+        run: () => {
+          audio.pause();
+          paused = playback.getState().position?.position.playbackTick ?? 0;
+        },
+      },
+      {
+        at: 1.1,
+        run: () => {
+          const edited = applyCommand(
+            song,
+            setNote({ beatId: beatOf(song, 0, 2, 0).id }, { string: 1, fret: 5 }),
+          ).score;
+          audio.setDocument({ id, score: edited });
+          state = playback.getState().transport;
+          tick = playback.getState().position?.position.playbackTick ?? 0;
+        },
+      },
+    ]);
+
+    expect(paused).toBeGreaterThan(0);
+    expect(state).toBe('paused');
+    expect(tick).toBeCloseTo(paused, 6);
+    audio.dispose();
+  });
+
+  it('keeps a mute set while the sound bank loads', async () => {
+    let arrive: (bytes: Uint8Array) => void = () => undefined;
+    const late = new Promise<Uint8Array>((resolve) => {
+      arrive = resolve;
+    });
+    const song = quarters(1);
+    const trackId = song.tracks[0]?.id ?? '';
+    const { playback, audio, debug } = setup({ loader: () => late });
+    audio.unlock();
+    audio.setDocument({ id: newId(), score: song });
+    audio.setTrack(trackId, { mute: true });
+
+    arrive(await synthetic);
+    await audio.settled();
+
+    expect(debug().sampler.strip(trackId)?.mute).toBe(true);
+    expect(playback.getState().mixer).toEqual({ [trackId]: { mute: true } });
     audio.dispose();
   });
 
@@ -421,8 +491,8 @@ describe('the audio service', () => {
       const { playback, audio, render, debug } = setup({ seconds: 1.6 });
       const id = await open(audio, song);
       audio.unlock();
-      const { sampler, engine } = debug();
-      const load = vi.spyOn(engine, 'load');
+      const { sampler, transport } = debug();
+      const load = vi.spyOn(transport, 'load');
       audio.play();
       const history = createHistory();
       let gain = 0;
@@ -470,8 +540,8 @@ describe('the audio service', () => {
       const { audio, debug } = setup();
       const id = await open(audio, song);
       audio.unlock();
-      const { sampler, engine } = debug();
-      const load = vi.spyOn(engine, 'load');
+      const { sampler, transport } = debug();
+      const load = vi.spyOn(transport, 'load');
       const edited = applyCommand(
         song,
         setTrackProperties({ trackId }, { channel: { pan: 0 } }),
@@ -488,8 +558,8 @@ describe('the audio service', () => {
       const { playback, audio, context, debug } = setup();
       const id = await open(audio, song);
       audio.unlock();
-      const { sampler, engine } = debug();
-      const load = vi.spyOn(engine, 'load');
+      const { sampler, transport } = debug();
+      const load = vi.spyOn(transport, 'load');
       const loads: (number | undefined)[] = [];
       const unsubscribe = playback.subscribe((state) => {
         loads.push(state.instrumentLoads[trackId]?.loaded);
@@ -550,9 +620,9 @@ describe('the audio service', () => {
       });
       const id = await open(audio, song);
       audio.unlock();
-      const { sampler, engine } = audio.debug();
-      if (!sampler || !engine) throw new Error('no engine');
-      const load = vi.spyOn(engine, 'load');
+      const { sampler, transport } = audio.debug();
+      if (!sampler || !transport) throw new Error('no engine');
+      const load = vi.spyOn(transport, 'load');
       const noted = applyCommand(
         song,
         setNote({ beatId: beatOf(song, 0, 0, 0).id }, { string: 1, fret: 5 }),

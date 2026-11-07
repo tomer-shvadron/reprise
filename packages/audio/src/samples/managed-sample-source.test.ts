@@ -5,10 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { Sampler } from '../sampler/sampler';
 import { offline } from '../sampler/test/offline';
 import { ManagedSampleSource, bufferBytes } from './managed-sample-source';
-import type { MemoryReport } from '../engine';
 import { SyntheticProvider } from './test/synthetic';
 import type { SyntheticOptions } from './test/synthetic';
-import type { SampleProvider } from './types';
+import type { MemoryReport, SampleProvider } from './types';
 
 const factory = new OfflineAudioContext({ numberOfChannels: 1, length: 1, sampleRate: 44_100 });
 /** Four zones of 32 keys, 4,000 decoded bytes each. */

@@ -40,7 +40,7 @@ Enforced by lint. In addition:
 ```
 apps/web/src/
   app/            shell, routing, theme, command palette, keyboard map, services (the stores wired together)
-    audio/        the audio service: AudioContext, GM bank, sampler, memory manager, engine
+    audio/        the audio service: the sound bank fetch and the adapter from the engine to the playback store
   platform/       Platform interface + browser and electron implementations
   state/          zustand stores: document, selection, playback, layout (derived), ui
   features/
@@ -70,7 +70,7 @@ file bytes --formats.read--> Score --------+--> layout.layout(score, options) --
 - The **document store** holds the current `Score`, the undo history and the selection. All edits go through commands.
 - **Layout** is a pure function of the score and view options, cached per bar; a patch marks bars dirty and only those re-flow, systems within three bars of a re-measured bar are rebuilt, re-breaking stops where the breaks re-converge, and the rest are reused.
 - **Audio** reads the score through the tempo map and the playback sequence; it never holds a reference to React state.
-- **Mixer**: volume, pan and instrument are score edits through `setTrackProperties`; mute and solo are the audio service's per-song overrides; visibility and single-track view are the document's view state, and notation per track is view state that Save writes into the file (ADR-0024). A timeline-neutral edit reaches the sampler without rebuilding the sequence.
+- **Mixer**: volume, pan and instrument are score edits through `setTrackProperties`; mute and solo are the engine's per-song overrides (`setTrack`), mirrored in the playback store; visibility and single-track view are the document's view state, and notation per track is view state that Save writes into the file (ADR-0024). A timeline-neutral edit reaches the sampler without rebuilding the sequence, inside `AudioEngine.load`.
 
 ## Contracts
 
@@ -85,6 +85,8 @@ Changed by #79 (2026-11-06): a region map resolves every layered region of a key
 Changed by #96 (2026-11-06): `OpenedFile` (and the `file:open` result) gains an optional opaque `handle`, the picked path in Electron and the `FileSystemFileHandle` in a browser with the File System Access API, and `Platform` gains `writeHandle(handle, bytes)`, which writes over that file or over a path `saveFile` returned; Save writes a `.reprise` in place through it, and a `.gp` with the gp writer once the user confirms what it loses; gp3, gp4, gp5 and gpx have no writer of their own, so Save sends them to Save As, which asks for Reprise or Guitar Pro 7–8 before the platform dialog.
 
 Changed by #87 (2026-11-07), widening the model and narrowing audio: `soundingPitch(track, note)`, the pitch a note sounds at as a fractional MIDI note, moves from `@reprise/audio` (where it was `soundingKey`) to the model's root export, so layout can place a harmonic where it sounds; its results are unchanged. `@reprise/audio` no longer exports `soundingKey` or `harmonicInterval`. The Note sketch's `harmonic.value` comment states the convention #92 documented: the node's fret for a natural harmonic, the offset above the fretted note for every other kind.
+
+Changed by #PRNUM (2026-11-07): `createAudioEngine({ context, budgetBytes?, scheduleMemory?, scheduler?, frames?, lookahead?, startLatency? })` owns the `AudioContext` (a factory is called on the first `unlock`, `play` or `previewNote`), the GM bank (`setSoundfont`), the sampler, the memory manager, the metronome on the master bus and the master level; `setTrack`, `previewNote(track, { string, fret })`, `memory()` and the `memory` event work as sketched. `load` resolves `{ instruments }`, the song plan's, once the opening bars are decoded; over a loaded song it keeps the position, clamped to the new score, and the transport state by the rule `seek` uses, and applies a timeline-neutral edit without rebuilding; loading the same score again decodes it again; `unload({ evict? })` ends a song. New: `unlock`, `setSoundfont`, `unload`, `setMasterVolume`, `previewTrack`, `outputLatency`, `settled` and the `instrumentLoads` event; `debugAudioEngine(engine)` reaches the live objects outside the contract. What `createAudioEngine({ sink })` was is now `createTransport`. `InstrumentSink.allNotesOff(when)` also cancels the mixer changes scheduled after `when`, and `Sampler.allNotesOff` the strips' volume and pan. A preset that only shares a song's samples is resident only when a song plays it, and an eviction is counted only when it frees a buffer (#99).
 
 Synced by #74 (2026-11-06), no contract change: the Layout sketch lists the `LayoutOptions`, `LayoutMetrics` and `Anchor` fields #59 shipped and the `tiedNotes` option #68 added, and the Audio sketch names the `InstrumentSink` #55 shipped and #73 widened.
 
@@ -438,16 +440,23 @@ Layout never touches the DOM. Text widths come from a metrics table generated fr
 
 ```ts
 interface AudioEngine {
-  load(score: Score, options: { tier: 'gm' | 'hq'; packs: PackAssignment[] }): Promise<void>; // resolves when the song's instruments are decoded
+  load(score: Score, options: { tier: 'gm' | 'hq'; packs: PackAssignment[] }): Promise<{ instruments: InstrumentId[] }>; // once the opening bars are decoded; over a loaded song, an edit that keeps the position
   play(fromTick?: number): void; pause(): void; stop(): void; seek(tick: number): void;
   setTempo(mode: 'bpm' | 'percent', value: number): void;
   setLoop(range?: { startBar: Id; endBar: Id }): void;
   setCountIn(on: boolean): void; setMetronome(on: boolean, volume: number): void;
   setTrack(id: Id, params: { volume?; pan?; mute?; solo? }): void;
-  previewNote(track: Id, note: Note): void;                      // editor feedback
-  on(event: 'position' | 'state' | 'loop' | 'memory', handler): Unsubscribe;
+  previewNote(track: Id, note: Pick<Note, 'string' | 'fret'>): void; // editor feedback
+  on(event: 'position' | 'state' | 'loop' | 'memory' | 'instrumentLoads', handler): Unsubscribe;
   memory(): { decodedBytes: number; budgetBytes: number; residents: InstrumentId[] };
   dispose(): void;
+  unlock(): void;                                                // makes the context from a factory, resumes it
+  setSoundfont(font: Sf2Soundfont): void;                        // the GM bank, fetched by the app
+  unload(options?: { evict?: boolean }): void;                   // ends the song
+  setMasterVolume(volume: number): void;
+  previewTrack(id: Id, params: { volume?; pan? }): void;         // a slider being dragged, no override
+  outputLatency(): number;
+  settled(): Promise<void>;
 }
 ```
 

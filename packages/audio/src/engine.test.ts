@@ -1,732 +1,500 @@
-import { describe, expect, it } from 'vitest';
-
-import { PPQ } from '@reprise/model';
+import { applyCommand, createTrack, setNote, setTrackProperties } from '@reprise/model';
 import type { Score } from '@reprise/model';
-import { note, score } from '@reprise/model/testing';
-import type { ScoreBuilder } from '@reprise/model/testing';
+import { beatOf, note, score } from '@reprise/model/testing';
+import type { BeatSpec } from '@reprise/model/testing';
+import { describe, expect, it, vi } from 'vitest';
 
-import { createAudioEngine } from './engine';
-import type { AudioEngine, LoopEvent, PlaybackState, PositionEvent } from './engine';
+import { createAudioEngine, debugAudioEngine } from './engine';
+import type {
+  AudioEngine,
+  InstrumentLoads,
+  LoadOptions,
+  PlaybackState,
+  PositionEvent,
+} from './engine';
 import { drive, manualTicker } from './offline-driver';
-import type { ManualTicker } from './offline-driver';
-import { RecordingSink } from './recording-sink';
-import { ToneSink } from './tone-sink';
+import { channelVolumeToGain } from './sampler/sampler';
+import { GM_BUDGET_BYTES } from './samples/managed-sample-source';
+import { Sf2Soundfont } from './sf2/soundfont';
+import { loadGeneralUser } from './test/harness';
+import { rms as signalRms, signalOf } from './test/signal';
 
 const SAMPLE_RATE = 44_100;
-const LATENCY = 0.1;
-const MS = 0.001;
+const START = 0.1;
+const GM: LoadOptions = { tier: 'gm', packs: [] };
+const SYNTHETIC = new URL('../test-fixtures/synthetic.sf2', import.meta.url);
 
-/** Four quarter notes per bar; each note's fret is its bar index, so passes are readable. */
-function bars(
-  count: number,
-  perBar: (builder: ScoreBuilder, bar: number) => ScoreBuilder = (b) => b,
+let syntheticFont: Promise<Sf2Soundfont> | undefined;
+function synthetic(): Promise<Sf2Soundfont> {
+  syntheticFont ??= fetch(SYNTHETIC)
+    .then((response) => response.arrayBuffer())
+    .then((bytes) => Sf2Soundfont.parse(new Uint8Array(bytes)));
+  return syntheticFont;
+}
+
+const generalUser = await loadGeneralUser();
+
+const rms = (buffer: AudioBuffer, from: number, to: number) =>
+  signalRms(signalOf(buffer), from, to);
+
+/** Quarters on string 1, fret 3, program 25, at 120 BPM: quarter `k` sounds at `START + k / 2`. */
+function quarters(
+  bars: number,
+  options: { beat?: (bar: number, beat: number) => BeatSpec; volume?: number } = {},
 ): Score {
-  let builder = score().tempo(120).track('guitar');
-  for (let bar = 0; bar < count; bar++) {
-    builder = perBar(builder.bar(), bar);
-    for (let beat = 0; beat < 4; beat++) builder = builder.beat('4', [note(1, bar)]);
+  const { channel } = createTrack('fretted');
+  let builder = score()
+    .tempo(120)
+    .track('guitar', {
+      program: 25,
+      channel: { ...channel, volume: options.volume ?? channel.volume },
+    });
+  for (let bar = 0; bar < bars; bar++) {
+    builder = builder.bar();
+    for (let beat = 0; beat < 4; beat++) {
+      builder = builder.beat('4', [note(1, 3)], options.beat?.(bar, beat) ?? {});
+    }
   }
   return builder.build();
 }
 
-interface Harness {
-  context: OfflineAudioContext;
-  engine: AudioEngine;
-  sink: RecordingSink;
-  scheduler: ManualTicker;
-  frames: ManualTicker;
-  states: PlaybackState[];
-  loops: LoopEvent[];
-  positions: (PositionEvent & { at: number })[];
-  render(actions?: { at: number; run: () => void }[]): Promise<AudioBuffer>;
-}
+const trackOf = (song: Score) => song.tracks[0]?.id ?? '';
 
-async function harness(song: Score, seconds: number): Promise<Harness> {
+async function setup(options: { seconds?: number; lazy?: boolean; font?: Sf2Soundfont } = {}) {
   const context = new OfflineAudioContext({
-    numberOfChannels: 1,
-    length: Math.ceil(seconds * SAMPLE_RATE),
+    numberOfChannels: 2,
+    length: Math.round((options.seconds ?? 1) * SAMPLE_RATE),
     sampleRate: SAMPLE_RATE,
   });
-  const sink = new RecordingSink(context);
+  const factory = vi.fn(() => context);
   const scheduler = manualTicker();
   const frames = manualTicker();
   const engine = createAudioEngine({
-    context,
-    sink,
-    metronome: sink,
+    context: options.lazy ? factory : context,
+    scheduleMemory: (run) => {
+      run();
+    },
     scheduler: scheduler.ticker,
     frames: frames.ticker,
-    startLatency: LATENCY,
+    startLatency: START,
   });
+  engine.setSoundfont(options.font ?? (await synthetic()));
   const states: PlaybackState[] = [];
-  const loops: LoopEvent[] = [];
-  const positions: (PositionEvent & { at: number })[] = [];
+  const positions: PositionEvent[] = [];
   engine.on('state', (state) => states.push(state));
-  engine.on('loop', (loop) => loops.push(loop));
-  engine.on('position', (position) => positions.push({ ...position, at: context.currentTime }));
-  await engine.load(song, { tier: 'gm', packs: [] });
-  return {
-    context,
-    engine,
-    sink,
-    scheduler,
-    frames,
-    states,
-    loops,
-    positions,
-    render: (actions = []) => drive(context, { tickers: [scheduler, frames], actions }),
+  engine.on('position', (position) => positions.push(position));
+  const render = (actions: { at: number; run: () => void }[] = []) =>
+    drive(context, { tickers: [scheduler, frames], actions });
+  const live = () => {
+    const { sampler, transport, source, bank } = debugAudioEngine(engine);
+    if (!sampler || !transport || !source || !bank) throw new Error('the engine is not live');
+    return { sampler, transport, source, bank };
   };
+  return { context, factory, engine, states, positions, render, live };
 }
 
-function expectNothingInThePast(sink: RecordingSink): void {
-  for (const scheduled of [...sink.notes, ...sink.clicks]) {
-    expect(scheduled.when).toBeGreaterThanOrEqual(scheduled.calledAt);
-  }
-}
+const tickOf = (positions: readonly PositionEvent[]) => positions.at(-1)?.position.playbackTick;
 
-function expectTimes(actual: readonly number[], expected: readonly number[]): void {
-  expect(actual).toHaveLength(expected.length);
-  for (const [index, time] of expected.entries()) {
-    expect(Math.abs((actual[index] ?? Number.NaN) - time)).toBeLessThan(MS);
-  }
-}
+describe('createAudioEngine', () => {
+  it('makes its context lazily, on the first play, and only once', async () => {
+    const { engine, factory } = await setup({ lazy: true });
+    await expect(engine.load(quarters(1), GM)).resolves.toEqual({ instruments: ['gm:0:25'] });
+    expect(engine.memory().decodedBytes).toBeGreaterThan(0);
+    expect(factory).not.toHaveBeenCalled();
 
-const range = (count: number, start: number, step: number): number[] =>
-  Array.from({ length: count }, (_, index) => start + index * step);
-
-describe('AudioEngine transport (OfflineAudioContext)', () => {
-  it('plays four bars at 120 BPM with onsets every half second', async () => {
-    const h = await harness(bars(4), 8.5);
-    h.engine.play();
-    await h.render();
-
-    expectTimes(
-      h.sink.notes.map((n) => n.when),
-      range(16, LATENCY, 0.5),
-    );
-    for (const [index, scheduled] of h.sink.notes.entries()) {
-      expect(scheduled.duration).toBeCloseTo(0.5, 9);
-      expect(scheduled.masterBarIndex).toBe(Math.floor(index / 4));
-      expect(scheduled.passIndex).toBe(0);
-      expect(scheduled.barEnd).toBeCloseTo(LATENCY + 2 * (Math.floor(index / 4) + 1), 9);
-      if (index < 15) {
-        expect(scheduled.nextOnString?.when).toBeCloseTo(scheduled.when + 0.5, 9);
-        expect(scheduled.nextOnString?.note.fret).toBe(Math.floor((index + 1) / 4));
-      } else {
-        expect(scheduled.nextOnString).toBeUndefined();
-      }
-    }
-    expect(h.states).toEqual(['playing', 'stopped']);
-    expectNothingInThePast(h.sink);
-  });
-
-  it('renders those onsets at the expected sample offsets, within one millisecond', async () => {
-    let builder = score().tempo(120).track('guitar');
-    for (let bar = 0; bar < 4; bar++) {
-      builder = builder.bar();
-      for (let beat = 0; beat < 4; beat++) builder = builder.beat('8', [note(1, 0)]).rest('8');
-    }
-    const staccato = builder.build();
-
-    const context = new OfflineAudioContext({
-      numberOfChannels: 1,
-      length: 8.5 * SAMPLE_RATE,
-      sampleRate: SAMPLE_RATE,
-    });
-    const scheduler = manualTicker();
-    const frames = manualTicker();
-    const engine = createAudioEngine({
-      context,
-      sink: new ToneSink(context),
-      metronome: new RecordingSink(context),
-      scheduler: scheduler.ticker,
-      frames: frames.ticker,
-      startLatency: LATENCY,
-    });
-    await engine.load(staccato, { tier: 'gm', packs: [] });
     engine.play();
-    const buffer = await drive(context, { tickers: [scheduler, frames] });
-
-    const samples = buffer.getChannelData(0);
-    const onsets: number[] = [];
-    let silent = Number.POSITIVE_INFINITY;
-    for (const [index, sample] of samples.entries()) {
-      if (Math.abs(sample) > 1e-4) {
-        if (silent > 0.05 * SAMPLE_RATE) onsets.push(index);
-        silent = 0;
-      } else {
-        silent += 1;
-      }
-    }
-    const expected = range(16, LATENCY, 0.5).map((time) => Math.round(time * SAMPLE_RATE));
-    expect(onsets).toHaveLength(16);
-    for (const [index, offset] of expected.entries()) {
-      expect(Math.abs((onsets[index] ?? Number.NaN) - offset)).toBeLessThanOrEqual(
-        SAMPLE_RATE * MS,
-      );
-    }
+    engine.unlock();
+    engine.unlock();
+    expect(factory).toHaveBeenCalledOnce();
+    engine.dispose();
   });
 
-  it('loops bars 2 to 3, starting at the loop, with no gap at the wrap and each pass reported', async () => {
-    const song = bars(4);
-    const h = await harness(song, 10.5);
-    const [, second, third] = song.masterBars;
-    if (!second || !third) throw new Error('fixture');
-    h.engine.setLoop({ startBar: second.id, endBar: third.id });
-    h.engine.play();
-    await h.render();
-
-    expectTimes(
-      h.sink.notes.map((n) => n.when),
-      range(22, LATENCY, 0.5),
-    );
-    expect(h.sink.notes.map((n) => n.note.fret)).toEqual([
-      1, 1, 1, 1, 2, 2, 2, 2, 1, 1, 1, 1, 2, 2, 2, 2, 1, 1, 1, 1, 2, 2,
-    ]);
-    const barTwoStarts = h.sink.notes.filter((n) => n.note.fret === 1 && n.beatIndex === 0);
-    expectTimes(
-      barTwoStarts.map((n) => n.when),
-      [0.1, 4.1, 8.1],
-    );
-    expect(h.loops.map((loop) => loop.pass)).toEqual([1, 2]);
-    expectTimes(
-      h.loops.map((loop) => loop.when),
-      [4.1, 8.1],
-    );
-    // The last note of a pass has no slide target: the wrap is a discontinuity.
-    for (const scheduled of h.sink.notes) {
-      const lastOfPass = scheduled.note.fret === 2 && scheduled.beatIndex === 3;
-      expect(scheduled.nextOnString === undefined).toBe(lastOfPass);
-    }
-    expectNothingInThePast(h.sink);
-  });
-
-  it('gives a tempo set from the loop handler to the first note of the next pass', async () => {
-    const song = bars(4);
-    const h = await harness(song, 12.5);
-    const [, second, third] = song.masterBars;
-    if (!second || !third) throw new Error('fixture');
-    h.engine.setLoop({ startBar: second.id, endBar: third.id });
-    h.engine.on('loop', (loop) => {
-      if (loop.pass === 1) h.engine.setTempo('percent', 50);
-    });
-    h.engine.play();
-    await h.render();
-
-    expectTimes(
-      h.sink.notes.map((n) => n.when),
-      [...range(8, LATENCY, 0.5), ...range(8, LATENCY + 4, 1), LATENCY + 12],
-    );
-    expect(h.loops.map((loop) => [loop.pass, loop.when])).toEqual([
-      [1, expect.closeTo(LATENCY + 4, 9) as number],
-      [2, expect.closeTo(LATENCY + 12, 9) as number],
-    ]);
-    expectNothingInThePast(h.sink);
-  });
-
-  it('dispose cuts, stops the timers, drops handlers and disposes the sinks', async () => {
-    class DisposableSink extends RecordingSink {
-      disposed = 0;
-      dispose(): void {
-        this.disposed += 1;
-      }
-    }
-    const context = new OfflineAudioContext({
-      numberOfChannels: 1,
-      length: SAMPLE_RATE,
-      sampleRate: SAMPLE_RATE,
-    });
-    const sink = new DisposableSink(context);
-    const metronome = new DisposableSink(context);
-    const scheduler = manualTicker();
-    const frames = manualTicker();
-    const engine = createAudioEngine({
+  it('reports the plan’s instruments as residents, with every memory event matching', async () => {
+    const context = new OfflineAudioContext({ numberOfChannels: 1, length: 1, sampleRate: 44_100 });
+    const bare = createAudioEngine({
       context,
-      sink,
-      metronome,
-      scheduler: scheduler.ticker,
-      frames: frames.ticker,
-      startLatency: LATENCY,
+      scheduleMemory: (run) => {
+        run();
+      },
     });
-    const states: PlaybackState[] = [];
-    engine.on('state', (state) => states.push(state));
-    await engine.load(bars(2), { tier: 'gm', packs: [] });
+    expect(bare.memory()).toEqual({ decodedBytes: 0, budgetBytes: GM_BUDGET_BYTES, residents: [] });
+    bare.dispose();
+
+    const { engine } = await setup();
+    const reports: ReturnType<AudioEngine['memory']>[] = [];
+    engine.on('memory', (report) => reports.push(report));
+    const { instruments } = await engine.load(quarters(1), GM);
+    await engine.settled();
+    const report = engine.memory();
+    expect(report.residents).toEqual([...instruments].sort());
+    expect(report.decodedBytes).toBeGreaterThan(0);
+    expect(report.decodedBytes).toBeLessThanOrEqual(GM_BUDGET_BYTES);
+    expect(reports.at(-1)).toEqual(report);
+
+    engine.unload({ evict: true });
+    expect(engine.memory()).toEqual({
+      decodedBytes: 0,
+      budgetBytes: GM_BUDGET_BYTES,
+      residents: [],
+    });
+    engine.dispose();
+  });
+
+  it('applies setTrack during playback, without a state change, and keeps it after a stop', async () => {
+    const song = quarters(4, { volume: 100 });
+    const id = trackOf(song);
+    const { engine, states, render, live } = await setup({ seconds: 3 });
+    await engine.load(song, GM);
     engine.play();
-    let disposedAt = 0;
-    await drive(context, {
-      tickers: [scheduler, frames],
-      actions: [
-        {
-          at: 0.5,
-          run: () => {
-            disposedAt = context.currentTime;
-            engine.dispose();
-          },
-        },
-      ],
-    });
+    const { sampler } = live();
+    let gain = 0;
+    let statesAt = 0;
 
-    expect(sink.cuts.map((cut) => cut.when)).toEqual([disposedAt]);
-    expect(metronome.cuts.map((cut) => cut.when)).toEqual([disposedAt]);
-    expect(sink.notes.every((n) => n.calledAt < disposedAt)).toBe(true);
-    expect(scheduler.active).toBe(0);
-    expect(frames.active).toBe(0);
-    expect(sink.disposed).toBe(1);
-    expect(metronome.disposed).toBe(1);
-    expect(states).toEqual(['playing']);
-    expect(() => {
-      engine.play();
-    }).toThrow(/load a score first/);
-  });
-
-  it('restarts at the loop start on a seek past the loop end, without counting a pass', async () => {
-    const song = bars(6);
-    const h = await harness(song, 6);
-    const [, second, third] = song.masterBars;
-    if (!second || !third) throw new Error('fixture');
-    h.engine.setLoop({ startBar: second.id, endBar: third.id });
-    let seekedAt = 0;
-    h.engine.play();
-    await h.render([
+    const buffer = await render([
       {
         at: 1,
         run: () => {
-          seekedAt = h.context.currentTime;
-          h.engine.seek(4 * 4 * PPQ);
-        },
-      },
-    ]);
-
-    const after = h.sink.notes.filter((n) => n.calledAt >= seekedAt);
-    expect(after[0]?.note.fret).toBe(1);
-    expect(after[0]?.beatIndex).toBe(0);
-    expect(after[0]?.when).toBeCloseTo(seekedAt + LATENCY, 9);
-    expect(h.loops).toHaveLength(1);
-    expect(h.loops[0]?.pass).toBe(1);
-    expect(h.loops[0]?.when).toBeCloseTo(seekedAt + LATENCY + 4, 9);
-    expectNothingInThePast(h.sink);
-  });
-
-  it('jumps to a loop set behind the playhead, without counting a pass', async () => {
-    const song = bars(6);
-    const h = await harness(song, 10);
-    const [first, second] = song.masterBars;
-    if (!first || !second) throw new Error('fixture');
-    let setAt = 0;
-    h.engine.play();
-    await h.render([
-      {
-        at: 4.5,
-        run: () => {
-          setAt = h.context.currentTime;
-          h.engine.setLoop({ startBar: first.id, endBar: second.id });
-        },
-      },
-    ]);
-
-    const after = h.sink.notes.filter((n) => n.calledAt >= setAt);
-    const jump = after[0];
-    if (!jump) throw new Error('nothing scheduled after setLoop');
-    expect(jump.note.fret).toBe(0);
-    expect(jump.beatIndex).toBe(0);
-    expect(jump.when).toBeGreaterThanOrEqual(setAt);
-    expect(jump.when).toBeLessThanOrEqual(setAt + 0.2 + MS);
-    expect(h.loops.map((loop) => loop.pass)).toEqual([1]);
-    expect(h.loops[0]?.when).toBeCloseTo(jump.when + 4, 9);
-    expectNothingInThePast(h.sink);
-  });
-
-  it('counts in exactly one bar before the first note', async () => {
-    const h = await harness(bars(2), 6.5);
-    h.engine.setCountIn(true);
-    h.engine.play();
-    await h.render();
-
-    const countIn = h.sink.clicks.slice(0, 4);
-    expectTimes(
-      countIn.map((c) => c.when),
-      range(4, LATENCY, 0.5),
-    );
-    expect(countIn.map((c) => c.accent)).toEqual([true, false, false, false]);
-    expect(h.sink.clicks).toHaveLength(4);
-    expectTimes(
-      h.sink.notes.map((n) => n.when),
-      range(8, LATENCY + 2, 0.5),
-    );
-    expect(h.states).toEqual(['counting-in', 'playing', 'stopped']);
-    expect(
-      h.positions.filter((p) => p.at < LATENCY + 2).every((p) => p.position.playbackTick === 0),
-    ).toBe(true);
-    expectNothingInThePast(h.sink);
-  });
-
-  it('counts in only the beats an anacrusis leaves', async () => {
-    const pickup = score()
-      .tempo(120)
-      .track('guitar')
-      .bar()
-      .anacrusis()
-      .beat('4', [note(1, 0)])
-      .bar()
-      .beat('1', [note(1, 1)])
-      .build();
-    const h = await harness(pickup, 4);
-    h.engine.setCountIn(true);
-    h.engine.play();
-    await h.render();
-
-    expectTimes(
-      h.sink.clicks.map((c) => c.when),
-      range(3, LATENCY, 0.5),
-    );
-    expectTimes(
-      h.sink.notes.map((n) => n.when),
-      [LATENCY + 1.5, LATENCY + 2],
-    );
-  });
-
-  it('hands out a beat with grace notes before it early enough to play them', async () => {
-    const graced = score()
-      .tempo(60)
-      .track('guitar')
-      .bar()
-      .beat('4', [note(1, 0)])
-      .beat('4', [note(1, 2)], { grace: [{ duration: 16, before: true, notes: [note(1, 1)] }] })
-      .rest('2')
-      .bar()
-      .beat('4', [note(1, 3)], { grace: [{ duration: 16, before: true, notes: [note(1, 2)] }] })
-      .rest('2.')
-      .build();
-    const h = await harness(graced, 8.5);
-    h.engine.play();
-    await h.render();
-
-    const [plain, inBar, atBarStart] = h.sink.notes;
-    expect(h.sink.notes).toHaveLength(3);
-    expectTimes(
-      h.sink.notes.map((n) => n.when),
-      [LATENCY, LATENCY + 1, LATENCY + 4],
-    );
-    // A 16th grace at 60 BPM is 250 ms; the event must arrive at least that long before `when`
-    // on top of the usual lookahead, also where the beat opens a bar.
-    expect((plain?.when ?? 0) - (plain?.calledAt ?? 0)).toBeLessThanOrEqual(0.2 + 0.03);
-    expect((inBar?.when ?? 0) - (inBar?.calledAt ?? 0)).toBeGreaterThanOrEqual(0.25 + 0.2 - 0.03);
-    expect((atBarStart?.when ?? 0) - (atBarStart?.calledAt ?? 0)).toBeGreaterThanOrEqual(
-      0.25 + 0.2 - 0.03,
-    );
-    expectNothingInThePast(h.sink);
-  });
-
-  it('plays the metronome with an accented downbeat while it is on', async () => {
-    const h = await harness(bars(2), 4.5);
-    h.engine.setMetronome(true, 0.5);
-    h.engine.play();
-    await h.render();
-
-    expectTimes(
-      h.sink.clicks.map((c) => c.when),
-      range(8, LATENCY, 0.5),
-    );
-    expect(h.sink.clicks.map((c) => c.accent)).toEqual([
-      true,
-      false,
-      false,
-      false,
-      true,
-      false,
-      false,
-      false,
-    ]);
-    expect(h.sink.volume).toBe(0.5);
-  });
-
-  it('hands a volume change on a rest beat to the sink at the rest', async () => {
-    const song = score()
-      .tempo(120)
-      .track('guitar')
-      .bar()
-      .beat('2', [note(1, 0)])
-      .rest('2', { mix: { volume: { value: 40, duration: 2 } } })
-      .bar()
-      .beat('1', [note(1, 2)])
-      .build();
-    const h = await harness(song, 4.5);
-    h.engine.play();
-    await h.render();
-
-    expect(h.sink.notes).toHaveLength(2);
-    expect(h.sink.mixes).toHaveLength(1);
-    const [mix] = h.sink.mixes;
-    expect(mix).toMatchObject({ beatIndex: 1, masterBarIndex: 0, playbackTick: 2 * PPQ });
-    expect(mix?.mix.volume).toEqual({ value: 40, duration: 2 });
-    expect(mix?.when).toBeCloseTo(LATENCY + 1, 9);
-    expect(mix?.secondsPerTick).toBeCloseTo(0.5 / PPQ, 12);
-    expect(mix?.calledAt).toBeLessThanOrEqual(mix?.when ?? 0);
-  });
-
-  it('starts from the middle with the mixer changes before it in effect', async () => {
-    const song = score()
-      .tempo(120)
-      .track('guitar')
-      .bar()
-      .rest('2', { mix: { volume: { value: 40, duration: 2 } } })
-      .rest('2')
-      .bar()
-      .beat('1', [note(1, 2)])
-      .build();
-    const h = await harness(song, 3);
-    h.engine.play(4 * PPQ);
-    await h.render();
-
-    expect(h.sink.notes.map((n) => n.when)).toEqual([expect.closeTo(LATENCY, 9)]);
-    expect(h.sink.mixes.map((m) => [m.playbackTick, m.when, m.mix])).toEqual([
-      [0, expect.closeTo(LATENCY, 9), { volume: { value: 40 } }],
-    ]);
-    expect(h.sink.mixes[0]?.calledAt).toBeLessThanOrEqual(h.sink.mixes[0]?.when ?? 0);
-  });
-
-  it('carries the tied notes of a held note, each with its own onset', async () => {
-    const song = score()
-      .tempo(120)
-      .track('guitar')
-      .bar()
-      .beat('4', [note(6, 5), note(1, 0)])
-      .beat('4', [note(1, 3)])
-      .beat('4', [note(1, 5)])
-      .beat('4', [note(1, 7)])
-      .bar()
-      .beat('4', [note(6, 5, { tie: true, vibrato: 'wide' }), note(1, 8)])
-      .beat('4', [note(1, 0)])
-      .beat('2', [note(6, 5, { tie: true, slide: ['outDown'] })])
-      .build();
-    const h = await harness(song, 4.5);
-    h.engine.play();
-    await h.render();
-
-    const held = h.sink.notes.filter((n) => n.note.string === 6);
-    expect(held).toHaveLength(1);
-    expect(held[0]?.duration).toBeCloseTo(4, 9);
-    expect(
-      held[0]?.continuations.map((c) => [
-        c.when - LATENCY,
-        c.durationTicks,
-        c.note.vibrato,
-        c.note.slide,
-      ]),
-    ).toEqual([
-      [expect.closeTo(2, 9), PPQ, 'wide', undefined],
-      [expect.closeTo(3, 9), 2 * PPQ, 'none', ['outDown']],
-    ]);
-    expect(
-      h.sink.notes.filter((n) => n.note.string === 1).every((n) => n.continuations.length === 0),
-    ).toBe(true);
-  });
-
-  it('honours a tempo change written in the score', async () => {
-    const song = bars(4, (builder, bar) => (bar === 2 ? builder.tempo(60) : builder));
-    const h = await harness(song, 13);
-    h.engine.play();
-    await h.render();
-
-    expectTimes(
-      h.sink.notes.map((n) => n.when),
-      [...range(8, LATENCY, 0.5), ...range(8, LATENCY + 4, 1)],
-    );
-  });
-
-  it('doubles every duration at 50 percent, and at the matching BPM', async () => {
-    for (const [mode, value] of [
-      ['percent', 50],
-      ['bpm', 60],
-    ] as const) {
-      const h = await harness(bars(2), 8.5);
-      h.engine.setTempo(mode, value);
-      h.engine.play();
-      await h.render();
-
-      expectTimes(
-        h.sink.notes.map((n) => n.when),
-        range(8, LATENCY, 1),
-      );
-      for (const scheduled of h.sink.notes) expect(scheduled.duration).toBeCloseTo(1, 9);
-    }
-  });
-
-  it('applies a tempo change during playback from the next scheduled event', async () => {
-    const h = await harness(bars(3), 12);
-    let changedAt = 0;
-    h.engine.play();
-    await h.render([
-      {
-        at: 1,
-        run: () => {
-          changedAt = h.context.currentTime;
-          h.engine.setTempo('percent', 50);
-        },
-      },
-    ]);
-
-    const times = h.sink.notes.map((n) => n.when);
-    const gaps = times.slice(1).map((time, index) => time - (times[index] ?? 0));
-    // The gap straddling the scheduling cursor is part old tempo, part new.
-    const switchAt = gaps.findIndex((gap) => gap > 0.5 + 1e-9);
-    expect(switchAt).toBeGreaterThan(0);
-    for (const [index, gap] of gaps.entries()) {
-      if (index < switchAt) expect(gap).toBeCloseTo(0.5, 9);
-      else if (index > switchAt) expect(gap).toBeCloseTo(1, 9);
-      else expect(gap).toBeLessThanOrEqual(1);
-    }
-    const firstMoved = times[switchAt + 1] ?? 0;
-    expect(firstMoved).toBeGreaterThanOrEqual(changedAt);
-    expect(times[switchAt] ?? 0).toBeLessThanOrEqual(changedAt + 0.2);
-    expect(
-      h.sink.notes
-        .filter((n) => n.calledAt < changedAt)
-        .every((n) => n.when < changedAt + 0.2 + MS),
-    ).toBe(true);
-    expect(h.sink.notes).toHaveLength(12);
-  });
-
-  it('seeks to a beat and resumes from it', async () => {
-    const h = await harness(bars(4), 4);
-    let seekedAt = 0;
-    h.engine.play();
-    await h.render([
-      {
-        at: 1,
-        run: () => {
-          seekedAt = h.context.currentTime;
-          h.engine.seek(2 * 4 * PPQ + PPQ);
-        },
-      },
-    ]);
-
-    const cut = h.sink.cuts.find((c) => c.kind === 'notes');
-    expect(cut?.when).toBe(seekedAt);
-    const after = h.sink.notes.filter((n) => n.calledAt >= seekedAt);
-    expect(after[0]?.note.fret).toBe(2);
-    expect(after[0]?.beatIndex).toBe(1);
-    expect(after[0]?.when).toBeCloseTo(seekedAt + LATENCY, 9);
-    expect(h.states).toEqual(['playing', 'playing']);
-    const later = h.positions.filter((p) => p.at >= seekedAt + LATENCY + 0.1);
-    expect(later[0]?.position.masterBarIndex).toBe(2);
-    expect(later[0]?.position.beatIndex).toBe(1);
-    expectNothingInThePast(h.sink);
-  });
-
-  it('releases everything on stop and schedules nothing after it', async () => {
-    const h = await harness(bars(4), 3);
-    let stoppedAt = 0;
-    h.engine.setMetronome(true, 1);
-    h.engine.play();
-    await h.render([
-      {
-        at: 1,
-        run: () => {
-          stoppedAt = h.context.currentTime;
-          h.engine.stop();
-        },
-      },
-    ]);
-
-    expect(h.sink.cuts).toEqual([
-      { kind: 'notes', when: stoppedAt, calledAt: stoppedAt },
-      { kind: 'clicks', when: stoppedAt, calledAt: stoppedAt },
-    ]);
-    expect(h.sink.notes.every((n) => n.calledAt < stoppedAt)).toBe(true);
-    expect(h.scheduler.active).toBe(0);
-    expect(h.frames.active).toBe(0);
-    expect(h.states).toEqual(['playing', 'stopped']);
-    expect(h.positions.at(-1)?.position.playbackTick).toBe(0);
-  });
-
-  it('silences a ToneSink and the click synth from the moment of stop', async () => {
-    const context = new OfflineAudioContext({
-      numberOfChannels: 1,
-      length: 2 * SAMPLE_RATE,
-      sampleRate: SAMPLE_RATE,
-    });
-    const scheduler = manualTicker();
-    const frames = manualTicker();
-    const engine = createAudioEngine({
-      context,
-      sink: new ToneSink(context),
-      scheduler: scheduler.ticker,
-      frames: frames.ticker,
-      startLatency: LATENCY,
-    });
-    await engine.load(bars(4), { tier: 'gm', packs: [] });
-    engine.setMetronome(true, 1);
-    engine.play();
-    let stoppedAt = 0;
-    const buffer = await drive(context, {
-      tickers: [scheduler, frames],
-      actions: [
-        {
-          at: 0.95,
-          run: () => {
-            stoppedAt = context.currentTime;
-            engine.stop();
-          },
-        },
-      ],
-    });
-
-    const samples = buffer.getChannelData(0);
-    const loudBefore = samples
-      .subarray(Math.round(0.6 * SAMPLE_RATE), Math.round(0.9 * SAMPLE_RATE))
-      .some((sample) => Math.abs(sample) > 0.01);
-    const tail = samples.subarray(Math.ceil((stoppedAt + 0.01) * SAMPLE_RATE));
-    expect(loudBefore).toBe(true);
-    expect(tail.every((sample) => Math.abs(sample) < 1e-6)).toBe(true);
-  });
-
-  it('pauses and resumes from where it paused', async () => {
-    const h = await harness(bars(2), 4);
-    let pausedAt = 0;
-    let resumedAt = 0;
-    h.engine.play();
-    await h.render([
-      {
-        at: 0.85,
-        run: () => {
-          pausedAt = h.context.currentTime;
-          h.engine.pause();
+          statesAt = states.length;
+          engine.setTrack(id, { volume: 30 });
+          gain = sampler.strip(id)?.gain ?? 0;
         },
       },
       {
         at: 2,
         run: () => {
-          resumedAt = h.context.currentTime;
-          h.engine.play();
+          engine.setTrack(id, { mute: true });
         },
       },
     ]);
 
-    const pausedTick = ((pausedAt - LATENCY) / 0.5) * PPQ;
-    const resumed = h.sink.notes.filter((n) => n.calledAt >= resumedAt);
-    const firstTick = Math.ceil(pausedTick / PPQ) * PPQ;
-    expect(resumed[0]?.playbackTick).toBeCloseTo(firstTick, 6);
-    expect(resumed[0]?.when).toBeCloseTo(
-      resumedAt + LATENCY + ((firstTick - pausedTick) / PPQ) * 0.5,
-      6,
-    );
-    expect(h.states).toEqual(['playing', 'paused', 'playing']);
+    expect(gain).toBeCloseTo(channelVolumeToGain(30), 9);
+    expect(states).toHaveLength(statesAt);
+    expect(rms(buffer, 1.1, 1.9)).toBeLessThan(0.3 * rms(buffer, 0.2, 0.9));
+    expect(rms(buffer, 2.1, 2.9)).toBeLessThan(1e-5);
+    engine.stop();
+    expect(sampler.strip(id)?.gain).toBeCloseTo(channelVolumeToGain(30), 9);
+    expect(sampler.strip(id)?.mute).toBe(true);
+    engine.dispose();
   });
 
-  it('reports positions from the audio clock at frame cadence', async () => {
-    const h = await harness(bars(2), 4.5);
-    h.engine.play();
-    await h.render();
+  it('previews a note past mute, and checks the song and the track', async () => {
+    const unloaded = await setup({ lazy: true });
+    expect(() => {
+      unloaded.engine.previewNote('x', { string: 1, fret: 3 });
+    }).toThrow(/load a score first/);
+    const lazySong = quarters(1);
+    await unloaded.engine.load(lazySong, GM);
+    expect(() => {
+      unloaded.engine.previewNote('nope', { string: 1, fret: 3 });
+    }).toThrow(RangeError);
+    unloaded.engine.previewNote(trackOf(lazySong), { string: 1, fret: 3 });
+    expect(unloaded.factory).toHaveBeenCalledOnce();
+    unloaded.engine.dispose();
 
-    const during = h.positions.filter((p) => p.at >= LATENCY && p.at < LATENCY + 4);
-    expect(during.length).toBeGreaterThan(150);
-    for (const event of during) {
-      const expected = ((event.at - LATENCY) / 0.5) * PPQ;
-      expect(event.position.playbackTick).toBeCloseTo(expected, 3);
+    const song = quarters(1);
+    const { engine, render } = await setup({ seconds: 0.8 });
+    await engine.load(song, GM);
+    engine.setTrack(trackOf(song), { mute: true });
+    const buffer = await render([
+      {
+        at: 0.2,
+        run: () => {
+          engine.previewNote(trackOf(song), { string: 1, fret: 3 });
+        },
+      },
+    ]);
+    expect(rms(buffer, 0.21, 0.6)).toBeGreaterThan(1e-4);
+    engine.dispose();
+  });
+
+  describe('a mixer change handed out before a cut', () => {
+    // Bar 2 opens at 2.1 s with volume 20, handed out within the lookahead before 2.05 s.
+    const mixed = (withChange: boolean) =>
+      quarters(3, {
+        volume: 100,
+        beat: (bar, beat) =>
+          withChange && bar === 1 && beat === 0 ? { mix: { volume: { value: 20 } } } : {},
+      });
+
+    async function previewAfter(cut: 'stop' | 'pause', withChange: boolean): Promise<number> {
+      const song = mixed(withChange);
+      const { engine, render } = await setup({ seconds: 3 });
+      await engine.load(song, GM);
+      engine.play();
+      const buffer = await render([
+        {
+          at: 2.05,
+          run: () => {
+            engine[cut]();
+          },
+        },
+        {
+          at: 2.4,
+          run: () => {
+            engine.previewNote(trackOf(song), { string: 1, fret: 3 });
+          },
+        },
+      ]);
+      engine.dispose();
+      return rms(buffer, 2.41, 2.9);
     }
-    const inBarTwo = during.find((p) => p.at >= 2.2 && p.at < 2.5);
-    expect(inBarTwo?.position.masterBarIndex).toBe(1);
-    expect(inBarTwo?.position.beatIndex).toBe(0);
+
+    it.each(['stop', 'pause'] as const)('does not land after a %s', async (cut) => {
+      const ratio = (await previewAfter(cut, true)) / (await previewAfter(cut, false));
+      expect(ratio).toBeGreaterThan(0.8);
+      expect(ratio).toBeLessThan(1.25);
+    });
   });
+
+  describe('a load over the loaded song', () => {
+    const edited = (song: Score) =>
+      applyCommand(song, setNote({ beatId: beatOf(song, 0, 2, 0).id }, { string: 1, fret: 5 }))
+        .score;
+
+    it('keeps playing from the same tick', async () => {
+      const song = quarters(4);
+      const { engine, states, positions, render } = await setup({ seconds: 1.7 });
+      await engine.load(song, GM);
+      engine.play();
+      let before = 0;
+      let after = 0;
+      let statesAt = 0;
+
+      const buffer = await render([
+        {
+          at: 1,
+          run: () => {
+            before = tickOf(positions) ?? 0;
+            statesAt = states.length;
+            void engine.load(edited(song), GM);
+          },
+        },
+        {
+          at: 1.05,
+          run: () => {
+            after = tickOf(positions) ?? 0;
+          },
+        },
+      ]);
+
+      expect(states.slice(statesAt)).not.toContain('stopped');
+      expect(after).toBeGreaterThanOrEqual(before);
+      expect(rms(buffer, 1.2, 1.6)).toBeGreaterThan(0.5 * rms(buffer, 0.3, 0.9));
+      engine.dispose();
+    });
+
+    it('keeps a paused song paused at its tick, and resumes there', async () => {
+      const song = quarters(4);
+      const { engine, states, positions, render } = await setup({ seconds: 1.6 });
+      await engine.load(song, GM);
+      engine.play();
+      let paused = 0;
+      let afterLoad = 0;
+      let resumed = 0;
+
+      await render([
+        {
+          at: 1,
+          run: () => {
+            engine.pause();
+            paused = tickOf(positions) ?? 0;
+          },
+        },
+        {
+          at: 1.1,
+          run: () => {
+            void engine.load(edited(song), GM);
+            afterLoad = tickOf(positions) ?? 0;
+          },
+        },
+        {
+          at: 1.2,
+          run: () => {
+            engine.play();
+            resumed = tickOf(positions) ?? 0;
+          },
+        },
+      ]);
+
+      expect(states).toEqual(['playing', 'paused', 'paused', 'playing']);
+      expect(afterLoad).toBeCloseTo(paused, 6);
+      expect(resumed).toBeCloseTo(paused, 6);
+      engine.dispose();
+    });
+  });
+
+  describe('a timeline-neutral edit', () => {
+    it('reaches the strip at once, with no rebuild and no state change', async () => {
+      const song = quarters(2);
+      const id = trackOf(song);
+      const { engine, states, render, live } = await setup({ seconds: 1.4 });
+      await engine.load(song, GM);
+      engine.play();
+      const { sampler, transport } = live();
+      const load = vi.spyOn(transport, 'load');
+      let gain = 0;
+      let statesAt = 0;
+
+      await render([
+        {
+          at: 1,
+          run: () => {
+            statesAt = states.length;
+            const next = applyCommand(
+              song,
+              setTrackProperties({ trackId: id }, { channel: { volume: 40 } }),
+            ).score;
+            void engine.load(next, GM);
+            gain = sampler.strip(id)?.gain ?? 0;
+          },
+        },
+      ]);
+
+      expect(load).not.toHaveBeenCalled();
+      expect(gain).toBeCloseTo(channelVolumeToGain(40), 9);
+      expect(states.slice(statesAt)).toEqual([]);
+      engine.dispose();
+    });
+
+    it('switches the instrument at once and reports its decode', async () => {
+      const song = quarters(1);
+      const id = trackOf(song);
+      const { context, engine, live } = await setup();
+      await engine.load(song, GM);
+      engine.unlock();
+      const { sampler, transport, bank } = live();
+      const load = vi.spyOn(transport, 'load');
+      const loads: InstrumentLoads[] = [];
+      engine.on('instrumentLoads', (event) => loads.push(event));
+
+      const next = applyCommand(song, setTrackProperties({ trackId: id }, { program: 0 })).score;
+      const loading = engine.load(next, GM);
+      const track = next.tracks[0];
+      if (!track) throw new Error('no track');
+      expect(sampler.instrumentAt(id, context.currentTime)).toBe(bank.instrument(track, 0));
+      await expect(loading).resolves.toEqual({ instruments: [bank.instrumentId(track, 0)] });
+      await engine.settled();
+
+      expect(load).not.toHaveBeenCalled();
+      expect(loads[0]?.[id]?.loaded).toBe(0);
+      expect(loads[0]?.[id]?.total).toBeGreaterThan(0);
+      expect(loads.at(-1)).toEqual({});
+      expect(engine.memory().residents).toContain(bank.instrumentId(track, 0));
+      engine.dispose();
+    });
+  });
+
+  it('previews a strip without an override, until a run restores the channel', async () => {
+    const song = quarters(1, { volume: 100 });
+    const id = trackOf(song);
+    const { engine, live } = await setup();
+    await engine.load(song, GM);
+    engine.unlock();
+    const { sampler } = live();
+    engine.previewTrack(id, { volume: 30 });
+    expect(sampler.strip(id)?.gain).toBeCloseTo(channelVolumeToGain(30), 9);
+    engine.play();
+    engine.stop();
+    expect(sampler.strip(id)?.gain).toBeCloseTo(channelVolumeToGain(100), 9);
+    engine.dispose();
+  });
+
+  it('ends a song on unload, dropping its tracks, overrides and loop', async () => {
+    const song = quarters(4);
+    const id = trackOf(song);
+    const [first, second] = song.masterBars;
+    if (!first || !second) throw new Error('two bars expected');
+    const { engine, states, positions, render, live } = await setup({ seconds: 1.2 });
+    await engine.load(song, GM);
+    engine.setTrack(id, { volume: 30 });
+    engine.setLoop({ startBar: first.id, endBar: second.id });
+    engine.play();
+    const { sampler } = live();
+    await render([
+      {
+        at: 1,
+        run: () => {
+          engine.unload();
+        },
+      },
+    ]);
+    expect(states.at(-1)).toBe('stopped');
+    expect(sampler.trackIds).toEqual([]);
+
+    const next = quarters(2, { volume: 100 });
+    const nextId = trackOf(next);
+    engine.setTrack(nextId, { mute: true });
+    await engine.load(next, GM);
+    expect(tickOf(positions)).toBe(0);
+    expect(sampler.strip(nextId)?.mute).toBe(true);
+    expect(sampler.strip(nextId)?.gain).toBeCloseTo(channelVolumeToGain(100), 9);
+    expect(() => {
+      engine.setLoop({ startBar: first.id, endBar: second.id });
+    }).toThrow();
+    engine.dispose();
+  });
+
+  it('keeps the settings given before the context and applies them when it is made', async () => {
+    const song = quarters(1);
+    const id = trackOf(song);
+    const { engine, factory, states, live } = await setup({ lazy: true });
+    engine.setTempo('percent', 50);
+    engine.setCountIn(true);
+    engine.setMetronome(true, 0.5);
+    engine.setMasterVolume(0.5);
+    engine.setTrack(id, { mute: true });
+    expect(() => {
+      engine.setMasterVolume(1.5);
+    }).toThrow(RangeError);
+    expect(() => {
+      engine.setTempo('bpm', 0);
+    }).toThrow(RangeError);
+    expect(engine.outputLatency()).toBe(0);
+    await engine.load(song, GM);
+    engine.unlock();
+
+    expect(factory).toHaveBeenCalledOnce();
+    const { sampler } = live();
+    expect(sampler.master.gain).toBe(0.5);
+    expect(sampler.strip(id)?.mute).toBe(true);
+    engine.play();
+    expect(states.at(-1)).toBe('counting-in');
+    engine.dispose();
+  });
+
+  it('needs one sound bank before a load', async () => {
+    const context = new OfflineAudioContext({ numberOfChannels: 1, length: 1, sampleRate: 44_100 });
+    const engine = createAudioEngine({ context });
+    await expect(engine.load(quarters(1), GM)).rejects.toThrow(/setSoundfont/);
+    const font = await synthetic();
+    engine.setSoundfont(font);
+    expect(() => {
+      engine.setSoundfont(font);
+    }).toThrow(/already/);
+    engine.dispose();
+  });
+
+  it.skipIf(!generalUser)(
+    'counts only the played preset and no eviction for an edit, on GeneralUser GS',
+    async () => {
+      if (!generalUser) return;
+      const song = quarters(2);
+      const { engine, live } = await setup({ font: generalUser });
+      await engine.load(song, GM);
+      await engine.settled();
+      expect(engine.memory().residents).toEqual(['gm:0:25']);
+      const { source } = live();
+      const { evictions } = source.counters;
+
+      await engine.load(
+        applyCommand(song, setNote({ beatId: beatOf(song, 0, 1, 0).id }, { string: 1, fret: 5 }))
+          .score,
+        GM,
+      );
+      await engine.settled();
+      expect(source.counters.evictions).toBe(evictions);
+      engine.dispose();
+    },
+    60_000,
+  );
 });

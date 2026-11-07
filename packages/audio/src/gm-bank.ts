@@ -1,12 +1,11 @@
-import {
-  PERCUSSION_BANK,
-  type Instrument,
-  type InstrumentId,
-  type ManagedSampleSource,
-  type RegionMap,
-  type Sf2Soundfont,
-} from '@reprise/audio';
 import type { Track } from '@reprise/model';
+
+import type { RegionMap } from './sampler/region-map';
+import type { Instrument } from './sampler/sampler';
+import type { ManagedSampleSource } from './samples/managed-sample-source';
+import type { InstrumentId } from './samples/types';
+import { PERCUSSION_BANK } from './sf2/soundfont';
+import type { Sf2Soundfont } from './sf2/soundfont';
 
 type TrackKey = Pick<Track, 'kind' | 'bank'>;
 
