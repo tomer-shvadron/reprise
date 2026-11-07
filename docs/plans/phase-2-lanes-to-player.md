@@ -23,7 +23,7 @@ Owns `packages/layout` and `apps/web/src/features/score`. Reference: `../referen
 - Vertical stacking: for each system, one staff group per visible track, each group holding the staves its notation mode needs, with configurable gaps; track names in the left margin of the first system and short names after.
 - A font metrics table generated at build time from Bravura and the UI font (`scripts/layout/metrics.ts`), so the engine measures text without a DOM.
 - Bar lines, time signatures on change and at the start, key signatures on standard staves, clefs, tempo marks, section markers and repeat signs as primitives (glyph placement only; staff-specific content comes in the next packages).
-- A `LayoutCache` keyed by bar ID that stores per-bar measurements; `layout()` with a cache and a list of dirty bars re-measures only those and re-breaks systems from the first dirty bar.
+- A `LayoutCache` keyed by bar ID that stores per-bar measurements; `layout()` with a cache and a list of dirty bars re-measures only those and re-renders the systems within reach of them, reusing every other system that is placed as before.
 
 **Acceptance criteria**
 

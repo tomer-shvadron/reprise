@@ -29,7 +29,28 @@ export default defineConfig({
     projects: [
       { test: { name: 'model', root: 'packages/model', environment: 'node' } },
       { test: { name: 'formats', root: 'packages/formats', environment: 'node' } },
-      { test: { name: 'layout', root: 'packages/layout', environment: 'node' } },
+      {
+        test: {
+          name: 'layout',
+          root: 'packages/layout',
+          environment: 'node',
+          exclude: [...configDefaults.exclude, 'test/**'],
+        },
+      },
+      {
+        test: {
+          name: 'layout-worker',
+          root: 'packages/layout/test',
+          // Proves layout runs in a Web Worker; production layout stays on the main thread.
+          browser: {
+            enabled: true,
+            provider: playwright(),
+            headless: true,
+            screenshotFailures: false,
+            instances: [{ browser: 'chromium' }],
+          },
+        },
+      },
       {
         test: {
           name: 'audio',
