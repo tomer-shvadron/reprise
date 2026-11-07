@@ -58,12 +58,26 @@ The committed fixtures give one file per format (`FORMATS` in `scores.ts`), with
 
 CI runs on `ubuntu-24.04` with no sound device. To reproduce it, run Playwright's server in its image and point the suite at it:
 
+The browser in the container must reach the preview at `127.0.0.1:4319`, a secure origin (origin-private storage needs one; `host.docker.internal` is not), so the container forwards that port to the host:
+
 ```sh
-docker run --rm -p 3000:3000 --init mcr.microsoft.com/playwright:v1.64.1-noble \
-  /bin/sh -c "npx -y playwright@1.64.1 run-server --port 3000 --host 0.0.0.0"
+docker run --rm -d --name pw-e2e -p 3000:3000 --init mcr.microsoft.com/playwright:v1.64.1-noble /bin/sh -c \
+  "apt-get -qq update && apt-get -qq install -y socat; \
+   (socat TCP-LISTEN:4319,fork,bind=127.0.0.1 TCP:host.docker.internal:4319 &); \
+   npx -y playwright@1.64.1 run-server --port 3000 --host 0.0.0.0"
 ```
 
-Then add `connectOptions: { wsEndpoint: 'ws://127.0.0.1:3000/' }` to `use` in a local copy of the config. The browser must reach the preview at `127.0.0.1:4319`, a secure origin (origin-private storage needs one; `host.docker.internal` is not), so forward that port inside the container to the host, for example with `socat TCP-LISTEN:4319,fork TCP:host.docker.internal:4319`.
+Then run the suite with a local config beside `playwright.config.ts` (not committed), and `docker rm -f pw-e2e` after:
+
+```ts
+import { defineConfig } from '@playwright/test';
+
+import base from './playwright.config';
+
+export default defineConfig(base, {
+  use: { connectOptions: { wsEndpoint: 'ws://127.0.0.1:3000/' } },
+});
+```
 
 ## Adding a flow
 
