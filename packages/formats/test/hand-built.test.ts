@@ -386,6 +386,23 @@ describe.each(['4.06', '5.10'] satisfies BuildVersion[])('lyrics in v%s', (versi
   });
 });
 
+describe('a GP5 keyboard track asking for tab', () => {
+  it('reads as standard notation, with an info that the tab flag was dropped', () => {
+    const { score, warnings } = read(
+      buildGpFile({
+        version: '5.10',
+        programs: { 1: 0 },
+        tracks: [{ name: 'Piano', staffFlags: 0x01 }],
+        bars: [[[[quarter(1, 0)]]]],
+      }),
+    );
+    expect(score.tracks[0]).toMatchObject({ kind: 'pitched', display: { notation: 'standard' } });
+    expect(warnings).toContainEqual(
+      expect.objectContaining({ code: 'track-flags-dropped', severity: 'info' }),
+    );
+  });
+});
+
 describe('GP5 voices', () => {
   it('read the second voice block into voice 2', () => {
     const { score } = read(
