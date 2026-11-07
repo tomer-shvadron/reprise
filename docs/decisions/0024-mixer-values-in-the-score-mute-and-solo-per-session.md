@@ -25,8 +25,10 @@ commands). Visibility as view state follows the lead's ruling on #46 Q6.
   command.
 - **Mute and solo are session state.** The UI's toggles are the audio service's per-song
   overrides (`playback.mixer`), never a command and never written: Save writes each track's mute
-  and solo flags as the file had them (gp5 track flags, the gpif `PlaybackState`), which the
-  readers keep as the baseline under the overrides. A file saved soloed therefore opens soloed.
+  and solo flags as the file had them, which the readers take from gp5's track flags and gpif's
+  `PlaybackState` and keep as the baseline under the overrides. A file saved soloed therefore
+  opens soloed. gpif's `PlaybackState` holds one value, so a track read with both flags set is
+  written to gp as soloed only.
 - **Notation per track is saved into the file**, as ADR-0007 says: the view's notation map is
   folded into each track's `display.notation` when Save writes, in `.reprise` and in gp (whose
   gpif records the per-track staff flags). It stays out of the undo history, but a change marks
@@ -39,7 +41,7 @@ commands). Visibility as view state follows the lead's ruling on #46 Q6.
   changes only track properties the timeline never reads (name, colour, display, channel,
   program, lyrics) is applied to the channel strips and instruments directly, so volume, pan and
   instrument changes, and their undo and redo, are heard at once during playback.
-- **Undo and redo are commands** (⌘Z, ⇧⌘Z, and Ctrl+Y on Windows) over the document's history;
+- **Undo and redo are commands** (⌘Z, ⇧⌘Z, and Ctrl+Y as well off macOS) over the document's history;
   the desktop Edit menu calls them, and a focused text field keeps its own undo.
 
 ## Alternatives considered
