@@ -2,7 +2,7 @@ import { parseNative, type Notation, type Score } from '@reprise/model';
 import { largeScore } from '@reprise/model/testing';
 import { describe, expect, inject, it } from 'vitest';
 
-import { PAGE_SIZES, layout, type LayoutOptions, type StaffType } from './index';
+import { PAGE_SIZES, layout, type LayoutOptions, type Primitive, type StaffType } from './index';
 import { strayPrimitives } from './test/check-result';
 import { describePrimitive } from './test/describe';
 import { withEffects, withNoteMarks } from './test/effects';
@@ -54,6 +54,7 @@ function strays(
   staves: readonly StaffType[],
   notations: readonly Notation[] = NOTATIONS,
   modes: readonly Mode[] = MODES,
+  name: (primitive: Primitive) => string = describePrimitive,
 ): string[] {
   const found: string[] = [];
   for (const notation of notations) {
@@ -61,13 +62,16 @@ function strays(
       const result = layout(built, optionsFor(built, notation, mode));
       for (const staff of staves) {
         for (const primitive of strayPrimitives(result, built, staff)) {
-          found.push(`${notation}, ${mode}: ${describePrimitive(primitive)}`);
+          found.push(`${notation}, ${mode}: ${name(primitive)}`);
         }
       }
     }
   }
   return found;
 }
+
+const kindOf = (primitive: Primitive): string =>
+  primitive.kind === 'glyph' ? primitive.glyph : primitive.kind;
 
 describe('stray primitives on the tab staff', () => {
   it('reads the corpus', () => {
@@ -92,13 +96,13 @@ describe('stray primitives on the tab staff', () => {
 });
 
 describe('stray primitives on the five-line staves', () => {
-  // Pins #124: turn into `it` when it starts failing.
-  it.fails('draws nothing outside a five-line staff of the corpus (#124)', () => {
+  // Pins #124's known kinds, so a new kind fails now; when #124 lands, expect none instead.
+  it('draws only the kinds of #124 outside a five-line staff of the corpus', () => {
     const found = fixtures.flatMap((fixture) =>
-      strays(read(fixture.native), ['standard', 'percussion']).map(
-        (line) => `${fixture.path}: ${line}`,
+      strays(read(fixture.native), ['standard', 'percussion'], NOTATIONS, MODES, kindOf).map(
+        (line) => line.slice(line.lastIndexOf(': ') + 2),
       ),
     );
-    expect(found).toEqual([]);
+    expect(new Set(found)).toEqual(new Set(['dynamicMF', 'tuplet5', 'path', 'flag32ndDown']));
   });
 });
