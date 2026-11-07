@@ -32,8 +32,7 @@ pnpm exec playwright show-trace path/to/trace.zip
 ## Rules
 
 - **No sleeps.** Wait on app state: web-first `expect(locator)` assertions, `expect.poll` on the analyser, or `page.waitForFunction` on the probes and the write log. `waitForTimeout` and `setTimeout` are ESLint errors here.
-- **Click in content coordinates.** A seek scrolls the score, smoothly. Learn a box with `contentBox` or `barBox` (scroll-content coordinates) and click it with `clickContent`, which waits for the scroll to settle and the point to be in view, then maps it to the viewport. `settle()` throws if the score is still scrolling after 5 s.
-- **Seek bar by bar before a click.** `nextBars` waits for each ⌘→ seek's scroll to settle: a seek pressed while the previous one's scroll is still moving leaves the view where the earlier seek put it, an app bug recorded on [#76](https://github.com/tomer-shvadron/reprise/issues/76#issuecomment-6705653330). `seek.spec.ts` pins it with a `test.fail()` that flips to a failure once it is fixed; then drop the `test.fail()` and the helper.
+- **Click in content coordinates.** A seek scrolls the score, smoothly. Learn a box with `contentBox` or `barBox` (scroll-content coordinates) and click it with `clickContent`, which waits for the scroll to settle and the point to be in view, then maps it to the viewport. `settle()` waits for the score region to drop `data-scrolling`, which the view sets while its own smooth scroll is in flight, and throws after 5 s.
 - **Press a key before a flow that needs audio without Play.** The first key or pointer press builds the one `AudioContext`; `gesture()` presses a key that is no shortcut and waits for the context to run.
 - **Scope mixer controls to the strip** (`app.strip(n)`): Mute, Solo and Volume exist in the sidebar row too.
 - **Press `ControlOrMeta`**, never `Meta` or `Control`, and keep the real user agent (no `devices[...]`): the app picks its modifier from the user agent.

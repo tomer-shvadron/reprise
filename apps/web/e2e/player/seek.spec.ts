@@ -83,7 +83,7 @@ test('a click seeks to a bar or a beat, and a repeated bar to the pass nearest t
   expect(Math.abs((await app.contentBox(CURSOR)).x - beat2)).toBeLessThanOrEqual(1);
 
   await page.keyboard.press('ControlOrMeta+Home');
-  await app.nextBars(10);
+  for (let i = 0; i < 10; i += 1) await page.keyboard.press('ControlOrMeta+ArrowRight');
   await expect(app.field('bar')).toHaveText('3/16');
   await app.clickContent({ x: bar2.x + 4, y: middle(bar2) });
   await expect(app.field('bar')).toHaveText('2/16');
@@ -91,16 +91,15 @@ test('a click seeks to a bar or a beat, and a repeated bar to the pass nearest t
 
   // Bar 3 shares bar 2's system, so the click needs no scroll from either pass.
   await page.keyboard.press('ControlOrMeta+Home');
-  await app.nextBars(2);
+  for (let i = 0; i < 2; i += 1) await page.keyboard.press('ControlOrMeta+ArrowRight');
   await expect(app.field('bar')).toHaveText('3/16');
   await app.clickContent({ x: bar2.x + 4, y: middle(bar2) });
   await expect(app.field('bar')).toHaveText('2/16');
   await expect(app.field('time')).toHaveText(`${SONG.bar2First} ${SONG.total}`);
 });
 
-// The bug `nextBars` works around: when this starts passing, drop `test.fail` and the helper.
+// Each seek lands while the previous one's smooth scroll is still in flight (#122).
 test('rapid bar seeks keep the cursor in view', async ({ app, page }) => {
-  test.fail(true, 'https://github.com/tomer-shvadron/reprise/issues/76#issuecomment-6705653330');
   await page.keyboard.press('ControlOrMeta+Home');
   await expect(app.field('bar')).toHaveText('1/16');
   for (let i = 0; i < 10; i += 1) await page.keyboard.press('ControlOrMeta+ArrowRight');
