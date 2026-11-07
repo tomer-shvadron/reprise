@@ -200,7 +200,8 @@ describe('a smooth scroll in flight', () => {
     };
     const result = mode === 'paged' ? paged() : continuous();
     const ref = createRef<ScoreViewHandle>();
-    render(<ScoreView ref={ref} layout={result} zoom={1} />);
+    const view = () => <ScoreView ref={ref} layout={result} zoom={1} />;
+    const { rerender } = render(view());
     stubScroll(region());
     const handle = ref.current;
     if (!handle) throw new Error('no handle');
@@ -210,8 +211,29 @@ describe('a smooth scroll in flight', () => {
         handle.followPlayhead({ mode, running: false, force: true });
       });
     };
-    return { smooth, seek, cursors: barCursors(result), result, handle };
+    const resize = (width: number, height: number) => {
+      stubViewport(width, height);
+      rerender(view());
+    };
+    return {
+      smooth,
+      seek,
+      resize,
+      cursors: barCursors(result),
+      result,
+      handle,
+    };
   }
+
+  const frame = () =>
+    act(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => {
+            resolve();
+          }),
+        ),
+    );
 
   it('is retargeted by a seek the window shows only because the scroll has not moved yet', () => {
     const { smooth, seek, cursors, result, handle } = setup('paged');
@@ -244,13 +266,39 @@ describe('a smooth scroll in flight', () => {
     expect(smooth).toHaveLength(1);
   });
 
-  it('ends with a hand scroll, after which seeks are measured from the live position', () => {
+  it('survives a wheel, which does not stop it, and a short scrollend while it still moves', async () => {
+    const { smooth, seek, cursors } = setup('paged');
+    const late = cursors.at(-1);
+    if (!late) throw new Error('no cursors');
+    seek(late);
+    expect(region()).toHaveAttribute('data-scrolling');
+    fireEvent.wheel(region(), { deltaY: -100 });
+    expect(region()).toHaveAttribute('data-scrolling');
+
+    // The wheel's own scroll ends, and the view's carries on toward its destination.
+    region().scrollTop = 10;
+    fireEvent(region(), new Event('scrollend'));
+    region().scrollTop = 30;
+    await frame();
+    await frame();
+    await frame();
+    expect(region()).toHaveAttribute('data-scrolling');
+    expect(smooth).toHaveLength(1);
+  });
+
+  it('ends with a short scrollend and no motion after, then seeks use the live position', async () => {
     const { smooth, seek, cursors } = setup('paged');
     const first = cursors[0];
     const late = cursors.at(-1);
     if (!first || !late) throw new Error('no cursors');
     seek(late);
-    fireEvent.wheel(region(), { deltaY: -100 });
+    // A key replaced the view's scroll and stopped short.
+    region().scrollTop = 10;
+    fireEvent(region(), new Event('scrollend'));
+    expect(region()).toHaveAttribute('data-scrolling');
+    await frame();
+    await frame();
+    await frame();
     expect(region()).not.toHaveAttribute('data-scrolling');
     seek(first);
     expect(smooth).toHaveLength(1);

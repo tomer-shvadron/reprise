@@ -152,6 +152,10 @@ function near(a: Point, b: Point, tolerance: number): boolean {
   return Math.abs(a.x - b.x) < tolerance && Math.abs(a.y - b.y) < tolerance;
 }
 
+function distance(a: Point, b: Point): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
 /** The systems on the page under `point`, or every system when it is between pages. */
 function pageSystems(layout: LayoutResult, point: Point): readonly System[] {
   const page = layout.pages.find(
@@ -308,16 +312,33 @@ export function ScoreView({
   // eslint-plugin-react does not know `onScrollEnd` yet, so the listener is added by hand.
   useEffect(() => {
     if (!element) return;
+    let check = 0;
     const onScrollEnd = () => {
       const instant = wroteInstantly.current;
       wroteInstantly.current = false;
       const aim = flight.current;
+      if (!aim) return;
+      const at = readScroll(element);
+      if (near(at, aim, 1)) {
+        land(element);
+        return;
+      }
       // Chromium ends an instant write on the next frame, even with a smooth scroll begun since.
-      if (!aim || (instant && !near(readScroll(element), aim, 1))) return;
-      land(element);
+      if (instant) return;
+      // A short `scrollend` may be another scroll's, a wheel's or a key's that ended after the
+      // flight began: the flight goes on if the position still nears its destination.
+      cancelAnimationFrame(check);
+      check = requestAnimationFrame(() => {
+        check = requestAnimationFrame(() => {
+          if (flight.current !== aim) return;
+          if (distance(readScroll(element), aim) < distance(at, aim)) return;
+          land(element);
+        });
+      });
     };
     element.addEventListener('scrollend', onScrollEnd);
     return () => {
+      cancelAnimationFrame(check);
       element.removeEventListener('scrollend', onScrollEnd);
     };
   }, [element, land]);
@@ -449,9 +470,9 @@ export function ScoreView({
       onScorePointer({ type, point, anchor, column, event: event.nativeEvent });
     };
 
-  /** A hand scroll stops the view's smooth scroll, so its destination no longer says anything. */
-  const handScroll = (target: HTMLElement, axis: ScrollAxis) => {
-    land(target);
+  // A wheel does not stop the view's smooth scroll, while a key or a scrollbar drag does; the
+  // flight ends by its own signals either way: arrival, or a `scrollend` with no motion after.
+  const handScroll = (axis: ScrollAxis) => {
     onUserScroll?.(axis);
   };
 
@@ -459,29 +480,28 @@ export function ScoreView({
     // Ctrl with the wheel is a pinch, which zooms.
     if (event.ctrlKey) return;
     const sideways = event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY);
-    handScroll(event.currentTarget, sideways ? 'x' : 'y');
+    handScroll(sideways ? 'x' : 'y');
   };
 
   const onRegionPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button === 1) {
-      handScroll(event.currentTarget, 'both');
+      handScroll('both');
       return;
     }
     // A press on the region itself, not the canvas, is a press on a scrollbar.
     if (event.target !== event.currentTarget) return;
     const { offsetX, offsetY } = event.nativeEvent;
-    if (offsetX >= event.currentTarget.clientWidth) handScroll(event.currentTarget, 'y');
-    else if (offsetY >= event.currentTarget.clientHeight) handScroll(event.currentTarget, 'x');
+    if (offsetX >= event.currentTarget.clientWidth) handScroll('y');
+    else if (offsetY >= event.currentTarget.clientHeight) handScroll('x');
   };
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const axis = KEY_AXES[event.key];
     if (!axis) return;
-    const target = event.currentTarget;
     const native = event.nativeEvent;
     // After the window's shortcut dispatcher, which prevents the keys a command took.
     setTimeout(() => {
-      if (!native.defaultPrevented) handScroll(target, axis);
+      if (!native.defaultPrevented) handScroll(axis);
     }, 0);
   };
 
@@ -501,8 +521,8 @@ export function ScoreView({
       onScroll={onScroll}
       onWheel={onWheel}
       onPointerDown={onRegionPointerDown}
-      onTouchMove={(event) => {
-        handScroll(event.currentTarget, 'both');
+      onTouchMove={() => {
+        handScroll('both');
       }}
       onKeyDown={onKeyDown}
     >
