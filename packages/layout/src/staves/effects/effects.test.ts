@@ -521,9 +521,17 @@ describe('note effects on the tab: lanes', () => {
     expect(accent.bbox.y + accent.bbox.height).toBeLessThan(staccato.bbox.y);
     expect(content(tab)).toMatchSnapshot();
     const both = laid(accented(guitar('both')));
-    expect(both.primitives.some((p) => p.kind === 'glyph' && p.glyph.startsWith('artic'))).toBe(
-      false,
-    );
+    const marks = both.primitives.filter((p) => p.kind === 'glyph' && p.glyph.startsWith('artic'));
+    expect(marks.length).toBeGreaterThan(0);
+    const staffOf = (staff: 'standard' | 'tab') => {
+      const found = both.anchors.find((a) => a.kind === 'staff' && a.staff === staff);
+      if (!found) throw new Error(staff);
+      return found.bbox;
+    };
+    const within = (p: Primitive, box: Primitive['bbox']) =>
+      p.bbox.y >= box.y && p.bbox.y + p.bbox.height <= box.y + box.height;
+    expect(marks.every((p) => within(p, staffOf('standard')))).toBe(true);
+    expect(marks.some((p) => within(p, staffOf('tab')))).toBe(false);
   });
 
   it('draws tremolo strokes on the stems, lengthening them where the strokes need room', () => {

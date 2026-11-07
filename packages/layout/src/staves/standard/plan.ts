@@ -5,6 +5,15 @@ import { glyphWidth } from '../../primitives';
 import type { StaffBar } from '../staff-module';
 import { planChord, positionY, type ChordNote, type ChordPlan } from './chord';
 import {
+  articulationHalf,
+  articulationReach,
+  beamedShortfall,
+  planArticulation,
+  planTremolo,
+  type ArticulationPlan,
+  type TremoloPlan,
+} from './effects';
+import {
   barAccidentals,
   harmonicHead,
   placeNote,
@@ -72,6 +81,8 @@ export interface BeatPlan {
   tuplet?: number;
   /** Fingering, top to bottom. */
   fingering: { glyph: GlyphName; note: Note }[];
+  articulation?: ArticulationPlan;
+  tremolo?: TremoloPlan;
   left: number;
   right: number;
   top: number;
@@ -81,6 +92,8 @@ export interface BeatPlan {
 export interface GroupPlan {
   beats: BeatPlan[];
   direction: StemDirection;
+  /** How far the beam moves out for its stems' tremolo strokes, in px. */
+  extend: number;
 }
 
 export interface TupletPlan {
@@ -311,6 +324,8 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
         reachMiddle: true,
       });
       plan.chord = planned;
+      const tremolo = planTremolo(beat, planned, group !== undefined, space);
+      if (tremolo) plan.tremolo = tremolo;
       plan.left = planned.left;
       plan.right = planned.right;
       plan.top = planned.top;
@@ -340,14 +355,41 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
       const stems = groupBeats.flatMap(({ chord }) =>
         chord?.stem ? [{ x: chord.stem.x, head: chord.stem.head, beams: chord.beams }] : [],
       );
-      const line = beamLine(stems, direction, { space, middle, exact: false });
+      const extend = Math.max(
+        0,
+        ...groupBeats.map(({ tremolo, chord }) =>
+          tremolo && chord ? beamedShortfall(tremolo, chord, space) : 0,
+        ),
+      );
+      const line = beamLine(stems, direction, { space, middle, exact: false, extend });
       const reach =
         direction === 'up' ? Math.min(line.start, line.end) : Math.max(line.start, line.end);
       for (const beat of groupBeats) {
         if (direction === 'up') beat.top = Math.min(beat.top, reach);
         else beat.bottom = Math.max(beat.bottom, reach);
       }
-      groups.push({ beats: groupBeats, direction });
+      groups.push({ beats: groupBeats, direction, extend });
+    }
+
+    for (const plan of planned) {
+      const { chord } = plan;
+      if (!chord) continue;
+      const articulation = planArticulation(plan.beat, chord, multiVoice || percussion, space);
+      if (!articulation) continue;
+      plan.articulation = articulation;
+      // Beyond a stem, the beat's extent already holds the furthest its tip or beam reaches.
+      const edge =
+        articulation.stemSide && chord.stem
+          ? articulation.above
+            ? plan.top
+            : plan.bottom
+          : articulation.edge;
+      const far = articulationReach(articulation, edge, space);
+      if (articulation.above) plan.top = Math.min(plan.top, far);
+      else plan.bottom = Math.max(plan.bottom, far);
+      const half = articulationHalf(articulation, space);
+      plan.left = Math.min(plan.left, articulation.x - half);
+      plan.right = Math.max(plan.right, articulation.x + half);
     }
 
     const byRun = new Map<number, BeatPlan[]>();

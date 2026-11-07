@@ -6,6 +6,7 @@ import type { Rect, StaffType } from '../../types';
 import { DYNAMICS_GLYPHS, dynamicsBaseline, shownDynamics } from '../dynamics';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
 import { headEdges, type ChordPlan, type HeadPlan } from './chord';
+import { beamedTremoloY, drawArticulation, drawTremolo } from './effects';
 import { GRACE_SCALE, noteMatches, type BarPlan, type BeatPlan } from './plan';
 import {
   beamY,
@@ -240,7 +241,12 @@ export function renderBar(
     }
     const first = group.beats[0];
     if (!first || stems.length === 0) continue;
-    const beam = beamLine(stems, group.direction, { space, middle: top + 2 * space, exact: true });
+    const beam = beamLine(stems, group.direction, {
+      space,
+      middle: top + 2 * space,
+      exact: true,
+      extend: group.extend,
+    });
     let i = 0;
     for (const beat of group.beats) {
       const stem = stems[i];
@@ -251,6 +257,30 @@ export function renderBar(
       tips.set(beat, tip);
     }
     drawBeams(sink, stems, group.direction, beam, space, { node: first.beat.id });
+  }
+
+  // The outer edge of each beat's articulation, for the tuplet beyond it.
+  const marked = new Map<BeatPlan, number>();
+  for (const beat of plan.beats) {
+    const { chord } = beat;
+    if (!chord) continue;
+    const x = beatX(context, beat);
+    const id = beat.beat.id;
+    const { tremolo, articulation } = beat;
+    if (tremolo) {
+      const tip = tips.get(beat);
+      const y =
+        tremolo.y ??
+        (tip === undefined ? undefined : beamedTremoloY(tremolo, chord, tip - top, space));
+      const stemX = chord.stem ? chord.stem.x : 0;
+      if (y !== undefined) drawTremolo(sink, tremolo.glyph, x + stemX, top + y, space, id);
+    }
+    if (articulation) {
+      const tip = tips.get(beat);
+      const edge =
+        articulation.stemSide && chord.stem && tip !== undefined ? tip - top : articulation.edge;
+      marked.set(beat, drawArticulation(sink, articulation, x, top, edge, space, id));
+    }
   }
 
   for (const tuplet of plan.tuplets) {
@@ -278,6 +308,8 @@ export function renderBar(
         ...(tip === undefined ? [] : [tip]),
       ];
       if (beat.rest) extremes.push(top + (tuplet.above ? beat.top : beat.bottom));
+      const mark = marked.get(beat);
+      if (mark !== undefined && beat.articulation?.above === tuplet.above) extremes.push(mark);
       if (extremes.length === 0) extremes.push(top + 2 * space);
       edge = tuplet.above ? Math.min(edge, ...extremes) : Math.max(edge, ...extremes);
     }
