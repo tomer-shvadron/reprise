@@ -22,6 +22,14 @@ const RELEASE_LABEL_GAP = 0.4;
 const RELEASE_STOP = 0.1;
 const HOLD_DASH = 0.4;
 
+/**
+ * Where a bend's frame starts and stops, in staff spaces: its gap from the note, how far short of
+ * the next onset it ends, its shortest length, and how far short a grace bend stops.
+ */
+export const BEND_FRAME = { gap: 0.15, stop: 0.6, min: 1, graceStop: 0.3 } as const;
+/** Room kept right of a bent note, and right of a grace column holding a bend, in staff spaces. */
+export const BEND_ROOM = { main: 2.2, grace: 1.2 } as const;
+
 /** Where one note's bend is drawn, in px. */
 export interface BendFrame {
   /** Where the shaft starts: right of the number, or its centre for a pre-bend. */

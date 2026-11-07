@@ -3,9 +3,36 @@ import { beatTicks, type Beat, type Duration, type Finger, type Note } from '@re
 import { glyphMetrics, type GlyphName } from '../../metrics';
 import { glyphWidth } from '../../primitives';
 import type { StaffBar } from '../staff-module';
-import { planChord, positionY, type ChordNote, type ChordPlan } from './chord';
-import { barAccidentals, placeNote, type ShownAccidental } from './pitch';
+import {
+  headEdges,
+  mainHeads,
+  planChord,
+  positionY,
+  tieDirection,
+  type ChordNote,
+  type ChordPlan,
+} from './chord';
+import {
+  articulationHalf,
+  articulationReach,
+  SLIDE,
+  STROKE,
+  beamedShortfall,
+  nearOrigin,
+  planArticulation,
+  planTremolo,
+  type ArticulationPlan,
+  type TremoloPlan,
+} from './effects';
+import {
+  barAccidentals,
+  harmonicHead,
+  placeNote,
+  soundingKey,
+  type ShownAccidental,
+} from './pitch';
 import { beamCount, beamGroups, tupletGroups, type RhythmEvent } from '../rhythm';
+import { BEND_ROOM, connections, letterReach } from '../effects';
 import {
   beamLine,
   dotsWidth,
@@ -66,6 +93,10 @@ export interface BeatPlan {
   tuplet?: number;
   /** Fingering, top to bottom. */
   fingering: { glyph: GlyphName; note: Note }[];
+  articulation?: ArticulationPlan;
+  tremolo?: TremoloPlan;
+  /** The arpeggio or brush column's centre, from the beat's x. */
+  strokeX?: number;
   left: number;
   right: number;
   top: number;
@@ -75,6 +106,8 @@ export interface BeatPlan {
 export interface GroupPlan {
   beats: BeatPlan[];
   direction: StemDirection;
+  /** How far the beam moves out for its stems' tremolo strokes, in px. */
+  extend: number;
 }
 
 export interface TupletPlan {
@@ -203,15 +236,24 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
           : undefined,
       );
   const multiVoice = bar.voices.filter((voice) => voice.beats.some(hasContent)).length > 1;
+  // The track's only staff: it also carries what both mode leaves to the tab.
+  const lone = input.staves.length === 1;
   const middle = positionY(4, space);
   const time = input.masterBar.timeSignature;
 
   const chordNotes = (notes: readonly Note[]): ChordNote[] =>
-    notes.map((note) => {
+    notes.flatMap((note) => {
       const placed = placeNote(track, note, key, input.clef, percussion);
       const accidental = accidentals.get(note.id);
-      return { note, ...placed, ...(accidental && { accidental }) };
+      const main: ChordNote = { note, ...placed, ...(accidental && { accidental }) };
+      const diamond = percussion ? undefined : harmonicHead(track, note, key, input.clef);
+      if (!diamond) return [main];
+      const shown = accidentals.get(soundingKey(note.id));
+      return [main, { note, ...diamond, sounding: true, ...(shown && { accidental: shown }) }];
     });
+  // A harmonic's sounding diamond never turns its stem.
+  const mainPositions = (chord: readonly ChordNote[]): number[] =>
+    chord.flatMap(({ position, sounding }) => (sounding ? [] : [position]));
 
   const beats: BeatPlan[] = [];
   const voices: BeatPlan[][] = [];
@@ -245,16 +287,14 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
     const directions = voiceBeats.map((beat, i): StemDirection => {
       if (multiVoice) return voiceDirection(voice);
       if (percussion) return 'up';
-      return directionByPosition((notes[i] ?? []).map(({ position }) => position));
+      return directionByPosition(mainPositions(notes[i] ?? []));
     });
     for (const [g, members] of grouped.entries()) {
       const direction = multiVoice
         ? voiceDirection(voice)
         : percussion
           ? 'up'
-          : directionByPosition(
-              members.flatMap((i) => (notes[i] ?? []).map(({ position }) => position)),
-            );
+          : directionByPosition(members.flatMap((i) => mainPositions(notes[i] ?? [])));
       for (const i of members) {
         groupOf.set(i, groups.length + g);
         directions[i] = direction;
@@ -300,18 +340,30 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
         reachMiddle: true,
       });
       plan.chord = planned;
+      const tremolo = planTremolo(beat, planned, group !== undefined, space);
+      if (tremolo) plan.tremolo = tremolo;
       plan.left = planned.left;
       plan.right = planned.right;
       plan.top = planned.top;
       plan.bottom = planned.bottom;
-      const tied = planned.heads.some(({ note }) => note.tie) || index === voiceBeats.length - 1;
+      const heads = mainHeads(planned);
+      const tied = heads.some(({ note }) => note.tie) || index === voiceBeats.length - 1;
       if (tied) {
-        plan.top = Math.min(plan.top, ...planned.heads.map(({ y }) => y - tieReach(space)));
-        plan.bottom = Math.max(plan.bottom, ...planned.heads.map(({ y }) => y + tieReach(space)));
+        plan.top = Math.min(plan.top, ...heads.map(({ y }) => y - tieReach(space)));
+        plan.bottom = Math.max(plan.bottom, ...heads.map(({ y }) => y + tieReach(space)));
       }
-      planGraces(plan, chordNotes, space, multiVoice);
+      if (!percussion) planBeside(plan, beat, heads, lone, space);
+      if (
+        lone &&
+        !percussion &&
+        heads.some(({ note }) => note.bend && note.bend.kind !== 'prebend')
+      ) {
+        const right = Math.max(...heads.map((head) => headEdges(planned, head).right));
+        plan.right = Math.max(plan.right, right + BEND_ROOM.main * space);
+      }
+      planGraces(plan, chordNotes, space, multiVoice, lone && !percussion);
       if (!percussion) {
-        for (const head of [...planned.heads].reverse()) {
+        for (const head of [...heads].reverse()) {
           const { leftHandFinger, rightHandFinger } = head.note;
           if (rightHandFinger)
             plan.fingering.push({ glyph: RIGHT_HAND[rightHandFinger], note: head.note });
@@ -322,20 +374,51 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
       return plan;
     });
 
+    if (track.kind === 'fretted' && !percussion) {
+      for (const plan of planned) planSlurs(plan, planned, input, voice, multiVoice, lone);
+    }
+
     for (const members of grouped) {
       const groupBeats = members.flatMap((i) => planned[i] ?? []);
       const direction = groupBeats[0]?.chord?.direction ?? 'up';
       const stems = groupBeats.flatMap(({ chord }) =>
         chord?.stem ? [{ x: chord.stem.x, head: chord.stem.head, beams: chord.beams }] : [],
       );
-      const line = beamLine(stems, direction, { space, middle, exact: false });
+      const extend = Math.max(
+        0,
+        ...groupBeats.map(({ tremolo, chord }) =>
+          tremolo && chord ? beamedShortfall(tremolo, chord, space) : 0,
+        ),
+      );
+      const line = beamLine(stems, direction, { space, middle, exact: false, extend });
       const reach =
         direction === 'up' ? Math.min(line.start, line.end) : Math.max(line.start, line.end);
       for (const beat of groupBeats) {
         if (direction === 'up') beat.top = Math.min(beat.top, reach);
         else beat.bottom = Math.max(beat.bottom, reach);
       }
-      groups.push({ beats: groupBeats, direction });
+      groups.push({ beats: groupBeats, direction, extend });
+    }
+
+    for (const plan of planned) {
+      const { chord } = plan;
+      if (!chord) continue;
+      const articulation = planArticulation(plan.beat, chord, multiVoice || percussion, space);
+      if (!articulation) continue;
+      plan.articulation = articulation;
+      // Beyond a stem, the beat's extent already holds the furthest its tip or beam reaches.
+      const edge =
+        articulation.stemSide && chord.stem
+          ? articulation.above
+            ? plan.top
+            : plan.bottom
+          : articulation.edge;
+      const far = articulationReach(articulation, edge, space);
+      if (articulation.above) plan.top = Math.min(plan.top, far);
+      else plan.bottom = Math.max(plan.bottom, far);
+      const half = articulationHalf(articulation, space);
+      plan.left = Math.min(plan.left, articulation.x - half);
+      plan.right = Math.max(plan.right, articulation.x + half);
     }
 
     const byRun = new Map<number, BeatPlan[]>();
@@ -392,11 +475,91 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
   };
 }
 
+/** Room left of the chord for a slide into it and a stroke arrow, and right for a slide out. */
+function planBeside(
+  plan: BeatPlan,
+  beat: Beat,
+  heads: readonly { y: number }[],
+  lone: boolean,
+  space: number,
+): void {
+  const slides = beat.notes.flatMap((note) => note.slide ?? []);
+  if (slides.some((kind) => kind === 'intoFromBelow' || kind === 'intoFromAbove')) {
+    plan.left -= SLIDE.room * space;
+  }
+  if (slides.some((kind) => kind === 'outDown' || kind === 'outUp')) {
+    plan.right += SLIDE.room * space;
+  }
+  // In both mode the tab draws the brush; an arpeggio's wave belongs beside the heads.
+  const { arpeggio, brush } = beat.effects;
+  if (!arpeggio && !(brush && lone)) return;
+  plan.strokeX = plan.left - (STROKE.width * space) / 2;
+  plan.left -= STROKE.width * space;
+  const ys = heads.map(({ y }) => y);
+  plan.top = Math.min(plan.top, Math.min(...ys) - STROKE.reach * space);
+  plan.bottom = Math.max(plan.bottom, Math.max(...ys) + STROKE.reach * space);
+}
+
+/**
+ * Room for the slurs of hammer-ons and legato slides ending at the beat: past the higher or
+ * lower of its two heads when the origin is in this bar or the one before, past the target
+ * alone when the slur arrives as a half, and for the letter over it when the staff is alone.
+ */
+function planSlurs(
+  plan: BeatPlan,
+  planned: readonly BeatPlan[],
+  input: StaffBar,
+  voice: number,
+  multiVoice: boolean,
+  lone: boolean,
+): void {
+  const { chord } = plan;
+  if (!chord) return;
+  const { track, space } = input;
+  const reach = tieReach(space) + (lone ? letterReach(space) : 0);
+  const slidesIn =
+    connections(input.bar).shifts || connections(track.bars[input.barIndex - 1]).shifts;
+  const lastGrace = plan.graces.at(-1);
+  for (const head of mainHeads(chord)) {
+    const { note } = head;
+    const grace = lastGrace?.chord.heads.find(
+      (other) => !other.sounding && other.note.string === note.string,
+    );
+    let ys = [head.y];
+    let direction = tieDirection(chord, head, multiVoice);
+    if (grace) {
+      if (!note.hammerPull && !grace.note.slide?.includes('legato')) continue;
+      ys = [head.y, grace.y];
+      direction = 'down';
+    } else {
+      if (!note.hammerPull && !slidesIn) continue;
+      const origin = nearOrigin(track, input.barIndex, voice, plan.index, note);
+      const legato = origin?.note.slide?.includes('legato') ?? false;
+      if (!note.hammerPull && !legato) continue;
+      if (origin?.bar === input.barIndex) {
+        const from = planned[origin.beat]?.chord?.heads.find(
+          (other) => !other.sounding && other.note === origin.note,
+        );
+        if (from) ys.push(from.y);
+      } else if (origin && input.bar.clef === undefined) {
+        const key = input.score.masterBars[input.barIndex - 1]?.keySignature;
+        if (key) {
+          const placed = placeNote(track, origin.note, key, input.clef, false);
+          ys.push(positionY(placed.position, space));
+        }
+      }
+    }
+    if (direction === 'up') plan.top = Math.min(plan.top, Math.min(...ys) - reach);
+    else plan.bottom = Math.max(plan.bottom, Math.max(...ys) + reach);
+  }
+}
+
 function planGraces(
   plan: BeatPlan,
   chordNotes: (notes: readonly Note[]) => ChordNote[],
   space: number,
   multiVoice: boolean,
+  bends: boolean,
 ): void {
   const graces = plan.beat.grace ?? [];
   if (graces.length === 0 || !plan.chord) return;
@@ -418,7 +581,9 @@ function planGraces(
   for (let g = chords.length - 1; g >= 0; g--) {
     const chord = chords[g];
     if (!chord) continue;
-    const offset = cursor - chord.right;
+    // A grace note's bend, drawn when the staff is alone, keeps room before what follows it.
+    const bent = bends && (graces[g]?.notes.some((note) => note.bend) ?? false);
+    const offset = cursor - chord.right - (bent ? BEND_ROOM.grace * space : 0);
     placed.unshift({ offset, chord, slash: single });
     cursor = offset + chord.left - GRACE_STEP * space;
     plan.top = Math.min(plan.top, chord.top);
