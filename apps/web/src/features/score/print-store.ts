@@ -1,9 +1,9 @@
 import type { layout as layoutScore } from '@reprise/layout';
-import type { Id } from '@reprise/model';
+import type { Id, Score } from '@reprise/model';
 import { create } from 'zustand';
 
 import type { Platform } from '@/platform/platform';
-import { visibleTrackIds, type DocumentStore } from '@/state/document';
+import { visibleTrackIds, type DocumentStore, type DocumentView } from '@/state/document';
 import type { UiStore } from '@/state/ui';
 
 import { loadScoreFonts } from './fonts';
@@ -53,6 +53,20 @@ function afterPaint(): Promise<void> {
 
 const PAGE_SIZE = { a4: 'A4', letter: 'Letter' } as const;
 
+function choicesOf(score: Score): PrintDialogState['choices'] {
+  return score.tracks.map(({ id, name }, i) => ({
+    id,
+    name: name.trim() || `Track ${String(i + 1)}`,
+  }));
+}
+
+/** The tracks on screen, in score order. */
+function tracksOnScreen(view: DocumentView, score: Score): Id[] {
+  const visible = visibleTrackIds(view, score);
+  const wanted = visible === 'all' ? undefined : new Set(visible);
+  return score.tracks.map(({ id }) => id).filter((id) => wanted?.has(id) ?? true);
+}
+
 /** The print flow: our dialog's choices, the print layout, the mounted pages, the system dialog. */
 export function createPrintStore(deps: PrintStoreDeps) {
   const { document, ui, platform, fonts = loadScoreFonts, nextPaint = afterPaint } = deps;
@@ -60,7 +74,7 @@ export function createPrintStore(deps: PrintStoreDeps) {
   let remembered: Omit<PrintSettings, 'tracks'> | undefined;
   let waiting: { id: number; resolve: () => void } | undefined;
 
-  return create<PrintState>()((set, get) => ({
+  const store = create<PrintState>()((set, get) => ({
     dialog: undefined,
     preparing: false,
     job: undefined,
@@ -68,18 +82,13 @@ export function createPrintStore(deps: PrintStoreDeps) {
       const { score, view } = document.getState();
       const state = get();
       if (!score || state.dialog || state.preparing || state.job) return;
-      const visible = visibleTrackIds(view, score);
-      const wanted = visible === 'all' ? undefined : new Set(visible);
       set({
         dialog: {
           settings: {
-            tracks: score.tracks.map(({ id }) => id).filter((id) => wanted?.has(id) ?? true),
+            tracks: tracksOnScreen(view, score),
             ...(remembered ?? { paper: ui.getState().view.paper, header: true, pageNumbers: true }),
           },
-          choices: score.tracks.map(({ id, name }, i) => ({
-            id,
-            name: name.trim() || `Track ${String(i + 1)}`,
-          })),
+          choices: choicesOf(score),
         },
       });
     },
@@ -96,7 +105,10 @@ export function createPrintStore(deps: PrintStoreDeps) {
       const { score } = document.getState();
       if (!score || !dialog || preparing) return;
       const present = new Set(score.tracks.map(({ id }) => id));
-      if (!dialog.settings.tracks.some((id) => present.has(id))) return;
+      if (!dialog.settings.tracks.some((id) => present.has(id))) {
+        set({ dialog: { ...dialog, error: 'None of the chosen tracks is in the score.' } });
+        return;
+      }
       set({ preparing: true });
       try {
         // "Preparing…" paints before the layout blocks the thread.
@@ -136,6 +148,32 @@ export function createPrintStore(deps: PrintStoreDeps) {
       resolve();
     },
   }));
+
+  // Another file can open under the modal (a shortcut, the native menu, a drop): the dialog
+  // follows the score, keeping the tracks chosen while the score keeps the same tracks.
+  document.subscribe((next, previous) => {
+    const { dialog, preparing } = store.getState();
+    if (!dialog || preparing || next.score === previous.score) return;
+    const { score, view } = next;
+    if (!score) {
+      store.setState({ dialog: undefined });
+      return;
+    }
+    const ids = score.tracks.map(({ id }) => id);
+    const same =
+      ids.length === dialog.choices.length && dialog.choices.every(({ id }, i) => ids[i] === id);
+    store.setState({
+      dialog: {
+        settings: {
+          ...dialog.settings,
+          tracks: same ? dialog.settings.tracks : tracksOnScreen(view, score),
+        },
+        choices: choicesOf(score),
+      },
+    });
+  });
+
+  return store;
 }
 
 export type PrintStore = ReturnType<typeof createPrintStore>;

@@ -232,6 +232,55 @@ describe('the print store', () => {
     });
   });
 
+  it('follows another file opened under the dialog, so Print… prints it', async () => {
+    const { services, store, print, renderJob } = await setup();
+    store.getState().open();
+    store.getState().update({ paper: 'letter', header: false });
+    const other = score().track('guitar', { name: 'Solo' }).track('bass', { name: 'Low' }).build();
+    const { bytes } = await write(other, 'reprise');
+    await services.document.getState().openBytes('other.reprise', bytes);
+    const ids = services.document.getState().score?.tracks.map(({ id }) => id);
+    expect(store.getState().dialog?.choices.map(({ name }) => name)).toEqual(['Solo', 'Low']);
+    expect(store.getState().dialog?.settings).toMatchObject({
+      tracks: ids,
+      paper: 'letter',
+      header: false,
+    });
+    const printing = store.getState().print();
+    const job = await renderJob();
+    await printing;
+    expect(job.settings.tracks).toEqual(ids);
+    expect(print).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the chosen tracks when the score changes but its tracks do not', async () => {
+    const { services, store, ids } = await setup();
+    store.getState().open();
+    store.getState().update({ tracks: [ids[1] ?? ''] });
+    const before = services.document.getState().score;
+    if (!before) throw new Error('no score');
+    const { bytes } = await write(before, 'reprise');
+    await services.document.getState().openBytes('riff.reprise', bytes);
+    expect(services.document.getState().score).not.toBe(before);
+    expect(store.getState().dialog?.settings.tracks).toEqual([ids[1]]);
+  });
+
+  it('closes the dialog when the score closes under it', async () => {
+    const { services, store } = await setup();
+    store.getState().open();
+    services.document.getState().close();
+    expect(store.getState().dialog).toBeUndefined();
+  });
+
+  it('says so when none of the chosen tracks is in the score', async () => {
+    const { store, run } = await setup();
+    store.getState().open();
+    store.getState().update({ tracks: ['gone'] });
+    await store.getState().print();
+    expect(run).not.toHaveBeenCalled();
+    expect(store.getState().dialog?.error).toBe('None of the chosen tracks is in the score.');
+  });
+
   it('ignores updates and cancel while preparing', async () => {
     const { store, renderJob } = await setup();
     store.getState().open();
