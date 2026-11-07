@@ -22,6 +22,7 @@
     "format:check": "prettier --check .",
     "fixtures:describe": "node scripts/fixtures/describe.ts",
     "fixtures:check": "node scripts/fixtures/describe.ts --check",
+    "check:files": "node scripts/check-files/run.ts",
     "sounds:fetch": "node scripts/sounds/fetch-gm.ts",
     "sounds:fixture": "node scripts/sounds/make-test-sf2.ts",
     "layout:metrics": "node scripts/layout/metrics.ts",

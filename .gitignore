@@ -32,3 +32,6 @@ local-tabs/*
 # sound banks, fetched by `pnpm sounds:fetch`
 apps/web/public/sounds/gm/*
 !apps/web/public/sounds/gm/README.md
+
+# the real-file pass, `pnpm check:files`
+.check-files/
