@@ -16,9 +16,9 @@ export type AppCommandId =
 type AppCommand = Command & { id: AppCommandId };
 
 export function appCommands(
-  services: Pick<AppServices, 'ui' | 'platform' | 'document'>,
+  services: Pick<AppServices, 'ui' | 'print' | 'document'>,
 ): AppCommand[] {
-  const { ui, platform, document } = services;
+  const { ui, print, document } = services;
   const zoomBy = (delta: number) => {
     ui.getState().setZoom(Math.round((ui.getState().zoom + delta) * 10) / 10);
   };
@@ -69,7 +69,9 @@ export function appCommands(
       id: 'file.print',
       title: 'Print…',
       shortcut: { key: 'p', mod: true },
-      run: () => platform.print(),
+      run: () => {
+        print.getState().open();
+      },
     },
     {
       id: 'view.zoomIn',

@@ -32,3 +32,17 @@ export type { PlaybackCursor } from './anchors';
 export { CONTINUOUS_SYSTEM_WIDTH, uniformNotation, viewLayoutOptions } from './view-options';
 export type { ContentOptions, NotationChoice, PaperSize, ViewSettings } from './view-options';
 export { loadScoreFonts, useScoreFonts } from './fonts';
+export { PrintDocument } from './print-document';
+export type { PrintDocumentProps } from './print-document';
+export { PrintDialog } from './print-dialog';
+export { PrintRoot } from './print-root';
+export { createPrintStore } from './print-store';
+export type {
+  PrintDialogState,
+  PrintJob,
+  PrintState,
+  PrintStore,
+  PrintStoreDeps,
+} from './print-store';
+export { layoutForPrint, printHeading, printLayoutOptions, PRINT_HEADING } from './print-layout';
+export type { PrintContent, PrintHeading, PrintSettings } from './print-layout';

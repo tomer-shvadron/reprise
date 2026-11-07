@@ -42,7 +42,7 @@ const ROOT_IMPORTS_ONLY = boundary(
 );
 const TESTING_IN_TESTS = boundary(
   'testing-entry-in-tests',
-  '@reprise/model/testing, the one allowed subpath, is imported only from test files',
+  '@reprise/model/testing and @reprise/audio/testing, the only allowed subpaths, are imported only from test files',
 );
 const ELECTRON_IN_DESKTOP = boundary(
   'electron-only-in-desktop',
@@ -105,7 +105,8 @@ const restrictImports = (patterns) => ({
  * rule plus `allowTypeImports`, which typeOnly edges need; an `import()` is always a value
  * import, so the second bans those edges too. Flat config replaces a rule's options rather than
  * merging them, so each workspace gets one entry per rule carrying every boundary that applies,
- * once for its test files, which may import `@reprise/model/testing`, and once for the rest;
+ * once for its test files, which may import the `testing` subpaths of `model` and `audio`, and
+ * once for the rest;
  * oracle test files are a third entry, the only one without the alphaTab ban.
  * @param {Workspace} workspace
  * @returns {import('eslint').Linter.Config[]}
@@ -113,7 +114,7 @@ const restrictImports = (patterns) => ({
 function workspaceBoundaries({ name: self, dir, allowed, typeOnly = [], oracle = [] }) {
   /** @type {Restriction[]} */
   const restricted = [
-    { regex: String.raw`^@reprise/(?!model/testing$)[^/]+/`, message: ROOT_IMPORTS_ONLY },
+    { regex: String.raw`^@reprise/(?!(?:model|audio)/testing$)[^/]+/`, message: ROOT_IMPORTS_ONLY },
   ];
 
   for (const { name: other } of WORKSPACES) {
@@ -144,7 +145,7 @@ function workspaceBoundaries({ name: self, dir, allowed, typeOnly = [], oracle =
       rules: restrictImports([
         ...restricted,
         ORACLE,
-        { regex: String.raw`^@reprise/model/testing$`, message: TESTING_IN_TESTS },
+        { regex: String.raw`^@reprise/(?:model|audio)/testing$`, message: TESTING_IN_TESTS },
       ]),
     },
     { files: tests, ignores: oracleTests, rules: restrictImports([...restricted, ORACLE]) },

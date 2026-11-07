@@ -30,6 +30,7 @@
     "desktop:dev": "pnpm --filter @reprise/desktop dev",
     "desktop:build": "pnpm --filter @reprise/desktop build",
     "desktop:smoke": "node scripts/desktop/smoke.ts",
+    "desktop:print-pdfs": "node scripts/desktop/print-pdfs.ts",
     "prepare": "husky",
     "postinstall": "playwright install chromium --only-shell"
   },

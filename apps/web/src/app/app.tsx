@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { PrintDialog, PrintRoot } from '@/features/score';
 import { MixerPanel, TrackSidebar } from '@/features/tracks';
 import { TransportBar } from '@/features/transport';
 import type { RepriseBridge } from '@/platform/bridge';
@@ -78,6 +79,8 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
         <DropZone />
         <Notices />
         <SavePromptDialog />
+        <PrintDialog store={services.print} />
+        <PrintRoot store={services.print} />
       </TooltipProvider>
     </AppServicesProvider>
   );

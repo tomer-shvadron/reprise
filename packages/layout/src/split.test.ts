@@ -54,6 +54,15 @@ describe('splitSlots', () => {
     ]);
   });
 
+  it('fits the first part into a smaller first room and the later parts into the full room', () => {
+    const groups = [0, 0, 1, 1, 2, 2];
+    const without = splitSlots(stack(6), groups, 330, SPACE);
+    const withHeader = splitSlots(stack(6), groups, 330, SPACE, 220);
+    expect(without[0]).toEqual({ start: 0, end: 4 });
+    expect(withHeader[0]).toEqual({ start: 0, end: 2 });
+    expect(withHeader.slice(1)).toEqual([{ start: 2, end: 6 }]);
+  });
+
   it('makes a staff taller than the room a part of its own', () => {
     expect(splitSlots(stack(3), [0, 1, 2], 50, SPACE)).toEqual([
       { start: 0, end: 1 },

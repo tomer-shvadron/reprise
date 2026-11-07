@@ -103,9 +103,15 @@ registerInvokeHandlers(
     },
     'app:library-dir': () => Promise.resolve(libraryDir),
     'app:data-dir': () => Promise.resolve(dataDir),
-    'app:print': (event) =>
+    'app:print': (event, options) =>
       new Promise((resolve, reject) => {
-        event.sender.print({}, (success, reason) => {
+        // The page box is the whole sheet and carries its own margins; the paper is ours too.
+        const print = {
+          printBackground: false,
+          margins: { marginType: 'none' as const },
+          ...(options && { pageSize: options.pageSize }),
+        };
+        event.sender.print(print, (success, reason) => {
           if (success || reason === 'cancelled') resolve(undefined);
           else reject(new Error(`Printing failed: ${reason}`));
         });

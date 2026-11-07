@@ -40,7 +40,7 @@ Enforced by lint. In addition:
 ```
 apps/web/src/
   app/            shell, routing, theme, command palette, keyboard map, services (the stores wired together)
-    audio/        the audio service: AudioContext, GM bank, sampler, memory manager, engine
+    audio/        the audio service: the sound bank fetch and the adapter from the engine to the playback store
   platform/       Platform interface + browser and electron implementations
   state/          zustand stores: document, selection, playback, layout (derived), ui
   features/
@@ -70,7 +70,7 @@ file bytes --formats.read--> Score --------+--> layout.layout(score, options) --
 - The **document store** holds the current `Score`, the undo history and the selection. All edits go through commands.
 - **Layout** is a pure function of the score and view options, cached per bar; a patch marks bars dirty and only those re-flow, systems within three bars of a re-measured bar are rebuilt, re-breaking stops where the breaks re-converge, and the rest are reused.
 - **Audio** reads the score through the tempo map and the playback sequence; it never holds a reference to React state.
-- **Mixer**: volume, pan and instrument are score edits through `setTrackProperties`; mute and solo are the audio service's per-song overrides; visibility and single-track view are the document's view state, and notation per track is view state that Save writes into the file (ADR-0024). A timeline-neutral edit reaches the sampler without rebuilding the sequence.
+- **Mixer**: volume, pan and instrument are score edits through `setTrackProperties`; mute and solo are the engine's per-song overrides (`setTrack`), mirrored in the playback store; visibility and single-track view are the document's view state, and notation per track is view state that Save writes into the file (ADR-0024). A timeline-neutral edit reaches the sampler without rebuilding the sequence, inside `AudioEngine.load`.
 
 ## Contracts
 
@@ -87,6 +87,10 @@ Changed by #96 (2026-11-06): `OpenedFile` (and the `file:open` result) gains an 
 Changed by #87 (2026-11-07), widening the model and narrowing audio: `soundingPitch(track, note)`, the pitch a note sounds at as a fractional MIDI note, moves from `@reprise/audio` (where it was `soundingKey`) to the model's root export, so layout can place a harmonic where it sounds; its results are unchanged. `@reprise/audio` no longer exports `soundingKey` or `harmonicInterval`. The Note sketch's `harmonic.value` comment states the convention #92 documented: the node's fret for a natural harmonic, the offset above the fretted note for every other kind.
 
 Changed by #109 (2026-11-07): in paged mode a system taller than the page's content area is split between its staves (between tracks where it can, never through a staff) into parts on consecutive pages, each starting at a page top; `LayoutResult.systems` lists each part as a `System` on one page, consecutive parts sharing `bars`; `System.part` (0, 1, …) marks the parts of a split system, and a part after the first has the id `system:<first master-bar id>/<part>`; a master bar's column anchor (`bar` without `track`) and the `system` anchor are repeated in every part, each covering that part's staves, and `metrics.reusedSystems` counts parts.
+
+Changed by #112 (2026-11-07): `createAudioEngine({ context, budgetBytes?, scheduleMemory?, scheduler?, frames?, lookahead?, startLatency? })` owns the `AudioContext` (a factory is called on the first `unlock`, `play` or `previewNote`), the GM bank (`setSoundfont`), the sampler, the memory manager, the metronome on the master bus and the master level; `setTrack`, `previewNote(track, { string, fret })`, `memory()` and the `memory` event work as sketched. `load` resolves `{ instruments }`, the song plan's, once the opening bars are decoded; over a loaded song it keeps the position, clamped to the new score, and the transport state by the rule `seek` uses, and applies a timeline-neutral edit without rebuilding; loading the same score again decodes it again; `unload({ evict? })` ends a song. New: `unlock`, `setSoundfont`, `unload`, `setMasterVolume`, `previewTrack`, `outputLatency`, `settled` and the `instrumentLoads` event. What `createAudioEngine({ sink })` was is now `createTransport`. `InstrumentSink.allNotesOff(when)` also cancels the mixer changes scheduled after `when`, and `Sampler.allNotesOff` the strips' volume and pan. A preset that only shares a song's samples is resident only when a song plays it, and an eviction is counted only when it frees a buffer (#99).
+
+Changed by #113 (2026-11-07): `LayoutOptions.headerHeight` keeps room at the top of the first page for a header the caller draws. That page's smaller room splits a system taller than it, as #85 splits a system taller than a page. `Platform.print` takes an optional `{ pageSize: 'A4' | 'Letter' }`, which the Electron implementation passes to `webContents.print` so the system dialog opens on the chosen paper; the browser relies on the print's `@page` size.
 
 Synced by #74 (2026-11-06), no contract change: the Layout sketch lists the `LayoutOptions`, `LayoutMetrics` and `Anchor` fields #59 shipped and the `tiedNotes` option #68 added, and the Audio sketch names the `InstrumentSink` #55 shipped and #73 widened.
 
@@ -380,7 +384,7 @@ Arguments are track-first wherever a track is needed. Spelling follows Guitar Pr
 
 ### Test builders (`@reprise/model/testing`)
 
-The one subpath export, importable only from test files (lint boundary `testing-entry-in-tests`):
+A subpath export importable only from test files (lint boundary `testing-entry-in-tests`), as is `@reprise/audio/testing`, whose `debugAudioEngine(engine)` reaches an engine's live objects (#112):
 
 ```ts
 function score(): ScoreBuilder;                       // fluent; build(options?: BuildOptions) throws ScoreBuildError on schema or invariant violations
@@ -416,6 +420,7 @@ interface LayoutOptions {
   mode: 'paged' | 'continuous'; width: number; pageHeight?: number; zoom: number; tracks: Id[] | 'all'; notation: Record<Id, 'tab'|'standard'|'both'>;
   tiedNotes?: 'parentheses' | 'hidden'; // tied notes on tab staves, parentheses unless given
   margins?: Partial<Margins>;         // page margins, unscaled
+  headerHeight?: number;              // paged: room kept free at the top of the first page for a header the caller draws, unscaled; less than the page's content area, else RangeError
   pageGap?: number; staffGap?: number; trackGap?: number; systemGap?: number; // pageGap unscaled, the rest at zoom 1
   dirtyBars?: readonly Id[];          // master bars to re-measure when a cache is given, usually Change.touchedBars
 }
@@ -440,16 +445,23 @@ Layout never touches the DOM. Text widths come from a metrics table generated fr
 
 ```ts
 interface AudioEngine {
-  load(score: Score, options: { tier: 'gm' | 'hq'; packs: PackAssignment[] }): Promise<void>; // resolves when the song's instruments are decoded
+  load(score: Score, options: { tier: 'gm' | 'hq'; packs: PackAssignment[] }): Promise<{ instruments: InstrumentId[] }>; // once the opening bars are decoded; over a loaded song, an edit that keeps the position
   play(fromTick?: number): void; pause(): void; stop(): void; seek(tick: number): void;
   setTempo(mode: 'bpm' | 'percent', value: number): void;
   setLoop(range?: { startBar: Id; endBar: Id }): void;
   setCountIn(on: boolean): void; setMetronome(on: boolean, volume: number): void;
   setTrack(id: Id, params: { volume?; pan?; mute?; solo? }): void;
-  previewNote(track: Id, note: Note): void;                      // editor feedback
-  on(event: 'position' | 'state' | 'loop' | 'memory', handler): Unsubscribe;
+  previewNote(track: Id, note: Pick<Note, 'string' | 'fret'>): void; // editor feedback
+  on(event: 'position' | 'state' | 'loop' | 'memory' | 'instrumentLoads', handler): Unsubscribe;
   memory(): { decodedBytes: number; budgetBytes: number; residents: InstrumentId[] };
   dispose(): void;
+  unlock(): void;                                                // makes the context from a factory, resumes it
+  setSoundfont(font: Sf2Soundfont): void;                        // the GM bank, fetched by the app
+  unload(options?: { evict?: boolean }): void;                   // ends the song
+  setMasterVolume(volume: number): void;
+  previewTrack(id: Id, params: { volume?; pan? }): void;         // a slider being dragged, no override
+  outputLatency(): number;
+  settled(): Promise<void>;
 }
 ```
 
@@ -467,7 +479,7 @@ interface Platform {
   writeHandle(handle, bytes): Promise<void>;   // over an opened file's handle or a path saveFile returned
   libraryDir(): Promise<string>;     // ~/Music/Reprise on desktop; OPFS root in the browser
   dataDir(): Promise<string>;        // Electron userData; OPFS in the browser
-  print(): Promise<void>;
+  print(options?: { pageSize: 'A4' | 'Letter' }): Promise<void>;   // Electron opens the system dialog on that paper
   microphone(): Promise<MediaStream>;
 }
 ```
@@ -493,4 +505,4 @@ The browser implementation exists so `pnpm dev` works without Electron; the Elec
 - Strict TypeScript, `noUncheckedIndexedAccess` on. No `any`, no `as` casts without a structural reason.
 - Source filenames kebab-case. Tests colocated as `*.test.ts`. Comments explain why, not what.
 - Every `eslint-disable` carries a justification after `--`.
-- Public API of each package is its `index.ts`; nothing else is imported across packages. The one exception is `@reprise/model/testing`, the model's test builders, which test files may import.
+- Public API of each package is its `index.ts`; nothing else is imported across packages. The exceptions are `@reprise/model/testing`, the model's test builders, and `@reprise/audio/testing`, the audio engine's diagnostics, which only test files may import.

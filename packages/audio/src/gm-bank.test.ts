@@ -1,21 +1,18 @@
-import {
-  GM_BUDGET_BYTES,
-  ManagedSampleSource,
-  planInstruments,
-  Sf2Soundfont,
-} from '@reprise/audio';
 import { createTrack } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { fetchSyntheticSf2 } from '@/test/assets';
-
 import { GmBank } from './gm-bank';
+import { GM_BUDGET_BYTES, ManagedSampleSource } from './samples/managed-sample-source';
+import { planInstruments } from './samples/plan';
+import { Sf2Soundfont } from './sf2/soundfont';
+
+const SYNTHETIC = new URL('../test-fixtures/synthetic.sf2', import.meta.url);
 
 let font: Sf2Soundfont;
 
 beforeAll(async () => {
-  font = Sf2Soundfont.parse(await fetchSyntheticSf2());
+  font = Sf2Soundfont.parse(new Uint8Array(await (await fetch(SYNTHETIC)).arrayBuffer()));
 });
 
 function bank(): GmBank {
@@ -77,9 +74,9 @@ describe('GmBank', () => {
 
     const planned = planInstruments(song, { instrumentOf: gm.instrumentId }).instruments;
     expect(planned).toEqual(expect.arrayContaining(['gm:0:25', 'gm:0:0']));
-    // A preset sharing the decoded samples (bank 8's variation of program 25) is resident too.
+    // A preset that only shares the decoded samples (bank 8's variation of program 25) is not.
     const { residents } = gm.source.memory();
-    expect(residents).toEqual(expect.arrayContaining(planned));
+    expect(residents).toEqual([...planned].sort());
     expect(residents).not.toContain('gm:drums:0');
   });
 });

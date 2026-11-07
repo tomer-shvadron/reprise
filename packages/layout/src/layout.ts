@@ -189,11 +189,16 @@ function pageTop(options: ResolvedOptions, page: number): number {
   return page * (options.pageHeight + options.pageGap);
 }
 
+/** The first page gives `headerHeight` of its content area to the caller's header. */
+function headerOn(options: ResolvedOptions, page: number): number {
+  return page === 0 ? options.headerHeight : 0;
+}
+
 function pageStart(options: ResolvedOptions, page: number): Cursor {
   return {
     page,
     x: options.margins.left,
-    y: pageTop(options, page) + options.margins.top,
+    y: pageTop(options, page) + options.margins.top + headerOn(options, page),
     empty: true,
   };
 }
@@ -201,7 +206,8 @@ function pageStart(options: ResolvedOptions, page: number): Cursor {
 /**
  * Where a system's parts go. One that fits a page's content area flows on; a taller one is split
  * between its staves, its first part at the top of the current page if empty, else the next, and
- * each further part at the top of the page after. `vertical.height` is compared unrounded.
+ * each further part at the top of the page after. The first page's room is less its header, so a
+ * system taller than that is split there too. `vertical.height` is compared unrounded.
  */
 function placeSystem(
   options: ResolvedOptions,
@@ -213,9 +219,10 @@ function placeSystem(
   if (options.mode === 'continuous') return [{ ...cursor, slots: all }];
   const { margins, pageHeight } = options;
   const room = pageHeight - margins.top - margins.bottom;
-  if (vertical.height > room) {
-    const first = cursor.empty ? cursor.page : cursor.page + 1;
-    return splitSlots(vertical, groups, room, options.space).map((slots, j) => ({
+  const first = cursor.empty ? cursor.page : cursor.page + 1;
+  const firstRoom = room - headerOn(options, first);
+  if (vertical.height > firstRoom) {
+    return splitSlots(vertical, groups, room, options.space, firstRoom).map((slots, j) => ({
       ...pageStart(options, first + j),
       slots,
     }));

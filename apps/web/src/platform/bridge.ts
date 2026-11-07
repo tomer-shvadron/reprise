@@ -22,6 +22,11 @@ export interface OpenedFile {
   handle?: FileHandle;
 }
 
+/** The paper the system print dialog opens on; the browser reads the print's `@page` size instead. */
+export interface PrintOptions {
+  pageSize: 'A4' | 'Letter';
+}
+
 /** Renderer-to-main request channels: the renderer invokes, main handles and replies. */
 export interface InvokeChannels {
   'file:open': { args: [filters: readonly FileFilter[]]; result: OpenedFile | undefined };
@@ -33,7 +38,7 @@ export interface InvokeChannels {
   'file:write': { args: [path: string, bytes: Uint8Array]; result: undefined };
   'app:library-dir': { args: []; result: string };
   'app:data-dir': { args: []; result: string };
-  'app:print': { args: []; result: undefined };
+  'app:print': { args: [options?: PrintOptions]; result: undefined };
 }
 
 export type InvokeChannel = keyof InvokeChannels;
@@ -74,7 +79,7 @@ export interface RepriseBridge {
   writeFile: (...args: InvokeArgs<'file:write'>) => Promise<InvokeResult<'file:write'>>;
   libraryDir: () => Promise<InvokeResult<'app:library-dir'>>;
   dataDir: () => Promise<InvokeResult<'app:data-dir'>>;
-  print: () => Promise<InvokeResult<'app:print'>>;
+  print: (...args: InvokeArgs<'app:print'>) => Promise<InvokeResult<'app:print'>>;
   /** Returns an unsubscribe function. */
   onMenuCommand: (listener: (...args: EventChannels['menu:command']) => void) => () => void;
 }

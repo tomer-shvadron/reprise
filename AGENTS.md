@@ -75,7 +75,7 @@ The allowed dependency edges and the feature folders under `apps/web/src/feature
 - The engines `formats`, `layout` and `audio` never import each other; a shared helper lives in `model`. `model` imports no workspace package, and `desktop` imports `web` for types only.
 - A package is imported only through its root export (`@reprise/x`), and the ban covers dynamic `import()` calls too.
 - `electron` is imported only inside `apps/desktop`.
-- `@reprise/model/testing`, the one allowed subpath, is imported only from test files.
+- `@reprise/model/testing` and `@reprise/audio/testing`, the only allowed subpaths, are imported only from test files.
 - `@coderline/alphatab`, the dev-only oracle, is imported only under `packages/formats/test/**` and `scripts/**`.
 
 ## Commands

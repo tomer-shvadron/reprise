@@ -6,7 +6,8 @@ import type { NotationChoice, PaperSize, ViewSettings } from '../view-options';
 /** The generated long score rather than a file under fixtures/. */
 export const LONG_FIXTURE = 'long';
 
-export type DemoView = 'scroll' | 'pages';
+/** `print` shows the print document alone, as `PrintDocument preview`; leave it by the URL. */
+export type DemoView = 'scroll' | 'pages' | 'print';
 
 export interface DemoParams {
   fixture: string;
@@ -22,7 +23,7 @@ const MODES: readonly ViewSettings['mode'][] = ['paged', 'continuous'];
 const PAPERS: readonly PaperSize[] = ['a4', 'letter'];
 const NOTATIONS: readonly NotationChoice[] = ['default', 'tab', 'standard', 'both'];
 const THEMES: readonly Theme[] = ['dark', 'light'];
-const VIEWS: readonly DemoView[] = ['scroll', 'pages'];
+const VIEWS: readonly DemoView[] = ['scroll', 'pages', 'print'];
 
 function oneOf<T extends string>(values: readonly T[], value: string | null, fallback: T): T {
   return values.find((candidate) => candidate === value) ?? fallback;
@@ -59,6 +60,11 @@ export function serializeDemoParams(params: DemoParams): string {
     theme,
     view,
   }).toString()}`;
+}
+
+/** The file name a print's title falls back to: the fixture's own, or the long score's. */
+export function demoFileName(fixture: string): string {
+  return fixture === LONG_FIXTURE ? 'long.reprise' : (fixture.split('/').pop() ?? fixture);
 }
 
 export const DEMO_CHOICES = { MODES, PAPERS, NOTATIONS, THEMES, VIEWS };

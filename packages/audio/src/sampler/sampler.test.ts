@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { RegionMap } from './region-map';
 import { SynthSampleSource, midiToFrequency } from './sample-source';
-import { Sampler } from './sampler';
+import { Sampler, channelVolumeToGain } from './sampler';
 import type { SamplerTrack } from './sampler';
 import {
   SAMPLE_RATE,
@@ -388,6 +388,100 @@ describe('mixer', () => {
     }
     // Eight in-phase sines at -3 dB per side would peak near 5.7 unlimited.
     expect(peak(await render(context), 0.2, 0.6)).toBeLessThan(1.2);
+  });
+});
+
+describe('allNotesOff and scheduled strip changes', () => {
+  /** Level of a note at 0.4 s on a volume 100 track, after `arrange` scheduled and cancelled. */
+  async function levelAfter(arrange: (sampler: Sampler) => void): Promise<number> {
+    const context = offline(0.7);
+    const sampler = new Sampler(context);
+    sampler.addTrack(samplerTrack('a', { volume: 100 }), sineInstrument());
+    arrange(sampler);
+    sampler.noteOn('a', { key: 69, velocity: 127, when: 0.4 });
+    return rms(await render(context), 0.5, 0.6);
+  }
+
+  const ratio = channelVolumeToGain(20) / channelVolumeToGain(100);
+
+  it('drops a volume change scheduled after the cut', async () => {
+    const reference = await levelAfter(() => undefined);
+    let gain = 0;
+    const level = await levelAfter((sampler) => {
+      sampler.setTrack('a', { volume: 20 }, { at: 0.3 });
+      sampler.allNotesOff(0.1);
+      gain = sampler.strip('a')?.gain ?? 0;
+    });
+    expect(level / reference).toBeCloseTo(1, 2);
+    expect(gain).toBeCloseTo(channelVolumeToGain(100), 9);
+  });
+
+  it('keeps a change scheduled before the cut', async () => {
+    const reference = await levelAfter(() => undefined);
+    const level = await levelAfter((sampler) => {
+      sampler.setTrack('a', { volume: 20 }, { at: 0.05 });
+      sampler.allNotesOff(0.1);
+    });
+    expect(level / reference).toBeCloseTo(ratio, 2);
+  });
+
+  /** A ramp to volume 20 over 0.1–0.5 s, cut at 0.3 s by `cut`; the level of a note at `note`. */
+  async function rampCut(
+    cut: ((sampler: Sampler, when: number) => void) | undefined,
+    note: number,
+    from: number,
+    to: number,
+  ): Promise<number> {
+    const context = offline(to + 0.05);
+    const sampler = new Sampler(context);
+    sampler.addTrack(samplerTrack('a', { volume: 100 }), sineInstrument());
+    if (cut) sampler.setTrack('a', { volume: 20 }, { at: 0.1, ramp: 0.4 });
+    // Cut at the render's own time, as the engine does from a stop or a seek.
+    void context.suspend(0.3).then(() => {
+      cut?.(sampler, context.currentTime);
+      sampler.noteOn('a', { key: 69, velocity: 127, when: note });
+      return context.resume();
+    });
+    return rms(await render(context), from, to);
+  }
+
+  it('lets a set made at the cut win over a ramp still moving then', async () => {
+    const reference = await rampCut(undefined, 0.7, 0.8, 0.95);
+    const level = await rampCut(
+      (sampler, when) => {
+        sampler.allNotesOff(when);
+        sampler.setTrack('a', { volume: 100 });
+      },
+      0.7,
+      0.8,
+      0.95,
+    );
+    expect(level / reference).toBeCloseTo(1, 2);
+  });
+
+  it('glides a ramp cut midway to its target, not on along the ramp', async () => {
+    const reference = await rampCut(undefined, 0.31, 0.34, 0.37);
+    const level = await rampCut(
+      (sampler, when) => {
+        sampler.allNotesOff(when);
+      },
+      0.31,
+      0.34,
+      0.37,
+    );
+    // Carried on, the ramp would still be near 40 % of the way down here.
+    expect(level / reference).toBeCloseTo(ratio, 2);
+  });
+
+  it("leaves another track's pending change in place when given a track", () => {
+    const sampler = new Sampler(offline(0.1));
+    sampler.addTrack(samplerTrack('a', { volume: 100 }), sineInstrument());
+    sampler.addTrack(samplerTrack('b', { volume: 100 }), sineInstrument());
+    sampler.setTrack('a', { volume: 20 }, { at: 0.3 });
+    sampler.setTrack('b', { volume: 20 }, { at: 0.3 });
+    sampler.allNotesOff(0.1, 'a');
+    expect(sampler.strip('a')?.gain).toBeCloseTo(channelVolumeToGain(100), 9);
+    expect(sampler.strip('b')?.gain).toBeCloseTo(channelVolumeToGain(20), 9);
   });
 });
 
