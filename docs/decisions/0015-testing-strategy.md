@@ -1,6 +1,6 @@
 # ADR-0015: Testing that fits a notation and audio app
 
-- **Status**: Accepted, superseded in part by [ADR-0023](0023-visual-regression-in-vitest-browser-mode.md) (the image comparison runs in Vitest browser mode)
+- **Status**: Accepted, superseded in part by [ADR-0023](0023-visual-regression-in-vitest-browser-mode.md) (the image comparison runs in Vitest browser mode) and [ADR-0025](0025-end-to-end-on-the-web-build-in-chromium.md) (the end-to-end flows run on the web build in Chromium)
 - **Date**: 2026-11-05
 - **Deciders**: Tomer Shvadron, with Claude
 

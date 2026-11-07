@@ -1,6 +1,6 @@
 # ADR-0023: Visual regression in Vitest browser mode
 
-- **Status**: Accepted
+- **Status**: Accepted, superseded in part by [ADR-0025](0025-end-to-end-on-the-web-build-in-chromium.md) (its remark that the Electron e2e stands)
 - **Date**: 2026-11-06
 - **Deciders**: the lead's ruling on #32, which the owner can overrule
 

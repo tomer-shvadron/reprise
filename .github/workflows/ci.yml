@@ -123,3 +123,72 @@ jobs:
           path: apps/web/.vitest/attachments/
           retention-days: 14
           if-no-files-found: warn
+
+  # The player flows in Chromium against the production build (ADR-0025). A job of its own, so it
+  # runs beside `ci` and the budget measurements have the runner to themselves. Branch protection
+  # requires it by this name too.
+  e2e:
+    name: e2e
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Resolve Playwright version
+        id: playwright
+        run: |
+          version=$(grep -m1 -oE '^  playwright@[0-9][^:]*' pnpm-lock.yaml | cut -d@ -f2)
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+      - name: Install Chromium headless shell
+        timeout-minutes: 5
+        run: pnpm exec playwright install chromium --only-shell
+
+      - name: Cache the GM soundfont
+        uses: actions/cache@v6
+        with:
+          path: |
+            apps/web/public/sounds/gm/GeneralUser-GS.sf2
+            apps/web/public/sounds/gm/LICENSE.txt
+          key: gm-soundfont-${{ hashFiles('scripts/sounds/gm.json') }}
+
+      - name: Fetch the GM soundfont
+        run: pnpm sounds:fetch
+
+      - name: E2E
+        id: e2e
+        timeout-minutes: 6
+        run: pnpm e2e
+
+      - name: Upload e2e traces and videos
+        if: ${{ !cancelled() && steps.e2e.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-results
+          path: |
+            apps/web/test-results/
+            apps/web/playwright-report/
+          retention-days: 14
+          if-no-files-found: warn
