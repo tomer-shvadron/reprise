@@ -1,7 +1,6 @@
-import { beatTicks, expandPlaybackSequence, midiNote } from '@reprise/model';
+import { beatTicks, expandPlaybackSequence, midiNote, soundingPitch } from '@reprise/model';
 import type { Beat, Id, Note, Score, Track } from '@reprise/model';
 
-import { soundingKey } from '../articulations/harmonics';
 import type { RegionMap, SampleRef } from '../sampler/region-map';
 import type { InstrumentId } from './types';
 
@@ -38,9 +37,9 @@ export function gmInstrumentId(track: Pick<Track, 'kind' | 'bank'>, program: num
     : `gm:${String(track.bank)}:${String(program)}`;
 }
 
-/** The keys the sink strikes: a harmonic's sounding key, rounded as it is, and a trill's alternate. */
+/** The keys the sink strikes: a harmonic's sounding pitch, rounded as it is, and a trill's alternate. */
 function addKeys(track: Track, note: Note, keys: Set<number>): void {
-  const struck = [Math.round(soundingKey(track, note))];
+  const struck = [Math.round(soundingPitch(track, note))];
   if (note.trill) struck.push(midiNote(track, { string: note.string, fret: note.trill.fret }));
   for (const key of struck) if (key >= 0 && key <= 127) keys.add(key);
 }

@@ -1,8 +1,7 @@
-import { beatTicks, midiNote } from '@reprise/model';
+import { beatTicks, midiNote, soundingPitch } from '@reprise/model';
 import type { BeatEffects, Note, Track } from '@reprise/model';
 
 import type { FilterSettings } from '../sampler/voice';
-import { soundingKey } from './harmonics';
 import { ARTICULATION } from './parameters';
 import { bendTerm, chainGain, tieChain, vibratoTerm, whammyTerm } from './tie-chain';
 import type { PitchTerm, TieChain } from './tie-chain';
@@ -112,7 +111,7 @@ function slideTerms(input: PlanInput, key: number, chain: TieChain): PitchTerm[]
   }
   const glides = last.note.slide?.includes('legato') || last.note.slide?.includes('shift');
   if (glides && next && reachesLastLink(input, chain)) {
-    const target = soundingKey(track, next.note) - key;
+    const target = soundingPitch(track, next.note) - key;
     const arrive = Math.min(end, next.when);
     const glide = Math.min(
       ARTICULATION.slideFraction * (arrive - last.when),
@@ -168,7 +167,7 @@ function retriggers(when: number, end: number, step: number): { when: number; en
 export function planNote(input: PlanInput): NotePlan {
   const { track, note, effects, when } = input;
   const tonal = track.kind !== 'drums';
-  const key = soundingKey(track, note);
+  const key = soundingPitch(track, note);
   const rounded = Math.round(key);
   const dead = tonal && note.dead;
   const continues = input.continues;

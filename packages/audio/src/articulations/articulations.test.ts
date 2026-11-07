@@ -18,7 +18,6 @@ import {
   zeroCrossingFrequency,
 } from '../sampler/test/offline';
 import { velocityGain } from '../sampler/voice';
-import { harmonicInterval } from './harmonics';
 import { ARTICULATION, DYNAMICS_VELOCITY } from './parameters';
 import { T0, noiseInstrument, onsets, pitchTrack, pluckedInstrument, render } from './test/render';
 
@@ -411,22 +410,20 @@ describe('harmonics', () => {
     expect(Math.abs(centsFrom(data, T0 + 0.05, T0 + 0.9, A4 * 2))).toBeLessThan(1);
   });
 
-  it('maps the frets of the common nodes to their overtones', () => {
-    const table: [number, number][] = [
-      [12, 12],
-      [7, 19.02],
-      [19, 19.02],
-      [5, 24],
-      [24, 24],
-      [4, 27.86],
-      [9, 27.86],
-      [16, 27.86],
-      [3, 31.02],
-      [3.2, 31.02],
-      [2.7, 33.69],
-    ];
-    for (const [fret, interval] of table) expect(harmonicInterval(fret)).toBeCloseTo(interval, 2);
-    expect(harmonicInterval(11)).toBeUndefined();
+  it('plays a harmonic between semitones at its pure overtone', async () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      .beat('4', [note(6, 3, { harmonic: { kind: 'natural', value: 2.7 } })])
+      .rest('4')
+      .beat('4', [a({ harmonic: { kind: 'artificial', value: 7 } })])
+      .rest('4')
+      .build();
+    const { data } = await render(song);
+    const lowE = midiToFrequency(40);
+
+    expect(Math.abs(centsFrom(data, T0 + 0.05, T0 + 0.45, lowE * 7))).toBeLessThan(1);
+    expect(Math.abs(centsFrom(data, T0 + 1.05, T0 + 1.45, A4 * 3))).toBeLessThan(1);
   });
 });
 
