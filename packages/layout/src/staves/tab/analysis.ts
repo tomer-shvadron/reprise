@@ -362,6 +362,11 @@ function tremoloShortfall(beat: Beat): number {
   return Math.max(0, bbox.top - bbox.bottom + TAB.tremoloRoom - (to - from));
 }
 
+/** The side of its string a note's arcs bow to: up on the upper half of the strings, down below. */
+export function arcSide(note: Note, strings: number): StemDirection {
+  return note.string <= strings / 2 ? 'up' : 'down';
+}
+
 /**
  * How far arcs and their letters reach past the outer strings. A hammer-on's target and a legato
  * slide's origin, a grace note's legato slide included, keep room for the arc and the letter
@@ -387,8 +392,6 @@ function arcRoom(
     (side === 'up' ? knockout : Math.max(knockout, descent));
   const spacing = TAB.lineSpacing * space;
   const bottom = (strings - 1) * spacing;
-  // Must match `arcDirection` in effects.ts.
-  const sideOf = (note: Note): StemDirection => (note.string <= strings / 2 ? 'up' : 'down');
   let arcsAbove = 0;
   let arcsBelow = 0;
   const keep = (string: number, side: StemDirection, reach: number): void => {
@@ -402,14 +405,14 @@ function arcRoom(
     for (const beat of voice.beats) {
       if (beat.rest) continue;
       for (const note of beat.notes) {
-        const side = sideOf(note);
+        const side = arcSide(note, strings);
         if (note.hammerPull || note.slide?.includes('legato'))
           keep(note.string, side, lettered(side));
         if (side === 'down' || tieSide === 'down') keep(note.string, 'down', bare);
       }
       for (const grace of beat.grace ?? []) {
         for (const note of grace.notes) {
-          const side = sideOf(note);
+          const side = arcSide(note, strings);
           if (note.slide?.includes('legato')) keep(note.string, side, lettered(side));
         }
       }

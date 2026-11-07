@@ -17,6 +17,7 @@ import { line } from '../../primitives';
 import { drawTie, tieHeight, type StemDirection } from '../rhythm';
 import {
   TAB,
+  arcSide,
   labelHalf,
   labelHalfHeight,
   labelOf,
@@ -59,7 +60,7 @@ function leftEdge(label: NoteLabel | undefined, size: number): number {
 }
 
 function arcDirection(context: TabContext, note: Note): StemDirection {
-  return note.string <= context.input.track.tuning.length / 2 ? 'up' : 'down';
+  return arcSide(note, context.input.track.tuning.length);
 }
 
 /** An origin a connection is drawn from, located wherever it is relative to this bar. */
