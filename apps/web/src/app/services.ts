@@ -1,4 +1,4 @@
-import { viewLayoutOptions } from '@/features/score';
+import { createPrintStore, viewLayoutOptions, type PrintStore } from '@/features/score';
 // Not the feature's index: it re-exports the bar, whose services context imports this file.
 import { installTransport } from '@/features/transport/install-transport';
 import { createTransportUi, type TransportUiStore } from '@/features/transport/transport-ui';
@@ -29,6 +29,8 @@ export interface AppServices {
   transport: TransportUiStore;
   /** Where the drawn playhead is, so clicks and steps decide from what the user sees. */
   heard: HeardRef;
+  /** The print dialog and the job it mounts. */
+  print: PrintStore;
   dispose(): void;
 }
 
@@ -100,6 +102,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     audio,
     transport,
     heard: createHeardRef(),
+    print: createPrintStore({ document, ui, platform }),
     dispose() {
       uninstallTransport();
       unsubscribe();

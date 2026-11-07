@@ -37,7 +37,7 @@ const bridge: RepriseBridge = {
   writeFile: (path, bytes) => invoke('file:write', path, bytes),
   libraryDir: () => invoke('app:library-dir'),
   dataDir: () => invoke('app:data-dir'),
-  print: () => invoke('app:print'),
+  print: (options) => (options ? invoke('app:print', options) : invoke('app:print')),
   onMenuCommand: (listener) => on('menu:command', listener),
 };
 

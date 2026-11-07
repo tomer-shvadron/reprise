@@ -162,6 +162,15 @@ describe('App', () => {
     });
     await send('file.save');
     await send('file.print');
+    const printDialog = await screen.findByRole('dialog', { name: 'Print' });
+    await user.click(within(printDialog).getByRole('button', { name: 'Print…' }));
+    await waitFor(() => {
+      expect(print).toHaveBeenCalledWith({ pageSize: 'A4' });
+    });
+    await waitFor(() => {
+      expect(services.print.getState().job).toBeUndefined();
+    });
+    expect(document.querySelector('body > .score-print')).toBeNull();
     await send('view.zoomIn');
     await send('view.togglePanel');
 
@@ -173,6 +182,12 @@ describe('App', () => {
     expect(print).toHaveBeenCalledOnce();
     expect(services.ui.getState().zoom).toBe(1.1);
     expect(services.ui.getState().panels.rightPanel).toBe(true);
+  });
+
+  it('opens no print dialog with no score open', async () => {
+    const { user } = renderApp();
+    await user.keyboard('{Meta>}p{/Meta}');
+    expect(screen.queryByRole('dialog', { name: 'Print' })).not.toBeInTheDocument();
   });
 
   it('asks before overwriting an opened .gp with what will be lost, and keeps it a .gp', async () => {

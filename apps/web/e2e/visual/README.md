@@ -95,3 +95,7 @@ shows what it claims; when one fails, change the scene, not the guard.
 `scripts/visual/baselines.test.ts`, part of `pnpm test`, checks the tracked baselines: Linux names
 only, each file at most 512 KB, 5 MB in all, each image at most 1600 × 2000 px. An image over
 budget gets cropped tighter or its scene made smaller; the budget is not raised in the same PR.
+
+## Print to PDF
+
+`print.visual.test.tsx` checks printing end to end. A global setup (`test/demo-server.node.ts`) starts a Vite server for `apps/web`, and the `printPdf` browser command (`test/print-pdf.node.ts`, run in Node) opens the demo's `view=print` in a page of its own, records each page box in print media, and prints it with `page.pdf({ preferCSSPageSize: true })` to `apps/web/.vitest/print/<name>.pdf`. For `gp5/effects.gp5` (both), `gp5/key-signatures.gp5` (standard) and `gp/drum-tabs.gp` on A4 and Letter, and the long score on A4, every PDF must have exactly the print layout's page count (`test/pdf-pages.node.ts` reads the page objects), each MediaBox the paper in points, and no system across a sheet edge. CI uploads the folder as the `print-pdfs` artifact. The same file captures page 1 of `PrintDocument preview` under the dark theme on each paper (`print-effects-both-<paper>-p0-dark`). `*.node.ts` files are compiled by `tsconfig.node.json`, not the browser project.

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { playwright } from '@vitest/browser-playwright';
 import { defineConfig, mergeConfig } from 'vitest/config';
 
+import { printPdf } from './e2e/visual/test/print-pdf.node.ts';
 import viteConfig from './vite.config.ts';
 
 // The size every scene is captured in; the crop of each page has to fit inside it.
@@ -27,7 +28,10 @@ export default mergeConfig(
     test: {
       name: 'visual',
       include: ['e2e/visual/**/*.visual.test.tsx'],
-      globalSetup: ['../../scripts/fixtures/provide-scores.ts'],
+      globalSetup: [
+        '../../scripts/fixtures/provide-scores.ts',
+        './e2e/visual/test/demo-server.node.ts',
+      ],
       // Only CI's run reads the committed baselines, so only it can call one orphaned.
       provide: { checkOrphanBaselines: ci },
       // A hang guard, not a budget: no visual test asserts on time (#90).
@@ -49,6 +53,7 @@ export default mergeConfig(
         screenshotFailures: false,
         commands: {
           baselineFiles: () => (existsSync(BASELINES) ? readdirSync(BASELINES) : []),
+          printPdf,
         },
         instances: [{ browser: 'chromium' }],
         expect: {

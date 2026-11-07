@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { LONG_FIXTURE, parseDemoParams, serializeDemoParams } from './demo-params';
+import { LONG_FIXTURE, demoFileName, parseDemoParams, serializeDemoParams } from './demo-params';
 
 describe('demo parameters', () => {
   it('defaults to the long score, paged A4, at zoom 1', () => {
@@ -46,5 +46,16 @@ describe('demo parameters', () => {
   it('round-trips through the query string', () => {
     const params = parseDemoParams('?fixture=gp4/notes.gp4&mode=continuous&zoom=2', 'light');
     expect(parseDemoParams(serializeDemoParams(params), 'dark')).toEqual(params);
+  });
+
+  it('round-trips the print view', () => {
+    const params = parseDemoParams('?fixture=gp5/effects.gp5&view=print&paper=letter', 'dark');
+    expect(params.view).toBe('print');
+    expect(parseDemoParams(serializeDemoParams(params), 'light')).toEqual(params);
+  });
+
+  it('names the fixture file a print title falls back to', () => {
+    expect(demoFileName('gp5/effects.gp5')).toBe('effects.gp5');
+    expect(demoFileName(LONG_FIXTURE)).toBe('long.reprise');
   });
 });
