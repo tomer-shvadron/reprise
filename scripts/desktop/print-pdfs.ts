@@ -21,7 +21,7 @@ const OUT = join(RELEASE, 'print');
 const TIMEOUT = 30_000;
 const FIXTURES = ['gp5/effects.gp5', 'gp5/key-signatures.gp5', 'gp/drum-tabs.gp'];
 const PAPERS = [
-  { label: 'A4', pageSize: 'A4', points: [595.5, 842.25] },
+  { label: 'A4', pageSize: 'A4', points: [595.92, 841.92] },
   { label: 'Letter', pageSize: 'Letter', points: [612, 792] },
 ] as const;
 
@@ -163,7 +163,7 @@ async function main(): Promise<void> {
         );
         for (const [width, height] of read.mediaBoxes) {
           check(
-            Math.abs(width - paper.points[0]) <= 0.5 && Math.abs(height - paper.points[1]) <= 0.5,
+            Math.abs(width - paper.points[0]) <= 0.01 && Math.abs(height - paper.points[1]) <= 0.01,
             `${fixture} on ${paper.label}: MediaBox ${String(width)} × ${String(height)}`,
           );
         }

@@ -32,9 +32,12 @@ declare module 'vitest/browser' {
   }
 }
 
-/** CSS px to PDF points. */
-const POINTS = 0.75;
 const PAPER_PX = { a4: [794, 1123], letter: [816, 1056] } as const;
+/**
+ * The MediaBox Chromium writes. Pagination runs at the `@page` size in CSS px, but the PDF snaps
+ * A4 to 595.92 × 841.92 pt rather than 794 × 1123 px at 0.75 pt each (595.5 × 842.25).
+ */
+const PAPER_PT = { a4: [595.92, 841.92], letter: [612, 792] } as const;
 
 function scoreOf(fixture: string): Score {
   if (fixture === LONG_FIXTURE) return longScore();
@@ -94,11 +97,10 @@ describe('print to PDF', () => {
         expected,
       );
       const [width, height] = PAPER_PX[paper];
+      const [ptWidth, ptHeight] = PAPER_PT[paper];
       for (const [w, h] of printed.mediaBoxes) {
-        expect(w).toBeCloseTo(width * POINTS, 0);
-        expect(h).toBeCloseTo(height * POINTS, 0);
-        expect(Math.abs(w - width * POINTS)).toBeLessThanOrEqual(0.5);
-        expect(Math.abs(h - height * POINTS)).toBeLessThanOrEqual(0.5);
+        expect(w).toBeCloseTo(ptWidth, 2);
+        expect(h).toBeCloseTo(ptHeight, 2);
       }
       for (const [i, page] of printed.geometry.entries()) {
         expect(Math.abs(page.top - i * height), `page ${String(i)} top`).toBeLessThanOrEqual(0.5);
