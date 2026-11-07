@@ -34,6 +34,8 @@ test('Save writes a .gp file in place, and it reopens as saved', async ({ app, p
   ).toHaveCount(3);
   await dialog.getByRole('button', { name: 'Save', exact: true }).click();
   await app.waitForWrite('song.gp', before);
+  // In place: the save picker is never asked for a location.
+  expect(await app.saves()).toEqual([]);
 
   const { score } = await read(await app.readStored('song.gp'), 'gp');
   expect(score.tracks[0]?.channel.volume).toBe(90);
