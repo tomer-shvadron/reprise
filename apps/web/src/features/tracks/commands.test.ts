@@ -140,6 +140,12 @@ describe('edit commands', () => {
 
     expect(calls).toEqual(['undo', 'redo']);
     expect(document.getState().score?.tracks[0]?.program).toBe(30);
+
+    // A checkbox has no text history, so the score's undo runs.
+    field.type = 'checkbox';
+    await run('edit.undo');
+    expect(calls).toEqual(['undo', 'redo']);
+    expect(document.getState().score?.tracks[0]?.program).not.toBe(30);
     field.remove();
   });
 });

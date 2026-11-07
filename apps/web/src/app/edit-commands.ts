@@ -1,5 +1,6 @@
 import type { Command } from './command-registry';
 import type { AppServices } from './services';
+import { isTextField } from './text-field';
 
 export type EditCommandId = 'edit.undo' | 'edit.redo' | 'edit.redoAlternate';
 
@@ -10,12 +11,7 @@ type EditCommand = Command & { id: EditCommandId };
  * the shortcut's default is already prevented, so the field's history is replayed by hand.
  */
 function fieldStep(step: 'undo' | 'redo'): boolean {
-  const focused = globalThis.document.activeElement;
-  const textField =
-    focused instanceof HTMLTextAreaElement ||
-    focused instanceof HTMLInputElement ||
-    (focused instanceof HTMLElement && focused.isContentEditable);
-  if (!textField) return false;
+  if (!isTextField(globalThis.document.activeElement)) return false;
   // eslint-disable-next-line @typescript-eslint/no-deprecated -- the only way to replay a text field's own undo stack
   globalThis.document.execCommand(step);
   return true;
