@@ -298,12 +298,12 @@ export function InstrumentSelect({
   );
 }
 
+/** Always mounted: screen readers announce a live region's changes, not one inserted with text. */
 export function InstrumentStatus({ load }: { load: InstrumentLoad | undefined }) {
-  if (!load) return null;
-  const percent = load.total === 0 ? 0 : Math.round((load.loaded / load.total) * 100);
+  const percent = load && (load.total === 0 ? 0 : Math.round((load.loaded / load.total) * 100));
   return (
-    <span role="status" className="text-muted-foreground text-xs">
-      Loading sound… {percent}%
+    <span role="status" className="text-muted-foreground text-xs empty:hidden">
+      {percent === undefined ? '' : `Loading sound… ${String(percent)}%`}
     </span>
   );
 }

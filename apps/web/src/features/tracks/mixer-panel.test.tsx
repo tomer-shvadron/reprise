@@ -120,7 +120,7 @@ describe('MixerPanel', () => {
       services.playback.setState({ instrumentLoads: { [lead]: { loaded: 2, total: 5 } } });
     });
     expect(within(strip('Lead')).getByRole('status')).toHaveTextContent('Loading sound… 40%');
-    expect(within(strip('Bass')).queryByRole('status')).toBeNull();
+    expect(within(strip('Bass')).getByRole('status')).toBeEmptyDOMElement();
   });
 
   it('solos from the strip', async () => {
