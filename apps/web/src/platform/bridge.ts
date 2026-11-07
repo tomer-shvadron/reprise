@@ -53,7 +53,8 @@ export type MenuCommandId =
   | 'view.zoomReset'
   | 'view.toggleTheme'
   | 'view.toggleSidebar'
-  | 'view.togglePanel';
+  | 'view.togglePanel'
+  | 'view.toggleViewMode';
 
 /** Main-to-renderer event channels and their payloads. */
 export interface EventChannels {

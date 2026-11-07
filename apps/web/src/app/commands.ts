@@ -120,6 +120,15 @@ export function appCommands(
       },
     },
     {
+      id: 'view.toggleViewMode',
+      title: 'Toggle page and continuous view',
+      shortcut: { key: 'F4' },
+      run: () => {
+        const { view, setViewMode } = ui.getState();
+        setViewMode(view.mode === 'paged' ? 'continuous' : 'paged');
+      },
+    },
+    {
       id: 'view.followPlayback',
       title: 'Follow playback',
       run: () => {

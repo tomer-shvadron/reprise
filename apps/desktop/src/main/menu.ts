@@ -22,6 +22,7 @@ export const MENU_COMMANDS = {
   'view.toggleTheme': { label: 'Toggle Theme', accelerator: 'CmdOrCtrl+Shift+L' },
   'view.toggleSidebar': { label: 'Toggle Tracks' },
   'view.togglePanel': { label: 'Toggle Mixer', accelerator: 'F8' },
+  'view.toggleViewMode': { label: 'Toggle Page and Continuous View', accelerator: 'F4' },
 } satisfies Record<MenuCommandId, MenuCommand>;
 
 export interface MenuOptions {
@@ -79,6 +80,8 @@ export function menuTemplate({
         command('view.zoomIn'),
         command('view.zoomOut'),
         command('view.zoomReset'),
+        separator,
+        command('view.toggleViewMode'),
         separator,
         command('view.toggleTheme'),
         command('view.toggleSidebar'),
