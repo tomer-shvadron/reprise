@@ -302,7 +302,7 @@ export function InstrumentSelect({
 export function InstrumentStatus({ load }: { load: InstrumentLoad | undefined }) {
   const percent = load && (load.total === 0 ? 0 : Math.round((load.loaded / load.total) * 100));
   return (
-    <span role="status" className="text-muted-foreground text-xs empty:hidden">
+    <span role="status" className="text-muted-foreground text-xs empty:sr-only">
       {percent === undefined ? '' : `Loading sound… ${String(percent)}%`}
     </span>
   );
