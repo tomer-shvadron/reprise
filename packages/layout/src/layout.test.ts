@@ -78,6 +78,9 @@ describe('layout', () => {
     ['standard', 'a4'],
     ['both', 'a4'],
     ['mixed', 'a4'],
+    ['tab', 'letter'],
+    ['standard', 'letter'],
+    ['both', 'letter'],
     ['mixed', 'letter'],
   ] as const)(
     'lays out the long score in page view in %s on %s with no system crossing a page edge',
@@ -99,6 +102,11 @@ describe('layout', () => {
       expectValid(result);
       expectInsidePages(result, DEFAULT_MARGINS.paged);
       expect(result.systems.at(-1)?.bars.end).toBe(300);
+      if (paper === 'letter' && notation === 'standard') {
+        // The one long-score case that mixes whole and split systems.
+        expect(result.systems.some(({ part }) => part === undefined)).toBe(true);
+        expect(result.systems.some(({ part }) => part === 1)).toBe(true);
+      }
       if (paper === 'a4' && notation !== 'standard') {
         // Every system splits in two, each part at its page's top.
         for (const system of result.systems) {
