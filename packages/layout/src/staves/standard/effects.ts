@@ -536,12 +536,14 @@ export function drawConnections(
     const lastGrace = beat.graces.at(-1);
     for (const head of mainHeads(chord)) {
       const { note } = head;
-      const spot = spotOf(context, chord, head, x, beat.beat.dots);
-      looseSlides(context, note, spot);
-      if (!fretted) continue;
       const grace = lastGrace?.chord.heads.find(
         (other) => !other.sounding && other.note.string === note.string,
       );
+      const connects = grace !== undefined || note.hammerPull || slidesIn || leavesLine;
+      if (!note.slide && !connects) continue;
+      const spot = spotOf(context, chord, head, x, beat.beat.dots);
+      looseSlides(context, note, spot);
+      if (!fretted) continue;
       if (grace && lastGrace) {
         const origin = spotOf(context, lastGrace.chord, grace, x + lastGrace.offset, 0);
         // A grace note's stem points up, so its slur bends down, away from it.

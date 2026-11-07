@@ -32,7 +32,7 @@ import {
   type ShownAccidental,
 } from './pitch';
 import { beamCount, beamGroups, tupletGroups, type RhythmEvent } from '../rhythm';
-import { BEND_ROOM, letterReach } from '../effects';
+import { BEND_ROOM, connections, letterReach } from '../effects';
 import {
   beamLine,
   dotsWidth,
@@ -517,6 +517,8 @@ function planSlurs(
   if (!chord) return;
   const { track, space } = input;
   const reach = tieReach(space) + (lone ? letterReach(space) : 0);
+  const slidesIn =
+    connections(input.bar).shifts || connections(track.bars[input.barIndex - 1]).shifts;
   const lastGrace = plan.graces.at(-1);
   for (const head of mainHeads(chord)) {
     const { note } = head;
@@ -530,6 +532,7 @@ function planSlurs(
       ys = [head.y, grace.y];
       direction = 'down';
     } else {
+      if (!note.hammerPull && !slidesIn) continue;
       const origin = nearOrigin(track, input.barIndex, voice, plan.index, note);
       const legato = origin?.note.slide?.includes('legato') ?? false;
       if (!note.hammerPull && !legato) continue;
