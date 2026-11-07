@@ -15,7 +15,7 @@ export function createElectronPlatform(bridge: RepriseBridge, win: Window = wind
         : Promise.reject(new Error('Not a file handle this platform issued')),
     libraryDir: () => bridge.libraryDir(),
     dataDir: () => bridge.dataDir(),
-    print: () => bridge.print(),
+    print: (options) => (options ? bridge.print(options) : bridge.print()),
     // getUserMedia works in the renderer; main only grants the permission.
     microphone: () => requestMicrophone(win),
   };

@@ -9,5 +9,6 @@ export type {
   InvokeResult,
   MenuCommandId,
   OpenedFile,
+  PrintOptions,
   RepriseBridge,
 } from './platform/bridge';

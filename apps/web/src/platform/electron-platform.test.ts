@@ -27,6 +27,16 @@ describe('the Electron platform', () => {
     expect(writeFile).toHaveBeenCalledWith('/Users/me/song.gp', new Uint8Array([3]));
   });
 
+  it('passes the paper to the bridge, and nothing without one', async () => {
+    const { bridge } = fakeBridge();
+    const platform = createElectronPlatform(bridge);
+
+    await platform.print({ pageSize: 'Letter' });
+    await platform.print();
+
+    expect(vi.mocked(bridge.print).mock.calls).toEqual([[{ pageSize: 'Letter' }], []]);
+  });
+
   it('rejects any other handle without touching the bridge', async () => {
     const { bridge, writeFile } = fakeBridge();
     const platform = createElectronPlatform(bridge);
