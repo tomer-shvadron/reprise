@@ -466,13 +466,13 @@ interface Platform {
 }
 ```
 
-The browser implementation exists so `pnpm dev` works without Electron; the Electron implementation goes through the preload bridge.
+The browser implementation exists so `pnpm dev` works without Electron; the Electron implementation goes through the preload bridge. The packaged renderer is served by main from `reprise://app/`, so the app's own static files (the GM bank, the fonts) load with `fetch` the same way in the browser and in Electron.
 
 ## Runtime shape
 
 - **Renderer process**: React, the document store, layout (main thread first, worker-ready), the audio scheduler.
 - **Audio thread**: Web Audio's native graph does all mixing. The main thread only schedules.
-- **Electron main**: file dialogs, file IO, menus, window state, printing, app paths.
+- **Electron main**: file dialogs, file IO, menus, window state, printing, app paths, and serving the built renderer over `reprise://app`.
 - **Threads we may add later**: a layout worker if layout time exceeds its budget; an AudioWorklet scheduler if main-thread jank ever causes gaps. Both are isolated by the contracts above.
 
 ## Memory model
