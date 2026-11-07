@@ -73,27 +73,27 @@ export function VisibilityToggle({
   disabledReason,
   actions,
 }: Named & { visible: boolean; disabledReason: string | undefined; actions: TrackActions }) {
+  const locked = disabledReason !== undefined;
+  // aria-disabled rather than disabled: the control stays focusable and hovered, so its tooltip
+  // can say why it is locked.
   const toggle = (
     <Toggle
       size="sm"
       aria-label={`Show ${label}`}
+      aria-disabled={locked || undefined}
       pressed={visible}
-      disabled={disabledReason !== undefined}
-      className="w-7 px-0"
+      className="w-7 px-0 aria-disabled:opacity-50"
       onPressedChange={(next) => {
-        actions.setTrackVisible(id, next);
+        if (!locked) actions.setTrackVisible(id, next);
       }}
     >
       {visible ? <EyeIcon /> : <EyeOffIcon />}
     </Toggle>
   );
-  if (disabledReason === undefined) return toggle;
-  // A disabled button fires no pointer events, so the tooltip hangs on a wrapper.
+  if (!locked) return toggle;
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <span tabIndex={0}>{toggle}</span>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{toggle}</TooltipTrigger>
       <TooltipContent>{disabledReason}</TooltipContent>
     </Tooltip>
   );

@@ -107,7 +107,10 @@ describe('TrackSidebar', () => {
     await user.click(within(rowOf('Bass')).getByRole('button', { name: 'Show Bass' }));
     await user.click(within(rowOf('Drums')).getByRole('button', { name: 'Show Drums' }));
     expect(services.document.getState().view.tracks).toEqual([lead]);
-    expect(within(rowOf('Lead')).getByRole('button', { name: 'Show Lead' })).toBeDisabled();
+    const lastShown = within(rowOf('Lead')).getByRole('button', { name: 'Show Lead' });
+    expect(lastShown).toHaveAttribute('aria-disabled', 'true');
+    await user.click(lastShown);
+    expect(services.document.getState().view.tracks).toEqual([lead]);
 
     await user.click(screen.getByRole('button', { name: 'Multitrack view' }));
     expect(services.document.getState().view.only).toBe(lead);
@@ -115,7 +118,10 @@ describe('TrackSidebar', () => {
       'aria-pressed',
       'false',
     );
-    expect(within(rowOf('Bass')).getByRole('button', { name: 'Show Bass' })).toBeDisabled();
+    const locked = within(rowOf('Bass')).getByRole('button', { name: 'Show Bass' });
+    expect(locked).toHaveAttribute('aria-disabled', 'true');
+    // The locked eye is its own tab stop, with no role-less wrapper around it.
+    expect(rowOf('Bass').querySelector('span[tabindex]:not([role])')).toBeNull();
   });
 
   it('switches notation from the menu, and offers none on drums', async () => {
