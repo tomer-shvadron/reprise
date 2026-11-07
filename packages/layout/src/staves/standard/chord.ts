@@ -275,13 +275,14 @@ export function planChord(notes: readonly ChordNote[], options: ChordOptions): C
   for (let k = 0; k < sorted.length; k++) {
     const i = fromTop ? sorted.length - 1 - k : k;
     const here = sorted[i]?.position ?? 0;
-    const taken = new Set<number>();
+    // A bit per column; a chord never has 31 heads within a second of each other.
+    let taken = 0;
     for (let m = 0; m < k; m++) {
       const j = fromTop ? sorted.length - 1 - m : m;
-      if (Math.abs((sorted[j]?.position ?? 0) - here) <= 1) taken.add(columns[j] ?? 0);
+      if (Math.abs((sorted[j]?.position ?? 0) - here) <= 1) taken |= 1 << (columns[j] ?? 0);
     }
     let at = 0;
-    while (taken.has(at)) at += 1;
+    while (taken & (1 << at)) at += 1;
     columns[i] = at;
   }
 

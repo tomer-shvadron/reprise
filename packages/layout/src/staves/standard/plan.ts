@@ -456,7 +456,7 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
     beats.push(...planned);
     voices.push(planned);
   }
-  separateVoices(beats, space);
+  separateVoices(beats, voices, space);
 
   let top = 0;
   let bottom = positionY(0, space);
@@ -529,10 +529,12 @@ function sharedHeads(
  * Draws a moved chord's ledger lines back to an earlier voice's on the same row, which its
  * extent kept a gap short of, so each row reads as one line.
  */
-function bridgeLedgers(earlier: readonly BeatPlan[], later: BeatPlan): void {
+function bridgeLedgers(onset: readonly BeatPlan[], count: number, later: BeatPlan): void {
   const shift = later.shift ?? 0;
   for (const ledger of later.chord?.ledgers ?? []) {
-    for (const beat of earlier) {
+    for (let e = 0; e < count; e++) {
+      const beat = onset[e];
+      if (!beat) continue;
       const offset = (beat.shift ?? 0) - shift;
       for (const other of beat.chord?.ledgers ?? []) {
         const right = other.right + offset;
@@ -548,7 +550,14 @@ function bridgeLedgers(earlier: readonly BeatPlan[], later: BeatPlan): void {
  * Keeps two voices' chords at one onset apart: an identical head the two share splits its anchor
  * at its centre, and otherwise the later voice moves right of the earlier's extent.
  */
-function separateVoices(beats: readonly BeatPlan[], space: number): void {
+function separateVoices(
+  beats: readonly BeatPlan[],
+  voices: readonly (readonly BeatPlan[])[],
+  space: number,
+): void {
+  let sounding = 0;
+  for (const voice of voices) if (voice.some(({ chord }) => chord)) sounding += 1;
+  if (sounding < 2) return;
   const byTick = new Map<number, BeatPlan[]>();
   for (const beat of beats) {
     if (!beat.chord) continue;
@@ -563,7 +572,9 @@ function separateVoices(beats: readonly BeatPlan[], space: number): void {
       while (moved) {
         moved = false;
         shares.length = 0;
-        for (const earlier of onset.slice(0, i)) {
+        for (let e = 0; e < i; e++) {
+          const earlier = onset[e];
+          if (!earlier) continue;
           if (!collide(earlier, later)) continue;
           const shared = (later.shift ?? 0) > 0 ? undefined : sharedHeads(earlier, later);
           if (shared) {
@@ -578,7 +589,7 @@ function separateVoices(beats: readonly BeatPlan[], space: number): void {
           moved = true;
         }
       }
-      if ((later.shift ?? 0) > 0) bridgeLedgers(onset.slice(0, i), later);
+      if ((later.shift ?? 0) > 0) bridgeLedgers(onset, i, later);
       for (const { up, down } of shares) {
         const at = up.left + up.width / 2;
         up.half = { side: 'right', at };
