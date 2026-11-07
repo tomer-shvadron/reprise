@@ -67,8 +67,12 @@ function load(file: CheckFile): Promise<Loaded> {
 
 function withAlphaTab(loaded: Loaded): alphaTab.model.Score | undefined {
   if (loaded.alphaTab || loaded.alphaTabError !== undefined) return loaded.alphaTab;
+  // GP3 to GP5 strings are windows-1252, as our reader decodes them; alphaTab assumes UTF-8, so
+  // every accented title would otherwise read as a reader bug. GP6 and GP7 are UTF-8 XML.
+  const format = detect(loaded.bytes);
+  const binary = format === 'gp3' || format === 'gp4' || format === 'gp5';
   try {
-    loaded.alphaTab = loadWithAlphaTab(loaded.bytes);
+    loaded.alphaTab = loadWithAlphaTab(loaded.bytes, binary ? { encoding: 'windows-1252' } : {});
   } catch (error) {
     loaded.alphaTabError = error instanceof Error ? error.message : String(error);
   }
