@@ -83,8 +83,9 @@ export function seekCommands(services: SeekServices): SeekCommand[] {
     const { score } = document.getState();
     if (!score) return;
     const { bars, barsAnchor } = selection.getState();
+    // The same anchor as Shift+click: a click sets it without selecting.
     const from =
-      (bars ? (barsAnchor ?? bars.startBar) : playheadBar(services)) ?? score.masterBars[0]?.id;
+      barsAnchor ?? (bars ? bars.startBar : playheadBar(services)) ?? score.masterBars[0]?.id;
     if (from === undefined) return;
     const range = extendRange(score, bars, from, by);
     if (!range) return;

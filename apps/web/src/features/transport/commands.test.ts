@@ -161,6 +161,18 @@ describe('transport commands', () => {
     expect(services.fakeAudio.seek).toHaveBeenLastCalledWith(2 * 3840);
   });
 
+  it('extend from a click’s anchor with nothing selected, as Shift+click does', async () => {
+    const { services, run } = await setup(fourBars());
+    const bars = services.document.getState().score?.masterBars ?? [];
+    services.selection.getState().selectBars(undefined, bars[0]?.id);
+    await run('transport.lastBar');
+    await run('transport.selectNextBar');
+    expect(services.selection.getState().bars).toEqual({
+      startBar: bars[0]?.id,
+      endBar: bars[1]?.id,
+    });
+  });
+
   it('extend the bar selection from its anchor and announce it', async () => {
     const { services, run } = await setup(fourBars());
     const bars = services.document.getState().score?.masterBars ?? [];
