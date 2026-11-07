@@ -479,6 +479,9 @@ export const SCENES: readonly Scene[] = [
     covers: 'A real drum part',
     source: { fixture: 'gp/drum-tabs.gp' },
     notations: ['default'],
+    guard: (result) => {
+      hasGlyph(result, 'artic');
+    },
   },
   {
     id: 'note-marks',
