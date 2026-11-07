@@ -231,22 +231,37 @@ export function ScoreView({
   const range = mountedSystems(flow.systems, visible);
   const pages = mountedPages(flow.pages, flow.systems, range, visible);
 
+  // The centre a transition has set and not yet committed, with the mounted set it makes.
+  const pending = useRef<{ centre: Point; range: typeof range; pages: number[] } | undefined>(
+    undefined,
+  );
+  useLayoutEffect(() => {
+    if (pending.current?.centre === scrolledCentre) pending.current = undefined;
+  }, [scrolledCentre]);
+  // Its mounted set was for the old geometry.
+  useLayoutEffect(() => {
+    pending.current = undefined;
+  }, [zoom, viewport, flow]);
+
   // Rendering only when the mounted systems or pages change keeps following, which scrolls
-  // every frame, from re-rendering the view every frame.
+  // every frame, from re-rendering the view every frame. The comparison is with the set the last
+  // requested centre makes, so a scroll back before that commits still wins.
   const onScroll = (event: UIEvent<HTMLDivElement>) => {
     const next = centreFromScroll(readScroll(event.currentTarget), viewport, zoom, offset);
     liveCentre.current = next;
     const window = visibleWindow(next, viewport, zoom, offset);
     const nextRange = mountedSystems(flow.systems, window);
     const nextPages = mountedPages(flow.pages, flow.systems, nextRange, window);
+    const shown = pending.current ?? { range, pages };
     if (
-      nextRange.start === range.start &&
-      nextRange.end === range.end &&
-      nextPages.length === pages.length &&
-      nextPages.every((page, index) => page === pages[index])
+      nextRange.start === shown.range.start &&
+      nextRange.end === shown.range.end &&
+      nextPages.length === shown.pages.length &&
+      nextPages.every((page, index) => page === shown.pages[index])
     ) {
       return;
     }
+    pending.current = { centre: next, range: nextRange, pages: nextPages };
     startTransition(() => {
       setCentre(next);
     });

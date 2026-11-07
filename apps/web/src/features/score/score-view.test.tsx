@@ -9,12 +9,13 @@ import {
 } from '@reprise/layout';
 import { applyCommand, setNote } from '@reprise/model';
 import { beatOf, fullScore, largeScore } from '@reprise/model/testing';
-import { createRef } from 'react';
+import { createRef, Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { columnAnchor, cursorAt, findAnchors } from './anchors';
 import { ScoreView, type ScorePointerEvent, type ScoreViewHandle } from './score-view';
 import { pageFlow } from './page-flow';
+import { longLayout } from './test/long-score';
 import { stubScroll } from './test/scroll-stub';
 import { viewLayout } from './test/small-score';
 import { stubViewport } from './test/viewport-stub';
@@ -151,6 +152,44 @@ describe('ScoreView', () => {
     expect(range.start).toBeGreaterThan(3);
     expect(range.end).toBeLessThan(result.systems.length);
     expect(mountedIds()).toEqual(result.systems.slice(range.start, range.end).map(({ id }) => id));
+  });
+
+  it('mounts what is in view after a fast scroll away and back, committing only on a new set', () => {
+    const result = longLayout({ mode: 'paged', paper: 'a4' });
+    let commits = 0;
+    render(
+      <Profiler id="view" onRender={() => (commits += 1)}>
+        <ScoreView layout={result} zoom={1} />
+      </Profiler>,
+    );
+    stubScroll(region());
+    const element = region();
+    const scroll = (y: number) => {
+      element.scrollTop = y;
+      element.dispatchEvent(new Event('scroll', { bubbles: true }));
+    };
+    const shown = (y: number) => {
+      const { range } = expected(result, 1, { x: 0, y });
+      return result.systems.slice(range.start, range.end).map(({ id }) => id);
+    };
+    for (const y of [9000, 12_000, 24_000, 27_000]) {
+      act(() => {
+        scroll(y);
+      });
+      // Away into another set and back into this one, before the first transition commits.
+      act(() => {
+        scroll(y + 2400);
+        scroll(y);
+      });
+      expect(mountedIds(), String(y)).toEqual(shown(y));
+    }
+
+    const before = commits;
+    act(() => {
+      for (let step = 1; step <= 30; step++) scroll(27_000 + step);
+    });
+    expect(commits).toBe(before);
+    expect(mountedIds()).toEqual(shown(27_030));
   });
 
   it.each([
