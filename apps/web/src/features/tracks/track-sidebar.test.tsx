@@ -125,9 +125,10 @@ describe('TrackSidebar', () => {
     await user.click(await screen.findByRole('menuitemradio', { name: 'Standard notation' }));
     expect(services.document.getState().view.notation).toEqual({ [lead ?? '']: 'standard' });
 
-    await user.click(
-      within(rowOf('Lead')).getByRole('button', { name: 'Notation for Lead: Standard notation' }),
-    );
+    // The name holds the visible word for speech input; the description spells it out.
+    const trigger = within(rowOf('Lead')).getByRole('button', { name: 'Notation for Lead: Std' });
+    expect(trigger).toHaveAccessibleDescription('Standard notation');
+    await user.click(trigger);
     await user.click(await screen.findByRole('menuitemradio', { name: 'Tab' }));
     expect(services.document.getState().view.notation).toEqual({});
     expect(within(rowOf('Drums')).queryByRole('button', { name: /^Notation/ })).toBeNull();
