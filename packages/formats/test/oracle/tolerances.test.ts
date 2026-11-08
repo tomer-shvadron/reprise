@@ -116,6 +116,9 @@ describe('chromatic-transposition', () => {
         projections,
       );
     expect(applies(1, 1.04)).toBe(false);
+    expect(applies(1, 1 + 19 / 12)).toBe(false);
+    expect(applies(1, 1 - 13 / 12)).toBe(false);
+    expect(applies(1, 1 + 11 / 12)).toBe(true);
     expect(applies(1, 'x')).toBe(false);
     expect(applies(1, 1.5, 'tracks[1].capo')).toBe(false);
   });
@@ -147,10 +150,23 @@ describe('track-automation-on-first-beat', () => {
     }
   });
 
-  it('does not accept a change that moved to another voice', () => {
+  it('accepts a change that lands on a first voice we keep empty', () => {
     const build = HAND_BUILT.soundChangeOnSecondVoice();
-    expect(accepted(build)['tracks[0].bars[0].voices[1].beats[0].mix']).toEqual([]);
-    expect(unexplained(build)).toHaveLength(1);
+    expect(accepted(build)).toEqual({
+      'tracks[0].bars[0].voices[0].beats': ['placeholder-beat-holds-automation'],
+      'tracks[0].bars[0].voices[1].beats[0].mix': ['track-automation-on-first-beat'],
+    });
+  });
+
+  it('does not accept the second-voice change when it is another program', () => {
+    const build = HAND_BUILT.soundChangeOnSecondVoice();
+    const projections = structuredClone(build.projections);
+    const mix = projections.ours.tracks[0]?.bars[0]?.voices[1]?.beats[0]?.mix;
+    if (!mix) throw new Error('no mix on the second voice');
+    mix.program = (mix.program ?? 0) + 1;
+    for (const difference of build.differences) {
+      expect(toleranceFor(difference, build.format, projections)).toBeUndefined();
+    }
   });
 
   it('does not accept a change we hold with none on the first beat of alphaTab', () => {
@@ -166,12 +182,18 @@ describe('track-automation-on-first-beat', () => {
 });
 
 describe('placeholder-beat-holds-automation', () => {
-  it('accepts the empty beat alphaTab keeps for a sound change in an empty bar', () => {
+  it('accepts the empty beat alphaTab keeps when one of our beats holds the change', () => {
+    const build = HAND_BUILT.soundChangeOnSecondVoice();
+    expect(accepted(build)['tracks[0].bars[0].voices[0].beats']).toEqual([
+      'placeholder-beat-holds-automation',
+    ]);
+  });
+
+  // Flips to an accepted case once #153 keeps the change somewhere else in the score.
+  it('keeps reporting a sound change we drop in an empty bar (#153)', () => {
     const build = HAND_BUILT.soundChangeInEmptyBar();
-    expect(accepted(build)).toEqual({
-      'tracks[0].bars[1].voices[0].beats': ['placeholder-beat-holds-automation'],
-    });
     expect(build.warnings).toContain('automation-dropped');
+    expect(unexplained(build)).toHaveLength(1);
   });
 
   it('has nothing to accept in an empty bar with no automation', () => {
@@ -179,7 +201,7 @@ describe('placeholder-beat-holds-automation', () => {
   });
 
   it('does not accept a placeholder that carries more than the automation', () => {
-    const build = HAND_BUILT.soundChangeInEmptyBar();
+    const build = HAND_BUILT.soundChangeOnSecondVoice();
     const [difference] = build.differences;
     if (!difference) throw new Error('no placeholder difference');
     const mutations: ((
@@ -193,7 +215,7 @@ describe('placeholder-beat-holds-automation', () => {
     ];
     for (const mutate of mutations) {
       const projections = structuredClone(build.projections);
-      const placeholder = projections.alphaTab.tracks[0]?.bars[1]?.voices[0]?.beats[0];
+      const placeholder = projections.alphaTab.tracks[0]?.bars[0]?.voices[0]?.beats[0];
       if (!placeholder) throw new Error('no placeholder');
       mutate(placeholder);
       expect(tolerance('placeholder-beat-holds-automation').applies(difference, projections)).toBe(
@@ -202,15 +224,15 @@ describe('placeholder-beat-holds-automation', () => {
     }
   });
 
-  it('does not accept a bar where we hold beats that alphaTab does not', () => {
-    const build = HAND_BUILT.soundChangeInEmptyBar();
-    const [difference] = build.differences;
+  it('does not accept a voice where we hold beats that alphaTab does not', () => {
+    const build = HAND_BUILT.soundChangeOnSecondVoice();
+    const difference = build.differences.find((d) => d.path.endsWith('voices[0].beats'));
     if (!difference) throw new Error('no placeholder difference');
     const projections = structuredClone(build.projections);
-    const beats = projections.ours.tracks[0]?.bars[0]?.voices[0]?.beats;
-    const target = projections.ours.tracks[0]?.bars[1]?.voices[0];
-    if (!beats?.[0] || !target) throw new Error('no beat to copy');
-    target.beats = [structuredClone(beats[0])];
+    const beat = projections.ours.tracks[0]?.bars[0]?.voices[1]?.beats[0];
+    const target = projections.ours.tracks[0]?.bars[0]?.voices[0];
+    if (!beat || !target) throw new Error('no beat to copy');
+    target.beats = [structuredClone(beat)];
     expect(tolerance('placeholder-beat-holds-automation').applies(difference, projections)).toBe(
       false,
     );

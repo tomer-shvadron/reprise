@@ -40,7 +40,7 @@ const TRACK = /^tracks\[(?<track>\d+)\]/;
 const BAR_VOICE_BEATS =
   /^tracks\[(?<track>\d+)\]\.bars\[(?<bar>\d+)\]\.voices\[(?<voice>\d+)\]\.beats$/;
 const FIRST_VOICE_MIX =
-  /^tracks\[(?<track>\d+)\]\.bars\[(?<bar>\d+)\]\.voices\[0\]\.beats\[(?<beat>\d+)\]\.mix$/;
+  /^tracks\[(?<track>\d+)\]\.bars\[(?<bar>\d+)\]\.voices\[(?<voice>\d+)\]\.beats\[(?<beat>\d+)\]\.mix$/;
 const TRACK_OCTAVE_SHIFT = /^tracks\[\d+\]\.octaveShift$/;
 const MASTER_BAR_ENDINGS = /^masterBars\[(?<bar>\d+)\]\.alternateEndings$/;
 
@@ -198,7 +198,7 @@ export const TOLERANCES: readonly Tolerance[] = [
   {
     id: 'whammy-points-kept',
     formats: GPIF_ONLY,
-    why: "The model keeps the whammy curve as the file stores it, four points in gpif; alphaTab's `Beat.finish` removes both middle points of a monotonic curve whose two middle values are equal, and one of a dip whose middle points share an offset. The ends, highest and lowest value survive, so they are still compared. The whammy twin of `bend-points-kept`.",
+    why: "The model keeps the whammy curve as the file stores it, four points in gpif; alphaTab's `Beat.finish` removes both middle points of a monotonic curve whose two middle values are equal, and one of a dip whose middle points share an offset. A flat curve (all three values equal) also goes from four points to two. The ends, highest and lowest value survive, so they are still compared; a dropped middle point is not, so the reader's own tests are its only guard. The whammy twin of `bend-points-kept`.",
     applies: (d) => {
       const { beat } = d;
       return (
@@ -216,67 +216,75 @@ export const TOLERANCES: readonly Tolerance[] = [
   {
     id: 'chromatic-transposition',
     formats: GPIF_ONLY,
-    why: '`Track/Transpose/Chromatic` is not modelled (model README, formats README "Not read"), so our octave shift is the file\'s `Octave` alone; alphaTab\'s `displayTranspositionPitch` adds the chromatic part, so its shift is ours plus a whole number of semitones over 12, short of an octave.',
+    why: '`Track/Transpose/Chromatic` is not modelled (model README, formats README "Not read"), so our octave shift is the file\'s `Octave` alone; alphaTab\'s `displayTranspositionPitch` adds the chromatic part, so its shift is ours plus 1 to 11 semitones over 12, either way. The projection does not carry the file\'s `Chromatic`, so that bound stands in for "alphaTab\'s shift minus ours equals the chromatic part over 12"; an octave or more is never accepted, since it could be a wrong `Octave`.',
     applies: (d) => {
       if (!TRACK_OCTAVE_SHIFT.test(d.path)) return false;
       if (typeof d.ours !== 'number' || typeof d.alphaTab !== 'number') return false;
       const semitones = (d.alphaTab - d.ours) * 12;
-      return nearlyInteger(semitones) && Math.abs(Math.round(semitones)) % 12 !== 0;
+      const whole = Math.round(semitones);
+      return nearlyInteger(semitones) && whole !== 0 && Math.abs(whole) < 12;
     },
   },
   {
     id: 'track-automation-on-first-beat',
     formats: GPIF_ONLY,
-    why: "We place a track automation (a sound change) on the beat at its `Position`; alphaTab's `GpifParser._buildModel` pushes every one onto `voices[0].beats[0]` of its bar and ignores the position. Accepted where the two sides differ only in which beat of that voice holds the change.",
+    why: "We place a track automation (a sound change) on the beat at its `Position`; alphaTab's `GpifParser._buildModel` pushes every one onto `voices[0].beats[0]` of its bar and ignores the position, so the oracle cannot check where we place it (the unit of `Position` is #153's open question). Accepted where the two sides hold the same values and differ only in which beat holds the change: a later beat of voice 0, or, when our voice 0 is empty, a beat of another voice of the bar.",
     applies: (d, { ours, alphaTab }) => {
       const at = FIRST_VOICE_MIX.exec(d.path)?.groups;
       if (at === undefined) return false;
-      const [track, bar, index] = [Number(at['track']), Number(at['bar']), Number(at['beat'])];
-      const ourBeats = ours.tracks[track]?.bars[bar]?.voices[0]?.beats ?? [];
-      const theirBeats = alphaTab.tracks[track]?.bars[bar]?.voices[0]?.beats ?? [];
-      const [theirFirst] = theirBeats;
-      if (index === 0) {
-        const mix = theirFirst?.mix;
+      const [track, bar, voice, index] = [
+        Number(at['track']),
+        Number(at['bar']),
+        Number(at['voice']),
+        Number(at['beat']),
+      ];
+      const ourVoices = ours.tracks[track]?.bars[bar]?.voices ?? [];
+      const ourBeats = ourVoices[voice]?.beats ?? [];
+      const theirMix = alphaTab.tracks[track]?.bars[bar]?.voices[0]?.beats[0]?.mix ?? null;
+      if (voice === 0 && index === 0) {
         return (
           d.ours === null &&
-          mix !== null &&
-          mix !== undefined &&
+          theirMix !== null &&
           heldBy(
-            mix,
+            theirMix,
             ourBeats.slice(1).map((beat) => beat.mix),
           )
         );
       }
-      const mix = ourBeats[index]?.mix;
+      const mix = ourBeats[index]?.mix ?? null;
       return (
+        (voice === 0 || ourVoices[0]?.beats.length === 0) &&
         d.alphaTab === null &&
         mix !== null &&
-        mix !== undefined &&
-        theirFirst?.mix != null &&
-        heldBy(mix, [theirFirst.mix])
+        theirMix !== null &&
+        heldBy(mix, [theirMix])
       );
     },
   },
   {
     id: 'placeholder-beat-holds-automation',
     formats: GPIF_ONLY,
-    why: 'For every `-1` voice in a bar alphaTab\'s `_buildModel` adds a voice holding one empty quarter beat; the projection drops those, except that the track automation `_buildModel` pushes onto `voices[0].beats[0]` lands on it and keeps it. We keep the bar\'s first voice empty and report the sound change as `automation-dropped` (README, "Warnings").',
+    why: "For every `-1` voice in a bar alphaTab's `_buildModel` adds a voice holding one empty quarter beat; the projection drops those, except that the track automation `_buildModel` pushes onto `voices[0].beats[0]` lands on it and keeps it. Accepted only when one of our beats in the same bar holds that change. A change we drop (a sound change in a bar with no beats, `automation-dropped`) is a reader bug, #153, and stays reported.",
     applies: (d, { ours, alphaTab }) => {
       const at = BAR_VOICE_BEATS.exec(d.path)?.groups;
       if (at === undefined) return false;
       const [track, bar, voice] = [Number(at['track']), Number(at['bar']), Number(at['voice'])];
       const theirs = alphaTab.tracks[track]?.bars[bar]?.voices[voice]?.beats;
-      const ourBeats = ours.tracks[track]?.bars[bar]?.voices[voice]?.beats;
+      const ourVoices = ours.tracks[track]?.bars[bar]?.voices ?? [];
       const [placeholder] = theirs ?? [];
       return (
-        ourBeats?.length === 0 &&
+        ourVoices[voice]?.beats.length === 0 &&
         theirs?.length === 1 &&
         placeholder !== undefined &&
         placeholder.mix !== null &&
         placeholder.duration === 4 &&
         placeholder.dots === 0 &&
         placeholder.tuplet === null &&
-        isBareEmpty({ ...placeholder, mix: null })
+        isBareEmpty({ ...placeholder, mix: null }) &&
+        heldBy(
+          placeholder.mix,
+          ourVoices.flatMap((v) => v.beats.map((beat) => beat.mix)),
+        )
       );
     },
   },
