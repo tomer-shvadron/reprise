@@ -214,7 +214,7 @@ export function renderBar(
         drawStem(sink, stemX, top + chord.stem.from, top + chord.tip, space, 1, id);
         drawFlag(sink, chord.beams, chord.direction, stemX, top + chord.tip, space, { node: id });
         // What lies beyond an unbeamed stem clears its flag, as the plan measured it.
-        tips.set(beat, top + stemEnd(chord.tip, chord.beams, chord.direction, space));
+        tips.set(beat, top + stemEnd(chord.tip, chord.beams, chord.direction, space, chord.scale));
       }
     }
     const fallback = rect(x - space / 2, top, space, placement.bottom - top);

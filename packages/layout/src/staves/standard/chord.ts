@@ -153,6 +153,8 @@ export interface ChordOptions {
   multiVoice: boolean;
   /** Beams or flags drawn; a single grace note shows one whatever its value. */
   beams?: number;
+  /** A beam group member: its stem ends at a beam, so no flag's room is reserved. */
+  beamed?: boolean;
   /** Stems reach the middle line; not for grace notes. */
   reachMiddle: boolean;
 }
@@ -406,7 +408,7 @@ export function planChord(notes: readonly ChordNote[], options: ChordOptions): C
     bottom = Math.max(bottom, accBottom);
   }
   if (stem) {
-    const end = stemEnd(tip, beams, direction, space, scale);
+    const end = options.beamed ? tip : stemEnd(tip, beams, direction, space, scale);
     top = Math.min(top, end);
     bottom = Math.max(bottom, end);
     const flag = flagGlyph(beams, direction);

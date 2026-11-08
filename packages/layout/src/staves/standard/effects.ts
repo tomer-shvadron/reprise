@@ -45,6 +45,7 @@ import {
   beamStep,
   dotsWidth,
   drawSlur,
+  flagReach,
   stemEnd,
   stemLength,
   type ArcDirection,
@@ -222,11 +223,14 @@ function freeStart(chord: ChordPlan, head: number, space: number): number {
 }
 
 /** How much a free stem from `start` to `inner` must grow to hold `name` with its margins, in px. */
-function shortfall(name: GlyphName, start: number, inner: number, space: number): number {
-  return Math.max(
-    0,
-    tremoloHeight(name, space) + 2 * TREMOLO.margin * space - Math.abs(inner - start),
-  );
+function shortfall(
+  name: GlyphName,
+  start: number,
+  inner: number,
+  space: number,
+  s: number,
+): number {
+  return Math.max(0, tremoloHeight(name, space) + 2 * TREMOLO.margin * space - s * (inner - start));
 }
 
 /**
@@ -253,8 +257,11 @@ export function planTremolo(
   }
   const start = freeStart(chord, chord.stem.head, space);
   if (beamed) return { glyph: name, start };
-  const inner = chord.tip - s * chord.beams * beamStep(space);
-  const grow = shortfall(name, start, inner, space);
+  const inner =
+    (chord.beams > 2
+      ? flagReach(chord.beams, chord.direction, chord.tip, chord.space, chord.scale)
+      : undefined) ?? chord.tip - s * chord.beams * beamStep(space);
+  const grow = shortfall(name, start, inner, space, s);
   chord.tip += s * grow;
   const end = stemEnd(chord.tip, chord.beams, chord.direction, chord.space, chord.scale);
   if (s < 0) chord.top = Math.min(chord.top, end);
@@ -275,7 +282,7 @@ export function beamedShortfall(plan: TremoloPlan, chord: ChordPlan, space: numb
   const middle = positionY(4, space);
   const tip = s < 0 ? Math.min(reached, middle) : Math.max(reached, middle);
   const inner = tip - s * chord.beams * beamStep(space);
-  return shortfall(plan.glyph, plan.start, inner, space);
+  return shortfall(plan.glyph, plan.start, inner, space, s);
 }
 
 /** Tremolo strokes centred on the stem at `x`, at `y` from the top line. */

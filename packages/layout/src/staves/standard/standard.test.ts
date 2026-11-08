@@ -21,7 +21,7 @@ import {
 import { expectValid, stable, strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
 import type { StaffBar } from '../staff-module';
-import { planBar, type BarPlan } from './plan';
+import { MARGIN, planBar, type BarPlan } from './plan';
 
 const paged: LayoutOptions = {
   mode: 'paged',
@@ -746,8 +746,10 @@ describe('room for everything the five-line staves draw', () => {
   };
   /** Flags whose box reaches into a staff's 0.3-space margin: a flag is measured, not absorbed. */
   const flagsInMargin = (result: LayoutResult): string[] => {
-    const margin = 0.3 * 7;
-    const staves = result.anchors.filter((anchor) => anchor.kind === 'staff');
+    const margin = MARGIN * 7;
+    const staves = result.anchors.filter(
+      (anchor) => anchor.kind === 'staff' && anchor.staff !== 'tab',
+    );
     return result.primitives.flatMap((primitive) => {
       if (primitive.kind !== 'glyph' || !primitive.glyph.startsWith('flag')) return [];
       const { y, height } = primitive.bbox;

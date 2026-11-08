@@ -74,6 +74,21 @@ function flagOrigin(name: GlyphName, direction: StemDirection, tip: number, unit
   return tip + (anchor?.[1] ?? 0) * unit;
 }
 
+/** The y where a flag hanging from a stem ending at `tip` stops short of the head: its box's near edge. */
+export function flagReach(
+  beams: number,
+  direction: StemDirection,
+  tip: number,
+  space: number,
+  scale = 1,
+): number | undefined {
+  const name = flagGlyph(beams, direction);
+  if (!name) return undefined;
+  const unit = space * scale;
+  const { top, bottom } = glyphMetrics(name).bbox;
+  return flagOrigin(name, direction, tip, unit) - (direction === 'up' ? bottom : top) * unit;
+}
+
 /** How far an unbeamed stem ending at `tip` reaches: to its flag's far edge, when it has one. */
 export function stemEnd(
   tip: number,

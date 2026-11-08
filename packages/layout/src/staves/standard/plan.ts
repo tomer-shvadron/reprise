@@ -58,7 +58,7 @@ const GRACE_GAP = 0.3;
 const GRACE_STEP = 0.2;
 /** Room every bar keeps above and below the staff, in staff spaces. */
 export const MIN_ROOM = 1.5;
-const MARGIN = 0.3;
+export const MARGIN = 0.3;
 const FINGERING_GAP = 0.4;
 const FINGERING_STEP = 1.1;
 /** Gap between two voices' chords at one onset when the later moves right, in spaces. */
@@ -345,6 +345,7 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
         space,
         scale: 1,
         multiVoice,
+        beamed: group !== undefined,
         reachMiddle: true,
       });
       plan.chord = planned;

@@ -226,6 +226,26 @@ describe('articulations on the standard staff', () => {
 });
 
 describe('tremolo strokes on the standard staff', () => {
+  it('keeps the strokes off the flag of a lone 32nd and 64th', () => {
+    for (const value of ['32', '64'] as const) {
+      for (const pitch of [note(6, 0), note(1, 12)]) {
+        const built = guitar('standard')
+          .bar()
+          .rest(value === '32' ? '16.' : '16..')
+          .beat(value, [pitch], { effects: { tremoloPicking: 32 } })
+          .rest('8')
+          .rest('2')
+          .build({ ids: 'sequential' });
+        const result = laid(built);
+        const flag = one(glyphs(result, 'flag'), 'flag').bbox;
+        const strokes = one(glyphs(result, 'tremolo'), 'strokes').bbox;
+        const overlap =
+          Math.min(flag.y + flag.height, strokes.y + strokes.height) - Math.max(flag.y, strokes.y);
+        expect(overlap, `${value} on string ${String(pitch.string)}`).toBeLessThanOrEqual(EPSILON);
+      }
+    }
+  });
+
   it('puts the strokes on the stem, lengthening it only when they do not fit', () => {
     const built = guitar('standard')
       .bar()

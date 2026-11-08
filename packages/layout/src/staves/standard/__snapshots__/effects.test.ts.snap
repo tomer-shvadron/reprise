@@ -176,20 +176,20 @@ exports[`articulations on the standard staff > puts them beyond the stem with tw
 
 exports[`articulations on the standard staff > puts them beyond the stem with two voices, and on drums 2`] = `
 [
-  "glyph noteheadXBlack @137.8,113.18 size 28 <note00000001>",
-  "glyph noteheadXBlack @159.5,113.18 size 28 <note00000002>",
-  "glyph noteheadXBlack @181.2,113.18 size 28 <note00000003>",
-  "glyph noteheadXBlack @202.9,113.18 size 28 <note00000004>",
-  "glyph noteheadHalf @224.53,127.18 size 28 <note00000005>",
-  "line @232.37,126.01 -> 232.37,102.68 w 0.84 <beat00000005>",
-  "line @145.5,110.08 -> 145.5,88.68 w 0.84 <beat00000001>",
-  "line @167.2,110.08 -> 167.2,88.68 w 0.84 <beat00000002>",
-  "line @188.9,110.08 -> 188.9,88.68 w 0.84 <beat00000003>",
-  "line @210.6,110.08 -> 210.6,88.68 w 0.84 <beat00000004>",
-  "path filled M145.08 88.68L211.02 88.68L211.02 92.18L145.08 92.18Z <beat00000001>",
-  "glyph articAccentAbove @140.75,85.21 size 28 <beat00000001>",
-  "glyph articStaccatoAbove @166.02,85.18 size 28 <beat00000002>",
-  "glyph articMarcatoAbove @207.32,85.16 size 28 <beat00000004>",
+  "glyph noteheadXBlack @137.8,112.65 size 28 <note00000001>",
+  "glyph noteheadXBlack @159.5,112.65 size 28 <note00000002>",
+  "glyph noteheadXBlack @181.2,112.65 size 28 <note00000003>",
+  "glyph noteheadXBlack @202.9,112.65 size 28 <note00000004>",
+  "glyph noteheadHalf @224.53,126.65 size 28 <note00000005>",
+  "line @232.37,125.48 -> 232.37,102.15 w 0.84 <beat00000005>",
+  "line @145.5,109.54 -> 145.5,88.15 w 0.84 <beat00000001>",
+  "line @167.2,109.54 -> 167.2,88.15 w 0.84 <beat00000002>",
+  "line @188.9,109.54 -> 188.9,88.15 w 0.84 <beat00000003>",
+  "line @210.6,109.54 -> 210.6,88.15 w 0.84 <beat00000004>",
+  "path filled M145.08 88.15L211.02 88.15L211.02 91.65L145.08 91.65Z <beat00000001>",
+  "glyph articAccentAbove @140.75,84.68 size 28 <beat00000001>",
+  "glyph articStaccatoAbove @166.02,84.65 size 28 <beat00000002>",
+  "glyph articMarcatoAbove @207.32,84.62 size 28 <beat00000004>",
 ]
 `;
 
