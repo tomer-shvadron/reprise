@@ -1,6 +1,7 @@
 import type { Bend } from '@reprise/model';
 
 import { textExtent } from '../../metrics';
+import type { Rect } from '../../types';
 import {
   ARROW_LENGTH,
   arrowhead,
@@ -30,6 +31,21 @@ export const BEND_FRAME = { gap: 0.15, stop: 0.6, min: 1, graceStop: 0.3 } as co
 /** Room kept right of a bent note, and right of a grace column holding a bend, in staff spaces. */
 export const BEND_ROOM = { main: 2.2, grace: 1.2 } as const;
 
+/** What a beat's bends have drawn so far: keys of shared marks, and the boxes of their labels. */
+export interface BendDrawn {
+  keys: Set<string>;
+  labels: Rect[];
+}
+
+export const newBendDrawn = (): BendDrawn => ({ keys: new Set(), labels: [] });
+
+const overlap = (a: Rect, b: Rect): boolean =>
+  a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+/** A bend's highest value, 0 when it never rises or there is none. */
+export const bendPeak = (bend: Bend | undefined): number =>
+  Math.max(0, ...(bend?.points.map((p) => p.value) ?? []));
+
 /** Where one note's bend is drawn, in px. */
 export interface BendFrame {
   /** Where the shaft starts: right of the number, or its centre for a pre-bend. */
@@ -58,10 +74,10 @@ export function drawBend(
   frame: BendFrame,
   space: number,
   node: string,
-  drawn: Set<string>,
+  drawn: BendDrawn,
 ): void {
   const points = [...bend.points].sort((a, b) => a.position - b.position);
-  const top = Math.max(0, ...points.map((p) => p.value));
+  const top = bendPeak(bend);
   const [first] = points;
   if (top <= 0 || !first) return;
   const size = EFFECT_TEXT * space;
@@ -74,8 +90,8 @@ export function drawBend(
   const x = (position: number): number => x0 + (position / 60) * (frame.xEnd - x0);
   const arrow = ARROW_LENGTH * space;
   const once = (key: string, draw: () => void): void => {
-    if (drawn.has(key)) return;
-    drawn.add(key);
+    if (drawn.keys.has(key)) return;
+    drawn.keys.add(key);
     draw();
   };
   const raised = (px: number, tip: number, value: number): void => {
@@ -83,8 +99,15 @@ export function drawBend(
       sink.primitives.push(arrowhead(px, tip, 'up', space, { node }));
     });
     once(`label ${String(round(px))} ${String(round(tip))}`, () => {
-      const y = tip - LABEL_GAP * space;
-      sink.primitives.push(text(bendLabel(value), px, y, size, { anchor: 'middle', node }));
+      const label = text(bendLabel(value), px, tip - LABEL_GAP * space, size, {
+        anchor: 'middle',
+        node,
+      });
+      // A label that would land on one already drawn is dropped: the repeat of a many-peak bend,
+      // or the lower amount of a chord, whose notes are drawn highest bend first.
+      if (drawn.labels.some((other) => overlap(other, label.bbox))) return;
+      drawn.labels.push(label.bbox);
+      sink.primitives.push(label);
     });
   };
 

@@ -15,7 +15,10 @@ import {
   BEND_FRAME,
   articulationMarks,
   connections,
+  type BendDrawn,
+  bendPeak,
   drawBend,
+  newBendDrawn,
   drawLetter,
   drawStroke,
   glyphHeight,
@@ -666,7 +669,7 @@ export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]
     const { chord } = beat;
     if (!chord) continue;
     const x = context.beatX(beat);
-    const drawn = new Set<string>();
+    const drawn = newBendDrawn();
     const following = beats[i + 1];
     // Target heads end clear of what the next onset of any voice draws left of it: its heads,
     // accidentals and graces, which the spacing measured the beat's room against.
@@ -734,7 +737,7 @@ function bendFrame(
   stop: number,
   min: number,
   laneBottom: number,
-  drawn: Set<string>,
+  drawn: BendDrawn,
   targets: BendPlan | undefined,
 ): { x0: number; xEnd: number } | undefined {
   const { sink, space, placement } = context;
@@ -751,11 +754,16 @@ function bendFrame(
     (head) => placement.top + head.y - glyphMetrics(head.glyph).bbox.top * unit,
   );
   const releaseTop = Math.min(...tops);
-  for (const [j, head] of bent.entries()) {
-    const { bend } = head.note;
+  // Highest bend first, so the label of the chord's highest bend is the one kept where they meet.
+  const order = [...bent.keys()].sort(
+    (a, b) => bendPeak(bent[b]?.note.bend) - bendPeak(bent[a]?.note.bend),
+  );
+  for (const j of order) {
+    const head = bent[j];
+    const bend = head?.note.bend;
     const spot = spots[j];
     const numberTop = tops[j];
-    if (!bend || !spot || numberTop === undefined) continue;
+    if (!head || !bend || !spot || numberTop === undefined) continue;
     drawBend(
       sink,
       bend,

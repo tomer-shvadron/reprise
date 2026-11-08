@@ -954,3 +954,70 @@ describe('note effects on the tab: arcs and letters in the measured room', () =>
     expect(stable(after)).toBe(stable(layout(edit.score, options)));
   });
 });
+
+describe('bend labels never overlap', () => {
+  const peaks = [
+    [0, 0],
+    [3, 4],
+    [14, 4],
+    [21, 4],
+    [23, 0],
+    [25, 4],
+    [28, 4],
+    [30, 0],
+    [32, 4],
+    [34, 4],
+    [36, 0],
+    [39, 4],
+    [42, 4],
+    [44, 0],
+    [46, 4],
+    [49, 4],
+    [51, 0],
+    [53, 4],
+    [58, 4],
+    [60, 4],
+  ] as const;
+  const many = {
+    kind: 'custom',
+    points: peaks.map(([position, value]) => ({ position, value })),
+  } as const;
+  const modes = ['tab', 'standard', 'both'] as const;
+
+  it.each(modes)('draws a many-peak bend one label per run of the same value in %s', (mode) => {
+    const result = laid(
+      guitar(mode)
+        .bar()
+        .beat('1', [note(2, 17, { bend: many })])
+        .build({ ids: 'sequential' }),
+    );
+    const labels = result.primitives.filter(isText('full'));
+    expect(labels.length).toBeGreaterThan(0);
+    expect(labels.length).toBeLessThan(8);
+  });
+
+  it.each(modes)(
+    'keeps the highest label of a chord bending by different amounts in %s',
+    (mode) => {
+      const bendTo = (value: number) => ({
+        kind: 'bendRelease' as const,
+        points: [
+          { position: 0, value: 0 },
+          { position: 10.2, value },
+          { position: 20.4, value },
+          { position: 30, value: 0 },
+        ],
+      });
+      const result = laid(
+        guitar(mode)
+          .bar()
+          .beat('16', [note(3, 14, { bend: bendTo(2) }), note(2, 14, { bend: bendTo(3) })])
+          .rest('8.')
+          .rest('2')
+          .build({ ids: 'sequential' }),
+      );
+      expect(result.primitives.filter(isText('¾'))).toHaveLength(1);
+      expect(result.primitives.filter(isText('½'))).toHaveLength(0);
+    },
+  );
+});

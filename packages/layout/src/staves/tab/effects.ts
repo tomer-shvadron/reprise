@@ -3,7 +3,10 @@ import { TIE_REACH_BARS, tieOriginOf, type Note, type TiePosition } from '@repri
 import {
   BEND_FRAME,
   connections,
+  type BendDrawn,
+  bendPeak,
   drawBend,
+  newBendDrawn,
   drawLetter,
   drawStroke,
   hammerLetter,
@@ -202,7 +205,7 @@ function drawBendGroup(
   size: number,
   stop: number,
   min: number,
-  drawn: Set<string>,
+  drawn: BendDrawn,
 ): void {
   const { placement, sink, space } = context;
   const band = placement.lanes.bend;
@@ -212,7 +215,8 @@ function drawBendGroup(
   const x0 = at + Math.max(...bent.map((label) => rightEdge(label, size))) + BEND.gap * space;
   const xEnd = Math.max(stop, x0 + min * space);
   const releaseTop = lineY(context, top.note.string) - labelHalfHeight(size);
-  for (const label of bent) {
+  const highestFirst = [...bent].sort((a, b) => bendPeak(b.note.bend) - bendPeak(a.note.bend));
+  for (const label of highestFirst) {
     const { bend } = label.note;
     if (!bend) continue;
     const y = lineY(context, label.note.string);
@@ -233,7 +237,7 @@ function drawBendGroup(
 function drawBends(context: TabContext, beat: TabBeat, x: number, next: number): void {
   const { space } = context;
   const size = TAB.fretSize * space;
-  const drawn = new Set<string>();
+  const drawn = newBendDrawn();
   drawBendGroup(context, beat.labels, x, size, next - BEND.stop * space, BEND.min, drawn);
   const centres = graceCentres(beat, x, space);
   const graceSize = size * TAB.graceScale;
