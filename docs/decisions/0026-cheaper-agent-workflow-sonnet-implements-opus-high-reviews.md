@@ -18,7 +18,7 @@ that changes nothing, a separate fixer, the Markdown-only exception, the lead's 
 
 | Step      | Model      | Effort                                                                                  |
 | --------- | ---------- | --------------------------------------------------------------------------------------- |
-| Plan      | Opus       | high; skipped for size-S issues (the implementer plans inline) and Markdown-only changes |
+| Plan      | Opus       | high; skipped for size-S issues (implementer plans inline), Markdown-only changes |
 | Implement | Sonnet 5.5 | medium                                                                                  |
 | Review    | Opus       | high; stays the quality gate                                                            |
 | Fix       | Sonnet 5.5 | medium, or resume the implementer while its context is warm                             |
@@ -60,7 +60,7 @@ Opus to finish, because a fresh agent would re-read everything. New launches, in
 
 - ADR-0020's table of models and efforts is superseded; its status line points here.
 - ADR-0020's mitigation "xhigh effort on the review" becomes "a stronger model at high
-  effort": the reviewer is no longer the same model as the writer.
+  effort": the reviewer is no longer the same model as the writer, except on the transition PRs that Opus finishes.
 - `../../AGENTS.md` "Task workflow" and "Quota", `../README.md` and `../plans/roadmap.md`
   lane rule 6 describe the new mapping.
 

@@ -38,4 +38,5 @@ apps/web/public/sounds/gm/*
 # the real-file pass, `pnpm check:files`
 .check-files/
 
+# per-developer Claude Code settings
 .claude/settings.local.json

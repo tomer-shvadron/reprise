@@ -17,14 +17,14 @@ The rule, in the owner's words:
 
 > Whenever the owner gives a coding task: 1) create a GitHub issue for it; 2) plan the implementation with an Opus sub-agent at high effort, posting the plan on the issue (skipped for size-S issues, where the implementer plans inline); 3) implement the plan with a Sonnet 5.5 sub-agent at medium effort that commits, pushes and opens the PR; 4) review the PR with an Opus sub-agent at high effort that posts findings as PR review comments; 5) fix the review comments with a Sonnet 5.5 sub-agent at medium effort, or by resuming the implementer. The lead merges after CI is green.
 
-Amended on 2026-11-08 to the model mapping above, after the weekly spend limit ran out ([ADR-0026](docs/decisions/0026-cheaper-agent-workflow-sonnet-implements-opus-high-reviews.md)); Fable is not used unless the owner says so.
+Amended on 2026-11-06 ([ADR-0020](docs/decisions/0020-plan-and-review-with-opus-at-xhigh-effort.md)) and on 2026-11-08 to the mapping above, after the weekly spend limit ran out ([ADR-0026](docs/decisions/0026-cheaper-agent-workflow-sonnet-implements-opus-high-reviews.md)); Fable is not used unless the owner says so.
 
 The lead's ruling on PR #84, which the owner can overrule: a coding task is any change to code, tests, configuration, scripts or the build, and gets all five steps. A change that touches only Markdown files skips the plan step (step 2) and keeps implement, review and fix.
 
 "The lead" is the Claude session the owner talks to. Around the rule:
 
 - Issues map to the work packages in [docs/plans/](docs/plans/), one issue per work package, filed as [CONTRIBUTING.md](CONTRIBUTING.md#from-plan-to-issue) describes.
-- Every PR is reviewed by Opus at high effort, a stronger model than the Sonnet that wrote it ([ADR-0026](docs/decisions/0026-cheaper-agent-workflow-sonnet-implements-opus-high-reviews.md)).
+- Every PR is reviewed by Opus at high effort, a stronger model than the Sonnet that wrote it, except the transition PRs that Opus finishes ([ADR-0026](docs/decisions/0026-cheaper-agent-workflow-sonnet-implements-opus-high-reviews.md)).
 - Review (step 4): the reviewer changes nothing on the branch. It posts its findings as one PR review with inline comments tagged `[blocker]`, `[should]` or `[nit]`, and a summary.
 - Fix (step 5): the fixer commits on the PR branch in small commits, answers each review thread with what it did or why not, and reports back.
 - The lead merges when every `[blocker]` and `[should]` is resolved and CI is green, with `gh pr merge --squash --auto --delete-branch`. The squash subject is `<PR title> (#N)`; the body is a short summary plus one `Co-Authored-By` line per distinct model that wrote commits on the branch (Sonnet and Opus today) and the `Claude-Session` line. `main` changes no other way.
@@ -135,7 +135,7 @@ Running many heavy sub-agents at once (nine review agents in parallel) exhausted
 
 Cost rules for every sub-agent ([ADR-0026](docs/decisions/0026-cheaper-agent-workflow-sonnet-implements-opus-high-reviews.md)):
 
-- Run only the affected tests locally; leave the full suite, e2e, bench and visual runs to CI unless the task is about them.
+- Run only the affected tests locally; leave the full suite, e2e, bench and visual runs to CI unless the task is about them (the pre-commit hook already runs the related tests).
 - Send command output to a uniquely named log file and read the tail.
 - Reviewers read the diff, the plan comment and the spec sections the diff touches, not the whole repo.
 - At most three agents run at once.
