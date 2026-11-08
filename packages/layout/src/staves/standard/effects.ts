@@ -28,6 +28,7 @@ import {
   voiceBeats,
 } from '../effects';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
+import { TARGET, type BendPlan } from './bend-targets';
 import {
   headEdges,
   headGlyph,
@@ -358,6 +359,8 @@ export interface ConnectionContext {
   beatX: (beat: BeatPlan) => number;
   /** The previous bar's plan of a voice's beat: where it moved to, for a unison or a second. */
   previousBeat: (voice: number, beat: number) => BeatPlan | undefined;
+  /** Draws a chord's heads at `x` without anchors: bend target heads are not notes to hit. */
+  heads: (chord: ChordPlan, x: number, beat: BeatPlan) => void;
 }
 
 /** A head's place for a connection, in px: its centre's y and its outer edges, accidental and dots included. */
@@ -665,8 +668,14 @@ export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]
     const x = context.beatX(beat);
     const drawn = new Set<string>();
     const following = beats[i + 1];
-    const next = following ? context.beatX(following) : contentEnd;
-    bendFrame(
+    // Target heads end clear of what the next beat draws left of its onset: its heads, accidentals
+    // and graces, which the beat's room counted.
+    const next = following
+      ? beat.bend
+        ? context.placement.onsetX(following.tick) + following.left
+        : context.beatX(following)
+      : contentEnd;
+    const frame = bendFrame(
       context,
       chord,
       x,
@@ -675,7 +684,21 @@ export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]
       BEND_FRAME.min,
       band.bottom,
       drawn,
+      beat.bend,
+      contentEnd,
     );
+    if (frame) {
+      for (const group of beat.bend?.groups ?? []) {
+        const left =
+          frame.x0 + (group.position / 60) * (frame.xEnd - frame.x0) + TARGET.gap * space;
+        // A squeezed bar has less room than the heads asked for; they stay inside the bar.
+        const x = Math.min(
+          left - group.chord.left,
+          contentEnd - BEND_FRAME.stop * space - group.chord.right,
+        );
+        context.heads(group.chord, x, beat);
+      }
+    }
     for (const [g, grace] of beat.graces.entries()) {
       const after = beat.graces[g + 1];
       const nextLeft = after ? x + after.offset + after.chord.left : x + chord.left;
@@ -689,6 +712,8 @@ export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]
         0,
         band.bottom,
         drawn,
+        undefined,
+        contentEnd,
       );
     }
   }
@@ -703,13 +728,18 @@ function bendFrame(
   min: number,
   laneBottom: number,
   drawn: Set<string>,
-): void {
+  targets: BendPlan | undefined,
+  limit: number,
+): { x0: number; xEnd: number } | undefined {
   const { sink, space, placement } = context;
   const bent = mainHeads(chord).filter((head) => head.note.bend);
-  if (bent.length === 0) return;
+  if (bent.length === 0) return undefined;
   const spots = bent.map((head) => spotOf(context, chord, head, x, dots));
   const x0 = Math.max(...spots.map((spot) => spot.right)) + BEND_FRAME.gap * space;
-  const xEnd = Math.max(stop, x0 + min * space);
+  const { need = 0, tail = 0 } = targets ?? {};
+  const ideal = Math.max(stop - tail, x0 + Math.max(min * space, need));
+  // A squeezed bar gives the frame less than the heads asked for, but never less than its minimum.
+  const xEnd = targets ? Math.min(ideal, Math.max(limit - tail, x0 + min * space)) : ideal;
   const unit = space * chord.scale;
   const tops = bent.map(
     (head) => placement.top + head.y - glyphMetrics(head.glyph).bbox.top * unit,
@@ -738,4 +768,5 @@ function bendFrame(
       drawn,
     );
   }
+  return { x0, xEnd };
 }

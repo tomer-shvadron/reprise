@@ -1086,6 +1086,8 @@ describe('effects on five-line staves with a cache', () => {
           ),
         noteEffect(5, 2, { palmMute: true }),
         noteEffect(5, 2, { palmMute: false }),
+        noteEffect(1, 2, { bend: BENDS.two }),
+        noteEffect(1, 2, { bend: null }),
       ]);
     },
   );
@@ -1125,5 +1127,223 @@ describe('effects on five-line staves with a cache', () => {
           setNoteEffect({ noteId: noteOf(score, 0, 2, 0).id }, { accent: 'heavy' }),
         ),
     ]);
+  });
+});
+
+describe('bend target heads on a standard staff shown alone', () => {
+  const KEY = { fifths: 0, minor: false };
+  /** G3 on string 3, fret 7: D4, written D5 on a guitar's staff. */
+  const FRETTED = 62;
+  const written = (midiNote: number) => staffPosition(spell(midiNote, KEY), 'treble', 1);
+
+  /** The grace-size black heads drawn for a note, left to right. */
+  function targets(result: LayoutResult, node: string): Primitive[] {
+    const main = head(result, node);
+    return result.primitives
+      .filter(
+        (p) =>
+          p.kind === 'glyph' &&
+          p.glyph === 'noteheadBlack' &&
+          p.node === node &&
+          p !== main &&
+          main.kind === 'glyph' &&
+          p.size < main.size,
+      )
+      .sort((a, b) => a.bbox.x - b.bbox.x);
+  }
+
+  const heightOf = (result: LayoutResult, position: number): number => {
+    const { top, space } = staffOf(result);
+    return top + positionY(position, space);
+  };
+
+  const KINDS = [
+    ['quarter', []],
+    ['half', [1]],
+    ['full', [2]],
+    ['oneAndHalf', [3]],
+    ['two', [4]],
+    ['bendRelease', [2, 0]],
+    ['bendReleaseBend', []],
+    ['prebend', []],
+    ['prebendBend', [2]],
+    ['prebendRelease', [0]],
+    ['release', [0]],
+    ['hold', []],
+    ['custom', []],
+  ] as const;
+
+  it.each(KINDS)(
+    'draws %s with a grace-size head at each pitch it reaches, right of its arrival',
+    (kind, rises) => {
+      const built = guitar('standard')
+        .bar()
+        .beat('4', [note(3, 7, { bend: BENDS[kind] })])
+        .beat('4', [note(3, 5)])
+        .build({ ids: 'sequential' });
+      const result = laid(built);
+      const id = noteOf(built, 0, 0, 0, 0).id;
+      const heads = targets(result, id);
+      expect(heads).toHaveLength(rises.length);
+      const { space } = staffOf(result);
+      for (const [i, rise] of rises.entries()) {
+        const placed = heads[i];
+        if (!placed) throw new Error('no head');
+        expect(centreY(placed.bbox)).toBeCloseTo(heightOf(result, written(FRETTED + rise)), 1);
+      }
+      // No head is in parentheses, whichever way it was reached.
+      expect(named(result, 'noteheadParenthesisLeft', id)).toHaveLength(0);
+      const arrival = arrows(result)
+        .filter((p) => p.node === id)
+        .map((p) => centreX(p.bbox))
+        .sort((a, b) => a - b)
+        .slice(-rises.length || undefined);
+      const next = head(result, noteOf(built, 0, 0, 1, 0).id);
+      for (const [i, placed] of heads.entries()) {
+        const at = arrival[i];
+        if (at === undefined) throw new Error('no arrival');
+        const left = Math.min(
+          placed.bbox.x,
+          ...result.primitives
+            .filter((p) => p.node === id && p.kind === 'glyph' && p.glyph.startsWith('accidental'))
+            .map((p) => p.bbox.x),
+        );
+        expect(left).toBeGreaterThanOrEqual(at + 0.2 * space - EPSILON);
+        expect(rightOf(placed.bbox)).toBeLessThanOrEqual(next.bbox.x - 0.6 * space + EPSILON);
+      }
+    },
+  );
+
+  it('signs a target at its own pitch and keeps it in measure memory, in the next bar too', () => {
+    const built = guitar('standard')
+      .bar()
+      .beat('4', [note(3, 7, { bend: BENDS.half })])
+      .beat('4', [note(3, 7)])
+      .bar()
+      .beat('4', [note(3, 7, { bend: BENDS.half })])
+      .bar()
+      .beat('4', [note(3, 7)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const bent = noteOf(built, 0, 0, 0, 0).id;
+    const sharps = named(result, 'accidentalSharp', bent);
+    expect(sharps).toHaveLength(1);
+    // The D5 after the D#5 target needs a natural; the bar after a target ends on D# gets a
+    // reminder in parentheses.
+    const naturals = named(result, 'accidentalNatural');
+    expect(naturals.map((p) => p.node)).toEqual([
+      noteOf(built, 0, 0, 1, 0).id,
+      noteOf(built, 0, 2, 0, 0).id,
+    ]);
+    expect(named(result, 'accidentalParensLeft').map((p) => p.node)).toEqual([
+      noteOf(built, 0, 2, 0, 0).id,
+    ]);
+    const both = laid(built, { notation: { [built.tracks[0]?.id ?? '']: 'both' } });
+    expect(named(both, 'accidentalNatural')).toHaveLength(0);
+  });
+
+  it('draws a target above the staff with its own ledger lines, under the bend lane', () => {
+    const built = guitar('standard')
+      .bar()
+      .beat('4', [note(1, 15, { bend: BENDS.full })])
+      .beat('4', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const id = noteOf(built, 0, 0, 0, 0).id;
+    const [placed] = targets(result, id);
+    if (!placed) throw new Error('no head');
+    // G6 written, A6 reached.
+    expect(centreY(placed.bbox)).toBeCloseTo(heightOf(result, written(79 + 2)), 1);
+    const ledgers = result.primitives.filter(
+      (p) =>
+        p.kind === 'line' &&
+        p.node === beatOf(built, 0, 0, 0).id &&
+        p.y === p.y2 &&
+        p.x <= placed.bbox.x + placed.bbox.width &&
+        p.x2 >= placed.bbox.x &&
+        p.x2 - p.x < head(result, id).bbox.width * 1.6,
+    );
+    expect(ledgers.length).toBeGreaterThan(0);
+    const lane = result.primitives.filter((p) => p.kind === 'text' && p.text === 'full');
+    for (const label of lane) expect(bottomOf(label.bbox)).toBeLessThanOrEqual(placed.bbox.y);
+  });
+
+  it('shares one group between equal bends in a chord, and keeps a release clear of a fall', () => {
+    const chord = guitar('standard')
+      .bar()
+      .beat('4', [note(2, 8, { bend: BENDS.full }), note(3, 7, { bend: BENDS.full })])
+      .beat('4', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const result = laid(chord);
+    const [a, b] = beatOf(chord, 0, 0, 0).notes.map((n) => targets(result, n.id)[0]);
+    if (!a || !b) throw new Error('no heads');
+    expect(a.bbox.x).toBeCloseTo(b.bbox.x, 1);
+
+    const mixed = guitar('standard')
+      .bar()
+      .beat('4', [
+        note(2, 8, { bend: BENDS.prebendRelease }),
+        note(3, 7, { bend: BENDS.bendRelease }),
+      ])
+      .beat('4', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const laidMixed = laid(mixed);
+    const { space } = staffOf(laidMixed);
+    const first = targets(laidMixed, noteOf(mixed, 0, 0, 0, 1).id)[0];
+    if (!first) throw new Error('no head');
+    // The hold's dashed line ends where the fall departs, so the head stands left of it.
+    const holds = laidMixed.primitives.filter((p) => p.kind === 'line' && p.dash !== undefined);
+    const departs = Math.max(...holds.map((p) => (p.kind === 'line' ? p.x2 : 0)));
+    expect(rightOf(first.bbox)).toBeLessThanOrEqual(departs - 0.2 * space + EPSILON);
+  });
+
+  it('keeps every head clear of the shafts and the next beat when the beats are eighths', () => {
+    const built = guitar('standard')
+      .bar()
+      .beat('8', [note(3, 7, { bend: BENDS.bendRelease })])
+      .beat('8', [note(3, 7, { bend: BENDS.bendRelease })])
+      .beat('8', [note(3, 5)])
+      .beat('8', [note(3, 7, { bend: BENDS.full })])
+      .beat('8', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const { space } = staffOf(result);
+    const second = head(result, noteOf(built, 0, 0, 2, 0).id);
+    const heads = targets(result, noteOf(built, 0, 0, 1, 0).id);
+    expect(heads).toHaveLength(2);
+    for (const placed of heads) {
+      expect(rightOf(placed.bbox)).toBeLessThanOrEqual(second.bbox.x - 0.3 * space);
+    }
+    const [peak, back] = heads;
+    if (peak && back) expect(back.bbox.x).toBeGreaterThan(rightOf(peak.bbox));
+  });
+
+  it('draws none in both mode or on the tab, for a grace note, or for a natural harmonic', () => {
+    const bent = (builder: ScoreBuilder) =>
+      builder
+        .bar()
+        .beat('4', [note(3, 7, { bend: BENDS.full })])
+        .beat('4', [note(3, 5)])
+        .build({ ids: 'sequential' });
+    const both = bent(guitar('both'));
+    const inBoth = laid(both);
+    expect(targets(inBoth, noteOf(both, 0, 0, 0, 0).id)).toHaveLength(0);
+    const tab = bent(guitar('tab'));
+    expect(named(laid(tab), 'noteheadBlack')).toHaveLength(0);
+    const grace = guitar('standard')
+      .bar()
+      .beat('4', [note(3, 9)], {
+        grace: [{ duration: 16, before: true, notes: [note(3, 7, { bend: BENDS.full })] }],
+      })
+      .build({ ids: 'sequential' });
+    const graceResult = laid(grace);
+    const graceNote = beatOf(grace, 0, 0, 0).grace?.[0]?.notes[0];
+    expect(targets(graceResult, graceNote?.id ?? '')).toHaveLength(0);
+    const harmonic = guitar('standard')
+      .bar()
+      .beat('4', [note(1, 12, { harmonic: { kind: 'natural' }, bend: BENDS.full })])
+      .build({ ids: 'sequential' });
+    const harmonicResult = laid(harmonic);
+    expect(targets(harmonicResult, noteOf(harmonic, 0, 0, 0, 0).id)).toHaveLength(0);
   });
 });

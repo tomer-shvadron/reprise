@@ -18,7 +18,7 @@ import {
 } from './effects';
 import { GRACE_SCALE, noteMatches, restBounds, type BarPlan, type BeatPlan } from './plan';
 import {
-  beamY,
+  stemBeamY,
   beamLine,
   drawBeams,
   drawDots,
@@ -60,6 +60,7 @@ function drawChord(
   x: number,
   voice: number,
   beat: Id,
+  options: { anchors: boolean } = { anchors: true },
 ): Rect | undefined {
   const { sink, space, placement } = context;
   const top = placement.top;
@@ -95,7 +96,7 @@ function drawChord(
       }
     }
     box = box ? union(box, drawn.bbox) : drawn.bbox;
-    if (head.sounding) continue;
+    if (head.sounding || !options.anchors) continue;
     // A harmonic's diamond is taller than a staff space; its anchor keeps to one, as other heads'
     // do, so diamonds a third apart do not overlap. Percussion diamonds keep their glyph's box.
     const diamond = head.glyph.startsWith('noteheadDiamond') && head.note.harmonic !== undefined;
@@ -162,7 +163,7 @@ function drawGraces(context: Context, beat: BeatPlan, x: number): void {
       sink,
       stem.x,
       placement.top + grace.chord.stem.from,
-      beamY(stems, beam, stem.x),
+      stemBeamY(stems, beam, stem.x),
       space,
       GRACE_SCALE,
       beat.beat.id,
@@ -257,7 +258,7 @@ export function renderBar(
       const stem = stems[i];
       if (!beat.chord?.stem || !stem) continue;
       i += 1;
-      const tip = beamY(stems, beam, stem.x);
+      const tip = stemBeamY(stems, beam, stem.x);
       drawStem(sink, stem.x, top + beat.chord.stem.from, tip, space, 1, beat.beat.id);
       tips.set(beat, tip);
     }
@@ -341,6 +342,9 @@ export function renderBar(
       space,
       beatX: (beat) => beatX(context, beat),
       previousBeat,
+      heads: (chord, x, beat) => {
+        drawChord(context, chord, x, beat.voice, beat.beat.id, { anchors: false });
+      },
     };
     for (const [voice, beats] of plan.voices.entries()) drawConnections(connecting, voice, beats);
     drawStrokes(connecting);

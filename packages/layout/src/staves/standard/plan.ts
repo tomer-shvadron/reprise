@@ -3,6 +3,7 @@ import { beatTicks, type Beat, type Duration, type Finger, type Note } from '@re
 import { glyphMetrics, type GlyphName } from '../../metrics';
 import { glyphWidth } from '../../primitives';
 import type { StaffBar } from '../staff-module';
+import { bendSpan, type BendPlan, type TargetObstacle } from './bend-targets';
 import {
   crossesLedger,
   headEdges,
@@ -17,6 +18,7 @@ import {
 import {
   articulationHalf,
   articulationReach,
+  headReach,
   SLIDE,
   STROKE,
   beamedShortfall,
@@ -30,11 +32,12 @@ import {
   barAccidentals,
   harmonicHead,
   placeNote,
+  placeTargets,
   soundingKey,
   type ShownAccidental,
 } from './pitch';
 import { beamCount, beamGroups, tupletGroups, type RhythmEvent } from '../rhythm';
-import { BEND_ROOM, connections, letterReach } from '../effects';
+import { BEND_FRAME, BEND_ROOM, connections, letterReach } from '../effects';
 import {
   beamLine,
   dotsWidth,
@@ -99,6 +102,8 @@ export interface BeatPlan {
   fingering: { glyph: GlyphName; note: Note }[];
   articulation?: ArticulationPlan;
   tremolo?: TremoloPlan;
+  /** The target heads of its bends, on a staff shown alone. */
+  bend?: BendPlan;
   /** The arpeggio or brush column's centre, from the beat's x. */
   strokeX?: number;
   /** How far right of its onset the beat is drawn, clear of an earlier voice's chord there. */
@@ -231,6 +236,8 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
   const percussion = options.percussion;
   const previousBar = input.barIndex > 0 ? track.bars[input.barIndex - 1] : undefined;
   const previousKey = input.score.masterBars[input.barIndex - 1]?.keySignature;
+  // The track's only staff: it also carries what both mode leaves to the tab.
+  const lone = input.staves.length === 1;
   const accidentals = percussion
     ? new Map<string, ShownAccidental>()
     : barAccidentals(
@@ -240,10 +247,9 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
         options.courtesyAccidentals && previousBar && previousKey
           ? { bar: previousBar, key: previousKey }
           : undefined,
+        lone,
       );
   const multiVoice = bar.voices.filter((voice) => voice.beats.some(hasContent)).length > 1;
-  // The track's only staff: it also carries what both mode leaves to the tab.
-  const lone = input.staves.length === 1;
   const middle = positionY(4, space);
   const time = input.masterBar.timeSignature;
 
@@ -257,6 +263,79 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
       const shown = accidentals.get(soundingKey(note.id));
       return [main, { note, ...diamond, sounding: true, ...(shown && { accidental: shown }) }];
     });
+  const planTargets = (plan: BeatPlan, chord: ChordPlan): void => {
+    const bent = mainHeads(chord).filter(({ note }) => note.bend);
+    if (bent.length === 0) return;
+    const { dots } = plan.beat;
+    const d =
+      Math.max(...bent.map((head) => headReach(chord, head, dots, space))) + BEND_FRAME.gap * space;
+    const byPosition = new Map<number, ChordNote[]>();
+    const obstacles: TargetObstacle[] = [];
+    for (const { note } of bent) {
+      for (const { target, placed, key: id } of placeTargets(track, note, key, input.clef)) {
+        const shown = accidentals.get(id);
+        const entry: ChordNote = {
+          note,
+          ...placed,
+          ghost: false,
+          ...(shown && { accidental: shown }),
+        };
+        const group = byPosition.get(target.position) ?? [];
+        if (
+          !group.some((other) => other.position === entry.position && other.alter === entry.alter)
+        ) {
+          group.push(entry);
+        }
+        byPosition.set(target.position, group);
+      }
+      const points = [...(note.bend?.points ?? [])].sort((a, b) => a.position - b.position);
+      if (Math.max(0, ...points.map((point) => point.value)) <= 0) continue;
+      // A bend that starts raised is drawn from the onset, not from the frame's start.
+      const offset = (position: number): number =>
+        (points[0]?.value ?? 0) > 0 ? d * (1 - position / 60) : 0;
+      for (const [i, q] of points.entries()) {
+        const p = points[i - 1];
+        if (!p) continue;
+        if (q.value < p.value && q.value <= 0) {
+          obstacles.push({ position: p.position, offset: offset(p.position) });
+        }
+        if (q.value > p.value && p.value <= 0) {
+          obstacles.push({ position: q.position, offset: offset(q.position) });
+        }
+      }
+    }
+    const groups = [...byPosition.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([position, notes]) => ({
+        position,
+        chord: planChord(notes, {
+          duration: 4,
+          dots: 0,
+          direction: 'up',
+          space,
+          scale: GRACE_SCALE,
+          multiVoice: false,
+          stemless: true,
+          reachMiddle: false,
+        }),
+      }));
+    if (groups.length === 0) return;
+    for (const { position } of groups) obstacles.push({ position, offset: 0 });
+    const { need, tail } = bendSpan(
+      groups.map(({ position, chord: { left, right } }) => ({ position, width: right - left })),
+      obstacles,
+      space,
+    );
+    plan.bend = { groups, need, tail };
+    plan.right = Math.max(
+      plan.right,
+      d + Math.max(BEND_FRAME.min * space, need) + tail + BEND_FRAME.stop * space,
+    );
+    for (const { chord: group } of groups) {
+      plan.top = Math.min(plan.top, group.top);
+      plan.bottom = Math.max(plan.bottom, group.bottom);
+    }
+  };
   // A harmonic's sounding diamond never turns its stem.
   const mainPositions = (chord: readonly ChordNote[]): number[] =>
     chord.flatMap(({ position, sounding }) => (sounding ? [] : [position]));
@@ -377,6 +456,7 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
         const right = Math.max(...heads.map((head) => headEdges(planned, head).right));
         plan.right = Math.max(plan.right, right + BEND_ROOM.main * space);
       }
+      if (lone && !percussion) planTargets(plan, planned);
       planGraces(plan, chordNotes, space, multiVoice, lone && !percussion);
       if (!percussion) {
         for (const head of [...heads].reverse()) {
