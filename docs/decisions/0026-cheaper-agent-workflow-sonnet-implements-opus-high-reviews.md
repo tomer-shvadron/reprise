@@ -18,7 +18,7 @@ that changes nothing, a separate fixer, the Markdown-only exception, the lead's 
 
 | Step      | Model      | Effort                                                                                  |
 | --------- | ---------- | --------------------------------------------------------------------------------------- |
-| Plan      | Opus       | high; skipped for size-S issues (implementer plans inline), Markdown-only changes |
+| Plan      | Opus       | high; skipped for size-S issues (implementer plans inline), Markdown-only changes       |
 | Implement | Sonnet 5.5 | medium                                                                                  |
 | Review    | Opus       | high; stays the quality gate                                                            |
 | Fix       | Sonnet 5.5 | medium, or resume the implementer while its context is warm                             |
