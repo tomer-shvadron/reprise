@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { CI_FACTOR, type ResolvedBudget } from './budgets.ts';
+import type { ResolvedBudget } from './budgets.ts';
 import {
   MIN_DELTA_SHARE,
   MIN_PAIRED_ROUNDS,
@@ -178,13 +178,16 @@ describe('per-row floors', () => {
   });
 });
 
-describe('the continuous re-layout floor', () => {
-  it('is 6 ms on CI and is the only override', () => {
-    const metric = 'Re-layout after a rhythm edit, continuous';
-    expect(Object.keys(FLOOR_SHARES)).toEqual([metric]);
-    expect(floorShare(metric) * 16 * CI_FACTOR).toBeCloseTo(6);
-    expect(floorShare('Re-layout after a single-note edit')).toBe(MIN_DELTA_SHARE);
-    expect(floorShare('Full layout, cold')).toBe(MIN_DELTA_SHARE);
+describe('the shared floor', () => {
+  it('has no override, so every budgeted row takes the default share', () => {
+    expect(Object.keys(FLOOR_SHARES)).toEqual([]);
+    for (const metric of [
+      'Re-layout after a rhythm edit, continuous',
+      'Re-layout after a single-note edit',
+      'Full layout, cold',
+    ]) {
+      expect(floorShare(metric)).toBe(MIN_DELTA_SHARE);
+    }
   });
 });
 
@@ -304,7 +307,7 @@ describe('the roadmap note', () => {
     expect(note).toContain('The label stays on the PR until it is removed');
     expect(note).toContain('0.83 to 1.14');
     expect(note).toContain('2.4 to 4.3 minutes');
-    expect(note).toContain('6 ms on CI');
-    expect(note).toContain('slowdowns up to about 2.1×');
+    expect(note).toContain('the median of the edits that keep the segment breaks');
+    expect(note).toContain('Re-layout after a segment-break-moving edit, continuous');
   });
 });

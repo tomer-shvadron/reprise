@@ -3,17 +3,14 @@
  * reads, the verdict on a row across rounds, and the tables. Nothing here spawns a process, so
  * Node runs it before `pnpm install`.
  */
-import { CI_FACTOR, type ResolvedBudget } from './budgets.ts';
+import type { ResolvedBudget } from './budgets.ts';
 
 /** A row fails above this paired median ratio, and only with a delta over the minimum below. */
 export const TOLERANCE = 1.2;
 /** The smallest delta that fails a row, as a share of its threshold, so a sub-ms wobble never does. */
 export const MIN_DELTA_SHARE = 0.05;
 /** Per-metric overrides of `MIN_DELTA_SHARE`. */
-export const FLOOR_SHARES: Readonly<Record<string, number>> = {
-  // 6 ms on CI (16 ms threshold × 3.4): the worst unchanged delta, 3.9 ms, × 1.5 (#143).
-  'Re-layout after a rhythm edit, continuous': 6 / (16 * CI_FACTOR),
-};
+export const FLOOR_SHARES: Readonly<Record<string, number>> = {};
 
 export function floorShare(
   metric: string,
