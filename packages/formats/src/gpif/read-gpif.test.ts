@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { GpifError } from './errors';
 import { readGpif, type GpifReadResult } from './read-gpif';
+import { writeGpif } from './write-gpif';
 import {
   bar,
   beat,
@@ -712,6 +713,27 @@ describe('tracks', () => {
       );
       expect(beatsOf(score, 0)[0]?.mix?.tempo).toEqual({ bpm: 60, duration: 6 });
     });
+
+    it.each([Infinity, NaN])(
+      'caps a Position of %s at its bar and round-trips the score',
+      (position) => {
+        const { score } = read(
+          gpif({
+            automations: [tempo(0, 0, '120 2'), tempo(1, position, '60 2', true)],
+            masterBars: [masterBar('0'), masterBar('1')],
+            bars: [bar('0', '0 -1 -1 -1'), bar('1', '1 -1 -1 -1')],
+            voices: [voice('0', '0 1 2 3 4 5'), voice('1', '6')],
+            beats: [...sixBeats, beat('6', '1', '0')],
+            notes: [note('0', 2, 5)],
+            rhythms: [...QUARTERS, rhythm('1', 'Whole')],
+          }),
+        );
+        expect(ScoreSchema.safeParse(score).success).toBe(true);
+        const written = writeGpif(score).xml;
+        expect(written).not.toMatch(/Infinity|NaN/);
+        expect(ScoreSchema.safeParse(read(written).score).success).toBe(true);
+      },
+    );
 
     it('puts a sound change past 1 on the overflow beat', () => {
       const sounds = `<Automations><Automation><Type>Sound</Type><Linear>false</Linear><Bar>0</Bar><Position>1.25</Position>

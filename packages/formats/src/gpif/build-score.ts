@@ -604,7 +604,12 @@ class ScoreBuilder {
 
   #tickIn(barIndex: number, position: number): number {
     const masterBar = this.#masterBars[barIndex];
-    return masterBar ? position * barTicks(masterBar) : 0;
+    if (!masterBar || !(position > 0)) return 0;
+    const ceiling = automationBarTicks(
+      { masterBars: this.#masterBars, tracks: this.#tracks },
+      barIndex,
+    );
+    return Math.min(position * barTicks(masterBar), ceiling);
   }
 
   #quartersBetween(from: GpifTempo, to: GpifTempo): number {
