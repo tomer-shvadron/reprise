@@ -1,4 +1,4 @@
-import { ScoreSchema, validateScore, type Score } from '@reprise/model';
+import { ScoreSchema, validateScore, type MixerChange, type Score } from '@reprise/model';
 import { fullScore, largeScore, note, score } from '@reprise/model/testing';
 import { unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
@@ -8,6 +8,7 @@ import { readPartConfiguration } from '../src/gpif/part-configuration';
 import { fixtureBytes, manifestEntries } from './corpus';
 import { roundTripView } from './gp-round-trip';
 import { kitchenSink } from './kitchen-sink';
+import { overfullBarScore } from './overfull-bar';
 
 /**
  * What our own reader reports about every file the writer makes: the Guitar Pro elements the
@@ -527,6 +528,74 @@ describe('the gpif document', () => {
     expect(xml.match(/<Rhythm id=/g)).toHaveLength(2);
     expect(xml.match(/<Item id=/g)).toHaveLength(1);
     expect(xml.match(/<Chord>0<\/Chord>/g)).toHaveLength(2);
+  });
+});
+
+describe('an over-full bar', () => {
+  const AUTOMATION =
+    /<Linear>(\w+)<\/Linear>\n<Bar>(\d+)<\/Bar>\n<Position>([\d.]+)<\/Position>\n<Visible>true<\/Visible>\n<Value>([^<]+)<\/Value>/g;
+  const automationsOf = (xml: string): string[][] =>
+    [...xml.matchAll(AUTOMATION)].map((match) => match.slice(1));
+  const beatsOf = (result: { score: Score }, bar = 0) =>
+    result.score.tracks[0]?.bars[bar]?.voices[0]?.beats ?? [];
+  const sixQuarters = (mixes: Partial<Record<number, MixerChange>>): Score => {
+    let builder = score().tempo(120).track('guitar').bar();
+    for (let index = 0; index < 6; index++) {
+      const mix = mixes[index];
+      builder = builder.beat('4', [note(1, index)], mix ? { mix } : {});
+    }
+    builder = builder.bar();
+    for (let index = 0; index < 4; index++) builder = builder.beat('4', [note(1, index)]);
+    return builder.build({ validate: false });
+  };
+
+  it('keeps tempo changes on the overflow in their own bar', () => {
+    const source = overfullBarScore();
+    const result = roundTrip(source);
+    expect(result.dropped).toEqual([]);
+    expect(result.warnings.map((warning) => `${warning.code}:${warning.path}`)).toEqual([
+      ...WRITER_ELEMENTS,
+      'not-modelled:MasterTrack/Automations/Automation',
+      'voice-overfull:score.tracks[0].bars[0].voices[0]',
+    ]);
+    const beats = beatsOf(result);
+    expect(beats[2]?.mix?.tempo).toEqual({ bpm: 100, duration: 2 });
+    expect(beats[4]?.mix?.tempo).toEqual({ bpm: 100 });
+    expect(beats[5]?.mix?.tempo).toEqual({ bpm: 60 });
+    expect(result.score.masterBars[1]?.tempo).toBeUndefined();
+    expect(roundTripView(result.score)).toEqual(roundTripView(source));
+  });
+
+  it('writes them at their offset over the written length', () => {
+    expect(automationsOf(writeGpif(overfullBarScore()).xml)).toEqual([
+      ['false', '0', '0', '120 2'],
+      ['false', '0', '0.5', '120 2'],
+      ['true', '0', '1', '100 2'],
+      ['false', '0', '1.25', '60 2'],
+    ]);
+  });
+
+  it('measures a ramp across an over-full bar by its longest voice', () => {
+    const source = sixQuarters({ 4: { tempo: { bpm: 60, duration: 4 } } });
+    expect(automationsOf(writeGpif(source).xml)).toEqual([
+      ['false', '0', '0', '120 2'],
+      ['false', '0', '1', '120 2'],
+      ['true', '1', '0.5', '60 2'],
+    ]);
+    const result = roundTrip(source);
+    expect(result.dropped).toEqual([]);
+    expect(beatsOf(result)[4]?.mix?.tempo).toEqual({ bpm: 60, duration: 4 });
+    expect(beatsOf(result, 1)[2]?.mix?.tempo).toEqual({ bpm: 60 });
+    expect(roundTripView(result.score)).toEqual(roundTripView(source));
+  });
+
+  it('keeps a program change on the overflow on its beat', () => {
+    const source = sixQuarters({ 5: { program: 30 } });
+    const result = roundTrip(source);
+    const beats = beatsOf(result);
+    expect(beats[5]?.mix).toEqual({ program: 30 });
+    expect(beats[4]?.mix).toBeUndefined();
+    expect(roundTripView(result.score)).toEqual(roundTripView(source));
   });
 });
 

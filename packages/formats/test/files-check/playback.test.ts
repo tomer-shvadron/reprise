@@ -172,6 +172,23 @@ describe('the tempo check', () => {
     expect(tempo()).toMatchObject({ violations: [], explained: [] });
   });
 
+  it('explains an over-full pass whose overflow carries a tempo change', async () => {
+    let builder = score().tempo(120).track('guitar').bar();
+    for (let index = 0; index < 6; index++) {
+      builder = builder.beat(
+        '4',
+        [note(1, index)],
+        index === 5 ? { mix: { tempo: { bpm: 60 } } } : {},
+      );
+    }
+    builder = builder.bar();
+    for (let index = 0; index < 4; index++) builder = builder.beat('4', [note(1, index)]);
+    const { tempo } = await compare(writeGp(builder.build({ validate: false })).bytes);
+    const result = tempo();
+    expect(result.violations).toEqual([]);
+    expect(result.explained.map((entry) => entry.id)).toEqual(['overfull-bar']);
+  });
+
   const overfullSong = (): Score =>
     score()
       .tempo(120)

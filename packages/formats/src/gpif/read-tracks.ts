@@ -168,7 +168,7 @@ function toTempo(sink: WarningSink, raw: RawAutomation, path: string): GpifTempo
   const tempo: GpifTempo = {
     path,
     bar: raw.bar,
-    position: Math.min(1, Math.max(0, raw.position)),
+    position: Math.max(0, raw.position),
     linear: raw.linear,
     bpm: value * entry[1],
   };
@@ -546,7 +546,7 @@ export function readTrack(sink: WarningSink, element: XmlElement, path: string):
             path: automationPath,
             type: raw.type,
             bar: raw.bar,
-            position: Math.min(1, Math.max(0, raw.position)),
+            position: Math.max(0, raw.position),
             value: raw.value,
           };
           track.automations.push(entry);

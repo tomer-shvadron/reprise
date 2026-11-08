@@ -1,7 +1,8 @@
-import { PPQ, barTicks, beatStartTicks, type Score } from '@reprise/model';
+import { PPQ, beatStartTicks, type Score } from '@reprise/model';
 import { fullScore, largeScore } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
+import { automationBarStarts } from '../src/gpif/automation-bars';
 import { readGp, readGp3To5, readGpx, writeGp } from '../src/index';
 import { countNotes, fixtureBytes, manifestEntries } from './corpus';
 import { kitchenSink } from './kitchen-sink';
@@ -10,6 +11,7 @@ import { loadWithAlphaTab, projectAlphaTab } from './oracle/project-alphatab';
 import { projectOurs } from './oracle/project-ours';
 import type { ScoreProjection } from './oracle/projection';
 import { toleranceFor, type Projections } from './oracle/tolerances';
+import { overfullBarScore } from './overfull-bar';
 
 /**
  * alphaTab stands in for Guitar Pro, which cannot run here: every file the writer makes must
@@ -47,10 +49,7 @@ const trackOf = (
 
 /** The master bars a tempo ramp starts in or ends in. */
 function rampBars(score: Score): Set<number> {
-  const starts = [0];
-  for (const masterBar of score.masterBars) {
-    starts.push((starts.at(-1) ?? 0) + barTicks(masterBar));
-  }
+  const starts = automationBarStarts(score);
   const barAt = (tick: number): number => {
     const next = starts.findIndex((start) => start > tick);
     return next === -1 ? score.masterBars.length - 1 : Math.max(0, next - 1);
@@ -157,6 +156,7 @@ const sources: [string, () => Score][] = [
   ['fullScore()', fullScore],
   ['the kitchen sink', kitchenSink],
   ['largeScore(4, 32, { structure: true })', () => largeScore(4, 32, { structure: true })],
+  ['an over-full bar with tempo changes past its bar line', overfullBarScore],
 ];
 
 interface Comparison {
@@ -219,6 +219,29 @@ describe.each(comparisons)('alphaTab reads $name', ({ source, read, written, dif
   it('projecting the same as our reader, up to the tolerances', () => {
     const unexplained = differences.filter((difference) => !explained(difference, written));
     expect(unexplained.map(formatDifference)).toEqual([]);
+  });
+});
+
+describe('alphaTab reads an over-full bar', () => {
+  it('with each tempo change past the bar line in that bar, at its ratio of the written length', () => {
+    const read = loadWithAlphaTab(writeGp(overfullBarScore()).bytes);
+    expect(
+      read.masterBars.map((masterBar) =>
+        masterBar.tempoAutomations.map((automation) => [
+          automation.ratioPosition,
+          automation.value,
+        ]),
+      ),
+    ).toEqual([
+      [
+        [0, 120],
+        [0.5, 120],
+        [1, 100],
+        [1.25, 60],
+      ],
+      [],
+      [],
+    ]);
   });
 });
 

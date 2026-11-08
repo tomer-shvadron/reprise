@@ -54,7 +54,7 @@ export interface GpifMeta {
 export interface GpifTempo {
   path: string;
   bar: number;
-  /** 0 to 1 across the bar. */
+  /** A ratio of the bar's written length; 1 or more past the bar line of an over-full bar. */
   position: number;
   /** The ramp from the previous tempo automation into this one is linear. */
   linear: boolean;

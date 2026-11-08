@@ -7,6 +7,7 @@ import {
   type TempoMark,
 } from '@reprise/model';
 
+import { automationBarStarts } from './automation-bars';
 import type { DropCollector } from './dropped';
 
 /** Ticks closer than this are one moment, as the reader's own tolerance has it. */
@@ -15,7 +16,7 @@ const TICK_TOLERANCE = 0.5;
 /** One `MasterTrack/Automations/Automation` of type `Tempo`. */
 export interface TempoAutomation {
   bar: number;
-  /** 0 to 1 across the bar. */
+  /** A ratio of the bar's written length; 1 or more on an over-full bar's overflow. */
   position: number;
   mark: TempoMark;
   /** gpif's `Linear`: the tempo ramps from the previous automation into this one. */
@@ -38,17 +39,6 @@ function markOf(tempo: TempoMark): TempoMark {
   if (tempo.unit !== undefined) mark.unit = tempo.unit;
   if (tempo.label !== undefined) mark.label = tempo.label;
   return mark;
-}
-
-/** Bar start ticks in written order, with the score's end as the last entry. */
-export function barStarts(score: Pick<Score, 'masterBars'>): number[] {
-  const starts = [0];
-  let tick = 0;
-  for (const masterBar of score.masterBars) {
-    tick += barTicks(masterBar);
-    starts.push(tick);
-  }
-  return starts;
 }
 
 /**
@@ -157,10 +147,12 @@ function collectEvents(score: Score, starts: number[], drops: DropCollector): Te
  * holding the tempo in effect, and a linear one `duration` quarter notes later holding the
  * target; the reader turns that pair back into the ramp, and the target into a mark at its end.
  * A ramp gpif cannot express (cut short by the next change, ending past the score or between
- * beats, or ending on a different mark) is reported and written as a step to its target.
+ * beats, or ending on a different mark) is reported and written as a step to its target. Each
+ * automation goes in the bar holding its moment on the automation timeline, so a change on an
+ * over-full bar's overflow stays in that bar.
  */
 export function planTempos(score: Score, drops: DropCollector): TempoAutomation[] {
-  const starts = barStarts(score);
+  const starts = automationBarStarts(score);
   const end = starts.at(-1) ?? 0;
   const events = collectEvents(score, starts, drops);
   let beatStarts: number[] | undefined;
