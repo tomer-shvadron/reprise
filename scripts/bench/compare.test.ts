@@ -3,12 +3,13 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import type { ResolvedBudget } from './budgets.ts';
+import { CI_FACTOR, type ResolvedBudget } from './budgets.ts';
 import {
   MIN_DELTA_SHARE,
   MIN_PAIRED_ROUNDS,
   ROUNDS,
   floorShare,
+  FLOOR_SHARES,
   acceptedLines,
   TOLERANCE,
   comparedRows,
@@ -177,6 +178,16 @@ describe('per-row floors', () => {
   });
 });
 
+describe('the continuous re-layout floor', () => {
+  it('is 6 ms on CI and is the only override', () => {
+    const metric = 'Re-layout after a rhythm edit, continuous';
+    expect(Object.keys(FLOOR_SHARES)).toEqual([metric]);
+    expect(floorShare(metric) * 16 * CI_FACTOR).toBeCloseTo(6);
+    expect(floorShare('Re-layout after a single-note edit')).toBe(MIN_DELTA_SHARE);
+    expect(floorShare('Full layout, cold')).toBe(MIN_DELTA_SHARE);
+  });
+});
+
 describe('accepted rows', () => {
   it('get a line saying the label stays until removed', () => {
     const accepted = verdict(COLD, five(200), five(400), true);
@@ -293,5 +304,7 @@ describe('the roadmap note', () => {
     expect(note).toContain('The label stays on the PR until it is removed');
     expect(note).toContain('0.83 to 1.14');
     expect(note).toContain('2.4 to 4.3 minutes');
+    expect(note).toContain('6 ms on CI');
+    expect(note).toContain('slowdowns up to about 2.1×');
   });
 });
