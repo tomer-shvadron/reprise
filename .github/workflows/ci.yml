@@ -225,14 +225,14 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      issues: read
-      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           # The merge commit and its first parent, main as the PR would land on it.
           fetch-depth: 2
+          # No PR code gets the token; the label step passes it explicitly.
+          persist-credentials: false
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -277,4 +277,6 @@ jobs:
       - name: Bench against main
         if: steps.gate.outputs.run == 'true'
         timeout-minutes: 10
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node scripts/bench/compare-run.ts "$RUNNER_TEMP/main" ${{ steps.label.outputs.accepted == 'true' && '--accept-slower' || '' }}

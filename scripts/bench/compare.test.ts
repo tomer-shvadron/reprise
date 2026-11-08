@@ -6,6 +6,10 @@ import { describe, expect, it } from 'vitest';
 import type { ResolvedBudget } from './budgets.ts';
 import {
   MIN_DELTA_SHARE,
+  MIN_PAIRED_ROUNDS,
+  ROUNDS,
+  floorShare,
+  acceptedLines,
   TOLERANCE,
   comparedRows,
   markdownSummary,
@@ -117,6 +121,71 @@ describe('verdict', () => {
   });
 });
 
+describe('verdict boundaries', () => {
+  it('passes exactly the tolerance and fails just over it', () => {
+    expect(verdict(COLD, five(400), five(480), false).status).toBe('pass');
+    expect(verdict(COLD, five(400), five(484), false).status).toBe('slower');
+  });
+
+  it('passes a delta exactly at the floor and fails just over it', () => {
+    const floor = COLD.threshold * MIN_DELTA_SHARE;
+    expect(verdict(COLD, five(100), five(100 + floor), false).status).toBe('pass');
+    expect(verdict(COLD, five(100), five(100 + floor + 1), false).status).toBe('slower');
+  });
+
+  it('reports exactly 1/tolerance as pass and just under it as faster', () => {
+    expect(verdict(COLD, five(240), five(200), false).status).toBe('pass');
+    expect(verdict(COLD, five(240), five(199), false).status).toBe('faster');
+  });
+
+  it('measures with exactly the minimum paired rounds and not with one fewer', () => {
+    const rounds = (paired: number): (number | undefined)[] =>
+      Array.from({ length: 5 }, (_, index) => (index < paired ? 400 : undefined));
+    expect(verdict(COLD, five(200), rounds(MIN_PAIRED_ROUNDS), false).status).toBe('slower');
+    expect(verdict(COLD, five(200), rounds(MIN_PAIRED_ROUNDS - 1), false).status).toBe(
+      'not measured',
+    );
+  });
+
+  it('pairs only the rounds where base measured too', () => {
+    expect(verdict(COLD, [undefined, undefined, 200, 200, 200], five(400), false).status).toBe(
+      'slower',
+    );
+  });
+
+  it('keeps not measured when the label is on', () => {
+    expect(verdict(COLD, five(200), five(undefined), true).status).toBe('not measured');
+  });
+
+  it('fails every row when base reported nothing, instead of calling them new', () => {
+    expect(verdict(COLD, five(undefined), five(900), false, false).status).toBe('not measured');
+  });
+});
+
+describe('per-row floors', () => {
+  it('defaults to the shared share and takes an override', () => {
+    expect(floorShare('Anything')).toBe(MIN_DELTA_SHARE);
+    expect(floorShare('Re-layout', { 'Re-layout': 0.5 })).toBe(0.5);
+  });
+
+  it('lets a row floor decide the verdict', () => {
+    const tight = { ...RELAYOUT, floorShare: 0.01 };
+    const loose = { ...RELAYOUT, floorShare: 0.5 };
+    expect(verdict(tight, five(10), five(13), false).status).toBe('slower');
+    expect(verdict(loose, five(10), five(13), false).status).toBe('pass');
+    expect(verdict(tight, five(10), five(13), false).minDelta).toBeCloseTo(0.544);
+  });
+});
+
+describe('accepted rows', () => {
+  it('get a line saying the label stays until removed', () => {
+    const accepted = verdict(COLD, five(200), five(400), true);
+    expect(acceptedLines([accepted, verdict(COLD, five(200), five(200), true)])).toEqual([
+      'Full layout, cold is 2.00× main (+200.0 ms), accepted by the bench:accept-slower label. The label stays until removed, so it accepts every later push too.',
+    ]);
+  });
+});
+
 describe('the tables', () => {
   const pass = verdict(COLD, [200, 210, 190], [202, 208, 192], false);
   const slower = verdict(RELAYOUT, [10, 10, 10], [20, 20, 20], false);
@@ -210,11 +279,19 @@ describe('watched paths', () => {
   });
 });
 
+const WORDS: Record<number, string> = { 3: 'three', 5: 'five', 7: 'seven' };
+
 describe('the roadmap note', () => {
-  it('states the tolerance, the delta share and the label', () => {
-    const note = readFileSync(ROADMAP, 'utf8');
-    expect(note).toContain(`×${TOLERANCE.toFixed(2)}`);
-    expect(note).toContain(`${String(MIN_DELTA_SHARE * 100)}%`);
+  const note = readFileSync(ROADMAP, 'utf8');
+
+  it('states the rule, the floor, the label and the measured ranges', () => {
+    expect(note).toContain(
+      `above ×${TOLERANCE.toFixed(2)} and whose paired median delta is above a per-row floor, ${String(MIN_DELTA_SHARE * 100)}% of the row's threshold`,
+    );
+    expect(note).toContain(`${WORDS[ROUNDS] ?? String(ROUNDS)} alternating rounds`);
     expect(note).toContain('bench:accept-slower');
+    expect(note).toContain('The label stays on the PR until it is removed');
+    expect(note).toContain('0.83 to 1.14');
+    expect(note).toContain('2.4 to 4.3 minutes');
   });
 });

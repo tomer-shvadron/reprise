@@ -17,7 +17,10 @@ import {
   readReport,
   testNamePattern,
   textTable,
+  NO_BASE_REPORT,
+  acceptedLines,
   failureLines,
+  floorShare,
   touchesWatched,
   verdict,
   watchedPaths,
@@ -80,7 +83,9 @@ function appendTo(variable: string, text: string): void {
 
 function gate(rev: string): void {
   const { budgets, error } = loadBudgets(join(head, 'docs/plans/roadmap.md'), process.env);
-  const changed = git(head, ['diff', '--name-only', rev, 'HEAD']).split('\n').filter(Boolean);
+  const changed = git(head, ['diff', '--name-only', '--no-renames', rev, 'HEAD'])
+    .split('\n')
+    .filter(Boolean);
   // A table that does not parse is itself a reason to run: the comparison reports the error.
   const run =
     error !== '' || touchesWatched(changed, watchedPaths(comparedRows(budgets), workspaces()));
@@ -151,22 +156,29 @@ function compare(baseDir: string, rounds: number, accepted: boolean): void {
     }
   }
 
+  const baseReported = measured.base.some((result) => result.size > 0);
   const verdicts = rows.map((row) =>
     verdict(
-      row,
+      { ...row, floorShare: floorShare(row.metric) },
       measured.base.map((result) => result.get(row.metric)),
       measured.head.map((result) => result.get(row.metric)),
       accepted,
+      baseReported,
     ),
   );
   const cpu = cpus();
   const title =
     `Bench against main: ${String(rounds)} rounds, alternating, on ${cpu[0]?.model.trim() ?? 'unknown CPU'} ` +
-    `×${String(cpu.length)}, Node ${process.version} (PR ${git(head, ['rev-parse', '--short=7', 'HEAD'])}, ` +
+    `×${String(cpu.length)}, Node ${process.version} (PR ${(process.env['PR_HEAD_SHA'] || git(head, ['rev-parse', 'HEAD'])).slice(0, 7)}, ` +
     `main ${git(baseDir, ['rev-parse', '--short=7', 'HEAD'])})`;
   console.log(`\n${textTable(verdicts, title)}`);
   for (const line of failureLines(verdicts)) console.log(line);
-  appendTo('GITHUB_STEP_SUMMARY', `${markdownSummary(verdicts, rounds, title)}\n`);
+  for (const line of acceptedLines(verdicts)) console.log(`::warning::${line}`);
+  if (!baseReported) console.log(`::error::${NO_BASE_REPORT}`);
+  appendTo(
+    'GITHUB_STEP_SUMMARY',
+    `${markdownSummary(verdicts, rounds, title)}\n${baseReported ? '' : `${NO_BASE_REPORT}\n`}`,
+  );
   if (verdicts.some(({ status }) => status === 'slower' || status === 'not measured')) {
     process.exitCode = 1;
   }

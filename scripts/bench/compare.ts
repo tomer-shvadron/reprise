@@ -9,6 +9,15 @@ import type { ResolvedBudget } from './budgets.ts';
 export const TOLERANCE = 1.2;
 /** The smallest delta that fails a row, as a share of its threshold, so a sub-ms wobble never does. */
 export const MIN_DELTA_SHARE = 0.05;
+/** Per-metric overrides of `MIN_DELTA_SHARE`; empty, so every row takes the default. */
+export const FLOOR_SHARES: Readonly<Record<string, number>> = {};
+
+export function floorShare(
+  metric: string,
+  overrides: Readonly<Record<string, number>> = FLOOR_SHARES,
+): number {
+  return overrides[metric] ?? MIN_DELTA_SHARE;
+}
 export const ROUNDS = 5;
 /** Fewer paired rounds than this and a row counts as not measured. */
 export const MIN_PAIRED_ROUNDS = 3;
@@ -28,7 +37,7 @@ export interface Verdict {
   rounds: { base: number | undefined; head: number | undefined }[];
 }
 
-export type Row = Pick<ResolvedBudget, 'metric' | 'threshold'>;
+export type Row = Pick<ResolvedBudget, 'metric' | 'threshold'> & { floorShare?: number };
 
 export function comparedRows(budgets: readonly ResolvedBudget[]): ResolvedBudget[] {
   return budgets.filter(({ unit, assertedBy }) => unit === 'ms' && assertedBy.kind === 'bench');
@@ -90,8 +99,9 @@ export function verdict(
   base: readonly (number | undefined)[],
   head: readonly (number | undefined)[],
   accepted: boolean,
+  baseReported = true,
 ): Verdict {
-  const minDelta = row.threshold * MIN_DELTA_SHARE;
+  const minDelta = row.threshold * (row.floorShare ?? MIN_DELTA_SHARE);
   const rounds = head.map((value, index) => ({ base: base[index], head: value }));
   const paired = rounds.flatMap(({ base: b, head: h }) =>
     b !== undefined && h !== undefined ? [{ ratio: h / b, delta: h - b }] : [],
@@ -106,6 +116,8 @@ export function verdict(
     rounds,
     status: 'not measured',
   };
+  // `new` means base reported other rows but not this one; an empty base is a broken base.
+  if (!baseReported) return result;
   if (defined(base).length === 0 && defined(head).length > 0) return { ...result, status: 'new' };
   if (
     paired.length < MIN_PAIRED_ROUNDS ||
@@ -168,6 +180,20 @@ export function failureLines(verdicts: readonly Verdict[]): string[] {
   });
 }
 
+export const NO_BASE_REPORT =
+  'main produced no bench report in any round; check the base install and that main still has the bench files.';
+
+export function acceptedLines(verdicts: readonly Verdict[]): string[] {
+  return verdicts.flatMap((v) =>
+    v.status === 'slower, accepted' && v.ratio !== undefined && v.delta !== undefined
+      ? [
+          `${v.metric} is ${times(v.ratio)} main (${signed(v.delta)}), accepted by the bench:accept-slower label. ` +
+            'The label stays until removed, so it accepts every later push too.',
+        ]
+      : [],
+  );
+}
+
 export function markdownSummary(
   verdicts: readonly Verdict[],
   rounds: number,
@@ -188,7 +214,7 @@ export function markdownSummary(
       ),
     ),
   ];
-  const failures = failureLines(verdicts);
+  const failures = [...failureLines(verdicts), ...acceptedLines(verdicts)];
   return [
     `### ${title}`,
     '',
