@@ -201,8 +201,22 @@ function linkOrigins(track: Track): { ties: Set<Note>; hopos: Set<Note> } {
   for (let slot = 0; slot < 4; slot++) {
     const line = voiceLine(track, slot);
     line.forEach(({ beat, bar }, index) => {
+      const graces = (beat.grace ?? []).map((grace) => grace.notes);
+      graces.forEach((notes, step) => {
+        for (const note of notes) {
+          if (!note.hammerPull) continue;
+          const origin = hammerPullOrigin(graces.slice(0, step), note, fretted);
+          if (origin) hopos.add(origin);
+        }
+      });
       for (const note of beat.notes) {
         if (!note.hammerPull || (!fretted && beat.notes[0] !== note)) continue;
+        // A grace note before the beat on this string is the origin the reader links to it.
+        const grace = hammerPullOrigin(graces, note, fretted);
+        if (grace) {
+          hopos.add(grace);
+          continue;
+        }
         for (let back = index - 1; back >= 0; back--) {
           const earlier = line[back];
           if (!earlier) break;
@@ -217,6 +231,16 @@ function linkOrigins(track: Track): { ties: Set<Note>; hopos: Set<Note> } {
     });
   }
   return { ties, hopos };
+}
+
+/** The last note of the earlier graces on the string (the last note at all off fretted tracks). */
+function hammerPullOrigin(earlier: Note[][], note: Note, fretted: boolean): Note | undefined {
+  for (let index = earlier.length - 1; index >= 0; index--) {
+    const notes = earlier[index] ?? [];
+    const found = fretted ? notes.find((candidate) => candidate.string === note.string) : notes[0];
+    if (found) return found;
+  }
+  return undefined;
 }
 
 interface Ids {

@@ -152,6 +152,20 @@ function hammerPullDestination(
   return undefined;
 }
 
+/** The next grace on the origin's string, else the beat's own note there (the first note off fretted tracks). */
+function graceDestination(
+  chain: Note[][],
+  step: number,
+  note: Note,
+  fretted: boolean,
+): Note | undefined {
+  for (const notes of chain.slice(step + 1)) {
+    const found = fretted ? notes.find((candidate) => candidate.string === note.string) : notes[0];
+    if (found) return found;
+  }
+  return undefined;
+}
+
 class ScoreBuilder {
   readonly #sink: WarningSink;
   readonly #document: GpifDocument;
@@ -534,20 +548,27 @@ class ScoreBuilder {
           (bar.voices[slot]?.beats ?? []).map((beat) => ({ beat, barIndex })),
         );
         beats.forEach(({ beat }, index) => {
-          for (const note of beat.notes) {
-            const origin = this.#hopoOrigins.get(note);
-            if (origin === undefined) continue;
-            const destination = hammerPullDestination(beats, index, note, fretted);
-            if (destination) destination.hammerPull = true;
-            else {
-              this.#sink.warn(
-                'hammer-pull-without-destination',
-                origin,
-                `A hammer-on or pull-off with no later note on its string within ${String(HAMMER_PULL_BAR_WINDOW)} bars; dropped`,
-                plan?.source.id ?? String(trackIndex),
-              );
+          const graces = beat.grace ?? [];
+          const chain = [...graces.map((grace) => grace.notes), beat.notes];
+          chain.forEach((notes, step) => {
+            for (const note of notes) {
+              const origin = this.#hopoOrigins.get(note);
+              if (origin === undefined) continue;
+              const destination =
+                step < graces.length
+                  ? graceDestination(chain, step, note, fretted)
+                  : hammerPullDestination(beats, index, note, fretted);
+              if (destination) destination.hammerPull = true;
+              else {
+                this.#sink.warn(
+                  'hammer-pull-without-destination',
+                  origin,
+                  `A hammer-on or pull-off with no later note on its string within ${String(HAMMER_PULL_BAR_WINDOW)} bars; dropped`,
+                  plan?.source.id ?? String(trackIndex),
+                );
+              }
             }
-          }
+          });
         });
       }
     });

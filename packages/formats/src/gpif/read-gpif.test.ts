@@ -144,6 +144,22 @@ describe('notes', () => {
     expect(warnings.filter((w) => w.code === 'hammer-pull-without-destination')).toHaveLength(1);
   });
 
+  it('links a grace note hammer-on to the beat note on its string', () => {
+    const origin = property('HopoOrigin', '<Enable />');
+    const { score, warnings } = read(
+      oneBar(
+        [beat('0', '1', '0', '<GraceNotes>BeforeBeat</GraceNotes>'), beat('1', '0', '1')],
+        [note('0', 2, 5, '', origin), note('1', 2, 7)],
+        [rhythm('0', 'Whole'), rhythm('1', '32nd')],
+      ),
+    );
+    expect(beatsOf(score)[0]?.notes[0]?.hammerPull).toBe(true);
+    expect(warnings.filter((w) => w.code === 'hammer-pull-without-destination')).toEqual([]);
+    const again = read(writeGpif(score).xml);
+    expect(beatsOf(again.score)[0]?.notes[0]?.hammerPull).toBe(true);
+    expect(again.warnings.filter((w) => w.code === 'hammer-pull-without-destination')).toEqual([]);
+  });
+
   it('reads ties and gives every reference to a shared note its own id', () => {
     const { score } = read(
       oneBar(
