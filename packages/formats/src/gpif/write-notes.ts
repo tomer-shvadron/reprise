@@ -16,6 +16,7 @@ import {
 
 import { bendKind, bendPoints, whammyKind, type BendProperties } from './bends';
 import type { DropCollector } from './dropped';
+import { writesTuning } from './write-tracks';
 import type { XmlWriter } from './xml-writer';
 
 /** gpif bend values are 100 to a whole tone, the model's quarter tones × 25. */
@@ -200,6 +201,7 @@ export interface NoteWriteOptions {
 
 /** The highest string that can play a keyboard note, for Guitar Pro's tablature view of it. */
 function fingerPitched(track: Track, midi: number): [string: number, fret: number] | undefined {
+  if (!writesTuning(track)) return undefined;
   const frets = track.fretCount > 0 ? track.fretCount : 24;
   for (let index = track.tuning.length - 1; index >= 0; index--) {
     const fret = midi - (track.tuning[index] ?? 0);

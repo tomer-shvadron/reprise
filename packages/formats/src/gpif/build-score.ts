@@ -102,12 +102,23 @@ const lineKey = (staffIndex: number, voiceIndex: number): string =>
  * Choosing per bar instead would move a voice between slots from one bar to the next, and ties,
  * hammer-ons and grace notes all follow a slot across bars.
  */
+/**
+ * A voice line is used when its voice has at least one beat; a `-1` reference, or a voice with an
+ * empty `<Beats>`, takes no slot. The oracle's `slotsOf` applies the same rule to alphaTab's
+ * voices. A voice that is referenced but not defined stays used, so `missing-reference` reports it.
+ */
+function isUsedVoice(document: GpifDocument, voiceId: string): boolean {
+  if (voiceId === '-1') return false;
+  const voice = document.voices.get(voiceId);
+  return voice === undefined || voice.beatIds.length > 0;
+}
+
 function planVoiceSlots(document: GpifDocument, barIds: string[][]): Map<string, number> {
   const used = new Set<string>();
   for (const staves of barIds) {
     staves.forEach((id, staffIndex) => {
       document.bars.get(id)?.voiceIds.forEach((voiceId, voiceIndex) => {
-        if (voiceId !== '-1') used.add(lineKey(staffIndex, voiceIndex));
+        if (isUsedVoice(document, voiceId)) used.add(lineKey(staffIndex, voiceIndex));
       });
     });
   }
@@ -320,7 +331,10 @@ class ScoreBuilder {
       this.#sink.warn(
         'multiple-staves',
         plan.source.path,
-        `Track has ${String(staves.length)} staves; they are merged onto one`,
+        `Track has ${String(staves.length)} staves; they are merged onto one` +
+          (plan.differingStaff === undefined
+            ? ''
+            : `, and read as a keyboard part (standard notation) because staff ${String(plan.differingStaff + 1)} has its own tuning or capo`),
       );
     }
     const first = staves[0];
@@ -336,12 +350,12 @@ class ScoreBuilder {
     const slots = this.#slots[trackIndex];
     staves.forEach((staff, staffIndex) => {
       staff?.voiceIds.forEach((voiceId, voiceIndex) => {
-        if (voiceId === '-1') return;
+        if (!isUsedVoice(this.#document, voiceId)) return;
         const line = lineKey(staffIndex, voiceIndex);
         const slot = slots?.get(line);
         const voice = slot === undefined ? undefined : bar.voices[slot];
         if (voice && slot !== undefined) {
-          voice.beats = this.#buildVoice(trackIndex, slot, voiceId, staff.path);
+          voice.beats = this.#buildVoice(trackIndex, slot, voiceId, staff.path, staffIndex);
         } else {
           this.#sink.warn(
             'voice-dropped',
@@ -355,7 +369,13 @@ class ScoreBuilder {
     return bar;
   }
 
-  #buildVoice(trackIndex: number, slot: number, voiceId: string, path: string): Beat[] {
+  #buildVoice(
+    trackIndex: number,
+    slot: number,
+    voiceId: string,
+    path: string,
+    staffIndex: number,
+  ): Beat[] {
     const voice = this.#document.voices.get(voiceId);
     if (!voice) {
       this.#sink.warn(
@@ -378,7 +398,7 @@ class ScoreBuilder {
         );
         continue;
       }
-      const notes = this.#resolveNotes(trackIndex, source);
+      const notes = this.#resolveNotes(trackIndex, source, staffIndex);
       const rhythm = this.#rhythm(source);
       if (source.grace) {
         pending.push({ path: source.path, grace: this.#graceBeat(source, rhythm, notes) });
@@ -408,7 +428,7 @@ class ScoreBuilder {
     return { path: beat.path, value: 4, dots: 0 };
   }
 
-  #resolveNotes(trackIndex: number, beat: GpifBeat): Note[] {
+  #resolveNotes(trackIndex: number, beat: GpifBeat, staffIndex: number): Note[] {
     const plan = this.#plans[trackIndex];
     if (!plan) return [];
     const notes: Note[] = [];
@@ -422,7 +442,7 @@ class ScoreBuilder {
         );
         continue;
       }
-      const note = resolveNote(this.#sink, plan, source, beat.dynamics ?? 'mf');
+      const note = resolveNote(this.#sink, plan, source, beat.dynamics ?? 'mf', staffIndex);
       if (!note) continue;
       // gpif flags both ends of a hammer-on; the destination flag is the model's.
       note.hammerPull = source.hopoDestination;

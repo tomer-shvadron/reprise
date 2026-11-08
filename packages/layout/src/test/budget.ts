@@ -19,6 +19,7 @@ interface BudgetResult {
   measured: number;
   enforced: boolean;
   until?: string;
+  note?: string;
 }
 
 declare module 'vitest' {
@@ -46,7 +47,7 @@ export async function checkBudget(
   context: TestContext,
   metric: string,
   p50: number,
-  { enforced, until }: { enforced: boolean; until?: string },
+  { enforced, until, note }: { enforced: boolean; until?: string; note?: string },
 ): Promise<void> {
   const { value, unit, threshold, factor } = roadmapBudget(metric);
   const measured = round(p50);
@@ -57,6 +58,7 @@ export async function checkBudget(
     measured,
     enforced,
     ...(until === undefined ? {} : { until }),
+    ...(note === undefined ? {} : { note }),
   };
   if (enforced) {
     expect(
@@ -71,8 +73,14 @@ export async function recordMeasurement(
   context: TestContext,
   metric: string,
   p50: number,
+  note?: string,
 ): Promise<void> {
   const measured = round(p50);
   await context.annotate(`${metric}: p50 ${String(measured)} ms, no budget`);
-  context.task.meta.budget = { metric, measured, enforced: false };
+  context.task.meta.budget = {
+    metric,
+    measured,
+    enforced: false,
+    ...(note === undefined ? {} : { note }),
+  };
 }
