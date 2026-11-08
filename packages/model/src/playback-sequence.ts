@@ -111,6 +111,19 @@ function findTarget(
  * including how malformed files are handled, are documented in this package's README.
  */
 export function expandPlaybackSequence(score: Pick<Score, 'masterBars'>): PlaybackSequence {
+  const { sequence, warnings } = expandCounted(score);
+  return { sequence, warnings };
+}
+
+/** The loop-step ceiling: a bar-count multiple of the pass cap, since a lap can skip every bar but one. */
+export function playbackStepLimit(barCount: number): number {
+  return barCount * barCount * PLAYBACK_LENGTH_FACTOR;
+}
+
+/** `expandPlaybackSequence` plus the loop steps it took, so a test can bound the work done. */
+export function expandCounted(
+  score: Pick<Score, 'masterBars'>,
+): PlaybackSequence & { steps: number } {
   const { masterBars } = score;
   const sequence: BarPass[] = [];
   const warnings: PlaybackWarning[] = [];
@@ -126,6 +139,8 @@ export function expandPlaybackSequence(score: Pick<Score, 'masterBars'>): Playba
   const closings = closingEnds(masterBars);
   const plays = masterBars.map(() => 0);
   const limit = masterBars.length * PLAYBACK_LENGTH_FACTOR;
+  const stepLimit = playbackStepLimit(masterBars.length);
+  let steps = 0;
   const fired = new Set<string>();
   const repeatPlays = new Map<number, number>();
   let mode: Mode = 'normal';
@@ -145,6 +160,10 @@ export function expandPlaybackSequence(score: Pick<Score, 'masterBars'>): Playba
     if (!bar) break;
     if (sequence.length >= limit) {
       warn('sequence-truncated', i, `playback stopped after ${String(limit)} bar passes`);
+      break;
+    }
+    if (++steps > stepLimit) {
+      warn('sequence-truncated', i, `playback stopped after ${String(stepLimit)} steps`);
       break;
     }
 
@@ -241,5 +260,5 @@ export function expandPlaybackSequence(score: Pick<Score, 'masterBars'>): Playba
     i = next;
   }
 
-  return { sequence, warnings };
+  return { sequence, warnings, steps };
 }

@@ -467,7 +467,9 @@ except where noted:
   warning (an `al Fine` with no `fine` anywhere still jumps, plays to the end, and warns). A
   To Coda whose coda precedes the segno is followed; it cannot loop because jumps fire once.
   As a backstop the sequence stops at `PLAYBACK_LENGTH_FACTOR` (64) passes per master bar with a
-  `sequence-truncated` warning; only runaway repeat counts or many stacked repeat ends reach it.
+  `sequence-truncated` warning; only runaway repeat counts or many stacked repeat ends reach it. A second budget of
+  `bars² × 64` loop steps stops chained repeat ends whose laps skip volta bars and so play
+  nothing, with the same warning.
 
 ### Deviations from alphaTab
 
