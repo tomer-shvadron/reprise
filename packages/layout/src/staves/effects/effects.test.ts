@@ -956,7 +956,17 @@ describe('note effects on the tab: arcs and letters in the measured room', () =>
 });
 
 describe('bend labels never overlap', () => {
-  const peaks = [
+  const custom = (points: [number, number][]) => ({
+    kind: 'custom' as const,
+    points: points.map(([position, value]) => ({ position, value })),
+  });
+  const rise = (value: number) =>
+    custom([
+      [0, 0],
+      [10.2, value],
+      [30, value],
+    ]);
+  const manyPeaks = custom([
     [0, 0],
     [3, 4],
     [14, 4],
@@ -977,47 +987,136 @@ describe('bend labels never overlap', () => {
     [53, 4],
     [58, 4],
     [60, 4],
-  ] as const;
-  const many = {
-    kind: 'custom',
-    points: peaks.map(([position, value]) => ({ position, value })),
-  } as const;
+  ]);
   const modes = ['tab', 'standard', 'both'] as const;
 
-  it.each(modes)('draws a many-peak bend one label per run of the same value in %s', (mode) => {
+  const chord = (mode: (typeof modes)[number], values: number[]) =>
+    laid(
+      guitar(mode)
+        .bar()
+        .beat(
+          '1',
+          values.map((value, i) => note(3 - i, 14, { bend: rise(value) })),
+        )
+        .build({ ids: 'sequential' }),
+    );
+
+  const lone = (mode: (typeof modes)[number], bend: ReturnType<typeof custom>) => {
+    const built = guitar(mode)
+      .bar()
+      .beat('4', [note(2, 17, { bend })])
+      .rest('2.')
+      .build({ ids: 'sequential' });
+    return { built, result: laid(built) };
+  };
+
+  it.each(modes)(
+    'prints the repeats of a many-peak bend once where they would overlap in %s',
+    (mode) => {
+      const { result } = lone(mode, manyPeaks);
+      const labels = result.primitives.filter(isText('full'));
+      expect(labels.length).toBeGreaterThan(0);
+      expect(labels.length).toBeLessThan(7);
+    },
+  );
+
+  it.each(modes)('stacks the labels of a chord bending by different amounts in %s', (mode) => {
+    for (const values of [
+      [2, 3],
+      [3, 4],
+      [2, 3, 4],
+    ]) {
+      const result = chord(mode, values);
+      for (const value of values) {
+        expect(result.primitives.filter(isText(bendLabel(value)))).toHaveLength(1);
+      }
+    }
+  });
+
+  it.each(modes)('labels one note bending full then 1¼ twice in %s', (mode) => {
+    const { result } = lone(
+      mode,
+      custom([
+        [0, 0],
+        [15, 4],
+        [30, 5],
+        [60, 5],
+      ]),
+    );
+    expect(result.primitives.filter(isText('full'))).toHaveLength(1);
+    expect(result.primitives.filter(isText('1¼'))).toHaveLength(1);
+  });
+
+  it.each(modes)('prints equal release labels that overlap once in %s', (mode) => {
+    const { result } = lone(
+      mode,
+      custom([
+        [0, 0],
+        [10, 7],
+        [14, 5],
+        [18, 7],
+        [22, 5],
+        [26, 7],
+        [30, 5],
+        [34, 7],
+      ]),
+    );
+    expect(result.primitives.filter(isText('1¼'))).toHaveLength(1);
+  });
+
+  it.each(modes)('reproduces the issue: a ½ and a ¾ release chord in %s', (mode) => {
+    const release = (value: number) =>
+      custom([
+        [0, 0],
+        [10.2, value],
+        [20.4, value],
+        [30, 0],
+      ]);
     const result = laid(
       guitar(mode)
         .bar()
-        .beat('1', [note(2, 17, { bend: many })])
+        .beat('16', [note(3, 14, { bend: release(2) }), note(2, 14, { bend: release(3) })])
+        .rest('8.')
+        .rest('2')
         .build({ ids: 'sequential' }),
     );
-    const labels = result.primitives.filter(isText('full'));
-    expect(labels.length).toBeGreaterThan(0);
-    expect(labels.length).toBeLessThan(8);
+    expect(result.primitives.filter(isText('½'))).toHaveLength(1);
+    expect(result.primitives.filter(isText('¾'))).toHaveLength(1);
   });
 
-  it.each(modes)(
-    'keeps the highest label of a chord bending by different amounts in %s',
-    (mode) => {
-      const bendTo = (value: number) => ({
-        kind: 'bendRelease' as const,
-        points: [
-          { position: 0, value: 0 },
-          { position: 10.2, value },
-          { position: 20.4, value },
-          { position: 30, value: 0 },
-        ],
-      });
-      const result = laid(
-        guitar(mode)
-          .bar()
-          .beat('16', [note(3, 14, { bend: bendTo(2) }), note(2, 14, { bend: bendTo(3) })])
-          .rest('8.')
-          .rest('2')
-          .build({ ids: 'sequential' }),
-      );
-      expect(result.primitives.filter(isText('¾'))).toHaveLength(1);
-      expect(result.primitives.filter(isText('½'))).toHaveLength(0);
-    },
-  );
+  it.each(modes)('measures the lane for the stack so nothing strays in %s', (mode) => {
+    const built = guitar(mode)
+      .bar()
+      .beat(
+        '1',
+        [3, 4, 5].map((value, i) => note(3 - i, 14, { bend: rise(value) })),
+      )
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    expect(strayPrimitives(result, built).map(describePrimitive)).toEqual([]);
+    const plain = layout(
+      guitar(mode)
+        .bar()
+        .beat('1', [note(3, 14, { bend: rise(5) })])
+        .build({ ids: 'sequential' }),
+      paged,
+    );
+    expect(result.systems[0]?.staves[0]?.top).toBeGreaterThan(
+      plain.systems[0]?.staves[0]?.top ?? 0,
+    );
+  });
+
+  it('lays a stacked chord out the same cached as cold', () => {
+    const built = guitar('both')
+      .bar()
+      .beat(
+        '1',
+        [3, 4].map((value, i) => note(3 - i, 14, { bend: rise(value) })),
+      )
+      .build({ ids: 'sequential' });
+    const options = { ...paged };
+    const cache = new LayoutCache();
+    layout(built, options, cache);
+    expect(stable(layout(built, options, cache))).toBe(stable(layout(built, options)));
+  });
 });

@@ -13,7 +13,7 @@ import {
   text,
   type LayoutSink,
 } from '../../primitives';
-import { BEND_STEP, EFFECT_TEXT } from './analysis';
+import { BEND_STACK_GAP, BEND_STEP, EFFECT_TEXT } from './analysis';
 import { bendLabel } from './labels';
 
 /** Shaft thickness, the gaps around labels and a hold's dashes, in staff spaces. */
@@ -34,7 +34,7 @@ export const BEND_ROOM = { main: 2.2, grace: 1.2 } as const;
 /** What a beat's bends have drawn so far: keys of shared marks, and the boxes of their labels. */
 export interface BendDrawn {
   keys: Set<string>;
-  labels: Rect[];
+  labels: { text: string; bbox: Rect }[];
 }
 
 export const newBendDrawn = (): BendDrawn => ({ keys: new Set(), labels: [] });
@@ -94,20 +94,31 @@ export function drawBend(
     drawn.keys.add(key);
     draw();
   };
+  // A label equal to one it overlaps is dropped; a different one stacks above what it overlaps.
+  const label = (content: string, px: number, y: number, anchor: 'start' | 'middle'): void => {
+    let at = y;
+    for (;;) {
+      const mark = text(content, px, at, size, { anchor, node });
+      const hits = drawn.labels.filter((other) => overlap(other.bbox, mark.bbox));
+      if (hits.some((other) => other.text === content)) return;
+      if (hits.length === 0) {
+        drawn.labels.push({ text: content, bbox: mark.bbox });
+        sink.primitives.push(mark);
+        return;
+      }
+      at -=
+        mark.bbox.y +
+        mark.bbox.height -
+        Math.min(...hits.map((h) => h.bbox.y)) +
+        BEND_STACK_GAP * space;
+    }
+  };
   const raised = (px: number, tip: number, value: number): void => {
     once(`arrow ${String(round(px))} ${String(round(tip))} up`, () => {
       sink.primitives.push(arrowhead(px, tip, 'up', space, { node }));
     });
     once(`label ${String(round(px))} ${String(round(tip))}`, () => {
-      const label = text(bendLabel(value), px, tip - LABEL_GAP * space, size, {
-        anchor: 'middle',
-        node,
-      });
-      // A label that would land on one already drawn is dropped: the repeat of a many-peak bend,
-      // or the lower amount of a chord, whose notes are drawn highest bend first.
-      if (drawn.labels.some((other) => overlap(other, label.bbox))) return;
-      drawn.labels.push(label.bbox);
-      sink.primitives.push(label);
+      label(bendLabel(value), px, tip - LABEL_GAP * space, 'middle');
     });
   };
 
@@ -140,9 +151,11 @@ export function drawBend(
       });
       if (q.value > 0) {
         once(`label ${String(round(xq))} ${String(round(tip))}`, () => {
-          const y = tip + textExtent(size).ascent / 2;
-          sink.primitives.push(
-            text(bendLabel(q.value), xq + RELEASE_LABEL_GAP * space, y, size, { node }),
+          label(
+            bendLabel(q.value),
+            xq + RELEASE_LABEL_GAP * space,
+            tip + textExtent(size).ascent / 2,
+            'start',
           );
         });
       }

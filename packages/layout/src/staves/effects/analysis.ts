@@ -13,6 +13,8 @@ export const WHAMMY_TEXT = 0.9;
 /** A bend's rise per quarter tone above the staff, and the room its label takes above the tip, in staff spaces. */
 export const BEND_STEP = 0.55;
 const BEND_LABEL_ROOM = 1.3;
+/** The gap between stacked bend labels, in staff spaces. */
+export const BEND_STACK_GAP = 0.05;
 /** Room kept either side of an item centred on an onset, beyond its own width, in staff spaces. */
 const ITEM_SIDE = 0.2;
 /** Gaps in a stack of articulations and around it, in staff spaces. */
@@ -246,9 +248,30 @@ function bendTop(note: Note): number {
   return Math.max(0, ...(note.bend?.points.map((p) => p.value) ?? []));
 }
 
+/**
+ * The most labels that can stack at one place: the longest run of consecutive amounts among the
+ * notes' labelled values, since labels collide only when their tips are a quarter tone apart.
+ */
+function bendStack(notes: readonly Note[]): number {
+  const values = new Set(
+    notes.flatMap((note) => note.bend?.points.map((p) => p.value).filter((v) => v > 0) ?? []),
+  );
+  let longest = 0;
+  for (const value of values) {
+    if (values.has(value - 1)) continue;
+    let length = 1;
+    while (values.has(value + length)) length++;
+    longest = Math.max(longest, length);
+  }
+  return longest;
+}
+
 function bendLane(notes: readonly Note[]): number | undefined {
   const top = Math.max(0, ...notes.map(bendTop));
-  return top > 0 ? BEND_STEP * top + BEND_LABEL_ROOM : undefined;
+  if (top <= 0) return undefined;
+  const { ascent, descent } = textExtent(EFFECT_TEXT);
+  const row = ascent + descent + BEND_STACK_GAP;
+  return BEND_STEP * top + BEND_LABEL_ROOM + Math.max(0, bendStack(notes) - 1) * row;
 }
 
 export function glyphHeight(name: GlyphName): number {
