@@ -215,3 +215,66 @@ jobs:
             apps/web/playwright-report/
           retention-days: 14
           if-no-files-found: warn
+
+  # Benches the PR's budgeted rows against main on one runner, alternating, and fails on a relative
+  # slowdown (docs/plans/roadmap.md#budgets). Not a required check yet; the roadmap says when it becomes one.
+  bench-compare:
+    name: bench-compare
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # The merge commit and its first parent, main as the PR would land on it.
+          fetch-depth: 2
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # Reports success without benching when no watched path changed, so the check never sits pending.
+      - name: Watched paths
+        id: gate
+        run: node scripts/bench/compare-run.ts gate HEAD^1
+
+      - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
+        run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+      - name: Install main
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/main" HEAD^1
+          pnpm --dir "$RUNNER_TEMP/main" install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+      # Read live, not from the event payload, so adding the label and re-running this job is enough.
+      - name: Accepted slowdown
+        id: label
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          accepted=$(gh api "repos/$REPO/issues/$PR/labels" --jq 'any(.[]; .name == "bench:accept-slower")')
+          echo "accepted=$accepted" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+
+      - name: Bench against main
+        if: steps.gate.outputs.run == 'true'
+        timeout-minutes: 10
+        run: node scripts/bench/compare-run.ts "$RUNNER_TEMP/main" ${{ steps.label.outputs.accepted == 'true' && '--accept-slower' || '' }}

@@ -31,6 +31,7 @@ LABELS=(
   "type:bug|D93F0B|Something is wrong"
   "type:chore|5319E7|Scaffolding, tooling, housekeeping"
   "type:test|BFD4F2|Tests, fixtures, benchmarks"
+  "bench:accept-slower|D93F0B|The lead accepts this PR's bench slowdown against main; the PR body says why"
   "type:contract|B60205|Change to a frozen contract in packages/model or shared state; lead-only"
   "type:decision|FBCA04|Needs an ADR before work starts"
   "phase:0|C5DEF5|Roadmap phase 0"
