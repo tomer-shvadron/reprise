@@ -3,7 +3,7 @@ import type { Id } from '@reprise/model';
 import type { SystemPlan } from './breaking';
 import type { BarMeasure } from './measure';
 import type { LaneRequests } from './staves/lanes';
-import type { Anchor, Primitive, Range, System } from './types';
+import type { Anchor, Primitive, Range, Rect, System } from './types';
 import type { VerticalLayout } from './vertical';
 
 export interface CachedBar {
@@ -33,6 +33,8 @@ export interface PartPlacement extends Cursor {
 /** One part of a system as it went into the result: the whole system unless it was split. */
 export interface CachedPart {
   system: System;
+  /** The system's box as rendered, before `offsetX`. */
+  box: Rect;
   primitives: Primitive[];
   anchors: Anchor[];
 }

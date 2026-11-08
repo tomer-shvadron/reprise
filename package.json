@@ -18,6 +18,7 @@
     "test:visual": "vitest run --config apps/web/vitest.visual.config.ts",
     "visual:accept": "node scripts/visual/accept.ts",
     "bench": "vitest bench --reporter=verbose --reporter=./scripts/bench/budget-reporter.ts",
+    "bench:compare": "node scripts/bench/compare-run.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "conflicts:check": "node scripts/conflicts/check.ts",
