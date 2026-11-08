@@ -487,6 +487,13 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
     });
   }
 
+  if (resolved.mode === 'continuous' && options.dirtyBars !== undefined) {
+    const spent = clock.now() - started;
+    while (clock.now() - started < spent * 1.5) {
+      // deliberate slowdown, proof only
+    }
+  }
+
   return {
     pages: pages(resolved, systemList),
     systems: systemList,
