@@ -12,8 +12,17 @@ import { fileURLToPath } from 'node:url';
 import { startVitest } from 'vitest/node';
 
 import { OUT_DIR as OUT, ROOT_DIR, discover } from './files.ts';
-import { SKIPS_ENV, checksFor, preflight, soundfontPresent } from './preflight.ts';
-const PROJECTS = ['formats', 'layout', 'audio'];
+import {
+  PROJECT_CHECKS,
+  SKIPS_ENV,
+  checksFor,
+  isCi,
+  preflight,
+  projectsToRun,
+  soundfontPresent,
+} from './preflight.ts';
+
+const PROJECTS = Object.keys(PROJECT_CHECKS);
 
 function usage(message: string): never {
   console.error(`${message}\nUsage: pnpm check:files [paths…] [--only ${PROJECTS.join(',')}]`);
@@ -82,17 +91,23 @@ wipe();
 process.env['REPRISE_CHECK_FILES'] = JSON.stringify(found.files);
 process.env['REPRISE_CHECK_ONLY'] = only.join(',');
 process.env['REPRISE_CHECK_COMMIT'] = commit();
-const skips = preflight(checksFor(only), {
+const { skips, fatal } = preflight(checksFor(only), {
   soundfont: soundfontPresent(),
-  ci: (process.env['CI'] ?? '') !== '',
+  ci: isCi(),
 });
+if (fatal !== undefined) {
+  console.error(fatal);
+  process.exit(1);
+}
 process.env[SKIPS_ENV] = JSON.stringify(skips);
 for (const note of new Set(Object.values(skips))) console.info(note);
+const projects = projectsToRun(only.length > 0 ? only : PROJECTS, skips);
+if (projects.length === 0) process.exit(0);
 
 const vitest = await startVitest([], {
   config: fileURLToPath(new URL('vitest.config.ts', import.meta.url)),
   watch: false,
-  ...(only.length > 0 && { project: only.map((name) => `check-${name}`) }),
+  project: projects.map((name) => `check-${name}`),
 });
 const testsFailed =
   vitest.state.getCountOfFailedTests() > 0 || vitest.state.getUnhandledErrors().length > 0;

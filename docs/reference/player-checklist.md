@@ -4,7 +4,7 @@ The real-file correctness pass (WP-054, #50): what to run, look at and listen fo
 
 ## Before you start
 
-- `pnpm install` and `pnpm sounds:fetch` (the audio check renders through GeneralUser GS and without it, locally, the audio column is `skipped` with one note, `audio skipped: run \`pnpm sounds:fetch\``, and the exit code ignores it; on CI, where `CI` is set, a missing soundfont fails every audio record with `soundfont-missing`).
+- `pnpm install` and `pnpm sounds:fetch` (the audio check renders through GeneralUser GS and without it, locally, the audio column is `skipped` with one note, `audio skipped: run \`pnpm sounds:fetch\``, and the exit code ignores it; on CI, where `CI` is set, the run stops with one line and exit code 1).
 - Put tabs in `local-tabs/`, in subfolders if you like. They are never committed, and never named in an issue, a PR or a comment: the repository is public. The pass itself never names them either: a local tab is `local-3` with the start of its SHA-256 (`local-3 (sha256 1a2b3c4d5e6f)`), and no report, draft or output line carries its file name, title, artist, track names, lyrics or any other text from it. Numbers follow the files' order, so they shift when you add a tab; the hash does not (`find local-tabs -type f -exec shasum -a 256 {} +` shows which file is which).
 
 ## Listening to a tab, step by step

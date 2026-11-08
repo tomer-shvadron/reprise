@@ -16,20 +16,45 @@ export function checksFor(only: readonly string[]): CheckId[] {
   const projects = only.length === 0 ? Object.keys(PROJECT_CHECKS) : only;
   return projects.flatMap((project) => PROJECT_CHECKS[project] ?? []);
 }
+
 export const SKIPS_ENV = 'REPRISE_CHECK_SKIPS';
 
 export const SOUNDFONT_NOTE = 'audio skipped: run `pnpm sounds:fetch`';
 
+export const SOUNDFONT_FATAL =
+  'audio cannot run: the GM soundfont is missing; run `pnpm sounds:fetch`';
+
+export interface Preflight {
+  skips: Partial<Record<CheckId, string>>;
+  /** A prerequisite CI must have; the run stops with this one line. */
+  fatal?: string;
+}
+
+/** Any non-empty `CI`, including `CI=0`: the strict side is the safe one. */
+export function isCi(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (env['CI'] ?? '') !== '';
+}
+
 /**
- * The checks to leave unrun, with why. A missing soundfont is a prerequisite a developer can fix,
- * so locally it skips the audio column once; on CI it is left to the check, which fails each file.
+ * A missing soundfont is a prerequisite a developer can fix: locally it skips the audio column
+ * once, on CI (which fetches it first) it stops the run.
  */
 export function preflight(
   checks: readonly CheckId[],
   env: { soundfont: boolean; ci: boolean },
-): Partial<Record<CheckId, string>> {
-  if (!checks.includes('audio') || env.soundfont || env.ci) return {};
-  return { audio: SOUNDFONT_NOTE };
+): Preflight {
+  if (!checks.includes('audio') || env.soundfont) return { skips: {} };
+  return env.ci ? { skips: {}, fatal: SOUNDFONT_FATAL } : { skips: { audio: SOUNDFONT_NOTE } };
+}
+
+/** The selected projects that still have a check to run. */
+export function projectsToRun(
+  selected: readonly string[],
+  skips: Partial<Record<CheckId, string>>,
+): string[] {
+  return selected.filter((project) =>
+    (PROJECT_CHECKS[project] ?? []).some((check) => skips[check] === undefined),
+  );
 }
 
 export function soundfontPresent(): boolean {
