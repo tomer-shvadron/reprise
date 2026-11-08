@@ -527,15 +527,16 @@ export function compareTempo(
     }
     const theirSeconds = alphaTabSeconds(at, theirsRunning);
     totalTheirs += theirSeconds;
-    const { events: alphaTabChanges, end } = alphaTabEvents(at, theirsRunning);
+    const { events: alphaTabPassChanges, end } = alphaTabEvents(at, theirsRunning);
     theirsRunning = end;
-    // In an over-full bar only the written length is comparable: alphaTab plays the overflow,
-    // and any change in it, over the next bars.
+    // In an over-full bar only the written length is comparable: alphaTab plays the overflow
+    // over the next bars, and lists a change written past the bar line in this pass.
     const masterBar = score.masterBars[pass.masterBarIndex];
     const written = masterBar ? barTicks(masterBar) : Number.POSITIVE_INFINITY;
-    const oursEvents = ours
-      .map(({ tick, bpm }) => ({ tick, bpm }))
-      .filter((event) => !overfull || event.tick < written - TICK_TOLERANCE);
+    const comparable = (event: { tick: number }): boolean =>
+      !overfull || event.tick < written - TICK_TOLERANCE;
+    const oursEvents = ours.map(({ tick, bpm }) => ({ tick, bpm })).filter(comparable);
+    const alphaTabChanges = alphaTabPassChanges.filter(comparable);
     const equal = sameEvents(oursEvents, alphaTabChanges);
     if (overfull && equal) {
       if (misshapen === undefined) {

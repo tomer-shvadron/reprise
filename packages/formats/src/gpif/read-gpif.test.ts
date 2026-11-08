@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { GpifError } from './errors';
 import { readGpif, type GpifReadResult } from './read-gpif';
+import { writeGpif } from './write-gpif';
 import {
   bar,
   beat,
@@ -676,6 +677,85 @@ describe('tracks', () => {
     );
     expect(score.tracks[0]?.program).toBe(25);
     expect(beatsOf(score, 1)[0]?.mix).toEqual({ program: 19 });
+  });
+
+  describe('an over-full bar', () => {
+    const sixBeats = [0, 1, 2, 3, 4, 5].map((index) => beat(String(index), '0', '0'));
+
+    it("puts a tempo automation past 1 on its over-full bar's overflow beat", () => {
+      const result = read(
+        gpif({
+          automations: [tempo(0, 0, '120 2'), tempo(0, 1, '90 2'), tempo(0, 1.25, '60 2')],
+          masterBars: [masterBar('0')],
+          bars: [bar('0', '0 -1 -1 -1')],
+          voices: [voice('0', '0 1 2 3 4 5')],
+          beats: sixBeats,
+          notes: [note('0', 2, 5)],
+          rhythms: QUARTERS,
+        }),
+      );
+      expect(beatsOf(result.score)[4]?.mix?.tempo).toEqual({ bpm: 90 });
+      expect(beatsOf(result.score)[5]?.mix?.tempo).toEqual({ bpm: 60 });
+      expect(codes(result)).not.toContain('tempo-moved');
+    });
+
+    it('measures a linear automation across an over-full bar by its longest voice', () => {
+      const { score } = read(
+        gpif({
+          automations: [tempo(0, 0, '120 2'), tempo(1, 0, '60 2', true)],
+          masterBars: [masterBar('0'), masterBar('1')],
+          bars: [bar('0', '0 -1 -1 -1'), bar('1', '1 -1 -1 -1')],
+          voices: [voice('0', '0 1 2 3 4 5'), voice('1', '6')],
+          beats: [...sixBeats, beat('6', '1', '0')],
+          notes: [note('0', 2, 5)],
+          rhythms: [...QUARTERS, rhythm('1', 'Whole')],
+        }),
+      );
+      expect(beatsOf(score, 0)[0]?.mix?.tempo).toEqual({ bpm: 60, duration: 6 });
+    });
+
+    it.each([Infinity, NaN])(
+      'caps a Position of %s at its bar and round-trips the score',
+      (position) => {
+        const { score } = read(
+          gpif({
+            automations: [tempo(0, 0, '120 2'), tempo(1, position, '60 2', true)],
+            masterBars: [masterBar('0'), masterBar('1')],
+            bars: [bar('0', '0 -1 -1 -1'), bar('1', '1 -1 -1 -1')],
+            voices: [voice('0', '0 1 2 3 4 5'), voice('1', '6')],
+            beats: [...sixBeats, beat('6', '1', '0')],
+            notes: [note('0', 2, 5)],
+            rhythms: [...QUARTERS, rhythm('1', 'Whole')],
+          }),
+        );
+        expect(ScoreSchema.safeParse(score).success).toBe(true);
+        const written = writeGpif(score).xml;
+        expect(written).not.toMatch(/Infinity|NaN/);
+        expect(ScoreSchema.safeParse(read(written).score).success).toBe(true);
+      },
+    );
+
+    it('puts a sound change past 1 on the overflow beat', () => {
+      const sounds = `<Automations><Automation><Type>Sound</Type><Linear>false</Linear><Bar>0</Bar><Position>1.25</Position>
+        <Visible>true</Visible><Value><![CDATA[Keys/Organ;Organ;Factory]]></Value></Automation></Automations>`;
+      const track = guitarTrack('0', { extra: sounds }).replace(
+        '</Sounds>',
+        '<Sound><Name>Organ</Name><Path>Keys/Organ</Path><Role>Factory</Role><MIDI><Program>19</Program></MIDI></Sound></Sounds>',
+      );
+      const { score } = read(
+        gpif({
+          tracks: [track],
+          masterBars: [masterBar('0')],
+          bars: [bar('0', '0 -1 -1 -1')],
+          voices: [voice('0', '0 1 2 3 4 5')],
+          beats: sixBeats,
+          notes: [note('0', 2, 5)],
+          rhythms: QUARTERS,
+        }),
+      );
+      expect(beatsOf(score)[5]?.mix).toEqual({ program: 19 });
+      expect(beatsOf(score)[4]?.mix).toBeUndefined();
+    });
   });
 
   it('expands a simile mark into a copy of the previous bar', () => {

@@ -1,5 +1,5 @@
 import {
-  barTicks,
+  barStartTicks,
   beatStartTicks,
   type Beat,
   type Chord,
@@ -22,7 +22,8 @@ import { dispatchLyrics } from '../src/gpif/lyrics';
  * - Tempo marks and beat tempo changes become one list of changes in written order: gpif has
  *   one tempo track, so the reader puts a beat-level change on the first track's beat at that
  *   moment, a change at a bar start on the bar, and a ramp's end as a mark of its own. Marks
- *   that repeat the tempo in effect say nothing and are left out.
+ *   that repeat the tempo in effect say nothing and are left out. Changes are timed as playback
+ *   times them, an over-full bar lasting its longest voice.
  * - Program changes become a list per track by moment, for the same reason.
  * - Slide kinds are a set (gpif stores bit flags); barres are a set; all-empty lyric lines,
  *   an all-empty fingering, and a lyric block that only the reader dispatched say nothing.
@@ -49,18 +50,8 @@ function withoutIds(value: unknown): unknown {
   return value;
 }
 
-function barStarts(score: Score): number[] {
-  const starts: number[] = [];
-  let tick = 0;
-  for (const masterBar of score.masterBars) {
-    starts.push(tick);
-    tick += barTicks(masterBar);
-  }
-  return starts;
-}
-
 function tempoEvents(score: Score): unknown[] {
-  const starts = barStarts(score);
+  const starts = barStartTicks(score);
   const marks = new Map<
     number,
     { tick: number; bpm: number; unit?: string; label?: string; ramp: number }[]
@@ -107,7 +98,7 @@ function tempoEvents(score: Score): unknown[] {
 }
 
 function programEvents(score: Score, track: Track): unknown[] {
-  const starts = barStarts(score);
+  const starts = barStartTicks(score);
   const byTick = new Map<number, { tick: number; program: number }>();
   track.bars.forEach((bar, barIndex) => {
     for (const voice of bar.voices) {

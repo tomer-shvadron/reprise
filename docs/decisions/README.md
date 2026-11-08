@@ -5,7 +5,7 @@ architecture decision record (ADR): the context that forced the decision, what w
 the alternatives that were rejected and why, and the consequences. The records exist so that
 anyone, including an agent picking up an issue, can see why things are the way they are
 without re-deriving or re-litigating them. The first seventeen were written from the planning
-session of 2026-11-05, 0018 and 0019 from the phase-0 reviews the same day, 0020 from the switch off Fable on 2026-11-06, 0021 from the lead's ruling on PR #68 the same day, 0022 from the lead's ruling on #28, 0023 from the lead's ruling on #32, 0024 from the lead's rulings on #48, and 0025 from the lead's ruling on #51; see `../specs/shared-understanding.md` for the session's summary.
+session of 2026-11-05, 0018 and 0019 from the phase-0 reviews the same day, 0020 from the switch off Fable on 2026-11-06, 0021 from the lead's ruling on PR #68 the same day, 0022 from the lead's ruling on #28, 0023 from the lead's ruling on #32, 0024 from the lead's rulings on #48, 0025 from the lead's ruling on #51, and 0026 from the owner's instruction in #132 on 2026-11-08; see `../specs/shared-understanding.md` for the session's summary.
 
 Rules:
 
@@ -38,9 +38,10 @@ Rules:
 | 0017 | The project is called Reprise                                       | Accepted                                                             |
 | 0018 | Label families and repository credentials                           | Accepted                                                             |
 | 0019 | Review by a stronger model before merge                             | Accepted, superseded in part by ADR-0020                             |
-| 0020 | Plan and review with Opus at xhigh effort                           | Accepted                                                             |
+| 0020 | Plan and review with Opus at xhigh effort                           | Accepted, superseded in part by ADR-0026                             |
 | 0021 | Rhythm on the standard staff in both mode                           | Accepted, extended by ADR-0022                                       |
 | 0022 | In both mode, lane effects are drawn once, on the tab staff         | Accepted                                                             |
 | 0023 | Visual regression in Vitest browser mode                            | Accepted, superseded in part by ADR-0025                             |
 | 0024 | Mixer values are score data; mute and solo are session state        | Accepted                                                             |
 | 0025 | End-to-end flows on the web build in Chromium                       | Accepted                                                             |
+| 0026 | Sonnet implements and fixes; Opus at high effort plans and reviews  | Accepted                                                             |
