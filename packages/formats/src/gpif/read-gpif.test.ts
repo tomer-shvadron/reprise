@@ -14,6 +14,7 @@ import {
   oneBar,
   property,
   rhythm,
+  secondStaff,
   tempo,
   voice,
 } from './test/gpif-builder';
@@ -142,6 +143,87 @@ describe('notes', () => {
     );
     expect(beatsOf(score).map((b) => b.notes[0]?.hammerPull)).toEqual([false, true, false]);
     expect(warnings.filter((w) => w.code === 'hammer-pull-without-destination')).toHaveLength(1);
+  });
+
+  describe('hammer-ons through grace notes', () => {
+    const origin = property('HopoOrigin', '<Enable />');
+    const grace = '<GraceNotes>BeforeBeat</GraceNotes>';
+    const RHYTHMS = [rhythm('0', 'Whole'), rhythm('1', '32nd')];
+    const flags = (score: Score): (boolean | undefined)[] =>
+      beatsOf(score).flatMap((b) => [
+        ...(b.grace ?? []).flatMap((g) => g.notes.map((n) => n.hammerPull)),
+        ...b.notes.map((n) => n.hammerPull),
+      ]);
+    const lost = (result: GpifReadResult) =>
+      result.warnings.filter((w) => w.code === 'hammer-pull-without-destination');
+    /** Reads, then writes and reads again: both must agree, and the re-read has nothing left to drop. */
+    const roundTrip = (xml: string) => {
+      const first = read(xml);
+      const again = read(writeGpif(first.score).xml);
+      expect(flags(again.score)).toEqual(flags(first.score));
+      expect(lost(again)).toEqual([]);
+      return first;
+    };
+
+    it('links a grace note to the beat note on its string', () => {
+      const result = roundTrip(
+        oneBar(
+          [beat('0', '1', '0', grace), beat('1', '0', '1')],
+          [note('0', 2, 5, '', origin), note('1', 2, 7)],
+          RHYTHMS,
+        ),
+      );
+      expect(flags(result.score)).toEqual([false, true]);
+      expect(lost(result)).toEqual([]);
+    });
+
+    it('links a grace note to the next grace on its string, not the main note', () => {
+      const result = roundTrip(
+        oneBar(
+          [beat('0', '1', '0', grace), beat('1', '1', '1', grace), beat('2', '0', '2')],
+          [note('0', 2, 5, '', origin), note('1', 2, 7), note('2', 2, 9)],
+          RHYTHMS,
+        ),
+      );
+      expect(flags(result.score)).toEqual([false, true, false]);
+      expect(lost(result)).toEqual([]);
+    });
+
+    it('warns and drops a grace note with no destination', () => {
+      const result = roundTrip(
+        oneBar(
+          [beat('0', '1', '0', grace), beat('1', '0', '1')],
+          [note('0', 2, 5, '', origin), note('1', 3, 7)],
+          RHYTHMS,
+        ),
+      );
+      expect(flags(result.score)).toEqual([false, false]);
+      expect(lost(result)).toHaveLength(1);
+    });
+
+    it('searches later beats when the beat has no note on the grace string', () => {
+      const result = roundTrip(
+        oneBar(
+          [beat('0', '1', '0', grace), beat('1', '0', '1'), beat('2', '0', '2')],
+          [note('0', 2, 5, '', origin), note('1', 3, 7), note('2', 2, 9)],
+          RHYTHMS,
+        ),
+      );
+      expect(flags(result.score)).toEqual([false, false, true]);
+      expect(lost(result)).toEqual([]);
+    });
+
+    it('links a main note to the next beat grace on its string', () => {
+      const result = roundTrip(
+        oneBar(
+          [beat('0', '0', '0'), beat('1', '1', '1', grace), beat('2', '0', '2')],
+          [note('0', 2, 5, '', origin), note('1', 2, 7), note('2', 2, 9)],
+          RHYTHMS,
+        ),
+      );
+      expect(flags(result.score)).toEqual([false, true, false]);
+      expect(lost(result)).toEqual([]);
+    });
   });
 
   it('reads ties and gives every reference to a shared note its own id', () => {
@@ -537,6 +619,145 @@ describe('tracks', () => {
     );
     expect(score.tracks[0]?.bars[0]?.voices.map((v) => v.beats.length)).toEqual([1, 1, 0, 0]);
     expect(codes({ score, warnings })).toContain('multiple-staves');
+  });
+
+  describe('a second staff with its own tuning', () => {
+    const LEFT_HAND = '28 33 38 43';
+    const midi = (value: number): string => property('Midi', `<Number>${String(value)}</Number>`);
+    const standard = new Uint8Array([0, 0, 0, 1, 0, 0, 0, 0, 1, 1]);
+    const tab = new Uint8Array([0, 0, 0, 1, 0, 0, 0, 0, 1, 3]);
+
+    function twoStaffs(
+      track: string,
+      staffTwoNote: string,
+      { bars = 1, partConfiguration }: { bars?: number; partConfiguration?: Uint8Array } = {},
+    ): GpifReadResult {
+      const ids = Array.from({ length: bars }, (_, index) => String(index));
+      return read(
+        gpif({
+          tracks: [track],
+          masterBars: ids.map((id) =>
+            masterBar(`${String(Number(id) * 2)} ${String(Number(id) * 2 + 1)}`),
+          ),
+          bars: ids.flatMap((id) => [
+            bar(String(Number(id) * 2), `${id} -1 -1 -1`),
+            bar(String(Number(id) * 2 + 1), `${String(Number(id) + bars)} -1 -1 -1`),
+          ]),
+          voices: [
+            ...ids.map((id) => voice(id, id)),
+            ...ids.map((id) => voice(String(Number(id) + bars), String(Number(id) + bars))),
+          ],
+          beats: [
+            ...ids.map((id) => beat(id, '0', '0')),
+            ...ids.map((id) => beat(String(Number(id) + bars), '0', '1')),
+          ],
+          notes: [note('0', 2, 5), staffTwoNote],
+          rhythms: [rhythm('0', 'Whole')],
+        }),
+        partConfiguration,
+      );
+    }
+    const withStaff = (options = {}, pitches = LEFT_HAND, capo = 0): string =>
+      guitarTrack('0', options).replace('</Staves>', `${secondStaff(pitches, capo)}</Staves>`);
+    const noteIn = (result: GpifReadResult, slot: number): Note | undefined =>
+      beatsOf(result.score, 0, slot)[0]?.notes[0];
+
+    it('reads the left hand at its own pitch, on a keyboard track', () => {
+      const result = twoStaffs(withStaff({ program: 0 }), note('1', 0, 5, '', midi(33)));
+      expect(result.score.tracks[0]?.kind).toBe('pitched');
+      expect(noteIn(result, 0)?.fret).toBe(55);
+      expect(noteIn(result, 1)?.fret).toBe(33);
+      const message = result.warnings.find((w) => w.code === 'multiple-staves')?.message;
+      expect(message).toContain('read as a keyboard part (standard notation)');
+      expect(message).toContain('staff 2');
+    });
+
+    it('reads a guitar-program track as pitched and puts the note at 33, not 45', () => {
+      const result = twoStaffs(withStaff(), note('1', 0, 5));
+      expect(result.score.tracks[0]?.kind).toBe('pitched');
+      expect(noteIn(result, 1)?.fret).toBe(33);
+    });
+
+    it('adds the staff capo when the pitch comes from its tuning', () => {
+      const result = twoStaffs(withStaff({}, LEFT_HAND, 2), note('1', 0, 5));
+      expect(noteIn(result, 1)?.fret).toBe(35);
+    });
+
+    it('reads a staff with the same tuning and only a different capo as pitched', () => {
+      const result = twoStaffs(withStaff({}, '40 45 50 55 59 64', 2), note('1', 0, 5));
+      expect(result.score.tracks[0]?.kind).toBe('pitched');
+      expect(noteIn(result, 1)?.fret).toBe(47);
+      expect(result.warnings.find((w) => w.code === 'multiple-staves')?.message).toContain(
+        'own tuning or capo',
+      );
+    });
+
+    it('adds the capo to the tuning of a single-staff pitched track', () => {
+      const piano = guitarTrack('0', { program: 0 }).replace('<Fret>0</Fret>', '<Fret>3</Fret>');
+      const result = read(
+        oneBar([beat('0', '0', '0')], [note('0', 2, 5)], QUARTERS, { tracks: [piano] }),
+      );
+      expect(result.score.tracks[0]?.kind).toBe('pitched');
+      expect(firstNote(result.score)?.fret).toBe(58);
+    });
+
+    it('keeps a note below the first staff lowest string', () => {
+      const result = twoStaffs(withStaff({ program: 0 }), note('1', 0, -2, '', midi(26)));
+      expect(noteIn(result, 1)?.fret).toBe(26);
+      expect(codes(result)).not.toContain('invalid-value');
+    });
+
+    it('stays pitched when the part configuration shows tablature', () => {
+      const result = twoStaffs(withStaff({ program: 0 }), note('1', 0, 5, '', midi(33)), {
+        partConfiguration: tab,
+      });
+      expect(result.score.tracks[0]).toMatchObject({
+        kind: 'pitched',
+        display: { notation: 'standard' },
+      });
+      const alone = twoStaffs(withStaff(), note('1', 0, 5, '', midi(33)), {
+        partConfiguration: standard,
+      });
+      expect(alone.score.tracks[0]?.kind).toBe('pitched');
+    });
+
+    it('keeps the track fretted when the second staff has no tuning or the same one', () => {
+      const bare = guitarTrack('0').replace('</Staves>', '<Staff><Properties /></Staff></Staves>');
+      const same = withStaff({}, '40 45 50 55 59 64');
+      for (const track of [bare, same]) {
+        const result = twoStaffs(track, note('1', 0, 3));
+        expect(result.score.tracks[0]?.kind).toBe('fretted');
+        expect(noteIn(result, 1)).toMatchObject({ string: 6, fret: 3 });
+        expect(result.warnings.find((w) => w.code === 'multiple-staves')?.message).not.toContain(
+          'keyboard',
+        );
+      }
+    });
+
+    it('keeps a tie across bars in the second staff', () => {
+      const result = read(
+        gpif({
+          tracks: [withStaff({ program: 0 })],
+          masterBars: [masterBar('0 1'), masterBar('2 3')],
+          bars: [
+            bar('0', '0 -1 -1 -1'),
+            bar('1', '1 -1 -1 -1'),
+            bar('2', '0 -1 -1 -1'),
+            bar('3', '2 -1 -1 -1'),
+          ],
+          voices: [voice('0', '0'), voice('1', '1'), voice('2', '2')],
+          beats: [beat('0', '0', '0'), beat('1', '0', '1'), beat('2', '0', '2')],
+          notes: [
+            note('0', 2, 5),
+            note('1', 0, 5, '', midi(33)),
+            note('2', 0, 5, '<Tie origin="false" destination="true" />', midi(33)),
+          ],
+          rhythms: [rhythm('0', 'Whole')],
+        }),
+      );
+      expect(result.score.tracks[0]?.kind).toBe('pitched');
+      expect(codes(result)).not.toContain('tie-target');
+    });
   });
 
   it('gives a second staff the same voice slot in every bar', () => {

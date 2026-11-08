@@ -29,7 +29,7 @@ Score ─ id, meta (title, artist, … , notices)
 - **Ids.** Every `Score`, `MasterBar`, `Track`, `Bar`, `Voice`, `Beat` and `Note` has an `id`: 12 base62 characters from `newId()`, unique across the score. A grace beat has no id of its own; its notes do. Commands address nodes by id; timing helpers address positions by index.
 - **Optional fields are exact.** An absent optional field means "not set"; an explicit `undefined` is rejected by the schemas. Commands remove an optional field with `null`.
 - **Chords.** `Beat.chord.name` alone is a chord symbol written above the beat; `diagram` adds the grid (`baseFret`, one absolute fret per string from string 1, `null` muted, 0 open, optional `barres` and `fingering`).
-- **Grace notes** are `Beat.grace`, an array of grace beats (16th, 32nd or 64th), played `before` the beat's time or on it. Their connection to the main note uses ordinary note fields: a slide or bend on the grace note, `hammerPull` on the main note. A grace note is never tied (`GraceNoteSchema` refuses `tie: true`).
+- **Grace notes** are `Beat.grace`, an array of grace beats (16th, 32nd or 64th), played `before` the beat's time or on it. Their connection to the main note uses ordinary note fields: a slide or bend on the grace note, `hammerPull` on the note a hammer-on or pull-off lands on, which is the main note or, in a chain, the next grace. A grace note is never tied (`GraceNoteSchema` refuses `tie: true`).
 - **Lyrics** exist twice. `Track.lyrics` is Guitar Pro's raw block (up to five lines of `{ startBar, text }`, `startBar` 0-based), kept for lossless import and export. `Beat.lyrics` is what layout draws: one syllable per line, index = line, `''` where a line has nothing on that beat.
 - **Mixer changes** (`Beat.mix`) are mid-song changes of program, volume, pan, chorus, reverb, phaser, tremolo and tempo, each with an optional transition `duration` in quarter notes; absent is immediate.
 
@@ -41,7 +41,7 @@ The empty score (`createEmptyScore()`) is one fretted track in E standard, one 4
 | --------- | ------------------------------ | ------------------ | ------------------------------------------------------- | --------------------------------------------- |
 | `fretted` | 1 = highest-pitched string     | fret, 0 to `fretCount` | open-string MIDI notes, **lowest string first**, up to 10 | tab, treble clef, `octaveShift` 1             |
 | `drums`   | always 0                       | the GM percussion MIDI note | empty; `capo` and `fretCount` 0               | standard, percussion clef, `octaveShift` 0    |
-| `pitched` | always 0                       | the MIDI note      | usually empty; a GP3 to GP5 keyboard part keeps its tuning for export | standard, treble clef, `octaveShift` 0 |
+| `pitched` | always 0                       | the MIDI note      | usually empty; a GP3 to GP5 or gpif keyboard part keeps its tuning for export | standard, treble clef, `octaveShift` 0 |
 
 - **String 1 is the highest-pitched string**, as in Guitar Pro, but `Track.tuning` runs low to high, so string `s` sounds `tuning[tuning.length - s]` when open. On a six-string guitar string 6 is the low E (`tuning[0]`, MIDI 40) and string 1 the high E (`tuning[5]`, MIDI 64).
 - **Frets count from the capo**, as Guitar Pro writes them: the sounding note is `open + capo + fret`. The ceiling a note may sit on is `fretCount` (24 by default) whatever the capo, which is what Guitar Pro files hold.
@@ -244,7 +244,7 @@ What a reader does on the way in and a writer undoes on the way out. The reasons
 Readers drop these with a warning; each would be a contract change.
 
 - Song: RSE settings, page setup, master volume and reverb, hidden tempo marks, MIDI ports and channels.
-- Track: 12-string and banjo flags, tuning labels and flat display, partial capo, ottava lines and chromatic transposition (`octaveShift` covers whole octaves), multiple staves per track (collapsed onto one by ADR-0006).
+- Track: 12-string and banjo flags, tuning labels and flat display, partial capo, ottava lines and chromatic transposition (`octaveShift` covers whole octaves), multiple staves per track (collapsed onto one by ADR-0006; a track whose further staff has its own tuning or capo reads as pitched).
 - Bar: GP5 beam grouping, fermatas, free time, simile marks (readers copy the previous bar's beats instead), stem orientation overrides.
 - Beat: hairpins, legato slurs, slashed beats, timers, golpe, dead slap, rasgueado, wah, nested tuplets, note duration percentage.
 - Note: tenuto and staccatissimo, left-hand tapping, ornaments, the vibrato byte on GP5 bend points, the chord wizard's construction data.

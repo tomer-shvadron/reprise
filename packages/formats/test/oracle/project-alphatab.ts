@@ -21,6 +21,7 @@ import {
   type NoteProjection,
   type ScoreProjection,
   type TrackProjection,
+  type VoiceProjection,
 } from './projection';
 
 const {
@@ -39,7 +40,6 @@ const {
 
 type AtNote = alphaTab.model.Note;
 type AtBeat = alphaTab.model.Beat;
-type AtBar = alphaTab.model.Bar;
 type AtTrack = alphaTab.model.Track;
 type AtMasterBar = alphaTab.model.MasterBar;
 type AtBendPoint = alphaTab.model.BendPoint;
@@ -270,19 +270,70 @@ function projectBeats(beats: AtBeat[], kind: TrackKind, first: boolean): BeatPro
   return result;
 }
 
-function projectBar(bar: AtBar, kind: TrackKind): TrackProjection['bars'][number] {
-  return {
-    clef: named(CLEFS, bar.clef),
-    voices: normaliseVoices(
-      bar.voices.map((voice) => ({
-        beats: projectBeats(voice.beats, kind, bar.index === 0 && voice.index === 0),
-      })),
-    ),
-  };
+/** The model's voices per bar, as the gpif reader's `planVoiceSlots` counts them. */
+const VOICE_SLOTS = 4;
+
+/**
+ * The slot each used voice line `staff.voice` of a track lands in, by the reader's rule (a line
+ * is used when its voice has a beat, as `isUsedVoice` in `build-score.ts` says): staff
+ * 0 keeps its own voice indices and every other used line takes the lowest slot staff 0 never
+ * uses, in staff and voice order; a line with no slot left is absent (the reader's `voice-dropped`).
+ */
+function slotsOf(track: AtTrack): Map<string, number> {
+  const used = (staffIndex: number, voiceIndex: number): boolean =>
+    (track.staves[staffIndex]?.bars ?? []).some((bar) => {
+      const voice = bar.voices[voiceIndex];
+      return voice !== undefined && !voice.isEmpty;
+    });
+  const slots = new Map<string, number>();
+  const taken = new Set<number>();
+  for (let voiceIndex = 0; voiceIndex < VOICE_SLOTS; voiceIndex += 1) {
+    if (!used(0, voiceIndex)) continue;
+    slots.set(`0.${String(voiceIndex)}`, voiceIndex);
+    taken.add(voiceIndex);
+  }
+  const free = Array.from({ length: VOICE_SLOTS }, (_, slot) => slot).filter(
+    (slot) => !taken.has(slot),
+  );
+  track.staves.forEach((staff, staffIndex) => {
+    if (staffIndex === 0) return;
+    for (let voiceIndex = 0; voiceIndex < VOICE_SLOTS; voiceIndex += 1) {
+      if (!used(staffIndex, voiceIndex)) continue;
+      const slot = free.shift();
+      if (slot !== undefined) slots.set(`${String(staffIndex)}.${String(voiceIndex)}`, slot);
+    }
+  });
+  return slots;
+}
+
+/** One model bar: every staff's voices of this bar index, merged into the reader's slots. */
+function projectBar(
+  track: AtTrack,
+  barIndex: number,
+  kind: TrackKind,
+  slots: Map<string, number>,
+): TrackProjection['bars'][number] {
+  const voices: VoiceProjection[] = Array.from({ length: VOICE_SLOTS }, () => ({ beats: [] }));
+  const first = track.staves[0]?.bars[barIndex];
+  first?.voices.forEach((voice, voiceIndex) => {
+    voices[voiceIndex] = {
+      beats: projectBeats(voice.beats, kind, barIndex === 0 && voiceIndex === 0),
+    };
+  });
+  track.staves.forEach((staff, staffIndex) => {
+    if (staffIndex === 0) return;
+    staff.bars[barIndex]?.voices.forEach((voice, voiceIndex) => {
+      const slot = slots.get(`${String(staffIndex)}.${String(voiceIndex)}`);
+      if (slot === undefined) return;
+      voices[slot] = { beats: projectBeats(voice.beats, kind, barIndex === 0 && slot === 0) };
+    });
+  });
+  return { clef: named(CLEFS, first?.clef ?? 0), voices: normaliseVoices(voices) };
 }
 
 function projectTrack(track: AtTrack, kind: TrackKind): TrackProjection {
   const staff = track.staves[0];
+  const slots = slotsOf(track);
   const tuning = [...(staff?.tuning ?? [])].reverse();
   const { playbackInfo } = track;
   return {
@@ -299,7 +350,7 @@ function projectTrack(track: AtTrack, kind: TrackKind): TrackProjection {
     solo: playbackInfo.isSolo,
     color: track.color.rgba.toLowerCase(),
     octaveShift: -(staff?.displayTranspositionPitch ?? 0) / 12,
-    bars: (staff?.bars ?? []).map((bar) => projectBar(bar, kind)),
+    bars: (staff?.bars ?? []).map((_, barIndex) => projectBar(track, barIndex, kind, slots)),
   };
 }
 
