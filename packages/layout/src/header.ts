@@ -6,7 +6,7 @@ import {
   type TempoMark,
 } from '@reprise/model';
 
-import { engraving, textExtent, textWidth, type GlyphName } from './metrics';
+import { engraving, fitText, textExtent, textWidth, type GlyphName } from './metrics';
 import { box, glyph, glyphWidth, polyline, rect, text, type LayoutSink } from './primitives';
 
 const TEXT_SIZE = 1.5;
@@ -95,10 +95,12 @@ export interface Band {
   bottom: number;
 }
 
+/** Draws the bar's section from `x`, its name cut with an ellipsis to end by `right`. */
 export function drawSection(
   sink: LayoutSink,
   masterBar: MasterBar,
   x: number,
+  right: number,
   band: Band,
   space: number,
 ): void {
@@ -108,7 +110,8 @@ export function drawSection(
   const { ascent, descent } = textExtent(size);
   const baseline = band.bottom - space * 0.9;
   const pad = space * 0.3;
-  const boxed = section.letter ?? section.name;
+  const boxed = section.letter ?? fitText(section.name, size, right - x - pad * 2);
+  if (boxed === '' && section.name !== '') return;
   const boxWidth = textWidth(boxed, size) + pad * 2;
   const node = masterBar.id;
   sink.primitives.push(
@@ -119,15 +122,17 @@ export function drawSection(
     ),
     text(boxed, x + pad, baseline, size, { node }),
   );
-  if (section.letter !== undefined && section.name !== '') {
-    sink.primitives.push(text(section.name, x + boxWidth + space * 0.5, baseline, size, { node }));
-  }
+  const nameX = x + boxWidth + space * 0.5;
+  const name = section.letter === undefined ? '' : fitText(section.name, size, right - nameX);
+  if (name !== '') sink.primitives.push(text(name, nameX, baseline, size, { node }));
 }
 
+/** Draws the bar's tempo from `x`; only its label is cut, with an ellipsis, to end by `right`. */
 export function drawTempo(
   sink: LayoutSink,
   masterBar: MasterBar,
   x: number,
+  right: number,
   band: Band,
   space: number,
 ): void {
@@ -136,12 +141,19 @@ export function drawTempo(
   const size = TEXT_SIZE * space;
   const baseline = band.bottom - space * 0.8;
   const node = masterBar.id;
-  let cursor = x;
-  if (mark.label !== undefined && mark.label !== '') {
-    sink.primitives.push(text(mark.label, cursor, baseline, size, { node }));
-    cursor += textWidth(mark.label, size) + space * 0.6;
-  }
   const unit = TEMPO_UNITS[mark.unit ?? 'quarter'];
+  const bpm = `= ${String(displayedBpm(mark))}`;
+  const metronome =
+    glyphWidth(unit.glyph, space, SYMBOL_SCALE) +
+    space * 0.2 +
+    (unit.dotted ? glyphWidth('metAugmentationDot', space, SYMBOL_SCALE) + space * 0.2 : 0) +
+    textWidth(bpm, size);
+  let cursor = x;
+  const label = fitText(mark.label ?? '', size, right - x - metronome - space * 0.6);
+  if (label !== '') {
+    sink.primitives.push(text(label, cursor, baseline, size, { node }));
+    cursor += textWidth(label, size) + space * 0.6;
+  }
   sink.primitives.push(glyph(unit.glyph, cursor, baseline, space, { scale: SYMBOL_SCALE, node }));
   cursor += glyphWidth(unit.glyph, space, SYMBOL_SCALE) + space * 0.2;
   if (unit.dotted) {
@@ -153,7 +165,7 @@ export function drawTempo(
     );
     cursor += glyphWidth('metAugmentationDot', space, SYMBOL_SCALE) + space * 0.2;
   }
-  sink.primitives.push(text(`= ${String(displayedBpm(mark))}`, cursor, baseline, size, { node }));
+  sink.primitives.push(text(bpm, cursor, baseline, size, { node }));
 }
 
 export function drawDirections(

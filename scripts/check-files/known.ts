@@ -16,26 +16,4 @@ export interface KnownIssue {
   applies: (violation: CheckViolation) => boolean;
 }
 
-const num = (violation: CheckViolation, key: string): number => {
-  const value = violation.data?.[key];
-  return typeof value === 'number' ? value : 0;
-};
-
-export const KNOWN_ISSUES: readonly KnownIssue[] = [
-  {
-    id: 'bar-wider-than-page',
-    issue: 107,
-    check: 'layout',
-    why: 'a bar wider than the content width is never squeezed or wrapped, so its system, which holds only that bar, runs off the right edge of the page',
-    fixtures: ['fixtures/gp3/notes.gp3', 'fixtures/gp4/notes.gp4'],
-    // Only #107's symptom: a system of several bars past the margin is a line-breaking bug.
-    applies: (violation) =>
-      violation.code === 'outside-page' &&
-      num(violation, 'systemBars') === 1 &&
-      num(violation, 'systemOverflowPx') > 0,
-  },
-];
-
-export function knownFor(check: CheckId, violation: CheckViolation): KnownIssue | undefined {
-  return KNOWN_ISSUES.find((entry) => entry.check === check && entry.applies(violation));
-}
+export const KNOWN_ISSUES: readonly KnownIssue[] = [];

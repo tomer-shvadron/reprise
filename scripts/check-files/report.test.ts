@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { KNOWN_ISSUES } from './known.ts';
+import { KNOWN_ISSUES, type KnownIssue } from './known.ts';
 import type { CheckFile, CheckId, CheckRecord, CheckViolation } from './meta.ts';
 import {
   classify,
@@ -53,8 +53,26 @@ const violation = (code: string, data: CheckViolation['data'] = {}): CheckViolat
   data,
 });
 
-/** #107's symptom: one bar, alone on its system, wider than the content width. */
+/** A sample symptom: one bar, alone on its system, wider than the content width. */
 const ONE_WIDE_BAR = { systemOverflowPx: 50, systemBars: 1 };
+
+const num = (found: CheckViolation, key: string): number => {
+  const value = found.data?.[key];
+  return typeof value === 'number' ? value : 0;
+};
+
+/** A known-list entry of the test's own, so the tests outlive every real entry. */
+const SAMPLE: KnownIssue = {
+  id: 'sample-wide-bar',
+  issue: 1,
+  check: 'layout',
+  why: 'a sample entry',
+  fixtures: ['fixtures/gp3/notes.gp3'],
+  applies: (found) =>
+    found.code === 'outside-page' &&
+    num(found, 'systemBars') === 1 &&
+    num(found, 'systemOverflowPx') > 0,
+};
 
 describe('statuses', () => {
   it('rank fail over known over skipped over explained over pass', () => {
@@ -78,6 +96,8 @@ describe('statuses', () => {
         record(file.file, 'tempo', { violations: [violation('tempo-differs')] }),
         record(file.file, 'layout', { violations: [violation('outside-page', ONE_WIDE_BAR)] }),
       ],
+      new Map(),
+      [SAMPLE],
     );
     const checks = run.files[0]?.checks;
     expect(checks?.read?.status).toBe('pass');
@@ -85,7 +105,7 @@ describe('statuses', () => {
     expect(checks?.order?.status).toBe('skipped');
     expect(checks?.tempo?.status).toBe('fail');
     expect(checks?.layout?.status).toBe('known');
-    expect(checks?.layout?.known[0]?.entry.issue).toBe(107);
+    expect(checks?.layout?.known[0]?.entry.issue).toBe(1);
     expect(run.files[0]?.status).toBe('fail');
     expect(run.summary).toMatchObject({ failed: 1, known: 1, crashed: 0 });
   });
@@ -105,12 +125,13 @@ describe('statuses', () => {
 });
 
 describe('the known list', () => {
-  const [wide] = KNOWN_ISSUES.filter((entry) => entry.id === 'bar-wider-than-page');
-  const target = wide?.fixtures[0] ?? '';
+  const target = SAMPLE.fixtures[0] ?? '';
+  const known = [SAMPLE];
+  const none = new Map<string, string>();
 
   it('is stale when a covered fixture no longer fires it', () => {
-    const run = classify([fixture(target)], ['layout'], [record(target, 'layout')]);
-    expect(run.summary.stale).toEqual(['bar-wider-than-page']);
+    const run = classify([fixture(target)], ['layout'], [record(target, 'layout')], none, known);
+    expect(run.summary.stale).toEqual(['sample-wide-bar']);
   });
 
   it('is not stale where it fires, or where its check did not run', () => {
@@ -118,18 +139,22 @@ describe('the known list', () => {
       [fixture(target)],
       ['layout'],
       [record(target, 'layout', { violations: [violation('outside-page', ONE_WIDE_BAR)] })],
+      none,
+      known,
     );
     expect(fired.summary.stale).toEqual([]);
-    const notRun = classify([fixture(target)], ['read'], [record(target, 'read')]);
+    const notRun = classify([fixture(target)], ['read'], [record(target, 'read')], none, known);
     expect(notRun.summary.stale).toEqual([]);
   });
 
-  it('accepts as #107 only a one-bar system past the right margin', () => {
+  it('accepts only the violations its entry applies to', () => {
     const outside = (data: CheckViolation['data']) =>
       classify(
         [fixture(target)],
         ['layout'],
         [record(target, 'layout', { violations: [violation('outside-page', data)] })],
+        none,
+        known,
       ).files[0]?.checks.layout?.status;
     expect(outside(ONE_WIDE_BAR)).toBe('known');
     expect(outside({ systemOverflowPx: 4.7, systemBars: 5 })).toBe('fail');

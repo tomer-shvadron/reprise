@@ -425,6 +425,35 @@ describe('tab staff: two voices', () => {
 });
 
 describe('tab staff: words', () => {
+  it("cuts a squeezed last bar's chord name at its content end, and keeps it whole in a roomy one", () => {
+    const name = 'Cmaj7(add9,#11)/G';
+    const chordText = (result: LayoutResult) =>
+      result.primitives.find(
+        (p) =>
+          p.kind === 'text' && p.node?.startsWith('beat') && name.startsWith(p.text.slice(0, -1)),
+      );
+    const squeezed = score().track('guitar').bar();
+    for (let i = 0; i < 64; i++) {
+      squeezed.beat('64', [note((i % 6) + 1, 12)], i === 63 ? { chord: { name } } : {});
+    }
+    const narrow = laid(squeezed.build({ ids: 'sequential' }), { width: 416 });
+    const bar = narrow.anchors.find((anchor) => anchor.kind === 'bar');
+    const barEnd = (bar?.bbox.x ?? 0) + (bar?.bbox.width ?? 0);
+    const cut = chordText(narrow);
+    expect(cut?.kind === 'text' && cut.text.endsWith('…')).toBe(true);
+    const end = (cut?.bbox.x ?? 0) + (cut?.bbox.width ?? Infinity);
+    expect(end).toBeLessThanOrEqual(barEnd);
+    expect(end).toBeGreaterThan(barEnd - 3 * STAFF_SPACE);
+
+    const roomy = score()
+      .track('guitar')
+      .bar()
+      .beat('2', [note(1, 0)])
+      .beat('2', [note(1, 0)], { chord: { name } });
+    const whole = chordText(laid(roomy.build({ ids: 'sequential' })));
+    expect(whole?.kind === 'text' && whole.text).toBe(name);
+  });
+
   it('measures room for a dynamic at the first played beat, which render may write', () => {
     const builder = guitar().bar();
     for (let i = 0; i < 8; i++) builder.beat('8', [note(1, 0, { dynamics: 'fff' })]);

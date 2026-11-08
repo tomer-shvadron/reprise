@@ -7,7 +7,7 @@ import {
   type Track,
 } from '@reprise/model';
 
-import { glyphMetrics, textExtent } from '../../metrics';
+import { fitText, glyphMetrics, textExtent } from '../../metrics';
 import { box, glyph, rect, text, type LayoutSink } from '../../primitives';
 import type { Anchor, Rect } from '../../types';
 import {
@@ -337,6 +337,8 @@ function drawWords(context: Context, xs: Map<TabBeat, number>): void {
   const size = TAB.textSize * space;
   const fingerSize = TAB.fingerSize * space;
   const shown = analysed.rhythm ? shownDynamics(input.track, input.barIndex) : undefined;
+  // The system's last bar cuts its words at its content end; elsewhere they keep their measured room.
+  const limit = placement.next ? Infinity : placement.x + placement.width;
 
   for (const beat of analysed.beats) {
     const x = xs.get(beat);
@@ -345,11 +347,16 @@ function drawWords(context: Context, xs: Map<TabBeat, number>): void {
     const { chord, lyrics } = beat.beat;
     if (chord && lanes.chord) {
       const y = lanes.chord.bottom - WORD_LIFT * space;
-      sink.primitives.push(text(chord.name, x + wordStart(beat), y, size, { node }));
+      const left = x + wordStart(beat);
+      const name = fitText(chord.name, size, limit - left);
+      if (name !== '' || chord.name === '')
+        sink.primitives.push(text(name, left, y, size, { node }));
     }
     if (beat.beat.text && lanes.text) {
       const y = lanes.text.bottom - WORD_LIFT * space;
-      sink.primitives.push(text(beat.beat.text, x + wordStart(beat), y, size, { node }));
+      const left = x + wordStart(beat);
+      const said = fitText(beat.beat.text, size, limit - left);
+      if (said !== '') sink.primitives.push(text(said, left, y, size, { node }));
     }
     const fingered = analysed.rhythm
       ? beat.labels.flatMap(({ note }) => {
@@ -366,7 +373,8 @@ function drawWords(context: Context, xs: Map<TabBeat, number>): void {
     for (const [line, syllable] of (lyrics ?? []).entries()) {
       if (syllable === '' || !lanes.lyrics) continue;
       const y = lanes.lyrics.top + (line + 1) * TAB.lyricRow * space - DESCENT * space;
-      sink.primitives.push(text(syllable, x, y, size, { anchor: 'middle', node }));
+      const sung = fitText(syllable, size, 2 * (limit - x));
+      if (sung !== '') sink.primitives.push(text(sung, x, y, size, { anchor: 'middle', node }));
     }
     const dynamics = shown?.get(node);
     if (dynamics && lanes.dynamics) {

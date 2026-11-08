@@ -1,6 +1,6 @@
 import type { MasterBar, Score } from '@reprise/model';
 
-import { COURTESY_LEAD, NAME_SIZE, type SystemPlan } from './breaking';
+import { COURTESY_LEAD, NAME_SIZE, padCuts, type SystemPlan } from './breaking';
 import type { BarContext } from './context';
 import {
   CLEF_CHANGE_SCALE,
@@ -25,11 +25,12 @@ import {
 } from './header';
 import type { Band, VoltaSpan } from './header';
 import { onsetIndex, type BarMeasure } from './measure';
-import { textExtent } from './metrics';
+import { fitText, textExtent } from './metrics';
 import type { ResolvedOptions } from './options';
 import { line, rect, round, text, type LayoutSink } from './primitives';
 import { staffBar, trackBar, type StaffSlot } from './slots';
 import { stretch } from './spacing';
+import { separateAnchors } from './squeeze';
 import type { LaneBands, NeighbourBar } from './staves';
 import type { Range, Rect, StaffPlacement } from './types';
 import type { VerticalLayout } from './vertical';
@@ -71,6 +72,7 @@ interface Column {
 function columns(input: SystemInput, from: number): (Column | undefined)[] {
   const { measures, plan } = input;
   const out: (Column | undefined)[] = [];
+  const cuts = padCuts(measures, plan.start, plan.end, plan.trim);
   let barX = from;
   for (let index = plan.start; index < plan.end; index++) {
     const measure = measures[index];
@@ -84,11 +86,11 @@ function columns(input: SystemInput, from: number): (Column | undefined)[] {
     const contentX = barX + signatures;
     const positions: number[] = [];
     let onset = contentX + measure.leading;
-    for (const segment of stretch(measure.springs, plan.factor)) {
+    for (const segment of stretch(measure.springs, plan.factor, plan.squeeze)) {
       positions.push(onset);
       onset += segment;
     }
-    const contentWidth = onset + measure.trailing - contentX;
+    const contentWidth = onset + measure.trailing - (cuts[index - plan.start] ?? 0) - contentX;
     const barEnd = contentX + contentWidth + measure.end;
     out.push({
       barX,
@@ -152,7 +154,11 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
     const { ascent } = textExtent(size);
     for (const [g, { track }] of options.tracks.entries()) {
       const group = vertical.groups[g];
-      const name = plan.first ? track.name : track.shortName;
+      const name = fitText(
+        plan.first ? track.name : track.shortName,
+        size,
+        plan.indent - space * 1.5,
+      );
       if (!group || name === '') continue;
       const middle = input.y + (group.top + group.bottom) / 2;
       sink.primitives.push(text(name, input.x, middle + ascent / 2, size, { node: track.id }));
@@ -298,10 +304,14 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
     const numberBand = band(vertical, 'barNumber', input.y);
     if (numberBand) drawBarNumber(sink, masterBar, index + 1, barX, numberBand, space);
 
+    // Where the header room ends; a marking reaches it only in a bar that gave up its pad.
+    const headerRight = barEnd - space * 0.6;
     const sectionBand = band(vertical, 'section', input.y);
-    if (sectionBand) drawSection(sink, masterBar, barX + space * 0.2, sectionBand, space);
+    if (sectionBand) {
+      drawSection(sink, masterBar, barX + space * 0.2, headerRight, sectionBand, space);
+    }
     const tempoBand = band(vertical, 'tempo', input.y);
-    if (tempoBand) drawTempo(sink, masterBar, barX + space * 0.2, tempoBand, space);
+    if (tempoBand) drawTempo(sink, masterBar, barX + space * 0.2, headerRight, tempoBand, space);
     const directionBand = band(vertical, 'direction', input.y);
     if (directionBand) {
       drawDirections(
@@ -426,6 +436,14 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
 
   let lastEnd = xEnd;
   for (const column of bars) if (column) lastEnd = column.barEnd;
+  if (plan.squeeze < 1) {
+    const spans = new Map<string, { left: number; right: number }>();
+    for (const [i, column] of bars.entries()) {
+      const masterBar = contexts[plan.start + i]?.masterBar;
+      if (column && masterBar) spans.set(masterBar.id, { left: column.barX, right: column.barEnd });
+    }
+    separateAnchors(sink.anchors, spans);
+  }
   const bbox = rect(input.x, input.y, Math.max(xEnd, lastEnd) - input.x, vertical.height);
   sink.anchors.push({ kind: 'system', id: input.id, bbox, system: input.index });
   return { bbox, staves };

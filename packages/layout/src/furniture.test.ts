@@ -1,7 +1,7 @@
 import { midi, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
-import { PAGE_SIZES, layout, type LayoutOptions, type LayoutResult } from './index';
+import { PAGE_SIZES, STAFF_SPACE, layout, type LayoutOptions, type LayoutResult } from './index';
 import { expectValid } from './test/check-result';
 import { describe as summarise, describePrimitive } from './test/describe';
 
@@ -324,6 +324,21 @@ describe('master-bar markings', () => {
       summarise(result).primitives.filter((line) => /Lead Guitar|L\.Gt\.|Bass|Bs\./.test(line)),
     ).toMatchSnapshot();
   });
+
+  it('cuts a track name longer than its share of the line with an ellipsis', () => {
+    const long = 'A track name far too long for any narrow page at all';
+    const result = laid(score().track('guitar', { name: long }).bar().build(), { width: 300 });
+    const name = result.primitives.find(
+      (primitive) => primitive.kind === 'text' && long.startsWith(primitive.text.slice(0, -1)),
+    );
+    const clef = result.primitives.find(
+      (primitive) => primitive.kind === 'glyph' && primitive.glyph.includes('Clef'),
+    );
+    expect(name?.kind === 'text' && name.text.endsWith('…')).toBe(true);
+    expect((name?.bbox.x ?? 0) + (name?.bbox.width ?? Infinity)).toBeLessThanOrEqual(
+      (clef?.bbox.x ?? 0) - STAFF_SPACE * 1.5 + 0.02,
+    );
+  });
 });
 
 describe('spacing', () => {
@@ -388,5 +403,26 @@ describe('spacing', () => {
       ),
     );
     expect([...kinds].sort()).toEqual(['glyph', 'line', 'path', 'text']);
+  });
+});
+
+describe('header markings in a squeezed bar', () => {
+  it('cut a tempo label and a section name to their bar, keeping the metronome mark', () => {
+    const long = 'A tempo label and section name far too long for the line';
+    const builder = score().track('guitar').bar().section(long).tempo(96, { label: long });
+    for (let i = 0; i < 64; i++) builder.beat('64', [note((i % 6) + 1, 12)]);
+    const result = laid(builder.build(), { width: 416 });
+    const bar = result.anchors.find((anchor) => anchor.kind === 'bar');
+    const cut = result.primitives.filter(
+      (primitive) => primitive.kind === 'text' && primitive.text.endsWith('…'),
+    );
+    expect(cut).toHaveLength(2);
+    for (const primitive of cut) {
+      expect(primitive.bbox.x + primitive.bbox.width).toBeLessThanOrEqual(
+        (bar?.bbox.x ?? 0) + (bar?.bbox.width ?? 0),
+      );
+    }
+    expect(glyphs(result)).toContain('metNoteQuarterUp');
+    expect(texts(result)).toContain('= 96');
   });
 });
