@@ -499,6 +499,76 @@ describe('ledger lines and ties on unisons', () => {
   });
 });
 
+describe('a tie from a moved head across a bar line', () => {
+  /** Bar 1 moves voice 2's last half right of voice 1's dead head; the next bar ties into it. */
+  const tied = () =>
+    guitar('standard')
+      .bar()
+      .beat('2', [note(1, 0, { dead: true })])
+      .beat('2', [note(1, 0, { dead: true })])
+      .voice(1)
+      .beat('4.', [note(2, 5)])
+      .beat('8', [note(2, 5)])
+      .beat('2', [note(2, 5)])
+      .bar()
+      .voice(1)
+      .beat('2', [note(2, 5, { tie: true })]);
+
+  const tieInto = (result: LayoutResult, id: string): Rect => {
+    const found = result.primitives.find(
+      (p) => p.kind === 'path' && p.node === id && p.bbox.y < 120,
+    );
+    if (!found) throw new Error(`no tie into ${id}`);
+    return found.bbox;
+  };
+
+  it.each(['standard', 'both'] as const)('starts past the moved head in %s notation', (mode) => {
+    const built = tied().build({ ids: 'sequential' });
+    const result = laid(built, mode);
+    const origin = noteOf(built, 0, 0, 2, 0, 1).id;
+    const target = noteOf(built, 0, 1, 0, 0, 1).id;
+    const moved = head(result, origin);
+    expect(moved.x).toBeGreaterThan(head(result, noteOf(built, 0, 0, 1, 0, 0).id).x + 5);
+    const start = tieInto(result, target).x;
+    expect(start).toBeGreaterThanOrEqual(rightOf(moved) - EPSILON);
+    expect(start).toBeLessThan(rightOf(moved) + space(result));
+  });
+
+  it('starts a hammer-on slur past the moved head', () => {
+    const built = tied().build({ ids: 'sequential' });
+    const bar = built.tracks[0]?.bars[1]?.voices[1]?.beats[0]?.notes[0];
+    if (!bar) throw new Error('no target');
+    bar.tie = false;
+    bar.fret = 7;
+    bar.hammerPull = true;
+    const result = laid(built);
+    const moved = head(result, noteOf(built, 0, 0, 2, 0, 1).id);
+    const slur = result.primitives.find((p) => p.kind === 'path' && p.node === bar.id);
+    expect(slur?.bbox.x).toBeGreaterThanOrEqual(moved.x - EPSILON);
+    expect(slur?.bbox.x).toBeLessThan(rightOf(moved) + space(result));
+  });
+
+  it('starts past the moved head when the next bar is on the next system', () => {
+    const built = tied().build({ ids: 'sequential' });
+    const track = built.tracks[0];
+    const result = laidOut(built, {
+      width: 330,
+      notation: { [track?.id ?? '']: 'standard' },
+    });
+    const origin = noteOf(built, 0, 0, 2, 0, 1).id;
+    const target = noteOf(built, 0, 1, 0, 0, 1).id;
+    const systems = new Set(result.anchors.map((a) => a.system));
+    expect(systems.size).toBe(2);
+    const moved = head(result, origin);
+    const halves = result.primitives.filter(
+      (p) => p.kind === 'path' && (p.node === origin || p.node === target),
+    );
+    const first = halves.find((p) => p.bbox.x >= moved.x);
+    expect(first?.bbox.x).toBeGreaterThanOrEqual(rightOf(moved) - EPSILON);
+    expect(first?.bbox.x).toBeLessThan(rightOf(moved) + space(result));
+  });
+});
+
 describe('two drum voices', () => {
   const drums = (other: number) =>
     score()

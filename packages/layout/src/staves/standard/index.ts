@@ -96,7 +96,21 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
       return lanes;
     },
     render(input: StaffBar, placement: StaffBarPlacement, sink): void {
-      renderBar(input, placement, sink, planned(input), type);
+      const { barIndex, track } = input;
+      const before = track.bars[barIndex - 1];
+      const masterBar = input.score.masterBars[barIndex - 1];
+      // A clef change here leaves the previous bar's clef unknown, so its plan is not rebuilt.
+      const previous = () =>
+        before && masterBar && placement.previous && input.bar.clef === undefined
+          ? planned({
+              ...input,
+              bar: before,
+              masterBar,
+              barIndex: barIndex - 1,
+              keySignature: masterBar.keySignature,
+            })
+          : undefined;
+      renderBar(input, placement, sink, planned(input), type, previous);
       const effects = laneEffects(input, options.percussion);
       if (effects) drawLanes({ input, placement, sink, space: input.space, effects });
     },

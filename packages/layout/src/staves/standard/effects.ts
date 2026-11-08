@@ -356,6 +356,8 @@ export interface ConnectionContext {
   sink: LayoutSink;
   space: number;
   beatX: (beat: BeatPlan) => number;
+  /** How far the previous bar moved a voice's beat right, for a unison or a second. */
+  previousShift: (voice: number, beat: number) => number;
 }
 
 /** A head's place for a connection, in px: its centre's y and its outer edges, accidental and dots included. */
@@ -411,7 +413,7 @@ function locate(
   }
   const others = voiceBeats(input.track, found.bar, voice);
   const origin = others[found.beat];
-  const x = previous.onsetX(tickOf(others, found.beat));
+  const x = previous.onsetX(tickOf(others, found.beat)) + context.previousShift(voice, found.beat);
   const width = glyphWidth(headGlyph('normal', origin?.duration ?? 4), space);
   const { position } = placeNote(input.track, found.note, key, input.clef, false);
   return {

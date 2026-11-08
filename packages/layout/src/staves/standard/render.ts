@@ -39,6 +39,7 @@ interface Context {
   sink: LayoutSink;
   type: StaffType;
   space: number;
+  previousShift: (voice: number, beat: number) => number;
 }
 
 function anchorBase(context: Context, voice: number) {
@@ -176,10 +177,13 @@ export function renderBar(
   sink: LayoutSink,
   plan: BarPlan,
   type: StaffType,
+  previousPlan: () => BarPlan | undefined = () => undefined,
 ): void {
   const { space } = input;
   const top = placement.top;
-  const context: Context = { input, placement, plan, sink, type, space };
+  const previousShift = (voice: number, beat: number) =>
+    previousPlan()?.voices[voice]?.[beat]?.shift ?? 0;
+  const context: Context = { input, placement, plan, sink, type, space, previousShift };
   const tips = new Map<BeatPlan, number>();
   const fretted = input.track.kind === 'fretted';
 
@@ -336,6 +340,7 @@ export function renderBar(
       sink,
       space,
       beatX: (beat) => beatX(context, beat),
+      previousShift,
     };
     for (const [voice, beats] of plan.voices.entries()) drawConnections(connecting, voice, beats);
     drawStrokes(connecting);
@@ -400,7 +405,8 @@ function drawTies(context: Context, fretted: boolean): void {
               let tick = 0;
               for (const b of voiceBeats.slice(0, -1)) tick += beatTicks(b);
               const reach = loneHeadRight(blackWidth, source.ghost, last.dots, space);
-              start = placement.previous.onsetX(tick) + reach + gap;
+              const shift = context.previousShift(voice, voiceBeats.length - 1);
+              start = placement.previous.onsetX(tick) + shift + reach + gap;
             } else {
               start = placement.x - space;
             }
