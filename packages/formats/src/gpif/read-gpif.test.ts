@@ -384,22 +384,26 @@ describe('beats and rhythms', () => {
     });
   });
 
-  it('reads the stroke length onto a brush and drops one that is not a note value', () => {
+  it('reads the stroke length onto a brush, rounding one that is not a note value', () => {
     const brush = (ticks: number): string =>
       `<Properties>${property('Brush', '<Direction>Up</Direction>')}</Properties><XProperties><XProperty id="687935489"><Int>${String(ticks)}</Int></XProperty></XProperties>`;
+    const lengths = [480, 74, 56, 500, 0];
     const { score, warnings } = read(
       oneBar(
-        [beat('0', '0', '0', brush(480)), beat('1', '0', '0', brush(500))],
+        lengths.map((ticks, i) => beat(String(i), '0', '0', brush(ticks))),
         [note('0', 2, 5)],
         QUARTERS,
       ),
     );
     expect(beatsOf(score).map((b) => b.effects.brush)).toEqual([
       { direction: 'up', duration: 8 },
+      { direction: 'up', duration: 64 },
+      { direction: 'up', duration: 64 },
+      { direction: 'up', duration: 8 },
       { direction: 'up' },
     ]);
     expect(warnings.map((w) => w.message)).toContain(
-      'A stroke length of 500 ticks is not a note value; dropped',
+      'A stroke length of 0 ticks is not positive; dropped',
     );
   });
 

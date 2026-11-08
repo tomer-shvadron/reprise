@@ -27,6 +27,32 @@ const unexplained = (build: HandBuilt): string[] =>
     .filter((difference) => toleranceFor(difference, build.format, build.projections) === undefined)
     .map(formatDifference);
 
+describe('stroke-length-rounded', () => {
+  it('accepts a length that is not a note value, rounded on our side', () => {
+    const build = HAND_BUILT.strokeLength74();
+    expect(accepted(build)).toEqual({
+      'tracks[0].bars[0].voices[0].beats[0].brush': ['stroke-length-rounded'],
+    });
+    expect(unexplained(build)).toEqual([]);
+  });
+
+  it('has nothing to accept for an exact note value', () => {
+    expect(HAND_BUILT.strokeLength480().differences).toEqual([]);
+  });
+
+  it('does not accept a different direction or a different note value', () => {
+    const { differences, projections } = HAND_BUILT.strokeLength74();
+    const [difference] = differences;
+    if (!difference) throw new Error('no stroke difference');
+    const applies = (ours: unknown): boolean =>
+      tolerance('stroke-length-rounded').applies({ ...difference, ours }, projections);
+    expect(applies('down 64')).toBe(true);
+    expect(applies('up 64')).toBe(false);
+    expect(applies('down 32')).toBe(false);
+    expect(applies(undefined)).toBe(false);
+  });
+});
+
 describe('whammy-points-kept', () => {
   it('accepts the monotonic curve whose middle points alphaTab removes', () => {
     const build = HAND_BUILT.whammyMonotonic();

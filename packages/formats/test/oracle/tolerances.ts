@@ -165,6 +165,22 @@ export const TOLERANCES: readonly Tolerance[] = [
     },
   },
   {
+    id: 'stroke-length-rounded',
+    formats: GPIF_ONLY,
+    why: 'A stroke length (`XProperty` 687935489) that is not an exact note value is read as the nearest note value on a log scale, because `Stroke.duration` holds only 4 to 128 (README, "Stroke length"); alphaTab keeps the exact tick count, so its denominator (3840 / ticks) is not a note value.',
+    applies: (d) => {
+      const [ours, theirs] = [stroke(d.ours), stroke(d.alphaTab)];
+      return (
+        (isBeatField(d, 'brush') || isBeatField(d, 'arpeggio')) &&
+        ours !== undefined &&
+        theirs !== undefined &&
+        ours.direction === theirs.direction &&
+        !Number.isInteger(Math.log2(theirs.duration)) &&
+        ours.duration === 2 ** Math.min(7, Math.max(2, Math.round(Math.log2(theirs.duration))))
+      );
+    },
+  },
+  {
     id: 'percussion-articulations',
     formats: GP3_TO_5,
     why: "A drum note keeps its GM note, and the model's percussion table has 27, 28 and 32 as GM2's High Q, Slap and Square Click; alphaTab's `readNote` maps those three through `_gp5PercussionInstrumentMap` to its own articulation indices (PR #56: an articulation quirk, not a MIDI remap).",
