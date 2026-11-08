@@ -96,6 +96,10 @@ describe('stray primitives', () => {
     },
   );
 
+  it('none in the random score of seed 2147483622, whose out-of-order stems followed a steep beam', () => {
+    expect(strays(randomScore(2147483622), ['standard'], ['paged'])).toEqual([]);
+  });
+
   it('none in random scores', () => {
     assert(
       property(integer({ min: 1, max: 0x7fffffff }), (seed) => {

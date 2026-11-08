@@ -1,5 +1,6 @@
 import {
   beatTicks,
+  midiNote,
   keyAlter,
   percussionInstrument,
   soundingPitch,
@@ -16,6 +17,8 @@ import {
   type Spelling,
   type Track,
 } from '@reprise/model';
+
+import { targetKey, targetsOf, type BendTarget } from './bend-targets';
 
 /** An accidental printed before a note: the alteration it shows, and whether as a reminder. */
 export interface ShownAccidental {
@@ -129,15 +132,57 @@ export function harmonicHead(
   };
 }
 
+/**
+ * A bend target's spelling: the main head's own when the bend is back at the written pitch, and
+ * otherwise from the key alone, as harmonic diamonds are.
+ */
+function targetSpellings(
+  track: SpellTrack,
+  note: Note,
+  key: KeySignature,
+): { target: BendTarget; spelling: Spelling; key: string }[] {
+  return targetsOf(track, note).map((target, index) => ({
+    target,
+    spelling:
+      target.value === 0
+        ? spelled(track, note, key)
+        : spell(midiNote(track, note) + target.value / 2, key),
+    key: targetKey(note.id, index),
+  }));
+}
+
+/** The heads a bend draws at the pitches it reaches, placed as any head is. */
+export function placeTargets(
+  track: Pick<Track, 'kind' | 'tuning' | 'capo' | 'display'>,
+  note: Note,
+  key: KeySignature,
+  clef: Clef,
+): { target: BendTarget; placed: PlacedNote; key: string }[] {
+  return targetSpellings(track, note, key).map(({ target, spelling, key: id }) => ({
+    target,
+    key: id,
+    placed: {
+      position: staffPosition(spelling, pitchedClef(clef), track.display.octaveShift),
+      head: 'normal',
+      alter: spelling.alter,
+    },
+  }));
+}
+
+type TimedKind = 'main' | 'sounding' | 'target';
+const RANK: Record<TimedKind, number> = { main: 0, sounding: 1, target: 2 };
+
 interface TimedNote {
   tick: number;
   voice: number;
   order: number;
-  /** The chord it sounds in: the onset's tick for every voice's beat notes, negative for graces. */
-  chord: number;
+  /** The chord it sounds in: the onset's tick for every voice's beat notes, `g` and a count for graces. */
+  chord: string;
   note: Note;
-  /** The extra diamond at the harmonic's sounding pitch, after the beat's main notes. */
-  sounding: boolean;
+  /** A main head, the extra diamond at a harmonic's sounding pitch, or a bend's target head. */
+  kind: TimedKind;
+  /** The id its accidental is stored under. */
+  key: string;
   spelling: Spelling;
   /** The letter and octave, as a number. */
   slot: number;
@@ -147,10 +192,11 @@ interface TimedNote {
  * The bar's notes in reading order: by onset, voice, then grace notes before their beat; within
  * one chord in head order (main notes before sounding diamonds, the flatter alteration, the
  * higher string number), so the result does not depend on the order notes were entered in.
+ * With `targets`, a bend's target heads follow their beat's main notes.
  */
-function timedNotes(track: SpellTrack, bar: Bar, key: KeySignature): TimedNote[] {
+function timedNotes(track: SpellTrack, bar: Bar, key: KeySignature, targets: boolean): TimedNote[] {
   const out: TimedNote[] = [];
-  const push = (tick: number, voice: number, order: number, chord: number, note: Note): void => {
+  const push = (tick: number, voice: number, order: number, chord: string, note: Note): void => {
     const spelling = spelled(track, note, key);
     out.push({
       tick,
@@ -158,7 +204,8 @@ function timedNotes(track: SpellTrack, bar: Bar, key: KeySignature): TimedNote[]
       order,
       chord,
       note,
-      sounding: false,
+      kind: 'main',
+      key: note.id,
       spelling,
       slot: slotOf(spelling),
     });
@@ -170,7 +217,8 @@ function timedNotes(track: SpellTrack, bar: Bar, key: KeySignature): TimedNote[]
       order,
       chord,
       note,
-      sounding: true,
+      kind: 'sounding',
+      key: soundingKey(note.id),
       spelling: sounding,
       slot: slotOf(sounding),
     });
@@ -182,10 +230,28 @@ function timedNotes(track: SpellTrack, bar: Bar, key: KeySignature): TimedNote[]
       let order = 0;
       for (const grace of beat.grace ?? []) {
         graces += 1;
-        for (const note of grace.notes) push(tick, voice, order, -graces, note);
+        for (const note of grace.notes) push(tick, voice, order, `g${String(graces)}`, note);
         order += 1;
       }
-      for (const note of beat.notes) push(tick, voice, order, tick, note);
+      for (const note of beat.notes) push(tick, voice, order, String(tick), note);
+      // A bend's targets read after every main head of the beat, in the order the bend reaches them.
+      if (targets) {
+        for (const note of beat.notes) {
+          for (const { target, spelling, key: id } of targetSpellings(track, note, key)) {
+            out.push({
+              tick,
+              voice,
+              order: order + 1 + target.position / 60,
+              chord: `t${String(voice)}:${String(tick)}:${String(target.position)}`,
+              note,
+              kind: 'target',
+              key: id,
+              spelling,
+              slot: slotOf(spelling),
+            });
+          }
+        }
+      }
       tick += beatTicks(beat);
     }
   }
@@ -194,7 +260,7 @@ function timedNotes(track: SpellTrack, bar: Bar, key: KeySignature): TimedNote[]
       a.tick - b.tick ||
       a.voice - b.voice ||
       a.order - b.order ||
-      Number(a.sounding) - Number(b.sounding) ||
+      RANK[a.kind] - RANK[b.kind] ||
       a.spelling.alter - b.spelling.alter ||
       b.note.string - a.note.string,
   );
@@ -228,18 +294,19 @@ function walk(
   key: KeySignature,
   previous: Memory | undefined,
   shown: Map<string, ShownAccidental> | undefined,
+  targets: boolean,
 ): Memory {
   const printed: Memory = new Map();
   const carried = new Map<number, Alter>();
   const seen = new Set<number>();
   // Slots left ambiguous by a split chord, with the chord that split them.
-  const unsettled = new Map<number, number>();
-  const timed = timedNotes(track, bar, key);
+  const unsettled = new Map<number, string>();
+  const timed = timedNotes(track, bar, key, targets);
   let run = 0;
-  for (const [i, { tick, note, sounding, chord, spelling, slot }] of timed.entries()) {
+  for (const [i, { tick, note, kind, key: id, chord, spelling, slot }] of timed.entries()) {
     if (timed[run]?.tick !== tick) run = i;
     const { letter, alter } = spelling;
-    if (note.tie && !sounding) {
+    if (note.tie && kind === 'main') {
       if (!printed.has(slot)) carried.set(slot, alter);
       continue;
     }
@@ -251,11 +318,10 @@ function walk(
       const other = timed[j];
       if (other?.tick !== tick) break;
       if (j === i || other.chord !== chord || other.slot !== slot) continue;
-      if (other.note.tie && !other.sounding) continue;
+      if (other.note.tie && other.kind === 'main') continue;
       if (other.spelling.alter !== alter) split = true;
       else if (j < i) signed = true;
     }
-    const id = sounding ? soundingKey(note.id) : note.id;
     const held = printed.get(slot);
     const current = held === undefined || held === UNSETTLED ? keyAlter(key, letter) : held;
     const before = previous?.get(slot);
@@ -283,33 +349,40 @@ function walk(
 
 const memories = new WeakMap<
   Bar,
-  { track: SpellTrack; fifths: number; minor: boolean; memory: Memory }
+  { track: SpellTrack; fifths: number; minor: boolean; targets: boolean; memory: Memory }
 >();
 
 /** What a bar's walk leaves in measure memory, remembered per bar for the bar after. */
-function barMemory(track: SpellTrack, bar: Bar, key: KeySignature): Memory {
+function barMemory(track: SpellTrack, bar: Bar, key: KeySignature, targets: boolean): Memory {
   const cached = memories.get(bar);
-  if (cached?.track === track && cached.fifths === key.fifths && cached.minor === key.minor) {
+  if (
+    cached?.track === track &&
+    cached.fifths === key.fifths &&
+    cached.minor === key.minor &&
+    cached.targets === targets
+  ) {
     return cached.memory;
   }
-  const memory = walk(track, bar, key, undefined, undefined);
-  memories.set(bar, { track, fifths: key.fifths, minor: key.minor, memory });
+  const memory = walk(track, bar, key, undefined, undefined, targets);
+  memories.set(bar, { track, fifths: key.fifths, minor: key.minor, targets, memory });
   return memory;
 }
 
 /**
- * The accidental each note of `bar` prints, by note id, and each sounding diamond's by
- * `soundingKey`; notes that print none are absent.
+ * The accidental each note of `bar` prints, by note id, each sounding diamond's by `soundingKey`
+ * and each bend target's by `targetKey`; notes that print none are absent. `targets` is whether
+ * bend targets take part in measure memory, as on a staff shown alone.
  */
 export function barAccidentals(
   track: Pick<Track, 'kind' | 'tuning' | 'capo'>,
   bar: Bar,
   key: KeySignature,
   previous: { bar: Bar; key: KeySignature } | undefined,
+  targets: boolean,
 ): Map<string, ShownAccidental> {
   const shown = new Map<string, ShownAccidental>();
-  const memory = previous && barMemory(track, previous.bar, previous.key);
-  const printed = walk(track, bar, key, memory, shown);
-  memories.set(bar, { track, fifths: key.fifths, minor: key.minor, memory: printed });
+  const memory = previous && barMemory(track, previous.bar, previous.key, targets);
+  const printed = walk(track, bar, key, memory, shown, targets);
+  memories.set(bar, { track, fifths: key.fifths, minor: key.minor, targets, memory: printed });
   return shown;
 }
