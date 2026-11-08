@@ -14,7 +14,6 @@ import {
   expectValid,
   nonFinite,
   outsideItsPage,
-  overlappingAnchors,
   stable,
 } from './test/check-result';
 
@@ -216,15 +215,24 @@ describe('layout', () => {
     expect(at(1)).toBeGreaterThan(at(0.5));
   });
 
-  it('never splits a bar wider than the page; it overflows its own system', () => {
+  it('squeezes a bar wider than the page into a system of its own', () => {
     const builder = score().timeSignature(32, 4).track('guitar').bar();
     for (let i = 0; i < 128; i++) builder.beat('32', [note(1, i % 12)]);
     const result = layout(builder.build({ ids: 'sequential' }), paged);
     expect(result.systems).toHaveLength(1);
-    expect(
-      result.anchors.filter((anchor) => anchor.kind === 'beat').map((anchor) => anchor.system),
-    ).toEqual(Array.from({ length: 128 }, () => 0));
-    expect(overlappingAnchors(result)).toEqual([]);
+    const [system] = result.systems;
+    const right = PAGE_SIZES.a4.width - DEFAULT_MARGINS.paged.right;
+    expect(system && system.bbox.x + system.bbox.width).toBeCloseTo(right, 1);
+    const bar = result.anchors.find((anchor) => anchor.kind === 'bar');
+    const beats = result.anchors.filter((anchor) => anchor.kind === 'beat');
+    expect(beats.map((anchor) => anchor.system)).toEqual(Array.from({ length: 128 }, () => 0));
+    for (const beat of beats) {
+      expect(beat.bbox.x).toBeGreaterThanOrEqual(bar?.bbox.x ?? Infinity);
+      expect(beat.bbox.x + beat.bbox.width).toBeLessThanOrEqual(
+        (bar?.bbox.x ?? 0) + (bar?.bbox.width ?? 0),
+      );
+    }
+    expectValid(result);
   });
 
   it('shows the visible tracks only, each with the staves its notation asks for', () => {
@@ -440,14 +448,23 @@ describe('the page checks', () => {
     expect(nonFinite(result)).toEqual([]);
   });
 
-  it('find a bar wider than a narrow page, past its right margin', () => {
-    const builder = score().track('guitar').bar();
-    for (let i = 0; i < 64; i++) builder.beat('64', [note((i % 6) + 1, 12)]);
-    const result = layout(builder.build(), { ...paged, width: 300 });
-    const overflows = outsideItsPage(result, DEFAULT_MARGINS.paged);
-    expect(overflows.length).toBeGreaterThan(0);
+  it('find a primitive past the page edge and a system past its right margin', () => {
+    const laid = layout(eighthsScore(8), paged);
+    const [first, ...rest] = laid.primitives;
+    const [system, ...others] = laid.systems;
+    if (!first || !system) throw new Error('nothing laid out');
+    const broken = {
+      ...laid,
+      primitives: [{ ...first, bbox: { ...first.bbox, x: PAGE_SIZES.a4.width + 10 } }, ...rest],
+      systems: [
+        { ...system, bbox: { ...system.bbox, width: PAGE_SIZES.a4.width - system.bbox.x } },
+        ...others,
+      ],
+    };
+    const overflows = outsideItsPage(broken, DEFAULT_MARGINS.paged);
+    expect(overflows).toHaveLength(1);
+    expect(overflows[0]?.primitives).toBe(1);
     expect(overflows[0]?.systemOverflowPx).toBeGreaterThan(0);
-    expect(overflows[0]?.primitives).toBeGreaterThan(0);
   });
 
   it('name every non-finite number by its path', () => {

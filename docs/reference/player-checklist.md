@@ -134,7 +134,6 @@ Wrong if: two things are drawn on top of each other so you cannot read them, som
 
 Already known, so note them but do not report them again:
 
-- a very wide bar, or a long chord name, runs off the right edge of the page (#107);
 - two notes of the same pitch on different strings are drawn on top of each other in standard notation (#110);
 - something drawn inside a system that the overlap check does not cover, such as a slur or a bend arrow, collides with another mark (#116);
 - note heads or rests of two voices collide in standard notation (#70);

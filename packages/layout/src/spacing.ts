@@ -35,7 +35,10 @@ export interface Spring {
   min: number;
 }
 
-/** Each spring at `factor` times its natural width, never below its minimum. */
-export function stretch(springs: readonly Spring[], factor: number): number[] {
-  return springs.map(({ natural, min }) => Math.max(min, natural * factor));
+/**
+ * Each spring at `factor` times its natural width, never below its minimum scaled by `squeeze`,
+ * which is below 1 only in a bar whose minimums alone overflow its line.
+ */
+export function stretch(springs: readonly Spring[], factor: number, squeeze = 1): number[] {
+  return springs.map(({ natural, min }) => Math.max(min * squeeze, natural * factor));
 }

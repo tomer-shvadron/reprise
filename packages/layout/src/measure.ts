@@ -31,6 +31,8 @@ export interface BarMeasure {
   /** From the content start to the first onset, and after the last spring. */
   leading: number;
   trailing: number;
+  /** The part of `trailing` kept for header markings wider than the bar; an over-wide bar gives it up. */
+  pad: number;
   /** Widths of the signature parts at the bar start; zero when the bar shows none. */
   clefChange: number;
   keyChange: number;
@@ -43,9 +45,16 @@ export interface BarMeasure {
 }
 
 /** The bar's width when it opens a system (whose prefix shows clef and key) or not. */
-export function barWidth(measure: BarMeasure, opensSystem: boolean, factor = 1): number {
+export function barWidth(
+  measure: BarMeasure,
+  opensSystem: boolean,
+  factor = 1,
+  squeeze = 1,
+): number {
   let content = 0;
-  for (const { natural, min } of measure.springs) content += Math.max(min, natural * factor);
+  for (const { natural, min } of measure.springs) {
+    content += Math.max(min * squeeze, natural * factor);
+  }
   return fixedWidth(measure, opensSystem) + content;
 }
 
@@ -180,6 +189,7 @@ export function measureBar(
     springs,
     leading: Math.max(LEAD * space, (left[0] ?? 0) + ONSET_GAP * space),
     trailing: TRAIL * space,
+    pad: 0,
     clefChange,
     keyChange:
       context.keyChange && standardSlots.length > 0
@@ -198,6 +208,9 @@ export function measureBar(
     extents,
   };
   const shortfall = headerWidth(masterBar, space) - barWidth(measure, false);
-  if (shortfall > 0) measure.trailing += shortfall;
+  if (shortfall > 0) {
+    measure.trailing += shortfall;
+    measure.pad = shortfall;
+  }
   return measure;
 }

@@ -42,6 +42,24 @@ export function textWidth(text: string, size: number): number {
   return (units * size) / unitsPerEm;
 }
 
+const ELLIPSIS = '…';
+
+/**
+ * `text` cut with an ellipsis to at most `max` px wide at `size` px; unchanged when it fits, and
+ * `''` when not even the ellipsis does. The epsilon keeps a text that exactly fills its measured
+ * room from being cut by rounding.
+ */
+export function fitText(text: string, size: number, max: number): string {
+  if (textWidth(text, size) <= max + 1e-6) return text;
+  const characters = Array.from(text);
+  while (characters.length > 0) {
+    characters.pop();
+    const cut = characters.join('').trimEnd() + ELLIPSIS;
+    if (textWidth(cut, size) <= max + 1e-6) return cut;
+  }
+  return '';
+}
+
 /** Height above and depth below the baseline, in px, of the UI font's capitals at `size` px. */
 export function textExtent(size: number): { ascent: number; descent: number } {
   return {

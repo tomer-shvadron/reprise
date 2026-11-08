@@ -7,7 +7,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 
-import { KNOWN_ISSUES, knownFor } from './known.ts';
+import { KNOWN_ISSUES } from './known.ts';
 import type { KnownIssue } from './known.ts';
 import { CHECKLIST, listeningSheet } from './listening.ts';
 import type { CheckFile, CheckId, CheckRecord, CheckViolation } from './meta.ts';
@@ -109,6 +109,7 @@ export function classify(
   checks: readonly CheckId[],
   records: readonly CheckRecord[],
   crashes: ReadonlyMap<string, string> = new Map(),
+  knownIssues: readonly KnownIssue[] = KNOWN_ISSUES,
 ): RunReport {
   const byKey = new Map(records.map((record) => [`${record.file}|${record.check}`, record]));
   const reports = files.map((file): FileReport => {
@@ -123,7 +124,9 @@ export function classify(
       const known: Classified['known'] = [];
       const unknown: CheckViolation[] = [];
       for (const violation of record.violations) {
-        const entry = knownFor(check, violation);
+        const entry = knownIssues.find(
+          (issue) => issue.check === check && issue.applies(violation),
+        );
         if (entry) known.push({ violation, entry });
         else unknown.push(violation);
       }
@@ -134,7 +137,7 @@ export function classify(
     return { file, checks: classified, status, label };
   });
 
-  const stale = KNOWN_ISSUES.filter((entry) =>
+  const stale = knownIssues.filter((entry) =>
     entry.fixtures.some((fixture) => {
       const report = reports.find((candidate) => candidate.file.file === fixture);
       const classified = report?.checks[entry.check];

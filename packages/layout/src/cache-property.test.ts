@@ -30,8 +30,15 @@ import { array, assert, constantFrom, integer, oneof, property, record } from 'f
 import type { Arbitrary } from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import { LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from './index';
-import { expectValid, stable } from './test/check-result';
+import {
+  DEFAULT_MARGINS,
+  LayoutCache,
+  PAGE_SIZES,
+  layout,
+  type LayoutOptions,
+  type LayoutResult,
+} from './index';
+import { expectInsidePages, expectValid, stable } from './test/check-result';
 import { withEffects, withNoteMarks } from './test/effects';
 
 /** Raise locally to soak the cache; 20 keeps the unit suite fast. */
@@ -135,6 +142,31 @@ const edit: Arbitrary<Edit> = oneof(
     change: constantFrom<OptionChange>('subset', 'notation', 'width', 'zoom'),
   }),
 );
+
+/** The horizontal half of `expectInsidePages`: no item past its page's sides, no system past the right margin. */
+function expectInsidePagesHorizontally(result: LayoutResult): void {
+  const margin = DEFAULT_MARGINS.paged.right;
+  for (const system of result.systems) {
+    const page = result.pages[system.page];
+    if (!page) throw new Error(`${system.id} has no page`);
+    const left = page.bbox.x;
+    const right = page.bbox.x + page.bbox.width;
+    expect(
+      system.bbox.x + system.bbox.width,
+      `${system.id} past the right margin`,
+    ).toBeLessThanOrEqual(right - margin + 0.02);
+    const items = [
+      ...result.primitives.slice(system.primitives.start, system.primitives.end),
+      ...result.anchors.slice(system.anchors.start, system.anchors.end),
+    ];
+    for (const { bbox } of items) {
+      expect(bbox.x, `${system.id} item past the left edge`).toBeGreaterThanOrEqual(left - 0.02);
+      expect(bbox.x + bbox.width, `${system.id} item past the right edge`).toBeLessThanOrEqual(
+        right + 0.02,
+      );
+    }
+  }
+}
 
 function beatAt(score: Score, at: Where) {
   const track = score.tracks[at.track % score.tracks.length];
@@ -320,17 +352,29 @@ const SCORES: Record<'large' | 'sparse', () => Score> = {
  */
 const SPLIT_PAGE_HEIGHTS = [300, 580] as const;
 
+/** Widths a sequence starts at and steps through: A4, the narrow content widths 320, 480 and 640 px, Letter. */
+const WIDTHS: Readonly<Record<LayoutOptions['mode'], readonly number[]>> = {
+  paged: [PAGE_SIZES.a4.width, 416, 576, 736, PAGE_SIZES.letter.width],
+  continuous: [640, 900, 320, 480],
+};
+
+const widthAt = (mode: LayoutOptions['mode'], die: number): number => {
+  const widths = WIDTHS[mode];
+  return widths[die % widths.length] ?? PAGE_SIZES.a4.width;
+};
+
 function optionsFor(
   score: Score,
   notation: Notation,
   mode: LayoutOptions['mode'],
   subset: boolean,
+  width: number,
   pageHeight: number = PAGE_SIZES.a4.height,
 ): LayoutOptions {
   const tracks = subset ? score.tracks.filter((_, i) => i % 3 !== 1).map(({ id }) => id) : 'all';
   return {
     mode,
-    width: mode === 'paged' ? PAGE_SIZES.a4.width : 640,
+    width,
     pageHeight,
     zoom: 1,
     tracks,
@@ -358,10 +402,8 @@ function changeOptions(score: Score, options: LayoutOptions, change: OptionChang
       return { ...options, notation: { ...options.notation, [id]: next } };
     }
     case 'width': {
-      // Narrower than A4, a long bar at 1.25× zoom overflows the page in a cold layout too.
-      const [first, second] =
-        options.mode === 'paged' ? [PAGE_SIZES.a4.width, PAGE_SIZES.letter.width] : [640, 900];
-      return { ...options, width: options.width === first ? second : first };
+      const widths = WIDTHS[options.mode];
+      return { ...options, width: widthAt(options.mode, widths.indexOf(options.width) + 1) };
     }
     case 'zoom':
       return { ...options, zoom: options.zoom === 1 ? 1.25 : 1 };
@@ -387,13 +429,15 @@ describe('LayoutCache: random edits', () => {
         property(
           constantFrom<'large' | 'sparse'>('large', 'sparse'),
           integer({ min: 0, max: 2 }),
+          integer({ min: 0, max: 4 }),
           array(edit, { minLength: 1, maxLength: 8 }),
-          (which, subsetDie, edits) => {
+          (which, subsetDie, widthDie, edits) => {
             let score = SCORES[which]();
-            let options = optionsFor(score, notation, mode, subsetDie === 0, height);
+            const width = widthAt(mode, widthDie);
+            let options = optionsFor(score, notation, mode, subsetDie === 0, width, height);
             const cache = new LayoutCache();
             const first = layout(score, options, cache);
-            if (split && which === 'large' && subsetDie !== 0) {
+            if (split && which === 'large' && subsetDie !== 0 && width === PAGE_SIZES.a4.width) {
               expect(first.systems.some(({ part }) => part !== undefined)).toBe(true);
               if (height === 580 && notation === 'standard') {
                 expect(first.systems.some(({ part }) => part === undefined)).toBe(true);
@@ -424,6 +468,9 @@ describe('LayoutCache: random edits', () => {
               const cached = layout(score, { ...options, dirtyBars: touched }, cache);
               expect(stable(cached), JSON.stringify(step)).toBe(stable(layout(score, options)));
               expectValid(cached);
+              if (!split) expectInsidePages(cached, DEFAULT_MARGINS[mode]);
+              // At the split heights only the bottom margin overflows by design (#85): a staff taller than the room.
+              else expectInsidePagesHorizontally(cached);
             }
           },
         ),
