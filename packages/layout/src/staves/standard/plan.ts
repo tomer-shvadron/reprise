@@ -58,7 +58,7 @@ const GRACE_GAP = 0.3;
 const GRACE_STEP = 0.2;
 /** Room every bar keeps above and below the staff, in staff spaces. */
 export const MIN_ROOM = 1.5;
-const MARGIN = 0.3;
+export const MARGIN = 0.3;
 const FINGERING_GAP = 0.4;
 const FINGERING_STEP = 1.1;
 /** Gap between two voices' chords at one onset when the later moves right, in spaces. */
@@ -209,7 +209,7 @@ function restPlan(
   };
 }
 
-function restBounds(rest: RestPlan, space: number): { top: number; bottom: number } {
+export function restBounds(rest: RestPlan, space: number): { top: number; bottom: number } {
   const { top, bottom } = glyphMetrics(rest.glyph).bbox;
   return { top: rest.y - top * space, bottom: rest.y - bottom * space };
 }
@@ -308,6 +308,8 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
     }
 
     const alone = voiceBeats.length === 1;
+    const lastOnString =
+      track.kind === 'fretted' && !percussion ? lastOnStrings(voiceBeats) : undefined;
     const planned = voiceBeats.map((beat, index): BeatPlan => {
       const direction = directions[index] ?? 'up';
       const group = groupOf.get(index);
@@ -343,6 +345,7 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
         space,
         scale: 1,
         multiVoice,
+        beamed: group !== undefined,
         reachMiddle: true,
       });
       plan.chord = planned;
@@ -357,6 +360,13 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
       if (tied) {
         plan.top = Math.min(plan.top, ...heads.map(({ y }) => y - tieReach(space)));
         plan.bottom = Math.max(plan.bottom, ...heads.map(({ y }) => y + tieReach(space)));
+      }
+      // The origin half of a slur cut by a break bends as a tie would, from any last note on a string.
+      for (const head of heads) {
+        if (!lastOnString?.has(head.note)) continue;
+        if (tieDirection(planned, head, multiVoice) === 'up') {
+          plan.top = Math.min(plan.top, head.y - tieReach(space));
+        } else plan.bottom = Math.max(plan.bottom, head.y + tieReach(space));
       }
       if (!percussion) planBeside(plan, beat, heads, lone, space);
       if (
@@ -467,7 +477,14 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
   }
   const fingers = Math.max(0, ...beats.map(({ fingering }) => fingering.length));
   const fingeringY = top - FINGERING_GAP * space;
-  const fingeringTop = fingers > 0 ? fingeringY - fingers * FINGERING_STEP * space : top;
+  let fingeringTop = fingers > 0 ? fingeringY - fingers * FINGERING_STEP * space : top;
+  for (const { fingering } of beats) {
+    // Drawn bottom up from `fingeringY`; the right hand's i is taller than a step.
+    for (const [i, { glyph }] of [...fingering].reverse().entries()) {
+      const ink = fingeringY - i * FINGERING_STEP * space - glyphMetrics(glyph).bbox.top * space;
+      fingeringTop = Math.min(fingeringTop, ink);
+    }
+  }
   return {
     beats,
     voices,
@@ -603,6 +620,20 @@ function separateVoices(
       }
     }
   }
+}
+
+/** The notes of a voice's bar that no later note on their string follows: any can start a slur's origin half. */
+function lastOnStrings(beats: readonly Beat[]): Set<Note> {
+  const seen = new Set<number>();
+  const last = new Set<Note>();
+  for (const beat of [...beats].reverse()) {
+    for (const note of beat.rest ? [] : beat.notes) {
+      if (seen.has(note.string)) continue;
+      seen.add(note.string);
+      last.add(note);
+    }
+  }
+  return last;
 }
 
 /** Room left of the chord for a slide into it and a stroke arrow, and right for a slide out. */
