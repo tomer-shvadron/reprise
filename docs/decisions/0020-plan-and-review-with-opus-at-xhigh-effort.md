@@ -1,6 +1,6 @@
 # ADR-0020: Plan and review with Opus at xhigh effort
 
-- **Status**: Accepted
+- **Status**: Accepted, superseded by [ADR-0026](0026-cheaper-agent-workflow-sonnet-implements-opus-high-reviews.md)
 - **Date**: 2026-11-06
 - **Deciders**: Tomer Shvadron, with Claude
 
