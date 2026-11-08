@@ -356,8 +356,8 @@ export interface ConnectionContext {
   sink: LayoutSink;
   space: number;
   beatX: (beat: BeatPlan) => number;
-  /** How far the previous bar moved a voice's beat right, for a unison or a second. */
-  previousShift: (voice: number, beat: number) => number;
+  /** The previous bar's plan of a voice's beat: where it moved to, for a unison or a second. */
+  previousBeat: (voice: number, beat: number) => BeatPlan | undefined;
 }
 
 /** A head's place for a connection, in px: its centre's y and its outer edges, accidental and dots included. */
@@ -366,6 +366,12 @@ interface HeadSpot {
   left: number;
   right: number;
   direction: ArcDirection;
+}
+
+/** A head's right edge from its chord's x, dots included. */
+export function headReach(chord: ChordPlan, head: HeadPlan, dots: number, space: number): number {
+  const { right } = headEdges(chord, head);
+  return dots > 0 ? Math.max(right, chord.dots.x + dotsWidth(dots, space, chord.scale)) : right;
 }
 
 function spotOf(
@@ -378,10 +384,7 @@ function spotOf(
   const { placement, plan, space } = context;
   const edges = headEdges(chord, head);
   const left = Math.min(edges.left, head.accidental?.left ?? edges.left);
-  const right =
-    dots > 0
-      ? Math.max(edges.right, chord.dots.x + dotsWidth(dots, space, chord.scale))
-      : edges.right;
+  const right = headReach(chord, head, dots, space);
   return {
     y: placement.top + head.y,
     left: x + left,
@@ -413,13 +416,19 @@ function locate(
   }
   const others = voiceBeats(input.track, found.bar, voice);
   const origin = others[found.beat];
-  const x = previous.onsetX(tickOf(others, found.beat)) + context.previousShift(voice, found.beat);
+  const planned = context.previousBeat(voice, found.beat);
+  const x = previous.onsetX(tickOf(others, found.beat)) + (planned?.shift ?? 0);
+  const plannedHead =
+    planned?.chord && mainHeads(planned.chord).find((other) => other.note === found.note);
   const width = glyphWidth(headGlyph('normal', origin?.duration ?? 4), space);
   const { position } = placeNote(input.track, found.note, key, input.clef, false);
   return {
     y: placement.top + positionY(position, space),
     left: x - width / 2,
-    right: x + loneHeadRight(width, found.note.ghost, origin?.dots ?? 0, space),
+    right:
+      planned?.chord && plannedHead
+        ? x + headReach(planned.chord, plannedHead, planned.beat.dots, space)
+        : x + loneHeadRight(width, found.note.ghost, origin?.dots ?? 0, space),
     direction: 'down',
   };
 }

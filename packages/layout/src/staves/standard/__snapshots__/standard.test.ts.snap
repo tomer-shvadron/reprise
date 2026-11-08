@@ -779,7 +779,7 @@ exports[`standard staff > prints a plain natural after a tied-in sharp, and rest
   "line @329.18,118.7 -> 343.04,118.7 w 1.12 <beat00000005>",
   "glyph noteheadBlack @331.98,118.7 size 28 <note00000005>",
   "line @339.82,117.52 -> 339.82,94.2 w 0.84 <beat00000005>",
-  "path filled M160.72 121.15C183.32 129.55 228.53 129.55 251.13 121.15C228.53 127.5 183.32 127.5 160.72 121.15Z <note00000002>",
+  "path filled M162.49 121.15C184.65 129.55 228.97 129.55 251.13 121.15C228.97 127.5 184.65 127.5 162.49 121.15Z <note00000002>",
 ]
 `;
 

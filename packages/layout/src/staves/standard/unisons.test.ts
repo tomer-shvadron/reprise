@@ -500,8 +500,10 @@ describe('ledger lines and ties on unisons', () => {
 });
 
 describe('a tie from a moved head across a bar line', () => {
+  const GAP = 0.15;
+
   /** Bar 1 moves voice 2's last half right of voice 1's dead head; the next bar ties into it. */
-  const tied = () =>
+  const tied = (clef?: 'bass' | 'treble') =>
     guitar('standard')
       .bar()
       .beat('2', [note(1, 0, { dead: true })])
@@ -510,9 +512,20 @@ describe('a tie from a moved head across a bar line', () => {
       .beat('4.', [note(2, 5)])
       .beat('8', [note(2, 5)])
       .beat('2', [note(2, 5)])
-      .bar()
+      .bar(clef ? { clef } : {})
       .voice(1)
       .beat('2', [note(2, 5, { tie: true })]);
+
+  /** Whole notes in both voices: the second moves right, and is wider than the black head. */
+  const wholes = () =>
+    guitar('standard')
+      .bar()
+      .beat('1', [note(1, 0)])
+      .voice(1)
+      .beat('1', [note(2, 5)])
+      .bar()
+      .voice(1)
+      .beat('1', [note(2, 5, { tie: true })]);
 
   const tieInto = (result: LayoutResult, id: string): Rect => {
     const found = result.primitives.find(
@@ -522,30 +535,47 @@ describe('a tie from a moved head across a bar line', () => {
     return found.bbox;
   };
 
+  const expectStart = (start: number | undefined, moved: Rect, result: LayoutResult): void => {
+    expect(start).toBeCloseTo(rightOf(moved) + GAP * space(result), 1);
+  };
+
   it.each(['standard', 'both'] as const)('starts past the moved head in %s notation', (mode) => {
     const built = tied().build({ ids: 'sequential' });
     const result = laid(built, mode);
-    const origin = noteOf(built, 0, 0, 2, 0, 1).id;
-    const target = noteOf(built, 0, 1, 0, 0, 1).id;
-    const moved = head(result, origin);
+    const moved = head(result, noteOf(built, 0, 0, 2, 0, 1).id);
     expect(moved.x).toBeGreaterThan(head(result, noteOf(built, 0, 0, 1, 0, 0).id).x + 5);
-    const start = tieInto(result, target).x;
-    expect(start).toBeGreaterThanOrEqual(rightOf(moved) - EPSILON);
-    expect(start).toBeLessThan(rightOf(moved) + space(result));
+    expectStart(tieInto(result, noteOf(built, 0, 1, 0, 0, 1).id).x, moved, result);
   });
+
+  it('starts past a moved whole note, whose head is wider than a black one', () => {
+    const built = wholes().build({ ids: 'sequential' });
+    const result = laid(built);
+    const moved = head(result, noteOf(built, 0, 0, 0, 0, 1).id);
+    expect(moved.x).toBeGreaterThan(head(result, noteOf(built, 0, 0, 0, 0, 0).id).x + 5);
+    expectStart(tieInto(result, noteOf(built, 0, 1, 0, 0, 1).id).x, moved, result);
+  });
+
+  it.each(['treble', 'bass'] as const)(
+    'starts past the moved head when the next bar sets %s',
+    (clef) => {
+      const built = tied(clef).build({ ids: 'sequential' });
+      const result = laid(built);
+      const moved = head(result, noteOf(built, 0, 0, 2, 0, 1).id);
+      expectStart(tieInto(result, noteOf(built, 0, 1, 0, 0, 1).id).x, moved, result);
+    },
+  );
 
   it('starts a hammer-on slur past the moved head', () => {
     const built = tied().build({ ids: 'sequential' });
-    const bar = built.tracks[0]?.bars[1]?.voices[1]?.beats[0]?.notes[0];
-    if (!bar) throw new Error('no target');
-    bar.tie = false;
-    bar.fret = 7;
-    bar.hammerPull = true;
+    const target = built.tracks[0]?.bars[1]?.voices[1]?.beats[0]?.notes[0];
+    if (!target) throw new Error('no target');
+    target.tie = false;
+    target.fret = 7;
+    target.hammerPull = true;
     const result = laid(built);
     const moved = head(result, noteOf(built, 0, 0, 2, 0, 1).id);
-    const slur = result.primitives.find((p) => p.kind === 'path' && p.node === bar.id);
-    expect(slur?.bbox.x).toBeGreaterThanOrEqual(moved.x - EPSILON);
-    expect(slur?.bbox.x).toBeLessThan(rightOf(moved) + space(result));
+    const slur = result.primitives.find((p) => p.kind === 'path' && p.node === target.id);
+    expectStart(slur?.bbox.x, moved, result);
   });
 
   it('starts past the moved head when the next bar is on the next system', () => {
@@ -557,15 +587,12 @@ describe('a tie from a moved head across a bar line', () => {
     });
     const origin = noteOf(built, 0, 0, 2, 0, 1).id;
     const target = noteOf(built, 0, 1, 0, 0, 1).id;
-    const systems = new Set(result.anchors.map((a) => a.system));
-    expect(systems.size).toBe(2);
+    expect(new Set(result.anchors.map((a) => a.system)).size).toBe(2);
     const moved = head(result, origin);
     const halves = result.primitives.filter(
       (p) => p.kind === 'path' && (p.node === origin || p.node === target),
     );
-    const first = halves.find((p) => p.bbox.x >= moved.x);
-    expect(first?.bbox.x).toBeGreaterThanOrEqual(rightOf(moved) - EPSILON);
-    expect(first?.bbox.x).toBeLessThan(rightOf(moved) + space(result));
+    expectStart(halves.find((p) => p.bbox.x >= moved.x)?.bbox.x, moved, result);
   });
 });
 

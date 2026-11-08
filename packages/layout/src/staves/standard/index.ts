@@ -1,6 +1,9 @@
+import type { Clef, Track } from '@reprise/model';
+
 import { analyseEffects, drawLanes } from '../effects';
 import { LANE_HEIGHT, mergeLanes, type LaneRequests } from '../lanes';
 import type { StaffBar, StaffBarMeasure, StaffBarPlacement, StaffModule } from '../staff-module';
+import { defaultClef } from '../../context';
 import { glyphWidth } from '../../primitives';
 import { DYNAMICS_GLYPHS, beatDynamics, reservedDynamics, shownDynamics } from '../dynamics';
 import { MIN_ROOM, planBar, type BarPlan, type NotationOptions } from './plan';
@@ -47,6 +50,15 @@ function planInputs(input: StaffBar): unknown[] {
     barIndex,
     input.staves.length,
   ];
+}
+
+/** The clef in force in bar `barIndex - 1`: the last one set up to it, else the track's default. */
+function clefBefore(track: Track, barIndex: number): Clef {
+  for (let i = barIndex - 1; i >= 0; i -= 1) {
+    const set = track.bars[i]?.clef;
+    if (set !== undefined) return set;
+  }
+  return defaultClef(track);
 }
 
 function notationModule(type: 'standard' | 'percussion', options: NotationOptions): StaffModule {
@@ -99,14 +111,14 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
       const { barIndex, track } = input;
       const before = track.bars[barIndex - 1];
       const masterBar = input.score.masterBars[barIndex - 1];
-      // A clef change here leaves the previous bar's clef unknown, so its plan is not rebuilt.
       const previous = () =>
-        before && masterBar && placement.previous && input.bar.clef === undefined
+        before && masterBar && placement.previous
           ? planned({
               ...input,
               bar: before,
               masterBar,
               barIndex: barIndex - 1,
+              clef: input.bar.clef === undefined ? input.clef : clefBefore(track, barIndex),
               keySignature: masterBar.keySignature,
             })
           : undefined;

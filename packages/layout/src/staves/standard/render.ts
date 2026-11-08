@@ -13,6 +13,7 @@ import {
   drawConnections,
   drawStrokes,
   drawTremolo,
+  headReach,
   type ConnectionContext,
 } from './effects';
 import { GRACE_SCALE, noteMatches, restBounds, type BarPlan, type BeatPlan } from './plan';
@@ -39,7 +40,7 @@ interface Context {
   sink: LayoutSink;
   type: StaffType;
   space: number;
-  previousShift: (voice: number, beat: number) => number;
+  previousBeat: (voice: number, beat: number) => BeatPlan | undefined;
 }
 
 function anchorBase(context: Context, voice: number) {
@@ -181,9 +182,8 @@ export function renderBar(
 ): void {
   const { space } = input;
   const top = placement.top;
-  const previousShift = (voice: number, beat: number) =>
-    previousPlan()?.voices[voice]?.[beat]?.shift ?? 0;
-  const context: Context = { input, placement, plan, sink, type, space, previousShift };
+  const previousBeat = (voice: number, beat: number) => previousPlan()?.voices[voice]?.[beat];
+  const context: Context = { input, placement, plan, sink, type, space, previousBeat };
   const tips = new Map<BeatPlan, number>();
   const fretted = input.track.kind === 'fretted';
 
@@ -340,7 +340,7 @@ export function renderBar(
       sink,
       space,
       beatX: (beat) => beatX(context, beat),
-      previousShift,
+      previousBeat,
     };
     for (const [voice, beats] of plan.voices.entries()) drawConnections(connecting, voice, beats);
     drawStrokes(connecting);
@@ -404,9 +404,19 @@ function drawTies(context: Context, fretted: boolean): void {
             if (placement.previous) {
               let tick = 0;
               for (const b of voiceBeats.slice(0, -1)) tick += beatTicks(b);
-              const reach = loneHeadRight(blackWidth, source.ghost, last.dots, space);
-              const shift = context.previousShift(voice, voiceBeats.length - 1);
-              start = placement.previous.onsetX(tick) + shift + reach + gap;
+              const origin = context.previousBeat(voice, voiceBeats.length - 1);
+              const originHead = origin?.chord
+                ? mainHeads(origin.chord).find((other) =>
+                    noteMatches(other.note, head.note, fretted),
+                  )
+                : undefined;
+              const onset = placement.previous.onsetX(tick);
+              start =
+                (origin?.chord && originHead
+                  ? onset +
+                    (origin.shift ?? 0) +
+                    headReach(origin.chord, originHead, last.dots, space)
+                  : onset + loneHeadRight(blackWidth, source.ghost, last.dots, space)) + gap;
             } else {
               start = placement.x - space;
             }
