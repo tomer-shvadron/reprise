@@ -16,7 +16,12 @@ import { describe, expect, it } from 'vitest';
 import { createMasterBar } from './factories';
 import { DirectionTargetSchema, JumpKindSchema } from './master-bar';
 import type { MasterBar } from './master-bar';
-import { PLAYBACK_LENGTH_FACTOR, expandPlaybackSequence } from './playback-sequence';
+import {
+  PLAYBACK_LENGTH_FACTOR,
+  expandCounted,
+  expandPlaybackSequence,
+  playbackStepLimit,
+} from './playback-sequence';
 
 const masterBarArbitrary: Arbitrary<MasterBar> = record({
   start: boolean(),
@@ -46,8 +51,9 @@ describe('expandPlaybackSequence: properties', () => {
     () => {
       assert(
         property(masterBarsArbitrary, (masterBars) => {
-          const { sequence } = expandPlaybackSequence({ masterBars });
+          const { sequence, steps } = expandCounted({ masterBars });
           expect(sequence.length).toBeLessThanOrEqual(masterBars.length * PLAYBACK_LENGTH_FACTOR);
+          expect(steps).toBeLessThanOrEqual(playbackStepLimit(masterBars.length) + 1);
           const seen = masterBars.map(() => 0);
           for (const { masterBarIndex, passIndex } of sequence) {
             expect(masterBarIndex).toBeGreaterThanOrEqual(0);

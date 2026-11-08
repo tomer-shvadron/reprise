@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { createMasterBar } from './factories';
 import type { DirectionTarget, JumpKind, MasterBar } from './master-bar';
-import { PLAYBACK_LENGTH_FACTOR, expandPlaybackSequence } from './playback-sequence';
+import {
+  PLAYBACK_LENGTH_FACTOR,
+  expandCounted,
+  expandPlaybackSequence,
+  playbackStepLimit,
+} from './playback-sequence';
 import type { PlaybackWarningCode } from './playback-sequence';
 
 interface BarSpec {
@@ -348,6 +353,18 @@ describe('expandPlaybackSequence: malformed input', () => {
     const { sequence, warnings } = expand({ start: true, end: 1000 }, {});
     expect(sequence).toHaveLength(2 * PLAYBACK_LENGTH_FACTOR);
     expect(warnings.map((warning) => warning.code)).toEqual(['sequence-truncated']);
+  });
+
+  it('stops chained repeat ends that skip every lap within the step budget', () => {
+    const masterBars = [100, 71, 137, 133].map((endCount, index) =>
+      createMasterBar({
+        repeat: { start: false, endCount },
+        alternateEndings: index < 3 ? [1] : [],
+      }),
+    );
+    const { warnings, steps } = expandCounted({ masterBars });
+    expect(steps).toBeLessThanOrEqual(playbackStepLimit(masterBars.length) + 1);
+    expect(warnings.map((warning) => warning.code)).toContain('sequence-truncated');
   });
 
   it('returns an empty sequence for a score with no master bars', () => {
