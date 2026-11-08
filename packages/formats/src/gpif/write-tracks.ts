@@ -38,6 +38,15 @@ export function notationFlags(track: Track): number {
   return isFrettedProgram(track.program) ? flags : flags | TAB_FLAG;
 }
 
+/**
+ * Whether the staff carries the track's tuning. A pitched track with a guitar sound has none
+ * written: with one, the reader takes the track for a fretted guitar and re-fingers or drops its
+ * notes, and with none it reads the track back as pitched with every note's MIDI value.
+ */
+export function writesTuning(track: Track): boolean {
+  return track.tuning.length > 0 && !(track.kind === 'pitched' && isFrettedProgram(track.program));
+}
+
 export function reportTrackLosses(track: Track, index: number, drops: DropCollector): void {
   const path: NativePath = ['tracks', index];
   if (track.kind !== 'fretted' && track.display.notation !== 'standard') {
@@ -56,11 +65,11 @@ export function reportTrackLosses(track: Track, index: number, drops: DropCollec
       );
     }
   }
-  if (track.kind === 'pitched' && track.tuning.length > 0 && isFrettedProgram(track.program)) {
+  if (track.kind === 'pitched' && track.tuning.length > 0 && !writesTuning(track)) {
     drops.drop(
       'notation',
-      [...path, 'kind'],
-      'A keyboard track with a guitar sound and a tuning reads back as a fretted track',
+      [...path, 'tuning'],
+      'A keyboard track with a guitar sound is written without its tuning, or it reads back as a fretted track; it reads back as pitched with every note',
     );
   }
   if (track.kind !== 'fretted' && track.capo !== 0) {
@@ -609,8 +618,13 @@ function writeStaff(xml: XmlWriter, track: Track, plan: TrackPlan): void {
     track.kind === 'drums' ? DEFAULT_FRET_COUNT : track.fretCount,
   );
   property(xml, 'PartialCapoFret', 'Fret', 0);
-  property(xml, 'PartialCapoStringFlags', 'Bitset', track.tuning.map(() => '0').join(''));
-  if (track.tuning.length > 0) {
+  property(
+    xml,
+    'PartialCapoStringFlags',
+    'Bitset',
+    (writesTuning(track) ? track.tuning : []).map(() => '0').join(''),
+  );
+  if (writesTuning(track)) {
     xml.open('Property', { name: 'Tuning' });
     // Lowest string first, the model's order too.
     xml.text('Pitches', track.tuning.join(' '));

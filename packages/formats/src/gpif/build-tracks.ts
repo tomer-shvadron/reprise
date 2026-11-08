@@ -37,6 +37,14 @@ export interface TrackPlan {
   staff: GpifStaff;
   tuning: number[];
   capo: number;
+  /** Tuning and capo of each staff; a staff without a tuning of its own shares the first's. */
+  staves: { tuning: number[]; capo: number }[];
+  /** Index of the first later staff whose own tuning or capo differs from the first's. */
+  differingStaff?: number;
+}
+
+function sameTuning(a: number[], b: number[]): boolean {
+  return a.length === b.length && a.every((value, i) => value === b[i]);
 }
 
 export function planTrack(
@@ -54,11 +62,27 @@ export function planTrack(
     );
     tuning = tuning.slice(0, MAX_STRINGS);
   }
+  const staves = (source.staves.length > 0 ? source.staves : [staff]).map((own) => ({
+    tuning: own.tuning?.slice(0, MAX_STRINGS) ?? tuning,
+    capo: own.tuning === undefined ? staff.capo : own.capo,
+  }));
+  const differing = staves.findIndex(
+    (own, i) => i > 0 && !(sameTuning(own.tuning, tuning) && own.capo === staff.capo),
+  );
   let kind: TrackKind = 'fretted';
   if (source.drums) kind = 'drums';
   else if (tuning.length === 0) kind = 'pitched';
+  else if (differing > 0) kind = 'pitched';
   else if (!isFrettedProgram(source.program) && notation?.tab !== true) kind = 'pitched';
-  return { source, kind, staff, tuning, capo: staff.capo };
+  return {
+    source,
+    kind,
+    staff,
+    tuning,
+    capo: staff.capo,
+    staves,
+    ...(kind === 'pitched' && tuning.length > 0 && differing > 0 && { differingStaff: differing }),
+  };
 }
 
 function notationOf(kind: TrackKind, notation: TrackNotation | undefined): Notation | undefined {
@@ -116,6 +140,7 @@ export function resolveNote(
   plan: TrackPlan,
   note: GpifNote,
   dynamics: Dynamics,
+  staffIndex = 0,
 ): Note | undefined {
   let string = 0;
   let fret: number | undefined;
@@ -162,8 +187,9 @@ export function resolveNote(
     fret = note.midi;
     if (fret === undefined && note.octave !== undefined) fret = note.octave * 12 + (note.tone ?? 0);
     if (fret === undefined && note.string !== undefined && note.fret !== undefined) {
-      const open = plan.tuning[note.string];
-      if (open !== undefined) fret = open + note.fret;
+      const own = plan.staves[staffIndex] ?? plan.staves[0];
+      const open = own?.tuning[note.string];
+      if (own && open !== undefined) fret = open + own.capo + note.fret;
     }
   }
   if (fret === undefined || !Number.isInteger(fret) || fret < 0 || fret > 127) {
