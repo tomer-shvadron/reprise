@@ -5,7 +5,8 @@ import type { CachedPart, Cursor, PartPlacement } from './cache';
 import type { VisibleTrack } from './options';
 import { dynamicsBefore } from './staves/dynamics';
 import { BAR_REACH } from './staves/staff-module';
-import type { Range } from './types';
+import { round } from './primitives';
+import type { Range, Rect } from './types';
 
 /**
  * Prefix counts of the bars re-measured in this call: entry `i` counts those before bar `i`, so
@@ -61,6 +62,7 @@ const PLAN_KEYS = everyKey<SystemPlan>()([
 ]);
 
 const CURSOR_KEYS = everyKey<Cursor>()(['page', 'x', 'y', 'empty']);
+const SHIFT_KEYS = ['page', 'y', 'empty'] as const satisfies readonly (keyof Cursor)[];
 
 function sameFields<T>(keys: readonly (keyof T)[], a: T, b: T): boolean {
   for (const key of keys) if (a[key] !== b[key]) return false;
@@ -84,6 +86,29 @@ export function samePlacement(a: readonly PartPlacement[], b: readonly PartPlace
   );
 }
 
+/** The same parts on the same pages and rows holding the same slots, but maybe at another x. */
+export function samePlacementBesideX(
+  a: readonly PartPlacement[],
+  b: readonly PartPlacement[],
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every((part, i) => {
+      const other = b[i];
+      return (
+        other !== undefined &&
+        sameFields(SHIFT_KEYS, part, other) &&
+        sameRange(part.slots, other.slots)
+      );
+    })
+  );
+}
+
+/** `box` moved right by `offsetX`, which is undefined for a system with no frame of its own. */
+export function shifted(box: Rect, offsetX: number | undefined): Rect {
+  return offsetX === undefined || offsetX === 0 ? box : { ...box, x: round(box.x + offsetX) };
+}
+
 /**
  * A reused part at its place in the new result. Never mutates what the previous result holds:
  * the system keeps its object while its index and ranges hold, and its anchors are copied only
@@ -94,18 +119,26 @@ export function reposition(
   index: number,
   primitives: Range,
   anchors: Range,
+  offsetX: number | undefined,
 ): CachedPart {
   const { system } = entry;
   if (
     system.index === index &&
     sameRange(system.primitives, primitives) &&
-    sameRange(system.anchors, anchors)
+    sameRange(system.anchors, anchors) &&
+    system.offsetX === offsetX
   ) {
     return entry;
   }
   return {
     ...entry,
-    system: { ...system, index, primitives, anchors },
+    system: {
+      ...system,
+      index,
+      primitives,
+      anchors,
+      ...(offsetX !== undefined && { offsetX, bbox: shifted(entry.box, offsetX) }),
+    },
     anchors:
       system.index === index
         ? entry.anchors

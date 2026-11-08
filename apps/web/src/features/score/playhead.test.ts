@@ -1,4 +1,4 @@
-import { layout, PAGE_SIZES, type Anchor, type LayoutOptions } from '@reprise/layout';
+import { anchorBox, layout, PAGE_SIZES, type Anchor, type LayoutOptions } from '@reprise/layout';
 import { positionAtSeconds } from '@reprise/model';
 import { largeScore, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
@@ -240,5 +240,31 @@ describe('split systems', () => {
     expect(followedSystem(result, 1, track(7))).toBe(next + 1);
     expect(followedSystem(result, 0, undefined)).toBe(next);
     expect(followedSystem(result, result.systems.length - 1, track(7))).toBeUndefined();
+  });
+});
+
+describe('continuous mode', () => {
+  const long = largeScore(1, 40);
+  const result = layout(long, { ...paged, mode: 'continuous', width: 640 });
+  const columns = result.anchors.filter(
+    (anchor) => anchor.kind === 'bar' && anchor.track === undefined && anchor.system >= 1,
+  );
+
+  it('puts the playhead of a bar past the first segment inside it, with its layout-space box', () => {
+    const column = columns.at(-1);
+    const system = column && result.systems[column.system];
+    if (!column || !system) throw new Error('no column');
+    const cursor = playheadAt(result, long, column.masterBar ?? '', 0);
+    expect(cursor?.x).toBeGreaterThanOrEqual(system.bbox.x);
+    expect(cursor?.x).toBeLessThanOrEqual(system.bbox.x + system.bbox.width);
+    expect(cursor?.box).toEqual(anchorBox(result, column));
+  });
+
+  it('finds a column past the first segment from a point at its centre', () => {
+    const column = columns.at(-1);
+    if (!column) throw new Error('no column');
+    const box = anchorBox(result, column);
+    const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    expect(nearestColumn(result, result.systems, point)).toBe(column);
   });
 });

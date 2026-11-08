@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { timelineOf } from '@/state/timeline';
 import { stubMatchMedia } from '@/test/match-media';
 
-import { columnAnchor } from './anchors';
 import { playheadAt, staffBand } from './playhead';
 import { ScoreView, type ScoreViewHandle } from './score-view';
 import { longLayout, sharedLongScore } from './test/long-score';
@@ -72,10 +71,7 @@ function play(
     handle.followPlayhead({ mode, running: true, track });
     const window = handle.viewport();
     const inX = cursor.x >= window.x && cursor.x <= window.x + window.width;
-    const band =
-      mode === 'paged'
-        ? staffBand(result, track, cursor.bar.system)
-        : columnAnchor(result, masterBar.id, cursor.bar.system)?.bbox;
+    const band = mode === 'paged' ? staffBand(result, track, cursor.bar.system) : cursor.box;
     const inY =
       band !== undefined &&
       (mode === 'paged'

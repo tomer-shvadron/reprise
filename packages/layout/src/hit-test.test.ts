@@ -1,7 +1,7 @@
 import { largeScore, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
-import { PAGE_SIZES, hitTest, layout, type Anchor, type LayoutOptions } from './index';
+import { PAGE_SIZES, anchorBox, hitTest, layout, type Anchor, type LayoutOptions } from './index';
 
 const paged: LayoutOptions = {
   mode: 'paged',
@@ -116,5 +116,45 @@ describe('hitTest', () => {
     expect(hitTest(laid, right.bbox.x + right.bbox.width - 1, y)?.id).toBe(right.id);
     // The up-stem voice, the first, keeps the right half.
     expect(right.voice).toBe(0);
+  });
+});
+
+describe('continuous', () => {
+  const options: LayoutOptions = { ...paged, mode: 'continuous', width: 640 };
+  const long = largeScore(1, 40);
+  const laid = layout(long, options);
+
+  it('finds each anchor at the centre of its layout-space box', () => {
+    expect(laid.systems.length).toBeGreaterThan(5);
+    for (const anchor of laid.anchors) {
+      if (anchor.kind !== 'beat' && anchor.kind !== 'note') continue;
+      const box = anchorBox(laid, anchor);
+      const found = hitTest(laid, box.x + box.width / 2, box.y + box.height / 2);
+      // A beat's centre can lie under its own note, the more specific hit.
+      if (anchor.kind === 'note') expect(found).toBe(anchor);
+      else expect(found?.system).toBe(anchor.system);
+    }
+  });
+
+  it("never returns another system's anchor inside a system", () => {
+    const system = laid.systems[5];
+    if (!system) throw new Error('no system 5');
+    const { x, y, width, height } = system.bbox;
+    for (let i = 1; i < 20; i++) {
+      const found = hitTest(laid, x + (width * i) / 20, y + height / 2);
+      if (found) expect(found.system).toBe(5);
+    }
+  });
+
+  it('returns the stored box for segment 0 and for paged mode, and shifts the rest by offsetX', () => {
+    const flat = layout(long, paged);
+    for (const anchor of flat.anchors) expect(anchorBox(flat, anchor)).toBe(anchor.bbox);
+    const first = laid.anchors.find((anchor) => anchor.system === 0);
+    if (!first) throw new Error('no anchor in system 0');
+    expect(anchorBox(laid, first)).toBe(first.bbox);
+    for (const anchor of laid.anchors.filter((a) => a.system >= 1)) {
+      const offsetX = laid.systems[anchor.system]?.offsetX ?? 0;
+      expect(anchorBox(laid, anchor).x - anchor.bbox.x).toBeCloseTo(offsetX, 9);
+    }
   });
 });

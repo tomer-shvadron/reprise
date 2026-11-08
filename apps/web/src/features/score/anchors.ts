@@ -1,4 +1,10 @@
-import type { Anchor, AnchorKind, LayoutResult } from '@reprise/layout';
+import {
+  anchorBox,
+  type Anchor,
+  type AnchorKind,
+  type LayoutResult,
+  type Rect,
+} from '@reprise/layout';
 import type { Id } from '@reprise/model';
 
 export interface PlaybackCursor {
@@ -6,6 +12,8 @@ export interface PlaybackCursor {
   x: number;
   /** The master-bar column anchor highlighted behind it. */
   bar: Anchor;
+  /** The column's box in layout space. */
+  box: Rect;
 }
 
 const indexes = new WeakMap<LayoutResult, ReadonlyMap<Id, readonly Anchor[]>>();
@@ -45,9 +53,10 @@ export function cursorAt(layout: LayoutResult, anchor: Anchor): PlaybackCursor |
   if (anchor.masterBar === undefined) return undefined;
   const bar = columnAnchor(layout, anchor.masterBar, anchor.system);
   if (!bar) return undefined;
-  if (anchor.kind === 'bar') return { x: anchor.bbox.x, bar };
+  const box = anchorBox(layout, anchor);
+  if (anchor.kind === 'bar') return { x: box.x, bar, box: anchorBox(layout, bar) };
   if (anchor.kind === 'note' || anchor.kind === 'beat') {
-    return { x: anchor.bbox.x + anchor.bbox.width / 2, bar };
+    return { x: box.x + box.width / 2, bar, box: anchorBox(layout, bar) };
   }
   return undefined;
 }

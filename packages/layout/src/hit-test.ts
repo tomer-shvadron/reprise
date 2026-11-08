@@ -1,3 +1,4 @@
+import { round } from './primitives';
 import type { Anchor, AnchorKind, LayoutResult, Rect } from './types';
 
 const SPECIFICITY: Record<AnchorKind, number> = {
@@ -20,7 +21,8 @@ function moreSpecific(a: Anchor, b: Anchor): boolean {
 }
 
 /**
- * The most specific anchor under (x, y): a note before its beat, a beat before its bar, a track's
+ * The most specific anchor under (x, y), in layout space; the stored anchor is returned, its box
+ * in its system's frame: a note before its beat, a beat before its bar, a track's
  * bar before the master bar's column, and the smallest among equals. Only the systems containing
  * the point are searched.
  */
@@ -28,12 +30,20 @@ export function hitTest(result: LayoutResult, x: number, y: number): Anchor | un
   let best: Anchor | undefined;
   for (const system of result.systems) {
     if (!contains(system.bbox, x, y)) continue;
+    const local = x - (system.offsetX ?? 0);
     for (let i = system.anchors.start; i < system.anchors.end; i++) {
       const anchor = result.anchors[i];
-      if (anchor && contains(anchor.bbox, x, y) && (!best || moreSpecific(anchor, best))) {
+      if (anchor && contains(anchor.bbox, local, y) && (!best || moreSpecific(anchor, best))) {
         best = anchor;
       }
     }
   }
   return best;
+}
+
+/** An anchor's box in layout space; the stored box itself when its system has no offset. */
+export function anchorBox(result: LayoutResult, anchor: Anchor): Rect {
+  const offsetX = result.systems[anchor.system]?.offsetX;
+  if (offsetX === undefined || offsetX === 0) return anchor.bbox;
+  return { ...anchor.bbox, x: round(anchor.bbox.x + offsetX) };
 }
