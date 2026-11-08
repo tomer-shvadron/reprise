@@ -83,7 +83,7 @@ The allowed dependency edges and the feature folders under `apps/web/src/feature
 From the repository root, after `pnpm bootstrap` (Node 24, pnpm 11):
 
 ```sh
-pnpm bootstrap             # first step on a fresh checkout: engines check, pnpm install, Chromium shell, GM soundfont; idempotent
+pnpm bootstrap             # first step on a fresh checkout: engines check, pnpm install, Chromium shell, Electron binary, GM soundfont; idempotent
 pnpm lint                  # ESLint with the boundary rules, --max-warnings 0
 pnpm typecheck             # tsc -b across every workspace
 pnpm test                  # Vitest, every workspace as its own project

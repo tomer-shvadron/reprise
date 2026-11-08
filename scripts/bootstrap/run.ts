@@ -8,11 +8,11 @@
  * repeat.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { exit, version } from 'node:process';
 
-import { NEXT_COMMANDS, installSteps, minimums, versionProblems } from './steps.ts';
+import { NEXT_COMMANDS, type Minimums, installSteps, minimums, versionProblems } from './steps.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 
@@ -38,6 +38,14 @@ function engines(): Record<string, string> {
   );
 }
 
+function readMinimums(): Minimums {
+  try {
+    return minimums(engines());
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
 let count = 0;
 function announce(name: string): void {
   count += 1;
@@ -45,7 +53,7 @@ function announce(name: string): void {
 }
 
 announce('Check Node and pnpm against engines');
-const problems = versionProblems({ node: version, pnpm: pnpmVersion() }, minimums(engines()));
+const problems = versionProblems({ node: version, pnpm: pnpmVersion() }, readMinimums());
 if (problems.length > 0) fail(problems.join('\n'));
 console.log(`  node ${version}, pnpm ${String(pnpmVersion())}`);
 
@@ -56,14 +64,7 @@ for (const step of installSteps()) {
   const result = spawnSync(command, args, { cwd: ROOT, stdio: 'inherit' });
   if (result.status !== 0)
     fail(`\`${step.command.join(' ')}\` exited with ${String(result.status ?? result.signal)}`);
-}
-
-announce('Prepare the local-tabs folder');
-const tabs = join(ROOT, 'local-tabs');
-if (existsSync(tabs)) console.log('  already there');
-else {
-  mkdirSync(tabs);
-  console.log('  created local-tabs/ (its contents are never committed)');
+  if (step.done !== undefined) console.log(`  ${step.done}`);
 }
 
 console.log('\nReady. Next:');

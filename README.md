@@ -24,7 +24,7 @@ Everything about what Reprise is and why it is built the way it is lives under [
 
 ## Commands
 
-Run from the repository root. On a fresh clone start with `pnpm bootstrap`: it checks Node and pnpm, runs `pnpm install`, makes sure the Chromium headless shell and the GM soundfont are in place, and prints the next commands. It is safe to re-run. (Not `pnpm setup`, which is a pnpm built-in that edits your shell profile.)
+Run from the repository root. On a fresh clone start with `pnpm bootstrap`: it checks Node and pnpm, runs `pnpm install`, makes sure the Chromium headless shell, the Electron binary and the GM soundfont are in place, and prints the next commands. It is safe to re-run. (Not `pnpm setup`, which is a pnpm built-in that edits your shell profile.)
 
 ```
 pnpm bootstrap      # first step on a fresh checkout; idempotent
@@ -50,4 +50,4 @@ pnpm e2e            # the player flows: Playwright Test against the production b
 
 `pnpm desktop:build` writes installers to `apps/desktop/release/`: on macOS a `.dmg` and a `.zip` for both arm64 and x64, on Windows an NSIS installer. The builds are unsigned, so the first time you open the macOS app, right-click it in Finder and choose **Open**, then confirm. After that it opens normally.
 
-`pnpm install` also downloads the headless Chromium shell (about 100 MB) that the `audio` tests run in. `pnpm exec playwright install chromium` adds the full browser, needed only to watch those tests with `--browser.headless=false`, or the player flows with `pnpm e2e --headed` or `--ui`. The Electron binary is downloaded the first time `pnpm desktop:dev` or `pnpm desktop:build` runs.
+`pnpm install` also downloads the headless Chromium shell (about 100 MB) that the `audio` tests run in. `pnpm exec playwright install chromium` adds the full browser, needed only to watch those tests with `--browser.headless=false`, or the player flows with `pnpm e2e --headed` or `--ui`. `pnpm bootstrap` downloads the Electron binary up front; without it, the first `pnpm desktop:dev` or `pnpm desktop:build` does.

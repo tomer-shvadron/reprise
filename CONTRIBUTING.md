@@ -41,7 +41,7 @@ The roadmap's rule 6, review before merge, is the review flow in [AGENTS.md](AGE
 
 ## Branches and commits
 
-- Run `pnpm bootstrap` first in every fresh clone or worktree: it installs dependencies and the pre-commit hook, the Chromium shell and the GM soundfont, and is safe to re-run.
+- Run `pnpm bootstrap` first in every fresh clone or worktree: it installs dependencies and the pre-commit hook, the Chromium shell, the Electron binary and the GM soundfont, and is safe to re-run.
 - One branch per work package, named `wp-0NN-short-slug` after the issue (`wp-005-repository-governance`), off `main`, in its own worktree.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): subject`, imperative and lowercase, for example `feat(formats): read gp5 voltas` or `chore(repo): add issue templates`. The scope is the package or area; leave it out for a change that is genuinely cross-cutting.
 - No samples, tabs, secrets or build output in git. Downloaded tabs for manual testing go in `local-tabs/`, which is ignored.

@@ -6,6 +6,8 @@ export interface Minimums {
 export interface Step {
   name: string;
   command: readonly string[];
+  /** Printed after success by a command that says nothing when its work is already done. */
+  done?: string;
 }
 
 /** The major of `v24.18.0`, `24.18.0` or `11.4.0`; undefined when the text is not a version. */
@@ -39,7 +41,7 @@ export function versionProblems(
   const pnpm = found.pnpm === undefined ? undefined : major(found.pnpm);
   if (pnpm === undefined || pnpm < min.pnpm) {
     problems.push(
-      `pnpm ${String(min.pnpm)} or newer is required, found ${found.pnpm ?? 'none'}. \`corepack enable\` picks the pinned version.`,
+      `pnpm ${String(min.pnpm)} or newer is required, found ${found.pnpm ?? 'none'}. \`npm i -g pnpm@11\` installs one.`,
     );
   }
   return problems;
@@ -52,6 +54,11 @@ export function installSteps(): Step[] {
     {
       name: 'Make sure the Chromium headless shell is present',
       command: ['pnpm', 'exec', 'playwright', 'install', 'chromium', '--only-shell'],
+      done: 'present',
+    },
+    {
+      name: 'Download the Electron binary for desktop:dev',
+      command: ['pnpm', '--filter', '@reprise/desktop', 'exec', 'install-electron'],
     },
     { name: 'Fetch the GM soundfont', command: ['pnpm', 'sounds:fetch'] },
   ];
@@ -61,6 +68,10 @@ export const NEXT_COMMANDS: readonly (readonly [string, string])[] = [
   ['pnpm dev', 'the web app on the Vite dev server'],
   ['pnpm test', 'the unit suite'],
   ['pnpm e2e', 'the player flows in Chromium'],
+  [
+    'pnpm test:visual',
+    'painter screenshots; the first local run writes your own references to e2e/visual/__local__/',
+  ],
   ['pnpm check:files', 'the real-file pass over fixtures/ and local-tabs/'],
   ['pnpm desktop:dev', 'the Electron app around the web core'],
 ];
