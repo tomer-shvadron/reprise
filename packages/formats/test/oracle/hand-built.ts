@@ -76,6 +76,23 @@ const whammyBar = (
     oneBar([beat('0', '0', '0', whammy(values, offsets))], [note('0', 2, 5)], QUARTER),
   );
 
+const strokeLength = (ticks: number): HandBuilt =>
+  compareGpif(
+    `stroke length ${String(ticks)}`,
+    oneBar(
+      [
+        beat(
+          '0',
+          '0',
+          '0',
+          `<Properties>${property('Brush', '<Direction>Down</Direction>')}</Properties><XProperties><XProperty id="687935489"><Int>${String(ticks)}</Int></XProperty></XProperties>`,
+        ),
+      ],
+      [note('0', 2, 5)],
+      QUARTER,
+    ),
+  );
+
 /** Track 1 carries the chromatic part; track 0 stays put, since alphaTab also transposes the key by track 0's. */
 const transposed = (chromatic: number, octave = -1): HandBuilt =>
   compareGpif(
@@ -133,6 +150,10 @@ export const HAND_BUILT = {
   whammyDip: (): HandBuilt => whammyBar('whammy dip', [0, -50, 0], [0, 30, 30, 100]),
   /** A dip whose middle points are apart: alphaTab keeps all four. */
   whammyDipApart: (): HandBuilt => whammyBar('whammy dip apart', [0, -50, 0], [0, 30, 60, 100]),
+  /** A brush of 74 ticks: ours is a 64th, alphaTab keeps the exact length. */
+  strokeLength74: (): HandBuilt => strokeLength(74),
+  /** A brush of 480 ticks, an exact eighth: both sides agree. */
+  strokeLength480: (): HandBuilt => strokeLength(480),
   chromatic: (): HandBuilt => transposed(-7),
   chromaticOctave: (): HandBuilt => transposed(-12),
   octaveOnly: (): HandBuilt => transposed(0, -2),

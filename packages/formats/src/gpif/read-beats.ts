@@ -29,15 +29,13 @@ function isTremoloKey(text: string): text is keyof typeof TREMOLO {
 
 type StrokeDuration = NonNullable<Stroke['duration']>;
 
-/** A brush or arpeggio's length in MIDI ticks at 960 per quarter, as the note value it spreads over. */
-const STROKE_TICKS: Readonly<Record<number, StrokeDuration>> = {
-  960: 4,
-  480: 8,
-  240: 16,
-  120: 32,
-  60: 64,
-  30: 128,
-};
+/** A brush or arpeggio's length in MIDI ticks at 960 per quarter, as the nearest note value on a log scale. */
+function strokeDuration(ticks: number): StrokeDuration {
+  const denominator = Math.round(Math.log2(3840 / ticks));
+  return STROKE_DURATIONS[Math.min(5, Math.max(0, denominator - 2))] ?? 4;
+}
+
+const STROKE_DURATIONS: readonly StrokeDuration[] = [4, 8, 16, 32, 64, 128];
 
 /** The stroke-length property, the one beat `XProperty` the model has a field for. */
 const STROKE_LENGTH_ID = '687935489';
@@ -58,14 +56,13 @@ function readXProperties(
     }
     if (id === STROKE_LENGTH_ID) {
       const ticks = parseIntOr(childText(property, 'Int'), 0);
-      stroke = STROKE_TICKS[ticks];
-      if (stroke === undefined) {
+      if (ticks > 0) stroke = strokeDuration(ticks);
+      else
         sink.warn(
           'invalid-value',
           at,
-          `A stroke length of ${String(ticks)} ticks is not a note value; dropped`,
+          `A stroke length of ${String(ticks)} ticks is not positive; dropped`,
         );
-      }
     } else if (BEAMING_IDS.has(id)) {
       notModelled(sink, at, 'Beam direction and grouping');
     } else {
