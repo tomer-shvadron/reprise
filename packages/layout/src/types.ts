@@ -2,7 +2,7 @@ import type { Id, Notation } from '@reprise/model';
 
 import type { GlyphName } from './metrics';
 
-/** A rectangle in layout space: CSS px, origin at the top left of the first page, y down. */
+/** A rectangle in CSS px, y down; in layout space (origin at the top left of the first page) unless its owner says otherwise. */
 export interface Rect {
   x: number;
   y: number;
@@ -60,6 +60,7 @@ export interface LayoutOptions {
   dirtyBars?: readonly Id[];
 }
 
+/** In layout coordinates, or in the segment's own frame in continuous mode (see `System.offsetX`). */
 interface PrimitiveBase {
   x: number;
   y: number;
@@ -88,7 +89,7 @@ export interface LinePrimitive extends PrimitiveBase {
   dash?: [number, number];
 }
 
-/** An SVG path in layout coordinates; filled with the role colour, or stroked when `fill` is false. */
+/** An SVG path in its system's coordinates; filled with the role colour, or stroked when `fill` is false. */
 export interface PathPrimitive extends PrimitiveBase {
   kind: 'path';
   d: string;
@@ -112,7 +113,8 @@ export type AnchorKind = 'note' | 'beat' | 'bar' | 'staff' | 'system';
 /**
  * A model node's hit box. `bar` anchors exist for each track's `Bar` (with `track`) and for the
  * master bar's whole column (without); `staff` anchors are keyed by track id, one per staff and
- * system; `system` anchors by the system id.
+ * system; `system` anchors by the system id. `bbox` is in its system's frame (`anchorBox` gives
+ * layout space).
  */
 export interface Anchor {
   kind: AnchorKind;
@@ -154,7 +156,14 @@ export interface System {
   page: number;
   /** Master-bar indices, end exclusive. */
   bars: Range;
+  /** In layout space. */
   bbox: Rect;
+  /**
+   * Continuous mode only: how far right of the left margin this segment sits. Its primitives and
+   * anchor boxes are drawn as if it began the line at the left margin, so layout-space x = x +
+   * `offsetX`. `bbox` and `staves` are in layout space.
+   */
+  offsetX?: number;
   staves: StaffPlacement[];
   primitives: Range;
   anchors: Range;

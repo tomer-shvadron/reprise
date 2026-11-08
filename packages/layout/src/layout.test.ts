@@ -141,6 +141,25 @@ describe('layout', () => {
     }
   });
 
+  it('draws each continuous segment in its own frame', () => {
+    const result = layout(eighthsScore(10), { ...continuous, width: 400 });
+    expect(result.systems.length).toBeGreaterThan(1);
+    expect(result.systems[0]?.offsetX).toBe(0);
+    for (const system of result.systems) {
+      expect(system.bbox.x).toBe(Math.round((16 + (system.offsetX ?? Number.NaN)) * 100) / 100);
+      const frame = result.anchors
+        .slice(system.anchors.start, system.anchors.end)
+        .find((anchor) => anchor.kind === 'system');
+      expect(frame?.bbox.x).toBe(16);
+    }
+  });
+
+  it('gives paged systems no offsetX', () => {
+    for (const system of layout(eighthsScore(10), paged).systems) {
+      expect('offsetX' in system).toBe(false);
+    }
+  });
+
   it('keeps natural widths in continuous mode, one page with systems side by side', () => {
     const result = layout(eighthsScore(10), continuous);
     expectValid(result);

@@ -232,7 +232,7 @@ test('Re-layout after a single-note edit', RELAYOUT_BENCH, async (context) => {
 test('Re-layout after a rhythm edit, continuous', RELAYOUT_BENCH, async (context) => {
   const metric = 'Re-layout after a rhythm edit, continuous';
   const p50 = await relayoutBench(context, metric, () => continuous, rhythmEdit);
-  await recordMeasurement(context, metric, p50);
+  await checkBudget(context, metric, p50, { enforced: true });
 });
 
 /**

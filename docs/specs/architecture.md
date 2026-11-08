@@ -96,6 +96,8 @@ Changed by #118 (2026-11-07): `playedBarTicks` lasts an over-full bar (a voice l
 
 Changed by #125 (2026-11-07): the model's root export gains `canShowTab(track)`, true only for a fretted track with strings, and `shownNotation(track, wanted)`, the notation a track is drawn in: `wanted` on fretted tracks with strings and on drums, `standard` otherwise. Layout gives a pitched track a standard staff whatever its `display.notation` or a `LayoutOptions.notation` override asks for, and the app saves it as standard.
 
+Changed by #101 (2026-11-08): in continuous mode each system is drawn as if it began the line at the left margin, and the new `System.offsetX` is how far right it sits: its primitives (path data included) and its anchors' boxes are in that frame, so layout-space x is x + `offsetX`. `System.bbox`, `System.staves` and `Page.bbox` stay in layout space, and paged systems have no `offsetX` and are unchanged. `hitTest` still takes layout-space coordinates and returns the stored anchor; the new `anchorBox(result, anchor)` gives an anchor's box in layout space. A cached re-layout after an edit that changes a bar's width and keeps the segment breaks reuses every later segment at its new offset instead of re-rendering it.
+
 Synced by #74 (2026-11-06), no contract change: the Layout sketch lists the `LayoutOptions`, `LayoutMetrics` and `Anchor` fields #59 shipped and the `tiedNotes` option #68 added, and the Audio sketch names the `InstrumentSink` #55 shipped and #73 widened.
 
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
@@ -432,9 +434,9 @@ interface LayoutOptions {
 }
 interface LayoutResult {
   pages: Page[];                      // continuous mode = one infinitely wide page
-  systems: System[];                  // each with its bar range and bounding box, on one page; a system taller than the page is split into parts
-  primitives: Primitive[];            // glyph | line | path | text, with x, y, bbox, theme role
-  anchors: Anchor[];                  // model-node id -> bbox, for hit-testing and cursor placement
+  systems: System[];                  // each with its bar range and bounding box (continuous: and `offsetX`, how far right of the left margin its frame sits), on one page; a system taller than the page is split into parts
+  primitives: Primitive[];            // glyph | line | path | text, with x, y, bbox, theme role; continuous: in their system's frame
+  anchors: Anchor[];                  // model-node id -> bbox, for hit-testing and cursor placement; continuous: in their system's frame
   metrics: { layoutMs: number; primitives: number; anchors: number; measuredBars: number; reusedSystems: number };
 }
 interface Anchor {
@@ -443,6 +445,7 @@ interface Anchor {
 }
 function layout(score: Score, options: LayoutOptions, cache?: LayoutCache): LayoutResult;
 function hitTest(result: LayoutResult, x: number, y: number): Anchor | undefined;
+function anchorBox(result: LayoutResult, anchor: Anchor): Rect; // an anchor's box in layout space
 ```
 
 Layout never touches the DOM. Text widths come from a metrics table generated from the fonts at build time.

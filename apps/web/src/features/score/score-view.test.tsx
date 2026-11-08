@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import {
+  anchorBox,
   hitTest,
   LayoutCache,
   layout,
@@ -290,6 +291,27 @@ describe('ScoreView', () => {
     );
   });
 
+  it('reports the anchor under a click in a continuous segment after the first', () => {
+    const result = layout(largeScore(1, 40), {
+      mode: 'continuous',
+      width: 640,
+      zoom: 1,
+      tracks: 'all',
+      notation: {},
+    });
+    const target = result.anchors.find((anchor) => anchor.kind === 'note' && anchor.system === 2);
+    if (!target) throw new Error('no note in segment 2');
+    const onScorePointer = vi.fn();
+    render(<ScoreView layout={result} zoom={2} onScorePointer={onScorePointer} />);
+    const box = anchorBox(result, target);
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    fireEvent.pointerDown(canvas(), { clientX: x * 2, clientY: y * 2 });
+    expect(onScorePointer).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: 'down', point: { x, y }, anchor: target }),
+    );
+  });
+
   it('draws the playhead through its handle, and selection, loop and hover from anchors', () => {
     const result = small();
     const notes = result.anchors.filter((anchor) => anchor.kind === 'note');
@@ -318,11 +340,11 @@ describe('ScoreView', () => {
     expect(line()?.dataset['masterBar']).toBe(cursor.bar.id);
     const highlight = layer?.querySelector<HTMLElement>('.score-bar-highlight');
     expect(highlight?.style.transform).toBe(
-      `translate(${String(cursor.bar.bbox.x * 2)}px, ${String(cursor.bar.bbox.y * 2)}px)`,
+      `translate(${String(cursor.box.x * 2)}px, ${String(cursor.box.y * 2)}px)`,
     );
-    expect(highlight?.style.height).toBe(`${String(cursor.bar.bbox.height * 2)}px`);
+    expect(highlight?.style.height).toBe(`${String(cursor.box.height * 2)}px`);
     expect(line()?.style.transform).toBe(
-      `translate(${String(cursor.x * 2 - 1)}px, ${String(cursor.bar.bbox.y * 2)}px)`,
+      `translate(${String(cursor.x * 2 - 1)}px, ${String(cursor.box.y * 2)}px)`,
     );
     const overlays = region().querySelector('.score-overlays');
     expect(overlays?.querySelectorAll('.score-selection')).toHaveLength(1);
@@ -334,6 +356,25 @@ describe('ScoreView', () => {
     expect(line()?.style.display).toBe('none');
     expect(cursor.bar).toBe(columnAnchor(result, near.masterBar ?? '', 0));
     expect(findAnchors(result, near.id)).toContain(near);
+  });
+
+  it('draws a continuous selection at its layout-space box, not its segment-local one', () => {
+    const result = layout(largeScore(1, 40), {
+      mode: 'continuous',
+      width: 640,
+      zoom: 1,
+      tracks: 'all',
+      notation: {},
+    });
+    const target = result.anchors.find((anchor) => anchor.kind === 'note' && anchor.system === 1);
+    if (!target) throw new Error('no note in segment 1');
+    const box = anchorBox(result, target);
+    expect(box.x).not.toBe(target.bbox.x);
+    render(<ScoreView layout={result} zoom={2} overlays={{ selection: [target] }} />);
+    const drawn = region().querySelector<HTMLElement>('.score-selection');
+    expect(drawn?.style.transform).toBe(
+      `translate(${String(box.x * 2)}px, ${String(box.y * 2)}px)`,
+    );
   });
 
   it('reveals a rect by the least scroll and reports the live window', () => {

@@ -32,9 +32,11 @@ export interface SystemSvgProps {
   top: number;
 }
 
-/** One system as an `<svg>` whose viewBox is its box in layout px, so zoom is only a size. */
+/** One system as an `<svg>` whose viewBox is its box in its own frame, so zoom is only a size. */
 function SystemSvgImpl({ system, primitives, zoom, left, top }: SystemSvgProps) {
-  const { x, y, width, height } = system.bbox;
+  const { y, width, height } = system.bbox;
+  // The primitives are in the system's own frame, so a continuous segment moved by `left` is not redrawn.
+  const x = system.bbox.x - (system.offsetX ?? 0);
   return (
     <svg
       className="score-system"
@@ -59,6 +61,7 @@ export const SystemSvg = memo(
     prev.left === next.left &&
     prev.top === next.top &&
     prev.system.id === next.system.id &&
+    prev.system.offsetX === next.system.offsetX &&
     sameValue(prev.system.bbox, next.system.bbox) &&
     samePrimitives(
       prev.primitives,

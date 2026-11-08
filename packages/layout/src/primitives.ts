@@ -127,7 +127,7 @@ export function box(
   };
 }
 
-/** SVG path data `d` in layout coordinates, whose extent the caller knows. */
+/** SVG path data `d` in its system's coordinates, whose extent the caller knows. */
 export function path(
   d: string,
   bbox: Rect,
