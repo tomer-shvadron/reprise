@@ -89,4 +89,17 @@ describe('drawBeams', () => {
     expect(y1).toBeCloseTo(beam.start, 1);
     expect(y2).toBeCloseTo(beam.start, 1);
   });
+
+  it('points a hook towards its neighbour by x in an out-of-order group', () => {
+    const stems = [stem(30, 50, 2), stem(10, 40, 1)];
+    const beam = beamLine(stems, 'up', { space, exact: true });
+    const sink: LayoutSink = { primitives: [], anchors: [] };
+    drawBeams(sink, stems, 'up', beam, space, { node: 'n' });
+    const half = stemThickness(space) / 2;
+    for (const primitive of sink.primitives) {
+      const xs = 'd' in primitive ? (primitive.d.match(/-?\d+(\.\d+)?/g) ?? []).map(Number) : [];
+      expect(Math.min(xs[0] ?? 0, xs[2] ?? 0)).toBeGreaterThanOrEqual(10 - half - 0.01);
+      expect(Math.max(xs[0] ?? 0, xs[2] ?? 0)).toBeLessThanOrEqual(30 + half + 0.01);
+    }
+  });
 });

@@ -162,8 +162,8 @@ export function drawBeams(
         const xs = stems.slice(i, j + 1).map((stem) => stem.x);
         bar(level, Math.min(...xs) - halfStem, Math.max(...xs) + halfStem);
       } else if (a) {
-        const right = i === 0;
-        const neighbour = stems[right ? i + 1 : i - 1];
+        const neighbour = stems[i === 0 ? i + 1 : i - 1];
+        const right = neighbour ? (i === 0 ? neighbour.x >= a.x : neighbour.x > a.x) : i === 0;
         const room = neighbour ? Math.abs(neighbour.x - a.x) / 2 : PARTIAL_LENGTH * space;
         const length = Math.min(PARTIAL_LENGTH * space * scale, room);
         if (right) bar(level, a.x - halfStem, a.x + length);

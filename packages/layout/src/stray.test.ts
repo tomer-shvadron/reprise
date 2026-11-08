@@ -100,6 +100,8 @@ describe('stray primitives', () => {
     [2147483622, 'standard'],
     [2001385099, 'both'],
     [157889746, 'standard'],
+    [80002139, 'standard'],
+    [771020175, 'standard'],
   ] as const)(
     'none in the random score of seed %i in %s, whose beam ran away from out-of-order stems (#141)',
     (seed, notation) => {
