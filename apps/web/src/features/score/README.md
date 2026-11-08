@@ -74,7 +74,7 @@ Print… runs the flow in `print-store.ts`: paint "Preparing…", await `loadSco
 
 ### Zoom
 
-Zoom is display only: each system `<svg>` keeps its `viewBox` in layout px and takes `width`/`height` × zoom, and pages and canvas are sized and placed × zoom. Vector-crisp at every zoom, with exact scrollbars, which a CSS transform would not give. A zoom change re-renders sizes only; nothing inside a system changes (tested). The view keeps the layout point at the viewport's centre where it was.
+Zoom is display only: each system `<svg>` keeps its `viewBox` in its own frame, in layout px, and takes `width`/`height` × zoom, and pages and canvas are sized and placed × zoom. Vector-crisp at every zoom, with exact scrollbars, which a CSS transform would not give. A zoom change re-renders sizes only; nothing inside a system changes (tested). The view keeps the layout point at the viewport's centre where it was.
 
 Layout happens at zoom 1 and re-runs only when the width changes (mode, paper). Continuous mode lays out in fixed 640 px segments (`CONTINUOUS_SYSTEM_WIDTH`) rather than at the viewport width: the segments join seamlessly, so their width is invisible, but at zoom 0.5 on a 1 920 px viewport a viewport-wide segment would hold about 9 200 elements and three or four mounted ones would break the 20 000-element budget. With fixed segments the long score stays under 13 100 at every zoom (`budget.test.ts`).
 

@@ -124,17 +124,33 @@ describe('continuous', () => {
   const long = largeScore(1, 40);
   const laid = layout(long, options);
 
-  it('finds each anchor at the centre of its layout-space box', () => {
-    expect(laid.systems.length).toBeGreaterThan(5);
-    for (const anchor of laid.anchors) {
-      if (anchor.kind !== 'beat' && anchor.kind !== 'note') continue;
-      const box = anchorBox(laid, anchor);
-      const found = hitTest(laid, box.x + box.width / 2, box.y + box.height / 2);
-      // A beat's centre can lie under its own note, the more specific hit.
-      if (anchor.kind === 'note') expect(found).toBe(anchor);
-      else expect(found?.system).toBe(anchor.system);
-    }
-  });
+  it.each(['tab', 'standard', 'both'] as const)(
+    'finds each %s beat or note at the centre of its layout-space box',
+    (notation) => {
+      const many = largeScore(3, 40);
+      const result = layout(many, {
+        ...options,
+        notation: Object.fromEntries(many.tracks.map(({ id }) => [id, notation])),
+      });
+      expect(result.systems.length).toBeGreaterThan(5);
+      for (const anchor of result.anchors) {
+        if (anchor.kind !== 'beat' && anchor.kind !== 'note') continue;
+        const box = anchorBox(result, anchor);
+        const x = box.x + box.width / 2;
+        const y = box.y + box.height / 2;
+        const found = hitTest(result, x, y);
+        // Only a note drawn over a beat's centre may take the hit from it.
+        const under = found && anchorBox(result, found);
+        const covered =
+          anchor.kind === 'beat' &&
+          found?.kind === 'note' &&
+          under !== undefined &&
+          x >= under.x &&
+          x <= under.x + under.width;
+        expect(found === anchor || covered, `${anchor.kind} ${anchor.id}`).toBe(true);
+      }
+    },
+  );
 
   it("never returns another system's anchor inside a system", () => {
     const system = laid.systems[5];

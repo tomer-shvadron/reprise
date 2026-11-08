@@ -30,10 +30,14 @@ export function hitTest(result: LayoutResult, x: number, y: number): Anchor | un
   let best: Anchor | undefined;
   for (const system of result.systems) {
     if (!contains(system.bbox, x, y)) continue;
-    const local = x - (system.offsetX ?? 0);
+    const offsetX = system.offsetX ?? 0;
     for (let i = system.anchors.start; i < system.anchors.end; i++) {
       const anchor = result.anchors[i];
-      if (anchor && contains(anchor.bbox, local, y) && (!best || moreSpecific(anchor, best))) {
+      if (
+        anchor &&
+        contains(shiftedBox(anchor.bbox, offsetX), x, y) &&
+        (!best || moreSpecific(anchor, best))
+      ) {
         best = anchor;
       }
     }
@@ -41,9 +45,11 @@ export function hitTest(result: LayoutResult, x: number, y: number): Anchor | un
   return best;
 }
 
+function shiftedBox(box: Rect, offsetX: number): Rect {
+  return offsetX === 0 ? box : { ...box, x: round(box.x + offsetX) };
+}
+
 /** An anchor's box in layout space; the stored box itself when its system has no offset. */
 export function anchorBox(result: LayoutResult, anchor: Anchor): Rect {
-  const offsetX = result.systems[anchor.system]?.offsetX;
-  if (offsetX === undefined || offsetX === 0) return anchor.bbox;
-  return { ...anchor.bbox, x: round(anchor.bbox.x + offsetX) };
+  return shiftedBox(anchor.bbox, result.systems[anchor.system]?.offsetX ?? 0);
 }

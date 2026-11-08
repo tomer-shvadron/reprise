@@ -61,6 +61,7 @@ export const SystemSvg = memo(
     prev.left === next.left &&
     prev.top === next.top &&
     prev.system.id === next.system.id &&
+    prev.system.offsetX === next.system.offsetX &&
     sameValue(prev.system.bbox, next.system.bbox) &&
     samePrimitives(
       prev.primitives,

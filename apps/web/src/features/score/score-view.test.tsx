@@ -291,6 +291,27 @@ describe('ScoreView', () => {
     );
   });
 
+  it('reports the anchor under a click in a continuous segment after the first', () => {
+    const result = layout(largeScore(1, 40), {
+      mode: 'continuous',
+      width: 640,
+      zoom: 1,
+      tracks: 'all',
+      notation: {},
+    });
+    const target = result.anchors.find((anchor) => anchor.kind === 'note' && anchor.system === 2);
+    if (!target) throw new Error('no note in segment 2');
+    const onScorePointer = vi.fn();
+    render(<ScoreView layout={result} zoom={2} onScorePointer={onScorePointer} />);
+    const box = anchorBox(result, target);
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    fireEvent.pointerDown(canvas(), { clientX: x * 2, clientY: y * 2 });
+    expect(onScorePointer).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: 'down', point: { x, y }, anchor: target }),
+    );
+  });
+
   it('draws the playhead through its handle, and selection, loop and hover from anchors', () => {
     const result = small();
     const notes = result.anchors.filter((anchor) => anchor.kind === 'note');

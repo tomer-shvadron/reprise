@@ -60,6 +60,7 @@ export interface LayoutOptions {
   dirtyBars?: readonly Id[];
 }
 
+/** In layout coordinates, or in the segment's own frame in continuous mode (see `System.offsetX`). */
 interface PrimitiveBase {
   x: number;
   y: number;
