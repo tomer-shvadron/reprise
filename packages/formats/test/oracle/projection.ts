@@ -153,7 +153,7 @@ export interface ScoreProjection {
   masterBars: MasterBarProjection[];
 }
 
-const isBareEmpty = (beat: BeatProjection): boolean =>
+export const isBareEmpty = (beat: BeatProjection): boolean =>
   !beat.rest &&
   beat.notes.length === 0 &&
   beat.graces.length === 0 &&

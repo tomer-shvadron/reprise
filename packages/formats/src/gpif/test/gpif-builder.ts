@@ -29,6 +29,10 @@ ${extra}
 </Track>`;
 }
 
+/** A further `<Staff>` with its own tuning and capo, to splice before `</Staves>`. */
+export const secondStaff = (pitches: string, capo = 0): string =>
+  `<Staff><Properties>${property('CapoFret', `<Fret>${String(capo)}</Fret>`)}${property('Tuning', `<Pitches>${pitches}</Pitches>`)}</Properties></Staff>`;
+
 export const masterBar = (bars: string, extra = '', time = '4/4'): string =>
   `<MasterBar><Key><AccidentalCount>0</AccidentalCount><Mode>Major</Mode></Key><Time>${time}</Time>${extra}<Bars>${bars}</Bars></MasterBar>`;
 

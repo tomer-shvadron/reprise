@@ -7,6 +7,7 @@ import { readGp, readGp3To5, readGpx, writeGp, writeGpif, type GpifDropCode } fr
 import { readPartConfiguration } from '../src/gpif/part-configuration';
 import { fixtureBytes, manifestEntries } from './corpus';
 import { roundTripView } from './gp-round-trip';
+import { twoStaffGp, type TwoStaffOptions } from './merged-staves-gp';
 import { kitchenSink } from './kitchen-sink';
 import { overfullBarScore } from './overfull-bar';
 
@@ -632,6 +633,55 @@ describe('the gp zip', () => {
 
   it('sizes the layout configuration to the part configuration', () => {
     expect(entries['Content/LayoutConfiguration']?.byteLength).toBe(4 + 1 + 1 + 5 * 2 + 4);
+  });
+});
+
+describe('a merged second staff', () => {
+  const pitches = (score: Score) =>
+    score.tracks[0]?.bars[0]?.voices.map((voice) =>
+      voice.beats.map((b) => b.notes.map((n) => n.fret)),
+    );
+
+  const cases: [string, TwoStaffOptions, number[][][]][] = [
+    ['a keyboard program', { program: 0 }, [[[55]], [[33]], [], []]],
+    ['a guitar program', { program: 25 }, [[[55]], [[33]], [], []]],
+    ['a note below staff 1 lowest string', { program: 25, midi: 26 }, [[[55]], [[26]], [], []]],
+    [
+      'a staff with only a different capo',
+      { program: 25, pitches: '40 45 50 55 59 64', capo: 2, midi: null },
+      [[[55]], [[47]], [], []],
+    ],
+    [
+      'the same capo-only staff on a keyboard program',
+      { program: 0, pitches: '40 45 50 55 59 64', capo: 2, midi: null },
+      [[[55]], [[47]], [], []],
+    ],
+  ];
+
+  it.each(cases)(
+    'keeps %s pitched with every note after a write and a read',
+    (_name, options, expected) => {
+      const first = readGp(twoStaffGp(options));
+      expect(first.score.tracks[0]?.kind).toBe('pitched');
+      expect(pitches(first.score)).toEqual(expected);
+      const written = writeGp(first.score);
+      const again = readGp(written.bytes);
+      expect(again.score.tracks[0]?.kind).toBe('pitched');
+      expect(again.warnings.map((w) => w.code)).not.toContain('invalid-value');
+      expect(pitches(again.score)).toEqual(expected);
+    },
+  );
+
+  it('reports a guitar-program track written without its tuning', () => {
+    const { dropped } = writeGp(readGp(twoStaffGp({ program: 25 })).score);
+    expect(dropped.map((drop) => drop.code)).toEqual(['notation']);
+  });
+
+  it('keeps the tuning of a keyboard program track', () => {
+    const first = readGp(twoStaffGp());
+    const again = readGp(writeGp(first.score).bytes);
+    expect(again.score.tracks[0]?.tuning).toEqual(first.score.tracks[0]?.tuning);
+    expect(writeGp(first.score).dropped).toEqual([]);
   });
 });
 

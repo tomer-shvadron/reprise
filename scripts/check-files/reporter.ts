@@ -8,7 +8,8 @@ import type { Reporter, SerializedError, TestModule } from 'vitest/node';
 
 import { OUT_DIR, ROOT_DIR } from './files.ts';
 import { isCheckRecord } from './meta.ts';
-import type { CheckFile, CheckId, CheckRecord } from './meta.ts';
+import type { CheckFile, CheckRecord } from './meta.ts';
+import { checksFor, skipsFromEnv } from './preflight.ts';
 import { FILES_ENV, filesFromEnv } from './provide-files.ts';
 import {
   classify,
@@ -21,17 +22,6 @@ import {
 
 export const ONLY_ENV = 'REPRISE_CHECK_ONLY';
 export const COMMIT_ENV = 'REPRISE_CHECK_COMMIT';
-
-export const PROJECT_CHECKS: Readonly<Record<string, readonly CheckId[]>> = {
-  formats: ['read', 'oracle', 'order', 'tempo'],
-  layout: ['layout'],
-  audio: ['audio'],
-};
-
-export function checksFor(only: readonly string[]): CheckId[] {
-  const projects = only.length === 0 ? Object.keys(PROJECT_CHECKS) : only;
-  return projects.flatMap((project) => PROJECT_CHECKS[project] ?? []);
-}
 
 export default class CheckFilesReporter implements Reporter {
   onTestRunEnd(modules: readonly TestModule[], unhandled: readonly SerializedError[]): void {
@@ -58,7 +48,7 @@ export default class CheckFilesReporter implements Reporter {
       commit: process.env[COMMIT_ENV] ?? 'unknown',
       os: `${platform()} ${release()}`,
     };
-    const run = classify(files, checksFor(only), records, crashes);
+    const run = classify(files, checksFor(only), records, crashes, undefined, skipsFromEnv());
     if (unhandled.length > 0) run.summary.crashed += unhandled.length;
     writeReports(run, env, OUT_DIR, ROOT_DIR);
     const out: string[] = ['', renderSummary(run, env)];
