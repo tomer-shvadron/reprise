@@ -668,13 +668,13 @@ export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]
     const x = context.beatX(beat);
     const drawn = new Set<string>();
     const following = beats[i + 1];
-    // Target heads end clear of what the next beat draws left of its onset: its heads, accidentals
-    // and graces, which the beat's room counted.
-    const next = following
-      ? beat.bend
-        ? context.placement.onsetX(following.tick) + following.left
-        : context.beatX(following)
-      : contentEnd;
+    // Target heads end clear of what the next onset of any voice draws left of it: its heads,
+    // accidentals and graces, which the spacing measured the beat's room against.
+    const next = beat.bend
+      ? nextOnsetEdge(context, beat.tick, contentEnd)
+      : following
+        ? context.beatX(following)
+        : contentEnd;
     const frame = bendFrame(
       context,
       chord,
@@ -685,7 +685,6 @@ export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]
       band.bottom,
       drawn,
       beat.bend,
-      contentEnd,
     );
     if (frame) {
       for (const group of beat.bend?.groups ?? []) {
@@ -713,10 +712,18 @@ export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]
         band.bottom,
         drawn,
         undefined,
-        contentEnd,
       );
     }
   }
+}
+
+/** The left edge of whatever any voice draws at the first onset after `tick`, or `end`. */
+function nextOnsetEdge(context: ConnectionContext, tick: number, end: number): number {
+  const later = context.plan.beats.filter((other) => other.tick > tick);
+  if (later.length === 0) return end;
+  const at = Math.min(...later.map((other) => other.tick));
+  const edge = Math.min(...later.filter((other) => other.tick === at).map((other) => other.left));
+  return context.placement.onsetX(at) + edge;
 }
 
 function bendFrame(
@@ -729,7 +736,6 @@ function bendFrame(
   laneBottom: number,
   drawn: Set<string>,
   targets: BendPlan | undefined,
-  limit: number,
 ): { x0: number; xEnd: number } | undefined {
   const { sink, space, placement } = context;
   const bent = mainHeads(chord).filter((head) => head.note.bend);
@@ -738,8 +744,8 @@ function bendFrame(
   const x0 = Math.max(...spots.map((spot) => spot.right)) + BEND_FRAME.gap * space;
   const { need = 0, tail = 0 } = targets ?? {};
   const ideal = Math.max(stop - tail, x0 + Math.max(min * space, need));
-  // A squeezed bar gives the frame less than the heads asked for, but never less than its minimum.
-  const xEnd = targets ? Math.min(ideal, Math.max(limit - tail, x0 + min * space)) : ideal;
+  // A squeezed bar gives the frame less than the heads asked for: it still stops at the next onset.
+  const xEnd = targets ? Math.min(ideal, Math.max(stop - tail, x0 + min * space)) : ideal;
   const unit = space * chord.scale;
   const tops = bent.map(
     (head) => placement.top + head.y - glyphMetrics(head.glyph).bbox.top * unit,

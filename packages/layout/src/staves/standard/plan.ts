@@ -281,11 +281,12 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
           ...(shown && { accidental: shown }),
         };
         const group = byPosition.get(target.position) ?? [];
-        if (
-          !group.some((other) => other.position === entry.position && other.alter === entry.alter)
-        ) {
-          group.push(entry);
-        }
+        const twin = group.find(
+          (other) => other.position === entry.position && other.alter === entry.alter,
+        );
+        if (!twin) group.push(entry);
+        // The walk signs one of the twins: the merged head keeps whichever sign it printed.
+        else if (!twin.accidental && entry.accidental) twin.accidental = entry.accidental;
         byPosition.set(target.position, group);
       }
       const points = [...(note.bend?.points ?? [])].sort((a, b) => a.position - b.position);

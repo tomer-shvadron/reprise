@@ -1346,4 +1346,65 @@ describe('bend target heads on a standard staff shown alone', () => {
     const harmonicResult = laid(harmonic);
     expect(targets(harmonicResult, noteOf(harmonic, 0, 0, 0, 0).id)).toHaveLength(0);
   });
+
+  it('keeps the sign of a merged head when two notes bend to one pitch', () => {
+    // F#4 from 3/9 (D#... full bend) and 2/3 (two tones): both reach F#4 at the same point.
+    const bend = (value: number): typeof BENDS.full => ({
+      kind: 'bend',
+      points: [
+        { position: 0, value: 0 },
+        { position: 60, value: value },
+      ],
+    });
+    const built = guitar('standard')
+      .bar()
+      .beat('4', [note(3, 9, { bend: bend(4) }), note(2, 3, { bend: bend(8) })])
+      .beat('4', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const sharps = named(result, 'accidentalSharp').filter(
+      (p) => p.kind === 'glyph' && p.size < 28,
+    );
+    expect(sharps).toHaveLength(1);
+    const heads = beatOf(built, 0, 0, 0).notes.flatMap((n) => targets(result, n.id));
+    expect(heads).toHaveLength(1);
+    expect(sharps[0]?.node).toBe(heads[0]?.node);
+  });
+
+  it("keeps a target off another voice's head", () => {
+    const built = guitar('standard')
+      .bar()
+      .beat('2', [note(2, 3, { bend: BENDS.full })])
+      .beat('2', [note(2, 5)])
+      .voice(1)
+      .beat('4', [note(3, 7)])
+      .beat('4', [note(3, 7)])
+      .beat('4', [note(3, 7)])
+      .beat('4', [note(3, 7)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const [placed] = targets(result, noteOf(built, 0, 0, 0, 0).id);
+    if (!placed) throw new Error('no head');
+    const second = head(result, noteOf(built, 0, 0, 1, 0, 1).id);
+    expect(rightOf(placed.bbox)).toBeLessThanOrEqual(second.bbox.x + EPSILON);
+  });
+
+  it('stops a frame at the next beat in a squeezed bar', () => {
+    const builder = guitar('standard').bar();
+    for (let i = 0; i < 16; i++) {
+      builder.beat('16', [note(3, 7, { bend: i % 2 === 0 ? BENDS.half : BENDS.bendRelease })]);
+    }
+    const built = builder.build({ ids: 'sequential' });
+    const result = laid(built, { width: 320 + 2 * DEFAULT_MARGINS.paged.right });
+    for (let i = 0; i < 15; i += 2) {
+      const id = noteOf(built, 0, 0, i, 0).id;
+      const next = head(result, noteOf(built, 0, 0, i + 1, 0).id);
+      const reach = Math.max(
+        ...result.primitives
+          .filter((p) => p.node === id && p.kind === 'path' && !p.fill)
+          .map((p) => rightOf(p.bbox)),
+      );
+      expect(reach).toBeLessThanOrEqual(next.bbox.x + next.bbox.width + EPSILON);
+    }
+  });
 });
