@@ -22,6 +22,7 @@ import {
   type Track,
 } from '@reprise/model';
 
+import { automationBarTicks } from './automation-bars';
 import { createModelTrack, planTrack, resolveNote, type TrackPlan } from './build-tracks';
 import { cloneBeat, cloneChord, cloneEffects, cloneNote } from './clone';
 import type {
@@ -603,14 +604,19 @@ class ScoreBuilder {
 
   #tickIn(barIndex: number, position: number): number {
     const masterBar = this.#masterBars[barIndex];
-    return masterBar ? position * barTicks(masterBar) : 0;
+    if (!masterBar || !(position > 0)) return 0;
+    const ceiling = automationBarTicks(
+      { masterBars: this.#masterBars, tracks: this.#tracks },
+      barIndex,
+    );
+    return Math.min(position * barTicks(masterBar), ceiling);
   }
 
   #quartersBetween(from: GpifTempo, to: GpifTempo): number {
     let ticks = -this.#tickIn(from.bar, from.position) + this.#tickIn(to.bar, to.position);
+    const score = { masterBars: this.#masterBars, tracks: this.#tracks };
     for (let index = from.bar; index < to.bar; index++) {
-      const masterBar = this.#masterBars[index];
-      if (masterBar) ticks += barTicks(masterBar);
+      if (this.#masterBars[index]) ticks += automationBarTicks(score, index);
     }
     return ticks / PPQ;
   }
@@ -640,7 +646,7 @@ class ScoreBuilder {
    * Tempo automations at a bar's start become `MasterBar.tempo`, the others `Beat.mix.tempo` on
    * the beat at their position. A linear automation ramps from the previous one into its own
    * value; the model approximates that as a ramp starting at the previous automation, with
-   * `duration` the distance in whole quarter notes.
+   * `duration` the distance in whole quarter notes, an over-full bar counted at its longest voice.
    */
   #applyTempos(): void {
     const tempos = [...this.#document.tempos].sort(

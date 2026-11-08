@@ -15,7 +15,7 @@ import {
   drawTremolo,
   type ConnectionContext,
 } from './effects';
-import { GRACE_SCALE, noteMatches, type BarPlan, type BeatPlan } from './plan';
+import { GRACE_SCALE, noteMatches, restBounds, type BarPlan, type BeatPlan } from './plan';
 import {
   beamY,
   beamLine,
@@ -24,6 +24,7 @@ import {
   drawFlag,
   drawStem,
   drawTie,
+  stemEnd,
   drawTuplet,
   type BeamStem,
 } from './rhythm';
@@ -212,7 +213,8 @@ export function renderBar(
         const stemX = x + chord.stem.x;
         drawStem(sink, stemX, top + chord.stem.from, top + chord.tip, space, 1, id);
         drawFlag(sink, chord.beams, chord.direction, stemX, top + chord.tip, space, { node: id });
-        tips.set(beat, top + chord.tip);
+        // What lies beyond an unbeamed stem clears its flag, as the plan measured it.
+        tips.set(beat, top + stemEnd(chord.tip, chord.beams, chord.direction, space, chord.scale));
       }
     }
     const fallback = rect(x - space / 2, top, space, placement.bottom - top);
@@ -306,7 +308,11 @@ export function renderBar(
         ...heads.map((head) => top + head.y + (tuplet.above ? -space / 2 : space / 2)),
         ...(tip === undefined ? [] : [tip]),
       ];
-      if (beat.rest) extremes.push(top + (tuplet.above ? beat.top : beat.bottom));
+      // The rest's own glyph: the plan has already moved `beat.top` and `beat.bottom` out to the mark.
+      if (beat.rest) {
+        const rest = restBounds(beat.rest, space);
+        extremes.push(top + (tuplet.above ? rest.top : rest.bottom));
+      }
       const mark = marked.get(beat);
       if (mark !== undefined && beat.articulation?.above === tuplet.above) extremes.push(mark);
       if (extremes.length === 0) extremes.push(top + 2 * space);

@@ -10,7 +10,10 @@ import { describe, expect, it } from 'vitest';
 
 import { LayoutCache, PAGE_SIZES, layout, type LayoutOptions, type LayoutResult } from '../index';
 import { expectValid, stable } from '../test/check-result';
-import { reservedDynamics, shownDynamics } from './dynamics';
+import { glyphMetrics } from '../metrics';
+import { DYNAMICS_GLYPHS, dynamicsBaseline, reservedDynamics, shownDynamics } from './dynamics';
+import { LANE_HEIGHT } from './lanes';
+import { TAB } from './tab/analysis';
 
 const paged: LayoutOptions = {
   mode: 'paged',
@@ -142,5 +145,21 @@ describe('dynamics: one rule on every staff', () => {
     expect(cached.metrics.measuredBars).toBe(1);
     expect(stable(cached)).toBe(stable(layout(after, paged)));
     expect(dynamicsByStaff(cached)['tab']).toEqual(['MF', 'Piano']);
+  });
+});
+
+describe('the dynamics lane', () => {
+  it('holds every dynamic glyph on its baseline, on the five-line staves and the tab', () => {
+    for (const [lane, unit] of [
+      [LANE_HEIGHT.dynamics, 1],
+      [LANE_HEIGHT.tabDynamics, TAB.dynamicsScale],
+    ] as const) {
+      for (const name of Object.values(DYNAMICS_GLYPHS)) {
+        const { top, bottom } = glyphMetrics(name).bbox;
+        const baseline = dynamicsBaseline(0, unit);
+        expect(baseline - top * unit, name).toBeGreaterThanOrEqual(0);
+        expect(baseline - bottom * unit, name).toBeLessThanOrEqual(lane);
+      }
+    }
   });
 });

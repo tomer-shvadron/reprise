@@ -49,7 +49,7 @@ export const LANE_HEIGHT = {
   whammy: 5,
   repeatCount: 1.6,
   tabDynamics: 2.4,
-  dynamics: 2.9,
+  dynamics: 2.94,
 } as const;
 
 const ALL_LANES: readonly LaneId[] = [...LANES_ABOVE, ...LANES_BELOW];

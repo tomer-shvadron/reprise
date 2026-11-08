@@ -1,6 +1,6 @@
 import type { Id } from '@reprise/model';
 
-import { engraving, glyphAnchor, type GlyphName } from '../../../metrics';
+import { engraving, glyphAnchor, glyphMetrics, type GlyphName } from '../../../metrics';
 import { glyph, line, type LayoutSink } from '../../../primitives';
 
 export type StemDirection = 'up' | 'down';
@@ -68,6 +68,45 @@ export function flagGlyph(beams: number, direction: StemDirection): GlyphName | 
   return direction === 'up' ? pair[0] : pair[1];
 }
 
+/** The y of a flag's origin on a stem ending at `tip`: its SMuFL stem anchor meets the tip. */
+function flagOrigin(name: GlyphName, direction: StemDirection, tip: number, unit: number): number {
+  const anchor = glyphAnchor(name, direction === 'up' ? 'stemUpNW' : 'stemDownSW');
+  return tip + (anchor?.[1] ?? 0) * unit;
+}
+
+/** The y where a flag hanging from a stem ending at `tip` stops short of the head: its box's near edge. */
+export function flagReach(
+  beams: number,
+  direction: StemDirection,
+  tip: number,
+  space: number,
+  scale = 1,
+): number | undefined {
+  const name = flagGlyph(beams, direction);
+  if (!name) return undefined;
+  const unit = space * scale;
+  const { top, bottom } = glyphMetrics(name).bbox;
+  return flagOrigin(name, direction, tip, unit) - (direction === 'up' ? bottom : top) * unit;
+}
+
+/** How far an unbeamed stem ending at `tip` reaches: to its flag's far edge, when it has one. */
+export function stemEnd(
+  tip: number,
+  beams: number,
+  direction: StemDirection,
+  space: number,
+  scale = 1,
+): number {
+  const name = flagGlyph(beams, direction);
+  if (!name) return tip;
+  const unit = space * scale;
+  const origin = flagOrigin(name, direction, tip, unit);
+  const { top, bottom } = glyphMetrics(name).bbox;
+  return direction === 'up'
+    ? Math.min(tip, origin - top * unit)
+    : Math.max(tip, origin - bottom * unit);
+}
+
 /**
  * The flag on an unbeamed stem whose centre line is `x` and tip `tip`; with `slash`, the
  * acciaccatura stroke through it.
@@ -84,10 +123,11 @@ export function drawFlag(
   const name = flagGlyph(beams, direction);
   if (!name) return;
   const scale = options.scale ?? 1;
-  const left = x - stemThickness(space, scale) / 2;
-  sink.primitives.push(glyph(name, left, tip, space, { scale, node: options.node }));
-  if (!options.slash) return;
   const unit = space * scale;
+  const left = x - stemThickness(space, scale) / 2;
+  const origin = flagOrigin(name, direction, tip, unit);
+  sink.primitives.push(glyph(name, left, origin, space, { scale, node: options.node }));
+  if (!options.slash) return;
   const [from, to] =
     direction === 'up'
       ? [glyphAnchor('flag8thUp', 'graceNoteSlashSW'), glyphAnchor('flag8thUp', 'graceNoteSlashNE')]
@@ -99,9 +139,9 @@ export function drawFlag(
   sink.primitives.push(
     line(
       left + from[0] * unit,
-      tip - from[1] * unit,
+      origin - from[1] * unit,
       left + to[0] * unit,
-      tip - to[1] * unit,
+      origin - to[1] * unit,
       stemThickness(space, scale),
       { node: options.node },
     ),
