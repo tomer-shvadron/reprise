@@ -96,9 +96,18 @@ describe('stray primitives', () => {
     },
   );
 
-  it('none in the random score of seed 2147483622, whose out-of-order stems followed a steep beam', () => {
-    expect(strays(randomScore(2147483622), ['standard'], ['paged'])).toEqual([]);
-  });
+  it.each([
+    [2147483622, 'standard'],
+    [2001385099, 'both'],
+    [157889746, 'standard'],
+    [80002139, 'standard'],
+    [771020175, 'standard'],
+  ] as const)(
+    'none in the random score of seed %i in %s, whose beam ran away from out-of-order stems (#141)',
+    (seed, notation) => {
+      expect(strays(randomScore(seed), [notation], ['paged'])).toEqual([]);
+    },
+  );
 
   it('none in random scores', () => {
     assert(
