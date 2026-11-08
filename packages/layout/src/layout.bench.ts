@@ -19,8 +19,8 @@ const RUN = { iterations: 15, time: 0, warmupIterations: 3, warmupTime: 0 };
 // A real regression fails both attempts; a one-off noisy neighbour on a CI VM passes the retry.
 const BENCH = { timeout: 120_000, retry: 1 };
 const RHYTHM_RUN = { ...RUN, iterations: 31 };
-/** Fewer edits of a kind than this and the edit mix has changed under the row. */
-const MIN_OF_KIND = 10;
+/** The fixed edit chain's split: a layout change that moves it changes what both rows average. */
+const EDITS_OF_KIND = { keeps: 16, moves: 15 };
 const RELAYOUT_BENCH = { timeout: 300_000, retry: 1 };
 /** The painter's `CONTINUOUS_SYSTEM_WIDTH`, which layout cannot import. */
 const CONTINUOUS_WIDTH = 640;
@@ -237,7 +237,10 @@ const isClock = (value: unknown): value is { now(): number } =>
 
 /** `performance` is in neither of the libs this package compiles with. */
 const performanceClock: unknown = Reflect.get(globalThis, 'performance');
-const now = (): number => (isClock(performanceClock) ? performanceClock.now() : Date.now());
+const now = (): number => {
+  if (!isClock(performanceClock)) throw new Error('performance.now() is unavailable');
+  return performanceClock.now();
+};
 
 const segmentStarts = (systems: readonly { bars: { start: number } }[]): string =>
   systems.map(({ bars }) => bars.start).join();
@@ -251,7 +254,7 @@ async function rhythmBench(
   context: TestContext,
   name: string,
   kind: 'keeps' | 'moves',
-): Promise<number> {
+): Promise<{ p50: number; note: string }> {
   const cache = new LayoutCache();
   let score = longScore();
   let starts = segmentStarts(layout(score, continuous, cache).systems);
@@ -260,7 +263,7 @@ async function rhythmBench(
   const edits: { ms: number; moved: boolean }[] = [];
   await context
     .bench(
-      name,
+      `${name} (all edits, unsplit)`,
       {
         beforeEach() {
           const next = rhythmEdit(score, count);
@@ -284,25 +287,28 @@ async function rhythmBench(
   const mine = timed.filter(({ moved }) => moved === (kind === 'moves')).map(({ ms }) => ms);
   expect(
     mine.length,
-    `${name}: only ${String(mine.length)} edits ${kind === 'keeps' ? 'kept' : 'moved'} the segment breaks`,
-  ).toBeGreaterThanOrEqual(MIN_OF_KIND);
+    `${name}: ${String(mine.length)} edits ${kind === 'keeps' ? 'kept' : 'moved'} the segment breaks, expected ${String(EDITS_OF_KIND[kind])}`,
+  ).toBe(EDITS_OF_KIND[kind]);
   const p50 = median(mine);
   await context.annotate(
     `${name}: p50 ${String(round(p50))} ms over ${String(mine.length)} of ${String(timed.length)} edits`,
   );
-  return p50;
+  return {
+    p50,
+    note: `${String(mine.length)} of ${String(timed.length)} edits ${kind === 'keeps' ? 'keep' : 'move'} a segment break`,
+  };
 }
 
 test('Re-layout after a rhythm edit, continuous', RELAYOUT_BENCH, async (context) => {
   const metric = 'Re-layout after a rhythm edit, continuous';
-  const p50 = await rhythmBench(context, metric, 'keeps');
-  await checkBudget(context, metric, p50, { enforced: true });
+  const { p50, note } = await rhythmBench(context, metric, 'keeps');
+  await checkBudget(context, metric, p50, { enforced: true, note });
 });
 
 test('Re-layout after a segment-break-moving edit, continuous', RELAYOUT_BENCH, async (context) => {
   const metric = 'Re-layout after a segment-break-moving edit, continuous';
-  const p50 = await rhythmBench(context, metric, 'moves');
-  await recordMeasurement(context, metric, p50);
+  const { p50, note } = await rhythmBench(context, metric, 'moves');
+  await recordMeasurement(context, metric, p50, note);
 });
 
 /**

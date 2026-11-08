@@ -14,6 +14,8 @@ import {
   benchFiles,
   comparedRows,
   markdownSummary,
+  noteLines,
+  readNotes,
   readReport,
   testNamePattern,
   textTable,
@@ -98,7 +100,10 @@ function gate(rev: string): void {
   }
 }
 
+const notes: Record<'base' | 'head', Map<string, string>> = { base: new Map(), head: new Map() };
+
 function measure(
+  side: 'base' | 'head',
   cwd: string,
   files: string[],
   pattern: string,
@@ -119,7 +124,9 @@ function measure(
   const result = spawnSync('pnpm', args, { cwd, stdio: ['ignore', 'inherit', 'inherit'] });
   // A ceiling failure exits 1 but still measured; only a run with no measurement is a crash.
   try {
-    return readReport(readJson(output));
+    const report = readJson(output);
+    for (const [metric, note] of readNotes(report)) notes[side].set(metric, note);
+    return readReport(report);
   } catch {
     console.error(`No report from ${cwd} (exit ${String(result.status)}).`);
     return new Map();
@@ -143,6 +150,7 @@ function compare(baseDir: string, rounds: number, accepted: boolean): void {
     for (const side of order) {
       const started = performance.now();
       const result = measure(
+        side,
         side === 'base' ? baseDir : head,
         files,
         pattern,
@@ -172,12 +180,14 @@ function compare(baseDir: string, rounds: number, accepted: boolean): void {
     `×${String(cpu.length)}, Node ${process.version} (PR ${(process.env['PR_HEAD_SHA'] || git(head, ['rev-parse', 'HEAD'])).slice(0, 7)}, ` +
     `main ${git(baseDir, ['rev-parse', '--short=7', 'HEAD'])})`;
   console.log(`\n${textTable(verdicts, title)}`);
+  const context = noteLines(notes.base, notes.head);
+  for (const line of context) console.log(line);
   for (const line of failureLines(verdicts)) console.log(line);
   for (const line of acceptedLines(verdicts)) console.log(`::warning::${line}`);
   if (!baseReported) console.log(`::error::${NO_BASE_REPORT}`);
   appendTo(
     'GITHUB_STEP_SUMMARY',
-    `${markdownSummary(verdicts, rounds, title)}\n${baseReported ? '' : `${NO_BASE_REPORT}\n`}`,
+    `${markdownSummary(verdicts, rounds, title)}\n${context.map((line) => `${line}\n`).join('')}${baseReported ? '' : `${NO_BASE_REPORT}\n`}`,
   );
   if (verdicts.some(({ status }) => status === 'slower' || status === 'not measured')) {
     process.exitCode = 1;

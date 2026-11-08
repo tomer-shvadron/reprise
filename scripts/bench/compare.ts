@@ -3,14 +3,17 @@
  * reads, the verdict on a row across rounds, and the tables. Nothing here spawns a process, so
  * Node runs it before `pnpm install`.
  */
-import type { ResolvedBudget } from './budgets.ts';
+import { CI_FACTOR, type ResolvedBudget } from './budgets.ts';
 
 /** A row fails above this paired median ratio, and only with a delta over the minimum below. */
 export const TOLERANCE = 1.2;
 /** The smallest delta that fails a row, as a share of its threshold, so a sub-ms wobble never does. */
 export const MIN_DELTA_SHARE = 0.05;
 /** Per-metric overrides of `MIN_DELTA_SHARE`. */
-export const FLOOR_SHARES: Readonly<Record<string, number>> = {};
+export const FLOOR_SHARES: Readonly<Record<string, number>> = {
+  // 0.5 ms on CI: max(0.5 ms, 1.5 × the largest unchanged delta, 0.1 ms over ten runs), #146.
+  'Re-layout after a rhythm edit, continuous': 0.5 / (16 * CI_FACTOR),
+};
 
 export function floorShare(
   metric: string,
@@ -77,6 +80,23 @@ export function readReport(json: unknown): Map<string, number> {
     }
   }
   return measured;
+}
+
+/** Reads the optional `meta.budget.note` of each row, the context a bare number lacks. */
+export function readNotes(json: unknown): Map<string, string> {
+  const notes = new Map<string, string>();
+  if (!isRecord(json) || !Array.isArray(json['testResults'])) return notes;
+  for (const file of json['testResults']) {
+    if (!isRecord(file) || !Array.isArray(file['assertionResults'])) continue;
+    for (const test of file['assertionResults']) {
+      const meta = isRecord(test) ? test['meta'] : undefined;
+      const budget = isRecord(meta) ? meta['budget'] : undefined;
+      if (!isRecord(budget)) continue;
+      const { metric, note } = budget;
+      if (typeof metric === 'string' && typeof note === 'string') notes.set(metric, note);
+    }
+  }
+  return notes;
 }
 
 export function median(values: readonly number[]): number {
@@ -165,6 +185,15 @@ export function textTable(verdicts: readonly Verdict[], title: string): string {
       .trimEnd(),
   );
   return [title, ...lines].join('\n');
+}
+
+export function noteLines(
+  base: ReadonlyMap<string, string>,
+  head: ReadonlyMap<string, string>,
+): string[] {
+  return [...new Set([...base.keys(), ...head.keys()])].map(
+    (metric) => `${metric}: main ${base.get(metric) ?? '-'}; PR ${head.get(metric) ?? '-'}.`,
+  );
 }
 
 export function failureLines(verdicts: readonly Verdict[]): string[] {

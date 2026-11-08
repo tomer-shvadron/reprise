@@ -3,13 +3,15 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import type { ResolvedBudget } from './budgets.ts';
+import { CI_FACTOR, type ResolvedBudget } from './budgets.ts';
 import {
   MIN_DELTA_SHARE,
   MIN_PAIRED_ROUNDS,
   ROUNDS,
   floorShare,
   FLOOR_SHARES,
+  noteLines,
+  readNotes,
   acceptedLines,
   TOLERANCE,
   comparedRows,
@@ -178,16 +180,35 @@ describe('per-row floors', () => {
   });
 });
 
-describe('the shared floor', () => {
-  it('has no override, so every budgeted row takes the default share', () => {
-    expect(Object.keys(FLOOR_SHARES)).toEqual([]);
-    for (const metric of [
-      'Re-layout after a rhythm edit, continuous',
-      'Re-layout after a single-note edit',
-      'Full layout, cold',
-    ]) {
-      expect(floorShare(metric)).toBe(MIN_DELTA_SHARE);
-    }
+describe('the per-row floors', () => {
+  it('lowers the continuous rhythm row to 0.5 ms on CI and leaves every other row on the share', () => {
+    const metric = 'Re-layout after a rhythm edit, continuous';
+    expect(Object.keys(FLOOR_SHARES)).toEqual([metric]);
+    expect(floorShare(metric) * 16 * CI_FACTOR).toBeCloseTo(0.5);
+    expect(floorShare('Re-layout after a single-note edit')).toBe(MIN_DELTA_SHARE);
+    expect(floorShare('Full layout, cold')).toBe(MIN_DELTA_SHARE);
+  });
+});
+
+describe('row notes', () => {
+  const report = (note: unknown) => ({
+    testResults: [
+      { assertionResults: [{ meta: { budget: { metric: 'Row', measured: 1, note } } }] },
+    ],
+  });
+
+  it('reads a note and prints both trees', () => {
+    const notes = readNotes(report('16 of 31 edits keep a segment break'));
+    expect([...notes]).toEqual([['Row', '16 of 31 edits keep a segment break']]);
+    expect(noteLines(notes, new Map())).toEqual([
+      'Row: main 16 of 31 edits keep a segment break; PR -.',
+    ]);
+  });
+
+  it('ignores a missing or malformed note', () => {
+    expect(readNotes(report(undefined)).size).toBe(0);
+    expect(readNotes(report(3)).size).toBe(0);
+    expect(readNotes('nothing').size).toBe(0);
   });
 });
 
@@ -308,6 +329,9 @@ describe('the roadmap note', () => {
     expect(note).toContain('0.83 to 1.14');
     expect(note).toContain('2.4 to 4.3 minutes');
     expect(note).toContain('the median of the edits that keep the segment breaks');
+    expect(note).toContain('over the 16 ms budget');
+    expect(note).toContain('#147');
+    expect(note).toContain('1.5 × the largest unchanged delta');
     expect(note).toContain('Re-layout after a segment-break-moving edit, continuous');
   });
 });
