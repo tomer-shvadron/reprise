@@ -141,6 +141,8 @@ export interface ChordNote {
   alter: Alter;
   accidental?: ShownAccidental;
   sounding?: boolean;
+  /** Overrides the note's own ghost parentheses, for a head that stands for a pitch, not the note. */
+  ghost?: boolean;
 }
 
 export interface ChordOptions {
@@ -157,6 +159,8 @@ export interface ChordOptions {
   beamed?: boolean;
   /** Stems reach the middle line; not for grace notes. */
   reachMiddle: boolean;
+  /** No stem, flag or beam, whatever the duration: the heads stand alone. */
+  stemless?: boolean;
 }
 
 /** Order accidentals are stacked in: outermost first, alternating top and bottom. */
@@ -265,7 +269,7 @@ export function planChord(notes: readonly ChordNote[], options: ChordOptions): C
       a.alter - b.alter ||
       b.note.string - a.note.string,
   );
-  const stemmed = duration >= 2;
+  const stemmed = duration >= 2 && !options.stemless;
   const up = direction === 'up';
   const st = stemThickness(space, scale);
   const glyphs = sorted.map(({ head }) => headGlyph(head, duration));
@@ -296,7 +300,7 @@ export function planChord(notes: readonly ChordNote[], options: ChordOptions): C
     ? normalLeft + (anchor?.[0] ?? column / unit) * unit - st / 2
     : normalLeft + (anchor?.[0] ?? 0) * unit + st / 2;
 
-  const heads: HeadPlan[] = sorted.map(({ note, position, sounding, head, alter }, i) => {
+  const heads: HeadPlan[] = sorted.map(({ note, position, sounding, head, alter, ghost }, i) => {
     const { width } = extents[i] ?? { width: column };
     const at = columns[i] ?? 0;
     // A harmonic's diamond is narrower than a black head; right-aligned, it still meets an up-stem.
@@ -321,7 +325,7 @@ export function planChord(notes: readonly ChordNote[], options: ChordOptions): C
       alter,
       column: at,
       ...(sounding && { sounding: true as const }),
-      ...(note.ghost && !sounding && { ghost: true as const }),
+      ...((ghost ?? note.ghost) && !sounding && { ghost: true as const }),
     };
   });
   const ghosts = heads.filter((head) => head.ghost);

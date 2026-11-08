@@ -98,6 +98,18 @@ export function beamY(stems: readonly BeamStem[], beam: BeamLine, x: number): nu
   return beam.start + ((beam.end - beam.start) * (x - first.x)) / (last.x - first.x);
 }
 
+/**
+ * Where a stem at `x` meets the beam, held to the beam's own ends: a stem a voice's shift moved
+ * out of order would otherwise follow a steep beam far past them.
+ */
+export function stemBeamY(stems: readonly BeamStem[], beam: BeamLine, x: number): number {
+  const first = stems[0];
+  const last = stems.at(-1);
+  if (!first || !last || last.x === first.x) return beam.start;
+  const along = Math.max(0, Math.min(1, (x - first.x) / (last.x - first.x)));
+  return beam.start + (beam.end - beam.start) * along;
+}
+
 /** Distance between the outer edges of two neighbouring beams, in px. */
 export function beamStep(space: number, scale = 1): number {
   return (engraving.beamThickness + engraving.beamSpacing) * space * scale;
