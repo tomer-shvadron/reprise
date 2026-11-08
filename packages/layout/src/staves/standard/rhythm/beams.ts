@@ -24,9 +24,10 @@ export interface BeamOptions {
   /** The staff's middle line: a beam reaches at least that far. */
   middle?: number;
   /**
-   * Fit the beam to the stems' actual x positions. Without it the inner stems may sit anywhere
-   * between the ends, and the line is placed so it clears them wherever they are: an outer bound
-   * on the exact line, for measuring before the bar is spaced.
+   * Fit the beam to the stems' actual x positions, the only case that reads their order and span.
+   * Without it the inner stems may sit anywhere between the ends, and the line is placed so it
+   * clears them wherever they are: an outer bound on the exact line, for measuring before the bar
+   * is spaced.
    */
   exact: boolean;
   /** Moves the whole line outward by this much, in px: room for tremolo strokes on its stems. */
@@ -35,6 +36,8 @@ export interface BeamOptions {
 
 /** The longest a beam may rise or fall over its length, in staff spaces. */
 const MAX_SLOPE = 1;
+/** An exact beam is horizontal when its outer stems are closer than this, in staff spaces. */
+const MIN_SPAN = 1;
 /** A stem under a beam may be this much shorter than an unbeamed one, in staff spaces. */
 export const SHORTENING = 0.5;
 
@@ -42,7 +45,9 @@ export const SHORTENING = 0.5;
  * Places a beam over `stems`: each end `stemLength` from its note (and reaching the middle line),
  * the slope following the first and last notes but no steeper than one staff space, horizontal
  * when they are the same pitch or an inner note is further out than both, and the whole line
- * moved out until no stem is shorter than the minimum.
+ * moved out until no stem is shorter than the minimum. An exact beam is also horizontal when its
+ * stems are out of x order or its outer stems are under one staff space apart: a squeezed bar can
+ * put them there, and a slope over that span would run away at every stem.
  */
 export function beamLine(
   stems: readonly BeamStem[],
@@ -71,10 +76,14 @@ export function beamLine(
     ? inner.some((stem) => stem.head < Math.min(first.head, last.head))
     : inner.some((stem) => stem.head > Math.max(first.head, last.head));
   const limit = MAX_SLOPE * space * scale;
-  const slope =
-    first.head === last.head || outermost ? 0 : Math.max(-limit, Math.min(limit, to - from));
-
   const span = last.x - first.x;
+  const ordered = stems.every((stem, i) => i === 0 || stem.x >= (stems[i - 1]?.x ?? stem.x));
+  const flat =
+    first.head === last.head ||
+    outermost ||
+    (exact && (!ordered || span < MIN_SPAN * space * scale));
+  const slope = flat ? 0 : Math.max(-limit, Math.min(limit, to - from));
+
   let offset = up ? Math.min(from, to - slope) : Math.max(from, to - slope);
   for (const [i, stem] of stems.entries()) {
     const required = reach(stem.head, shortest);
@@ -96,18 +105,6 @@ export function beamY(stems: readonly BeamStem[], beam: BeamLine, x: number): nu
   const last = stems.at(-1);
   if (!first || !last || last.x === first.x) return beam.start;
   return beam.start + ((beam.end - beam.start) * (x - first.x)) / (last.x - first.x);
-}
-
-/**
- * Where a stem at `x` meets the beam, held to the beam's own ends: a stem a voice's shift moved
- * out of order would otherwise follow a steep beam far past them.
- */
-export function stemBeamY(stems: readonly BeamStem[], beam: BeamLine, x: number): number {
-  const first = stems[0];
-  const last = stems.at(-1);
-  if (!first || !last || last.x === first.x) return beam.start;
-  const along = Math.max(0, Math.min(1, (x - first.x) / (last.x - first.x)));
-  return beam.start + (beam.end - beam.start) * along;
 }
 
 /** Distance between the outer edges of two neighbouring beams, in px. */
@@ -162,7 +159,8 @@ export function drawBeams(
       const a = stems[i];
       const b = stems[j];
       if (a && b && j > i) {
-        bar(level, a.x - halfStem, b.x + halfStem);
+        const xs = stems.slice(i, j + 1).map((stem) => stem.x);
+        bar(level, Math.min(...xs) - halfStem, Math.max(...xs) + halfStem);
       } else if (a) {
         const right = i === 0;
         const neighbour = stems[right ? i + 1 : i - 1];

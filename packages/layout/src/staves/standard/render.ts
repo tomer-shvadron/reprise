@@ -18,8 +18,8 @@ import {
 } from './effects';
 import { GRACE_SCALE, noteMatches, restBounds, type BarPlan, type BeatPlan } from './plan';
 import {
-  stemBeamY,
   beamLine,
+  beamY,
   drawBeams,
   drawDots,
   drawFlag,
@@ -163,7 +163,7 @@ function drawGraces(context: Context, beat: BeatPlan, x: number): void {
       sink,
       stem.x,
       placement.top + grace.chord.stem.from,
-      stemBeamY(stems, beam, stem.x),
+      beamY(stems, beam, stem.x),
       space,
       GRACE_SCALE,
       beat.beat.id,
@@ -258,7 +258,7 @@ export function renderBar(
       const stem = stems[i];
       if (!beat.chord?.stem || !stem) continue;
       i += 1;
-      const tip = stemBeamY(stems, beam, stem.x);
+      const tip = beamY(stems, beam, stem.x);
       drawStem(sink, stem.x, top + beat.chord.stem.from, tip, space, 1, beat.beat.id);
       tips.set(beat, tip);
     }

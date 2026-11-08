@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { LayoutCache, PAGE_SIZES, layout, type LayoutOptions, type LayoutResult } from './index';
 import { BAR_REACH } from './staves/staff-module';
 import { expectValid, stable } from './test/check-result';
+import { randomScore } from './test/random-score';
 
 const paged: LayoutOptions = {
   mode: 'paged',
@@ -61,6 +62,35 @@ function widthStarting(built: Score, start: number, options: LayoutOptions): num
 }
 
 describe('LayoutCache', () => {
+  it.each([
+    [2001385099, 'both'],
+    [2147483622, 'standard'],
+  ] as const)(
+    'matches a cold paged layout of random seed %i, squeezed bars included (#141)',
+    (seed, notation) => {
+      const built = randomScore(seed);
+      const options: LayoutOptions = {
+        ...paged,
+        notation: Object.fromEntries(
+          built.tracks.map((track) => [
+            track.id,
+            track.kind === 'pitched' ? track.display.notation : notation,
+          ]),
+        ),
+      };
+      const { cache } = warm(built, { ...options, mode: 'continuous', width: 640 });
+      expect(stable(layout(built, options, cache))).toBe(stable(layout(built, options)));
+
+      const beat = beatOf(built, 0, 0, 0);
+      const { score: edited, change } = applyCommand(
+        built,
+        setNote({ beatId: beat.id }, { string: 1, fret: beat.notes[0]?.fret === 1 ? 2 : 1 }),
+      );
+      const result = layout(edited, { ...options, dirtyBars: change.touchedBars }, cache);
+      expect(stable(result)).toBe(stable(layout(edited, options)));
+    },
+  );
+
   it('reuses every bar and system when nothing changed', () => {
     const score = largeScore(2, 60, { structure: true });
     const { cache, first } = warm(score);
