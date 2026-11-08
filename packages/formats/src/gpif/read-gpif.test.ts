@@ -602,6 +602,24 @@ describe('tracks', () => {
       expect(noteIn(result, 1)?.fret).toBe(35);
     });
 
+    it('reads a staff with the same tuning and only a different capo as pitched', () => {
+      const result = twoStaffs(withStaff({}, '40 45 50 55 59 64', 2), note('1', 0, 5));
+      expect(result.score.tracks[0]?.kind).toBe('pitched');
+      expect(noteIn(result, 1)?.fret).toBe(47);
+      expect(result.warnings.find((w) => w.code === 'multiple-staves')?.message).toContain(
+        'own tuning or capo',
+      );
+    });
+
+    it('adds the capo to the tuning of a single-staff pitched track', () => {
+      const piano = guitarTrack('0', { program: 0 }).replace('<Fret>0</Fret>', '<Fret>3</Fret>');
+      const result = read(
+        oneBar([beat('0', '0', '0')], [note('0', 2, 5)], QUARTERS, { tracks: [piano] }),
+      );
+      expect(result.score.tracks[0]?.kind).toBe('pitched');
+      expect(firstNote(result.score)?.fret).toBe(58);
+    });
+
     it('keeps a note below the first staff lowest string', () => {
       const result = twoStaffs(withStaff({ program: 0 }), note('1', 0, -2, '', midi(26)));
       expect(noteIn(result, 1)?.fret).toBe(26);
@@ -616,7 +634,7 @@ describe('tracks', () => {
         kind: 'pitched',
         display: { notation: 'standard' },
       });
-      const alone = twoStaffs(withStaff({ program: 0 }), note('1', 0, 5, '', midi(33)), {
+      const alone = twoStaffs(withStaff(), note('1', 0, 5, '', midi(33)), {
         partConfiguration: standard,
       });
       expect(alone.score.tracks[0]?.kind).toBe('pitched');

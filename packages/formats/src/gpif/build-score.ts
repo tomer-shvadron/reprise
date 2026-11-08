@@ -102,12 +102,23 @@ const lineKey = (staffIndex: number, voiceIndex: number): string =>
  * Choosing per bar instead would move a voice between slots from one bar to the next, and ties,
  * hammer-ons and grace notes all follow a slot across bars.
  */
+/**
+ * A voice line is used when its voice has at least one beat; a `-1` reference, or a voice with an
+ * empty `<Beats>`, takes no slot. The oracle's `slotsOf` applies the same rule to alphaTab's
+ * voices. A voice that is referenced but not defined stays used, so `missing-reference` reports it.
+ */
+function isUsedVoice(document: GpifDocument, voiceId: string): boolean {
+  if (voiceId === '-1') return false;
+  const voice = document.voices.get(voiceId);
+  return voice === undefined || voice.beatIds.length > 0;
+}
+
 function planVoiceSlots(document: GpifDocument, barIds: string[][]): Map<string, number> {
   const used = new Set<string>();
   for (const staves of barIds) {
     staves.forEach((id, staffIndex) => {
       document.bars.get(id)?.voiceIds.forEach((voiceId, voiceIndex) => {
-        if (voiceId !== '-1') used.add(lineKey(staffIndex, voiceIndex));
+        if (isUsedVoice(document, voiceId)) used.add(lineKey(staffIndex, voiceIndex));
       });
     });
   }
@@ -311,7 +322,7 @@ class ScoreBuilder {
         `Track has ${String(staves.length)} staves; they are merged onto one` +
           (plan.differingStaff === undefined
             ? ''
-            : `, and read as a keyboard part (standard notation) because staff ${String(plan.differingStaff + 1)} has its own tuning`),
+            : `, and read as a keyboard part (standard notation) because staff ${String(plan.differingStaff + 1)} has its own tuning or capo`),
       );
     }
     const first = staves[0];
@@ -327,7 +338,7 @@ class ScoreBuilder {
     const slots = this.#slots[trackIndex];
     staves.forEach((staff, staffIndex) => {
       staff?.voiceIds.forEach((voiceId, voiceIndex) => {
-        if (voiceId === '-1') return;
+        if (!isUsedVoice(this.#document, voiceId)) return;
         const line = lineKey(staffIndex, voiceIndex);
         const slot = slots?.get(line);
         const voice = slot === undefined ? undefined : bar.voices[slot];

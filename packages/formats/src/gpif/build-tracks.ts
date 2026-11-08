@@ -63,7 +63,7 @@ export function planTrack(
     tuning = tuning.slice(0, MAX_STRINGS);
   }
   const staves = (source.staves.length > 0 ? source.staves : [staff]).map((own) => ({
-    tuning: own.tuning ?? tuning,
+    tuning: own.tuning?.slice(0, MAX_STRINGS) ?? tuning,
     capo: own.tuning === undefined ? staff.capo : own.capo,
   }));
   const differing = staves.findIndex(

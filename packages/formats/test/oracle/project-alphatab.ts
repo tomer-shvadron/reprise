@@ -274,7 +274,8 @@ function projectBeats(beats: AtBeat[], kind: TrackKind, first: boolean): BeatPro
 const VOICE_SLOTS = 4;
 
 /**
- * The slot each used voice line `staff.voice` of a track lands in, by the reader's rule: staff
+ * The slot each used voice line `staff.voice` of a track lands in, by the reader's rule (a line
+ * is used when its voice has a beat, as `isUsedVoice` in `build-score.ts` says): staff
  * 0 keeps its own voice indices and every other used line takes the lowest slot staff 0 never
  * uses, in staff and voice order; a line with no slot left is absent (the reader's `voice-dropped`).
  */
