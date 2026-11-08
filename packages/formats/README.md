@@ -329,7 +329,7 @@ const fromXml = readGpif(xml, { partConfiguration }); // score.gpif from any con
 | `Note` `Tie`, `LetRing`, `AntiAccent`, `Accent`, `Vibrato`, `Trill`, `LeftFingering`, `RightFingering`, `InstrumentArticulation`                                                                         | `tie`, `letRing`, `ghost`, `staccato` and `accent`, `vibrato`, `trill`, fingers, drum sound                                                |
 | `Rhythm` `NoteValue` (`Long` to `256th`), `AugmentationDot`, `PrimaryTuplet`                                                                                                                             | `duration`, `dots`, `tuplet`; double and quadruple wholes become tied whole notes                                                          |
 
-**Track kind.** A drum kit is `drums`. Guitar Pro 7 gives every track a six-string tuning, a piano included, so the tuning cannot tell a keyboard from a guitar; a track whose program is outside the fretted GM families (24 to 39, 104 to 107) and whose part configuration shows no tablature is `pitched`, which is the rule the fixture manifest's oracle applies. Without part configuration bytes the program decides alone. A pitched track keeps the file's tuning and fret count, as the model allows, so a gp writer can finger it again; its notes take the `Midi` property.
+**Track kind.** A drum kit is `drums`. Guitar Pro 7 gives every track a six-string tuning, a piano included, so the tuning cannot tell a keyboard from a guitar; a track whose program is outside the fretted GM families (24 to 39, 104 to 107) and whose part configuration shows no tablature is `pitched`, which is the rule the fixture manifest's oracle applies. Without part configuration bytes the program decides alone. A pitched track keeps the file's tuning and fret count, as the model allows, so a gp writer can finger it again; its notes take the `Midi` property. A track whose further staff has its own tuning or capo different from staff 1's is `pitched` whatever its program (see **Multiple staves**).
 
 ### Fixtures
 
@@ -364,7 +364,7 @@ Each verified against alphaTab's `GpifParser` (and `GpifWriter` where noted) in 
 
 ### Known gaps
 
-- **Multiple staves** collapse onto one (ADR-0006). Staff 1 keeps its voice indices as slots; every other staff's voice line that is used anywhere in the track takes the lowest slot staff 1 never uses, in staff and voice order, and keeps that slot in every bar, so ties, hammer-ons and grace notes follow it across bars. A line with no slot left is dropped, one `voice-dropped` per line counting its bars. The other staves' tunings and capos are not read.
+- **Multiple staves** collapse onto one (ADR-0006). Staff 1 keeps its voice indices as slots; every other staff's voice line that is used anywhere in the track takes the lowest slot staff 1 never uses, in staff and voice order, and keeps that slot in every bar, so ties, hammer-ons and grace notes follow it across bars. A line with no slot left is dropped, one `voice-dropped` per line counting its bars. A further staff with its own tuning or capo that differs from staff 1's makes the whole track `pitched`: one model staff cannot draw two tunings, and a keyboard's left hand often sits below any guitar string. Its notes resolve through their own staff (`Midi` first, then `Octave`/`Tone`, then that staff's tuning plus its capo plus the fret). A staff with no tuning shares staff 1's, and a track whose staves agree reads as before.
 - **Linear tempo ramps** become a ramp starting at the previous automation with `duration` rounded to whole quarter notes (`MixTransitionSchema` is an integer); a ramp that starts mid-bar starts from the tempo before it. The distance counts an over-full bar at its longest voice. No fixture has one.
 - **Tempo automations between beats** move to the beat sounding at that moment (`tempo-moved`), as in `beat-tempo-change.gp` bar 2.
 - **Drum articulation variants** (rim shot, choke, half-open) play as their GM sound and are reported once per track; the model has no articulation field.
@@ -376,26 +376,26 @@ Each verified against alphaTab's `GpifParser` (and `GpifWriter` where noted) in 
 
 Every warning is `{ code, message, path, count }`: `path` is the gpif element (`Notes/Note[3]/Properties/Property[Slide]`), or the model path for an invariant (`score.tracks[0].bars[1].voices[1]`). Repeats of one loss on many nodes (an RSE pickup setting on every beat) fold into one warning with `count`, keeping the first path.
 
-| Code                              | Raised when                                                                                    |
-| --------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `not-modelled`                    | the file carries something the model has no field for (list above); it is dropped              |
-| `unknown-element`                 | an element the reader does not know; it is ignored                                             |
-| `unknown-value`                   | a known element with a value the reader does not know                                          |
-| `invalid-value`                   | a value outside the model (a time signature, key, dot count, fret beyond 127, a volta past 8)  |
-| `missing-reference`               | an id that names no node (bar, voice, beat, note, rhythm, chord, sound, track)                 |
-| `multiple-staves`                 | a track with more than one staff, merged                                                       |
-| `voice-dropped`                   | a further staff's voice line with no free slot, once per line with its bar count               |
-| `simile-expanded`                 | a simile bar, filled with a copy of the bar it repeats                                         |
-| `grace-without-beat`              | grace beats at the end of a voice with no beat after them                                      |
-| `grace-duration-clamped`          | a grace note outside 16th to 64th                                                              |
-| `grace-tie-released`              | a tied grace note; the model forbids `tie` on grace notes, so it is struck                     |
-| `hammer-pull-without-destination` | a hammer-on origin with no later note on its string within three bars, once per track          |
-| `tempo-moved`                     | a tempo change placed on the nearest earlier beat, or a ramp length rounded                    |
-| `automation-dropped`              | a tempo or sound change in a bar with no beats, or past the last bar                           |
-| `default-tempo`                   | no tempo at the start; 120 BPM is used                                                         |
-| `long-note-tied`                  | a double whole or long note split into tied whole notes                                        |
-| `drum-articulation`               | drum articulation variants mapped to their GM sound (once per track)                           |
-| any `validateScore` rule          | the score breaks an invariant, as the file does (`multivoice-rhythm.gp` has an overfull voice) |
+| Code                              | Raised when                                                                                               |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `not-modelled`                    | the file carries something the model has no field for (list above); it is dropped                         |
+| `unknown-element`                 | an element the reader does not know; it is ignored                                                        |
+| `unknown-value`                   | a known element with a value the reader does not know                                                     |
+| `invalid-value`                   | a value outside the model (a time signature, key, dot count, fret beyond 127, a volta past 8)             |
+| `missing-reference`               | an id that names no node (bar, voice, beat, note, rhythm, chord, sound, track)                            |
+| `multiple-staves`                 | a track with more than one staff, merged; read as pitched when a further staff has its own tuning or capo |
+| `voice-dropped`                   | a further staff's voice line with no free slot, once per line with its bar count                          |
+| `simile-expanded`                 | a simile bar, filled with a copy of the bar it repeats                                                    |
+| `grace-without-beat`              | grace beats at the end of a voice with no beat after them                                                 |
+| `grace-duration-clamped`          | a grace note outside 16th to 64th                                                                         |
+| `grace-tie-released`              | a tied grace note; the model forbids `tie` on grace notes, so it is struck                                |
+| `hammer-pull-without-destination` | a hammer-on origin with no later note on its string within three bars, once per track                     |
+| `tempo-moved`                     | a tempo change placed on the nearest earlier beat, or a ramp length rounded                               |
+| `automation-dropped`              | a tempo or sound change in a bar with no beats, or past the last bar                                      |
+| `default-tempo`                   | no tempo at the start; 120 BPM is used                                                                    |
+| `long-note-tied`                  | a double whole or long note split into tied whole notes                                                   |
+| `drum-articulation`               | drum articulation variants mapped to their GM sound (once per track)                                      |
+| any `validateScore` rule          | the score breaks an invariant, as the file does (`multivoice-rhythm.gp` has an overfull voice)            |
 
 ### XML parser decision
 
@@ -456,6 +456,7 @@ static `Logger` silenced: `Settings.core.logLevel` never reaches the loader) and
 reader, reduces both to the same plain projection and diffs them. It runs in `pnpm test`; on its own,
 `pnpm vitest run --project formats test/oracle`.
 
+- **Staves.** alphaTab keeps a track's staves apart, the model merges them (ADR-0006), so the alphaTab projection merges them into voice slots by the reader's rule (`slotsOf` in `project-alphatab.ts`) and a second staff is compared note by note (`test/oracle/merged-staves.test.ts`).
 - **What is compared** (`projection.ts`): the score's title, subtitle, artist, album, words,
   music, copyright, tab, instructions and notices; per track the name, string count, tuning
   (MIDI, low to high), capo, percussion flag, program, bank, volume, pan, mute, solo, colour,

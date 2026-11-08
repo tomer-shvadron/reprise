@@ -7,6 +7,7 @@ import { readGp, readGp3To5, readGpx, writeGp, writeGpif, type GpifDropCode } fr
 import { readPartConfiguration } from '../src/gpif/part-configuration';
 import { fixtureBytes, manifestEntries } from './corpus';
 import { roundTripView } from './gp-round-trip';
+import { twoStaffGp } from './merged-staves-gp';
 import { kitchenSink } from './kitchen-sink';
 import { overfullBarScore } from './overfull-bar';
 
@@ -632,6 +633,23 @@ describe('the gp zip', () => {
 
   it('sizes the layout configuration to the part configuration', () => {
     expect(entries['Content/LayoutConfiguration']?.byteLength).toBe(4 + 1 + 1 + 5 * 2 + 4);
+  });
+});
+
+describe('a merged second staff', () => {
+  it('survives a write and a read as the same MIDI values in the same slots', () => {
+    const first = readGp(twoStaffGp());
+    const written = writeGp(first.score);
+    const again = readGp(written.bytes);
+    expect(written.dropped).toEqual([]);
+    const pitches = (score: Score) =>
+      score.tracks[0]?.bars[0]?.voices.map((voice) =>
+        voice.beats.map((b) => b.notes.map((n) => n.fret)),
+      );
+    expect(again.score.tracks[0]?.kind).toBe('pitched');
+    expect(again.score.tracks[0]?.tuning).toEqual(first.score.tracks[0]?.tuning);
+    expect(pitches(again.score)).toEqual(pitches(first.score));
+    expect(pitches(again.score)?.[1]).toEqual([[33]]);
   });
 });
 
