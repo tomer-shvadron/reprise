@@ -177,6 +177,14 @@ describe('per-row floors', () => {
   });
 });
 
+describe('the continuous re-layout floor', () => {
+  it('is 6 ms on CI and leaves the other rows on the default', () => {
+    const metric = 'Re-layout after a rhythm edit, continuous';
+    expect(floorShare(metric) * 16 * 3.4).toBeCloseTo(6);
+    expect(floorShare('Re-layout after a single-note edit')).toBe(MIN_DELTA_SHARE);
+  });
+});
+
 describe('accepted rows', () => {
   it('get a line saying the label stays until removed', () => {
     const accepted = verdict(COLD, five(200), five(400), true);
@@ -293,5 +301,6 @@ describe('the roadmap note', () => {
     expect(note).toContain('The label stays on the PR until it is removed');
     expect(note).toContain('0.83 to 1.14');
     expect(note).toContain('2.4 to 4.3 minutes');
+    expect(note).toContain('6 ms on CI');
   });
 });
