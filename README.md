@@ -24,7 +24,11 @@ Everything about what Reprise is and why it is built the way it is lives under [
 
 ## Commands
 
-Run from the repository root after `pnpm install`.
+Run from the repository root. On a fresh clone start with `pnpm bootstrap`: it checks Node and pnpm, runs `pnpm install`, makes sure the Chromium headless shell and the GM soundfont are in place, and prints the next commands. It is safe to re-run. (Not `pnpm setup`, which is a pnpm built-in that edits your shell profile.)
+
+```
+pnpm bootstrap      # first step on a fresh checkout; idempotent
+```
 
 ```
 pnpm lint           # ESLint, including the package boundary rules; fails on any warning
