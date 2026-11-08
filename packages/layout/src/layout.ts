@@ -271,7 +271,7 @@ function pages(options: ResolvedOptions, systems: readonly System[]): Page[] {
  * measurements, and every system more than `BAR_REACH` bars from a re-measured bar is reused
  * where it breaks, sits and enters with the same dynamics as before.
  */
-function layoutOnce(score: Score, options: LayoutOptions, cache?: LayoutCache): LayoutResult {
+export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache): LayoutResult {
   const started = clock.now();
   const resolved = resolveOptions(score, options);
   const slots = staffSlots(resolved);
@@ -473,17 +473,4 @@ function layoutOnce(score: Score, options: LayoutOptions, cache?: LayoutCache): 
       reusedSystems: reused,
     },
   };
-}
-
-// THROWAWAY 2x slowdown of a cold layout, to prove bench-compare fails on CI.
-export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache): LayoutResult {
-  const started = Date.now();
-  const result = layoutOnce(score, options, cache);
-  if (options.dirtyBars === undefined) {
-    const took = Date.now() - started;
-    while (Date.now() - started < 2 * took) {
-      // spin
-    }
-  }
-  return result;
 }
