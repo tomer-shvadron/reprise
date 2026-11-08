@@ -109,7 +109,7 @@ describe('the playhead', () => {
     });
     rerender(<ScoreView ref={ref} layout={result} zoom={2} />);
     expect(line().style.transform).toBe(
-      `translate(${String(cursor.x * 2 - 1)}px, ${String(cursor.bar.bbox.y * 2)}px)`,
+      `translate(${String(cursor.x * 2 - 1)}px, ${String(cursor.box.y * 2)}px)`,
     );
   });
 });

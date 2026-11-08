@@ -1,4 +1,4 @@
-import type { Anchor, LayoutResult, Rect, System } from '@reprise/layout';
+import { anchorBox, type Anchor, type LayoutResult, type Rect, type System } from '@reprise/layout';
 import { beatTicks, playedBarTicks, type Id, type Score } from '@reprise/model';
 
 import { findAnchors, type PlaybackCursor } from './anchors';
@@ -134,7 +134,7 @@ function barOnsets(layout: LayoutResult, score: Score, masterBarId: Id): BarOnse
   for (const anchor of index.beatAnchors.get(masterBarId) ?? []) {
     const beat = beats.get(anchor.id);
     if (!beat || beat.loneRest) continue;
-    found.push({ tick: beat.tick, x: centre(anchor.bbox) });
+    found.push({ tick: beat.tick, x: centre(anchorBox(layout, anchor)) });
   }
   // Stable, so among staves at one onset the first anchor, the top staff, stays.
   found.sort((a, b) => a.tick - b.tick);
@@ -149,10 +149,10 @@ function barOnsets(layout: LayoutResult, score: Score, masterBarId: Id): BarOnse
 }
 
 /** x at `tick` into the bar: linear between onsets, then towards the column's right edge. */
-function xAt(bar: BarOnsets, column: Anchor, tick: number): number {
+function xAt(bar: BarOnsets, column: Rect, tick: number): number {
   const { ticks, points } = bar;
-  const left = { tick: 0, x: column.bbox.x };
-  const end = { tick: ticks, x: column.bbox.x + column.bbox.width };
+  const left = { tick: 0, x: column.x };
+  const end = { tick: ticks, x: column.x + column.width };
   const first = points[0];
   const path = first && first.tick <= EPSILON ? points : [left, ...points];
   let from = path[0] ?? left;
@@ -183,7 +183,9 @@ export function playheadAt(
 ): PlaybackCursor | undefined {
   const bar = barOnsets(layout, score, masterBarId);
   const column = bar && columnFor(layout, bar.columns, track);
-  return bar && column && { x: xAt(bar, column, tick), bar: column };
+  if (!bar || !column) return undefined;
+  const box = anchorBox(layout, column);
+  return { x: xAt(bar, box, tick), bar: column, box };
 }
 
 /**
@@ -234,7 +236,7 @@ export function nearestColumn(
   for (let i = system.anchors.start; i < system.anchors.end; i++) {
     const anchor = layout.anchors[i];
     if (!anchor || anchor.kind !== 'bar' || anchor.track !== undefined) continue;
-    const { x, width } = anchor.bbox;
+    const { x, width } = anchorBox(layout, anchor);
     const d = Math.max(0, x - point.x, point.x - (x + width));
     if (d < best) {
       best = d;
@@ -333,7 +335,8 @@ export function staffBand(layout: LayoutResult, track: Id, system: number): Rect
   let band: Rect | undefined;
   for (const anchor of findAnchors(layout, track, 'staff')) {
     if (anchor.system !== system) continue;
-    band = band ? union(band, anchor.bbox) : anchor.bbox;
+    const box = anchorBox(layout, anchor);
+    band = band ? union(band, box) : box;
   }
   return band;
 }

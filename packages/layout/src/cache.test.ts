@@ -189,7 +189,7 @@ describe('LayoutCache', () => {
     expect(stable(result)).toBe(stable(layout(edited, options)));
   });
 
-  it('rebuilds every later segment when a continuous edit changes a bar width', () => {
+  it('moves every later segment when a continuous edit changes a bar width', () => {
     const score = largeScore(1, 40);
     const { cache, first } = warm(score, continuous);
     const bar = 10;
@@ -198,8 +198,20 @@ describe('LayoutCache', () => {
       setBeatDuration({ beatId: beatOf(score, 0, bar, 0).id }, { duration: 16 }),
     );
     const result = layout(edited, { ...continuous, dirtyBars: change.touchedBars }, cache);
-    const before = first.systems.filter(({ bars }) => bars.end - 1 + BAR_REACH < bar).length;
-    expect(result.metrics.reusedSystems).toBe(before);
+    expect(result.systems.map((s) => s.bars)).toEqual(first.systems.map((s) => s.bars));
+    const rebuilt = first.systems.filter(
+      ({ bars }) => bars.end - 1 + BAR_REACH >= bar && bars.start - BAR_REACH <= bar,
+    ).length;
+    expect(result.systems.length - result.metrics.reusedSystems).toBe(rebuilt);
+    const past = first.systems.filter(({ bars }) => bars.start - BAR_REACH > bar);
+    expect(past.length).toBeGreaterThan(0);
+    for (const old of past) {
+      const now = result.systems[old.index];
+      if (!now) throw new Error(`no system ${String(old.index)}`);
+      expect(result.primitives[now.primitives.start]).toBe(first.primitives[old.primitives.start]);
+      expect(result.anchors[now.anchors.start]).toBe(first.anchors[old.anchors.start]);
+      expect((now.offsetX ?? 0) - (old.offsetX ?? 0)).toBeGreaterThan(0);
+    }
     expect(stable(result)).toBe(stable(layout(edited, continuous)));
   });
 

@@ -43,9 +43,11 @@ describe('anchors', () => {
   it('places the cursor at a note or beat centre and a bar start', () => {
     const [note] = findAnchors(result, beat.notes[0]?.id ?? '', 'note');
     if (!note) throw new Error('no note anchor');
+    const column = columnAnchor(result, note.masterBar ?? '', 0);
     expect(cursorAt(result, note)).toEqual({
       x: note.bbox.x + note.bbox.width / 2,
-      bar: columnAnchor(result, note.masterBar ?? '', 0),
+      bar: column,
+      box: column?.bbox,
     });
     const [beatAnchor] = findAnchors(result, beat.id, 'beat');
     if (!beatAnchor) throw new Error('no beat anchor');
@@ -63,6 +65,19 @@ describe('anchors', () => {
     const [first] = anchors;
     if (!first) throw new Error('no beat anchor');
     expect(cursorForBeat(both, beat.id)?.x).toBe(first.bbox.x + first.bbox.width / 2);
+  });
+
+  it('places a continuous cursor inside its segment in layout space', () => {
+    const long = layout(largeScore(1, 40), { ...options, mode: 'continuous', width: 640 });
+    const beats = long.anchors.filter(({ kind, system }) => kind === 'beat' && system >= 1);
+    expect(beats.length).toBeGreaterThan(0);
+    for (const anchor of beats.slice(0, 50)) {
+      const cursor = cursorAt(long, anchor);
+      const system = long.systems[anchor.system];
+      if (!cursor || !system) throw new Error('no cursor');
+      expect(cursor.x).toBeGreaterThanOrEqual(system.bbox.x);
+      expect(cursor.x).toBeLessThanOrEqual(system.bbox.x + system.bbox.width);
+    }
   });
 
   it('describes the layout', () => {

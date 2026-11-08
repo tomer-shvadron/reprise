@@ -22,7 +22,9 @@ import {
   isClean,
   reposition,
   samePlacement,
+  samePlacementBesideX,
   samePlan,
+  shifted,
   type ChangedBars,
 } from './reuse';
 import { staffBar, staffSlots, trackBar, type StaffSlot } from './slots';
@@ -269,7 +271,8 @@ function pages(options: ResolvedOptions, systems: readonly System[]): Page[] {
  * Lays out `score` for `options`. With a cache from an earlier call on the same document, bars
  * whose content is unchanged (by identity) and not listed in `options.dirtyBars` keep their
  * measurements, and every system more than `BAR_REACH` bars from a re-measured bar is reused
- * where it breaks, sits and enters with the same dynamics as before.
+ * where it breaks, sits and enters with the same dynamics as before; in continuous mode a system
+ * is reused at a new x too, as each is drawn in its own frame.
  */
 export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache): LayoutResult {
   const started = clock.now();
@@ -316,19 +319,31 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
   let primitiveCount = 0;
   let anchorCount = 0;
   let systemCount = 0;
-  const keep = (entry: CachedSystem): void => {
-    const parts = entry.parts.map((part) => {
+  const continuous = resolved.mode === 'continuous';
+  const offsetOf = (placement: PartPlacement): number | undefined =>
+    continuous ? round(placement.x - resolved.margins.left) : undefined;
+  const keep = (entry: CachedSystem, at: PartPlacement[] = entry.at): CachedSystem => {
+    const parts = entry.parts.map((part, j) => {
       const primitives = { start: primitiveCount, end: primitiveCount + part.primitives.length };
       const anchors = { start: anchorCount, end: anchorCount + part.anchors.length };
-      const placed = reposition(part, systemCount, primitives, anchors);
+      const placement = at[j] ?? entry.at[j];
+      const placed = reposition(
+        part,
+        systemCount,
+        primitives,
+        anchors,
+        placement && offsetOf(placement),
+      );
       primitiveCount = primitives.end;
       anchorCount = anchors.end;
       systemCount += 1;
       return placed;
     });
     const moved = parts.some((part, i) => part !== entry.parts[i]);
-    systems.push(moved ? { ...entry, parts } : entry);
+    const kept = at !== entry.at || moved ? { ...entry, at, parts } : entry;
+    systems.push(kept);
     reused += parts.length;
+    return kept;
   };
   const groups = slots.map(({ group }) => group);
   /** The cursor after a system's last part. */
@@ -365,13 +380,23 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
         // The next placement follows from this one, the system's stack (its slots' extents and
         // rows) and the page geometry in `systemKey`, so equal placements converge.
         const at = placeSystem(resolved, cursor, old.vertical, groups);
-        if (samePlacement(at, old.at) && entering(plan.start) === old.entering) {
-          keep(old);
-          cursor = after(old);
+        const exact = samePlacement(at, old.at);
+        if (
+          (exact || (continuous && samePlacementBesideX(at, old.at))) &&
+          entering(plan.start) === old.entering
+        ) {
+          cursor = after(keep(old, exact ? old.at : at));
           // Past the last change by more than any module reads, the breaks, placements and
           // entering dynamics all follow from this system's, so the rest is as it was.
           if (sameBarCount && plan.start - BAR_REACH > lastChanged) {
-            for (const later of previous.slice(position + 1)) keep(later);
+            for (const later of previous.slice(position + 1)) {
+              if (!continuous) {
+                keep(later);
+                continue;
+              }
+              const laterAt = placeSystem(resolved, cursor, later.vertical, groups);
+              cursor = after(keep(later, samePlacement(laterAt, later.at) ? later.at : laterAt));
+            }
             break;
           }
           continue;
@@ -392,6 +417,7 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
       const baseId = `system:${score.masterBars[plan.start]?.id ?? String(systemCount)}`;
       const parts = at.map((placement, j): CachedPart => {
         const index = systemCount;
+        const offsetX = offsetOf(placement);
         const id = j === 0 ? baseId : `${baseId}/${String(j)}`;
         const sink: LayoutSink = { primitives: [], anchors: [] };
         const rendered = renderSystem(
@@ -405,7 +431,7 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
             vertical: split
               ? partVertical(vertical, groups, placement.slots, resolved.space)
               : vertical,
-            x: placement.x,
+            x: continuous ? resolved.margins.left : placement.x,
             y: placement.y,
             index,
             id,
@@ -419,7 +445,8 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
           page: placement.page,
           ...(split && { part: j }),
           bars: { start: plan.start, end: plan.end },
-          bbox: rendered.bbox,
+          bbox: shifted(rendered.bbox, offsetX),
+          ...(offsetX !== undefined && { offsetX }),
           staves: rendered.staves,
           primitives: { start: primitiveCount, end: primitiveCount + sink.primitives.length },
           anchors: { start: anchorCount, end: anchorCount + sink.anchors.length },
@@ -427,7 +454,7 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
         primitiveCount += sink.primitives.length;
         anchorCount += sink.anchors.length;
         systemCount += 1;
-        return { system, primitives: sink.primitives, anchors: sink.anchors };
+        return { system, box: rendered.bbox, primitives: sink.primitives, anchors: sink.anchors };
       });
       const entry: CachedSystem = {
         plan,

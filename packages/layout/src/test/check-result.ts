@@ -96,12 +96,12 @@ export function expectValid(result: LayoutResult): void {
       expect(system.bars.start).toBe(previous.bars.end);
     }
     if (system.part === 0) expect(result.systems[i + 1]?.part).toBe(1);
+    const frame = { ...system.bbox, x: system.bbox.x - (system.offsetX ?? 0) };
     for (const anchor of result.anchors.slice(system.anchors.start, system.anchors.end)) {
       expect(anchor.system).toBe(i);
-      expect(
-        inside(anchor.bbox, system.bbox),
-        `${anchor.kind} ${anchor.id} outside its system`,
-      ).toBe(true);
+      expect(inside(anchor.bbox, frame), `${anchor.kind} ${anchor.id} outside its system`).toBe(
+        true,
+      );
     }
     const page = result.pages[system.page];
     expect(page).toBeDefined();
@@ -170,6 +170,7 @@ export function outsideItsPage(
     const page = result.pages[system.page];
     if (!page) throw new Error(`${system.id} has no page`);
     const { bbox } = page;
+    const local = { ...bbox, x: bbox.x - (system.offsetX ?? 0) };
     const top = bbox.y + margins.top;
     const bottom = bbox.y + bbox.height - margins.bottom;
     const marginOverflowPx = Math.max(
@@ -186,14 +187,14 @@ export function outsideItsPage(
       system.primitives.start,
       system.primitives.end,
     )) {
-      if (inside(primitive.bbox, bbox)) continue;
+      if (inside(primitive.bbox, local)) continue;
       primitives += 1;
-      overflowPx = Math.max(overflowPx, reach(primitive.bbox, bbox));
+      overflowPx = Math.max(overflowPx, reach(primitive.bbox, local));
     }
     for (const anchor of result.anchors.slice(system.anchors.start, system.anchors.end)) {
-      if (inside(anchor.bbox, bbox)) continue;
+      if (inside(anchor.bbox, local)) continue;
       anchors += 1;
-      overflowPx = Math.max(overflowPx, reach(anchor.bbox, bbox));
+      overflowPx = Math.max(overflowPx, reach(anchor.bbox, local));
     }
     if (primitives > 0 || anchors > 0 || marginOverflowPx > 0) {
       found.push({

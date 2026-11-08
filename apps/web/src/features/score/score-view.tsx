@@ -178,7 +178,7 @@ function paintPlayhead(
     delete line.dataset['masterBar'];
     return;
   }
-  const rect = cursor.bar.bbox;
+  const rect = cursor.box;
   const top = `${String(rect.y * zoom)}px`;
   const height = `${String(rect.height * zoom)}px`;
   bar.style.transform = `translate(${String(rect.x * zoom)}px, ${top})`;
@@ -589,7 +589,7 @@ export function ScoreView({
               />
             );
           })}
-          <OverlayLayer overlays={overlays} zoom={zoom} range={range} />
+          <OverlayLayer overlays={overlays} zoom={zoom} layout={layout} range={range} />
           <PlayheadLayer bar={barBox} line={lineBox} />
         </div>
       </div>

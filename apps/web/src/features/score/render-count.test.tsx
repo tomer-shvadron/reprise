@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react';
 import { LayoutCache, layout, PAGE_SIZES, type LayoutOptions } from '@reprise/layout';
-import { applyCommand, setNote } from '@reprise/model';
+import { applyCommand, setBeatDuration, setNote } from '@reprise/model';
 import { beatOf } from '@reprise/model/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -64,6 +64,45 @@ describe('re-rendering after an edit', () => {
     expect(drawn).toHaveBeenCalledTimes(end - start);
     const rendered = new Set(drawn.mock.calls.map(([primitive]) => primitive));
     expect(rendered).toEqual(new Set(after.primitives.slice(start, end)));
+  });
+
+  it('draws only the edited segment when a continuous edit changes a bar width, and moves the later ones', () => {
+    const options: LayoutOptions = { ...paged, mode: 'continuous', width: 640 };
+    const score = smallScore();
+    const cache = new LayoutCache();
+    const before = layout(score, options, cache);
+    const { rerender, container } = render(<ScoreView layout={before} zoom={1} />);
+    const mounted = container.querySelectorAll('svg[data-system-id]').length;
+    expect(mounted).toBeGreaterThan(2);
+
+    const { score: next, change } = applyCommand(
+      score,
+      setBeatDuration({ beatId: beatOf(score, 0, 0, 0).id }, { duration: 16 }),
+    );
+    const after = layout(next, { ...options, dirtyBars: change.touchedBars }, cache);
+    expect(after.systems.map((s) => s.bars)).toEqual(before.systems.map((s) => s.bars));
+    expect(after.systems[1]?.offsetX).not.toBe(before.systems[1]?.offsetX);
+
+    const drawn = vi.mocked(primitiveToSvg);
+    drawn.mockClear();
+    rerender(<ScoreView layout={after} zoom={1} />);
+
+    const { start, end } = after.systems[0]?.primitives ?? { start: 0, end: 0 };
+    expect(drawn).toHaveBeenCalledTimes(end - start);
+    const rendered = new Set(drawn.mock.calls.map(([primitive]) => primitive));
+    expect(rendered).toEqual(new Set(after.primitives.slice(start, end)));
+
+    const svgOf = (id: string) =>
+      container.querySelector<SVGElement>(`svg[data-system-id="${id}"]`);
+    const later = after.systems.slice(1).filter((system) => svgOf(system.id));
+    expect(later.length).toBeGreaterThan(1);
+    for (const system of later) {
+      const svg = svgOf(system.id);
+      expect(svg?.style.left).toBe(`${String(system.bbox.x)}px`);
+      expect(svg?.getAttribute('viewBox')?.startsWith('16 ')).toBe(true);
+    }
+    const second = after.systems[1];
+    expect(svgOf(second?.id ?? '')?.style.left).not.toBe(`${String(before.systems[1]?.bbox.x)}px`);
   });
 
   it('renders nothing inside a system for a zoom change', () => {
