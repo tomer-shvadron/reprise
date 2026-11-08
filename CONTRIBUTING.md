@@ -67,7 +67,7 @@ The hook is per worktree: Husky writes its shim under `.husky/_/` (ignored), and
 
 - One PR per work package, filled from the PR template, squash-merged into `main`. The PR title becomes the squash commit, so it is a conventional commit line too.
 - The body links the issue (`Closes #n`), says what changed and **how it was verified**: the commands run and what they showed, not just "tests pass".
-- Include the `pnpm bench` table before and after for anything the [budgets table](docs/plans/roadmap.md#budgets) covers, screenshots for any UI change, and any deviation from the plan with its reason.
+- Include the `pnpm bench` table before and after for anything the [budgets table](docs/plans/roadmap.md#budgets) covers (CI's `bench-compare` summary is the before and after on one runner, and a deliberate slowdown needs the lead's `bench:accept-slower` label), screenshots for any UI change, and any deviation from the plan with its reason.
 - Open questions go on the issue as comments, not as assumptions buried in code.
 - Before opening it, this passes locally, and CI must be green on the PR (lint, typecheck, tests, build, per [ADR-0014](docs/decisions/0014-repo-and-process.md)):
 
