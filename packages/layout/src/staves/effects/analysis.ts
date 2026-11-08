@@ -1,4 +1,4 @@
-import { beatTicks, type Bar, type Beat, type Note, type Vibrato } from '@reprise/model';
+import { beatTicks, type Bar, type Beat, type Bend, type Note, type Vibrato } from '@reprise/model';
 
 import { glyphMetrics, textExtent, textWidth, type GlyphName } from '../../metrics';
 import { LANE_HEIGHT, type LaneRequests } from '../lanes';
@@ -13,6 +13,8 @@ export const WHAMMY_TEXT = 0.9;
 /** A bend's rise per quarter tone above the staff, and the room its label takes above the tip, in staff spaces. */
 export const BEND_STEP = 0.55;
 const BEND_LABEL_ROOM = 1.3;
+/** The gap between stacked bend labels, in staff spaces. */
+export const BEND_STACK_GAP = 0.05;
 /** Room kept either side of an item centred on an onset, beyond its own width, in staff spaces. */
 const ITEM_SIDE = 0.2;
 /** Gaps in a stack of articulations and around it, in staff spaces. */
@@ -246,9 +248,44 @@ function bendTop(note: Note): number {
   return Math.max(0, ...(note.bend?.points.map((p) => p.value) ?? []));
 }
 
+/** One bend label row, in staff spaces: the text's height and the gap to the next row. */
+export function bendRow(): number {
+  const { ascent, descent } = textExtent(EFFECT_TEXT);
+  return ascent + descent + BEND_STACK_GAP;
+}
+
+/**
+ * The amounts labelled at each x of a beat's shared bend frame, ascending: its raised tips by
+ * position, and `pre` for the pre-bend arrows. The notes of a chord share a frame, so tips at one
+ * position stand at one x and their labels stack in one column.
+ */
+export function bendColumns(bends: readonly (Bend | undefined)[]): Map<string, number[]> {
+  const columns = new Map<string, Set<number>>();
+  const add = (key: string, value: number): void => {
+    const found = columns.get(key);
+    if (found) found.add(value);
+    else columns.set(key, new Set([value]));
+  };
+  for (const bend of bends) {
+    const points = [...(bend?.points ?? [])].sort((a, b) => a.position - b.position);
+    const [first] = points;
+    if (first && first.value > 0) add('pre', first.value);
+    for (const [i, q] of points.entries()) {
+      const p = points[i - 1];
+      if (p && q.value > p.value) add(String(q.position), q.value);
+    }
+  }
+  return new Map([...columns].map(([key, values]) => [key, [...values].sort((a, b) => a - b)]));
+}
+
 function bendLane(notes: readonly Note[]): number | undefined {
   const top = Math.max(0, ...notes.map(bendTop));
-  return top > 0 ? BEND_STEP * top + BEND_LABEL_ROOM : undefined;
+  if (top <= 0) return undefined;
+  const stack = Math.max(
+    1,
+    ...[...bendColumns(notes.map((note) => note.bend)).values()].map((amounts) => amounts.length),
+  );
+  return BEND_STEP * top + BEND_LABEL_ROOM + (stack - 1) * bendRow();
 }
 
 export function glyphHeight(name: GlyphName): number {
@@ -334,8 +371,10 @@ export function analyseEffects(bar: Bar, space: number, options: EffectOptions):
     if (bent !== undefined) raise('bend', bent);
   }
   for (const { beat } of timed) {
-    const bent = bendLane(beat.grace?.flatMap((grace) => grace.notes) ?? []);
-    if (bent !== undefined) raise('bend', bent);
+    for (const grace of beat.grace ?? []) {
+      const bent = bendLane(grace.notes);
+      if (bent !== undefined) raise('bend', bent);
+    }
   }
 
   for (const run of runs) {

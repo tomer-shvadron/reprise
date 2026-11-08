@@ -52,6 +52,8 @@ export interface RunSummary {
   known: number;
   stale: string[];
   crashed: number;
+  /** Environment notes, such as a check skipped for a missing prerequisite; never a failure. */
+  notes: string[];
 }
 
 export interface RunReport {
@@ -91,6 +93,20 @@ export function crashedRecord(file: string, check: CheckId, error: string): Chec
   };
 }
 
+/** The record a check left unrun for the environment stands for. */
+export function skippedRecord(file: string, check: CheckId, reason: string): CheckRecord {
+  return {
+    file,
+    check,
+    skipped: reason,
+    summary: `skipped: ${reason}`,
+    violations: [],
+    explained: [],
+    facts: {},
+    sections: [],
+  };
+}
+
 /** A local tab's error text with its path and file name taken out. */
 export function scrub(text: string, file: CheckFile): string {
   if (file.source !== 'local') return text;
@@ -110,6 +126,7 @@ export function classify(
   records: readonly CheckRecord[],
   crashes: ReadonlyMap<string, string> = new Map(),
   knownIssues: readonly KnownIssue[] = KNOWN_ISSUES,
+  skips: Partial<Record<CheckId, string>> = {},
 ): RunReport {
   const byKey = new Map(records.map((record) => [`${record.file}|${record.check}`, record]));
   const reports = files.map((file): FileReport => {
@@ -117,10 +134,13 @@ export function classify(
     for (const check of checks) {
       const key = `${file.file}|${check}`;
       const crash = crashes.get(key);
+      const skip = skips[check];
       const record =
-        crash === undefined
-          ? (byKey.get(key) ?? crashedRecord(file.file, check, 'the check reported no record'))
-          : crashedRecord(file.file, check, scrub(crash, file));
+        skip !== undefined
+          ? skippedRecord(file.file, check, skip)
+          : crash === undefined
+            ? (byKey.get(key) ?? crashedRecord(file.file, check, 'the check reported no record'))
+            : crashedRecord(file.file, check, scrub(crash, file));
       const known: Classified['known'] = [];
       const unknown: CheckViolation[] = [];
       for (const violation of record.violations) {
@@ -182,6 +202,7 @@ export function classify(
       crashed: all.filter((entry) =>
         entry.record.violations.some((v) => v.code === 'check-crashed'),
       ).length,
+      notes: [...new Set(Object.values(skips))],
     },
   };
 }
@@ -461,6 +482,7 @@ export function renderSummary(run: RunReport, env: Environment): string {
         `| ${cell(report.file.source === 'local' ? report.label : report.file.file)} | ${run.checks.map((check) => report.checks[check]?.status ?? '-').join(' | ')} | ${report.status} |`,
     ),
     '',
+    ...run.summary.notes.map((note) => `Environment: ${note}.`),
     `Totals: ${String(run.summary.failed)} failed, ${String(run.summary.known)} known, ${String(run.summary.crashed)} crashed, ${String(run.summary.stale.length)} stale known entries.`,
   ];
   for (const check of run.checks) {
