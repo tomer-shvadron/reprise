@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { startVitest } from 'vitest/node';
 
 import { OUT_DIR as OUT, ROOT_DIR, discover } from './files.ts';
+import { SKIPS_ENV, checksFor, preflight, soundfontPresent } from './preflight.ts';
 const PROJECTS = ['formats', 'layout', 'audio'];
 
 function usage(message: string): never {
@@ -81,6 +82,12 @@ wipe();
 process.env['REPRISE_CHECK_FILES'] = JSON.stringify(found.files);
 process.env['REPRISE_CHECK_ONLY'] = only.join(',');
 process.env['REPRISE_CHECK_COMMIT'] = commit();
+const skips = preflight(checksFor(only), {
+  soundfont: soundfontPresent(),
+  ci: (process.env['CI'] ?? '') !== '',
+});
+process.env[SKIPS_ENV] = JSON.stringify(skips);
+for (const note of new Set(Object.values(skips))) console.info(note);
 
 const vitest = await startVitest([], {
   config: fileURLToPath(new URL('vitest.config.ts', import.meta.url)),
