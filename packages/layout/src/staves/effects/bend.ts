@@ -13,7 +13,7 @@ import {
   text,
   type LayoutSink,
 } from '../../primitives';
-import { BEND_STACK_GAP, BEND_STEP, EFFECT_TEXT } from './analysis';
+import { BEND_STACK_GAP, BEND_STEP, EFFECT_TEXT, bendRow } from './analysis';
 import { bendLabel } from './labels';
 
 /** Shaft thickness, the gaps around labels and a hold's dashes, in staff spaces. */
@@ -35,9 +35,17 @@ export const BEND_ROOM = { main: 2.2, grace: 1.2 } as const;
 export interface BendDrawn {
   keys: Set<string>;
   labels: { text: string; bbox: Rect }[];
+  arrows: Rect[];
+  /** The amounts labelled at each x of the frame being drawn, from `bendColumns`. */
+  columns: Map<string, number[]>;
 }
 
-export const newBendDrawn = (): BendDrawn => ({ keys: new Set(), labels: [] });
+export const newBendDrawn = (): BendDrawn => ({
+  keys: new Set(),
+  labels: [],
+  arrows: [],
+  columns: new Map(),
+});
 
 const overlap = (a: Rect, b: Rect): boolean =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
@@ -53,6 +61,7 @@ export interface BendFrame {
   xEnd: number;
   /** The string the bend starts from, and the bend lane's bottom, which raised values rise from. */
   yBase: number;
+  laneTop: number;
   laneBottom: number;
   /** The onset's x and the top of the number's knockout, for pre-bends. */
   onset: number;
@@ -94,31 +103,48 @@ export function drawBend(
     drawn.keys.add(key);
     draw();
   };
-  // A label equal to one it overlaps is dropped; a different one stacks above what it overlaps.
+  const arrowUp = (px: number, tip: number): void => {
+    once(`arrow ${String(round(px))} ${String(round(tip))} up`, () => {
+      const head = arrowhead(px, tip, 'up', space, { node });
+      drawn.arrows.push(head.bbox);
+      sink.primitives.push(head);
+    });
+  };
+  // A label equal to one it overlaps is not drawn again; a different one rises above what it
+  // overlaps, labels and arrowheads, as far as the lane reaches.
   const label = (content: string, px: number, y: number, anchor: 'start' | 'middle'): void => {
     let at = y;
     for (;;) {
       const mark = text(content, px, at, size, { anchor, node });
       const hits = drawn.labels.filter((other) => overlap(other.bbox, mark.bbox));
       if (hits.some((other) => other.text === content)) return;
-      if (hits.length === 0) {
+      const blocks = [
+        ...hits.map((h) => h.bbox),
+        ...drawn.arrows.filter((a) => overlap(a, mark.bbox)),
+      ];
+      const next =
+        at -
+        (mark.bbox.y +
+          mark.bbox.height -
+          Math.min(...blocks.map((r) => r.y)) +
+          BEND_STACK_GAP * space);
+      if (blocks.length === 0 || mark.bbox.y - (y - next) < frame.laneTop) {
         drawn.labels.push({ text: content, bbox: mark.bbox });
         sink.primitives.push(mark);
         return;
       }
-      at -=
-        mark.bbox.y +
-        mark.bbox.height -
-        Math.min(...hits.map((h) => h.bbox.y)) +
-        BEND_STACK_GAP * space;
+      at = next;
     }
   };
-  const raised = (px: number, tip: number, value: number): void => {
-    once(`arrow ${String(round(px))} ${String(round(tip))} up`, () => {
-      sink.primitives.push(arrowhead(px, tip, 'up', space, { node }));
-    });
-    once(`label ${String(round(px))} ${String(round(tip))}`, () => {
-      label(bendLabel(value), px, tip - LABEL_GAP * space, 'middle');
+  // The labels of one column read in the order of the arrows below them: the highest amount on
+  // top, the lowest just above the column's topmost tip.
+  const raised = (px: number, tip: number, value: number, column: string): void => {
+    arrowUp(px, tip);
+    once(`label ${String(round(px))} ${String(value)}`, () => {
+      const amounts = drawn.columns.get(column) ?? [value];
+      const rank = Math.max(0, amounts.indexOf(value));
+      const base = level(Math.max(value, ...amounts));
+      label(bendLabel(value), px, base - LABEL_GAP * space - rank * bendRow() * space, 'middle');
     });
   };
 
@@ -130,7 +156,7 @@ export function drawBend(
         sink.primitives.push(line(x0, frame.numberTop, x0, tip + arrow, SHAFT * space, { node }));
       }
     });
-    raised(x0, tip, first.value);
+    raised(x0, tip, first.value, 'pre');
   }
   for (let i = 1; i < points.length; i++) {
     const p = points[i - 1];
@@ -142,7 +168,7 @@ export function drawBend(
     if (q.value > p.value) {
       const tip = level(q.value);
       shaft(sink, xp, yp, xq, tip + arrow, space, node);
-      raised(xq, tip, q.value);
+      raised(xq, tip, q.value, String(q.position));
     } else if (q.value < p.value) {
       const tip = q.value <= 0 ? frame.releaseTop - RELEASE_STOP * space : level(q.value);
       shaft(sink, xp, yp, xq, tip - arrow, space, node);

@@ -4,7 +4,7 @@ import {
   BEND_FRAME,
   connections,
   type BendDrawn,
-  bendPeak,
+  bendColumns,
   drawBend,
   newBendDrawn,
   drawLetter,
@@ -215,8 +215,8 @@ function drawBendGroup(
   const x0 = at + Math.max(...bent.map((label) => rightEdge(label, size))) + BEND.gap * space;
   const xEnd = Math.max(stop, x0 + min * space);
   const releaseTop = lineY(context, top.note.string) - labelHalfHeight(size);
-  const highestFirst = [...bent].sort((a, b) => bendPeak(b.note.bend) - bendPeak(a.note.bend));
-  for (const label of highestFirst) {
+  drawn.columns = bendColumns(bent.map((label) => label.note.bend));
+  for (const label of bent) {
     const { bend } = label.note;
     if (!bend) continue;
     const y = lineY(context, label.note.string);
@@ -224,6 +224,7 @@ function drawBendGroup(
       x0,
       xEnd,
       yBase: y,
+      laneTop: band.top,
       laneBottom: band.bottom,
       onset: at,
       numberTop: y - labelHalfHeight(size),

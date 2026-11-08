@@ -16,7 +16,7 @@ import {
   articulationMarks,
   connections,
   type BendDrawn,
-  bendPeak,
+  bendColumns,
   drawBend,
   newBendDrawn,
   drawLetter,
@@ -685,6 +685,7 @@ export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]
       beat.beat.dots,
       next - BEND_FRAME.stop * space,
       BEND_FRAME.min,
+      band.top,
       band.bottom,
       drawn,
       beat.bend,
@@ -712,6 +713,7 @@ export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]
         0,
         nextLeft - BEND_FRAME.graceStop * space,
         0,
+        band.top,
         band.bottom,
         drawn,
         undefined,
@@ -736,6 +738,7 @@ function bendFrame(
   dots: number,
   stop: number,
   min: number,
+  laneTop: number,
   laneBottom: number,
   drawn: BendDrawn,
   targets: BendPlan | undefined,
@@ -754,16 +757,12 @@ function bendFrame(
     (head) => placement.top + head.y - glyphMetrics(head.glyph).bbox.top * unit,
   );
   const releaseTop = Math.min(...tops);
-  // Highest bend first, so the label of the chord's highest bend is the one kept where they meet.
-  const order = [...bent.keys()].sort(
-    (a, b) => bendPeak(bent[b]?.note.bend) - bendPeak(bent[a]?.note.bend),
-  );
-  for (const j of order) {
-    const head = bent[j];
-    const bend = head?.note.bend;
+  drawn.columns = bendColumns(bent.map((head) => head.note.bend));
+  for (const [j, head] of bent.entries()) {
+    const { bend } = head.note;
     const spot = spots[j];
     const numberTop = tops[j];
-    if (!head || !bend || !spot || numberTop === undefined) continue;
+    if (!bend || !spot || numberTop === undefined) continue;
     drawBend(
       sink,
       bend,
@@ -771,6 +770,7 @@ function bendFrame(
         x0,
         xEnd,
         yBase: spot.y,
+        laneTop,
         laneBottom,
         onset: x,
         numberTop,
