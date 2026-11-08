@@ -145,6 +145,87 @@ describe('notes', () => {
     expect(warnings.filter((w) => w.code === 'hammer-pull-without-destination')).toHaveLength(1);
   });
 
+  describe('hammer-ons through grace notes', () => {
+    const origin = property('HopoOrigin', '<Enable />');
+    const grace = '<GraceNotes>BeforeBeat</GraceNotes>';
+    const RHYTHMS = [rhythm('0', 'Whole'), rhythm('1', '32nd')];
+    const flags = (score: Score): (boolean | undefined)[] =>
+      beatsOf(score).flatMap((b) => [
+        ...(b.grace ?? []).flatMap((g) => g.notes.map((n) => n.hammerPull)),
+        ...b.notes.map((n) => n.hammerPull),
+      ]);
+    const lost = (result: GpifReadResult) =>
+      result.warnings.filter((w) => w.code === 'hammer-pull-without-destination');
+    /** Reads, then writes and reads again: both must agree, and the re-read has nothing left to drop. */
+    const roundTrip = (xml: string) => {
+      const first = read(xml);
+      const again = read(writeGpif(first.score).xml);
+      expect(flags(again.score)).toEqual(flags(first.score));
+      expect(lost(again)).toEqual([]);
+      return first;
+    };
+
+    it('links a grace note to the beat note on its string', () => {
+      const result = roundTrip(
+        oneBar(
+          [beat('0', '1', '0', grace), beat('1', '0', '1')],
+          [note('0', 2, 5, '', origin), note('1', 2, 7)],
+          RHYTHMS,
+        ),
+      );
+      expect(flags(result.score)).toEqual([false, true]);
+      expect(lost(result)).toEqual([]);
+    });
+
+    it('links a grace note to the next grace on its string, not the main note', () => {
+      const result = roundTrip(
+        oneBar(
+          [beat('0', '1', '0', grace), beat('1', '1', '1', grace), beat('2', '0', '2')],
+          [note('0', 2, 5, '', origin), note('1', 2, 7), note('2', 2, 9)],
+          RHYTHMS,
+        ),
+      );
+      expect(flags(result.score)).toEqual([false, true, false]);
+      expect(lost(result)).toEqual([]);
+    });
+
+    it('warns and drops a grace note with no destination', () => {
+      const result = roundTrip(
+        oneBar(
+          [beat('0', '1', '0', grace), beat('1', '0', '1')],
+          [note('0', 2, 5, '', origin), note('1', 3, 7)],
+          RHYTHMS,
+        ),
+      );
+      expect(flags(result.score)).toEqual([false, false]);
+      expect(lost(result)).toHaveLength(1);
+    });
+
+    it('searches later beats when the beat has no note on the grace string', () => {
+      const result = roundTrip(
+        oneBar(
+          [beat('0', '1', '0', grace), beat('1', '0', '1'), beat('2', '0', '2')],
+          [note('0', 2, 5, '', origin), note('1', 3, 7), note('2', 2, 9)],
+          RHYTHMS,
+        ),
+      );
+      expect(flags(result.score)).toEqual([false, false, true]);
+      expect(lost(result)).toEqual([]);
+    });
+
+    it('links a main note to the next beat grace on its string', () => {
+      const result = roundTrip(
+        oneBar(
+          [beat('0', '0', '0'), beat('1', '1', '1', grace), beat('2', '0', '2')],
+          [note('0', 2, 5, '', origin), note('1', 2, 7), note('2', 2, 9)],
+          RHYTHMS,
+        ),
+      );
+      expect(flags(result.score)).toEqual([false, true, false]);
+      expect(lost(result)).toEqual([]);
+    });
+  });
+
   it('reads ties and gives every reference to a shared note its own id', () => {
     const { score } = read(
       oneBar(

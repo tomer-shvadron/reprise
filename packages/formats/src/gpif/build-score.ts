@@ -143,21 +143,33 @@ function planVoiceSlots(document: GpifDocument, barIds: string[][]): Map<string,
   return slots;
 }
 
+/** A beat's grace notes in order, then its own notes: the columns a hammer-on walks through. */
+interface Column {
+  notes: Note[];
+  barIndex: number;
+}
+
+const columnsOf = (beats: PlacedBeat[]): Column[] =>
+  beats.flatMap(({ beat, barIndex }) => [
+    ...(beat.grace ?? []).map((grace) => ({ notes: grace.notes, barIndex })),
+    { notes: beat.notes, barIndex },
+  ]);
+
 /** The next note on the origin's string, or the next note at all off fretted tracks, within the window. */
 function hammerPullDestination(
-  beats: PlacedBeat[],
+  columns: Column[],
   from: number,
   note: Note,
   fretted: boolean,
 ): Note | undefined {
-  const origin = beats[from];
+  const origin = columns[from];
   if (!origin) return undefined;
-  for (let index = from + 1; index < beats.length; index++) {
-    const later = beats[index];
+  for (let index = from + 1; index < columns.length; index++) {
+    const later = columns[index];
     if (!later || later.barIndex > origin.barIndex + HAMMER_PULL_BAR_WINDOW) return undefined;
     const found = fretted
-      ? later.beat.notes.find((candidate) => candidate.string === note.string)
-      : later.beat.notes[0];
+      ? later.notes.find((candidate) => candidate.string === note.string)
+      : later.notes[0];
     if (found) return found;
   }
   return undefined;
@@ -553,11 +565,12 @@ class ScoreBuilder {
         const beats: PlacedBeat[] = track.bars.flatMap((bar, barIndex) =>
           (bar.voices[slot]?.beats ?? []).map((beat) => ({ beat, barIndex })),
         );
-        beats.forEach(({ beat }, index) => {
-          for (const note of beat.notes) {
+        const columns = columnsOf(beats);
+        columns.forEach(({ notes }, index) => {
+          for (const note of notes) {
             const origin = this.#hopoOrigins.get(note);
             if (origin === undefined) continue;
-            const destination = hammerPullDestination(beats, index, note, fretted);
+            const destination = hammerPullDestination(columns, index, note, fretted);
             if (destination) destination.hammerPull = true;
             else {
               this.#sink.warn(
