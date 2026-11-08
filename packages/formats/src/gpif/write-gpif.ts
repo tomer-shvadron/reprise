@@ -166,7 +166,7 @@ interface PlacedBeat {
   bar: number;
 }
 
-/** A voice slot of a track across all its bars, grace beats left out as the reader leaves them. */
+/** A voice slot of a track across all its bars. */
 function voiceLine(track: Track, slot: number): PlacedBeat[] {
   return track.bars.flatMap((bar, index) =>
     (bar.voices[slot]?.beats ?? []).map((beat) => ({ beat, bar: index })),
@@ -182,6 +182,7 @@ const HAMMER_PULL_BAR_WINDOW = 3;
  * note in the slot within three bars). A hammer-on origin is the previous note on the string (the
  * previous note at all off fretted tracks, where the destination must be the first note of its
  * beat), and only where the reader, searching forward from it, would find this destination.
+ * Grace notes count as columns before their beat, so a grace can be an origin and a destination.
  */
 function linkOrigins(track: Track): { ties: Set<Note>; hopos: Set<Note> } {
   const ties = new Set<Note>();
@@ -199,30 +200,19 @@ function linkOrigins(track: Track): { ties: Set<Note>; hopos: Set<Note> } {
     });
   });
   for (let slot = 0; slot < 4; slot++) {
-    const line = voiceLine(track, slot);
-    line.forEach(({ beat, bar }, index) => {
-      const graces = (beat.grace ?? []).map((grace) => grace.notes);
-      graces.forEach((notes, step) => {
-        for (const note of notes) {
-          if (!note.hammerPull) continue;
-          const origin = hammerPullOrigin(graces.slice(0, step), note, fretted);
-          if (origin) hopos.add(origin);
-        }
-      });
-      for (const note of beat.notes) {
-        if (!note.hammerPull || (!fretted && beat.notes[0] !== note)) continue;
-        // A grace note before the beat on this string is the origin the reader links to it.
-        const grace = hammerPullOrigin(graces, note, fretted);
-        if (grace) {
-          hopos.add(grace);
-          continue;
-        }
+    const columns = voiceLine(track, slot).flatMap(({ beat, bar }) => [
+      ...(beat.grace ?? []).map((grace) => ({ notes: grace.notes, bar })),
+      { notes: beat.notes, bar },
+    ]);
+    columns.forEach(({ notes, bar }, index) => {
+      for (const note of notes) {
+        if (!note.hammerPull || (!fretted && notes[0] !== note)) continue;
         for (let back = index - 1; back >= 0; back--) {
-          const earlier = line[back];
+          const earlier = columns[back];
           if (!earlier) break;
           const origin = fretted
-            ? earlier.beat.notes.find((candidate) => candidate.string === note.string)
-            : earlier.beat.notes[0];
+            ? earlier.notes.find((candidate) => candidate.string === note.string)
+            : earlier.notes[0];
           if (!origin) continue;
           if (bar <= earlier.bar + HAMMER_PULL_BAR_WINDOW) hopos.add(origin);
           break;
@@ -231,16 +221,6 @@ function linkOrigins(track: Track): { ties: Set<Note>; hopos: Set<Note> } {
     });
   }
   return { ties, hopos };
-}
-
-/** The last note of the earlier graces on the string (the last note at all off fretted tracks). */
-function hammerPullOrigin(earlier: Note[][], note: Note, fretted: boolean): Note | undefined {
-  for (let index = earlier.length - 1; index >= 0; index--) {
-    const notes = earlier[index] ?? [];
-    const found = fretted ? notes.find((candidate) => candidate.string === note.string) : notes[0];
-    if (found) return found;
-  }
-  return undefined;
 }
 
 interface Ids {
