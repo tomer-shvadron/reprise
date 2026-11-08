@@ -51,6 +51,34 @@ describe('stroke-length-rounded', () => {
     expect(applies('down 32')).toBe(false);
     expect(applies(undefined)).toBe(false);
   });
+
+  it('does not accept an exact alphaTab note value that differs from ours', () => {
+    const { differences, projections } = HAND_BUILT.strokeLength74();
+    const [difference] = differences;
+    if (!difference) throw new Error('no stroke difference');
+    expect(
+      tolerance('stroke-length-rounded').applies(
+        { ...difference, ours: 'down 16', alphaTab: 'down 8' },
+        projections,
+      ),
+    ).toBe(false);
+  });
+
+  it.each([
+    [256, 128],
+    [2, 4],
+    [1, 4],
+  ])('accepts a clamped length: alphaTab 1/%i against our 1/%i', (theirs, ours) => {
+    const { differences, projections } = HAND_BUILT.strokeLength74();
+    const [difference] = differences;
+    if (!difference) throw new Error('no stroke difference');
+    expect(
+      tolerance('stroke-length-rounded').applies(
+        { ...difference, ours: `down ${String(ours)}`, alphaTab: `down ${String(theirs)}` },
+        projections,
+      ),
+    ).toBe(true);
+  });
 });
 
 describe('whammy-points-kept', () => {

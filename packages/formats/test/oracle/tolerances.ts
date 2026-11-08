@@ -50,6 +50,8 @@ const isBeatField = (difference: Difference, field: string): boolean =>
 const isNoteField = (difference: Difference, field: string): boolean =>
   NOTE_FIELD.exec(difference.path)?.groups?.['field'] === field;
 
+const NOTE_DENOMINATORS: readonly number[] = [4, 8, 16, 32, 64, 128];
+
 const stroke = (value: unknown): { direction: string; duration: number } | undefined => {
   if (typeof value !== 'string') return undefined;
   const [direction, duration] = value.split(' ');
@@ -167,7 +169,7 @@ export const TOLERANCES: readonly Tolerance[] = [
   {
     id: 'stroke-length-rounded',
     formats: GPIF_ONLY,
-    why: 'A stroke length (`XProperty` 687935489) that is not an exact note value is read as the nearest note value on a log scale, because `Stroke.duration` holds only 4 to 128 (README, "Stroke length"); alphaTab keeps the exact tick count, so its denominator (3840 / ticks) is not a note value.',
+    why: 'A stroke length (`XProperty` 687935489) that is not an exact note value is read as the nearest note value on a log scale, because `Stroke.duration` holds only 4 to 128 (README, "Stroke length"); alphaTab keeps the exact tick count, so its denominator (3840 / ticks) is not a note value, or is one outside 4 to 128 (15, 1920 or 3840 ticks), which ours clamps.',
     applies: (d) => {
       const [ours, theirs] = [stroke(d.ours), stroke(d.alphaTab)];
       return (
@@ -175,7 +177,7 @@ export const TOLERANCES: readonly Tolerance[] = [
         ours !== undefined &&
         theirs !== undefined &&
         ours.direction === theirs.direction &&
-        !Number.isInteger(Math.log2(theirs.duration)) &&
+        !NOTE_DENOMINATORS.includes(theirs.duration) &&
         ours.duration === 2 ** Math.min(7, Math.max(2, Math.round(Math.log2(theirs.duration))))
       );
     },

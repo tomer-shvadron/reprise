@@ -35,6 +35,9 @@ const codes = (result: GpifReadResult): string[] => result.warnings.map((warning
 
 const QUARTERS = [rhythm('0', 'Quarter')];
 
+const brushOf = (ticks: number): string =>
+  `<Properties>${property('Brush', '<Direction>Up</Direction>')}</Properties><XProperties><XProperty id="687935489"><Int>${String(ticks)}</Int></XProperty></XProperties>`;
+
 describe('notes', () => {
   it('flips gpif string indexes to the model numbering and keeps the tuning low to high', () => {
     const { score } = read(
@@ -384,27 +387,33 @@ describe('beats and rhythms', () => {
     });
   });
 
-  it('reads the stroke length onto a brush, rounding one that is not a note value', () => {
-    const brush = (ticks: number): string =>
-      `<Properties>${property('Brush', '<Direction>Up</Direction>')}</Properties><XProperties><XProperty id="687935489"><Int>${String(ticks)}</Int></XProperty></XProperties>`;
-    const lengths = [480, 74, 56, 500, 0];
+  it.each([
+    [960, 4],
+    [480, 8],
+    [74, 64],
+    [56, 64],
+    [500, 8],
+    [84, 64],
+    [85, 32],
+    [30, 128],
+    [10, 128],
+    [2000, 4],
+  ])('reads a stroke length of %i ticks as a 1/%i brush', (ticks, duration) => {
     const { score, warnings } = read(
-      oneBar(
-        lengths.map((ticks, i) => beat(String(i), '0', '0', brush(ticks))),
-        [note('0', 2, 5)],
-        QUARTERS,
-      ),
+      oneBar([beat('0', '0', '0', brushOf(ticks))], [note('0', 2, 5)], QUARTERS),
     );
-    expect(beatsOf(score).map((b) => b.effects.brush)).toEqual([
-      { direction: 'up', duration: 8 },
-      { direction: 'up', duration: 64 },
-      { direction: 'up', duration: 64 },
-      { direction: 'up', duration: 8 },
-      { direction: 'up' },
+    expect(beatsOf(score).map((b) => b.effects.brush)).toEqual([{ direction: 'up', duration }]);
+    expect(warnings).toEqual([]);
+  });
+
+  it.each([0, -5])('drops a stroke length of %i ticks with one warning', (ticks) => {
+    const { score, warnings } = read(
+      oneBar([beat('0', '0', '0', brushOf(ticks))], [note('0', 2, 5)], QUARTERS),
+    );
+    expect(beatsOf(score).map((b) => b.effects.brush)).toEqual([{ direction: 'up' }]);
+    expect(warnings.map((w) => w.message)).toEqual([
+      `A stroke length of ${String(ticks)} ticks is not positive; dropped`,
     ]);
-    expect(warnings.map((w) => w.message)).toContain(
-      'A stroke length of 0 ticks is not positive; dropped',
-    );
   });
 
   it('reads a chord diagram from the staff collection', () => {
