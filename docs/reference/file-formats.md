@@ -67,6 +67,15 @@ alphaTab is a dev-only dependency. It is used to (a) describe fixtures for the m
 - A gpif tempo automation's `Value` is `"<bpm> <unit>"`, with `unit` 1 to 5 meaning eighth, quarter, dotted quarter, half and dotted half. The reader multiplies by 0.5, 1, 1.5, 2 and 3 to get quarter-note BPM for `TempoMark.bpm` and keeps the unit in `TempoMark.unit`.
 - The gp3 to gp5 bend block carries a vibrato byte after every point (offset, value, vibrato). The reader consumes it; the model does not keep it.
 
+### Known differences
+
+Where our reader and alphaTab disagree on purpose, each entry in `packages/formats/test/oracle/tolerances.ts` (the table is in `packages/formats/README.md`, "Oracle") names its reason. Four were found on a real gp file and are proved by hand-built gpif documents, since no open-licensed fixture shows them:
+
+- **Whammy points.** We keep the file's four-point curve. alphaTab's `Beat.finish` removes both middle points of a monotonic curve whose middle values are equal, and one point of a dip whose middle points share an offset. The ends, highest and lowest value match.
+- **Chromatic transposition.** `Track/Transpose/Chromatic` is a scope limit (reported as `not-modelled`). alphaTab's `displayTranspositionPitch` adds `Chromatic / 12` to the octave shift; a difference of a whole octave is not accepted.
+- **Track automations.** alphaTab's `GpifParser._buildModel` puts every track automation on `voices[0].beats[0]` of its bar and ignores `Position`; we place it at its position.
+- **Placeholder beat.** alphaTab adds a voice with one empty quarter beat for every `-1` voice; the oracle's projection already drops those. One survives when a track automation lands on it, where we drop the sound change in a bar with no beats and report `automation-dropped`.
+
 ## Open-licensed fixture sources
 
 - alphaTab test data in its repository under `test-data/` (MPL-2.0; check each file's own provenance, some are hand-made by the project).

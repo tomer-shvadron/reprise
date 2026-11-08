@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import * as formats from '../../src/index';
 import { FIXTURES_DIR, fixtureBytes, manifestEntries } from '../corpus';
 import { compareProjections, formatDifference, type Difference } from './compare';
+import { HAND_BUILT } from './hand-built';
 import { loadWithAlphaTab, projectAlphaTab } from './project-alphatab';
 import { projectOurs } from './project-ours';
 import type { ScoreProjection } from './projection';
@@ -98,14 +99,26 @@ describe.each(comparisons)(
 );
 
 describe('the tolerance list', () => {
-  it.each(TOLERANCES)('$id accepts at least one difference in its formats', (tolerance) => {
-    const used = comparisons.some(
-      ({ reader, projections, differences }) =>
-        tolerance.formats.includes(reader.extension) &&
-        differences.some((difference) => tolerance.applies(difference, projections)),
-    );
-    expect(used).toBe(true);
-  });
+  const cases = [
+    ...comparisons.map(({ reader, projections, differences }) => ({
+      format: reader.extension,
+      projections,
+      differences,
+    })),
+    ...Object.values(HAND_BUILT).map((build) => build()),
+  ];
+
+  it.each(TOLERANCES)(
+    '$id accepts at least one difference in a fixture or hand-built file of its formats',
+    (tolerance) => {
+      const used = cases.some(
+        ({ format, projections, differences }) =>
+          tolerance.formats.includes(format) &&
+          differences.some((difference) => tolerance.applies(difference, projections)),
+      );
+      expect(used).toBe(true);
+    },
+  );
 
   it('has unique ids', () => {
     const ids = TOLERANCES.map((tolerance) => tolerance.id);
