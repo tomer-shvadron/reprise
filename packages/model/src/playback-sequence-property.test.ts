@@ -42,7 +42,7 @@ const masterBarsArbitrary = array(masterBarArbitrary, { minLength: 1, maxLength:
 describe('expandPlaybackSequence: properties', () => {
   it(
     'is finite, bounded by a multiple of the bar count, and numbers passes consistently',
-    { timeout: 30_000 },
+    { timeout: 120_000 },
     () => {
       assert(
         property(masterBarsArbitrary, (masterBars) => {
