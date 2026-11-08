@@ -30,7 +30,14 @@ import { array, assert, constantFrom, integer, oneof, property, record } from 'f
 import type { Arbitrary } from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_MARGINS, LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from './index';
+import {
+  DEFAULT_MARGINS,
+  LayoutCache,
+  PAGE_SIZES,
+  layout,
+  type LayoutOptions,
+  type LayoutResult,
+} from './index';
 import { expectInsidePages, expectValid, stable } from './test/check-result';
 import { withEffects, withNoteMarks } from './test/effects';
 
@@ -135,6 +142,31 @@ const edit: Arbitrary<Edit> = oneof(
     change: constantFrom<OptionChange>('subset', 'notation', 'width', 'zoom'),
   }),
 );
+
+/** The horizontal half of `expectInsidePages`: no item past its page's sides, no system past the right margin. */
+function expectInsidePagesHorizontally(result: LayoutResult): void {
+  const margin = DEFAULT_MARGINS.paged.right;
+  for (const system of result.systems) {
+    const page = result.pages[system.page];
+    if (!page) throw new Error(`${system.id} has no page`);
+    const left = page.bbox.x;
+    const right = page.bbox.x + page.bbox.width;
+    expect(
+      system.bbox.x + system.bbox.width,
+      `${system.id} past the right margin`,
+    ).toBeLessThanOrEqual(right - margin + 0.02);
+    const items = [
+      ...result.primitives.slice(system.primitives.start, system.primitives.end),
+      ...result.anchors.slice(system.anchors.start, system.anchors.end),
+    ];
+    for (const { bbox } of items) {
+      expect(bbox.x, `${system.id} item past the left edge`).toBeGreaterThanOrEqual(left - 0.02);
+      expect(bbox.x + bbox.width, `${system.id} item past the right edge`).toBeLessThanOrEqual(
+        right + 0.02,
+      );
+    }
+  }
+}
 
 function beatAt(score: Score, at: Where) {
   const track = score.tracks[at.track % score.tracks.length];
@@ -436,8 +468,9 @@ describe('LayoutCache: random edits', () => {
               const cached = layout(score, { ...options, dirtyBars: touched }, cache);
               expect(stable(cached), JSON.stringify(step)).toBe(stable(layout(score, options)));
               expectValid(cached);
-              // At the split heights a staff taller than the room overflows its bottom margin by design (#85).
               if (!split) expectInsidePages(cached, DEFAULT_MARGINS[mode]);
+              // At the split heights only the bottom margin overflows by design (#85): a staff taller than the room.
+              else expectInsidePagesHorizontally(cached);
             }
           },
         ),

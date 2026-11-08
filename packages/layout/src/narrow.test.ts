@@ -34,6 +34,7 @@ const CONTENT_WIDTHS = [320, 480, 640];
 const ZOOMS = [1, 1.25];
 const NOTATIONS: readonly Notation[] = ['tab', 'standard', 'both'];
 const EPSILON = 0.02;
+const PRIMITIVE_EPSILON = 0.011;
 
 /** Every track at `notation`, except pitched tracks, which keep their own. */
 function optionsFor(built: Score, notation: Notation, width: number, zoom: number): LayoutOptions {
@@ -51,24 +52,40 @@ function optionsFor(built: Score, notation: Notation, width: number, zoom: numbe
   };
 }
 
-function expectFits(result: LayoutResult, width: number, label: string): void {
+// Corpus files stay out of the system-edge check: bend labels (#76) may reach past it, inside the page.
+function expectFits(result: LayoutResult, width: number, label: string, systemEdge = false): void {
   expectValid(result);
   expectInsidePages(result, DEFAULT_MARGINS.paged);
   for (const system of result.systems) {
     expect(system.bbox.x + system.bbox.width, `${label}: ${system.id}`).toBeLessThanOrEqual(
       width - MARGIN + EPSILON,
     );
+    if (!systemEdge) continue;
+    for (const primitive of result.primitives.slice(
+      system.primitives.start,
+      system.primitives.end,
+    )) {
+      expect(
+        primitive.bbox.x + primitive.bbox.width,
+        `${label}: a primitive of ${system.id} past its system's right edge`,
+      ).toBeLessThanOrEqual(system.bbox.x + system.bbox.width + PRIMITIVE_EPSILON);
+    }
   }
 }
 
 /** Lays `built` out at every narrow width, zoom and notation, and checks each result fits. */
-function expectFitsEverywhere(built: Score): void {
+function expectFitsEverywhere(built: Score, systemEdge: boolean): void {
   for (const content of CONTENT_WIDTHS) {
     const width = content + 2 * MARGIN;
     for (const zoom of ZOOMS) {
       for (const notation of NOTATIONS) {
         const result = layout(built, optionsFor(built, notation, width, zoom));
-        expectFits(result, width, `${String(content)} px, ${String(zoom)}x, ${notation}`);
+        expectFits(
+          result,
+          width,
+          `${String(content)} px, ${String(zoom)}x, ${notation}`,
+          systemEdge,
+        );
       }
     }
   }
@@ -143,17 +160,17 @@ describe('narrow pages', () => {
 
   for (const fixture of fixtures) {
     it(`fit ${fixture.path}`, () => {
-      expectFitsEverywhere(read(fixture.native));
+      expectFitsEverywhere(read(fixture.native), false);
     });
   }
 
   it('fit the large score with effects and note marks', () => {
-    expectFitsEverywhere(withNoteMarks(withEffects(largeScore(3, 32, { structure: true }))));
+    expectFitsEverywhere(withNoteMarks(withEffects(largeScore(3, 32, { structure: true }))), true);
   });
 
   for (const [name, build] of Object.entries(SCENES)) {
     it(`fit ${name}`, () => {
-      expectFitsEverywhere(build());
+      expectFitsEverywhere(build(), true);
     });
   }
 });
