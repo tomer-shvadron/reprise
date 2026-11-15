@@ -13,15 +13,19 @@ export const NAME_SHARE = 0.4;
 /** A last system shorter than this share of the width keeps its natural spacing. */
 const JUSTIFY_LAST = 0.75;
 /**
- * A kept continuous segment must fill at least this share of the line, so edits that shrink bars
- * cannot leave a sliver of a segment behind (#147).
+ * A kept continuous segment must fill at least this share of the line, unless it is the last, so
+ * edits that shrink bars cannot leave a sliver of a segment behind (#147). It is re-broken
+ * greedily instead and merges with what follows.
  */
 export const UNDERFLOW = 0.5;
 /**
- * A kept continuous segment may run this far past the line before it is broken again. Segments
- * are the units the painter windows, not lines the reader sees, so a wider one costs a few
- * more elements and is invisible, while a segment that held exactly one line's worth would
- * overflow at the first rhythm edit that widens a bar and push every later break along with it.
+ * A kept continuous segment may run this far past the line before it is broken again, unless it
+ * holds one bar. Segments are the painter's windows, and their breaks carry no spacing (no
+ * justification, no prefix, no courtesy signatures), so a wider one costs a few more mounted
+ * elements (the element budget is tested on edited layouts) where a segment that held exactly
+ * one line's worth would overflow at the first rhythm edit that widens a bar and push every later
+ * break along with it. A boundary still splits ties, effect lines, words and voltas into two
+ * pieces, as before.
  */
 export const OVERFLOW = 1.5;
 const PREFIX_LEAD = 0.5;
@@ -208,10 +212,10 @@ function finish(
  * In continuous mode `wasBreak` marks the bars that opened a segment in the previous layout. A
  * segment that starts at one keeps its previous extent, up to the next marked bar, for as long as
  * it stays within `UNDERFLOW` to `OVERFLOW` of the line (a last segment may be shorter, and a
- * one-bar segment any width); otherwise it is broken greedily, and the next segment is kept again
- * as soon as it starts on a marked bar.
- * So a rhythm edit leaves the later breaks where they were instead of moving them down the
- * score (#147). Without `wasBreak` this is plain greedy breaking.
+ * one-bar segment wider than the band stays whole); otherwise it is broken greedily, and the next segment is kept again
+ * as soon as it starts on a marked bar. So a rhythm edit leaves the later breaks where they were instead of moving them down the
+ * score (#147). Without `wasBreak` this is plain greedy breaking. A break an edit made is not
+ * undone by undoing the edit: the layout that follows keeps the new break while it stays in band.
  */
 export function* breakSystems(
   measures: readonly BarMeasure[],
@@ -248,7 +252,7 @@ export function* breakSystems(
       }
       const fits = natural <= OVERFLOW * available;
       const full = stop >= measures.length || natural >= UNDERFLOW * available;
-      if (stop - start === 1 || (fits && full)) {
+      if ((fits || stop - start === 1) && full) {
         end = stop;
         used = natural;
         kept = true;

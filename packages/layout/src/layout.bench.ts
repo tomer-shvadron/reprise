@@ -264,7 +264,7 @@ async function rhythmBench(
   let moved = false;
   let count = 0;
   let dirtyBars: string[] = [];
-  const edits: { ms: number; moved: boolean }[] = [];
+  const edits: { ms: number; moved: boolean; rendered: number }[] = [];
   await context
     .bench(
       `${name} (all edits, unsplit)`,
@@ -281,21 +281,25 @@ async function rhythmBench(
       },
       () => {
         const began = now();
-        layout(score, { ...continuous, dirtyBars }, cache);
-        edits.push({ ms: now() - began, moved });
+        const { systems, metrics } = layout(score, { ...continuous, dirtyBars }, cache);
+        const ms = now() - began;
+        edits.push({ ms, moved, rendered: systems.length - metrics.reusedSystems });
       },
     )
     .run(RHYTHM_RUN);
   // tinybench calls the function once before any beforeEach, to see whether it is async.
   const timed = edits.slice(-RHYTHM_RUN.iterations);
-  const mine = timed.filter(({ moved }) => moved === (kind === 'moves')).map(({ ms }) => ms);
+  const chosen = timed.filter(({ moved }) => moved === (kind === 'moves'));
+  const mine = chosen.map(({ ms }) => ms);
   expect(
     mine.length,
     `${name}: ${String(mine.length)} edits ${kind === 'keeps' ? 'kept' : 'moved'} the segment breaks, expected ${String(EDITS_OF_KIND[kind])}`,
   ).toBe(EDITS_OF_KIND[kind]);
   const p50 = median(mine);
+  // With the breaks stable an edit renders about three systems; a larger count is a re-break.
+  const rendered = chosen.map((edit) => edit.rendered);
   await context.annotate(
-    `${name}: p50 ${String(round(p50))} ms over ${String(mine.length)} of ${String(timed.length)} edits`,
+    `${name}: p50 ${String(round(p50))} ms, max ${String(round(Math.max(...mine)))} ms over ${String(mine.length)} of ${String(timed.length)} edits, systems rendered median ${String(median(rendered))}, max ${String(Math.max(...rendered))}`,
   );
   return {
     p50,

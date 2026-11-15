@@ -45,6 +45,10 @@ import { resolveOptions } from './options';
 import { breakIds, expectInsidePages, expectValid, stable } from './test/check-result';
 import { withEffects, withNoteMarks } from './test/effects';
 
+/** The keep rule's band in lines, written out so that changing `UNDERFLOW` or `OVERFLOW` fails here. */
+const MIN_LINES = 0.5;
+const MAX_LINES = 1.5;
+
 /** Raise locally to soak the cache; 20 keeps the unit suite fast. */
 const RUNS = 20;
 
@@ -484,11 +488,22 @@ describe('LayoutCache: random edits', () => {
               if (mode === 'continuous') {
                 // Every segment holds a bar, and they tile the score.
                 let end = 0;
-                for (const { bars } of cached.systems) {
+                cached.systems.forEach(({ bars, bbox }, i) => {
                   expect(bars.start, JSON.stringify(step)).toBe(end);
                   expect(bars.end).toBeGreaterThan(bars.start);
                   end = bars.end;
-                }
+                  const lines = bbox.width / options.width;
+                  // A segment of several bars is at most OVERFLOW lines wide (the first one's
+                  // names and clefs count against its line, so this is loose there), and one
+                  // that is neither first nor last, nor followed by a bar too wide to share it,
+                  // is at least UNDERFLOW lines wide.
+                  if (bars.end - bars.start > 1)
+                    expect(lines).toBeLessThanOrEqual(MAX_LINES + 0.03);
+                  const next = cached.systems[i + 1];
+                  const lone = next !== undefined && next.bars.end - next.bars.start === 1;
+                  if (i > 0 && next && !lone)
+                    expect(lines).toBeGreaterThanOrEqual(MIN_LINES - 0.03);
+                });
                 expect(end).toBe(score.masterBars.length);
               }
               expectValid(cached);
