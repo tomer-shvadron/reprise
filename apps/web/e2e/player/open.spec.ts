@@ -58,15 +58,31 @@ test('a drop opens every format, each replacing the last', async ({ app }) => {
 });
 
 test('a multi-track gp4 lists, shows and plays every track', async ({ app, page }) => {
+  const { tracks, bars } = manifestEntry('gp4/colors.gp4');
+  // The track names come from the file itself.
+  const names = ['Red', 'Green', 'Yellow', 'Blue'];
+  expect(names).toHaveLength(tracks);
   await app.drop(fixture('gp4/colors.gp4'));
   await app.waitReady('colors.gp4');
 
-  await expect(page.getByRole('list', { name: 'Tracks' }).getByRole('listitem')).toHaveCount(4);
-  expect(await app.description()).toMatch(/^1 bar\b/);
+  await expect(page.getByRole('list', { name: 'Tracks' }).getByRole('listitem')).toHaveCount(
+    tracks,
+  );
+  expect(await app.description()).toMatch(new RegExp(`^${String(bars)} bars?\\b`));
+  await expect(page.getByRole('button', { name: 'Multitrack view' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  for (const name of names) {
+    await expect(page.getByRole('button', { name: `Show ${name}` })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  }
 
   await page.keyboard.press('F8');
   const panel = page.getByRole('complementary', { name: 'Panel' });
-  for (const name of ['Red', 'Green', 'Yellow', 'Blue']) {
+  for (const name of names) {
     await expect(panel.getByRole('group', { name, exact: true })).toBeVisible();
   }
   // A row and a strip per track, none silenced.
@@ -76,7 +92,7 @@ test('a multi-track gp4 lists, shows and plays every track', async ({ app, page 
         .locator('[data-audible]')
         .evaluateAll((elements) => elements.map((element) => element.getAttribute('data-audible'))),
     )
-    .toEqual(Array.from({ length: 8 }, () => 'true'));
+    .toEqual(Array.from({ length: tracks * 2 }, () => 'true'));
 });
 
 test('an unknown file shows an error and keeps the song', async ({ app, page }) => {
