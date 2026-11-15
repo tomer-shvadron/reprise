@@ -45,6 +45,9 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - A light-theme audit is a named task in the release checkpoint.
 - The command palette and shortcut map are release-checkpoint work; the shortcut reference
   lives in `../reference/keyboard-shortcuts.md`.
+- Changed by #206 (2026-11-16): the layout gains a collapsible bottom region above the transport,
+  one view at a time (the live fretboard first), with a resizable remembered height; see
+  "Changed by #206" in `../specs/architecture.md`.
 
 ## Related
 
