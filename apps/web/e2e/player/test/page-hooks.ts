@@ -21,6 +21,14 @@ export interface FrameWatch {
   frames: number;
   /** The longest time between two animation frames, in ms. */
   maxGap: number;
+  /** Which frame ended that gap, and when, in ms after the first frame (about when Play was pressed). */
+  maxIndex: number;
+  maxAt: number;
+  /** The frame where the position readout first changed, and when: the playhead starts moving. */
+  movingIndex: number;
+  movingAt: number;
+  /** The longest gap after the playhead started moving. */
+  steadyMaxGap: number;
   /** The median gap, in ms. */
   medianGap: number;
   /** How many times the lit notes of the fretboard changed. */
@@ -268,13 +276,14 @@ export function installPageHooks(): void {
 
   const watchFrames = async (untilBar: string): Promise<FrameWatch> => {
     const lit = () => document.querySelector('[data-fretboard-notes]')?.textContent ?? '';
-    const gaps: number[] = [];
-    let previous: number | undefined;
+    const times: number[] = [];
+    const startTime = field('time');
+    let moving = -1;
     let last = lit();
     let changes = 0;
     const timedOut = await everyFrame((time) => {
-      if (previous !== undefined) gaps.push(time - previous);
-      previous = time;
+      times.push(time);
+      if (moving < 0 && field('time') !== startTime) moving = times.length - 1;
       const now = lit();
       if (now !== last) {
         last = now;
@@ -282,10 +291,24 @@ export function installPageHooks(): void {
       }
       return field('bar') === untilBar;
     });
-    const sorted = [...gaps].sort((a, b) => a - b);
+    const gaps = times
+      .slice(1)
+      .map((time, i) => ({ gap: time - (times[i] ?? time), index: i + 1 }));
+    const worst = (from: number) =>
+      gaps
+        .filter((g) => g.index > from)
+        .reduce((a, g) => (g.gap > a.gap ? g : a), { gap: 0, index: 0 });
+    const sorted = gaps.map((g) => g.gap).sort((a, b) => a - b);
+    const overall = worst(0);
+    const first = times[0] ?? 0;
     return {
-      frames: gaps.length + 1,
-      maxGap: sorted.at(-1) ?? 0,
+      frames: times.length,
+      maxGap: overall.gap,
+      maxIndex: overall.index,
+      maxAt: (times[overall.index] ?? first) - first,
+      movingIndex: moving,
+      movingAt: moving < 0 ? -1 : (times[moving] ?? first) - first,
+      steadyMaxGap: moving < 0 ? Number.NaN : worst(moving).gap,
       medianGap: sorted[Math.floor(sorted.length / 2)] ?? 0,
       changes,
       timedOut,
