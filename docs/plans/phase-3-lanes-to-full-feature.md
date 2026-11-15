@@ -79,7 +79,7 @@ Lane ownership in this phase:
 
 **Acceptance criteria**
 
-- A test feeds synthesized tones at known frequencies, including slightly detuned ones, and asserts the cents readout within two cents; the e2e opens the tuner panel and asserts the mic permission flow in Electron.
+- A test feeds synthesized tones at known frequencies, including slightly detuned ones, and asserts the cents readout within two cents; the e2e (Playwright on the web build in Chromium, ADR-0025) opens the tuner panel and asserts the microphone permission flow, granted and denied, with Chromium's fake microphone; the PR records a manual check of the same flow in `pnpm desktop:dev`.
 
 ## WP-072: Standalone metronome
 
