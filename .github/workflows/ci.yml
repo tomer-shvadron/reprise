@@ -185,9 +185,9 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
-      - name: Install Chromium headless shell
+      - name: Install Chromium (the headless shell, and full Chromium for the tuner's microphone)
         timeout-minutes: 5
-        run: pnpm exec playwright install chromium --only-shell
+        run: pnpm exec playwright install chromium
 
       - name: Cache the GM soundfont
         uses: actions/cache@v6
