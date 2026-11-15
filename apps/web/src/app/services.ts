@@ -9,6 +9,8 @@ import {
   type DocumentStore,
   type DocumentStoreDeps,
 } from '@/state/document';
+import { installEntry } from '@/features/editor/entry-controller';
+import { createEntryStore, type EntryStore } from '@/features/editor/entry-store';
 import { installEditor } from '@/features/editor/install-editor';
 import { createEditingStore, type EditingStore } from '@/state/editing';
 import { createHeardRef, type HeardRef } from '@/state/heard';
@@ -36,6 +38,8 @@ export interface AppServices {
   print: PrintStore;
   /** The edit-mode flag (WP-080 onward). */
   editing: EditingStore;
+  /** Note entry's session state: current rhythm, insert or overwrite, the waiting digit (WP-081). */
+  entry: EntryStore;
   /** The running practice session (WP-070, WP-073). */
   practice: PracticeStore;
   dispose(): void;
@@ -76,6 +80,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   const transport = createTransportUi();
   const editing = createEditingStore();
   const practice = createPracticeStore();
+  const entry = createEntryStore();
 
   const unsubscribe = document.subscribe((state, previous) => {
     if (state.id === previous.id && state.score === previous.score) return;
@@ -97,6 +102,16 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   // After the document wiring above, so a new document has reset the selection before the editor
   // reconciles its cursor with an edit.
   const uninstallEditor = installEditor({ document, selection, editing, playback });
+  // After the editor, so its cursor reconcile has run before an entry lands the cursor.
+  const uninstallEntry = installEntry({
+    document,
+    selection,
+    editing,
+    entry,
+    preview: (trackId, note) => {
+      audio.previewNote(trackId, note);
+    },
+  });
 
   // After the document wiring above, so a switch reaches the audio service before the speed reset.
   const uninstallTransport = installTransport({
@@ -120,8 +135,10 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     heard: createHeardRef(),
     print: createPrintStore({ document, ui, platform }),
     editing,
+    entry,
     practice,
     dispose() {
+      uninstallEntry();
       uninstallEditor();
       uninstallTransport();
       unsubscribe();

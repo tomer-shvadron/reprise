@@ -21,7 +21,13 @@ import { orderedRange } from '@/features/transport/bar-range';
 import { loopBarNumbers } from '@/features/transport/loop';
 import { seekTick } from '@/features/transport/seek';
 import { playheadBar, playheadTick, seekTo } from '@/features/transport/seek-commands';
-import { cursorTick, createEditPointer, caretRect, useEditOverlays } from '@/features/editor';
+import {
+  cursorTick,
+  createEditPointer,
+  caretRect,
+  EditStatusLine,
+  useEditOverlays,
+} from '@/features/editor';
 import { selectRunning } from '@/state/playback';
 import type { BarRange } from '@/state/selection';
 import { timelineOf } from '@/state/timeline';
@@ -240,6 +246,12 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
         className="h-full focus-visible:-outline-offset-2"
       />
       <FollowButton />
+      <EditStatusLine
+        entry={services.entry}
+        editing={services.editing}
+        selection={selection}
+        document={document}
+      />
     </>
   );
 }

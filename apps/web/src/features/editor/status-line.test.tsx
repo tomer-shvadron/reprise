@@ -23,7 +23,7 @@ async function setup() {
     { string: 4, staff: 'tab' },
   );
   services.selection.getState().setEdit({ cursor, currentTrack: cursor?.track });
-  render(<EditStatusLine entry={entry} {...services} />);
+  render(<EditStatusLine {...services} entry={entry} />);
   return { services, entry };
 }
 
