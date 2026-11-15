@@ -143,7 +143,26 @@ function withSoundChange(
   );
 }
 
+const midiProperty = (value: number): string =>
+  property('Midi', `<Number>${String(value)}</Number>`);
+
+const TIE_DESTINATION = '<Tie origin="false" destination="true" />';
+
 export const HAND_BUILT = {
+  /** Two notes on one string, then a tie to the lower: alphaTab's tie takes the upper's pitch. */
+  tieOnSharedString: (): HandBuilt =>
+    compareGpif(
+      'tie after two notes on one string',
+      oneBar(
+        [beat('0', '0', '0 1'), beat('1', '0', '2')],
+        [
+          note('0', 2, 5, '', midiProperty(55)),
+          note('1', 2, 7, '', midiProperty(57)),
+          note('2', 2, 5, TIE_DESTINATION, midiProperty(55)),
+        ],
+        QUARTER,
+      ),
+    ),
   /** Origin, two equal middle values and a destination, falling: alphaTab keeps two points. */
   whammyMonotonic: (): HandBuilt => whammyBar('whammy monotonic', [0, -25, -50], [0, 35, 35, 43]),
   /** The middle points of a dip share an offset: alphaTab keeps three. */

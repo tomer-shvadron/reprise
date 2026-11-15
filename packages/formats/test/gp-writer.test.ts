@@ -3,7 +3,23 @@ import { fullScore, largeScore, note, score } from '@reprise/model/testing';
 import { unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 
-import { readGp, readGp3To5, readGpx, writeGp, writeGpif, type GpifDropCode } from '../src/index';
+import {
+  readGp,
+  readGp3To5,
+  readGpif,
+  readGpx,
+  writeGp,
+  writeGpif,
+  type GpifDropCode,
+} from '../src/index';
+import {
+  beat,
+  guitarTrack,
+  note as gpifNote,
+  oneBar,
+  property,
+  rhythm,
+} from '../src/gpif/test/gpif-builder';
 import { readPartConfiguration } from '../src/gpif/part-configuration';
 import { fixtureBytes, manifestEntries } from './corpus';
 import { roundTripView } from './gp-round-trip';
@@ -699,5 +715,31 @@ describe('writing a large score', () => {
     expect(dropped).toEqual([]);
     expect(bytes.byteLength).toBeLessThan(1_000_000);
     expect(xml.length).toBeGreaterThan(bytes.byteLength);
+  });
+});
+
+describe('a track read as pitched because its notes do not fit its fretboard', () => {
+  const midi = (value: number): string => property('Midi', `<Number>${String(value)}</Number>`);
+  const xml = (program: number): string =>
+    oneBar(
+      [beat('0', '0', '0 1')],
+      [gpifNote('0', 0, -2, '', midi(38)), gpifNote('1', 3, 2, '', midi(57))],
+      [rhythm('0', 'Quarter')],
+      { tracks: [guitarTrack('0', { program })] },
+    );
+  const tab = new Uint8Array([0, 0, 0, 1, 0, 0, 0, 0, 1, 3]);
+
+  it.each([
+    ['program 25', 25, undefined],
+    ['program 60 with tablature in its part configuration', 60, tab],
+  ])('comes back pitched with every MIDI value, as %s', (_name, program, partConfiguration) => {
+    const first = readGpif(xml(program), partConfiguration ? { partConfiguration } : {});
+    expect(first.score.tracks[0]?.kind).toBe('pitched');
+    const back = readGp(writeGp(first.score).bytes);
+    expect(back.score.tracks[0]?.kind).toBe('pitched');
+    expect(back.score.tracks[0]?.bars[0]?.voices[0].beats[0]?.notes.map((n) => n.fret)).toEqual([
+      38, 57,
+    ]);
+    expect(back.warnings.map((warning) => warning.code)).not.toContain('invalid-value');
   });
 });
