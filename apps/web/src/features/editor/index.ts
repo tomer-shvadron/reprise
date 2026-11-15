@@ -34,3 +34,16 @@ export { installEditor } from './install-editor';
 export { navigationCommands, type NavigationCommandId } from './navigation-commands';
 export { useEditOverlays, useEditOverlaysFor } from './use-edit-overlays';
 export { visibleTracks } from './visible';
+export { commitEdit, landingCursor, type CommitDeps } from './commit';
+export { describeRefusal } from './refusal';
+export { createEntryStore, type EntryMode, type EntryState, type EntryStore } from './entry-store';
+export {
+  TWO_DIGIT_MS,
+  entryController,
+  installEntry,
+  type EntryController,
+  type EntryDeps,
+} from './entry-controller';
+export { planAppendBar, planEntry, roomLeft, type EntryAction, type EntryPlan } from './entry';
+export { rhythmLabel, type Rhythm } from './rhythm';
+export { EditStatusLine, type EditStatusLineProps } from './status-line';
