@@ -6,25 +6,25 @@ import { fakePlatform } from './services';
 const bytes = (...values: number[]) => new Uint8Array(values);
 
 describe('the in-memory storage double', () => {
-  it('shares one store between the relative calls and the absolute readFile and writeFile', async () => {
+  it('shares one store between the storage calls, readFile and writeFile', async () => {
     const storage = createMemoryStorage();
     const { calls } = storage;
 
     await calls.mkdir('library/songs');
-    await calls.writeFile('/library/songs/a.reprise', bytes(1, 2));
+    await calls.writeFile('library/songs/a.reprise', bytes(1, 2));
 
     expect(storage.paths()).toEqual(['library/songs', 'library/songs/a.reprise']);
     await expect(calls.listDir('library/songs')).resolves.toEqual([
       { name: 'a.reprise', kind: 'file' },
     ]);
-    await expect(calls.readFile('/library/songs/a.reprise')).resolves.toEqual(bytes(1, 2));
+    await expect(calls.readFile('library/songs/a.reprise')).resolves.toEqual(bytes(1, 2));
     await expect(calls.libraryDir()).resolves.toBe('/library');
   });
 
   it('moves files and trees, creating the parent, and refuses an existing target', async () => {
     const storage = createMemoryStorage();
-    await storage.calls.writeFile('/library/album/a.gp', bytes(1));
-    await storage.calls.writeFile('/library/b.gp', bytes(2));
+    await storage.calls.writeFile('library/album/a.gp', bytes(1));
+    await storage.calls.writeFile('library/b.gp', bytes(2));
 
     await storage.calls.move('library/album', 'data/trash/album');
     await expect(storage.calls.move('library/b.gp', 'data/trash')).rejects.toThrow(
@@ -43,7 +43,7 @@ describe('the in-memory storage double', () => {
 
   it('removes a tree, lists nothing for a missing directory, and refuses a root', async () => {
     const storage = createMemoryStorage();
-    await storage.calls.writeFile('/library/album/a.gp', bytes(1));
+    await storage.calls.writeFile('library/album/a.gp', bytes(1));
 
     await storage.calls.remove('library/album');
 
@@ -77,7 +77,7 @@ describe('the in-memory storage double', () => {
     const storage = createMemoryStorage();
     const platform = fakePlatform({ ...storage.calls });
 
-    await platform.writeFile('/data/x.json', bytes(5));
+    await platform.writeFile('data/x.json', bytes(5));
 
     expect(storage.bytes('data/x.json')).toEqual(bytes(5));
   });
@@ -91,7 +91,7 @@ describe('the in-memory storage double', () => {
 
     expect(storage.paths()).toEqual(['library/songs', 'library/songs/a.reprise']);
     await expect(calls.readFile('library/songs/a.reprise')).resolves.toEqual(bytes(2));
-    await expect(calls.readFile('/library/songs/a.reprise')).resolves.toEqual(bytes(2));
+    await expect(calls.readFile('/library/songs/a.reprise')).rejects.toThrow();
     await expect(calls.writeFile('/elsewhere/x', bytes(1))).rejects.toThrow();
     await expect(calls.writeFile('library', bytes(1))).rejects.toThrow();
     await expect(calls.writeHandle({}, bytes(1))).rejects.toThrow(/Not a file handle/);

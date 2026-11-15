@@ -61,6 +61,9 @@ export function parsePath(value: unknown): string {
   if (typeof value !== 'string' || value.includes('\0') || !isAbsolute(value)) {
     throw new PayloadError('Expected a storage path or an absolute path');
   }
+  // A UNC or device path (`\\host\share`, `\\?\C:`, `//host/share`) makes the realpath that
+  // PathAccess runs open a network connection from main; picked paths never take that form.
+  if (/^[\\/]{2}/.test(value)) throw new PayloadError('Network and device paths are not accepted');
   return value;
 }
 

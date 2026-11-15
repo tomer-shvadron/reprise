@@ -54,7 +54,8 @@ const libraryDir = join(app.getPath('music'), 'Reprise');
 const userDataDir = app.getPath('userData');
 const dataDir = join(userDataDir, 'files');
 const windowStateFile = join(userDataDir, 'window-state.json');
-const access = new PathAccess([libraryDir, dataDir]);
+// Only files the user picked or saved in a dialog; the roots are reached by root-relative paths.
+const access = new PathAccess();
 const storageRoots: StorageRoots = { library: libraryDir, data: dataDir };
 let recentSongs: readonly RecentSong[] = [];
 

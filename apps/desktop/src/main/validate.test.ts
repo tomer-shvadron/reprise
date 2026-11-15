@@ -85,6 +85,16 @@ describe('storage and recent-list payloads', () => {
     expect(() => parsers['file:write'](['relative/path', bytes])).toThrow(PayloadError);
   });
 
+  it.each([
+    ['\\\\host\\share\\x.gp'],
+    ['\\\\?\\C:\\x.gp'],
+    ['\\\\.\\pipe\\x'],
+    ['//host/share/x.gp'],
+  ])('refuses the network or device path %j before PathAccess resolves it', (path) => {
+    expect(() => parsers['file:read']([path])).toThrow(PayloadError);
+    expect(() => parsers['file:write']([path, new Uint8Array()])).toThrow(PayloadError);
+  });
+
   it('strips control and bidi characters from recent titles, with an Untitled fallback', () => {
     const parsed = parseRecentSongs([
       { id: 'a', title: 'Two\tTitles\u202eevil\u2066x\u2069\u0085' },

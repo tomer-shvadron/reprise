@@ -111,7 +111,10 @@ export async function moveIn(
       });
     } catch (copyError) {
       // A partial target would block every retry with "already exists"; the source is intact.
-      await ops.rm(target, { recursive: true, force: true }).catch(() => undefined);
+      // Not when the target already existed: that one is not ours to delete.
+      if (codeOf(copyError) !== 'ERR_FS_CP_EEXIST') {
+        await ops.rm(target, { recursive: true, force: true }).catch(() => undefined);
+      }
       throw copyError;
     }
     // If this fails both copies exist and the call rejects: nothing is lost, and the caller's

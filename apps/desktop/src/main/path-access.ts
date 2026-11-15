@@ -16,7 +16,7 @@ export class PathAccess {
   readonly #granted = new Set<string>();
   readonly #readOnly = new Set<string>();
 
-  constructor(roots: readonly string[]) {
+  constructor(roots: readonly string[] = []) {
     this.#roots = roots.map((root) => resolve(root));
   }
 

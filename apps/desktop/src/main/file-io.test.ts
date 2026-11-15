@@ -17,7 +17,7 @@ beforeEach(() => {
   roots = { library: join(base, 'library'), data: join(base, 'data') };
   mkdirSync(roots.library);
   mkdirSync(roots.data);
-  access = new PathAccess([roots.library, roots.data]);
+  access = new PathAccess();
 });
 
 afterEach(() => {
@@ -75,9 +75,11 @@ describe('file:read and file:write paths', () => {
     }
   });
 
-  it('still accepts an absolute path under a root', async () => {
+  it('refuses an absolute path under a root: only the root-relative route reaches the roots', async () => {
     const inside = join(roots.library, 'a.gp');
-    await writePath(inside, bytes(3), access, roots);
-    expect(Array.from(await readPath(inside, access, roots))).toEqual(Array.from(bytes(3)));
+    writeFileSync(inside, 'x');
+
+    await expect(writePath(inside, bytes(3), access, roots)).rejects.toThrow(/Write access/);
+    await expect(readPath(inside, access, roots)).rejects.toThrow(/Read access/);
   });
 });

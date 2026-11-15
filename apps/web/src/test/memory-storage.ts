@@ -1,5 +1,5 @@
 import type { DirEntry, Platform } from '@/platform/platform';
-import { isStoragePath, parseStoragePath } from '@/platform/storage-path';
+import { parseStoragePath } from '@/platform/storage-path';
 
 export type MemoryStorageCalls = Pick<
   Platform,
@@ -31,9 +31,8 @@ export const MEMORY_DATA_DIR = '/data';
  * An in-memory stand-in for the platform's file operations, with the contract's rules: paths
  * start with `library` or `data`, `..` and absolute paths are rejected, `mkdir` is recursive,
  * `move` makes the target's parent and refuses an existing target. `readFile` and `writeFile`
- * take the same root-relative spelling, which is canonical, and still the absolute paths
- * `libraryDir()` and `dataDir()` hand out, for the transition. As on desktop, `writeFile`
- * creates the folders above a storage path and a path that names no root is rejected.
+ * take the same root-relative spelling and nothing else: an absolute path, `libraryDir()`'s
+ * included, is rejected. As on desktop, `writeFile` creates the folders above its path.
  *
  * Where file systems differ the double follows the browser: names are case-sensitive, so a
  * case-only `move` (`library/a` to `library/A`) succeeds here and in OPFS, but is refused as
@@ -65,18 +64,6 @@ export function createMemoryStorage(): MemoryStorage {
   }
 
   const under = (key: string) => [...entries.keys()].filter((k) => k.startsWith(`${key}/`));
-
-  const absoluteToStorage = (path: string) => {
-    if (isStoragePath(path)) return keyOf(path);
-    for (const [prefix, root] of [
-      [MEMORY_LIBRARY_DIR, 'library'],
-      [MEMORY_DATA_DIR, 'data'],
-    ] as const) {
-      if (path === prefix || path.startsWith(`${prefix}/`))
-        return keyOf(`${root}${path.slice(prefix.length)}`);
-    }
-    throw new Error(`Not inside the library or data directory: "${path}"`);
-  };
 
   // A bad path rejects like the real calls do, instead of throwing before a promise exists.
   const reply = <T>(run: () => T): Promise<T> => {
@@ -125,13 +112,13 @@ export function createMemoryStorage(): MemoryStorage {
       }),
     readFile: (path) =>
       reply(() => {
-        const bytes = entries.get(absoluteToStorage(path));
+        const bytes = entries.get(keyOf(path));
         if (!bytes) throw new Error(`No file at ${path}`);
         return bytes.slice();
       }),
     writeFile: (path, bytes) =>
       reply(() => {
-        const key = absoluteToStorage(path);
+        const key = keyOf(path);
         if (isDirectory(key)) throw new Error(`"${path}" is a directory`);
         makeDirs(parentOf(key));
         entries.set(key, bytes.slice());

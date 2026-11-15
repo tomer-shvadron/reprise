@@ -175,6 +175,21 @@ describe('storage file operations', () => {
       expect(readFileSync(join(roots.data, 'a.gp'), 'utf8')).toBe('one');
     });
 
+    it('leaves a target that was not its own when the copy meets one that appeared', async () => {
+      put(join(roots.library, 'a.gp'), 'one');
+      const raced: MoveOps = {
+        ...crossVolume,
+        cp: (_source, target) => {
+          writeFileSync(String(target), 'someone else');
+          return Promise.reject(Object.assign(new Error('exists'), { code: 'ERR_FS_CP_EEXIST' }));
+        },
+      };
+
+      await expect(moveIn(roots, 'library/a.gp', 'data/a.gp', raced)).rejects.toThrow(/exists/);
+
+      expect(readFileSync(join(roots.data, 'a.gp'), 'utf8')).toBe('someone else');
+    });
+
     it('passes force: false so a target created meanwhile is refused, never merged into', async () => {
       put(join(roots.library, 'a.gp'), 'one');
       let options: unknown;

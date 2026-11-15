@@ -2,7 +2,7 @@ import { STORAGE_ROOTS, type StorageRoot } from './bridge';
 
 const MAX_PATH_LENGTH = 1024;
 const MAX_SEGMENT_LENGTH = 255;
-const RESERVED_DEVICE_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
+const RESERVED_DEVICE_NAME = /^(con|prn|aux|nul|conin\$|conout\$|com[1-9¹²³]|lpt[1-9¹²³])(\..*)?$/i;
 const WINDOWS_FORBIDDEN = /[<>"|?*:]/;
 
 function hasControlCharacter(text: string): boolean {

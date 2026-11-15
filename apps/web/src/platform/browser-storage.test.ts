@@ -121,6 +121,11 @@ describe('browser storage paths', () => {
     ['library/CON'],
     ['data/nul.txt'],
     ['library/lpt1.gp'],
+    ['library/CONIN$'],
+    ['library/conout$.txt'],
+    ['library/COM\u00b9'],
+    ['library/lpt\u00b2.gp'],
+    ['library/COM\u00b3.tar.gz'],
     ['library/a<b'],
     ['library/a|b'],
     ['library/a?b'],
@@ -190,8 +195,13 @@ describe('browser file paths', () => {
       'library/songs/deep/a.reprise',
     ]);
     await expect(platform.readFile('library/songs/deep/a.reprise')).resolves.toEqual(text('two'));
-    // the absolute spelling libraryDir() implies still reaches the same file
-    await expect(platform.readFile('/library/songs/deep/a.reprise')).resolves.toEqual(text('two'));
+    // the absolute spelling libraryDir() implies no longer reaches the roots
+    await expect(platform.readFile('/library/songs/deep/a.reprise')).rejects.toThrow(
+      /Not a storage path/,
+    );
+    await expect(platform.writeFile('/library/x.gp', text('x'))).rejects.toThrow(
+      /Not a storage path/,
+    );
   });
 
   it('refuses a root as a file and an escaping path', async () => {

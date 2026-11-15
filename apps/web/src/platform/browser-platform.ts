@@ -52,16 +52,6 @@ function download(doc: Document, name: string, bytes: Uint8Array): void {
   }, 0);
 }
 
-/** Splits a virtual path into directory names and a file name, rejecting `..` and empties. */
-export function splitStoragePath(path: string): { dirs: string[]; name: string } {
-  const segments = path.split('/').filter((segment) => segment !== '' && segment !== '.');
-  const name = segments.pop();
-  if (!path.startsWith('/') || name === undefined || segments.includes('..') || name === '..') {
-    throw new Error(`Not a storage path: "${path}"`);
-  }
-  return { dirs: segments, name };
-}
-
 // Keyed by the page's storage manager, so a fresh page (or test) asks again.
 const persistenceAsked = new WeakSet<StorageManager>();
 
@@ -104,11 +94,11 @@ function isFileHandle(value: unknown): value is FileSystemFileHandle {
 }
 
 /**
- * Where a file path points in origin-private storage. `library/songs/a.reprise` is canonical;
- * the absolute `/library/...` that `libraryDir()` implies is still read, for the transition.
+ * Where a file path points in origin-private storage: only the root-relative spelling
+ * (`library/songs/a.reprise`) reaches it, so every path passes the same name checks.
  */
 function storageLocation(path: string): { dirs: string[]; name: string } {
-  if (!isStoragePath(path)) return splitStoragePath(path);
+  if (!isStoragePath(path)) throw new Error(`Not a storage path: "${path}"`);
   const { root, segments } = parseStoragePath(path);
   const name = segments.pop();
   if (name === undefined) throw new Error(`"${root}" is a root, not a file`);
