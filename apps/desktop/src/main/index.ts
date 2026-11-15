@@ -22,6 +22,7 @@ import { APP_INDEX_URL, APP_SCHEME, createAppProtocolHandler } from './app-proto
 import { isAppUrl } from './app-url';
 import { readPath, writePath } from './file-io';
 import { registerInvokeHandlers, sendEvent } from './ipc';
+import { decideMediaPermission } from './media-permission';
 import { menuTemplate } from './menu';
 import { openedFile } from './opened-file';
 import { PathAccess } from './path-access';
@@ -262,22 +263,15 @@ async function createWindow(): Promise<BrowserWindow> {
 
 function allowMicrophoneOnly(): void {
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback, details) => {
-    const audioOnly =
-      permission === 'media' &&
-      'mediaTypes' in details &&
-      details.mediaTypes.length > 0 &&
-      details.mediaTypes.every((type) => type === 'audio');
-    if (!audioOnly) {
-      callback(false);
-      return;
-    }
-    if (process.platform !== 'darwin') {
-      callback(true);
-      return;
-    }
-    systemPreferences.askForMediaAccess('microphone').then(callback, () => {
-      callback(false);
-    });
+    const mediaTypes = 'mediaTypes' in details ? details.mediaTypes : undefined;
+    void decideMediaPermission(
+      permission,
+      { mediaTypes },
+      {
+        platform: process.platform,
+        askForMicrophone: () => systemPreferences.askForMediaAccess('microphone'),
+      },
+    ).then(callback);
   });
 }
 
