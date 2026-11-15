@@ -1,7 +1,7 @@
 import { Dexie } from 'dexie';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { rowOf, uniqueDbName } from '../test-support';
+import { uniqueDbName } from '../test-support';
 
 import { SongRowSchema } from './rows';
 import { openLibraryDb, SCHEMA, type SchemaVersion } from './schema';
@@ -11,13 +11,63 @@ afterEach(() => {
   for (const db of open.splice(0)) db.close();
 });
 
+/**
+ * What a database written at each version held, as literals that are never edited: a later
+ * version that adds a field fills it in an `upgrade`, and rows built from the current shape would
+ * hide a missing or wrong one. WP-073 appends its own entry when it appends its version.
+ */
+const SAMPLES: Record<number, { songs: unknown[]; settings: unknown[] }> = {
+  1: {
+    songs: [
+      {
+        id: 'AAAAAAAAAAAA',
+        title: 'First',
+        artist: 'Ada',
+        album: 'One',
+        sourceFormat: 'gp5',
+        nativePath: 'library/songs/AAAAAAAAAAAA.reprise',
+        originalPath: 'library/originals/AAAAAAAAAAAA/first.gp5',
+        originalName: 'first.gp5',
+        originalKey: 'k1',
+        importedAt: 1000,
+        bars: 8,
+        tracks: [{ name: 'Guitar' }],
+      },
+      {
+        id: 'BBBBBBBBBBBB',
+        title: 'Second',
+        artist: 'Bo',
+        album: '',
+        sourceFormat: 'gpx',
+        nativePath: 'library/songs/BBBBBBBBBBBB.reprise',
+        originalPath: 'library/originals/BBBBBBBBBBBB/second.gpx',
+        originalName: 'second.gpx',
+        originalKey: 'k2',
+        importedAt: 2000,
+        lastOpenedAt: 3000,
+        bars: 16,
+        tracks: [{ name: 'Bass' }, { name: 'Drums' }],
+        session: {
+          version: 1,
+          view: { tracks: 'all' },
+          mixer: { CCCCCCCCCCCC: { mute: true } },
+        },
+      },
+    ],
+    settings: [{ key: 'library.sort', value: 'artist' }],
+  },
+};
+
 /** The database as a user who last ran with `schema` left it. */
-async function writeAt(name: string, schema: readonly SchemaVersion[], rows: unknown[]) {
+async function writeAt(name: string, schema: readonly SchemaVersion[]) {
+  const sample = SAMPLES[schema.length];
+  if (!sample) throw new Error(`no sample rows for version ${String(schema.length)}`);
   const db = openLibraryDb(name, schema);
   open.push(db);
-  await db.table('songs').bulkAdd(rows);
-  await db.table('settings').put({ key: 'library.sort', value: 'artist' });
+  await db.table('songs').bulkAdd(sample.songs);
+  await db.table('settings').bulkAdd(sample.settings);
   db.close();
+  return sample;
 }
 
 describe('the library schema', () => {
@@ -45,13 +95,14 @@ describe('the library schema', () => {
   describe.each(SCHEMA.map((entry) => entry.version))('upgrading from version %i', (version) => {
     it('keeps every row and has every table of the current schema', async () => {
       const name = uniqueDbName();
-      const rows = [rowOf(), rowOf({ lastOpenedAt: 5 })];
-      await writeAt(name, SCHEMA.slice(0, version), rows);
+      const sample = await writeAt(name, SCHEMA.slice(0, version));
 
       const db = openLibraryDb(name);
       open.push(db);
       const songs = await db.songs.toArray();
-      expect(songs.map((song) => song.id).sort()).toEqual(rows.map((row) => row.id).sort());
+      const ids = (rows: unknown[]) =>
+        rows.map((row) => String(Reflect.get(Object(row), 'id'))).sort();
+      expect(ids(songs)).toEqual(ids(sample.songs));
       for (const song of songs) expect(SongRowSchema.safeParse(song).success).toBe(true);
       expect((await db.settings.get('library.sort'))?.value).toBe('artist');
       const expected = new Set(SCHEMA.flatMap((entry) => Object.keys(entry.stores)));
@@ -61,15 +112,14 @@ describe('the library schema', () => {
 
   it('applies a later version on top of version 1 without touching rows', async () => {
     const name = uniqueDbName();
-    const rows = [rowOf(), rowOf()];
-    await writeAt(name, SCHEMA, rows);
+    await writeAt(name, SCHEMA);
     const future: SchemaVersion[] = [
       ...SCHEMA,
-      { version: 2, stores: { practiceSessions: 'id, songId, startedAt' } },
+      { version: SCHEMA.length + 1, stores: { harnessProbe: 'id' } },
     ];
     const db = openLibraryDb(name, future);
     open.push(db);
-    expect(await db.table('songs').count()).toBe(2);
-    expect(db.tables.map((table) => table.name)).toContain('practiceSessions');
+    expect(await db.table('songs').count()).toBe(SAMPLES[SCHEMA.length]?.songs.length);
+    expect(db.tables.map((table) => table.name)).toContain('harnessProbe');
   });
 });

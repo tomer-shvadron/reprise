@@ -34,9 +34,12 @@ export const SongRowSchema = z.object({
   artist: z.string(),
   album: z.string(),
   sourceFormat: FormatSchema,
-  /** Root-relative (`library/songs/<id>.reprise`), from `paths.ts`; also the save handle. */
+  /**
+   * Root-relative (`library/songs/<id>.reprise`), built in `paths.ts`; also the document's save
+   * handle. The spelling is persisted, so it is part of the schema (changing it needs an upgrade).
+   */
   nativePath: z.string(),
-  /** Root-relative (`library/originals/<id>/<name>`), from `paths.ts`. */
+  /** Root-relative (`library/originals/<id>/<name>`), built in `paths.ts`; persisted like `nativePath`. */
   originalPath: z.string(),
   originalName: z.string(),
   /** SHA-256 hex of the imported bytes; a unique index, so a duplicate import is skipped. */
