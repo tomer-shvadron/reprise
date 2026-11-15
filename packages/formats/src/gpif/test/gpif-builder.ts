@@ -8,7 +8,13 @@ export const property = (name: string, inner: string): string =>
 
 export function guitarTrack(
   id = '0',
-  { extra = '', staffProperties = '', program = 25, pitches = '40 45 50 55 59 64' } = {},
+  {
+    extra = '',
+    staffProperties = '',
+    program = 25,
+    pitches = '40 45 50 55 59 64',
+    fretCount = 24,
+  } = {},
 ): string {
   return `<Track id="${id}">
 <Name><![CDATA[Guitar ${id}]]></Name>
@@ -21,7 +27,7 @@ export function guitarTrack(
 <PlaybackState>Default</PlaybackState>
 <Staves><Staff><Properties>
 ${property('CapoFret', '<Fret>0</Fret>')}
-${property('FretCount', '<Number>24</Number>')}
+${property('FretCount', `<Number>${String(fretCount)}</Number>`)}
 ${property('Tuning', `<Pitches>${pitches}</Pitches>`)}
 ${staffProperties}
 </Properties></Staff></Staves>
