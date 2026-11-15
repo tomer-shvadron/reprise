@@ -144,7 +144,8 @@ describe('The transport through the real sampler', () => {
         recording.noteOn(event);
         real.noteOn(event);
       },
-      // The real sink applies the mixer changes the song carries; dropping them would play it flat.
+      // `mix` is optional on `InstrumentSink`, so a tee without it still typechecks and silently
+      // drops the song's mixer changes.
       mix(event) {
         recording.mix(event);
         real.mix?.(event);

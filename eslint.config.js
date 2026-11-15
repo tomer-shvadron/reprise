@@ -50,19 +50,19 @@ const ELECTRON_IN_DESKTOP = boundary(
 );
 const ALPHATAB_IN_FORMATS_TESTS = boundary(
   'alphatab-only-in-formats-tests-and-scripts',
-  '@coderline/alphatab, the dev-only oracle, is imported only under packages/formats/test/ (the oracle, the files check, fixture tests) and scripts/',
+  '@coderline/alphatab, the dev-only oracle, is imported only under packages/formats/test/ (the oracle, the files check, the gp writer read-back test) and scripts/',
   'docs/reference/file-formats.md, "Oracle"',
 );
 
 /**
  * `typeOnly` edges admit `import type` alone: desktop needs web's bridge types, never its code.
- * `oracle` globs, relative to `dir`, are the test files that may import alphaTab.
- * @typedef {{ name: string; dir: string; allowed: string[]; typeOnly?: string[]; oracle?: string[] }} Workspace
+ * `alphatab` globs, relative to `dir`, are the test files that may import alphaTab.
+ * @typedef {{ name: string; dir: string; allowed: string[]; typeOnly?: string[]; alphatab?: string[] }} Workspace
  * @type {Workspace[]}
  */
 const WORKSPACES = [
   { name: 'model', dir: 'packages/model', allowed: [] },
-  { name: 'formats', dir: 'packages/formats', allowed: ['model'], oracle: ['test/**/*.ts'] },
+  { name: 'formats', dir: 'packages/formats', allowed: ['model'], alphatab: ['test/**/*.ts'] },
   { name: 'layout', dir: 'packages/layout', allowed: ['model'] },
   { name: 'audio', dir: 'packages/audio', allowed: ['model'] },
   { name: 'web', dir: 'apps/web', allowed: ['model', 'formats', 'layout', 'audio'] },
@@ -84,7 +84,7 @@ const packageSpecifier = (name) => `^${name}(?:/|$)`;
 
 /** @typedef {{ regex: string; message: string; allowTypeImports?: boolean }} Restriction */
 
-const ORACLE = {
+const ALPHATAB_BAN = {
   regex: packageSpecifier('@coderline/alphatab'),
   message: ALPHATAB_IN_FORMATS_TESTS,
 };
@@ -110,11 +110,11 @@ const restrictImports = (patterns) => ({
  * merging them, so each workspace gets one entry per rule carrying every boundary that applies,
  * once for its test files, which may import the `testing` subpaths of `model` and `audio`, and
  * once for the rest;
- * oracle test files are a third entry, the only one without the alphaTab ban.
+ * alphaTab test files are a third entry, the only one without the alphaTab ban.
  * @param {Workspace} workspace
  * @returns {import('eslint').Linter.Config[]}
  */
-function workspaceBoundaries({ name: self, dir, allowed, typeOnly = [], oracle = [] }) {
+function workspaceBoundaries({ name: self, dir, allowed, typeOnly = [], alphatab = [] }) {
   /** @type {Restriction[]} */
   const restricted = [
     { regex: String.raw`^@reprise/(?!(?:model|audio)/testing$)[^/]+/`, message: ROOT_IMPORTS_ONLY },
@@ -139,7 +139,7 @@ function workspaceBoundaries({ name: self, dir, allowed, typeOnly = [], oracle =
     restricted.push({ regex: packageSpecifier('electron'), message: ELECTRON_IN_DESKTOP });
   }
   const tests = TEST_FILES.map((glob) => `${dir}/${glob}`);
-  const oracleTests = oracle.map((glob) => `${dir}/${glob}`);
+  const alphatabTests = alphatab.map((glob) => `${dir}/${glob}`);
 
   return [
     {
@@ -147,12 +147,14 @@ function workspaceBoundaries({ name: self, dir, allowed, typeOnly = [], oracle =
       ignores: tests,
       rules: restrictImports([
         ...restricted,
-        ORACLE,
+        ALPHATAB_BAN,
         { regex: String.raw`^@reprise/(?:model|audio)/testing$`, message: TESTING_IN_TESTS },
       ]),
     },
-    { files: tests, ignores: oracleTests, rules: restrictImports([...restricted, ORACLE]) },
-    ...(oracleTests.length > 0 ? [{ files: oracleTests, rules: restrictImports(restricted) }] : []),
+    { files: tests, ignores: alphatabTests, rules: restrictImports([...restricted, ALPHATAB_BAN]) },
+    ...(alphatabTests.length > 0
+      ? [{ files: alphatabTests, rules: restrictImports(restricted) }]
+      : []),
   ];
 }
 
@@ -203,7 +205,7 @@ export default defineConfig(
   {
     files: ['**/*.{js,mjs,cjs,ts,tsx}'],
     ignores: ['scripts/**'],
-    rules: restrictImports([ORACLE]),
+    rules: restrictImports([ALPHATAB_BAN]),
   },
   ...WORKSPACES.flatMap(workspaceBoundaries),
   {
