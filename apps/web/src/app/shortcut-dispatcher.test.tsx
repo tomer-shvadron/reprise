@@ -307,3 +307,130 @@ describe('shortcut contexts', () => {
     expect(only).not.toHaveBeenCalled();
   });
 });
+
+describe('text fields and open dialogs', () => {
+  function setupGuards() {
+    const registry = new CommandRegistry();
+    const run = {
+      palette: vi.fn(),
+      back: vi.fn(),
+      del: vi.fn(),
+      undo: vi.fn(),
+      open: vi.fn(),
+    };
+    registry.register({
+      id: 'app.commandPalette',
+      title: 'Palette',
+      shortcut: { key: 'k', mod: true },
+      run: run.palette,
+    });
+    registry.register({
+      id: 'x.back',
+      title: 'Back',
+      shortcut: { key: 'Backspace', mod: true },
+      run: run.back,
+    });
+    registry.register({ id: 'x.del', title: 'Delete', shortcut: { key: 'Delete' }, run: run.del });
+    registry.register({
+      id: 'x.undo',
+      title: 'Undo',
+      shortcut: { key: 'z', mod: true },
+      run: run.undo,
+    });
+    registry.register({
+      id: 'x.open',
+      title: 'Open bracket',
+      shortcut: { key: '[' },
+      run: run.open,
+    });
+    uninstall = installShortcutDispatcher(window, registry, 'mac');
+    return run;
+  }
+
+  function mountDialog() {
+    return render(
+      <div role="dialog" data-state="open">
+        <button type="button">Dialog control</button>
+        <input aria-label="Field" />
+      </div>,
+    );
+  }
+
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it('keeps Backspace and Delete, with modifiers, for a text field', () => {
+    const run = setupGuards();
+    render(<input aria-label="Search" />);
+    const input = screen.getByLabelText('Search');
+
+    fireEvent.keyDown(input, { key: 'Backspace', code: 'Backspace', metaKey: true });
+    fireEvent.keyDown(input, { key: 'Delete', code: 'Delete' });
+
+    expect(run.back).not.toHaveBeenCalled();
+    expect(run.del).not.toHaveBeenCalled();
+  });
+
+  it('still runs Cmd+Backspace and Delete from the body', () => {
+    const run = setupGuards();
+
+    fireEvent.keyDown(document.body, { key: 'Backspace', code: 'Backspace', metaKey: true });
+    fireEvent.keyDown(document.body, { key: 'Delete', code: 'Delete' });
+
+    expect(run.back).toHaveBeenCalledOnce();
+    expect(run.del).toHaveBeenCalledOnce();
+  });
+
+  it('runs nothing but the palette toggle while a modal dialog is open', () => {
+    const run = setupGuards();
+    mountDialog();
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Dialog control' }), {
+      key: '[',
+      code: 'BracketLeft',
+    });
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Dialog control' }), {
+      key: 'z',
+      code: 'KeyZ',
+      metaKey: true,
+    });
+    // Focus has drifted to the body behind the dialog.
+    fireEvent.keyDown(document.body, { key: '[', code: 'BracketLeft' });
+    expect(run.open).not.toHaveBeenCalled();
+    expect(run.undo).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Dialog control' }), {
+      key: 'k',
+      code: 'KeyK',
+      metaKey: true,
+    });
+    expect(run.palette).toHaveBeenCalledOnce();
+  });
+
+  it('treats an aria-modal alertdialog as modal and a popover as not', () => {
+    const run = setupGuards();
+    const { unmount } = render(<div role="alertdialog" aria-modal="true" />);
+    fireEvent.keyDown(document.body, { key: '[', code: 'BracketLeft' });
+    expect(run.open).not.toHaveBeenCalled();
+    unmount();
+
+    render(
+      <div data-radix-popper-content-wrapper="">
+        <div role="dialog" data-state="open" />
+      </div>,
+    );
+    fireEvent.keyDown(document.body, { key: '[', code: 'BracketLeft' });
+    expect(run.open).toHaveBeenCalledOnce();
+  });
+
+  it('runs normal shortcuts with no dialog open', () => {
+    const run = setupGuards();
+
+    fireEvent.keyDown(document.body, { key: '[', code: 'BracketLeft' });
+    fireEvent.keyDown(document.body, { key: 'z', code: 'KeyZ', metaKey: true });
+
+    expect(run.open).toHaveBeenCalledOnce();
+    expect(run.undo).toHaveBeenCalledOnce();
+  });
+});
