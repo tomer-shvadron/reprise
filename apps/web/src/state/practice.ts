@@ -30,6 +30,7 @@ export interface PracticeSession {
   startedAt: number;
   /** Total time the transport spent playing. */
   playedMs: number;
+  /** Ordered by last use, oldest first, so `loops.at(-1)` is the loop "resume" restores. */
   loops: readonly LoopRecord[];
   tempoHistory: readonly TempoSample[];
 }
@@ -37,33 +38,58 @@ export interface PracticeSession {
 export interface PracticeState {
   /** The running session; undefined until the first play of a document. */
   session: PracticeSession | undefined;
-  /** The loop in force now, whose record `recordStep` raises; undefined outside a loop. */
-  activeLoop: BarRange | undefined;
-  /** Starts a session unless one runs for this document; a different document ends the old one first. */
-  start(args: { songId: Id | undefined; documentId: Id; now: number }): void;
+  /**
+   * Starts a session unless one runs for this document. Another document's running session is
+   * replaced and returned, so the caller can store it; a call that changes nothing returns undefined.
+   */
+  start(args: { songId: Id | undefined; documentId: Id; now: number }): PracticeSession | undefined;
+  /** Attributes the session to a library song, as after importing a file opened without import. */
+  setSongId(songId: Id | undefined): void;
   addPlayed(ms: number): void;
-  /** Sets or clears the loop in force; a range seen for the first time gets a record. */
-  setLoop(range: BarRange | undefined): void;
+  /** Notes that `range` is being worked on: adds its record and makes it the most recently used. */
+  noteLoop(range: BarRange): void;
   recordTempo(tempo: TempoSetting): void;
-  /** A full speed-trainer step completed on the active loop at `percent`; keeps the highest. */
-  recordStep(percent: number): void;
+  /**
+   * A full speed-trainer step completed on `range` at `percent`; keeps the highest. The loop
+   * itself is `playback.settings.loop`, which the trainer passes in. Also makes it most recent.
+   */
+  recordStep(range: BarRange, percent: number): void;
   /** Ends and returns the session for the log to store; undefined when none runs. */
   end(): PracticeSession | undefined;
 }
 
 const sameRange = (a: BarRange, b: BarRange) => a.startBar === b.startBar && a.endBar === b.endBar;
 
+/** `loops` with `range` moved to the end (added if new), its best percent raised to `percent`. */
+function touched(
+  loops: readonly LoopRecord[],
+  range: BarRange,
+  percent: number | undefined,
+): LoopRecord[] {
+  const existing = loops.find((loop) => sameRange(loop, range));
+  const best = Math.max(existing?.bestPercent ?? 0, percent ?? 0) || undefined;
+  return [
+    ...loops.filter((loop) => loop !== existing),
+    { startBar: range.startBar, endBar: range.endBar, bestPercent: best },
+  ];
+}
+
 export function createPracticeStore() {
   return create<PracticeState>()((set, get) => ({
     session: undefined,
-    activeLoop: undefined,
 
     start({ songId, documentId, now }) {
-      if (get().session?.documentId === documentId) return;
+      const previous = get().session;
+      if (previous?.documentId === documentId) return undefined;
       set({
         session: { songId, documentId, startedAt: now, playedMs: 0, loops: [], tempoHistory: [] },
-        activeLoop: undefined,
       });
+      return previous;
+    },
+
+    setSongId(songId) {
+      const { session } = get();
+      if (session) set({ session: { ...session, songId } });
     },
 
     addPlayed(ms) {
@@ -72,26 +98,10 @@ export function createPracticeStore() {
       set({ session: { ...session, playedMs: session.playedMs + ms } });
     },
 
-    setLoop(range) {
+    noteLoop(range) {
       const { session } = get();
-      if (!range) {
-        set({ activeLoop: undefined });
-        return;
-      }
-      const known = session?.loops.some((loop) => sameRange(loop, range));
-      set({
-        activeLoop: range,
-        ...(session &&
-          !known && {
-            session: {
-              ...session,
-              loops: [
-                ...session.loops,
-                { startBar: range.startBar, endBar: range.endBar, bestPercent: undefined },
-              ],
-            },
-          }),
-      });
+      if (session)
+        set({ session: { ...session, loops: touched(session.loops, range, undefined) } });
     },
 
     recordTempo(tempo) {
@@ -107,24 +117,14 @@ export function createPracticeStore() {
       });
     },
 
-    recordStep(percent) {
-      const { session, activeLoop } = get();
-      if (!session || !activeLoop) return;
-      set({
-        session: {
-          ...session,
-          loops: session.loops.map((loop) =>
-            sameRange(loop, activeLoop) && percent > (loop.bestPercent ?? 0)
-              ? { ...loop, bestPercent: percent }
-              : loop,
-          ),
-        },
-      });
+    recordStep(range, percent) {
+      const { session } = get();
+      if (session) set({ session: { ...session, loops: touched(session.loops, range, percent) } });
     },
 
     end() {
       const { session } = get();
-      set({ session: undefined, activeLoop: undefined });
+      set({ session: undefined });
       return session;
     },
   }));

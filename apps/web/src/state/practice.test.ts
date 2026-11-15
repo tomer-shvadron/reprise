@@ -35,15 +35,30 @@ describe('practice store', () => {
     expect(store.getState().session).toMatchObject({ startedAt: 1000, playedMs: 300 });
   });
 
-  it('replaces the session for a different document', () => {
+  it('replaces and returns the session of a different document', () => {
     const store = begin();
     store.getState().addPlayed(300);
-    store.getState().start({ songId: undefined, documentId: 'doc-2', now: 2000 });
+    const replaced = store.getState().start({ songId: undefined, documentId: 'doc-2', now: 2000 });
+    expect(replaced).toMatchObject({ documentId: 'doc-1', playedMs: 300 });
     expect(store.getState().session).toMatchObject({
       songId: undefined,
       documentId: 'doc-2',
       playedMs: 0,
     });
+  });
+
+  it('returns nothing from a start that replaces nothing', () => {
+    const store = createPracticeStore();
+    const args = { songId: undefined, documentId: 'doc-1', now: 1 };
+    expect(store.getState().start(args)).toBeUndefined();
+    expect(store.getState().start(args)).toBeUndefined();
+  });
+
+  it('attributes a running session to a song set later', () => {
+    const store = createPracticeStore();
+    store.getState().start({ songId: undefined, documentId: 'doc-1', now: 1 });
+    store.getState().setSongId('song-9');
+    expect(store.getState().session?.songId).toBe('song-9');
   });
 
   it('adds played time and ignores non-positive amounts', () => {
@@ -54,30 +69,38 @@ describe('practice store', () => {
     expect(store.getState().session?.playedMs).toBe(500);
   });
 
-  it('records a loop once and tracks the active one', () => {
+  it('records a loop once', () => {
     const store = begin();
-    store.getState().setLoop(loop);
-    store.getState().setLoop({ ...loop });
+    store.getState().noteLoop(loop);
+    store.getState().noteLoop({ ...loop });
     expect(store.getState().session?.loops).toEqual([{ ...loop, bestPercent: undefined }]);
-    expect(store.getState().activeLoop).toEqual(loop);
-    store.getState().setLoop(undefined);
-    expect(store.getState().activeLoop).toBeUndefined();
-    expect(store.getState().session?.loops).toHaveLength(1);
   });
 
-  it('keeps the highest completed step per loop', () => {
+  it('orders loops by last use, so the last one is the one to resume', () => {
     const store = begin();
-    store.getState().setLoop(loop);
-    store.getState().recordStep(70);
-    store.getState().recordStep(85);
-    store.getState().recordStep(60);
-    expect(store.getState().session?.loops[0]?.bestPercent).toBe(85);
+    const other = { startBar: 'bar-c', endBar: 'bar-d' };
+    store.getState().noteLoop(loop);
+    store.getState().noteLoop(other);
+    store.getState().noteLoop(loop);
+    expect(store.getState().session?.loops.map((entry) => entry.startBar)).toEqual([
+      'bar-c',
+      'bar-a',
+    ]);
   });
 
-  it('ignores a step with no active loop', () => {
+  it('keeps the highest completed step per loop and creates the record when missing', () => {
     const store = begin();
-    store.getState().recordStep(90);
-    expect(store.getState().session?.loops).toEqual([]);
+    store.getState().recordStep(loop, 70);
+    store.getState().recordStep(loop, 85);
+    store.getState().recordStep(loop, 60);
+    expect(store.getState().session?.loops).toEqual([{ ...loop, bestPercent: 85 }]);
+  });
+
+  it('ignores loops and steps with no session', () => {
+    const store = createPracticeStore();
+    store.getState().noteLoop(loop);
+    store.getState().recordStep(loop, 90);
+    expect(store.getState().session).toBeUndefined();
   });
 
   it('records tempo changes against played time and skips repeats', () => {
@@ -94,11 +117,10 @@ describe('practice store', () => {
 
   it('ends the session, returning it and clearing the store', () => {
     const store = begin();
-    store.getState().setLoop(loop);
+    store.getState().noteLoop(loop);
     const ended = store.getState().end();
     expect(ended?.loops).toHaveLength(1);
     expect(store.getState().session).toBeUndefined();
-    expect(store.getState().activeLoop).toBeUndefined();
     expect(store.getState().end()).toBeUndefined();
   });
 });
