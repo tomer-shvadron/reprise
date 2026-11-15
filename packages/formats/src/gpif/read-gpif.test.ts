@@ -118,6 +118,97 @@ describe('notes', () => {
     });
   });
 
+  it('keeps the origin first when its offset is after the middle offsets', () => {
+    const properties = [
+      property('Bended', '<Enable />'),
+      property('BendOriginValue', '<Float>75</Float>'),
+      property('BendOriginOffset', '<Float>76</Float>'),
+      property('BendMiddleValue', '<Float>37</Float>'),
+      property('BendMiddleOffset1', '<Float>12</Float>'),
+      property('BendMiddleOffset2', '<Float>12</Float>'),
+      property('BendDestinationValue', '<Float>0</Float>'),
+      property('BendDestinationOffset', '<Float>99</Float>'),
+    ].join('');
+    const { score } = read(
+      oneBar([beat('0', '0', '0')], [note('0', 2, 5, '', properties)], QUARTERS),
+    );
+    const points = firstNote(score)?.bend?.points ?? [];
+    expect(points.map((point) => point.value)).toEqual([3, 1.48, 1.48, 0]);
+    expect(points.map((point) => point.position)).toEqual([45.6, 45.6, 45.6, 59.4]);
+  });
+
+  describe('bend point order', () => {
+    const bendPositions = (entries: Record<string, number>): number[] => {
+      const properties = [
+        property('Bended', '<Enable />'),
+        ...Object.entries(entries).map(([name, value]) =>
+          property(`Bend${name}`, `<Float>${String(value)}</Float>`),
+        ),
+      ].join('');
+      const { score } = read(
+        oneBar([beat('0', '0', '0')], [note('0', 2, 5, '', properties)], QUARTERS),
+      );
+      return (firstNote(score)?.bend?.points ?? []).map((point) => point.position);
+    };
+    const ascending = (positions: number[]): boolean =>
+      positions.every((at, index) => index === 0 || at >= (positions[index - 1] ?? 0));
+
+    it('clamps the halfway point of a bend whose origin is after the middle', () => {
+      const positions = bendPositions({
+        OriginValue: 75,
+        OriginOffset: 76,
+        MiddleValue: 37,
+        DestinationValue: 0,
+        DestinationOffset: 99,
+      });
+      expect(positions).toHaveLength(3);
+      expect(ascending(positions)).toBe(true);
+      expect(positions[1]).toBeCloseTo(45.6);
+    });
+
+    it('holds a destination before the origin at the origin', () => {
+      const positions = bendPositions({
+        OriginValue: 0,
+        OriginOffset: 80,
+        DestinationValue: 50,
+        DestinationOffset: 20,
+      });
+      expect(positions).toHaveLength(2);
+      expect(positions[1]).toBeCloseTo(48);
+    });
+
+    it('clamps a middle offset after the destination', () => {
+      const positions = bendPositions({
+        OriginValue: 0,
+        OriginOffset: 0,
+        MiddleValue: 100,
+        MiddleOffset1: 90,
+        DestinationValue: 0,
+        DestinationOffset: 50,
+      });
+      expect(ascending(positions)).toBe(true);
+      expect(positions[1]).toBeCloseTo(30);
+    });
+
+    it('keeps a whammy origin first and its points ascending', () => {
+      const extra = [
+        '<Properties>',
+        property('WhammyBar', '<Enable />'),
+        property('WhammyBarOriginValue', '<Float>0</Float>'),
+        property('WhammyBarOriginOffset', '<Float>80</Float>'),
+        property('WhammyBarMiddleValue', '<Float>-50</Float>'),
+        property('WhammyBarMiddleOffset1', '<Float>10</Float>'),
+        property('WhammyBarDestinationValue', '<Float>0</Float>'),
+        property('WhammyBarDestinationOffset', '<Float>100</Float>'),
+        '</Properties>',
+      ].join('');
+      const { score } = read(oneBar([beat('0', '0', '0', extra)], [note('0', 2, 5)], QUARTERS));
+      const points = beatsOf(score)[0]?.effects.whammy?.points ?? [];
+      expect(points.map((point) => point.value)).toEqual([0, -2, 0]);
+      expect(ascending(points.map((point) => point.position))).toBe(true);
+    });
+  });
+
   it('names a simple upward bend and a prebend release', () => {
     const bend = (origin: number, destination: number): string =>
       [
@@ -1011,6 +1102,199 @@ describe('tracks', () => {
   });
 });
 
+describe('notes off the fretboard', () => {
+  const midi = (value: number): string => property('Midi', `<Number>${String(value)}</Number>`);
+  const tab = new Uint8Array([0, 0, 0, 1, 0, 0, 0, 0, 1, 3]);
+  const offFretboard = (result: GpifReadResult) =>
+    result.warnings.filter((w) => w.code === 'off-fretboard');
+  const midis = (result: GpifReadResult, beatIndex = 0): number[] =>
+    (beatsOf(result.score)[beatIndex]?.notes ?? []).map((n) => n.fret);
+
+  it('reads a note below the lowest string as pitched, keeping its MIDI pitch', () => {
+    const result = read(
+      oneBar(
+        [beat('0', '0', '0 1')],
+        [note('0', 0, -2, '', midi(38)), note('1', 3, 2, '', midi(52))],
+        QUARTERS,
+      ),
+    );
+    expect(result.score.tracks[0]).toMatchObject({ kind: 'pitched' });
+    expect(midis(result)).toEqual([38, 52]);
+    expect(codes(result)).not.toContain('invalid-value');
+    expect(offFretboard(result)).toHaveLength(1);
+    expect(offFretboard(result)[0]?.message).toContain('1 below fret 0');
+    expect(offFretboard(result)[0]?.path).toBe('Tracks/Track[0]');
+  });
+
+  it('reads a fret past the neck as pitched', () => {
+    const result = read(oneBar([beat('0', '0', '0')], [note('0', 2, 30, '', midi(94))], QUARTERS));
+    expect(result.score.tracks[0]?.kind).toBe('pitched');
+    expect(midis(result)).toEqual([94]);
+    expect(codes(result)).not.toContain('fret-range');
+  });
+
+  it("measures the neck by the track's own fret count", () => {
+    const track = guitarTrack('0', { fretCount: 27 });
+    const fits = read(
+      oneBar([beat('0', '0', '0')], [note('0', 2, 26)], QUARTERS, { tracks: [track] }),
+    );
+    expect(fits.score.tracks[0]?.kind).toBe('fretted');
+    expect(offFretboard(fits)).toHaveLength(0);
+    const past = read(
+      oneBar([beat('0', '0', '0')], [note('0', 2, 28)], QUARTERS, { tracks: [track] }),
+    );
+    expect(past.score.tracks[0]?.kind).toBe('pitched');
+    expect(offFretboard(past)[0]?.message).toContain('1 past fret 27');
+  });
+
+  it('reads two notes on one string of one beat as pitched, keeping both', () => {
+    const result = read(
+      oneBar(
+        [beat('0', '0', '0 1')],
+        [note('0', 2, 5, '', midi(55)), note('1', 2, 7, '', midi(57))],
+        QUARTERS,
+      ),
+    );
+    expect(result.score.tracks[0]?.kind).toBe('pitched');
+    expect(midis(result)).toEqual([55, 57]);
+    expect(codes(result)).not.toContain('duplicate-string');
+    expect(offFretboard(result)[0]?.message).toContain('1 sharing a string in their beat');
+  });
+
+  it('keeps a track fretted when two voices use one string at the same time', () => {
+    const result = read(
+      gpif({
+        masterBars: [masterBar('0')],
+        bars: [bar('0', '0 1 -1 -1')],
+        voices: [voice('0', '0'), voice('1', '1')],
+        beats: [beat('0', '0', '0'), beat('1', '0', '1')],
+        notes: [note('0', 2, 5), note('1', 2, 7)],
+        rhythms: [rhythm('0', 'Whole')],
+      }),
+    );
+    expect(result.score.tracks[0]?.kind).toBe('fretted');
+    expect(offFretboard(result)).toHaveLength(0);
+  });
+
+  it('finds the fret of a note with only a MIDI pitch below its open string', () => {
+    // Open string 2 is D3 (50); MIDI 40 is 10 frets below it.
+    const bare = `<Note id="0"><Properties>${property('String', '<String>2</String>')}${midi(40)}</Properties></Note>`;
+    const result = read(oneBar([beat('0', '0', '0')], [bare], QUARTERS));
+    expect(result.score.tracks[0]?.kind).toBe('pitched');
+    expect(midis(result)).toEqual([40]);
+  });
+
+  it('reads a note without MIDI at fret -2 on the lowest string as pitched, at its tuning pitch', () => {
+    const result = read(oneBar([beat('0', '0', '0')], [note('0', 0, -2)], QUARTERS));
+    expect(result.score.tracks[0]?.kind).toBe('pitched');
+    expect(midis(result)).toEqual([38]);
+  });
+
+  it('overrides a part configuration that shows tablature', () => {
+    const track = guitarTrack('0', { program: 60 });
+    const result = read(
+      oneBar([beat('0', '0', '0')], [note('0', 0, -2, '', midi(38))], QUARTERS, {
+        tracks: [track],
+      }),
+      tab,
+    );
+    expect(result.score.tracks[0]).toMatchObject({
+      kind: 'pitched',
+      display: { notation: 'standard' },
+    });
+    expect(midis(result)).toEqual([38]);
+  });
+
+  it('flips a merged track whose staves agree when a note overflows only in the second', () => {
+    const two = guitarTrack('0').replace(
+      '</Staves>',
+      `${secondStaff('40 45 50 55 59 64')}</Staves>`,
+    );
+    const result = read(
+      gpif({
+        tracks: [two],
+        masterBars: [masterBar('0 1')],
+        bars: [bar('0', '0 -1 -1 -1'), bar('1', '1 -1 -1 -1')],
+        voices: [voice('0', '0'), voice('1', '1')],
+        beats: [beat('0', '0', '0'), beat('1', '0', '1')],
+        notes: [note('0', 2, 5), note('1', 0, -2, '', midi(38))],
+        rhythms: [rhythm('0', 'Whole')],
+      }),
+    );
+    expect(result.score.tracks[0]?.kind).toBe('pitched');
+    expect(result.warnings.find((w) => w.code === 'multiple-staves')?.message).not.toContain(
+      'keyboard',
+    );
+    expect(offFretboard(result)).toHaveLength(1);
+  });
+
+  it('counts the notes of a grace beat', () => {
+    const result = read(
+      oneBar(
+        [beat('0', '0', '0 1', '<GraceNotes>BeforeBeat</GraceNotes>'), beat('1', '1', '2')],
+        [note('0', 2, 5), note('1', 2, 7), note('2', 3, 5)],
+        [rhythm('0', 'Sixteenth'), rhythm('1', 'Whole')],
+      ),
+    );
+    expect(result.score.tracks[0]?.kind).toBe('pitched');
+  });
+
+  it('ignores off-fretboard notes in grace beats that end a voice and are dropped', () => {
+    const result = read(
+      oneBar(
+        [beat('0', '0', '0'), beat('1', '1', '1 2', '<GraceNotes>BeforeBeat</GraceNotes>')],
+        [note('0', 2, 5), note('1', 2, 7), note('2', 2, 9)],
+        [rhythm('0', 'Half'), rhythm('1', 'Sixteenth')],
+      ),
+    );
+    expect(codes(result)).toContain('grace-without-beat');
+    expect(result.score.tracks[0]?.kind).toBe('fretted');
+  });
+
+  it('leaves a clean guitar, a drum kit and a pitched track alone', () => {
+    const clean = read(
+      oneBar([beat('0', '0', '0 1')], [note('0', 2, 5), note('1', 3, 7)], QUARTERS),
+    );
+    expect(clean.score.tracks[0]?.kind).toBe('fretted');
+    const drums = guitarTrack('0', {
+      extra: '<GeneralMidi table="Percussion"><Program>0</Program></GeneralMidi>',
+    });
+    const kit = read(
+      oneBar(
+        [beat('0', '0', '0 1')],
+        [note('0', 0, 0, '', midi(38)), note('1', 0, 0, '', midi(38))],
+        QUARTERS,
+        { tracks: [drums] },
+      ),
+    );
+    expect(kit.score.tracks[0]?.kind).toBe('drums');
+    const piano = read(
+      oneBar([beat('0', '0', '0')], [note('0', 0, -2, '', midi(38))], QUARTERS, {
+        tracks: [guitarTrack('0', { program: 0 })],
+      }),
+    );
+    expect(piano.score.tracks[0]?.kind).toBe('pitched');
+    for (const result of [clean, kit, piano]) expect(offFretboard(result)).toHaveLength(0);
+  });
+
+  it('keeps the own MIDI value of a note tied from a beat with two notes on its string', () => {
+    const result = read(
+      oneBar(
+        [beat('0', '0', '0 1'), beat('1', '0', '2')],
+        [
+          note('0', 2, 5, '', midi(55)),
+          note('1', 2, 7, '', midi(57)),
+          note('2', 2, 5, '<Tie origin="false" destination="true" />', midi(55)),
+        ],
+        QUARTERS,
+      ),
+    );
+    expect(midis(result, 1)).toEqual([55]);
+    expect(codes(result)).not.toContain('tie-pitch');
+    expect(codes(result)).not.toContain('tie-target');
+  });
+});
+
 describe('diagnostics', () => {
   it('warns about unknown elements and values with their path', () => {
     const { warnings } = read(
@@ -1049,13 +1333,11 @@ describe('diagnostics', () => {
   });
 
   it('reports invariant violations as warnings', () => {
-    const { warnings } = read(oneBar([beat('0', '0', '0')], [note('0', 2, 30)], QUARTERS));
-    expect(warnings).toContainEqual(
-      expect.objectContaining({
-        code: 'fret-range',
-        path: 'score.tracks[0].bars[0].voices[0].beats[0].notes[0].fret',
-      }),
-    );
+    // A fifth quarter in a 4/4 bar.
+    const beats = ['0', '1', '2', '3', '4'].map((id) => beat(id, '0', id));
+    const notes = ['0', '1', '2', '3', '4'].map((id) => note(id, 2, 5));
+    const { warnings } = read(oneBar(beats, notes, QUARTERS));
+    expect(warnings).toContainEqual(expect.objectContaining({ code: 'voice-overfull' }));
   });
 
   it('fails without tracks or bars, on a foreign root and on bad bytes', () => {

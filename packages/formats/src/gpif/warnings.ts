@@ -7,6 +7,7 @@ export type GpifWarningCode =
   | 'invalid-value'
   | 'missing-reference'
   | 'multiple-staves'
+  | 'off-fretboard'
   | 'voice-dropped'
   | 'simile-expanded'
   | 'grace-without-beat'

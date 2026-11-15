@@ -41,6 +41,47 @@ export interface TrackPlan {
   staves: { tuning: number[]; capo: number }[];
   /** Index of the first later staff whose own tuning or capo differs from the first's. */
   differingStaff?: number;
+  /** Notes that did not fit a fretted track's fretboard, counted in note references. */
+  offFretboard?: { below: number; past: number; shared: number; fretCount: number };
+}
+
+const DEFAULT_FRET_COUNT = 24;
+
+/** A fretted note's fret, from `Fret` or else its MIDI pitch, and the pitch of its open string. */
+function fretted(plan: TrackPlan, note: GpifNote): { fret?: number; stringPitch?: number } {
+  let fret = note.fret;
+  const open = note.string === undefined ? undefined : plan.tuning[note.string];
+  const stringPitch = open === undefined ? undefined : open + plan.capo;
+  if (fret === undefined && note.midi !== undefined && stringPitch !== undefined) {
+    fret = note.midi - stringPitch;
+  }
+  return { ...(fret !== undefined && { fret }), ...(stringPitch !== undefined && { stringPitch }) };
+}
+
+/**
+ * A fretted track with even one note that cannot sit on its fretboard (below fret 0, past the
+ * neck, or on a string another note of its beat already uses) is read as pitched: Guitar Pro 7
+ * fingers every instrument on a six-string tuning, so such notes belong to an instrument that
+ * has no strings, and as fretted they would be dropped or overlap. `beats` holds the notes of
+ * each beat the model will keep.
+ */
+export function fitFretboard(plan: TrackPlan, beats: Iterable<readonly GpifNote[]>): TrackPlan {
+  if (plan.kind !== 'fretted') return plan;
+  const fretCount = plan.staff.fretCount ?? DEFAULT_FRET_COUNT;
+  const counts = { below: 0, past: 0, shared: 0, fretCount };
+  for (const notes of beats) {
+    const taken = new Set<number>();
+    for (const note of notes) {
+      if (note.string === undefined) continue;
+      const { fret } = fretted(plan, note);
+      if (fret !== undefined && fret < 0) counts.below++;
+      else if (fret !== undefined && fret > fretCount) counts.past++;
+      if (taken.has(note.string)) counts.shared++;
+      taken.add(note.string);
+    }
+  }
+  if (counts.below + counts.past + counts.shared === 0) return plan;
+  return { ...plan, kind: 'pitched', offFretboard: counts };
 }
 
 function sameTuning(a: number[], b: number[]): boolean {
@@ -114,7 +155,7 @@ export function createModelTrack(
   if (kind !== 'drums') {
     // A pitched track keeps the file's tuning and neck so a gp writer can finger it again.
     track.tuning = [...plan.tuning];
-    track.fretCount = plan.staff.fretCount ?? 24;
+    track.fretCount = plan.staff.fretCount ?? DEFAULT_FRET_COUNT;
     track.capo = kind === 'fretted' ? plan.capo : 0;
   }
   const display = notationOf(kind, notation);
@@ -152,12 +193,9 @@ export function resolveNote(
       return undefined;
     }
     string = plan.tuning.length - note.string;
-    fret = note.fret;
-    const open = plan.tuning[note.string];
-    if (open !== undefined) stringPitch = open + plan.capo;
-    if (fret === undefined && note.midi !== undefined && stringPitch !== undefined) {
-      fret = note.midi - stringPitch;
-    }
+    const own = fretted(plan, note);
+    fret = own.fret;
+    stringPitch = own.stringPitch;
   } else if (plan.kind === 'drums') {
     const articulation =
       note.articulation === undefined ? undefined : plan.source.articulations[note.articulation];
