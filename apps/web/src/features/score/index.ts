@@ -14,7 +14,7 @@ export { createGestureTracker } from './gestures';
 export type { Gesture } from './gestures';
 export { ScorePage, ScorePages } from './score-page';
 export type { ScorePageProps, ScorePagesProps } from './score-page';
-export type { ScoreOverlays } from './overlay-layer';
+export type { OverlayBox, ScoreOverlays } from './overlay-layer';
 export {
   anchorIndex,
   columnAnchor,

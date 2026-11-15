@@ -30,7 +30,10 @@ export interface RangeSpan {
 }
 
 /** The first beat of an end's own track, wherever its beat id sits. */
-function endSpan(score: Score, end: RangeEnd): { start: TimePoint; end: TimePoint } | undefined {
+export function endSpan(
+  score: Score,
+  end: RangeEnd,
+): { start: TimePoint; end: TimePoint } | undefined {
   const index = scoreIndex(score);
   if (end.beat === undefined) {
     const bar = index.barIndex.get(end.masterBar);
