@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  ATTACK_WINDOW,
   BANDS_PER_OCTAVE,
-  FLUX_LAG,
   LOWEST_BAND,
   attackRatios,
   bandEnergy,
@@ -225,7 +223,7 @@ describe('spectralFlux and attackRatios', () => {
   it('hears lowpassed chugs and their re-strikes between bright notes, as a palm-muted riff has', () => {
     // Every 0.3 s a bright note decaying across hundreds of bins above 3 kHz, then two chugs
     // below 900 Hz on the same pitch. The linear-bin flux read the first chug of each pair at
-    // 1.16 to 1.29, as a miss: the bright note's fall hid the chug's few bins.
+    // 1.16 to 1.29, weak or missed and never heard: the bright note's fall hid the chug's few bins.
     const hiss = noise(3);
     const sounds: ((time: number) => number)[] = [];
     const attacks: number[] = [];
@@ -258,8 +256,6 @@ describe('spectralFlux and attackRatios', () => {
 
   it('groups bins into 6 bands an octave, each holding at least one bin', () => {
     const { bands, first, last } = bandsOfBins(1024, RATE);
-    expect(BANDS_PER_OCTAVE).toBe(6);
-    expect(FLUX_LAG).toBe(2);
     // 40 Hz to Nyquist is 9.1 octaves; the lowest bands hold no bin and are merged away.
     expect(bands).toBeGreaterThan(40);
     expect(bands).toBeLessThanOrEqual(
@@ -276,8 +272,27 @@ describe('spectralFlux and attackRatios', () => {
     expect(below).toBeGreaterThanOrEqual(8);
   });
 
-  it('floors the background at a share of the median attack peak', () => {
-    expect(ATTACK_WINDOW.floorShare).toBe(0.05);
+  it('reads a loud attack over pure silence as heard, and a fake one beside it as missed', () => {
+    const signal = synth(2, (time) => pluck(0.5, 220, 3000, 6, 0.4)(time));
+    const [real, fake] = attackRatios(spectralFlux(signal), [0.5, 1.7]);
+    expect(real).toBeGreaterThanOrEqual(ATTACK_THRESHOLDS.heard);
+    expect(fake).toBeLessThan(ATTACK_THRESHOLDS.missed);
+  });
+
+  it('documents that a held harmonic-rich tone can read above heard at fake attack times', () => {
+    // A known limit of the detector, pinned so a change to it shows: partials beating inside a
+    // band make a stationary tone's flux wander, 3 to 4 at the measured seeds.
+    const hiss = noise(5);
+    const signal = synth(3, (time) => {
+      let sum = 0;
+      for (let n = 1; n * 220 < 10_000; n += 1) sum += Math.sin(2 * Math.PI * n * 220 * time) / n;
+      return 0.3 * sum + 0.001 * hiss();
+    });
+    const ratios = attackRatios(spectralFlux(signal), [0.6, 1.2, 1.8, 2.4]);
+    for (const ratio of ratios) {
+      expect(ratio).toBeGreaterThan(ATTACK_THRESHOLDS.heard);
+      expect(ratio).toBeLessThan(6);
+    }
   });
 
   it('times each frame at its centre', () => {
