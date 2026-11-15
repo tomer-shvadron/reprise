@@ -494,6 +494,20 @@ soloed one; it still goes through the insert, the fader and the panner.
 - **One-shot is honored in `Voice.release`, not only in `Sampler.noteOff`.** The sink releases
   handles directly at each note's end, so a guard in `noteOff` alone would never fire. `Voice.stop`
   releases regardless, and `allNotesOff` uses it, so stop and seek still silence a drum tail.
+- **`previewNote` and one-shots.** A one-shot ignores the preview's timed release too, so clicking
+  one in the editor plays the whole sample.
+- **`velocityTrack` is a power of the MIDI curve.** `velocityGain(v) ** t` scales the dB curve, one
+  reading of sfzformat.com. sfizz blends linearly in amplitude instead (`1 - t * (1 - (v/127)^2)`);
+  for `amp_veltrack=73` at velocity 30 that is about -18 dB here against about -10 dB there. PR 2's
+  real-pack listening check decides whether to switch.
+- **SFZ loads are capped** (`LIMITS` in `sfz/report.ts`), because pack files are untrusted: 256
+  files read per load (the root and every include), 4,000,000 characters of preprocessed text, 65,536
+  characters in one `#define` value, 100,000 regions after `pitch_keytrack` expansion and keyswitch
+  layer copies. A cap stops the expansion cleanly, adds an entry to `report.limits` (so `isClean` is
+  false) and returns what was parsed; only an unreadable root file throws. Numeric opcodes are
+  clamped to their SFZ range and counted in `report.clamped`, and paths with percent-encoded
+  separators or dots, control characters or Windows device names are refused like escaping paths.
+  `SfzReader` receives literal, root-relative paths and must not decode or symlink-follow them.
 - **SFZ choke is one-way.** A new note's groups are `region.group ?? region.exclusiveClass ?? 0`; it
   chokes voices whose `offBy ?? exclusiveClass ?? 0` is among them (0 is none). For SF2 that is
   today's same-class choke; for SFZ, closed cuts open and open does not cut closed.
