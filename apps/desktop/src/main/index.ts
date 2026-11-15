@@ -263,12 +263,17 @@ async function createWindow(): Promise<BrowserWindow> {
 
 function allowMicrophoneOnly(): void {
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback, details) => {
-    const mediaTypes = 'mediaTypes' in details ? details.mediaTypes : undefined;
+    const media = 'mediaTypes' in details ? details : undefined;
     void decideMediaPermission(
       permission,
-      { mediaTypes },
+      {
+        mediaTypes: media?.mediaTypes,
+        requestingUrl: details.requestingUrl,
+        isMainFrame: media?.isMainFrame,
+      },
       {
         platform: process.platform,
+        isAppUrl: (url) => isAppUrl(APP_URL, url),
         askForMicrophone: () => systemPreferences.askForMediaAccess('microphone'),
       },
     ).then(callback);
