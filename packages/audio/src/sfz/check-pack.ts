@@ -137,7 +137,7 @@ export function formatPackReport(results: readonly SfzFileCheck[]): string {
     lines.push(
       `${r.errors.length === 0 ? 'ok  ' : 'FAIL'} ${r.path}`,
       `     regions ${String(r.regions)}, sample files ${String(r.samples)} (${formats || 'none'}), rates ${r.rates.join('/') || 'none'} Hz`,
-      `     dropped: ${names(r.report.dropped) || 'none'}; clamped: ${names(r.report.clamped) || 'none'}; embedded loops ${String(r.report.embeddedLoop)}`,
+      `     dropped: ${names(r.report.dropped) || 'none'}; clamped: ${names(r.report.clamped) || 'none'}; embedded loops ${String(r.report.embeddedLoop)}; unreachable ${String(r.report.unreachable)}`,
       `     unsupported: ${names(r.report.unsupported) || 'none'}`,
       `     unknown: ${names(r.report.unknown) || 'none'}`,
     );
