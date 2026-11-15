@@ -340,7 +340,11 @@ Repeats, voltas and jumps expand by the rules in `../reference/score-model.md` (
 ### Commands and history (`@reprise/model`)
 
 ```ts
-interface Command { name: string; run(draft: Score, warn: (warning: CommandWarning) => void): void }   // mutates an Immer draft
+interface Command {
+  name: string;
+  run(draft: Score, warn: (warning: CommandWarning) => void): void;                // mutates an Immer draft
+  compose?(score: Score, step: (command: Command) => Score): void;                  // composite commands (chain): applyCommand calls this instead of run; step applies a command to the score so far, throws once compose has returned
+}
 interface Change  { command: string; patches: Patch[]; inverse: Patch[]; touchedBars: Id[] }        // touchedBars: master-bar ids layout re-flows
 interface Applied { score: Score; change: Change; warnings: CommandWarning[] }
 interface CommandWarning { code: 'trill-dropped' | 'natural-harmonic-moved'; noteId: Id; message: string }

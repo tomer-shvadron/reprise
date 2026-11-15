@@ -24,7 +24,7 @@ export function chain(name: string, steps: readonly ChainStep[]): Command {
     run() {
       throw new CommandError(
         name,
-        'invariant',
+        'invalid-value',
         'a chain runs through applyCommand, not on a draft',
       );
     },
@@ -34,7 +34,7 @@ export function chain(name: string, steps: readonly ChainStep[]): Command {
       }
       let current = score;
       for (const item of steps) {
-        current = step(typeof item === 'function' ? item(current) : item).score;
+        current = step(typeof item === 'function' ? item(current) : item);
       }
     },
   };

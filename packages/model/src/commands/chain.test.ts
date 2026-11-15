@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { applyCommand, createHistory } from '../history';
+import { HistoryError, applyCommand, createHistory } from '../history';
 import type { Command } from '../history';
 import { CommandError } from './command-error';
 import { newId } from '../id';
@@ -258,5 +258,51 @@ describe('setMasterBars', () => {
     );
     expect(after.masterBars[2]?.tempo?.bpm).toBe(90);
     expect(after.masterBars).toHaveLength(3);
+  });
+});
+
+describe('compose misuse', () => {
+  it('keeps the earlier steps when a composer catches a refusal', () => {
+    const score = buildScore();
+    const lenient: Command = {
+      name: 'lenient',
+      run() {},
+      compose(_score, step) {
+        step(removeBar({ masterBarId: masterBarId(score, 3) }));
+        try {
+          step(removeBar({ masterBarId: 'missing' }));
+        } catch {
+          // Atomicity is the composer's job once it catches.
+        }
+      },
+    };
+    expect(applyCommand(score, lenient).score.masterBars).toHaveLength(3);
+  });
+
+  it('refuses a step that runs after compose returned', () => {
+    const score = buildScore();
+    let late: ((command: Command) => unknown) | undefined;
+    const leaky: Command = {
+      name: 'leaky',
+      run() {},
+      compose(_score, step) {
+        late = step;
+      },
+    };
+    applyCommand(score, leaky);
+    const run = (): unknown => late?.(removeBar({ masterBarId: masterBarId(score, 0) }));
+    expect(run).toThrow(HistoryError);
+  });
+
+  it('refuses a chain run on a draft by hand', () => {
+    const command = chain('By hand', [removeBar({ masterBarId: 'x' })]);
+    expect(() => {
+      applyCommand(buildScore(), {
+        name: 'wrap',
+        run: (draft, warn) => {
+          command.run(draft, warn);
+        },
+      });
+    }).toThrow(CommandError);
   });
 });

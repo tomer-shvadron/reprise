@@ -50,10 +50,12 @@ export interface Command {
   run(draft: Score, warn: (warning: CommandWarning) => void): void;
   /**
    * For a command made of other commands (`chain`): `applyCommand` calls this instead of `run`.
-   * `step` applies a command to the score the previous `step` left, throws if it is refused, and
-   * returns the result; `applyCommand` records the steps' own changes as one, as a group does.
+   * `step` applies a command to the score the previous `step` left and returns the new score; it
+   * throws if the command is refused, and once `compose` has returned. `applyCommand` records the
+   * steps' own changes as one, as a group does. A composer that catches a step's refusal keeps
+   * the steps before it, so atomicity is then its job; `chain` never catches.
    */
-  compose?(score: Score, step: (command: Command) => Applied): void;
+  compose?(score: Score, step: (command: Command) => Score): void;
 }
 
 export interface Change {
@@ -76,13 +78,16 @@ export function applyCommand(score: Score, command: Command): Applied {
     const changes: Change[] = [];
     const warnings: CommandWarning[] = [];
     let current = score;
+    let open = true;
     command.compose(score, (inner) => {
+      if (!open) throw new HistoryError('a composed step ran after compose returned');
       const applied = applyCommand(current, inner);
       current = applied.score;
       warnings.push(...applied.warnings);
       if (applied.change.patches.length > 0) changes.push(applied.change);
-      return applied;
+      return applied.score;
     });
+    open = false;
     return {
       score: current,
       change:
