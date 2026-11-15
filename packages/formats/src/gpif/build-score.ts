@@ -739,7 +739,12 @@ class ScoreBuilder {
     this.#plans.forEach((plan, trackIndex) => {
       const track = this.#tracks[trackIndex];
       if (!track) return;
-      for (const automation of plan.source.automations) {
+      // In score order, as the tempos are: a change moved off an empty bar lands in a later bar
+      // and must not overwrite that bar's own change.
+      const ordered = [...plan.source.automations].sort(
+        (a, b) => a.bar - b.bar || a.position - b.position,
+      );
+      for (const automation of ordered) {
         if (automation.type === 'Sound') {
           const sound = plan.source.sounds.get(automation.value);
           if (!sound) {
@@ -766,8 +771,9 @@ class ScoreBuilder {
           );
           if (!located) {
             // alphaTab keeps the change on a placeholder rest beat in the empty bar, which the
-            // model has no counterpart for (an empty voice holds no beats), so the program change
-            // moves to the track's next beat, where it applies just as audibly.
+            // model has no counterpart for (an empty voice holds no beats). It sounds at the empty
+            // bar's start there, and this track plays nothing until its next beat, so the program
+            // change moves to that beat and sounds the same.
             for (let next = automation.bar + 1; !located && next < track.bars.length; next++) {
               located = this.#locate(next, 0, trackIndex);
             }
