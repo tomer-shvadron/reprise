@@ -1,0 +1,63 @@
+// A synthetic SFZ pack for the loader tests: our own text, no samples, in the shapes real packs use.
+/* A block comment
+   over two lines. */
+<control>
+default_path=samples\
+note_offset=0
+octave_offset=0
+#define $ROOT c4
+#include "common.sfzh"
+
+<global> amp_veltrack=80 pan=10
+<master> volume=-1
+
+// A piano-like group: velocity layers, names with spaces, an envelope and fine tuning.
+<group> lovel=1 hivel=63 ampeg_attack=0.01 ampeg_hold=0.02 ampeg_decay=0.5 ampeg_sustain=70 ampeg_delay=0.01 ampeg_release=0.4
+<region> sample=piano soft C3.wav lokey=c3 hikey=b3 pitch_keycenter=c3 tune=5 transpose=-1
+<region> sample=piano soft C4.wav lokey=c4 hikey=b4 pitch_keycenter=C#4 key=$ROOT
+<group> lovel=64 hivel=127
+<region> sample=piano loud C3.wav lokey=c3 hikey=b3 pitch_keycenter=c3
+
+// Looping and one-shot playback, in both spellings of the loop opcodes.
+<group> amp_veltrack=100
+<region> sample=pad.wav key=48 loop_mode=loop_continuous loop_start=100 loop_end=2000
+<region> sample=pad.wav key=49 loopmode=loop_sustain loopstart=200 loopend=3000
+<region> sample=pad.wav key=50 loop_mode=no_loop offset=500
+<region> sample=ride.wav key=51 loop_mode=one_shot
+
+// A drum kit: a one-way hi-hat choke, written with both spellings of off_by.
+<group> lovel=0 hivel=127
+<region> sample=kick.wav key=$KICK
+<region> sample=hat closed.wav key=42 group=2
+<region> sample=hat open.wav key=46 group=1 off_by=2
+<region> sample=hat pedal.wav key=44 group=3 offby=2
+
+// A drum with a fixed pitch across a key range.
+<region> sample=tom.wav lokey=40 hikey=42 pitch_keycenter=40 pitch_keytrack=0
+
+// Round robin, random layers and trigger modes.
+<group> key=60
+<region> sample=rr1.wav seq_length=2 seq_position=1
+<region> sample=rr2.wav seq_length=2 seq_position=2
+<region> sample=rand low.wav lorand=0 hirand=$HALF
+<region> sample=rand high.wav lorand=$HALF hirand=1
+<region> sample=attack first.wav trigger=first
+<region> sample=attack legato.wav trigger=legato
+<region> sample=release.wav trigger=release
+
+// Keyswitched articulations.
+<group> sw_lokey=24 sw_hikey=26 sw_default=24 lokey=55 hikey=72
+<region> sample=ks sustain.wav sw_last=24 sw_label=Sustain
+<region> sample=ks mute.wav sw_last=25 sw_label=Palm Mute
+<region> sample=ks harmonic.wav sw_last=26 sw_label=Harmonic
+<region> sample=ks noise.wav pitch_keycenter=60 lovel=127 hivel=127
+
+// Opcodes the loader counts and skips, and headers it ignores.
+<curve> curve_index=1 v000=0 v127=1
+<effect> bus=main
+<group> cutoff=2000 fil_type=lpf_2p resonance=3 fileg_attack=0.1 lfo01_freq=3 amp_velcurve_64=0.5 volume_oncc7=2 polyphony=2 off_mode=fast rt_decay=3 vendor_extension=1
+<region> sample=filtered.wav key=70
+
+// Regions that are left out.
+<region> sample=*sine key=71
+<region> sample=muted.wav key=-1
