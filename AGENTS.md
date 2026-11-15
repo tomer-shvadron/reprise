@@ -99,6 +99,7 @@ pnpm desktop:smoke         # launches the packaged app, opens a fixture and play
 pnpm fixtures:check        # re-describes fixtures/ with alphaTab, fails on a stale manifest
 pnpm check:files [paths]   # the real-file pass (fixtures/ and local-tabs/ by default); reports in .check-files/
 pnpm sounds:fetch          # downloads the GM soundfont, verified by SHA-256
+pnpm sfz:check <dir>       # loads every SFZ file under a directory (packs in local-sounds/), checks its sample files, prints the report
 pnpm layout:metrics:check  # fails when the committed layout font metrics are stale
 pnpm e2e                   # the player flows: Playwright Test against the production build (vite preview) in headless Chromium; needs pnpm sounds:fetch
 pnpm test:visual           # painter screenshots; locally against your own references in e2e/visual/__local__/ (gitignored, made by the first run), on CI against the committed Linux baselines; pnpm visual:accept adopts a failed CI run's images
