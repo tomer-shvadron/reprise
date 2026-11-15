@@ -1,11 +1,17 @@
 import { ChevronDownIcon, PanelLeftIcon, PanelRightIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { BOTTOM_PANEL_HEIGHT, PANEL_WIDTH, type PanelId, type UiStore } from '@/state/ui';
+import {
+  BOTTOM_PANEL_HEIGHT,
+  BOTTOM_PANEL_TITLES,
+  PANEL_WIDTH,
+  type PanelId,
+  type UiStore,
+} from '@/state/ui';
 
 import { ResizeHandle } from './resize-handle';
 
@@ -65,11 +71,31 @@ export function AppFrame({ ui, score, transport, sidebar, panel, banner, bottom 
   const bottomHeight = useStore(ui, (state) => state.bottomPanelHeight);
   const setBottomPanelHeight = useStore(ui, (state) => state.setBottomPanelHeight);
   const setBottomPanelOpen = useStore(ui, (state) => state.setBottomPanelOpen);
+  const persistBottomPanelHeight = useStore(ui, (state) => state.persistBottomPanelHeight);
+  const bottomTitle = useStore(ui, (state) => BOTTOM_PANEL_TITLES[state.bottomPanel.view]);
+  const scoreRef = useRef<HTMLElement>(null);
+  const focusBefore = useRef<Element | null>(null);
+
+  useEffect(() => {
+    if (bottomOpen) focusBefore.current = document.activeElement;
+  }, [bottomOpen]);
+
+  // The collapse button unmounts with the region, so focus goes back to where it was before the
+  // region opened, or to the score when that element is gone.
+  const collapse = () => {
+    setBottomPanelOpen(false);
+    const before = focusBefore.current;
+    const target =
+      before instanceof HTMLElement && before.isConnected && before !== document.body
+        ? before
+        : (scoreRef.current?.querySelector<HTMLElement>('[tabindex="0"]') ?? scoreRef.current);
+    target?.focus();
+  };
 
   return (
     <div className="flex h-full flex-col">
       {banner}
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-40 flex-1">
         {panels.sidebar && (
           <>
             <aside
@@ -97,8 +123,10 @@ export function AppFrame({ ui, score, transport, sidebar, panel, banner, bottom 
         )}
 
         <main
+          ref={scoreRef}
+          tabIndex={-1}
           aria-label="Score"
-          className="bg-muted dark:bg-muted/40 relative min-w-0 flex-1 overflow-hidden"
+          className="bg-muted dark:bg-muted/40 relative min-w-0 flex-1 overflow-hidden outline-none"
         >
           {score}
         </main>
@@ -140,24 +168,32 @@ export function AppFrame({ ui, score, transport, sidebar, panel, banner, bottom 
             max={BOTTOM_PANEL_HEIGHT.max}
             direction={-1}
             onResize={setBottomPanelHeight}
+            onResizeEnd={persistBottomPanelHeight}
           />
           <section
-            aria-label="Bottom panel"
-            className="bg-sidebar text-sidebar-foreground relative flex shrink-0 flex-col overflow-auto border-t"
+            aria-label={bottomTitle}
+            className="bg-sidebar text-sidebar-foreground flex min-h-0 flex-col border-t"
             style={{ height: bottomHeight }}
           >
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Collapse bottom panel"
-              className="absolute top-1 right-1 z-10"
-              onClick={() => {
-                setBottomPanelOpen(false);
-              }}
-            >
-              <ChevronDownIcon />
-            </Button>
-            {bottom}
+            <header className="flex shrink-0 items-center justify-between border-b px-3 py-0.5">
+              <h2 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+                {bottomTitle}
+              </h2>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Collapse bottom panel"
+                    onClick={collapse}
+                  >
+                    <ChevronDownIcon />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Collapse bottom panel</TooltipContent>
+              </Tooltip>
+            </header>
+            <div className="min-h-0 flex-1 overflow-auto">{bottom}</div>
           </section>
         </>
       )}

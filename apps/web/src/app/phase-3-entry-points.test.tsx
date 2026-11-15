@@ -59,12 +59,12 @@ describe('phase 3 entry points', () => {
 
   it('trainer.fretboard opens the bottom region on its placeholder and toggles it closed', () => {
     const { run } = renderApp();
-    expect(screen.queryByRole('region', { name: 'Bottom panel' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Fretboard' })).not.toBeInTheDocument();
     run('trainer.fretboard');
-    expect(screen.getByRole('region', { name: 'Bottom panel' })).toHaveTextContent('WP-074');
+    expect(screen.getByRole('region', { name: 'Fretboard' })).toHaveTextContent('WP-074');
     expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
     run('trainer.fretboard');
-    expect(screen.queryByRole('region', { name: 'Bottom panel' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Fretboard' })).not.toBeInTheDocument();
   });
 
   it('trainer.metronome opens the metronome with no song open', () => {

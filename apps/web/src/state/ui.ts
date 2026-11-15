@@ -31,6 +31,9 @@ export type PanelView = 'mixer' | 'speedTrainer' | 'tuner' | 'metronome';
 /** What the bottom region shows, one view at a time; the live fretboard (WP-074) is the first. */
 export type BottomPanelView = 'fretboard';
 
+/** The region's accessible name and header, per view. */
+export const BOTTOM_PANEL_TITLES: Record<BottomPanelView, string> = { fretboard: 'Fretboard' };
+
 /** The score's view mode and paper; what layout reads from the ui. */
 export interface UiView {
   mode: LayoutOptions['mode'];
@@ -72,8 +75,10 @@ export interface UiState {
   toggleBottomPanelView: (view: BottomPanelView) => void;
   /** Collapses or expands the bottom region, keeping its view. */
   setBottomPanelOpen: (open: boolean) => void;
-  /** Clamped to `BOTTOM_PANEL_HEIGHT` and stored for the next session. */
+  /** Clamped to `BOTTOM_PANEL_HEIGHT`; not stored until `persistBottomPanelHeight`. */
   setBottomPanelHeight: (height: number) => void;
+  /** Stores the height for the next session; call when a resize ends, not on every step. */
+  persistBottomPanelHeight: () => void;
   setZoom: (zoom: number) => void;
   setPaletteOpen: (open: boolean) => void;
   setViewMode: (mode: UiView['mode']) => void;
@@ -85,6 +90,15 @@ export interface UiState {
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+/**
+ * The score's viewport changes with the bottom region, and a size change alone does not move the
+ * playhead back into view, so ask for one follow; only while following, so a hand scroll's pause
+ * stands (`requestFollow` itself turns following on).
+ */
+function followAfterResize(get: () => UiState) {
+  if (get().follow.on) get().requestFollow();
+}
 
 export function createUiStore(theme: Theme = initialTheme()) {
   return create<UiState>()((set, get) => ({
@@ -135,22 +149,26 @@ export function createUiStore(theme: Theme = initialTheme()) {
     },
     showBottomPanelView: (view) => {
       set({ bottomPanel: { open: true, view } });
+      followAfterResize(get);
     },
     toggleBottomPanelView: (view) => {
       const { open, view: shown } = get().bottomPanel;
-      // `shown === view` is trivially true while `fretboard` is the only view; it matters with a second.
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      if (open && shown === view) get().setBottomPanelOpen(false);
+      const showing: BottomPanelView | undefined = open ? shown : undefined;
+      if (showing === view) get().setBottomPanelOpen(false);
       else get().showBottomPanelView(view);
     },
     setBottomPanelOpen: (open) => {
       set((state) => ({ bottomPanel: { ...state.bottomPanel, open } }));
+      followAfterResize(get);
     },
     setBottomPanelHeight: (height) => {
       const { min, max } = BOTTOM_PANEL_HEIGHT;
       const next = clamp(Math.round(height), min, max);
-      writeStoredBottomPanelHeight(next);
       set({ bottomPanelHeight: next });
+      followAfterResize(get);
+    },
+    persistBottomPanelHeight: () => {
+      writeStoredBottomPanelHeight(get().bottomPanelHeight);
     },
     setZoom: (zoom) => {
       set({ zoom: clamp(zoom, ZOOM.min, ZOOM.max) });

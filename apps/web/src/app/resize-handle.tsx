@@ -15,6 +15,8 @@ interface ResizeHandleProps {
   /** `x` (the default) resizes a width and its separator is vertical; `y` resizes a height. */
   axis?: 'x' | 'y';
   onResize: (size: number) => void;
+  /** Fires when a drag ends or after a key press: the moment to store the size. */
+  onResizeEnd?: () => void;
 }
 
 export function ResizeHandle({
@@ -25,12 +27,16 @@ export function ResizeHandle({
   direction,
   axis = 'x',
   onResize,
+  onResizeEnd,
 }: ResizeHandleProps) {
   const drag = useRef<{ start: number; size: number } | undefined>(undefined);
   const pointer = (event: PointerEvent<HTMLDivElement>) =>
     axis === 'x' ? event.clientX : event.clientY;
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    // Stops the compatibility mouse events, so a drag does not select text; focus is then ours to move.
+    event.preventDefault();
+    event.currentTarget.focus();
     event.currentTarget.setPointerCapture(event.pointerId);
     drag.current = { start: pointer(event), size: value };
   };
@@ -39,7 +45,9 @@ export function ResizeHandle({
     onResize(drag.current.size + direction * (pointer(event) - drag.current.start));
   };
   const onPointerUp = () => {
+    if (!drag.current) return;
     drag.current = undefined;
+    onResizeEnd?.();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const keys =
@@ -50,6 +58,7 @@ export function ResizeHandle({
     if (step === undefined) return;
     event.preventDefault();
     onResize(value + direction * step);
+    onResizeEnd?.();
   };
 
   return (
@@ -66,6 +75,7 @@ export function ResizeHandle({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onLostPointerCapture={onPointerUp}
       onKeyDown={onKeyDown}
     />
   );
