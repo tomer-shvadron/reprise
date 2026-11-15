@@ -16,14 +16,17 @@ import {
   type IpcMainInvokeEvent,
 } from 'electron';
 
-import type { FileFilter, MenuCommandId } from '@reprise/web';
+import type { FileFilter, MenuCommandId, RecentSong } from '@reprise/web';
 
 import { APP_INDEX_URL, APP_SCHEME, createAppProtocolHandler } from './app-protocol';
 import { isAppUrl } from './app-url';
+import { readPath, writePath } from './file-io';
 import { registerInvokeHandlers, sendEvent } from './ipc';
 import { menuTemplate } from './menu';
 import { openedFile } from './opened-file';
 import { PathAccess } from './path-access';
+import { describePickedFile, walkFolder } from './pick-folder';
+import { listDirIn, mkdirIn, moveIn, removeIn, type StorageRoots } from './storage-fs';
 import {
   DEFAULT_WINDOW_STATE,
   fitToDisplays,
@@ -46,16 +49,18 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const libraryDir = join(app.getPath('music'), 'Reprise');
-const dataDir = app.getPath('userData');
-const windowStateFile = join(dataDir, 'window-state.json');
-const access = new PathAccess([libraryDir, dataDir]);
+// The app's own files get a folder of their own: userData is also Chromium's profile (IndexedDB,
+// Local Storage, cookies), which no renderer call may reach.
+const userDataDir = app.getPath('userData');
+const dataDir = join(userDataDir, 'files');
+const windowStateFile = join(userDataDir, 'window-state.json');
+// Only files the user picked or saved in a dialog; the roots are reached by root-relative paths.
+const access = new PathAccess();
+const storageRoots: StorageRoots = { library: libraryDir, data: dataDir };
+let recentSongs: readonly RecentSong[] = [];
 
 const dialogFilters = (filters: readonly FileFilter[]): DialogFilter[] =>
   filters.map(({ name, extensions }) => ({ name, extensions: [...extensions] }));
-
-function assertAccess(path: string): void {
-  if (!access.allows(path)) throw new Error(`Access to ${path} was not granted`);
-}
 
 function isTrusted(event: IpcMainInvokeEvent): boolean {
   const frame = event.senderFrame;
@@ -92,14 +97,53 @@ registerInvokeHandlers(
       access.grant(result.filePath);
       return result.filePath;
     },
-    'file:read': async (_event, path) => {
-      assertAccess(path);
-      return readFile(path);
-    },
+    'file:read': (_event, path) => readPath(path, access, storageRoots),
     'file:write': async (_event, path, bytes) => {
-      assertAccess(path);
-      await writeFile(path, bytes);
+      await writePath(path, bytes, access, storageRoots);
       return undefined;
+    },
+    'file:open-many': async (event, filters) => {
+      const result = await dialog.showOpenDialog(ownerWindow(event), {
+        properties: ['openFile', 'multiSelections'],
+        filters: dialogFilters(filters),
+      });
+      if (result.canceled) return [];
+      return Promise.all(
+        result.filePaths.map(async (path) => {
+          // Read-only: an import never writes back to the user's own files.
+          access.grantRead(path);
+          return describePickedFile(path);
+        }),
+      );
+    },
+    'folder:open': async (event, filters) => {
+      const result = await dialog.showOpenDialog(ownerWindow(event), {
+        properties: ['openDirectory'],
+      });
+      const [dir] = result.filePaths;
+      if (result.canceled || dir === undefined) return undefined;
+      const folder = await walkFolder(dir, filters);
+      // Each file is granted read-only so the page can import it later; the folder itself is not.
+      for (const file of folder.files) access.grantRead(file.path);
+      return folder;
+    },
+    'storage:mkdir': async (_event, path) => {
+      await mkdirIn(storageRoots, path);
+      return undefined;
+    },
+    'storage:list': (_event, path) => listDirIn(storageRoots, path),
+    'storage:move': async (_event, from, to) => {
+      await moveIn(storageRoots, from, to);
+      return undefined;
+    },
+    'storage:remove': async (_event, path) => {
+      await removeIn(storageRoots, path);
+      return undefined;
+    },
+    'menu:set-recent': (_event, items) => {
+      recentSongs = items;
+      applyMenu();
+      return Promise.resolve(undefined);
     },
     'app:library-dir': () => Promise.resolve(libraryDir),
     'app:data-dir': () => Promise.resolve(dataDir),
@@ -123,6 +167,27 @@ registerInvokeHandlers(
 function sendMenuCommand(id: MenuCommandId): void {
   const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
   if (window) sendEvent(window.webContents, 'menu:command', id);
+}
+
+function sendOpenRecent(id: string): void {
+  const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  if (window) sendEvent(window.webContents, 'menu:open-recent', id);
+}
+
+function applyMenu(): void {
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(
+      menuTemplate({
+        isMac: process.platform === 'darwin',
+        isPackaged: app.isPackaged,
+        docsUrl: DOCS_URL,
+        sendCommand: sendMenuCommand,
+        openExternal: (url) => void shell.openExternal(url),
+        recent: recentSongs,
+        openRecent: sendOpenRecent,
+      }),
+    ),
+  );
 }
 
 function persistWindowState(window: BrowserWindow): void {
@@ -219,19 +284,10 @@ function allowMicrophoneOnly(): void {
 async function start(): Promise<void> {
   await app.whenReady();
   await mkdir(libraryDir, { recursive: true });
+  await mkdir(dataDir, { recursive: true });
   protocol.handle(APP_SCHEME, createAppProtocolHandler(RENDERER_DIR));
   allowMicrophoneOnly();
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate(
-      menuTemplate({
-        isMac: process.platform === 'darwin',
-        isPackaged: app.isPackaged,
-        docsUrl: DOCS_URL,
-        sendCommand: sendMenuCommand,
-        openExternal: (url) => void shell.openExternal(url),
-      }),
-    ),
-  );
+  applyMenu();
   await createWindow();
 
   app.on('activate', () => {

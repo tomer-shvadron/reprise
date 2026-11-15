@@ -1,4 +1,5 @@
 export type {
+  DirEntry,
   EventChannel,
   EventChannels,
   FileFilter,
@@ -9,6 +10,10 @@ export type {
   InvokeResult,
   MenuCommandId,
   OpenedFile,
+  PickedFileInfo,
+  PickedFolderInfo,
   PrintOptions,
+  RecentSong,
   RepriseBridge,
+  StorageRoot,
 } from './platform/bridge';
