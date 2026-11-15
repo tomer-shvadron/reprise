@@ -98,14 +98,13 @@ export function onPass(run: RampRun, plan: RampPlan, config: RampConfig): PassRe
   return { run: { stepIndex, reps: 0, missed: false }, setPercent: at(stepIndex), completed };
 }
 
-/** A value for a field, in the unit it is shown in: whole BPM, percent to one decimal. */
-export function formatValue(percent: number, unit: RampUnit, referenceBpm: number): string {
-  return unit === 'percent'
-    ? String(Math.round(percent * 10) / 10)
-    : String(Math.round((referenceBpm * percent) / 100));
-}
+/** A value as a field shows it; the setting itself keeps the exact number. */
+export const displayValue = (value: number): string => String(Math.round(value * 100) / 100);
 
-/** The same ramp setting expressed in the other unit, for the Percent | BPM toggle. */
+/**
+ * The same ramp setting expressed in the other unit, for the Percent | BPM toggle. Exact, so
+ * toggling twice changes nothing; the fields round for display only.
+ */
 export function convertConfig(
   config: RampConfig,
   unit: RampUnit,
@@ -114,15 +113,13 @@ export function convertConfig(
   if (config.unit === unit) return config;
   const convert = (value: number) => {
     const percent = toPercent(value, config.unit, referenceBpm);
-    return unit === 'percent'
-      ? Math.round(percent * 10) / 10
-      : Math.round((referenceBpm * percent) / 100);
+    return unit === 'percent' ? percent : (referenceBpm * percent) / 100;
   };
   return {
     ...config,
     unit,
     start: convert(config.start),
-    step: Math.max(convert(config.step), 1),
+    step: convert(config.step),
     target: convert(config.target),
   };
 }

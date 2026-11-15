@@ -6,10 +6,15 @@ test.beforeEach(async ({ app }) => {
 });
 
 test('ramps a looped bar up to the target, step by step', async ({ app, page }) => {
-  // Bars 5 and 6 are in 3/4: a pass takes 4 s at 90 BPM.
-  await app.dragContent(centre(await app.barBox(5)), centre(await app.barBox(6)));
+  // Bar 5 is in 3/4: a pass takes 2 s at 90 BPM. A drag inside one bar selects just that bar.
+  const bar = await app.barBox(5);
+  const middle = centre(bar).y;
+  await app.dragContent(
+    { x: bar.x + bar.width * 0.3, y: middle },
+    { x: bar.x + bar.width * 0.7, y: middle },
+  );
   await page.keyboard.press('F9');
-  await expect(page.getByRole('button', { name: 'Loop bars 5–6' })).toHaveAttribute(
+  await expect(page.getByRole('button', { name: /^Loop bars? 5/ })).toHaveAttribute(
     'aria-pressed',
     'true',
   );
@@ -31,7 +36,7 @@ test('ramps a looped bar up to the target, step by step', async ({ app, page }) 
   await page.keyboard.press('Alt+S');
   await expect(app.playButton).toHaveAccessibleName('Pause');
   await app.expectSound();
-  // The three passes take about 11 s.
+  // The target is reached after two passes; the third completes the run, about 6 s in all.
   await expect(panel.getByText('Step 2 of 3')).toBeVisible({ timeout: 15_000 });
   await expect(panel.getByText('Target reached')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('textbox', { name: 'Tempo in BPM' })).toHaveValue('108');

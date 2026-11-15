@@ -5,10 +5,10 @@
 
 It holds the speed trainer (WP-070) and the entry points the lead stubbed in WP-056 for the rest:
 
-| Export                           | What it is                                                                                                                                     |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TrainerPanel`                   | The speed trainer for its view and a placeholder for each other, naming its work package. The app shows it in the right panel for those views. |
-| `trainerCommands` (`./commands`) | `trainer.speedTrainer`, `trainer.tuner`, `trainer.metronome` and `trainer.fretboard`, each showing its view.                                   |
+| Export                           | What it is                                                                                                                                                                                                                       |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TrainerPanel`                   | The speed trainer for its view and a placeholder for each other, naming its work package. The app shows it in the right panel for those views.                                                                                   |
+| `trainerCommands` (`./commands`) | `trainer.speedTrainer`, `trainer.tuner`, `trainer.metronome` and `trainer.fretboard`, each showing its view, and the speed trainer's `trainer.speedTrainerToggle`, `trainer.speedTrainerMissed` and `trainer.speedTrainerReset`. |
 
 ## What it can rely on
 
@@ -57,6 +57,11 @@ shared field is a `type:contract` issue for the lead.
   Reset to idle: the loop changes or is cleared, another document opens, or Reset. Pause and stop
   do not end it, and a part-played pass counts when it crosses the loop's end. A press of
   "Missed pass" in the 0.225 s between the event and the audible wrap counts for the next pass.
-- The run lives in the store, outside React, so closing the panel does not stop it. The panel
-  binds `trainerCommands` itself because the right panel has no command source.
+- The run lives in the store, outside React, so closing the panel does not stop it. The panel gets
+  its buttons from the registry through `useCommand`, as the shell provides a command source around
+  the right panel.
+- **For WP-073.** Start calls `practice.noteLoop(range)` before the first play, when no session
+  exists yet, so it is a no-op on a song's first play. Note the current `playback.settings.loop`
+  when the session opens, or the loop is only recorded once a step completes. The unit toggle
+  keeps the exact value, so flipping it twice changes nothing; the fields round for display.
 - Keys: Alt+S start, hold or resume; Alt+X mark the pass missed; Alt+Shift+S reset.

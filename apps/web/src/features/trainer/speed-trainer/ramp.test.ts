@@ -91,11 +91,16 @@ describe('convertConfig', () => {
   it('converts between units against the reference tempo and back', () => {
     const bpm = convertConfig(config({ start: 50, step: 10, target: 100 }), 'bpm', 120);
     expect(bpm).toMatchObject({ unit: 'bpm', start: 60, step: 12, target: 120 });
-    expect(convertConfig(bpm, 'percent', 120)).toMatchObject({
-      unit: 'percent',
-      start: 50,
-      step: 10,
-      target: 100,
-    });
+    const back = convertConfig(bpm, 'percent', 120);
+    expect(back.start).toBeCloseTo(50, 9);
+    expect(back.step).toBeCloseTo(10, 9);
+    expect(back.target).toBeCloseTo(100, 9);
+  });
+
+  it('round-trips losslessly where a BPM step is not a whole number', () => {
+    const original = config({ start: 70, step: 5, target: 100 });
+    const back = convertConfig(convertConfig(original, 'bpm', 90), 'percent', 90);
+    expect(back.step).toBeCloseTo(5, 9);
+    expect(percentPlan(back, 90).percents).toEqual(percentPlan(original, 90).percents);
   });
 });

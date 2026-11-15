@@ -15,8 +15,9 @@ const STUBS: Record<
 };
 
 /**
- * Replaced one view at a time: the speed trainer (WP-070) is in, WP-071, WP-072 and WP-074 follow. Each lands as its own
- * component here and replaces its `STUBS` entry with a branch for that component.
+ * Replaced one view at a time: the speed trainer (WP-070) is in, and WP-071, WP-072 and WP-074
+ * follow. Each lands as its own component here and replaces its `STUBS` entry with a branch for
+ * that component.
  */
 export function TrainerPanel({ view }: { view: TrainerView }) {
   if (view === 'speedTrainer') return <SpeedTrainerPanel />;

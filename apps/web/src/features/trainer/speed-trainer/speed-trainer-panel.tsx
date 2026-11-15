@@ -13,7 +13,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { bpmFor, loopBarNumbers, parseBpm, TEMPO_PERCENT } from '@/features/transport';
 
-import { convertConfig, REPS, toPercent, type OnMiss, type RampUnit } from './ramp';
+import { convertConfig, displayValue, REPS, toPercent, type OnMiss, type RampUnit } from './ramp';
 import { speedTrainerFor } from './speed-trainer-for';
 import { referenceBpmFor } from './speed-trainer-store';
 
@@ -74,7 +74,7 @@ function NumberField({
           inputMode="decimal"
           disabled={disabled}
           className="text-right tabular-nums"
-          value={draft ?? String(value)}
+          value={draft ?? displayValue(value)}
           onFocus={(event) => {
             event.currentTarget.select();
           }}
