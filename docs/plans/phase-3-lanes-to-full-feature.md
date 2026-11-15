@@ -272,7 +272,7 @@ Lane ownership in this phase:
 
 - Offline tests assert that the distortion preset adds harmonics and that bypass is bit-identical to no chain.
 
-- **Decision (owner, 2026-11-16): reverb is one shared send bus, not an insert.** Each strip has a post-fader, post-pan send into one convolver whose return joins the master bus, so a track's reverb stage is its send level. A convolver per track multiplies the one long convolution by the track count (measured offline: 2 to 3 times the cost at 8 tracks, with the same chains), and the fader and the mute gate sit before the send. This departs from the chain order in the deliverable above. See the Effects chain section of `packages/audio/README.md`.
+- **Decision (lead, 2026-11-16, decision 3 on #196): reverb is one shared send bus, not an insert.** Each strip has a post-fader, post-pan send into one convolver whose return joins the master bus, so a track's reverb stage is its send level. A convolver per track multiplies the one long convolution by the track count (measured offline: 2.1 to 2.8 times the cost at 8 tracks and 2.7 to 3.5 at 16 with the same chains; 1.9 and 2.0 on CI), and the fader and the mute gate sit before the send. This departs from the chain order in the deliverable above. See the Effects chain section of `packages/audio/README.md`.
 
 ## WP-093: HQ articulation layers
 

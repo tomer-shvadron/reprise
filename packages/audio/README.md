@@ -570,16 +570,16 @@ insert.input -+-> direct (Gain 1) ----------------------------------------------
 strip, after the fader and the panner: send (Gain) -> shared ReverbBus (a convolver) -> master.input
 ```
 
-| Stage        | Nodes                                                                                                                  | Channels |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------- | -------- |
-| `input`      | Gain (pre-drive level)                                                                                                 | mono     |
-| `drive`      | Gain (1/4), WaveShaper (curve `clean`, `overdrive`, `distortion`, `fuzz`; oversample none, 2x, 4x, 4x), 25 Hz highpass | mono     |
-| `tone`       | three biquads: lowshelf 120 Hz, peaking 750 Hz, highshelf 3.2 kHz                                                      | mono     |
-| `cabinet`    | Convolver (`disableNormalization`, a generated 2048-tap cabinet)                                                       | mono     |
-| `modulation` | chorus: two Delays (15 ms) swung by one Oscillator (0.8 Hz), the sides in antiphase, wet/dry mix                       | stereo   |
-| `delay`      | Delay (up to 1.5 s), feedback Gain (at most 0.6) through a 4 kHz lowpass, wet mix                                      | stereo   |
-| `output`     | Gain (the preset's makeup)                                                                                             | stereo   |
-| `reverb`     | the strip's send Gain into the shared bus                                                                              | stereo   |
+| Stage        | Nodes                                                                                                                                                                | Channels |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `input`      | Gain (pre-drive level)                                                                                                                                               | mono     |
+| `drive`      | Gain (1/4), WaveShaper (curve `clean`, `overdrive`, `distortion`, `fuzz`; oversample none, 2x, 4x, 4x), 25 Hz highpass                                               | mono     |
+| `tone`       | three biquads: lowshelf 120 Hz, peaking 750 Hz, highshelf 3.2 kHz                                                                                                    | mono     |
+| `cabinet`    | Convolver (`disableNormalization`, a generated 46 ms cabinet)                                                                                                        | mono     |
+| `modulation` | chorus: two Delays (15 ms) swung by one Oscillator (0.8 Hz), the sides in antiphase, wet/dry mix; the head is explicitly stereo, so a mono source reaches both sides | stereo   |
+| `delay`      | Delay (up to 1.5 s), feedback Gain (at most 0.6) through a 4 kHz lowpass, wet mix                                                                                    | stereo   |
+| `output`     | Gain (the preset's makeup)                                                                                                                                           | stereo   |
+| `reverb`     | the strip's send Gain into the shared bus                                                                                                                            | stereo   |
 
 An amp is mono: `input` to `cabinet` take the sum of the channels (`channelCountMode: 'explicit'`),
 and a bypassed amp stage keeps a stereo sample stereo, because the dry connection is stereo.
@@ -612,20 +612,25 @@ once with no rebuild; a `packId` change is not.
 
 ### Switching, bypass and idle paths
 
-- One primitive, `BypassSlot`: a dry connection that is always there, and at most one processing
-  path beside it. A switch is a 20 ms linear crossfade (a linear ramp lands exactly on 0 and 1;
-  a reversal mid-fade restarts from the interpolated value). When the fade ends the idle side is
+- One primitive, `BypassSlot`: a dry connection that is always there, and processing paths
+  beside it. A switch is a 20 ms equal-power crossfade (a quarter sine in, a quarter cosine out,
+  ten straight segments that land exactly on 0 and 1; a reversal mid-fade restarts from the
+  interpolated value). Equal power, because the paths of a preset change are partly correlated:
+  a straight crossfade dipped 5 dB between `clean` and `overdrive` at its middle, and two
+  correlated paths sum to at most the square root of two. When the fade ends the idle side is
   disconnected, so a bypassed slot is a single gain-1 connection and its nodes cost nothing.
-  A slot is made for each stage and for the strip (direct against chain).
+  A slot is made for each stage and for the strip.
 - A fully bypassed chain is structural: the chain is disposed, `insert.input -> direct ->
 insert.output` is all that is left, and the rendered samples are bit-identical to a strip that
   never had effects, the sign of zero included.
-- A change of one stage (on, off, another curve or cabinet) crossfades that stage alone, through
-  its dry connection: the new path is built when the old one has faded out. A change of more than
-  one stage is a preset change: its levels differ mid-fade (a 17 dB makeup moving against a drive
-  fading out clicked in the first version), so the strip swaps the whole chain through the direct
-  path. Continuous parameters (gains, tone gains, delay time, feedback, mix) are smoothed in place
-  with the strip's 5 ms constant (50 ms for a delay time).
+- A change of one stage (on, off, another curve or cabinet) crossfades that stage alone, ducking
+  through its dry connection: the new path is built when the old one has faded out. A change of
+  more than one stage is a preset change: the strip builds the new chain (inside the slot's
+  build step, so one that is replaced first is never made) and crosses over from the old chain
+  to it directly, the dry connection staying out of it. Going through dry put the raw GM signal
+  between two cabinet-filtered ones and doubled the time. Continuous parameters (gains, tone
+  gains, delay time, feedback, mix) are smoothed in place with the strip's 5 ms constant (50 ms
+  for a delay time).
 - The idle path is disconnected from a timer (`defer`, a poll of the context's clock; a test
   injects its own and flushes it from `suspend`).
 
@@ -634,7 +639,8 @@ insert.output` is all that is left, and the rendered samples are bit-identical t
 The work package lists reverb among the inserts. A convolver per track would multiply the one long
 convolution (1.4 s, stereo) by the track count: measured offline over two runs, 8 tracks with a reverb
 each cost 2.1 to 2.8 times as much as the same chains sharing one bus (1.5 to 2.0 s against 0.72 s
-for 10 s of audio), 16 tracks 2.7 to 3.5 times (3.4 to 4.4 s against 1.26 s). So each strip has a post-fader, post-pan send into one `ReverbBus`, whose return
+for 10 s of audio), 16 tracks 2.7 to 3.5 times (3.4 to 4.4 s against 1.26 s). On CI (run 43775156445) the ratio was 1.9
+at 8 tracks and 2.0 at 16. So each strip has a post-fader, post-pan send into one `ReverbBus`, whose return
 joins the master bus, and a track's "reverb stage" is its send level. The fader scales the send
 and the mute gate is before everything, so a muted track sends nothing. The bus is made on the
 first send and lives until `dispose`.
@@ -645,8 +651,8 @@ first send and lives until `dispose`.
 `ConvolverNode` refuses another rate), from fixed seeds (mulberry32): nothing is committed,
 fetched or taken from a recording, so there is no third-party material and no licence entry. The
 cabinets (`open-1x12`, `closed-2x12`, `closed-4x12`) are a unit impulse through an RBJ biquad
-cascade (highpass, cone resonance, presence peak, two notches, a sixth-order lowpass), cut at 2048
-samples with a half-Hann fade, normalised to unit energy. The room is stereo, 1.4 s, with a 10 ms
+cascade (highpass, cone resonance, presence peak, two notches, a sixth-order lowpass), cut at 46 ms
+with a half-Hann fade, normalised to unit energy. The room is stereo, 1.4 s, with a 10 ms
 pre-delay, twelve early taps and a two-band noise tail (RT60 about 0.9 s lows, 0.5 s highs), the
 channels on independent seeds. `ImpulseBank` makes them on first use and keeps the `AudioBuffer`s:
 about 0.5 MB for the room and 24 KB a cabinet at 44.1 kHz, under 2 MB for all of them at 48 kHz.
@@ -657,19 +663,35 @@ They are not sample memory and stay out of `MemoryReport.decodedBytes`.
 A 220 Hz sine at -12 dBFS through a strip (the reverb return left out), harmonics 2 to 8 by
 `toneLevel` over 0.25 to 0.75 s. The tests' thresholds are set from these values with margin:
 
-| Preset       | THD (2 to 8) | 2f / f | RMS against bypass (plucked line, -18 dBFS) |
-| ------------ | ------------ | ------ | ------------------------------------------- |
-| bypassed     | under 1e-6   | 0      | 0 dB                                        |
-| `clean`      | 0.010        | 0      | within 3 dB (matched to 0.2 dB)             |
-| `overdrive`  | 0.15         | 0.0001 | within 3 dB                                 |
-| `distortion` | 0.31         | 0      | within 3 dB                                 |
-| `fuzz`       | 0.43         | 0.016  | within 3 dB                                 |
+| Preset       | THD (2 to 8) | 2f / f | RMS against bypass, forte (-26 dBFS) / mezzo (-31) |
+| ------------ | ------------ | ------ | -------------------------------------------------- |
+| bypassed     | under 1e-6   | 0      | 0 dB                                               |
+| `clean`      | 0.010        | 0      | +0.1 / +0.2 dB                                     |
+| `overdrive`  | 0.15         | 0.0001 | -0.3 / +0.3 dB                                     |
+| `distortion` | 0.31         | 0      | about -2.2 / +2.2 dB                               |
+| `fuzz`       | 0.43         | 0.016  | about -2.1 / +2.1 dB                               |
 
-`output.gainDb` of each amp preset is its makeup, so a chain never pushes a mix into the master
-limiter: without it the amp presets were 5 to 23 dB louder than bypass. The bench
-(`effects/effects.bench.ts`, no budget) renders 10 s offline of 8 and 16 tracks: 8 tracks cost 0.23 s with no chain,
-0.72 s with distortion chains and the shared reverb, 0.39 s with only the reverb; 16 tracks 0.46,
-1.26 and 0.62 s (Apple M4 Pro, headless Chromium).
+The level match is calibrated on a plucked line (harmonics at 1/k, a new pitch every half second)
+at **forte, -26 dBFS RMS**, which is about a forte GM note (`loudness.test.ts`: a steel note peaks
+near -18 dBFS), and checked at mezzo, -31 (velocity 96 against 127). A saturating preset puts out
+nearly the same level whatever it is fed (about 0.9 dB per dB), so the amp presets' `output.gainDb`
+sits midway between the two levels: they are 2 dB under bypass at forte and 2 dB over at mezzo,
+and wherever a note is much quieter than mezzo they get louder than bypass (about 8 dB over at
+-42 dBFS). Their peaks stay bounded, about -11 dBFS per strip at the hottest input, so one track
+cannot reach the master ceiling.
+
+The bench (`effects/effects.bench.ts`) renders 5 s offline of 16 tracks, each with a three-note
+chord every 1.25 s: 0.64 s with distortion chains and the shared reverb (the budgeted row of the
+roadmap, 1 000 ms), 0.27 s with no chain (Apple M4 Pro, headless Chromium).
+
+### Known limits
+
+- A saturating preset aliases on high notes: with the tone and cabinet stages out, `distortion`
+  puts energy 37 dB under the fundamental at 1760 Hz and `fuzz` 27 dB under (a curve with no
+  memory fed a pure sine can only fold harmonics below it). `WaveShaperNode` oversamples at most
+  4x, which `distortion` and `fuzz` use; `overdrive` uses 2x and `clean` none, its THD being 1%.
+  The cabinet's lowpass cannot remove what folded below the fundamental. A gentle lowpass ahead
+  of the shaper would, at the price of the tone; left for the ear.
 
 ## SF2 loader and GM tier
 
