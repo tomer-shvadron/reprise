@@ -26,6 +26,15 @@ It holds the speed trainer (WP-070) and the entry points the lead stubbed in WP-
 - `playback.lastLoop` and `playback.settings` for the loop event and the tempo; the speed trainer
   steps tempo through the audio service.
 
+## The fretboard (WP-074)
+
+`fretboard/` draws the current track's neck (its tuning, 24 frets, the capo) once as SVG and lights
+the notes of the beat under the drawn playhead (`heard`), named. `fretboard-model.ts` precomputes a
+bar-to-notes lookup per track when the score changes, so a tick is a binary search; the position
+reader repaints only the few lit dots, outside React, and only when the lit set changes. In edit
+mode with the transport stopped it lights the edit cursor's beat. The left-handed flip is remembered
+per viewer (`reprise.fretboardLeftHanded`). The highlights are not a live region.
+
 A run state of the speed trainer is the feature's own (a store under this folder). Needing another
 shared field is a `type:contract` issue for the lead.
 
