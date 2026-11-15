@@ -93,8 +93,11 @@ export interface InstrumentSink {
 
 /** The metronome and the count-in. `ClickSynth` is the built-in implementation. */
 export interface MetronomeSink {
-  /** A click at `when`; `accent` marks the first beat of a bar. */
-  click(when: number, accent: boolean): void;
+  /**
+   * A click at `when`; `accent` marks a stressed beat. `subdivision` marks a click between beats
+   * (the standalone click's eighths, triplets and sixteenths): softer than a beat.
+   */
+  click(when: number, accent: boolean, subdivision?: boolean): void;
   /** Cancels clicks sounding at `when` or scheduled after it. */
   silence(when: number): void;
   /** 0 to 1. */
