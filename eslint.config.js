@@ -48,9 +48,9 @@ const ELECTRON_IN_DESKTOP = boundary(
   'electron-only-in-desktop',
   'electron is imported only inside apps/desktop',
 );
-const ORACLE_IN_TESTS = boundary(
-  'alphatab-only-in-oracle-tests',
-  '@coderline/alphatab, the dev-only oracle, is imported only under packages/formats/test/ and scripts/',
+const ALPHATAB_IN_FORMATS_TESTS = boundary(
+  'alphatab-only-in-formats-tests-and-scripts',
+  '@coderline/alphatab, the dev-only oracle, is imported only under packages/formats/test/ (the oracle, the files check, fixture tests) and scripts/',
   'docs/reference/file-formats.md, "Oracle"',
 );
 
@@ -84,7 +84,10 @@ const packageSpecifier = (name) => `^${name}(?:/|$)`;
 
 /** @typedef {{ regex: string; message: string; allowTypeImports?: boolean }} Restriction */
 
-const ORACLE = { regex: packageSpecifier('@coderline/alphatab'), message: ORACLE_IN_TESTS };
+const ORACLE = {
+  regex: packageSpecifier('@coderline/alphatab'),
+  message: ALPHATAB_IN_FORMATS_TESTS,
+};
 
 /** @param {Restriction[]} patterns @returns {import('eslint').Linter.RulesRecord} */
 const restrictImports = (patterns) => ({

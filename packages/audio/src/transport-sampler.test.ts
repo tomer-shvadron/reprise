@@ -144,6 +144,11 @@ describe('The transport through the real sampler', () => {
         recording.noteOn(event);
         real.noteOn(event);
       },
+      // The real sink applies the mixer changes the song carries; dropping them would play it flat.
+      mix(event) {
+        recording.mix(event);
+        real.mix?.(event);
+      },
       allNotesOff(when) {
         recording.allNotesOff(when);
         real.allNotesOff(when);

@@ -200,7 +200,9 @@ specifics and the places the file is ambiguous.
 - **Harmonics**: `value` is the fret position the harmonic sounds at, from the node's distance
   above the fretted note (2.4, 3.2, 8.2, 9.6, 14.7 and 21.7 where the node falls between frets);
   GP5's artificial harmonic is computed from its stored pitch, GP4's from its type (15, 17, 22 are
-  +5, +7, +12); pinch and semi harmonics sound the octave.
+  +5, +7, +12); pinch and semi harmonics sound the octave. GP3's beat-level artificial harmonic
+  has no data of its own, so its `value` comes from the note's fret, as alphaTab 1.8.4 reads it
+  (the owner's "follow alphaTab" decision, #76).
 - **Swapped accidentals** (GP5): the note is respelled with the model's `respell` against the
   bar's key, which stores the enharmonic in `Note.accidental`.
 - **Lyrics**: the raw block goes to the lyric track's `Track.lyrics` (all five lines, `startBar`
