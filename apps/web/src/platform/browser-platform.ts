@@ -1,3 +1,6 @@
+import { createOpfsStorage } from './opfs-storage';
+import { pickFiles, pickFolder } from './picked-files';
+import { isStoragePath, parseStoragePath } from './storage-path';
 import type { FileFilter, OpenedFile, Platform } from './platform';
 
 /** Virtual paths inside origin-private storage; the browser has no real filesystem paths. */
@@ -49,14 +52,16 @@ function download(doc: Document, name: string, bytes: Uint8Array): void {
   }, 0);
 }
 
-/** Splits a virtual path into directory names and a file name, rejecting `..` and empties. */
-export function splitStoragePath(path: string): { dirs: string[]; name: string } {
-  const segments = path.split('/').filter((segment) => segment !== '' && segment !== '.');
-  const name = segments.pop();
-  if (!path.startsWith('/') || name === undefined || segments.includes('..') || name === '..') {
-    throw new Error(`Not a storage path: "${path}"`);
-  }
-  return { dirs: segments, name };
+// Keyed by the page's storage manager, so a fresh page (or test) asks again.
+const persistenceAsked = new WeakSet<StorageManager>();
+
+/** Without it the browser may evict the library under storage pressure; asked once per page. */
+function requestPersistence(win: Window): void {
+  const { storage } = win.navigator;
+  if (persistenceAsked.has(storage)) return;
+  persistenceAsked.add(storage);
+  if (!('persist' in storage)) return;
+  storage.persist().catch(() => undefined);
 }
 
 async function storageRoot(win: Window): Promise<FileSystemDirectoryHandle> {
@@ -64,6 +69,7 @@ async function storageRoot(win: Window): Promise<FileSystemDirectoryHandle> {
   if (!('storage' in win.navigator) || !('getDirectory' in win.navigator.storage)) {
     throw new Error('Origin-private storage is not available in this browser');
   }
+  requestPersistence(win);
   return win.navigator.storage.getDirectory();
 }
 
@@ -87,6 +93,18 @@ function isFileHandle(value: unknown): value is FileSystemFileHandle {
   return typeof value === 'object' && value !== null && 'createWritable' in value;
 }
 
+/**
+ * Where a file path points in origin-private storage: only the root-relative spelling
+ * (`library/songs/a.reprise`) reaches it, so every path passes the same name checks.
+ */
+function storageLocation(path: string): { dirs: string[]; name: string } {
+  if (!isStoragePath(path)) throw new Error(`Not a storage path: "${path}"`);
+  const { root, segments } = parseStoragePath(path);
+  const name = segments.pop();
+  if (name === undefined) throw new Error(`"${root}" is a root, not a file`);
+  return { dirs: [root, ...segments], name };
+}
+
 export function requestMicrophone(win: Window = window): Promise<MediaStream> {
   return win.navigator.mediaDevices.getUserMedia({ audio: true });
 }
@@ -99,7 +117,7 @@ export function createBrowserPlatform(win: Window = window): Platform {
   async function storageFile(path: string, create: boolean): Promise<FileSystemFileHandle> {
     const saved = savedHandles.get(path);
     if (saved) return saved;
-    const { dirs, name } = splitStoragePath(path);
+    const { dirs, name } = storageLocation(path);
     const dir = await storageDir(win, dirs, create);
     return dir.getFileHandle(name, { create });
   }
@@ -109,7 +127,16 @@ export function createBrowserPlatform(win: Window = window): Platform {
     return path;
   }
 
+  const storage = createOpfsStorage(() => storageRoot(win));
+
   return {
+    openFiles: (filters) => pickFiles(win, filters),
+    openFolder: (filters) => pickFolder(win, filters),
+    mkdir: (path) => storage.mkdir(path),
+    listDir: (path) => storage.listDir(path),
+    move: (from, to) => storage.move(from, to),
+    remove: (path) => storage.remove(path),
+
     async openFile(filters): Promise<OpenedFile | undefined> {
       let file: File | undefined;
       let handle: FileSystemFileHandle | undefined;

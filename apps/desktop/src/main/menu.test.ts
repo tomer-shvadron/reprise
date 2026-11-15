@@ -65,4 +65,28 @@ describe('menuTemplate', () => {
     press(items.find((item) => item.label === 'Reprise Documentation'));
     expect(options.openExternal).toHaveBeenCalledWith('https://example.com/docs');
   });
+
+  it('lists the recent songs under Open Recent and opens one by id', () => {
+    const { options, items } = template({
+      recent: [
+        { id: 's1', title: 'Master & Puppets' },
+        { id: 's2', title: 'Enter Sandman' },
+      ],
+      openRecent: vi.fn(),
+    });
+
+    const entry = items.find((item) => item.label === 'Master && Puppets');
+    press(entry);
+
+    expect(options.openRecent).toHaveBeenCalledWith('s1');
+    expect(items.some((item) => item.label === 'Enter Sandman')).toBe(true);
+  });
+
+  it('shows a disabled placeholder when nothing is recent', () => {
+    const { items } = template();
+
+    expect(items.find((item) => item.label === 'No Recent Songs')).toMatchObject({
+      enabled: false,
+    });
+  });
 });
