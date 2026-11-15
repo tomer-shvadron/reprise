@@ -77,13 +77,15 @@ function clickBar(
 }
 
 /**
- * Seeks to a bar and tick: the pass in the playhead's run, leaving an active loop the target is
- * outside of. Shared by a click in play mode and a click in edit mode, which seeks to its cursor.
+ * Seeks to a bar and tick: the pass in the playhead's run. A target outside an active loop turns
+ * the loop off, or with `keepLoop` (a click in edit mode) is not seeked to and leaves the loop on.
+ * Shared by a click in play mode and a click in edit mode, which seeks to its cursor.
  */
 function seekToTarget(
   services: AppServices,
   score: Score,
   target: { masterBarIndex: number; tick: number },
+  keepLoop = false,
 ): void {
   const { audio, playback, transport } = services;
   const timeline = timelineOf(score);
@@ -94,6 +96,7 @@ function seekToTarget(
   if (loop && bars) {
     const number = target.masterBarIndex + 1;
     if (number < bars.start || number > bars.end) {
+      if (keepLoop) return;
       audio.setLoop(undefined);
     } else {
       try {
@@ -169,11 +172,13 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
   const overlays = useMemo((): ScoreOverlays => {
     if (!score) return {};
     // A range draws its own boxes, which also cover a bars range, so its columns are not drawn too.
-    const selected = range ? undefined : (preview ?? bars);
+    // A column drag's preview always shows, over a range left from edit mode too.
+    const selected = preview ?? (range ? undefined : bars);
     return {
       ...(selected && { selection: barColumns(result, score, selected) }),
       ...(loop && { loop: barColumns(result, score, loop) }),
-      ...edit,
+      ...(edit.caret && { caret: edit.caret }),
+      ...(edit.range && !preview && { range: edit.range }),
     };
   }, [result, score, preview, bars, range, loop, edit]);
 
@@ -190,12 +195,15 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
     if (!gesture || !score) return;
     if (editing) {
       const placed = editPointer(result, gesture);
-      // A plain click also moves a stopped playhead to the cursor, so Play starts there.
+      // Only a plain click also moves a stopped playhead to the cursor, so Play starts there; a
+      // Shift or Cmd/Ctrl click, a drag and the keys leave it, and a click never ends a loop.
       const moved = selection.getState().cursor;
-      if (placed && gesture.kind === 'click' && !gesture.shift && moved) {
+      const { shiftKey, metaKey, ctrlKey } = gesture.kind === 'click' ? gesture.event.event : {};
+      const plain = gesture.kind === 'click' && !shiftKey && !metaKey && !ctrlKey;
+      if (placed && plain && moved) {
         const tick = cursorTick(score, moved);
         if (tick !== undefined && !selectRunning(playback.getState())) {
-          seekToTarget(services, score, { masterBarIndex: moved.at.bar, tick });
+          seekToTarget(services, score, { masterBarIndex: moved.at.bar, tick }, true);
         }
       }
       return;

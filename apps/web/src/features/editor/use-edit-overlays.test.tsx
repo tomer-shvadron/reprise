@@ -45,10 +45,13 @@ describe('useEditOverlays', () => {
       beat: score.tracks[0]?.bars[0]?.voices[0]?.beats[2]?.id,
     };
     act(() => {
+      // Leaving edit mode clears a range; one set afterwards is drawn all the same.
+      services.editing.getState().setEditing(false);
+    });
+    act(() => {
       services.selection
         .getState()
         .setEdit({ range: { kind: 'beats', anchor: { ...focus, beat: cursor?.beat }, focus } });
-      services.editing.getState().setEditing(false);
     });
     expect(hook.result.current.caret).toBeUndefined();
     expect(hook.result.current.range?.length).toBeGreaterThan(0);

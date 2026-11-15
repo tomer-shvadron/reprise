@@ -38,6 +38,10 @@ export function installEditor(deps: InstallDeps): () => void {
   });
 
   const stopEditing = editing.subscribe((state, previous) => {
+    if (!state.editing && previous.editing && selection.getState().range) {
+      // The range is an edit-mode selection; play mode has the bar selection and its drag preview.
+      selection.getState().setEdit({ range: undefined, bars: undefined, barsAnchor: undefined });
+    }
     if (!state.editing || previous.editing) return;
     const { score } = document.getState();
     if (!score || selection.getState().cursor) return;

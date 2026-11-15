@@ -99,4 +99,86 @@ describe('the score pane in edit mode', () => {
     expect(services.selection.getState().cursor).toBeUndefined();
     expect(document.querySelectorAll('.score-caret')).toHaveLength(0);
   });
+
+  it('seeks only on a plain click: not on Cmd or Ctrl+click, which toggle a note', async () => {
+    const { services, score, result, canvas } = await setup();
+    act(() => {
+      services.editing.getState().setEditing(true);
+    });
+    const at = noteAt(result, score, 0, 1, 1);
+    for (const modifier of [{ metaKey: true }, { ctrlKey: true }]) {
+      fireEvent.pointerDown(canvas(), { ...at, ...modifier });
+      fireEvent.pointerUp(canvas(), { ...at, ...modifier });
+    }
+    expect(services.fakeAudio.seek).not.toHaveBeenCalled();
+    expect(services.selection.getState().cursor?.at.bar).toBe(1);
+    // Two toggles of one note: picked, then unpicked.
+    expect(services.selection.getState().selection.noteIds).toEqual([]);
+  });
+
+  it('never turns off a loop: inside it seeks, outside it moves the cursor only', async () => {
+    const { services, score, result, canvas } = await setup();
+    const id = (i: number) => score.masterBars[i]?.id ?? '';
+    act(() => {
+      services.audio.setLoop({ startBar: id(0), endBar: id(0) });
+      services.editing.getState().setEditing(true);
+    });
+    const outside = noteAt(result, score, 0, 1, 1);
+    fireEvent.pointerDown(canvas(), outside);
+    fireEvent.pointerUp(canvas(), outside);
+    expect(services.playback.getState().settings.loop).toBeDefined();
+    expect(services.fakeAudio.seek).not.toHaveBeenCalled();
+    expect(services.selection.getState().cursor?.at.bar).toBe(1);
+
+    const inside = noteAt(result, score, 0, 0, 2);
+    fireEvent.pointerDown(canvas(), inside);
+    fireEvent.pointerUp(canvas(), inside);
+    expect(services.playback.getState().settings.loop).toBeDefined();
+    expect(services.fakeAudio.seek).toHaveBeenLastCalledWith(1920);
+  });
+
+  it('clears the range on leaving edit mode, so a play-mode drag previews its bars', async () => {
+    const { services, score, result, canvas } = await setup();
+    act(() => {
+      services.editing.getState().setEditing(true);
+    });
+    const a = noteAt(result, score, 0, 0, 0);
+    const b = noteAt(result, score, 0, 0, 3);
+    fireEvent.pointerDown(canvas(), a);
+    fireEvent.pointerUp(canvas(), a);
+    fireEvent.pointerDown(canvas(), { ...b, shiftKey: true });
+    fireEvent.pointerUp(canvas(), { ...b, shiftKey: true });
+    expect(services.selection.getState().range).toBeDefined();
+    act(() => {
+      services.editing.getState().setEditing(false);
+    });
+    expect(services.selection.getState().range).toBeUndefined();
+    expect(document.querySelectorAll('.score-range')).toHaveLength(0);
+
+    // A range left in the store (as by another writer) must not hide the drag preview.
+    act(() => {
+      services.selection.getState().setEdit({
+        range: {
+          kind: 'bars',
+          anchor: {
+            track: score.tracks[0]?.id ?? '',
+            masterBar: score.masterBars[0]?.id ?? '',
+            beat: undefined,
+          },
+          focus: {
+            track: score.tracks[0]?.id ?? '',
+            masterBar: score.masterBars[0]?.id ?? '',
+            beat: undefined,
+          },
+        },
+      });
+    });
+    const from = noteAt(result, score, 0, 0, 0);
+    const to = noteAt(result, score, 0, 1, 0);
+    fireEvent.pointerDown(canvas(), from);
+    fireEvent.pointerMove(canvas(), { ...from, clientX: from.clientX + 10 });
+    fireEvent.pointerMove(canvas(), to);
+    expect(document.querySelectorAll('.score-selection').length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('.score-range')).toHaveLength(0);
+  });
 });
