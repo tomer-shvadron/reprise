@@ -14,6 +14,8 @@ export {
 export type {
   Instrument,
   NoteOnRequest,
+  PreviewNote,
+  PreviewOptions,
   SamplerOptions,
   SamplerTrack,
   TrackParams,

@@ -1,10 +1,10 @@
-import type { Id, Note, Score, Track } from '@reprise/model';
+import type { Id, Score, Track } from '@reprise/model';
 
 import { ClickSynth } from './click-synth';
 import { GmBank } from './gm-bank';
 import { outputLatencyOf } from './output-latency';
 import { Sampler } from './sampler/sampler';
-import type { TrackParams } from './sampler/sampler';
+import type { PreviewNote, PreviewOptions, TrackParams } from './sampler/sampler';
 import { createSamplerSink } from './sampler/sampler-sink';
 import { GM_BUDGET_BYTES, ManagedSampleSource } from './samples/managed-sample-source';
 import type { BufferFactory } from './samples/managed-sample-source';
@@ -92,8 +92,15 @@ export interface AudioEngine {
   click(): { running: boolean; settings: ClickSettings };
   /** A user override over the track's channel, kept through every baseline reset and edit. */
   setTrack(id: Id, params: TrackParams): void;
-  /** Past mute and solo; silent the first time a sample is needed, which it then decodes. */
-  previewNote(track: Id, note: Pick<Note, 'string' | 'fret'>): void;
+  /**
+   * One note through the track's strip (its program, bank, volume and pan), past mute and solo,
+   * while stopped or playing. A fret on a string resolves through the track's tuning and capo as
+   * playback does; `{ pitch }` is a MIDI key. A sample not yet decoded is requested and the note
+   * starts when it is resident (dropped when that takes over 500 ms; a newer preview on the same string cancels a waiting one). `options.velocity`
+   * (1 to 127) and `options.seconds` (the note's length) default to the sampler's preview values;
+   * the engine passes them through, the audio service validates and clamps them.
+   */
+  previewNote(track: Id, note: PreviewNote, options?: PreviewOptions): void;
   on<K extends keyof AudioEngineEvents>(
     event: K,
     handler: (payload: AudioEngineEvents[K]) => void,
@@ -524,12 +531,12 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       if (live?.sampler.trackIds.includes(id)) live.sampler.setTrack(id, params);
     },
 
-    previewNote(track, note) {
+    previewNote(track, note, options) {
       const current = requireSong('previewNote');
       if (!current.tracks.some((entry) => entry.id === track)) {
         throw new RangeError(`AudioEngine.previewNote: the song has no track ${track}`);
       }
-      unlock()?.sampler.previewNote(track, note);
+      unlock()?.sampler.previewNote(track, note, options);
     },
 
     on(event, handler) {
