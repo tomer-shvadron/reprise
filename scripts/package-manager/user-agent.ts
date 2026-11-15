@@ -17,6 +17,7 @@ export function packageManagerProblem(
   return [
     `Reprise is a pnpm workspace (package.json pins ${pinned ?? 'pnpm'}); this install was started by ${manager}.`,
     `Delete the node_modules and lockfile ${manager} may have written, run \`corepack enable pnpm\``,
-    'once (bundled with Node 24), then `pnpm bootstrap` on a fresh checkout or `pnpm install`.',
+    'once (corepack ships with Node 24; on Node 25 or newer, `npm i -g corepack` first), then',
+    '`pnpm bootstrap` on a fresh checkout or `pnpm install`.',
   ].join('\n');
 }

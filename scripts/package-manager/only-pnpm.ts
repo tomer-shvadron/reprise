@@ -1,8 +1,9 @@
 /**
- * The root `preinstall` hook: fails an install that yarn or bun started (npm already stops at the
- * `workspace:` dependencies), so a second lockfile and a node_modules pnpm did not lay out never
- * pass silently; some managers run it after writing them, hence the message's clean-up step. It
- * runs before dependencies exist, so it imports only the standard library.
+ * The root `preinstall` hook: fails an install that yarn or bun started, so a second lockfile and a
+ * node_modules pnpm did not lay out never pass silently (npm already stops at the root's
+ * `workspace:` dependencies and at every package's `devEngines`). Some managers run it after
+ * writing them, hence the message's clean-up step. It runs before dependencies exist, so it
+ * imports only the standard library.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
