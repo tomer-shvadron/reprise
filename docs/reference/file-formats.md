@@ -75,7 +75,7 @@ Where our reader and alphaTab disagree on purpose, each entry in `packages/forma
 - **Stroke length.** A gpif stroke length that is not a note value (Guitar Pro 7 writes 56 to 74 ticks) is rounded to the nearest note value on a log scale, since `Stroke.duration` holds only 4 to 128; alphaTab keeps the exact tick count (`stroke-length-rounded`).
 - **Chromatic transposition.** `Track/Transpose/Chromatic` is a scope limit (reported as `not-modelled`). alphaTab's `displayTranspositionPitch` adds `Chromatic / 12` to the octave shift; 1 to 11 semitones are accepted, an octave or more never is.
 - **Track automations.** alphaTab's `GpifParser._buildModel` puts every track automation on `voices[0].beats[0]` of its bar and ignores `Position`; we place it at its position.
-- **Placeholder beat.** alphaTab adds a voice with one empty quarter beat for every `-1` voice; the oracle's projection already drops those. One survives when a track automation lands on it, and is accepted only when one of our beats in the bar holds that change. A sound change we drop in a bar with no beats (`automation-dropped`) is a reader bug, #153, and stays reported.
+- **Placeholder beat.** alphaTab adds a voice with one empty quarter beat for every `-1` voice; the oracle's projection already drops those. One survives when a track automation lands on it, and is accepted only when one of our beats in the bar holds that change. A sound change in a bar with no beats moves to the track's next beat (`automation-moved`, #153); the oracle accepts that (`automation-moved-from-empty-bar`), since alphaTab holds it on the placeholder.
 
 ## Open-licensed fixture sources
 
