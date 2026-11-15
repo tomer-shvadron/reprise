@@ -16,9 +16,9 @@ Today it holds only what the lead added in WP-056:
 - `editing` (`state/editing.ts`): the edit-mode flag, `editing`, `setEditing` and `toggle`. It is off
   at the start of every document. Read it to switch clicks from seeking to editing.
 - `selection` (`state/selection.ts`) for the current track and bar range. The edit cursor and range
-  selection of WP-080 extend it, which is a contract change for the lead (see the note below).
+  selection of WP-080 extend it, which is a contract change for the lead (#203).
 - `document.apply(command)` for every edit, so each is one undo step through the history.
-- `audio.previewTrack` and the engine's `previewNote` so an entry sounds.
+- `audio.previewTrack`, and `previewNote` once #204 exposes it through the audio service, so an entry sounds.
 
 Entry state that no other feature reads (duration, voice, insert versus overwrite) belongs to a
 store under this folder. The edit cursor does not: WP-080 says it goes in the selection store, which

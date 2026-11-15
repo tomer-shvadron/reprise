@@ -15,12 +15,13 @@ Today it holds only the entry points the lead stubbed in WP-056:
 - `ui.rightPanelView` and `ui.showPanelView(view)`: which tool the right panel shows
   (`'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'fretboard'`). The fretboard is meant for a
   bottom region (WP-074); until the shell has one it shares the right panel, and a bottom region is
-  a shell change for the lead.
-- `practice` (`state/practice.ts`), the running session WP-073 stores: `start` on first play,
-  `addPlayed`, `setLoop`, `recordTempo`, `recordStep(percent)` when the speed trainer completes a
-  full step on the active loop, and `end()`, which returns the session for `practiceSessions`.
-  Loops are bar ids, so they survive edits. A session is not ended on a document switch: WP-073
-  ends and stores it first, and `start` replaces the session of another document.
+  a shell change for the lead (#206). The standalone metronome needs the audio change of #205.
+- `practice` (`state/practice.ts`), the running session WP-073 stores: `start` on first play, which
+  returns the session of another document it replaces so it can be stored, `addPlayed`, `noteLoop`,
+  `recordTempo`, `recordStep(range, percent)` when the speed trainer completes a full step (the
+  range is `playback.settings.loop`), `setSongId` for a file imported mid-session, and `end()`,
+  which returns the session for `practiceSessions`. Loops are bar ids, so they survive edits, and
+  are ordered by last use so the last one is what "resume" restores.
 - `document.songId` ties a session to its library song.
 - `playback.lastLoop` and `playback.settings` for the loop event and the tempo; the speed trainer
   steps tempo through the audio service.
