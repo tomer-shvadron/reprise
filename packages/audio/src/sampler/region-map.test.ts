@@ -95,4 +95,13 @@ describe('RegionMap selection', () => {
     const sf2 = new RegionMap([region({ sample: 'a' }), region({ sample: 'b' })]);
     expect(sf2.candidates(60, 100)).toEqual(sf2.resolveAll(60, 100));
   });
+
+  it('unites the fallback over every selection', () => {
+    const robin = new RegionMap([
+      region({ keyLo: 70, keyHi: 70, sample: 'rr1', sequence: { length: 2, position: 1 } }),
+      region({ keyLo: 70, keyHi: 70, sample: 'rr2', sequence: { length: 2, position: 2 } }),
+    ]);
+    expect(names(robin.resolveAll(60, 100, undefined, { sequence: 1 }))).toEqual(['rr2']);
+    expect(names(robin.candidates(60, 100)).sort()).toEqual(['rr1', 'rr2']);
+  });
 });

@@ -190,6 +190,15 @@ export interface RegionSelection {
 }
 
 const KEY_COUNT = 128;
+const MAX_PERIOD = 256;
+
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
+}
+
+function lcm(a: number, b: number): number {
+  return Math.min(MAX_PERIOD, (a / gcd(a, b)) * b);
+}
 
 function checkRange(name: string, lo: number, hi: number): void {
   if (!Number.isInteger(lo) || !Number.isInteger(hi) || lo < 0 || hi > 127 || lo > hi) {
@@ -211,7 +220,10 @@ function distance(value: number, lo: number, hi: number): number {
  */
 export class RegionMap {
   readonly regions: readonly Region[];
-  readonly #layers = new Map<string | undefined, { all: Region[]; byKey: Region[][] }>();
+  readonly #layers = new Map<
+    string | undefined,
+    { all: Region[]; byKey: Region[][]; selections?: RegionSelection[] }
+  >();
 
   constructor(regions: readonly Region[]) {
     for (const region of regions) {
@@ -253,9 +265,53 @@ export class RegionMap {
   /**
    * Every region a note on this key and velocity could start across all round-robin and random
    * positions and both legato states; release regions excluded. What a preload must make resident.
+   * The nearest-region fallback depends on the selection (it searches only the regions that
+   * pass), so it runs once per distinct selection and the results are united.
    */
   candidates(key: number, velocity: number, layer?: string): Region[] {
-    return this.#match(key, velocity, layer, (region) => region.trigger !== 'release');
+    const found = new Set(
+      this.#match(key, velocity, layer, (region) => region.trigger !== 'release'),
+    );
+    for (const select of this.#selections(layer)) {
+      for (const region of this.resolveAll(key, velocity, layer, select)) found.add(region);
+    }
+    return [...found];
+  }
+
+  /** The selections that can change what passes: every sequence position, random bucket and legato state. */
+  #selections(layer: string | undefined): RegionSelection[] {
+    const set = this.#set(layer);
+    if (!set) return [];
+    if (set.selections) return set.selections;
+    let period = 1;
+    const draws = new Set([0]);
+    let legato = false;
+    for (const region of set.all) {
+      if (region.sequence) period = lcm(period, region.sequence.length);
+      if (region.random) {
+        draws.add(region.random.lo);
+        draws.add(region.random.hi);
+      }
+      if (region.trigger === 'first' || region.trigger === 'legato') legato = true;
+    }
+    const selections: RegionSelection[] = [];
+    // A round-robin period past the cap is cut short: the exact matches are still all included.
+    for (let sequence = 0; sequence < Math.min(period, MAX_PERIOD); sequence += 1) {
+      for (const random of draws) {
+        if (random >= 1) continue;
+        for (const flag of legato ? [false, true] : [false]) {
+          selections.push({ sequence, random, legato: flag });
+        }
+      }
+    }
+    set.selections = selections;
+    return selections;
+  }
+
+  #set(layer: string | undefined) {
+    return (
+      this.#layers.get(layer) ?? this.#layers.get(undefined) ?? this.#layers.values().next().value
+    );
   }
 
   #match(
@@ -264,8 +320,7 @@ export class RegionMap {
     layer: string | undefined,
     accept: (region: Region) => boolean,
   ): Region[] {
-    const set =
-      this.#layers.get(layer) ?? this.#layers.get(undefined) ?? this.#layers.values().next().value;
+    const set = this.#set(layer);
     if (!set) return [];
     const exact =
       set.byKey[key]?.filter(

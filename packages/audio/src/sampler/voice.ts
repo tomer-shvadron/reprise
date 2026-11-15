@@ -141,8 +141,7 @@ export class Voice {
   readonly velocity: number;
   readonly string: number;
   readonly startTime: number;
-  /** The group this voice's note chokes others with, and the one that chokes this voice. */
-  readonly group: number;
+  /** The group that chokes this voice; a new note's own groups are read off its regions. */
   readonly offBy: number;
   readonly oneShot: boolean;
   readonly instrument: RegionMap | undefined;
@@ -185,7 +184,6 @@ export class Voice {
     this.velocity = start.velocity;
     this.string = start.string ?? 0;
     this.startTime = when;
-    this.group = region.group ?? region.exclusiveClass ?? 0;
     this.offBy = region.offBy ?? region.exclusiveClass ?? 0;
     this.oneShot = region.oneShot ?? false;
     this.instrument = start.instrument;
