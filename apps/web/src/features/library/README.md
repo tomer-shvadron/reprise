@@ -34,6 +34,13 @@ open-without-import banner and the shell wiring), which waits for the platform f
 - **Session keeper** (`session-keeper.ts`). Started after the restore, so the restore is not written
   back; debounces writes to the song's row by 500 ms; flushes and stops when the document switches;
   ignores a document that is not its song's.
+- **Paths** (`paths.ts`). `nativePath` and `originalPath` are root-relative
+  (`library/songs/<id>.reprise`) and stored in the row, so the spelling is part of the persisted schema:
+  changing it takes a schema version with an `upgrade`. `nativePath` is also the document's save
+  handle. Reading and writing them relies on the platform contract of #202 (PR #207): `readFile`,
+  `writeFile` and a string `writeHandle` accept root-relative storage paths there.
+- **Closing the window.** Nothing calls `Library.dispose()`; the session keeper flushes on `pagehide`
+  and on `visibilitychange` to hidden, so the last 500 ms of changes are kept without shell wiring.
 - **Parsing** (`import/`). `parseImport` is the pure detect, read, native write, summarize and hash
   step. `createParser` runs it in a module Worker (`parse.worker.ts`) with the bytes transferred both
   ways, and inline where there is no `Worker` (jsdom). Readers mint fresh ids on every read, so a song
