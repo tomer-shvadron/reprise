@@ -9,6 +9,8 @@ import {
   type ClickSettings,
   type LoadOptions,
   type PlaybackState,
+  type PreviewNote,
+  type PreviewOptions,
   type TempoMode,
   type Ticker,
   type TrackParams,
@@ -41,6 +43,16 @@ export interface OpenDocument {
 /** The engine behind the service; tests reach its live objects with `@reprise/audio/testing`. */
 export interface AudioServiceDebug {
   engine: AudioEngine;
+}
+
+export type { PreviewNote, PreviewOptions };
+
+export const PREVIEW_VELOCITY_RANGE = { min: 1, max: 127 } as const;
+export const PREVIEW_SECONDS_RANGE = { min: 0.05, max: 5 } as const;
+const MAX_FRET = 127;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 export interface AudioService {
@@ -82,6 +94,27 @@ export interface AudioService {
    * the next baseline reset or the committed edit replaces it.
    */
   previewTrack(id: Id, params: Pick<TrackParams, 'volume' | 'pan'>): void;
+  /**
+   * Sounds one note through the track's strip (its program, bank, volume and pan) past mute and
+   * solo, stopped or playing, so entering or clicking a note is heard. `{ string, fret }` resolves
+   * through the track's tuning and capo as playback does; `{ pitch }` is a MIDI key. `options`:
+   * `velocity` (1 to 127, default 96) and `seconds` (0.05 to 5, default 0.6), the note's length.
+   *
+   * Call it last in a handler: it throws before unlocking or touching the engine, and a handler
+   * that has already changed the score should not be cut short. Contract:
+   * - A `RangeError` for a track the open song lacks, a string outside the track's tuning (frets
+   *   count from 1 at the top string; not checked on a drum or pitched track), a fret that is not
+   *   an integer from 0 to 127, and a non-finite velocity, seconds or pitch.
+   * - A finite velocity, seconds or pitch outside its range is clamped (the pitch to 0 to 127,
+   *   rounded): unlike a string or fret, it names no place that does not exist.
+   * - Nothing happens, with no error, with no document, while it loads, in the window where the
+   *   document is ahead of the engine's song (a queued rebuild) for a track the engine lacks, or
+   *   when the output failed.
+   * - It unlocks the context, so call it from a gesture. A sample not yet decoded is requested and
+   *   the note starts when it is resident, unless that takes over half a second. A newer preview
+   *   on the same string (or key) replaces a waiting one; `stop` cancels it.
+   */
+  previewNote(trackId: Id, note: PreviewNote, options?: PreviewOptions): void;
   /** After a sound, song or output error. */
   retry(): void;
   /** Resolves with no rebuild pending, the document's load done and no decode in flight. */
@@ -124,6 +157,8 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   let doc: OpenDocument | undefined;
   /** The engine has this document's song. */
   let loaded = false;
+  /** The score the engine holds, which trails `doc` while a rebuild is queued. */
+  let engineScore: Score | undefined;
   let mixer: Record<Id, TrackParams> = {};
   let generation = 0;
   let transport: PlaybackState = 'stopped';
@@ -206,6 +241,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
       await ensureBank();
       if (gen !== generation || !doc) return;
       loaded = true;
+      engineScore = doc.score;
       const { instruments } = await engine.load(doc.score, GM);
       if (gen === generation) {
         set({ song: { status: 'ready', error: undefined }, instruments: instruments.length });
@@ -219,6 +255,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   function reload(): void {
     if (!doc || !loaded) return;
     const gen = generation;
+    engineScore = doc.score;
     void track(
       engine.load(doc.score, GM).then(
         ({ instruments }) => {
@@ -250,6 +287,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
 
   function clear(partial: Partial<PlaybackStoreState>): void {
     loaded = false;
+    engineScore = undefined;
     mixer = {};
     set({ mixer: {}, instrumentLoads: {}, position: undefined, ...partial });
   }
@@ -390,6 +428,56 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
 
     previewTrack(id, params) {
       engine.previewTrack(id, params);
+    },
+
+    previewNote(trackId, note, options = {}) {
+      if (disposed) return;
+      for (const [name, value] of [
+        ['velocity', options.velocity],
+        ['seconds', options.seconds],
+        ['pitch', 'pitch' in note ? note.pitch : undefined],
+      ] as const) {
+        if (value !== undefined && !Number.isFinite(value)) {
+          throw new RangeError(`previewNote: ${name} must be a number, got ${String(value)}`);
+        }
+      }
+      // No document, or one still loading: there is no song to name a track in yet.
+      if (!doc || !loaded) return;
+      const target = doc.score.tracks.find((entry) => entry.id === trackId);
+      if (!target) throw new RangeError(`previewNote: the open song has no track ${trackId}`);
+      if (!('pitch' in note)) {
+        if (!Number.isInteger(note.fret) || note.fret < 0 || note.fret > MAX_FRET) {
+          throw new RangeError(
+            `previewNote: fret ${String(note.fret)} is not an integer in 0 to ${String(MAX_FRET)}`,
+          );
+        }
+        if (
+          target.kind === 'fretted' &&
+          (!Number.isInteger(note.string) || note.string < 1 || note.string > target.tuning.length)
+        ) {
+          throw new RangeError(
+            `previewNote: string ${String(note.string)} is outside the ${String(target.tuning.length)}-string tuning`,
+          );
+        }
+      }
+      // A queued rebuild: the track is new in the document and the engine does not have it yet.
+      if (!engineScore?.tracks.some((entry) => entry.id === trackId)) return;
+      service.unlock();
+      if (playback.getState().output.status === 'error') return;
+      engine.previewNote(
+        trackId,
+        'pitch' in note ? { pitch: Math.round(clamp(note.pitch, 0, 127)) } : note,
+        {
+          ...(options.velocity !== undefined && {
+            velocity: Math.round(
+              clamp(options.velocity, PREVIEW_VELOCITY_RANGE.min, PREVIEW_VELOCITY_RANGE.max),
+            ),
+          }),
+          ...(options.seconds !== undefined && {
+            seconds: clamp(options.seconds, PREVIEW_SECONDS_RANGE.min, PREVIEW_SECONDS_RANGE.max),
+          }),
+        },
+      );
     },
 
     retry() {

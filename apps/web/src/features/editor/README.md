@@ -37,6 +37,6 @@ What it holds, after WP-056 (the mode toggle) and WP-080 (hit-testing and the se
   at the start of every document. Read it to switch clicks from seeking to editing.
 - `selection` (`state/selection.ts`) for the current track, the edit cursor, the range and the picked notes, written only through `setEdit`.
 - `document.apply(command)` for every edit, so each is one undo step through the history.
-- `audio.previewTrack`, and `previewNote` once #204 exposes it through the audio service, so an entry sounds.
+- `audio.previewTrack`, and `audio.previewNote(trackId, { string, fret } | { pitch }, { velocity?, duration? })` (#204), so an entry sounds.
 
 Entry state that no other feature reads (duration, voice, insert versus overwrite) belongs to a store under this folder; the edit cursor does not, it lives in the selection store.
