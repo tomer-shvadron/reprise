@@ -23,6 +23,7 @@ export const GPIF_SEVERITY: Readonly<Record<GpifReaderCode, WarningSeverity>> = 
   'hammer-pull-without-destination': 'warning',
   'tempo-moved': 'warning',
   'automation-dropped': 'warning',
+  'automation-moved': 'warning',
   'default-tempo': 'warning',
   'not-modelled': 'info',
   'long-note-tied': 'info',

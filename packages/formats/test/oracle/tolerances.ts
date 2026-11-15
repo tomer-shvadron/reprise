@@ -98,6 +98,44 @@ const heldBy = (mix: MixProjection, holders: readonly (MixProjection | null)[]):
     (field) => mix[field] === null || holders.some((holder) => holder?.[field] === mix[field]),
   );
 
+const isEmptyBar = (
+  bar: Projections['ours']['tracks'][number]['bars'][number] | undefined,
+): boolean => bar !== undefined && bar.voices.every((voice) => voice.beats.length === 0);
+
+/**
+ * The bar `bar` of a track when its change was moved by the reader: our bar is empty, alphaTab's
+ * first voice holds one bare quarter placeholder with a mix, and our first beat past the empty
+ * bars holds that mix while alphaTab's has none. Returns the target bar and the mix.
+ */
+function movedChange(
+  ours: Projections['ours'],
+  alphaTab: Projections['alphaTab'],
+  track: number,
+  bar: number,
+): { target: number; mix: MixProjection } | undefined {
+  const ourBars = ours.tracks[track]?.bars ?? [];
+  if (!isEmptyBar(ourBars[bar])) return undefined;
+  const placeholders = alphaTab.tracks[track]?.bars[bar]?.voices[0]?.beats ?? [];
+  const [placeholder] = placeholders;
+  if (
+    placeholders.length !== 1 ||
+    placeholder === undefined ||
+    placeholder.mix === null ||
+    placeholder.duration !== 4 ||
+    placeholder.dots !== 0 ||
+    placeholder.tuplet !== null ||
+    !isBareEmpty({ ...placeholder, mix: null })
+  ) {
+    return undefined;
+  }
+  let target = bar + 1;
+  while (target < ourBars.length && isEmptyBar(ourBars[target])) target++;
+  const voices = ourBars[target]?.voices ?? [];
+  const first = voices.find((voice) => voice.beats.length > 0)?.beats[0];
+  if (first === undefined || !heldBy(placeholder.mix, [first.mix])) return undefined;
+  return { target, mix: placeholder.mix };
+}
+
 const nearlyInteger = (value: number): boolean => Math.abs(value - Math.round(value)) < 1e-9;
 
 export const TOLERANCES: readonly Tolerance[] = [
@@ -284,7 +322,7 @@ export const TOLERANCES: readonly Tolerance[] = [
   {
     id: 'placeholder-beat-holds-automation',
     formats: GPIF_ONLY,
-    why: "For every `-1` voice in a bar alphaTab's `_buildModel` adds a voice holding one empty quarter beat; the projection drops those, except that the track automation `_buildModel` pushes onto `voices[0].beats[0]` lands on it and keeps it. Accepted only when one of our beats in the same bar holds that change. A change we drop (a sound change in a bar with no beats, `automation-dropped`) is a reader bug, #153, and stays reported.",
+    why: "For every `-1` voice in a bar alphaTab's `_buildModel` adds a voice holding one empty quarter beat; the projection drops those, except that the track automation `_buildModel` pushes onto `voices[0].beats[0]` lands on it and keeps it. Accepted only when one of our beats in the same bar holds that change. A change in a bar with no beats moves to the track's next beat in a later bar (`automation-moved`, #153), which this does not cover.",
     applies: (d, { ours, alphaTab }) => {
       const at = BAR_VOICE_BEATS.exec(d.path)?.groups;
       if (at === undefined) return false;
@@ -335,6 +373,35 @@ export const TOLERANCES: readonly Tolerance[] = [
         index > 0 ? beats[index - 1] : own.bars[bar - 1]?.voices[voice]?.beats.at(-1);
       const held = previous?.notes.map((note) => note.value) ?? [];
       return held.includes(d.ours) && held.includes(d.alphaTab);
+    },
+  },
+  {
+    id: 'automation-moved-from-empty-bar',
+    formats: GPIF_ONLY,
+    why: "A sound change in a bar with no beats stays on alphaTab's placeholder beat there (`_buildModel` pushes it onto `voices[0].beats[0]`, and `_generateVoice` plays an empty bar's first voice, so the program changes at that bar's start); we have no beat there and move it to the track's next beat in a later bar (`automation-moved`, #153), where nothing on the track has played in between. Accepted as two differences: alphaTab's placeholder in the empty bar, and our change on the first beat of the first later bar with a beat, where alphaTab has none. Only when our bar and every bar up to the target are empty for the track, the placeholder is a bare quarter with the change, and our target beat holds it.",
+    applies: (d, { ours, alphaTab }) => {
+      const beatsAt = BAR_VOICE_BEATS.exec(d.path)?.groups;
+      if (beatsAt !== undefined) {
+        const [track, bar] = [Number(beatsAt['track']), Number(beatsAt['bar'])];
+        return (
+          Number(beatsAt['voice']) === 0 && movedChange(ours, alphaTab, track, bar) !== undefined
+        );
+      }
+      const mixAt = FIRST_VOICE_MIX.exec(d.path)?.groups;
+      if (mixAt === undefined || Number(mixAt['beat']) !== 0 || d.alphaTab !== null) return false;
+      const [track, target, voice] = [
+        Number(mixAt['track']),
+        Number(mixAt['bar']),
+        Number(mixAt['voice']),
+      ];
+      const bars = ours.tracks[track]?.bars ?? [];
+      const first = bars[target]?.voices.findIndex((v) => v.beats.length > 0);
+      if (first !== voice) return false;
+      for (let bar = target - 1; bar >= 0 && isEmptyBar(bars[bar]); bar--) {
+        const moved = movedChange(ours, alphaTab, track, bar);
+        if (moved?.target === target && d.ours !== null) return true;
+      }
+      return false;
     },
   },
 ];

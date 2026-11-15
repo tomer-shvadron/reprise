@@ -122,21 +122,36 @@ const soundChange = (bar: number, position: number): string =>
 const organTrack = (automation: string): string =>
   guitarTrack('0', { extra: automation }).replace('</Sounds>', ORGAN);
 
-/** A track with a sound change at `position` of bar `at`, over two bars of `voices`. */
+/**
+ * A track with a sound change at `position` of bar `at`. Each bar of `barVoices` is a gpif voice
+ * list in which `0` stands for a whole note of its own: a voice and beat per bar, since alphaTab
+ * shares a voice object between the bars that reference one id.
+ */
 function withSoundChange(
   name: string,
   at: number,
   position: number,
-  barVoices: [string, string],
+  barVoices: string[],
 ): HandBuilt {
+  const filled = barVoices.flatMap((voices, index) =>
+    voices.split(' ').includes('0') ? [String(index)] : [],
+  );
   return compareGpif(
     name,
     gpif({
       tracks: [organTrack(soundChange(at, position))],
-      masterBars: [masterBar('0'), masterBar('1')],
-      bars: [bar('0', barVoices[0]), bar('1', barVoices[1])],
-      voices: [voice('0', '0')],
-      beats: [beat('0', '0', '0')],
+      masterBars: barVoices.map((_, index) => masterBar(String(index))),
+      bars: barVoices.map((voices, index) =>
+        bar(
+          String(index),
+          voices
+            .split(' ')
+            .map((id) => (id === '0' ? String(index) : id))
+            .join(' '),
+        ),
+      ),
+      voices: filled.map((id) => voice(id, id)),
+      beats: filled.map((id) => beat(id, '0', '0')),
       notes: [note('0', 2, 5)],
       rhythms: WHOLE,
     }),
@@ -226,9 +241,16 @@ export const HAND_BUILT = {
   /** Voice 0 is `-1` and voice 1 holds the notes: ours puts the change on voice 1, alphaTab's on voice 0's placeholder. */
   soundChangeOnSecondVoice: (): HandBuilt =>
     withSoundChange('sound change with an empty first voice', 0, 0, ['-1 0 -1 -1', '-1 -1 -1 -1']),
-  /** A bar of `-1` voices with a sound change in it: alphaTab's placeholder holds it, we drop it. */
+  /** A bar of `-1` voices with a sound change in it: alphaTab's placeholder holds it, we move it to the next bar's beat. */
   soundChangeInEmptyBar: (): HandBuilt =>
-    withSoundChange('sound change in an empty bar', 1, 0, ['0 -1 -1 -1', '-1 -1 -1 -1']),
+    withSoundChange('sound change in an empty bar', 1, 0, [
+      '0 -1 -1 -1',
+      '-1 -1 -1 -1',
+      '0 -1 -1 -1',
+    ]),
+  /** The same change in the last bar: no later beat exists, so we drop it. */
+  soundChangeInLastEmptyBar: (): HandBuilt =>
+    withSoundChange('sound change in a trailing empty bar', 1, 0, ['0 -1 -1 -1', '-1 -1 -1 -1']),
   /** The same empty bar with no automation: the projection already drops alphaTab's placeholders. */
   emptyBar: (): HandBuilt =>
     compareGpif(
