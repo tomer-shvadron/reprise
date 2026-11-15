@@ -67,6 +67,8 @@ docker run --rm -d --name pw-e2e -p 3000:3000 --init mcr.microsoft.com/playwrigh
    npx -y playwright@1.64.1 run-server --port 3000 --host 0.0.0.0"
 ```
 
+The command uses `npx` because it runs inside Microsoft's Playwright image, which ships npm and not pnpm; everything on the host stays pnpm.
+
 Then run the suite with a local config beside `playwright.config.ts` (not committed), and `docker rm -f pw-e2e` after:
 
 ```ts

@@ -1,5 +1,11 @@
 {
   "name": "@reprise/desktop",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "onFail": "error"
+    }
+  },
   "productName": "Reprise",
   "version": "0.0.0",
   "private": true,

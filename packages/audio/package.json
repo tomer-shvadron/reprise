@@ -1,5 +1,11 @@
 {
   "name": "@reprise/audio",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "onFail": "error"
+    }
+  },
   "version": "0.0.0",
   "private": true,
   "type": "module",

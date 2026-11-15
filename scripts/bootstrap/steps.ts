@@ -41,7 +41,7 @@ export function versionProblems(
   const pnpm = found.pnpm === undefined ? undefined : major(found.pnpm);
   if (pnpm === undefined || pnpm < min.pnpm) {
     problems.push(
-      `pnpm ${String(min.pnpm)} or newer is required, found ${found.pnpm ?? 'none'}. \`npm i -g pnpm@11\` installs one.`,
+      `pnpm ${String(min.pnpm)} or newer is required, found ${found.pnpm ?? 'none'}. \`corepack enable pnpm\` installs the version package.json pins (corepack ships with Node 24; on Node 25 or newer, \`npm i -g corepack\` first).`,
     );
   }
   return problems;
