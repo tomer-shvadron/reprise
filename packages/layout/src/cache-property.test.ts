@@ -1,6 +1,7 @@
 /**
  * Random edit sequences against a warm cache: after every step the cached layout must equal a
- * cold one byte for byte, in every notation and both modes. Undo and redo go through the model's
+ * cold one byte for byte, in every notation and both modes. Continuous segment breaks are stable
+ * (#147), so "a cold one" starts from the same previous breaks as the cache does. Undo and redo go through the model's
  * history, which replays patches into new objects as the app does, and option steps change what
  * the same cache lays out between edits.
  */
@@ -20,6 +21,7 @@ import {
   setNoteEffect,
   type Beat,
   type Command,
+  type Id,
   type Dynamics,
   type Notation,
   type Score,
@@ -38,7 +40,9 @@ import {
   type LayoutOptions,
   type LayoutResult,
 } from './index';
-import { expectInsidePages, expectValid, stable } from './test/check-result';
+import { layoutWith } from './layout';
+import { resolveOptions } from './options';
+import { breakIds, expectInsidePages, expectValid, stable } from './test/check-result';
 import { withEffects, withNoteMarks } from './test/effects';
 
 /** Raise locally to soak the cache; 20 keeps the unit suite fast. */
@@ -437,6 +441,8 @@ describe('LayoutCache: random edits', () => {
             let options = optionsFor(score, notation, mode, subsetDie === 0, width, height);
             const cache = new LayoutCache();
             const first = layout(score, options, cache);
+            let breaks: ReadonlySet<Id> = breakIds(score, first);
+            let systemKey = resolveOptions(score, options).systemKey;
             if (split && which === 'large' && subsetDie !== 0 && width === PAGE_SIZES.a4.width) {
               expect(first.systems.some(({ part }) => part !== undefined)).toBe(true);
               if (height === 580 && notation === 'standard') {
@@ -446,8 +452,14 @@ describe('LayoutCache: random edits', () => {
             const history = createHistory();
             for (const step of edits) {
               let touched: string[] = [];
+              let afresh = false;
               if (step.kind === 'options') {
                 options = changeOptions(score, options, step.change);
+                // Another width, zoom, track set or notation lays the segments out afresh; an
+                // option change the layout does not key on (a subset that is every track) does not.
+                const key = resolveOptions(score, options).systemKey;
+                afresh = key !== systemKey;
+                systemKey = key;
               } else if (step.kind === 'undo' || step.kind === 'redo') {
                 const replayed = step.kind === 'undo' ? history.undo() : history.redo();
                 if (!replayed) continue;
@@ -466,7 +478,19 @@ describe('LayoutCache: random edits', () => {
                 }
               }
               const cached = layout(score, { ...options, dirtyBars: touched }, cache);
-              expect(stable(cached), JSON.stringify(step)).toBe(stable(layout(score, options)));
+              const cold = layoutWith(score, options, undefined, afresh ? undefined : breaks);
+              expect(stable(cached), JSON.stringify(step)).toBe(stable(cold));
+              breaks = breakIds(score, cached);
+              if (mode === 'continuous') {
+                // Every segment holds a bar, and they tile the score.
+                let end = 0;
+                for (const { bars } of cached.systems) {
+                  expect(bars.start, JSON.stringify(step)).toBe(end);
+                  expect(bars.end).toBeGreaterThan(bars.start);
+                  end = bars.end;
+                }
+                expect(end).toBe(score.masterBars.length);
+              }
               expectValid(cached);
               if (!split) expectInsidePages(cached, DEFAULT_MARGINS[mode]);
               // At the split heights only the bottom margin overflows by design (#85): a staff taller than the room.

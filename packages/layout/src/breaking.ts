@@ -12,6 +12,18 @@ export const NAME_SIZE = 1.6;
 export const NAME_SHARE = 0.4;
 /** A last system shorter than this share of the width keeps its natural spacing. */
 const JUSTIFY_LAST = 0.75;
+/**
+ * A kept continuous segment must fill at least this share of the line, so edits that shrink bars
+ * cannot leave a sliver of a segment behind (#147).
+ */
+export const UNDERFLOW = 0.5;
+/**
+ * A kept continuous segment may run this far past the line before it is broken again. Segments
+ * are the units the painter windows, not lines the reader sees, so a wider one costs a few
+ * more elements and is invisible, while a segment that held exactly one line's worth would
+ * overflow at the first rhythm edit that widens a bar and push every later break along with it.
+ */
+export const OVERFLOW = 1.5;
 const PREFIX_LEAD = 0.5;
 const CLEF_TRAIL = 0.8;
 /** Gap between a system's last bar line and the courtesy signatures after it, in staff spaces. */
@@ -188,10 +200,18 @@ function finish(
 }
 
 /**
- * Greedy line filling from bar `from`: each system takes bars while their natural widths fit,
- * and always at least one, so a bar wider than the page gets a system of its own and is squeezed
- * into it (`finish`) rather than split. Lazy, so
- * a re-layout stops asking once the breaks meet the cached ones again.
+ * Line filling from bar `from`: each system takes bars while their natural widths fit, and always
+ * at least one, so a bar wider than the page gets a system of its own and is squeezed into it
+ * (`finish`) rather than split. Lazy, so a re-layout stops asking once the breaks meet the cached
+ * ones again.
+ *
+ * In continuous mode `wasBreak` marks the bars that opened a segment in the previous layout. A
+ * segment that starts at one keeps its previous extent, up to the next marked bar, for as long as
+ * it stays within `UNDERFLOW` to `OVERFLOW` of the line (a last segment may be shorter, and a
+ * one-bar segment any width); otherwise it is broken greedily, and the next segment is kept again
+ * as soon as it starts on a marked bar.
+ * So a rhythm edit leaves the later breaks where they were instead of moving them down the
+ * score (#147). Without `wasBreak` this is plain greedy breaking.
  */
 export function* breakSystems(
   measures: readonly BarMeasure[],
@@ -199,6 +219,7 @@ export function* breakSystems(
   slots: readonly StaffSlot[],
   options: ResolvedOptions,
   from: number,
+  wasBreak?: (index: number) => boolean,
 ): Generator<SystemPlan, void, undefined> {
   const { space, margins, mode } = options;
   const lineWidth = options.width - margins.left - margins.right;
@@ -216,7 +237,24 @@ export function* breakSystems(
 
     let end = start;
     let used = 0;
-    while (end < measures.length) {
+    let kept = false;
+    if (mode === 'continuous' && wasBreak?.(start)) {
+      let stop = start + 1;
+      while (stop < measures.length && !wasBreak(stop)) stop += 1;
+      let natural = 0;
+      for (let i = start; i < stop; i++) {
+        const measure = measures[i];
+        if (measure) natural += barWidth(measure, opensLine && i === start);
+      }
+      const fits = natural <= OVERFLOW * available;
+      const full = stop >= measures.length || natural >= UNDERFLOW * available;
+      if (stop - start === 1 || (fits && full)) {
+        end = stop;
+        used = natural;
+        kept = true;
+      }
+    }
+    while (!kept && end < measures.length) {
       const measure = measures[end];
       if (!measure) break;
       const width = barWidth(measure, opensLine && end === start);
