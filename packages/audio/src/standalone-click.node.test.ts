@@ -105,7 +105,7 @@ describe('the standalone click', () => {
     expect(whens[firstFast]).toBeLessThanOrEqual(1.25 + 1 + 1e-9);
   });
 
-  it('applies a new meter or subdivision at the next beat boundary, keeping the bar', () => {
+  it('applies a new subdivision at the next beat boundary, keeping the bar', () => {
     const { sink, click, run } = setup();
     click.start(settings({ bpm: 120, beatsPerBar: 4 }));
     run(0.6);
@@ -122,6 +122,61 @@ describe('the standalone click', () => {
     });
     expect(sink.clicks.some((entry) => entry.subdivision)).toBe(true);
   });
+
+  it('re-times the next click at the new gap when the tempo rises from a slow one', () => {
+    const { sink, click, run, clock } = setup();
+    click.start(settings({ bpm: 10 }));
+    run(0.5);
+    click.update(settings({ bpm: 200 }));
+    run(1.5);
+    // 10 bpm would have waited until 6.1 s; one new gap (0.3 s) after the last click, at 0.1 s,
+    // is already past, so the click is clamped to now and the next follows one gap later.
+    const after = sink.clicks.filter((entry) => entry.when > 0.5 - 1e-9);
+    expect(after[0]?.when).toBeLessThan(clock.currentTime);
+    expect(after[0]?.when).toBeCloseTo(0.51, 9);
+    expect(after[1]?.when).toBeCloseTo(0.81, 9);
+  });
+
+  it('never schedules a re-timed click in the past', () => {
+    const { sink, click, run, clock } = setup();
+    click.start(settings({ bpm: 10 }));
+    run(2);
+    click.update(settings({ bpm: 600 }));
+    run(2.5);
+    sink.clicks
+      .filter((entry) => entry.when > 2)
+      .forEach((entry) => {
+        expect(entry.when).toBeGreaterThanOrEqual(entry.calledAt);
+      });
+    expect(clock.currentTime).toBeCloseTo(2.5, 9);
+  });
+
+  it.each([
+    // [from, to, beats played before the change, expected accents after it]
+    { from: 4, to: 3, played: 2, accents: [false, true, false, false, true] },
+    { from: 4, to: 3, played: 3, accents: [true, false, false, true] },
+    { from: 3, to: 4, played: 2, accents: [false, false, true, false, false, false] },
+    { from: 4, to: 3, played: 1, accents: [false, false, true, false, false, true] },
+  ])(
+    'takes the bar in progress when the meter goes $from to $to after $played beats',
+    ({ from, to, played, accents }) => {
+      const { sink, click, run } = setup();
+      click.start(settings({ bpm: 120, beatsPerBar: from }));
+      // Beat k sounds at 0.1 + k / 2; the change falls just after beat `played - 1`.
+      run(0.1 + (played - 1) / 2 + 0.1);
+      expect(
+        sink.clicks.filter((entry) => entry.when < 0.1 + (played - 1) / 2 + 0.31),
+      ).toHaveLength(played + 0);
+      click.update(settings({ bpm: 120, beatsPerBar: to }));
+      run(6);
+      expect(
+        sink.clicks
+          .filter((entry) => entry.when > 0.1 + (played - 1) / 2 + 0.31)
+          .slice(0, accents.length)
+          .map((entry) => entry.accent),
+      ).toEqual(accents);
+    },
+  );
 
   it('sets the volume at once and silences from now on stop', () => {
     const { sink, click, run, clock, scheduler } = setup();

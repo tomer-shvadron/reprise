@@ -948,14 +948,16 @@ Planning and preload).
 wants a click with no song open. `createStandaloneClick({ context, sink, scheduler?, lookahead?, startLatency? })`
 is the engine-free core; the engine gives it a `ClickSynth` on the master bus.
 
-- `ClickSettings`: `bpm` (10 to 400, counting quarter-note beats), `beatsPerBar` (1 to 32),
+- `ClickSettings`: `bpm` (10 to 600, of the beat the caller picks from the time signature: x/4 counts quarters, 6/8 is `beatsPerBar: 2, subdivision: 3` at the dotted quarter; the engine has no note value and WP-072's time-signature control owns the mapping), `beatsPerBar` (1 to 32),
   `accents` (a boolean per beat of the bar; `[true]` stresses the downbeat, `[]` none),
   `subdivision` (1 quarters, 2 eighths, 3 triplets, 4 sixteenths) and `volume` (0 to 1).
   `DEFAULT_CLICK_SETTINGS` is 100 bpm in 4 with the downbeat stressed.
 - Same lookahead clock as the transport (a 200 ms window, a 25 ms worker tick, 30 ms start
-  latency), so clicks are on the audio clock, not on a timer. The first click is accented.
-- `bpm` changes apply from the next click scheduled, `beatsPerBar`, `accents` and `subdivision`
-  from the next beat, and `volume` at once: no beat is cut short and none doubled.
+  latency), so clicks are on the audio clock, not on a timer. The first click is beat 1 of the bar (accented if `accents[0]`).
+- `bpm` changes re-time the next click from the last one sent, at the new gap (no waiting out
+  a slow old beat); `beatsPerBar`, `accents` and `subdivision` from the next beat (a new
+  `beatsPerBar` takes the bar in progress: it ends at once when the position is past the new length,
+  else runs on to it), and `volume` at once: no beat is cut short and none doubled.
 - Subdivision clicks are softer and lower than a beat (`click(when, false, true)`).
 - Exclusive with the song: `play` stops the click, `startClick` pauses the song. The `click`
   event (a boolean) reports both, so a mirror needs no guess.

@@ -2,9 +2,15 @@ import type { MetronomeSink } from './sink';
 import { workerTicker } from './ticker';
 import type { Ticker } from './ticker';
 
-/** What the standalone click plays. The beat is the unit `bpm` counts: a quarter, as a metronome does. */
+/**
+ * What the standalone click plays. The engine has no note value: `bpm` counts the beat the caller
+ * chose from the time signature, and the caller owns that mapping. x/4 counts quarters (4/4 is
+ * `beatsPerBar: 4`), x/2 halves, and a compound meter its dotted note with `subdivision: 3`
+ * (6/8 at dotted quarter = 60 is `{ bpm: 60, beatsPerBar: 2, subdivision: 3 }`). An odd meter
+ * counted in eighths (7/8 at eighth = 420) needs the higher bpm limit.
+ */
 export interface ClickSettings {
-  /** Beats per minute, 10 to 400. */
+  /** Beats per minute of the chosen beat, 10 to 600. */
   bpm: number;
   /** Beats in a bar, 1 to 32. */
   beatsPerBar: number;
@@ -24,8 +30,10 @@ export const DEFAULT_CLICK_SETTINGS: ClickSettings = {
   volume: 0.7,
 };
 
-export const CLICK_BPM_RANGE = { min: 10, max: 400 } as const;
+export const CLICK_BPM_RANGE = { min: 10, max: 600 } as const;
 export const CLICK_MAX_BEATS = 32;
+/** Seconds ahead of now a re-timed click may land at the earliest. */
+const RETIME_FLOOR = 0.01;
 
 export function checkClickSettings(method: string, settings: ClickSettings): void {
   const { bpm, beatsPerBar, subdivision, volume } = settings;
@@ -62,9 +70,11 @@ export interface StandaloneClickOptions {
  * A click with no score, on the transport's lookahead clock: the position is a beat counter, not a
  * tick, so there is no timeline to build.
  *
- * A new `bpm` applies from the next click scheduled (the gap after it is already the new one), and
- * `beatsPerBar`, `accents` and `subdivision` from the next beat boundary, so a change never cuts a
- * bar or a beat short. The volume applies at once.
+ * A new `bpm` re-times the next click from the last one sent, at the new gap, so it never waits out
+ * a slow old beat. `beatsPerBar`, `accents` and `subdivision` apply from the next beat boundary: a
+ * new `beatsPerBar` takes the bar in progress, which ends early (the next beat is a downbeat when
+ * the position is already past the new length) or runs on to the new length. The volume applies at
+ * once.
  */
 export interface StandaloneClick {
   readonly running: boolean;
@@ -87,24 +97,30 @@ export function createStandaloneClick(options: StandaloneClickOptions): Standalo
   let beat = settings;
   let stopTicking: (() => void) | undefined;
   let next = 0;
-  let beatIndex = 0;
+  /** Position in the bar of the beat being scheduled, 0 for the downbeat. */
+  let position = 0;
   let sub = 0;
+  /** `when` of the last click handed out or skipped; undefined until the first. */
+  let last: number | undefined;
 
   function pump(): void {
     const horizon = context.currentTime + lookahead;
     while (next < horizon) {
-      if (sub === 0) beat = settings;
+      if (sub === 0) {
+        beat = settings;
+        if (position >= beat.beatsPerBar) position = 0;
+      }
       // A stalled page skips what it can no longer play, keeping the bar's phase.
       if (next >= context.currentTime) {
-        const position = beatIndex % beat.beatsPerBar;
         const stressed = sub === 0 && (beat.accents[position] ?? false);
         sink.click(next, stressed, sub !== 0);
       }
+      last = next;
       next += 60 / settings.bpm / beat.subdivision;
       sub += 1;
       if (sub >= beat.subdivision) {
         sub = 0;
-        beatIndex += 1;
+        position += 1;
       }
     }
   }
@@ -124,15 +140,27 @@ export function createStandaloneClick(options: StandaloneClickOptions): Standalo
       if (stopTicking) return;
       sink.setVolume(settings.volume);
       next = context.currentTime + startLatency;
-      beatIndex = 0;
+      position = 0;
       sub = 0;
+      last = undefined;
       stopTicking = ticker(pump);
       pump();
     },
     update(updated) {
       checkClickSettings('updateClick', updated);
+      const retime =
+        stopTicking !== undefined && last !== undefined && updated.bpm !== settings.bpm;
       settings = updated;
+      // The click at `next` is not out yet, so it can move; never into the past.
+      if (retime && last !== undefined) {
+        next = Math.max(
+          last + 60 / updated.bpm / beat.subdivision,
+          context.currentTime + RETIME_FLOOR,
+        );
+      }
       sink.setVolume(updated.volume);
+      // Now, not at the next tick, which could pass a click re-timed to just ahead.
+      if (retime) pump();
     },
     stop() {
       if (!stopTicking) return;

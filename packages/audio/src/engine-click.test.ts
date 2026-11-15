@@ -1,9 +1,11 @@
+import { score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { createAudioEngine } from './engine';
 import { drive, manualTicker } from './offline-driver';
 import { DEFAULT_CLICK_SETTINGS } from './standalone-click';
 import type { ClickSettings } from './standalone-click';
+import { Sf2Soundfont } from './sf2/soundfont';
 import { peak, signalOf } from './test/signal';
 import type { Signal } from './test/signal';
 
@@ -53,12 +55,15 @@ function onsets(signal: Signal, floor = 0.01): { at: number; level: number }[] {
 }
 
 describe('the engine’s standalone click', () => {
-  it('has no click without a song today: play needs a score, and the metronome rides on it', () => {
+  it('play still needs a score; the standalone click does not', () => {
     const { engine } = setup(0.1);
-    engine.setMetronome(true, 1);
     expect(() => {
       engine.play();
     }).toThrow('load a score first');
+    expect(() => {
+      engine.startClick();
+    }).not.toThrow();
+    expect(engine.click().running).toBe(true);
   });
 
   it.each([60, 120, 180])('puts the beats on the grid at %d bpm', async (bpm) => {
@@ -125,5 +130,33 @@ describe('the engine’s standalone click', () => {
     expect(events).toEqual([true, false]);
     expect(peak(signalOf(buffer), 1.1, 2)).toBeLessThan(0.001);
     expect(engine.click().running).toBe(false);
+  });
+
+  it('is cut by play: no click sounds after the song starts, though one was already scheduled', async () => {
+    const { engine, render } = setup(2);
+    const bytes = await fetch(new URL('../test-fixtures/synthetic.sf2', import.meta.url)).then(
+      (response) => response.arrayBuffer(),
+    );
+    engine.setSoundfont(Sf2Soundfont.parse(new Uint8Array(bytes)));
+    // A silent song: its only sound would be a click, and the metronome is off.
+    await engine.load(score().tempo(120).track('guitar').bar().rest('1').build(), {
+      tier: 'gm',
+      packs: [],
+    });
+    const events: boolean[] = [];
+    engine.on('click', (running) => events.push(running));
+    // Beats at 0.1 and 1.1 s: the second is in the lookahead window when play comes at 1.0 s.
+    engine.startClick(settings({ bpm: 60 }));
+    const buffer = await render([
+      {
+        at: 1,
+        run: () => {
+          engine.play();
+        },
+      },
+    ]);
+    expect(events).toEqual([true, false]);
+    expect(peak(signalOf(buffer), 1.05, 2)).toBeLessThan(0.001);
+    expect(peak(signalOf(buffer), 0, 0.3)).toBeGreaterThan(0.1);
   });
 });
