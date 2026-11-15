@@ -224,6 +224,23 @@ describe('the document store', () => {
     expect(state.revision).toBeGreaterThan(before.revision);
   });
 
+  it('settles a pending save prompt on newDocument, and a stale Save As never sets file', async () => {
+    const { store, saveFile } = setup();
+    await store.getState().openBytes('song.gp5', GP5);
+    const saving = store.getState().saveAs();
+    await vi.waitFor(() => {
+      expect(store.getState().savePrompt).toBeDefined();
+    });
+
+    store.getState().newDocument(song('New'));
+    await saving;
+
+    expect(store.getState().savePrompt).toBeUndefined();
+    expect(saveFile).not.toHaveBeenCalled();
+    expect(store.getState().file).toBeUndefined();
+    expect(store.getState().saving).toBe(false);
+  });
+
   it('drops an open still reading when newDocument runs', async () => {
     let finish: (result: ReadResult) => void = () => undefined;
     const { store, read } = setup();

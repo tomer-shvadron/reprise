@@ -7,20 +7,20 @@ import { useAppServices } from '@/app/services-context';
 import { libraryOf } from './library';
 
 /**
- * Shown while a score is open that is not in the library (opened without importing, or an
- * import that failed). Importing copies it in and ties the open document to the new song.
+ * Shown while the open document is a file the library holds the original of but has not imported
+ * (opened without importing, or an import that failed). Importing copies it in and ties the open document to the new song.
  */
 export function UnimportedBanner() {
   const services = useAppServices();
   const library = libraryOf(services);
-  const open = useStore(services.document, (state) => state.score !== undefined);
-  const songId = useStore(services.document, (state) => state.songId);
-  // A never-saved new song has no file, and its Import has nothing to copy.
-  const hasFile = useStore(services.document, (state) => state.file !== undefined);
+  const documentId = useStore(services.document, (state) => state.id);
+  const unimportedId = useStore(library.store, (state) => state.unimportedId);
   const error = useStore(library.store, (state) => state.bannerError);
   const [busy, setBusy] = useState(false);
 
-  if (!open || !hasFile || songId !== undefined) return null;
+  // The library's own signal: it holds the original of exactly this document. A new song, a saved
+  // copy of one and a song deleted from the library have none, so their Import could not work.
+  if (documentId === undefined || unimportedId !== documentId) return null;
   return (
     <div
       role="region"
