@@ -29,6 +29,11 @@ export interface LibraryState {
   error: string | undefined;
   /** The last failure to import the open document, for the "not in your library" banner only. */
   bannerError: string | undefined;
+  /**
+   * The document id of an open file the library holds the original bytes of but has not imported:
+   * the one state the "Not in your library" banner shows for.
+   */
+  unimportedId: Id | undefined;
 }
 
 export interface Library {
@@ -98,12 +103,25 @@ export function createLibrary(
     sort: 'title',
     error: undefined,
     bannerError: undefined,
+    unimportedId: undefined,
   }));
   let keeper: SessionKeeper | undefined;
   let keeperId: Id | undefined;
   let opening = 0;
   // The bytes of a file opened without importing, so the banner can still copy the original.
-  let unimported: { documentId: Id | undefined; name: string; bytes: Uint8Array } | undefined;
+  let held: { documentId: Id | undefined; name: string; bytes: Uint8Array } | undefined;
+  const hold = (next: typeof held) => {
+    held = next;
+    store.setState({ unimportedId: next?.documentId });
+  };
+
+  let previousId = services.document.getState().id;
+  // Any other document, a new song included, releases the bytes of an unimported file.
+  services.document.subscribe((state) => {
+    if (held && held.documentId !== state.id) hold(undefined);
+    if (state.id !== previousId) store.setState({ bannerError: undefined });
+    previousId = state.id;
+  });
 
   const replaceRow = (row: SongRow) => {
     store.setState((state) => ({
@@ -244,7 +262,7 @@ export function createLibrary(
         }
         store.setState({ error: undefined, bannerError: undefined });
         // The bytes of a file opened without importing belong to that document only.
-        unimported = undefined;
+        hold(undefined);
         // restoreTrackSession only sets the view, the mixer overrides and the current track: none
         // of them moves `dirty` or the history.
         if (row.session) restoreTrackSession(services, row.session);
@@ -299,7 +317,7 @@ export function createLibrary(
       const opened = document.getState();
       if (opened.songId !== songId || opened.id === before || !opened.score || !opened.file) return;
       const { id: documentId, score, file } = opened;
-      unimported = undefined;
+      hold(undefined);
       store.setState({ bannerError: undefined });
       const found = await duplicate;
       if (token !== opening || document.getState().id !== documentId) return;
@@ -310,7 +328,7 @@ export function createLibrary(
           return;
         }
         document.getState().setSongId(undefined);
-        unimported = { documentId, name, bytes };
+        hold({ documentId, name, bytes });
       };
       if (found?.existing) {
         await swap(found.existing.id);
@@ -335,7 +353,7 @@ export function createLibrary(
         }
         if (document.getState().id === documentId) {
           document.getState().setSongId(undefined);
-          unimported = { documentId, name, bytes };
+          hold({ documentId, name, bytes });
           store.setState({
             bannerError: `Could not add "${name}" to the library: ${error instanceof Error ? error.message : String(error)}`,
           });
@@ -351,7 +369,7 @@ export function createLibrary(
       const before = document.getState().id;
       await document.getState().openBytes(name, bytes, handle === undefined ? {} : { handle });
       const opened = document.getState();
-      if (opened.id !== before && opened.score) unimported = { documentId: opened.id, name, bytes };
+      if (opened.id !== before && opened.score) hold({ documentId: opened.id, name, bytes });
     },
     async openFileWithoutImport() {
       const picked = await pickOne(services);
@@ -361,15 +379,15 @@ export function createLibrary(
       const { document } = services;
       const { id: documentId, score, file, songId } = document.getState();
       if (!score || !file || songId !== undefined) return;
-      const held = unimported?.documentId === documentId ? unimported : undefined;
-      if (!held) {
+      const bytesHeld = held?.documentId === documentId ? held : undefined;
+      if (!bytesHeld) {
         store.setState({
           bannerError: 'The original file is no longer available. Open it again to import it.',
         });
         return;
       }
       if (await repo.byKey(file.key)) {
-        store.setState({ bannerError: `"${held.name}" is already in your library.` });
+        store.setState({ bannerError: `"${bytesHeld.name}" is already in your library.` });
         return;
       }
       const newSongId = newId();
@@ -379,22 +397,22 @@ export function createLibrary(
           {
             songId: newSongId,
             score,
-            name: held.name,
+            name: bytesHeld.name,
             format: file.format,
             key: file.key,
-            original: held.bytes,
+            original: bytesHeld.bytes,
           },
         );
         addEntries([row]);
         if (document.getState().id !== documentId) return;
         // After the write, so the keeper's own check of the song id passes from its first session.
         document.getState().setSongId(newSongId);
-        unimported = undefined;
+        hold(undefined);
         store.setState({ bannerError: undefined });
         startKeeper(newSongId);
       } catch (error) {
         store.setState({
-          bannerError: `Could not add "${held.name}" to the library: ${error instanceof Error ? error.message : String(error)}`,
+          bannerError: `Could not add "${bytesHeld.name}" to the library: ${error instanceof Error ? error.message : String(error)}`,
         });
       }
     },

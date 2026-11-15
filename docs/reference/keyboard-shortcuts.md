@@ -5,6 +5,7 @@ Shortcuts follow Guitar Pro where Guitar Pro has one.
 The table below is checked against the command registry in `apps/web` by `apps/web/src/app/shortcut-doc.test.ts`, which fails on any difference and prints the table to paste in. WP-101 adds the script that writes it and the cheat sheet. Until then, edit it only by pasting the table that test prints.
 
 - The Context column is Global, or Editing for a binding that works only in edit mode and wins over a Global binding of the same key.
+- Browsers reserve Ctrl+N and ⌘N (as they do Ctrl+T and Ctrl+W) and never pass them to the page in a normal tab, so in the web build New song is reached from the command palette; the desktop app gets the key from its File menu.
 - A bare key (no Cmd or Ctrl) never fires while typing in a text field.
 - Arrows, Home and End stay with a text field or a control that uses them (a slider, a menu); elsewhere they move the playhead.
 - Backspace and Delete stay with a text field whatever the modifiers, so Cmd+Backspace in the palette's input deletes text and never runs an editor command.
@@ -16,6 +17,7 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Command | Category | Context | macOS | Windows |
 | ------- | -------- | ------- | ----- | ------- |
 | Show command palette | App | Global | ⌘K | Ctrl+K |
+| New song | File | Global | ⌘N | Ctrl+N |
 | Open file… | File | Global | ⌘O | Ctrl+O |
 | Save | File | Global | ⌘S | Ctrl+S |
 | Save as… | File | Global | ⇧⌘S | Ctrl+Shift+S |
