@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithServices } from '@/test/render';
 
+import { libraryOf } from '@/features/library';
+
 import { DropZone } from './drop-zone';
 
 function dragEvent(
@@ -12,20 +14,28 @@ function dragEvent(
   files: File[],
   types: string[] = ['Files'],
   handle?: () => Promise<unknown>,
+  modifiers: { altKey?: boolean; entry?: (file: File) => unknown } = {},
 ) {
-  const event = new Event(type, { bubbles: true, cancelable: true });
-  const items = files.map(() => ({ kind: 'file', getAsFileSystemHandle: handle }));
+  const event = Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
+    altKey: modifiers.altKey === true,
+  });
+  const items = files.map((file) => ({
+    kind: 'file',
+    getAsFileSystemHandle: handle,
+    getAsFile: () => file,
+    webkitGetAsEntry: () => modifiers.entry?.(file) ?? null,
+  }));
   Object.defineProperty(event, 'dataTransfer', { value: { types, files, items } });
   return event;
 }
 
-async function riff(): Promise<File> {
-  const { bytes } = await write(score().title('Riff').build(), 'reprise');
-  return new File([bytes.slice()], 'riff.reprise');
+async function riff(title = 'Riff'): Promise<File> {
+  const { bytes } = await write(score().title(title).build(), 'reprise');
+  return new File([bytes.slice()], `${title.toLowerCase()}.reprise`);
 }
 
 describe('DropZone', () => {
-  it('shows the overlay while files are dragged over, and opens the first dropped one', async () => {
+  it('shows the overlay while files are dragged over, and opens the dropped file', async () => {
     const { services } = renderWithServices(<DropZone />);
     const file = await riff();
 
@@ -37,7 +47,7 @@ describe('DropZone', () => {
     window.dispatchEvent(over);
     expect(over.defaultPrevented).toBe(true);
 
-    const drop = dragEvent('drop', [file, new File(['x'], 'other.gp5')]);
+    const drop = dragEvent('drop', [file]);
     act(() => {
       window.dispatchEvent(drop);
     });
@@ -48,6 +58,107 @@ describe('DropZone', () => {
       expect(services.document.getState().score?.meta.title).toBe('Riff');
     });
     expect(services.document.getState().file?.name).toBe('riff.reprise');
+  });
+
+  it('imports a single dropped file into the library after opening it', async () => {
+    const { services } = renderWithServices(<DropZone />);
+    const file = await riff();
+    act(() => {
+      window.dispatchEvent(dragEvent('drop', [file]));
+    });
+    await waitFor(() => {
+      expect(services.document.getState().songId).toBeDefined();
+    });
+    const library = libraryOf(services);
+    await waitFor(async () => {
+      expect(await library.repo.all()).toHaveLength(1);
+    });
+    expect(services.document.getState().dirty).toBe(false);
+  });
+
+  it('opens without importing while Alt is held', async () => {
+    const { services } = renderWithServices(<DropZone />);
+    const file = await riff();
+    act(() => {
+      window.dispatchEvent(dragEvent('drop', [file], ['Files'], undefined, { altKey: true }));
+    });
+    await waitFor(() => {
+      expect(services.document.getState().score?.meta.title).toBe('Riff');
+    });
+    expect(services.document.getState().songId).toBeUndefined();
+    expect(await libraryOf(services).repo.all()).toEqual([]);
+  });
+
+  it('imports several dropped files as a batch on the library screen', async () => {
+    const { services } = renderWithServices(<DropZone />);
+    const one = await riff('One');
+    const two = await riff('Two');
+    act(() => {
+      window.dispatchEvent(dragEvent('drop', [one, two]));
+    });
+    expect(services.ui.getState().screen).toBe('library');
+    const library = libraryOf(services);
+    await waitFor(() => {
+      expect(library.importer.store.getState()).toMatchObject({ phase: 'done', imported: 2 });
+    });
+    expect(services.document.getState().score).toBeUndefined();
+  });
+
+  it('imports a single dropped file as a batch while the library screen is up', async () => {
+    const { services } = renderWithServices(<DropZone />);
+    services.ui.getState().setScreen('library');
+    const file = await riff();
+    act(() => {
+      window.dispatchEvent(dragEvent('dragenter', [file]));
+    });
+    expect(screen.getByText('Drop to import')).toBeInTheDocument();
+    act(() => {
+      window.dispatchEvent(dragEvent('drop', [file]));
+    });
+    const library = libraryOf(services);
+    await waitFor(() => {
+      expect(library.importer.store.getState()).toMatchObject({ phase: 'done', imported: 1 });
+    });
+    expect(services.document.getState().score).toBeUndefined();
+  });
+
+  it('walks a dropped folder and imports what it holds', async () => {
+    const { services } = renderWithServices(<DropZone />);
+    const inside = await riff('Inside');
+    let served = false;
+    const folder = {
+      isDirectory: true,
+      isFile: false,
+      name: 'tabs',
+      createReader: () => ({
+        readEntries: (done: (entries: unknown[]) => void) => {
+          const entries = served
+            ? []
+            : [
+                {
+                  isDirectory: false,
+                  isFile: true,
+                  name: inside.name,
+                  file: (ok: (file: File) => void) => {
+                    ok(inside);
+                  },
+                },
+              ];
+          served = true;
+          done(entries);
+        },
+      }),
+    };
+    act(() => {
+      window.dispatchEvent(
+        dragEvent('drop', [new File([], 'tabs')], ['Files'], undefined, { entry: () => folder }),
+      );
+    });
+    const library = libraryOf(services);
+    await waitFor(() => {
+      expect(library.importer.store.getState()).toMatchObject({ phase: 'done', imported: 1 });
+    });
+    expect(library.store.getState().entries[0]?.row.originalName).toBe('inside.reprise');
   });
 
   it('keeps the dropped file handle so Save can write back to it', async () => {
