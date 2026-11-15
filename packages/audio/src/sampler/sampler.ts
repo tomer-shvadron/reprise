@@ -13,7 +13,7 @@ export const DEFAULT_POLYPHONY = 64;
 export const DEFAULT_VELOCITY = 96;
 const PREVIEW_SECONDS = 0.6;
 /** A preview waiting on a decode later than this is dropped. */
-const PREVIEW_LATE_SECONDS = 2;
+const PREVIEW_LATE_SECONDS = 0.5;
 
 export interface Instrument {
   regions: RegionMap;
@@ -42,6 +42,8 @@ export interface NoteOnRequest {
   letRing?: boolean | { until: number };
   /** Plays a region of this instrument instead of the track's, through the track's strip. */
   instrument?: Instrument;
+  /** A preview voice: see `Sampler.previewNote`. */
+  preview?: boolean;
 }
 
 /** When a `setTrack` volume or pan change happens: at `at`, gliding over `ramp` seconds. */
@@ -94,6 +96,8 @@ interface TrackState {
   changes: { at: number; instrument: Instrument }[];
   strip: ChannelStrip;
   voices: Set<Voice>;
+  /** The preview waiting on a decode, by string (or by key with no string): the newest wins. */
+  pendingPreviews: Map<string, object>;
 }
 
 /** One note's voices, a voice per layered region: every call applies to all of them. */
@@ -188,7 +192,14 @@ export class Sampler {
   addTrack(track: SamplerTrack, instrument: Instrument): ChannelStrip {
     this.removeTrack(track.id);
     const strip = new ChannelStrip(this.context, this.master.input);
-    this.#tracks.set(track.id, { track, instrument, changes: [], strip, voices: new Set() });
+    this.#tracks.set(track.id, {
+      track,
+      instrument,
+      changes: [],
+      strip,
+      voices: new Set(),
+      pendingPreviews: new Map(),
+    });
     this.setTrack(track.id, track.channel);
     return strip;
   }
@@ -305,8 +316,15 @@ export class Sampler {
     groups.delete(0);
     for (const voice of state.voices) {
       if (!voice.isSoundingAt(request.when)) continue;
-      const struck = string > 0 && voice.string === string;
-      const excluded = voice.instrument === regions && groups.has(voice.offBy);
+      // Previews and the song never choke each other: a preview retriggers its own string (or its
+      // own key, with no string), and a song note chokes song voices only.
+      if (voice.preview !== (request.preview ?? false)) continue;
+      const struck = request.preview
+        ? string > 0
+          ? voice.string === string
+          : voice.string === 0 && voice.key === request.key
+        : string > 0 && voice.string === string;
+      const excluded = !request.preview && voice.instrument === regions && groups.has(voice.offBy);
       if (struck || excluded) voice.choke(request.when);
     }
 
@@ -324,6 +342,7 @@ export class Sampler {
           velocity: request.velocity,
           when: request.when,
           string,
+          preview: request.preview ?? false,
           instrument: regions,
           ...(request.offset !== undefined && { offset: request.offset }),
         },
@@ -359,6 +378,7 @@ export class Sampler {
   allNotesOff(when: number, id?: Id): void {
     const states = id === undefined ? [...this.#tracks.values()] : [this.#state(id)];
     for (const state of states) {
+      state.pendingPreviews.clear();
       for (const voice of state.voices) voice.stop(when);
       state.changes = state.changes.filter((change) => change.at <= when);
       state.strip.cancelAfter(when);
@@ -369,11 +389,16 @@ export class Sampler {
    * One note now through the track's strip, past its mute gate: a note clicked in the editor
    * sounds even on a muted track or with another track soloed. Played by `options.velocity`
    * (default the preview velocity) and released after `options.seconds` (default the preview
-   * length); a `pitch` note sounds that MIDI key and never chokes a string.
+   * length); a `pitch` note sounds that MIDI key and has no string.
+   *
+   * Preview voices choke only previews: the one before on the same string, or on the same key for
+   * a `pitch` note. The song's voices never choke a preview and a preview never chokes them.
    *
    * A sample not yet decoded cannot sound now: its decode is requested and the note starts once
-   * it is resident, unless that takes longer than `PREVIEW_LATE_SECONDS`, when it would only
-   * sound as a stray note. The returned handle is then `undefined`.
+   * it is resident, unless that takes longer than `PREVIEW_LATE_SECONDS`, when late feedback is
+   * worse than none. A newer preview on the same string (or key) cancels a waiting one, a stop
+   * cancels it too, and the late note's length is cut by the wait. The returned handle is then
+   * `undefined`.
    */
   previewNote(id: Id, note: PreviewNote, options: PreviewOptions = {}): VoiceHandle | undefined {
     const state = this.#state(id);
@@ -381,22 +406,39 @@ export class Sampler {
     const seconds = options.seconds ?? this.#options.previewSeconds ?? PREVIEW_SECONDS;
     const key = 'pitch' in note ? note.pitch : midiNote(state.track, note);
     const string = 'pitch' in note ? 0 : note.string;
-    const deadline = this.context.currentTime + PREVIEW_LATE_SECONDS;
+    const slot = string > 0 ? `string:${String(string)}` : `key:${String(key)}`;
+    state.pendingPreviews.delete(slot);
+    const requested = this.context.currentTime;
     const play = (): VoiceHandle | undefined => {
       const when = this.context.currentTime;
-      const voice = this.#start(state, { key, velocity, when, string }, state.strip.previewInput);
-      voice?.release(when + seconds);
+      const voice = this.#start(
+        state,
+        { key, velocity, when, string, preview: true },
+        state.strip.previewInput,
+      );
+      voice?.release(when + Math.max(0, seconds - (when - requested)));
       return voice;
     };
     const misses = this.#misses;
     const voice = play();
     if (!voice && this.#misses > misses) {
+      const token = {};
+      state.pendingPreviews.set(slot, token);
       // The miss above already requested the decode; `preload` joins it.
       this.preload(id, [{ key, velocity }]).then(
         () => {
-          if (this.#tracks.get(id) === state && this.context.currentTime <= deadline) play();
+          if (state.pendingPreviews.get(slot) !== token) return;
+          state.pendingPreviews.delete(slot);
+          if (
+            this.#tracks.get(id) === state &&
+            this.context.currentTime - requested <= PREVIEW_LATE_SECONDS
+          ) {
+            play();
+          }
         },
-        () => undefined,
+        () => {
+          if (state.pendingPreviews.get(slot) === token) state.pendingPreviews.delete(slot);
+        },
       );
     }
     return voice;
