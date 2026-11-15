@@ -135,10 +135,11 @@ export const decibels = (ratio: number): number => 20 * Math.log10(ratio);
 
 /**
  * A plucked line: harmonics at 1/k decaying over a pluck, a new pitch every half second, scaled
- * to -18 dBFS RMS: the reference for level matching, close to a guitar's spectrum and dynamics.
+ * to `levelDb` dBFS RMS (-18 by default): the reference for level matching, close to a guitar's spectrum and dynamics.
  */
 export function pluckedLine(
   ctx: OfflineAudioContext,
+  levelDb = -18,
   pitches = [164.81, 220, 196, 246.94],
 ): AudioBuffer {
   const buffer = new AudioBuffer({
@@ -158,8 +159,38 @@ export function pluckedLine(
   }
   let power = 0;
   for (const value of data) power += value * value;
-  const scale = 10 ** (-18 / 20) / Math.sqrt(power / data.length);
+  const scale = 10 ** (levelDb / 20) / Math.sqrt(power / data.length);
   for (let i = 0; i < data.length; i += 1) data[i] = (data[i] ?? 0) * scale;
   buffer.copyToChannel(data, 1);
   return buffer;
+}
+
+/** A mono copy of a buffer's first channel: a voice with no pan is mono. */
+export function monoOf(buffer: AudioBuffer): AudioBuffer {
+  const mono = new AudioBuffer({ length: buffer.length, sampleRate: buffer.sampleRate });
+  mono.copyToChannel(buffer.getChannelData(0), 0);
+  return mono;
+}
+
+/**
+ * The quietest 9 ms window (stepped by 1 ms) of `data` in `[from, to]`, in dB against the quieter
+ * of two steady renders of the same source in the same window: a crossfade whose paths cancel
+ * shows here as a dip, which a click detector cannot see. Comparing window by window keeps a
+ * chorus sweeping or a note decaying out of the measurement.
+ */
+export function dipDb(
+  data: Float32Array,
+  steady: readonly [Float32Array, Float32Array],
+  from: number,
+  to: number,
+): number {
+  let worst = Infinity;
+  for (let start = from; start + 0.009 <= to; start += 0.001) {
+    const reference = Math.min(
+      rms(steady[0], start, start + 0.009),
+      rms(steady[1], start, start + 0.009),
+    );
+    worst = Math.min(worst, rms(data, start, start + 0.009) / reference);
+  }
+  return decibels(worst);
 }

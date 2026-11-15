@@ -52,8 +52,10 @@ export const EFFECT_PRESET_IDS = [...EFFECT_FAMILIES, 'fuzz', 'off'] as const;
 export type EffectPresetId = (typeof EFFECT_PRESET_IDS)[number];
 
 /**
- * The starting presets. `output` is each chain's makeup gain: `effects.test.ts` pins every preset
- * within 3 dB of its bypassed level, so a chain never pushes a mix into the master limiter.
+ * The starting presets. `output` is each chain's makeup gain: `chain.test.ts` pins every preset
+ * within 3 dB of its bypassed level at a forte (-26 dBFS RMS) and a mezzo (-31) plucked line, the
+ * levels of GM notes, so a chain never pushes a mix into the master limiter. A saturating preset
+ * puts out nearly the same level whatever it is fed, so its makeup is set midway between the two.
  */
 export const EFFECT_PRESETS: Readonly<Record<EffectPresetId, Readonly<EffectSpec>>> = {
   clean: {
@@ -71,7 +73,7 @@ export const EFFECT_PRESETS: Readonly<Record<EffectPresetId, Readonly<EffectSpec
     tone: { lowDb: 2, midDb: 3, highDb: 0 },
     cabinet: { ir: 'closed-2x12' },
     delay: { time: 0.36, feedback: 0.2, mix: 0.12 },
-    output: { gainDb: -19.1 },
+    output: { gainDb: -22 },
     reverb: { send: 0.1 },
   },
   distortion: {
@@ -79,7 +81,7 @@ export const EFFECT_PRESETS: Readonly<Record<EffectPresetId, Readonly<EffectSpec
     drive: { curve: 'distortion' },
     tone: { lowDb: 0, midDb: -2, highDb: 2 },
     cabinet: { ir: 'closed-4x12' },
-    output: { gainDb: -22.8 },
+    output: { gainDb: -32.6 },
     reverb: { send: 0.08 },
   },
   fuzz: {
@@ -87,7 +89,7 @@ export const EFFECT_PRESETS: Readonly<Record<EffectPresetId, Readonly<EffectSpec
     drive: { curve: 'fuzz' },
     tone: { lowDb: 0, midDb: 2, highDb: -2 },
     cabinet: { ir: 'closed-4x12' },
-    output: { gainDb: -23.5 },
+    output: { gainDb: -33 },
     reverb: { send: 0.08 },
   },
   acoustic: {

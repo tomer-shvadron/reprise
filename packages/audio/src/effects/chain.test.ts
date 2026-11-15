@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ChannelStrip } from '../sampler/channel-strip';
-import { EFFECT_PRESET_IDS, EFFECT_STAGES, stagesOf } from './presets';
+import { EFFECT_PRESET_IDS, stagesOf } from './presets';
 import type { EffectPresetId, EffectSpec } from './presets';
 import { ImpulseBank } from './reverb-bus';
 import {
@@ -10,7 +10,9 @@ import {
   bandEnergy,
   context,
   decibels,
+  dipDb,
   maxStep,
+  monoOf,
   peak,
   play,
   pluckedLine,
@@ -65,17 +67,49 @@ describe('harmonics', () => {
 });
 
 describe('level', () => {
-  it('keeps every preset within 3 dB of its bypassed level, off the limiter', async () => {
-    const level = async (id: EffectPresetId): Promise<number> => {
-      const { ctx, manual, strip } = rig(2);
-      strip.setEffects(stagesOf(id));
-      play(ctx, pluckedLine(ctx), strip.input);
-      return rms((await render(ctx, manual)).getChannelData(0), 0.1, 1.9);
-    };
-    const reference = await level('off');
+  const level = async (id: EffectPresetId, db: number): Promise<{ rms: number; peak: number }> => {
+    const { ctx, manual, strip } = rig(2);
+    strip.setEffects(stagesOf(id));
+    play(ctx, pluckedLine(ctx, db), strip.input);
+    const out = (await render(ctx, manual)).getChannelData(0);
+    return { rms: rms(out, 0.1, 1.9), peak: peak(out, 0.1, 1.9) };
+  };
+
+  // Forte is about -26 dBFS RMS for a GM note (loudness.test.ts: a forte steel note peaks near
+  // -18 dBFS); mezzo is velocity 96 against 127, about 5 dB below. The saturating presets track
+  // the input at roughly 0.9 dB per dB, so their makeup sits midway between the two levels.
+  it.each([-26, -31])('keeps every preset within 3 dB of bypass at %i dBFS RMS', async (db) => {
+    const reference = (await level('off', db)).rms;
     for (const id of EFFECT_PRESET_IDS) {
-      expect(Math.abs(decibels((await level(id)) / reference)), id).toBeLessThanOrEqual(3);
+      expect(Math.abs(decibels((await level(id, db)).rms / reference)), id).toBeLessThanOrEqual(3);
     }
+  });
+
+  it('keeps the peaks of a hot input bounded: no preset 3 dB over bypass at -18 dBFS RMS', async () => {
+    const reference = (await level('off', -18)).peak;
+    for (const id of EFFECT_PRESET_IDS) {
+      expect(decibels((await level(id, -18)).peak / reference), id).toBeLessThanOrEqual(3);
+    }
+  });
+});
+
+describe('stereo image', () => {
+  async function sides(spec: EffectSpec): Promise<[number, number]> {
+    const { ctx, manual, strip } = rig(2);
+    strip.setEffects(spec);
+    // A voice with no pan is mono.
+    play(ctx, monoOf(pluckedLine(ctx)), strip.input);
+    const out = await render(ctx, manual);
+    return [0, 1].map((channel) => rms(out.getChannelData(channel), 0.1, 1.9)) as [number, number];
+  }
+
+  it.each([
+    ['the clean preset', stagesOf('clean')],
+    ['the chorus alone', { modulation: { rate: 0.8, depth: 0.002, mix: 0.35 } }],
+  ] as const)('keeps a mono source centred through %s (L and R within 0.5 dB)', async (_, spec) => {
+    const [left, right] = await sides(spec);
+    expect(left).toBeGreaterThan(0.01);
+    expect(Math.abs(decibels(left / right))).toBeLessThanOrEqual(0.5);
   });
 });
 
@@ -109,22 +143,27 @@ function bits(rendered: AudioBuffer, channel: number, from: number, to: number):
 }
 
 describe('bypass', () => {
-  async function identical(spec: (effected: ChannelStrip) => (() => void)[]): Promise<void> {
-    const { ctx, manual, effected } = pair(1.2);
-    const actions = spec(effected).map((run, index) => ({ at: 0.1 + index * 0.2, run }));
+  /**
+   * Runs `steps` one `gap` apart from 0.1 s on the strip beside an untouched one, then compares
+   * the last half second bit for bit.
+   */
+  async function identical(
+    steps: (effected: ChannelStrip) => (() => void)[],
+    { gap = 0.2, seconds = 1.2 } = {},
+  ): Promise<void> {
+    const { ctx, manual, effected } = pair(seconds);
+    const actions = steps(effected).map((run, index) => ({ at: 0.1 + index * gap, run }));
     const rendered = await render(ctx, manual, actions);
-    // Settled well before 0.7 s: the fade ends 20 ms after the last switch at 0.3 s.
     for (const [plain, other] of [
       [0, 2],
       [1, 3],
     ] as const) {
-      const a = bits(rendered, plain, 0.7, 1.2);
-      const b = bits(rendered, other, 0.7, 1.2);
+      const a = bits(rendered, plain, seconds - 0.5, seconds);
+      const b = bits(rendered, other, seconds - 0.5, seconds);
       expect(a.length).toBeGreaterThan(0);
       expect(b).toEqual(a);
-      expect(
-        Math.max(...new Float32Array(a.buffer, a.byteOffset, a.length).map(Math.abs)),
-      ).toBeGreaterThan(0.1);
+      const floats = new Float32Array(a.buffer, a.byteOffset, a.length);
+      expect(Math.max(...floats.map(Math.abs))).toBeGreaterThan(0.1);
     }
     expect(manual.pending).toBe(0);
     expect(effected.chain).toBeUndefined();
@@ -141,16 +180,24 @@ describe('bypass', () => {
     ]);
   });
 
-  it('is bit-identical with every stage bypassed one by one', async () => {
-    const some = new Set(EFFECT_STAGES);
-    await identical((strip) => [
-      () => {
-        strip.setEffects(stagesOf('overdrive'));
-      },
-      () => {
-        strip.setEffects(stagesOf('overdrive', some));
-      },
-    ]);
+  it('is bit-identical after every stage is bypassed one at a time, each through its own slot', async () => {
+    const order = ['input', 'drive', 'tone', 'cabinet', 'delay', 'output'] as const;
+    const changed: (number | undefined)[] = [];
+    await identical(
+      (strip) => [
+        () => {
+          strip.setEffects(stagesOf('overdrive'));
+        },
+        ...order.map((_, index) => () => {
+          const spec = stagesOf('overdrive', new Set(order.slice(0, index + 1)));
+          changed.push(strip.chain?.stagesChangedBy(spec));
+          strip.setEffects(spec);
+        }),
+      ],
+      { gap: 0.1, seconds: 1.6 },
+    );
+    // Each action switched exactly one stage: the per-stage crossfade, not a chain swap.
+    expect(changed).toEqual(order.map(() => 1));
   });
 
   it('is bit-identical for a strip that never had a chain, though its preset resolved to none', async () => {
@@ -202,21 +249,26 @@ describe('switching', () => {
   const SWITCH = 0.5;
   const distortion = stagesOf('distortion');
   const withoutDrive = stagesOf('distortion', new Set(['drive']));
-  const cases: {
+  type Spec = EffectSpec | undefined;
+  interface Case {
     name: string;
-    start: EffectSpec | undefined;
-    steps: (EffectSpec | undefined)[];
+    start: Spec;
+    steps: Spec[];
     gap?: number;
-  }[] = [
-    {
-      name: 'the drive stage off',
-      start: distortion,
-      steps: [withoutDrive],
-    },
+  }
+  const cases: Case[] = [
+    { name: 'the drive stage off', start: distortion, steps: [withoutDrive] },
     { name: 'the drive stage on', start: withoutDrive, steps: [distortion] },
     { name: 'the whole chain off', start: distortion, steps: [undefined] },
     { name: 'the whole chain on', start: undefined, steps: [distortion] },
     { name: 'distortion to clean', start: distortion, steps: [stagesOf('clean')] },
+    { name: 'clean to overdrive', start: stagesOf('clean'), steps: [stagesOf('overdrive')] },
+    { name: 'clean to off', start: stagesOf('clean'), steps: [undefined] },
+    {
+      name: 'the cabinet toggled off',
+      start: stagesOf('clean'),
+      steps: [stagesOf('clean', new Set(['cabinet']))],
+    },
     {
       name: 'clean to fuzz (a new curve and impulse)',
       start: stagesOf('clean'),
@@ -228,32 +280,129 @@ describe('switching', () => {
       steps: [undefined, distortion],
       gap: 0.01,
     },
+    {
+      name: 'a preset swapped back 5 ms later',
+      start: stagesOf('fuzz'),
+      steps: [stagesOf('clean'), stagesOf('fuzz')],
+      gap: 0.005,
+    },
   ];
 
-  it.each(cases)('is click-free for $name', async ({ start, steps, gap = 0 }) => {
+  async function renderCase({ start, steps, gap = 0 }: Case): Promise<Float32Array> {
     const { ctx, manual, strip } = rig(1.2);
     strip.setEffects(start);
     play(ctx, sineBuffer(ctx, FREQUENCY, 0.25), strip.input);
-    const out = (
-      await render(
-        ctx,
-        manual,
-        steps.map((spec, index) => ({
-          at: SWITCH + index * gap,
-          run: () => {
-            strip.setEffects(spec);
-          },
-        })),
-        128,
-      )
-    ).getChannelData(0);
-    const before: [number, number] = [0.3, 0.45];
-    const after: [number, number] = [0.8, 1.1];
+    const actions = steps.map((spec, index) => ({
+      at: SWITCH + index * gap,
+      run: () => {
+        strip.setEffects(spec);
+      },
+    }));
+    return (await render(ctx, manual, actions, 128)).getChannelData(0);
+  }
+
+  const before: [number, number] = [0.3, 0.45];
+  const after: [number, number] = [0.8, 1.1];
+
+  /**
+   * From the switch onward: a step or peak bigger than the steady states' own is a click. Two
+   * correlated paths crossing over with equal-power gains sum to at most the square root of two
+   * times either, so the bounds allow that and no more; a hard switch measures 2 to 3.5 times.
+   */
+  function clicks(out: Float32Array): boolean {
     const steady = Math.max(maxStep(out, ...before), maxStep(out, ...after));
     // Never louder than the louder of the states it moves between, or than the dry input.
     const level = Math.max(peak(out, ...before), peak(out, ...after), 0.25);
-    expect(maxStep(out, SWITCH - 0.025, SWITCH + 0.075)).toBeLessThanOrEqual(1.2 * steady);
-    expect(peak(out, SWITCH - 0.025, SWITCH + 0.075)).toBeLessThanOrEqual(1.05 * level);
+    return (
+      maxStep(out, SWITCH, SWITCH + 0.045) > 1.5 * steady ||
+      peak(out, SWITCH, SWITCH + 0.045) > 1.45 * level
+    );
+  }
+
+  it.each(cases)('is click-free for $name', async (current) => {
+    expect(clicks(await renderCase(current))).toBe(false);
+  });
+
+  it.each([
+    ['distortion to dry', undefined],
+    ['distortion to clean', stagesOf('clean')],
+  ] as const)(
+    'flags a hard switch, distortion to %s (the detector sees clicks)',
+    async (_, end) => {
+      const [from, to] = await Promise.all([
+        renderCase({ name: '', start: distortion, steps: [] }),
+        renderCase({ name: '', start: end, steps: [] }),
+      ]);
+      const hard = from.slice();
+      hard.set(to.subarray(Math.round(SWITCH * SAMPLE_RATE)), Math.round(SWITCH * SAMPLE_RATE));
+      expect(clicks(hard)).toBe(true);
+    },
+  );
+
+  // The quietest 9 ms against the quieter of the two steady states in the same window: a
+  // crossfade of two paths that cancel each other dips, which no step detector sees. A plucked
+  // line, since a pure sine through a chorus sweeps its comb and would read as a dip of its own.
+  const DIP_AT = 0.7;
+  async function pluckedCase({ start, steps }: Case): Promise<Float32Array> {
+    const { ctx, manual, strip } = rig(1.4);
+    strip.setEffects(start);
+    play(ctx, pluckedLine(ctx, -26, [196]), strip.input);
+    const [end] = steps.slice(-1);
+    const actions = [
+      {
+        at: DIP_AT,
+        run: () => {
+          strip.setEffects(end);
+        },
+      },
+    ];
+    return (await render(ctx, manual, actions, 128)).getChannelData(0);
+  }
+
+  it.each(cases.filter(({ name }) => /clean to (overdrive|off)|cabinet toggled/.test(name)))(
+    'does not dip more than 3 dB for $name',
+    async (current) => {
+      const [out, a, b] = await Promise.all([
+        pluckedCase(current),
+        pluckedCase({ ...current, steps: [current.start] }),
+        pluckedCase({ ...current, start: current.steps.at(-1), steps: current.steps }),
+      ]);
+      expect(dipDb(out, [a, b], DIP_AT - 0.005, DIP_AT + 0.05)).toBeGreaterThanOrEqual(-3);
+    },
+  );
+
+  it('never leaves an oscillator started and not stopped, even when a preset is replaced at once', async () => {
+    const start = vi.spyOn(OscillatorNode.prototype, 'start');
+    const stop = vi.spyOn(OscillatorNode.prototype, 'stop');
+    try {
+      const { ctx, manual, strip } = rig(0.6);
+      strip.setEffects(stagesOf('fuzz'));
+      play(ctx, sineBuffer(ctx, FREQUENCY, 0.25), strip.input);
+      const to = (spec: EffectSpec) => () => {
+        strip.setEffects(spec);
+      };
+      await render(
+        ctx,
+        manual,
+        [
+          { at: 0.1, run: to(stagesOf('clean')) },
+          { at: 0.105, run: to(stagesOf('fuzz')) },
+          { at: 0.11, run: to(stagesOf('clean')) },
+          {
+            at: 0.4,
+            run: () => {
+              strip.dispose();
+            },
+          },
+        ],
+        128,
+      );
+      expect(start).toHaveBeenCalled();
+      expect(stop).toHaveBeenCalledTimes(start.mock.calls.length);
+    } finally {
+      start.mockRestore();
+      stop.mockRestore();
+    }
   });
 });
 

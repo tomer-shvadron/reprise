@@ -7,9 +7,14 @@
 export const CABINETS = ['open-1x12', 'closed-2x12', 'closed-4x12'] as const;
 export type CabinetId = (typeof CABINETS)[number];
 
-/** About 46 ms at 44.1 kHz. */
-export const CABINET_SAMPLES = 2048;
-const CABINET_FADE = 512;
+/** A cabinet is 46 ms long (2028 samples at 44.1 kHz), at any rate. */
+export const CABINET_SECONDS = 0.046;
+const CABINET_FADE_SECONDS = 0.0116;
+/** The room's noise is high-passed here, so a decaying band carries no DC. */
+const DC_BLOCK_HZ = 35;
+
+export const cabinetSamples = (sampleRate: number): number =>
+  Math.round(CABINET_SECONDS * sampleRate);
 export const ROOM_SECONDS = 1.4;
 const ROOM_PRE_DELAY = 0.01;
 
@@ -117,7 +122,9 @@ const CABINET_SPECS: Record<CabinetId, CabinetSpec> = {
 /** A cabinet: a unit impulse through highpass, resonance, presence, two notches and a 6th-order lowpass. */
 export function cabinetImpulse(id: CabinetId, sampleRate: number): Float32Array<ArrayBuffer> {
   const spec = CABINET_SPECS[id];
-  const data = new Float32Array(CABINET_SAMPLES);
+  const length = cabinetSamples(sampleRate);
+  const fade = Math.round(CABINET_FADE_SECONDS * sampleRate);
+  const data = new Float32Array(length);
   data[0] = 1;
   const sections = [
     section('highpass', sampleRate, spec.highpass, 0.8),
@@ -130,9 +137,9 @@ export function cabinetImpulse(id: CabinetId, sampleRate: number): Float32Array<
     section('lowpass', sampleRate, spec.lowpass, 1.9319),
   ];
   for (const each of sections) run(data, each);
-  for (let i = 0; i < CABINET_FADE; i += 1) {
-    const at = CABINET_SAMPLES - CABINET_FADE + i;
-    data[at] = (data[at] ?? 0) * (0.5 + 0.5 * Math.cos((Math.PI * (i + 1)) / CABINET_FADE));
+  for (let i = 0; i < fade; i += 1) {
+    const at = length - fade + i;
+    data[at] = (data[at] ?? 0) * (0.5 + 0.5 * Math.cos((Math.PI * (i + 1)) / fade));
   }
   normalise(data);
   return data;
@@ -160,13 +167,14 @@ function roomChannel(sampleRate: number, seed: number): Float32Array<ArrayBuffer
   const highRate = 6.91 / 0.5;
   let smooth = 0;
   const pole = Math.exp((-2 * Math.PI * 500) / sampleRate);
+  const blockPole = Math.exp((-2 * Math.PI * DC_BLOCK_HZ) / sampleRate);
   let blockedIn = 0;
   let blockedOut = 0;
   for (let i = pre; i < length; i += 1) {
     const noise = gaussian(random);
     smooth = pole * smooth + (1 - pole) * noise;
     // A one-pole highpass keeps the band free of DC, which the decay would otherwise carry.
-    blockedOut = smooth - blockedIn + 0.995 * blockedOut;
+    blockedOut = smooth - blockedIn + blockPole * blockedOut;
     blockedIn = smooth;
     const lowBand = blockedOut * 6;
     const t = (i - pre) / sampleRate;

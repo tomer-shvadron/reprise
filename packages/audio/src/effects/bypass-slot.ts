@@ -24,23 +24,82 @@ export interface Path {
   dispose(): void;
 }
 
+/** Straight segments a glide is cut into: a ramp lands exactly on its end, a curve would not. */
+const SEGMENTS = 10;
+
 /**
- * Between `input` and `output`: a dry connection that is always there, and at most one processing
- * path beside it. A switch is a linear crossfade of `FADE_SECONDS` between them (a linear ramp
- * lands exactly on 0 and 1). When it ends the idle side is disconnected, so a bypassed slot is a
- * single gain-1 connection and the path's nodes stop costing CPU. A discrete change (a new curve
- * or impulse response) is a replace: fade to dry, swap, fade back.
+ * A fade-in follows a quarter sine and a fade-out a quarter cosine, so two paths crossing over
+ * keep their summed power level when they are uncorrelated (a straight crossfade of two such
+ * paths dips 3 dB at its middle).
+ */
+function shape(progress: number, rising: boolean): number {
+  return rising ? Math.sin((progress * Math.PI) / 2) : 1 - Math.cos((progress * Math.PI) / 2);
+}
+
+/** One gain that glides: `from` at `start`, `to` at `end`, on `shape` between. */
+class Fader {
+  readonly node: GainNode;
+  from: number;
+  to: number;
+  start = 0;
+  end = 0;
+
+  constructor(node: GainNode, value: number) {
+    this.node = node;
+    this.from = value;
+    this.to = value;
+    node.gain.value = value;
+  }
+
+  value(now: number): number {
+    if (now >= this.end) return this.to;
+    if (now <= this.start) return this.from;
+    const progress = (now - this.start) / (this.end - this.start);
+    return this.from + (this.to - this.from) * shape(progress, this.to > this.from);
+  }
+
+  /** Glides to `target` from wherever the last glide has got to; the end lands exactly on it. */
+  glide(target: number, now: number): void {
+    const from = this.value(now);
+    this.from = from;
+    this.to = target;
+    this.start = now;
+    this.end = now + FADE_SECONDS;
+    const { gain } = this.node;
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(from, now);
+    for (let step = 1; step <= SEGMENTS; step += 1) {
+      const value =
+        step === SEGMENTS ? target : from + (target - from) * shape(step / SEGMENTS, target > from);
+      gain.linearRampToValueAtTime(value, now + (FADE_SECONDS * step) / SEGMENTS);
+    }
+  }
+}
+
+interface Lane {
+  fader: Fader;
+  path: Path;
+}
+
+/**
+ * Between `input` and `output`: a dry connection that is always there, and processing paths
+ * beside it. A switch is an equal-power crossfade of `FADE_SECONDS` (ten straight segments, which
+ * land exactly on 0 and 1).
+ * When it ends the idle side is disconnected, so a bypassed slot is a single gain-1 connection
+ * and the path's nodes stop costing CPU.
+ *
+ * A path is engaged or bypassed against the dry connection. Replacing one either ducks (fade to
+ * dry, swap, fade back: a discrete change of a single stage) or crosses over (`direct`: both
+ * paths are heard through the fade, the dry connection stays out of it).
  */
 export class BypassSlot {
   readonly #context: BaseAudioContext;
   readonly #input: AudioNode;
   readonly #output: AudioNode;
   readonly #defer: Defer;
-  readonly #dry: GainNode;
-  #wet: GainNode | undefined;
-  #path: Path | undefined;
-  /** The wet share: `from` at `start`, `to` at `end`, linear between. */
-  #fade = { from: 0, to: 0, start: 0, end: 0 };
+  readonly #dry: Fader;
+  #lanes: Lane[] = [];
+  /** Bumped by every call, so a deferred step of an earlier one does nothing. */
   #token = 0;
 
   constructor(context: BaseAudioContext, input: AudioNode, output: AudioNode, defer: Defer) {
@@ -48,102 +107,92 @@ export class BypassSlot {
     this.#input = input;
     this.#output = output;
     this.#defer = defer;
-    this.#dry = context.createGain();
-    input.connect(this.#dry).connect(output);
+    this.#dry = new Fader(context.createGain(), 1);
+    input.connect(this.#dry.node).connect(output);
   }
 
   /** Whether a processing path is connected (it may be fading in or out). */
   get engaged(): boolean {
-    return this.#path !== undefined;
-  }
-
-  /** The wet share at `now`, 0 to 1. */
-  share(now = this.#context.currentTime): number {
-    const { from, to, start, end } = this.#fade;
-    if (now >= end) return to;
-    if (now <= start) return from;
-    return from + ((to - from) * (now - start)) / (end - start);
+    return this.#lanes.length > 0;
   }
 
   /**
    * Engages `build()`'s path, or replaces the current one; with `undefined`, bypasses. `immediate`
-   * skips the fade of a first engagement, for a path nothing was hearing yet.
+   * skips the fade of a first engagement, for a path nothing was hearing yet. With `direct` a
+   * replacement crosses over from the old path to the new one instead of ducking to dry.
    */
-  set(build: (() => Path) | undefined, immediate = false): void {
+  set(build: (() => Path) | undefined, immediate = false, direct = false): void {
+    this.#token += 1;
+    const token = this.#token;
+    const now = this.#context.currentTime;
     if (!build) {
-      if (!this.#path) return;
-      this.#fadeTo(0, () => {
-        this.#drop();
-      });
+      if (this.#lanes.length === 0) return;
+      this.#fadeOut(now);
+      this.#dry.glide(1, now);
       return;
     }
-    if (!this.#path) {
-      this.#attach(build(), immediate);
+    if (this.#lanes.length === 0) {
+      this.#attach(build(), now, immediate);
       return;
     }
-    this.#fadeTo(0, () => {
-      this.#drop();
-      this.#attach(build(), false);
+    if (direct) {
+      this.#fadeOut(now);
+      this.#attach(build(), now, false);
+      return;
+    }
+    this.#fadeOut(now);
+    this.#dry.glide(1, now);
+    this.#defer(now + FADE_SECONDS, () => {
+      if (token !== this.#token) return;
+      this.#dropAll();
+      this.#attach(build(), this.#context.currentTime, false);
     });
   }
 
-  #attach(path: Path, immediate: boolean): void {
-    this.#token += 1;
-    const now = this.#context.currentTime;
-    const wet = this.#context.createGain();
-    wet.gain.value = immediate ? 1 : 0;
+  #attach(path: Path, now: number, immediate: boolean): void {
+    const fader = new Fader(this.#context.createGain(), immediate ? 1 : 0);
     this.#input.connect(path.head);
-    path.tail.connect(wet).connect(this.#output);
-    this.#wet = wet;
-    this.#path = path;
-    this.#fade = {
-      from: immediate ? 1 : 0,
-      to: 1,
-      start: now,
-      end: immediate ? now : now + FADE_SECONDS,
-    };
-    this.#dry.gain.cancelScheduledValues(now);
+    path.tail.connect(fader.node).connect(this.#output);
+    this.#lanes.push({ fader, path });
     if (immediate) {
-      this.#dry.gain.setValueAtTime(0, now);
+      this.#dry.from = 0;
+      this.#dry.to = 0;
+      this.#dry.end = now;
+      this.#dry.node.gain.cancelScheduledValues(now);
+      this.#dry.node.gain.setValueAtTime(0, now);
       return;
     }
-    this.#fadeTo(1);
+    fader.glide(1, now);
+    this.#dry.glide(0, now);
   }
 
-  #drop(): void {
-    const path = this.#path;
-    if (!path) return;
-    this.#input.disconnect(path.head);
-    this.#wet?.disconnect();
-    path.dispose();
-    this.#wet = undefined;
-    this.#path = undefined;
-  }
-
-  #fadeTo(target: number, then?: () => void): void {
-    const now = this.#context.currentTime;
-    const from = this.share(now);
-    this.#token += 1;
-    const token = this.#token;
-    const end = now + FADE_SECONDS;
-    this.#fade = { from, to: target, start: now, end };
-    const params: [AudioParam, number, number][] = [[this.#dry.gain, 1 - from, 1 - target]];
-    if (this.#wet) params.push([this.#wet.gain, from, target]);
-    for (const [param, start, stop] of params) {
-      param.cancelScheduledValues(now);
-      param.setValueAtTime(start, now);
-      param.linearRampToValueAtTime(stop, end);
-    }
-    if (then) {
-      this.#defer(end, () => {
-        if (token === this.#token) then();
+  /** Fades every path out, and drops each when its last fade is done. */
+  #fadeOut(now: number): void {
+    for (const lane of this.#lanes) {
+      lane.fader.glide(0, now);
+      this.#defer(now + FADE_SECONDS, () => {
+        // A fade restarted since (a reversal) ends later, and has its own callback.
+        if (this.#lanes.includes(lane) && this.#context.currentTime >= lane.fader.end) {
+          this.#drop(lane);
+        }
       });
     }
+  }
+
+  #drop(lane: Lane): void {
+    this.#input.disconnect(lane.path.head);
+    lane.fader.node.disconnect();
+    lane.path.dispose();
+    this.#lanes = this.#lanes.filter((entry) => entry !== lane);
+  }
+
+  #dropAll(): void {
+    for (const lane of [...this.#lanes]) this.#drop(lane);
   }
 
   dispose(): void {
     this.#token += 1;
-    this.#drop();
-    this.#dry.disconnect();
+    this.#dropAll();
+    this.#dry.node.disconnect();
   }
 }

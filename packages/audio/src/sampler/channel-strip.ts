@@ -1,5 +1,5 @@
 import { BypassSlot, realtimeDefer } from '../effects/bypass-slot';
-import type { Defer } from '../effects/bypass-slot';
+import type { Defer, Path } from '../effects/bypass-slot';
 import { EffectsChain } from '../effects/chain';
 import { INLINE_STAGES } from '../effects/presets';
 import type { EffectSpec } from '../effects/presets';
@@ -148,30 +148,32 @@ export class ChannelStrip {
     this.#spec = key;
     const inline = spec !== undefined && INLINE_STAGES.some((stage) => spec[stage] !== undefined);
     if (spec && inline) {
-      // One stage's switch is its own crossfade. A preset change moves several at once, whose
-      // levels differ mid-fade, so it swaps the whole chain through the direct path instead.
-      if (this.#chain && this.#chain.stagesChangedBy(spec) <= 1) this.#chain.apply(spec);
-      else {
-        const chain = new EffectsChain(
-          this.#context,
-          this.#effects.impulses(),
-          this.#effects.defer,
-        );
-        chain.apply(spec, true);
-        this.#chain = chain;
-        this.#slot.set(() => ({
-          head: chain.input,
-          tail: chain.output,
-          dispose: () => {
-            chain.dispose();
-          },
-        }));
+      if (this.#chain && this.#chain.stagesChangedBy(spec) <= 1) {
+        // One stage's switch is its own crossfade.
+        this.#chain.apply(spec);
+      } else {
+        // A preset change moves several stages whose levels differ mid-fade: cross over from the
+        // old chain to a new one, built only here, when the slot asks for it.
+        this.#slot.set(() => this.#build(spec), false, true);
       }
     } else if (this.#chain) {
       this.#chain = undefined;
       this.#slot.set(undefined);
     }
     this.#setSend(spec?.reverb?.send ?? 0);
+  }
+
+  #build(spec: EffectSpec): Path {
+    const chain = new EffectsChain(this.#context, this.#effects.impulses(), this.#effects.defer);
+    chain.apply(spec, true);
+    this.#chain = chain;
+    return {
+      head: chain.input,
+      tail: chain.output,
+      dispose: () => {
+        chain.dispose();
+      },
+    };
   }
 
   #setSend(level: number): void {

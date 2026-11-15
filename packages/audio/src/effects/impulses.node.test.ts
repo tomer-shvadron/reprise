@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import { bandEnergy, rms } from '../test/signal';
-import { CABINETS, CABINET_SAMPLES, ROOM_SECONDS, cabinetImpulse, roomImpulse } from './impulses';
+import { CABINETS, cabinetSamples, ROOM_SECONDS, cabinetImpulse, roomImpulse } from './impulses';
 
 const RATES = [44_100, 48_000];
 const energy = (data: Float32Array): number => data.reduce((sum, value) => sum + value * value, 0);
 
 describe.each(RATES)('impulse responses at %i Hz', (sampleRate) => {
-  it.each(CABINETS)('cabinet %s: deterministic, 2048 samples, unit energy, no DC', (id) => {
+  it.each(CABINETS)('cabinet %s: deterministic, 46 ms, unit energy, no DC', (id) => {
     const impulse = cabinetImpulse(id, sampleRate);
     expect(cabinetImpulse(id, sampleRate)).toEqual(impulse);
-    expect(impulse).toHaveLength(CABINET_SAMPLES);
+    expect(impulse).toHaveLength(cabinetSamples(sampleRate));
     expect(energy(impulse)).toBeCloseTo(1, 5);
     const sum = impulse.reduce((total, value) => total + value, 0);
     expect(Math.abs(sum)).toBeLessThan(0.05);

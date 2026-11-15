@@ -12,6 +12,9 @@ const DELAY_SMOOTHING = 0.05;
 /** An amp is mono: the first stages take the sum, and a mono cabinet convolves half the work. */
 const MONO = { channelCount: 1, channelCountMode: 'explicit' } as const;
 
+/** 1/sqrt(2) as a Web Audio lowpass or highpass Q, in dB. */
+const BUTTERWORTH_DB = -3.01;
+
 const gainOf = (db: number): number => 10 ** (db / 20);
 
 function smooth(param: AudioParam, value: number, context: BaseAudioContext, constant = SMOOTHING) {
@@ -63,7 +66,8 @@ const drive: StageDef<Params<'drive'>> = {
       ...MONO,
       type: 'highpass',
       frequency: 25,
-      Q: Math.SQRT1_2,
+      // Web Audio reads a lowpass's and highpass's Q in dB: -3.01 dB is Butterworth.
+      Q: BUTTERWORTH_DB,
     });
     scale.connect(shaper).connect(blocker);
     return {
@@ -144,7 +148,13 @@ const BASE_DELAY = 0.015;
 const modulation: StageDef<Params<'modulation'>> = {
   key: () => 'modulation',
   build(context, _impulses, params) {
-    const head = context.createGain();
+    // Explicitly stereo, so a mono source reaches both delay lines: the splitter is discrete and
+    // would leave its right output silent.
+    const head = new GainNode(context, {
+      channelCount: 2,
+      channelCountMode: 'explicit',
+      channelInterpretation: 'speakers',
+    });
     const tail = context.createGain();
     const dry = new GainNode(context, { gain: 1 - params.mix / 2 });
     const wet = new GainNode(context, { gain: params.mix });
@@ -197,7 +207,11 @@ const delay: StageDef<Params<'delay'>> = {
     const wet = new GainNode(context, { gain: params.mix });
     const line = new DelayNode(context, { maxDelayTime: 1.5, delayTime: params.time });
     // The loop's lowpass darkens each repeat, as a tape or analogue line would.
-    const damping = new BiquadFilterNode(context, { type: 'lowpass', frequency: 4000 });
+    const damping = new BiquadFilterNode(context, {
+      type: 'lowpass',
+      frequency: 4000,
+      Q: BUTTERWORTH_DB,
+    });
     const feedback = new GainNode(context, { gain: feedbackOf(params.feedback) });
     head.connect(dry).connect(tail);
     head.connect(line);
