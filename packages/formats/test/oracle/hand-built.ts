@@ -122,21 +122,36 @@ const soundChange = (bar: number, position: number): string =>
 const organTrack = (automation: string): string =>
   guitarTrack('0', { extra: automation }).replace('</Sounds>', ORGAN);
 
-/** A track with a sound change at `position` of bar `at`, over two bars of `voices`. */
+/**
+ * A track with a sound change at `position` of bar `at`. Each bar of `barVoices` is a gpif voice
+ * list in which `0` stands for a whole note of its own: a voice and beat per bar, since alphaTab
+ * shares a voice object between the bars that reference one id.
+ */
 function withSoundChange(
   name: string,
   at: number,
   position: number,
   barVoices: string[],
 ): HandBuilt {
+  const filled = barVoices.flatMap((voices, index) =>
+    voices.split(' ').includes('0') ? [String(index)] : [],
+  );
   return compareGpif(
     name,
     gpif({
       tracks: [organTrack(soundChange(at, position))],
       masterBars: barVoices.map((_, index) => masterBar(String(index))),
-      bars: barVoices.map((voices, index) => bar(String(index), voices)),
-      voices: [voice('0', '0')],
-      beats: [beat('0', '0', '0')],
+      bars: barVoices.map((voices, index) =>
+        bar(
+          String(index),
+          voices
+            .split(' ')
+            .map((id) => (id === '0' ? String(index) : id))
+            .join(' '),
+        ),
+      ),
+      voices: filled.map((id) => voice(id, id)),
+      beats: filled.map((id) => beat(id, '0', '0')),
       notes: [note('0', 2, 5)],
       rhythms: WHOLE,
     }),
