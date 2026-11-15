@@ -1,6 +1,6 @@
 import type { MenuItemConstructorOptions } from 'electron';
 
-import type { MenuCommandId } from '@reprise/web';
+import type { MenuCommandId, RecentSong } from '@reprise/web';
 
 interface MenuCommand {
   label: string;
@@ -31,6 +31,9 @@ export interface MenuOptions {
   docsUrl: string;
   sendCommand: (id: MenuCommandId) => void;
   openExternal: (url: string) => void;
+  /** The Open Recent entries, newest first; the list is empty until the renderer sends one. */
+  recent?: readonly RecentSong[];
+  openRecent?: (id: string) => void;
 }
 
 export function menuTemplate({
@@ -39,6 +42,8 @@ export function menuTemplate({
   docsUrl,
   sendCommand,
   openExternal,
+  recent = [],
+  openRecent = () => undefined,
 }: MenuOptions): MenuItemConstructorOptions[] {
   const command = (id: MenuCommandId): MenuItemConstructorOptions => ({
     ...MENU_COMMANDS[id],
@@ -48,12 +53,27 @@ export function menuTemplate({
   });
   const separator: MenuItemConstructorOptions = { type: 'separator' };
 
+  const openRecentMenu: MenuItemConstructorOptions = {
+    label: 'Open Recent',
+    submenu:
+      recent.length === 0
+        ? [{ label: 'No Recent Songs', enabled: false }]
+        : recent.map(({ id, title }) => ({
+            // A lone & is a mnemonic marker in a Windows menu label.
+            label: title.replaceAll('&', '&&'),
+            click: () => {
+              openRecent(id);
+            },
+          })),
+  };
+
   return [
     ...(isMac ? [{ role: 'appMenu' } as const] : []),
     {
       label: 'File',
       submenu: [
         command('file.open'),
+        openRecentMenu,
         separator,
         command('file.save'),
         command('file.saveAs'),

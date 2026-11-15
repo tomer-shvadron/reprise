@@ -1,6 +1,6 @@
 import { write } from '@reprise/formats';
 import { score } from '@reprise/model/testing';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
@@ -28,7 +28,7 @@ describe('phase 3 entry points', () => {
     const { run } = renderApp();
     run('library.show');
     const region = screen.getByRole('region', { name: 'Library' });
-    expect(region).toHaveTextContent('WP-060');
+    expect(within(region).getByRole('searchbox', { name: 'Search songs' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Back to player' }));
     expect(screen.queryByRole('region', { name: 'Library' })).not.toBeInTheDocument();
   });

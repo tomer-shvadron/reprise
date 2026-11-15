@@ -8,10 +8,18 @@ function fakeBridge(): RepriseBridge {
     saveFile: vi.fn(() => Promise.resolve('/Users/me/song.gp5')),
     readFile: vi.fn(() => Promise.resolve(new Uint8Array([1]))),
     writeFile: vi.fn(() => Promise.resolve(undefined)),
+    openFiles: vi.fn(() => Promise.resolve([])),
+    openFolder: vi.fn(() => Promise.resolve(undefined)),
+    mkdir: vi.fn(() => Promise.resolve(undefined)),
+    listDir: vi.fn(() => Promise.resolve([])),
+    move: vi.fn(() => Promise.resolve(undefined)),
+    remove: vi.fn(() => Promise.resolve(undefined)),
+    setRecentSongs: vi.fn(() => Promise.resolve(undefined)),
     libraryDir: vi.fn(() => Promise.resolve('/Users/me/Music/Reprise')),
     dataDir: vi.fn(() => Promise.resolve('/Users/me/Library/Application Support/Reprise')),
     print: vi.fn(() => Promise.resolve(undefined)),
     onMenuCommand: vi.fn(() => () => undefined),
+    onOpenRecent: vi.fn(() => () => undefined),
   };
 }
 
