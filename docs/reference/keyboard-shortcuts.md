@@ -2,7 +2,7 @@
 
 Shortcuts follow Guitar Pro where Guitar Pro has one.
 
-The table below is checked against the command registry in `apps/web` by `apps/web/src/app/shortcut-doc.test.ts`, which fails on any difference and prints the table to paste in. WP-101 adds the script that writes it, the contexts and the cheat sheet. Until then, edit it only by pasting the table that test prints.
+The table below is checked against the command registry in `apps/web` by `apps/web/src/app/shortcut-doc.test.ts`, which fails on any difference and prints the table to paste in. WP-101 adds the script that writes it and the cheat sheet. The Context column is Global, or Editing for a binding that works only in edit mode and wins over a Global binding of the same key. Until then, edit it only by pasting the table that test prints.
 
 - A bare key (no Cmd or Ctrl) never fires while typing in a text field.
 - Arrows, Home and End stay with a text field or a control that uses them (a slider, a menu); elsewhere they move the playhead.
