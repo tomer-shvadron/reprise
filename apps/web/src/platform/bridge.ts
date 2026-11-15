@@ -119,6 +119,7 @@ export type InvokeResult<C extends InvokeChannel> = InvokeChannels[C]['result'];
 
 /** Commands the native menu can trigger; each id is a command in the renderer's registry. */
 export type MenuCommandId =
+  | 'file.new'
   | 'file.open'
   | 'file.save'
   | 'file.saveAs'

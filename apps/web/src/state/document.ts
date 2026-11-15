@@ -129,6 +129,11 @@ export interface DocumentState {
   openBytes(name: string, bytes: Uint8Array, options?: OpenOptions): Promise<void>;
   /** Ties the open document to a library song, as after importing a file opened without import. */
   setSongId(songId: Id | undefined): void;
+  /**
+   * Opens a never-saved document around `score` (the caller builds it, e.g. `createEmptyScore()`):
+   * fresh history, no file, no `songId`, not modified. Save falls through to Save As for it.
+   */
+  newDocument(score: Score): void;
   close(): void;
   apply(command: Command): readonly CommandWarning[];
   undo(): void;
@@ -416,6 +421,31 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           if (token !== openToken) return;
           set({ opening: undefined, error: errorOf('open', name, error) });
         }
+      },
+
+      newDocument(score) {
+        // Drops an open still reading, so it cannot replace this document when it lands.
+        openToken += 1;
+        history = createHistory();
+        depth = 0;
+        savedDepth = 0;
+        savedNotation = {};
+        forgetDocument();
+        set((state) => ({
+          id: newId(),
+          score,
+          file: undefined,
+          songId: undefined,
+          view: emptyView(),
+          lastChange: undefined,
+          revision: state.revision + 1,
+          warnings: [],
+          warningsOpen: false,
+          detailsOpen: false,
+          opening: undefined,
+          error: undefined,
+          ...snapshot({}),
+        }));
       },
 
       close() {
