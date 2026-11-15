@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -24,6 +24,7 @@ import { ScreenHost } from './screen-host';
 import type { AppServices } from './services';
 import { AppServicesProvider } from './services-context';
 import { installShortcutDispatcher } from './shortcut-dispatcher';
+import { CommandSourceContext } from './use-command';
 
 interface AppProps {
   services: AppServices;
@@ -35,6 +36,7 @@ interface AppProps {
 export function App({ services, keyboard, onMenuCommand }: AppProps) {
   const { ui, audio } = services;
   const [registry] = useState(() => createAppRegistry(services));
+  const source = useMemo(() => ({ registry, keyboard }), [registry, keyboard]);
   const theme = useStore(ui, (state) => state.theme);
   const screen = useStore(ui, (state) => state.screen);
   const rightPanelView = useStore(ui, (state) => state.rightPanelView);
@@ -81,7 +83,13 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             transport={<TransportBar registry={registry} keyboard={keyboard} />}
             sidebar={<TrackSidebar registry={registry} keyboard={keyboard} />}
             panel={
-              rightPanelView === 'mixer' ? <MixerPanel /> : <TrainerPanel view={rightPanelView} />
+              <CommandSourceContext value={source}>
+                {rightPanelView === 'mixer' ? (
+                  <MixerPanel />
+                ) : (
+                  <TrainerPanel view={rightPanelView} />
+                )}
+              </CommandSourceContext>
             }
           />
         </div>
