@@ -13,6 +13,17 @@ function contains(box: Rect, x: number, y: number): boolean {
   return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
 }
 
+/** `contains` for a box shifted right by `offsetX`, without building the shifted box. */
+function containsShifted(box: Rect, offsetX: number, x: number, y: number): boolean {
+  // y first: it rejects most anchors before the rounding.
+  if (y < box.y || y > box.y + box.height) return false;
+  const left = shiftedX(box, offsetX);
+  return x >= left && x <= left + box.width;
+}
+
+const shiftedX = (box: Rect, offsetX: number): number =>
+  offsetX === 0 ? box.x : round(box.x + offsetX);
+
 /** Whether `a` names a more specific node than `b`: by kind, then a track's over the column's, then size. */
 function moreSpecific(a: Anchor, b: Anchor): boolean {
   if (SPECIFICITY[a.kind] !== SPECIFICITY[b.kind]) return SPECIFICITY[a.kind] > SPECIFICITY[b.kind];
@@ -35,7 +46,7 @@ export function hitTest(result: LayoutResult, x: number, y: number): Anchor | un
       const anchor = result.anchors[i];
       if (
         anchor &&
-        contains(shiftedBox(anchor.bbox, offsetX), x, y) &&
+        containsShifted(anchor.bbox, offsetX, x, y) &&
         (!best || moreSpecific(anchor, best))
       ) {
         best = anchor;
@@ -46,7 +57,7 @@ export function hitTest(result: LayoutResult, x: number, y: number): Anchor | un
 }
 
 function shiftedBox(box: Rect, offsetX: number): Rect {
-  return offsetX === 0 ? box : { ...box, x: round(box.x + offsetX) };
+  return offsetX === 0 ? box : { ...box, x: shiftedX(box, offsetX) };
 }
 
 /** An anchor's box in layout space; the stored box itself when its system has no offset. */

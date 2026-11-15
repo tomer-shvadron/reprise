@@ -10,7 +10,7 @@ import {
 import { beatOf, largeScore } from '@reprise/model/testing';
 import { expect, test, type TestContext } from 'vitest';
 
-import { LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from './index';
+import { LayoutCache, PAGE_SIZES, anchorBox, hitTest, layout, type LayoutOptions } from './index';
 import { checkBudget, recordMeasurement } from './test/budget';
 import { withEffects, withNoteMarks } from './test/effects';
 
@@ -361,3 +361,44 @@ test('Re-layout after a page-break-moving edit, paged', RELAYOUT_BENCH, async (c
   const p50 = await relayoutBench(context, metric, part, pageBreakEdit(part));
   await recordMeasurement(context, metric, p50);
 });
+
+/**
+ * The pointer's cost: one `hitTest` per move. Half the points are anchor centres (a hit), half
+ * pseudo-random (mostly gaps and margins), the same on every run. Unbudgeted: the table has no row.
+ */
+function hitTestBench(metric: string, base: LayoutOptions) {
+  test(metric, BENCH, async (context) => {
+    const score = longScore();
+    const laid = layout(score, mixedNotation(score, base));
+    const points: [number, number][] = [];
+    const step = Math.max(1, Math.floor(laid.anchors.length / 500));
+    for (let i = 0; i < laid.anchors.length && points.length < 500; i += step) {
+      const anchor = laid.anchors[i];
+      if (anchor?.kind !== 'note') continue;
+      const box = anchorBox(laid, anchor);
+      points.push([box.x + box.width / 2, box.y + box.height / 2]);
+    }
+    const first = laid.systems[0];
+    const last = laid.systems.at(-1);
+    if (!first || !last) throw new Error('no systems');
+    let seed = 12_345;
+    const random = () => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return seed / 2_147_483_648;
+    };
+    const right = Math.max(...laid.systems.map((s) => s.bbox.x + s.bbox.width));
+    const bottom = last.bbox.y + last.bbox.height;
+    while (points.length < 1000) points.push([random() * right, random() * bottom]);
+    let hits = 0;
+    const result = await context
+      .bench(metric, () => {
+        for (const [x, y] of points) if (hitTest(laid, x, y)) hits++;
+      })
+      .run(RUN);
+    expect(hits).toBeGreaterThan(0);
+    await recordMeasurement(context, metric, result.latency.p50);
+  });
+}
+
+hitTestBench('Hit test, 1 000 points, long score, paged', options);
+hitTestBench('Hit test, 1 000 points, long score, continuous', continuous);
