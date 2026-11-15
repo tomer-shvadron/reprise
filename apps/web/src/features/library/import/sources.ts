@@ -1,3 +1,5 @@
+import { formatOfExtension } from '@reprise/formats';
+
 import { PICKED_FOLDER_LIMITS, type PickedFile } from '@/platform/platform';
 
 /** A file to import, read on demand so a folder of hundreds stays cheap. */
@@ -87,10 +89,12 @@ export async function resolveDrop(snapshot: DropSnapshot): Promise<DropWalk> {
     skipped: 0,
   };
   let entries = 0;
+  // Only the file and entry caps end the walk; a folder cut by depth leaves its siblings listed.
+  let full = false;
 
   const visit = async (directory: FileSystemDirectoryEntry, prefix: string, depth: number) => {
     const reader = directory.createReader();
-    for (;;) {
+    while (!full) {
       let batch: FileSystemEntry[];
       try {
         batch = await readBatch(reader);
@@ -101,11 +105,9 @@ export async function resolveDrop(snapshot: DropSnapshot): Promise<DropWalk> {
       if (batch.length === 0) return;
       for (const entry of batch) {
         entries += 1;
-        if (
-          entries > PICKED_FOLDER_LIMITS.maxEntries ||
-          walk.sources.length >= PICKED_FOLDER_LIMITS.maxFiles
-        ) {
+        if (entries > PICKED_FOLDER_LIMITS.maxEntries) {
           walk.truncated = true;
+          full = true;
           return;
         }
         if (entry.name.startsWith('.')) continue;
@@ -113,18 +115,24 @@ export async function resolveDrop(snapshot: DropSnapshot): Promise<DropWalk> {
         if (isDirectoryEntry(entry)) {
           if (depth >= PICKED_FOLDER_LIMITS.maxDepth) walk.truncated = true;
           else await visit(entry, path, depth + 1);
-        } else if (isFileEntry(entry)) {
-          try {
-            walk.sources.push(fromFile(await fileOf(entry), path));
-          } catch {
-            walk.skipped += 1;
+        } else if (isFileEntry(entry) && formatOfExtension(entry.name) !== undefined) {
+          // Only score files count toward the cap, and only they are fetched.
+          if (walk.sources.length >= PICKED_FOLDER_LIMITS.maxFiles) {
+            walk.truncated = true;
+            full = true;
+          } else {
+            try {
+              walk.sources.push(fromFile(await fileOf(entry), path));
+            } catch {
+              walk.skipped += 1;
+            }
           }
         }
-        if (walk.truncated) return;
+        if (full) return;
       }
     }
   };
 
-  for (const directory of snapshot.directories) await visit(directory, directory.name, 1);
+  for (const directory of snapshot.directories) await visit(directory, directory.name, 0);
   return walk;
 }
