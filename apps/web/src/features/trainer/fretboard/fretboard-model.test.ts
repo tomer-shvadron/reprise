@@ -61,10 +61,7 @@ describe('createBeatIndex', () => {
     expect(afterMix.dotsAt(first.id, 0)).toBe(one);
     expect(afterMix.dotsAt(second.id, 0)).toBe(two);
     // An edit replaces one bar object.
-    const edited = {
-      ...track,
-      bars: track.bars.map((bar, i) => (i === 0 ? { ...bar, voices: [...bar.voices] } : bar)),
-    };
+    const edited = { ...track, bars: track.bars.map((bar, i) => (i === 0 ? { ...bar } : bar)) };
     const afterEdit = createBeatIndex(edited, built.masterBars);
     expect(afterEdit.dotsAt(second.id, 0)).toBe(two);
     expect(afterEdit.dotsAt(first.id, 0)).not.toBe(one);

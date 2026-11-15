@@ -17,6 +17,17 @@ export interface FollowWatch {
   firstOutside?: { frame: number; bar: string; line: number[]; view: number[] };
 }
 
+export interface FrameWatch {
+  frames: number;
+  /** The longest time between two animation frames, in ms. */
+  maxGap: number;
+  /** The median gap, in ms. */
+  medianGap: number;
+  /** How many times the lit notes of the fretboard changed. */
+  changes: number;
+  timedOut: boolean;
+}
+
 export interface E2eProbe {
   /** Names the stubbed open picker returns, oldest first; empty means the user cancels. */
   picks: string[];
@@ -32,6 +43,8 @@ export interface E2eProbe {
   /** Every bar the readout shows until it has jumped from `from` back to `to` `times` times. */
   barTrail(from: string, to: string, times: number): Promise<{ bars: string[]; timedOut: boolean }>;
   watchFollow(untilBar: string): Promise<FollowWatch>;
+  /** Frame gaps and fretboard changes until the bar readout shows `untilBar`. */
+  watchFrames(untilBar: string): Promise<FrameWatch>;
 }
 
 declare global {
@@ -253,6 +266,32 @@ export function installPageHooks(): void {
     return result;
   };
 
+  const watchFrames = async (untilBar: string): Promise<FrameWatch> => {
+    const lit = () => document.querySelector('[data-fretboard-notes]')?.textContent ?? '';
+    const gaps: number[] = [];
+    let previous: number | undefined;
+    let last = lit();
+    let changes = 0;
+    const timedOut = await everyFrame((time) => {
+      if (previous !== undefined) gaps.push(time - previous);
+      previous = time;
+      const now = lit();
+      if (now !== last) {
+        last = now;
+        changes += 1;
+      }
+      return field('bar') === untilBar;
+    });
+    const sorted = [...gaps].sort((a, b) => a - b);
+    return {
+      frames: gaps.length + 1,
+      maxGap: sorted.at(-1) ?? 0,
+      medianGap: sorted[Math.floor(sorted.length / 2)] ?? 0,
+      changes,
+      timedOut,
+    };
+  };
+
   window.__e2e = {
     picks,
     opens: 0,
@@ -264,5 +303,6 @@ export function installPageHooks(): void {
     beatInterval,
     barTrail,
     watchFollow,
+    watchFrames,
   };
 }
