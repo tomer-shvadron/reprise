@@ -153,3 +153,45 @@ export function setMasterBar(target: { masterBarId: Id }, changes: MasterBarChan
     },
   };
 }
+
+export interface MasterBarEdit {
+  masterBarId: Id;
+  changes: MasterBarChanges;
+}
+
+/**
+ * Several master-bar edits, validated once against the score they leave: a range edit whose
+ * first bars would break a repeat or an ending rule on their own is accepted when the whole
+ * range is valid. Each bar's time signature must still fit the voices it holds.
+ */
+export function setMasterBars(edits: readonly MasterBarEdit[]): Command {
+  const name = 'setMasterBars';
+  return {
+    name,
+    run(draft) {
+      const base = baseOf(draft);
+      const seen = new Set<Id>();
+      const located = edits.map((edit) => {
+        if (seen.has(edit.masterBarId)) {
+          throw new CommandError(
+            name,
+            'invalid-value',
+            `master bar ${edit.masterBarId} is edited twice`,
+          );
+        }
+        seen.add(edit.masterBarId);
+        return { edit, index: findMasterBar(draft, edit.masterBarId, name) };
+      });
+      const parsed = located.map(({ edit, index }) => {
+        const masterBar = at(draft.masterBars, index, name);
+        assignChanges(masterBar, edit.changes);
+        return parseOrThrow(MasterBarSchema, masterBar, name);
+      });
+      assertMasterBarsValid(draft, name);
+      located.forEach(({ index }, i) => {
+        const after = parsed[i];
+        if (after) assertColumnFits(base, index, at(base.masterBars, index, name), after, name);
+      });
+    },
+  };
+}
