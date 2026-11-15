@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { write } from '@reprise/formats';
+import { setTrackProperties } from '@reprise/model';
 import { score } from '@reprise/model/testing';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -80,6 +81,35 @@ describe('App', () => {
       expect(services.document.getState().songId).toBeDefined();
     });
     expect(screen.queryByText('Not in your library')).not.toBeInTheDocument();
+  });
+
+  it('hides the not-in-your-library banner for a never-saved new song', async () => {
+    const { services, send } = renderApp();
+    await send('file.new');
+
+    const state = services.document.getState();
+    expect(state.score?.tracks).toHaveLength(1);
+    expect(state.file).toBeUndefined();
+    expect(screen.queryByText('Not in your library')).not.toBeInTheDocument();
+  });
+
+  it('keeps a modified document when file.new runs, until the prompt exists', async () => {
+    const bytes = await riffBytes();
+    const { services, send } = renderApp(
+      fakePlatform({ openFile: () => Promise.resolve({ name: 'riff.reprise', bytes }) }),
+    );
+    await send('file.open');
+    await waitFor(() => {
+      expect(services.document.getState().songId).toBeDefined();
+    });
+    const { score } = services.document.getState();
+    services.document
+      .getState()
+      .apply(setTrackProperties({ trackId: score?.tracks[0]?.id ?? '' }, { name: 'Renamed' }));
+    expect(services.document.getState().dirty).toBe(true);
+    const id = services.document.getState().id;
+    await send('file.new');
+    expect(services.document.getState().id).toBe(id);
   });
 
   it('opens the palette with the platform shortcut and runs a command from it', async () => {

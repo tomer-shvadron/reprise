@@ -1,5 +1,5 @@
 import { write } from '@reprise/formats';
-import type { Score } from '@reprise/model';
+import { removeBar, type Score } from '@reprise/model';
 import { describe, expect, it } from 'vitest';
 
 import { createAppRegistry } from '@/app/app-registry';
@@ -83,6 +83,62 @@ describe('transport commands', () => {
 
     const range = { startBar: bars[1]?.id ?? '', endBar: bars[2]?.id ?? '' };
     services.selection.getState().selectBars(range);
+    await run('transport.toggleLoop');
+    expect(services.playback.getState().settings.loop).toEqual(range);
+  });
+
+  it('loop the clicked bar while the playhead is in it, else the whole song', async () => {
+    const { services, run } = await setup(fourBars());
+    const score = services.document.getState().score;
+    if (!score) throw new Error('no score');
+    const id = (index: number) => score.masterBars[index]?.id ?? '';
+    const loop = () => services.playback.getState().settings.loop;
+    services.selection.getState().selectBars(undefined, id(2));
+    services.playback.setState({ position: positionEventAt(score, 2 * 3840 + 100) });
+    await run('transport.toggleLoop');
+    expect(loop()).toEqual({ startBar: id(2), endBar: id(2) });
+    await run('transport.toggleLoop');
+    expect(loop()).toBeUndefined();
+
+    // The playhead has moved on (playback, or a keyboard step): the click is stale.
+    services.playback.setState({ position: positionEventAt(score, 3 * 3840 + 100) });
+    await run('transport.toggleLoop');
+    expect(loop()).toEqual({ startBar: id(0), endBar: id(3) });
+  });
+
+  it('loop the whole song when the clicked bar was removed', async () => {
+    const { services, run } = await setup(fourBars());
+    const score = services.document.getState().score;
+    if (!score) throw new Error('no score');
+    const id = (index: number) => score.masterBars[index]?.id ?? '';
+    services.selection.getState().selectBars(undefined, id(2));
+    services.playback.setState({ position: positionEventAt(score, 2 * 3840 + 100) });
+    services.document.getState().apply(removeBar({ masterBarId: id(2) }));
+    await run('transport.toggleLoop');
+    expect(services.playback.getState().settings.loop).toEqual({
+      startBar: id(0),
+      endBar: id(3),
+    });
+  });
+
+  it('keep a wider loop through a seek-click inside it', async () => {
+    const { services, run } = await setup(fourBars());
+    const bars = services.document.getState().score?.masterBars ?? [];
+    const id = (index: number) => bars[index]?.id ?? '';
+    const wide = { startBar: id(0), endBar: id(2) };
+    services.selection.getState().selectBars(wide);
+    await run('transport.toggleLoop');
+    expect(services.playback.getState().settings.loop).toEqual(wide);
+    services.selection.getState().selectBars(undefined, id(1));
+    expect(services.playback.getState().settings.loop).toEqual(wide);
+  });
+
+  it('prefer a drag selection over the clicked bar', async () => {
+    const { services, run } = await setup(fourBars());
+    const bars = services.document.getState().score?.masterBars ?? [];
+    const range = { startBar: bars[1]?.id ?? '', endBar: bars[2]?.id ?? '' };
+    services.selection.getState().selectBars(undefined, bars[3]?.id);
+    services.selection.getState().selectBars(range, bars[1]?.id);
     await run('transport.toggleLoop');
     expect(services.playback.getState().settings.loop).toEqual(range);
   });

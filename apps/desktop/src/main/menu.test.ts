@@ -40,6 +40,14 @@ describe('menuTemplate', () => {
     }
   });
 
+  it('puts New Song first in the File menu on CmdOrCtrl+N', () => {
+    const { items } = template();
+    const file = items.find((item) => item.label === 'File');
+    const first = Array.isArray(file?.submenu) ? file.submenu[0] : undefined;
+
+    expect(first).toMatchObject({ label: 'New Song', accelerator: 'CmdOrCtrl+N' });
+  });
+
   it('uses roles for the clipboard, and puts Quit in File only off macOS', () => {
     const roles = (items: MenuItemConstructorOptions[]) => items.map(({ role }) => role);
 

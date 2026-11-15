@@ -17,7 +17,9 @@ export {
   setBeatRest,
 } from './beat-commands';
 export type { BeatChanges, BeatInput, BeatRhythm } from './beat-commands';
-export { insertBar, removeBar, setMasterBar } from './bar-commands';
-export type { MasterBarChanges, MasterBarInput } from './bar-commands';
+export { insertBar, removeBar, setMasterBar, setMasterBars } from './bar-commands';
+export type { MasterBarChanges, MasterBarEdit, MasterBarInput } from './bar-commands';
 export { addTrack, moveTrack, removeTrack, setTrackProperties } from './track-commands';
 export type { TrackChanges, TrackProperties } from './track-commands';
+export { chain } from './chain';
+export type { ChainStep } from './chain';
