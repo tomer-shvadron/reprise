@@ -48,13 +48,35 @@ const OPEN_MODAL = [
 ].join(', ');
 
 /**
- * Whether a modal dialog is open anywhere in the document, not only around the focused element:
- * focus can drift to the body behind a dialog, and a shortcut must not edit the score from there.
+ * The modal dialogs open anywhere in the document, not only around the focused element: focus can
+ * drift to the body behind a dialog, and a shortcut must not edit the score from there.
  */
-function modalDialogOpen(): boolean {
-  return [...document.querySelectorAll(OPEN_MODAL)].some(
+function openModals(): Element[] {
+  return [...document.querySelectorAll(OPEN_MODAL)].filter(
     (dialog) => dialog.closest('[data-radix-popper-content-wrapper]') === null,
   );
+}
+
+/**
+ * Whether an open modal stops this command, for a shortcut and for the desktop menu alike (the
+ * menu accelerator fires when the dispatcher lets a keydown through). Only the palette toggle
+ * passes, and only when the palette is the sole modal, so Cmd+K closes it but opens no second one
+ * over another dialog.
+ */
+export function modalBlocksCommand(id: string): boolean {
+  const modals = openModals();
+  if (modals.length === 0) return false;
+  if (id !== PALETTE_TOGGLE_ID) return true;
+  return modals.some((modal) => !modal.hasAttribute('data-command-palette'));
+}
+
+/**
+ * Whether a command sent by the native menu may run now. A modal drops all of them, except a
+ * text field's own undo and redo, which the command replays on the field and not on the score.
+ */
+export function menuCommandAllowed(id: string): boolean {
+  if (!modalBlocksCommand(id)) return true;
+  return (id === 'edit.undo' || id === 'edit.redo') && isTextField(document.activeElement);
 }
 
 /** Keys that delete text, so a text field keeps them whatever the modifiers. */
@@ -73,8 +95,9 @@ function leavesKeyToTarget(event: KeyboardEvent): boolean {
  *
  * What never runs a command (the one place these rules live; the keyboard-shortcuts reference
  * summarises them for users):
- * - Any shortcut while a modal dialog is open, except the palette toggle (Cmd/Ctrl+K). Escape and
- *   the rest stay with the dialog.
+ * - Any shortcut while a modal dialog is open, except the palette toggle (Cmd/Ctrl+K) when the
+ *   palette is the only modal. Escape and the rest stay with the dialog. The desktop menu obeys the
+ *   same rule through `menuCommandAllowed`.
  * - A key that was already handled (`defaultPrevented`) or is part of IME composition.
  * - A bare key (no Cmd or Ctrl) typed in a text field, and Space or Enter on a focused control.
  * - Arrows, Home, End and Page keys in a text field, select, range or checkbox, whatever the
@@ -89,10 +112,8 @@ export function dispatchShortcut(
 ): boolean {
   if (event.defaultPrevented || event.isComposing) return false;
 
-  const dialogOpen = modalDialogOpen();
-  const matching = registry.available().filter(({ id, shortcut }) => {
+  const matching = registry.available().filter(({ shortcut }) => {
     if (!shortcut) return false;
-    if (dialogOpen && id !== PALETTE_TOGGLE_ID) return false;
     if (DELETE_KEYS.has(event.key) && isTextField(event.target)) return false;
     if (NAVIGATION_KEYS.has(event.key) && isEditable(event.target)) return false;
     if (!shortcut.mod && leavesKeyToTarget(event)) return false;
@@ -102,6 +123,13 @@ export function dispatchShortcut(
   // contexts, the earlier one in COMMAND_CONTEXTS wins.
   const command = matching.sort((a, b) => contextRank(a.context) - contextRank(b.context))[0];
   if (!command) return false;
+
+  if (modalBlocksCommand(command.id)) {
+    // Outside a text field, swallow the key so the browser's own Save, Print or Open does not
+    // take it; inside one the field keeps it, and the desktop menu drops it (menuCommandAllowed).
+    if (!isTextField(event.target)) event.preventDefault();
+    return false;
+  }
 
   // A held key is still swallowed, so a held Space does not scroll the page.
   event.preventDefault();

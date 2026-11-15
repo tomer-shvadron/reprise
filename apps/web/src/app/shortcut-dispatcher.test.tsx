@@ -1,11 +1,15 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Slider } from '@/components/ui/slider';
 
+import { createTestServices } from '@/test/services';
+
+import { CommandPalette } from './command-palette';
 import { CommandRegistry } from './command-registry';
 import { formatShortcut, type KeyboardPlatform } from './keyboard';
-import { installShortcutDispatcher } from './shortcut-dispatcher';
+import { installShortcutDispatcher, menuCommandAllowed } from './shortcut-dispatcher';
 
 let uninstall: (() => void) | undefined;
 
@@ -330,7 +334,12 @@ describe('text fields and open dialogs', () => {
       shortcut: { key: 'Backspace', mod: true },
       run: run.back,
     });
-    registry.register({ id: 'x.del', title: 'Delete', shortcut: { key: 'Delete' }, run: run.del });
+    registry.register({
+      id: 'x.del',
+      title: 'Delete',
+      shortcut: { key: 'Delete', mod: true },
+      run: run.del,
+    });
     registry.register({
       id: 'x.undo',
       title: 'Undo',
@@ -356,17 +365,13 @@ describe('text fields and open dialogs', () => {
     );
   }
 
-  afterEach(() => {
-    document.body.replaceChildren();
-  });
-
   it('keeps Backspace and Delete, with modifiers, for a text field', () => {
     const run = setupGuards();
     render(<input aria-label="Search" />);
     const input = screen.getByLabelText('Search');
 
     fireEvent.keyDown(input, { key: 'Backspace', code: 'Backspace', metaKey: true });
-    fireEvent.keyDown(input, { key: 'Delete', code: 'Delete' });
+    fireEvent.keyDown(input, { key: 'Delete', code: 'Delete', metaKey: true });
 
     expect(run.back).not.toHaveBeenCalled();
     expect(run.del).not.toHaveBeenCalled();
@@ -376,13 +381,13 @@ describe('text fields and open dialogs', () => {
     const run = setupGuards();
 
     fireEvent.keyDown(document.body, { key: 'Backspace', code: 'Backspace', metaKey: true });
-    fireEvent.keyDown(document.body, { key: 'Delete', code: 'Delete' });
+    fireEvent.keyDown(document.body, { key: 'Delete', code: 'Delete', metaKey: true });
 
     expect(run.back).toHaveBeenCalledOnce();
     expect(run.del).toHaveBeenCalledOnce();
   });
 
-  it('runs nothing but the palette toggle while a modal dialog is open', () => {
+  it('runs nothing while a modal dialog is open, not even the palette toggle over it', () => {
     const run = setupGuards();
     mountDialog();
 
@@ -405,6 +410,111 @@ describe('text fields and open dialogs', () => {
       code: 'KeyK',
       metaKey: true,
     });
+    expect(run.palette).not.toHaveBeenCalled();
+  });
+
+  it('swallows a blocked match outside a text field, but leaves a text field its key', () => {
+    setupGuards();
+    mountDialog();
+
+    const outside = new KeyboardEvent('keydown', {
+      key: 'z',
+      code: 'KeyZ',
+      metaKey: true,
+      cancelable: true,
+      bubbles: true,
+    });
+    screen.getByRole('button', { name: 'Dialog control' }).dispatchEvent(outside);
+    expect(outside.defaultPrevented).toBe(true);
+
+    const inField = new KeyboardEvent('keydown', {
+      key: 'z',
+      code: 'KeyZ',
+      metaKey: true,
+      cancelable: true,
+      bubbles: true,
+    });
+    screen.getByLabelText('Field').dispatchEvent(inField);
+    expect(inField.defaultPrevented).toBe(false);
+  });
+
+  it('lets Cmd+K close the palette but not open it over another dialog', () => {
+    const run = setupGuards();
+    const { unmount } = render(<div role="dialog" data-state="open" data-command-palette="" />);
+    fireEvent.keyDown(document.body, { key: 'k', code: 'KeyK', metaKey: true });
+    expect(run.palette).toHaveBeenCalledOnce();
+    unmount();
+
+    render(
+      <>
+        <div role="dialog" data-state="open" data-command-palette="" />
+        <div role="alertdialog" data-state="open" />
+      </>,
+    );
+    fireEvent.keyDown(document.body, { key: 'k', code: 'KeyK', metaKey: true });
+    expect(run.palette).toHaveBeenCalledOnce();
+  });
+
+  it('is not blocked by a dialog that is closing', () => {
+    const run = setupGuards();
+    render(<div role="dialog" data-state="closed" />);
+
+    fireEvent.keyDown(document.body, { key: '[', code: 'BracketLeft' });
+
+    expect(run.open).toHaveBeenCalledOnce();
+  });
+
+  it('blocks under the markup the real palette and a real Radix dialog render', async () => {
+    const run = setupGuards();
+    const { ui } = createTestServices();
+    ui.getState().setPaletteOpen(true);
+    const registry = new CommandRegistry();
+    registry.register({
+      id: 'app.commandPalette',
+      title: 'Palette',
+      shortcut: { key: 'k', mod: true },
+      run: run.palette,
+    });
+    registry.register({
+      id: 'x.open',
+      title: 'Open bracket',
+      shortcut: { key: '[' },
+      run: run.open,
+    });
+    registry.register({
+      id: 'x.back',
+      title: 'Back',
+      shortcut: { key: 'Backspace', mod: true },
+      run: run.back,
+    });
+    const { unmount } = render(<CommandPalette registry={registry} ui={ui} keyboard="mac" />);
+    const input = await screen.findByPlaceholderText('Type a command…');
+    expect(menuCommandAllowed('file.open')).toBeFalsy();
+
+    fireEvent.keyDown(input, { key: 'Backspace', code: 'Backspace', metaKey: true });
+    fireEvent.keyDown(document.body, { key: '[', code: 'BracketLeft' });
+    expect(run.back).not.toHaveBeenCalled();
+    expect(run.open).not.toHaveBeenCalled();
+
+    // The palette alone: Cmd+K goes through (it closes the palette).
+    uninstall?.();
+    uninstall = installShortcutDispatcher(window, registry, 'mac');
+    fireEvent.keyDown(input, { key: 'k', code: 'KeyK', metaKey: true });
+    expect(run.palette).toHaveBeenCalledOnce();
+    unmount();
+
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Print</DialogTitle>
+          <DialogDescription>Options</DialogDescription>
+        </DialogContent>
+      </Dialog>,
+    );
+    fireEvent.keyDown(document.body, { key: '[', code: 'BracketLeft' });
+    expect(run.open).not.toHaveBeenCalled();
+    expect(menuCommandAllowed('edit.undo')).toBeFalsy();
+    fireEvent.keyDown(document.body, { key: 'k', code: 'KeyK', metaKey: true });
     expect(run.palette).toHaveBeenCalledOnce();
   });
 
