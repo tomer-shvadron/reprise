@@ -2,6 +2,10 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
+import { LibraryScreen } from '@/features/library';
+import { SoundManager } from '@/features/sounds';
+import { TrainerPanel } from '@/features/trainer';
 import { PrintDialog, PrintRoot } from '@/features/score';
 import { MixerPanel, TrackSidebar } from '@/features/tracks';
 import { TransportBar } from '@/features/transport';
@@ -32,6 +36,8 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   const { ui, audio } = services;
   const [registry] = useState(() => createAppRegistry(services));
   const theme = useStore(ui, (state) => state.theme);
+  const screen = useStore(ui, (state) => state.screen);
+  const rightPanelView = useStore(ui, (state) => state.rightPanelView);
 
   useLayoutEffect(() => {
     document.documentElement.dataset['theme'] = theme;
@@ -73,8 +79,29 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
           score={<ScorePane hint={hint} />}
           transport={<TransportBar registry={registry} keyboard={keyboard} />}
           sidebar={<TrackSidebar registry={registry} keyboard={keyboard} />}
-          panel={<MixerPanel />}
+          panel={
+            rightPanelView === 'mixer' ? <MixerPanel /> : <TrainerPanel view={rightPanelView} />
+          }
         />
+        {screen !== 'player' && (
+          <section
+            aria-label={screen === 'library' ? 'Library' : 'Sounds'}
+            className="bg-background fixed inset-0 z-40 flex flex-col"
+          >
+            <div className="flex items-center border-b p-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  ui.getState().setScreen('player');
+                }}
+              >
+                Back to player
+              </Button>
+            </div>
+            {screen === 'library' ? <LibraryScreen /> : <SoundManager />}
+          </section>
+        )}
         <CommandPalette registry={registry} ui={ui} keyboard={keyboard} />
         <DropZone />
         <Notices />

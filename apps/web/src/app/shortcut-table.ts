@@ -8,6 +8,10 @@ const CATEGORIES: Record<string, string> = {
   view: 'View',
   transport: 'Transport',
   track: 'Track',
+  library: 'Library',
+  trainer: 'Trainer',
+  editor: 'Editor',
+  sounds: 'Sounds',
 };
 
 const categoryOf = (id: string) => CATEGORIES[id.split('.')[0] ?? ''] ?? 'Other';
