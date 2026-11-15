@@ -5,17 +5,17 @@
 
 It holds the speed trainer (WP-070) and the entry points the lead stubbed in WP-056 for the rest:
 
-| Export                           | What it is                                                                                                                                                                                                                       |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TrainerPanel`                   | The speed trainer for its view and a placeholder for each other, naming its work package. The app shows it in the right panel for those views.                                                                                   |
-| `trainerCommands` (`./commands`) | `trainer.speedTrainer`, `trainer.tuner`, `trainer.metronome` and `trainer.fretboard`, each showing its view, and the speed trainer's `trainer.speedTrainerToggle`, `trainer.speedTrainerMissed` and `trainer.speedTrainerReset`. |
+| Export                           | What it is                                                                                                                                                                                                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `TrainerPanel`                   | The speed trainer for its view and a placeholder for each other, naming its work package. The app shows it in the right panel for those views.                                                                                                                     |
+| `trainerCommands` (`./commands`) | `trainer.speedTrainer`, `trainer.tuner`, `trainer.metronome` and `trainer.fretboard` (which toggles the bottom region), each showing its view, and the speed trainer's `trainer.speedTrainerToggle`, `trainer.speedTrainerMissed` and `trainer.speedTrainerReset`. |
 
 ## What it can rely on
 
 - `ui.rightPanelView` and `ui.showPanelView(view)`: which tool the right panel shows
-  (`'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'fretboard'`). The fretboard is meant for a
-  bottom region (WP-074); until the shell has one it shares the right panel, and a bottom region is
-  a shell change for the lead (#206).
+  (`'mixer' | 'speedTrainer' | 'tuner' | 'metronome'`). The fretboard lives in the bottom region
+  instead: `ui.bottomPanel` (`{ open, view }`), `ui.toggleBottomPanelView('fretboard')` and
+  `ui.bottomPanelHeight` (#206). `TrainerPanel` renders it there as `view="fretboard"`.
 - `practice` (`state/practice.ts`), the running session WP-073 stores: `start` on first play, which
   returns the session of another document it replaces so it can be stored, `addPlayed`, `noteLoop`,
   `recordTempo`, `recordStep(range, percent)` when the speed trainer completes a full step (the

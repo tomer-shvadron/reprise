@@ -40,6 +40,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   const theme = useStore(ui, (state) => state.theme);
   const screen = useStore(ui, (state) => state.screen);
   const rightPanelView = useStore(ui, (state) => state.rightPanelView);
+  const bottomView = useStore(ui, (state) => state.bottomPanel.view);
 
   useLayoutEffect(() => {
     document.documentElement.dataset['theme'] = theme;
@@ -89,6 +90,11 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             banner={<UnimportedBanner />}
             transport={<TransportBar registry={registry} keyboard={keyboard} />}
             sidebar={<TrackSidebar registry={registry} keyboard={keyboard} />}
+            bottom={
+              <CommandSourceContext value={source}>
+                <TrainerPanel view={bottomView} />
+              </CommandSourceContext>
+            }
             panel={
               <CommandSourceContext value={source}>
                 {rightPanelView === 'mixer' ? (
