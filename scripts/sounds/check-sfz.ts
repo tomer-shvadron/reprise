@@ -19,7 +19,8 @@ if (directory === undefined || extra.length > 0) {
   console.error('Usage: pnpm sfz:check <directory of an SFZ pack, e.g. local-sounds/swagbass>');
   exit(2);
 }
-const root = resolve(directory);
+// pnpm runs root scripts from the repository root; the user typed the path where they stand.
+const root = resolve(process.env['INIT_CWD'] ?? process.cwd(), directory);
 if (!existsSync(root) || !statSync(root).isDirectory()) {
   console.error(`Not a directory: ${directory}`);
   exit(2);

@@ -75,4 +75,22 @@ describe('checkPack', () => {
     expect(results[1]?.report.unresolvedIncludes).toEqual(['nope.sfzh']);
     expect(results[2]?.report.escapedPaths).toHaveLength(1);
   });
+
+  it('treats inherited property names as missing files', async () => {
+    const [result] = await checkPack({
+      'a.sfz': { size: 0, bytes: enc('#include "constructor"\n<region> sample=toString key=60') },
+    });
+    expect(result?.report.unresolvedIncludes).toEqual(['constructor']);
+    expect(result?.missing).toEqual(['toString']);
+  });
+
+  it('fails a file whose include or own text was cut off in the snapshot', async () => {
+    const wav = encodeWav([sine(440, 22_050, 0.01)], 22_050);
+    const [result] = await checkPack({
+      'a.sfz': { size: 0, bytes: enc('#include "defs.inc"\n<region> sample=a.wav key=60') },
+      'defs.inc': { size: 9_999_999, bytes: enc('// cut'), truncated: true },
+      'a.wav': { size: wav.length, bytes: wav },
+    });
+    expect(result?.errors).toEqual(['defs.inc is cut off: the snapshot holds only part of it']);
+  });
 });

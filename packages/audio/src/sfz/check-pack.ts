@@ -14,6 +14,8 @@ export interface SnapshotFile {
   size: number;
   /** The whole file for text and small files, else its first bytes (enough for a header). */
   bytes: Uint8Array;
+  /** `bytes` is shorter than the file. Harmless for a sample, an error for text the loader reads. */
+  truncated?: boolean;
 }
 
 /** Pack-relative '/' paths to files. */
@@ -34,11 +36,22 @@ export interface SfzFileCheck {
   errors: string[];
 }
 
+/**
+ * Own keys only: a path comes from the pack, and `constructor` or `__proto__` must not find an
+ * inherited property.
+ */
+function lookup(snapshot: PackSnapshot, path: string): SnapshotFile | undefined {
+  return Object.hasOwn(snapshot, path) ? snapshot[path] : undefined;
+}
+
 /** The text of a file the loader read, and a refusal for anything missing. */
-function reader(snapshot: PackSnapshot) {
+function reader(snapshot: PackSnapshot, truncated: Set<string>) {
   return (path: string): Promise<Uint8Array> => {
-    const file = snapshot[path];
-    return file ? Promise.resolve(file.bytes) : Promise.reject(new Error(`No file ${path}`));
+    const file = lookup(snapshot, path);
+    if (!file) return Promise.reject(new Error(`No file ${path}`));
+    // A cut-off SFZ or include would parse as a shorter file and report nothing.
+    if (file.truncated) truncated.add(path);
+    return Promise.resolve(file.bytes);
   };
 }
 
@@ -47,7 +60,8 @@ function caseInsensitive(snapshot: PackSnapshot): Map<string, string> {
 }
 
 export async function checkSfzFile(snapshot: PackSnapshot, path: string): Promise<SfzFileCheck> {
-  const { regions, report } = await loadSfz(path, reader(snapshot), { packId: 'check' });
+  const cutOff = new Set<string>();
+  const { regions, report } = await loadSfz(path, reader(snapshot, cutOff), { packId: 'check' });
   const prefix = 'sfz:check/';
   const refs = [...new Set(regions.map((region) => region.sample))];
   const folded = caseInsensitive(snapshot);
@@ -65,7 +79,7 @@ export async function checkSfzFile(snapshot: PackSnapshot, path: string): Promis
   const rates = new Set<number>();
   for (const ref of refs) {
     const file = ref.slice(prefix.length);
-    const found = snapshot[file];
+    const found = lookup(snapshot, file);
     if (!found) {
       const other = folded.get(file.toLowerCase());
       result.missing.push(other === undefined ? file : `${file} (case differs: ${other})`);
@@ -90,6 +104,8 @@ export async function checkSfzFile(snapshot: PackSnapshot, path: string): Promis
   if (result.badHeaders.length > 0) {
     result.errors.push(`${String(result.badHeaders.length)} sample files with an unusable header`);
   }
+  for (const file of cutOff)
+    result.errors.push(`${file} is cut off: the snapshot holds only part of it`);
   if (result.regions === 0) result.errors.push('no regions');
   return result;
 }

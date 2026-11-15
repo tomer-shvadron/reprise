@@ -11,13 +11,15 @@ import type { TestProject } from 'vitest/node';
 export const DIR_ENV = 'REPRISE_SFZ_DIR';
 
 const TEXT = /\.(sfz|sfzh|inc|txt)$/i;
-const HEAD_BYTES = 65_536;
+/** A WAV, FLAC or Ogg header almost always fits in 4 KiB; 16 leaves room for chunks before `fmt `. */
+const HEAD_BYTES = 16_384;
 /** A text file beyond this is no SFZ file; reading its head keeps a stray dump from filling memory. */
 const MAX_TEXT_BYTES = 16 * 1024 * 1024;
 
 interface Entry {
   size: number;
   bytes: Uint8Array;
+  truncated?: boolean;
 }
 
 function readHead(path: string, length: number): Uint8Array {
@@ -33,7 +35,8 @@ function readHead(path: string, length: number): Uint8Array {
 
 /** Regular files only: a symlink inside a downloaded pack is not followed. */
 export function snapshotDirectory(root: string): Record<string, Entry> {
-  const files: Record<string, Entry> = {};
+  // No prototype, so a pack file named `__proto__` is an entry, not a prototype assignment.
+  const files: Record<string, Entry> = Object.create(null) as Record<string, Entry>;
   const walk = (directory: string, prefix: string): void => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name);
@@ -42,7 +45,8 @@ export function snapshotDirectory(root: string): Record<string, Entry> {
       else if (entry.isFile()) {
         const size = lstatSync(path).size;
         const length = TEXT.test(entry.name) ? Math.min(size, MAX_TEXT_BYTES) : HEAD_BYTES;
-        files[relative] = { size, bytes: readHead(path, Math.min(size, length)) };
+        const bytes = readHead(path, Math.min(size, length));
+        files[relative] = { size, bytes, ...(bytes.length < size && { truncated: true }) };
       }
     }
   };
