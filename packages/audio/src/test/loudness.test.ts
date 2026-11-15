@@ -7,7 +7,8 @@
  * - steel E3 at forte, volume 104, strips tap: -33.4 -> -18.4
  * - distortion power chord, same setup: -31.9 -> -11.8
  * - band mix, master tap: loudest 3 s RMS -22.8 -> -16.6, peak -8.9 -> -3.1
- * - overload (fff, volume 127, four extra distortion tracks): -0.4 both, the ceiling holds it
+ * - overload (fff, volume 127, four extra distortion tracks): -0.4 -> -0.21; about +1.4 dBFS reach the ceiling,
+ *   so this test fails without it
  * Each range is the measured value +-1.5 dB (+-3 dB for the 3 s RMS).
  */
 import { score as buildScore, midi, note } from '@reprise/model/testing';
@@ -125,7 +126,7 @@ describe.skipIf(!font)('playback loudness', () => {
     console.info(`steel E3 f, volume 104: ${level.toFixed(2)} dBFS`);
     expect(level).toBeGreaterThanOrEqual(-19.9);
     expect(level).toBeLessThanOrEqual(-16.9);
-  }, 60_000);
+  });
 
   it('plays a distortion power chord no quieter than -13.3 dBFS', async () => {
     if (!font) return;
@@ -143,7 +144,7 @@ describe.skipIf(!font)('playback loudness', () => {
     const level = db(peak(rendered, 0, Number.POSITIVE_INFINITY));
     console.info(`distortion power chord: ${level.toFixed(2)} dBFS`);
     expect(level).toBeGreaterThanOrEqual(-13.3);
-  }, 60_000);
+  });
 
   it('mixes a band to a loud but unclipped master output', async () => {
     if (!font) return;
@@ -159,7 +160,7 @@ describe.skipIf(!font)('playback loudness', () => {
     expect(loudest).toBeLessThanOrEqual(-13.6);
     expect(db(top)).toBeGreaterThanOrEqual(-6);
     expect(top).toBeLessThanOrEqual(CEILING + 1e-4);
-  }, 120_000);
+  });
 
   it('keeps an overloaded mix under the ceiling', async () => {
     if (!font) return;
@@ -178,7 +179,7 @@ describe.skipIf(!font)('playback loudness', () => {
         peak({ data, sampleRate: SAMPLE_RATE }, 0, Number.POSITIVE_INFINITY),
       ).toBeLessThanOrEqual(CEILING + 1e-4);
     }
-  }, 180_000);
+  });
 
   it('keeps the volume controls audible and proportional', async () => {
     // The master gain sits after the strips' tap, and the note is far below the limiter.
@@ -187,7 +188,7 @@ describe.skipIf(!font)('playback loudness', () => {
     const loud = await notePeak(127);
     const soft = await notePeak(64);
     // The GM channel volume curve: (64 / 127)^2 against 1.
-    expect(db(soft / loud)).toBeCloseTo(-11.9, 0);
+    expect(db(soft / loud)).toBeCloseTo(-11.9, 1);
     expect(db(soft)).toBeGreaterThan(-45);
-  }, 120_000);
+  });
 });

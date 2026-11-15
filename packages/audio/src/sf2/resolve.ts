@@ -118,7 +118,6 @@ const BUTTERWORTH_Q_DB = -3.0103;
  * GeneralUser GS are voiced for it and play 0.6 of their attenuation too quiet without it.
  */
 const EMU_ATTENUATION_FACTOR = 0.4;
-const MAX_ATTENUATION_DB = 144;
 
 /** Absolute cents, A4 = 6900, to hertz. */
 function centsToHz(cents: number): number {
@@ -565,13 +564,11 @@ function buildRegions(
   const scale = value(pitch, Gen.scaleTuning);
   // SF2 8.1.3 #9: the resonance lowers the DC gain by half of it, as FluidSynth's 1 / sqrt(Q) does.
   const resonanceCut = value(generators, Gen.initialFilterQ) / 20;
-  const attenuation = Math.min(
-    MAX_ATTENUATION_DB,
-    Math.max(
-      0,
-      (EMU_ATTENUATION_FACTOR * value(generators, Gen.initialAttenuation)) / 10 + resonanceCut,
-    ),
-  );
+  // FluidSynth scales the raw summed generator, adds the modulators and clips to 0..1440 cB once,
+  // last. So the scaled sum is left unclamped here; the voice adds the note's modulator deltas and
+  // clamps (the resonance cut, a filter loss, rides along, which only matters past 144 dB).
+  const attenuation =
+    (EMU_ATTENUATION_FACTOR * (generators.get(Gen.initialAttenuation) ?? 0)) / 10 + resonanceCut;
   const pan = zone.samples.length === 1 ? value(generators, Gen.pan) / 500 : 0;
   const rate = zone.sample.sampleRate;
   const exclusiveClass = value(generators, Gen.exclusiveClass);
