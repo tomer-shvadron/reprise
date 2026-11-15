@@ -713,7 +713,7 @@ describe('the standalone click', () => {
     audio.dispose();
   });
 
-  it('plays with the song closed again: no document needed to start or stop', () => {
+  it('starts and stops with no document, and stopping twice or closing none is harmless', () => {
     const { playback, audio } = setup({ seconds: 0.2 });
     audio.startClick();
     audio.stopClick();
@@ -721,5 +721,38 @@ describe('the standalone click', () => {
     audio.setDocument(undefined);
     expect(playback.getState().click.running).toBe(false);
     audio.dispose();
+  });
+
+  it('refuses bad settings before it makes a context, and never throws for a dead output', () => {
+    const bad = setup({ seconds: 0.2 });
+    expect(() => {
+      bad.audio.startClick({ bpm: 1000 });
+    }).toThrow(RangeError);
+    expect(bad.createContext).not.toHaveBeenCalled();
+    expect(bad.playback.getState().click.running).toBe(false);
+    bad.audio.dispose();
+
+    const playback = createPlaybackStore();
+    const audio = createAudioService({
+      playback,
+      loadSoundfont: () => synthetic,
+      createContext: () => {
+        throw new Error('no audio device');
+      },
+    });
+    expect(() => {
+      audio.startClick();
+    }).not.toThrow();
+    expect(playback.getState().output.status).toBe('error');
+    expect(playback.getState().click.running).toBe(false);
+    audio.dispose();
+  });
+
+  it('shows the click stopped once the service is disposed', () => {
+    const { playback, audio } = setup({ seconds: 0.2 });
+    audio.startClick();
+    expect(playback.getState().click.running).toBe(true);
+    audio.dispose();
+    expect(playback.getState().click.running).toBe(false);
   });
 });
