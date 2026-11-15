@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { GM_DRUM_KITS, GM_FAMILIES, GM_PROGRAMS } from '@/features/tracks/gm-programs';
+import { GM_DRUM_KITS, GM_FAMILIES, GM_PROGRAMS } from '@/features/tracks';
 
 import { applyTrackAdd, applyTrackEdit } from './track-edit';
 import {
