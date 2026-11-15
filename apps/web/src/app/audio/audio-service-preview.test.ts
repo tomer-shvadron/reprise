@@ -8,6 +8,7 @@ import { createAudioService } from './audio-service';
 const engine = vi.hoisted(() => ({
   previewNote: vi.fn<(...args: unknown[]) => void>(),
   unlock: vi.fn(),
+  setGmTierBypass: vi.fn<(on: boolean) => void>(),
   load: vi.fn(() => Promise.resolve({ instruments: [] })),
 }));
 
@@ -24,6 +25,7 @@ vi.mock('@reprise/audio', async (importOriginal) => {
       setCountIn: vi.fn(),
       setMetronome: vi.fn(),
       setMasterVolume: vi.fn(),
+      setGmTierBypass: engine.setGmTierBypass,
       updateClick: vi.fn(),
       setSoundfont: vi.fn(),
       unload: vi.fn(),
@@ -60,6 +62,7 @@ async function open(
 beforeEach(() => {
   engine.previewNote.mockClear();
   engine.unlock.mockClear();
+  engine.setGmTierBypass.mockClear();
 });
 
 describe('AudioService.previewNote', () => {
@@ -174,5 +177,15 @@ describe('AudioService.previewNote', () => {
     audio.dispose();
     audio.previewNote(trackId, { pitch: 60 });
     expect(engine.previewNote).not.toHaveBeenCalled();
+  });
+});
+
+describe('AudioService.setGmTierBypass', () => {
+  it('reaches the engine on creation, from the store, and on change', async () => {
+    const { audio, playback } = await open();
+    expect(engine.setGmTierBypass).toHaveBeenCalledWith(true);
+    audio.setGmTierBypass(false);
+    expect(engine.setGmTierBypass).toHaveBeenLastCalledWith(false);
+    expect(playback.getState().settings.gmTierBypass).toBe(false);
   });
 });

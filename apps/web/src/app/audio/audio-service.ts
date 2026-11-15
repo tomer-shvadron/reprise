@@ -87,6 +87,11 @@ export interface AudioService {
    * bus, so it scales the clicks too. Throws a `RangeError` outside 0 to 1.
    */
   setMasterVolume(volume: number): void;
+  /**
+   * Whether the GM tier skips its effects stages, mirrored into `settings.gmTierBypass`; on by
+   * default. A track's own `sound.preset` applies either way.
+   */
+  setGmTierBypass(on: boolean): void;
   /** A user override over the track's channel, kept through every baseline reset. */
   setTrack(id: Id, params: TrackParams): void;
   /**
@@ -152,6 +157,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   engine.setCountIn(initial.countIn);
   engine.setMetronome(initial.metronome.on, initial.metronome.volume);
   engine.setMasterVolume(initial.masterVolume);
+  engine.setGmTierBypass(initial.gmTierBypass);
   engine.updateClick(playback.getState().click.settings);
   let bankLoad: Promise<void> | undefined;
   let doc: OpenDocument | undefined;
@@ -418,6 +424,11 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     setMasterVolume(volume) {
       engine.setMasterVolume(volume);
       setSettings({ masterVolume: volume });
+    },
+
+    setGmTierBypass(on) {
+      engine.setGmTierBypass(on);
+      setSettings({ gmTierBypass: on });
     },
 
     setTrack(id, params) {

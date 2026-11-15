@@ -6,7 +6,8 @@ The bar in the footer: play and stop, the position readout, tempo, loop, count-i
 - **Position never goes through React state.** The engine writes `playback.position` every animation frame. `startPositionReader` (`state/position-reader.ts`) coalesces that to one call per frame while playing and one per change otherwise, and the readout writes its spans' `textContent`. The playhead (WP-053, `app/playhead-driver.ts`) reads it this way; WP-074's fretboard should too.
 - **Tempo is one percent factor** over the song's written tempo map (`audio.setTempo('percent', p)`). The BPM field is a view of it at the playhead: `round(written × p / 100)`, and typing a BPM sets `p` from the written tempo there. Time is the song's own clock at the written tempo, whatever the speed. The speed resets to 100% for a different song and comes back when the same song is reopened in the session. A song is known by the SHA-256 of its bytes (`DocumentFile.key`), never by its name, and a save registers the saved bytes' hash as the same song, so a saved file reopened keeps its speed.
 - **Master volume** is `settings.masterVolume` and `audio.setMasterVolume(volume)` (0 to 1, on the sampler's master bus, so it scales the metronome too). WP-052's mixer binds the same field and method.
-- **Preferences** (count-in, metronome on and volume, master volume) persist in `localStorage` under `reprise.transport`; WP-060 moves them into Dexie's `settings` table. Tempo and loop are per song and are not persisted.
+- **GM tier bypass** is `settings.gmTierBypass` (on by default) and `audio.setGmTierBypass(on)`, which reaches `engine.setGmTierBypass`; it is persisted with the preferences below.
+- **Preferences** (count-in, metronome on and volume, master volume, GM tier bypass) persist in `localStorage` under `reprise.transport`; WP-060 moves them into Dexie's `settings` table. Tempo and loop are per song and are not persisted.
 
 ## Seeking
 

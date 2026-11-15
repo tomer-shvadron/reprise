@@ -28,6 +28,8 @@ export interface TransportSettings {
   metronome: { on: boolean; volume: number };
   /** The output level, 0 to 1, over notes and clicks alike; the mixer (WP-052) binds it too. */
   masterVolume: number;
+  /** The GM tier skips its effects stages; on by default, since the soundfont's samples are already processed. */
+  gmTierBypass: boolean;
 }
 
 /** A mirror of the audio service: only the service writes it, through `setState`. */
@@ -86,6 +88,7 @@ export function initialPlaybackState(): PlaybackStoreState {
       countIn: false,
       metronome: { on: false, volume: 0.7 },
       masterVolume: 1,
+      gmTierBypass: true,
     },
     click: { running: false, settings: DEFAULT_CLICK_SETTINGS },
     mixer: {},

@@ -44,6 +44,13 @@ commands). Visibility as view state follows the lead's ruling on #46 Q6.
 - **Undo and redo are commands** (⌘Z, ⇧⌘Z, and Ctrl+Y as well off macOS) over the document's history;
   the desktop Edit menu calls them, and a focused text field keeps its own undo.
 
+## Consequences added by #234 (2026-11-16)
+
+A `sound` change that touches only `preset` joins the timeline-neutral list: the effects preset
+is read by the channel strips, never by the timeline, so choosing one is heard at once during
+playback without rebuilding the sequence. A change to `packId` is not neutral, because it
+changes the instruments the song plan loads.
+
 ## Alternatives considered
 
 - **Every mixer value as a per-song override**, the file left untouched: one less kind of state,
