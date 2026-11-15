@@ -45,9 +45,12 @@ const position = (offset: number): number =>
 /**
  * Origin, the middle points when the file has a middle value, and destination, in that order.
  * A missing origin offset is 0 and a missing destination offset 100, as Guitar Pro draws them;
- * a middle value without offsets sits halfway, which is how alphaTab's reader places it. The
- * order is never sorted by offset; middle offsets are clamped between origin and destination.
- * Equal middle offsets stay two points, as in alphaTab, whose `Note.finish` merges them.
+ * a middle value without offsets sits halfway, which is how alphaTab's reader places it.
+ * Like alphaTab's reader, the points are never sorted by offset. The clamping is ours, not
+ * alphaTab's: every consumer re-sorts by position, so the destination is held at or after the
+ * origin and each middle point between them, which keeps the origin first. Equal middle offsets
+ * stay two points; alphaTab's `Note.finish` later rewrites a four-point custom bend to the shape
+ * of the type it detects.
  */
 export function bendPoints(properties: BendProperties): BendPoint[] {
   const origin = {
@@ -55,7 +58,7 @@ export function bendPoints(properties: BendProperties): BendPoint[] {
     value: (properties.get('OriginValue') ?? 0) * VALUE_SCALE,
   };
   const destination = {
-    position: position(properties.get('DestinationOffset') ?? 100),
+    position: Math.max(origin.position, position(properties.get('DestinationOffset') ?? 100)),
     value: (properties.get('DestinationValue') ?? 0) * VALUE_SCALE,
   };
   const middleValue = properties.get('MiddleValue');
@@ -64,16 +67,13 @@ export function bendPoints(properties: BendProperties): BendPoint[] {
     const value = middleValue * VALUE_SCALE;
     const first = properties.get('MiddleOffset1');
     const second = properties.get('MiddleOffset2');
-    // The origin stays first and the destination last, as in alphaTab's reader, which never
-    // sorts them: a middle offset outside them is clamped between, not allowed to lead.
-    const high = Math.max(origin.position, destination.position);
-    const between = (offset: number): number =>
-      Math.min(high, Math.max(origin.position, position(offset)));
+    const between = (at: number): number =>
+      Math.min(destination.position, Math.max(origin.position, at));
     const offsets =
       first === undefined && second === undefined
         ? [MAX_POSITION / 2]
-        : [first, second].flatMap((offset) => (offset === undefined ? [] : [between(offset)]));
-    for (const at of offsets) points.push({ position: at, value });
+        : [first, second].flatMap((offset) => (offset === undefined ? [] : [position(offset)]));
+    for (const at of offsets) points.push({ position: between(at), value });
   }
   points.push(destination);
   return points;
