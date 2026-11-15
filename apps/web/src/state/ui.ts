@@ -12,6 +12,15 @@ export const PANEL_WIDTH = {
 
 export const ZOOM = { min: 0.5, max: 3, default: 1 } as const;
 
+/**
+ * What fills the app besides the player. The library (WP-060) and the sound manager (WP-091) are
+ * full-window screens over the score; `player` is the score itself.
+ */
+export type ScreenId = 'player' | 'library' | 'sounds';
+
+/** What the right panel shows; the mixer is the default and the trainer tools take turns with it. */
+export type PanelView = 'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'fretboard';
+
 /** The score's view mode and paper; what layout reads from the ui. */
 export interface UiView {
   mode: LayoutOptions['mode'];
@@ -28,6 +37,8 @@ export interface UiState {
   theme: Theme;
   view: UiView;
   panels: Record<PanelId, boolean>;
+  screen: ScreenId;
+  rightPanelView: PanelView;
   panelWidths: Record<PanelId, number>;
   zoom: number;
   paletteOpen: boolean;
@@ -36,6 +47,11 @@ export interface UiState {
   toggleTheme: () => void;
   setPanelOpen: (panel: PanelId, open: boolean) => void;
   togglePanel: (panel: PanelId) => void;
+  /** Closes the right panel when it shows the mixer; otherwise shows the mixer there, opening it. */
+  toggleMixer: () => void;
+  setScreen: (screen: ScreenId) => void;
+  /** Shows `view` in the right panel and opens the panel. */
+  showPanelView: (view: PanelView) => void;
   setPanelWidth: (panel: PanelId, width: number) => void;
   setZoom: (zoom: number) => void;
   setPaletteOpen: (open: boolean) => void;
@@ -54,6 +70,8 @@ export function createUiStore(theme: Theme = initialTheme()) {
     theme,
     view: { mode: 'paged', paper: 'a4' },
     panels: { sidebar: true, rightPanel: false },
+    screen: 'player',
+    rightPanelView: 'mixer',
     panelWidths: {
       sidebar: PANEL_WIDTH.sidebar.default,
       rightPanel: PANEL_WIDTH.rightPanel.default,
@@ -73,6 +91,20 @@ export function createUiStore(theme: Theme = initialTheme()) {
     },
     togglePanel: (panel) => {
       set((state) => ({ panels: { ...state.panels, [panel]: !state.panels[panel] } }));
+    },
+    toggleMixer: () => {
+      const { panels, rightPanelView } = get();
+      if (panels.rightPanel && rightPanelView === 'mixer') get().setPanelOpen('rightPanel', false);
+      else get().showPanelView('mixer');
+    },
+    setScreen: (screen) => {
+      set({ screen });
+    },
+    showPanelView: (view) => {
+      set((state) => ({
+        rightPanelView: view,
+        panels: { ...state.panels, rightPanel: true },
+      }));
     },
     setPanelWidth: (panel, width) => {
       const { min, max } = PANEL_WIDTH[panel];

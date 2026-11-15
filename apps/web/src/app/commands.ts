@@ -118,7 +118,7 @@ export function appCommands(
       // Guitar Pro's "Show/Hide global view", which holds its mixer.
       shortcut: { key: 'F8' },
       run: () => {
-        ui.getState().togglePanel('rightPanel');
+        ui.getState().toggleMixer();
       },
     },
     {

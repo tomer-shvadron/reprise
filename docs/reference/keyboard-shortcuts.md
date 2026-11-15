@@ -61,4 +61,11 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Show current track as tab | Track | Global | — | — |
 | Show current track as standard notation | Track | Global | — | — |
 | Show current track as tab and standard notation | Track | Global | — | — |
+| Show library | Library | Global | — | — |
+| Show speed trainer | Trainer | Global | — | — |
+| Show tuner | Trainer | Global | — | — |
+| Show metronome | Trainer | Global | — | — |
+| Show fretboard | Trainer | Global | — | — |
+| Toggle edit mode | Editor | Global | — | — |
+| Show sound manager | Sounds | Global | — | — |
 <!-- shortcuts:end -->

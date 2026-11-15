@@ -22,8 +22,13 @@ interface AppFrameProps {
 }
 
 function PanelToggle({ ui, panel, label }: { ui: UiStore; panel: PanelId; label: string }) {
-  const open = useStore(ui, (state) => state.panels[panel]);
+  // The right panel is the mixer's toggle, so it is pressed only while it shows the mixer.
+  const open = useStore(
+    ui,
+    (state) => state.panels[panel] && (panel === 'sidebar' || state.rightPanelView === 'mixer'),
+  );
   const togglePanel = useStore(ui, (state) => state.togglePanel);
+  const toggleMixer = useStore(ui, (state) => state.toggleMixer);
   const Icon = panel === 'sidebar' ? PanelLeftIcon : PanelRightIcon;
 
   return (
@@ -35,7 +40,8 @@ function PanelToggle({ ui, panel, label }: { ui: UiStore; panel: PanelId; label:
           aria-label={label}
           aria-pressed={open}
           onClick={() => {
-            togglePanel(panel);
+            if (panel === 'sidebar') togglePanel(panel);
+            else toggleMixer();
           }}
         >
           <Icon />

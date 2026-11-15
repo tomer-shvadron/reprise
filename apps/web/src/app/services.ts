@@ -9,9 +9,11 @@ import {
   type DocumentStore,
   type DocumentStoreDeps,
 } from '@/state/document';
+import { createEditingStore, type EditingStore } from '@/state/editing';
 import { createHeardRef, type HeardRef } from '@/state/heard';
 import { createLayoutStore, type LayoutStore } from '@/state/layout';
 import { createPlaybackStore, type PlaybackStore } from '@/state/playback';
+import { createPracticeStore, type PracticeStore } from '@/state/practice';
 import { createSelectionStore, type SelectionStore } from '@/state/selection';
 import { createUiStore, type UiStore } from '@/state/ui';
 
@@ -31,6 +33,10 @@ export interface AppServices {
   heard: HeardRef;
   /** The print dialog and the job it mounts. */
   print: PrintStore;
+  /** The edit-mode flag (WP-080 onward). */
+  editing: EditingStore;
+  /** The running practice session (WP-070, WP-073). */
+  practice: PracticeStore;
   dispose(): void;
 }
 
@@ -67,6 +73,8 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   const audio = (options.audio ?? ((store) => createAudioService({ playback: store })))(playback);
 
   const transport = createTransportUi();
+  const editing = createEditingStore();
+  const practice = createPracticeStore();
 
   const unsubscribe = document.subscribe((state, previous) => {
     if (state.id === previous.id && state.score === previous.score) return;
@@ -74,6 +82,9 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     audio.setDocument(id !== undefined && score ? { id, score } : undefined);
     if (state.id !== previous.id) {
       selection.getState().reset(score?.tracks[0]?.id);
+      // A document starts in play mode. The practice session is not ended here: WP-073 stores it
+      // first, and `start` replaces a session of another document.
+      editing.getState().setEditing(false);
       return;
     }
     const { currentTrack } = selection.getState();
@@ -103,6 +114,8 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     transport,
     heard: createHeardRef(),
     print: createPrintStore({ document, ui, platform }),
+    editing,
+    practice,
     dispose() {
       uninstallTransport();
       unsubscribe();

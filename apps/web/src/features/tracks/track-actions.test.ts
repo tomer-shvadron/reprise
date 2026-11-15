@@ -38,7 +38,7 @@ async function open(song: Score) {
     write: writeSpy,
   });
   const bytes = (await write(song, 'reprise')).bytes;
-  await services.document.getState().openBytes('song.reprise', bytes, 'song.reprise');
+  await services.document.getState().openBytes('song.reprise', bytes, { handle: 'song.reprise' });
   const opened = services.document.getState().score;
   if (!opened) throw new Error('not opened');
   const ids = opened.tracks.map((track) => track.id);
