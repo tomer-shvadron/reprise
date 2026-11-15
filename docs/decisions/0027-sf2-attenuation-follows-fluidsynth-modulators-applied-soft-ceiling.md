@@ -36,8 +36,11 @@ it, the DynamicsCompressor let peaks through at +0.6 to +2.4 dBFS.
 - **Note-on modulators are applied.** The parser keeps the `pmod`/`imod` records. Sources
   velocity, key and none are supported, with the four curves, both polarities and both
   directions; destinations are `initialAttenuation`, `initialFilterFc`, `modEnvToFilterFc` and
-  `initialFilterQ`. FluidSynth's default modulators for velocity to attenuation (the MIDI curve)
-  and velocity to cutoff (with its velocity switch) are the base. Instrument-level modulators
+  `initialFilterQ`. FluidSynth's default modulator for velocity to attenuation (the MIDI curve)
+  is the base. Its velocity to cutoff default is defined but inert in FluidSynth
+  (`fluid_mod_get_value` returns 0 for that identity, a change by GU GS's author), so it is not
+  applied here either, nor is a modulator with its identity; GU GS's own velocity to cutoff
+  modulators have another identity and apply. Instrument-level modulators
   replace a default of the same identity, preset-level ones add to it (SF2 2.04 9.5). Controller,
   pressure and linked modulators and effect sends are skipped and counted in
   `PresetReport.modulated`. A region from a soundfont carries its merged modulators; one without
@@ -71,7 +74,7 @@ it, the DynamicsCompressor let peaks through at +0.6 to +2.4 dBFS.
 
 ## Consequences
 
-- Every GM region is louder, by up to 10 dB, and layered regions sound balanced as designed. The
+- Every GM region is louder by 0.6 of its attenuation: about 7 to 11 dB on main layers and up to 30 dB on secondary ones, so layered regions sound balanced as designed. The
   numbers in `test/loudness.test.ts` are measured with GU GS 2.0.3; a soundfont bump re-measures
   them.
 - A bright filter envelope now plays over time, so distortion and steel guitars have their attack
