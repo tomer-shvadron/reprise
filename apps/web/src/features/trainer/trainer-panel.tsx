@@ -1,16 +1,16 @@
 import { Placeholder } from '@/components/placeholder';
 import type { PanelView } from '@/state/ui';
 
+import { MetronomePanel } from './metronome/metronome-panel';
 import { SpeedTrainerPanel } from './speed-trainer/speed-trainer-panel';
 
 export type TrainerView = Exclude<PanelView, 'mixer'>;
 
 const STUBS: Record<
-  Exclude<TrainerView, 'speedTrainer'>,
+  Exclude<TrainerView, 'speedTrainer' | 'metronome'>,
   { title: string; workPackage: string }
 > = {
   tuner: { title: 'Tuner', workPackage: 'WP-071' },
-  metronome: { title: 'Metronome', workPackage: 'WP-072' },
   fretboard: { title: 'Fretboard', workPackage: 'WP-074' },
 };
 
@@ -21,6 +21,7 @@ const STUBS: Record<
  */
 export function TrainerPanel({ view }: { view: TrainerView }) {
   if (view === 'speedTrainer') return <SpeedTrainerPanel />;
+  if (view === 'metronome') return <MetronomePanel />;
   const { title, workPackage } = STUBS[view];
   return <Placeholder title={title} workPackage={workPackage} />;
 }
