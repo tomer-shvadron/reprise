@@ -129,7 +129,7 @@ const VELOCITIES = Array.from({ length: 127 }, (_, i) => i + 1);
 
 /**
  * The samples a plan's keys resolve to at every velocity and in every layer, every layered
- * region of a key included: the plan does not know dynamics or articulations (the scheduler
+ * region of a key included, and every round-robin and random position (`candidates`): the plan does not know dynamics or articulations (the scheduler
  * does), so preloading all of them for the opening bars is what guarantees no skipped note there.
  */
 export function planSamples(
@@ -144,7 +144,7 @@ export function planSamples(
       for (const layer of [undefined, ...map.layers]) {
         for (const key of keys) {
           for (const velocity of VELOCITIES) {
-            for (const region of map.resolveAll(key, velocity, layer)) samples.add(region.sample);
+            for (const region of map.candidates(key, velocity, layer)) samples.add(region.sample);
           }
         }
       }

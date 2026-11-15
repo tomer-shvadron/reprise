@@ -116,8 +116,12 @@ export interface Region {
   /** Fine tuning in cents, added to the shift from `rootKey`. */
   tune: number;
   sample: SampleRef;
-  /** Seconds into the decoded buffer, so a resampling decode keeps them valid. */
-  loop?: { start: number; end: number };
+  /**
+   * Seconds into the decoded buffer, so a resampling decode keeps them valid; with `unit:
+   * 'frames'` (SFZ, whose loader cannot know a file's rate before reading it) frames at the
+   * buffer's own rate, which the voice divides by `buffer.sampleRate`.
+   */
+  loop?: { start: number; end: number; unit?: 'frames' };
   envelope: Envelope;
   /** An articulation layer (`palmMute`, `harmonic`, ...); absent is the default layer. */
   layer?: string;
@@ -154,9 +158,47 @@ export interface Region {
   modulators?: readonly NoteModulator[];
   /** A new note of the same class on the same track and instrument chokes this one (SF2 7.10). */
   exclusiveClass?: number;
+  /** SFZ `offset`, in frames at the buffer's own rate, added to a request's `offset` (seconds). */
+  startFrame?: number;
+  /** SFZ `loop_mode=one_shot`: a note-off is ignored and the sample plays to its end. */
+  oneShot?: boolean;
+  /** 0..1, SFZ `amp_veltrack` / 100: without modulators the gain is `velocityGain(v) ** velocityTrack`. */
+  velocityTrack?: number;
+  /** SFZ `group`: a new note of this group chokes the voices whose `offBy` equals it. */
+  group?: number;
+  /**
+   * SFZ `off_by`. SF2's `exclusiveClass` c reads as `group = offBy = c`, so only SFZ gets the
+   * one-way choke (a closed hi-hat cuts the open one, not the reverse).
+   */
+  offBy?: number;
+  /** Absent plays at note-on (SFZ `attack`); `release` regions are kept but not played yet. */
+  trigger?: 'release' | 'first' | 'legato';
+  /** SFZ `seq_length` / `seq_position` (1-based): a round robin. */
+  sequence?: { length: number; position: number };
+  /** SFZ `lorand` / `hirand`, 0..1: plays when `lo <= random < hi`. */
+  random?: { lo: number; hi: number };
+}
+
+/** The counters a caller keeps for the round robins and the legato test; absent means the first. */
+export interface RegionSelection {
+  /** How many notes of this key came before, for `sequence`. */
+  sequence?: number;
+  /** 0..1 draw, for `random`. */
+  random?: number;
+  /** A note started while another sounds, for `first` and `legato` triggers. */
+  legato?: boolean;
 }
 
 const KEY_COUNT = 128;
+const MAX_PERIOD = 256;
+
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
+}
+
+function lcm(a: number, b: number): number {
+  return Math.min(MAX_PERIOD, (a / gcd(a, b)) * b);
+}
 
 function checkRange(name: string, lo: number, hi: number): void {
   if (!Number.isInteger(lo) || !Number.isInteger(hi) || lo < 0 || hi > 127 || lo > hi) {
@@ -178,7 +220,10 @@ function distance(value: number, lo: number, hi: number): number {
  */
 export class RegionMap {
   readonly regions: readonly Region[];
-  readonly #layers = new Map<string | undefined, { all: Region[]; byKey: Region[][] }>();
+  readonly #layers = new Map<
+    string | undefined,
+    { all: Region[]; byKey: Region[][]; selections?: RegionSelection[] }
+  >();
 
   constructor(regions: readonly Region[]) {
     for (const region of regions) {
@@ -206,19 +251,88 @@ export class RegionMap {
     return this.resolveAll(key, velocity, layer)[0];
   }
 
-  resolveAll(key: number, velocity: number, layer?: string): Region[] {
-    const set =
-      this.#layers.get(layer) ?? this.#layers.get(undefined) ?? this.#layers.values().next().value;
+  /**
+   * The regions a note on this key starts. Release regions never start at note-on; `first`
+   * regions play unless `select.legato`, `legato` regions only with it; a sequence region plays
+   * when `((select.sequence ?? 0) % length) + 1` is its position, a random region when
+   * `lo <= (select.random ?? 0) < hi`. The nearest-region fallback searches only the regions that
+   * pass, so it never picks a release region.
+   */
+  resolveAll(key: number, velocity: number, layer?: string, select?: RegionSelection): Region[] {
+    return this.#match(key, velocity, layer, (region) => plays(region, select));
+  }
+
+  /**
+   * Every region a note on this key and velocity could start across all round-robin and random
+   * positions and both legato states; release regions excluded. What a preload must make resident.
+   * The nearest-region fallback depends on the selection (it searches only the regions that
+   * pass), so it runs once per distinct selection and the results are united.
+   */
+  candidates(key: number, velocity: number, layer?: string): Region[] {
+    const found = new Set(
+      this.#match(key, velocity, layer, (region) => region.trigger !== 'release'),
+    );
+    for (const select of this.#selections(layer)) {
+      for (const region of this.resolveAll(key, velocity, layer, select)) found.add(region);
+    }
+    return [...found];
+  }
+
+  /** The selections that can change what passes: every sequence position, random bucket and legato state. */
+  #selections(layer: string | undefined): RegionSelection[] {
+    const set = this.#set(layer);
+    if (!set) return [];
+    if (set.selections) return set.selections;
+    let period = 1;
+    const draws = new Set([0]);
+    let legato = false;
+    for (const region of set.all) {
+      if (region.sequence) period = lcm(period, region.sequence.length);
+      if (region.random) {
+        draws.add(region.random.lo);
+        draws.add(region.random.hi);
+      }
+      if (region.trigger === 'first' || region.trigger === 'legato') legato = true;
+    }
+    const selections: RegionSelection[] = [];
+    // A round-robin period past the cap is cut short: the exact matches are still all included.
+    for (let sequence = 0; sequence < Math.min(period, MAX_PERIOD); sequence += 1) {
+      for (const random of draws) {
+        if (random >= 1) continue;
+        for (const flag of legato ? [false, true] : [false]) {
+          selections.push({ sequence, random, legato: flag });
+        }
+      }
+    }
+    set.selections = selections;
+    return selections;
+  }
+
+  #set(layer: string | undefined) {
+    return (
+      this.#layers.get(layer) ?? this.#layers.get(undefined) ?? this.#layers.values().next().value
+    );
+  }
+
+  #match(
+    key: number,
+    velocity: number,
+    layer: string | undefined,
+    accept: (region: Region) => boolean,
+  ): Region[] {
+    const set = this.#set(layer);
     if (!set) return [];
     const exact =
-      set.byKey[key]?.filter((region) => velocity >= region.velLo && velocity <= region.velHi) ??
-      [];
+      set.byKey[key]?.filter(
+        (region) => velocity >= region.velLo && velocity <= region.velHi && accept(region),
+      ) ?? [];
     if (exact.length > 0) return exact;
 
     let best: Region | undefined;
     let bestKey = Infinity;
     let bestVelocity = Infinity;
     for (const region of set.all) {
+      if (!accept(region)) continue;
       const keyDistance = distance(key, region.keyLo, region.keyHi);
       const velocityDistance = distance(velocity, region.velLo, region.velHi);
       if (keyDistance < bestKey || (keyDistance === bestKey && velocityDistance < bestVelocity)) {
@@ -229,4 +343,19 @@ export class RegionMap {
     }
     return best ? [best] : [];
   }
+}
+
+function plays(region: Region, select: RegionSelection | undefined): boolean {
+  const { trigger, sequence, random } = region;
+  if (trigger === 'release') return false;
+  if (trigger === 'first' && select?.legato) return false;
+  if (trigger === 'legato' && !select?.legato) return false;
+  if (sequence && ((select?.sequence ?? 0) % sequence.length) + 1 !== sequence.position) {
+    return false;
+  }
+  if (random) {
+    const draw = select?.random ?? 0;
+    if (draw < random.lo || draw >= random.hi) return false;
+  }
+  return true;
 }
