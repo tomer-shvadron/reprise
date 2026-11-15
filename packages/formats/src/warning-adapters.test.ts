@@ -29,6 +29,7 @@ describe('fromGpifWarning', () => {
     ['invalid-value', 'warning'],
     ['missing-reference', 'warning'],
     ['multiple-staves', 'warning'],
+    ['off-fretboard', 'warning'],
     ['simile-expanded', 'warning'],
     ['grace-without-beat', 'warning'],
     ['grace-duration-clamped', 'warning'],
