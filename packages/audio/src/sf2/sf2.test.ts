@@ -160,9 +160,8 @@ describe('Sf2Soundfont regions', () => {
     expect(high?.envelope.delay).toBeCloseTo(2 ** (-3600 / 1200), 12);
     // The other zones keep the spec's open filter and 1 ms delay, which carry nothing.
     const [low] = regionsOf(0, 25);
-    // The default velocity modulators keep a filter that the voice leaves out when it stays open.
-    expect(low?.filter?.cutoffHz).toBeGreaterThan(19_000);
-    expect(low?.filter?.envelope).toBeUndefined();
+    // Nothing can close the open filter, so the region carries none.
+    expect(low?.filter).toBeUndefined();
     expect(low?.envelope.delay).toBeUndefined();
     const kit = font.drumKitRegionMap();
     expect(kit?.resolve(38, 100)?.exclusiveClass).toBe(1);

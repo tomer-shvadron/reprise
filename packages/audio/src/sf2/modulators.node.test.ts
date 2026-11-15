@@ -126,14 +126,37 @@ describe('merging modulators (SF2 2.04 9.5)', () => {
     }
   });
 
-  it('opens the filter with the default velocity modulator only from velocity 64', () => {
+  it('moves no cutoff by default: the velocity to cutoff default is inert, as in FluidSynth', () => {
     const { modulators } = mergeModulators([], []);
-    expect(evaluateModulators(modulators, 60, 63).filterCents).toBe(0);
-    expect(evaluateModulators(modulators, 60, 127).filterCents).toBe(0);
-    expect(evaluateModulators(modulators, 60, 64).filterCents).toBeCloseTo(
+    for (const v of [1, 63, 64, 95, 127]) {
+      expect(evaluateModulators(modulators, 60, v).filterCents).toBe(0);
+    }
+    // Even a zone that states it, with the default's identity, contributes nothing and is not unapplied.
+    const stated: Sf2Modulator = {
+      source: 0x0102,
+      destination: Gen.initialFilterFc,
+      amount: -2400,
+      amountSource: 0x0c02,
+      transform: 0,
+    };
+    const merged = mergeModulators([stated], []);
+    expect(merged.unapplied).toBe(0);
+    expect(merged.modulators.some((m) => m.destination === 'filterFc')).toBe(false);
+    // GeneralUser GS's own velocity to cutoff modulators have another identity and apply.
+    const own = mergeModulators([{ ...stated, amountSource: 0 }], []);
+    expect(evaluateModulators(own.modulators, 60, 64).filterCents).toBeCloseTo(
       -2400 * (1 - 64 / 127),
       9,
     );
+  });
+
+  it('mirrors a bipolar concave source over its two halves, an S shape', () => {
+    const at = (v: number) => filterCents(velocityModulator('concave', false, true), 60, v);
+    expect(at(0)).toBeCloseTo(-1000, 9);
+    expect(at(127)).toBeCloseTo(1000, 9);
+    // Symmetric about the middle, unlike one concave curve stretched over -1..1.
+    expect(at(32) + at(95)).toBeCloseTo(0, 9);
+    expect(at(95)).toBeGreaterThan(0);
   });
 
   it('replaces a default with an instrument modulator of the same identity', () => {
@@ -158,7 +181,7 @@ describe('merging modulators (SF2 2.04 9.5)', () => {
       transform: 0,
     };
     const appended = mergeModulators([], [extra]);
-    expect(appended.modulators.filter((m) => m.destination === 'filterFc')).toHaveLength(2);
+    expect(appended.modulators.filter((m) => m.destination === 'filterFc')).toHaveLength(1);
   });
 
   it('lets a later modulator at one level replace an earlier one, so a local zone wins over its global', () => {
@@ -201,6 +224,6 @@ describe('merging modulators (SF2 2.04 9.5)', () => {
     };
     const { modulators, unapplied } = mergeModulators([cc91, pressure, linked, pitch], []);
     expect(unapplied).toBe(4);
-    expect(modulators.map((m) => m.destination).sort()).toEqual(['attenuation', 'filterFc']);
+    expect(modulators.map((m) => m.destination)).toEqual(['attenuation']);
   });
 });

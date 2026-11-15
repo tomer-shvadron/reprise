@@ -47,28 +47,35 @@ export interface ModulatorDeltas {
 
 const SOURCE_RANGE_DB = 40 / 96;
 
-function curved(source: ModulatorSource, value: number): number {
-  const x = source.negative ? 1 - value : value;
-  let shaped: number;
-  switch (source.curve) {
+/** A curve on 0..1; concave and convex are SF2 2.04 8.2.1's 40/96-decade logarithms. */
+function shape(curve: ModulatorSource['curve'], x: number): number {
+  switch (curve) {
     case 'linear': {
-      shaped = x;
-      break;
+      return x;
     }
     case 'concave': {
-      shaped = Math.min(1, Math.max(0, -SOURCE_RANGE_DB * Math.log10(1 - x)));
-      break;
+      return Math.min(1, Math.max(0, -SOURCE_RANGE_DB * Math.log10(1 - x)));
     }
     case 'convex': {
-      shaped = Math.min(1, Math.max(0, 1 + SOURCE_RANGE_DB * Math.log10(x)));
-      break;
+      return Math.min(1, Math.max(0, 1 + SOURCE_RANGE_DB * Math.log10(x)));
     }
     case 'switch': {
-      shaped = x >= 0.5 ? 1 : 0;
-      break;
+      return x >= 0.5 ? 1 : 0;
     }
   }
-  return source.bipolar ? 2 * shaped - 1 : shaped;
+}
+
+/**
+ * Bipolar sources map to -1..1 first and the curve is mirrored over the two halves, an S shape,
+ * as FluidSynth does; the switch is -1 or 1.
+ */
+function curved(source: ModulatorSource, value: number): number {
+  const x = source.negative ? 1 - value : value;
+  if (!source.bipolar) return shape(source.curve, x);
+  const t = 2 * x - 1;
+  if (source.curve === 'switch') return t >= 0 ? 1 : -1;
+  if (source.curve === 'linear') return t;
+  return t >= 0 ? shape(source.curve, t) : -shape(source.curve, -t);
 }
 
 function sourceValue(source: ModulatorSource, key: number, velocity: number): number {

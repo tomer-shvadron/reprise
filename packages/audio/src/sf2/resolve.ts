@@ -235,6 +235,17 @@ const PAIR_CHECKED = [
   Gen.exclusiveClass,
 ];
 
+/** The modulators as a comparable string; the merge keeps the left zone's only. */
+function modulatorKey(modulators: readonly Sf2Modulator[]): string {
+  return modulators
+    .map(
+      (m) =>
+        `${String(m.source)}/${String(m.destination)}/${String(m.amount)}/${String(m.amountSource)}/${String(m.transform)}`,
+    )
+    .sort()
+    .join(',');
+}
+
 function isStereo(sample: Sf2Sample): boolean {
   return (sample.type & (SampleType.left | SampleType.right)) !== 0;
 }
@@ -304,9 +315,10 @@ function pairStereo(file: Sf2File, entries: Entry[]): InstrumentZone[] {
       samples: [left.index, right.index],
       ...sliceOf(left.generators, left.sample, frames),
       modulators: left.modulators,
-      mismatch: PAIR_CHECKED.some(
-        (operator) => left.generators.get(operator) !== right.generators.get(operator),
-      ),
+      mismatch:
+        PAIR_CHECKED.some(
+          (operator) => left.generators.get(operator) !== right.generators.get(operator),
+        ) || modulatorKey(left.modulators) !== modulatorKey(right.modulators),
       unpaired: false,
     });
   }
@@ -566,7 +578,9 @@ function buildRegions(
   const resonanceCut = value(generators, Gen.initialFilterQ) / 20;
   // FluidSynth scales the raw summed generator, adds the modulators and clips to 0..1440 cB once,
   // last. So the scaled sum is left unclamped here; the voice adds the note's modulator deltas and
-  // clamps (the resonance cut, a filter loss, rides along, which only matters past 144 dB).
+  // clamps. The resonance cut rides along inside that clamp, and follows the zone's Q, not a
+  // modulated one: both differ from FluidSynth only at the edges (a total below 0 or above 144 dB,
+  // a Q modulator), none of which GeneralUser GS uses.
   const attenuation =
     (EMU_ATTENUATION_FACTOR * (generators.get(Gen.initialAttenuation) ?? 0)) / 10 + resonanceCut;
   const pan = zone.samples.length === 1 ? value(generators, Gen.pan) / 500 : 0;
@@ -594,7 +608,8 @@ function buildRegions(
     scale !== 100 ||
     value(generators, Gen.keynumToVolEnvHold) !== 0 ||
     value(generators, Gen.keynumToVolEnvDecay) !== 0 ||
-    (value(generators, Gen.modEnvToFilterFc) !== 0 &&
+    ((value(generators, Gen.modEnvToFilterFc) !== 0 ||
+      modulators.some(({ destination }) => destination === 'modEnvToFilterFc')) &&
       (value(generators, Gen.keynumToModEnvHold) !== 0 ||
         value(generators, Gen.keynumToModEnvDecay) !== 0));
   if (!perKey) {
