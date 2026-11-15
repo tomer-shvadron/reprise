@@ -23,7 +23,7 @@ import { ScorePane } from './score-pane';
 import { ScreenHost } from './screen-host';
 import type { AppServices } from './services';
 import { AppServicesProvider } from './services-context';
-import { installShortcutDispatcher } from './shortcut-dispatcher';
+import { installShortcutDispatcher, menuCommandAllowed } from './shortcut-dispatcher';
 import { CommandSourceContext } from './use-command';
 
 interface AppProps {
@@ -62,7 +62,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
     () =>
       onMenuCommand?.((id) => {
         const command = registry.get(id);
-        if (command) runCommand(command);
+        if (command && menuCommandAllowed(id)) runCommand(command);
       }),
     [registry, onMenuCommand],
   );
