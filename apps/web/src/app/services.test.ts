@@ -67,6 +67,36 @@ describe('the app services', () => {
     expect(services.fakeAudio.dispose).toHaveBeenCalledOnce();
   });
 
+  it('open a multi-track score with every track shown and sent to the audio service', async () => {
+    const services = createTestServices();
+    const { document, layout, fakeAudio } = services;
+    const three = score()
+      .track('guitar')
+      .bar()
+      .beat('1', [note(1, 0)])
+      .track('bass')
+      .bar()
+      .beat('1', [note(1, 0)])
+      .track('guitar')
+      .bar()
+      .beat('1', [note(1, 0)])
+      .build();
+
+    await document.getState().openBytes('a.reprise', await bytes(three));
+
+    const ids = document.getState().score?.tracks.map((t) => t.id) ?? [];
+    expect(ids).toHaveLength(3);
+    expect(document.getState().view).toEqual({ tracks: 'all', notation: {} });
+    const shown = new Set(
+      layout
+        .getState()
+        .result?.systems.flatMap((system) => system.staves.map((staff) => staff.track)),
+    );
+    expect([...shown]).toEqual(ids);
+    const lastCall = fakeAudio.setDocument.mock.lastCall?.[0];
+    expect(lastCall?.score.tracks.map((t) => t.id)).toEqual(ids);
+  });
+
   it('lay out the visible tracks and their notation, and not on a selection', async () => {
     const services = createTestServices();
     const { document, layout, selection } = services;
