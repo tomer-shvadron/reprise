@@ -72,5 +72,24 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Show metronome | Trainer | Global | — | — |
 | Show fretboard | Trainer | Global | — | — |
 | Toggle edit mode | Editor | Global | — | — |
+| Cursor to previous beat | Editor | Editing | ← | Left |
+| Cursor to next beat | Editor | Editing | → | Right |
+| Cursor up a string | Editor | Editing | ↑ | Up |
+| Cursor down a string | Editor | Editing | ↓ | Down |
+| Cursor to start of bar | Editor | Editing | ↖ | Home |
+| Cursor to end of bar | Editor | Editing | ↘ | End |
+| Cursor to previous bar | Editor | Editing | ⌘← | Ctrl+Left |
+| Cursor to next bar | Editor | Editing | ⌘→ | Ctrl+Right |
+| Cursor to start of score | Editor | Editing | ⌘↖ | Ctrl+Home |
+| Cursor to end of score | Editor | Editing | ⌘↘ | Ctrl+End |
+| Cursor to previous system | Editor | Editing | PageUp | PageUp |
+| Cursor to next system | Editor | Editing | PageDown | PageDown |
+| Extend selection to previous beat | Editor | Editing | ⇧← | Shift+Left |
+| Extend selection to next beat | Editor | Editing | ⇧→ | Shift+Right |
+| Extend selection to previous track | Editor | Editing | ⇧↑ | Shift+Up |
+| Extend selection to next track | Editor | Editing | ⇧↓ | Shift+Down |
+| Extend selection to previous bar | Editor | Editing | ⇧⌘← | Ctrl+Shift+Left |
+| Extend selection to next bar | Editor | Editing | ⇧⌘→ | Ctrl+Shift+Right |
+| Clear selection | Editor | Editing | Escape | Escape |
 | Show sound manager | Sounds | Global | — | — |
 <!-- shortcuts:end -->

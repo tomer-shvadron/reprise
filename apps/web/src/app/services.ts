@@ -9,6 +9,7 @@ import {
   type DocumentStore,
   type DocumentStoreDeps,
 } from '@/state/document';
+import { installEditor } from '@/features/editor/install-editor';
 import { createEditingStore, type EditingStore } from '@/state/editing';
 import { createHeardRef, type HeardRef } from '@/state/heard';
 import { createLayoutStore, type LayoutStore } from '@/state/layout';
@@ -93,6 +94,10 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     }
   });
 
+  // After the document wiring above, so a new document has reset the selection before the editor
+  // reconciles its cursor with an edit.
+  const uninstallEditor = installEditor({ document, selection, editing, playback });
+
   // After the document wiring above, so a switch reaches the audio service before the speed reset.
   const uninstallTransport = installTransport({
     audio,
@@ -117,6 +122,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     editing,
     practice,
     dispose() {
+      uninstallEditor();
       uninstallTransport();
       unsubscribe();
       layout.dispose();

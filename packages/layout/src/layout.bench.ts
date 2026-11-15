@@ -10,7 +10,7 @@ import {
 import { beatOf, largeScore } from '@reprise/model/testing';
 import { expect, test, type TestContext } from 'vitest';
 
-import { LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from './index';
+import { LayoutCache, PAGE_SIZES, anchorBox, hitTest, layout, type LayoutOptions } from './index';
 import { checkBudget, recordMeasurement } from './test/budget';
 import { withEffects, withNoteMarks } from './test/effects';
 
@@ -360,4 +360,56 @@ test('Re-layout after a page-break-moving edit, paged', RELAYOUT_BENCH, async (c
   };
   const p50 = await relayoutBench(context, metric, part, pageBreakEdit(part));
   await recordMeasurement(context, metric, p50);
+});
+
+/**
+ * The pointer's cost: one `hitTest` per move, 1 000 per run. Half the points are the centres of
+ * 500 note anchors spread evenly over the score (a hit), half pseudo-random (mostly gaps and
+ * margins), the same on every run.
+ */
+async function hitTestBench(
+  context: TestContext,
+  name: string,
+  base: LayoutOptions,
+): Promise<number> {
+  const score = longScore();
+  const laid = layout(score, mixedNotation(score, base));
+  // 500 note centres, spread evenly over every note anchor, then random points up to 1 000.
+  const noteAnchors = laid.anchors.filter((anchor) => anchor.kind === 'note');
+  const points: [number, number][] = [];
+  for (let i = 0; i < 500; i++) {
+    const anchor = noteAnchors[Math.floor((i * noteAnchors.length) / 500)];
+    if (!anchor) continue;
+    const box = anchorBox(laid, anchor);
+    points.push([box.x + box.width / 2, box.y + box.height / 2]);
+  }
+  const last = laid.systems.at(-1);
+  if (!last) throw new Error('no systems');
+  let seed = 12_345;
+  const random = () => {
+    seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+    return seed / 2_147_483_648;
+  };
+  const right = Math.max(...laid.systems.map((s) => s.bbox.x + s.bbox.width));
+  const bottom = last.bbox.y + last.bbox.height;
+  while (points.length < 1000) points.push([random() * right, random() * bottom]);
+  let hits = 0;
+  const result = await context
+    .bench(name, () => {
+      for (const [x, y] of points) if (hitTest(laid, x, y)) hits++;
+    })
+    .run(RUN);
+  expect(hits).toBeGreaterThan(0);
+  return result.latency.p50;
+}
+
+// One row for the pointer, against the slower of the two modes: continuous, which shifts boxes.
+test('Hit test, 1 000 points, long score', BENCH, async (context) => {
+  const metric = 'Hit test, 1 000 points, long score';
+  const paged = await hitTestBench(context, `${metric}, paged`, options);
+  const flowing = await hitTestBench(context, `${metric}, continuous`, continuous);
+  await checkBudget(context, metric, Math.max(paged, flowing), {
+    enforced: true,
+    note: `paged ${String(round(paged))} ms, continuous ${String(round(flowing))} ms`,
+  });
 });

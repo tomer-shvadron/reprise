@@ -16,14 +16,14 @@ export class ClickSynth implements MetronomeSink {
     this.output.connect(destination);
   }
 
-  click(when: number, accent: boolean): void {
+  click(when: number, accent: boolean, subdivision = false): void {
     const { context } = this;
     const oscillator = context.createOscillator();
-    oscillator.frequency.value = accent ? 1760 : 1320;
+    oscillator.frequency.value = accent ? 1760 : subdivision ? 990 : 1320;
     const gain = context.createGain();
     gain.gain.value = 0;
     gain.gain.setValueAtTime(0, when);
-    gain.gain.linearRampToValueAtTime(accent ? 0.9 : 0.45, when + 0.001);
+    gain.gain.linearRampToValueAtTime(accent ? 0.9 : subdivision ? 0.25 : 0.45, when + 0.001);
     gain.gain.exponentialRampToValueAtTime(0.001, when + BURST);
     oscillator.connect(gain).connect(this.output);
     this.voices.add(oscillator, gain);

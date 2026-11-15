@@ -1,59 +1,11 @@
 import { anchorBox, type Anchor, type LayoutResult, type Rect, type System } from '@reprise/layout';
-import { beatTicks, playedBarTicks, type Id, type Score } from '@reprise/model';
+import { playedBarTicks, type Id, type Score } from '@reprise/model';
 
 import { findAnchors, type PlaybackCursor } from './anchors';
+import { masterBarIndexOf, scoreIndex } from './score-index';
 import { distance, type Point } from './viewport';
 
 const EPSILON = 1e-6;
-
-interface BeatInfo {
-  masterBarIndex: number;
-  /** Ticks from the start of its bar, in its voice. */
-  tick: number;
-  /** The only beat of its voice and a rest: the tab staff centres it, away from its onset. */
-  loneRest: boolean;
-}
-
-interface ScoreIndex {
-  barIndex: ReadonlyMap<Id, number>;
-  beats: ReadonlyMap<Id, BeatInfo>;
-  /** Note id, grace notes included, to its beat's id. */
-  noteBeat: ReadonlyMap<Id, Id>;
-}
-
-const scoreIndexes = new WeakMap<Score, ScoreIndex>();
-
-function scoreIndex(score: Score): ScoreIndex {
-  const cached = scoreIndexes.get(score);
-  if (cached) return cached;
-  const barIndex = new Map(score.masterBars.map((bar, index) => [bar.id, index]));
-  const beats = new Map<Id, BeatInfo>();
-  const noteBeat = new Map<Id, Id>();
-  for (const track of score.tracks) {
-    track.bars.forEach((bar, masterBarIndex) => {
-      for (const voice of bar.voices) {
-        let tick = 0;
-        for (const beat of voice.beats) {
-          const loneRest = beat.rest && voice.beats.length === 1;
-          beats.set(beat.id, { masterBarIndex, tick, loneRest });
-          for (const note of beat.notes) noteBeat.set(note.id, beat.id);
-          for (const grace of beat.grace ?? []) {
-            for (const note of grace.notes) noteBeat.set(note.id, beat.id);
-          }
-          tick += beatTicks(beat);
-        }
-      }
-    });
-  }
-  const index = { barIndex, beats, noteBeat };
-  scoreIndexes.set(score, index);
-  return index;
-}
-
-/** The index of a master bar in the score, or -1. */
-export function masterBarIndexOf(score: Score, id: Id): number {
-  return scoreIndex(score).barIndex.get(id) ?? -1;
-}
 
 interface OnsetPoint {
   tick: number;
