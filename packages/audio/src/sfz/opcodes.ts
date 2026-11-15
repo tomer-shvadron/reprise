@@ -130,6 +130,7 @@ export function lookupOpcode(spelling: string): OpcodeLookup {
   return { type: 'unknown' };
 }
 
+const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
 const NOTE_NAME = /^([a-g])([#b]?)(-?\d+)$/i;
 const SEMITONE: Record<string, number> = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
 
@@ -156,8 +157,10 @@ export function parseValue(spec: OpcodeSpec, raw: string): number | string | und
       return /^[+-]?\d+$/.test(raw) ? Number(raw) : undefined;
     }
     case 'float': {
+      // Plain decimals only: Number() would also take 0x10, 0b1 and whitespace.
+      if (!DECIMAL.test(raw)) return undefined;
       const value = Number(raw);
-      return raw !== '' && Number.isFinite(value) ? value : undefined;
+      return Number.isFinite(value) ? value : undefined;
     }
     case 'note': {
       return parseNote(raw);

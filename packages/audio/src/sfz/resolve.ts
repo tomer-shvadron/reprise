@@ -1,7 +1,7 @@
 import type { Envelope, Region } from '../sampler/region-map';
 import { resolvePath } from './paths';
 import type { ParsedRegion } from './parse';
-import { bump } from './report';
+import { LIMITS, bump } from './report';
 import type { SfzReport } from './report';
 
 export interface SfzResolveOptions {
@@ -44,16 +44,33 @@ const text = (ops: ParsedRegion['ops'], name: string): string | undefined => {
 
 const clamp = (value: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, value));
 
-function envelope(ops: ParsedRegion['ops']): Envelope {
+/** A numeric opcode clamped into its SFZ range and counted when it was outside it. */
+function ranged(
+  ops: ParsedRegion['ops'],
+  report: SfzReport,
+  name: string,
+  lo: number,
+  hi: number,
+): number | undefined {
+  const value = num(ops, name);
+  if (value === undefined) return undefined;
+  const inside = clamp(value, lo, hi);
+  if (inside !== value) bump(report.clamped, name);
+  return inside;
+}
+
+const MAX_FRAME = 2 ** 31 - 1;
+
+function envelope(ops: ParsedRegion['ops'], report: SfzReport): Envelope {
   const seconds = (name: string, fallback: number): number =>
-    Math.max(0, num(ops, name) ?? fallback);
+    ranged(ops, report, name, 0, 100) ?? fallback;
   const delay = seconds('ampeg_delay', 0);
   return {
     ...(delay > 0 && { delay }),
     attack: seconds('ampeg_attack', 0),
     hold: seconds('ampeg_hold', 0),
     decay: seconds('ampeg_decay', 0),
-    sustain: clamp((num(ops, 'ampeg_sustain') ?? 100) / 100, 0, 1),
+    sustain: (ranged(ops, report, 'ampeg_sustain', 0, 100) ?? 100) / 100,
     release: seconds('ampeg_release', DEFAULT_RELEASE),
   };
 }
@@ -68,7 +85,12 @@ function build(
   parsed: ParsedRegion,
   options: SfzResolveOptions,
   report: SfzReport,
-): { regions: Region[]; swLast: number | undefined; swDefault: number | undefined } | null {
+): {
+  regions: Region[];
+  swLast: number | undefined;
+  swDefault: number | undefined;
+  swRange: { lo: number; hi: number } | undefined;
+} | null {
   const { ops } = parsed;
   const drop = (reason: string): null => {
     bump(report.dropped, reason);
@@ -84,7 +106,9 @@ function build(
     return drop('escapesRoot');
   }
 
-  const shift = (num(ops, 'note_offset') ?? 0) + 12 * (num(ops, 'octave_offset') ?? 0);
+  const shift =
+    (ranged(ops, report, 'note_offset', -127, 127) ?? 0) +
+    12 * (ranged(ops, report, 'octave_offset', -10, 10) ?? 0);
   const note = (name: string): number | undefined => {
     const value = num(ops, name);
     return value === undefined ? undefined : value + shift;
@@ -113,60 +137,65 @@ function build(
     rootKey: center,
     tune: 0,
     sample: `sfz:${options.packId}/${path}`,
-    envelope: envelope(ops),
+    envelope: envelope(ops, report),
   };
   if (options.layer !== undefined) common.layer = options.layer;
 
-  const volume = num(ops, 'volume') ?? 0;
+  const volume = ranged(ops, report, 'volume', -144, 6) ?? 0;
   if (volume !== 0) common.attenuation = -volume;
-  const pan = num(ops, 'pan');
+  const pan = ranged(ops, report, 'pan', -100, 100);
   if (pan) common.pan = clamp(pan / 100, -1, 1);
-  const veltrack = num(ops, 'amp_veltrack');
-  if (veltrack !== undefined && veltrack !== 100) {
-    if (veltrack < 0 || veltrack > 100) bump(report.clamped, 'amp_veltrack');
-    common.velocityTrack = clamp(veltrack / 100, 0, 1);
-  }
+  const veltrack = ranged(ops, report, 'amp_veltrack', 0, 100);
+  if (veltrack !== undefined && veltrack !== 100) common.velocityTrack = veltrack / 100;
 
-  const mode = text(ops, 'loop_mode') ?? 'no_loop';
+  const declared = text(ops, 'loop_mode');
+  const mode = declared ?? 'no_loop';
+  if (declared === undefined && (ops.has('loop_start') || ops.has('loop_end'))) {
+    report.loopWithoutMode += 1;
+  }
   if (mode === 'one_shot') {
     common.oneShot = true;
   } else if (mode !== 'no_loop') {
-    const start = num(ops, 'loop_start');
-    const end = num(ops, 'loop_end');
+    const start = ranged(ops, report, 'loop_start', 0, MAX_FRAME);
+    const end = ranged(ops, report, 'loop_end', 0, MAX_FRAME);
     if (start === undefined || end === undefined) {
       report.embeddedLoop += 1;
-    } else if (start < 0 || end <= start) {
+    } else if (end <= start) {
       bump(report.invalid, 'loop_end');
     } else {
       // SFZ's loop_end is the last frame of the loop, the buffer's loopEnd is exclusive.
       common.loop = { start, end: end + 1, unit: 'frames' };
     }
   }
-  const startFrame = num(ops, 'offset');
+  const startFrame = ranged(ops, report, 'offset', 0, MAX_FRAME);
   if (startFrame !== undefined && startFrame > 0) common.startFrame = startFrame;
 
-  const group = num(ops, 'group');
+  const group = ranged(ops, report, 'group', 0, MAX_FRAME);
   if (group !== undefined && group > 0) common.group = group;
-  const offBy = num(ops, 'off_by');
+  const offBy = ranged(ops, report, 'off_by', 0, MAX_FRAME);
   if (offBy !== undefined && offBy > 0) common.offBy = offBy;
 
   const trigger = text(ops, 'trigger');
   if (trigger === 'release' || trigger === 'first' || trigger === 'legato') {
     common.trigger = trigger;
   }
-  const length = num(ops, 'seq_length');
-  const position = num(ops, 'seq_position') ?? 1;
+  const length = ranged(ops, report, 'seq_length', 0, 1024);
+  const position = ranged(ops, report, 'seq_position', 0, 1024) ?? 1;
   if (length !== undefined && length > 1) {
     if (position < 1 || position > length) bump(report.invalid, 'seq_position');
     else common.sequence = { length, position };
   }
   if (lo > 0 || hi < 1) common.random = { lo, hi };
 
-  const cents = (num(ops, 'tune') ?? 0) + 100 * (num(ops, 'transpose') ?? 0);
-  const keytrack = num(ops, 'pitch_keytrack') ?? 100;
+  const cents =
+    (ranged(ops, report, 'tune', -1200, 1200) ?? 0) +
+    100 * (ranged(ops, report, 'transpose', -127, 127) ?? 0);
+  const keytrack = ranged(ops, report, 'pitch_keytrack', -1200, 1200) ?? 100;
+  // Whatever the pieces add up to, the voice's playback rate stays a finite number.
+  const tuned = (value: number): number => clamp(value, -9600, 9600);
   const regions: Region[] = [];
   if (keytrack === 100) {
-    regions.push({ ...common, tune: cents });
+    regions.push({ ...common, tune: tuned(cents) });
   } else {
     // One region per key, rooted on itself: the voice's own key tracking cannot be turned down,
     // so the pitch offset from the centre is baked into the tuning, as SF2's scaleTuning does.
@@ -176,11 +205,22 @@ function build(
         keyLo: key,
         keyHi: key,
         rootKey: key,
-        tune: cents + keytrack * (key - center),
+        tune: tuned(cents + keytrack * (key - center)),
       });
     }
   }
-  return { regions, swLast: note('sw_last'), swDefault: note('sw_default') };
+  const swLo = note('sw_lokey');
+  const swHi = note('sw_hikey');
+  return {
+    regions,
+    swLast: note('sw_last'),
+    swDefault: note('sw_default'),
+    swRange: swLo !== undefined && swHi !== undefined ? { lo: swLo, hi: swHi } : undefined,
+  };
+}
+
+function limitHit(report: SfzReport, reason: string): void {
+  if (!report.limits.includes(reason)) report.limits.push(reason);
 }
 
 /**
@@ -202,18 +242,20 @@ export function resolveSfz(
   for (const source of parsed) {
     const result = build(source, options, report);
     if (!result) continue;
+    if (built.length + result.regions.length > LIMITS.regions) {
+      limitHit(report, `regions (more than ${String(LIMITS.regions)} after expansion)`);
+      break;
+    }
     for (const region of result.regions) built.push({ region, swLast: result.swLast });
     swDefault ??= result.swDefault;
     const label = text(source.ops, 'sw_label');
     if (result.swLast !== undefined && label !== undefined && !labels.has(result.swLast)) {
       labels.set(result.swLast, label);
     }
-    const swLo = num(source.ops, 'sw_lokey');
-    const swHi = num(source.ops, 'sw_hikey');
-    if (swLo !== undefined && swHi !== undefined) {
+    if (result.swRange) {
       swRange = {
-        lo: Math.min(swRange?.lo ?? swLo, swLo),
-        hi: Math.max(swRange?.hi ?? swHi, swHi),
+        lo: Math.min(swRange?.lo ?? result.swRange.lo, result.swRange.lo),
+        hi: Math.max(swRange?.hi ?? result.swRange.hi, result.swRange.hi),
       };
     }
   }
@@ -242,6 +284,11 @@ export function resolveSfz(
       if (swLast === undefined || swLast === selected) regions.push(region);
     }
     for (const key of keys) {
+      const copies = built.filter(({ swLast }) => swLast === undefined || swLast === key).length;
+      if (regions.length + copies > LIMITS.regions) {
+        limitHit(report, `regions (keyswitch layer copies past ${String(LIMITS.regions)})`);
+        break;
+      }
       for (const { region, swLast } of built) {
         if (swLast === undefined || swLast === key) {
           regions.push({ ...region, layer: layerOf(key) });

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { loadSfz } from './load';
 import { MAX_INCLUDE_DEPTH, SfzParseError } from './preprocess';
+import { LIMITS, isClean } from './report';
 import { memoryReader } from './test-reader';
 
 const load = (files: Record<string, string>, root = 'a.sfz', layer?: string) =>
@@ -155,5 +156,79 @@ describe('counting what is left out', () => {
     });
     expect(report.ignoredHeaders).toEqual({ curve: 1, effect: 1 });
     expect(regions[0]?.keyLo).toBe(0);
+  });
+});
+
+describe('work caps on untrusted packs', () => {
+  it('stops a diamond of includes at the read cap, without throwing', async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 17; i += 1) {
+      const next = `#include "f${String(i + 1)}.sfzh"\n`;
+      files[`f${String(i)}.sfzh`] = i === 16 ? '<region> sample=leaf.wav' : next + next;
+    }
+    files['a.sfz'] = '#include "f0.sfzh"';
+    const { report, regions } = await load(files);
+    expect(report.limits).toHaveLength(1);
+    expect(report.limits[0]).toMatch(/^include reads/);
+    expect(regions.length).toBeLessThan(300);
+    expect(isClean(report)).toBe(false);
+  });
+
+  it('stops a doubling #define chain before it allocates', async () => {
+    const lines = ['#define $A0 xx'];
+    for (let i = 1; i <= 40; i += 1)
+      lines.push(`#define $A${String(i)} $A${String(i - 1)}$A${String(i - 1)}`);
+    lines.push('<region> sample=$A40.wav');
+    const { report } = await load({ 'a.sfz': lines.join('\n') });
+    expect(report.limits).toHaveLength(1);
+    expect(report.limits[0]).toMatch(/^define length/);
+  });
+
+  it('stops at the text cap when a define is used many times', async () => {
+    const big = 'x'.repeat(LIMITS.defineLength - 10);
+    const lines = [`#define $B ${big}`];
+    for (let i = 0; i < 100; i += 1) lines.push('<region> sample=$B.wav');
+    const { report } = await load({ 'a.sfz': lines.join('\n') });
+    expect(report.limits[0]).toMatch(/^text length/);
+  });
+
+  it('stops expanding regions at the cap', async () => {
+    const line = '<region> sample=t.wav lokey=0 hikey=127 pitch_keytrack=0\n';
+    const { report, regions } = await load({ 'a.sfz': line.repeat(1000) });
+    expect(report.limits[0]).toMatch(/^regions/);
+    expect(regions.length).toBeLessThanOrEqual(LIMITS.regions);
+    expect(regions.length).toBeGreaterThan(0);
+  });
+
+  it('stops copying keyswitch layers at the cap', async () => {
+    const files = {
+      'a.sfz': `${'<region> sample=t.wav lokey=0 hikey=127 pitch_keytrack=0\n'.repeat(700)}<region> sample=a.wav sw_last=1\n<region> sample=b.wav sw_last=2`,
+    };
+    const { report, regions } = await load(files);
+    expect(report.limits.some((l) => l.startsWith('regions (keyswitch'))).toBe(true);
+    expect(regions.length).toBeLessThanOrEqual(LIMITS.regions);
+  });
+});
+
+describe('tokenizing and numbers', () => {
+  it('reads an opcode straight after a header', async () => {
+    const { regions, report } = await one('<group>lovel=64\n<region>sample=x.wav');
+    expect(regions).toHaveLength(1);
+    expect(regions[0]).toMatchObject({ sample: 'sfz:p/x.wav', velLo: 64 });
+    expect(report.dropped).toEqual({});
+  });
+
+  it('refuses hex, binary, Infinity and padded numbers as invalid', async () => {
+    const { report, first } = await one(
+      '<region> sample=a.wav volume=0x10 tune=Infinity pan=0b1 transpose=1e999',
+    );
+    expect(report.invalid).toEqual({ volume: 1, tune: 1, pan: 1, transpose: 1 });
+    expect(first?.attenuation).toBeUndefined();
+  });
+
+  it('counts loop points that come without a loop_mode', async () => {
+    const { first, report } = await one('<region> sample=a.wav loop_start=1 loop_end=9');
+    expect(first?.loop).toBeUndefined();
+    expect(report.loopWithoutMode).toBe(1);
   });
 });

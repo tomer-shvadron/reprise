@@ -217,3 +217,77 @@ describe('keyswitch layers', () => {
     );
   });
 });
+
+describe('numeric opcodes are clamped to their range', () => {
+  it.each([
+    ['tune=1e308', 'tune', 1200],
+    ['volume=1e300', 'attenuation', -6],
+    ['volume=400', 'attenuation', -6],
+    ['volume=-1e300', 'attenuation', 144],
+    ['pan=900', 'pan', 1],
+    ['transpose=1e300', 'tune', 12_700],
+    ['ampeg_attack=1e300', undefined, undefined],
+  ])('%s', async (body, field, expected) => {
+    const { first, report } = await regionsOf(body);
+    expect(Object.keys(report.clamped).length).toBeGreaterThan(0);
+    const envelope = first?.envelope;
+    for (const value of [first?.tune, first?.attenuation, first?.pan, envelope?.attack]) {
+      if (value !== undefined) expect(Number.isFinite(value)).toBe(true);
+    }
+    if (field === 'tune') expect(first?.tune).toBe(Math.min(expected, 9600));
+    else if (field) expect(first?.[field as 'attenuation' | 'pan']).toBe(expected);
+    else expect(envelope?.attack).toBe(100);
+  });
+
+  it('keeps tune finite through pitch_keytrack', async () => {
+    const { regions } = await regionsOf('lokey=0 hikey=127 pitch_keytrack=1e300 tune=1e300');
+    expect(regions.every((r) => Math.abs(r.tune) <= 9600)).toBe(true);
+  });
+
+  it('shifts keyswitchRange by the note offset like sw_last', async () => {
+    const { layers, keyswitchRange } = await loadSfz(
+      'a.sfz',
+      memoryReader({
+        'a.sfz':
+          '<control> note_offset=12\n<region> sample=a.wav sw_lokey=36 sw_hikey=40 sw_last=36',
+      }),
+      { packId: 'p' },
+    );
+    expect(layers[0]?.id).toBe('sw:48');
+    expect(keyswitchRange).toEqual({ lo: 48, hi: 52 });
+  });
+});
+
+describe('percent-encoded and device paths are refused', () => {
+  it.each([
+    '%2e%2e/%2e%2e/x.wav',
+    '%2E%2E/x.wav',
+    'a%2fb.wav',
+    'a%5Cb.wav',
+    'a%00.wav',
+    'bad\u0001name.wav',
+    'CON',
+    'dir/nul.txt',
+    'Com1.wav',
+    'lpt9',
+  ])('refuses %s', async (sample) => {
+    const { regions, report } = await loadSfz(
+      'a.sfz',
+      memoryReader({ 'a.sfz': `<region> sample=${sample}` }),
+      {
+        packId: 'p',
+      },
+    );
+    expect(regions).toEqual([]);
+    expect(report.dropped).toEqual({ escapesRoot: 1 });
+  });
+
+  it('still accepts names that merely contain a device name or a percent sign', async () => {
+    const { regions } = await loadSfz(
+      'a.sfz',
+      memoryReader({ 'a.sfz': '<region> sample=console 100%.wav\n<region> sample=conic.wav' }),
+      { packId: 'p' },
+    );
+    expect(regions).toHaveLength(2);
+  });
+});

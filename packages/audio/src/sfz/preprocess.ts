@@ -1,9 +1,15 @@
 import { dirname, resolvePath } from './paths';
-import { bump } from './report';
+import { LIMITS, bump } from './report';
 import type { SfzReport } from './report';
 
 export const MAX_INCLUDE_DEPTH = 16;
 
+/**
+ * Reads one pack file. `path` is literal and already confined: '/'-separated, relative to the pack
+ * root, free of `..`, absolute forms, percent-encoded separators, control characters and Windows
+ * device names. A reader must not URL-decode it, resolve it against anything but the pack root, or
+ * follow symlinks out of the root; WP-091's reader enforces the last two.
+ */
 export type SfzReader = (path: string) => Promise<Uint8Array>;
 
 export class SfzParseError extends Error {
@@ -25,7 +31,8 @@ function decode(bytes: Uint8Array): string {
  * substituted, in order: a define applies from its line on, across included files. Includes are
  * read through `read` and resolved against the root file's directory, nest at most
  * `MAX_INCLUDE_DEPTH` deep, and a cycle, a missing file or an escaping path is reported and
- * skipped. Only an unreadable root throws.
+ * skipped. Pack files are untrusted, so the work is capped (`LIMITS`): past a cap the expansion
+ * stops, the report says so, and what was read so far is returned. Only an unreadable root throws.
  */
 export async function preprocess(
   rootPath: string,
@@ -37,16 +44,44 @@ export async function preprocess(
   const base = dirname(root);
   const defines = new Map<string, string>();
   const out: string[] = [];
+  let length = 0;
+  let reads = 0;
+  let stopped = false;
 
-  const substitute = (line: string): string => {
+  const stop = (reason: string): void => {
+    if (!stopped) report.limits.push(reason);
+    stopped = true;
+  };
+
+  /** The line with its `$NAME`s replaced, longest name first, or `undefined` past the text cap. */
+  const substitute = (line: string): string | undefined => {
     if (defines.size === 0 || !line.includes('$')) return line;
     const names = [...defines.keys()].sort((a, b) => b.length - a.length);
-    let result = line;
-    for (const name of names) result = result.replaceAll(name, defines.get(name) ?? '');
-    return result;
+    const parts: string[] = [];
+    let size = 0;
+    let at = 0;
+    while (at < line.length) {
+      const dollar = line.indexOf('$', at);
+      const plain = dollar === -1 ? line.slice(at) : line.slice(at, dollar);
+      parts.push(plain);
+      size += plain.length;
+      if (dollar === -1) break;
+      const name = names.find((candidate) => line.startsWith(candidate, dollar));
+      const piece = name === undefined ? '$' : (defines.get(name) ?? '');
+      parts.push(piece);
+      size += piece.length;
+      if (size > LIMITS.textLength) return undefined;
+      at = dollar + (name?.length ?? 1);
+    }
+    return parts.join('');
   };
 
   const visit = async (path: string, stack: readonly string[]): Promise<void> => {
+    if (reads >= LIMITS.includeReads) {
+      stop(`include reads (more than ${String(LIMITS.includeReads)} files)`);
+      return;
+    }
+    reads += 1;
     let bytes: Uint8Array;
     try {
       bytes = await read(path);
@@ -59,11 +94,15 @@ export async function preprocess(
     }
     const text = decode(bytes).replace(BLOCK_COMMENT, '');
     for (const raw of text.split(/\r?\n/)) {
+      if (stopped) return;
       const line = raw.replace(LINE_COMMENT, '');
       const include = INCLUDE.exec(line);
       if (include) {
-        const target = resolvePath(base, substitute(include[1] ?? ''));
-        if (target === undefined) {
+        const name = substitute(include[1] ?? '');
+        const target = name === undefined ? undefined : resolvePath(base, name);
+        if (name === undefined) {
+          stop('text length (an include path)');
+        } else if (target === undefined) {
           report.escapedPaths.push(include[1] ?? '');
         } else if (stack.includes(target) || target === path) {
           report.unresolvedIncludes.push(`${target} (cycle)`);
@@ -76,11 +115,22 @@ export async function preprocess(
       }
       const define = DEFINE.exec(line);
       if (define) {
-        defines.set(define[1] ?? '', substitute((define[2] ?? '').trim()));
+        const value = substitute((define[2] ?? '').trim());
+        if (value === undefined || value.length > LIMITS.defineLength) {
+          stop(`define length (a #define value over ${String(LIMITS.defineLength)} characters)`);
+          return;
+        }
+        defines.set(define[1] ?? '', value);
         bump(report.used, '#define');
         continue;
       }
-      out.push(substitute(line));
+      const expanded = substitute(line);
+      if (expanded === undefined || length + expanded.length > LIMITS.textLength) {
+        stop(`text length (more than ${String(LIMITS.textLength)} characters)`);
+        return;
+      }
+      length += expanded.length + 1;
+      out.push(expanded);
     }
   };
 

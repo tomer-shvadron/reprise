@@ -24,10 +24,29 @@ export interface SfzReport {
   unresolvedIncludes: string[];
   /** Paths that escape the pack root, refused because pack files are untrusted. */
   escapedPaths: string[];
+  /** Work caps that were hit; the load stopped expanding there and returned what it had. */
+  limits: string[];
+  /** Regions with loop points and no `loop_mode`: played unlooped, though some players would loop them. */
+  loopWithoutMode: number;
   /** Choices the loader made that a pack author might not expect. */
   notes: string[];
   regions: number;
 }
+
+/**
+ * Caps on what an untrusted pack can make a load do, generous for real packs (the largest ship a
+ * few thousand regions in a handful of files) and far below what a hostile one could ask for.
+ */
+export const LIMITS = {
+  /** Files read in one load, the root and every include counted, so a diamond of includes stops. */
+  includeReads: 256,
+  /** Characters of preprocessed text; also bounds any one substituted line. */
+  textLength: 4_000_000,
+  /** Characters of one `#define` value, so a doubling chain of defines stops early. */
+  defineLength: 65_536,
+  /** Regions after `pitch_keytrack` expansion and keyswitch layer copies. */
+  regions: 100_000,
+};
 
 export function emptyReport(): SfzReport {
   return {
@@ -41,6 +60,8 @@ export function emptyReport(): SfzReport {
     embeddedLoop: 0,
     unresolvedIncludes: [],
     escapedPaths: [],
+    limits: [],
+    loopWithoutMode: 0,
     notes: [],
     regions: 0,
   };
@@ -55,6 +76,7 @@ export function isClean(report: SfzReport): boolean {
   return (
     Object.keys(report.invalid).length === 0 &&
     report.unresolvedIncludes.length === 0 &&
-    report.escapedPaths.length === 0
+    report.escapedPaths.length === 0 &&
+    report.limits.length === 0
   );
 }

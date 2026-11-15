@@ -29,9 +29,7 @@ describe('the synthetic fixture', () => {
     expect(report.notes).toEqual([]);
     expect(report.dropped).toEqual({ generator: 1, disabledKey: 1 });
     expect(report.ignoredHeaders).toEqual({ curve: 1, effect: 1 });
-    expect(report.unknown).toEqual(
-      { vendor_extension: 1, curve_index: 0 }.vendor_extension ? { vendor_extension: 1 } : {},
-    );
+    expect(report.unknown).toEqual({ vendor_extension: 1 });
     expect(Object.keys(report.unsupported).sort()).toEqual(
       [
         'amp_velcurve_64',

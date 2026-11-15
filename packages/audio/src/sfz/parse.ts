@@ -1,5 +1,5 @@
 import { IGNORED_HEADERS, lookupOpcode, parseValue } from './opcodes';
-import { bump } from './report';
+import { LIMITS, bump } from './report';
 import type { SfzReport } from './report';
 
 /** One `<region>` with the opcodes it inherits: control, global, master, group, then its own. */
@@ -10,7 +10,7 @@ export interface ParsedRegion {
 
 type Level = 'control' | 'global' | 'master' | 'group' | 'region' | 'ignored';
 
-const TOKEN = /<(\w+)>|(?:^|\s)([A-Za-z_][A-Za-z0-9_]*)=/g;
+const TOKEN = /<(\w+)>|(?:^|\s|(?<=>))([A-Za-z_][A-Za-z0-9_]*)=/g;
 
 /** Opcodes whose value is a path or free text and may therefore hold spaces. */
 const SPACED = new Set(['path', 'text']);
@@ -37,6 +37,12 @@ export function parseSfz(text: string, report: SfzReport): ParsedRegion[] {
   const flush = (): void => {
     if (!open) return;
     open = false;
+    if (regions.length >= LIMITS.regions) {
+      if (report.limits.length === 0 || !report.limits.some((l) => l.startsWith('regions'))) {
+        report.limits.push(`regions (more than ${String(LIMITS.regions)} <region> headers)`);
+      }
+      return;
+    }
     regions.push({
       ops: new Map([
         ...levels.control,
