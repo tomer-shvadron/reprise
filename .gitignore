@@ -1,5 +1,11 @@
 # dependencies
 node_modules/
+# pnpm-lock.yaml is the one lockfile; another package manager's never gets committed
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock
+bun.lock
+bun.lockb
 
 # build output
 dist/

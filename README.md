@@ -20,7 +20,9 @@ Everything about what Reprise is and why it is built the way it is lives under [
 ## Prerequisites
 
 - Node 24 (see `.nvmrc`)
-- pnpm 11
+- pnpm 11: `corepack enable pnpm` (bundled with Node 24) installs the version `package.json` pins
+
+pnpm is the only package manager. npm cannot install the workspace (it stops at the `workspace:` dependencies), and a `preinstall` guard stops yarn and bun.
 
 ## Commands
 
