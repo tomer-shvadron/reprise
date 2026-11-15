@@ -57,7 +57,8 @@ shell wiring, which is one separate integration commit).
   in memory so the banner's Import (`importOpenDocument`) can still copy the original.
 - **Delete** (`library.deleteSong`). The song's native and original folder move to
   `library/trash/<id>/` beside a `song.json` copy of the row; then the row goes. An open song becomes
-  unimported.
+  unimported (`songId` cleared); its document still carries the save handle it was opened with, which
+  WP-061's Save must not follow without a `songId`.
 - **Recents.** The 5 most recently opened songs (`RecentSongs`), the palette command
   `library.openRecent` (the library sorted by last opened), and on desktop the File menu through
   `setRecentSongs` (at most 10), with `onOpenRecent` opening the pick.

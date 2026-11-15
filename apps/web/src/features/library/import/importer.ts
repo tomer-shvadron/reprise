@@ -79,18 +79,6 @@ type Read = { bytes: Uint8Array } | { error: unknown };
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** Asks the browser to keep the library's storage, once; best effort. */
-let persistAsked = false;
-function askToPersist(): void {
-  if (persistAsked) return;
-  persistAsked = true;
-  try {
-    void navigator.storage.persist().catch(() => false);
-  } catch {
-    // No storage manager (an older browser, or jsdom): nothing to ask.
-  }
-}
-
 /**
  * Imports sources one at a time: each is read (the next one while the current one parses),
  * parsed in the worker, skipped when its bytes are already in the library, else written and
@@ -107,7 +95,6 @@ export function createImporter(deps: ImporterDeps): Importer {
   };
 
   const run = async () => {
-    askToPersist();
     let parser = deps.createParser();
     let index = 0;
     let prefetched: { index: number; read: Promise<Read> } | undefined;

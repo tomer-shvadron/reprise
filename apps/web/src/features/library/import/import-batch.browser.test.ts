@@ -96,6 +96,8 @@ describe('batch import through the real worker', () => {
         `${String(state.failed.length)} failed; longest frame gap ${frames.longestFrame.toFixed(1)} ms, ` +
         `longest task ${frames.longestTask.toFixed(1)} ms`,
     );
+    // The inline fallback runs only where there is no Worker, which this browser has.
+    expect(typeof Worker).toBe('function');
     expect(parses).toBe(50);
     expect(state.failed).toEqual([]);
     expect(state.imported + state.duplicates).toBe(50);

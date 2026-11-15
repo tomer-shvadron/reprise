@@ -12,8 +12,12 @@ export function installLibrary(services: AppServices): () => void {
   const library = libraryOf(services);
   const { platform } = services;
   let last = '';
+  let entries: unknown;
   const push = () => {
     if (!platform.setRecentSongs) return;
+    // A keystroke in the search box changes the store but not the entries.
+    if (library.store.getState().entries === entries) return;
+    entries = library.store.getState().entries;
     const items = recentMenuOf(library.store.getState().entries);
     const key = JSON.stringify(items);
     if (key === last) return;

@@ -81,6 +81,10 @@ export function SongList({ entries, now, onOpen, onDelete }: SongListProps) {
 
   const onKeyDown = (event: KeyboardEvent) => {
     const page = Math.max(1, Math.floor(height / ROW_HEIGHT) - 1);
+    const remove = () => {
+      const entry = entries[current];
+      if (entry) onDelete(entry.row.id);
+    };
     const handlers: Record<string, () => void> = {
       ArrowDown: () => {
         move(current + 1);
@@ -104,10 +108,9 @@ export function SongList({ entries, now, onOpen, onDelete }: SongListProps) {
         const entry = entries[current];
         if (entry) onOpen(entry.row.id);
       },
-      Delete: () => {
-        const entry = entries[current];
-        if (entry) onDelete(entry.row.id);
-      },
+      Delete: remove,
+      // The key labelled delete on a Mac keyboard sends Backspace.
+      Backspace: remove,
     };
     const handler = handlers[event.key];
     if (!handler) return;
