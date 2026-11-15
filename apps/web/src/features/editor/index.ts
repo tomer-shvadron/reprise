@@ -1,4 +1,4 @@
-// WP-081 adds the entry handling to the cursor, range and edit overlays WP-080 provides.
+// The cursor, range and edit overlays (WP-080) and note entry (WP-081).
 export { editorCommands, type EditorCommandId } from './commands';
 export { cursorFromHit, locate, stringAt, type EditHit } from './locate';
 export {
@@ -31,6 +31,7 @@ export {
 export { caretBoxes, caretRect, rangeBoxes } from './geometry';
 export { createEditPointer, type EditPointerDeps } from './edit-pointer';
 export { installEditor } from './install-editor';
+export { entryCommands, type EntryCommandId } from './entry-commands';
 export { navigationCommands, type NavigationCommandId } from './navigation-commands';
 export { useEditOverlays, useEditOverlaysFor } from './use-edit-overlays';
 export { visibleTracks } from './visible';
