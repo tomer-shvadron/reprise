@@ -5,6 +5,7 @@ export {
   clampString,
   cursorAtPosition,
   cursorAtTick,
+  cursorTick,
   firstStop,
   reconcile,
   resolveCursor,

@@ -81,6 +81,14 @@ export function defaultStaff(score: Score, track: number): StaffType {
   return found && canShowTab(found) ? 'tab' : 'standard';
 }
 
+/** Ticks from the start of its bar to the cursor's stop, in its voice; undefined for a cursor the score does not hold. */
+export function cursorTick(score: Score, cursor: EditCursor): number | undefined {
+  const at = resolveCursor(score, cursor);
+  if (!at) return undefined;
+  const beats = score.tracks[at.track]?.bars[at.bar]?.voices[at.voice]?.beats ?? [];
+  return beats.slice(0, at.stop).reduce((sum, beat) => sum + beatTicks(beat), 0);
+}
+
 /** The first stop of `track`'s bar `bar` in `voice`. */
 export function firstStop(
   score: Score,

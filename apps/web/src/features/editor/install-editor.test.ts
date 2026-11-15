@@ -6,12 +6,11 @@ import { describe, expect, it } from 'vitest';
 import { createTestServices } from '@/test/services';
 
 import { cursorAtPosition } from './cursor';
-import { installEditor } from './install-editor';
 import { editScore } from './test/scores';
 
 async function setup() {
   const services = createTestServices();
-  const off = installEditor(services);
+  // The app's own wiring: createAppServices calls installEditor.
   await services.document
     .getState()
     .openBytes('edit.reprise', (await write(editScore(), 'reprise')).bytes);
@@ -23,10 +22,10 @@ async function setup() {
   const apply = (command: Command) => {
     services.document.getState().apply(command);
   };
-  return { services, off, score, apply, state: () => services.selection.getState() };
+  return { services, score, apply, state: () => services.selection.getState() };
 }
 
-describe('installEditor', () => {
+describe('installEditor, as the services wire it', () => {
   it('puts the cursor on the first stop when edit mode turns on, once', async () => {
     const { services, state, score } = await setup();
     expect(state().cursor).toBeUndefined();
@@ -99,8 +98,8 @@ describe('installEditor', () => {
   });
 
   it('stops watching when disposed', async () => {
-    const { services, state, off } = await setup();
-    off();
+    const { services, state } = await setup();
+    services.dispose();
     services.editing.getState().setEditing(true);
     expect(state().cursor).toBeUndefined();
   });
