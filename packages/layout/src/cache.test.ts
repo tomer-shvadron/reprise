@@ -14,8 +14,9 @@ import { beatOf, largeScore, note, noteOf, score as scoreBuilder } from '@repris
 import { describe, expect, it } from 'vitest';
 
 import { LayoutCache, PAGE_SIZES, layout, type LayoutOptions, type LayoutResult } from './index';
+import { layoutWith } from './layout';
 import { BAR_REACH } from './staves/staff-module';
-import { expectValid, stable } from './test/check-result';
+import { breakIds, expectValid, stable } from './test/check-result';
 import { randomScore } from './test/random-score';
 
 const paged: LayoutOptions = {
@@ -311,10 +312,12 @@ describe('LayoutCache', () => {
         mode,
         width: mode === 'paged' ? paged.width : 900,
       };
-      const { cache } = warm(score, options);
+      const { cache, first } = warm(score, options);
       const { score: edited, change } = applyCommand(score, command(score));
       const result = layout(edited, { ...options, dirtyBars: change.touchedBars }, cache);
-      expect(stable(result)).toBe(stable(layout(edited, options)));
+      // Continuous breaks are stable (#147): the cold layout starts from the warm one's breaks.
+      const cold = layoutWith(edited, options, undefined, breakIds(score, first));
+      expect(stable(result)).toBe(stable(cold));
       expect(result.metrics.measuredBars).toBeLessThan(edited.masterBars.length);
     }
   });

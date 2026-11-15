@@ -113,6 +113,16 @@ function measureAll(
   return { measures, bars, entries, measured, changed, lastChanged };
 }
 
+/** The master bars that opened a continuous segment, by id so that edits to the bar list keep them. */
+function breaksOf(systems: readonly CachedSystem[]): Set<Id> {
+  const ids = new Set<Id>();
+  for (const { barIds: bars } of systems) {
+    const first = bars[0];
+    if (first !== undefined) ids.add(first);
+  }
+  return ids;
+}
+
 function barIds(score: Score, plan: SystemPlan): (Id | undefined)[] {
   const ids: (Id | undefined)[] = [];
   for (let i = plan.start; i <= plan.end; i++) ids.push(score.masterBars[i]?.id);
@@ -275,6 +285,21 @@ function pages(options: ResolvedOptions, systems: readonly System[]): Page[] {
  * is reused at a new x too, as each is drawn in its own frame.
  */
 export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache): LayoutResult {
+  return layoutWith(score, options, cache);
+}
+
+/**
+ * `layout` with the previous layout's continuous segment breaks given explicitly: the ids of the
+ * master bars that opened a segment. Left out, they are the ones in `cache`, when its systems
+ * were laid out for the same options. Not exported from the package: it is how the tests ask what
+ * a cold layout does from the same breaks, since the breaks are cache state, not an option.
+ */
+export function layoutWith(
+  score: Score,
+  options: LayoutOptions,
+  cache?: LayoutCache,
+  previousBreaks?: ReadonlySet<Id>,
+): LayoutResult {
   const started = clock.now();
   const resolved = resolveOptions(score, options);
   const slots = staffSlots(resolved);
@@ -373,7 +398,16 @@ export function layout(score: Score, options: LayoutOptions, cache?: LayoutCache
       const old = previous[i];
       if (old) byStart.set(old.plan.start, i);
     }
-    for (const plan of breakSystems(measures, contexts, slots, resolved, last?.plan.end ?? 0)) {
+    const breaks = continuous ? (previousBreaks ?? breaksOf(previous)) : undefined;
+    const wasBreak = breaks && ((index: number) => breaks.has(score.masterBars[index]?.id ?? ''));
+    for (const plan of breakSystems(
+      measures,
+      contexts,
+      slots,
+      resolved,
+      last?.plan.end ?? 0,
+      wasBreak,
+    )) {
       const position = byStart.get(plan.start);
       const old = position === undefined ? undefined : previous[position];
       if (old && position !== undefined && samePlan(old.plan, plan) && unchanged(old, plan)) {

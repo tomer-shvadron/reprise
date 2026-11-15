@@ -329,7 +329,7 @@ describe('the roadmap note', () => {
     expect(note).toContain('0.83 to 1.14');
     expect(note).toContain('2.4 to 4.3 minutes');
     expect(note).toContain('the median of the edits that keep the segment breaks');
-    expect(note).toContain('over the 16 ms budget');
+    expect(note).toContain('Segment breaks are stable (#147)');
     expect(note).toContain('#147');
     expect(note).toContain('1.5 × the largest unchanged delta');
     expect(note).toContain('Re-layout after a segment-break-moving edit, continuous');

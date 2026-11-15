@@ -6,6 +6,19 @@ import type { Anchor, LayoutResult, Margins, Primitive, Rect, StaffType } from '
 
 const EPSILON = 0.02;
 
+/**
+ * The ids of the master bars that open a system of `result`, laid out from `score`: the breaks
+ * the next continuous layout starts from (#147), which a cold layout is given to match a cache.
+ */
+export function breakIds(score: Score, result: LayoutResult): Set<Id> {
+  const ids = new Set<Id>();
+  for (const { bars } of result.systems) {
+    const id = score.masterBars[bars.start]?.id;
+    if (id !== undefined) ids.add(id);
+  }
+  return ids;
+}
+
 function overlaps(a: Rect, b: Rect): boolean {
   return (
     a.x < b.x + b.width - EPSILON &&
