@@ -38,10 +38,12 @@ export function appCommands(services: AppServices): AppCommand[] {
       id: 'file.new',
       title: 'New song',
       shortcut: { key: 'n', mod: true },
-      // A placeholder: WP-083 replaces it with the unsaved-changes prompt and edit mode on.
+      // A placeholder: WP-083 replaces it with the unsaved-changes prompt and edit mode on. Until
+      // then it never throws away edits, since newDocument leaves nothing to undo.
       run: () => {
-        const empty = createEmptyScore();
-        document.getState().newDocument({ ...empty, meta: { ...empty.meta, title: 'Untitled' } });
+        if (document.getState().dirty) return;
+        document.getState().newDocument(createEmptyScore());
+        ui.getState().setScreen('player');
       },
     },
     {
