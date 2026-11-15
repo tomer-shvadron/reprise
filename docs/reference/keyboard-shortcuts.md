@@ -63,6 +63,10 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Show current track as standard notation | Track | Global | — | — |
 | Show current track as tab and standard notation | Track | Global | — | — |
 | Show library | Library | Global | — | — |
+| Import files to library… | Library | Global | — | — |
+| Import folder to library… | Library | Global | — | — |
+| Open without importing… | Library | Global | — | — |
+| Open recent song… | Library | Global | — | — |
 | Show speed trainer | Trainer | Global | — | — |
 | Start, hold or resume speed trainer | Trainer | Global | ⌥S | Alt+S |
 | Mark speed trainer pass missed | Trainer | Global | ⌥X | Alt+X |
