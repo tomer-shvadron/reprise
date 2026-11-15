@@ -759,17 +759,32 @@ class ScoreBuilder {
               'A mid-song bank change is not modelled; dropped',
             );
           }
-          const located = this.#locate(
+          let located = this.#locate(
             automation.bar,
             this.#tickIn(automation.bar, automation.position),
             trackIndex,
           );
+          if (!located) {
+            // alphaTab keeps the change on a placeholder rest beat in the empty bar, which the
+            // model has no counterpart for (an empty voice holds no beats), so the program change
+            // moves to the track's next beat, where it applies just as audibly.
+            for (let next = automation.bar + 1; !located && next < track.bars.length; next++) {
+              located = this.#locate(next, 0, trackIndex);
+            }
+            if (located) {
+              this.#sink.warn(
+                'automation-moved',
+                automation.path,
+                "A sound change in a bar with no beats moves to the track's next beat",
+              );
+            }
+          }
           if (located) located.beat.mix = { ...located.beat.mix, program: sound.program };
           else
             this.#sink.warn(
               'automation-dropped',
               automation.path,
-              'A sound change in a bar with no beats; dropped',
+              'A sound change with no beat at or after it; dropped',
             );
         } else {
           this.#sink.warn(

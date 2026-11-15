@@ -108,11 +108,11 @@ through with only `count` normalised: set only when it is above 1, as for every 
 leading `score`; `count` is set only when it is above 1. Its severity comes from an exhaustive
 table, so a new gpif code fails to compile until it has one:
 
-| Severity  | gpif codes                                                                                                                                                                                                                                                                                                |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `error`   | `voice-dropped`                                                                                                                                                                                                                                                                                           |
-| `warning` | `unknown-element`, `unknown-value`, `invalid-value`, `missing-reference`, `multiple-staves`, `simile-expanded`, `grace-without-beat`, `grace-duration-clamped`, `grace-tie-released`, `hammer-pull-without-destination`, `tempo-moved`, `automation-dropped`, `default-tempo`, every `validateScore` rule |
-| `info`    | `not-modelled`, `long-note-tied`, `drum-articulation`                                                                                                                                                                                                                                                     |
+| Severity  | gpif codes                                                                                                                                                                                                                                                                                                                    |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `error`   | `voice-dropped`                                                                                                                                                                                                                                                                                                               |
+| `warning` | `unknown-element`, `unknown-value`, `invalid-value`, `missing-reference`, `multiple-staves`, `simile-expanded`, `grace-without-beat`, `grace-duration-clamped`, `grace-tie-released`, `hammer-pull-without-destination`, `tempo-moved`, `automation-dropped`, `automation-moved`, `default-tempo`, every `validateScore` rule |
+| `info`    | `not-modelled`, `long-note-tied`, `drum-articulation`                                                                                                                                                                                                                                                                         |
 
 A native `unknown-field` or violation is a `warning`. A field inside `score` goes to
 `location.path` less the leading `score`; one outside it (`extra`, `app.extra`) goes to
@@ -391,7 +391,8 @@ Every warning is `{ code, message, path, count }`: `path` is the gpif element (`
 | `grace-tie-released`              | a tied grace note; the model forbids `tie` on grace notes, so it is struck                                |
 | `hammer-pull-without-destination` | a hammer-on origin with no later note on its string within three bars, once per track                     |
 | `tempo-moved`                     | a tempo change placed on the nearest earlier beat, or a ramp length rounded                               |
-| `automation-dropped`              | a tempo or sound change in a bar with no beats, or past the last bar                                      |
+| `automation-dropped`              | a tempo change in a bar with no beats, or an automation past the last bar or with no later beat           |
+| `automation-moved`                | a sound change in a bar with no beats, put on the track's next beat in a later bar                        |
 | `default-tempo`                   | no tempo at the start; 120 BPM is used                                                                    |
 | `long-note-tied`                  | a double whole or long note split into tied whole notes                                                   |
 | `drum-articulation`               | drum articulation variants mapped to their GM sound (once per track)                                      |

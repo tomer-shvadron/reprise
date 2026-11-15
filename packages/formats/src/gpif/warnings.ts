@@ -15,6 +15,7 @@ export type GpifWarningCode =
   | 'hammer-pull-without-destination'
   | 'tempo-moved'
   | 'automation-dropped'
+  | 'automation-moved'
   | 'default-tempo'
   | 'long-note-tied'
   | 'drum-articulation'

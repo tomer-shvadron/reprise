@@ -913,6 +913,40 @@ describe('tracks', () => {
     expect(beatsOf(score, 1)[0]?.mix).toEqual({ program: 19 });
   });
 
+  describe('a sound change in a bar with no beats', () => {
+    const sounds = `<Automations><Automation><Type>Sound</Type><Linear>false</Linear><Bar>1</Bar><Position>0</Position>
+      <Visible>true</Visible><Value><![CDATA[Keys/Organ;Organ;Factory]]></Value></Automation></Automations>`;
+    const organ = (): string =>
+      guitarTrack('0', { extra: sounds }).replace(
+        '</Sounds>',
+        '<Sound><Name>Organ</Name><Path>Keys/Organ</Path><Role>Factory</Role><MIDI><Program>19</Program></MIDI></Sound></Sounds>',
+      );
+    const readBars = (bars: string[]): ReturnType<typeof read> =>
+      read(
+        gpif({
+          tracks: [organ()],
+          masterBars: bars.map((_, index) => masterBar(String(index))),
+          bars: bars.map((voices, index) => bar(String(index), voices)),
+          voices: [voice('0', '0')],
+          beats: [beat('0', '0', '0')],
+          notes: [note('0', 2, 5)],
+          rhythms: [rhythm('0', 'Whole')],
+        }),
+      );
+
+    it("moves to the track's next beat and says so (#153)", () => {
+      const result = readBars(['0 -1 -1 -1', '-1 -1 -1 -1', '0 -1 -1 -1']);
+      expect(beatsOf(result.score, 2)[0]?.mix).toEqual({ program: 19 });
+      expect(codes(result)).toContain('automation-moved');
+      expect(codes(result)).not.toContain('automation-dropped');
+    });
+
+    it('is dropped when no later bar has a beat', () => {
+      const result = readBars(['0 -1 -1 -1', '-1 -1 -1 -1']);
+      expect(codes(result)).toContain('automation-dropped');
+    });
+  });
+
   describe('an over-full bar', () => {
     const sixBeats = [0, 1, 2, 3, 4, 5].map((index) => beat(String(index), '0', '0'));
 

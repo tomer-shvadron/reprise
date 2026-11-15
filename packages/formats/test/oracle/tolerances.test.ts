@@ -243,9 +243,15 @@ describe('placeholder-beat-holds-automation', () => {
     ]);
   });
 
-  // Flips to an accepted case once #153 keeps the change somewhere else in the score.
-  it('keeps reporting a sound change we drop in an empty bar (#153)', () => {
+  it('moves a sound change in an empty bar to the next beat and reports it (#153)', () => {
     const build = HAND_BUILT.soundChangeInEmptyBar();
+    expect(build.warnings).toContain('automation-moved');
+    expect(build.warnings).not.toContain('automation-dropped');
+    expect(build.projections.ours.tracks[0]?.bars[2]?.voices[0]?.beats[0]?.mix?.program).toBe(19);
+  });
+
+  it('still drops a sound change in an empty bar with no later beat', () => {
+    const build = HAND_BUILT.soundChangeInLastEmptyBar();
     expect(build.warnings).toContain('automation-dropped');
     expect(unexplained(build)).toHaveLength(1);
   });

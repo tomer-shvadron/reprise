@@ -282,7 +282,7 @@ export const TOLERANCES: readonly Tolerance[] = [
   {
     id: 'placeholder-beat-holds-automation',
     formats: GPIF_ONLY,
-    why: "For every `-1` voice in a bar alphaTab's `_buildModel` adds a voice holding one empty quarter beat; the projection drops those, except that the track automation `_buildModel` pushes onto `voices[0].beats[0]` lands on it and keeps it. Accepted only when one of our beats in the same bar holds that change. A change we drop (a sound change in a bar with no beats, `automation-dropped`) is a reader bug, #153, and stays reported.",
+    why: "For every `-1` voice in a bar alphaTab's `_buildModel` adds a voice holding one empty quarter beat; the projection drops those, except that the track automation `_buildModel` pushes onto `voices[0].beats[0]` lands on it and keeps it. Accepted only when one of our beats in the same bar holds that change. A change in a bar with no beats moves to the track's next beat in a later bar (`automation-moved`, #153), which this does not cover.",
     applies: (d, { ours, alphaTab }) => {
       const at = BAR_VOICE_BEATS.exec(d.path)?.groups;
       if (at === undefined) return false;
