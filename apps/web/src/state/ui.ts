@@ -47,6 +47,8 @@ export interface UiState {
   toggleTheme: () => void;
   setPanelOpen: (panel: PanelId, open: boolean) => void;
   togglePanel: (panel: PanelId) => void;
+  /** Closes the right panel when it shows the mixer; otherwise shows the mixer there, opening it. */
+  toggleMixer: () => void;
   setScreen: (screen: ScreenId) => void;
   /** Shows `view` in the right panel and opens the panel. */
   showPanelView: (view: PanelView) => void;
@@ -89,6 +91,11 @@ export function createUiStore(theme: Theme = initialTheme()) {
     },
     togglePanel: (panel) => {
       set((state) => ({ panels: { ...state.panels, [panel]: !state.panels[panel] } }));
+    },
+    toggleMixer: () => {
+      const { panels, rightPanelView } = get();
+      if (panels.rightPanel && rightPanelView === 'mixer') get().setPanelOpen('rightPanel', false);
+      else get().showPanelView('mixer');
     },
     setScreen: (screen) => {
       set({ screen });

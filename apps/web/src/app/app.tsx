@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { Button } from '@/components/ui/button';
 import { LibraryScreen } from '@/features/library';
 import { SoundManager } from '@/features/sounds';
 import { TrainerPanel } from '@/features/trainer';
@@ -21,6 +20,7 @@ import { formatShortcut, type KeyboardPlatform } from './keyboard';
 import { Notices } from './notices';
 import { SavePromptDialog } from './save-prompt';
 import { ScorePane } from './score-pane';
+import { ScreenHost } from './screen-host';
 import type { AppServices } from './services';
 import { AppServicesProvider } from './services-context';
 import { installShortcutDispatcher } from './shortcut-dispatcher';
@@ -74,33 +74,26 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   return (
     <AppServicesProvider services={services}>
       <TooltipProvider>
-        <AppFrame
-          ui={ui}
-          score={<ScorePane hint={hint} />}
-          transport={<TransportBar registry={registry} keyboard={keyboard} />}
-          sidebar={<TrackSidebar registry={registry} keyboard={keyboard} />}
-          panel={
-            rightPanelView === 'mixer' ? <MixerPanel /> : <TrainerPanel view={rightPanelView} />
-          }
-        />
+        <div className="h-full" inert={screen !== 'player'}>
+          <AppFrame
+            ui={ui}
+            score={<ScorePane hint={hint} />}
+            transport={<TransportBar registry={registry} keyboard={keyboard} />}
+            sidebar={<TrackSidebar registry={registry} keyboard={keyboard} />}
+            panel={
+              rightPanelView === 'mixer' ? <MixerPanel /> : <TrainerPanel view={rightPanelView} />
+            }
+          />
+        </div>
         {screen !== 'player' && (
-          <section
-            aria-label={screen === 'library' ? 'Library' : 'Sounds'}
-            className="bg-background fixed inset-0 z-40 flex flex-col"
+          <ScreenHost
+            label={screen === 'library' ? 'Library' : 'Sounds'}
+            onClose={() => {
+              ui.getState().setScreen('player');
+            }}
           >
-            <div className="flex items-center border-b p-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  ui.getState().setScreen('player');
-                }}
-              >
-                Back to player
-              </Button>
-            </div>
             {screen === 'library' ? <LibraryScreen /> : <SoundManager />}
-          </section>
+          </ScreenHost>
         )}
         <CommandPalette registry={registry} ui={ui} keyboard={keyboard} />
         <DropZone />
