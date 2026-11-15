@@ -54,7 +54,10 @@ shell wiring, which is one separate integration commit).
   (`parser.native`, in the worker), never from a second read, so track ids match; the original and the
   row follow, and the session keeper starts. A duplicate opens the library's song instead. A failed
   write clears `songId`, keeps the file open and shows the banner. `openWithoutImport` keeps the bytes
-  in memory so the banner's Import (`importOpenDocument`) can still copy the original.
+  in memory so the banner's Import (`importOpenDocument`) can still copy the original. The banner
+  follows the library's own `unimportedId`, the document id those bytes belong to, so a new song
+  (`document.newDocument`), a new song saved with Save As and a song deleted from the library never
+  show it. The held bytes are released, and `bannerError` cleared, whenever the document id changes.
 - **Delete** (`library.deleteSong`). The song's native and original folder move to
   `library/trash/<id>/` beside a `song.json` copy of the row; then the row goes. An open song becomes
   unimported (`songId` cleared); its document still carries the save handle it was opened with, which
@@ -74,7 +77,7 @@ shell wiring, which is one separate integration commit).
 
 - `document.songId`: the song a document was opened from, passed as `songId` in the options of
   `openBytes(name, bytes, { handle?, songId? })` and set later with `setSongId` after importing a file opened without import. Cleared by
-  `close` and by the next open.
+  `close`, `newDocument` and the next open.
 - `ui.screen` and `ui.setScreen`: the library is a full-window screen; leaving it sets `'player'`.
 - `captureTrackSession`, `restoreTrackSession` and `watchTrackSession` from `features/tracks` for the
   per-song settings.
