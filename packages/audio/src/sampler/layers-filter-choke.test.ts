@@ -199,6 +199,129 @@ describe('region filter', () => {
   });
 });
 
+describe('region filter envelope and modulators', () => {
+  const BUTTERWORTH = -3.0103;
+  const NONE = { input: 'none', curve: 'linear', negative: false, bipolar: false } as const;
+
+  /** A 4 kHz tone under `region`, with its level in dB over `[from, to]` against the open tone. */
+  async function levelDb(
+    spec: Partial<Region>,
+    span: readonly [number, number],
+    velocity = 127,
+  ): Promise<number> {
+    const play = async (extra: Partial<Region>): Promise<number> => {
+      const { context, sampler } = setup(1);
+      sampler.addTrack(
+        TRACK,
+        instrument([region({ sample: 'high', ...extra })], { high: sine(4000) }),
+      );
+      sampler.noteOn('t', { key: 69, velocity, when: 0 });
+      return toneLevel(await render(context), 4000, ...span);
+    };
+    return 20 * Math.log10((await play(spec)) / (await play({})));
+  }
+
+  const sweep = (sustain: number): Partial<Region> => ({
+    filter: {
+      cutoffHz: 500,
+      q: BUTTERWORTH,
+      // 4800 cents is four octaves: 500 Hz opens to 8 kHz, above the 4 kHz tone.
+      envelope: { cents: 4800, delay: 0, attack: 0.001, hold: 0, decay: 0.2, sustain },
+    },
+  });
+
+  it('opens the cutoff at the attack and lets it fall back to its rest', async () => {
+    // Early, the 8 kHz low-pass passes the 4 kHz tone within a few dB; late, 500 Hz is -36 dB.
+    expect(await levelDb(sweep(0), [0.01, 0.04])).toBeGreaterThan(-4);
+    expect(await levelDb(sweep(0), [0.5, 0.9])).toBeCloseTo(-36.1, 0);
+  });
+
+  it('settles at the sustain share of the depth', async () => {
+    // Half of four octaves is two: 2 kHz, so the 4 kHz tone is one octave over it, about -12 dB.
+    expect(await levelDb(sweep(0.5), [0.5, 0.9])).toBeCloseTo(-12.3, 0);
+  });
+
+  it('holds the cutoff at the peak for the hold time before the fall', async () => {
+    const held = sweep(0);
+    if (held.filter?.envelope) held.filter.envelope.hold = 0.3;
+    expect(await levelDb(held, [0.2, 0.28])).toBeGreaterThan(-4);
+    expect(await levelDb(held, [0.8, 0.95])).toBeLessThan(-30);
+  });
+
+  it('plays the velocity curve from the modulators, and none when they leave it out', async () => {
+    const attenuation = (amount: number) => ({
+      destination: 'attenuation' as const,
+      amount,
+      source: NONE,
+      amountSource: NONE,
+      absolute: false,
+    });
+    // Levels are against the same note without modulators, which plays the MIDI velocity curve:
+    // velocity 64 is (64 / 127)^2, about -11.9 dB.
+    const curve = -20 * Math.log10((127 / 64) ** 2);
+    // With modulators the curve is theirs: none at all here, so the note is 11.9 dB louder.
+    expect(await levelDb({ modulators: [] }, [0.2, 0.5], 64)).toBeCloseTo(-curve, 1);
+    // A constant 60 cB modulator is 6 dB down from that.
+    expect(await levelDb({ modulators: [attenuation(60)] }, [0.2, 0.5], 64)).toBeCloseTo(
+      -curve - 6.02,
+      1,
+    );
+  });
+
+  it('stays dark for the envelope delay, then opens', async () => {
+    const delayed = sweep(0);
+    if (delayed.filter?.envelope) delayed.filter.envelope.delay = 0.2;
+    expect(await levelDb(delayed, [0.05, 0.15])).toBeLessThan(-30);
+    expect(await levelDb(delayed, [0.21, 0.24])).toBeGreaterThan(-6);
+  });
+
+  it('creates the region low-pass only for a note that can close it', () => {
+    const countFilters = (extra: Partial<Region>): number => {
+      const { context, sampler } = setup(0.2);
+      const create = context.createBiquadFilter.bind(context);
+      let created = 0;
+      context.createBiquadFilter = () => {
+        created += 1;
+        return create();
+      };
+      sampler.addTrack(
+        TRACK,
+        instrument([region({ sample: 'high', ...extra })], { high: sine(4000) }),
+      );
+      return sampler.noteOn('t', { key: 69, velocity: 100, when: 0 }) ? created : -1;
+    };
+    // Whatever the voice and strip create anyway, with no region filter at all.
+    const baseline = countFilters({});
+    // initialFilterFc's maximum, 13500 cents.
+    const openHz = 440 * 2 ** 5.5;
+    const open = { filter: { cutoffHz: openHz, q: BUTTERWORTH }, modulators: [] };
+    expect(countFilters(open)).toBe(baseline);
+    expect(countFilters({ filter: { cutoffHz: 2000, q: BUTTERWORTH }, modulators: [] })).toBe(
+      baseline + 1,
+    );
+    expect(countFilters({ filter: { cutoffHz: openHz, q: 6 }, modulators: [] })).toBe(baseline + 1);
+  });
+
+  it('moves the cutoff with a note-on modulator', async () => {
+    const closing = {
+      filter: { cutoffHz: 19_900, q: BUTTERWORTH },
+      modulators: [
+        {
+          destination: 'filterFc' as const,
+          amount: -6000,
+          source: NONE,
+          amountSource: NONE,
+          absolute: false,
+        },
+      ],
+    };
+    // 13500 - 6000 cents is 622 Hz; the 4 kHz tone sits 2.7 octaves above it.
+    const level = await levelDb(closing, [0.2, 0.5]);
+    expect(level).toBeLessThan(-29);
+    expect(level).toBeGreaterThan(-35);
+  });
+});
+
 describe('envelope delay', () => {
   it('holds the voice silent for the delay while the sample runs, then attacks', async () => {
     const { context, sampler } = setup(1);

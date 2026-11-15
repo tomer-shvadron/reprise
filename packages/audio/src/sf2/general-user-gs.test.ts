@@ -221,8 +221,10 @@ describe.skipIf(!font)('GeneralUser GS', () => {
     console.info(`GeneralUser GS GM set report: ${JSON.stringify(summary)}`);
     // The file is pinned by hash, so these are fixed; a change here is a change in the resolver.
     expect(summary).toMatchObject({
-      regions: 16_100,
-      keyExpanded: 687,
+      // Up from 16,100 and 687: a zone with a filter sweep and a key-scaled modulation envelope
+      // is now expanded per key too, to keep each key's own hold and decay.
+      regions: 18_636,
+      keyExpanded: 1255,
       stereoMismatches: 0,
       unpairedStereo: 0,
       skippedZones: 0,
@@ -267,7 +269,7 @@ describe.skipIf(!font)('GeneralUser GS', () => {
     expect(share).toBeGreaterThan(0.25);
   });
 
-  it('filters a GM program at its held cutoff: Synth Bass 1 loses its top end', async () => {
+  it('filters a GM program at its cutoff: Synth Bass 1 loses its top end', async () => {
     if (!font) return;
     const regions = font.regionMapFor(0, 38);
     if (!regions) throw new Error('No Synth Bass 1');

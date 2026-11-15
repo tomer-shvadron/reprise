@@ -3,12 +3,13 @@
  * an overloaded mix, rendered through the real transport, strips, master bus and GeneralUser GS.
  * Before the fix a single note peaked at -33.5 dBFS and a band's loudest 3 s sat near -25 dBFS
  * RMS, about 40 dB under the metronome click. The numbers below are measured with GeneralUser GS
- * 2.0.3; a soundfont bump re-measures them. Peak dBFS, before this change -> now:
- * - steel E3 at forte, volume 104, strips tap: -33.4 -> -23.6
- * - distortion power chord, same setup: -31.9 -> -17.9
- * - band mix, master tap: loudest 3 s RMS -22.8 -> -18.6, peak -8.9 -> -5.1
- * - overload (fff, volume 127, four extra distortion tracks): -0.4 -> -0.21; about +1.4 dBFS reach
- *   the ceiling, so this test fails without it
+ * 2.0.3; a soundfont bump re-measures them. Peak dBFS, before #169 -> now:
+ * - steel E3 at forte, volume 104, strips tap: -33.4 -> -17.9
+ * - distortion power chord, same setup: -31.9 -> -11.4
+ * - band mix, master tap: loudest 3 s RMS -22.8 -> -16.5, peak -8.9 -> -2.7
+ * - overload (fff, volume 127, four extra distortion tracks): -0.4 -> -0.21; about +1.4 dBFS reach the ceiling,
+ *   so this test fails without it
+ * Each range is the measured value +-1.5 dB (+-3 dB for the 3 s RMS).
  */
 import { score as buildScore, midi, note } from '@reprise/model/testing';
 import type { Score } from '@reprise/model';
@@ -120,14 +121,14 @@ async function notePeak(
 }
 
 describe.skipIf(!font)('playback loudness', () => {
-  it('plays a steel-guitar note at forte near -24 dBFS', async () => {
+  it('plays a steel-guitar note at forte near -18 dBFS', async () => {
     const level = db(await notePeak(104));
     console.info(`steel E3 f, volume 104: ${level.toFixed(2)} dBFS`);
-    expect(level).toBeGreaterThanOrEqual(-26);
-    expect(level).toBeLessThanOrEqual(-22);
+    expect(level).toBeGreaterThanOrEqual(-19.4);
+    expect(level).toBeLessThanOrEqual(-16.4);
   });
 
-  it('plays a distortion power chord no quieter than -19.5 dBFS', async () => {
+  it('plays a distortion power chord no quieter than -12.9 dBFS', async () => {
     if (!font) return;
     const chord = buildScore()
       .track('guitar', { program: 30, channel: channel(104) })
@@ -142,7 +143,7 @@ describe.skipIf(!font)('playback loudness', () => {
     });
     const level = db(peak(rendered, 0, Number.POSITIVE_INFINITY));
     console.info(`distortion power chord: ${level.toFixed(2)} dBFS`);
-    expect(level).toBeGreaterThanOrEqual(-19.5);
+    expect(level).toBeGreaterThanOrEqual(-12.9);
   });
 
   it('mixes a band to a loud but unclipped master output', async () => {
@@ -155,8 +156,8 @@ describe.skipIf(!font)('playback loudness', () => {
     const loudest = db(loudestRms(rendered));
     const top = peak(rendered, 0, Number.POSITIVE_INFINITY);
     console.info(`band: 3 s RMS ${loudest.toFixed(2)} dBFS, peak ${db(top).toFixed(2)} dBFS`);
-    expect(loudest).toBeGreaterThanOrEqual(-21.6);
-    expect(loudest).toBeLessThanOrEqual(-15.6);
+    expect(loudest).toBeGreaterThanOrEqual(-19.5);
+    expect(loudest).toBeLessThanOrEqual(-13.5);
     expect(db(top)).toBeGreaterThanOrEqual(-6);
     expect(top).toBeLessThanOrEqual(CEILING + 1e-4);
   });

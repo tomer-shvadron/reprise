@@ -1,4 +1,5 @@
-import type { Envelope, Region, SampleRef } from '../sampler/region-map';
+import type { Envelope, NoteModulator, Region, SampleRef } from '../sampler/region-map';
+import { layerModulators, mergeModulators } from './modulators';
 import {
   Gen,
   INSTRUMENT_ONLY,
@@ -10,6 +11,7 @@ import {
 import {
   SampleType,
   type Sf2File,
+  type Sf2Modulator,
   type Sf2Instrument,
   type Sf2Preset,
   type Sf2Sample,
@@ -22,7 +24,10 @@ import { formatSampleRef } from './sample-ref';
 export interface PresetReport {
   /** Generators the `Region` has no field for, by name, wherever a zone sets a non-neutral value. */
   unsupported: Record<string, number>;
-  /** Zones under at least one modulator beyond the defaults; none is applied. */
+  /**
+   * Zones with a modulator that is not applied: a controller or pressure source, a link, or a
+   * destination other than attenuation, the cutoff, the filter envelope's depth and Q.
+   */
   modulated: number;
   /** Zones expanded to one region per key for `keynumToVolEnv*` or a `scaleTuning` other than 100. */
   keyExpanded: number;
@@ -82,7 +87,8 @@ export interface InstrumentZone {
   end: number;
   loop?: { start: number; end: number };
   invalidLoop: boolean;
-  modulated: boolean;
+  /** The instrument level's modulators, its global zone's and the zone's own layered. */
+  modulators: readonly Sf2Modulator[];
   mismatch: boolean;
   unpaired: boolean;
 }
@@ -112,7 +118,6 @@ const BUTTERWORTH_Q_DB = -3.0103;
  * GeneralUser GS are voiced for it and play 0.6 of their attenuation too quiet without it.
  */
 const EMU_ATTENUATION_FACTOR = 0.4;
-const MAX_ATTENUATION_DB = 144;
 
 /** Absolute cents, A4 = 6900, to hertz. */
 function centsToHz(cents: number): number {
@@ -208,7 +213,7 @@ interface Entry {
   sample: Sf2Sample;
   key: Range;
   vel: Range;
-  modulated: boolean;
+  modulators: readonly Sf2Modulator[];
 }
 
 /** Generators the stereo merge reads from the left zone alone; a differing right zone is reported. */
@@ -229,6 +234,17 @@ const PAIR_CHECKED = [
   Gen.sustainModEnv,
   Gen.exclusiveClass,
 ];
+
+/** The modulators as a comparable string; the merge keeps the left zone's only. */
+function modulatorKey(modulators: readonly Sf2Modulator[]): string {
+  return modulators
+    .map(
+      (m) =>
+        `${String(m.source)}/${String(m.destination)}/${String(m.amount)}/${String(m.amountSource)}/${String(m.transform)}`,
+    )
+    .sort()
+    .join(',');
+}
 
 function isStereo(sample: Sf2Sample): boolean {
   return (sample.type & (SampleType.left | SampleType.right)) !== 0;
@@ -282,7 +298,7 @@ function pairStereo(file: Sf2File, entries: Entry[]): InstrumentZone[] {
         sample: entry.sample,
         samples: [entry.index],
         ...sliceOf(entry.generators, entry.sample, frames),
-        modulated: entry.modulated,
+        modulators: entry.modulators,
         mismatch: false,
         unpaired: stereo,
       });
@@ -298,10 +314,11 @@ function pairStereo(file: Sf2File, entries: Entry[]): InstrumentZone[] {
       sample: left.sample,
       samples: [left.index, right.index],
       ...sliceOf(left.generators, left.sample, frames),
-      modulated: left.modulated || right.modulated,
-      mismatch: PAIR_CHECKED.some(
-        (operator) => left.generators.get(operator) !== right.generators.get(operator),
-      ),
+      modulators: left.modulators,
+      mismatch:
+        PAIR_CHECKED.some(
+          (operator) => left.generators.get(operator) !== right.generators.get(operator),
+        ) || modulatorKey(left.modulators) !== modulatorKey(right.modulators),
       unpaired: false,
     });
   }
@@ -326,7 +343,7 @@ export function resolveInstrument(file: Sf2File, instrument: Sf2Instrument): Res
       sample,
       key: range(generators.get(Gen.keyRange)),
       vel: range(generators.get(Gen.velRange)),
-      modulated: zone.modulators + (instrument.global?.modulators ?? 0) > 0,
+      modulators: layerModulators(instrument.global?.modulators ?? [], zone.modulators),
     });
   }
   return { zones: pairStereo(file, entries), skipped };
@@ -339,7 +356,7 @@ interface Use {
   key: Range;
   vel: Range;
   presetGens: Map<number, number>;
-  presetModulated: boolean;
+  presetModulators: readonly Sf2Modulator[];
 }
 
 /** The instrument zones a preset sounds, each under its preset zone, in map order. */
@@ -358,11 +375,14 @@ function* uses(
     const presetGens = withGlobal(preset.global, presetZone);
     const presetKey = range(presetGens.get(Gen.keyRange));
     const presetVel = range(presetGens.get(Gen.velRange));
-    const presetModulated = presetZone.modulators + (preset.global?.modulators ?? 0) > 0;
+    const presetModulators = layerModulators(
+      preset.global?.modulators ?? [],
+      presetZone.modulators,
+    );
     for (const zone of instrument.zones) {
       const key = intersect(zone.key, presetKey);
       const vel = intersect(zone.vel, presetVel);
-      if (key && vel) yield { zone, key, vel, presetGens, presetModulated };
+      if (key && vel) yield { zone, key, vel, presetGens, presetModulators };
     }
   }
 }
@@ -401,7 +421,7 @@ export function resolvePreset(
   const regions: Region[] = [];
   const bytes = new Map<SampleRef, number>();
 
-  for (const { zone, key, vel, presetGens, presetModulated } of uses(
+  for (const { zone, key, vel, presetGens, presetModulators } of uses(
     preset,
     instrumentAt,
     report,
@@ -409,7 +429,8 @@ export function resolvePreset(
     if (zone.invalidLoop) report.invalidLoops += 1;
     if (zone.mismatch) report.stereoMismatches += 1;
     if (zone.unpaired) report.unpairedStereo += 1;
-    if (zone.modulated || presetModulated) report.modulated += 1;
+    const merged = mergeModulators(zone.modulators, presetModulators);
+    if (merged.unapplied > 0) report.modulated += 1;
     const generators = withOffsets(zone.generators, presetGens);
     const pitch =
       zone.pitch.generators === zone.generators
@@ -423,7 +444,16 @@ export function resolvePreset(
     const ref = refOf(soundfont, zone);
     const byteLength =
       (zone.end - zone.start) * zone.samples.length * Float32Array.BYTES_PER_ELEMENT;
-    for (const region of buildRegions(zone, generators, pitch, key, vel, ref, report)) {
+    for (const region of buildRegions(
+      zone,
+      generators,
+      pitch,
+      key,
+      vel,
+      ref,
+      merged.modulators,
+      report,
+    )) {
       regions.push(region);
       bytes.set(ref, byteLength);
     }
@@ -443,19 +473,54 @@ export function resolvePreset(
   };
 }
 
+const FILTER_DESTINATIONS: ReadonlySet<string> = new Set([
+  'filterFc',
+  'modEnvToFilterFc',
+  'filterQ',
+]);
+
 /**
- * The low-pass the zone holds once its modulation envelope has settled: like the pitch, the
- * sustain share of `modEnvToFilterFc` is a fixed offset to the cutoff. Absent when open.
+ * The zone's low-pass at rest, with the modulation envelope that moves it: the voice plays the
+ * envelope over time (`modEnvToFilterFc`), so a bright attack that closes slowly is not frozen at
+ * its sustain level. Absent when nothing can close it: no cutoff, resonance, envelope or filter
+ * modulator. The voice still decides per note whether a node is needed, since a modulator such as
+ * the default velocity one only closes the cutoff for some velocities.
  */
-function filter(generators: ReadonlyMap<number, number>): Region['filter'] {
-  const held = (1000 - value(generators, Gen.sustainModEnv)) / 1000;
-  const cents =
-    value(generators, Gen.initialFilterFc) + value(generators, Gen.modEnvToFilterFc) * held;
+function filter(
+  generators: ReadonlyMap<number, number>,
+  modulators: readonly NoteModulator[],
+  key: number,
+): Region['filter'] {
+  const cutoff = value(generators, Gen.initialFilterFc);
   const resonance = value(generators, Gen.initialFilterQ);
-  if (cents >= OPEN_FILTER_CENTS && resonance === 0) return undefined;
-  return {
-    cutoffHz: centsToHz(Math.min(Math.max(cents, MIN_FILTER_CENTS), OPEN_FILTER_CENTS)),
+  const depth = value(generators, Gen.modEnvToFilterFc);
+  const modulated = modulators.some(({ destination }) => FILTER_DESTINATIONS.has(destination));
+  if (cutoff >= OPEN_FILTER_CENTS && resonance === 0 && depth === 0 && !modulated) return undefined;
+  const settings = {
+    cutoffHz: centsToHz(Math.min(Math.max(cutoff, MIN_FILTER_CENTS), OPEN_FILTER_CENTS)),
     q: resonance / 10 + BUTTERWORTH_Q_DB,
+  };
+  const depthModulated = modulators.some(({ destination }) => destination === 'modEnvToFilterFc');
+  if (depth === 0 && !depthModulated) return settings;
+  const fromMiddleC = 60 - key;
+  const holdTc =
+    value(generators, Gen.holdModEnv) + value(generators, Gen.keynumToModEnvHold) * fromMiddleC;
+  const decayTc =
+    value(generators, Gen.decayModEnv) + value(generators, Gen.keynumToModEnvDecay) * fromMiddleC;
+  const fall = value(generators, Gen.sustainModEnv) / 1000;
+  const delayTc = value(generators, Gen.delayModEnv);
+  return {
+    ...settings,
+    envelope: {
+      cents: depth,
+      delay: delayTc > defaultOf(Gen.delayModEnv) ? timecentsToSeconds(delayTc) : 0,
+      attack: timecentsToSeconds(value(generators, Gen.attackModEnv)),
+      hold: timecentsToSeconds(holdTc),
+      // SF2's modulation envelope falls linearly; its decay is the time of a full fall to 0, so
+      // reaching the sustain level takes the fraction it drops.
+      decay: timecentsToSeconds(decayTc) * fall,
+      sustain: 1 - fall,
+    },
   };
 }
 
@@ -491,6 +556,7 @@ function buildRegions(
   key: Range,
   vel: Range,
   ref: SampleRef,
+  modulators: readonly NoteModulator[],
   report: PresetReport,
 ): Region[] {
   const header = zone.pitch.sample;
@@ -508,15 +574,15 @@ function buildRegions(
     header.pitchCorrection +
     value(pitch, Gen.modEnvToPitch) * held;
   const scale = value(pitch, Gen.scaleTuning);
-  const lowpass = filter(generators);
   // SF2 8.1.3 #9: the resonance lowers the DC gain by half of it, as FluidSynth's 1 / sqrt(Q) does.
-  const resonanceCut = lowpass ? value(generators, Gen.initialFilterQ) / 20 : 0;
-  // FluidSynth scales the raw summed generator and clips it to 0..1440 cB once, last; `value`
-  // would clamp before the factor. The resonance cut is a filter loss, so it stays outside.
-  const rawAttenuation = generators.get(Gen.initialAttenuation) ?? 0;
+  const resonanceCut = value(generators, Gen.initialFilterQ) / 20;
+  // FluidSynth scales the raw summed generator, adds the modulators and clips to 0..1440 cB once,
+  // last. So the scaled sum is left unclamped here; the voice adds the note's modulator deltas and
+  // clamps. The resonance cut rides along inside that clamp, and follows the zone's Q, not a
+  // modulated one: both differ from FluidSynth only at the edges (a total below 0 or above 144 dB,
+  // a Q modulator), none of which GeneralUser GS uses.
   const attenuation =
-    Math.min(MAX_ATTENUATION_DB, Math.max(0, (EMU_ATTENUATION_FACTOR * rawAttenuation) / 10)) +
-    resonanceCut;
+    (EMU_ATTENUATION_FACTOR * (generators.get(Gen.initialAttenuation) ?? 0)) / 10 + resonanceCut;
   const pan = zone.samples.length === 1 ? value(generators, Gen.pan) / 500 : 0;
   const rate = zone.sample.sampleRate;
   const exclusiveClass = value(generators, Gen.exclusiveClass);
@@ -533,7 +599,7 @@ function buildRegions(
     }),
     ...(attenuation !== 0 && { attenuation }),
     ...(pan !== 0 && { pan }),
-    ...(lowpass && { filter: lowpass }),
+    modulators,
     ...(exclusiveClass !== 0 && { exclusiveClass }),
   };
 
@@ -541,11 +607,17 @@ function buildRegions(
   const perKey =
     scale !== 100 ||
     value(generators, Gen.keynumToVolEnvHold) !== 0 ||
-    value(generators, Gen.keynumToVolEnvDecay) !== 0;
+    value(generators, Gen.keynumToVolEnvDecay) !== 0 ||
+    ((value(generators, Gen.modEnvToFilterFc) !== 0 ||
+      modulators.some(({ destination }) => destination === 'modEnvToFilterFc')) &&
+      (value(generators, Gen.keynumToModEnvHold) !== 0 ||
+        value(generators, Gen.keynumToModEnvDecay) !== 0));
   if (!perKey) {
+    const lowpass = filter(generators, modulators, 60);
     return [
       {
         ...base,
+        ...(lowpass && { filter: lowpass }),
         keyLo: key.lo,
         keyHi: key.hi,
         rootKey: root,
@@ -557,8 +629,10 @@ function buildRegions(
   report.keyExpanded += 1;
   const regions: Region[] = [];
   for (let k = key.lo; k <= key.hi; k += 1) {
+    const lowpass = filter(generators, modulators, k);
     regions.push({
       ...base,
+      ...(lowpass && { filter: lowpass }),
       keyLo: k,
       keyHi: k,
       rootKey: k,

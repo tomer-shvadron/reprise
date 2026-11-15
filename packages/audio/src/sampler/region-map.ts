@@ -12,6 +12,99 @@ export interface Envelope {
   release: number;
 }
 
+/** A modulator's input: a note-on value, shaped by SF2 2.04's curve, polarity and direction (8.2). */
+export interface ModulatorSource {
+  /** `none` is a constant 1, as a modulator with no controller. */
+  input: 'none' | 'velocity' | 'key';
+  curve: 'linear' | 'concave' | 'convex' | 'switch';
+  negative: boolean;
+  bipolar: boolean;
+}
+
+/** What a note-on modulator moves: attenuation, the cutoff, the filter envelope's depth, or Q. */
+export type ModulatorDestination = 'attenuation' | 'filterFc' | 'modEnvToFilterFc' | 'filterQ';
+
+/**
+ * An SF2 modulator the voice evaluates once, at note-on. `amount` is in the destination's own
+ * units: centibels for attenuation and Q, cents for the cutoff and the envelope depth.
+ */
+export interface NoteModulator {
+  destination: ModulatorDestination;
+  amount: number;
+  source: ModulatorSource;
+  amountSource: ModulatorSource;
+  /** SF2 transform 2: the product's absolute value. */
+  absolute: boolean;
+}
+
+/** The sums of a note's modulators per destination, in dB for attenuation and Q, cents otherwise. */
+export interface ModulatorDeltas {
+  attenuationDb: number;
+  filterCents: number;
+  modEnvCents: number;
+  filterQDb: number;
+}
+
+const SOURCE_RANGE_DB = 40 / 96;
+
+/** A curve on 0..1; concave and convex are SF2 2.04 8.2.1's 40/96-decade logarithms. */
+function shape(curve: ModulatorSource['curve'], x: number): number {
+  switch (curve) {
+    case 'linear': {
+      return x;
+    }
+    case 'concave': {
+      return Math.min(1, Math.max(0, -SOURCE_RANGE_DB * Math.log10(1 - x)));
+    }
+    case 'convex': {
+      return Math.min(1, Math.max(0, 1 + SOURCE_RANGE_DB * Math.log10(x)));
+    }
+    case 'switch': {
+      return x >= 0.5 ? 1 : 0;
+    }
+  }
+}
+
+/**
+ * Bipolar sources map to -1..1 first and the curve is mirrored over the two halves, an S shape,
+ * as FluidSynth does; the switch is -1 or 1.
+ */
+function curved(source: ModulatorSource, value: number): number {
+  const x = source.negative ? 1 - value : value;
+  if (!source.bipolar) return shape(source.curve, x);
+  const t = 2 * x - 1;
+  if (source.curve === 'switch') return t >= 0 ? 1 : -1;
+  if (source.curve === 'linear') return t;
+  return t >= 0 ? shape(source.curve, t) : -shape(source.curve, -t);
+}
+
+function sourceValue(source: ModulatorSource, key: number, velocity: number): number {
+  if (source.input === 'none') return 1;
+  return curved(source, (source.input === 'key' ? key : velocity) / 127);
+}
+
+/** SF2 2.04 8.2: each modulator adds `amount x source x amountSource` to its destination. */
+export function evaluateModulators(
+  modulators: readonly NoteModulator[],
+  key: number,
+  velocity: number,
+): ModulatorDeltas {
+  const total = { attenuation: 0, filterFc: 0, modEnvToFilterFc: 0, filterQ: 0 };
+  for (const modulator of modulators) {
+    const product =
+      modulator.amount *
+      sourceValue(modulator.source, key, velocity) *
+      sourceValue(modulator.amountSource, key, velocity);
+    total[modulator.destination] += modulator.absolute ? Math.abs(product) : product;
+  }
+  return {
+    attenuationDb: total.attenuation / 10,
+    filterCents: total.filterFc,
+    modEnvCents: total.modEnvToFilterFc,
+    filterQDb: total.filterQ / 10,
+  };
+}
+
 /** The common output of every loader: one sample mapped onto a key and velocity rectangle. */
 export interface Region {
   keyLo: number;
@@ -33,10 +126,32 @@ export interface Region {
   /** -1 (left) to 1 (right) for a mono sample; absent or 0 adds no panner to the voice. */
   pan?: number;
   /**
-   * A static low-pass applied from the note's start, before any articulation filter. `q` is the
-   * resonance in dB, Web Audio's lowpass unit: about -3 is Butterworth, 0 a flat 0 dB at cutoff.
+   * The region's low-pass, applied from the note's start, before any articulation filter. `q` is
+   * the resonance in dB, Web Audio's lowpass unit: about -3 is Butterworth, 0 a flat 0 dB at
+   * cutoff. `cutoffHz` is the cutoff at rest; with an `envelope` the voice moves it by `cents`
+   * (an SF2 modulation envelope: linear in cents, `decay` the time to fall to `sustain`, 0..1 of
+   * the depth, release not modelled), and note-on `modulators` can move all of them. A region
+   * with neither holds `cutoffHz` for the whole note.
    */
-  filter?: { cutoffHz: number; q: number };
+  filter?: {
+    cutoffHz: number;
+    q: number;
+    envelope?: {
+      cents: number;
+      delay: number;
+      attack: number;
+      hold: number;
+      decay: number;
+      sustain: number;
+    };
+  };
+  /**
+   * Note-on modulators, already merged with the soundfont's defaults. When present, the velocity
+   * curve and the filter's velocity response come from them; when absent the voice applies the
+   * MIDI velocity curve (v/127)^2 alone, which is what an SFZ pack and the synthetic test
+   * instruments get.
+   */
+  modulators?: readonly NoteModulator[];
   /** A new note of the same class on the same track and instrument chokes this one (SF2 7.10). */
   exclusiveClass?: number;
 }

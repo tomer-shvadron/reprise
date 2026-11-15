@@ -4,10 +4,22 @@ export class Sf2ParseError extends Error {
   override name = 'Sf2ParseError';
 }
 
-/** A zone's generators by operator; range amounts are kept as `lo | hi << 8`. */
+/** One `pmod`/`imod` record (SF2 2.04 section 7.4), every field as stored. */
+export interface Sf2Modulator {
+  /** Source operator: index, CC flag, direction, polarity and curve type packed as in 8.2. */
+  source: number;
+  /** A generator operator; bit 15 set links to another modulator, which is not supported. */
+  destination: number;
+  amount: number;
+  amountSource: number;
+  /** 0 linear, 2 absolute value. */
+  transform: number;
+}
+
+/** A zone's generators by operator, with its modulators; range amounts are kept as `lo | hi << 8`. */
 export interface Sf2Zone {
   generators: ReadonlyMap<number, number>;
-  modulators: number;
+  modulators: readonly Sf2Modulator[];
 }
 
 export interface Sf2Preset {
@@ -130,6 +142,19 @@ function readBags(view: DataView, at: { offset: number; count: number }): Bag[] 
   }));
 }
 
+function readModulators(view: DataView, at: { offset: number; count: number }): Sf2Modulator[] {
+  return Array.from({ length: at.count }, (_, i) => {
+    const offset = at.offset + i * 10;
+    return {
+      source: view.getUint16(offset, true),
+      destination: view.getUint16(offset + 2, true),
+      amount: view.getInt16(offset + 4, true),
+      amountSource: view.getUint16(offset + 6, true),
+      transform: view.getUint16(offset + 8, true),
+    };
+  });
+}
+
 /**
  * Builds the zones of one header from its bag range. A zone ends at its terminal generator
  * (`instrument` or `sampleID`) and the spec ignores anything after it; a first zone without
@@ -139,6 +164,7 @@ function readZones(
   view: DataView,
   bags: Bag[],
   gens: { offset: number; count: number },
+  mods: readonly Sf2Modulator[],
   first: number,
   last: number,
   terminal: number,
@@ -165,7 +191,10 @@ function readZones(
         break;
       }
     }
-    const zone: Sf2Zone = { generators, modulators: Math.max(0, next.mod - bag.mod) };
+    const zone: Sf2Zone = {
+      generators,
+      modulators: mods.slice(bag.mod, Math.max(bag.mod, next.mod)),
+    };
     if (terminated) zones.push(zone);
     else if (b === first) global = zone;
   }
@@ -226,9 +255,11 @@ export function parseSf2(input: ArrayBuffer | Uint8Array): Sf2File {
   const phdr = records(pdta, 'phdr', 38);
   const pbag = readBags(view, records(pdta, 'pbag', 4));
   const pgen = records(pdta, 'pgen', 4);
+  const pmod = readModulators(view, records(pdta, 'pmod', 10));
   const inst = records(pdta, 'inst', 22);
   const ibag = readBags(view, records(pdta, 'ibag', 4));
   const igen = records(pdta, 'igen', 4);
+  const imod = readModulators(view, records(pdta, 'imod', 10));
   const shdr = records(pdta, 'shdr', 46);
 
   // Every header list ends in a terminal record (EOP, EOI, EOS) that only bounds the last bag.
@@ -239,6 +270,7 @@ export function parseSf2(input: ArrayBuffer | Uint8Array): Sf2File {
       view,
       pbag,
       pgen,
+      pmod,
       view.getUint16(at + 24, true),
       view.getUint16(at + 38 + 24, true),
       Gen.instrument,
@@ -260,6 +292,7 @@ export function parseSf2(input: ArrayBuffer | Uint8Array): Sf2File {
         view,
         ibag,
         igen,
+        imod,
         view.getUint16(at + 20, true),
         view.getUint16(at + 22 + 20, true),
         Gen.sampleID,

@@ -1,9 +1,17 @@
-import type { Region, RegionMap } from './region-map';
+import { evaluateModulators } from './region-map';
+import type { ModulatorDeltas, Region, RegionMap } from './region-map';
 
 /** -80 dB: the floor exponential ramps aim at, since they cannot reach zero. */
 const SILENCE = 1e-4;
 const MIN_ATTACK = 0.001;
 const MIN_RELEASE = 0.005;
+/** The most attenuation SF2 allows, 1440 cB. */
+const MAX_ATTENUATION_DB = 144;
+/** `initialFilterFc` in absolute cents (A4 = 6900): its legal range, and the open end of it. */
+const MIN_CUTOFF_CENTS = 1500;
+const OPEN_CUTOFF_CENTS = 13_500;
+/** Q of a Butterworth low-pass in Web Audio's dB unit: the region filter at no resonance. */
+const BUTTERWORTH_Q_DB = -3.0103;
 export const STEAL_FADE = 0.005;
 /** A string re-plucked: the new attack damps the old note this fast, whatever its release. */
 export const CHOKE_FADE = 0.015;
@@ -16,6 +24,77 @@ export function dbToGain(db: number): number {
 export function velocityGain(velocity: number): number {
   const clamped = Math.min(127, Math.max(0, velocity));
   return (clamped / 127) ** 2;
+}
+
+function centsToHz(cents: number): number {
+  return 440 * 2 ** ((cents - 6900) / 1200);
+}
+
+function hzToCents(hz: number): number {
+  return 6900 + 1200 * Math.log2(hz / 440);
+}
+
+function clampCutoff(cents: number): number {
+  return Math.min(OPEN_CUTOFF_CENTS, Math.max(MIN_CUTOFF_CENTS, cents));
+}
+
+/**
+ * The region's low-pass for this note, or nothing when the note leaves it open. A region with
+ * neither modulators nor a filter envelope (SFZ, a test instrument) holds its cutoff as given.
+ * Otherwise the cutoff at rest moves with the note-on modulators, and the modulation envelope
+ * drives it from there: SF2's envelope is linear in cents, so the attack is an exponential ramp
+ * in hertz, a hold, then a ramp down to the sustain share of the depth. The release phase is not
+ * modelled: the cutoff stays where the sustain leaves it.
+ */
+function regionFilter(
+  context: BaseAudioContext,
+  spec: NonNullable<Region['filter']>,
+  deltas: ModulatorDeltas | undefined,
+  when: number,
+): BiquadFilterNode | undefined {
+  const nyquist = context.sampleRate / 2;
+  if (!deltas && !spec.envelope) {
+    const node = context.createBiquadFilter();
+    node.type = 'lowpass';
+    node.frequency.value = Math.min(spec.cutoffHz, nyquist);
+    node.Q.value = spec.q;
+    return node;
+  }
+  const rest = clampCutoff(hzToCents(spec.cutoffHz) + (deltas?.filterCents ?? 0));
+  const q = spec.q + (deltas?.filterQDb ?? 0);
+  const envelope = spec.envelope;
+  const depth = envelope ? envelope.cents + (deltas?.modEnvCents ?? 0) : 0;
+  const peak = clampCutoff(rest + depth);
+  const settled = clampCutoff(rest + depth * (envelope?.sustain ?? 1));
+  const closes = (cents: number) => cents < OPEN_CUTOFF_CENTS - 0.5;
+  if (
+    !closes(rest) &&
+    !(depth !== 0 && (closes(peak) || closes(settled))) &&
+    q <= BUTTERWORTH_Q_DB + 1e-3
+  ) {
+    return undefined;
+  }
+  const hz = (cents: number) => Math.min(centsToHz(cents), nyquist);
+  const node = context.createBiquadFilter();
+  node.type = 'lowpass';
+  node.Q.value = q;
+  node.frequency.value = hz(rest);
+  node.frequency.setValueAtTime(hz(rest), when);
+  if (envelope && depth !== 0) {
+    const start = when + envelope.delay;
+    const top = start + Math.max(envelope.attack, MIN_ATTACK);
+    node.frequency.setValueAtTime(hz(rest), start);
+    node.frequency.exponentialRampToValueAtTime(hz(peak), top);
+    const holdEnd = top + envelope.hold;
+    node.frequency.setValueAtTime(hz(peak), holdEnd);
+    if (envelope.sustain < 1) {
+      node.frequency.exponentialRampToValueAtTime(
+        hz(settled),
+        holdEnd + Math.max(envelope.decay, MIN_ATTACK),
+      );
+    }
+  }
+  return node;
 }
 
 export interface VoiceStart {
@@ -130,18 +209,25 @@ export class Voice {
     // Butterworth, in the dB units lowpass Q uses: no resonant peak once a cutoff is lowered.
     this.#filter.Q.value = -3.0103;
     this.#level = context.createGain();
-    this.#baseLevel = velocityGain(start.velocity) * dbToGain(-(region.attenuation ?? 0));
+    // With modulators the velocity curve is one of them, folded into the attenuation (SF2 8.4);
+    // without, it is the MIDI curve alone.
+    const deltas = region.modulators
+      ? evaluateModulators(region.modulators, start.key, start.velocity)
+      : undefined;
+    this.#baseLevel = deltas
+      ? dbToGain(
+          -Math.min(
+            MAX_ATTENUATION_DB,
+            Math.max(0, (region.attenuation ?? 0) + deltas.attenuationDb),
+          ),
+        )
+      : velocityGain(start.velocity) * dbToGain(-(region.attenuation ?? 0));
     this.#level.gain.setValueAtTime(this.#baseLevel, when);
     this.#gainEvents = [{ at: when, value: this.#baseLevel, ramp: false }];
 
     const nodes: AudioNode[] = [source, this.#envelope];
-    if (region.filter) {
-      const filter = context.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = Math.min(region.filter.cutoffHz, context.sampleRate / 2);
-      filter.Q.value = region.filter.q;
-      nodes.push(filter);
-    }
+    const lowpass = region.filter && regionFilter(context, region.filter, deltas, when);
+    if (lowpass) nodes.push(lowpass);
     nodes.push(this.#filter, this.#level);
     if (region.pan) {
       const panner = context.createStereoPanner();

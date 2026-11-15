@@ -17,7 +17,14 @@ export const Gen = {
   chorusEffectsSend: 15,
   reverbEffectsSend: 16,
   pan: 17,
+  delayModEnv: 25,
+  attackModEnv: 26,
+  holdModEnv: 27,
+  decayModEnv: 28,
   sustainModEnv: 29,
+  releaseModEnv: 30,
+  keynumToModEnvHold: 31,
+  keynumToModEnvDecay: 32,
   delayVolEnv: 33,
   attackVolEnv: 34,
   holdVolEnv: 35,
@@ -69,6 +76,10 @@ export const INSTRUMENT_ONLY: ReadonlySet<number> = new Set([
 /** Spec defaults (8.1.3) for every generator whose default is not 0. */
 const DEFAULTS: ReadonlyMap<number, number> = new Map([
   [Gen.initialFilterFc, 13_500],
+  [Gen.delayModEnv, -12_000],
+  [Gen.attackModEnv, -12_000],
+  [Gen.holdModEnv, -12_000],
+  [Gen.decayModEnv, -12_000],
   [Gen.delayVolEnv, -12_000],
   [Gen.attackVolEnv, -12_000],
   [Gen.holdVolEnv, -12_000],
@@ -91,7 +102,13 @@ const LIMITS: ReadonlyMap<number, readonly [number, number]> = new Map([
   [Gen.initialFilterQ, [0, 960]],
   [Gen.modEnvToFilterFc, [-12_000, 12_000]],
   [Gen.pan, [-500, 500]],
+  [Gen.delayModEnv, [-12_000, 5000]],
+  [Gen.attackModEnv, [-12_000, 8000]],
+  [Gen.holdModEnv, [-12_000, 5000]],
+  [Gen.decayModEnv, [-12_000, 8000]],
   [Gen.sustainModEnv, [0, 1000]],
+  [Gen.keynumToModEnvHold, [-1200, 1200]],
+  [Gen.keynumToModEnvDecay, [-1200, 1200]],
   [Gen.delayVolEnv, [-12_000, 5000]],
   [Gen.attackVolEnv, [-12_000, 8000]],
   [Gen.holdVolEnv, [-12_000, 5000]],
@@ -114,17 +131,16 @@ export function clampGenerator(generator: number, value: number): number {
 
 /**
  * Generators the `Region` cannot carry, with the value at which each has no effect. A resolved
- * zone holding anything else is counted in the preset's report, never approximated. Two are
- * split: the share of `modEnvToPitch` and `modEnvToFilterFc` the envelope holds at its sustain
- * level is a fixed offset and goes to `tune` and the filter cutoff; what is counted here is the
- * transient the voice cannot play.
+ * zone holding anything else is counted in the preset's report, never approximated. The share of
+ * `modEnvToPitch` the modulation envelope holds at its sustain level is a fixed offset and goes to
+ * `tune`; what is counted here is the transient the voice cannot play. `modEnvToFilterFc` is
+ * played in full by the voice's filter envelope.
  */
 export const UNSUPPORTED: ReadonlyMap<number, { name: string; neutral: number }> = new Map([
   [Gen.modLfoToPitch, { name: 'modLfoToPitch', neutral: 0 }],
   [Gen.vibLfoToPitch, { name: 'vibLfoToPitch', neutral: 0 }],
   [Gen.modEnvToPitch, { name: 'modEnvToPitch', neutral: 0 }],
   [Gen.modLfoToFilterFc, { name: 'modLfoToFilterFc', neutral: 0 }],
-  [Gen.modEnvToFilterFc, { name: 'modEnvToFilterFc', neutral: 0 }],
   [Gen.modLfoToVolume, { name: 'modLfoToVolume', neutral: 0 }],
   [Gen.chorusEffectsSend, { name: 'chorusEffectsSend', neutral: 0 }],
   [Gen.reverbEffectsSend, { name: 'reverbEffectsSend', neutral: 0 }],

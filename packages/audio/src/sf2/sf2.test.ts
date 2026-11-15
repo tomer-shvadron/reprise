@@ -69,7 +69,10 @@ describe('parseSf2', () => {
     expect(file.instruments[0]?.global?.generators.get(34)).toBe(-1200);
     expect(file.instruments[0]?.zones).toHaveLength(2);
     expect(file.presets[1]?.global?.generators.get(52)).toBe(5);
-    expect(file.instruments[2]?.zones[0]?.modulators).toBe(1);
+    // The kit's first zone carries one modulator: note-on velocity (linear) to attenuation, 10 cB.
+    expect(file.instruments[2]?.zones[0]?.modulators).toEqual([
+      { source: 0x02, destination: 48, amount: 10, amountSource: 0, transform: 0 },
+    ]);
     expect(file.samples[2]).toMatchObject({
       start: LEAD_START,
       end: LEAD_START + 200,
@@ -142,10 +145,14 @@ describe('Sf2Soundfont regions', () => {
     expect(map?.resolveAll(70, 100).map((region) => region.pan)).toEqual([1]);
   });
 
-  it('carries the low-pass at its held level, the envelope delay and the exclusive class', () => {
+  it('carries the low-pass at rest with its envelope, the volume envelope delay and the exclusive class', () => {
     const high = regionsOf(0, 25).at(-1);
-    // 6000 cents less the held half of the -1200-cent sweep is 5400 cents: 440 × 2^-1.25 Hz.
-    expect(high?.filter?.cutoffHz).toBeCloseTo(440 * 2 ** ((5400 - 6900) / 1200), 9);
+    // The cutoff at rest is initialFilterFc alone, 6000 cents; the -1200-cent sweep of the
+    // modulation envelope is carried as an envelope that falls half way (sustainModEnv 500).
+    expect(high?.filter?.cutoffHz).toBeCloseTo(440 * 2 ** ((6000 - 6900) / 1200), 9);
+    expect(high?.filter?.envelope).toMatchObject({ cents: -1200, delay: 0, sustain: 0.5 });
+    expect(high?.filter?.envelope?.attack).toBeCloseTo(ms, 12);
+    expect(high?.filter?.envelope?.decay).toBeCloseTo(ms * 0.5, 12);
     // 60 cB of resonance over FluidSynth's Butterworth floor.
     expect(high?.filter?.q).toBeCloseTo(6 - 3.0103, 9);
     // Half of the 6 dB peak comes off the DC gain.
@@ -153,6 +160,7 @@ describe('Sf2Soundfont regions', () => {
     expect(high?.envelope.delay).toBeCloseTo(2 ** (-3600 / 1200), 12);
     // The other zones keep the spec's open filter and 1 ms delay, which carry nothing.
     const [low] = regionsOf(0, 25);
+    // Nothing can close the open filter, so the region carries none.
     expect(low?.filter).toBeUndefined();
     expect(low?.envelope.delay).toBeUndefined();
     const kit = font.drumKitRegionMap();
@@ -238,14 +246,18 @@ describe('Sf2Soundfont regions', () => {
 
   it('reports the generators the Region cannot carry instead of approximating them', () => {
     const report = font.preset(0, 25)?.report;
-    // Only the modulation envelope's transients are left; its held shares are carried.
-    expect(report?.unsupported).toEqual({ modEnvToPitch: 1, modEnvToFilterFc: 1 });
+    // Only the modulation envelope's pitch transient is left; its filter sweep is played.
+    expect(report?.unsupported).toEqual({ modEnvToPitch: 1 });
     expect(report?.layered).toBe(0);
     expect(report?.stereoMismatches).toBe(0);
     expect(report?.unpairedStereo).toBe(0);
     const kit = font.preset(128, 0)?.report;
     expect(kit?.unsupported).toEqual({});
-    expect(kit?.modulated).toBe(1);
+    // The kit's one modulator (velocity to attenuation) is supported, so nothing goes unapplied.
+    expect(kit?.modulated).toBe(0);
+    expect(font.drumKitRegionMap()?.resolve(36, 100)?.modulators).toContainEqual(
+      expect.objectContaining({ destination: 'attenuation', amount: 10 }),
+    );
   });
 
   it('adds preset offsets per bank: the variation bank transposes the same instrument', () => {
