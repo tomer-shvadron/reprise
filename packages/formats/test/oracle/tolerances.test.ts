@@ -235,19 +235,81 @@ describe('track-automation-on-first-beat', () => {
   });
 });
 
+describe('automation-moved-from-empty-bar', () => {
+  const ID = 'automation-moved-from-empty-bar';
+  const PLACEHOLDER = 'tracks[0].bars[1].voices[0].beats';
+  const TARGET = 'tracks[0].bars[2].voices[0].beats[0].mix';
+
+  it('accepts the placeholder and the moved change (#153)', () => {
+    const build = HAND_BUILT.soundChangeInEmptyBar();
+    expect(build.warnings).toContain('automation-moved');
+    expect(build.warnings).not.toContain('automation-dropped');
+    expect(accepted(build)).toEqual({ [PLACEHOLDER]: [ID], [TARGET]: [ID] });
+    expect(unexplained(build)).toEqual([]);
+  });
+
+  it('accepts neither path when the moved program differs from the placeholder', () => {
+    const build = HAND_BUILT.soundChangeInEmptyBar();
+    const projections = structuredClone(build.projections);
+    const mix = projections.ours.tracks[0]?.bars[2]?.voices[0]?.beats[0]?.mix;
+    if (!mix) throw new Error('no moved mix');
+    mix.program = (mix.program ?? 0) + 1;
+    for (const difference of build.differences) {
+      expect(tolerance(ID).applies(difference, projections)).toBe(false);
+    }
+  });
+
+  it('accepts neither path when our empty bar holds a beat', () => {
+    const build = HAND_BUILT.soundChangeInEmptyBar();
+    const projections = structuredClone(build.projections);
+    const filled = projections.ours.tracks[0]?.bars[2]?.voices[0]?.beats[0];
+    const empty = projections.ours.tracks[0]?.bars[1]?.voices[0];
+    if (!filled || !empty) throw new Error('no beats to copy');
+    empty.beats = [structuredClone(filled)];
+    for (const difference of build.differences) {
+      expect(tolerance(ID).applies(difference, projections)).toBe(false);
+    }
+  });
+
+  it('accepts neither path when the placeholder carries more than the change', () => {
+    const build = HAND_BUILT.soundChangeInEmptyBar();
+    const projections = structuredClone(build.projections);
+    const placeholder = projections.alphaTab.tracks[0]?.bars[1]?.voices[0]?.beats[0];
+    if (!placeholder) throw new Error('no placeholder');
+    placeholder.duration = 8;
+    for (const difference of build.differences) {
+      expect(tolerance(ID).applies(difference, projections)).toBe(false);
+    }
+  });
+
+  it('accepts neither path when another voice of our empty bar holds a beat', () => {
+    const build = HAND_BUILT.soundChangeInEmptyBar();
+    const projections = structuredClone(build.projections);
+    const bars = projections.ours.tracks[0]?.bars;
+    const source = bars?.[2]?.voices[0]?.beats[0];
+    const between = bars?.[1]?.voices;
+    if (!source || !between) throw new Error('no beats to copy');
+    // A beat in a second voice of the empty bar makes the bar not empty.
+    between.push({ beats: [structuredClone(source)] });
+    for (const difference of build.differences) {
+      expect(tolerance(ID).applies(difference, projections)).toBe(false);
+    }
+  });
+
+  it('does not cover a change dropped in a trailing empty bar', () => {
+    const build = HAND_BUILT.soundChangeInLastEmptyBar();
+    expect(build.warnings).toContain('automation-dropped');
+    expect(build.warnings).not.toContain('automation-moved');
+    expect(unexplained(build)).toHaveLength(1);
+  });
+});
+
 describe('placeholder-beat-holds-automation', () => {
   it('accepts the empty beat alphaTab keeps when one of our beats holds the change', () => {
     const build = HAND_BUILT.soundChangeOnSecondVoice();
     expect(accepted(build)['tracks[0].bars[0].voices[0].beats']).toEqual([
       'placeholder-beat-holds-automation',
     ]);
-  });
-
-  // Flips to an accepted case once #153 keeps the change somewhere else in the score.
-  it('keeps reporting a sound change we drop in an empty bar (#153)', () => {
-    const build = HAND_BUILT.soundChangeInEmptyBar();
-    expect(build.warnings).toContain('automation-dropped');
-    expect(unexplained(build)).toHaveLength(1);
   });
 
   it('has nothing to accept in an empty bar with no automation', () => {

@@ -1004,6 +1004,54 @@ describe('tracks', () => {
     expect(beatsOf(score, 1)[0]?.mix).toEqual({ program: 19 });
   });
 
+  describe('a sound change in a bar with no beats', () => {
+    const change = (bar: number, name: string): string =>
+      `<Automation><Type>Sound</Type><Linear>false</Linear><Bar>${String(bar)}</Bar><Position>0</Position>
+      <Visible>true</Visible><Value><![CDATA[Keys/${name};${name};Factory]]></Value></Automation>`;
+    const sound = (name: string, program: number): string =>
+      `<Sound><Name>${name}</Name><Path>Keys/${name}</Path><Role>Factory</Role><MIDI><Program>${String(program)}</Program></MIDI></Sound>`;
+    const organ = (automations: string[]): string =>
+      guitarTrack('0', { extra: `<Automations>${automations.join('')}</Automations>` }).replace(
+        '</Sounds>',
+        `${sound('Organ', 19)}${sound('Bass', 33)}</Sounds>`,
+      );
+    // Each filled bar gets a voice and a beat of its own, as Guitar Pro writes them.
+    const readBars = (bars: string[], automations: string[]): ReturnType<typeof read> => {
+      const filled = bars.flatMap((voices, index) => (voices === '0' ? [String(index)] : []));
+      return read(
+        gpif({
+          tracks: [organ(automations)],
+          masterBars: bars.map((_, index) => masterBar(String(index))),
+          bars: bars.map((voices, index) =>
+            bar(String(index), voices === '0' ? `${String(index)} -1 -1 -1` : '-1 -1 -1 -1'),
+          ),
+          voices: filled.map((id) => voice(id, id)),
+          beats: filled.map((id) => beat(id, '0', '0')),
+          notes: [note('0', 2, 5)],
+          rhythms: [rhythm('0', 'Whole')],
+        }),
+      );
+    };
+
+    it("moves to the track's next beat and says so (#153)", () => {
+      const result = readBars(['0', '-', '0'], [change(1, 'Organ')]);
+      expect(beatsOf(result.score, 2)[0]?.mix).toEqual({ program: 19 });
+      expect(codes(result)).toContain('automation-moved');
+      expect(codes(result)).not.toContain('automation-dropped');
+    });
+
+    it("does not overwrite the target bar's own change, whatever the document order", () => {
+      const result = readBars(['0', '-', '0'], [change(2, 'Bass'), change(1, 'Organ')]);
+      expect(beatsOf(result.score, 2)[0]?.mix).toEqual({ program: 33 });
+    });
+
+    it('is dropped when no later bar has a beat', () => {
+      const result = readBars(['0', '-'], [change(1, 'Organ')]);
+      expect(codes(result)).toContain('automation-dropped');
+      expect(codes(result)).not.toContain('automation-moved');
+    });
+  });
+
   describe('an over-full bar', () => {
     const sixBeats = [0, 1, 2, 3, 4, 5].map((index) => beat(String(index), '0', '0'));
 
