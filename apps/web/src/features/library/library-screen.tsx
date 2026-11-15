@@ -30,10 +30,9 @@ export function LibraryScreen() {
     void library.load();
   }, [library]);
 
-  const visible = useMemo(
-    () => sortEntries(filterEntries(entries, query), sort),
-    [entries, query, sort],
-  );
+  // Filtering keeps the order, so a keystroke only runs the `includes` pass.
+  const sorted = useMemo(() => sortEntries(entries, sort), [entries, sort]);
+  const visible = useMemo(() => filterEntries(sorted, query), [sorted, query]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">

@@ -99,46 +99,54 @@ export function createLibrary(
     async openSong(id) {
       const token = ++opening;
       const { document, platform, ui } = services;
-      const row = await repo.get(id);
-      if (!row) {
-        store.setState({ error: 'That song is no longer in the library.' });
-        return;
-      }
-      let bytes: Uint8Array;
       try {
-        bytes = await platform.readFile(row.nativePath);
-      } catch {
-        store.setState({
-          error: `The file for "${row.title}" is missing from the library folder.`,
+        // Flushed first, so a reopen of the song on screen restores what the user just changed.
+        // The keeper stops itself, flushing, when the document switches; a failed open leaves it.
+        await keeper?.flush();
+        const row = await repo.get(id);
+        if (!row) {
+          store.setState({ error: 'That song is no longer in the library.' });
+          return;
+        }
+        let bytes: Uint8Array;
+        try {
+          bytes = await platform.readFile(row.nativePath);
+        } catch {
+          store.setState({
+            error: `The file for "${row.title}" is missing from the library folder.`,
+          });
+          return;
+        }
+        if (token !== opening) return;
+        await document.getState().openBytes(`${stem(row.originalName)}.reprise`, bytes, {
+          handle: row.nativePath,
+          songId: id,
         });
-        return;
+        const state = document.getState();
+        // A failed read, or another open that overtook this one, leaves a document that is not ours.
+        if (token !== opening || state.songId !== id || state.score === undefined) {
+          if (state.error) store.setState({ error: state.error.message });
+          return;
+        }
+        store.setState({ error: undefined });
+        void keeper?.stop();
+        // restoreTrackSession only sets the view, the mixer overrides and the current track: none
+        // of them moves `dirty` or the history.
+        if (row.session) restoreTrackSession(services, row.session);
+        keeper = startSessionKeeper(services, id, (songId, session) =>
+          repo.setSession(songId, session),
+        );
+        const opened = { ...row, lastOpenedAt: now() };
+        replaceRow(opened);
+        void repo.touch(id, opened.lastOpenedAt).catch((error: unknown) => {
+          console.warn('Could not record the open time', error);
+        });
+        ui.getState().setScreen('player');
+      } catch (error) {
+        store.setState({
+          error: `Could not open the song: ${error instanceof Error ? error.message : String(error)}`,
+        });
       }
-      if (token !== opening) return;
-      await keeper?.stop();
-      keeper = undefined;
-      await document.getState().openBytes(`${stem(row.originalName)}.reprise`, bytes, {
-        handle: row.nativePath,
-        songId: id,
-      });
-      const state = document.getState();
-      // A failed read, or another open that overtook this one, leaves a document that is not ours.
-      if (token !== opening || state.songId !== id || state.score === undefined) {
-        if (state.error) store.setState({ error: state.error.message });
-        return;
-      }
-      store.setState({ error: undefined });
-      // restoreTrackSession only sets the view, the mixer overrides and the current track: none of
-      // them moves `dirty` or the history.
-      if (row.session) restoreTrackSession(services, row.session);
-      keeper = startSessionKeeper(services, id, (songId, session) =>
-        repo.setSession(songId, session),
-      );
-      const opened = { ...row, lastOpenedAt: now() };
-      replaceRow(opened);
-      void repo.touch(id, opened.lastOpenedAt).catch((error: unknown) => {
-        console.warn('Could not record the open time', error);
-      });
-      ui.getState().setScreen('player');
     },
     async dispose() {
       await keeper?.stop();

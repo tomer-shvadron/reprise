@@ -1,8 +1,8 @@
 import { write } from '@reprise/formats';
 import { score } from '@reprise/model/testing';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { setTrackVisible } from '@/features/tracks/track-actions';
 import { mirrorAudio } from '@/test/mirror-audio';
@@ -147,6 +147,27 @@ describe('the library screen', () => {
     expect(services.document.getState().score).toBeUndefined();
   });
 
+  it('always mounts the active row and starts again from the top when the search changes', async () => {
+    const { services, library } = setup();
+    await library.db.songs.bulkAdd(
+      Array.from({ length: 3000 }, (_, index) => rowOf({ title: `Song ${String(index)}` })),
+    );
+    renderWithServices(<LibraryScreen />, services);
+    const list = await screen.findByRole('listbox', { name: 'Songs' });
+    list.focus();
+    const named = () => document.getElementById(list.getAttribute('aria-activedescendant') ?? '');
+    for (const key of ['{End}', '{PageUp}', '{PageDown}']) {
+      await userEvent.keyboard(key);
+      expect(named()).not.toBeNull();
+    }
+    fireEvent.scroll(list, { target: { scrollTop: 0 } });
+    expect(named()).not.toBeNull();
+    await userEvent.type(screen.getByRole('searchbox'), '12');
+    expect(list.getAttribute('aria-activedescendant')).toBe(
+      within(list).getAllByRole('option')[0]?.id,
+    );
+  });
+
   it('mounts only the rows in view for a large library', async () => {
     const { services, library } = setup();
     await library.db.songs.bulkAdd(
@@ -183,5 +204,41 @@ describe('reopening a song', () => {
     expect(state.dirty).toBe(false);
     expect(state.canUndo).toBe(false);
     expect(state.songId).toBe(row.id);
+  });
+
+  it('keeps the on-screen song keeper running when another song fails to open', async () => {
+    const { services, library } = setup();
+    const a = await addSong(library, 'Alpha');
+    const broken = rowOf({ title: 'Broken' });
+    files.set(broken.nativePath, new Uint8Array([1, 2, 3]));
+    await library.repo.add(broken);
+    await library.openSong(a.id);
+    await library.openSong(broken.id);
+    expect(services.document.getState().songId).toBe(a.id);
+    const lead = services.document.getState().score?.tracks[0]?.id ?? '';
+    services.audio.setTrack(lead, { mute: true });
+    await waitFor(async () => {
+      expect((await library.repo.get(a.id))?.session?.mixer).toEqual({ [lead]: { mute: true } });
+    });
+  });
+
+  it('restores the latest session when the open song is reopened inside the debounce', async () => {
+    const { services, library } = setup();
+    const row = await addSong(library, 'Alpha');
+    await library.openSong(row.id);
+    const lead = services.document.getState().score?.tracks[0]?.id ?? '';
+    services.audio.setTrack(lead, { mute: true });
+    services.fakeAudio.setTrack.mockClear();
+    await library.openSong(row.id);
+    expect(services.fakeAudio.setTrack).toHaveBeenCalledWith(lead, { mute: true });
+  });
+
+  it('shows an error instead of rejecting when the database fails', async () => {
+    const { services, library } = setup();
+    const row = await addSong(library, 'Alpha');
+    vi.spyOn(library.repo, 'get').mockRejectedValue(new Error('disk gone'));
+    await expect(library.openSong(row.id)).resolves.toBeUndefined();
+    expect(library.store.getState().error).toMatch(/disk gone/);
+    expect(services.document.getState().score).toBeUndefined();
   });
 });

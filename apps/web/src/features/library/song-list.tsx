@@ -31,6 +31,18 @@ export function SongList({ entries, now, onOpen }: SongListProps) {
   const last = entries.length - 1;
   const current = Math.min(active, Math.max(last, 0));
 
+  // The row under the highlight is whichever song sits at that index, so a new list (a keystroke
+  // in the search box, a sort) starts again from the top.
+  const [seen, setSeen] = useState(entries);
+  if (seen !== entries) {
+    setSeen(entries);
+    setActive(0);
+    setScrollTop(0);
+  }
+  useEffect(() => {
+    if (scroller.current) scroller.current.scrollTop = 0;
+  }, [entries]);
+
   useEffect(() => {
     const element = scroller.current;
     if (!element) return;
@@ -96,6 +108,16 @@ export function SongList({ entries, now, onOpen }: SongListProps) {
 
   const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
   const end = Math.min(entries.length, Math.ceil((scrollTop + height) / ROW_HEIGHT) + OVERSCAN);
+  // The active row is always mounted, even scrolled out of the window, so `aria-activedescendant`
+  // never names an element that does not exist (End and PageDown set the scroll before the
+  // scroll event reaches the state).
+  const visible = entries
+    .slice(first, end)
+    .map((entry, offset) => ({ entry, index: first + offset }));
+  const activeEntry = entries[current];
+  if (activeEntry && (current < first || current >= end)) {
+    visible.push({ entry: activeEntry, index: current });
+  }
   const activeId = entries[current] ? `song-${entries[current].row.id}` : undefined;
 
   return (
@@ -123,8 +145,7 @@ export function SongList({ entries, now, onOpen }: SongListProps) {
         onKeyDown={onKeyDown}
       >
         <div style={{ height: entries.length * ROW_HEIGHT, position: 'relative' }}>
-          {entries.slice(first, end).map((entry, offset) => {
-            const index = first + offset;
+          {visible.map(({ entry, index }) => {
             const { row } = entry;
             return (
               <div

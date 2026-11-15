@@ -100,4 +100,31 @@ describe('the session keeper', () => {
     expect(save).toHaveBeenCalledTimes(1);
     warn.mockRestore();
   });
+
+  it('flushes on pagehide and when the page becomes hidden, and stops listening after stop', async () => {
+    const { services, open } = await setup();
+    const [lead = ''] = await open('song-a');
+    const save = vi.fn(() => Promise.resolve());
+    const keeper = startSessionKeeper(services, 'song-a', save);
+    services.audio.setTrack(lead, { mute: true });
+    window.dispatchEvent(new Event('pagehide'));
+    expect(save).toHaveBeenCalledTimes(1);
+
+    services.audio.setTrack(lead, { solo: true });
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(save).toHaveBeenCalledTimes(1);
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(save).toHaveBeenCalledTimes(2);
+
+    await keeper.stop();
+    services.audio.setTrack(lead, { solo: false });
+    window.dispatchEvent(new Event('pagehide'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(save).toHaveBeenCalledTimes(2);
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+  });
 });
