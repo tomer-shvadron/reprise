@@ -1,7 +1,7 @@
 # @reprise/audio
 
 The playback engine: the transport and lookahead scheduler (WP-030), the sampler (WP-031), the
-SF2 loader (WP-032), articulations (WP-033) and the memory manager (WP-034), composed by
+SF2 loader (WP-032), SFZ loader (WP-090), articulations (WP-033) and the memory manager (WP-034), composed by
 `createAudioEngine` into the frozen `AudioEngine` contract (#94). This README covers the transport
 and the contract the sampler plugs into first, then the engine that owns them all, the sampler
 itself, the SF2 loader, the articulation layer between the scheduler and the sampler, and the
@@ -499,8 +499,8 @@ soloed one; it still goes through the insert, the fader and the panner.
   one in the editor plays the whole sample.
 - **`velocityTrack` is a power of the MIDI curve.** `velocityGain(v) ** t` scales the dB curve, one
   reading of sfzformat.com. sfizz blends linearly in amplitude instead (`1 - t * (1 - (v/127)^2)`);
-  for `amp_veltrack=73` at velocity 30 that is about -18 dB here against about -10 dB there. PR 2's
-  real-pack listening check decides whether to switch.
+  for `amp_veltrack=73` at velocity 30 that is about -18 dB here against about -10 dB there. No
+  listening check against a real pack has been done, so the choice is open (see the SFZ section).
 - **SFZ loads are capped** (`LIMITS` in `sfz/report.ts`), because pack files are untrusted: 256
   files read per load (the root and every include), 4,000,000 characters of preprocessed text, 65,536
   characters in one `#define` value, 100,000 regions after `pitch_keytrack` expansion and keyswitch
@@ -686,6 +686,120 @@ Measured over the GM set (bank 0 programs 0 to 127 and the standard kit, 129 pre
 The fixture the parser tests run on is `test-fixtures/synthetic.sf2`, under 4 KB, written by
 `pnpm sounds:fixture` (`scripts/sounds/make-test-sf2.ts`); a scripts test fails when the committed
 file and the generator disagree.
+
+## SFZ loader and HQ tier
+
+In `src/sfz/`: a parser and resolver that map an SFZ file onto the shared `Region`, and `SfzPack`,
+a `SampleProvider` over one pack directory. The voice code is the SF2 tier's. WP-091 routes the GM
+bank and the packs through one `ManagedSampleSource` and owns pack installation; this package
+needs only a reader.
+
+```ts
+const pack = new SfzPack({ id: 'karoryfer-swagbass', files: { read, size? }, decode? });
+const inst = await pack.loadInstrument('swagbass.sfz', { id: 'sfz:karoryfer-swagbass:default', layer? });
+// { id, regions: RegionMap, layers: [{ id: 'sw:36', key: 36, label? }], keyswitchRange?, report }
+pack.instrumentsOf(ref); // every instrument that references the file
+pack.byteLength(ref); // an estimate from files.size before the first fetch, exact after, NaN without a size
+await pack.fetch(ref); // reads and decodes one file: { sampleRate, channels, byteLength }
+loadSfz(path, read, { packId, layer? }); // the parser alone: { regions, layers, keyswitchRange, report }
+```
+
+`loadSfz`, `SfzPack`, `sniffSampleHeader` and `decodeAtNativeRate` are root exports.
+
+### What is read, and when
+
+- **Paths and refs.** A pack is untrusted data. `read` gets pack-relative, `/`-separated paths with
+  backslashes already converted and `.`/`..` resolved; a path that leaves the root is refused and
+  counted. One ref per sample file, `sfz:<packId>/<path>`, however many regions play it, so loops,
+  offsets and keyswitch copies all share one decoded buffer. `fetch` reads only a ref some loaded
+  instrument issued. The prefix cannot collide with an SF2 ref (`<font>/<n>/<a>-<b>`), which is what
+  WP-091's dispatcher relies on.
+- **Lazy, per ADR-0005.** `loadInstrument` reads SFZ text only (the root file and its `#include`s).
+  A sample file is read and decoded on the first `fetch`: from the manager's preload plan, which
+  asks `RegionMap.candidates()` for every round-robin and random take of a key, or on a miss.
+  Eviction and the budget (`HQ_BUDGET_BYTES`, 300 MiB) are the manager's.
+- **Decoding at the native rate.** `decodeAudioData` resamples to its context's rate, and SFZ loop
+  points and offsets are frames of the file, so `decode.ts` first reads the file's own rate from
+  its header (WAV `fmt `, FLAC STREAMINFO's 20-bit field, the Vorbis identification header; Opus
+  is 48 kHz) and decodes on an `OfflineAudioContext` of that rate, one per rate, kept. Chromium
+  decodes WAV (PCM 8 to 32 bit, float), FLAC and Ogg; there is no decoder of our own. MP3, AIFF and
+  anything else reject `fetch`, which the manager and sampler turn into a skipped note and
+  `onMiss`. The decoder is injectable (`SfzDecoder`) for tests. `decodeAudioData` detaches its
+  input, so the pack decodes a copy of the bytes.
+- **Caps on untrusted files** (`SAMPLE_LIMITS` in `sfz/decode.ts`), because a FLAC of constant
+  subframes is about 12 bytes per 65,535 frames and a 100 KB file can decode to gigabytes:
+  `fileBytes` 128 MiB per sample file, checked from `files.size` before the read (when known) and
+  from `bytes.length` after it; `decodedBytes` 256 MiB of Float32 per file, checked against the
+  size the header declares (WAV `data` chunk, capped by the bytes held; FLAC STREAMINFO total
+  samples times channels, where a total of 0 is refused since nothing then bounds it) before
+  `decodeAudioData`, and against the decoded buffer after. Ogg declares nothing in its first page,
+  so the file cap and the decoded check are its bound, the latter after the allocation. A refused
+  file rejects `fetch` like any other failure. The WAV format tag must be PCM, float or
+  extensible: ADPCM and MP3-in-WAV are refused, as Chromium does not decode them. The per-rate
+  offline contexts are an LRU of four.
+- **Memory.** The manager copies a decoded file once into a buffer of its own, so the transient
+  `AudioBuffer` is one sample, not the budget. A decoded file is `channels x frames x 4` bytes, which
+  is what `byteLength` returns after the first fetch. Before it the estimate is `files.size` times
+  2 for WAV (16-bit PCM becomes 32-bit float), 4 for FLAC and 10 for Ogg. Measured on Karoryfer
+  Swagbass (WAV, 44.1 kHz mono, `swagbass_clean.sfz`, 254 samples): 40 files decode in about 10 ms and
+  the whole pack in about 175 ms, 184.1 MiB resident.
+
+### Opcodes
+
+| Opcode(s)                                                           | Becomes                                                                                                                                             |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<control>`, `<global>`, `<master>`, `<group>`, `<region>`          | Inheritance global, master, group, region; a header resets the levels below it. `<control>` holds `default_path`, `note_offset`, `octave_offset`.   |
+| `#define $NAME value`, `#include "path"`                            | Text substitution from the definition on; includes resolve against the root file, through the reader, to depth 16, cycles detected.                 |
+| `default_path`, `sample`                                            | The ref. A value may contain spaces. `*sine`, `*silence`, `*noise` drop the region, counted.                                                        |
+| `lokey`, `hikey`, `key`, `pitch_keycenter`                          | `keyLo`, `keyHi`, `rootKey` (default 60); note names accepted (c4 = 60); `key=-1` disables the region.                                              |
+| `lovel`, `hivel`                                                    | `velLo`, `velHi`; an inverted range drops the region.                                                                                               |
+| `tune`, `transpose`, `pitch_keytrack`                               | `tune` in cents; a keytrack other than 100 over a range expands to one region per key, as SF2's `scaleTuning` does.                                 |
+| `volume`, `pan`, `amp_veltrack`                                     | `attenuation = -volume`, `pan / 100`, `velocityTrack` (below).                                                                                      |
+| `ampeg_delay`, `_attack`, `_hold`, `_decay`, `_sustain`, `_release` | `envelope`, SFZ defaults (sustain 100 %, release 1 ms); the sampler's minimums still apply.                                                         |
+| `loop_mode`, `loop_start`, `loop_end`, `offset`                     | `oneShot`, or a frame-unit `loop`, and `startFrame`. A loop mode without points would need the loop embedded in the file: played unlooped, counted. |
+| `group`, `off_by`                                                   | One-way choke (closed hi-hat cuts open, not the reverse).                                                                                           |
+| `trigger`, `seq_length`, `seq_position`, `lorand`, `hirand`         | Parsed and kept; the selection rules are under Sampler. Release regions are not played in v1; WP-093 rotates round robins.                          |
+| `sw_lokey`, `sw_hikey`, `sw_last`, `sw_default`, `sw_label`         | One layer per `sw_last` key, `sw:<k>`, which WP-093 selects by name. Unswitched regions are copied into every layer; the copies share a ref.        |
+
+Everything else is counted, never thrown. `report.unknown` holds opcodes this loader does not know,
+`report.unsupported` the ones it knows and v1 does not play (filters, envelopes other than amp, LFOs,
+`amp_velcurve_N`, `*_cc*`, crossfades, `bend_*`, `polyphony`, `*_random`, ...), `ignoredHeaders` the
+skipped `<curve>`, `<effect>`, `<midi>`, `<sample>`, `invalid` values that did not parse (the opcode
+is skipped, the region kept), `clamped` values pulled into range, `dropped` regions left out by
+reason, plus `embeddedLoop`, `unresolvedIncludes`, `escapedPaths`, `limits` and `notes`. A pack
+passes `isClean` when `invalid`, `unresolvedIncludes`, `escapedPaths` and `limits` are empty;
+`unknown`, `unsupported` and `unreachable` are allowed. Only an unreadable root file throws (`SfzParseError`).
+
+**`amp_veltrack`.** The voice applies `velocityGain(v) ** velocityTrack`, one reading of
+sfzformat.com, where sfizz blends linearly in amplitude. They differ most at low velocity with a
+partial track (about -18 dB here against about -10 dB for `amp_veltrack=73` at velocity 30). Nobody
+has listened to a real pack against both yet; the choice is open and a change is one line in the voice.
+
+**Known gaps.** Release triggers (Salamander's release samples), loops embedded in a WAV or FLAC
+(`smpl` and cue chunks), filters and filter envelopes, LFOs, crossfades, controllers, and
+`seq_position` outside `seq_length` (an authoring error some packs ship: the region is kept with
+its impossible position so it never plays, as in sfizz, counted in `report.unreachable`, and
+`isClean` allows it). Paths
+are case-sensitive, so a pack made on Windows with mismatched case breaks on Linux; WP-091 can build
+a case-insensitive index from `listDir`.
+
+### Real packs: `pnpm sfz:check <dir>`
+
+Loads every `.sfz` under a directory, checks that each sample file exists (a case-only difference is
+named) and that its header sniffs to WAV, FLAC or Ogg at a usable rate (no Web Audio needed), prints
+the report per file and exits 1 on an error: a lost-data entry in `isClean`, a missing file, a bad
+header, no regions. Downloaded packs live in the gitignored `local-sounds/` (see its README); the
+pure logic is `sfz/check-pack.ts`, covered by a Node test, and the script drives Vitest through
+`scripts/sounds/vitest.config.ts` because plain Node cannot import the workspace packages.
+
+### Tests
+
+No sample bytes are committed. `sfz/test/encode.ts` writes PCM WAV (16 and 24 bit) and FLAC with
+verbatim subframes in memory. Node tests cover the header sniffing and `SfzPack` over a fake decoder
+(refs, `instrumentsOf`, the estimate then the exact size, refusals); browser tests decode real WAV
+and FLAC at 22,050, 32,000, 48,000 and 96,000 Hz and compare the integers, and run
+`ManagedSampleSource` over `SfzPack` over the synthetic fixture under the `Sampler` (lazy first-use
+decoding, `candidates()` preload, exact accounting, a one-shot past note-off, keyswitch layers).
 
 ## Articulations
 

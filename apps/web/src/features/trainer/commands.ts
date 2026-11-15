@@ -11,6 +11,7 @@ export type TrainerCommandId =
   | 'trainer.speedTrainerReset'
   | 'trainer.tuner'
   | 'trainer.metronome'
+  | 'trainer.metronomeToggle'
   | 'trainer.fretboard';
 
 type TrainerCommand = Command & { id: TrainerCommandId };
@@ -55,6 +56,17 @@ export function trainerCommands(
     },
     { id: 'trainer.tuner', title: 'Show tuner', run: show('tuner') },
     { id: 'trainer.metronome', title: 'Show metronome', run: show('metronome') },
+    {
+      id: 'trainer.metronomeToggle',
+      title: 'Start or stop standalone metronome',
+      shortcut: { key: 'b', alt: true },
+      repeat: false,
+      run: () => {
+        ui.getState().showPanelView('metronome');
+        if (services.playback.getState().click.running) services.audio.stopClick();
+        else services.audio.startClick();
+      },
+    },
     { id: 'trainer.fretboard', title: 'Show fretboard', run: show('fretboard') },
   ];
 }
