@@ -1,3 +1,5 @@
+import { createEmptyScore } from '@reprise/model';
+
 import { libraryOf } from '@/features/library/library';
 import type { MenuCommandId } from '@/platform/bridge';
 import { ZOOM } from '@/state/ui';
@@ -30,6 +32,16 @@ export function appCommands(services: AppServices): AppCommand[] {
       inPalette: false,
       run: () => {
         ui.getState().setPaletteOpen(!ui.getState().paletteOpen);
+      },
+    },
+    {
+      id: 'file.new',
+      title: 'New song',
+      shortcut: { key: 'n', mod: true },
+      // A placeholder: WP-083 replaces it with the unsaved-changes prompt and edit mode on.
+      run: () => {
+        const empty = createEmptyScore();
+        document.getState().newDocument({ ...empty, meta: { ...empty.meta, title: 'Untitled' } });
       },
     },
     {

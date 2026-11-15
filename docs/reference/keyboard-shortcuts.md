@@ -14,6 +14,7 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Command | Category | Context | macOS | Windows |
 | ------- | -------- | ------- | ----- | ------- |
 | Show command palette | App | Global | ⌘K | Ctrl+K |
+| New song | File | Global | ⌘N | Ctrl+N |
 | Open file… | File | Global | ⌘O | Ctrl+O |
 | Save | File | Global | ⌘S | Ctrl+S |
 | Save as… | File | Global | ⇧⌘S | Ctrl+Shift+S |

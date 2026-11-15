@@ -82,6 +82,16 @@ describe('App', () => {
     expect(screen.queryByText('Not in your library')).not.toBeInTheDocument();
   });
 
+  it('hides the not-in-your-library banner for a never-saved new song', async () => {
+    const { services, send } = renderApp();
+    await send('file.new');
+
+    const state = services.document.getState();
+    expect(state.score?.meta.title).toBe('Untitled');
+    expect(state.file).toBeUndefined();
+    expect(screen.queryByText('Not in your library')).not.toBeInTheDocument();
+  });
+
   it('opens the palette with the platform shortcut and runs a command from it', async () => {
     const { services, user } = renderApp();
     expect(document.documentElement.dataset['theme']).toBe('dark');

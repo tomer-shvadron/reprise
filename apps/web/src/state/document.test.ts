@@ -198,6 +198,49 @@ describe('the document store', () => {
     expect(store.getState().error).toMatchObject({ action: 'open', message: 'permission denied' });
   });
 
+  it('opens a never-saved document with newDocument, dropping what the last one held', async () => {
+    const { store } = setup({
+      read: () => Promise.resolve({ score: song(), warnings: [warning('warning')] }),
+    });
+    await store.getState().openBytes('song.gp5', GP5, { songId: 'song-1' });
+    store.getState().apply(editOf(store, 5));
+    store.getState().setSingleTrack(store.getState().score?.tracks[0]?.id);
+    const before = store.getState();
+
+    store.getState().newDocument(song('Fresh'));
+
+    const state = store.getState();
+    expect(state.id).toBeDefined();
+    expect(state.id).not.toBe(before.id);
+    expect(state.score?.meta.title).toBe('Fresh');
+    expect(state.file).toBeUndefined();
+    expect(state.songId).toBeUndefined();
+    expect(state.dirty).toBe(false);
+    expect(state.canUndo).toBe(false);
+    expect(state.lastChange).toBeUndefined();
+    expect(state.warnings).toEqual([]);
+    expect(state.warningsOpen).toBe(false);
+    expect(state.view).toEqual({ tracks: 'all', notation: {} });
+    expect(state.revision).toBeGreaterThan(before.revision);
+  });
+
+  it('drops an open still reading when newDocument runs', async () => {
+    let finish: (result: ReadResult) => void = () => undefined;
+    const { store, read } = setup();
+    read.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = store.getState().openBytes('slow.gp5', GP5);
+    store.getState().newDocument(song('New'));
+    finish({ score: song('Slow'), warnings: [] });
+    await pending;
+
+    expect(store.getState().score?.meta.title).toBe('New');
+  });
+
   it('drops an open that a later one overtook', async () => {
     let finishFirst: (result: ReadResult) => void = () => undefined;
     const { store, read } = setup();

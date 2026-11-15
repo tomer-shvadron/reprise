@@ -105,6 +105,11 @@ export function createLibrary(
   // The bytes of a file opened without importing, so the banner can still copy the original.
   let unimported: { documentId: Id | undefined; name: string; bytes: Uint8Array } | undefined;
 
+  // Any other document, a new song included, releases the bytes of an unimported file.
+  services.document.subscribe((state) => {
+    if (unimported && unimported.documentId !== state.id) unimported = undefined;
+  });
+
   const replaceRow = (row: SongRow) => {
     store.setState((state) => ({
       entries: state.entries.map((entry) => (entry.row.id === row.id ? entryOf(row) : entry)),

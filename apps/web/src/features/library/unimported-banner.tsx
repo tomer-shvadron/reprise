@@ -15,10 +15,12 @@ export function UnimportedBanner() {
   const library = libraryOf(services);
   const open = useStore(services.document, (state) => state.score !== undefined);
   const songId = useStore(services.document, (state) => state.songId);
+  // A never-saved new song has no file, and its Import has nothing to copy.
+  const hasFile = useStore(services.document, (state) => state.file !== undefined);
   const error = useStore(library.store, (state) => state.bannerError);
   const [busy, setBusy] = useState(false);
 
-  if (!open || songId !== undefined) return null;
+  if (!open || !hasFile || songId !== undefined) return null;
   return (
     <div
       role="region"
