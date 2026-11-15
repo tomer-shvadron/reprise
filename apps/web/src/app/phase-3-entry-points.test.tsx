@@ -28,7 +28,7 @@ describe('phase 3 entry points', () => {
     const { run } = renderApp();
     run('library.show');
     const region = screen.getByRole('region', { name: 'Library' });
-    expect(region).toHaveTextContent('WP-060');
+    expect(within(region).getByRole('searchbox', { name: 'Search songs' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Back to player' }));
     expect(screen.queryByRole('region', { name: 'Library' })).not.toBeInTheDocument();
   });
