@@ -9,7 +9,7 @@ import { parseNative } from '@reprise/model';
 import type { Score } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 
-import { loadGeneralUser, renderScore } from './harness';
+import { START, loadGeneralUser, renderScore } from './harness';
 import type { RenderOptions, Rendered } from './harness';
 import { ATTACK_THRESHOLDS, expectedAttacks, verifyAttacks } from './real-file';
 import type { Cluster } from './real-file';
@@ -31,8 +31,8 @@ if (!generalUser) {
   console.warn('GeneralUser GS is not present; run `pnpm sounds:fetch` to include these tests.');
 }
 
-/** Half the usual rate keeps the renders short; the detector's bands scale with it. */
-const SAMPLE_RATE = 22_050;
+/** The harness rate `pnpm check:files` renders at, so the frame, hop and lag are the real ones. */
+const SAMPLE_RATE = 44_100;
 
 async function render(
   song: Score,
@@ -56,7 +56,7 @@ function verify(rendered: Rendered, clusters: readonly Cluster[]) {
  * eighths, palm-muted low strings alternating with unmuted notes on string 2, mostly in pairs
  * at one pitch. `mutedAs: 'rest'` turns every palm-muted note into a rest.
  */
-function riff(mutedAs: 'note' | 'rest' = 'note'): Score {
+function riff(mutedAs: 'note' | 'rest' = 'note', silentFromBar = 4): Score {
   const eighths: readonly (readonly [number, number, boolean])[] = [
     [6, 0, true],
     [2, 3, false],
@@ -68,6 +68,11 @@ function riff(mutedAs: 'note' | 'rest' = 'note'): Score {
   let builder = score().tempo(200).track('guitar', { program: 30 });
   for (let bar = 0; bar < 4; bar += 1) {
     builder = builder.bar();
+    if (bar >= silentFromBar) {
+      builder = builder.rest('4');
+      for (let i = 0; i < 6; i += 1) builder = builder.rest('8');
+      continue;
+    }
     builder = builder.beat(
       '4',
       bar < 2 ? [note(4, 2, { dynamics: 'f' })] : [note(4, 2, { dynamics: 'f' }), note(3, 4)],
@@ -99,26 +104,17 @@ describe.skipIf(!generalUser)('attack verification on a GM render', () => {
     expect(verify(rendered, clusters).violation?.code).toBe('attack-missed');
   });
 
-  it('fails the riff with its track muted from bar 2', async () => {
-    const song = riff();
-    const clusters = expectedAttacks(song, ...scheduledOf(await render(song)));
-    const muted = structuredClone(song);
-    const [first] = muted.tracks;
-    if (first) first.channel.mute = true;
-    // Bar 2 starts 1.2 s into the song, 0.1 s after play.
-    const rendered = await render(song, {
-      actions: [
-        {
-          at: 1.3,
-          run: (engine) => {
-            engine.load(muted);
-          },
-        },
-      ],
-    });
-    const attacks = verify(rendered, clusters);
+  it('fails the riff gone silent from bar 2', async () => {
+    // What a muted strip leaves: the clusters of bars 2 to 4 with nothing to hear.
+    const clusters = expectedAttacks(riff(), ...scheduledOf(await render(riff())));
+    const attacks = verify(await render(riff('note', 1)), clusters);
     expect(attacks.violation?.code).toBe('attack-missed');
-    expect(attacks.missed).toBeGreaterThanOrEqual(ATTACK_THRESHOLDS.consecutive);
+    const silent = attacks.ratios.filter((_, i) => (clusters[i]?.when ?? 0) >= START + 1.2);
+    // The first reads as heard: the release of bar 1's last note, the detector's known blind spot.
+    expect(silent).toHaveLength(21);
+    expect(
+      silent.filter((ratio) => ratio < ATTACK_THRESHOLDS.missed).length,
+    ).toBeGreaterThanOrEqual(20);
   });
 
   it('reads a note removed after silence as missed', async () => {
@@ -183,7 +179,7 @@ describe.skipIf(!generalUser)('attack verification on the fixtures', () => {
   for (const path of KNOCKOUT) {
     it(
       `${path} passes untouched and fails with every 10th cluster knocked out`,
-      { timeout: 60_000 },
+      { timeout: 30_000 },
       async () => {
         const fixture = inject('scoreFixtures').find((candidate) => candidate.path === path);
         if (!fixture) throw new Error(`${path} is not in the corpus`);
