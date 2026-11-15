@@ -170,6 +170,53 @@ describe('expectedAttacks', () => {
   });
 });
 
+describe('expectedAttacks at the strike', () => {
+  const strikeAt = (event: NoteEvent, when: number): Strike => ({
+    track: event.track.id,
+    key: 60,
+    velocity: 100,
+    when,
+    sounded: true,
+    missedSample: false,
+  });
+
+  it('sits a cluster at the earliest strike of its notes, and at the scheduled time when none struck', () => {
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 0), note(2, 1)])
+      .beat('4', [note(1, 2)])
+      .build();
+    const events = [eventOf(song, 0, 0, 0), eventOf(song, 0, 0, 1), eventOf(song, 0, 1)];
+    const [first, second] = events;
+    if (!first || !second) throw new Error('events');
+    // A stroke or a grace strikes before and after the beat: the cluster is at the earliest.
+    const attacks = expectedAttacks(song, events, [
+      [strikeAt(first, first.when + 0.02)],
+      [strikeAt(second, second.when - 0.01), strikeAt(second, second.when + 0.03)],
+      [],
+    ]);
+    expect(attacks.map((attack) => attack.when)).toEqual([START - 0.01, START + 0.5]);
+  });
+
+  it('leaves out an all-fade-in beat and an all-swell beat, and keeps a palm-muted note', () => {
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 0)], { effects: { fadeIn: true } })
+      .beat('4', [note(1, 2)], { effects: { volumeSwell: true } })
+      .beat('4', [note(2, 3, { palmMute: true })])
+      .build();
+    const attacks = expectedAttacks(
+      song,
+      [0, 1, 2].map((beat) => eventOf(song, 0, beat)),
+    );
+    expect(attacks.map((attack) => attack.event.beatIndex)).toEqual([2]);
+  });
+});
+
 describe('strikeTiming', () => {
   const strikeOf = (event: NoteEvent, offset = 0): Strike => ({
     track: event.track.id,

@@ -166,7 +166,7 @@ describe.each(files)('$file', (file) => {
     const scheduling = completeness(score, rendered.scheduled);
     record.violations.push(...scheduling.violations);
     record.violations.push(...strikeTiming(score, rendered.scheduled, rendered.struck));
-    const clusters = expectedAttacks(score, rendered.scheduled);
+    const clusters = expectedAttacks(score, rendered.scheduled, rendered.struck);
     const attacks = verifyAttacks(
       signalOf(rendered.buffer, 0),
       signalOf(rendered.buffer, 1),

@@ -303,14 +303,54 @@ export interface SpectralFlux {
   times: Float32Array;
 }
 
+/** Filterbank resolution: 6 bands an octave, from `LOWEST_BAND` Hz up to Nyquist. */
+export const BANDS_PER_OCTAVE = 6;
+export const LOWEST_BAND = 40;
+/** The flux compares each frame with the one this many hops earlier (11.6 ms at hop 256). */
+export const FLUX_LAG = 2;
+
 /**
- * Onset strength per frame: Hann-windowed magnitudes compressed with `log1p(1000·|X|)`, and the
- * half-wave-rectified rise from the previous frame summed over bins 1 to N/2. Unlike
- * `detectOnsets` it hears a new note under others still ringing, as on a mix.
+ * The band of each FFT bin from 1 to N/2: log-spaced bands of `perOctave` an octave from
+ * `LOWEST_BAND`, with bins below it left out. A band no bin falls in does not exist, which is
+ * the same as merging it into its neighbour, so every band holds at least one bin.
+ */
+export function bandsOfBins(
+  size: number,
+  sampleRate: number,
+  perOctave = BANDS_PER_OCTAVE,
+): { bands: number; first: number[]; last: number[] } {
+  const first: number[] = [];
+  const last: number[] = [];
+  let previous = -1;
+  for (let bin = 1; bin <= size / 2; bin += 1) {
+    const frequency = (bin * sampleRate) / size;
+    if (frequency < LOWEST_BAND) continue;
+    const band = Math.floor(perOctave * Math.log2(frequency / LOWEST_BAND));
+    if (band !== previous) {
+      first.push(bin);
+      previous = band;
+    }
+    last[first.length - 1] = bin;
+  }
+  return { bands: first.length, first, last };
+}
+
+/**
+ * Onset strength per frame, on a log-frequency filterbank: Hann-windowed magnitudes averaged per
+ * band (6 an octave, so a lowpassed chug weighs as much as the bright octaves above it rather
+ * than as the few bins it fills), compressed with `log1p(1000·x)`, and the half-wave-rectified
+ * rise over the frame `lag` hops earlier summed with equal weight. A lag of 2 measures an
+ * attack's rise rather than frame-to-frame jitter in a sustain. Unlike `detectOnsets` it hears a
+ * new note under others still ringing, as on a mix.
  */
 export function spectralFlux(
   signal: Signal,
-  { frame: size = 1024, hop = 256 }: { frame?: number; hop?: number } = {},
+  {
+    frame: size = 1024,
+    hop = 256,
+    lag = FLUX_LAG,
+    perOctave = BANDS_PER_OCTAVE,
+  }: { frame?: number; hop?: number; lag?: number; perOctave?: number } = {},
 ): SpectralFlux {
   const count = Math.max(0, Math.floor((signal.data.length - size) / hop) + 1);
   const values = new Float32Array(count);
@@ -320,9 +360,8 @@ export function spectralFlux(
     window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (size - 1));
   const re = new Float64Array(size);
   const im = new Float64Array(size);
-  const half = size / 2;
-  let previous = new Float64Array(half + 1);
-  let current = new Float64Array(half + 1);
+  const { bands, first, last } = bandsOfBins(size, signal.sampleRate, perOctave);
+  const history = Array.from({ length: lag + 1 }, () => new Float64Array(bands));
   for (let f = 0; f < count; f += 1) {
     const start = f * hop;
     for (let i = 0; i < size; i += 1) {
@@ -330,21 +369,35 @@ export function spectralFlux(
       im[i] = 0;
     }
     fft(re, im);
+    const current = history[f % (lag + 1)] ?? new Float64Array(bands);
+    for (let band = 0; band < bands; band += 1) {
+      const from = first[band] ?? 0;
+      const to = last[band] ?? 0;
+      let sum = 0;
+      for (let bin = from; bin <= to; bin += 1) sum += Math.hypot(re[bin] ?? 0, im[bin] ?? 0);
+      current[band] = Math.log1p((1000 * sum) / (to - from + 1));
+    }
     let flux = 0;
-    for (let bin = 1; bin <= half; bin += 1) {
-      const magnitude = Math.log1p(1000 * Math.hypot(re[bin] ?? 0, im[bin] ?? 0));
-      current[bin] = magnitude;
-      if (f > 0) flux += Math.max(0, magnitude - (previous[bin] ?? 0));
+    if (f >= lag) {
+      const earlier = history[(f - lag) % (lag + 1)] ?? current;
+      for (let band = 0; band < bands; band += 1)
+        flux += Math.max(0, (current[band] ?? 0) - (earlier[band] ?? 0));
     }
     values[f] = flux;
     times[f] = (start + size / 2) / signal.sampleRate;
-    [previous, current] = [current, previous];
   }
   return { values, times };
 }
 
 /** The attack-ratio windows, in seconds around each attack cluster. */
-export const ATTACK_WINDOW = { before: 0.02, after: 0.04, context: 0.5, guardAfter: 0.06 };
+export const ATTACK_WINDOW = {
+  before: 0.02,
+  after: 0.04,
+  context: 0.5,
+  guardAfter: 0.06,
+  /** The background never falls below this share of the file's median attack peak. */
+  floorShare: 0.05,
+};
 
 const median = (values: number[]): number => {
   if (values.length === 0) return 0;
@@ -358,10 +411,12 @@ const median = (values: number[]): number => {
 /**
  * For each attack time, the peak flux just around it over the median flux of the surrounding
  * second, leaving out frames near any attack; where too few frames remain, the median of every
- * frame near no attack stands in. `attacks` must be sorted.
+ * frame near no attack stands in. The background has a floor, `floorShare` of the file's median
+ * attack peak, so a note scheduled into silence or a release tail reads missed instead of 0 over
+ * 0; in sounding music the floor never binds. `attacks` must be sorted.
  */
 export function attackRatios(flux: SpectralFlux, attacks: readonly number[]): number[] {
-  const { before, after, context, guardAfter } = ATTACK_WINDOW;
+  const { before, after, context, guardAfter, floorShare } = ATTACK_WINDOW;
   const { values, times } = flux;
   const nearAttack = new Uint8Array(values.length);
   let a = 0;
@@ -384,7 +439,7 @@ export function attackRatios(flux: SpectralFlux, attacks: readonly number[]): nu
     }
     return low;
   };
-  return attacks.map((attack) => {
+  const peaks = attacks.map((attack) => {
     let peakFlux = 0;
     for (
       let f = frameAt(attack - before);
@@ -393,6 +448,10 @@ export function attackRatios(flux: SpectralFlux, attacks: readonly number[]): nu
     ) {
       peakFlux = Math.max(peakFlux, values[f] ?? 0);
     }
+    return peakFlux;
+  });
+  const floor = floorShare * median(peaks);
+  return attacks.map((attack, i) => {
     const around: number[] = [];
     for (
       let f = frameAt(attack - context);
@@ -402,6 +461,6 @@ export function attackRatios(flux: SpectralFlux, attacks: readonly number[]): nu
       if (nearAttack[f] === 0) around.push(values[f] ?? 0);
     }
     const background = around.length >= 10 ? median(around) : fallback;
-    return peakFlux / Math.max(background, 1e-9);
+    return (peaks[i] ?? 0) / Math.max(background, floor, 1e-9);
   });
 }

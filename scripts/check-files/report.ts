@@ -367,7 +367,7 @@ const CODE_TEXT: Readonly<Record<string, CodeText>> = {
   },
   'attack-missed': {
     title: 'scheduled notes are not heard in the render',
-    should: 'Every scheduled attack is audible in the render (spectral-flux ratio ≥ 1.2).',
+    should: 'Every scheduled attack is audible in the render (log-band spectral-flux ratio ≥ 1.3).',
   },
   'check-crashed': {
     title: 'a check crashes',
@@ -508,7 +508,7 @@ export function renderSummary(run: RunReport, env: Environment): string {
       '',
       '## Attack ratios of the local tabs',
       '',
-      'The audio thresholds (heard at 1.5, missed under 1.2) are calibrated on the fixtures only, which hold one band mix; these numbers are what a retune starts from.',
+      'The audio thresholds (heard at 2.0, missed under 1.3) are calibrated on the fixtures and two local tabs; these numbers are what a retune starts from.',
       '',
       '| Tab | Attacks | Weak | Missed | Ratio min | Ratio p10 |',
       '| --- | --- | --- | --- | --- | --- |',

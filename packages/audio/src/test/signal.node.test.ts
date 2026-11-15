@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  BANDS_PER_OCTAVE,
+  LOWEST_BAND,
   attackRatios,
   bandEnergy,
+  bandsOfBins,
   cents,
   detectOnsets,
   peak,
@@ -13,6 +16,7 @@ import {
   zeroCrossingFrequency,
 } from './signal';
 import type { Signal } from './signal';
+import { ATTACK_THRESHOLDS } from './real-file';
 
 const RATE = 44_100;
 
@@ -184,12 +188,14 @@ describe('spectralFlux and attackRatios', () => {
     for (const ratio of ratios) expect(ratio).toBeGreaterThanOrEqual(5);
   });
 
-  it('hears nothing at fake attack times in one held tone', () => {
-    // Every render has a noise floor; over digital stillness the ratio is noise over noise.
+  it('does not hear fake attack times in one held tone', () => {
+    // Every render has a noise floor; over digital stillness the ratio is noise over noise. The
+    // band flux of a stationary signal still wanders (1.1 to 1.95 over seeds and levels), so
+    // the bound is `heard`, the line a sustain must stay under, not `missed`.
     const hiss = noise(7);
     const signal = synth(3, (time) => sine(330, 0.5)(time) + 0.001 * hiss());
     const ratios = attackRatios(spectralFlux(signal), [0.6, 1.2, 1.8, 2.4]);
-    for (const ratio of ratios) expect(ratio).toBeLessThan(1.2);
+    for (const ratio of ratios) expect(ratio).toBeLessThan(ATTACK_THRESHOLDS.heard);
   });
 
   it('hears a third tone entering under two that keep ringing', () => {
@@ -202,6 +208,91 @@ describe('spectralFlux and attackRatios', () => {
     );
     const [ratio] = attackRatios(spectralFlux(signal), [1.5]);
     expect(ratio).toBeGreaterThanOrEqual(1.5);
+  });
+
+  /** Partials of `base` Hz up to `top` Hz at 1/n, each decaying at `decay` per second from `start`. */
+  const pluck =
+    (start: number, base: number, top: number, decay: number, level = 0.3) =>
+    (time: number) => {
+      if (time < start) return 0;
+      let sum = 0;
+      for (let n = 1; n * base <= top; n += 1) sum += Math.sin(2 * Math.PI * n * base * time) / n;
+      return level * Math.exp(-decay * (time - start)) * sum;
+    };
+
+  it('hears lowpassed chugs and their re-strikes between bright notes, as a palm-muted riff has', () => {
+    // Every 0.3 s a bright note decaying across hundreds of bins above 3 kHz, then two chugs
+    // below 900 Hz on the same pitch. The linear-bin flux read the first chug of each pair at
+    // 1.16 to 1.29, weak or missed and never heard: the bright note's fall hid the chug's few bins.
+    const hiss = noise(3);
+    const sounds: ((time: number) => number)[] = [];
+    const attacks: number[] = [];
+    for (let k = 0; k < 8; k += 1) {
+      sounds.push(
+        pluck(0.2 + 0.3 * k, 330, 10_000, 2, 0.6),
+        pluck(0.35 + 0.3 * k, 110, 880, 14, 0.06),
+        pluck(0.425 + 0.3 * k, 110, 880, 14, 0.06),
+      );
+      if (k > 0) attacks.push(0.35 + 0.3 * k, 0.425 + 0.3 * k);
+    }
+    const signal = synth(3, (time) => {
+      let sum = 0.001 * hiss();
+      for (const sound of sounds) sum += sound(time);
+      return sum;
+    });
+    const ratios = attackRatios(spectralFlux(signal), attacks);
+    for (const ratio of ratios) expect(ratio).toBeGreaterThanOrEqual(ATTACK_THRESHOLDS.heard);
+  });
+
+  it('reads a decaying tone with a fake attack in its release as missed, by the floor', () => {
+    const decaying = pluck(0.3, 330, 6000, 6, 0.4);
+    const rest = pluck(1.3, 220, 3000, 6, 0.4);
+    const signal = synth(2.4, (time) => decaying(time) + rest(time));
+    // A third attack in the dead air after the second note: nothing there to hear.
+    const [first, , silent] = attackRatios(spectralFlux(signal), [0.3, 1.3, 2.1]);
+    expect(first).toBeGreaterThanOrEqual(ATTACK_THRESHOLDS.heard);
+    expect(silent).toBeLessThan(ATTACK_THRESHOLDS.missed);
+  });
+
+  it('groups bins into 6 bands an octave, each holding at least one bin', () => {
+    const { bands, first, last } = bandsOfBins(1024, RATE);
+    // 40 Hz to Nyquist is 9.1 octaves; the lowest bands hold no bin and are merged away.
+    expect(bands).toBeGreaterThan(40);
+    expect(bands).toBeLessThanOrEqual(
+      Math.ceil(BANDS_PER_OCTAVE * Math.log2(RATE / 2 / LOWEST_BAND)),
+    );
+    for (let band = 0; band < bands; band += 1) {
+      expect(last[band] ?? -1).toBeGreaterThanOrEqual(first[band] ?? 0);
+      if (band > 0) expect(first[band]).toBe((last[band - 1] ?? 0) + 1);
+    }
+    expect(first[0]).toBe(1);
+    expect(last[bands - 1]).toBe(512);
+    // Under 900 Hz a lowpassed chug has about a fifth of the weight, not the 4 % of linear bins.
+    const below = first.filter((bin) => (bin * RATE) / 1024 < 900).length;
+    expect(below).toBeGreaterThanOrEqual(8);
+  });
+
+  it('reads a loud attack over pure silence as heard, and a fake one beside it as missed', () => {
+    const signal = synth(2, (time) => pluck(0.5, 220, 3000, 6, 0.4)(time));
+    const [real, fake] = attackRatios(spectralFlux(signal), [0.5, 1.7]);
+    expect(real).toBeGreaterThanOrEqual(ATTACK_THRESHOLDS.heard);
+    expect(fake).toBeLessThan(ATTACK_THRESHOLDS.missed);
+  });
+
+  it('documents that a held harmonic-rich tone can read above heard at fake attack times', () => {
+    // A known limit of the detector, pinned so a change to it shows: partials beating inside a
+    // band make a stationary tone's flux wander, 3 to 4 at the measured seeds.
+    const hiss = noise(5);
+    const signal = synth(3, (time) => {
+      let sum = 0;
+      for (let n = 1; n * 220 < 10_000; n += 1) sum += Math.sin(2 * Math.PI * n * 220 * time) / n;
+      return 0.3 * sum + 0.001 * hiss();
+    });
+    const ratios = attackRatios(spectralFlux(signal), [0.6, 1.2, 1.8, 2.4]);
+    for (const ratio of ratios) {
+      expect(ratio).toBeGreaterThan(ATTACK_THRESHOLDS.heard);
+      expect(ratio).toBeLessThan(6);
+    }
   });
 
   it('times each frame at its centre', () => {

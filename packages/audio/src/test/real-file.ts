@@ -23,8 +23,8 @@ const FIRST_WHERE = 5;
 
 /** Attack verification: ratios at or above `heard` are heard, below `missed` missed. */
 export const ATTACK_THRESHOLDS = {
-  heard: 1.5,
-  missed: 1.2,
+  heard: 2,
+  missed: 1.3,
   /** A run fails above this share of missed clusters, at least `minMisses`, at most `maxMisses`… */
   missShare: 0.02,
   minMisses: 2,
@@ -222,30 +222,46 @@ export interface Cluster {
   event: NoteEvent;
 }
 
+/** A beat with no attack by design: every note fades in or swells up. */
+const attackless = (event: NoteEvent): boolean =>
+  event.beat.effects.fadeIn === true || event.beat.effects.volumeSwell === true;
+
 /**
  * The attacks a listener should hear: scheduled notes on audible tracks, without hammer-on and
- * pull-off destinations and legato-slide destinations, merged into clusters of ±30 ms.
+ * pull-off destinations, legato-slide destinations and fade-in or swell beats, merged into
+ * clusters of ±30 ms. A cluster sits at the earliest strike of its notes (`struck` is aligned
+ * with `scheduled`), since graces and strokes move the strike on purpose; its scheduled time
+ * stands in where nothing struck. Palm-muted notes are expected: they have a real attack.
  */
-export function expectedAttacks(score: Score, scheduled: readonly NoteEvent[]): Cluster[] {
-  const ordered = [...scheduled].sort((a, b) => a.when - b.when);
+export function expectedAttacks(
+  score: Score,
+  scheduled: readonly NoteEvent[],
+  struck: readonly (readonly Strike[])[] = [],
+): Cluster[] {
+  const ordered = scheduled
+    .map((event, index) => ({ event, index }))
+    .sort((a, b) => a.event.when - b.event.when);
   const lastOnString = new Map<string, NoteEvent>();
-  const attacks: Cluster[] = [];
-  for (const event of ordered) {
+  const clusters: Cluster[] = [];
+  let start = Number.NEGATIVE_INFINITY;
+  for (const { event, index } of ordered) {
     const stringKey = `${String(event.trackIndex)}:${String(event.note.string)}`;
     const previous = lastOnString.get(stringKey);
     lastOnString.set(stringKey, event);
     if (!audible(score, event.track)) continue;
-    if (event.note.hammerPull) continue;
+    if (event.note.hammerPull || attackless(event)) continue;
     if (event.note.string > 0 && previous?.note.slide?.includes('legato') === true) continue;
-    attacks.push({ when: event.when, event });
-  }
-  const clusters: Cluster[] = [];
-  for (const attack of attacks) {
+    const strikes = (struck[index] ?? []).filter((strike) => strike.track === event.track.id);
+    const when = strikes.length === 0 ? event.when : Math.min(...strikes.map((s) => s.when));
     const last = clusters.at(-1);
-    if (last && attack.when - last.when <= ATTACK_THRESHOLDS.clusterSeconds) continue;
-    clusters.push(attack);
+    if (last && event.when - start <= ATTACK_THRESHOLDS.clusterSeconds) {
+      last.when = Math.min(last.when, when);
+      continue;
+    }
+    start = event.when;
+    clusters.push({ when, event });
   }
-  return clusters;
+  return clusters.sort((a, b) => a.when - b.when);
 }
 
 export interface AttackVerification {
