@@ -21,4 +21,5 @@ export { insertBar, removeBar, setMasterBar, setMasterBars } from './bar-command
 export type { MasterBarChanges, MasterBarEdit, MasterBarInput } from './bar-commands';
 export { addTrack, moveTrack, removeTrack, setTrackProperties } from './track-commands';
 export type { TrackChanges, TrackProperties } from './track-commands';
-export { sequence } from './sequence';
+export { chain } from './chain';
+export type { ChainStep } from './chain';

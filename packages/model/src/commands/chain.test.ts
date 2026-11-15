@@ -5,11 +5,12 @@ import type { Command } from '../history';
 import { CommandError } from './command-error';
 import { newId } from '../id';
 import type { Score } from '../score';
+import { largeScore } from '../testing';
 import { validateScore } from '../validate';
-import { removeBar, setMasterBar, setMasterBars } from './bar-commands';
+import { insertBar, removeBar, setMasterBar, setMasterBars } from './bar-commands';
 import { insertBeat } from './beat-commands';
 import { setNote } from './note-commands';
-import { sequence } from './sequence';
+import { chain } from './chain';
 import { beatOf, buildScore, expectRefusal } from './test-score';
 
 const voiceId = (score: Score, bar: number): string => {
@@ -23,14 +24,14 @@ const masterBarId = (score: Score, index: number): string => {
   return found.id;
 };
 
-describe('sequence', () => {
+describe('chain', () => {
   it('lets a step name a beat an earlier step created', () => {
     const score = buildScore();
     const id = newId();
     const history = createHistory();
     const { score: after } = history.apply(
       score,
-      sequence('Add note', [
+      chain('Add note', [
         insertBeat({ voiceId: voiceId(score, 2), index: 0, id }),
         setNote({ beatId: id }, { string: 3, fret: 4 }),
       ]),
@@ -38,7 +39,7 @@ describe('sequence', () => {
     expect(beatOf(after, 0, 2, 0)).toMatchObject({ id, rest: false });
     expect(beatOf(after, 0, 2, 0).notes).toMatchObject([{ string: 3, fret: 4 }]);
     expect(validateScore(after)).toEqual([]);
-    // Without the sequence the same two commands share one draft and the locator misses the beat.
+    // Without the chain the same two commands share one draft and the locator misses the beat.
     expect(() =>
       applyCommand(score, {
         name: 'shared draft',
@@ -55,7 +56,7 @@ describe('sequence', () => {
     const [m0, m1, m2, m3] = score.masterBars.map((bar) => bar.id);
     const { score: after } = applyCommand(
       score,
-      sequence('Remove bars', [
+      chain('Remove bars', [
         removeBar({ masterBarId: masterBarId(score, 2) }),
         removeBar({ masterBarId: masterBarId(score, 3) }),
       ]),
@@ -69,7 +70,7 @@ describe('sequence', () => {
 
   it('is atomic: a refusal in a later step leaves the score and the history untouched', () => {
     const score = buildScore();
-    const command = sequence('Broken', [
+    const command = chain('Broken', [
       removeBar({ masterBarId: masterBarId(score, 3) }),
       removeBar({ masterBarId: 'missing' }),
     ]);
@@ -79,17 +80,56 @@ describe('sequence', () => {
     expect(score.masterBars).toHaveLength(4);
   });
 
-  it('refuses an empty sequence', () => {
-    expectRefusal(buildScore(), sequence('Nothing', []), 'invalid-value');
+  it('resolves a function step against the score the previous step produced', () => {
+    const score = buildScore();
+    const beatId = newId();
+    const { score: after } = applyCommand(
+      score,
+      chain('Bar with a note', [
+        insertBar({ index: 1 }),
+        (current) => {
+          const voice = current.tracks[0]?.bars[1]?.voices[0];
+          if (!voice) throw new Error('no voice');
+          return insertBeat({ voiceId: voice.id, index: 0, id: beatId });
+        },
+        setNote({ beatId }, { string: 2, fret: 3 }),
+      ]),
+    );
+    expect(after.masterBars).toHaveLength(5);
+    expect(beatOf(after, 0, 1, 0)).toMatchObject({ id: beatId, rest: false });
   });
 
-  it('undoes and redoes as one step with the sequence name', () => {
+  it('keeps patches and touched bars proportional to the steps on a long score', () => {
+    const score = largeScore(8, 300);
+    const id = newId();
+    const command = chain('Edit bars', [
+      removeBar({ masterBarId: masterBarId(score, 20) }),
+      removeBar({ masterBarId: masterBarId(score, 5) }),
+      insertBar({ index: 100, id }),
+      insertBar({ index: 200 }),
+    ]);
+    const history = createHistory();
+    const { score: after, change } = history.apply(score, command);
+    expect(after.masterBars).toHaveLength(300);
+    expect(change.patches.length).toBeLessThan(100);
+    expect(change.inverse.length).toBeLessThan(100);
+    expect(change.touchedBars.length).toBeLessThan(10);
+    expect(validateScore(after)).toEqual([]);
+    expect(history.undo()?.score).toEqual(score);
+    expect(history.redo()?.score).toEqual(after);
+  });
+
+  it('refuses an empty chain', () => {
+    expectRefusal(buildScore(), chain('Nothing', []), 'invalid-value');
+  });
+
+  it('undoes and redoes as one step with the chain name', () => {
     const score = buildScore();
     const id = newId();
     const history = createHistory();
     const applied = history.apply(
       score,
-      sequence('Add note', [
+      chain('Add note', [
         insertBeat({ voiceId: voiceId(score, 2), index: 0, id }),
         setNote({ beatId: id }, { string: 3, fret: 4 }),
       ]),
@@ -108,7 +148,7 @@ describe('sequence', () => {
       applyCommand(score, removeBar({ masterBarId: masterBarId(score, index) })).change.touchedBars;
     const { change } = applyCommand(
       score,
-      sequence('Remove bars', [
+      chain('Remove bars', [
         removeBar({ masterBarId: masterBarId(score, 2) }),
         removeBar({ masterBarId: masterBarId(score, 3) }),
       ]),
@@ -125,15 +165,15 @@ describe('sequence', () => {
         warn(warning);
       },
     };
-    expect(applyCommand(buildScore(), sequence('Warn', [step])).warnings).toEqual([warning]);
+    expect(applyCommand(buildScore(), chain('Warn', [step])).warnings).toEqual([warning]);
   });
 
-  it('nests: an inner sequence is a step like any other', () => {
+  it('nests: an inner chain is a step like any other', () => {
     const score = buildScore();
     const { score: after } = applyCommand(
       score,
-      sequence('Outer', [
-        sequence('Inner', [
+      chain('Outer', [
+        chain('Inner', [
           removeBar({ masterBarId: masterBarId(score, 3) }),
           removeBar({ masterBarId: masterBarId(score, 2) }),
         ]),
@@ -203,11 +243,15 @@ describe('setMasterBars', () => {
     );
   });
 
-  it('composes inside a sequence', () => {
+  it('refuses an empty list', () => {
+    expectRefusal(buildScore(), setMasterBars([]), 'invalid-value');
+  });
+
+  it('composes inside a chain', () => {
     const score = buildScore();
     const { score: after } = applyCommand(
       score,
-      sequence('Range', [
+      chain('Range', [
         setMasterBars([{ masterBarId: masterBarId(score, 2), changes: { tempo: { bpm: 90 } } }]),
         removeBar({ masterBarId: masterBarId(score, 3) }),
       ]),

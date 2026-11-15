@@ -169,6 +169,9 @@ export function setMasterBars(edits: readonly MasterBarEdit[]): Command {
   return {
     name,
     run(draft) {
+      if (edits.length === 0) {
+        throw new CommandError(name, 'invalid-value', 'no master bar edits');
+      }
       const base = baseOf(draft);
       const seen = new Set<Id>();
       const located = edits.map((edit) => {
@@ -189,8 +192,7 @@ export function setMasterBars(edits: readonly MasterBarEdit[]): Command {
       });
       assertMasterBarsValid(draft, name);
       located.forEach(({ index }, i) => {
-        const after = parsed[i];
-        if (after) assertColumnFits(base, index, at(base.masterBars, index, name), after, name);
+        assertColumnFits(base, index, at(base.masterBars, index, name), at(parsed, i, name), name);
       });
     },
   };

@@ -222,6 +222,7 @@ export type {
 export {
   CommandError,
   addTrack,
+  chain,
   insertBar,
   insertBeat,
   moveTrack,
@@ -229,7 +230,6 @@ export {
   removeBeat,
   removeNote,
   removeTrack,
-  sequence,
   setBeatDuration,
   setBeatEffect,
   setBeatRest,
@@ -245,6 +245,7 @@ export type {
   BeatChanges,
   BeatInput,
   BeatRhythm,
+  ChainStep,
   Changes,
   CommandErrorCode,
   MasterBarChanges,

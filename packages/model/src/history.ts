@@ -48,6 +48,12 @@ export interface Command {
   name: string;
   /** Mutates an Immer draft; throws `CommandError` and leaves nothing applied on bad input. */
   run(draft: Score, warn: (warning: CommandWarning) => void): void;
+  /**
+   * For a command made of other commands (`chain`): `applyCommand` calls this instead of `run`.
+   * `step` applies a command to the score the previous `step` left, throws if it is refused, and
+   * returns the result; `applyCommand` records the steps' own changes as one, as a group does.
+   */
+  compose?(score: Score, step: (command: Command) => Applied): void;
 }
 
 export interface Change {
@@ -66,6 +72,26 @@ export interface Applied {
 }
 
 export function applyCommand(score: Score, command: Command): Applied {
+  if (command.compose) {
+    const changes: Change[] = [];
+    const warnings: CommandWarning[] = [];
+    let current = score;
+    command.compose(score, (inner) => {
+      const applied = applyCommand(current, inner);
+      current = applied.score;
+      warnings.push(...applied.warnings);
+      if (applied.change.patches.length > 0) changes.push(applied.change);
+      return applied;
+    });
+    return {
+      score: current,
+      change:
+        changes.length === 0
+          ? { command: command.name, patches: [], inverse: [], touchedBars: [] }
+          : mergeChanges(command.name, changes),
+      warnings,
+    };
+  }
   const warnings: CommandWarning[] = [];
   const [next, raw, rawInverse] = produceWithPatches(score, (draft) => {
     command.run(draft, (warning) => {
