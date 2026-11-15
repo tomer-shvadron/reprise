@@ -57,7 +57,7 @@ describe('SpeedTrainerPanel', () => {
       'Select bars and loop them to train',
     );
     expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: 'Loop selected bars' }));
+    await user.click(screen.getByRole('button', { name: 'Loop selection' }));
     expect(services.playback.getState().settings.loop).toBeDefined();
     expect(screen.getByTestId('speed-trainer-loop')).toHaveTextContent('Bars 1–4');
   });
