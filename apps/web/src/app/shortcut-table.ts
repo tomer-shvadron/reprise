@@ -22,14 +22,15 @@ export function shortcutTable(commands: readonly Command[]): string {
   const order = Object.values(CATEGORIES);
   const rows = new Map<
     string,
-    { title: string; category: string; mac: string[]; other: string[] }
+    { title: string; category: string; context: string; mac: string[]; other: string[] }
   >();
   const sorted = commands
     .map((command, index) => ({ command, index, category: categoryOf(command.id) }))
     .sort((a, b) => order.indexOf(a.category) - order.indexOf(b.category) || a.index - b.index);
   for (const { command, category } of sorted) {
-    const key = `${category}\n${command.title}`;
-    const row = rows.get(key) ?? { title: command.title, category, mac: [], other: [] };
+    const context = command.context === 'editing' ? 'Editing' : 'Global';
+    const key = `${category}\n${context}\n${command.title}`;
+    const row = rows.get(key) ?? { title: command.title, category, context, mac: [], other: [] };
     rows.set(key, row);
     const add = (keys: string[], platform: KeyboardPlatform) => {
       const shortcut = shortcutOn(command.shortcut, platform);
@@ -40,8 +41,8 @@ export function shortcutTable(commands: readonly Command[]): string {
   }
   const keys = (list: string[]) => cell(list.length > 0 ? list.join(' or ') : '—');
   const lines = [...rows.values()].map(
-    ({ title, category, mac, other }) =>
-      `| ${cell(title)} | ${category} | Global | ${keys(mac)} | ${keys(other)} |`,
+    ({ title, category, context, mac, other }) =>
+      `| ${cell(title)} | ${category} | ${context} | ${keys(mac)} | ${keys(other)} |`,
   );
   return [
     '| Command | Category | Context | macOS | Windows |',

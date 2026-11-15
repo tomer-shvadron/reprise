@@ -24,7 +24,7 @@ interface CommandPaletteProps {
 export function CommandPalette({ registry, ui, keyboard }: CommandPaletteProps) {
   const open = useStore(ui, (state) => state.paletteOpen);
   const setOpen = useStore(ui, (state) => state.setPaletteOpen);
-  const commands = registry.list().filter((command) => command.inPalette !== false);
+  const commands = registry.available().filter((command) => command.inPalette !== false);
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
@@ -34,7 +34,9 @@ export function CommandPalette({ registry, ui, keyboard }: CommandPaletteProps) 
           <CommandEmpty>No matching command.</CommandEmpty>
           <CommandGroup heading="Commands">
             {commands.map((command) => {
-              const shortcut = shortcutOn(command.shortcut, keyboard);
+              const shortcut = registry.isShadowed(command)
+                ? undefined
+                : shortcutOn(command.shortcut, keyboard);
               return (
                 <CommandItem
                   key={command.id}
