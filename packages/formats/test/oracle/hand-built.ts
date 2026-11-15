@@ -148,7 +148,26 @@ const midiProperty = (value: number): string =>
 
 const TIE_DESTINATION = '<Tie origin="false" destination="true" />';
 
+/** The same tie across a barline: the two notes share a string in the last beat of bar 0. */
+const tieAcrossBar = (): HandBuilt =>
+  compareGpif(
+    'tie across a barline after two notes on one string',
+    gpif({
+      masterBars: [masterBar('0'), masterBar('1')],
+      bars: [bar('0', '0 -1 -1 -1'), bar('1', '1 -1 -1 -1')],
+      voices: [voice('0', '0'), voice('1', '1')],
+      beats: [beat('0', '0', '0 1'), beat('1', '0', '2')],
+      notes: [
+        note('0', 2, 5, '', midiProperty(55)),
+        note('1', 2, 7, '', midiProperty(57)),
+        note('2', 2, 5, TIE_DESTINATION, midiProperty(55)),
+      ],
+      rhythms: WHOLE,
+    }),
+  );
+
 export const HAND_BUILT = {
+  tieAcrossBarOnSharedString: tieAcrossBar,
   /** Two notes on one string, then a tie to the lower: alphaTab's tie takes the upper's pitch. */
   tieOnSharedString: (): HandBuilt =>
     compareGpif(

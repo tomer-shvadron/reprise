@@ -735,7 +735,10 @@ describe('a track read as pitched because its notes do not fit its fretboard', (
   ])('comes back pitched with every MIDI value, as %s', (_name, program, partConfiguration) => {
     const first = readGpif(xml(program), partConfiguration ? { partConfiguration } : {});
     expect(first.score.tracks[0]?.kind).toBe('pitched');
-    const back = readGp(writeGp(first.score).bytes);
+    const written = writeGp(first.score);
+    // Program 25 loses only the `notation` flag it always did; program 60 loses nothing new.
+    expect(written.dropped.map((d) => d.code)).toEqual(program === 25 ? ['notation'] : []);
+    const back = readGp(written.bytes);
     expect(back.score.tracks[0]?.kind).toBe('pitched');
     expect(back.score.tracks[0]?.bars[0]?.voices[0].beats[0]?.notes.map((n) => n.fret)).toEqual([
       38, 57,

@@ -6,6 +6,9 @@ import { compareGpif } from './hand-built';
 const QUARTER = [rhythm('0', 'Quarter')];
 const midi = (value: number): string => property('Midi', `<Number>${String(value)}</Number>`);
 
+// alphaTab's pitched projection is `fret + stringTuning`, while ours takes `Midi`, so the two agree
+// only when `Midi` equals tuning plus fret (50 + 30 = 80 on string 2). A note with `Midi` but no
+// `Fret` is left out: alphaTab reads a missing `Fret` as -1 and differs by one semitone.
 describe('a track whose notes do not fit its fretboard, read as pitched', () => {
   it.each([
     [

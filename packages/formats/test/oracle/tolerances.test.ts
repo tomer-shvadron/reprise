@@ -320,4 +320,25 @@ describe('tie-on-shared-string', () => {
     target.string = 2;
     expect(applies(difference, changed)).toBe(false);
   });
+
+  it('does not accept a difference where alphaTab note is not a tie on string 0', () => {
+    const { differences, projections } = HAND_BUILT.tieOnSharedString();
+    const [difference] = differences;
+    if (!difference) throw new Error('no tie difference');
+    const changed = structuredClone(projections);
+    const theirs = changed.alphaTab.tracks[0]?.bars[0]?.voices[0]?.beats[1]?.notes[0];
+    if (!theirs) throw new Error('no alphaTab note');
+    theirs.tie = false;
+    expect(tolerance('tie-on-shared-string').applies(difference, changed)).toBe(false);
+    theirs.tie = true;
+    theirs.string = 2;
+    expect(tolerance('tie-on-shared-string').applies(difference, changed)).toBe(false);
+  });
+
+  it('accepts the same difference across a barline', () => {
+    const build = HAND_BUILT.tieAcrossBarOnSharedString();
+    expect(accepted(build)).toEqual({
+      'tracks[0].bars[1].voices[0].beats[0].notes[0].value': ['tie-on-shared-string'],
+    });
+  });
 });

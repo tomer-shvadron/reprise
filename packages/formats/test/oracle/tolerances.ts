@@ -312,7 +312,7 @@ export const TOLERANCES: readonly Tolerance[] = [
     id: 'tie-on-shared-string',
     formats: GPIF_ONLY,
     why: "A tied note takes its pitch from the note it continues. We keep its own `Midi`; alphaTab 1.8.4's `Note.chain` calls `Note.findTieOrigin`, whose `Beat.getNoteOnString` returns the last note added on that string (`noteStringLookup`) and copies its `fret`, so after a beat where two notes share the string the tied note takes the neighbour's pitch (#151, where a track with notes off its fretboard is read as pitched). Accepted where both projected notes are ties on a non-percussion track, and both values are held by the previous beat of the same voice in our projection.",
-    applies: (d, { ours }) => {
+    applies: (d, { ours, alphaTab }) => {
       const at = NOTE_VALUE.exec(d.path)?.groups;
       if (at === undefined || typeof d.ours !== 'number' || typeof d.alphaTab !== 'number') {
         return false;
@@ -329,6 +329,8 @@ export const TOLERANCES: readonly Tolerance[] = [
       const beats = own.bars[bar]?.voices[voice]?.beats ?? [];
       const mine = beats[index]?.notes[n];
       if (mine === undefined || !mine.tie || mine.string !== 0) return false;
+      const theirs = alphaTab.tracks[track]?.bars[bar]?.voices[voice]?.beats[index]?.notes[n];
+      if (theirs === undefined || !theirs.tie || theirs.string !== 0) return false;
       const previous =
         index > 0 ? beats[index - 1] : own.bars[bar - 1]?.voices[voice]?.beats.at(-1);
       const held = previous?.notes.map((note) => note.value) ?? [];
