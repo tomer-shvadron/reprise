@@ -5,6 +5,7 @@ import {
   Sf2Soundfont,
   timelineNeutral,
   type AudioEngine,
+  type ClickSettings,
   type LoadOptions,
   type PlaybackState,
   type TempoMode,
@@ -58,6 +59,17 @@ export interface AudioService {
   setCountIn(on: boolean): void;
   setMetronome(on: boolean, volume: number): void;
   /**
+   * Starts a metronome that needs no song, from `settings` over what the last call set
+   * (`playback.click.settings`; 100 bpm in 4 with the downbeat stressed at first). Unlocks the
+   * context, so call it from a gesture. Pauses a playing song; playing a song stops the click.
+   * Throws a `RangeError` for a bpm outside 10 to 400, beats outside 1 to 32, a subdivision
+   * outside 1 to 4 or a volume outside 0 to 1, leaving the click as it was.
+   */
+  startClick(settings?: Partial<ClickSettings>): void;
+  /** Applies settings to a running click from its next click or beat, or keeps them for the next start. */
+  updateClick(settings: Partial<ClickSettings>): void;
+  stopClick(): void;
+  /**
    * The master bus level, 0 to 1, mirrored into `settings.masterVolume`. The metronome feeds the
    * bus, so it scales the clicks too. Throws a `RangeError` outside 0 to 1.
    */
@@ -106,6 +118,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   engine.setCountIn(initial.countIn);
   engine.setMetronome(initial.metronome.on, initial.metronome.volume);
   engine.setMasterVolume(initial.masterVolume);
+  engine.updateClick(playback.getState().click.settings);
   let bankLoad: Promise<void> | undefined;
   let doc: OpenDocument | undefined;
   /** The engine has this document's song. */
@@ -144,6 +157,9 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     }),
     engine.on('loop', (loop) => {
       set({ lastLoop: loop });
+    }),
+    engine.on('click', (running) => {
+      set({ click: { ...playback.getState().click, running } });
     }),
     engine.on('memory', (memory) => {
       set({ memory });
@@ -328,6 +344,26 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     setMetronome(on, volume) {
       engine.setMetronome(on, volume);
       setSettings({ metronome: { on, volume } });
+    },
+
+    startClick(settings) {
+      if (disposed) return;
+      const next = { ...playback.getState().click.settings, ...settings };
+      service.unlock();
+      engine.startClick(next);
+      // After the engine has validated them, so a refused call leaves the mirror alone.
+      set({ click: { ...playback.getState().click, settings: next } });
+    },
+
+    updateClick(settings) {
+      if (disposed) return;
+      const next = { ...playback.getState().click.settings, ...settings };
+      engine.updateClick(next);
+      set({ click: { ...playback.getState().click, settings: next } });
+    },
+
+    stopClick() {
+      engine.stopClick();
     },
 
     setMasterVolume(volume) {
