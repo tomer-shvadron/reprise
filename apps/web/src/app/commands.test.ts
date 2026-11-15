@@ -1,11 +1,13 @@
 import { write } from '@reprise/formats';
 import { largeScore } from '@reprise/model/testing';
-import { describe, expect, it } from 'vitest';
+import { fireEvent } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createTestServices } from '@/test/services';
 
 import { createAppRegistry } from './app-registry';
-import { runCommand } from './command-registry';
+import { runCommand, type Command } from './command-registry';
+import { installShortcutDispatcher } from './shortcut-dispatcher';
 
 describe('view.toggleViewMode', () => {
   it('flips between page and continuous view, and the layout follows', async () => {
@@ -28,5 +30,43 @@ describe('view.toggleViewMode', () => {
     runCommand(command);
     expect(ui.getState().view.mode).toBe('paged');
     expect(rows()).toBeGreaterThan(1);
+  });
+});
+
+describe('the app registry and edit mode', () => {
+  it('follows the editing flag', () => {
+    const services = createTestServices();
+    const registry = createAppRegistry(services);
+    expect(registry.isActive('editing')).toBe(false);
+    services.editing.getState().setEditing(true);
+    expect(registry.isActive('editing')).toBe(true);
+  });
+
+  it('fires the editing command on its key while editing and transport otherwise', () => {
+    const services = createTestServices();
+    const registry = createAppRegistry(services);
+    const transport = registry.get('transport.previousBeat');
+    if (!transport) throw new Error('transport.previousBeat is not registered');
+    const run = vi.fn();
+    const move: Command = {
+      id: 'editor.test',
+      title: 'Cursor left',
+      shortcut: { key: 'ArrowLeft' },
+      context: 'editing',
+      run,
+    };
+    registry.register(move);
+    const spy = vi.spyOn(transport, 'run').mockImplementation(() => undefined);
+    const off = installShortcutDispatcher(window, registry, 'other');
+
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(run).not.toHaveBeenCalled();
+
+    services.editing.getState().setEditing(true);
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledTimes(1);
+    off();
   });
 });
