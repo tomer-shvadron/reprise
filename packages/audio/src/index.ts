@@ -80,3 +80,6 @@ export type { RecordedMix } from './recording-sink';
 export type { ScheduledContinuation, ScheduledMix } from './scheduler';
 export { mixesInRange } from './timeline';
 export type { MixOnset, TiedContinuation } from './timeline';
+
+// SFZ loader and HQ tier packs (WP-090)
+export * from './sfz/index';

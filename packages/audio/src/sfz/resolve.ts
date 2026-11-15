@@ -182,8 +182,11 @@ function build(
   const length = ranged(ops, report, 'seq_length', 0, 1024);
   const position = ranged(ops, report, 'seq_position', 0, 1024) ?? 1;
   if (length !== undefined && length > 1) {
-    if (position < 1 || position > length) bump(report.invalid, 'seq_position');
-    else common.sequence = { length, position };
+    // Kept even when `position` is outside 1..length, as sfizz does: `(n % length) + 1 ===
+    // position` is then never true, so the region is silent. Dropping the sequence instead would
+    // make it play on every note, layered on the position-1 take.
+    common.sequence = { length, position };
+    if (position < 1 || position > length) report.unreachable += 1;
   }
   if (lo > 0 || hi < 1) common.random = { lo, hi };
 

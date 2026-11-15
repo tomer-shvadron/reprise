@@ -28,6 +28,11 @@ export interface SfzReport {
   limits: string[];
   /** Regions with loop points and no `loop_mode`: played unlooped, though some players would loop them. */
   loopWithoutMode: number;
+  /**
+   * Regions kept that can never play: `seq_position` outside `seq_length`, an authoring error some
+   * packs ship. They are silent, as in sfizz, and nothing the loader lost, so `isClean` allows them.
+   */
+  unreachable: number;
   /** Choices the loader made that a pack author might not expect. */
   notes: string[];
   regions: number;
@@ -62,6 +67,7 @@ export function emptyReport(): SfzReport {
     escapedPaths: [],
     limits: [],
     loopWithoutMode: 0,
+    unreachable: 0,
     notes: [],
     regions: 0,
   };
