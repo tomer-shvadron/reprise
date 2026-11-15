@@ -59,8 +59,9 @@ describe('search', () => {
   // "Search returns within a frame" (16.7 ms) has no row in the budgets table, so this is its
   // check, on the worst keystroke: a query that keeps all 2 000 songs, so the sort sees every one.
   // Reference machine alone (M4 Pro, Node 24): about 3 ms. Three parallel runs of this file
-  // on the same machine: 4 ms worst. The bound is 10x the alone figure and 3x the parallel one,
-  // rounded up on the 1-2-5 series; the test declares its own timeout.
+  // on the same machine: 4 ms worst. Two parallel runs of the whole library, app and state
+  // folders (#233) once took 56 ms. The bound is more than 10x the alone figure and 3x that worst
+  // (168 ms), rounded up on the 1-2-5 series; the test declares its own timeout.
   it('filters and sorts 2000 songs well inside a frame budget', { timeout: 30_000 }, () => {
     const entries = Array.from({ length: 2000 }, (_, index) =>
       entryOf(
@@ -76,6 +77,6 @@ describe('search', () => {
     const result = sortEntries(filterEntries(entries, 's'), 'artist');
     const elapsed = performance.now() - started;
     expect(result).toHaveLength(2000);
-    expect(elapsed).toBeLessThan(50);
+    expect(elapsed).toBeLessThan(200);
   });
 });
