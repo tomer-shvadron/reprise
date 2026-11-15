@@ -13,7 +13,8 @@ test('the fretboard follows playback without frame gaps beyond the baseline', as
   await app.openWithPicker(generated('song.gp'));
 
   const play = async () => {
-    await page.keyboard.press('ControlOrMeta+Home');
+    // The palette, not the key: Home stays with a focused control such as a switch.
+    await app.palette('First bar');
     await expect(app.field('bar')).toHaveText(/^1\//);
     const watch = app.watchFrames('3/16');
     await app.playButton.click();
