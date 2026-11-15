@@ -100,3 +100,27 @@ describe('following the playhead', () => {
     expect(store.getState().follow).toEqual({ on: true, request: 2 });
   });
 });
+
+describe('ui store screens and panel views', () => {
+  it('starts on the player with the mixer in the right panel', () => {
+    const state = createUiStore('dark').getState();
+    expect(state.screen).toBe('player');
+    expect(state.rightPanelView).toBe('mixer');
+  });
+
+  it('switches screens', () => {
+    const store = createUiStore('dark');
+    store.getState().setScreen('library');
+    expect(store.getState().screen).toBe('library');
+    store.getState().setScreen('player');
+    expect(store.getState().screen).toBe('player');
+  });
+
+  it('shows a panel view and opens the right panel', () => {
+    const store = createUiStore('dark');
+    expect(store.getState().panels.rightPanel).toBe(false);
+    store.getState().showPanelView('tuner');
+    expect(store.getState().rightPanelView).toBe('tuner');
+    expect(store.getState().panels.rightPanel).toBe(true);
+  });
+});

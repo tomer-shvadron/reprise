@@ -747,3 +747,45 @@ describe('a track without strings that a file shows as tab', () => {
     ).toBe('tab');
   });
 });
+
+describe('document store song identity', () => {
+  const store = () =>
+    createDocumentStore({
+      platform: fakePlatform(),
+      read: () => Promise.resolve({ score: song(), warnings: [] }),
+    });
+
+  it('has no song id until a document opens from the library', async () => {
+    const documents = store();
+    expect(documents.getState().songId).toBeUndefined();
+    await documents.getState().openBytes('a.gp5', GP5);
+    expect(documents.getState().songId).toBeUndefined();
+  });
+
+  it('keeps the song id an open was given, without marking the document modified', async () => {
+    const documents = store();
+    await documents.getState().openBytes('a.gp5', GP5, undefined, 'song-1');
+    expect(documents.getState().songId).toBe('song-1');
+    expect(documents.getState().dirty).toBe(false);
+  });
+
+  it('sets the song id of an open document, as after an import', async () => {
+    const documents = store();
+    await documents.getState().openBytes('a.gp5', GP5);
+    documents.getState().setSongId('song-2');
+    expect(documents.getState().songId).toBe('song-2');
+    expect(documents.getState().dirty).toBe(false);
+  });
+
+  it('ignores setSongId with no document and clears it on close and on the next open', async () => {
+    const documents = store();
+    documents.getState().setSongId('song-3');
+    expect(documents.getState().songId).toBeUndefined();
+    await documents.getState().openBytes('a.gp5', GP5, undefined, 'song-1');
+    await documents.getState().openBytes('b.gp5', GP5);
+    expect(documents.getState().songId).toBeUndefined();
+    documents.getState().setSongId('song-4');
+    documents.getState().close();
+    expect(documents.getState().songId).toBeUndefined();
+  });
+});
