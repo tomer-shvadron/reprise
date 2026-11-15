@@ -55,4 +55,43 @@ describe('CommandRegistry', () => {
       registry.register(command({ id: 'a', shortcut: { key: 'k', mod: true } })),
     ).not.toThrow();
   });
+
+  it('binds the same key once per context', () => {
+    const registry = new CommandRegistry();
+    registry.register(command({ id: 'seek', shortcut: { key: 'ArrowLeft' } }));
+    registry.register(command({ id: 'move', shortcut: { key: 'ArrowLeft' }, context: 'editing' }));
+
+    expect(() =>
+      registry.register(
+        command({ id: 'move2', shortcut: { key: 'ArrowLeft' }, context: 'editing' }),
+      ),
+    ).toThrow('Shortcut "arrowleft" in the editing context of "move2" is already bound to "move"');
+    expect(() =>
+      registry.register(command({ id: 'seek2', shortcut: { key: 'ArrowLeft' } })),
+    ).toThrow('Shortcut "arrowleft" of "seek2" is already bound to "seek"');
+  });
+
+  it('reports whether a context is active', () => {
+    let editing = false;
+    const registry = new CommandRegistry(() => editing);
+    expect(registry.isActive('editing')).toBe(false);
+    editing = true;
+    expect(registry.isActive('editing')).toBe(true);
+    expect(new CommandRegistry().isActive('editing')).toBe(false);
+  });
+
+  it('unregistering a context binding keeps the context-free one', () => {
+    const registry = new CommandRegistry();
+    registry.register(command({ id: 'seek', shortcut: { key: 'Home' } }));
+    const off = registry.register(
+      command({ id: 'move', shortcut: { key: 'Home' }, context: 'editing' }),
+    );
+    off();
+    expect(() =>
+      registry.register(command({ id: 'move', shortcut: { key: 'Home' }, context: 'editing' })),
+    ).not.toThrow();
+    expect(() => registry.register(command({ id: 'seek2', shortcut: { key: 'Home' } }))).toThrow(
+      'already bound',
+    );
+  });
 });
