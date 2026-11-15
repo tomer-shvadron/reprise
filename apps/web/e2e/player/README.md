@@ -23,7 +23,7 @@ pnpm exec playwright show-trace path/to/trace.zip
 
 - **Master-bus tap.** `AudioNode.prototype.connect` is wrapped so that a connection to a realtime context's destination goes through a gain that also feeds an `AnalyserNode`. The sampler, the metronome and the count-in all reach the destination that way, so `level()` hears everything the user would. "Sounding" is RMS above 1e-3 (the song measures about 0.02); "silent" is a peak below 1e-4.
 - **Context count.** `AudioContext` is wrapped in a `Proxy` that records each one constructed; the app must make exactly one.
-- **Pickers.** `showOpenFilePicker` counts its calls in `opens` and returns the next name pushed to `picks` from origin-private storage, or throws `AbortError` (the user's cancel) when there is none; `showSaveFilePicker` records its options in `saves` and creates the file there. They are real `FileSystemFileHandle`s, so Save in place runs the app's own write path.
+- **Pickers.** `showOpenFilePicker` counts its calls in `opens` and returns the next name pushed to `picks` (every queued name for a `multiple` pick) from origin-private storage, or throws `AbortError` (the user's cancel) when there is none; `showSaveFilePicker` records its options in `saves` and creates the file there. They are real `FileSystemFileHandle`s, so Save in place runs the app's own write path.
 - **Write log.** `createWritable().close()` is wrapped to push `{ name, size }` to `writes` once it resolves. Read a saved file only after its entry appears: reading earlier races the browser's swap file (`NotFoundError` or `NotReadableError`).
 - **Probes** sample every animation frame with a 20 s guard that resolves rather than hangs: `peakWhile` (the loudest frame while a readout field shows a text), `beatInterval`, `barTrail` and `watchFollow`.
 
@@ -48,6 +48,8 @@ pnpm exec playwright show-trace path/to/trace.zip
 | `song48.gp`           | the same at 48 bars, for following across pages                                                                                       |
 | `tuner-a2.wav`        | 3 s of a harmonic A2 at +12 cents, 48 kHz mono, a whole number of periods; Chromium's fake microphone loops it (`tuner.spec.ts`)      |
 | `long-score.reprise`  | the roadmap's reference long score, 8 × 300 bars with track _i_ in tab, standard or both notation, for the budget rows                |
+
+`library-NN.reprise` are 23 four-bar songs with distinct titles (`Library Song 01` and on) that, with the 27 committed fixtures, make the library flow's fifty.
 
 The committed fixtures give one file per format (`FORMATS` in `scores.ts`), with bar counts from `fixtures/manifest.json`.
 

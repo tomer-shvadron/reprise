@@ -1,3 +1,4 @@
+import { libraryOf } from '@/features/library/library';
 import type { MenuCommandId } from '@/platform/bridge';
 import { ZOOM } from '@/state/ui';
 
@@ -15,9 +16,7 @@ export type AppCommandId =
 
 type AppCommand = Command & { id: AppCommandId };
 
-export function appCommands(
-  services: Pick<AppServices, 'ui' | 'print' | 'document'>,
-): AppCommand[] {
+export function appCommands(services: AppServices): AppCommand[] {
   const { ui, print, document } = services;
   const zoomBy = (delta: number) => {
     ui.getState().setZoom(Math.round((ui.getState().zoom + delta) * 10) / 10);
@@ -37,7 +36,8 @@ export function appCommands(
       id: 'file.open',
       title: 'Open file…',
       shortcut: { key: 'o', mod: true },
-      run: () => document.getState().open(),
+      // Opens as before, then imports into the library in the background.
+      run: () => libraryOf(services).openFile(),
     },
     {
       id: 'file.save',

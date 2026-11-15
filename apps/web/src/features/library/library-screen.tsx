@@ -4,7 +4,10 @@ import { useStore } from 'zustand';
 import { useAppServices } from '@/app/services-context';
 import { Input } from '@/components/ui/input';
 
+import { DeleteDialog } from './delete-dialog';
+import { ImportBar } from './import-bar';
 import { libraryOf } from './library';
+import type { SongRow } from './db/rows';
 import { filterEntries, isSortKey, sortEntries, type SortKey } from './search';
 import { SongList } from './song-list';
 
@@ -25,6 +28,7 @@ export function LibraryScreen() {
   const error = useStore(library.store, (state) => state.error);
   // Read once per mount: relative dates need not tick while the screen is open.
   const [now] = useState(() => Date.now());
+  const [deleting, setDeleting] = useState<SongRow | undefined>();
 
   useEffect(() => {
     void library.load();
@@ -65,6 +69,7 @@ export function LibraryScreen() {
           </select>
         </label>
       </div>
+      <ImportBar library={library} />
       {error && (
         <p role="alert" className="text-destructive text-sm">
           {error}
@@ -72,7 +77,8 @@ export function LibraryScreen() {
       )}
       {!loaded ? null : entries.length === 0 ? (
         <p className="text-muted-foreground text-sm">
-          Your library is empty. Songs you import will appear here.
+          Your library is empty. Import files or a folder, or drop them here: the songs you import
+          will appear here.
         </p>
       ) : visible.length === 0 ? (
         <p className="text-muted-foreground text-sm">No songs match &ldquo;{query}&rdquo;.</p>
@@ -83,8 +89,21 @@ export function LibraryScreen() {
           onOpen={(id) => {
             void library.openSong(id);
           }}
+          onDelete={(id) => {
+            setDeleting(entries.find((entry) => entry.row.id === id)?.row);
+          }}
         />
       )}
+      <DeleteDialog
+        song={deleting}
+        onCancel={() => {
+          setDeleting(undefined);
+        }}
+        onConfirm={(song) => {
+          setDeleting(undefined);
+          void library.deleteSong(song.id);
+        }}
+      />
     </div>
   );
 }

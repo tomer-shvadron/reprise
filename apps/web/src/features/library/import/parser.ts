@@ -1,19 +1,27 @@
-import { parseImport, type ParseOutcome } from './parse-import';
+import type { Score } from '@reprise/model';
+
+import { nativeOf, parseImport, type NativeOutcome, type ParseOutcome } from './parse-import';
 import type { ParseRequest, ParseResponse } from './parse.worker';
 
 export interface Parser {
   /** Takes ownership of `bytes`: they are transferred to the worker. */
   parse(bytes: Uint8Array, fallbackTitle?: string): Promise<ParseOutcome>;
+  /** The score as native bytes. The score is copied to the worker, not moved. */
+  native(score: Score): Promise<NativeOutcome>;
   dispose(): void;
 }
 
 interface Pending {
-  resolve: (outcome: ParseOutcome) => void;
+  resolve: (response: ParseResponse) => void;
   reject: (error: Error) => void;
 }
 
 function inlineParser(): Parser {
-  return { parse: (bytes, fallbackTitle) => parseImport(bytes, fallbackTitle), dispose() {} };
+  return {
+    parse: (bytes, fallbackTitle) => parseImport(bytes, fallbackTitle),
+    native: (score) => nativeOf(score),
+    dispose() {},
+  };
 }
 
 /**
@@ -33,8 +41,8 @@ export function createParser(): Parser {
     pending.clear();
   };
   worker.addEventListener('message', (event: MessageEvent<ParseResponse>) => {
-    const { id, outcome } = event.data;
-    pending.get(id)?.resolve(outcome);
+    const { id } = event.data;
+    pending.get(id)?.resolve(event.data);
     pending.delete(id);
   });
   worker.addEventListener('error', (event) => {
@@ -44,21 +52,39 @@ export function createParser(): Parser {
     fail(new Error('The import worker sent a message that could not be read'));
   });
 
+  const send = (
+    build: (id: number) => ParseRequest,
+    transfer: Transferable[],
+  ): Promise<ParseResponse> => {
+    if (failure) return Promise.reject(failure);
+    return new Promise<ParseResponse>((resolve, reject) => {
+      const id = next++;
+      pending.set(id, { resolve, reject });
+      try {
+        worker.postMessage(build(id), transfer);
+      } catch (error) {
+        // A buffer that is detached or cannot be transferred: no response will ever come.
+        pending.delete(id);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  };
+
   return {
-    parse(bytes, fallbackTitle = '') {
-      if (failure) return Promise.reject(failure);
-      return new Promise<ParseOutcome>((resolve, reject) => {
-        const id = next++;
-        pending.set(id, { resolve, reject });
-        const request: ParseRequest = { id, bytes, fallbackTitle };
-        try {
-          worker.postMessage(request, [bytes.buffer]);
-        } catch (error) {
-          // A buffer that is detached or cannot be transferred: no response will ever come.
-          pending.delete(id);
-          reject(error instanceof Error ? error : new Error(String(error)));
-        }
-      });
+    async parse(bytes, fallbackTitle = '') {
+      const response = await send(
+        (id) => ({ kind: 'parse', id, bytes, fallbackTitle }),
+        [bytes.buffer],
+      );
+      if (response.kind !== 'parse')
+        throw new Error('The import worker answered the wrong request');
+      return response.outcome;
+    },
+    async native(score) {
+      const response = await send((id) => ({ kind: 'native', id, score }), []);
+      if (response.kind !== 'native')
+        throw new Error('The import worker answered the wrong request');
+      return response.outcome;
     },
     dispose() {
       worker.terminate();

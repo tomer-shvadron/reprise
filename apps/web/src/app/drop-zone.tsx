@@ -1,5 +1,8 @@
 import { MAX_FILE_BYTES } from '@reprise/formats';
 import { useEffect, useState } from 'react';
+import { useStore } from 'zustand';
+
+import { libraryOf, snapshotDrop } from '@/features/library';
 
 import { useAppServices } from './services-context';
 
@@ -19,9 +22,15 @@ function droppedHandle(event: DragEvent): Promise<FileSystemHandle | null> {
   return item.getAsFileSystemHandle().catch(() => null);
 }
 
-/** Drag and drop anywhere in the window opens the first dropped file. */
+/**
+ * Drag and drop anywhere in the window. One file opens, and is imported into the library in the
+ * background; Alt held opens it without importing. Several files, a folder, or any drop on the
+ * library screen are imported as a batch.
+ */
 export function DropZone() {
-  const { document } = useAppServices();
+  const services = useAppServices();
+  const { document, ui } = services;
+  const onLibrary = useStore(ui, (state) => state.screen === 'library');
   const [over, setOver] = useState(false);
 
   useEffect(() => {
@@ -45,7 +54,20 @@ export function DropZone() {
       event.preventDefault();
       depth = 0;
       setOver(false);
-      const file = event.dataTransfer?.files[0];
+      if (!event.dataTransfer) return;
+      // Before the first await: a DataTransfer is emptied once this handler returns.
+      const snapshot = snapshotDrop(event.dataTransfer);
+      const library = libraryOf(services);
+      const [file] = snapshot.files;
+      if (
+        snapshot.directories.length > 0 ||
+        snapshot.files.length > 1 ||
+        ui.getState().screen === 'library'
+      ) {
+        ui.getState().setScreen('library');
+        void library.importDrop(snapshot);
+        return;
+      }
       if (!file) return;
       if (file.size > MAX_FILE_BYTES) {
         document
@@ -57,16 +79,17 @@ export function DropZone() {
           );
         return;
       }
+      const { altKey } = event;
       const handle = droppedHandle(event);
       void Promise.all([file.arrayBuffer(), handle]).then(
-        ([buffer, picked]) =>
-          document
-            .getState()
-            .openBytes(
-              file.name,
-              new Uint8Array(buffer),
-              picked?.kind === 'file' ? { handle: picked } : {},
-            ),
+        ([buffer, picked]) => {
+          const opened = {
+            name: file.name,
+            bytes: new Uint8Array(buffer),
+            ...(picked?.kind === 'file' && { handle: picked }),
+          };
+          return altKey ? library.openWithoutImport(opened) : library.openAndImport(opened);
+        },
         (error: unknown) => {
           document
             .getState()
@@ -84,7 +107,7 @@ export function DropZone() {
       window.removeEventListener('dragover', onOver);
       window.removeEventListener('drop', onDrop);
     };
-  }, [document]);
+  }, [services, document, ui]);
 
   if (!over) return null;
   return (
@@ -93,7 +116,7 @@ export function DropZone() {
       className="bg-background/70 pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-6"
     >
       <div className="border-primary text-foreground flex h-full w-full items-center justify-center rounded-xl border-2 border-dashed text-lg font-medium">
-        Drop to open
+        {onLibrary ? 'Drop to import' : 'Drop to open'}
       </div>
     </div>
   );
