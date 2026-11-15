@@ -34,3 +34,8 @@ export { installEditor } from './install-editor';
 export { navigationCommands, type NavigationCommandId } from './navigation-commands';
 export { useEditOverlays, useEditOverlaysFor } from './use-edit-overlays';
 export { visibleTracks } from './visible';
+export { trackEditCommands, type TrackEditCommandId } from './track-commands';
+export { EditorDialogs } from './editor-dialogs';
+export { AddTrackButton, TrackRowMenu } from './track-menu';
+export { createNewSong, startNewSong } from './new-song';
+export { UnsavedChangesDialog } from './unsaved-dialog';

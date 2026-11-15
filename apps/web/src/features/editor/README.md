@@ -31,6 +31,14 @@ What it holds, after WP-056 (the mode toggle) and WP-080 (hit-testing and the se
 - **Keyboard** (edit mode only, `context: 'editing'`): arrows move by stop and string, Home and End by bar, Ctrl/Cmd with them by bar and score, PageUp and PageDown by system (a continuous layout's segment), Shift extends a beat range (up and down by track), Ctrl/Cmd+Shift extends by bar, Escape clears the range and picked notes. A plain move clears both. The full list is in [keyboard-shortcuts.md](../../../../../docs/reference/keyboard-shortcuts.md).
 - **Demo**: `/dev/score?edit=1` (see the score demo's README for how to serve it; it takes the same `fixture`, `mode` and `notation` parameters) mounts `demo/edit-demo.tsx`, the cursor and range over a fixture or the long score with no app around it.
 
+## Tracks and New song (WP-083)
+
+- **Track dialog** (`track-dialog.tsx`, state in `track-form.ts`): name, short name (follows the name until edited), colour, kind (chosen when adding, read-only afterwards), string count, tuning from `STANDARD_TUNINGS` or custom (string 1 listed first, flipped once against `Track.tuning`), capo and GM program. A tuning change keeps the frets; dropping strings that still hold notes is refused up front, naming the strings and bars. Editing is one `setTrackProperties` with only what changed; adding is one `addTrack` at the end.
+- **Commands** (`track-commands.ts`): `track.properties` (F6), `track.add` (⌥⌘N) and `track.addWindows` (Ctrl+Shift+Insert), `track.remove` and `track.moveUp`/`track.moveDown` with no keys. `track-edit.ts` holds the actions the sidebar menu shares.
+- **Dialog host** (`editor-dialogs.tsx`, `dialogs.ts`): `<EditorDialogs />` is mounted once in the app; the open dialog lives in a store keyed by the services (`dialogsOf`).
+- **New song** (`new-song.ts`): `startNewSong` opens `newDocument(createEmptyScore())` and turns edit mode on, after `UnsavedChangesDialog` (Save, Don't save, Cancel) when the document is modified. The dialog takes `action`, `onContinue` and `onCancel`, so Open and Close (WP-061) reuse it.
+- `refusal.ts` is a small local `refusalMessage` until WP-081's shared `describeRefusal` lands; then it goes.
+
 ## What it can rely on
 
 - `editing` (`state/editing.ts`): the edit-mode flag, `editing`, `setEditing` and `toggle`. It is off

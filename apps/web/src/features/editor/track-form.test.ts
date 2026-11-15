@@ -1,0 +1,186 @@
+import { STANDARD_TUNING, createTrack, type Track } from '@reprise/model';
+import { note, score } from '@reprise/model/testing';
+import { describe, expect, it } from 'vitest';
+
+import {
+  applyPreset,
+  changeKind,
+  droppedStringsMessage,
+  formFromTrack,
+  newTrackForm,
+  newTrackProperties,
+  noteLabel,
+  presetNameOf,
+  setName,
+  setShortName,
+  setString,
+  setStringCount,
+  shortNameOf,
+  trackChanges,
+  trackHasNotes,
+  validateTrackForm,
+} from './track-form';
+
+const guitar = (): Track => createTrack('fretted', { barCount: 2 });
+
+describe('formFromTrack', () => {
+  it('lists the strings highest first, the reverse of the model, and flips them back', () => {
+    const track = guitar();
+    const form = formFromTrack(track);
+    expect(form.strings).toEqual([64, 59, 55, 50, 45, 40]);
+    expect(trackChanges(track, form)).toEqual({});
+    expect(trackChanges(track, setString(form, 6, 38))).toEqual({
+      tuning: [38, 45, 50, 55, 59, 64],
+    });
+  });
+
+  it('names the tuning from the table, and Custom (undefined) for anything else', () => {
+    const form = formFromTrack(guitar());
+    expect(presetNameOf(form)).toBe('E standard');
+    expect(presetNameOf(setString(form, 1, 65))).toBeUndefined();
+  });
+
+  it('writes only the keys that changed', () => {
+    const track = guitar();
+    const form = { ...formFromTrack(track), name: ' Lead ', capo: '2', color: '#ABCDEF' };
+    expect(trackChanges(track, form)).toEqual({ name: 'Lead', capo: 2, color: '#abcdef' });
+  });
+});
+
+describe('the short name', () => {
+  it('follows the name until it is edited', () => {
+    let form = newTrackForm('fretted');
+    form = setName(form, 'Rhythm');
+    expect(form.shortName).toBe('Rhyt.');
+    form = setShortName(form, 'Rh');
+    form = setName(form, 'Lead');
+    expect(form.shortName).toBe('Rh');
+    expect(shortNameOf('  ')).toBe('');
+  });
+});
+
+describe('the string count', () => {
+  it('takes the same instrument’s table tuning when there is one', () => {
+    const bass = applyPreset(newTrackForm('fretted'), 'Bass standard', false);
+    expect(setStringCount(bass, 5).strings).toEqual([43, 38, 33, 28, 23]);
+    expect(presetNameOf(setStringCount(bass, 5))).toBe('5-string bass standard');
+  });
+
+  it('drops the lowest strings, keeping string 1, or adds a fourth below the lowest', () => {
+    const six = formFromTrack(guitar());
+    expect(setStringCount(six, 5).strings).toEqual([64, 59, 55, 50, 45]);
+    const eight = setStringCount(six, 8);
+    expect(eight.strings).toEqual([64, 59, 55, 50, 45, 40, 35, 30]);
+    expect(setStringCount(six, 6)).toBe(six);
+  });
+});
+
+describe('add mode', () => {
+  it('starts from the model defaults with nothing edited', () => {
+    const form = newTrackForm('fretted');
+    expect(form).toMatchObject({ kind: 'fretted', name: 'Guitar', program: 25, capo: '0' });
+    expect(newTrackForm('drums').strings).toEqual([]);
+  });
+
+  it('lets a bass preset rename, re-short and re-program what is untouched', () => {
+    const form = applyPreset(newTrackForm('fretted'), 'Bass standard', true);
+    expect(form).toMatchObject({ name: 'Bass', shortName: 'Bs.', program: 33 });
+    expect(
+      applyPreset(setName(newTrackForm('fretted'), 'Mine'), 'Bass standard', true),
+    ).toMatchObject({
+      name: 'Mine',
+      shortName: 'Mine.',
+    });
+    expect(applyPreset(form, 'Ukulele standard', true).program).toBe(24);
+  });
+
+  it('does not touch the name when editing an existing track', () => {
+    const edited = applyPreset(formFromTrack(guitar()), 'Bass standard', false);
+    expect(edited.name).toBe('Guitar');
+  });
+
+  it('builds addTrack properties with strings and capo only for a fretted track', () => {
+    expect(newTrackProperties({ ...newTrackForm('fretted'), capo: '2' })).toMatchObject({
+      tuning: [...STANDARD_TUNING],
+      capo: 2,
+    });
+    expect(newTrackProperties(newTrackForm('drums'))).not.toHaveProperty('tuning');
+  });
+
+  it('keeps a chosen colour across a kind change', () => {
+    const form = { ...newTrackForm('fretted'), color: '#123456' };
+    expect(changeKind(form, 'drums')).toMatchObject({ kind: 'drums', color: '#123456' });
+    expect(changeKind(newTrackForm('fretted'), 'drums').color).toBe(newTrackForm('drums').color);
+  });
+});
+
+describe('validateTrackForm', () => {
+  it('requires a name and a short name, a #rrggbb colour and a capo within the neck', () => {
+    const form = {
+      ...newTrackForm('fretted'),
+      name: ' ',
+      shortName: '',
+      color: 'red',
+      capo: '25',
+    };
+    expect(Object.keys(validateTrackForm(form)).sort()).toEqual([
+      'capo',
+      'color',
+      'name',
+      'shortName',
+    ]);
+    expect(validateTrackForm({ ...newTrackForm('fretted'), capo: '1.5' }).capo).toBeDefined();
+    expect(validateTrackForm(newTrackForm('fretted'))).toEqual({});
+  });
+
+  it('skips string and capo checks for a drum track', () => {
+    expect(validateTrackForm({ ...newTrackForm('drums'), capo: 'x' })).toEqual({});
+  });
+});
+
+describe('the notes on dropped strings', () => {
+  const built = score()
+    .track('guitar', { tuning: [35, 40, 45, 50, 55, 59, 64] })
+    .bar()
+    .beat('4', [note(1, 0), note(7, 3)])
+    .bar()
+    .beat('4', [note(6, 2)])
+    .bar()
+    .beat('4', [note(7, 1), note(6, 5)])
+    .bar()
+    .beat('4', [note(7, 1)])
+    .build();
+  const seven = built.tracks[0] ?? guitar();
+
+  it('names the strings and bars', () => {
+    expect(droppedStringsMessage(seven, 6)).toBe('String 7 has notes in bars 1, 3–4');
+    expect(droppedStringsMessage(seven, 5)).toBe(
+      'String 6 has notes in bars 2–3; String 7 has notes in bars 1, 3–4',
+    );
+  });
+
+  it('is undefined when the dropped strings are empty', () => {
+    expect(droppedStringsMessage(seven, 7)).toBeUndefined();
+  });
+
+  it('refuses the form that drops them', () => {
+    const form = setStringCount(formFromTrack(seven), 6);
+    expect(validateTrackForm(form, seven).strings).toMatch(/String 7 has notes in bars 1, 3–4/);
+  });
+
+  it('tells a track with notes from an empty one', () => {
+    expect(trackHasNotes(built, built.tracks[0]?.id ?? '')).toBe(true);
+    expect(trackHasNotes(score().track('guitar').bar().build(), 'x')).toBe(false);
+  });
+});
+
+describe('noteLabel', () => {
+  it.each([
+    [40, 'E2'],
+    [58, 'A♯3'],
+    [60, 'C4'],
+    [12, 'C0'],
+  ])('%i is %s', (midi, label) => {
+    expect(noteLabel(midi)).toBe(label);
+  });
+});
