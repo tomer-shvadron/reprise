@@ -93,6 +93,44 @@ describe('previewNote', () => {
   });
 });
 
+describe('previewNote options', () => {
+  const capoed: Track = { ...guitarTrack, capo: 2 };
+
+  it('resolves a fret through the track tuning and capo', async () => {
+    const context = offline(1);
+    const sampler = new Sampler(context);
+    sampler.addTrack(capoed, sineInstrument());
+
+    sampler.previewNote(capoed.id, { string: 2, fret: 5 });
+    const data = (await context.startRendering()).getChannelData(0);
+
+    const expected = midiToFrequency(midiNote(capoed, { string: 2, fret: 5 }));
+    expect(midiNote(capoed, { string: 2, fret: 5 })).toBe(
+      midiNote(guitarTrack, { string: 2, fret: 7 }),
+    );
+    expect(Math.abs(cents(zeroCrossingFrequency(data, 0.1, 0.5), expected))).toBeLessThan(1);
+  });
+
+  it('sounds a bare pitch, and the velocity and length it is given', async () => {
+    const context = offline(1);
+    const sampler = new Sampler(context);
+    sampler.addTrack(guitarTrack, sineInstrument());
+
+    const voice = sampler.previewNote(
+      guitarTrack.id,
+      { pitch: 72 },
+      { velocity: 127, seconds: 0.2 },
+    );
+    const data = (await context.startRendering()).getChannelData(0);
+
+    expect(
+      Math.abs(cents(zeroCrossingFrequency(data, 0.05, 0.15), midiToFrequency(72))),
+    ).toBeLessThan(1);
+    expect(voice?.endTime).toBeLessThan(0.5);
+    expect(toneLevel(data, midiToFrequency(72), 0.6, 1)).toBeLessThan(0.001);
+  });
+});
+
 describe('createSamplerSink', () => {
   it('plays scheduler events, letting a let-ring note ring to the next note on its string', async () => {
     const context = offline(1.5);
