@@ -87,6 +87,35 @@ describe('transport commands', () => {
     expect(services.playback.getState().settings.loop).toEqual(range);
   });
 
+  it('loop the clicked bar, and keep a loop through a seek-click inside it', async () => {
+    const { services, run } = await setup(fourBars());
+    const bars = services.document.getState().score?.masterBars ?? [];
+    const id = (index: number) => bars[index]?.id ?? '';
+    services.selection.getState().selectBars(undefined, id(2));
+    await run('transport.toggleLoop');
+    expect(services.playback.getState().settings.loop).toEqual({
+      startBar: id(2),
+      endBar: id(2),
+    });
+    services.selection.getState().selectBars(undefined, id(2));
+    expect(services.playback.getState().settings.loop).toEqual({
+      startBar: id(2),
+      endBar: id(2),
+    });
+    await run('transport.toggleLoop');
+    expect(services.playback.getState().settings.loop).toBeUndefined();
+  });
+
+  it('prefer a drag selection over the clicked bar', async () => {
+    const { services, run } = await setup(fourBars());
+    const bars = services.document.getState().score?.masterBars ?? [];
+    const range = { startBar: bars[1]?.id ?? '', endBar: bars[2]?.id ?? '' };
+    services.selection.getState().selectBars(undefined, bars[3]?.id);
+    services.selection.getState().selectBars(range, bars[1]?.id);
+    await run('transport.toggleLoop');
+    expect(services.playback.getState().settings.loop).toEqual(range);
+  });
+
   it('announce an unloopable range and keep the loop off', async () => {
     const { services, run } = await setup(fourBars());
     const bars = services.document.getState().score?.masterBars ?? [];

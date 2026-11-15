@@ -89,7 +89,11 @@ export function transportCommands(services: TransportServices): TransportCommand
           audio.setLoop(undefined);
           return;
         }
-        const failed = applyLoop(services, score, selection.getState().bars ?? wholeSong(score));
+        // A plain click records only `barsAnchor`; looping that bar beats the whole song, and not
+        // selecting on click keeps a seek-click inside a loop from narrowing it.
+        const { bars, barsAnchor } = selection.getState();
+        const clicked = barsAnchor ? { startBar: barsAnchor, endBar: barsAnchor } : undefined;
+        const failed = applyLoop(services, score, bars ?? clicked ?? wholeSong(score));
         if (failed) transport.getState().announce(failed);
       },
     },
