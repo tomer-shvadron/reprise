@@ -141,7 +141,10 @@ export class Voice {
   readonly velocity: number;
   readonly string: number;
   readonly startTime: number;
-  readonly exclusiveClass: number;
+  /** The group this voice's note chokes others with, and the one that chokes this voice. */
+  readonly group: number;
+  readonly offBy: number;
+  readonly oneShot: boolean;
   readonly instrument: RegionMap | undefined;
   letRing = false;
 
@@ -182,7 +185,9 @@ export class Voice {
     this.velocity = start.velocity;
     this.string = start.string ?? 0;
     this.startTime = when;
-    this.exclusiveClass = region.exclusiveClass ?? 0;
+    this.group = region.group ?? region.exclusiveClass ?? 0;
+    this.offBy = region.offBy ?? region.exclusiveClass ?? 0;
+    this.oneShot = region.oneShot ?? false;
     this.instrument = start.instrument;
     this.#region = region;
     this.#delay = Math.max(envelope.delay ?? 0, 0);
@@ -197,8 +202,9 @@ export class Voice {
     source.playbackRate.value = this.#rate;
     if (region.loop) {
       source.loop = true;
-      source.loopStart = region.loop.start;
-      source.loopEnd = region.loop.end;
+      const unit = region.loop.unit === 'frames' ? buffer.sampleRate : 1;
+      source.loopStart = region.loop.start / unit;
+      source.loopEnd = region.loop.end / unit;
     }
     this.#source = source;
 
@@ -221,7 +227,8 @@ export class Voice {
             Math.max(0, (region.attenuation ?? 0) + deltas.attenuationDb),
           ),
         )
-      : velocityGain(start.velocity) * dbToGain(-(region.attenuation ?? 0));
+      : velocityGain(start.velocity) ** (region.velocityTrack ?? 1) *
+        dbToGain(-(region.attenuation ?? 0));
     this.#level.gain.setValueAtTime(this.#baseLevel, when);
     this.#gainEvents = [{ at: when, value: this.#baseLevel, ramp: false }];
 
@@ -240,7 +247,10 @@ export class Voice {
     tail.connect(destination);
     this.#scheduleEnvelope(when + this.#delay);
 
-    const offset = Math.min(Math.max(0, start.offset ?? 0), buffer.duration);
+    const offset = Math.min(
+      Math.max(0, (start.offset ?? 0) + (region.startFrame ?? 0) / buffer.sampleRate),
+      buffer.duration,
+    );
     this.#playable = buffer.duration - offset;
     if (!region.loop) this.#end = when + this.#playable / this.#rate;
     source.addEventListener('ended', () => {
@@ -268,7 +278,13 @@ export class Voice {
     return !this.#ended && time >= this.startTime && time < this.#end;
   }
 
+  /** A note-off; a one-shot ignores it and plays to the end of its sample. */
   release(at: number): void {
+    if (!this.oneShot) this.#fadeOut(at, this.#releaseTime, SILENCE);
+  }
+
+  /** Releases whatever the voice is, one-shot included: stop and seek silence a drum tail. */
+  stop(at: number): void {
     this.#fadeOut(at, this.#releaseTime, SILENCE);
   }
 
