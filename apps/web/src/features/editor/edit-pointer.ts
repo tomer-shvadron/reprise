@@ -7,7 +7,7 @@ import type { EditCursor, EditRange, SelectionState, SelectionStore } from '@/st
 
 import { cursorAtPosition, defaultStaff } from './cursor';
 import { cursorFromHit, locate } from './locate';
-import { endOf, extendRangeTo, rangePatch } from './range';
+import { endOf, extendBeatsTo, extendRangeTo, rangeBetween, rangePatch } from './range';
 import { scoreIndex } from '@/features/score';
 import { visibleTracks, wantedNotation } from './visible';
 
@@ -99,7 +99,7 @@ export function createEditPointer(deps: EditPointerDeps) {
       const cursor = hit && cursorFromHit(score, hit);
       if (!hit || !cursor) return false;
       if (gesture.shift) {
-        write(score, cursor, extendRangeTo(state, endOf(cursor)));
+        write(score, cursor, extendBeatsTo(score, state, cursor));
       } else if (mod(event) && hit.note !== undefined) {
         const noteIds = state.selection.noteIds ?? [];
         const toggled = noteIds.includes(hit.note)
@@ -146,7 +146,7 @@ export function createEditPointer(deps: EditPointerDeps) {
     const from = fromHit && cursorFromHit(score, fromHit);
     const to = toHit && cursorFromHit(score, toHit);
     if (!from || !to) return false;
-    write(score, to, { kind: 'beats', anchor: endOf(from), focus: endOf(to) });
+    write(score, to, rangeBetween(score, from, to));
     return done;
   };
 }

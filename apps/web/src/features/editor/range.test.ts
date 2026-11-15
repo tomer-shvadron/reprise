@@ -6,7 +6,7 @@ import {
   removeTrack,
   type Score,
 } from '@reprise/model';
-import { beatOf } from '@reprise/model/testing';
+import { beatOf, note, score as buildScore } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import type { EditCursor, EditRange } from '@/state/selection';
@@ -17,8 +17,10 @@ import {
   barRangeOf,
   editTarget,
   endOf,
+  extendBeatsTo,
   extendRange,
   extendRangeTo,
+  rangeBetween,
   rangeBars,
   rangeBeats,
   rangePatch,
@@ -151,12 +153,18 @@ describe('extendRange', () => {
 
   it('extends to a clicked end', () => {
     const end = { track: guitar ?? '', masterBar: bar(1), beat: beatId(0, 1, 1) };
-    expect(extendRangeTo(state(cursor), end)).toEqual({
+    const target = cursorAtPosition(
+      score,
+      { track: 0, bar: 1, voice: 0, stop: 1 },
+      { string: 1, staff: 'tab' },
+    ) as EditCursor;
+    expect(extendBeatsTo(score, state(cursor), target)).toEqual({
       kind: 'beats',
       anchor: endOf(cursor),
       focus: end,
     });
-    expect(extendRangeTo(state(undefined), end)).toBeUndefined();
+    expect(extendBeatsTo(score, state(undefined), target)).toBeUndefined();
+    expect(extendRangeTo(state(undefined), end, 'bars')).toBeUndefined();
     expect(extendRangeTo(state(cursor), end, 'bars')?.focus.beat).toBeUndefined();
   });
 });
@@ -290,5 +298,90 @@ describe('reconcile', () => {
       currentTrack: guitar,
     });
     expect(patch?.selection).toEqual({ noteIds: [live] });
+  });
+});
+
+describe('a range with an end slot as an end', () => {
+  // Bar 2 holds one half note and then an end slot; bars 1 and 3 are full of beats.
+  const built = (() => {
+    const b = buildScore().track('guitar');
+    b.bar()
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 1)])
+      .beat('4', [note(1, 2)])
+      .beat('4', [note(1, 3)]);
+    b.bar().beat('2', [note(2, 5)]);
+    b.bar()
+      .beat('4', [note(3, 1)])
+      .beat('4', [note(3, 2)]);
+    return b.build({ ids: 'sequential' });
+  })();
+  const id = (bar: number, beat: number) => beatOf(built, 0, bar, beat).id;
+  const at = (bar: number, stop: number) =>
+    cursorAtPosition(
+      built,
+      { track: 0, bar, voice: 0, stop },
+      { string: 1, staff: 'tab' },
+    ) as EditCursor;
+  const visibleIds = [built.tracks[0]?.id ?? ''];
+  const ids = (r: EditRange) =>
+    rangeBeats(built, r, visibleIds).flatMap((p) => p.beats.map((x) => x.id));
+
+  it('Shift+Right from an end slot starts at the next bar, not the beats behind the cursor', () => {
+    const slot = at(1, 1);
+    expect(slot.beat).toBeUndefined();
+    const out = extendRange(built, { cursor: slot, range: undefined }, 'next', visibleIds);
+    expect(out?.range.anchor.beat).toBe(id(2, 0));
+    expect(ids(out?.range as EditRange)).toEqual([id(2, 0)]);
+    const more =
+      out && extendRange(built, { cursor: out.cursor, range: out.range }, 'next', visibleIds);
+    expect(ids(more?.range as EditRange)).toEqual([id(2, 0), id(2, 1)]);
+  });
+
+  it('Shift+Left from an end slot takes the last beat of its own bar, not the whole bar', () => {
+    const slot = at(1, 1);
+    const out = extendRange(built, { cursor: slot, range: undefined }, 'previous', visibleIds);
+    expect(out?.range.anchor.beat).toBe(id(1, 0));
+    expect(ids(out?.range as EditRange)).toEqual([id(1, 0)]);
+    const full = at(0, 3);
+    const start = extendRange(
+      built,
+      { cursor: at(1, 1), range: undefined },
+      'previous',
+      visibleIds,
+    );
+    expect(start?.cursor.beat).toBe(id(1, 0));
+    expect(full.beat).toBe(id(0, 3));
+  });
+
+  it('a focus that lands on an end slot extends one beat at a time over it', () => {
+    // Anchor on bar 3's first beat, then Shift+Left: onto the slot (just before the anchor) and past it.
+    const anchor = at(2, 0);
+    const first = extendRange(built, { cursor: anchor, range: undefined }, 'previous', visibleIds);
+    expect(first?.cursor.beat).toBeUndefined();
+    expect(ids(first?.range as EditRange)).toEqual([id(2, 0)]);
+    const second =
+      first &&
+      extendRange(built, { cursor: first.cursor, range: first.range }, 'previous', visibleIds);
+    expect(ids(second?.range as EditRange)).toEqual([id(1, 0), id(2, 0)]);
+  });
+
+  it('Shift+click and a drag resolve end slots the same way', () => {
+    const slot = at(1, 1);
+    const click = extendBeatsTo(built, { cursor: slot, range: undefined }, at(2, 1));
+    expect(ids(click as EditRange)).toEqual([id(2, 0), id(2, 1)]);
+    const drag = rangeBetween(built, at(2, 1), slot);
+    expect(ids(drag)).toEqual([id(2, 0), id(2, 1)]);
+    expect(ids(rangeBetween(built, slot, at(0, 2)))).toEqual([id(0, 2), id(0, 3), id(1, 0)]);
+  });
+
+  it('falls back to the whole bar where no neighbouring beat exists', () => {
+    const empty = cursorAtPosition(
+      score,
+      { track: 0, bar: 2, voice: 0, stop: 0 },
+      { string: 1, staff: 'tab' },
+    ) as EditCursor;
+    const out = extendRange(score, { cursor: empty, range: undefined }, 'previous', visible);
+    expect(out?.range.anchor.beat).toBeUndefined();
   });
 });

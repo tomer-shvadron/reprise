@@ -3,7 +3,7 @@ import { beatTicks, type Beat, type Id, type Score, type Selection } from '@repr
 import { scoreIndex } from '@/features/score';
 import type { BarRange, EditCursor, EditRange, RangeEnd, SelectionState } from '@/state/selection';
 
-import { cursorAtPosition, resolveCursor } from './cursor';
+import { cursorAtPosition, cursorTick, resolveCursor } from './cursor';
 import { move, moveTrack, type Step } from './navigation';
 
 const EPSILON = 1e-6;
@@ -145,13 +145,66 @@ export function rangePatch(score: Score, range: EditRange | undefined): EditPatc
   };
 }
 
-/** The end of a range a cursor stands for: its beat, or its whole bar when it is on an end slot or `kind` is bars. */
+/**
+ * The end of a range a cursor stands for: its beat, or its whole bar when `kind` is bars. A
+ * cursor on an end slot has no beat; `endAt` names one for a beats range.
+ */
 export function endOf(cursor: EditCursor, kind: EditRange['kind'] = 'beats'): RangeEnd {
   return {
     track: cursor.track,
     masterBar: cursor.masterBar,
     beat: kind === 'bars' ? undefined : cursor.beat,
   };
+}
+
+/** Where a cursor stands in time: its bar and the ticks into it. */
+function timeOf(score: Score, cursor: EditCursor): TimePoint | undefined {
+  const at = resolveCursor(score, cursor);
+  const tick = cursorTick(score, cursor);
+  return at && tick !== undefined ? { bar: at.bar, tick } : undefined;
+}
+
+/**
+ * The end of a beats range for a cursor. A beat names itself. An end slot sits after the voice's
+ * last beat, and `RangeEnd` cannot name a slot, so it takes a neighbouring beat instead: as the
+ * earlier end, the first beat of the following bar (the slot is just before it); as the later
+ * end, the last beat of its own bar (just behind it). Where no such beat exists it widens to the
+ * whole bar, which the range then covers entirely.
+ */
+function endAt(score: Score, cursor: EditCursor, earlier: boolean): RangeEnd {
+  if (cursor.beat !== undefined) return endOf(cursor);
+  const at = resolveCursor(score, cursor);
+  const track = at && score.tracks[at.track];
+  if (!at || !track) return endOf(cursor);
+  if (earlier) {
+    const next = track.bars[at.bar + 1]?.voices[at.voice]?.beats[0];
+    const masterBar = score.masterBars[at.bar + 1];
+    if (next && masterBar) return { track: cursor.track, masterBar: masterBar.id, beat: next.id };
+  } else {
+    const last = track.bars[at.bar]?.voices[at.voice]?.beats.at(-1);
+    if (last) return { track: cursor.track, masterBar: cursor.masterBar, beat: last.id };
+  }
+  return endOf(cursor);
+}
+
+const isBefore = (a: TimePoint | undefined, b: TimePoint | undefined): boolean =>
+  a !== undefined && b !== undefined && compare(a, b) < 0;
+
+/** A beats range between two cursors, each end slot resolved by which end is earlier. */
+export function rangeBetween(score: Score, from: EditCursor, to: EditCursor): EditRange {
+  const a = timeOf(score, from);
+  const f = timeOf(score, to);
+  return {
+    kind: 'beats',
+    anchor: endAt(score, from, isBefore(a, f)),
+    focus: endAt(score, to, isBefore(f, a)),
+  };
+}
+
+/** `range` with its focus moved to `to`, the anchor kept. */
+function moveFocus(score: Score, range: EditRange, to: EditCursor): EditRange {
+  const anchor = endSpan(score, range.anchor);
+  return { ...range, focus: endAt(score, to, isBefore(timeOf(score, to), anchor?.start)) };
 }
 
 export type ExtendStep =
@@ -178,11 +231,28 @@ export function extendRange(
         ? moveTrack(score, cursor, visible, 1)
         : move(score, cursor, step);
   if (!next) return undefined;
+  if (kind === 'beats') {
+    const range =
+      state.range?.kind === 'beats'
+        ? moveFocus(score, state.range, next)
+        : rangeBetween(score, cursor, next);
+    return { range, cursor: next };
+  }
   const anchor = state.range?.kind === kind ? state.range.anchor : endOf(cursor, kind);
   return { range: { kind, anchor, focus: endOf(next, kind) }, cursor: next };
 }
 
-/** Extends the range to `end` (Shift+click), from the existing anchor or the cursor. */
+/** Extends a beats range to the cursor `to` (Shift+click or a drag), from the existing anchor or the cursor. */
+export function extendBeatsTo(
+  score: Score,
+  state: Pick<SelectionState, 'cursor' | 'range'>,
+  to: EditCursor,
+): EditRange | undefined {
+  if (state.range?.kind === 'beats') return moveFocus(score, state.range, to);
+  return state.cursor && rangeBetween(score, state.cursor, to);
+}
+
+/** Extends a bars range to `end` (Shift+click on a bar area), from the existing anchor or the cursor. */
 export function extendRangeTo(
   state: Pick<SelectionState, 'cursor' | 'range'>,
   end: RangeEnd,
