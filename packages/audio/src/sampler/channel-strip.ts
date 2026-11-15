@@ -1,4 +1,22 @@
+import { BypassSlot, realtimeDefer } from '../effects/bypass-slot';
+import type { Defer } from '../effects/bypass-slot';
+import { EffectsChain } from '../effects/chain';
+import { INLINE_STAGES } from '../effects/presets';
+import type { EffectSpec } from '../effects/presets';
+import { ImpulseBank } from '../effects/reverb-bus';
+
 const PARAM_SMOOTHING = 0.005;
+/** A send at zero this long is disconnected, its fade-out long done. */
+const SEND_IDLE_SECONDS = 0.1;
+
+/** What a strip needs to build effects; the sampler shares one bank and one reverb bus. */
+export interface StripEffects {
+  /** The shared impulse responses, made on first use. */
+  impulses(): ImpulseBank;
+  /** The input of the shared reverb bus, made on first use; the strip's post-pan send feeds it. */
+  reverb(): AudioNode;
+  defer: Defer;
+}
 
 export interface StripSettings {
   /** Linear gain. */
@@ -56,8 +74,9 @@ function addTarget(targets: Target[], next: Target, now: number): Target[] {
 
 /**
  * input -> mute gate -> insert (input, output) -> fader -> panner -> master, and previewInput
- * joining at the insert, past the gate. The insert pair is wired straight through until the
- * effects chain replaces the connection between them.
+ * joining at the insert, past the gate. Between the insert pair is a gain-1 direct connection and,
+ * while the track has an effects chain, the chain beside it (a `BypassSlot` crossfades them). A
+ * post-pan send feeds the shared reverb bus. A strip with no chain is the direct connection only.
  */
 export class ChannelStrip {
   readonly input: GainNode;
@@ -74,9 +93,23 @@ export class ChannelStrip {
   #panTargets: Target[] = [{ at: -Infinity, end: -Infinity, value: 0 }];
   #mute = false;
   #solo = false;
+  readonly #effects: StripEffects;
+  readonly #slot: BypassSlot;
+  #chain: EffectsChain | undefined;
+  #spec = '{}';
+  #send: GainNode | undefined;
+  #sendLevel = 0;
 
-  constructor(context: BaseAudioContext, destination: AudioNode) {
+  constructor(context: BaseAudioContext, destination: AudioNode, effects?: StripEffects) {
     this.#context = context;
+    let own: ImpulseBank | undefined;
+    this.#effects = effects ?? {
+      impulses: () => (own ??= new ImpulseBank(context)),
+      reverb: () => {
+        throw new Error('ChannelStrip: no reverb bus');
+      },
+      defer: realtimeDefer(context),
+    };
     this.input = context.createGain();
     this.previewInput = context.createGain();
     this.insert = { input: context.createGain(), output: context.createGain() };
@@ -85,8 +118,84 @@ export class ChannelStrip {
     this.#gate = context.createGain();
     this.input.connect(this.#gate).connect(this.insert.input);
     this.previewInput.connect(this.insert.input);
-    this.insert.input.connect(this.insert.output);
+    this.#slot = new BypassSlot(
+      context,
+      this.insert.input,
+      this.insert.output,
+      this.#effects.defer,
+    );
     this.insert.output.connect(this.#fader).connect(this.#panner).connect(destination);
+  }
+
+  /** The effects chain while the track has one: its stages, or `undefined` for the direct path. */
+  get chain(): EffectsChain | undefined {
+    return this.#chain;
+  }
+
+  /** The send into the reverb bus, while it is connected. */
+  get reverbSend(): GainNode | undefined {
+    return this.#send;
+  }
+
+  /**
+   * Moves the strip to `spec`: builds, changes or drops the chain (a switch is a 20 ms crossfade,
+   * and an idle path is disconnected after it), and sets the reverb send. A spec with no insert
+   * stage leaves the direct connection alone, which is bit-identical to a strip with no effects.
+   */
+  setEffects(spec: EffectSpec | undefined): void {
+    const key = JSON.stringify(spec ?? {});
+    if (key === this.#spec) return;
+    this.#spec = key;
+    const inline = spec !== undefined && INLINE_STAGES.some((stage) => spec[stage] !== undefined);
+    if (spec && inline) {
+      // One stage's switch is its own crossfade. A preset change moves several at once, whose
+      // levels differ mid-fade, so it swaps the whole chain through the direct path instead.
+      if (this.#chain && this.#chain.stagesChangedBy(spec) <= 1) this.#chain.apply(spec);
+      else {
+        const chain = new EffectsChain(
+          this.#context,
+          this.#effects.impulses(),
+          this.#effects.defer,
+        );
+        chain.apply(spec, true);
+        this.#chain = chain;
+        this.#slot.set(() => ({
+          head: chain.input,
+          tail: chain.output,
+          dispose: () => {
+            chain.dispose();
+          },
+        }));
+      }
+    } else if (this.#chain) {
+      this.#chain = undefined;
+      this.#slot.set(undefined);
+    }
+    this.#setSend(spec?.reverb?.send ?? 0);
+  }
+
+  #setSend(level: number): void {
+    this.#sendLevel = level;
+    if (level > 0) {
+      if (!this.#send) {
+        const send = this.#context.createGain();
+        send.gain.value = 0;
+        this.#panner.connect(send);
+        send.connect(this.#effects.reverb());
+        this.#send = send;
+      }
+      smooth(this.#send.gain, level, this.#context);
+      return;
+    }
+    const send = this.#send;
+    if (!send) return;
+    smooth(send.gain, 0, this.#context);
+    this.#effects.defer(this.#context.currentTime + SEND_IDLE_SECONDS, () => {
+      if (this.#send !== send || this.#sendLevel > 0) return;
+      this.#panner.disconnect(send);
+      send.disconnect();
+      this.#send = undefined;
+    });
   }
 
   get mute(): boolean {
@@ -172,6 +281,8 @@ export class ChannelStrip {
   }
 
   dispose(): void {
+    // First: it disconnects its own edges from the insert, which the loop below would sever.
+    this.#slot.dispose();
     for (const node of [
       this.input,
       this.previewInput,
@@ -183,6 +294,9 @@ export class ChannelStrip {
     }
     this.#panner.disconnect();
     this.#gate.disconnect();
+    this.#chain = undefined;
+    this.#send?.disconnect();
+    this.#send = undefined;
   }
 }
 

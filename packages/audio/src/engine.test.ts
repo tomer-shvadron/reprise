@@ -583,3 +583,121 @@ describe('createAudioEngine', () => {
     60_000,
   );
 });
+
+describe('effects chains', () => {
+  /** Program 30 (distortion family) on a GM track. */
+  const guitar = (sound?: { preset?: string; packId?: string }) => {
+    const song = quarters(2);
+    const id = trackOf(song);
+    return {
+      id,
+      song: sound
+        ? applyCommand(song, setTrackProperties({ trackId: id }, { program: 30, sound })).score
+        : applyCommand(song, setTrackProperties({ trackId: id }, { program: 30 })).score,
+    };
+  };
+
+  it('leaves a GM track bare by default and builds the family chain once the bypass is off', async () => {
+    const { id, song } = guitar();
+    const { engine, live } = await setup();
+    await engine.load(song, GM);
+    engine.unlock();
+    const strip = live().sampler.strip(id);
+    expect(strip?.chain).toBeUndefined();
+    expect(strip?.reverbSend).toBeUndefined();
+
+    engine.setGmTierBypass(false);
+    expect(strip?.chain?.active).toEqual(['input', 'drive', 'tone', 'cabinet', 'output']);
+    expect(strip?.reverbSend).toBeDefined();
+
+    engine.setGmTierBypass(true);
+    expect(strip?.chain).toBeUndefined();
+    engine.dispose();
+  });
+
+  it('applies a preset the track names even with the GM tier bypass on', async () => {
+    const { id, song } = guitar({ preset: 'fuzz' });
+    const { engine, live } = await setup();
+    await engine.load(song, GM);
+    engine.unlock();
+    expect(live().sampler.strip(id)?.chain?.active).toContain('drive');
+    engine.dispose();
+  });
+
+  it('applies a preset-only sound edit at once, with no rebuild and no stop', async () => {
+    const { id, song } = guitar();
+    const { engine, states, render, live } = await setup({ seconds: 1.4 });
+    await engine.load(song, GM);
+    engine.play();
+    const { sampler, transport } = live();
+    const load = vi.spyOn(transport, 'load');
+    let statesAt = 0;
+    let chain: string[] | undefined;
+
+    await render([
+      {
+        at: 1,
+        run: () => {
+          statesAt = states.length;
+          const next = applyCommand(
+            song,
+            setTrackProperties({ trackId: id }, { sound: { preset: 'overdrive' } }),
+          ).score;
+          void engine.load(next, GM);
+          chain = sampler.strip(id)?.chain?.active;
+        },
+      },
+    ]);
+
+    expect(load).not.toHaveBeenCalled();
+    expect(states.slice(statesAt)).toEqual([]);
+    expect(chain).toContain('drive');
+    engine.dispose();
+  });
+
+  it('rebuilds for a sound pack change', async () => {
+    const { id, song } = guitar();
+    const { engine, live } = await setup();
+    await engine.load(song, GM);
+    engine.unlock();
+    const load = vi.spyOn(live().transport, 'load');
+    const next = applyCommand(
+      song,
+      setTrackProperties({ trackId: id }, { sound: { packId: 'steelpack001' } }),
+    ).score;
+    await engine.load(next, GM);
+    expect(load).toHaveBeenCalled();
+    engine.dispose();
+  });
+
+  it('keeps a stage bypass through an edit and clears it on unload', async () => {
+    const { id, song } = guitar({ preset: 'distortion' });
+    const { engine, live } = await setup();
+    await engine.load(song, GM);
+    engine.unlock();
+    const strip = live().sampler.strip(id);
+    engine.setStageBypass(id, 'cabinet', true);
+    expect(strip?.chain?.active).toEqual(['input', 'drive', 'tone', 'output']);
+
+    const renamed = applyCommand(song, setTrackProperties({ trackId: id }, { name: 'Lead' })).score;
+    await engine.load(renamed, GM);
+    expect(live().sampler.strip(id)?.chain?.active).toEqual(['input', 'drive', 'tone', 'output']);
+
+    engine.setStageBypass(id, 'cabinet', false);
+    expect(live().sampler.strip(id)?.chain?.active).toContain('cabinet');
+    engine.setStageBypass(id, 'drive', true);
+    engine.unload();
+    await engine.load(song, GM);
+    expect(live().sampler.strip(id)?.chain?.active).toContain('drive');
+    engine.dispose();
+  });
+
+  it('uses the family preset on a track with a pack assigned, the HQ tier', async () => {
+    const { id, song } = guitar();
+    const { engine, live } = await setup();
+    await engine.load(song, { tier: 'hq', packs: [{ trackId: id, packId: 'steelpack001' }] });
+    engine.unlock();
+    expect(live().sampler.strip(id)?.chain?.active).toContain('drive');
+    engine.dispose();
+  });
+});

@@ -40,6 +40,7 @@ describe('timelineNeutral', () => {
     ['name', { name: 'Lead' }],
     ['colour', { color: '#123456' }],
     ['display', { display: { notation: 'both' as const } }],
+    ['effects preset', { sound: { preset: 'distortion' } }],
   ])('is true for a %s change and its undo', (_, changes) => {
     const before = song();
     const { after, undone } = edit(before, (s) => setTrackProperties(first(s), changes));
@@ -52,11 +53,29 @@ describe('timelineNeutral', () => {
     ['tuning', { tuning: [40, 45, 50, 55, 59, 62] }],
     ['capo', { capo: 2 }],
     ['bank', { bank: 1 }],
-    ['sound', { sound: { preset: 'Steel' } }],
+    ['sound pack', { sound: { packId: 'steelpack001' } }],
   ])('is false for a %s change', (_, changes) => {
     const before = song();
     const { after } = edit(before, (s) => setTrackProperties(first(s), changes));
     expect(timelineNeutral(before, after)).toBe(false);
+  });
+
+  it('is neutral when only the preset of a sound override changes, and not when its pack does', () => {
+    const base = song();
+    const withPack = edit(base, (s) =>
+      setTrackProperties(first(s), { sound: { packId: 'steelpack001', preset: 'clean' } }),
+    ).after;
+    const presetOnly = edit(withPack, (s) =>
+      setTrackProperties(first(s), { sound: { packId: 'steelpack001', preset: 'fuzz' } }),
+    );
+    expect(timelineNeutral(withPack, presetOnly.after)).toBe(true);
+    expect(timelineNeutral(presetOnly.after, presetOnly.undone)).toBe(true);
+    const removed = edit(withPack, (s) => setTrackProperties(first(s), { sound: null })).after;
+    expect(timelineNeutral(withPack, removed)).toBe(false);
+    const otherPack = edit(withPack, (s) =>
+      setTrackProperties(first(s), { sound: { packId: 'steelpack002', preset: 'clean' } }),
+    ).after;
+    expect(timelineNeutral(withPack, otherPack)).toBe(false);
   });
 
   it('is false for note, track-list and master-bar edits', () => {

@@ -52,7 +52,9 @@ Acoustic guitar is the weak spot: Pianobook's MDM Acoustic Guitar exists with a 
 
 ## Impulse responses
 
-- **Cabinets**: free packs exist (God's Cab, Metal Cabs by Erik Ekholm, Origin Effects' library, forward audio faIR) but their terms are "free to use", not "free to redistribute". They are user-downloaded through the pack manager, never bundled. For the bundled defaults, generate a few synthetic cabinet-like responses (filtered noise bursts with a short decay) or source CC0 ones and record their provenance here.
+- **Cabinets**: free packs exist (God's Cab, Metal Cabs by Erik Ekholm, Origin Effects' library, forward audio faIR) but their terms are "free to use", not "free to redistribute". They are user-downloaded through the pack manager, never bundled. The bundled defaults are generated, not sourced (WP-092): see Bundled impulse responses below.
+
+**Bundled impulse responses.** Three cabinets (`open-1x12`, `closed-2x12`, `closed-4x12`) and one stereo room (1.4 s) are generated at runtime by `packages/audio/src/effects/impulses.ts` from fixed seeds, at the audio context's sample rate. No recording, no third-party material and no file is committed or fetched, so no licence entry is needed (`fixtures/LICENSES.md` does not apply: these are not fixtures). They hold under 2 MB resident. A recorded cabinet set is still the user-download path above.
 - **Reverb**: the OpenAIR library is Creative Commons; confirm the specific license per file before bundling one small room response.
 
 ## Pack manifest fields (for WP-091)

@@ -239,6 +239,8 @@ objects (`context`, `sampler`, `source`, `bank`, `transport`); it is not part of
 
 ### Known gaps
 
+- Effects presets are not driven by CC91/CC93 (`channel.reverb`, `channel.chorus`) or a beat's
+  `mix` reverb and chorus: the reverb send and chorus depth come from the preset only (#235).
 - The memory budget has no setter on the engine; it arrives with the HQ tier (phase 3, WP-094).
   The architecture's Memory model section describes the HQ default, 300 MB.
 - `previewNote` of a sample not yet decoded requests its decode (a miss) and starts the note when
@@ -309,8 +311,9 @@ plug in.
                                        the mod envelope closes it           automation
 
  per track (ChannelStrip)
- input -> Gain (mute/solo gate) -> insert.input -> insert.output -> Gain (volume) -> StereoPanner -> master
- previewInput ---------------------^        (effects, WP-092; straight through now)
+ input -> Gain (mute/solo gate) -> insert.input -+-> direct (Gain 1) ---------+-> insert.output -> Gain (volume) -> StereoPanner -+-> master
+ previewInput ---------------------^             \-> effects chain (below) --/                                                     \-> send (Gain) -> reverb bus -> master
+                                                    (only while the track has one)                                (only with a reverb send)
 
  master bus (MasterBus)
  input -> DynamicsCompressor (limiter: -1 dBFS, ratio 20, knee 0) -> Gain (master)
@@ -551,6 +554,122 @@ soloed one; it still goes through the insert, the fader and the panner.
   settle, and it has a fixed pre-delay, measured at 264 frames (5.99 ms at 44.1 kHz): everything
   through the master bus lands that much after its `when`. Tests that compare levels play below
   the threshold and measure after that; a test that measures onsets must tap before the bus.
+
+## Effects chain
+
+WP-092. The strip's insert (between `insert.input` and `insert.output`) holds a chain that exists
+only while the track resolves to a preset with an insert stage; a track without one is the
+direct connection and nothing else, which is bit-identical to a strip with no effects code.
+`src/effects/` holds it; the pure tables are root exports, the node classes stay internal.
+
+```text
+insert.input -+-> direct (Gain 1) ----------------------------------------------------+-> insert.output
+              \-> input -> drive -> tone -> cabinet -> modulation -> delay -> output --/
+                  (each a BypassSlot: a dry connection beside the stage's own nodes)
+
+strip, after the fader and the panner: send (Gain) -> shared ReverbBus (a convolver) -> master.input
+```
+
+| Stage        | Nodes                                                                                                                  | Channels |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------- | -------- |
+| `input`      | Gain (pre-drive level)                                                                                                 | mono     |
+| `drive`      | Gain (1/4), WaveShaper (curve `clean`, `overdrive`, `distortion`, `fuzz`; oversample none, 2x, 4x, 4x), 25 Hz highpass | mono     |
+| `tone`       | three biquads: lowshelf 120 Hz, peaking 750 Hz, highshelf 3.2 kHz                                                      | mono     |
+| `cabinet`    | Convolver (`disableNormalization`, a generated 2048-tap cabinet)                                                       | mono     |
+| `modulation` | chorus: two Delays (15 ms) swung by one Oscillator (0.8 Hz), the sides in antiphase, wet/dry mix                       | stereo   |
+| `delay`      | Delay (up to 1.5 s), feedback Gain (at most 0.6) through a 4 kHz lowpass, wet mix                                      | stereo   |
+| `output`     | Gain (the preset's makeup)                                                                                             | stereo   |
+| `reverb`     | the strip's send Gain into the shared bus                                                                              | stereo   |
+
+An amp is mono: `input` to `cabinet` take the sum of the channels (`channelCountMode: 'explicit'`),
+and a bypassed amp stage keeps a stereo sample stereo, because the dry connection is stereo.
+
+### Presets, and which one a track gets
+
+Ten ids: the eight families, `fuzz` and `off`. `presetFamilyOf(track)` reads `kind` first (drums),
+then the GM program: 29 `overdrive`, 30 `distortion`, 24 and 25 `acoustic`, 26 to 28 and 31
+`clean`, 32 to 39 `bass`, 0 to 23 `keys`, the rest `other`. `EFFECT_PRESETS` holds the stage
+values (an absent stage is bypassed): `clean`, `overdrive`, `distortion` and `fuzz` have the amp
+stages and a cabinet; `clean` a chorus, `overdrive` a delay; `acoustic` and `bass` only a tone
+stack; `keys`, `drums` and `other` only a reverb send; `off` nothing.
+
+`resolveEffects(track, { tier, gmTierBypass })` gives `{ preset, automatic }`:
+
+| `sound.preset`               | Tier | GM tier bypass | Result                            |
+| ---------------------------- | ---- | -------------- | --------------------------------- |
+| a known id (including `off`) | any  | any            | that preset                       |
+| absent or unknown            | hq   | any            | the family preset                 |
+| absent or unknown            | gm   | on (default)   | no chain, the GM tier's own sound |
+| absent or unknown            | gm   | off            | the family preset                 |
+
+So the bypass governs automatic presets on GM tracks only: a preset the user picks applies on
+either tier. The engine's `tierOf(track)` is `hq` when the last `load` assigned the track a pack,
+`gm` otherwise; WP-091 refines it. `setGmTierBypass(on)` re-resolves every track; and
+`setStageBypass(trackId, stage, bypassed)` is a session override like `setTrack` (not saved, kept
+through edits, cleared by `unload`); the reverb stage's bypass is its send at 0. A `sound` edit
+that changes only `preset` is timeline-neutral (`timelineNeutral`), so it and its undo are heard at
+once with no rebuild; a `packId` change is not.
+
+### Switching, bypass and idle paths
+
+- One primitive, `BypassSlot`: a dry connection that is always there, and at most one processing
+  path beside it. A switch is a 20 ms linear crossfade (a linear ramp lands exactly on 0 and 1;
+  a reversal mid-fade restarts from the interpolated value). When the fade ends the idle side is
+  disconnected, so a bypassed slot is a single gain-1 connection and its nodes cost nothing.
+  A slot is made for each stage and for the strip (direct against chain).
+- A fully bypassed chain is structural: the chain is disposed, `insert.input -> direct ->
+insert.output` is all that is left, and the rendered samples are bit-identical to a strip that
+  never had effects, the sign of zero included.
+- A change of one stage (on, off, another curve or cabinet) crossfades that stage alone, through
+  its dry connection: the new path is built when the old one has faded out. A change of more than
+  one stage is a preset change: its levels differ mid-fade (a 17 dB makeup moving against a drive
+  fading out clicked in the first version), so the strip swaps the whole chain through the direct
+  path. Continuous parameters (gains, tone gains, delay time, feedback, mix) are smoothed in place
+  with the strip's 5 ms constant (50 ms for a delay time).
+- The idle path is disconnected from a timer (`defer`, a poll of the context's clock; a test
+  injects its own and flushes it from `suspend`).
+
+### Reverb: one shared bus (a departure from the work package)
+
+The work package lists reverb among the inserts. A convolver per track would multiply the one long
+convolution (1.4 s, stereo) by the track count: measured offline over two runs, 8 tracks with a reverb
+each cost 2.1 to 2.8 times as much as the same chains sharing one bus (1.5 to 2.0 s against 0.72 s
+for 10 s of audio), 16 tracks 2.7 to 3.5 times (3.4 to 4.4 s against 1.26 s). So each strip has a post-fader, post-pan send into one `ReverbBus`, whose return
+joins the master bus, and a track's "reverb stage" is its send level. The fader scales the send
+and the mute gate is before everything, so a muted track sends nothing. The bus is made on the
+first send and lives until `dispose`.
+
+### Impulse responses: generated, not shipped
+
+`src/effects/impulses.ts` generates every impulse at runtime, at the context's sample rate (a
+`ConvolverNode` refuses another rate), from fixed seeds (mulberry32): nothing is committed,
+fetched or taken from a recording, so there is no third-party material and no licence entry. The
+cabinets (`open-1x12`, `closed-2x12`, `closed-4x12`) are a unit impulse through an RBJ biquad
+cascade (highpass, cone resonance, presence peak, two notches, a sixth-order lowpass), cut at 2048
+samples with a half-Hann fade, normalised to unit energy. The room is stereo, 1.4 s, with a 10 ms
+pre-delay, twelve early taps and a two-band noise tail (RT60 about 0.9 s lows, 0.5 s highs), the
+channels on independent seeds. `ImpulseBank` makes them on first use and keeps the `AudioBuffer`s:
+about 0.5 MB for the room and 24 KB a cabinet at 44.1 kHz, under 2 MB for all of them at 48 kHz.
+They are not sample memory and stay out of `MemoryReport.decodedBytes`.
+
+### Measured (`effects/*.test.ts`)
+
+A 220 Hz sine at -12 dBFS through a strip (the reverb return left out), harmonics 2 to 8 by
+`toneLevel` over 0.25 to 0.75 s. The tests' thresholds are set from these values with margin:
+
+| Preset       | THD (2 to 8) | 2f / f | RMS against bypass (plucked line, -18 dBFS) |
+| ------------ | ------------ | ------ | ------------------------------------------- |
+| bypassed     | under 1e-6   | 0      | 0 dB                                        |
+| `clean`      | 0.010        | 0      | within 3 dB (matched to 0.2 dB)             |
+| `overdrive`  | 0.15         | 0.0001 | within 3 dB                                 |
+| `distortion` | 0.31         | 0      | within 3 dB                                 |
+| `fuzz`       | 0.43         | 0.016  | within 3 dB                                 |
+
+`output.gainDb` of each amp preset is its makeup, so a chain never pushes a mix into the master
+limiter: without it the amp presets were 5 to 23 dB louder than bypass. The bench
+(`effects/effects.bench.ts`, no budget) renders 10 s offline of 8 and 16 tracks: 8 tracks cost 0.23 s with no chain,
+0.72 s with distortion chains and the shared reverb, 0.39 s with only the reverb; 16 tracks 0.46,
+1.26 and 0.62 s (Apple M4 Pro, headless Chromium).
 
 ## SF2 loader and GM tier
 
