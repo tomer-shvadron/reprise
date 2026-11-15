@@ -7,7 +7,7 @@ import { createCaptureContext, openCapture, type TunerInput } from './capture';
 import { micErrorOf, tunerError, type TunerError } from './mic-errors';
 import { isValidReference, REFERENCE_HZ } from './notes';
 import { detectPitch, rms } from './pitch/mpm';
-import { createTracker, type Reading } from './pitch/tracker';
+import { createTracker, settleFramesFor, type Reading } from './pitch/tracker';
 import {
   FLAT_ALLOWANCE,
   MAX_DETECT_HZ,
@@ -154,7 +154,9 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
     const sizeFor = (sampleRate: number) => {
       const lowest = lowestTargetHz(targetsNow());
       minHz = lowest * FLAT_ALLOWANCE;
-      return windowFor(sampleRate, lowest);
+      const size = windowFor(sampleRate, lowest);
+      tracker.setSettleFrames(settleFramesFor((size / sampleRate) * 1000));
+      return size;
     };
 
     const tick = () => {

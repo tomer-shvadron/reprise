@@ -12,6 +12,16 @@ export interface Reading {
 export interface TrackerOptions {
   /** A4 in Hz; 440 by default. */
   referenceHz?: number;
+  /** Accepted frames hidden after a lock closes the cutoff in; see `settleFramesFor`. */
+  settleFrames?: number;
+}
+
+/**
+ * Frames to hide after the cutoff closes in on a new lock: those still holding the change, then
+ * two more, so the first reading is a median of three clean frames.
+ */
+export function settleFramesFor(windowMs: number): number {
+  return Math.ceil((windowMs + TRACKER.settleMarginMs) / TRACKER.hopMs) + 2;
 }
 
 export interface TrackerStep {
@@ -41,11 +51,12 @@ export const TRACKER = {
   lockedCutoffFactor: 2.5,
   minCutoffHz: 80,
   /**
-   * Accepted frames after a lock before it reports. The cutoff has moved by then, and frames
-   * read through the old one are sharp on a stiff string; the last `settleFrames - 2` of them
-   * build the first median.
+   * Time a window needs to leave a cutoff change behind: the change itself is smoothed over a
+   * few milliseconds, and until the window has moved past it the frames hold a phase jump that
+   * reads tens of cents off at high clarity.
    */
-  settleFrames: 5,
+  settleMarginMs: 40,
+  hopMs: 20,
   /** Rejected frames in a row before the cutoff opens up again for the next note. */
   openAfterRejects: 5,
 } as const;
@@ -78,6 +89,7 @@ export function createTracker(options: TrackerOptions = {}) {
   let rejects = 0;
   let cutoffHz: number = TRACKER.searchCutoffHz;
   let settling = 0;
+  let settleFrames = options.settleFrames ?? settleFramesFor(43);
 
   const unlock = () => {
     locked = false;
@@ -106,7 +118,7 @@ export function createTracker(options: TrackerOptions = {}) {
       Math.max(TRACKER.minCutoffHz, TRACKER.lockedCutoffFactor * hz),
     );
     // Only a cutoff that closes in leaves sharp frames behind; one that opens does not.
-    settling = target < 0.85 * cutoffHz ? TRACKER.settleFrames : 0;
+    settling = target < 0.85 * cutoffHz ? settleFrames : 0;
     cutoffHz = target;
   };
 
@@ -133,6 +145,11 @@ export function createTracker(options: TrackerOptions = {}) {
     },
 
     reset: unlock,
+
+    /** The window changed size, so the time a cutoff change needs to clear it did too. */
+    setSettleFrames(frames: number) {
+      settleFrames = frames;
+    },
 
     push(detection: PitchDetection | undefined, rmsValue: number, timeMs: number): TrackerStep {
       const midi = detection ? midiOf(detection.hz) : undefined;
@@ -186,7 +203,7 @@ export function createTracker(options: TrackerOptions = {}) {
         if (settling > 0) {
           settling -= 1;
           // The first frames went through the old cutoff; keep only the later ones.
-          if (settling === TRACKER.settleFrames - 3) history = [midi];
+          if (settling === 2) history = [midi];
           if (settling > 0) return { reading: undefined, cutoffHz };
         }
         return { reading: emit(median(history)), cutoffHz };

@@ -19,7 +19,7 @@ export interface TunerInput {
 
 /** Web Audio's lowpass `Q` is in dB: a Butterworth section is 20·log10(1/√2). */
 export const BUTTERWORTH_Q_DB = 20 * Math.log10(Math.SQRT1_2);
-const CUTOFF_SMOOTHING_S = 0.02;
+const CUTOFF_SMOOTHING_S = 0.008;
 
 /**
  * Made synchronously inside the click that starts listening, so the user activation lets it run.

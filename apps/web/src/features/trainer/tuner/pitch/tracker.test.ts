@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { midiFromHz } from '../notes';
 import { lowpassChain, pluck, sine, simulate, type SimulatedFrame } from '../test-signals';
-import { createTracker, TRACKER } from './tracker';
+import { createTracker, settleFramesFor, TRACKER } from './tracker';
 
 const NOTES: [string, number][] = [
   ['B0', 30.87],
@@ -49,7 +49,8 @@ function sweep(options: { snrDb: number; inharmonicity?: number; weak?: boolean 
           const { worst: error, first, count } = accuracy(frames, hz);
           const label = `${name} ${String(detune)} seed ${String(seed)} at ${String(sampleRate)}`;
           expect(count, label).toBeGreaterThan(10);
-          expect(first, label).toBeLessThanOrEqual(12);
+          // The lock stays hidden while the cutoff closes in, see `settleFramesFor`.
+          expect(first, label).toBeLessThanOrEqual(16);
           slowest = Math.max(slowest, first);
           if (error > worst) worst = error;
           expect(error, label).toBeLessThan(
@@ -64,21 +65,27 @@ function sweep(options: { snrDb: number; inharmonicity?: number; weak?: boolean 
 
 describe('the tuning pipeline on synthetic strings', () => {
   it('reads a harmonic pluck at 30 dB SNR within 2 cents', { timeout: 120_000 }, () => {
-    const { worst } = sweep({ snrDb: 30 });
-    console.info(`harmonic 30 dB: worst ${worst.toFixed(2)} cents`);
+    const { worst, slowest } = sweep({ snrDb: 30 });
+    console.info(
+      `harmonic 30 dB: worst ${worst.toFixed(2)} cents, first reading after ${String(slowest)} hops`,
+    );
   });
 
   it('reads a harmonic pluck at 20 dB SNR within 5 cents', { timeout: 120_000 }, () => {
-    const { worst } = sweep({ snrDb: 20 });
-    console.info(`harmonic 20 dB: worst ${worst.toFixed(2)} cents`);
+    const { worst, slowest } = sweep({ snrDb: 20 });
+    console.info(
+      `harmonic 20 dB: worst ${worst.toFixed(2)} cents, first reading after ${String(slowest)} hops`,
+    );
   });
 
   it(
     'reads an inharmonic string with a weak fundamental within 3 cents',
     { timeout: 120_000 },
     () => {
-      const { worst } = sweep({ snrDb: 30, inharmonicity: 3e-4, weak: true });
-      console.info(`inharmonic 30 dB: worst ${worst.toFixed(2)} cents`);
+      const { worst, slowest } = sweep({ snrDb: 30, inharmonicity: 3e-4, weak: true });
+      console.info(
+        `inharmonic 30 dB: worst ${worst.toFixed(2)} cents, first reading after ${String(slowest)} hops`,
+      );
     },
   );
 });
@@ -121,7 +128,7 @@ describe('the tracker', () => {
       return out?.reading;
     };
     // The lock is hidden for the settle frames, then each reading within 3 cents counts.
-    expect(push(2, 2 + TRACKER.settleFrames)?.inTune).toBe(false);
+    expect(push(2, 2 + settleFramesFor(43))?.inTune).toBe(false);
     expect(push(2, 3)?.inTune).toBe(false);
     expect(push(2, 1)?.inTune).toBe(true);
     expect(push(4.5, 1)?.inTune).toBe(true);
@@ -146,7 +153,7 @@ describe('the tracker', () => {
   it('ignores a single frame an octave off', () => {
     const tracker = createTracker();
     const at = (hz: number) => tracker.push({ hz, clarity: 0.95 }, 0.1, 0).reading;
-    for (let i = 0; i < TRACKER.settleFrames + 3; i += 1) at(110);
+    for (let i = 0; i < settleFramesFor(43) + 3; i += 1) at(110);
     expect(at(220)?.hz).toBeCloseTo(110, 3);
     expect(at(110)?.hz).toBeCloseTo(110, 3);
     at(220);

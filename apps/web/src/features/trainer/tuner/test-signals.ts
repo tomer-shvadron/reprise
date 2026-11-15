@@ -1,5 +1,5 @@
 import { detectPitch, rms } from './pitch/mpm';
-import { createTracker, type Reading, type TrackerOptions } from './pitch/tracker';
+import { createTracker, settleFramesFor, type Reading, type TrackerOptions } from './pitch/tracker';
 import { windowFor } from './strings';
 
 /** Test-only signal generators and the pipeline emulation; nothing in the app imports this. */
@@ -34,7 +34,11 @@ export function sine(
   return out;
 }
 
-export function whiteNoise(length: number, seed: number, amplitude = 0.3): Float32Array {
+export function whiteNoise(
+  length: number,
+  seed: number,
+  amplitude = 0.3,
+): Float32Array<ArrayBuffer> {
   const random = mulberry32(seed);
   const out = new Float32Array(length);
   for (let i = 0; i < length; i += 1) out[i] = amplitude * (random() * 2 - 1);
@@ -181,7 +185,10 @@ export function simulate(
   const size = windowFor(sampleRate, lowestHz);
   const hop = Math.round((hopMs / 1000) * sampleRate);
   const sections = [new Lowpass(sampleRate, 1500), new Lowpass(sampleRate, 1500)];
-  const tracker = createTracker(trackerOptions);
+  const tracker = createTracker({
+    settleFrames: settleFramesFor((size / sampleRate) * 1000),
+    ...trackerOptions,
+  });
   const ring = new Float32Array(size);
   const frame = new Float32Array(size);
   const frames: SimulatedFrame[] = [];
