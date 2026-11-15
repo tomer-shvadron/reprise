@@ -30,9 +30,9 @@ It holds the speed trainer (WP-070) and the entry points the lead stubbed in WP-
 
 `fretboard/` draws the current track's neck (its tuning, 24 frets, the capo) once as SVG and lights
 the notes of the beat under the drawn playhead (`heard`), named. `fretboard-model.ts` precomputes a
-bar-to-notes lookup per track when the score changes, so a tick is a binary search; the position
+bar-to-notes lookup per track when the score changes, so a tick is a binary search, and each bar is worked out on first use and cached per bar object (an edit recomputes one bar, a mixer change none); the position
 reader repaints only the few lit dots, outside React, and only when the lit set changes. In edit
-mode with the transport stopped it lights the edit cursor's beat. The left-handed flip is remembered
+mode with the transport stopped, pausing included, it lights the edit cursor's beat. The left-handed flip is remembered
 per viewer (`reprise.fretboardLeftHanded`). The highlights are not a live region.
 
 A run state of the speed trainer is the feature's own (a store under this folder). Needing another

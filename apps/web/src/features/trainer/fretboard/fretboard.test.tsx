@@ -77,13 +77,13 @@ describe('Fretboard note placement', () => {
   it('draws one line per string of the track', async () => {
     const { container } = await open(song('guitar', { tuning: SEVEN }, [[1, 3]]));
     expect(container.querySelectorAll('[data-fretboard] line')).toHaveLength(7 + 1 + 24);
-    expect(screen.getByText('7 strings')).toBeInTheDocument();
+    expect(screen.getByText(/^7 strings/)).toBeInTheDocument();
   });
 
   it('shows four strings for a bass and its note names', async () => {
     const { container } = await open(song('bass', {}, [[4, 3]]));
     expect(lit()).toEqual(['string 4, fret 3, G']);
-    expect(screen.getByText('4 strings')).toBeInTheDocument();
+    expect(screen.getByText(/^4 strings/)).toBeInTheDocument();
     expect(container.querySelectorAll('[data-fretboard] line')).toHaveLength(4 + 1 + 24);
   });
 
@@ -106,10 +106,14 @@ describe('Fretboard note placement', () => {
     expect(screen.getByText(/capo 2/)).toBeInTheDocument();
     expect(container.querySelector('[data-capo]')).not.toBeNull();
     // Open high E under a capo on fret 2 sounds F#, and sits at the capo's fret.
-    expect(lit()).toEqual(['string 1, fret 0, F#']);
+    expect(lit()).toEqual(['string 1, fret 2 (capo 2, written 0), F#']);
     const capoCenter = (circle: Element | null) => Number(circle?.getAttribute('cx'));
     const withoutCapo = await open(song('guitar', {}, [[1, 2]]));
-    expect(capoCenter(document.querySelector('[aria-label="string 1, fret 0, F#"] circle'))).toBe(
+    expect(
+      capoCenter(
+        document.querySelector('[aria-label="string 1, fret 2 (capo 2, written 0), F#"] circle'),
+      ),
+    ).toBe(
       capoCenter(withoutCapo.container.querySelector('[aria-label="string 1, fret 2, F#"] circle')),
     );
   });
@@ -128,6 +132,38 @@ describe('Fretboard following playback', () => {
     const before = document.querySelector('[data-fretboard-notes] > g');
     at(10);
     expect(document.querySelector('[data-fretboard-notes] > g')).toBe(before);
+  });
+
+  it('lights the heard beat, behind the engine, while running, and the engine when stopped', async () => {
+    const { services, at } = await open(song('guitar', {}, [[2, 1]], [[3, 2]]));
+    const current = services.document.getState().score;
+    const second = current?.masterBars[0];
+    if (!second) throw new Error('score');
+    act(() => {
+      services.playback.setState({ transport: 'playing' });
+      services.heard.current = { masterBarId: second.id, tick: 0, playbackTick: 0 };
+    });
+    at(960 * 2);
+    // The engine is on the second beat; the listener still hears the first.
+    expect(lit()).toEqual(['string 2, fret 1, C']);
+    act(() => {
+      services.playback.setState({ transport: 'stopped' });
+    });
+    expect(lit()).toEqual(['string 3, fret 2, A']);
+  });
+
+  it('names the open strings and draws a position past fret 24', async () => {
+    const { container } = await open(song('guitar', { tuning: DROP_D, capo: 5 }, [[1, 22]]));
+    expect(screen.getByText(/tuning D A D G B E/)).toBeInTheDocument();
+    const svg = container.querySelector('[data-fretboard]');
+    const [, , width] = (svg?.getAttribute('viewBox') ?? '').split(' ').map(Number);
+    const cx = Number(document.querySelector('[data-fretboard-notes] circle')?.getAttribute('cx'));
+    expect(cx).toBeGreaterThan(0);
+    expect(cx).toBeLessThan(width ?? 0);
+    // 5 + 22 is fret 27, so 27 fret numbers are drawn.
+    expect(container.querySelectorAll('[data-fretboard] > g[aria-hidden] > g text')).toHaveLength(
+      27,
+    );
   });
 
   it('does not announce the highlights', async () => {

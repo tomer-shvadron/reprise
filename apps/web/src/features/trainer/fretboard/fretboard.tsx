@@ -8,56 +8,48 @@ import { startPositionReader } from '@/state/position-reader';
 
 import {
   boardOf,
-  buildBeatIndex,
+  createBeatIndex,
   dotLabel,
-  dotsAt,
-  dotsOfBeat,
   fretMarker,
-  fretPosition,
   signature,
+  tuningNames,
   type BoardShape,
   type Dot,
 } from './fretboard-model';
+import { geometryOf, type Geometry } from './fretboard-geometry';
 import { readStoredLeftHanded, writeStoredLeftHanded } from './fretboard-prefs';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const NUT_X = 36;
-const BOARD_WIDTH = 1200;
-const STRING_GAP = 26;
-const TOP = 14;
 const DOT_RADIUS = 10;
 
-interface Geometry {
-  width: number;
-  height: number;
-  /** x of the dot for an absolute fret: between its two fret wires, left of the nut for 0. */
-  dotX: (absolute: number) => number;
-  lineX: (fret: number) => number;
-  stringY: (string: number) => number;
-}
-
-function geometryOf(board: BoardShape, leftHanded: boolean): Geometry {
-  const span = BOARD_WIDTH - NUT_X - 8;
-  const wire = (fret: number) => NUT_X + fretPosition(fret, board.frets) * span;
-  const flip = (x: number) => (leftHanded ? BOARD_WIDTH - x : x);
-  return {
-    width: BOARD_WIDTH,
-    height: TOP * 2 + (board.strings - 1) * STRING_GAP + 22,
-    lineX: (fret) => flip(wire(fret)),
-    dotX: (absolute) =>
-      flip(absolute <= 0 ? NUT_X - 18 : (wire(absolute - 1) + wire(absolute)) / 2),
-    stringY: (string) => TOP + (string - 1) * STRING_GAP,
-  };
-}
-
 /** The part that never changes during playback: strings, frets, markers and the capo. */
-function StaticBoard({ board, geometry }: { board: BoardShape; geometry: Geometry }) {
-  const { lineX, stringY } = geometry;
-  const bottom = stringY(board.strings) - STRING_GAP + 8;
+function StaticBoard({
+  board,
+  geometry,
+  names,
+}: {
+  board: BoardShape;
+  geometry: Geometry;
+  names: readonly string[];
+}) {
+  const { lineX, stringY, wireTop: top, wireBottom: bottom, stringGap } = geometry;
   const strings = Array.from({ length: board.strings }, (_, index) => index + 1);
   const frets = Array.from({ length: board.frets }, (_, index) => index + 1);
   return (
     <g aria-hidden>
+      {strings.map((string) => (
+        <text
+          key={`name-${String(string)}`}
+          x={geometry.nameX}
+          y={stringY(string) + 3.5}
+          textAnchor="middle"
+          fontSize={10}
+          fill="currentColor"
+          fillOpacity={0.7}
+        >
+          {names[names.length - string]}
+        </text>
+      ))}
       {strings.map((string) => (
         <line
           key={string}
@@ -73,7 +65,7 @@ function StaticBoard({ board, geometry }: { board: BoardShape; geometry: Geometr
       <line
         x1={lineX(0)}
         x2={lineX(0)}
-        y1={TOP - 8}
+        y1={top}
         y2={bottom}
         stroke="currentColor"
         strokeWidth={4}
@@ -83,7 +75,7 @@ function StaticBoard({ board, geometry }: { board: BoardShape; geometry: Geometr
           <line
             x1={lineX(fret)}
             x2={lineX(fret)}
-            y1={TOP - 8}
+            y1={top}
             y2={bottom}
             stroke="currentColor"
             strokeOpacity={0.35}
@@ -91,7 +83,7 @@ function StaticBoard({ board, geometry }: { board: BoardShape; geometry: Geometr
           {fretMarker(fret) > 0 && (
             <circle
               cx={geometry.dotX(fret)}
-              cy={(TOP + bottom) / 2 + (fretMarker(fret) === 2 ? -STRING_GAP : 0)}
+              cy={(top + bottom) / 2 + (fretMarker(fret) === 2 ? -stringGap : 0)}
               r={3}
               fill="currentColor"
               fillOpacity={0.25}
@@ -100,7 +92,7 @@ function StaticBoard({ board, geometry }: { board: BoardShape; geometry: Geometr
           {fretMarker(fret) === 2 && (
             <circle
               cx={geometry.dotX(fret)}
-              cy={(TOP + bottom) / 2 + STRING_GAP}
+              cy={(top + bottom) / 2 + stringGap}
               r={3}
               fill="currentColor"
               fillOpacity={0.25}
@@ -122,9 +114,9 @@ function StaticBoard({ board, geometry }: { board: BoardShape; geometry: Geometr
         <rect
           data-capo
           x={Math.min(lineX(board.capo), lineX(board.capo - 1)) + 2}
-          y={TOP - 8}
+          y={top}
           width={Math.abs(lineX(board.capo) - lineX(board.capo - 1)) - 4}
-          height={bottom - TOP + 8}
+          height={bottom - top}
           rx={4}
           fill="currentColor"
           fillOpacity={0.18}
@@ -181,7 +173,7 @@ export function Fretboard() {
   );
   const board = boardOf(track);
   const index = useMemo(
-    () => (score && track && board ? buildBeatIndex(track, score.masterBars) : undefined),
+    () => (score && track && board ? createBeatIndex(track, score.masterBars) : undefined),
     // `board` is derived from `track`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [score, track],
@@ -192,6 +184,8 @@ export function Fretboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [board?.strings, board?.frets, board?.capo, leftHanded],
   );
+  const tuning = track?.tuning;
+  const names = useMemo(() => (tuning ? tuningNames({ tuning }) : []), [tuning]);
   const layer = useRef<SVGGElement>(null);
 
   useEffect(() => {
@@ -208,14 +202,20 @@ export function Fretboard() {
     const update = () => {
       const state = playback.getState();
       const { cursor } = selection.getState();
-      if (editing.getState().editing && !selectRunning(state) && cursor?.track === track?.id) {
-        show(dotsOfBeat(index, cursor?.beat));
+      if (
+        cursor &&
+        editing.getState().editing &&
+        !selectRunning(state) &&
+        cursor.track === track?.id
+      ) {
+        show(index.dotsOfBeat(cursor.masterBar, cursor.beat));
         return;
       }
-      // The drawn playhead's position, which already allows for the output latency.
-      const at = heard.current;
-      if (at) show(dotsAt(index, at.masterBarId, at.tick));
-      else if (lastEvent) show(dotsAt(index, lastEvent.masterBarId, lastEvent.position.tick));
+      // While running, the drawn playhead's position, which already allows for the output
+      // latency; otherwise the engine's, which a seek or a stop has just moved.
+      const at = selectRunning(state) ? heard.current : undefined;
+      if (at) show(index.dotsAt(at.masterBarId, at.tick));
+      else if (lastEvent) show(index.dotsAt(lastEvent.masterBarId, lastEvent.position.tick));
       else show([]);
     };
     const reader = startPositionReader(playback, (event) => {
@@ -253,7 +253,7 @@ export function Fretboard() {
     <div className="flex h-full flex-col gap-1 p-2">
       <div className="flex items-center justify-between gap-2 text-xs">
         <span className="text-muted-foreground">
-          {board.strings} strings
+          {board.strings} strings, tuning {names.join(' ')}
           {board.capo > 0 ? `, capo ${String(board.capo)}` : ''}
         </span>
         <label className="flex items-center gap-2">
@@ -277,7 +277,7 @@ export function Fretboard() {
         data-fretboard
         data-left-handed={leftHanded}
       >
-        <StaticBoard board={board} geometry={geometry} />
+        <StaticBoard board={board} geometry={geometry} names={names} />
         <g ref={layer} data-fretboard-notes />
       </svg>
     </div>
