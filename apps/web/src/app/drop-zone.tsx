@@ -65,7 +65,7 @@ export function DropZone() {
             .openBytes(
               file.name,
               new Uint8Array(buffer),
-              picked?.kind === 'file' ? picked : undefined,
+              picked?.kind === 'file' ? { handle: picked } : {},
             ),
         (error: unknown) => {
           document

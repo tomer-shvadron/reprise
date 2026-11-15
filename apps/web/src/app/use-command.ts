@@ -1,6 +1,10 @@
 import { createContext, use } from 'react';
 
+import type { EditorCommandId } from '@/features/editor/commands';
+import type { LibraryCommandId } from '@/features/library/commands';
+import type { SoundsCommandId } from '@/features/sounds/commands';
 import type { TrackCommandId } from '@/features/tracks/commands';
+import type { TrainerCommandId } from '@/features/trainer/commands';
 import type { TransportCommandId } from '@/features/transport/commands';
 
 import { runCommand, type CommandRegistry } from './command-registry';
@@ -10,7 +14,14 @@ import { ariaKeyShortcuts, formatShortcut, shortcutOn, type KeyboardPlatform } f
 
 /** Every id `createAppRegistry` registers, so a mistyped id fails typecheck, not at render. */
 export type RegisteredCommandId =
-  AppCommandId | TransportCommandId | EditCommandId | TrackCommandId;
+  | AppCommandId
+  | TransportCommandId
+  | EditCommandId
+  | TrackCommandId
+  | LibraryCommandId
+  | TrainerCommandId
+  | EditorCommandId
+  | SoundsCommandId;
 
 export interface CommandSource {
   registry: CommandRegistry;

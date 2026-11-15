@@ -64,6 +64,11 @@ export interface DocumentFile {
   handle?: FileHandle;
 }
 
+export interface OpenOptions {
+  handle?: FileHandle;
+  songId?: Id;
+}
+
 export interface DocumentError {
   action: 'open' | 'save';
   fileName: string;
@@ -93,6 +98,12 @@ export interface DocumentState {
   id: Id | undefined;
   score: Score | undefined;
   file: DocumentFile | undefined;
+  /**
+   * The library song this document was opened from or imported as; undefined for a file opened
+   * without importing. Set by the library (WP-060), read by Save (WP-061) and the practice log
+   * (WP-073). Never undoable and never marks the document modified.
+   */
+  songId: Id | undefined;
   view: DocumentView;
   /** The change that produced `score`; undefined right after an open. */
   lastChange: Change | undefined;
@@ -114,7 +125,10 @@ export interface DocumentState {
   saving: boolean;
   error: DocumentError | undefined;
   open(): Promise<void>;
-  openBytes(name: string, bytes: Uint8Array, handle?: FileHandle): Promise<void>;
+  /** `songId` ties the document to its library song from the first render. */
+  openBytes(name: string, bytes: Uint8Array, options?: OpenOptions): Promise<void>;
+  /** Ties the open document to a library song, as after importing a file opened without import. */
+  setSongId(songId: Id | undefined): void;
   close(): void;
   apply(command: Command): readonly CommandWarning[];
   undo(): void;
@@ -332,6 +346,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       id: undefined,
       score: undefined,
       file: undefined,
+      songId: undefined,
       view: emptyView(),
       lastChange: undefined,
       revision: 0,
@@ -357,10 +372,15 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           return;
         }
         if (!picked) return;
-        await get().openBytes(picked.name, picked.bytes, picked.handle);
+        await get().openBytes(
+          picked.name,
+          picked.bytes,
+          picked.handle === undefined ? {} : { handle: picked.handle },
+        );
       },
 
-      async openBytes(name, bytes, handle) {
+      async openBytes(name, bytes, options = {}) {
+        const { handle, songId } = options;
         const token = ++openToken;
         set({ opening: name, error: undefined });
         try {
@@ -382,6 +402,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
               handle === undefined
                 ? { name, format, key, savedKeys: [] }
                 : { name, format, handle, key, savedKeys: [] },
+            songId,
             view: emptyView(),
             lastChange: undefined,
             revision: state.revision + 1,
@@ -408,6 +429,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           id: undefined,
           score: undefined,
           file: undefined,
+          songId: undefined,
           view: emptyView(),
           lastChange: undefined,
           revision: state.revision + 1,
@@ -418,6 +440,10 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           error: undefined,
           ...snapshot({}),
         }));
+      },
+
+      setSongId(songId) {
+        if (get().score) set({ songId });
       },
 
       apply(command) {
