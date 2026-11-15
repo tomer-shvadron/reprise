@@ -1,4 +1,4 @@
-import { runCommand, type CommandRegistry } from './command-registry';
+import { contextRank, runCommand, type CommandRegistry } from './command-registry';
 import { matchesShortcut, type KeyboardPlatform } from './keyboard';
 import { isEditable } from './text-field';
 
@@ -50,12 +50,15 @@ export function dispatchShortcut(
 ): boolean {
   if (event.defaultPrevented || event.isComposing) return false;
 
-  const command = registry.list().find(({ shortcut }) => {
+  const matching = registry.available().filter(({ shortcut }) => {
     if (!shortcut) return false;
     if (NAVIGATION_KEYS.has(event.key) && isEditable(event.target)) return false;
     if (!shortcut.mod && leavesKeyToTarget(event)) return false;
     return matchesShortcut(event, shortcut, platform);
   });
+  // An active context's binding shadows the context-free one on the same key; between active
+  // contexts, the earlier one in COMMAND_CONTEXTS wins.
+  const command = matching.sort((a, b) => contextRank(a.context) - contextRank(b.context))[0];
   if (!command) return false;
 
   // A held key is still swallowed, so a held Space does not scroll the page.
