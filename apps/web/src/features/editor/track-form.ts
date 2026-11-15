@@ -253,8 +253,11 @@ export function droppedStringsMessage(track: Track, count: number): string | und
 
 export function validateTrackForm(form: TrackForm, existing?: Track): TrackFormErrors {
   const errors: TrackFormErrors = {};
-  if (form.name.trim() === '') errors.name = 'Give the track a name.';
-  if (form.shortName.trim() === '') errors.shortName = 'Give the track a short name.';
+  // An imported track may have no name; leaving it that way is not an error, only typing it away.
+  if (form.name.trim() === '' && existing?.name !== '') errors.name = 'Give the track a name.';
+  if (form.shortName.trim() === '' && existing?.shortName !== '') {
+    errors.shortName = 'Give the track a short name.';
+  }
   if (!HEX_COLOR.test(form.color)) errors.color = 'Use a colour like #d9480f.';
   if (form.kind === 'fretted') {
     const fretCount = existing?.fretCount ?? createTrack('fretted').fretCount;

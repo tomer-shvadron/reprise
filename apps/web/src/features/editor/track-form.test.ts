@@ -133,6 +133,14 @@ describe('validateTrackForm', () => {
     expect(validateTrackForm(newTrackForm('fretted'))).toEqual({});
   });
 
+  it('lets an imported track keep the blank name and short name it came with', () => {
+    const blank = createTrack('fretted', { name: '', shortName: '' });
+    expect(validateTrackForm(formFromTrack(blank), blank)).toEqual({});
+    expect(
+      validateTrackForm({ ...formFromTrack(guitar()), name: '' }, guitar()).name,
+    ).toBeDefined();
+  });
+
   it('skips string and capo checks for a drum track', () => {
     expect(validateTrackForm({ ...newTrackForm('drums'), capo: 'x' })).toEqual({});
   });
