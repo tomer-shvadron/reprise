@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { MasterBus } from './channel-strip';
 import { SAMPLE_RATE } from './test/offline';
 
-/** `amplitude` x 1 kHz sine through a bus at `gain`, and the output's settled span. */
-async function through(amplitude: number, gain = 1): Promise<{ out: Float32Array }> {
+/** `amplitude` x 1 kHz sine through a bus at `gain`, and the whole rendered output. */
+async function through(amplitude: number, gain = 1): Promise<Float32Array> {
   const frames = SAMPLE_RATE;
   const context = new OfflineAudioContext({
     numberOfChannels: 1,
@@ -21,7 +21,7 @@ async function through(amplitude: number, gain = 1): Promise<{ out: Float32Array
   source.connect(bus.input);
   source.start();
   const rendered = await context.startRendering();
-  return { out: rendered.getChannelData(0) };
+  return rendered.getChannelData(0);
 }
 
 function peakOf(data: Float32Array, from: number): number {
@@ -32,7 +32,7 @@ function peakOf(data: Float32Array, from: number): number {
 
 describe('MasterBus soft ceiling', () => {
   it('passes a half-scale tone exactly as the limiter alone would', async () => {
-    const { out } = await through(0.5);
+    const out = await through(0.5);
     const context = new OfflineAudioContext({
       numberOfChannels: 1,
       length: SAMPLE_RATE,
@@ -64,20 +64,20 @@ describe('MasterBus soft ceiling', () => {
   });
 
   it('keeps a +9.5 dBFS tone under the ceiling', async () => {
-    const { out } = await through(3);
+    const out = await through(3);
     expect(peakOf(out, 0)).toBeLessThanOrEqual(0.977 + 1e-6);
     for (const sample of out) expect(Number.isFinite(sample)).toBe(true);
   });
 
   it('keeps silence exactly silent', async () => {
-    const { out } = await through(0);
+    const out = await through(0);
     expect(peakOf(out, 0)).toBe(0);
   });
 
   it('lowers a sub-threshold tone by 6 dB at master gain 0.5', async () => {
     const full = await through(0.1);
     const half = await through(0.1, 0.5);
-    const ratio = peakOf(half.out, 8000) / peakOf(full.out, 8000);
+    const ratio = peakOf(half, 8000) / peakOf(full, 8000);
     expect(20 * Math.log10(ratio)).toBeCloseTo(-6.02, 1);
   });
 });
