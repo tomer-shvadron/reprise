@@ -103,12 +103,22 @@ export function newTrackForm(kind: TrackKind): TrackForm {
   };
 }
 
-/** Picking another kind starts again from its defaults, keeping a colour the user chose. */
+/** Picking another kind starts again from its defaults, keeping a colour and a name the user typed. */
 export function changeKind(form: TrackForm, kind: TrackKind): TrackForm {
   if (kind === form.kind) return form;
   const next = newTrackForm(kind);
   const base = newTrackForm(form.kind);
-  return { ...next, color: form.color === base.color ? next.color : form.color };
+  let kept: TrackForm = { ...next, color: form.color === base.color ? next.color : form.color };
+  if (form.nameEdited) {
+    kept = {
+      ...kept,
+      name: form.name,
+      nameEdited: true,
+      shortName: shortNameOf(form.name),
+    };
+  }
+  if (form.shortNameEdited) kept = { ...kept, shortName: form.shortName, shortNameEdited: true };
+  return kept;
 }
 
 export function setName(form: TrackForm, name: string): TrackForm {
@@ -135,11 +145,6 @@ export function presetNameOf(form: TrackForm): string | undefined {
   return findTuningName(modelOrder(form.strings));
 }
 
-function instrumentOf(form: TrackForm): TuningInstrument {
-  const name = presetNameOf(form);
-  return STANDARD_TUNINGS.find((tuning) => tuning.name === name)?.instrument ?? 'guitar';
-}
-
 /**
  * Chooses a table tuning, or leaves the strings as they are for `undefined` (Custom). When adding
  * a track, its instrument also renames, re-shortens and re-programs whatever the user has not
@@ -161,18 +166,13 @@ export function applyPreset(form: TrackForm, name: string | undefined, adding: b
 }
 
 /**
- * A new string count. The same instrument's table tuning with that many strings wins; with none,
- * strings are added a fourth below the lowest or the lowest ones dropped, which leaves string 1
- * where it was.
+ * A new string count: strings are added a fourth below the lowest, or the lowest ones dropped,
+ * which leaves string 1 and every kept string exactly as they were. E standard gains the 7-string
+ * B and bass standard the 5-string low B this way, so the table names still show up.
  */
 export function setStringCount(form: TrackForm, count: number): TrackForm {
   const current = form.strings.length;
   if (count === current || count < 1 || count > MAX_STRINGS) return form;
-  const family = instrumentOf(form);
-  const preset = STANDARD_TUNINGS.find(
-    (tuning) => tuning.instrument === family && tuning.strings.length === count,
-  );
-  if (preset) return { ...form, strings: modelOrder(preset.strings) };
   if (count < current) return { ...form, strings: form.strings.slice(0, count) };
   const strings = [...form.strings];
   while (strings.length < count) {
@@ -284,8 +284,9 @@ export function trackChanges(track: Track, form: TrackForm): TrackChanges {
   const name = form.name.trim();
   const shortName = form.shortName.trim();
   const color = form.color.toLowerCase();
-  if (name !== track.name) changes.name = name;
-  if (shortName !== track.shortName) changes.shortName = shortName;
+  // An imported name keeps its spacing until the user changes the text itself.
+  if (name !== track.name.trim()) changes.name = name;
+  if (shortName !== track.shortName.trim()) changes.shortName = shortName;
   if (color !== track.color) changes.color = color;
   if (form.program !== track.program) changes.program = form.program;
   if (track.kind === 'fretted') {

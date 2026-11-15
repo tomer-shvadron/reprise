@@ -40,6 +40,13 @@ describe('formFromTrack', () => {
     expect(presetNameOf(setString(form, 1, 65))).toBeUndefined();
   });
 
+  it('leaves an imported name’s spacing alone until the text changes', () => {
+    const padded = createTrack('fretted', { name: ' Lead ', shortName: ' Ld ' });
+    const form = { ...formFromTrack(padded), capo: '2' };
+    expect(trackChanges(padded, form)).toEqual({ capo: 2 });
+    expect(trackChanges(padded, { ...form, name: ' Lead2 ' })).toMatchObject({ name: 'Lead2' });
+  });
+
   it('writes only the keys that changed', () => {
     const track = guitar();
     const form = { ...formFromTrack(track), name: ' Lead ', capo: '2', color: '#ABCDEF' };
@@ -60,17 +67,31 @@ describe('the short name', () => {
 });
 
 describe('the string count', () => {
-  it('takes the same instrument’s table tuning when there is one', () => {
-    const bass = applyPreset(newTrackForm('fretted'), 'Bass standard', false);
+  const withTuning = (tuning: number[]) => formFromTrack(createTrack('fretted', { tuning }));
+
+  it('lands on the table names by plain add and drop', () => {
+    const seven = setStringCount(formFromTrack(guitar()), 7);
+    expect(seven.strings).toEqual([64, 59, 55, 50, 45, 40, 35]);
+    expect(presetNameOf(seven)).toBe('7-string standard');
+    const bass = withTuning([28, 33, 38, 43]);
     expect(setStringCount(bass, 5).strings).toEqual([43, 38, 33, 28, 23]);
     expect(presetNameOf(setStringCount(bass, 5))).toBe('5-string bass standard');
+    expect(presetNameOf(setStringCount(seven, 6))).toBe('E standard');
   });
 
-  it('drops the lowest strings, keeping string 1, or adds a fourth below the lowest', () => {
+  it('never retunes the strings that stay: D standard 6→7', () => {
+    const d = withTuning([38, 43, 48, 53, 57, 62]);
+    expect(setStringCount(d, 7).strings).toEqual([62, 57, 53, 48, 43, 38, 33]);
+  });
+
+  it('keeps a custom bass a bass: 4→6 adds fourths below the lowest', () => {
+    const custom = withTuning([27, 32, 37, 42]);
+    expect(setStringCount(custom, 6).strings).toEqual([42, 37, 32, 27, 22, 17]);
+    expect(setStringCount(custom, 3).strings).toEqual([42, 37, 32]);
+  });
+
+  it('is a no-op for the same count', () => {
     const six = formFromTrack(guitar());
-    expect(setStringCount(six, 5).strings).toEqual([64, 59, 55, 50, 45]);
-    const eight = setStringCount(six, 8);
-    expect(eight.strings).toEqual([64, 59, 55, 50, 45, 40, 35, 30]);
     expect(setStringCount(six, 6)).toBe(six);
   });
 });
@@ -105,6 +126,18 @@ describe('add mode', () => {
       capo: 2,
     });
     expect(newTrackProperties(newTrackForm('drums'))).not.toHaveProperty('tuning');
+  });
+
+  it('keeps a typed name across a kind change, and its short name', () => {
+    const named = setName(newTrackForm('fretted'), 'Keys');
+    expect(changeKind(named, 'pitched')).toMatchObject({
+      kind: 'pitched',
+      name: 'Keys',
+      shortName: 'Keys.',
+      nameEdited: true,
+    });
+    expect(changeKind(setShortName(named, 'K'), 'drums').shortName).toBe('K');
+    expect(changeKind(newTrackForm('fretted'), 'drums').name).toBe('Drums');
   });
 
   it('keeps a chosen colour across a kind change', () => {
