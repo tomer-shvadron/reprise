@@ -37,7 +37,7 @@ What it holds, after WP-056 (the mode toggle) and WP-080 (hit-testing and the se
 - **Commands** (`track-commands.ts`): `track.properties` (F6), `track.add` (⌥⌘N) and `track.addWindows` (Ctrl+Shift+Insert), `track.remove` and `track.moveUp`/`track.moveDown` with no keys. `track-edit.ts` holds the actions the sidebar menu shares.
 - **Dialog host** (`editor-dialogs.tsx`, `dialogs.ts`): `<EditorDialogs />` is mounted once in the app; the open dialog lives in a store keyed by the services (`dialogsOf`).
 - **New song** (`new-song.ts`): `startNewSong` opens `newDocument(createEmptyScore())` and turns edit mode on, after `UnsavedChangesDialog` (Save, Don't save, Cancel) when the document is modified. The dialog takes `action`, `onContinue` and `onCancel`, so Open and Close (WP-061) reuse it.
-- `refusal.ts` is a small local `refusalMessage` until WP-081's shared `describeRefusal` lands; then it goes.
+- `track-refusal.ts` is a small local `refusalMessage` until WP-081's shared `describeRefusal` lands; then it goes.
 
 ## What it can rely on
 

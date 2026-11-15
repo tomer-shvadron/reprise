@@ -15,7 +15,7 @@ import type { AppServices } from '@/app/services';
 import { selectTrack } from '@/features/tracks/track-actions';
 
 import { dialogsOf } from './dialogs';
-import { refusalMessage } from './refusal';
+import { refusalMessage } from './track-refusal';
 import {
   isEmptyChange,
   newTrackProperties,
