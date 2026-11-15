@@ -156,6 +156,19 @@ flowchart TB
 ## Checkpoints and their definition of done
 
 - **Player checkpoint** (end of phase 2). Tomer can drag a gp3, gp4, gp5, gp or gpx file onto the app, read it as tab with rhythm stems, hear it through the GM tier with repeats, alternate endings and jumps played correctly, slow it to 50% BPM-accurate, loop four bars, mute the guitar track to play along, and print it. Performance budgets hold on the benchmark score.
+  **Reached on 2026-11-15 at `b17d2bb`** (WP-056, #52). Budgets measured: `pnpm bench` on the reference machine (Apple M4 Pro, Node 24, local, a load of 4.5 from other work, time budgets ×1) and the two renderer rows from the `e2e` job of the CI run on that commit ([run 43752851238](https://github.com/tomer-shvadron/reprise/actions/runs/43752851238), threshold = budget ×3.4 for time).
+
+  | Metric                                     | Budget | Measured                           | Verdict |
+  | ------------------------------------------ | ------ | ---------------------------------- | ------- |
+  | Full layout, cold                          | 250 ms | 148 ms p50 (bench)                 | pass    |
+  | Re-layout after a single-note edit         | 16 ms  | 4.1 ms p50 (bench)                 | pass    |
+  | Re-layout after a rhythm edit, continuous  | 16 ms  | 2.4 ms p50 (bench)                 | pass    |
+  | Mounted SVG elements at any zoom           | 20 000 | asserted by the unit suite         | pass    |
+  | Decoded audio resident, GM tier, any song  | 80 MB  | asserted by the unit suite         | pass    |
+  | Renderer heap after opening the long score | 400 MB | 82.9 MB (CI e2e)                   | pass    |
+  | Time from file drop to first paint         | 500 ms | 686 ms (CI e2e, threshold 1700 ms) | pass    |
+
+  The drop-to-paint row ranged 680 to 1360 ms over twelve CI runs, all under its 1700 ms threshold. Without a budget: cold layout 92 ms (tab), 141.6 ms (standard), 202.1 ms (both); a segment-break-moving continuous edit 23.6 ms; a page-break-moving paged edit 5.2 ms. The HQ-tier row waits for WP-094.
 - **Library checkpoint**. Imported songs appear in a library with search and sort; a song reopens from the library with its settings; save, save-as and export-to-gp work with a lossy warning; the editor's drafts survive a crash.
 - **Trainer checkpoint**. Speed trainer ramps a loop; the tuner shows cents for an open string through the mic; the standalone metronome runs without a song; the practice log shows time and tempos per song; the live fretboard follows playback.
 - **Editor checkpoint**. A new song can be written from scratch with the keyboard only, saved as native and exported as gp, with every effect in scope applied and heard, with undo across all of it.

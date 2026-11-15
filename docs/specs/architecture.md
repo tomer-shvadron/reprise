@@ -42,7 +42,7 @@ apps/web/src/
   app/            shell, routing, theme, command palette, keyboard map, services (the stores wired together)
     audio/        the audio service: the sound bank fetch and the adapter from the engine to the playback store
   platform/       Platform interface + browser and electron implementations
-  state/          zustand stores: document, selection, playback, layout (derived), ui
+  state/          zustand stores: document, selection, playback, layout (derived), ui, practice, editing
   features/
     score/        SVG painter, cursor overlay, selection rendering, print view     (score lane)
     transport/    transport bar, tempo, loop, count-in, metronome controls         (lead)
@@ -53,7 +53,34 @@ apps/web/src/
     sounds/       sound pack manager                                               (audio lane)
 ```
 
-A lane owns its feature folder the same way it owns its package.
+A lane owns its feature folder the same way it owns its package. Each folder's README states its owner lane and the work packages that fill it:
+
+| Folder              | Lane (checkpoint)        | Work packages                                | Stub entry point (WP-056)                                          |
+| ------------------- | ------------------------ | -------------------------------------------- | ------------------------------------------------------------------ |
+| `features/library`  | formats (Library)        | WP-060, WP-061, WP-073 (schema migration)    | `LibraryScreen`, `library.show`                                    |
+| `features/trainer`  | app (Trainer)            | WP-070, WP-071, WP-072, WP-073, WP-074       | `TrainerPanel`, `trainer.speedTrainer`, `.tuner`, `.metronome`, `.fretboard` |
+| `features/editor`   | score (Editor)           | WP-080 to WP-086                             | `editor.toggleMode`                                                |
+| `features/sounds`   | audio (HQ sound)         | WP-091, WP-094                               | `SoundManager`, `sounds.show`                                      |
+
+The shell wires them, not the lanes (roadmap lane rule 5): `ui.screen` (`'player' | 'library' | 'sounds'`) shows the library and the sound manager over the score, and `ui.rightPanelView` (`'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'fretboard'`) picks the right panel's content. Each feature's commands are registered in `app/app-registry.ts` from its `commands.ts`, so the palette lists them. A lane replaces its stub in its own folder; the wiring in `app.tsx` is already there.
+
+### Shared state for phase 3
+
+Added by the lead in WP-056 so that no phase 3 lane edits `state/` for its first work package:
+
+- `document.songId` (`Id | undefined`): the library song the open document was opened from or imported as. `openBytes(name, bytes, handle?, songId?)` sets it, `setSongId` sets it after an import, `close` and the next open clear it. Not undoable, never marks the document modified. For WP-060, WP-061 and WP-073.
+- `practice` (`state/practice.ts`): the running `PracticeSession` (`songId`, `documentId`, `startedAt`, `playedMs`, `loops` as bar ids with the best completed speed-trainer step in percent, `tempoHistory` against played time) and the actions `start`, `addPlayed`, `setLoop`, `recordTempo`, `recordStep`, `end`. A session is not ended on a document switch; WP-073 stores it first. For WP-070 and WP-073.
+- `editing` (`state/editing.ts`): the edit-mode flag, reset to play mode at every document open. The edit cursor and range selection of WP-080 extend the selection store, which that lane cannot edit; WP-080 raises a `type:contract` issue for the lead before it needs them.
+- `ui.screen`, `ui.rightPanelView` and `ui.setScreen`, `ui.showPanelView`: described above.
+
+### Phase 3 contract review (2026-11-15)
+
+Every `type:contract` issue raised in phase 2 is closed and recorded in the Contracts section above: #61 (layered regions, filter, envelope delay and choke groups, shipped as #79), #62 (tie origins and faster ids), #87 (the harmonic sounding-pitch helper moves to the model), #101 (continuous-mode segments rendered relative to their start) and #118 (beats past the end of an over-full bar are played). None is open. The model, formats, layout and audio contracts need no change for the first work package of any phase 3 lane. What phase 3 needs that no contract covers yet:
+
+- **Platform file operations (WP-060, WP-061, WP-073, WP-090, WP-091).** `Platform` has `readFile`, `writeFile`, `writeHandle`, `libraryDir` and `dataDir` only. The library needs to create directories, list a directory, move a file (the `trash/` folder, originals), delete, and pick a folder or several files for batch import; the sound pack manager needs directory listing, delete and a download target. This is a change to `apps/web/src/platform` (and the preload bridge), not the model; the lead extends `Platform` and both implementations as its own PR before WP-060 starts its import flow.
+- **`AudioService.previewNote` (WP-081).** The engine has `previewNote(track, { string, fret })` but the app's audio service exposes only `previewTrack`; the lead adds a pass-through.
+- **A metronome with no document (WP-072).** `AudioService.setMetronome` and the transport assume a loaded song; the lead confirms the engine's click path runs with none, or widens the service, before WP-072 builds on it.
+- **A bottom panel region (WP-074).** The app frame has a left sidebar and a right panel only; until the lead adds a bottom region the fretboard is a right-panel view.
 
 ## Data flow
 
