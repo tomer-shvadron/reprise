@@ -247,6 +247,23 @@ describe('App', () => {
     expect(services.ui.getState().panels.rightPanel).toBe(true);
   });
 
+  it('drops native menu commands while a modal is open', async () => {
+    const openFile = vi.fn(() => Promise.resolve(undefined));
+    const { send, user } = renderApp(fakePlatform({ openFile }));
+    await user.keyboard('{Meta>}k{/Meta}');
+    await screen.findByPlaceholderText('Type a command…');
+
+    await send('file.open');
+    expect(openFile).not.toHaveBeenCalled();
+
+    await user.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.queryByPlaceholderText('Type a command…')).not.toBeInTheDocument();
+    });
+    await send('file.open');
+    expect(openFile).toHaveBeenCalledOnce();
+  });
+
   it('opens no print dialog with no score open', async () => {
     const { user } = renderApp();
     await user.keyboard('{Meta>}p{/Meta}');

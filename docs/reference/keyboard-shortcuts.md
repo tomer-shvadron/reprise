@@ -8,6 +8,8 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 - Browsers reserve Ctrl+N and ⌘N (as they do Ctrl+T and Ctrl+W) and never pass them to the page in a normal tab, so in the web build New song is reached from the command palette; the desktop app gets the key from its File menu.
 - A bare key (no Cmd or Ctrl) never fires while typing in a text field.
 - Arrows, Home and End stay with a text field or a control that uses them (a slider, a menu); elsewhere they move the playhead.
+- Backspace and Delete stay with a text field whatever the modifiers, so Cmd+Backspace in the palette's input deletes text and never runs an editor command.
+- While a modal dialog is open (a dialog, an alert dialog, the command palette), no shortcut and no native menu command runs, except Cmd or Ctrl+K when the palette is the only modal (it closes the palette but opens none over another dialog), and a focused text field's own undo and redo. Escape stays with the dialog. This holds wherever focus is, including on the page behind the dialog. The rules live in the dispatcher's doc comment, `apps/web/src/app/shortcut-dispatcher.ts`.
 - Undo and redo in a focused text field undo the field's typing, not the score.
 - Space and Enter on a focused button or toggle activate that control; transport buttons do not take focus on click, so Space keeps playing after one.
 
