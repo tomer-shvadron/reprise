@@ -62,7 +62,7 @@ describe('search', () => {
   // on the same machine: 4 ms worst. Two parallel runs of the whole library, app and state
   // folders (#233) once took 56 ms. The bound is more than 10x the alone figure and 3x that worst
   // (168 ms), rounded up on the 1-2-5 series; the test declares its own timeout.
-  it('filters and sorts 2000 songs well inside a frame budget', { timeout: 30_000 }, () => {
+  it('filters and sorts 2000 songs within its wall-clock sanity bound', { timeout: 30_000 }, () => {
     const entries = Array.from({ length: 2000 }, (_, index) =>
       entryOf(
         rowOf({
