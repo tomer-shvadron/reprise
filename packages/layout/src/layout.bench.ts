@@ -363,18 +363,19 @@ test('Re-layout after a page-break-moving edit, paged', RELAYOUT_BENCH, async (c
 });
 
 /**
- * The pointer's cost: one `hitTest` per move. Half the points are anchor centres (a hit), half
- * pseudo-random (mostly gaps and margins), the same on every run. Unbudgeted: the table has no row.
+ * The pointer's cost: one `hitTest` per move. Half the points are the centres of 500 note anchors spread evenly
+ * over the score (a hit), half pseudo-random (mostly gaps and margins), the same on every run. Unbudgeted: the table has no row.
  */
 function hitTestBench(metric: string, base: LayoutOptions) {
   test(metric, BENCH, async (context) => {
     const score = longScore();
     const laid = layout(score, mixedNotation(score, base));
+    // 500 note centres, spread evenly over every note anchor, then random points up to 1 000.
+    const noteAnchors = laid.anchors.filter((anchor) => anchor.kind === 'note');
     const points: [number, number][] = [];
-    const step = Math.max(1, Math.floor(laid.anchors.length / 500));
-    for (let i = 0; i < laid.anchors.length && points.length < 500; i += step) {
-      const anchor = laid.anchors[i];
-      if (anchor?.kind !== 'note') continue;
+    for (let i = 0; i < 500; i++) {
+      const anchor = noteAnchors[Math.floor((i * noteAnchors.length) / 500)];
+      if (!anchor) continue;
       const box = anchorBox(laid, anchor);
       points.push([box.x + box.width / 2, box.y + box.height / 2]);
     }

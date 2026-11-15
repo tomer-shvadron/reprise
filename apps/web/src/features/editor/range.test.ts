@@ -207,7 +207,7 @@ describe('reconcile', () => {
     ).toBeUndefined();
   });
 
-  it('moves to the neighbour when its beat is removed, and back when the removal is undone', () => {
+  it('moves to the neighbour when its beat is removed, and stays there when the removal is undone', () => {
     const history = createHistory();
     const cursor = cursorOn(score, 0, 0, 1);
     const removed = history.apply(score, removeBeat({ beatId: cursor.beat ?? '' }));
@@ -216,13 +216,19 @@ describe('reconcile', () => {
       beat: beatOf(removed.score, 0, 0, 1).id,
       at: { beat: 1 },
     });
+    // The store holds the patched cursor by the time undo runs. The beat comes back with its id,
+    // but the cursor stays on the neighbour, now at stop 2; WP-084 restores it from the change.
     const undone = history.undo();
-    const restored = reconcile(undone?.score ?? score, {
+    const next = reconcile(undone?.score ?? score, {
       ...base,
-      cursor: cursor,
+      cursor: patch?.cursor,
       currentTrack: guitar,
     });
-    expect(restored).toBeUndefined();
+    expect(next?.cursor).toMatchObject({
+      beat: beatOf(removed.score, 0, 0, 1).id,
+      at: { beat: 2 },
+    });
+    expect(beatOf(undone?.score ?? score, 0, 0, 1).id).toBe(cursor.beat);
   });
 
   it('keeps an end-slot cursor after the voice gains a beat before it', () => {

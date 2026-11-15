@@ -2,7 +2,15 @@ import type { Notation, Score } from '@reprise/model';
 import { largeScore, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
-import { PAGE_SIZES, anchorBox, hitTest, layout, type Anchor, type LayoutOptions } from './index';
+import {
+  PAGE_SIZES,
+  anchorBox,
+  hitTest,
+  layout,
+  type Anchor,
+  type LayoutOptions,
+  type Rect,
+} from './index';
 
 const paged: LayoutOptions = {
   mode: 'paged',
@@ -153,28 +161,57 @@ describe('continuous', () => {
     },
   );
 
-  it('returns what testing against the shifted boxes returns', () => {
-    const reference = (x: number, y: number): Anchor | undefined => {
-      const inside = laid.anchors.filter((anchor) => {
-        const box = anchorBox(laid, anchor);
-        return x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
-      });
-      // The specific kinds first; ties are rare enough that only the kind is compared.
-      const rank = { note: 4, beat: 3, bar: 2, staff: 1, system: 0 } as const;
-      return inside.sort((a, b) => rank[b.kind] - rank[a.kind])[0];
+  it('returns the very anchor the shifted-box implementation returned, offset systems included', () => {
+    // The implementation before the allocation fix, kept as the reference.
+    const rank = { note: 4, beat: 3, bar: 2, staff: 1, system: 0 } as const;
+    const specific = (a: Anchor, b: Anchor): boolean => {
+      if (rank[a.kind] !== rank[b.kind]) return rank[a.kind] > rank[b.kind];
+      if ((a.track === undefined) !== (b.track === undefined)) return a.track !== undefined;
+      return a.bbox.width * a.bbox.height < b.bbox.width * b.bbox.height;
     };
-    const last = laid.systems.at(-1);
-    if (!last) throw new Error('no systems');
-    for (let i = 0; i < 200; i++) {
-      const x = ((i * 7919) % 6400) / 10;
-      const y = ((i * 104_729) % 100_000) / 100;
-      expect(hitTest(laid, x, y)?.kind).toBe(reference(x, y)?.kind);
+    const inBox = (box: Rect, x: number, y: number) =>
+      x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
+    const reference = (x: number, y: number): Anchor | undefined => {
+      let best: Anchor | undefined;
+      for (const system of laid.systems) {
+        if (!inBox(system.bbox, x, y)) continue;
+        for (let i = system.anchors.start; i < system.anchors.end; i++) {
+          const anchor = laid.anchors[i];
+          if (!anchor) continue;
+          const box = anchorBox(laid, anchor);
+          if (inBox(box, x, y) && (!best || specific(anchor, best))) best = anchor;
+        }
+      }
+      return best;
+    };
+    const right = Math.max(...laid.systems.map((s) => s.bbox.x + s.bbox.width));
+    const bottom = Math.max(...laid.systems.map((s) => s.bbox.y + s.bbox.height));
+    expect(laid.systems.some((s) => (s.offsetX ?? 0) > 0)).toBe(true);
+    let seed = 7;
+    const random = () => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return seed / 2_147_483_648;
+    };
+    for (let i = 0; i < 3000; i++) {
+      const x = random() * right;
+      const y = random() * bottom;
+      expect(hitTest(laid, x, y)).toBe(reference(x, y));
     }
+    // On and just outside the edges of anchors in later systems.
     for (const anchor of laid.anchors
-      .filter((a) => a.kind === 'note' && a.system > 3)
-      .slice(0, 50)) {
+      .filter((a) => a.system > 3 && a.kind !== 'system')
+      .slice(0, 300)) {
       const box = anchorBox(laid, anchor);
-      expect(hitTest(laid, box.x + 1, box.y + 1)?.kind).toBe(reference(box.x + 1, box.y + 1)?.kind);
+      for (const [dx, dy] of [
+        [0, 0],
+        [box.width, box.height],
+        [-0.01, 0],
+        [box.width + 0.01, 0],
+      ] as const) {
+        const x = box.x + dx;
+        const y = box.y + dy;
+        expect(hitTest(laid, x, y)).toBe(reference(x, y));
+      }
     }
   });
 
