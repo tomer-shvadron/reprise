@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useStore } from 'zustand';
 
 import { useAppServices } from '@/app/services-context';
+import type { AppServices } from '@/app/services';
 import type { ScoreOverlays } from '@/features/score';
 
 import { caretBoxes, rangeBoxes } from './geometry';
@@ -13,7 +14,14 @@ import { visibleTracks } from './visible';
  * pointer move that changes nothing in the store allocates nothing.
  */
 export function useEditOverlays(): Pick<ScoreOverlays, 'caret' | 'range'> {
-  const { document, layout, selection, editing } = useAppServices();
+  return useEditOverlaysFor(useAppServices());
+}
+
+/** `useEditOverlays` over given stores, for the demo, which has no app services. */
+export function useEditOverlaysFor(
+  stores: Pick<AppServices, 'document' | 'layout' | 'selection' | 'editing'>,
+): Pick<ScoreOverlays, 'caret' | 'range'> {
+  const { document, layout, selection, editing } = stores;
   const score = useStore(document, (state) => state.score);
   const view = useStore(document, (state) => state.view);
   const result = useStore(layout, (state) => state.result);

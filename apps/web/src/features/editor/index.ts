@@ -29,5 +29,5 @@ export { caretBoxes, caretRect, rangeBoxes } from './geometry';
 export { createEditPointer, type EditPointerDeps } from './edit-pointer';
 export { installEditor } from './install-editor';
 export { navigationCommands, type NavigationCommandId } from './navigation-commands';
-export { useEditOverlays } from './use-edit-overlays';
+export { useEditOverlays, useEditOverlaysFor } from './use-edit-overlays';
 export { visibleTracks } from './visible';
