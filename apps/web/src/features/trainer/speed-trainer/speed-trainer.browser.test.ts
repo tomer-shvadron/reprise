@@ -29,68 +29,93 @@ function quarters() {
   return builder.build();
 }
 
-describe('the speed trainer on the real engine', () => {
-  it('gives the new tempo to the first note of the next pass, applied from the loop event', async () => {
-    const scheduler = manualTicker();
-    const frames = manualTicker();
-    const context = new OfflineAudioContext({
-      numberOfChannels: 2,
-      length: Math.round(4.6 * SAMPLE_RATE),
-      sampleRate: SAMPLE_RATE,
-    });
-    const services = createAppServices({
-      platform: fakePlatform(),
-      storage: () => memoryStorage(),
-      audio: (playback) =>
-        createAudioService({
-          playback,
-          loadSoundfont: () => synthetic,
-          createContext: () => context,
-          scheduler: scheduler.ticker,
-          frames: frames.ticker,
-          startLatency: START,
-          defer: (run) => {
-            run();
-          },
-        }),
-    });
-    const { bytes } = await write(quarters(), 'reprise');
-    await services.document.getState().openBytes('song.reprise', bytes);
-    await services.audio.settled();
-    services.audio.unlock();
-    const bar = services.document.getState().score?.masterBars[1];
-    if (!bar) throw new Error('bar 2 expected');
-    services.audio.setLoop({ startBar: bar.id, endBar: bar.id });
+/** One 4.6 s offline render of pass 1 at 100 percent and the passes after at 200 percent. */
+async function render(step: 'trainer' | 'microtask') {
+  const scheduler = manualTicker();
+  const frames = manualTicker();
+  const context = new OfflineAudioContext({
+    numberOfChannels: 2,
+    length: Math.round(4.6 * SAMPLE_RATE),
+    sampleRate: SAMPLE_RATE,
+  });
+  const services = createAppServices({
+    platform: fakePlatform(),
+    storage: () => memoryStorage(),
+    audio: (playback) =>
+      createAudioService({
+        playback,
+        loadSoundfont: () => synthetic,
+        createContext: () => context,
+        scheduler: scheduler.ticker,
+        frames: frames.ticker,
+        startLatency: START,
+        defer: (run) => {
+          run();
+        },
+      }),
+  });
+  const { bytes } = await write(quarters(), 'reprise');
+  await services.document.getState().openBytes('song.reprise', bytes);
+  await services.audio.settled();
+  services.audio.unlock();
+  const bar = services.document.getState().score?.masterBars[1];
+  if (!bar) throw new Error('bar 2 expected');
+  services.audio.setLoop({ startBar: bar.id, endBar: bar.id });
 
-    const { sampler } = debugAudioEngine(services.audio.debug().engine);
-    if (!sampler) throw new Error('the audio service is not running');
-    const onsets: { when: number; calledAt: number }[] = [];
-    const noteOn = sampler.noteOn.bind(sampler);
-    vi.spyOn(sampler, 'noteOn').mockImplementation((id, request) => {
-      onsets.push({ when: request.when, calledAt: context.currentTime });
-      return noteOn(id, request);
-    });
-    const loops: { when: number; arrivedAt: number }[] = [];
-    services.playback.subscribe((state, previous) => {
-      if (state.lastLoop && state.lastLoop !== previous.lastLoop) {
-        loops.push({ when: state.lastLoop.when, arrivedAt: context.currentTime });
-      }
-    });
+  const { sampler } = debugAudioEngine(services.audio.debug().engine);
+  if (!sampler) throw new Error('the audio service is not running');
+  const onsets: { when: number; calledAt: number }[] = [];
+  const noteOn = sampler.noteOn.bind(sampler);
+  vi.spyOn(sampler, 'noteOn').mockImplementation((id, request) => {
+    onsets.push({ when: request.when, calledAt: context.currentTime });
+    return noteOn(id, request);
+  });
+  const loops: { when: number; arrivedAt: number }[] = [];
+  services.playback.subscribe((state, previous) => {
+    if (state.lastLoop && state.lastLoop !== previous.lastLoop) {
+      loops.push({ when: state.lastLoop.when, arrivedAt: context.currentTime });
+    }
+  });
 
-    const trainer = createSpeedTrainer(services);
+  const trainer = createSpeedTrainer(services);
+  if (step === 'trainer') {
     trainer
       .getState()
       .setConfig({ unit: 'percent', start: 100, step: 100, target: 200, repsPerStep: 1 });
     trainer.getState().start();
-    await drive(context, { tickers: [scheduler, frames] });
+  } else {
+    // The step the trainer must not take: after the event's notification, from a microtask.
+    services.audio.setTempo('percent', 100);
+    services.playback.subscribe((state, previous) => {
+      if (state.lastLoop && state.lastLoop !== previous.lastLoop && loops.length === 1) {
+        queueMicrotask(() => {
+          services.audio.setTempo('percent', 200);
+        });
+      }
+    });
+    services.audio.stop();
+    services.audio.play();
+  }
+  await drive(context, { tickers: [scheduler, frames] });
+  services.dispose();
 
-    const first = loops[0];
-    if (!first) throw new Error('no loop event');
-    const whens = onsets.map((onset) => onset.when);
-    const before = whens.filter((when) => when < first.when - 1e-6);
-    const after = whens.filter((when) => when >= first.when - 1e-6);
-    const gaps = (times: number[]) =>
-      times.slice(1).map((time, index) => time - (times[index] ?? 0));
+  const first = loops[0];
+  if (!first) throw new Error('no loop event');
+  const whens = onsets.map((onset) => onset.when);
+  return {
+    first,
+    onsets,
+    status: trainer.getState().status,
+    before: whens.filter((when) => when < first.when - 1e-6),
+    after: whens.filter((when) => when >= first.when - 1e-6),
+  };
+}
+
+const gaps = (times: number[]) => times.slice(1).map((time, index) => time - (times[index] ?? 0));
+
+describe('the speed trainer on the real engine', () => {
+  it('gives the new tempo to the first note of the next pass, applied from the loop event', async () => {
+    const { first, onsets, status, before, after } = await render('trainer');
 
     // Pass 1 at 100 percent: a note every 0.5 s.
     expect(before.length).toBeGreaterThanOrEqual(4);
@@ -99,7 +124,7 @@ describe('the speed trainer on the real engine', () => {
     expect(after[0]).toBeCloseTo(first.when, 3);
     expect(after.length).toBeGreaterThanOrEqual(8);
     for (const gap of gaps(after)) expect(gap).toBeCloseTo(0.25, 3);
-    expect(trainer.getState().status).toBe('done');
+    expect(status).toBe('done');
     // Nothing was scheduled in the past.
     for (const onset of onsets) expect(onset.when).toBeGreaterThanOrEqual(onset.calledAt - 1e-6);
     // The event fires ahead of the wrap, by at most the lookahead plus one scheduler tick.
@@ -107,7 +132,12 @@ describe('the speed trainer on the real engine', () => {
     expect(lead).toBeGreaterThan(0);
     expect(lead).toBeLessThanOrEqual(LOOKAHEAD + STEP + 1e-6);
     console.info(`speed trainer loop event lead: ${(lead * 1000).toFixed(1)} ms`);
+  });
 
-    services.dispose();
+  it('would miss the boundary if the step ran after the notification, from a microtask', async () => {
+    const { after } = await render('microtask');
+
+    // The next pass was already scheduled at the old tempo, so its start is not at 200 percent.
+    expect(gaps(after).some((gap) => Math.abs(gap - 0.25) > 0.002)).toBe(true);
   });
 });

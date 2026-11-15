@@ -58,6 +58,17 @@ describe('the speed trainer store', () => {
     expect(services.ui.getState().rightPanelView).toBe('speedTrainer');
   });
 
+  it('does not hold on the notifications of its own Start', async () => {
+    const { services, trainer } = await setup();
+    // The real service notifies on stop and play; the tempo it still shows is the user's old one.
+    services.fakeAudio.setTempo('percent', 90);
+    services.fakeAudio.stop.mockImplementation(() => {
+      services.playback.setState({ transport: 'stopped' });
+    });
+    trainer.getState().start();
+    expect(trainer.getState().status).toBe('running');
+  });
+
   it('needs a score and a loop', async () => {
     const { services, trainer } = await setup();
     services.fakeAudio.setLoop(undefined);
@@ -81,8 +92,48 @@ describe('the speed trainer store', () => {
     loop();
     // No await between the event and the assertion: the engine has scheduled the next pass by then.
     expect(tempo()).toEqual({ mode: 'percent', value: 110 });
-    expect(seen).toBeDefined();
+    expect(seen).toEqual({ mode: 'percent', value: 110 });
     expect(trainer.getState()).toMatchObject({ stepIndex: 1, reps: 0 });
+  });
+
+  it('does not hold on a step when an earlier listener changes the store on a loop event', async () => {
+    const { services, trainer, loop, tempo } = await setup();
+    // Subscribed before Start, so it runs first and nests a change inside the loop notification.
+    services.playback.subscribe((state, previous) => {
+      if (state.lastLoop !== previous.lastLoop) {
+        services.playback.setState({ output: { status: 'ready', error: undefined } });
+      }
+    });
+    trainer.getState().setConfig({ ...ramp, repsPerStep: 1 });
+    trainer.getState().start();
+    loop();
+    loop();
+    loop();
+    expect(trainer.getState().status).toBe('done');
+    expect(tempo().value).toBe(120);
+  });
+
+  it('shows no stale run after a finished run’s loop changes', async () => {
+    const { services, trainer, loop, third } = await setup();
+    trainer.getState().setConfig({ ...ramp, start: 110, repsPerStep: 1 });
+    trainer.getState().start();
+    loop();
+    loop();
+    expect(trainer.getState().status).toBe('done');
+    services.fakeAudio.setLoop({ startBar: third.id, endBar: third.id });
+    expect(trainer.getState().status).toBe('idle');
+  });
+
+  it('resets without a false hold when another document opens', async () => {
+    const { services, trainer } = await setup();
+    trainer.getState().start();
+    services.transport.getState().announce('');
+    const { bytes } = await write(fourBars(), 'reprise');
+    await act(async () => {
+      await services.document.getState().openBytes('other.reprise', bytes);
+    });
+    expect(trainer.getState().status).toBe('idle');
+    expect(services.transport.getState().announcement?.text).toBe('Speed trainer reset');
   });
 
   it('records each completed step in a started session, and only then', async () => {
