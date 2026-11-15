@@ -1148,6 +1148,18 @@ describe('notes off the fretboard', () => {
     expect(result.score.tracks[0]?.kind).toBe('pitched');
   });
 
+  it('ignores off-fretboard notes in grace beats that end a voice and are dropped', () => {
+    const result = read(
+      oneBar(
+        [beat('0', '0', '0'), beat('1', '1', '1 2', '<GraceNotes>BeforeBeat</GraceNotes>')],
+        [note('0', 2, 5), note('1', 2, 7), note('2', 2, 9)],
+        [rhythm('0', 'Half'), rhythm('1', 'Sixteenth')],
+      ),
+    );
+    expect(codes(result)).toContain('grace-without-beat');
+    expect(result.score.tracks[0]?.kind).toBe('fretted');
+  });
+
   it('leaves a clean guitar, a drum kit and a pitched track alone', () => {
     const clean = read(
       oneBar([beat('0', '0', '0 1')], [note('0', 2, 5), note('1', 3, 7)], QUARTERS),

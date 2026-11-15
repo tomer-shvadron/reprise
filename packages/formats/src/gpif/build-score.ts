@@ -186,9 +186,7 @@ function offFretboardMessage(plan: TrackPlan): string {
   const found = plan.offFretboard;
   const parts = [
     found && found.below > 0 ? `${String(found.below)} below fret 0` : '',
-    found && found.past > 0
-      ? `${String(found.past)} past fret ${String(plan.staff.fretCount ?? 24)}`
-      : '',
+    found && found.past > 0 ? `${String(found.past)} past fret ${String(found.fretCount)}` : '',
     found && found.shared > 0 ? `${String(found.shared)} sharing a string in their beat` : '',
   ].filter((part) => part !== '');
   return `The track's notes do not fit its fretboard (${parts.join(', ')}); read as pitched (standard notation), every note keeping its MIDI pitch`;
@@ -197,7 +195,7 @@ function offFretboardMessage(plan: TrackPlan): string {
 class ScoreBuilder {
   readonly #sink: WarningSink;
   readonly #document: GpifDocument;
-  #plans: TrackPlan[];
+  readonly #plans: TrackPlan[];
   readonly #masterBars: MasterBar[];
   readonly #tracks: Track[];
   /** Per track, per master bar, the gpif bar ids of the track's staves. */
@@ -272,22 +270,30 @@ class ScoreBuilder {
     );
   }
 
-  /** The notes of each beat the model keeps for a track: the beats of voice lines with a slot. */
+  /**
+   * The notes of each beat the model keeps for a track: the beats of voice lines with a slot,
+   * less the grace beats that end a line, which `#buildVoice` drops as `grace-without-beat`.
+   */
   *#noteGroups(trackIndex: number): Generator<GpifNote[]> {
     const slots = this.#slots[trackIndex];
-    for (const ids of this.#barIds[trackIndex] ?? []) {
-      for (const [staffIndex, id] of ids.entries()) {
-        const bar = id === '-1' ? undefined : this.#document.bars.get(id);
-        for (const [voiceIndex, voiceId] of (bar?.voiceIds ?? []).entries()) {
-          if (!isUsedVoice(this.#document, voiceId)) continue;
-          if (!slots?.has(lineKey(staffIndex, voiceIndex))) continue;
-          for (const beatId of this.#document.voices.get(voiceId)?.beatIds ?? []) {
-            const notes = (this.#document.beats.get(beatId)?.noteIds ?? [])
-              .map((noteId) => this.#document.notes.get(noteId))
-              .filter((note) => note !== undefined);
-            yield notes;
-          }
+    for (const line of slots?.keys() ?? []) {
+      const [staffIndex = 0, voiceIndex = 0] = line.split('.').map(Number);
+      const beats: GpifBeat[] = [];
+      for (const ids of this.#barIds[trackIndex] ?? []) {
+        const id = ids[staffIndex];
+        const bar = id === undefined || id === '-1' ? undefined : this.#document.bars.get(id);
+        const voiceId = bar?.voiceIds[voiceIndex];
+        if (voiceId === undefined || !isUsedVoice(this.#document, voiceId)) continue;
+        for (const beatId of this.#document.voices.get(voiceId)?.beatIds ?? []) {
+          const beat = this.#document.beats.get(beatId);
+          if (beat) beats.push(beat);
         }
+      }
+      while (beats.at(-1)?.grace) beats.pop();
+      for (const beat of beats) {
+        yield beat.noteIds
+          .map((noteId) => this.#document.notes.get(noteId))
+          .filter((note) => note !== undefined);
       }
     }
   }
