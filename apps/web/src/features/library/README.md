@@ -66,7 +66,7 @@ shell wiring, which is one separate integration commit).
   `library.openRecent` (the library sorted by last opened), and on desktop the File menu through
   `setRecentSongs` (at most 10), with `onOpenRecent` opening the pick.
 - **Closing the window.** Nothing calls `Library.dispose()`; the session keeper flushes on `pagehide`
-  and on `visibilitychange` to hidden, so the last 500 ms of changes are kept without shell wiring.
+  and on `visibilitychange` to hidden, so the last 500 ms of changes are kept without shell wiring. An import running when the window closes is not awaited (no close hook can wait on a promise), so the worst case is files in the library folder with no row; files are written before the row. `dispose()` itself awaits the library's in-flight imports before closing the database.
 - **Parsing** (`import/`). `parseImport` is the pure detect, read, native write, summarize and hash
   step. `createParser` runs it in a module Worker (`parse.worker.ts`) with the bytes transferred both
   ways, and inline where there is no `Worker` (jsdom). Readers mint fresh ids on every read, so a song
