@@ -3,6 +3,8 @@ import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
+import { createAppRegistry } from '@/app/app-registry';
+import { CommandSourceContext } from '@/app/use-command';
 import { mirrorAudio } from '@/test/mirror-audio';
 import { fourBars } from '@/test/position';
 import { renderWithServices } from '@/test/render';
@@ -14,7 +16,13 @@ import { speedTrainerFor } from './speed-trainer-for';
 async function setup(options: { loop?: boolean } = {}) {
   const services = createTestServices();
   mirrorAudio(services);
-  const result = renderWithServices(<SpeedTrainerPanel />, services);
+  const registry = createAppRegistry(services);
+  const result = renderWithServices(
+    <CommandSourceContext value={{ registry, keyboard: 'mac' }}>
+      <SpeedTrainerPanel />
+    </CommandSourceContext>,
+    services,
+  );
   const { bytes } = await write(fourBars(), 'reprise');
   await act(async () => {
     await services.document.getState().openBytes('song.reprise', bytes);

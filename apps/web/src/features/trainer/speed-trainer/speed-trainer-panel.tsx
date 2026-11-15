@@ -1,9 +1,8 @@
-import { useMemo, useState, type KeyboardEvent } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import { useStore } from 'zustand';
 
 import { useAppServices } from '@/app/services-context';
-import { runCommand } from '@/app/command-registry';
-import { detectKeyboardPlatform, formatShortcut, shortcutOn } from '@/app/keyboard';
+import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import {
   InputGroup,
@@ -12,17 +11,9 @@ import {
   InputGroupText,
 } from '@/components/ui/input-group';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import {
-  applyLoop,
-  bpmFor,
-  loopBarNumbers,
-  parseBpm,
-  TEMPO_PERCENT,
-  wholeSong,
-} from '@/features/transport';
+import { bpmFor, loopBarNumbers, parseBpm, TEMPO_PERCENT } from '@/features/transport';
 
 import { convertConfig, REPS, toPercent, type OnMiss, type RampUnit } from './ramp';
-import { trainerCommands, type TrainerCommandId } from '../commands';
 import { speedTrainerFor } from './speed-trainer-for';
 import { referenceBpmFor } from './speed-trainer-store';
 
@@ -109,34 +100,12 @@ export function SpeedTrainerPanel() {
   const state = useStore(trainer);
   const score = useStore(document, (s) => s.score);
   const loop = useStore(playback, (s) => s.settings.loop);
-  // The panel sits outside the transport bar's command source, so it binds its own commands.
-  const commands = useMemo(() => trainerCommands(services), [services]);
-  const bind = (id: TrainerCommandId) => {
-    const command = commands.find((candidate) => candidate.id === id);
-    if (!command) throw new Error(`no command ${id}`);
-    const platform = detectKeyboardPlatform();
-    const shortcut = shortcutOn(command.shortcut, platform);
-    const keys = shortcut && formatShortcut(shortcut, platform);
-    return {
-      run: () => {
-        runCommand(command);
-      },
-      title: keys ? `${command.title} (${keys})` : command.title,
-    };
-  };
-  const toggle = bind('trainer.speedTrainerToggle');
-  const missed = bind('trainer.speedTrainerMissed');
-  const reset = bind('trainer.speedTrainerReset');
-  const loopSelection = () => {
-    if (!score) return;
-    const failed = applyLoop(
-      services,
-      score,
-      services.selection.getState().bars ?? wholeSong(score),
-    );
-    if (failed) services.transport.getState().announce(failed);
-  };
-
+  const toggle = useCommand('trainer.speedTrainerToggle');
+  const missed = useCommand('trainer.speedTrainerMissed');
+  const reset = useCommand('trainer.speedTrainerReset');
+  const toggleLoop = useCommand('transport.toggleLoop');
+  const titled = (command: { title: string; keys: string | undefined }) =>
+    command.keys ? `${command.title} (${command.keys})` : command.title;
   const { config, status, plan } = state;
   const active = status === 'running' || status === 'held';
   const hasRun = status !== 'idle' && plan !== undefined;
@@ -196,7 +165,7 @@ export function SpeedTrainerPanel() {
             : 'Select bars and loop them to train'}
         </p>
         {!loop && score && (
-          <Button variant="outline" size="sm" className="w-fit" onClick={loopSelection}>
+          <Button variant="outline" size="sm" className="w-fit" onClick={toggleLoop.run}>
             Loop selected bars
           </Button>
         )}
@@ -319,7 +288,8 @@ export function SpeedTrainerPanel() {
           size="sm"
           onClick={toggle.run}
           disabled={status !== 'running' && status !== 'held' && !canStart}
-          title={!canStart && !active ? 'Loop some bars first' : toggle.title}
+          title={!canStart && !active ? 'Loop some bars first' : titled(toggle)}
+          aria-keyshortcuts={toggle.ariaKeys}
         >
           {toggleLabel}
         </Button>
@@ -328,7 +298,8 @@ export function SpeedTrainerPanel() {
           size="sm"
           onClick={missed.run}
           disabled={status !== 'running'}
-          title={missed.title}
+          title={titled(missed)}
+          aria-keyshortcuts={missed.ariaKeys}
         >
           Missed pass
         </Button>
@@ -337,7 +308,8 @@ export function SpeedTrainerPanel() {
           size="sm"
           onClick={reset.run}
           disabled={status === 'idle'}
-          title={reset.title}
+          title={titled(reset)}
+          aria-keyshortcuts={reset.ariaKeys}
         >
           Reset
         </Button>
