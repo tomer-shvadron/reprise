@@ -10,7 +10,8 @@ export interface BarRange {
 
 /**
  * The edit cursor. It holds ids, so an edit, undo or redo leaves it on the same beat; `at` holds
- * the indices it last resolved to, the fallback when an edit removes its beat, bar or track.
+ * the indices it last resolved to (`track` indexes `score.tracks`, `bar` indexes `score.masterBars`,
+ * `beat` indexes the voice's stops, where the end slot is the last stop, `beats.length`), the fallback when an edit removes its beat, bar or track.
  */
 export interface EditCursor {
   track: Id;

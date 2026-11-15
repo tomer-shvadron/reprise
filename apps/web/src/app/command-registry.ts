@@ -1,7 +1,12 @@
 import { shortcutId, type Shortcut } from './keyboard';
 
 /** A situation a binding is limited to; a command without one is bound everywhere. */
-export type CommandContext = 'editing';
+export const COMMAND_CONTEXTS = ['editing'] as const;
+export type CommandContext = (typeof COMMAND_CONTEXTS)[number];
+
+/** Precedence of a context when several are active: lower wins, a context-free command last. */
+export const contextRank = (context: CommandContext | undefined): number =>
+  context === undefined ? COMMAND_CONTEXTS.length : COMMAND_CONTEXTS.indexOf(context);
 
 export interface Command {
   id: string;
@@ -52,6 +57,20 @@ export class CommandRegistry {
       this.#commands.delete(command.id);
       if (binding !== undefined) this.#shortcuts.delete(binding);
     };
+  }
+
+  /** The commands usable now: those without a context and those whose context is active. */
+  available(): Command[] {
+    return this.list().filter(({ context }) => context === undefined || this.#isActive(context));
+  }
+
+  /** Whether an available command of an active context owns this command's shortcut instead. */
+  isShadowed(command: Command): boolean {
+    if (command.context !== undefined || !command.shortcut) return false;
+    const id = shortcutId(command.shortcut);
+    return this.available().some(
+      (other) => other.context !== undefined && other.shortcut && shortcutId(other.shortcut) === id,
+    );
   }
 
   get(id: string): Command | undefined {

@@ -94,4 +94,22 @@ describe('CommandRegistry', () => {
       'already bound',
     );
   });
+
+  it('lists the available commands and finds the context-free ones an active context shadows', () => {
+    let editing = false;
+    const registry = new CommandRegistry(() => editing);
+    const seek = command({ id: 'seek', shortcut: { key: 'ArrowLeft' } });
+    const move = command({ id: 'move', shortcut: { key: 'ArrowLeft' }, context: 'editing' });
+    const other = command({ id: 'other', shortcut: { key: 'ArrowRight' } });
+    for (const c of [seek, move, other]) registry.register(c);
+
+    expect(registry.available()).toEqual([seek, other]);
+    expect(registry.isShadowed(seek)).toBe(false);
+
+    editing = true;
+    expect(registry.available()).toEqual([seek, move, other]);
+    expect(registry.isShadowed(seek)).toBe(true);
+    expect(registry.isShadowed(other)).toBe(false);
+    expect(registry.isShadowed(move)).toBe(false);
+  });
 });

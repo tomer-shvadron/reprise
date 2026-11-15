@@ -293,4 +293,17 @@ describe('shortcut contexts', () => {
     fireEvent.keyDown(window, { key: 'ArrowLeft' });
     expect(seek).toHaveBeenCalledTimes(1);
   });
+
+  it('leaves the arrows and bare keys to a focused text field while editing', () => {
+    const { seek, move, only, setEditing } = setupContexts();
+    setEditing(true);
+    render(<input aria-label="name" />);
+    const input = screen.getByLabelText('name');
+    input.focus();
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    fireEvent.keyDown(input, { key: 'x' });
+    expect(seek).not.toHaveBeenCalled();
+    expect(move).not.toHaveBeenCalled();
+    expect(only).not.toHaveBeenCalled();
+  });
 });
