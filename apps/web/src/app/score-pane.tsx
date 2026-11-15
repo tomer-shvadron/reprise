@@ -161,7 +161,7 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
       setPreview(undefined);
     } else if (gesture.kind === 'click') {
       clickBar(services, result, score, gesture.event, gesture.shift);
-    } else {
+    } else if (gesture.kind === 'drag') {
       const range = orderedRange(score, gesture.from.id, gesture.to.id);
       if (!gesture.done) {
         setPreview(range);
