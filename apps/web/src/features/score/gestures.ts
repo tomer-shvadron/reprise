@@ -11,8 +11,7 @@ export type Gesture =
   /** A press moved from one bar column to another; reported per new column, then once `done`. */
   | { kind: 'drag'; from: Anchor; to: Anchor; done: boolean }
   /**
-   * A press dragged across the score, whatever it crosses; reported whenever the anchor under the
-   * pointer changes, then once `done`. Only in the `area` drag mode, which the editor uses.
+   * A press dragged across the score, whatever it crosses; reported on every move, then once `done`. Only in the `area` drag mode, which the editor uses.
    */
   | { kind: 'area'; from: ScorePointerEvent; to: ScorePointerEvent; done: boolean }
   /** A drag the system took away; whatever it previewed is dropped. */
@@ -24,8 +23,6 @@ interface Press {
   y: number;
   dragging: boolean;
   to: Anchor | undefined;
-  /** Id of the anchor last reported under an area drag. */
-  over: string | undefined;
 }
 
 /** `columns`: drags between bar columns (play mode). `area`: drags anywhere, point to point (edit mode). */
@@ -47,12 +44,9 @@ function handleArea(
       : { kind: 'click', event: done.event, shift: done.event.event.shiftKey };
   }
   if (!press.dragging) return undefined;
-  const over = event.anchor?.id ?? event.column?.id;
-  const changed = press.over !== over;
-  press.over = over;
-  return starts || changed
-    ? { kind: 'area', from: press.event, to: event, done: false }
-    : undefined;
+  // Every move, not only a new anchor: the editor resolves the nearest beat by x and the string by
+  // y inside one bar anchor, so the preview must follow the pointer there too.
+  return { kind: 'area', from: press.event, to: event, done: false };
 }
 
 /** Turns the primary button's pointer events into clicks and drags over bar columns. */
@@ -73,7 +67,6 @@ export function createGestureTracker(): {
                 y: native.clientY,
                 dragging: false,
                 to: event.column,
-                over: undefined,
               }
             : undefined;
         return undefined;

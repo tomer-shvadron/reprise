@@ -82,7 +82,7 @@ describe('the gesture tracker', () => {
       anchor: { kind: 'beat', id, system: 0, bbox: { x: 0, y: 0, width: 1, height: 1 } },
     });
 
-    it('starts a drag without a column under the press, reports each new anchor and once done', () => {
+    it('starts a drag without a column under the press, reports every move and once done', () => {
       const tracker = createGestureTracker();
       const down = pointer('down', 10, undefined);
       tracker.handle(down, 'area');
@@ -93,7 +93,7 @@ describe('the gesture tracker', () => {
         to: { anchor: { id: 'a' } },
         done: false,
       });
-      expect(tracker.handle(over('move', 31, 'a'), 'area')).toBeUndefined();
+      expect(tracker.handle(over('move', 31, 'a'), 'area')).toMatchObject({ done: false });
       expect(tracker.handle(over('move', 50, 'b'), 'area')).toMatchObject({ done: false });
       expect(tracker.handle(over('up', 50, 'b'), 'area')).toMatchObject({
         kind: 'area',

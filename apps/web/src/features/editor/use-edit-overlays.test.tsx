@@ -69,4 +69,38 @@ describe('useEditOverlays', () => {
     });
     expect(hook.result.current).toBe(before);
   });
+
+  it('keeps the range boxes through a cursor move and the caret through a range change', async () => {
+    const { services, score, hook } = await setup();
+    const first = firstStop(score, 0, 0);
+    const end = {
+      track: first?.track ?? '',
+      masterBar: score.masterBars[0]?.id ?? '',
+      beat: undefined,
+    };
+    act(() => {
+      services.editing.getState().setEditing(true);
+      services.selection
+        .getState()
+        .setEdit({ cursor: first, range: { kind: 'bars', anchor: end, focus: end } });
+    });
+    const { caret, range } = hook.result.current;
+    act(() => {
+      services.selection.getState().setEdit({ cursor: firstStop(score, 0, 1) });
+    });
+    expect(hook.result.current.range).toBe(range);
+    expect(hook.result.current.caret).not.toBe(caret);
+    const moved = hook.result.current.caret;
+    act(() => {
+      services.selection.getState().setEdit({
+        range: {
+          kind: 'bars',
+          anchor: end,
+          focus: { ...end, masterBar: score.masterBars[1]?.id ?? '' },
+        },
+      });
+    });
+    expect(hook.result.current.caret).toBe(moved);
+    expect(hook.result.current.range).not.toBe(range);
+  });
 });

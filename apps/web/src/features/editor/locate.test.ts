@@ -7,7 +7,7 @@ import {
   type LayoutResult,
 } from '@reprise/layout';
 import type { Notation, Score } from '@reprise/model';
-import { largeScore } from '@reprise/model/testing';
+import { largeScore, note, score as scoreBuilder } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { nearestColumn } from '@/features/score';
@@ -182,14 +182,50 @@ describe('locate', () => {
     const last = tab.anchors.find((a) => a.kind === 'beat' && a.id === beats[1]?.id);
     if (!last) throw new Error('no last beat');
     const lastBox = anchorBox(tab, last);
-    // Just inside the bar's right edge, past the last beat: the end slot.
-    const end = locate(tab, built, pointer(tab, box.x + box.width - 0.1, staff.top - 0.1));
-    expect(end?.masterBar).toBe(built.masterBars[1]?.id);
-    if (box.x + box.width - 0.1 > lastBox.x + lastBox.width) expect(end?.beat).toBeUndefined();
+    // Past the last beat by construction: halfway between its right edge and the bar's.
+    const gapFrom = lastBox.x + lastBox.width;
+    const gapTo = box.x + box.width;
+    expect(gapTo - gapFrom, 'the bar has room after its last beat').toBeGreaterThan(1);
+    const end = locate(tab, built, pointer(tab, (gapFrom + gapTo) / 2, staff.top - 0.1));
+    expect(end).toMatchObject({ masterBar: built.masterBars[1]?.id, beat: undefined });
     // Just inside its left edge, before the first beat.
     const start = locate(tab, built, pointer(tab, box.x + 0.1, y));
     expect(start?.beat).toBe(beats[0]?.id);
   });
+
+  it.each(['tab', 'both'] as const)(
+    'reads each string of a 7-string and a 4-string track in one system, in %s notation',
+    (notation) => {
+      const mixed = scoreBuilder()
+        .track('guitar', { tuning: [35, 40, 45, 50, 55, 59, 64] })
+        .bar()
+        .beat('4', [note(1, 0)])
+        .track('bass')
+        .bar()
+        .beat('4', [note(1, 0)])
+        .build({ ids: 'sequential' });
+      const laid = lay(mixed, notation);
+      expect(mixed.tracks.map((t) => t.tuning.length)).toEqual([7, 4]);
+      mixed.tracks.forEach((track, t) => {
+        const staff = laid.systems[0]?.staves.find(
+          (st) => st.track === track.id && st.type === 'tab',
+        );
+        const beat = track.bars[0]?.voices[0]?.beats[0];
+        const anchor = laid.anchors.find(
+          (a) => a.kind === 'beat' && a.id === beat?.id && a.staff === 'tab',
+        );
+        if (!staff || !anchor) throw new Error(`no tab staff for track ${String(t)}`);
+        const strings = track.tuning.length;
+        const box = anchorBox(laid, anchor);
+        for (let string = 1; string <= strings; string++) {
+          const y = staff.top + ((staff.bottom - staff.top) * (string - 1)) / (strings - 1);
+          // A point on the beat box, off the note's own anchor, so the string comes from the line.
+          const hit = locate(laid, mixed, pointer(laid, box.x + 0.2, y));
+          expect(hit?.string, `track ${String(t)} line ${String(string)}`).toBe(string);
+        }
+      });
+    },
+  );
 
   it('puts the cursor at the start of a staff for a click in the clef', () => {
     const system = tab.systems[0];

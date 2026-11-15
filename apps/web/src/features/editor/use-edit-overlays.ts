@@ -29,12 +29,20 @@ export function useEditOverlaysFor(
   const range = useStore(selection, (state) => state.range);
   const isEditing = useStore(editing, (state) => state.editing);
 
-  return useMemo(() => {
-    if (!score || !result) return {};
-    const visible = visibleTracks(score, view);
-    return {
-      ...(isEditing && cursor && { caret: caretBoxes(result, score, cursor) }),
-      ...(range && { range: rangeBoxes(result, score, range, visible) }),
-    };
-  }, [score, view, result, cursor, range, isEditing]);
+  // One memo per overlay, so a cursor move never rebuilds the range boxes nor the reverse.
+  const caret = useMemo(
+    () => (score && result && isEditing && cursor ? caretBoxes(result, score, cursor) : undefined),
+    [score, result, cursor, isEditing],
+  );
+  const boxes = useMemo(
+    () =>
+      score && result && range
+        ? rangeBoxes(result, score, range, visibleTracks(score, view))
+        : undefined,
+    [score, view, result, range],
+  );
+  return useMemo(
+    () => ({ ...(caret && { caret }), ...(boxes && { range: boxes }) }),
+    [caret, boxes],
+  );
 }
