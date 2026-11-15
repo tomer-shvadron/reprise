@@ -67,9 +67,23 @@ function longScore(): Score {
   };
 }
 
+/** How many titled songs the library flow adds to the committed fixtures to make fifty. */
+export const LIBRARY_SONGS = 23;
+export const libraryTitle = (n: number) => `Library Song ${String(n).padStart(2, '0')}`;
+export const libraryFile = (n: number) => `library-${String(n).padStart(2, '0')}.reprise`;
+
 export async function generateScores(): Promise<Record<string, Uint8Array>> {
   const song = largeScore(2, 16, { structure: true });
+  const library: Record<string, Uint8Array> = {};
+  for (let n = 1; n <= LIBRARY_SONGS; n += 1) {
+    const titled = {
+      ...largeScore(2, 4),
+      meta: { ...largeScore(2, 4).meta, title: libraryTitle(n) },
+    };
+    library[libraryFile(n)] = (await write(titled, 'reprise')).bytes;
+  }
   return {
+    ...library,
     'song.gp': (await write(song, 'gp')).bytes,
     'song.reprise': (await write(song, 'reprise')).bytes,
     'song48.gp': (await write(largeScore(2, 48, { structure: true }), 'gp')).bytes,

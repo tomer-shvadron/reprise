@@ -4,6 +4,7 @@ import { write } from '@reprise/formats';
 import { score } from '@reprise/model/testing';
 import { describe, expect, it, vi } from 'vitest';
 
+import { libraryOf } from '@/features/library';
 import { stubViewport } from '@/features/score/test/viewport-stub';
 import type { MenuCommandId } from '@/platform/bridge';
 import type { Platform } from '@/platform/platform';
@@ -47,6 +48,38 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Stop' })).toBeDisabled();
     expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
+  });
+
+  it('lists recent songs in the empty state once one was opened', async () => {
+    const bytes = await riffBytes();
+    const { services } = renderApp(
+      fakePlatform({ openFile: () => Promise.resolve({ name: 'riff.reprise', bytes }) }),
+    );
+    expect(screen.queryByRole('list', { name: 'Recent songs' })).not.toBeInTheDocument();
+    await libraryOf(services).openFile();
+    await waitFor(async () => {
+      expect(await libraryOf(services).repo.all()).toHaveLength(1);
+    });
+    act(() => {
+      services.document.getState().close();
+    });
+    expect(await screen.findByRole('list', { name: 'Recent songs' })).toHaveTextContent('Riff');
+  });
+
+  it('shows the not-in-your-library banner for a file opened without importing', async () => {
+    const bytes = await riffBytes();
+    const { services, user } = renderApp(
+      fakePlatform({ openFile: () => Promise.resolve({ name: 'riff.reprise', bytes }) }),
+    );
+    expect(screen.queryByText('Not in your library')).not.toBeInTheDocument();
+    await user.keyboard('{Meta>}k{/Meta}');
+    await user.click(await screen.findByRole('option', { name: /Open without importing/ }));
+    expect(await screen.findByText('Not in your library')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+    await waitFor(() => {
+      expect(services.document.getState().songId).toBeDefined();
+    });
+    expect(screen.queryByText('Not in your library')).not.toBeInTheDocument();
   });
 
   it('opens the palette with the platform shortcut and runs a command from it', async () => {
