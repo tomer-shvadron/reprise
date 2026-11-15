@@ -39,8 +39,18 @@ describe('phase 3 entry points', () => {
     expect(screen.getByRole('region', { name: 'Sounds' })).toHaveTextContent('WP-091');
   });
 
+  it('trainer.speedTrainer opens the right panel on the speed trainer', () => {
+    const { run } = renderApp();
+    expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
+    run('trainer.speedTrainer');
+    expect(
+      within(screen.getByRole('complementary', { name: 'Panel' })).getByRole('region', {
+        name: 'Speed trainer',
+      }),
+    ).toBeInTheDocument();
+  });
+
   it.each([
-    ['trainer.speedTrainer', 'WP-070'],
     ['trainer.tuner', 'WP-071'],
     ['trainer.metronome', 'WP-072'],
     ['trainer.fretboard', 'WP-074'],

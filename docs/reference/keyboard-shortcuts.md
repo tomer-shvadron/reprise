@@ -64,6 +64,9 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Show current track as tab and standard notation | Track | Global | — | — |
 | Show library | Library | Global | — | — |
 | Show speed trainer | Trainer | Global | — | — |
+| Start, hold or resume speed trainer | Trainer | Global | ⌥S | Alt+S |
+| Mark speed trainer pass missed | Trainer | Global | ⌥X | Alt+X |
+| Reset speed trainer | Trainer | Global | ⌥⇧S | Alt+Shift+S |
 | Show tuner | Trainer | Global | — | — |
 | Show metronome | Trainer | Global | — | — |
 | Show fretboard | Trainer | Global | — | — |
