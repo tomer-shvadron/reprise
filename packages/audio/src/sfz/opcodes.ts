@@ -92,6 +92,9 @@ const UNSUPPORTED_NAMES = new Set([
   'hichan',
   'lobend',
   'hibend',
+  'bend_up',
+  'bend_down',
+  'bend_step',
 ]);
 
 const UNSUPPORTED_PATTERNS: readonly RegExp[] = [

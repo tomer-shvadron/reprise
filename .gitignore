@@ -41,6 +41,10 @@ local-tabs/*
 apps/web/public/sounds/gm/*
 !apps/web/public/sounds/gm/README.md
 
+# downloaded SFZ packs, for `pnpm sfz:check` and manual testing; never committed
+local-sounds/*
+!local-sounds/README.md
+
 # the real-file pass, `pnpm check:files`
 .check-files/
 
