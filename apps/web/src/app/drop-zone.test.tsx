@@ -35,18 +35,15 @@ async function riff(title = 'Riff'): Promise<File> {
 }
 
 /**
- * A single drop imports into the library in the background after the file opens. A test that
- * ends before that finishes leaks the row into the next test's freshly deleted database, so every
- * test that drops one file waits for the import to land.
+ * A single drop imports into the library in the background after the file opens. The shared
+ * teardown settles such writes anyway; this is the explicit check that the import finished, so a
+ * test that drops one file does not end before its row exists.
  */
 async function importLanded(services: ReturnType<typeof renderWithServices>['services']) {
-  const library = libraryOf(services);
-  await waitFor(async () => {
-    expect(await library.repo.all()).toHaveLength(1);
-  });
   await waitFor(() => {
-    expect(services.document.getState().dirty).toBe(false);
+    expect(libraryOf(services).store.getState().entries).toHaveLength(1);
   });
+  expect(services.document.getState().dirty).toBe(false);
 }
 
 describe('DropZone', () => {
