@@ -232,3 +232,78 @@ describe('formatShortcut', () => {
     expect(formatShortcut(shortcut, 'other')).toBe('Ctrl+Shift+L');
   });
 });
+
+describe('shortcut contexts', () => {
+  function setupContexts() {
+    let editing = false;
+    const registry = new CommandRegistry(() => editing);
+    const seek = vi.fn();
+    const move = vi.fn();
+    const only = vi.fn();
+    registry.register({
+      id: 'transport.back',
+      title: 'Back',
+      shortcut: { key: 'ArrowLeft' },
+      run: seek,
+    });
+    registry.register({
+      id: 'editor.left',
+      title: 'Cursor left',
+      shortcut: { key: 'ArrowLeft' },
+      context: 'editing',
+      run: move,
+    });
+    registry.register({
+      id: 'editor.only',
+      title: 'Only while editing',
+      shortcut: { key: 'x' },
+      context: 'editing',
+      run: only,
+    });
+    uninstall = installShortcutDispatcher(window, registry, 'other');
+    return {
+      seek,
+      move,
+      only,
+      setEditing: (value: boolean) => {
+        editing = value;
+      },
+    };
+  }
+
+  it('keeps the arrows with transport when not editing', () => {
+    const { seek, move, only } = setupContexts();
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    fireEvent.keyDown(window, { key: 'x' });
+    expect(seek).toHaveBeenCalledTimes(1);
+    expect(move).not.toHaveBeenCalled();
+    expect(only).not.toHaveBeenCalled();
+  });
+
+  it('runs the editing command instead while editing, and falls back for other keys', () => {
+    const { seek, move, only, setEditing } = setupContexts();
+    setEditing(true);
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    fireEvent.keyDown(window, { key: 'x' });
+    expect(move).toHaveBeenCalledTimes(1);
+    expect(only).toHaveBeenCalledTimes(1);
+    expect(seek).not.toHaveBeenCalled();
+
+    setEditing(false);
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(seek).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the arrows and bare keys to a focused text field while editing', () => {
+    const { seek, move, only, setEditing } = setupContexts();
+    setEditing(true);
+    render(<input aria-label="name" />);
+    const input = screen.getByLabelText('name');
+    input.focus();
+    fireEvent.keyDown(input, { key: 'ArrowLeft' });
+    fireEvent.keyDown(input, { key: 'x' });
+    expect(seek).not.toHaveBeenCalled();
+    expect(move).not.toHaveBeenCalled();
+    expect(only).not.toHaveBeenCalled();
+  });
+});
