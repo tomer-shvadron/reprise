@@ -312,8 +312,16 @@ plug in.
  previewInput ---------------------^        (effects, WP-092; straight through now)
 
  master bus (MasterBus)
- input -> DynamicsCompressor (limiter: -1 dBFS, ratio 20, knee 0) -> Gain (master) -> destination
+ input -> DynamicsCompressor (limiter: -1 dBFS, ratio 20, knee 0) -> Gain (master)
+       -> Gain (1/4) -> WaveShaper (soft ceiling) -> destination
 ```
+
+The soft ceiling is the identity up to -1 dBFS and a tanh towards -0.2 dBFS above it, on an odd
+curve (silence stays exactly 0) with no oversampling (no latency). The limiter's 1 ms attack lets
+peaks through; the ceiling catches them, so the output never clips. There is no makeup gain:
+levels come from the soundfont's own gains. An SF2 loader scales `initialAttenuation` by 0.4 as
+FluidSynth does, since soundfonts such as GeneralUser GS are voiced for it (#169);
+`test/loudness.test.ts` pins the resulting levels.
 
 ### Contracts for the loaders and the memory manager
 
