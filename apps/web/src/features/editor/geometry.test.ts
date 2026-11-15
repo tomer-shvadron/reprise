@@ -2,6 +2,7 @@ import {
   anchorBox,
   layout,
   PAGE_SIZES,
+  type StaffType,
   type LayoutOptions,
   type LayoutResult,
 } from '@reprise/layout';
@@ -12,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { playheadAt } from '@/features/score';
 import type { EditRange } from '@/state/selection';
 
-import { cursorAtPosition } from './cursor';
+import { cursorAtPosition, defaultStaff } from './cursor';
 import { caretBoxes, caretRect, rangeBoxes } from './geometry';
 import { editScore } from './test/scores';
 
@@ -33,13 +34,7 @@ const lay = (built: Score, notation: Notation, base = paged): LayoutResult =>
 const score = editScore();
 const guitar = score.tracks[0]?.id ?? '';
 
-function cursor(
-  track: number,
-  bar: number,
-  stop: number,
-  string: number,
-  staff: 'tab' | 'standard',
-) {
+function cursor(track: number, bar: number, stop: number, string: number, staff: StaffType) {
   const found = cursorAtPosition(score, { track, bar, voice: 0, stop }, { string, staff });
   if (!found) throw new Error('no stop');
   return found;
@@ -69,6 +64,35 @@ describe('caretBoxes', () => {
     const [box] = caretBoxes(standard, score, cursor(0, 0, 1, 3, 'standard'));
     expect(box?.box.y).toBeCloseTo(staff?.top ?? 0);
     expect(box?.box.height).toBeCloseTo((staff?.bottom ?? 0) - (staff?.top ?? 0));
+  });
+
+  it('draws the cursor strong on the one staff there is, whichever staff it says', () => {
+    const standard = lay(score, 'standard');
+    expect(caretBoxes(standard, score, cursor(0, 0, 1, 3, 'tab')).map((b) => b.muted)).toEqual([
+      false,
+    ]);
+    expect(caretBoxes(tab, score, cursor(0, 0, 1, 3, 'standard')).map((b) => b.muted)).toEqual([
+      false,
+    ]);
+    const drums = cursorAtPosition(
+      score,
+      { track: 1, bar: 0, voice: 0, stop: 1 },
+      { string: 1, staff: 'tab' },
+    );
+    if (!drums) throw new Error('no stop');
+    expect(caretBoxes(tab, score, drums).map((b) => b.muted)).toEqual([false]);
+  });
+
+  it('starts a cursor on the staff the notation shows first', () => {
+    expect(defaultStaff(score, 0, 'standard')).toBe('standard');
+    expect(defaultStaff(score, 0, 'tab')).toBe('tab');
+    expect(defaultStaff(score, 0, 'both')).toBe('tab');
+    expect(defaultStaff(score, 1, 'tab')).toBe('percussion');
+    for (const notation of ['tab', 'standard', 'both'] as const) {
+      const laid = lay(score, notation);
+      const boxes = caretBoxes(laid, score, cursor(0, 0, 1, 3, defaultStaff(score, 0, notation)));
+      expect(boxes.filter((b) => !b.muted)).toHaveLength(1);
+    }
   });
 
   it('draws both staves in both notation, the cursor staff strong and the other muted', () => {

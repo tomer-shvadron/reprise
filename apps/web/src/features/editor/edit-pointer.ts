@@ -5,11 +5,11 @@ import type { DocumentStore } from '@/state/document';
 import type { Gesture, ScorePointerEvent } from '@/features/score';
 import type { EditCursor, EditRange, SelectionState, SelectionStore } from '@/state/selection';
 
-import { cursorAtPosition } from './cursor';
+import { cursorAtPosition, defaultStaff } from './cursor';
 import { cursorFromHit, locate } from './locate';
 import { endOf, extendRangeTo, rangePatch } from './range';
 import { scoreIndex } from '@/features/score';
-import { visibleTracks } from './visible';
+import { visibleTracks, wantedNotation } from './visible';
 
 export interface EditPointerDeps {
   selection: SelectionStore;
@@ -60,7 +60,10 @@ export function createEditPointer(deps: EditPointerDeps) {
     return cursorAtPosition(
       score,
       { track, bar, voice: origin?.voice ?? 0, stop: 0 },
-      origin ?? { string: 1, staff: 'tab' },
+      origin ?? {
+        string: 1,
+        staff: defaultStaff(score, track, wantedNotation(score, document.getState().view, track)),
+      },
     );
   };
 

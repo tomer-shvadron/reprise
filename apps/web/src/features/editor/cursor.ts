@@ -3,7 +3,9 @@ import {
   barTicks,
   beatTicks,
   canShowTab,
+  shownNotation,
   type Id,
+  type Notation,
   type Score,
   type Selection,
 } from '@reprise/model';
@@ -74,11 +76,16 @@ export function cursorAtPosition(
   };
 }
 
-/** Which staff a new cursor on `track` sits on before anything says: tab when it has strings. */
-export function defaultStaff(score: Score, track: number): StaffType {
+/**
+ * Which staff a new cursor on `track` sits on before anything says: the one the user sees first in
+ * the notation shown (`wanted`, else the track's own): standard in standard notation, tab in tab
+ * and in both (where the tab staff is the editing one), percussion on a drum track.
+ */
+export function defaultStaff(score: Score, track: number, wanted?: Notation): StaffType {
   const found = score.tracks[track];
-  if (found?.kind === 'drums') return 'percussion';
-  return found && canShowTab(found) ? 'tab' : 'standard';
+  if (!found) return 'standard';
+  if (found.kind === 'drums') return 'percussion';
+  return shownNotation(found, wanted ?? found.display.notation) === 'standard' ? 'standard' : 'tab';
 }
 
 /** Ticks from the start of its bar to the cursor's stop, in its voice; undefined for a cursor the score does not hold. */
@@ -222,7 +229,8 @@ function reconcileEnd(score: Score, end: RangeEnd): RangeEnd | undefined {
 /**
  * What to write to the store so its cursor, range and picked ids hold only what `score` still
  * has, or undefined when nothing changes. A beat that is gone moves the cursor to the stop at its
- * old index (undo brings the beat back with its id, and the cursor with it); a bar that is gone
+ * old index (undo brings the beat back with its id, but the cursor has already moved to the beat that
+ * took its place and stays there; WP-084 restores it); a bar that is gone
  * to the first stop of the bar at its old index; a range end whose beat is gone widens to its bar.
  */
 export function reconcile(score: Score, state: EditState): EditPatch | undefined {

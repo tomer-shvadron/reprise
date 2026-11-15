@@ -4,7 +4,10 @@ import type { AppServices } from '@/app/services';
 import { passIndexAt } from '@/features/transport/seek';
 import { timelineOf } from '@/state/timeline';
 
-import { cursorAtTick, reconcile } from './cursor';
+import type { DocumentView } from '@/state/document';
+
+import { cursorAtTick, defaultStaff, reconcile } from './cursor';
+import { wantedNotation } from './visible';
 import { cursorOnTrack } from './navigation';
 
 type InstallDeps = Pick<AppServices, 'document' | 'selection' | 'editing' | 'playback'>;
@@ -40,6 +43,7 @@ export function installEditor(deps: InstallDeps): () => void {
     if (!score || selection.getState().cursor) return;
     const cursor = entryCursor(
       score,
+      document.getState().view,
       selection.getState().currentTrack,
       playback.getState().position,
     );
@@ -56,7 +60,12 @@ export function installEditor(deps: InstallDeps): () => void {
 type Position = ReturnType<AppServices['playback']['getState']>['position'];
 
 /** The cursor at the playhead's bar and onset on the current track, voice 0; the first stop with no playhead. */
-function entryCursor(score: Score, trackId: string | undefined, position: Position) {
+function entryCursor(
+  score: Score,
+  view: DocumentView,
+  trackId: string | undefined,
+  position: Position,
+) {
   const track = Math.max(
     0,
     score.tracks.findIndex(({ id }) => id === trackId),
@@ -72,5 +81,8 @@ function entryCursor(score: Score, trackId: string | undefined, position: Positi
       tick = at - pass.startTick;
     }
   }
-  return cursorAtTick(score, track, bar, tick, 0);
+  return cursorAtTick(score, track, bar, tick, 0, {
+    string: 1,
+    staff: defaultStaff(score, track, wantedNotation(score, view, track)),
+  });
 }

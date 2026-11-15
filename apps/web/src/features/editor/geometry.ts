@@ -38,6 +38,10 @@ export function caretRect(boxes: readonly OverlayBox[]): Rect | undefined {
   return rect;
 }
 
+/** Whether the system draws the staff the cursor holds, for its track. */
+const drawsStaff = (layout: LayoutResult, system: number, track: Id, cursor: EditCursor): boolean =>
+  layout.systems[system]?.staves.some((s) => s.track === track && s.type === cursor.staff) ?? false;
+
 /** The box a cursor draws on `staff` at x (centre) `x`, `width` wide. */
 function caretOn(
   staff: StaffPlacement,
@@ -46,7 +50,10 @@ function caretOn(
   x: number,
   width: number,
   system: number,
+  drawsOwn: boolean,
 ): OverlayBox {
+  // Muted only beside the staff the cursor holds; where that is not drawn, this one is the cursor.
+  const muted = staff.type !== cursor.staff && drawsOwn;
   if (staff.type === 'tab' && strings > 0) {
     const gap = strings > 1 ? (staff.bottom - staff.top) / (strings - 1) : staffSpace(staff);
     const wide = Math.max(width, gap * MIN_CARET_SPACES);
@@ -54,14 +61,14 @@ function caretOn(
     return {
       system,
       box: { x: x - wide / 2, y: y - gap / 2, width: wide, height: gap },
-      muted: cursor.staff !== 'tab',
+      muted,
     };
   }
   const wide = Math.max(width, staffSpace(staff) * MIN_CARET_SPACES);
   return {
     system,
     box: { x: x - wide / 2, y: staff.top, width: wide, height: staff.bottom - staff.top },
-    muted: cursor.staff === 'tab',
+    muted,
   };
 }
 
@@ -88,7 +95,15 @@ export function caretBoxes(layout: LayoutResult, score: Score, cursor: EditCurso
       if (!staff) continue;
       const rect = anchorBox(layout, anchor);
       boxes.push(
-        caretOn(staff, strings, cursor, rect.x + rect.width / 2, rect.width, anchor.system),
+        caretOn(
+          staff,
+          strings,
+          cursor,
+          rect.x + rect.width / 2,
+          rect.width,
+          anchor.system,
+          drawsStaff(layout, anchor.system, trackId, cursor),
+        ),
       );
     }
     return boxes;
@@ -104,7 +119,17 @@ export function caretBoxes(layout: LayoutResult, score: Score, cursor: EditCurso
   for (const staff of system?.staves ?? []) {
     if (staff.track !== trackId) continue;
     const x = ticks === 0 ? head.box.x + staffSpace(staff) : head.x;
-    boxes.push(caretOn(staff, strings, cursor, x, 0, head.bar.system));
+    boxes.push(
+      caretOn(
+        staff,
+        strings,
+        cursor,
+        x,
+        0,
+        head.bar.system,
+        drawsStaff(layout, head.bar.system, trackId, cursor),
+      ),
+    );
   }
   return boxes;
 }
