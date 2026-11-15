@@ -62,7 +62,7 @@ A lane owns its feature folder the same way it owns its package. Each folder's R
 | `features/editor`   | score (Editor)           | WP-080 to WP-086                             | `editor.toggleMode`                                                |
 | `features/sounds`   | audio (HQ sound)         | WP-091, WP-094                               | `SoundManager`, `sounds.show`                                      |
 
-The shell wires them, not the lanes (roadmap lane rule 5): `ui.screen` (`'player' | 'library' | 'sounds'`) shows the library and the sound manager over the score, and `ui.rightPanelView` (`'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'fretboard'`) picks the right panel's content. Each feature's commands are registered in `app/app-registry.ts` from its `commands.ts`, so the palette lists them. A lane replaces its stub in its own folder; the wiring in `app.tsx` is already there.
+The shell wires them, not the lanes (roadmap lane rule 5): `ui.screen` (`'player' | 'library' | 'sounds'`) shows the library and the sound manager over the score, and `ui.rightPanelView` (`'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'fretboard'`) picks the right panel's content. Each feature's commands are registered in `app/app-registry.ts` from its `commands.ts`, so the palette lists them. A lane replaces its stub in its own folder; the wiring in `app.tsx` is already there. A feature may import another feature's pure exports through that feature's `index.ts` (the speed trainer reads `TEMPO_PERCENT`, `bpmFor` and `loopBarNumbers` from `features/transport`), never its internals or its stores.
 
 ### Shared state for phase 3
 
