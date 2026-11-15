@@ -186,11 +186,40 @@ export class ChannelStrip {
   }
 }
 
-/** Every strip feeds this: a limiter, then the master gain. */
+/** Linear until -1 dBFS, then rounded off towards -0.2 dBFS; see `ceilingCurve`. */
+const CEILING_KNEE = 10 ** (-1 / 20);
+const CEILING_LEVEL = 10 ** (-0.2 / 20);
+/** The curve spans +-4 (+12 dBFS) so the limiter's overshoot is shaped rather than clipped at 1. */
+const CEILING_RANGE = 4;
+/** Odd, so the middle sample is exactly 0 and silence stays silent. */
+const CEILING_SAMPLES = 8193;
+
+/**
+ * A soft ceiling: the identity below the knee, then a tanh that tends to `CEILING_LEVEL`. The
+ * limiter's 1 ms attack lets peaks through (measured up to +2.4 dBFS on loud mixes); this catches
+ * them without touching anything under the knee.
+ */
+function ceilingCurve(): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(CEILING_SAMPLES);
+  const room = CEILING_LEVEL - CEILING_KNEE;
+  for (let i = 0; i < CEILING_SAMPLES; i += 1) {
+    const x = ((i / (CEILING_SAMPLES - 1)) * 2 - 1) * CEILING_RANGE;
+    const magnitude = Math.abs(x);
+    const y =
+      magnitude <= CEILING_KNEE
+        ? magnitude
+        : CEILING_KNEE + room * Math.tanh((magnitude - CEILING_KNEE) / room);
+    curve[i] = Math.sign(x) * y;
+  }
+  return curve;
+}
+
+/** Every strip feeds this: a limiter, the master gain, then a soft ceiling. */
 export class MasterBus {
   readonly input: GainNode;
   readonly limiter: DynamicsCompressorNode;
   readonly output: GainNode;
+  readonly #ceiling: AudioNode[];
   #gain = 1;
 
   constructor(context: BaseAudioContext, destination: AudioNode) {
@@ -203,7 +232,13 @@ export class MasterBus {
       release: 0.1,
     });
     this.output = context.createGain();
-    this.input.connect(this.limiter).connect(this.output).connect(destination);
+    // The shaper maps +-1 of its input to the curve's ends, so the gain in front shrinks +-4 to it.
+    const scale = context.createGain();
+    scale.gain.value = 1 / CEILING_RANGE;
+    const shaper = new WaveShaperNode(context, { curve: ceilingCurve(), oversample: 'none' });
+    this.#ceiling = [scale, shaper];
+    this.input.connect(this.limiter).connect(this.output).connect(scale);
+    scale.connect(shaper).connect(destination);
   }
 
   set gain(value: number) {
@@ -219,6 +254,7 @@ export class MasterBus {
     this.input.disconnect();
     this.limiter.disconnect();
     this.output.disconnect();
+    for (const node of this.#ceiling) node.disconnect();
   }
 }
 

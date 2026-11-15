@@ -162,9 +162,10 @@ describe('Sf2Soundfont regions', () => {
 
   it('adds preset generators to the instrument values and ignores instrument-only ones', () => {
     const [pad] = regionsOf(0, 0);
-    // attack: -1200 (instrument) + 1200 (preset) = 0 timecents = 1 s; attenuation 30 + 20 cB.
+    // attack: -1200 (instrument) + 1200 (preset) = 0 timecents = 1 s; attenuation 30 + 20 cB,
+    // scaled by the EMU factor 0.4 as FluidSynth loads it: 50 cB -> 2 dB.
     expect(pad?.envelope.attack).toBeCloseTo(1, 12);
-    expect(pad?.attenuation).toBeCloseTo(5, 12);
+    expect(pad?.attenuation).toBeCloseTo(2, 12);
     // The preset's sampleModes 1 is ignored, so the pad stays unlooped.
     expect(pad?.loop).toBeUndefined();
   });
