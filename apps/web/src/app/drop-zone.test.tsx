@@ -34,6 +34,21 @@ async function riff(title = 'Riff'): Promise<File> {
   return new File([bytes.slice()], `${title.toLowerCase()}.reprise`);
 }
 
+/**
+ * A single drop imports into the library in the background after the file opens. A test that
+ * ends before that finishes leaks the row into the next test's freshly deleted database, so every
+ * test that drops one file waits for the import to land.
+ */
+async function importLanded(services: ReturnType<typeof renderWithServices>['services']) {
+  const library = libraryOf(services);
+  await waitFor(async () => {
+    expect(await library.repo.all()).toHaveLength(1);
+  });
+  await waitFor(() => {
+    expect(services.document.getState().dirty).toBe(false);
+  });
+}
+
 describe('DropZone', () => {
   it('shows the overlay while files are dragged over, and opens the dropped file', async () => {
     const { services } = renderWithServices(<DropZone />);
@@ -58,6 +73,7 @@ describe('DropZone', () => {
       expect(services.document.getState().score?.meta.title).toBe('Riff');
     });
     expect(services.document.getState().file?.name).toBe('riff.reprise');
+    await importLanded(services);
   });
 
   it('imports a single dropped file into the library after opening it', async () => {
@@ -69,11 +85,7 @@ describe('DropZone', () => {
     await waitFor(() => {
       expect(services.document.getState().songId).toBeDefined();
     });
-    const library = libraryOf(services);
-    await waitFor(async () => {
-      expect(await library.repo.all()).toHaveLength(1);
-    });
-    expect(services.document.getState().dirty).toBe(false);
+    await importLanded(services);
   });
 
   it('opens without importing while Alt is held', async () => {
@@ -175,6 +187,7 @@ describe('DropZone', () => {
     await waitFor(() => {
       expect(services.document.getState().file?.handle).toBe(handle);
     });
+    await importLanded(services);
   });
 
   it('ignores drags that carry no files', () => {

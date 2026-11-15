@@ -432,7 +432,29 @@ export function createLibrary(
       db.close();
     },
   };
+  const base = { ...library };
+  library.openAndImport = (file) => track(base.openAndImport(file));
+  library.importOpenDocument = () => track(base.importOpenDocument());
   return library;
+}
+
+const writes = new Set<Promise<unknown>>();
+
+function track(write: Promise<void>): Promise<void> {
+  writes.add(write);
+  const done = () => writes.delete(write);
+  write.then(done, done);
+  return write;
+}
+
+/**
+ * Resolves once every `openAndImport` and `importOpenDocument` running now has finished. Both write
+ * the song's files and row after the file is already open, so anything that closes or deletes the
+ * database (a test's teardown, an app teardown) awaits this first, or the write lands in the next
+ * database opened under the same name.
+ */
+export async function settleLibraryWrites(): Promise<void> {
+  await Promise.allSettled([...writes]);
 }
 
 /** After the next frame has painted; a hidden tab, which draws no frames, waits at most 200 ms. */
