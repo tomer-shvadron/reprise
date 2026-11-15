@@ -69,6 +69,7 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Reset speed trainer | Trainer | Global | ⌥⇧S | Alt+Shift+S |
 | Show tuner | Trainer | Global | — | — |
 | Show metronome | Trainer | Global | — | — |
+| Start or stop metronome | Trainer | Global | ⌥B | Alt+B |
 | Show fretboard | Trainer | Global | — | — |
 | Toggle edit mode | Editor | Global | — | — |
 | Cursor to previous beat | Editor | Editing | ← | Left |

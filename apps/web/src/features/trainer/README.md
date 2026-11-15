@@ -15,7 +15,7 @@ It holds the speed trainer (WP-070) and the entry points the lead stubbed in WP-
 - `ui.rightPanelView` and `ui.showPanelView(view)`: which tool the right panel shows
   (`'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'fretboard'`). The fretboard is meant for a
   bottom region (WP-074); until the shell has one it shares the right panel, and a bottom region is
-  a shell change for the lead (#206). The standalone metronome needs the audio change of #205.
+  a shell change for the lead (#206).
 - `practice` (`state/practice.ts`), the running session WP-073 stores: `start` on first play, which
   returns the session of another document it replaces so it can be stored, `addPlayed`, `noteLoop`,
   `recordTempo`, `recordStep(range, percent)` when the speed trainer completes a full step (the
@@ -65,3 +65,16 @@ shared field is a `type:contract` issue for the lead.
   when the session opens, or the loop is only recorded once a step completes. The unit toggle
   keeps the exact value, so flipping it twice changes nothing; the fields round for display.
 - Keys: Alt+S start, hold or resume; Alt+X mark the pass missed; Alt+Shift+S reset.
+
+## Metronome
+
+`metronome/`: `metronome-panel.tsx` and `tap-tempo.ts` (pure). The panel drives the audio service's
+standalone click (`startClick`, `updateClick`, `stopClick`) and reads `playback.click`, so it
+works with no song open and its settings survive a stop. The click and a song never sound
+together: starting one stops the other.
+
+- BPM (10 to 600) with tap tempo (the last 8 taps, restarting after a 2 s pause), beats per bar
+  (1 to 32), the beat note (2, 4 or 8; it only labels the BPM, because the engine counts the beat
+  the caller chose), subdivision (quarter, eighth, triplet, sixteenth), downbeat accent and volume.
+- Alt+B starts or stops it and shows the panel. `metronome.browser.test.ts` renders the click
+  offline at 60, 120 and 200 BPM and measures the onsets.

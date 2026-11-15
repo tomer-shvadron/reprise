@@ -52,13 +52,22 @@ describe('phase 3 entry points', () => {
 
   it.each([
     ['trainer.tuner', 'WP-071'],
-    ['trainer.metronome', 'WP-072'],
     ['trainer.fretboard', 'WP-074'],
   ])('%s opens the right panel on its placeholder', (id, workPackage) => {
     const { run } = renderApp();
     expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
     run(id);
     expect(screen.getByRole('complementary', { name: 'Panel' })).toHaveTextContent(workPackage);
+  });
+
+  it('trainer.metronome opens the metronome with no song open', () => {
+    const { run } = renderApp();
+    run('trainer.metronome');
+    expect(
+      within(screen.getByRole('complementary', { name: 'Panel' })).getByRole('region', {
+        name: 'Metronome',
+      }),
+    ).toBeInTheDocument();
   });
 
   it('switches the right panel back to the mixer', () => {
