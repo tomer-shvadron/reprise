@@ -25,6 +25,14 @@ export { outputLatencyOf } from './output-latency';
 
 export type { InstrumentSink, MetronomeSink, NoteEvent } from './sink';
 export { ClickSynth } from './click-synth';
+export {
+  CLICK_BPM_RANGE,
+  CLICK_MAX_BEATS,
+  DEFAULT_CLICK_SETTINGS,
+  checkClickSettings,
+  createStandaloneClick,
+} from './standalone-click';
+export type { ClickSettings, StandaloneClick, StandaloneClickOptions } from './standalone-click';
 export { RecordingSink } from './recording-sink';
 export type { RecordedClick, RecordedCut, RecordedNote } from './recording-sink';
 export { ToneSink } from './tone-sink';

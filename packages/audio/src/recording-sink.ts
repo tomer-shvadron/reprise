@@ -12,6 +12,7 @@ export interface RecordedMix extends MixEvent {
 export interface RecordedClick {
   when: number;
   accent: boolean;
+  subdivision: boolean;
   calledAt: number;
 }
 
@@ -43,8 +44,8 @@ export class RecordingSink implements InstrumentSink, MetronomeSink {
     this.cuts.push({ kind: 'notes', when, calledAt: this.clock.currentTime });
   }
 
-  click(when: number, accent: boolean): void {
-    this.clicks.push({ when, accent, calledAt: this.clock.currentTime });
+  click(when: number, accent: boolean, subdivision = false): void {
+    this.clicks.push({ when, accent, subdivision, calledAt: this.clock.currentTime });
   }
 
   silence(when: number): void {
