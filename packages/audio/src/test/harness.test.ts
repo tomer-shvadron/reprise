@@ -146,9 +146,7 @@ describe.skipIf(!generalUser)('renderScore through the GM tier', () => {
     expect(rendered.source?.memory().decodedBytes).toBeGreaterThan(0);
     expect(rendered.source?.memory().decodedBytes).toBeLessThanOrEqual(GM_BUDGET_BYTES);
 
-    // A gap over a bass note's 12 ms period: its release tail, with the string's own level now
-    // near the floor, would otherwise read as a sound starting after its zero crossings.
-    const onsets = detectOnsets(rendered, { gap: 0.02 });
+    const onsets = detectOnsets(rendered);
     expect(onsets).toHaveLength(GRID.length);
     for (const [index, at] of onsets.entries()) {
       const late = at - (GRID[index] ?? 0);
