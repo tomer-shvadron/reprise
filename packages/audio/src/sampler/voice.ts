@@ -108,6 +108,8 @@ export interface VoiceStart {
   offset?: number;
   /** 0 when the note has no string to choke. */
   string?: number;
+  /** An editor preview: it chokes and is choked by previews only, never by the song's notes. */
+  preview?: boolean;
   /** The map the region came from: exclusive classes choke within one instrument. */
   instrument?: RegionMap;
 }
@@ -140,6 +142,7 @@ export class Voice {
   readonly key: number;
   readonly velocity: number;
   readonly string: number;
+  readonly preview: boolean;
   readonly startTime: number;
   /** The group that chokes this voice; a new note's own groups are read off its regions. */
   readonly offBy: number;
@@ -183,6 +186,7 @@ export class Voice {
     this.key = start.key;
     this.velocity = start.velocity;
     this.string = start.string ?? 0;
+    this.preview = start.preview ?? false;
     this.startTime = when;
     this.offBy = region.offBy ?? region.exclusiveClass ?? 0;
     this.oneShot = region.oneShot ?? false;
