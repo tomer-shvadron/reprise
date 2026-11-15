@@ -118,6 +118,97 @@ describe('notes', () => {
     });
   });
 
+  it('keeps the origin first when its offset is after the middle offsets', () => {
+    const properties = [
+      property('Bended', '<Enable />'),
+      property('BendOriginValue', '<Float>75</Float>'),
+      property('BendOriginOffset', '<Float>76</Float>'),
+      property('BendMiddleValue', '<Float>37</Float>'),
+      property('BendMiddleOffset1', '<Float>12</Float>'),
+      property('BendMiddleOffset2', '<Float>12</Float>'),
+      property('BendDestinationValue', '<Float>0</Float>'),
+      property('BendDestinationOffset', '<Float>99</Float>'),
+    ].join('');
+    const { score } = read(
+      oneBar([beat('0', '0', '0')], [note('0', 2, 5, '', properties)], QUARTERS),
+    );
+    const points = firstNote(score)?.bend?.points ?? [];
+    expect(points.map((point) => point.value)).toEqual([3, 1.48, 1.48, 0]);
+    expect(points.map((point) => point.position)).toEqual([45.6, 45.6, 45.6, 59.4]);
+  });
+
+  describe('bend point order', () => {
+    const bendPositions = (entries: Record<string, number>): number[] => {
+      const properties = [
+        property('Bended', '<Enable />'),
+        ...Object.entries(entries).map(([name, value]) =>
+          property(`Bend${name}`, `<Float>${String(value)}</Float>`),
+        ),
+      ].join('');
+      const { score } = read(
+        oneBar([beat('0', '0', '0')], [note('0', 2, 5, '', properties)], QUARTERS),
+      );
+      return (firstNote(score)?.bend?.points ?? []).map((point) => point.position);
+    };
+    const ascending = (positions: number[]): boolean =>
+      positions.every((at, index) => index === 0 || at >= (positions[index - 1] ?? 0));
+
+    it('clamps the halfway point of a bend whose origin is after the middle', () => {
+      const positions = bendPositions({
+        OriginValue: 75,
+        OriginOffset: 76,
+        MiddleValue: 37,
+        DestinationValue: 0,
+        DestinationOffset: 99,
+      });
+      expect(positions).toHaveLength(3);
+      expect(ascending(positions)).toBe(true);
+      expect(positions[1]).toBeCloseTo(45.6);
+    });
+
+    it('holds a destination before the origin at the origin', () => {
+      const positions = bendPositions({
+        OriginValue: 0,
+        OriginOffset: 80,
+        DestinationValue: 50,
+        DestinationOffset: 20,
+      });
+      expect(positions).toHaveLength(2);
+      expect(positions[1]).toBeCloseTo(48);
+    });
+
+    it('clamps a middle offset after the destination', () => {
+      const positions = bendPositions({
+        OriginValue: 0,
+        OriginOffset: 0,
+        MiddleValue: 100,
+        MiddleOffset1: 90,
+        DestinationValue: 0,
+        DestinationOffset: 50,
+      });
+      expect(ascending(positions)).toBe(true);
+      expect(positions[1]).toBeCloseTo(30);
+    });
+
+    it('keeps a whammy origin first and its points ascending', () => {
+      const extra = [
+        '<Properties>',
+        property('WhammyBar', '<Enable />'),
+        property('WhammyBarOriginValue', '<Float>0</Float>'),
+        property('WhammyBarOriginOffset', '<Float>80</Float>'),
+        property('WhammyBarMiddleValue', '<Float>-50</Float>'),
+        property('WhammyBarMiddleOffset1', '<Float>10</Float>'),
+        property('WhammyBarDestinationValue', '<Float>0</Float>'),
+        property('WhammyBarDestinationOffset', '<Float>100</Float>'),
+        '</Properties>',
+      ].join('');
+      const { score } = read(oneBar([beat('0', '0', '0', extra)], [note('0', 2, 5)], QUARTERS));
+      const points = beatsOf(score)[0]?.effects.whammy?.points ?? [];
+      expect(points.map((point) => point.value)).toEqual([0, -2, 0]);
+      expect(ascending(points.map((point) => point.position))).toBe(true);
+    });
+  });
+
   it('names a simple upward bend and a prebend release', () => {
     const bend = (origin: number, destination: number): string =>
       [
