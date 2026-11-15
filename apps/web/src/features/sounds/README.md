@@ -13,6 +13,7 @@ Today it holds only the entry points the lead stubbed in WP-056:
 ## What it can rely on
 
 - `ui.screen` and `ui.setScreen`: the sound manager is a full-window screen.
+- `document.songId`: the library song a pack assignment attaches to (ADR-0012); WP-091 stores it per song.
 - `playback.memory` mirrors the engine's memory report, for the readout of WP-094.
 - `platform().dataDir()` for `sounds/<id>/`.
 

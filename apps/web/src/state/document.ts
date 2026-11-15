@@ -64,6 +64,11 @@ export interface DocumentFile {
   handle?: FileHandle;
 }
 
+export interface OpenOptions {
+  handle?: FileHandle;
+  songId?: Id;
+}
+
 export interface DocumentError {
   action: 'open' | 'save';
   fileName: string;
@@ -121,7 +126,7 @@ export interface DocumentState {
   error: DocumentError | undefined;
   open(): Promise<void>;
   /** `songId` ties the document to its library song from the first render. */
-  openBytes(name: string, bytes: Uint8Array, handle?: FileHandle, songId?: Id): Promise<void>;
+  openBytes(name: string, bytes: Uint8Array, options?: OpenOptions): Promise<void>;
   /** Ties the open document to a library song, as after importing a file opened without import. */
   setSongId(songId: Id | undefined): void;
   close(): void;
@@ -367,10 +372,15 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           return;
         }
         if (!picked) return;
-        await get().openBytes(picked.name, picked.bytes, picked.handle);
+        await get().openBytes(
+          picked.name,
+          picked.bytes,
+          picked.handle === undefined ? {} : { handle: picked.handle },
+        );
       },
 
-      async openBytes(name, bytes, handle, songId) {
+      async openBytes(name, bytes, options = {}) {
+        const { handle, songId } = options;
         const token = ++openToken;
         set({ opening: name, error: undefined });
         try {

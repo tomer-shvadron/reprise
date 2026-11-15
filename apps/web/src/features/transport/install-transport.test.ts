@@ -67,7 +67,7 @@ describe('installTransport', () => {
     mirrorAudio(services);
     const { document, audio, playback } = services;
     const first = await bytes();
-    await document.getState().openBytes('a.reprise', first, '/music/a.reprise');
+    await document.getState().openBytes('a.reprise', first, { handle: '/music/a.reprise' });
     audio.setTempo('percent', 75);
     const bars = document.getState().score?.masterBars ?? [];
     document.getState().apply(removeBar({ masterBarId: bars[3]?.id ?? '' }));

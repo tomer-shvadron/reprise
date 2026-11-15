@@ -20,7 +20,9 @@ async function setup() {
   mirrorAudio(services);
   const bytes = (await write(song(), 'reprise')).bytes;
   const open = async () => {
-    await services.document.getState().openBytes('song.reprise', saved ?? bytes, { kind: 'file' });
+    await services.document
+      .getState()
+      .openBytes('song.reprise', saved ?? bytes, { handle: { kind: 'file' } });
     return services.document.getState().score?.tracks.map((track) => track.id) ?? [];
   };
   return { services, open };

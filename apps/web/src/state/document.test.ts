@@ -296,7 +296,7 @@ describe('the document store', () => {
     const handle = { kind: 'file' };
     const { store } = setup({ saveFile: () => Promise.resolve('/music/song.gp') });
     const opened = new TextEncoder().encode('{}');
-    await store.getState().openBytes('song.reprise', opened, handle);
+    await store.getState().openBytes('song.reprise', opened, { handle });
     const key = await contentKey(opened);
     expect(store.getState().file).toMatchObject({ key, savedKeys: [] });
 
@@ -316,7 +316,7 @@ describe('the document store', () => {
 
   it('sends Save on a gp5 to Save As, saying why, then saves in place to the chosen .reprise', async () => {
     const { store, write, saveFile, writeHandle } = setup({ gpDropped: [dynamicsDropped] });
-    await store.getState().openBytes('song.gp5', GP5, { kind: 'file' });
+    await store.getState().openBytes('song.gp5', GP5, { handle: { kind: 'file' } });
     store.getState().apply(editOf(store, 5));
 
     const prompt = await answering(store, store.getState().save(), 'reprise');
@@ -382,7 +382,7 @@ describe('the document store', () => {
   it('saves an opened .reprise file in place through its handle', async () => {
     const { store, saveFile, writeHandle } = setup();
     const handle = { kind: 'file' };
-    await store.getState().openBytes('song.reprise', new TextEncoder().encode('{}'), handle);
+    await store.getState().openBytes('song.reprise', new TextEncoder().encode('{}'), { handle });
 
     await store.getState().save();
 
@@ -397,7 +397,7 @@ describe('the document store', () => {
       read: () => Promise.resolve({ score: song(), warnings: [rseNotModelled, warning('error')] }),
       gpDropped: [dynamicsDropped],
     });
-    await store.getState().openBytes('song.gp', GP, handle);
+    await store.getState().openBytes('song.gp', GP, { handle });
     store.getState().apply(editOf(store, 5));
 
     const saving = store.getState().save();
@@ -430,7 +430,7 @@ describe('the document store', () => {
   it('writes nothing when the overwrite of a .gp is cancelled', async () => {
     const handle = { kind: 'file' };
     const { store, saveFile, writeHandle } = setup({ gpDropped: [dynamicsDropped] });
-    await store.getState().openBytes('song.gp', GP, handle);
+    await store.getState().openBytes('song.gp', GP, { handle });
     store.getState().apply(editOf(store, 5));
 
     await answering(store, store.getState().save(), 'cancel');
@@ -445,7 +445,7 @@ describe('the document store', () => {
   it('overwrites a .gp that loses nothing without asking', async () => {
     const handle = { kind: 'file' };
     const { store, writeHandle } = setup();
-    await store.getState().openBytes('song.gp', GP, handle);
+    await store.getState().openBytes('song.gp', GP, { handle });
     store.getState().apply(editOf(store, 5));
 
     await store.getState().save();
@@ -542,7 +542,7 @@ describe('the document store', () => {
 
   it('cancels a pending question when the document closes', async () => {
     const { store, writeHandle } = setup({ gpDropped: [dynamicsDropped] });
-    await store.getState().openBytes('song.gp', GP, { kind: 'file' });
+    await store.getState().openBytes('song.gp', GP, { handle: { kind: 'file' } });
     const saving = store.getState().save();
     await vi.waitFor(() => {
       expect(store.getState().savePrompt).toBeDefined();
@@ -605,7 +605,7 @@ describe('the document store', () => {
 
   it('marks the document modified by a notation change and writes it on Save', async () => {
     const { store, write } = setup();
-    await store.getState().openBytes('song.reprise', GP5, '/music/song.reprise');
+    await store.getState().openBytes('song.reprise', GP5, { handle: '/music/song.reprise' });
     store.setState({
       file: { name: 'song.reprise', format: 'reprise', handle: '/x', key: 'k', savedKeys: [] },
     });
@@ -722,7 +722,7 @@ describe('a track without strings that a file shows as tab', () => {
     const writeHandle = vi.fn<Platform['writeHandle']>(() => Promise.resolve());
     const store = createDocumentStore({ platform: fakePlatform({ writeHandle }) });
     const opened = (await write(song, 'reprise')).bytes;
-    await store.getState().openBytes('song.reprise', opened, '/music/song.reprise');
+    await store.getState().openBytes('song.reprise', opened, { handle: '/music/song.reprise' });
     expect(store.getState().dirty).toBe(false);
 
     await store.getState().save();
@@ -764,7 +764,7 @@ describe('document store song identity', () => {
 
   it('keeps the song id an open was given, without marking the document modified', async () => {
     const documents = store();
-    await documents.getState().openBytes('a.gp5', GP5, undefined, 'song-1');
+    await documents.getState().openBytes('a.gp5', GP5, { songId: 'song-1' });
     expect(documents.getState().songId).toBe('song-1');
     expect(documents.getState().dirty).toBe(false);
   });
@@ -781,7 +781,7 @@ describe('document store song identity', () => {
     const documents = store();
     documents.getState().setSongId('song-3');
     expect(documents.getState().songId).toBeUndefined();
-    await documents.getState().openBytes('a.gp5', GP5, undefined, 'song-1');
+    await documents.getState().openBytes('a.gp5', GP5, { songId: 'song-1' });
     await documents.getState().openBytes('b.gp5', GP5);
     expect(documents.getState().songId).toBeUndefined();
     documents.getState().setSongId('song-4');
