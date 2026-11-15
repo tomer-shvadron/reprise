@@ -27,6 +27,8 @@ export interface LibraryState {
   sort: SortKey;
   /** The last failure to load the list or open a song, for the screen to show. */
   error: string | undefined;
+  /** The last failure to import the open document, for the "not in your library" banner only. */
+  bannerError: string | undefined;
 }
 
 export interface Library {
@@ -95,6 +97,7 @@ export function createLibrary(
     query: '',
     sort: 'title',
     error: undefined,
+    bannerError: undefined,
   }));
   let keeper: SessionKeeper | undefined;
   let keeperId: Id | undefined;
@@ -116,8 +119,23 @@ export function createLibrary(
     );
   };
 
+  // Rows added or removed while a `load()` is reading, so its snapshot never undoes them.
+  const loads = new Set<{ added: Set<Id>; removed: Set<Id> }>();
+
   const addEntries = (rows: SongRow[]) => {
-    store.setState((state) => ({ entries: [...state.entries, ...rows.map(entryOf)] }));
+    for (const load of loads) {
+      for (const row of rows) {
+        load.added.add(row.id);
+        load.removed.delete(row.id);
+      }
+    }
+    store.setState((state) => {
+      // An upsert: a row the database already gave a load may still be flushed by a batch.
+      const incoming = new Map(rows.map((row) => [row.id, entryOf(row)]));
+      const kept = state.entries.map((entry) => incoming.get(entry.row.id) ?? entry);
+      const known = new Set(state.entries.map((entry) => entry.row.id));
+      return { entries: [...kept, ...[...incoming.values()].filter((e) => !known.has(e.row.id))] };
+    });
   };
 
   const importer = createImporter({
@@ -159,10 +177,17 @@ export function createLibrary(
     repo,
     importer,
     async load() {
+      const tracker = { added: new Set<Id>(), removed: new Set<Id>() };
+      loads.add(tracker);
       try {
         const [rows, sort] = await Promise.all([repo.all(), repo.getSetting(SORT_SETTING)]);
+        const merged = new Map(rows.map((row) => [row.id, entryOf(row)]));
+        for (const id of tracker.removed) merged.delete(id);
+        for (const entry of store.getState().entries) {
+          if (tracker.added.has(entry.row.id)) merged.set(entry.row.id, entry);
+        }
         store.setState({
-          entries: rows.map(entryOf),
+          entries: [...merged.values()],
           loaded: true,
           error: undefined,
           ...(isSortKey(sort) && { sort }),
@@ -172,6 +197,8 @@ export function createLibrary(
           loaded: true,
           error: `Could not read the library: ${error instanceof Error ? error.message : String(error)}`,
         });
+      } finally {
+        loads.delete(tracker);
       }
     },
     setQuery(query) {
@@ -215,7 +242,9 @@ export function createLibrary(
           if (state.error) store.setState({ error: state.error.message });
           return;
         }
-        store.setState({ error: undefined });
+        store.setState({ error: undefined, bannerError: undefined });
+        // The bytes of a file opened without importing belong to that document only.
+        unimported = undefined;
         // restoreTrackSession only sets the view, the mixer overrides and the current track: none
         // of them moves `dirty` or the history.
         if (row.session) restoreTrackSession(services, row.session);
@@ -270,13 +299,27 @@ export function createLibrary(
       const opened = document.getState();
       if (opened.songId !== songId || opened.id === before || !opened.score || !opened.file) return;
       const { id: documentId, score, file } = opened;
+      unimported = undefined;
+      store.setState({ bannerError: undefined });
       const found = await duplicate;
       if (token !== opening || document.getState().id !== documentId) return;
+      // Swaps to the library's copy, unless the user has edited the file in the meantime.
+      const swap = async (existingId: Id): Promise<void> => {
+        if (!document.getState().dirty) {
+          await library.openSong(existingId);
+          return;
+        }
+        document.getState().setSongId(undefined);
+        unimported = { documentId, name, bytes };
+      };
       if (found?.existing) {
-        await library.openSong(found.existing.id);
+        await swap(found.existing.id);
         return;
       }
       try {
+        // The score is cloned to the worker on this thread (about 45 ms for the 8 x 300 bar
+        // reference score), so it waits until the first paint is out.
+        await afterPaint();
         const row = await persistDocument(
           { repo, files, createParser: parserOf, now },
           { songId, score, name, format: file.format, key: file.key, original: bytes },
@@ -284,13 +327,19 @@ export function createLibrary(
         addEntries([row]);
         if (document.getState().id === documentId) startKeeper(songId);
       } catch (error) {
-        // A repeat of the same bytes that another import added first is not a failure.
-        if (await repo.byKey(file.key).catch(() => undefined)) return;
+        // The same bytes that another import added first: this document is that song.
+        const existing = await repo.byKey(file.key).catch(() => undefined);
+        if (existing) {
+          if (token === opening && document.getState().id === documentId) await swap(existing.id);
+          return;
+        }
         if (document.getState().id === documentId) {
           document.getState().setSongId(undefined);
           unimported = { documentId, name, bytes };
+          store.setState({
+            bannerError: `Could not add "${name}" to the library: ${error instanceof Error ? error.message : String(error)}`,
+          });
         }
-        failure(`Could not add "${name}" to the library`, error);
       }
     },
     async openFile() {
@@ -315,12 +364,12 @@ export function createLibrary(
       const held = unimported?.documentId === documentId ? unimported : undefined;
       if (!held) {
         store.setState({
-          error: 'The original file is no longer available. Open it again to import it.',
+          bannerError: 'The original file is no longer available. Open it again to import it.',
         });
         return;
       }
       if (await repo.byKey(file.key)) {
-        store.setState({ error: `"${held.name}" is already in your library.` });
+        store.setState({ bannerError: `"${held.name}" is already in your library.` });
         return;
       }
       const newSongId = newId();
@@ -341,10 +390,12 @@ export function createLibrary(
         // After the write, so the keeper's own check of the song id passes from its first session.
         document.getState().setSongId(newSongId);
         unimported = undefined;
-        store.setState({ error: undefined });
+        store.setState({ bannerError: undefined });
         startKeeper(newSongId);
       } catch (error) {
-        failure(`Could not add "${held.name}" to the library`, error);
+        store.setState({
+          bannerError: `Could not add "${held.name}" to the library: ${error instanceof Error ? error.message : String(error)}`,
+        });
       }
     },
     async deleteSong(id) {
@@ -359,6 +410,10 @@ export function createLibrary(
         const row = await repo.get(id);
         if (row) await files.trash(row);
         await repo.remove(id);
+        for (const load of loads) {
+          load.removed.add(id);
+          load.added.delete(id);
+        }
         store.setState((state) => ({
           entries: state.entries.filter((entry) => entry.row.id !== id),
         }));
@@ -378,6 +433,21 @@ export function createLibrary(
     },
   };
   return library;
+}
+
+/** After the next frame has painted; a hidden tab, which draws no frames, waits at most 200 ms. */
+function afterPaint(): Promise<void> {
+  const painted = new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame !== 'function') {
+      resolve();
+      return;
+    }
+    requestAnimationFrame(() => {
+      setTimeout(resolve, 0);
+    });
+  });
+  const limit = new Promise<void>((resolve) => setTimeout(resolve, 200));
+  return Promise.race([painted, limit]);
 }
 
 async function pickOne(

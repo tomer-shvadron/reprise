@@ -15,7 +15,7 @@ export function UnimportedBanner() {
   const library = libraryOf(services);
   const open = useStore(services.document, (state) => state.score !== undefined);
   const songId = useStore(services.document, (state) => state.songId);
-  const error = useStore(library.store, (state) => state.error);
+  const error = useStore(library.store, (state) => state.bannerError);
   const [busy, setBusy] = useState(false);
 
   if (!open || songId !== undefined) return null;

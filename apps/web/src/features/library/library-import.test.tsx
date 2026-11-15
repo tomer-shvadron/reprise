@@ -15,8 +15,10 @@ import { LibraryScreen } from './library-screen';
 import { openLibraryDb } from './db/schema';
 import { RecentSongs } from './recent-songs';
 import { UnimportedBanner } from './unimported-banner';
-import { songBytes } from './test/songs';
-import { uniqueDbName } from './test-support';
+import { songBytes, sourceOf } from './test/songs';
+import type { ImportSource } from './import/sources';
+import { contentKey } from '@/state/document';
+import { rowOf, uniqueDbName } from './test-support';
 
 const libraries: Library[] = [];
 afterEach(async () => {
@@ -93,7 +95,7 @@ describe('open and import', () => {
     });
     await library.openAndImport({ name: 'riff.reprise', bytes: await songBytes('Riff') });
     await waitFor(() => {
-      expect(library.store.getState().error).toMatch(/disk full/);
+      expect(library.store.getState().bannerError).toMatch(/disk full/);
     });
     expect(services.document.getState().score).toBeDefined();
     expect(services.document.getState().songId).toBeUndefined();
@@ -119,6 +121,81 @@ describe('open and import', () => {
     await library.openFile();
     expect(openFile).toHaveBeenCalledTimes(2);
     expect(services.document.getState().file?.name).toBe('p.reprise');
+  });
+});
+
+describe('races', () => {
+  it('points the open document at the existing song when another import wins the key', async () => {
+    const bytes = await songBytes('Contested');
+    const key = await contentKey(bytes);
+    const storage = createMemoryStorage();
+    const existing = rowOf({ title: 'Contested', originalKey: key });
+    await storage.calls.writeFile(existing.nativePath, bytes);
+    let racing: Promise<void> = Promise.resolve();
+    const { services, library } = setup({
+      ...storage.calls,
+      writeFile: (path, data) => {
+        // The competing import stores the same bytes between the lookup and this write.
+        racing = library.repo.add(existing);
+        return racing.then(() => storage.calls.writeFile(path, data));
+      },
+    });
+    await library.openAndImport({ name: 'contested.reprise', bytes: bytes.slice() });
+    await waitFor(() => {
+      expect(services.document.getState().songId).toBe(existing.id);
+    });
+    expect(await library.repo.all()).toHaveLength(1);
+  });
+
+  it('keeps a row an open-and-import adds while a load is reading', async () => {
+    const { library } = setup();
+    const empty = await library.repo.all();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(library.repo, 'all').mockImplementation(async () => {
+      await gate;
+      return empty;
+    });
+    const loading = library.load();
+    await library.openAndImport({ name: 'a.reprise', bytes: await songBytes('Alpha') });
+    await waitFor(() => {
+      expect(library.store.getState().entries).toHaveLength(1);
+    });
+    release();
+    await loading;
+    expect(library.store.getState().entries.map((entry) => entry.row.title)).toEqual(['Alpha']);
+  });
+
+  it('does not list a row twice when a load read it before the batch flushed it', async () => {
+    const storage = createMemoryStorage();
+    const services = createTestServices({ platform: fakePlatform({ ...storage.calls }) });
+    // A clock that never moves, so the importer flushes only at the end of the batch.
+    const library = createLibrary(services, { db: openLibraryDb(uniqueDbName()), now: () => 1000 });
+    libraries.push(library);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const second: ImportSource = {
+      name: 'b.reprise',
+      size: 1,
+      read: async () => {
+        await gate;
+        return songBytes('Beta');
+      },
+    };
+    const first = await songBytes('Alpha');
+    const batch = library.importSources([sourceOf('a.reprise', first), second]);
+    await waitFor(() => {
+      expect(library.importer.store.getState().imported).toBe(1);
+    });
+    await library.load();
+    release();
+    await batch;
+    const titles = library.store.getState().entries.map((entry) => entry.row.title);
+    expect(titles.sort()).toEqual(['Alpha', 'Beta']);
   });
 });
 
@@ -153,7 +230,7 @@ describe('open without import and the banner', () => {
     const bytes = await songBytes('Loose');
     await services.document.getState().openBytes('loose.reprise', bytes);
     await library.importOpenDocument();
-    expect(library.store.getState().error).toMatch(/no longer available/);
+    expect(library.store.getState().bannerError).toMatch(/no longer available/);
   });
 
   it('refuses to import a song that is already in the library', async () => {
@@ -165,7 +242,7 @@ describe('open without import and the banner', () => {
     });
     await library.openWithoutImport({ name: 'a.reprise', bytes: bytes.slice() });
     await library.importOpenDocument();
-    expect(library.store.getState().error).toMatch(/already in your library/);
+    expect(library.store.getState().bannerError).toMatch(/already in your library/);
     expect(services.document.getState().songId).toBeUndefined();
     expect(await library.repo.all()).toHaveLength(1);
   });
