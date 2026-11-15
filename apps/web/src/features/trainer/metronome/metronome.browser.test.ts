@@ -60,7 +60,7 @@ describe('the metronome click on the real engine, with no song open', () => {
   it.each([60, 120, 200])('lands every click on the grid at %i BPM', async (bpm) => {
     const gap = 60 / bpm;
     const found = await render(bpm, START + gap * 5.5);
-    expect(found.length).toBeGreaterThanOrEqual(5);
+    expect(found).toHaveLength(6);
     const first = found[0] ?? 0;
     expect(Math.abs(first - (START + BUS_DELAY))).toBeLessThan(0.001);
     found.forEach((at, index) => {

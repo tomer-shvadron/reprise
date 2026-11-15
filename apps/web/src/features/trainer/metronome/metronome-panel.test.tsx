@@ -1,19 +1,20 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { App } from '@/app/app';
 import { createAppRegistry } from '@/app/app-registry';
 import { runCommand } from '@/app/command-registry';
+import type { PlaybackStoreState } from '@/state/playback';
 import { createTestServices } from '@/test/services';
 
 /** The fake audio service records calls; this makes its click methods write `playback.click`. */
 function mirrorClick(services: ReturnType<typeof createTestServices>) {
   const { fakeAudio, playback } = services;
-  const click = (partial: object) => {
+  const click = (partial: Partial<PlaybackStoreState['click']>) => {
     playback.setState({ click: { ...playback.getState().click, ...partial } });
   };
-  const update = (settings: object) => {
+  const update = (settings: Partial<PlaybackStoreState['click']['settings']>) => {
     click({ settings: { ...playback.getState().click.settings, ...settings } });
   };
   fakeAudio.startClick.mockImplementation((settings) => {
@@ -64,33 +65,39 @@ describe('MetronomePanel from the empty state', () => {
 
   it('sets the tempo from the field, ignoring a value outside the range', () => {
     const { services, panel } = renderEmptyApp();
-    const field = panel.getByRole('textbox');
+    const field = panel.getByRole('textbox', { name: 'Tempo' });
     fireEvent.change(field, { target: { value: '140' } });
     fireEvent.keyDown(field, { key: 'Enter' });
     expect(services.playback.getState().click.settings.bpm).toBe(140);
     fireEvent.change(field, { target: { value: '900' } });
     fireEvent.keyDown(field, { key: 'Enter' });
     expect(services.playback.getState().click.settings.bpm).toBe(140);
+    fireEvent.keyDown(field, { key: 'ArrowUp', shiftKey: true });
+    expect(services.playback.getState().click.settings.bpm).toBe(150);
   });
 
-  it('taps a tempo', () => {
-    const { services, panel } = renderEmptyApp();
-    const tap = panel.getByRole('button', { name: 'Tap tempo' });
-    fireEvent.click(tap);
-    expect(services.fakeAudio.updateClick).not.toHaveBeenCalled();
-    // jsdom stamps events with the real clock, so assert only that a second tap sets a tempo.
-    fireEvent.click(tap);
-    expect(services.fakeAudio.updateClick).toHaveBeenCalledOnce();
-    const [update] = services.fakeAudio.updateClick.mock.calls[0] ?? [];
-    expect(update?.bpm).toBeGreaterThanOrEqual(10);
+  it('taps a tempo of exactly 120 for taps half a second apart', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const { services, panel } = renderEmptyApp();
+      const tap = panel.getByRole('button', { name: 'Tap tempo' });
+      vi.setSystemTime(10_000);
+      fireEvent.click(tap);
+      expect(services.fakeAudio.updateClick).not.toHaveBeenCalled();
+      vi.setSystemTime(10_500);
+      fireEvent.click(tap);
+      expect(services.fakeAudio.updateClick).toHaveBeenCalledExactlyOnceWith({ bpm: 120 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('sets the time signature, subdivision, accent and volume', async () => {
     const { services, panel, user } = renderEmptyApp();
-    fireEvent.change(panel.getByRole('spinbutton', { name: 'Beats per bar' }), {
-      target: { value: '7' },
-    });
-    await user.click(panel.getByRole('radio', { name: 'Triplet' }));
+    const beats = panel.getByRole('textbox', { name: 'Beats per bar' });
+    fireEvent.change(beats, { target: { value: '7' } });
+    fireEvent.keyDown(beats, { key: 'Enter' });
+    await user.click(panel.getByRole('radio', { name: '3 per beat (triplets)' }));
     await user.click(panel.getByRole('switch', { name: 'Accent the downbeat' }));
     const volume = panel.getByRole('slider', { name: 'Metronome click volume' });
     volume.focus();
@@ -101,5 +108,51 @@ describe('MetronomePanel from the empty state', () => {
       accents: [],
       volume: 1,
     });
+  });
+
+  it('lets the beats field be cleared and typed without touching the click until it commits', () => {
+    const { services, panel } = renderEmptyApp();
+    const beats = panel.getByRole('textbox', { name: 'Beats per bar' });
+    fireEvent.change(beats, { target: { value: '' } });
+    expect(beats).toHaveValue('');
+    fireEvent.change(beats, { target: { value: '1' } });
+    fireEvent.change(beats, { target: { value: '12' } });
+    expect(services.fakeAudio.updateClick).not.toHaveBeenCalled();
+    fireEvent.keyDown(beats, { key: 'Enter' });
+    expect(services.playback.getState().click.settings.beatsPerBar).toBe(12);
+    fireEvent.change(beats, { target: { value: '5' } });
+    fireEvent.keyDown(beats, { key: 'Escape' });
+    expect(beats).toHaveValue('12');
+  });
+
+  it('counts 6/8 in dotted quarters, shows 6/8, and keeps the meter when the panel remounts', async () => {
+    const { services, panel, user, run } = renderEmptyApp();
+    expect(panel.queryByRole('switch', { name: 'Count in dotted quarters' })).toBeNull();
+    const beats = panel.getByRole('textbox', { name: 'Beats per bar' });
+    fireEvent.change(beats, { target: { value: '6' } });
+    fireEvent.keyDown(beats, { key: 'Enter' });
+    await user.click(panel.getByRole('radio', { name: '8' }));
+    expect(services.playback.getState().click.settings).toMatchObject({
+      beatsPerBar: 2,
+      subdivision: 3,
+    });
+    expect(beats).toHaveValue('6');
+    expect(panel.getByText('Tempo, BPM of the dotted quarter note')).toBeInTheDocument();
+
+    await user.click(panel.getByRole('switch', { name: 'Count in dotted quarters' }));
+    expect(services.playback.getState().click.settings).toMatchObject({
+      beatsPerBar: 6,
+      subdivision: 1,
+    });
+    expect(panel.getByText('Tempo, BPM of the eighth note')).toBeInTheDocument();
+
+    run('trainer.metronome');
+    act(() => {
+      services.ui.getState().showPanelView('mixer');
+    });
+    run('trainer.metronome');
+    const again = within(screen.getByRole('region', { name: 'Metronome' }));
+    expect(again.getByRole('textbox', { name: 'Beats per bar' })).toHaveValue('6');
+    expect(again.getByText('Tempo, BPM of the eighth note')).toBeInTheDocument();
   });
 });

@@ -17,7 +17,7 @@ export type TrainerCommandId =
 type TrainerCommand = Command & { id: TrainerCommandId };
 
 export function trainerCommands(
-  services: Pick<AppServices, 'ui' | 'audio' | 'playback'> & SpeedTrainerServices,
+  services: Pick<AppServices, 'ui'> & SpeedTrainerServices,
 ): TrainerCommand[] {
   const { ui } = services;
   const speedTrainer = () => speedTrainerFor(services).getState();
@@ -58,7 +58,7 @@ export function trainerCommands(
     { id: 'trainer.metronome', title: 'Show metronome', run: show('metronome') },
     {
       id: 'trainer.metronomeToggle',
-      title: 'Start or stop metronome',
+      title: 'Start or stop standalone metronome',
       shortcut: { key: 'b', alt: true },
       repeat: false,
       run: () => {

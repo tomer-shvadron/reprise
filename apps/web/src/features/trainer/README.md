@@ -73,8 +73,14 @@ standalone click (`startClick`, `updateClick`, `stopClick`) and reads `playback.
 works with no song open and its settings survive a stop. The click and a song never sound
 together: starting one stops the other.
 
-- BPM (10 to 600) with tap tempo (the last 8 taps, restarting after a 2 s pause), beats per bar
-  (1 to 32), the beat note (2, 4 or 8; it only labels the BPM, because the engine counts the beat
-  the caller chose), subdivision (quarter, eighth, triplet, sixteenth), downbeat accent and volume.
+- BPM (10 to 600) with tap tempo (the last 8 taps, restarting after a 2 s pause, so tapping reaches
+  down to 30 BPM and slower tempos are typed), beats per bar (1 to 32) over a beat note of 2, 4 or
+  8, clicks per beat (1 to 4, relative to the beat so they are right in every meter), downbeat
+  accent and volume. For x/8 with x a multiple of 3 (6/8, 9/8, 12/8) a switch, on by default,
+  counts in dotted quarters: the panel keeps showing 6/8 and the engine gets
+  `{ beatsPerBar: 2, subdivision: 3 }`. The meter lives in `metronome-store.ts`, outside React, so
+  it survives a panel switch.
+- The click keeps running when the panel closes or another screen opens; Alt+B and the palette stop
+  it from anywhere. Nothing outside the panel shows it running yet (a shell follow-up).
 - Alt+B starts or stops it and shows the panel. `metronome.browser.test.ts` renders the click
   offline at 60, 120 and 200 BPM and measures the onsets.
