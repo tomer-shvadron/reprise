@@ -19,6 +19,8 @@ interface AppFrameProps {
   sidebar?: ReactNode;
   /** The right panel's content: the mixer. */
   panel?: ReactNode;
+  /** A full-width strip above the panels, such as the library's "not in your library" banner. */
+  banner?: ReactNode;
 }
 
 function PanelToggle({ ui, panel, label }: { ui: UiStore; panel: PanelId; label: string }) {
@@ -52,7 +54,7 @@ function PanelToggle({ ui, panel, label }: { ui: UiStore; panel: PanelId; label:
   );
 }
 
-export function AppFrame({ ui, score, transport, sidebar, panel }: AppFrameProps) {
+export function AppFrame({ ui, score, transport, sidebar, panel, banner }: AppFrameProps) {
   const panels = useStore(ui, (state) => state.panels);
   const widths = useStore(ui, (state) => state.panelWidths);
   const zoom = useStore(ui, (state) => state.zoom);
@@ -60,6 +62,7 @@ export function AppFrame({ ui, score, transport, sidebar, panel }: AppFrameProps
 
   return (
     <div className="flex h-full flex-col">
+      {banner}
       <div className="flex min-h-0 flex-1">
         {panels.sidebar && (
           <>

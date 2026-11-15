@@ -31,8 +31,26 @@ export interface ParsedImport {
   key: string;
 }
 
-export type ParseOutcome =
-  { ok: true; parsed: ParsedImport } | { ok: false; code: string; message: string };
+export type Failure = { ok: false; code: string; message: string };
+export type ParseOutcome = { ok: true; parsed: ParsedImport } | Failure;
+export type NativeOutcome = { ok: true; native: Uint8Array } | Failure;
+
+function failureOf(error: unknown): Failure {
+  const code =
+    error instanceof Error && 'code' in error && typeof error.code === 'string'
+      ? error.code
+      : 'read-failed';
+  return { ok: false, code, message: error instanceof Error ? error.message : String(error) };
+}
+
+/** The score as `.reprise` bytes; for a score the app opened, whose track ids must be kept. */
+export async function nativeOf(score: Score): Promise<NativeOutcome> {
+  try {
+    return { ok: true, native: (await write(score, 'reprise')).bytes };
+  } catch (error) {
+    return failureOf(error);
+  }
+}
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   // A copy into a plain ArrayBuffer, since `digest` refuses a view over a SharedArrayBuffer.
@@ -56,10 +74,6 @@ export async function parseImport(bytes: Uint8Array, fallbackTitle = ''): Promis
     if (meta.title.trim() === '') meta.title = fallbackTitle;
     return { ok: true, parsed: { format, native, meta, warnings, key } };
   } catch (error) {
-    const code =
-      error instanceof Error && 'code' in error && typeof error.code === 'string'
-        ? error.code
-        : 'read-failed';
-    return { ok: false, code, message: error instanceof Error ? error.message : String(error) };
+    return failureOf(error);
   }
 }

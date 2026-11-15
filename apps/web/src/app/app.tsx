@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { LibraryScreen } from '@/features/library';
+import { installLibrary, LibraryScreen, RecentSongs, UnimportedBanner } from '@/features/library';
 import { SoundManager } from '@/features/sounds';
 import { TrainerPanel } from '@/features/trainer';
 import { PrintDialog, PrintRoot } from '@/features/score';
@@ -55,6 +55,8 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
     [audio],
   );
 
+  useEffect(() => installLibrary(services), [services]);
+
   useEffect(
     () =>
       onMenuCommand?.((id) => {
@@ -67,10 +69,14 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   const openShortcut = registry.get('file.open')?.shortcut;
   const paletteShortcut = registry.get('app.commandPalette')?.shortcut;
   const hint = (
-    <p className="text-ink-muted">
-      Open a file{openShortcut && ` (${formatShortcut(openShortcut, keyboard)})`} or drop one here,
-      or press {paletteShortcut && formatShortcut(paletteShortcut, keyboard)} for every command.
-    </p>
+    <>
+      <p className="text-ink-muted">
+        Open a file{openShortcut && ` (${formatShortcut(openShortcut, keyboard)})`} or drop one
+        here, or press {paletteShortcut && formatShortcut(paletteShortcut, keyboard)} for every
+        command.
+      </p>
+      <RecentSongs />
+    </>
   );
 
   return (
@@ -80,6 +86,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
           <AppFrame
             ui={ui}
             score={<ScorePane hint={hint} />}
+            banner={<UnimportedBanner />}
             transport={<TransportBar registry={registry} keyboard={keyboard} />}
             sidebar={<TrackSidebar registry={registry} keyboard={keyboard} />}
             panel={

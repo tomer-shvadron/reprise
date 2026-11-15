@@ -3,15 +3,18 @@
 **Owner**: the formats lane (`[P:formats]`). **Filled by**: WP-060 (library and import), WP-061
 (save, export and autosave), and the schema migration of WP-073 (practice log).
 
-WP-060 lands in two PRs. The first, below, is the database, the library screen and opening a song;
-the second adds the import flow (pickers, batch with progress and cancel, trash, recents, the
-open-without-import banner and the shell wiring), which waits for the platform file operations of #202.
+WP-060 landed in two PRs: the database, the library screen and opening a song, then the import
+flow (pickers, batch with progress and cancel, trash, recents, the open-without-import banner and the
+shell wiring, which is one separate integration commit).
 
-| Export                           | What it is                                                                                                  |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `LibraryScreen`                  | The song list with search, sort and open. The app shows it over the score while `ui.screen` is `'library'`. |
-| `libraryOf(services)`            | The one `Library` of an app instance (database, store, session keeper), kept in a `WeakMap`.                |
-| `libraryCommands` (`./commands`) | `library.show` ("Show library"), which sets the screen. WP-060 adds open-without-import and the recents.    |
+| Export                            | What it is                                                                                                        |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `LibraryScreen`                   | The song list with search, sort and open. The app shows it over the score while `ui.screen` is `'library'`.       |
+| `libraryOf(services)`             | The one `Library` of an app instance (database, store, session keeper), kept in a `WeakMap`.                      |
+| `libraryCommands` (`./commands`)  | `library.show`, `library.importFiles`, `library.importFolder`, `library.openWithoutImport`, `library.openRecent`. |
+| `installLibrary(services)`        | Loads the library and keeps the desktop File menu's Open Recent in step (`setRecentSongs`, `onOpenRecent`).       |
+| `RecentSongs`, `UnimportedBanner` | The empty state's recent list, and the "Not in your library" banner with its Import button.                       |
+| `snapshotDrop`                    | Takes a drop's files and folders synchronously, for the drop zone to hand to `importDrop`.                        |
 
 ## How it works
 
@@ -39,6 +42,26 @@ open-without-import banner and the shell wiring), which waits for the platform f
   changing it takes a schema version with an `upgrade`. `nativePath` is also the document's save
   handle. Reading and writing them relies on the platform contract of #202 (PR #207): `readFile`,
   `writeFile` and a string `writeHandle` accept root-relative storage paths there.
+- **Batch import** (`import/importer.ts`). Sources (`{ name, size, read() }`, from a picker, a picked
+  folder or a drop) are read one at a time, the next while the current one parses; the bytes are parsed
+  in the worker, skipped when their SHA-256 (`originalKey`) is already indexed, else the native and the
+  original are written (`files.ts`) and the row added; a failed step removes what it wrote. Progress,
+  cancel (after the file in flight) and the summary live in `library.importer.store`. Sources given
+  while a batch runs join it. Names that are not score files are skipped by extension, not failed.
+- **Open and import** (`library.openAndImport`). A single file (drop, `file.open`) opens through
+  `openBytes` exactly as before, with a fresh `songId`; the duplicate lookup runs beside the open, so
+  drop-to-paint does not wait on the database. Then the native is written **from the open score**
+  (`parser.native`, in the worker), never from a second read, so track ids match; the original and the
+  row follow, and the session keeper starts. A duplicate opens the library's song instead. A failed
+  write clears `songId`, keeps the file open and shows the banner. `openWithoutImport` keeps the bytes
+  in memory so the banner's Import (`importOpenDocument`) can still copy the original.
+- **Delete** (`library.deleteSong`). The song's native and original folder move to
+  `library/trash/<id>/` beside a `song.json` copy of the row; then the row goes. An open song becomes
+  unimported (`songId` cleared); its document still carries the save handle it was opened with, which
+  WP-061's Save must not follow without a `songId`.
+- **Recents.** The 5 most recently opened songs (`RecentSongs`), the palette command
+  `library.openRecent` (the library sorted by last opened), and on desktop the File menu through
+  `setRecentSongs` (at most 10), with `onOpenRecent` opening the pick.
 - **Closing the window.** Nothing calls `Library.dispose()`; the session keeper flushes on `pagehide`
   and on `visibilitychange` to hidden, so the last 500 ms of changes are kept without shell wiring.
 - **Parsing** (`import/`). `parseImport` is the pure detect, read, native write, summarize and hash
@@ -61,4 +84,3 @@ The Dexie schema file lives here and is owned by this lane, so WP-073 adds its t
 there. Needing another field on a shared store is a `type:contract` issue for the lead, not an edit.
 
 `dexie` and, for the tests, `fake-indexeddb` are already dependencies of `apps/web` (ADR-0012), added by the lead.
-The import flow also waits for the platform directory operations of #202.

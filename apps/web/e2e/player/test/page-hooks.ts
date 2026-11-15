@@ -110,11 +110,12 @@ export function installPageHooks(): void {
   const root = () => navigator.storage.getDirectory();
   Object.defineProperty(window, 'showOpenFilePicker', {
     configurable: true,
-    value: async () => {
+    value: async (options?: { multiple?: boolean }) => {
       window.__e2e.opens += 1;
-      const name = picks.shift();
-      if (name === undefined) throw new DOMException('The user aborted a request.', 'AbortError');
-      return [await (await root()).getFileHandle(name)];
+      // A multiple pick takes every name that is queued.
+      const names = options?.multiple === true ? picks.splice(0) : picks.splice(0, 1);
+      if (names.length === 0) throw new DOMException('The user aborted a request.', 'AbortError');
+      return Promise.all(names.map(async (name) => (await root()).getFileHandle(name)));
     },
   });
   Object.defineProperty(window, 'showSaveFilePicker', {
