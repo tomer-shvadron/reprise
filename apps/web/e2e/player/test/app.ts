@@ -3,7 +3,12 @@ import { basename } from 'node:path';
 
 import { test as base, expect, type Locator, type Page } from '@playwright/test';
 
-import { installPageHooks, type FollowWatch, type ReadoutField } from './page-hooks';
+import {
+  installPageHooks,
+  type FollowWatch,
+  type FrameWatch,
+  type ReadoutField,
+} from './page-hooks';
 
 export { expect };
 
@@ -205,6 +210,10 @@ export class App {
 
   watchFollow(untilBar: string): Promise<FollowWatch> {
     return this.page.evaluate((bar) => window.__e2e.watchFollow(bar), untilBar);
+  }
+
+  watchFrames(untilBar: string): Promise<FrameWatch> {
+    return this.page.evaluate((bar) => window.__e2e.watchFrames(bar), untilBar);
   }
 
   async regionScroll(): Promise<{ rect: Box; left: number; top: number }> {

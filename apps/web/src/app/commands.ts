@@ -1,3 +1,5 @@
+import { createEmptyScore } from '@reprise/model';
+
 import { libraryOf } from '@/features/library/library';
 import type { MenuCommandId } from '@/platform/bridge';
 import { ZOOM } from '@/state/ui';
@@ -30,6 +32,18 @@ export function appCommands(services: AppServices): AppCommand[] {
       inPalette: false,
       run: () => {
         ui.getState().setPaletteOpen(!ui.getState().paletteOpen);
+      },
+    },
+    {
+      id: 'file.new',
+      title: 'New song',
+      shortcut: { key: 'n', mod: true },
+      // A placeholder: WP-083 replaces it with the unsaved-changes prompt and edit mode on. Until
+      // then it never throws away edits, since newDocument leaves nothing to undo.
+      run: () => {
+        if (document.getState().dirty) return;
+        document.getState().newDocument(createEmptyScore());
+        ui.getState().setScreen('player');
       },
     },
     {

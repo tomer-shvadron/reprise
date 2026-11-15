@@ -9,6 +9,7 @@ interface MenuCommand {
 }
 
 export const MENU_COMMANDS = {
+  'file.new': { label: 'New Song', accelerator: 'CmdOrCtrl+N' },
   'file.open': { label: 'Open…', accelerator: 'CmdOrCtrl+O' },
   'file.save': { label: 'Save', accelerator: 'CmdOrCtrl+S' },
   'file.saveAs': { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S' },
@@ -72,6 +73,7 @@ export function menuTemplate({
     {
       label: 'File',
       submenu: [
+        command('file.new'),
         command('file.open'),
         openRecentMenu,
         separator,
