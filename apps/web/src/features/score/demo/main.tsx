@@ -2,8 +2,10 @@ import { createRoot } from 'react-dom/client';
 
 import { initialTheme } from '@/state/theme';
 
+import { EditDemo } from '@/features/editor/demo/edit-demo';
+
 import { parseDemoParams } from './demo-params';
-import { ScoreDemo } from './score-demo';
+import { loadScore, ScoreDemo } from './score-demo';
 
 import '@/index.css';
 
@@ -14,4 +16,12 @@ const params = parseDemoParams(window.location.search, initialTheme());
 document.documentElement.dataset['theme'] = params.theme;
 
 // No StrictMode: its double render and effect replay would double every measurement.
-createRoot(root).render(<ScoreDemo initial={params} />);
+const reactRoot = createRoot(root);
+if (new URLSearchParams(window.location.search).get('edit') === '1') {
+  // `?edit=1`: the edit cursor and range over the same score and view, not the performance panel.
+  void loadScore(params.fixture).then((score) => {
+    reactRoot.render(<EditDemo score={score} mode={params.mode} notation={params.notation} />);
+  });
+} else {
+  reactRoot.render(<ScoreDemo initial={params} />);
+}

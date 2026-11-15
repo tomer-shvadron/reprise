@@ -1,13 +1,15 @@
 import type { Command } from '@/app/command-registry';
 import type { AppServices } from '@/app/services';
 
-export type EditorCommandId = 'editor.toggleMode';
+import { navigationCommands, type NavigationCommandId } from './navigation-commands';
+
+export type EditorCommandId = 'editor.toggleMode' | NavigationCommandId;
 
 type EditorCommand = Command & { id: EditorCommandId };
 
 /** WP-081 gives the toggle its shortcut and everything that happens while editing. */
 export function editorCommands(
-  services: Pick<AppServices, 'editing' | 'document'>,
+  services: Pick<AppServices, 'editing' | 'document' | 'selection' | 'layout'>,
 ): EditorCommand[] {
   const { editing, document } = services;
   return [
@@ -18,5 +20,6 @@ export function editorCommands(
         if (document.getState().score) editing.getState().toggle();
       },
     },
+    ...navigationCommands(services),
   ];
 }

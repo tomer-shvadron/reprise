@@ -62,7 +62,7 @@ const SCROLL_SPEED = 2000;
 const SCROLL_MS = 10_000;
 const MAX_FRET = 25;
 
-async function loadScore(fixture: string): Promise<Score> {
+export async function loadScore(fixture: string): Promise<Score> {
   if (fixture === LONG_FIXTURE) {
     // Dev-only: the generated long score comes from the test builders, never from the app build.
     const { longScore } = await import('../test/long-score');

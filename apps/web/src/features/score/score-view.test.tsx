@@ -377,6 +377,32 @@ describe('ScoreView', () => {
     );
   });
 
+  it('draws the edit caret and range boxes at their layout-space boxes, only in mounted systems', () => {
+    const result = small();
+    const box = { x: 40, y: 50, width: 20, height: 10 };
+    render(
+      <ScoreView
+        layout={result}
+        zoom={2}
+        overlays={{
+          caret: [
+            { system: 0, box },
+            { system: 0, box, muted: true },
+            { system: result.systems.length - 1, box },
+          ],
+          range: [{ system: 0, box: { ...box, width: 80 } }],
+        }}
+      />,
+    );
+    const overlays = region().querySelector('.score-overlays');
+    // The last system is far below the mounted window of a long score.
+    expect(overlays?.querySelectorAll('.score-caret')).toHaveLength(2);
+    expect(overlays?.querySelectorAll('.score-caret-muted')).toHaveLength(1);
+    const range = overlays?.querySelector<HTMLElement>('.score-range');
+    expect(range?.style.width).toBe('160px');
+    expect(range?.style.transform).toBe('translate(80px, 100px)');
+  });
+
   it('reveals a rect by the least scroll and reports the live window', () => {
     const result = small();
     const ref = createRef<ScoreViewHandle>();
