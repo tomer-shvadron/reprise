@@ -1,12 +1,20 @@
-import type { Id } from '@reprise/model';
+import { newId, type Id } from '@reprise/model';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 import type { AppServices } from '@/app/services';
 import { restoreTrackSession } from '@/features/tracks';
+import type { FileHandle } from '@/platform/platform';
+import { contentKey, SCORE_FILES } from '@/state/document';
 
 import { createSongsRepository, type SongsRepository } from './db/repository';
 import type { SongRow } from './db/rows';
 import { openLibraryDb, type RepriseDb } from './db/schema';
+import { createLibraryFiles, type LibraryFiles } from './files';
+import { createImporter, type Importer } from './import/importer';
+import { createParser, type Parser } from './import/parser';
+import { persistDocument } from './import/persist-document';
+import { stem } from './import/song-row';
+import { fromPicked, resolveDrop, type DropSnapshot, type ImportSource } from './import/sources';
 import { entryOf, isSortKey, type LibraryEntry, type SortKey } from './search';
 import { startSessionKeeper, type SessionKeeper } from './session-keeper';
 
@@ -31,17 +39,45 @@ export interface Library {
   setSort(sort: SortKey): void;
   /** Opens the song in the player with its track session restored, never marking it modified. */
   openSong(id: Id): Promise<void>;
+  /** The progress of the running or last batch import. */
+  importer: Importer;
+  /** One dialog for several files, imported as a batch. */
+  importFiles(): Promise<void>;
+  /** A folder and everything below it, imported as a batch. */
+  importFolder(): Promise<void>;
+  /** Files or folders dropped on the window, imported as a batch. */
+  importDrop(drop: DropSnapshot): Promise<void>;
+  importSources(sources: readonly ImportSource[]): Promise<void>;
+  /**
+   * Opens a file exactly as `document.openBytes` does, then imports it in the background from
+   * the open score. A file already in the library opens as that song instead.
+   */
+  openAndImport(file: OpenedBytes): Promise<void>;
+  /** `file.open`: the platform's picker, then `openAndImport`. */
+  openFile(): Promise<void>;
+  /** Opens a file without importing it; the banner offers to import it afterwards. */
+  openWithoutImport(file: OpenedBytes): Promise<void>;
+  openFileWithoutImport(): Promise<void>;
+  /** Imports the open document, which `openWithoutImport` left out of the library. */
+  importOpenDocument(): Promise<void>;
+  /** Moves the song's files to the trash, then removes its row. */
+  deleteSong(id: Id): Promise<void>;
+  /** Shows the library sorted by last opened, for the recent-songs command. */
+  showRecent(): void;
   dispose(): Promise<void>;
+}
+
+export interface OpenedBytes {
+  name: string;
+  bytes: Uint8Array;
+  handle?: FileHandle;
 }
 
 export interface LibraryOptions {
   db?: RepriseDb;
   now?: () => number;
-}
-
-function stem(name: string): string {
-  const dot = name.lastIndexOf('.');
-  return dot > 0 ? name.slice(0, dot) : name;
+  files?: LibraryFiles;
+  createParser?: () => Parser;
 }
 
 export function createLibrary(
@@ -51,6 +87,8 @@ export function createLibrary(
   const db = options.db ?? openLibraryDb();
   const now = options.now ?? Date.now;
   const repo = createSongsRepository(db);
+  const files = options.files ?? createLibraryFiles(services.platform);
+  const parserOf = options.createParser ?? createParser;
   const store = create<LibraryState>()(() => ({
     entries: [],
     loaded: false,
@@ -59,7 +97,10 @@ export function createLibrary(
     error: undefined,
   }));
   let keeper: SessionKeeper | undefined;
+  let keeperId: Id | undefined;
   let opening = 0;
+  // The bytes of a file opened without importing, so the banner can still copy the original.
+  let unimported: { documentId: Id | undefined; name: string; bytes: Uint8Array } | undefined;
 
   const replaceRow = (row: SongRow) => {
     store.setState((state) => ({
@@ -67,10 +108,56 @@ export function createLibrary(
     }));
   };
 
-  return {
+  const startKeeper = (id: Id) => {
+    void keeper?.stop();
+    keeperId = id;
+    keeper = startSessionKeeper(services, id, (songId, session) =>
+      repo.setSession(songId, session),
+    );
+  };
+
+  const addEntries = (rows: SongRow[]) => {
+    store.setState((state) => ({ entries: [...state.entries, ...rows.map(entryOf)] }));
+  };
+
+  const importer = createImporter({
+    repo,
+    files,
+    createParser: parserOf,
+    now,
+    onAdded: addEntries,
+  });
+
+  const failure = (prefix: string, error: unknown) => {
+    store.setState({
+      error: `${prefix}: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  };
+
+  const runBatch = async (
+    pick: () => Promise<
+      { sources: ImportSource[]; truncated?: boolean; unreadable?: number } | undefined
+    >,
+  ) => {
+    let picked;
+    try {
+      picked = await pick();
+    } catch (error) {
+      failure('Could not read the files', error);
+      return;
+    }
+    if (!picked || picked.sources.length === 0) return;
+    await importer.add(picked.sources, {
+      ...(picked.truncated && { truncated: true }),
+      ...(picked.unreadable && { unreadableFolders: picked.unreadable }),
+    });
+  };
+
+  const library: Library = {
     db,
     store,
     repo,
+    importer,
     async load() {
       try {
         const [rows, sort] = await Promise.all([repo.all(), repo.getSetting(SORT_SETTING)]);
@@ -129,13 +216,10 @@ export function createLibrary(
           return;
         }
         store.setState({ error: undefined });
-        void keeper?.stop();
         // restoreTrackSession only sets the view, the mixer overrides and the current track: none
         // of them moves `dirty` or the history.
         if (row.session) restoreTrackSession(services, row.session);
-        keeper = startSessionKeeper(services, id, (songId, session) =>
-          repo.setSession(songId, session),
-        );
+        startKeeper(id);
         const opened = { ...row, lastOpenedAt: now() };
         replaceRow(opened);
         void repo.touch(id, opened.lastOpenedAt).catch((error: unknown) => {
@@ -148,12 +232,165 @@ export function createLibrary(
         });
       }
     },
+    importSources: (sources) => runBatch(() => Promise.resolve({ sources: [...sources] })),
+    importFiles: () =>
+      runBatch(async () => ({
+        sources: (await services.platform.openFiles(SCORE_FILES)).map(fromPicked),
+      })),
+    importFolder: () =>
+      runBatch(async () => {
+        const folder = await services.platform.openFolder(SCORE_FILES);
+        return (
+          folder && {
+            sources: folder.files.map(fromPicked),
+            truncated: folder.truncated,
+            unreadable: folder.skipped,
+          }
+        );
+      }),
+    importDrop: (drop) =>
+      runBatch(async () => {
+        const walk = await resolveDrop(drop);
+        return { sources: walk.sources, truncated: walk.truncated, unreadable: walk.skipped };
+      }),
+    async openAndImport({ name, bytes, handle }) {
+      const { document } = services;
+      const songId = newId();
+      const token = ++opening;
+      // Looked up while the file opens, not before: a first open of the database must not
+      // delay the first paint. A duplicate is rare and swaps to the library's copy afterwards.
+      const duplicate = contentKey(bytes)
+        .then((key) => repo.byKey(key).then((existing) => ({ key, existing })))
+        .catch(() => undefined);
+      const before = document.getState().id;
+      await document.getState().openBytes(name, bytes, {
+        ...(handle !== undefined && { handle }),
+        songId,
+      });
+      const opened = document.getState();
+      if (opened.songId !== songId || opened.id === before || !opened.score || !opened.file) return;
+      const { id: documentId, score, file } = opened;
+      const found = await duplicate;
+      if (token !== opening || document.getState().id !== documentId) return;
+      if (found?.existing) {
+        await library.openSong(found.existing.id);
+        return;
+      }
+      try {
+        const row = await persistDocument(
+          { repo, files, createParser: parserOf, now },
+          { songId, score, name, format: file.format, key: file.key, original: bytes },
+        );
+        addEntries([row]);
+        if (document.getState().id === documentId) startKeeper(songId);
+      } catch (error) {
+        // A repeat of the same bytes that another import added first is not a failure.
+        if (await repo.byKey(file.key).catch(() => undefined)) return;
+        if (document.getState().id === documentId) {
+          document.getState().setSongId(undefined);
+          unimported = { documentId, name, bytes };
+        }
+        failure(`Could not add "${name}" to the library`, error);
+      }
+    },
+    async openFile() {
+      const picked = await pickOne(services);
+      if (picked) await library.openAndImport(picked);
+    },
+    async openWithoutImport({ name, bytes, handle }) {
+      const { document } = services;
+      const before = document.getState().id;
+      await document.getState().openBytes(name, bytes, handle === undefined ? {} : { handle });
+      const opened = document.getState();
+      if (opened.id !== before && opened.score) unimported = { documentId: opened.id, name, bytes };
+    },
+    async openFileWithoutImport() {
+      const picked = await pickOne(services);
+      if (picked) await library.openWithoutImport(picked);
+    },
+    async importOpenDocument() {
+      const { document } = services;
+      const { id: documentId, score, file, songId } = document.getState();
+      if (!score || !file || songId !== undefined) return;
+      const held = unimported?.documentId === documentId ? unimported : undefined;
+      if (!held) {
+        store.setState({
+          error: 'The original file is no longer available. Open it again to import it.',
+        });
+        return;
+      }
+      if (await repo.byKey(file.key)) {
+        store.setState({ error: `"${held.name}" is already in your library.` });
+        return;
+      }
+      const newSongId = newId();
+      try {
+        const row = await persistDocument(
+          { repo, files, createParser: parserOf, now },
+          {
+            songId: newSongId,
+            score,
+            name: held.name,
+            format: file.format,
+            key: file.key,
+            original: held.bytes,
+          },
+        );
+        addEntries([row]);
+        if (document.getState().id !== documentId) return;
+        // After the write, so the keeper's own check of the song id passes from its first session.
+        document.getState().setSongId(newSongId);
+        unimported = undefined;
+        store.setState({ error: undefined });
+        startKeeper(newSongId);
+      } catch (error) {
+        failure(`Could not add "${held.name}" to the library`, error);
+      }
+    },
+    async deleteSong(id) {
+      const { document } = services;
+      try {
+        if (keeperId === id) {
+          // Flushed first, so the copy of the row in the trash holds the last session.
+          await keeper?.stop();
+          keeper = undefined;
+          keeperId = undefined;
+        }
+        const row = await repo.get(id);
+        if (row) await files.trash(row);
+        await repo.remove(id);
+        store.setState((state) => ({
+          entries: state.entries.filter((entry) => entry.row.id !== id),
+        }));
+        if (document.getState().songId === id) document.getState().setSongId(undefined);
+      } catch (error) {
+        failure('Could not delete the song', error);
+      }
+    },
+    showRecent() {
+      store.setState({ sort: 'lastOpened', query: '' });
+      services.ui.getState().setScreen('library');
+    },
     async dispose() {
       await keeper?.stop();
       keeper = undefined;
       db.close();
     },
   };
+  return library;
+}
+
+async function pickOne(
+  services: Pick<AppServices, 'document' | 'platform'>,
+): Promise<OpenedBytes | undefined> {
+  try {
+    return await services.platform.openFile(SCORE_FILES);
+  } catch (error) {
+    services.document
+      .getState()
+      .failOpen('the file', error instanceof Error ? error.message : String(error));
+    return undefined;
+  }
 }
 
 const libraries = new WeakMap<object, Library>();
