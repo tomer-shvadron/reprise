@@ -40,15 +40,17 @@ const song = score()
   .build();
 const trackId = song.tracks[0]?.id ?? '';
 
-async function open() {
+async function open(
+  defer: (run: () => void) => void = (run) => {
+    run();
+  },
+) {
   const playback = createPlaybackStore();
   const audio = createAudioService({
     playback,
     loadSoundfont: () => Promise.resolve(new Uint8Array(1)),
     createContext: () => new AudioContext(),
-    defer: (run) => {
-      run();
-    },
+    defer,
   });
   audio.setDocument({ id: 'doc', score: song });
   await audio.settled();
@@ -80,11 +82,11 @@ describe('AudioService.previewNote', () => {
     ]);
   });
 
-  it('clamps velocity to 1 to 127 and the duration to 0.05 to 5 seconds', async () => {
+  it('clamps velocity to 1 to 127 and the seconds to 0.05 to 5 seconds', async () => {
     const { audio } = await open();
-    audio.previewNote(trackId, { pitch: 60 }, { velocity: 500, duration: 90 });
-    audio.previewNote(trackId, { pitch: 60 }, { velocity: -3, duration: 0 });
-    audio.previewNote(trackId, { pitch: 60 }, { velocity: 64.6, duration: 1 });
+    audio.previewNote(trackId, { pitch: 60 }, { velocity: 500, seconds: 90 });
+    audio.previewNote(trackId, { pitch: 60 }, { velocity: -3, seconds: 0 });
+    audio.previewNote(trackId, { pitch: 60 }, { velocity: 64.6, seconds: 1 });
     expect(engine.previewNote.mock.calls.map((call: unknown[]) => call[2])).toEqual([
       { velocity: 127, seconds: 5 },
       { velocity: 1, seconds: 0.05 },
@@ -104,12 +106,66 @@ describe('AudioService.previewNote', () => {
       audio.previewNote(trackId, { pitch: 60 }, { velocity: Number.NaN });
     }).toThrow(RangeError);
     expect(() => {
-      audio.previewNote(trackId, { pitch: 60 }, { duration: Number.POSITIVE_INFINITY });
+      audio.previewNote(trackId, { pitch: 60 }, { seconds: Number.POSITIVE_INFINITY });
     }).toThrow(RangeError);
     expect(engine.previewNote).not.toHaveBeenCalled();
   });
 
-  it('does nothing before a song is open or loaded, and after dispose', async () => {
+  it('refuses a string outside the tuning and a fret that is not 0 to 127, before the engine', async () => {
+    const { audio } = await open();
+    for (const bad of [
+      { string: 0, fret: 3 },
+      { string: 7, fret: 3 },
+      { string: 1.5, fret: 3 },
+      { string: 1, fret: -1 },
+      { string: 1, fret: 128 },
+      { string: 1, fret: 2.5 },
+    ]) {
+      expect(() => {
+        audio.previewNote(trackId, bad);
+      }).toThrow(RangeError);
+    }
+    expect(engine.previewNote).not.toHaveBeenCalled();
+    expect(engine.unlock).not.toHaveBeenCalled();
+  });
+
+  it('does nothing while the document loads, when the sound bank has not arrived', () => {
+    const playback = createPlaybackStore();
+    const audio = createAudioService({
+      playback,
+      loadSoundfont: () => new Promise<Uint8Array>(() => undefined),
+      createContext: () => new AudioContext(),
+    });
+    audio.setDocument({ id: 'doc', score: song });
+    audio.previewNote(trackId, { pitch: 60 });
+    expect(() => {
+      audio.previewNote(trackId, { string: 9, fret: 0 });
+    }).not.toThrow();
+    expect(engine.previewNote).not.toHaveBeenCalled();
+  });
+
+  it('does nothing for a track the document has and the engine does not yet', async () => {
+    const queued: (() => void)[] = [];
+    const { audio } = await open((run) => {
+      queued.push(run);
+    });
+    const added = score()
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 3)])
+      .track('bass')
+      .bar()
+      .build();
+    const bassId = added.tracks[1]?.id ?? '';
+    audio.setDocument({ id: 'doc', score: added });
+    audio.previewNote(bassId, { pitch: 40 });
+    expect(engine.previewNote).not.toHaveBeenCalled();
+    for (const run of queued.splice(0)) run();
+    audio.previewNote(bassId, { pitch: 40 });
+    expect(engine.previewNote).toHaveBeenCalledOnce();
+  });
+
+  it('does nothing before a song is open, and after dispose', async () => {
     const playback = createPlaybackStore();
     const bare = createAudioService({ playback, createContext: () => new AudioContext() });
     bare.previewNote(trackId, { pitch: 60 });

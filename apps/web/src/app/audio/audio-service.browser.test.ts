@@ -610,55 +610,86 @@ describe('the audio service', () => {
       it('sounds while stopped, decoding what the song never plays, then goes quiet', async () => {
         const song = silent();
         const trackId = song.tracks[0]?.id ?? '';
-        const { audio, render } = setup({ seconds: 1.6 });
+        const { audio, render, debug } = setup({ seconds: 1.6 });
         await open(audio, song);
         audio.unlock();
+        const { sampler, source } = debug();
+        // String 1, fret 3 on the default tuning.
+        const ref = sampler.instrumentAt(trackId, 0).regions.resolveAll(67, 96)[0]?.sample;
+        if (ref === undefined) throw new Error('no sample for the preview key');
+        const state = { resident: true, misses: 0, after: 0 };
 
         // The rests plan no sample, so the first preview waits on its decode.
         const buffer = await render([
           {
             at: 0.1,
             run: () => {
-              audio.previewNote(trackId, { string: 1, fret: 3 }, { duration: 0.3 });
+              state.resident = source.peekBuffer(ref) !== undefined;
+              state.misses = sampler.misses;
+              audio.previewNote(trackId, { string: 1, fret: 3 }, { seconds: 0.3 });
+              state.after = sampler.misses;
             },
           },
         ]);
 
+        expect(state.resident).toBe(false);
+        expect(state.after).toBeGreaterThan(state.misses);
         expect(rms(buffer, 0, 0.1)).toBe(0);
         expect(rms(buffer, 0.3, 0.7)).toBeGreaterThan(1e-4);
         expect(rms(buffer, 1.3, 1.6)).toBeLessThan(1e-5);
         audio.dispose();
       });
 
-      it('sounds while the song plays, without stopping it', async () => {
-        const song = silent();
-        const trackId = song.tracks[0]?.id ?? '';
-        const { playback, audio, render } = setup({ seconds: 1 });
-        await open(audio, song);
-        audio.unlock();
-        audio.play();
-        let transport = '';
-
-        const buffer = await render([
-          {
-            at: 0.3,
-            run: () => {
-              audio.previewNote(trackId, { pitch: 64 });
-              transport = playback.getState().transport;
+      describe('while the song plays', () => {
+        // Quarter notes on string 1 at 120 bpm; the preview lands on the same string mid-note.
+        async function play(preview: boolean) {
+          const song = quarters(2);
+          const trackId = song.tracks[0]?.id ?? '';
+          const { playback, audio, render } = setup({ seconds: 1.2 });
+          await open(audio, song);
+          audio.unlock();
+          audio.play();
+          const seen = { transport: '', tick: 0 };
+          const buffer = await render([
+            {
+              at: 0.35,
+              run: () => {
+                if (preview) audio.previewNote(trackId, { string: 1, fret: 9 }, { seconds: 0.1 });
+                seen.transport = playback.getState().transport;
+              },
             },
-          },
-        ]);
+            {
+              at: 1,
+              run: () => {
+                seen.tick = playback.getState().position?.position.playbackTick ?? 0;
+              },
+            },
+          ]);
+          audio.dispose();
+          return { buffer, ...seen };
+        }
 
-        expect(transport).toBe('playing');
-        expect(rms(buffer, 0.2, 0.29)).toBe(0);
-        expect(rms(buffer, 0.31, 0.5)).toBeGreaterThan(1e-4);
-        audio.dispose();
+        it('leaves the song sounding and its position alone', async () => {
+          const plain = await play(false);
+          const previewed = await play(true);
+
+          expect(previewed.transport).toBe('playing');
+          expect(previewed.tick).toBeGreaterThan(0);
+          expect(previewed.tick).toBe(plain.tick);
+          // The song's notes after the preview has ended: a choke would have cut the one on its string.
+          const after = (result: { buffer: AudioBuffer }) => rms(result.buffer, 0.5, 0.7);
+          expect(after(plain)).toBeGreaterThan(1e-4);
+          expect(after(previewed)).toBeGreaterThan(0.8 * after(plain));
+          expect(rms(previewed.buffer, 0.9, 1.2)).toBeGreaterThan(
+            0.8 * rms(plain.buffer, 0.9, 1.2),
+          );
+        });
       });
 
       it('sounds on a muted track, and through the track volume', async () => {
         const song = silent();
         const trackId = song.tracks[0]?.id ?? '';
-        const { audio, render } = setup({ seconds: 0.8 });
+        const { audio, render } = setup({ seconds: 1.1 });
         await open(audio, song);
         audio.setTrack(trackId, { mute: true });
         audio.unlock();
@@ -667,21 +698,21 @@ describe('the audio service', () => {
           {
             at: 0.1,
             run: () => {
-              audio.previewNote(trackId, { pitch: 60 });
+              audio.previewNote(trackId, { pitch: 60 }, { seconds: 0.3 });
             },
           },
           {
-            at: 0.5,
+            at: 0.6,
             run: () => {
               audio.setTrack(trackId, { volume: 20 });
-              audio.previewNote(trackId, { pitch: 60 });
+              audio.previewNote(trackId, { pitch: 60 }, { seconds: 0.3 });
             },
           },
         ]);
 
-        const loud = rms(buffer, 0.12, 0.4);
+        const loud = rms(buffer, 0.25, 0.4);
         expect(loud).toBeGreaterThan(1e-4);
-        expect(rms(buffer, 0.52, 0.75)).toBeLessThan(0.6 * loud);
+        expect(rms(buffer, 0.75, 0.9)).toBeLessThan(0.6 * loud);
         audio.dispose();
       });
     });

@@ -96,9 +96,9 @@ export interface AudioEngine {
    * One note through the track's strip (its program, bank, volume and pan), past mute and solo,
    * while stopped or playing. A fret on a string resolves through the track's tuning and capo as
    * playback does; `{ pitch }` is a MIDI key. A sample not yet decoded is requested and the note
-   * starts when it is resident (dropped when that takes over two seconds). `options.velocity`
+   * starts when it is resident (dropped when that takes over 500 ms; a newer preview on the same string cancels a waiting one). `options.velocity`
    * (1 to 127) and `options.seconds` (the note's length) default to the sampler's preview values;
-   * the engine passes them through, the audio service clamps them.
+   * the engine passes them through, the audio service validates and clamps them.
    */
   previewNote(track: Id, note: PreviewNote, options?: PreviewOptions): void;
   on<K extends keyof AudioEngineEvents>(
