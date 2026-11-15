@@ -61,23 +61,33 @@ describe('phase 3 entry points', () => {
     ).toBeInTheDocument();
   });
 
-  it.each([
-    ['trainer.metronome', 'WP-072'],
-    ['trainer.fretboard', 'WP-074'],
-  ])('%s opens the right panel on its placeholder', (id, workPackage) => {
+  it.each([['trainer.fretboard', 'WP-074']])(
+    '%s opens the right panel on its placeholder',
+    (id, workPackage) => {
+      const { run } = renderApp();
+      expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
+      run(id);
+      expect(screen.getByRole('complementary', { name: 'Panel' })).toHaveTextContent(workPackage);
+    },
+  );
+
+  it('trainer.metronome opens the metronome with no song open', () => {
     const { run } = renderApp();
-    expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
-    run(id);
-    expect(screen.getByRole('complementary', { name: 'Panel' })).toHaveTextContent(workPackage);
+    run('trainer.metronome');
+    expect(
+      within(screen.getByRole('complementary', { name: 'Panel' })).getByRole('region', {
+        name: 'Metronome',
+      }),
+    ).toBeInTheDocument();
   });
 
   it('switches the right panel back to the mixer', () => {
     const { services, run } = renderApp();
-    run('trainer.metronome');
+    run('trainer.fretboard');
     act(() => {
       services.ui.getState().showPanelView('mixer');
     });
-    expect(screen.getByRole('complementary', { name: 'Panel' })).not.toHaveTextContent('WP-072');
+    expect(screen.getByRole('complementary', { name: 'Panel' })).not.toHaveTextContent('WP-074');
   });
 
   it('lists the commands in the palette registry', () => {
@@ -128,10 +138,10 @@ describe('phase 3 entry points', () => {
     it('F8 shows the mixer when the panel holds a trainer view, then closes it', async () => {
       const { services, run } = renderApp();
       const user = userEvent.setup();
-      run('trainer.metronome');
+      run('trainer.fretboard');
       await user.keyboard('{F8}');
       expect(services.ui.getState().rightPanelView).toBe('mixer');
-      expect(screen.getByRole('complementary', { name: 'Panel' })).not.toHaveTextContent('WP-072');
+      expect(screen.getByRole('complementary', { name: 'Panel' })).not.toHaveTextContent('WP-074');
       await user.keyboard('{F8}');
       expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
     });
