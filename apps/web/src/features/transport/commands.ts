@@ -5,6 +5,7 @@ import { timelineOf, writtenBpmAt } from '@/state/timeline';
 
 import { applyLoop, wholeSong } from './loop';
 import { describePosition } from './position-format';
+import { playheadBar } from './seek-commands';
 import { percentOf, stepPercent, TEMPO_PERCENT } from './tempo';
 
 export type TransportCommandId =
@@ -26,7 +27,7 @@ type TransportCommand = Command & { id: TransportCommandId };
 
 export type TransportServices = Pick<
   AppServices,
-  'audio' | 'playback' | 'document' | 'selection' | 'transport'
+  'audio' | 'playback' | 'document' | 'selection' | 'transport' | 'heard'
 >;
 
 /** The current speed in percent, read from the store, never cached. */
@@ -90,9 +91,15 @@ export function transportCommands(services: TransportServices): TransportCommand
           return;
         }
         // A plain click records only `barsAnchor`; looping that bar beats the whole song, and not
-        // selecting on click keeps a seek-click inside a loop from narrowing it.
+        // selecting on click keeps a seek-click inside a loop from narrowing it. The anchor
+        // outlives the click, so it counts only while the bar exists and the playhead is in it.
         const { bars, barsAnchor } = selection.getState();
-        const clicked = barsAnchor ? { startBar: barsAnchor, endBar: barsAnchor } : undefined;
+        const clicked =
+          barsAnchor !== undefined &&
+          score.masterBars.some((bar) => bar.id === barsAnchor) &&
+          playheadBar(services) === barsAnchor
+            ? { startBar: barsAnchor, endBar: barsAnchor }
+            : undefined;
         const failed = applyLoop(services, score, bars ?? clicked ?? wholeSong(score));
         if (failed) transport.getState().announce(failed);
       },
