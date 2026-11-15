@@ -2,7 +2,7 @@ import { read, write } from '@reprise/formats';
 import { score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
-import { parseImport, summarize } from './parse-import';
+import { parseImport } from './parse-import';
 import { createParser } from './parser';
 
 const song = () => score().track('guitar').track('bass').build();
@@ -17,14 +17,12 @@ describe('parseImport', () => {
     expect(parsed.meta.bars).toBe(song().masterBars.length);
     expect(parsed.meta.tracks).toHaveLength(2);
     expect(parsed.key).toMatch(/^[0-9a-f]{64}$/u);
-    expect((await parseImport(source)).ok && (await parseImport(source))).toMatchObject({
-      parsed: { key: parsed.key },
-    });
-    // The native holds the same track ids as itself, which a stored track session needs.
-    const first = await read(parsed.native);
-    expect(first.score.tracks.map((track) => track.name)).toEqual(
-      parsed.meta.tracks.map((t) => t.name),
-    );
+    const again = await parseImport(source);
+    expect(again.ok && again.parsed.key).toBe(parsed.key);
+    // A stored track session names track ids, so reading the stored native must always give
+    // the same ones.
+    const ids = async () => (await read(parsed.native)).score.tracks.map((track) => track.id);
+    expect(await ids()).toEqual(await ids());
   });
 
   it('keeps the bytes of a reprise source as its native', async () => {
@@ -39,7 +37,7 @@ describe('parseImport', () => {
     const source = (await write(song(), 'reprise')).bytes;
     const outcome = await parseImport(source, 'Stem');
     if (!outcome.ok) throw new Error(outcome.message);
-    expect(outcome.parsed.meta.title).toBe(summarize(song()).title || 'Stem');
+    expect(outcome.parsed.meta.title).toBe('Stem');
   });
 
   it('reports a failure for bytes that are not a song, never throws', async () => {

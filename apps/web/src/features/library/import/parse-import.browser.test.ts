@@ -35,8 +35,10 @@ describe('the parse worker', () => {
         expect(parsed.meta.tracks, entry.path).toHaveLength(entry.tracks);
         expect(parsed.key).toMatch(/^[0-9a-f]{64}$/u);
         // A native that reads back is what a stored track session is keyed to.
-        const back = await read(parsed.native);
-        expect(back.score.tracks, entry.path).toHaveLength(entry.tracks);
+        const ids = async () => (await read(parsed.native)).score.tracks.map((track) => track.id);
+        const first = await ids();
+        expect(first, entry.path).toHaveLength(entry.tracks);
+        expect(await ids(), entry.path).toEqual(first);
       }
     } finally {
       parser.dispose();

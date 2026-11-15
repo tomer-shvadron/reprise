@@ -51,7 +51,13 @@ export function createParser(): Parser {
         const id = next++;
         pending.set(id, { resolve, reject });
         const request: ParseRequest = { id, bytes, fallbackTitle };
-        worker.postMessage(request, [bytes.buffer]);
+        try {
+          worker.postMessage(request, [bytes.buffer]);
+        } catch (error) {
+          // A buffer that is detached or cannot be transferred: no response will ever come.
+          pending.delete(id);
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
       });
     },
     dispose() {
