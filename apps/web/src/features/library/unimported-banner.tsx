@@ -22,7 +22,7 @@ export function UnimportedBanner() {
   return (
     <div
       role="region"
-      aria-label="Library"
+      aria-label="Unimported song"
       className="bg-muted/50 flex items-center gap-3 border-b px-3 py-1.5 text-sm"
     >
       <span>Not in your library</span>
