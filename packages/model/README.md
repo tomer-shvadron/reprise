@@ -286,6 +286,7 @@ const undone = history.undo(); // { score, change } with the patches it replayed
   was asked, and `Applied.warnings` carries them as `{ code, noteId, message }`. Today only
   `transposeSelection` warns, with `transpose`'s `trill-dropped` and `natural-harmonic-moved`.
   `undo` and `redo` replay patches and report none.
+- **`chain` or a group**: `chain(name, steps)` is one atomic command (a refusal in any step applies nothing, and the `CommandError` carries the failing step's command name), for an edit that is naturally several commands; `beginGroup`/`endGroup` merges several user actions that were each applied already. A chain's steps cannot share a draft, so write several commands in a recipe as a chain, never by hand. Its patches are its steps' own, merged as a group's are.
 - **Refusal**: a command throws `CommandError` (`code`, `command`, and `violations` for
   `invariant`) instead of producing a score that breaks the schema or adds a `validateScore`
   violation. Nodes an edit creates (a new beat's notes, grace notes) are checked in full, string
@@ -304,20 +305,22 @@ const undone = history.undo(); // { score, change } with the patches it replayed
   note given a pitch of its own is released from its origin. `setNote` with an explicit
   `tie: true` and another fret than the origin's is refused as `tie-target`.
 
-| Command                                | Notes                                                                                                                                                         |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `setNote`                              | Merges the given fields over the note on the same string (same MIDI value off fretted tracks) or adds one; a rest becomes a played beat; frets follow ties.   |
-| `removeNote`                           | A beat left without notes becomes a rest.                                                                                                                     |
-| `setNoteEffect`                        | Any note field but id, string and fret.                                                                                                                       |
-| `transposeSelection`                   | Each note through `transpose`, on its string; tie chains follow; refuses notes off the neck; drum and dead notes stay; warns.                                 |
-| `shiftStrings`                         | Moves notes to the neighbouring string at the same pitch; refuses occupied strings and frets off the neck.                                                    |
-| `insertBeat`, `removeBeat`             | A quarter rest by default; refuses to overfill the voice or to place a note off the neck.                                                                     |
-| `setBeatDuration`, `setBeatRest`       | Duration, dots, tuplet; rest drops the notes.                                                                                                                 |
-| `setBeatEffect`                        | Beat effects, plus text, chord, lyrics, mixer change and grace notes.                                                                                         |
-| `insertBar`, `removeBar`               | All tracks at once; copy the previous signatures (the next bar's at index 0) and the next bar's voltas, shift `Track.lyrics`; a removed bar's tempo moves on. |
-| `setMasterBar`                         | Time, key, tempo, repeats, alternate endings, jumps, targets, section, anacrusis, triplet feel, double bar.                                                   |
-| `setTrackProperties`                   | Everything but id, kind and bars; `channel` and `display` merge; refuses a fret count that strands notes.                                                     |
-| `addTrack`, `removeTrack`, `moveTrack` | A new track gets one empty bar per master bar; a score keeps at least one track.                                                                              |
+| Command                                | Notes                                                                                                                                                                                                                     |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setNote`                              | Merges the given fields over the note on the same string (same MIDI value off fretted tracks) or adds one; a rest becomes a played beat; frets follow ties.                                                               |
+| `removeNote`                           | A beat left without notes becomes a rest.                                                                                                                                                                                 |
+| `setNoteEffect`                        | Any note field but id, string and fret.                                                                                                                                                                                   |
+| `transposeSelection`                   | Each note through `transpose`, on its string; tie chains follow; refuses notes off the neck; drum and dead notes stay; warns.                                                                                             |
+| `shiftStrings`                         | Moves notes to the neighbouring string at the same pitch; refuses occupied strings and frets off the neck.                                                                                                                |
+| `insertBeat`, `removeBeat`             | A quarter rest by default; refuses to overfill the voice or to place a note off the neck.                                                                                                                                 |
+| `setBeatDuration`, `setBeatRest`       | Duration, dots, tuplet; rest drops the notes.                                                                                                                                                                             |
+| `setBeatEffect`                        | Beat effects, plus text, chord, lyrics, mixer change and grace notes.                                                                                                                                                     |
+| `insertBar`, `removeBar`               | All tracks at once; copy the previous signatures (the next bar's at index 0) and the next bar's voltas, shift `Track.lyrics`; a removed bar's tempo moves on.                                                             |
+| `setMasterBar`                         | Time, key, tempo, repeats, alternate endings, jumps, targets, section, anacrusis, triplet feel, double bar.                                                                                                               |
+| `setMasterBars`                        | Several `setMasterBar` edits `{ masterBarId, changes }[]`, validated once against the end state, so a range edit is not refused partway; one history step.                                                                |
+| `chain(name, steps)`                   | Runs commands in order, each on the score the previous one produced; a step is a command or `(score) => Command` for ids an earlier step created; atomic, one history step, one change set; nests; refuses an empty list. |
+| `setTrackProperties`                   | Everything but id, kind and bars; `channel` and `display` merge; refuses a fret count that strands notes.                                                                                                                 |
+| `addTrack`, `removeTrack`, `moveTrack` | A new track gets one empty bar per master bar; a score keeps at least one track.                                                                                                                                          |
 
 Guitar Pro numbers frets up to the neck length whatever the capo, so the ceiling every command
 places a note under is `fretCount`, the bound `transpose` and the `fret-range` rule share.
