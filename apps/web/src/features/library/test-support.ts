@@ -1,6 +1,7 @@
 import { newId } from '@reprise/model';
 
 import type { SongRow } from './db/rows';
+import { nativePathOf, originalPathOf } from './paths';
 
 let counter = 0;
 
@@ -14,8 +15,8 @@ export function rowOf(overrides: Partial<SongRow> = {}): SongRow {
     artist: 'Artist',
     album: 'Album',
     sourceFormat: 'gp5',
-    nativePath: `/library/songs/${id}.reprise`,
-    originalPath: `/library/originals/${id}/song.gp5`,
+    nativePath: nativePathOf(id),
+    originalPath: originalPathOf(id, 'song.gp5'),
     originalName: 'song.gp5',
     originalKey: `key-${id}`,
     importedAt: counter,
