@@ -292,3 +292,53 @@ describe('placeholder-beat-holds-automation', () => {
     );
   });
 });
+
+describe('tie-on-shared-string', () => {
+  it('accepts the tied note taking its neighbour pitch, once', () => {
+    const build = HAND_BUILT.tieOnSharedString();
+    expect(accepted(build)).toEqual({
+      'tracks[0].bars[0].voices[0].beats[1].notes[0].value': ['tie-on-shared-string'],
+    });
+    expect(build.differences[0]).toMatchObject({ ours: 55, alphaTab: 57 });
+    expect(unexplained(build)).toEqual([]);
+  });
+
+  it('does not accept a pitch the previous beat does not hold, an untied note or a fretted track', () => {
+    const { differences, projections } = HAND_BUILT.tieOnSharedString();
+    const [difference] = differences;
+    if (!difference) throw new Error('no tie difference');
+    const applies = (diff = difference, shown = projections): boolean =>
+      tolerance('tie-on-shared-string').applies(diff, shown);
+    expect(applies()).toBe(true);
+    expect(applies({ ...difference, alphaTab: 60 })).toBe(false);
+    const changed = structuredClone(projections);
+    const target = changed.ours.tracks[0]?.bars[0]?.voices[0]?.beats[1]?.notes[0];
+    if (!target) throw new Error('no tied note');
+    target.tie = false;
+    expect(applies(difference, changed)).toBe(false);
+    target.tie = true;
+    target.string = 2;
+    expect(applies(difference, changed)).toBe(false);
+  });
+
+  it('does not accept a difference where alphaTab note is not a tie on string 0', () => {
+    const { differences, projections } = HAND_BUILT.tieOnSharedString();
+    const [difference] = differences;
+    if (!difference) throw new Error('no tie difference');
+    const changed = structuredClone(projections);
+    const theirs = changed.alphaTab.tracks[0]?.bars[0]?.voices[0]?.beats[1]?.notes[0];
+    if (!theirs) throw new Error('no alphaTab note');
+    theirs.tie = false;
+    expect(tolerance('tie-on-shared-string').applies(difference, changed)).toBe(false);
+    theirs.tie = true;
+    theirs.string = 2;
+    expect(tolerance('tie-on-shared-string').applies(difference, changed)).toBe(false);
+  });
+
+  it('accepts the same difference across a barline', () => {
+    const build = HAND_BUILT.tieAcrossBarOnSharedString();
+    expect(accepted(build)).toEqual({
+      'tracks[0].bars[1].voices[0].beats[0].notes[0].value': ['tie-on-shared-string'],
+    });
+  });
+});

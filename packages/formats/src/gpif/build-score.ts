@@ -23,12 +23,19 @@ import {
 } from '@reprise/model';
 
 import { automationBarTicks } from './automation-bars';
-import { createModelTrack, planTrack, resolveNote, type TrackPlan } from './build-tracks';
+import {
+  createModelTrack,
+  fitFretboard,
+  planTrack,
+  resolveNote,
+  type TrackPlan,
+} from './build-tracks';
 import { cloneBeat, cloneChord, cloneEffects, cloneNote } from './clone';
 import type {
   GpifBar,
   GpifBeat,
   GpifDocument,
+  GpifNote,
   GpifRhythm,
   GpifTempo,
   SimileMark,
@@ -175,6 +182,16 @@ function hammerPullDestination(
   return undefined;
 }
 
+function offFretboardMessage(plan: TrackPlan): string {
+  const found = plan.offFretboard;
+  const parts = [
+    found && found.below > 0 ? `${String(found.below)} below fret 0` : '',
+    found && found.past > 0 ? `${String(found.past)} past fret ${String(found.fretCount)}` : '',
+    found && found.shared > 0 ? `${String(found.shared)} sharing a string in their beat` : '',
+  ].filter((part) => part !== '');
+  return `The track's notes do not fit its fretboard (${parts.join(', ')}); read as pitched (standard notation), every note keeping its MIDI pitch`;
+}
+
 class ScoreBuilder {
   readonly #sink: WarningSink;
   readonly #document: GpifDocument;
@@ -225,6 +242,13 @@ class ScoreBuilder {
       }
     }
     this.#slots = this.#barIds.map((barIds) => planVoiceSlots(document, barIds));
+    this.#plans = this.#plans.map((plan, trackIndex) =>
+      fitFretboard(plan, this.#noteGroups(trackIndex)),
+    );
+    for (const plan of this.#plans) {
+      if (plan.offFretboard)
+        sink.warn('off-fretboard', plan.source.path, offFretboardMessage(plan));
+    }
 
     this.#masterBars = document.masterBars.map((raw) =>
       createMasterBar({
@@ -244,6 +268,34 @@ class ScoreBuilder {
     this.#tracks = this.#plans.map((plan, index) =>
       createModelTrack(plan, notation?.[index], this.#firstClef(index)),
     );
+  }
+
+  /**
+   * The notes of each beat the model keeps for a track: the beats of voice lines with a slot,
+   * less the grace beats that end a line, which `#buildVoice` drops as `grace-without-beat`.
+   */
+  *#noteGroups(trackIndex: number): Generator<GpifNote[]> {
+    const slots = this.#slots[trackIndex];
+    for (const line of slots?.keys() ?? []) {
+      const [staffIndex = 0, voiceIndex = 0] = line.split('.').map(Number);
+      const beats: GpifBeat[] = [];
+      for (const ids of this.#barIds[trackIndex] ?? []) {
+        const id = ids[staffIndex];
+        const bar = id === undefined || id === '-1' ? undefined : this.#document.bars.get(id);
+        const voiceId = bar?.voiceIds[voiceIndex];
+        if (voiceId === undefined || !isUsedVoice(this.#document, voiceId)) continue;
+        for (const beatId of this.#document.voices.get(voiceId)?.beatIds ?? []) {
+          const beat = this.#document.beats.get(beatId);
+          if (beat) beats.push(beat);
+        }
+      }
+      while (beats.at(-1)?.grace) beats.pop();
+      for (const beat of beats) {
+        yield beat.noteIds
+          .map((noteId) => this.#document.notes.get(noteId))
+          .filter((note) => note !== undefined);
+      }
+    }
   }
 
   build(): Score {
