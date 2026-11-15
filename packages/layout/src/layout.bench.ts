@@ -247,8 +247,10 @@ const segmentStarts = (systems: readonly { bars: { start: number } }[]): string 
 
 /**
  * Each edit's layout is timed alone, because an edit that keeps every segment break re-renders
- * three segments and one that moves a break re-renders until the breaks realign, so one p50 over
- * the mix flips between the two groups.
+ * three segments and one that would move a break re-renders more, so one p50 over the mix flips
+ * between the two groups. Segment breaks are stable (#147): the cached layout keeps them where
+ * they were while their segments fit, so an edit's kind is judged, untimed, by a cold layout of the
+ * score before and after it, whose breaks are greedy, as the paged bench judges page breaks.
  */
 async function rhythmBench(
   context: TestContext,
@@ -257,10 +259,12 @@ async function rhythmBench(
 ): Promise<{ p50: number; note: string }> {
   const cache = new LayoutCache();
   let score = longScore();
-  let starts = segmentStarts(layout(score, continuous, cache).systems);
+  layout(score, continuous, cache);
+  let starts = segmentStarts(layout(score, continuous).systems);
+  let moved = false;
   let count = 0;
   let dirtyBars: string[] = [];
-  const edits: { ms: number; moved: boolean }[] = [];
+  const edits: { ms: number; moved: boolean; rendered: number }[] = [];
   await context
     .bench(
       `${name} (all edits, unsplit)`,
@@ -270,28 +274,32 @@ async function rhythmBench(
           count += 1;
           score = next.score;
           dirtyBars = next.change.touchedBars;
+          const after = segmentStarts(layout(score, continuous).systems);
+          moved = after !== starts;
+          starts = after;
         },
       },
       () => {
         const began = now();
-        const { systems } = layout(score, { ...continuous, dirtyBars }, cache);
+        const { systems, metrics } = layout(score, { ...continuous, dirtyBars }, cache);
         const ms = now() - began;
-        const after = segmentStarts(systems);
-        edits.push({ ms, moved: after !== starts });
-        starts = after;
+        edits.push({ ms, moved, rendered: systems.length - metrics.reusedSystems });
       },
     )
     .run(RHYTHM_RUN);
   // tinybench calls the function once before any beforeEach, to see whether it is async.
   const timed = edits.slice(-RHYTHM_RUN.iterations);
-  const mine = timed.filter(({ moved }) => moved === (kind === 'moves')).map(({ ms }) => ms);
+  const chosen = timed.filter(({ moved }) => moved === (kind === 'moves'));
+  const mine = chosen.map(({ ms }) => ms);
   expect(
     mine.length,
     `${name}: ${String(mine.length)} edits ${kind === 'keeps' ? 'kept' : 'moved'} the segment breaks, expected ${String(EDITS_OF_KIND[kind])}`,
   ).toBe(EDITS_OF_KIND[kind]);
   const p50 = median(mine);
+  // With the breaks stable an edit renders about three systems; a larger count is a re-break.
+  const rendered = chosen.map((edit) => edit.rendered);
   await context.annotate(
-    `${name}: p50 ${String(round(p50))} ms over ${String(mine.length)} of ${String(timed.length)} edits`,
+    `${name}: p50 ${String(round(p50))} ms, max ${String(round(Math.max(...mine)))} ms over ${String(mine.length)} of ${String(timed.length)} edits, systems rendered median ${String(median(rendered))}, max ${String(Math.max(...rendered))}`,
   );
   return {
     p50,
@@ -308,7 +316,7 @@ test('Re-layout after a rhythm edit, continuous', RELAYOUT_BENCH, async (context
 test('Re-layout after a segment-break-moving edit, continuous', RELAYOUT_BENCH, async (context) => {
   const metric = 'Re-layout after a segment-break-moving edit, continuous';
   const { p50, note } = await rhythmBench(context, metric, 'moves');
-  await recordMeasurement(context, metric, p50, note);
+  await checkBudget(context, metric, p50, { enforced: true, note });
 });
 
 /**
