@@ -346,7 +346,7 @@ interface Region {
   rootKey: number; // MIDI note the sample sounds at
   tune: number; // cents
   sample: SampleRef;
-  loop?: { start: number; end: number }; // seconds into the decoded buffer
+  loop?: { start: number; end: number; unit?: 'frames' }; // seconds into the decoded buffer; unit 'frames' (SFZ) is frames at the buffer's own rate, which the voice divides by buffer.sampleRate
   envelope: Envelope;
   layer?: string; // articulation layer; absent = default
   attenuation?: number; // dB, positive is quieter: SF2's sign; an SFZ loader negates its `volume`; the SF2 loader scales initialAttenuation by 0.4 as FluidSynth does
@@ -357,14 +357,30 @@ interface Region {
     envelope?: { cents; delay; attack; hold; decay; sustain };
   }; // low-pass from the note's start: cutoffHz at rest, an optional modulation envelope sweeps it by `cents` (delay, attack, hold, decay to `sustain`; release not modelled); q in dB, Web Audio's lowpass unit
   modulators?: NoteModulator[]; // SF2 note-on modulators (velocity and key sources; attenuation, cutoff, envelope depth and Q), evaluated once per note; with them the velocity curve is theirs, without it is (v/127)^2
-  exclusiveClass?: number; // a new note of the class chokes the sounding ones on the track's instrument
+  exclusiveClass?: number; // a new note of the class chokes the sounding ones on the track's instrument; reads as group = offBy = c
+  // The SFZ fields (#194). All optional; an SF2 region never sets them.
+  startFrame?: number; // SFZ offset, frames at the buffer's rate, added to the request's offset (seconds)
+  oneShot?: boolean; // note-off is ignored and the sample plays to its end; allNotesOff still stops it
+  velocityTrack?: number; // 0..1: gain = velocityGain(v) ** velocityTrack, on the path without modulators
+  group?: number; // a new note of this group chokes the voices whose offBy equals it
+  offBy?: number; // one-way: a closed hi-hat (group 2) cuts the open one (off_by 2), not the reverse
+  trigger?: 'release' | 'first' | 'legato'; // absent plays at note-on; release regions are kept, not played yet (WP-093)
+  sequence?: { length: number; position: number }; // round robin, position 1-based
+  random?: { lo: number; hi: number }; // 0..1, lo inclusive, hi exclusive
 }
 
 class RegionMap {
   constructor(regions: readonly Region[]);
-  resolveAll(key: number, velocity: number, layer?: string): Region[]; // every layer of the note
+  resolveAll(key: number, velocity: number, layer?: string, select?: RegionSelection): Region[]; // every layer of the note
+  candidates(key: number, velocity: number, layer?: string): Region[]; // every region the note could start, all round-robin and random positions
   resolve(key: number, velocity: number, layer?: string): Region | undefined; // resolveAll's first
   readonly layers: string[];
+}
+
+interface RegionSelection {
+  sequence?: number; // notes of this key so far; a sequence region plays when (sequence % length) + 1 is its position
+  random?: number; // 0..1 draw; a random region plays when lo <= random < hi
+  legato?: boolean; // the note starts over a sounding one: legato regions play, first regions do not
 }
 
 interface SampleSource {
@@ -378,7 +394,15 @@ interface Instrument {
 }
 ```
 
-`resolveAll` returns every exact match in map order, since an SF2 preset layers zones by design (a
+`resolveAll` first filters out the regions that do not start at note-on: release regions never do,
+`first` regions play unless `select.legato`, `legato` regions only with it, a sequence region plays
+when `((select.sequence ?? 0) % length) + 1` is its position and a random region when
+`lo <= (select.random ?? 0) < hi`. Without counters the choice is the first take (position 1, the
+bucket holding 0, no legato) rather than layering every round robin at once, until WP-093 passes
+counters. The nearest-region fallback searches only the regions that pass. `candidates` is the
+unfiltered-by-counter set that `planSamples` and `Sampler.preload` use, so the round robins WP-093
+rotates through are resident before it does; on an SF2 map it equals `resolveAll`. `resolveAll` then
+returns every exact match in map order, since an SF2 preset layers zones by design (a
 body and an attack, two panned mono samples) and sounds them all; failing any, the one region
 nearest by key and then by velocity, so a pack that stops short of a drop tuning still sounds. A layer the map lacks
 falls back to the default layer (and a map with no default layer uses its only one), which is
@@ -467,6 +491,12 @@ soloed one; it still goes through the insert, the fader and the panner.
   to 0 and the source stopped), so the release reaches exact silence. Chromium's
   `cancelAndHoldAtTime` holds nothing when no ramp spans the release time, so the release also
   sets the analytic envelope value at that time to anchor the fade.
+- **One-shot is honored in `Voice.release`, not only in `Sampler.noteOff`.** The sink releases
+  handles directly at each note's end, so a guard in `noteOff` alone would never fire. `Voice.stop`
+  releases regardless, and `allNotesOff` uses it, so stop and seek still silence a drum tail.
+- **SFZ choke is one-way.** A new note's groups are `region.group ?? region.exclusiveClass ?? 0`; it
+  chokes voices whose `offBy ?? exclusiveClass ?? 0` is among them (0 is none). For SF2 that is
+  today's same-class choke; for SFZ, closed cuts open and open does not cut closed.
 - **Stealing** is released voices first, then the quietest at the new note's time, then the
   oldest. Quietest is what the voice plays: envelope × velocity × the articulation gain automation
   (a palm mute's -18 dB, a fade-in from -48 dB), all computed analytically. A note that has not
