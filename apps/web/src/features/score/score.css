@@ -11,6 +11,8 @@
   --score-selection: color-mix(in oklch, var(--paper-accent) 22%, transparent);
   --score-hover: color-mix(in oklch, var(--paper-accent) 10%, transparent);
   --score-loop: color-mix(in oklch, var(--paper-accent) 8%, transparent);
+  --score-range: color-mix(in oklch, var(--paper-accent) 18%, transparent);
+  --score-caret: color-mix(in oklch, var(--paper-accent) 35%, transparent);
 }
 
 .score-sizer {
@@ -112,6 +114,22 @@
 .score-selection {
   border-radius: 2px;
   background: var(--score-selection);
+}
+
+.score-range {
+  border-radius: 2px;
+  background: var(--score-range);
+}
+
+.score-caret {
+  border: 2px solid var(--score-accent);
+  border-radius: 2px;
+  background: var(--score-caret);
+}
+
+.score-caret-muted {
+  border-color: transparent;
+  background: var(--score-highlight);
 }
 
 .score-hover {

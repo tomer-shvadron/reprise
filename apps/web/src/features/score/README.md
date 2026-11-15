@@ -14,7 +14,8 @@ Paints a `LayoutResult` from `@reprise/layout` as SVG (WP-024, ADR-0010). React 
 | `ScoreView`                                                                | The scrolling score: a focusable `region`, paper for the pages in view or holding a mounted system, SVG only for the systems in view plus one either side, overlays, pointer input.                                                                                                                   |
 | `ScoreViewHandle`                                                          | `revealRect(rect, { margin?, behavior? })` scrolls the least distance that shows a layout rectangle; `viewport()` is the visible window in layout px; `setPlayhead(cursor)` moves the playhead by writing its styles; `followPlayhead({ mode, running, track?, force? })` scrolls to keep it in view. |
 | `playheadAt`, `pointerTarget`, `nearestColumn`, `barColumns`, `staffBand`  | The playhead for a master bar and a tick into it; where a click seeks; the bar column at or nearest a point; a bar range's columns, every part's; a track's staves in a system.                                                                                                                       |
-| `createGestureTracker`                                                     | Turns pointer events into clicks and drags over bar columns (`gestures.ts`).                                                                                                                                                                                                                          |
+| `scoreIndex`, `masterBarIndexOf`                                           | Id lookups for a `Score` (bar, beat with its track, voice and onset, note to beat and string), built once per score and shared with the editor (`score-index.ts`).                                                                                                                                    |
+| `createGestureTracker`                                                     | Turns pointer events into clicks and drags: over bar columns in the default `columns` mode, anywhere (`area` mode, edit mode) in the other (`gestures.ts`).                                                                                                                                           |
 | `ScorePages`, `ScorePage`                                                  | Every page and system with no virtualization, for printing; `ScorePage` draws `children` inside its page box (a header, a page number) and carries the score tokens, so it paints alone.                                                                                                              |
 | `viewLayoutOptions(view, content)`                                         | `LayoutOptions` for paged (A4, Letter) or continuous mode, always at zoom 1. `uniformNotation` shows every track in one notation.                                                                                                                                                                     |
 | `findAnchors`, `columnAnchor`, `cursorAt`, `cursorForBeat`, `anchorIndex`  | Anchor lookups by model id, cached per result, and the playback cursor for a note, beat or bar, with the column's box in layout space.                                                                                                                                                                |
@@ -24,7 +25,7 @@ Paints a `LayoutResult` from `@reprise/layout` as SVG (WP-024, ADR-0010). React 
 
 `onScorePointer` receives `{ type: 'down' | 'move' | 'up' | 'leave' | 'cancel', point, anchor, column, event }`: the point in layout px, the anchor `hitTest` finds there, the master-bar column at or nearest the point on the page under it (both none on `leave` and `cancel`), and the native event for buttons and modifiers. `cancel` ends a drag that gets no `up`. A primary press takes pointer capture, so a drag keeps its moves outside the canvas. `onUserScroll(axis)` reports a hand scroll: the wheel (`x` with Shift or a mostly sideways delta, nothing with Ctrl), a scrollbar press, touch, a middle-button press (`both`), and a scrolling key that no command took.
 
-`overlays` takes `selection`, `loop` (bar columns, drawn as a faint tint with an accent top edge) and `hover`.
+`overlays` takes `selection`, `loop` (bar columns, drawn as a faint tint with an accent top edge), `hover`, and the editor's `caret` and `range`: lists of `OverlayBox { system, box, muted? }` in layout space, drawn only for mounted systems.
 
 The app's `ScorePane` (`apps/web/src/app/score-pane.tsx`) mounts `ScoreView` in the score region with the layout store's result, and an empty state until there is one. It starts the playhead driver (`app/playhead-driver.ts`), turns clicks into seeks and drags into bar selections, draws the selection and the loop, and shows **Follow playback** while following is paused during playback.
 
@@ -35,7 +36,7 @@ ScoreView            region: scroll container, virtualization, zoom anchoring, p
        ├ ScorePage   paper, positioned at its page × zoom
        │  └ SystemSvg     one <svg> per mounted system, viewBox = its local box, keyed by system id, memoized
        │     └ SystemPrimitives   one element per primitive, memoized
-       ├ OverlayLayer     loop, selection, hover
+       ├ OverlayLayer     loop, selection, range, caret, hover
        └ PlayheadLayer    bar highlight and line, memoized; styles written by the handle only
 ```
 
@@ -79,6 +80,8 @@ Zoom is display only: each system `<svg>` keeps its `viewBox` in its own frame, 
 Layout happens at zoom 1 and re-runs only when the width changes (mode, paper). Continuous mode lays out in fixed 640 px segments (`CONTINUOUS_SYSTEM_WIDTH`) rather than at the viewport width: the segments join seamlessly, so their width is invisible, but at zoom 0.5 on a 1 920 px viewport a viewport-wide segment would hold about 9 200 elements and three or four mounted ones would break the 20 000-element budget. With fixed segments the long score stays under 13 100 at every zoom (`budget.test.ts`).
 
 ## Demo: `/dev/score`
+
+`/dev/score?edit=1` swaps the performance panel for the editor's cursor and range demo (`features/editor/demo`).
 
 `pnpm dev`, then `/dev/score` (the dev server serves `apps/web/dev/score.html`). For measurements on production React: `pnpm --filter @reprise/web demo:build && pnpm --filter @reprise/web demo:preview`, then `/dev/score.html`. `vite build` builds `index.html` only, so the demo, the fixtures and `@reprise/model/testing` never reach the app or Electron bundles.
 

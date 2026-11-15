@@ -21,6 +21,7 @@ import { orderedRange } from '@/features/transport/bar-range';
 import { loopBarNumbers } from '@/features/transport/loop';
 import { seekTick } from '@/features/transport/seek';
 import { playheadBar, playheadTick, seekTo } from '@/features/transport/seek-commands';
+import { cursorTick, createEditPointer, caretRect, useEditOverlays } from '@/features/editor';
 import { selectRunning } from '@/state/playback';
 import type { BarRange } from '@/state/selection';
 import { timelineOf } from '@/state/timeline';
@@ -61,7 +62,7 @@ function clickBar(
   event: ScorePointerEvent,
   shift: boolean,
 ): void {
-  const { audio, playback, selection, transport } = services;
+  const { selection } = services;
   const target = pointerTarget(result, score, event);
   if (!target) return;
   if (shift) {
@@ -72,7 +73,21 @@ function clickBar(
   }
   if (target.track !== undefined) selection.getState().setCurrentTrack(target.track);
   selection.getState().selectBars(undefined, target.masterBarId);
+  seekToTarget(services, score, target);
+}
 
+/**
+ * Seeks to a bar and tick: the pass in the playhead's run. A target outside an active loop turns
+ * the loop off, or with `keepLoop` (a click in edit mode) is not seeked to and leaves the loop on.
+ * Shared by a click in play mode and a click in edit mode, which seeks to its cursor.
+ */
+function seekToTarget(
+  services: AppServices,
+  score: Score,
+  target: { masterBarIndex: number; tick: number },
+  keepLoop = false,
+): void {
+  const { audio, playback, transport } = services;
   const timeline = timelineOf(score);
   const at = playheadTick(services);
   const { loop } = playback.getState().settings;
@@ -81,6 +96,7 @@ function clickBar(
   if (loop && bars) {
     const number = target.masterBarIndex + 1;
     if (number < bars.start || number > bars.end) {
+      if (keepLoop) return;
       audio.setLoop(undefined);
     } else {
       try {
@@ -125,9 +141,17 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
   const zoom = useStore(ui, (state) => state.zoom);
   const mode = useStore(ui, (state) => state.view.mode);
   const bars = useStore(selection, (state) => state.bars);
+  const range = useStore(selection, (state) => state.range);
+  const cursor = useStore(selection, (state) => state.cursor);
+  const editing = useStore(services.editing, (state) => state.editing);
+  const edit = useEditOverlays();
   const loop = useStore(playback, (state) => state.settings.loop);
   const [preview, setPreview] = useState<BarRange>();
   const [gestures] = useState(createGestureTracker);
+  const editPointer = useMemo(
+    () => createEditPointer({ selection, document }),
+    [selection, document],
+  );
   const handle = useRef<ScoreViewHandle>(null);
   const driver = useRef<PlayheadDriver>(undefined);
 
@@ -147,21 +171,48 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
 
   const overlays = useMemo((): ScoreOverlays => {
     if (!score) return {};
-    const selected = preview ?? bars;
+    // A range draws its own boxes, which also cover a bars range, so its columns are not drawn too.
+    // A column drag's preview always shows, over a range left from edit mode too.
+    const selected = preview ?? (range ? undefined : bars);
     return {
       ...(selected && { selection: barColumns(result, score, selected) }),
       ...(loop && { loop: barColumns(result, score, loop) }),
+      ...(edit.caret && { caret: edit.caret }),
+      ...(edit.range && !preview && { range: edit.range }),
     };
-  }, [result, score, preview, bars, loop]);
+  }, [result, score, preview, bars, range, loop, edit]);
+
+  // The caret scrolls into view after each cursor move, not after a range or layout change.
+  useEffect(() => {
+    const rect = editing && edit.caret && caretRect(edit.caret);
+    if (rect) handle.current?.revealRect(rect);
+    // Keyed on the cursor on purpose: `edit` changes with the layout too.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursor, editing]);
 
   const onScorePointer = (event: ScorePointerEvent) => {
-    const gesture = gestures.handle(event);
+    const gesture = gestures.handle(event, editing ? 'area' : 'columns');
     if (!gesture || !score) return;
+    if (editing) {
+      const placed = editPointer(result, gesture);
+      // Only a plain click also moves a stopped playhead to the cursor, so Play starts there; a
+      // Shift or Cmd/Ctrl click, a drag and the keys leave it, and a click never ends a loop.
+      const moved = selection.getState().cursor;
+      const { shiftKey, metaKey, ctrlKey } = gesture.kind === 'click' ? gesture.event.event : {};
+      const plain = gesture.kind === 'click' && !shiftKey && !metaKey && !ctrlKey;
+      if (placed && plain && moved) {
+        const tick = cursorTick(score, moved);
+        if (tick !== undefined && !selectRunning(playback.getState())) {
+          seekToTarget(services, score, { masterBarIndex: moved.at.bar, tick }, true);
+        }
+      }
+      return;
+    }
     if (gesture.kind === 'cancel') {
       setPreview(undefined);
     } else if (gesture.kind === 'click') {
       clickBar(services, result, score, gesture.event, gesture.shift);
-    } else {
+    } else if (gesture.kind === 'drag') {
       const range = orderedRange(score, gesture.from.id, gesture.to.id);
       if (!gesture.done) {
         setPreview(range);

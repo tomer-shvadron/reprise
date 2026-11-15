@@ -6,20 +6,15 @@ export type {
   ScoreViewHandle,
   ScoreViewProps,
 } from './score-view';
-export {
-  barColumns,
-  masterBarIndexOf,
-  nearestColumn,
-  playheadAt,
-  pointerTarget,
-  staffBand,
-} from './playhead';
+export { barColumns, nearestColumn, playheadAt, pointerTarget, staffBand } from './playhead';
 export type { PointerTarget } from './playhead';
+export { masterBarIndexOf, scoreIndex } from './score-index';
+export type { BeatInfo, ScoreIndex } from './score-index';
 export { createGestureTracker } from './gestures';
-export type { Gesture } from './gestures';
+export type { DragMode, Gesture } from './gestures';
 export { ScorePage, ScorePages } from './score-page';
 export type { ScorePageProps, ScorePagesProps } from './score-page';
-export type { ScoreOverlays } from './overlay-layer';
+export type { OverlayBox, ScoreOverlays } from './overlay-layer';
 export {
   anchorIndex,
   columnAnchor,
