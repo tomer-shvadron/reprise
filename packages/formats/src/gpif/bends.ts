@@ -45,7 +45,9 @@ const position = (offset: number): number =>
 /**
  * Origin, the middle points when the file has a middle value, and destination, in that order.
  * A missing origin offset is 0 and a missing destination offset 100, as Guitar Pro draws them;
- * a middle value without offsets sits halfway, which is how alphaTab's reader places it.
+ * a middle value without offsets sits halfway, which is how alphaTab's reader places it. The
+ * order is never sorted by offset; middle offsets are clamped between origin and destination.
+ * Equal middle offsets stay two points, as in alphaTab, whose `Note.finish` merges them.
  */
 export function bendPoints(properties: BendProperties): BendPoint[] {
   const origin = {
@@ -62,12 +64,19 @@ export function bendPoints(properties: BendProperties): BendPoint[] {
     const value = middleValue * VALUE_SCALE;
     const first = properties.get('MiddleOffset1');
     const second = properties.get('MiddleOffset2');
-    if (first === undefined && second === undefined) points.push({ position: 30, value });
-    if (first !== undefined) points.push({ position: position(first), value });
-    if (second !== undefined) points.push({ position: position(second), value });
+    // The origin stays first and the destination last, as in alphaTab's reader, which never
+    // sorts them: a middle offset outside them is clamped between, not allowed to lead.
+    const high = Math.max(origin.position, destination.position);
+    const between = (offset: number): number =>
+      Math.min(high, Math.max(origin.position, position(offset)));
+    const offsets =
+      first === undefined && second === undefined
+        ? [MAX_POSITION / 2]
+        : [first, second].flatMap((offset) => (offset === undefined ? [] : [between(offset)]));
+    for (const at of offsets) points.push({ position: at, value });
   }
   points.push(destination);
-  return points.sort((a, b) => a.position - b.position);
+  return points;
 }
 
 function shape(points: BendPoint[]): { origin: number; peak: number; trough: number; end: number } {

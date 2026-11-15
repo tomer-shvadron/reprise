@@ -118,6 +118,25 @@ describe('notes', () => {
     });
   });
 
+  it('keeps the origin first when its offset is after the middle offsets', () => {
+    const properties = [
+      property('Bended', '<Enable />'),
+      property('BendOriginValue', '<Float>75</Float>'),
+      property('BendOriginOffset', '<Float>76</Float>'),
+      property('BendMiddleValue', '<Float>37</Float>'),
+      property('BendMiddleOffset1', '<Float>12</Float>'),
+      property('BendMiddleOffset2', '<Float>12</Float>'),
+      property('BendDestinationValue', '<Float>0</Float>'),
+      property('BendDestinationOffset', '<Float>99</Float>'),
+    ].join('');
+    const { score } = read(
+      oneBar([beat('0', '0', '0')], [note('0', 2, 5, '', properties)], QUARTERS),
+    );
+    const points = firstNote(score)?.bend?.points ?? [];
+    expect(points.map((point) => point.value)).toEqual([3, 1.48, 1.48, 0]);
+    expect(points.map((point) => point.position)).toEqual([45.6, 45.6, 45.6, 59.4]);
+  });
+
   it('names a simple upward bend and a prebend release', () => {
     const bend = (origin: number, destination: number): string =>
       [
