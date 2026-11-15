@@ -9,6 +9,7 @@ import {
   type ClickSettings,
   type LoadOptions,
   type PlaybackState,
+  type PreviewNote,
   type TempoMode,
   type Ticker,
   type TrackParams,
@@ -41,6 +42,23 @@ export interface OpenDocument {
 /** The engine behind the service; tests reach its live objects with `@reprise/audio/testing`. */
 export interface AudioServiceDebug {
   engine: AudioEngine;
+}
+
+/** What a note preview sounds: a fret on a string, or a MIDI key. */
+export type NotePreview = PreviewNote;
+
+export interface NotePreviewOptions {
+  /** 1 to 127, clamped; the sampler's preview velocity (96) when absent. */
+  velocity?: number;
+  /** Seconds until release, clamped to 0.05 to 5; 0.6 when absent. */
+  duration?: number;
+}
+
+export const PREVIEW_VELOCITY_RANGE = { min: 1, max: 127 } as const;
+export const PREVIEW_DURATION_RANGE = { min: 0.05, max: 5 } as const;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 export interface AudioService {
@@ -82,6 +100,17 @@ export interface AudioService {
    * the next baseline reset or the committed edit replaces it.
    */
   previewTrack(id: Id, params: Pick<TrackParams, 'volume' | 'pan'>): void;
+  /**
+   * Sounds one note through the track's strip (its program, bank, volume and pan) past mute and
+   * solo, whether the song is stopped or playing, so entering or clicking a note is heard. A
+   * `{ string, fret }` note resolves through the track's tuning and capo as playback does; a
+   * `{ pitch }` note is a MIDI key (clamped to 0 to 127). A sample not yet decoded is requested and
+   * the note starts when it is resident. Unlocks the context, so call it from a gesture.
+   * Does nothing while the open song is not loaded or the output failed; throws a `RangeError` for
+   * a track the song lacks, a string outside its tuning, or a velocity, duration or pitch that is
+   * not a number.
+   */
+  previewNote(trackId: Id, note: NotePreview, options?: NotePreviewOptions): void;
   /** After a sound, song or output error. */
   retry(): void;
   /** Resolves with no rebuild pending, the document's load done and no decode in flight. */
@@ -390,6 +419,45 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
 
     previewTrack(id, params) {
       engine.previewTrack(id, params);
+    },
+
+    previewNote(trackId, note, options = {}) {
+      if (disposed) return;
+      for (const [name, value] of [
+        ['velocity', options.velocity],
+        ['duration', options.duration],
+        ['pitch', 'pitch' in note ? note.pitch : undefined],
+      ] as const) {
+        if (value !== undefined && !Number.isFinite(value)) {
+          throw new RangeError(`previewNote: ${name} must be a number, got ${String(value)}`);
+        }
+      }
+      if (!doc?.score.tracks.some((entry) => entry.id === trackId)) {
+        // No document yet, or still loading, so there is nothing to name a track in.
+        if (!doc || !loaded) return;
+        throw new RangeError(`previewNote: the open song has no track ${trackId}`);
+      }
+      if (!loaded) return;
+      service.unlock();
+      if (playback.getState().output.status === 'error') return;
+      engine.previewNote(
+        trackId,
+        'pitch' in note ? { pitch: Math.round(clamp(note.pitch, 0, 127)) } : note,
+        {
+          ...(options.velocity !== undefined && {
+            velocity: Math.round(
+              clamp(options.velocity, PREVIEW_VELOCITY_RANGE.min, PREVIEW_VELOCITY_RANGE.max),
+            ),
+          }),
+          ...(options.duration !== undefined && {
+            seconds: clamp(
+              options.duration,
+              PREVIEW_DURATION_RANGE.min,
+              PREVIEW_DURATION_RANGE.max,
+            ),
+          }),
+        },
+      );
     },
 
     retry() {

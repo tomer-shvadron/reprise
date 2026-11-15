@@ -602,6 +602,90 @@ describe('the audio service', () => {
       audio.dispose();
     });
 
+    describe('previewing a note', () => {
+      // A song of rests, so what the render holds is the preview alone.
+      const silent = () =>
+        score().tempo(120).track('guitar', { program: 25 }).bar().rest('1').build();
+
+      it('sounds while stopped, decoding what the song never plays, then goes quiet', async () => {
+        const song = silent();
+        const trackId = song.tracks[0]?.id ?? '';
+        const { audio, render } = setup({ seconds: 1.6 });
+        await open(audio, song);
+        audio.unlock();
+
+        // The rests plan no sample, so the first preview waits on its decode.
+        const buffer = await render([
+          {
+            at: 0.1,
+            run: () => {
+              audio.previewNote(trackId, { string: 1, fret: 3 }, { duration: 0.3 });
+            },
+          },
+        ]);
+
+        expect(rms(buffer, 0, 0.1)).toBe(0);
+        expect(rms(buffer, 0.3, 0.7)).toBeGreaterThan(1e-4);
+        expect(rms(buffer, 1.3, 1.6)).toBeLessThan(1e-5);
+        audio.dispose();
+      });
+
+      it('sounds while the song plays, without stopping it', async () => {
+        const song = silent();
+        const trackId = song.tracks[0]?.id ?? '';
+        const { playback, audio, render } = setup({ seconds: 1 });
+        await open(audio, song);
+        audio.unlock();
+        audio.play();
+        let transport = '';
+
+        const buffer = await render([
+          {
+            at: 0.3,
+            run: () => {
+              audio.previewNote(trackId, { pitch: 64 });
+              transport = playback.getState().transport;
+            },
+          },
+        ]);
+
+        expect(transport).toBe('playing');
+        expect(rms(buffer, 0.2, 0.29)).toBe(0);
+        expect(rms(buffer, 0.31, 0.5)).toBeGreaterThan(1e-4);
+        audio.dispose();
+      });
+
+      it('sounds on a muted track, and through the track volume', async () => {
+        const song = silent();
+        const trackId = song.tracks[0]?.id ?? '';
+        const { audio, render } = setup({ seconds: 0.8 });
+        await open(audio, song);
+        audio.setTrack(trackId, { mute: true });
+        audio.unlock();
+
+        const buffer = await render([
+          {
+            at: 0.1,
+            run: () => {
+              audio.previewNote(trackId, { pitch: 60 });
+            },
+          },
+          {
+            at: 0.5,
+            run: () => {
+              audio.setTrack(trackId, { volume: 20 });
+              audio.previewNote(trackId, { pitch: 60 });
+            },
+          },
+        ]);
+
+        const loud = rms(buffer, 0.12, 0.4);
+        expect(loud).toBeGreaterThan(1e-4);
+        expect(rms(buffer, 0.52, 0.75)).toBeLessThan(0.6 * loud);
+        audio.dispose();
+      });
+    });
+
     it('joins a rebuild already queued, which then applies it', async () => {
       const song = quarters(1);
       const trackId = song.tracks[0]?.id ?? '';

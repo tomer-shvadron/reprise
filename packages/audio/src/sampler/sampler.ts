@@ -12,6 +12,8 @@ export const DEFAULT_POLYPHONY = 64;
 /** About mf on the MIDI velocity curve. */
 export const DEFAULT_VELOCITY = 96;
 const PREVIEW_SECONDS = 0.6;
+/** A preview waiting on a decode later than this is dropped. */
+const PREVIEW_LATE_SECONDS = 2;
 
 export interface Instrument {
   regions: RegionMap;
@@ -46,6 +48,16 @@ export interface NoteOnRequest {
 export interface TrackParamsTiming {
   at: number;
   ramp?: number;
+}
+
+/** A note to preview: a fret on a string, resolved through the track's tuning and capo, or a bare MIDI key. */
+export type PreviewNote = Pick<Note, 'string' | 'fret'> | { pitch: number };
+
+export interface PreviewOptions {
+  /** 1 to 127. */
+  velocity?: number;
+  /** Seconds until the note is released. */
+  seconds?: number;
 }
 
 export interface SamplerOptions {
@@ -354,20 +366,39 @@ export class Sampler {
   }
 
   /**
-   * One note now, at the preview velocity, through the track's strip past its mute gate: a note
-   * clicked in the editor sounds even on a muted track or with another track soloed.
+   * One note now through the track's strip, past its mute gate: a note clicked in the editor
+   * sounds even on a muted track or with another track soloed. Played by `options.velocity`
+   * (default the preview velocity) and released after `options.seconds` (default the preview
+   * length); a `pitch` note sounds that MIDI key and never chokes a string.
+   *
+   * A sample not yet decoded cannot sound now: its decode is requested and the note starts once
+   * it is resident, unless that takes longer than `PREVIEW_LATE_SECONDS`, when it would only
+   * sound as a stray note. The returned handle is then `undefined`.
    */
-  previewNote(id: Id, note: Pick<Note, 'string' | 'fret'>): VoiceHandle | undefined {
+  previewNote(id: Id, note: PreviewNote, options: PreviewOptions = {}): VoiceHandle | undefined {
     const state = this.#state(id);
-    const when = this.context.currentTime;
-    const request = {
-      key: midiNote(state.track, note),
-      velocity: this.#options.previewVelocity ?? DEFAULT_VELOCITY,
-      when,
-      string: note.string,
+    const velocity = options.velocity ?? this.#options.previewVelocity ?? DEFAULT_VELOCITY;
+    const seconds = options.seconds ?? this.#options.previewSeconds ?? PREVIEW_SECONDS;
+    const key = 'pitch' in note ? note.pitch : midiNote(state.track, note);
+    const string = 'pitch' in note ? 0 : note.string;
+    const deadline = this.context.currentTime + PREVIEW_LATE_SECONDS;
+    const play = (): VoiceHandle | undefined => {
+      const when = this.context.currentTime;
+      const voice = this.#start(state, { key, velocity, when, string }, state.strip.previewInput);
+      voice?.release(when + seconds);
+      return voice;
     };
-    const voice = this.#start(state, request, state.strip.previewInput);
-    voice?.release(when + (this.#options.previewSeconds ?? PREVIEW_SECONDS));
+    const misses = this.#misses;
+    const voice = play();
+    if (!voice && this.#misses > misses) {
+      // The miss above already requested the decode; `preload` joins it.
+      this.preload(id, [{ key, velocity }]).then(
+        () => {
+          if (this.#tracks.get(id) === state && this.context.currentTime <= deadline) play();
+        },
+        () => undefined,
+      );
+    }
     return voice;
   }
 
