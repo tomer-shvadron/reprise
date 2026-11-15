@@ -8,7 +8,7 @@ interface FilePickerAcceptType {
 interface OpenFilePickerOptions {
   types?: FilePickerAcceptType[];
   excludeAcceptAllOption?: boolean;
-  multiple?: false;
+  multiple?: boolean;
 }
 
 interface SaveFilePickerOptions {
@@ -17,7 +17,17 @@ interface SaveFilePickerOptions {
   suggestedName?: string;
 }
 
+interface DirectoryPickerOptions {
+  mode?: 'read' | 'readwrite';
+}
+
+interface FileSystemHandle {
+  /** OPFS and recent Chromium only; absent elsewhere, where a copy and a delete stand in. */
+  move?: (destination: FileSystemDirectoryHandle, name: string) => Promise<void>;
+}
+
 interface Window {
+  showDirectoryPicker?: (options?: DirectoryPickerOptions) => Promise<FileSystemDirectoryHandle>;
   showOpenFilePicker?: (options?: OpenFilePickerOptions) => Promise<FileSystemFileHandle[]>;
   showSaveFilePicker?: (options?: SaveFilePickerOptions) => Promise<FileSystemFileHandle>;
 }

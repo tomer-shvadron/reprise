@@ -31,6 +31,20 @@ describe('PathAccess', () => {
   });
 });
 
+describe('PathAccess read-only grants', () => {
+  it('reads a read-only grant but never writes it', () => {
+    const access = new PathAccess([]);
+    access.grantRead('/Users/me/tabs/a.gp');
+    access.grant('/Users/me/Desktop/song.gp5');
+
+    expect(access.allowsRead('/Users/me/tabs/a.gp')).toBe(true);
+    expect(access.allows('/Users/me/tabs/a.gp')).toBe(false);
+    expect(access.allowsRead('/Users/me/Desktop/song.gp5')).toBe(true);
+    expect(access.allows('/Users/me/Desktop/song.gp5')).toBe(true);
+    expect(access.allowsRead('/Users/me/tabs/b.gp')).toBe(false);
+  });
+});
+
 describe('PathAccess with symlinks on disk', () => {
   let base: string;
   let library: string;

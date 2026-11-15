@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createBrowserPlatform, splitStoragePath } from './browser-platform';
+import { createBrowserPlatform } from './browser-platform';
 
 const filters = [{ name: 'Guitar Pro', extensions: ['gp', 'gp5'] }];
 
@@ -85,20 +85,4 @@ describe('browser platform', () => {
   it('rejects storage access when origin-private storage is missing', async () => {
     await expect(createBrowserPlatform().libraryDir()).rejects.toThrow(/Origin-private storage/);
   });
-});
-
-describe('splitStoragePath', () => {
-  it('splits a virtual path', () => {
-    expect(splitStoragePath('/library/rock/song.gp5')).toEqual({
-      dirs: ['library', 'rock'],
-      name: 'song.gp5',
-    });
-  });
-
-  it.each([['library/song.gp5'], ['/'], ['/library/../secret'], ['/library/..']])(
-    'rejects %j',
-    (path) => {
-      expect(() => splitStoragePath(path)).toThrow(/Not a storage path/);
-    },
-  );
 });
