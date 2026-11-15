@@ -511,13 +511,12 @@ function buildRegions(
   const lowpass = filter(generators);
   // SF2 8.1.3 #9: the resonance lowers the DC gain by half of it, as FluidSynth's 1 / sqrt(Q) does.
   const resonanceCut = lowpass ? value(generators, Gen.initialFilterQ) / 20 : 0;
-  const attenuation = Math.min(
-    MAX_ATTENUATION_DB,
-    Math.max(
-      0,
-      (EMU_ATTENUATION_FACTOR * value(generators, Gen.initialAttenuation)) / 10 + resonanceCut,
-    ),
-  );
+  // FluidSynth scales the raw summed generator and clips it to 0..1440 cB once, last; `value`
+  // would clamp before the factor. The resonance cut is a filter loss, so it stays outside.
+  const rawAttenuation = generators.get(Gen.initialAttenuation) ?? 0;
+  const attenuation =
+    Math.min(MAX_ATTENUATION_DB, Math.max(0, (EMU_ATTENUATION_FACTOR * rawAttenuation) / 10)) +
+    resonanceCut;
   const pan = zone.samples.length === 1 ? value(generators, Gen.pan) / 500 : 0;
   const rate = zone.sample.sampleRate;
   const exclusiveClass = value(generators, Gen.exclusiveClass);
