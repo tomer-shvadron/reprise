@@ -1,6 +1,14 @@
 import { isAbsolute } from 'node:path';
 
-import type { FileFilter, InvokeArgs, InvokeChannel, PrintOptions } from '@reprise/web';
+import type { FileFilter, InvokeArgs, InvokeChannel, PrintOptions, RecentSong } from '@reprise/web';
+
+import { parseStoragePath } from './storage-path';
+
+/** The path as sent once it has passed the syntax check; main resolves it against a root. */
+const parseStoragePathText = (value: unknown): string => {
+  parseStoragePath(value);
+  return String(value);
+};
 
 /** Thrown when the renderer sends a payload that does not match its channel's type. */
 export class PayloadError extends Error {
@@ -13,6 +21,10 @@ export class PayloadError extends Error {
 const MAX_FILTERS = 16;
 const MAX_EXTENSIONS = 32;
 const MAX_NAME_LENGTH = 255;
+// Repeated from the contract's MAX_RECENT_SONGS: desktop imports web for types only.
+const MAX_RECENT_SONGS = 10;
+const MAX_RECENT_ID_LENGTH = 128;
+const MAX_RECENT_TITLE_LENGTH = 200;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -79,6 +91,24 @@ export function parsePrintOptions(value: unknown): PrintOptions {
   return { pageSize };
 }
 
+/** At most ten items; an id is opaque so an overlong one is refused, a title is cut. */
+export function parseRecentSongs(value: unknown): RecentSong[] {
+  if (!Array.isArray(value)) throw new PayloadError('Expected a list of recent songs');
+  return value.slice(0, MAX_RECENT_SONGS).map((item: unknown) => {
+    const id = isRecord(item) ? item['id'] : undefined;
+    const title = isRecord(item) ? item['title'] : undefined;
+    if (
+      typeof id !== 'string' ||
+      id.length === 0 ||
+      id.length > MAX_RECENT_ID_LENGTH ||
+      typeof title !== 'string'
+    ) {
+      throw new PayloadError('Expected a recent song with an id and a title');
+    }
+    return { id, title: title.slice(0, MAX_RECENT_TITLE_LENGTH) };
+  });
+}
+
 export type Parsers = { [C in InvokeChannel]: (args: readonly unknown[]) => InvokeArgs<C> };
 
 /** One parser per channel, so a channel added to the map without a validator fails typecheck. */
@@ -98,6 +128,34 @@ export const parsers: Parsers = {
   'file:write': (args) => {
     arity(args, 2, 'file:write');
     return [parsePath(args[0]), parseBytes(args[1])];
+  },
+  'file:open-many': (args) => {
+    arity(args, 1, 'file:open-many');
+    return [parseFilters(args[0])];
+  },
+  'folder:open': (args) => {
+    arity(args, 1, 'folder:open');
+    return [parseFilters(args[0])];
+  },
+  'storage:mkdir': (args) => {
+    arity(args, 1, 'storage:mkdir');
+    return [parseStoragePathText(args[0])];
+  },
+  'storage:list': (args) => {
+    arity(args, 1, 'storage:list');
+    return [parseStoragePathText(args[0])];
+  },
+  'storage:move': (args) => {
+    arity(args, 2, 'storage:move');
+    return [parseStoragePathText(args[0]), parseStoragePathText(args[1])];
+  },
+  'storage:remove': (args) => {
+    arity(args, 1, 'storage:remove');
+    return [parseStoragePathText(args[0])];
+  },
+  'menu:set-recent': (args) => {
+    arity(args, 1, 'menu:set-recent');
+    return [parseRecentSongs(args[0])];
   },
   'app:library-dir': (args) => {
     arity(args, 0, 'app:library-dir');

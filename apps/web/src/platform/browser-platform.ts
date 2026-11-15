@@ -1,3 +1,5 @@
+import { createOpfsStorage } from './opfs-storage';
+import { pickFiles, pickFolder } from './picked-files';
 import type { FileFilter, OpenedFile, Platform } from './platform';
 
 /** Virtual paths inside origin-private storage; the browser has no real filesystem paths. */
@@ -59,11 +61,24 @@ export function splitStoragePath(path: string): { dirs: string[]; name: string }
   return { dirs: segments, name };
 }
 
+// Keyed by the page's storage manager, so a fresh page (or test) asks again.
+const persistenceAsked = new WeakSet<StorageManager>();
+
+/** Without it the browser may evict the library under storage pressure; asked once per page. */
+function requestPersistence(win: Window): void {
+  const { storage } = win.navigator;
+  if (persistenceAsked.has(storage)) return;
+  persistenceAsked.add(storage);
+  if (!('persist' in storage)) return;
+  storage.persist().catch(() => undefined);
+}
+
 async function storageRoot(win: Window): Promise<FileSystemDirectoryHandle> {
   // The DOM lib types OPFS as always present; older engines and insecure origins lack it.
   if (!('storage' in win.navigator) || !('getDirectory' in win.navigator.storage)) {
     throw new Error('Origin-private storage is not available in this browser');
   }
+  requestPersistence(win);
   return win.navigator.storage.getDirectory();
 }
 
@@ -109,7 +124,16 @@ export function createBrowserPlatform(win: Window = window): Platform {
     return path;
   }
 
+  const storage = createOpfsStorage(() => storageRoot(win));
+
   return {
+    openFiles: (filters) => pickFiles(win, filters),
+    openFolder: (filters) => pickFolder(win, filters),
+    mkdir: (path) => storage.mkdir(path),
+    listDir: (path) => storage.listDir(path),
+    move: (from, to) => storage.move(from, to),
+    remove: (path) => storage.remove(path),
+
     async openFile(filters): Promise<OpenedFile | undefined> {
       let file: File | undefined;
       let handle: FileSystemFileHandle | undefined;

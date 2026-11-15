@@ -1,0 +1,160 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  installMemoryOpfs,
+  removeMemoryOpfs,
+  type MemoryDirectoryHandle,
+} from '@/test/memory-opfs';
+
+import { createBrowserPlatform } from './browser-platform';
+import { parseStoragePath } from './storage-path';
+
+const text = (value: string) => new TextEncoder().encode(value);
+
+afterEach(() => {
+  removeMemoryOpfs(window);
+  vi.restoreAllMocks();
+});
+
+describe.each([
+  ['with FileSystemHandle.move', true],
+  ['without it (copy and delete)', false],
+])('browser storage operations, %s', (_name, withMove) => {
+  function setup(): {
+    root: MemoryDirectoryHandle;
+    platform: ReturnType<typeof createBrowserPlatform>;
+  } {
+    const root = installMemoryOpfs(window, { withMove });
+    return { root, platform: createBrowserPlatform() };
+  }
+
+  it('makes nested directories, idempotently, where libraryDir() points', async () => {
+    const { root, platform } = setup();
+
+    await platform.mkdir('library/songs/rock');
+    await platform.mkdir('library/songs/rock');
+    await platform.mkdir('data');
+
+    expect(root.tree()).toEqual(['data/', 'library/', 'library/songs/', 'library/songs/rock/']);
+  });
+
+  it('lists a directory by name, and nothing for one that does not exist', async () => {
+    const { root, platform } = setup();
+    await root.put('library/b.gp', text('b'));
+    await root.put('library/a.gp', text('a'));
+    await root.put('library/sub/c.gp', text('c'));
+
+    await expect(platform.listDir('library')).resolves.toEqual([
+      { name: 'a.gp', kind: 'file' },
+      { name: 'b.gp', kind: 'file' },
+      { name: 'sub', kind: 'directory' },
+    ]);
+    await expect(platform.listDir('library/missing')).resolves.toEqual([]);
+    await expect(platform.listDir('data')).resolves.toEqual([]);
+  });
+
+  it('moves a file and a directory tree, making the target parent', async () => {
+    const { root, platform } = setup();
+    await root.put('library/a.gp', text('one'));
+    await root.put('library/album/disc/b.gp', text('two'));
+
+    await platform.move('library/a.gp', 'library/songs/a.gp');
+    await platform.move('library/album', 'data/trash/album');
+
+    expect(root.tree()).toEqual([
+      'data/',
+      'data/trash/',
+      'data/trash/album/',
+      'data/trash/album/disc/',
+      'data/trash/album/disc/b.gp',
+      'library/',
+      'library/songs/',
+      'library/songs/a.gp',
+    ]);
+    const moved = await (
+      await (await root.getDirectoryHandle('library')).getDirectoryHandle('songs')
+    ).getFileHandle('a.gp');
+    expect(new TextDecoder().decode(moved.bytes)).toBe('one');
+  });
+
+  it('refuses an existing target, a missing source, a move into itself and a root', async () => {
+    const { root, platform } = setup();
+    await root.put('library/a.gp', text('a'));
+    await root.put('library/b.gp', text('b'));
+    await root.put('library/dir/x.gp', text('x'));
+
+    await expect(platform.move('library/a.gp', 'library/b.gp')).rejects.toThrow(/already exists/);
+    await expect(platform.move('library/none', 'library/c')).rejects.toThrow(/Nothing to move/);
+    await expect(platform.move('library/dir', 'library/dir/inner')).rejects.toThrow(/itself/);
+    await expect(platform.move('library', 'data/x')).rejects.toThrow(/root/);
+    await expect(platform.remove('library')).rejects.toThrow(/root/);
+    expect(root.tree()).toContain('library/a.gp');
+  });
+
+  it('removes a file or a tree, and ignores what is not there', async () => {
+    const { root, platform } = setup();
+    await root.put('library/album/disc/a.gp', text('a'));
+    await root.put('library/keep.gp', text('k'));
+
+    await platform.remove('library/album');
+    await platform.remove('library/album');
+    await platform.remove('data/never/existed');
+
+    expect(root.tree()).toEqual(['library/', 'library/keep.gp']);
+  });
+});
+
+describe('browser storage paths', () => {
+  it.each([
+    ['/library/a'],
+    ['library/../data/a'],
+    ['library/..'],
+    ['C:/x'],
+    ['library\\a'],
+    ['library//a'],
+    ['library/a/'],
+    ['other/a'],
+    [''],
+  ])('refuses %j in every storage call without touching storage', async (path) => {
+    const root = installMemoryOpfs(window);
+    const platform = createBrowserPlatform();
+
+    await expect(platform.mkdir(path)).rejects.toThrow();
+    await expect(platform.listDir(path)).rejects.toThrow();
+    await expect(platform.remove(path)).rejects.toThrow();
+    await expect(platform.move(path, 'library/x')).rejects.toThrow();
+    await expect(platform.move('library/x', path)).rejects.toThrow();
+    expect(root.tree()).toEqual([]);
+  });
+
+  it('parses a path into its root and segments', () => {
+    expect(parseStoragePath('data/trash/a.gp')).toEqual({
+      root: 'data',
+      segments: ['trash', 'a.gp'],
+    });
+    expect(parseStoragePath('library')).toEqual({ root: 'library', segments: [] });
+  });
+});
+
+describe('storage persistence', () => {
+  it('asks for it once, on first use of storage, however many calls follow', async () => {
+    const persist = vi.fn(() => Promise.resolve(true));
+    installMemoryOpfs(window, { persist });
+    const platform = createBrowserPlatform();
+
+    await platform.mkdir('library/a');
+    await platform.listDir('library');
+    await platform.libraryDir();
+    await createBrowserPlatform().remove('library/a');
+
+    expect(persist).toHaveBeenCalledOnce();
+  });
+
+  it('does not fail when persist is refused or missing', async () => {
+    installMemoryOpfs(window, { persist: () => Promise.reject(new Error('denied')) });
+    await expect(createBrowserPlatform().mkdir('library/a')).resolves.toBeUndefined();
+    removeMemoryOpfs(window);
+    installMemoryOpfs(window);
+    await expect(createBrowserPlatform().mkdir('library/a')).resolves.toBeUndefined();
+  });
+});

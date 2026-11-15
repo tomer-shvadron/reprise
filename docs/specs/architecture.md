@@ -84,6 +84,8 @@ Changed by #79 (2026-11-06): a region map resolves every layered region of a key
 
 Changed by #169 (2026-11-15): `Region` gains `modulators` (SF2 note-on modulators the voice evaluates once per note: velocity and key sources on attenuation, the cutoff, the filter envelope's depth and Q; with them the velocity curve is theirs, without it is (v/127)^2) and `filter.envelope` (a modulation envelope the voice plays over time: delay, attack, hold, decay to a sustain share of `cents`; release not modelled). `filter.cutoffHz` now means the cutoff at rest, not the envelope's held level, and `attenuation` from an SF2 is the 0.4-scaled raw sum, left unclamped for the voice to add the modulators and clip to 0..144 dB. `PresetReport.modulated` counts zones with an unapplied modulator, and `modEnvToFilterFc` leaves `unsupported`. See ADR-0027.
 
+Changed by #202 (2026-11-15): `Platform` gains `openFiles`, `openFolder`, `mkdir`, `listDir`, `move` and `remove`, and, on desktop only, `setRecentSongs?` and `onOpenRecent?`; see the Platform section for the paths, the folder limits and the browser's storage. `RepriseBridge` gains the same names, over new `file:open-many`, `folder:open`, `storage:*` and `menu:set-recent` channels and a `menu:open-recent` event.
+
 Changed by #96 (2026-11-06): `OpenedFile` (and the `file:open` result) gains an optional opaque `handle`, the picked path in Electron and the `FileSystemFileHandle` in a browser with the File System Access API, and `Platform` gains `writeHandle(handle, bytes)`, which writes over that file or over a path `saveFile` returned; Save writes a `.reprise` in place through it, and a `.gp` with the gp writer once the user confirms what it loses; gp3, gp4, gp5 and gpx have no writer of their own, so Save sends them to Save As, which asks for Reprise or Guitar Pro 7–8 before the platform dialog.
 
 Changed by #87 (2026-11-07), widening the model and narrowing audio: `soundingPitch(track, note)`, the pitch a note sounds at as a fractional MIDI note, moves from `@reprise/audio` (where it was `soundingKey`) to the model's root export, so layout can place a harmonic where it sounds; its results are unchanged. `@reprise/audio` no longer exports `soundingKey` or `harmonicInterval`. The Note sketch's `harmonic.value` comment states the convention #92 documented: the node's fret for a natural harmonic, the offset above the fretted note for every other kind.
@@ -492,8 +494,29 @@ interface Platform {
   dataDir(): Promise<string>;        // Electron userData; OPFS in the browser
   print(options?: { pageSize: 'A4' | 'Letter' }): Promise<void>;   // Electron opens the system dialog on that paper
   microphone(): Promise<MediaStream>;
+
+  // Added by #202: several files, a folder, and file operations inside the app's own roots.
+  openFiles(filters): Promise<PickedFile[]>;               // [] on cancel
+  openFolder(filters): Promise<PickedFolder | undefined>;  // undefined on cancel
+  mkdir(path): Promise<void>;                              // recursive, idempotent
+  listDir(path): Promise<{ name; kind: 'file' | 'directory' }[]>;   // sorted; [] when absent
+  move(from, to): Promise<void>;                           // makes to's parent; rejects when `to` exists
+  remove(path): Promise<void>;                             // a file or a tree; absent is fine
+  setRecentSongs?(items: { id; title }[]): void;           // desktop only: File > Open Recent, at most 10
+  onOpenRecent?(listener: (id: string) => void): () => void;   // desktop only
 }
+
+interface PickedFile { name; relativePath; size; read(): Promise<Uint8Array> }   // bytes read on demand
+interface PickedFolder { name; files: PickedFile[]; truncated: boolean }
 ```
+
+**File operations and their paths.** `mkdir`, `listDir`, `move` and `remove` take a path relative to a root, with the root named by the first segment: `library/songs/a.reprise` is under `libraryDir()`, `data/trash` under `dataDir()`. A path is plain text with `/` separators; an absolute path, a drive letter, a backslash, an empty, `.` or `..` segment, a `:` and a first segment other than `library` or `data` are all rejected, as is a path through a symlink, so no call can leave its root. `move` and `remove` refuse a root itself. On desktop the Electron main process does the checking and the work (`storage:*` channels, `apps/desktop/src/main/storage-path.ts` for the text and `storage-fs.ts` for the disk, with `rename` falling back to copy and delete across volumes); the renderer never sees a real path for these calls, and preload exposes only the named calls. The browser stores both roots as top-level directories of origin-private storage (what `libraryDir()` and `dataDir()` return there), `FileSystemHandle.move` where the engine has it and a copy and delete where not, and asks `navigator.storage.persist()` once, on first use. `readFile` and `writeFile` still take the absolute paths `libraryDir()` and `dataDir()` return.
+
+**Pickers.** `openFiles` and `openFolder` use the native dialog on desktop (main grants each picked path, and a `PickedFile` reads through that grant) and, in a browser, `showOpenFilePicker({ multiple: true })` and `showDirectoryPicker()` where they exist, else an `<input type=file multiple>` and an `<input type=file webkitdirectory>`. A folder walk is recursive, filtered by the filters' extensions (case-insensitive), in name order, skips dot entries and symlinks, and stops at `PICKED_FOLDER_LIMITS`: 10 000 files and 16 levels of directories. `PickedFolder.truncated` is true when it stopped at either, so a caller can say the folder held more. `PickedFile.relativePath` is `/`-separated and inside the picked folder (equal to `name` for a file picked alone). A directory input cannot tell an empty folder from a cancel, so `openFolder` resolves undefined for both there.
+
+**The recent list.** `setRecentSongs` hands the File menu the titles to show under Open Recent (main keeps ten, cuts a title at 200 characters and refuses an id over 128); a pick is sent back as `menu:open-recent` and reaches `onOpenRecent`'s listener with the id. The browser has neither member, so a caller tests for them.
+
+**The test double.** `fakePlatform()` in `apps/web/src/test/services.ts` runs the file operations, `readFile`, `writeFile`, `libraryDir` and `dataDir` over an in-memory store (`createMemoryStorage()` in `apps/web/src/test/memory-storage.ts`, which a test can create itself to inspect `paths()` and `bytes()`) with the contract's path rules, and its pickers cancel; a test overrides a picker to hand back files.
 
 The browser implementation exists so `pnpm dev` works without Electron; the Electron implementation goes through the preload bridge. The packaged renderer is served by main from `reprise://app/`, so the app's own static files (the GM bank, the fonts) load with `fetch` the same way in the browser and in Electron.
 

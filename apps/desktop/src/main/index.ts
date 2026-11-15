@@ -16,7 +16,7 @@ import {
   type IpcMainInvokeEvent,
 } from 'electron';
 
-import type { FileFilter, MenuCommandId } from '@reprise/web';
+import type { FileFilter, MenuCommandId, RecentSong } from '@reprise/web';
 
 import { APP_INDEX_URL, APP_SCHEME, createAppProtocolHandler } from './app-protocol';
 import { isAppUrl } from './app-url';
@@ -24,6 +24,8 @@ import { registerInvokeHandlers, sendEvent } from './ipc';
 import { menuTemplate } from './menu';
 import { openedFile } from './opened-file';
 import { PathAccess } from './path-access';
+import { describePickedFile, walkFolder } from './pick-folder';
+import { listDirIn, mkdirIn, moveIn, removeIn, type StorageRoots } from './storage-fs';
 import {
   DEFAULT_WINDOW_STATE,
   fitToDisplays,
@@ -49,6 +51,8 @@ const libraryDir = join(app.getPath('music'), 'Reprise');
 const dataDir = app.getPath('userData');
 const windowStateFile = join(dataDir, 'window-state.json');
 const access = new PathAccess([libraryDir, dataDir]);
+const storageRoots: StorageRoots = { library: libraryDir, data: dataDir };
+let recentSongs: readonly RecentSong[] = [];
 
 const dialogFilters = (filters: readonly FileFilter[]): DialogFilter[] =>
   filters.map(({ name, extensions }) => ({ name, extensions: [...extensions] }));
@@ -101,6 +105,48 @@ registerInvokeHandlers(
       await writeFile(path, bytes);
       return undefined;
     },
+    'file:open-many': async (event, filters) => {
+      const result = await dialog.showOpenDialog(ownerWindow(event), {
+        properties: ['openFile', 'multiSelections'],
+        filters: dialogFilters(filters),
+      });
+      if (result.canceled) return [];
+      return Promise.all(
+        result.filePaths.map(async (path) => {
+          access.grant(path);
+          return describePickedFile(path);
+        }),
+      );
+    },
+    'folder:open': async (event, filters) => {
+      const result = await dialog.showOpenDialog(ownerWindow(event), {
+        properties: ['openDirectory'],
+      });
+      const [dir] = result.filePaths;
+      if (result.canceled || dir === undefined) return undefined;
+      const folder = await walkFolder(dir, filters);
+      // Each file is granted so the page can read it later; the folder itself is not.
+      for (const file of folder.files) access.grant(file.path);
+      return folder;
+    },
+    'storage:mkdir': async (_event, path) => {
+      await mkdirIn(storageRoots, path);
+      return undefined;
+    },
+    'storage:list': (_event, path) => listDirIn(storageRoots, path),
+    'storage:move': async (_event, from, to) => {
+      await moveIn(storageRoots, from, to);
+      return undefined;
+    },
+    'storage:remove': async (_event, path) => {
+      await removeIn(storageRoots, path);
+      return undefined;
+    },
+    'menu:set-recent': (_event, items) => {
+      recentSongs = items;
+      applyMenu();
+      return Promise.resolve(undefined);
+    },
     'app:library-dir': () => Promise.resolve(libraryDir),
     'app:data-dir': () => Promise.resolve(dataDir),
     'app:print': (event, options) =>
@@ -123,6 +169,27 @@ registerInvokeHandlers(
 function sendMenuCommand(id: MenuCommandId): void {
   const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
   if (window) sendEvent(window.webContents, 'menu:command', id);
+}
+
+function sendOpenRecent(id: string): void {
+  const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  if (window) sendEvent(window.webContents, 'menu:open-recent', id);
+}
+
+function applyMenu(): void {
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(
+      menuTemplate({
+        isMac: process.platform === 'darwin',
+        isPackaged: app.isPackaged,
+        docsUrl: DOCS_URL,
+        sendCommand: sendMenuCommand,
+        openExternal: (url) => void shell.openExternal(url),
+        recent: recentSongs,
+        openRecent: sendOpenRecent,
+      }),
+    ),
+  );
 }
 
 function persistWindowState(window: BrowserWindow): void {
@@ -221,17 +288,7 @@ async function start(): Promise<void> {
   await mkdir(libraryDir, { recursive: true });
   protocol.handle(APP_SCHEME, createAppProtocolHandler(RENDERER_DIR));
   allowMicrophoneOnly();
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate(
-      menuTemplate({
-        isMac: process.platform === 'darwin',
-        isPackaged: app.isPackaged,
-        docsUrl: DOCS_URL,
-        sendCommand: sendMenuCommand,
-        openExternal: (url) => void shell.openExternal(url),
-      }),
-    ),
-  );
+  applyMenu();
   await createWindow();
 
   app.on('activate', () => {
