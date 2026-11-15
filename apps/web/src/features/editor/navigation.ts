@@ -71,6 +71,24 @@ export function moveString(
   return string === cursor.string ? undefined : { ...cursor, string };
 }
 
+/** The cursor on the track with id `trackId`, at the same bar and onset, in its voice; undefined for no such track. */
+export function cursorOnTrack(
+  score: Score,
+  cursor: EditCursor,
+  trackId: Id | undefined,
+): EditCursor | undefined {
+  const at = resolveCursor(score, cursor);
+  const track = score.tracks.findIndex((candidate) => candidate.id === trackId);
+  if (!at || track < 0) return undefined;
+  const beats = score.tracks[at.track]?.bars[at.bar]?.voices[at.voice]?.beats ?? [];
+  const tick = beats.slice(0, at.stop).reduce((sum, beat) => sum + beatTicks(beat), 0);
+  const next = cursorAtTick(score, track, at.bar, tick, at.voice, {
+    string: cursor.string,
+    staff: cursor.staff,
+  });
+  return next && { ...next, staff: staffOn(score, track, cursor) };
+}
+
 /**
  * The cursor on the visible track `delta` tracks away, at the same bar and onset, in its voice.
  * Undefined at the first or last visible track.
@@ -81,18 +99,8 @@ export function moveTrack(
   visible: readonly Id[],
   delta: -1 | 1,
 ): EditCursor | undefined {
-  const at = resolveCursor(score, cursor);
-  if (!at) return undefined;
-  const target = visible[visible.indexOf(cursor.track) + delta];
-  const track = score.tracks.findIndex((candidate) => candidate.id === target);
-  if (target === undefined || track < 0 || visible.indexOf(cursor.track) < 0) return undefined;
-  const beats = score.tracks[at.track]?.bars[at.bar]?.voices[at.voice]?.beats ?? [];
-  const tick = beats.slice(0, at.stop).reduce((sum, beat) => sum + beatTicks(beat), 0);
-  const next = cursorAtTick(score, track, at.bar, tick, at.voice, {
-    string: cursor.string,
-    staff: cursor.staff,
-  });
-  return next && { ...next, staff: staffOn(score, track, cursor) };
+  const from = visible.indexOf(cursor.track);
+  return from < 0 ? undefined : cursorOnTrack(score, cursor, visible[from + delta]);
 }
 
 /** The cursor's staff, kept when the new track can show it. */

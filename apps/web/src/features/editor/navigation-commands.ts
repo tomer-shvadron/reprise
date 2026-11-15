@@ -3,7 +3,6 @@ import type { AppServices } from '@/app/services';
 import type { Shortcut } from '@/app/keyboard';
 import type { EditCursor } from '@/state/selection';
 
-import { cursorAtTick } from './cursor';
 import { move, movePage, moveString, type Step } from './navigation';
 import { extendRange, rangePatch, type ExtendStep } from './range';
 import { visibleTracks } from './visible';
@@ -192,19 +191,4 @@ export function navigationCommands(deps: NavigationDeps): NavigationCommand[] {
       selection.getState().setEdit({ selection: {}, ...rangePatch(c.score, undefined) });
     }),
   ];
-}
-
-/** The cursor at the playhead's bar and onset in `track`, voice 0: where entering edit mode starts. */
-export function cursorAtPlayhead(
-  score: Score,
-  trackId: string | undefined,
-  barIndex: number,
-  tick: number,
-): EditCursor | undefined {
-  const track = Math.max(
-    0,
-    score.tracks.findIndex(({ id }) => id === trackId),
-  );
-  const bar = Math.min(Math.max(barIndex, 0), score.masterBars.length - 1);
-  return cursorAtTick(score, track, bar, tick, 0);
 }
