@@ -134,7 +134,7 @@ interface MixEvent {
   every mixer change scheduled after `when` (a strip's volume and pan, a program change): the
   scheduler sends each again when playback reaches its beat. It is called with
   `when = currentTime` on pause, stop and seek.
-- `MetronomeSink` (`click(when, accent)`, `silence(when)`, `setVolume(volume)`) is the same
+- `MetronomeSink` (`click(when, accent, subdivision?)`, `silence(when)`, `setVolume(volume)`) is the same
   idea for the metronome and the count-in; `ClickSynth` is the built-in one. **Route it through
   the sampler's master bus**, `new ClickSynth(context, sampler.master.input)`: the bus's limiter
   delays everything through it by about 6 ms (see the sampler's "limiter" note), so a click sent
@@ -209,20 +209,21 @@ animation frame by default); the rest go to the transport.
 | the sampler's tracks                                                  | a new song's load once live, or the unlock for a song loaded before it | `unload`, or an edit that drops the track |
 | overrides and settings                                                | their setters, before or after the context                             | overrides and the loop: `unload`          |
 
-| Method                                                                 | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `setSoundfont(font)`                                                   | The parsed GM bank. Fetching it, and its errors, belong to the app. A second call throws; `load` before it rejects.                                                                                                                                                                                                                                                                                           |
-| `load(score, options)`                                                 | Resolves `{ instruments }`, the song plan's, once the opening bars are decoded. A new song is `stopped` at tick 0. Over a loaded song it is an edit: the placement rule above, the overrides kept, the tracks synced; a timeline-neutral edit (`timelineNeutral`) reaches the strips and instruments at once, with no rebuild. Loading the same score object again decodes it again and changes nothing else. |
-| `unload({ evict? })`                                                   | Stops, drops the song, its tracks, overrides, loop and instrument loads; `evict` frees every instrument too.                                                                                                                                                                                                                                                                                                  |
-| `unlock()`                                                             | Makes the context (and everything that needs it), applies the settings, attaches a loaded song; resumes a suspended context.                                                                                                                                                                                                                                                                                  |
-| `play`, `pause`, `stop`, `seek`                                        | The transport's. `play` unlocks first; the others are no-ops before the context.                                                                                                                                                                                                                                                                                                                              |
-| `setTempo`, `setLoop`, `setCountIn`, `setMetronome`, `setMasterVolume` | Validated, kept, and applied now or when the context is made. The master volume scales the bus, the metronome included.                                                                                                                                                                                                                                                                                       |
-| `setTrack(id, params)`                                                 | A user override over the track's channel, applied at once and kept through every baseline reset and edit until `unload`.                                                                                                                                                                                                                                                                                      |
-| `previewTrack(id, params)`                                             | Volume or pan for a slider being dragged: no override, so the next baseline reset or edit replaces it.                                                                                                                                                                                                                                                                                                        |
-| `previewNote(track, note)`                                             | One note through the track's strip, past mute and solo. Throws with no song, and a `RangeError` for a track the song lacks.                                                                                                                                                                                                                                                                                   |
-| `memory()`                                                             | The memory manager's report; zero bytes against the budget before the bank.                                                                                                                                                                                                                                                                                                                                   |
-| `outputLatency()`                                                      | `baseLatency + outputLatency` of the context (`outputLatencyOf`), 0 before it.                                                                                                                                                                                                                                                                                                                                |
-| `settled()`                                                            | Resolves with no load, instrument load or fetch in flight.                                                                                                                                                                                                                                                                                                                                                    |
+| Method                                                                     | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setSoundfont(font)`                                                       | The parsed GM bank. Fetching it, and its errors, belong to the app. A second call throws; `load` before it rejects.                                                                                                                                                                                                                                                                                           |
+| `load(score, options)`                                                     | Resolves `{ instruments }`, the song plan's, once the opening bars are decoded. A new song is `stopped` at tick 0. Over a loaded song it is an edit: the placement rule above, the overrides kept, the tracks synced; a timeline-neutral edit (`timelineNeutral`) reaches the strips and instruments at once, with no rebuild. Loading the same score object again decodes it again and changes nothing else. |
+| `unload({ evict? })`                                                       | Stops, drops the song, its tracks, overrides, loop and instrument loads; `evict` frees every instrument too.                                                                                                                                                                                                                                                                                                  |
+| `unlock()`                                                                 | Makes the context (and everything that needs it), applies the settings, attaches a loaded song; resumes a suspended context.                                                                                                                                                                                                                                                                                  |
+| `play`, `pause`, `stop`, `seek`                                            | The transport's. `play` unlocks first; the others are no-ops before the context.                                                                                                                                                                                                                                                                                                                              |
+| `setTempo`, `setLoop`, `setCountIn`, `setMetronome`, `setMasterVolume`     | Validated, kept, and applied now or when the context is made. The master volume scales the bus, the metronome included.                                                                                                                                                                                                                                                                                       |
+| `startClick(settings?)`, `updateClick(settings)`, `stopClick()`, `click()` | The standalone click (below): a metronome with no score. `startClick` unlocks, pauses a playing song and starts; `play` stops it. Settings are validated (`RangeError`) and kept across stops.                                                                                                                                                                                                                |
+| `setTrack(id, params)`                                                     | A user override over the track's channel, applied at once and kept through every baseline reset and edit until `unload`.                                                                                                                                                                                                                                                                                      |
+| `previewTrack(id, params)`                                                 | Volume or pan for a slider being dragged: no override, so the next baseline reset or edit replaces it.                                                                                                                                                                                                                                                                                                        |
+| `previewNote(track, note)`                                                 | One note through the track's strip, past mute and solo. Throws with no song, and a `RangeError` for a track the song lacks.                                                                                                                                                                                                                                                                                   |
+| `memory()`                                                                 | The memory manager's report; zero bytes against the budget before the bank.                                                                                                                                                                                                                                                                                                                                   |
+| `outputLatency()`                                                          | `baseLatency + outputLatency` of the context (`outputLatencyOf`), 0 before it.                                                                                                                                                                                                                                                                                                                                |
+| `settled()`                                                                | Resolves with no load, instrument load or fetch in flight.                                                                                                                                                                                                                                                                                                                                                    |
 
 Events: the transport's `position`, `state` and `loop`; `memory` (the manager's, coalesced);
 `instrumentLoads`, `{ [trackId]: { loaded, total } }` for each track whose new instrument is
@@ -346,7 +347,7 @@ interface Region {
   rootKey: number; // MIDI note the sample sounds at
   tune: number; // cents
   sample: SampleRef;
-  loop?: { start: number; end: number }; // seconds into the decoded buffer
+  loop?: { start: number; end: number; unit?: 'frames' }; // seconds into the decoded buffer; unit 'frames' (SFZ) is frames at the buffer's own rate, which the voice divides by buffer.sampleRate
   envelope: Envelope;
   layer?: string; // articulation layer; absent = default
   attenuation?: number; // dB, positive is quieter: SF2's sign; an SFZ loader negates its `volume`; the SF2 loader scales initialAttenuation by 0.4 as FluidSynth does
@@ -357,14 +358,30 @@ interface Region {
     envelope?: { cents; delay; attack; hold; decay; sustain };
   }; // low-pass from the note's start: cutoffHz at rest, an optional modulation envelope sweeps it by `cents` (delay, attack, hold, decay to `sustain`; release not modelled); q in dB, Web Audio's lowpass unit
   modulators?: NoteModulator[]; // SF2 note-on modulators (velocity and key sources; attenuation, cutoff, envelope depth and Q), evaluated once per note; with them the velocity curve is theirs, without it is (v/127)^2
-  exclusiveClass?: number; // a new note of the class chokes the sounding ones on the track's instrument
+  exclusiveClass?: number; // a new note of the class chokes the sounding ones on the track's instrument; reads as group = offBy = c
+  // The SFZ fields (#194). All optional; an SF2 region never sets them.
+  startFrame?: number; // SFZ offset, frames at the buffer's rate, added to the request's offset (seconds)
+  oneShot?: boolean; // note-off is ignored and the sample plays to its end; allNotesOff still stops it
+  velocityTrack?: number; // 0..1: gain = velocityGain(v) ** velocityTrack, on the path without modulators
+  group?: number; // a new note of this group chokes the voices whose offBy equals it
+  offBy?: number; // one-way: a closed hi-hat (group 2) cuts the open one (off_by 2), not the reverse
+  trigger?: 'release' | 'first' | 'legato'; // absent plays at note-on; release regions are kept, not played yet (WP-093)
+  sequence?: { length: number; position: number }; // round robin, position 1-based
+  random?: { lo: number; hi: number }; // 0..1, lo inclusive, hi exclusive
 }
 
 class RegionMap {
   constructor(regions: readonly Region[]);
-  resolveAll(key: number, velocity: number, layer?: string): Region[]; // every layer of the note
+  resolveAll(key: number, velocity: number, layer?: string, select?: RegionSelection): Region[]; // every layer of the note
+  candidates(key: number, velocity: number, layer?: string): Region[]; // every region the note could start, all round-robin and random positions
   resolve(key: number, velocity: number, layer?: string): Region | undefined; // resolveAll's first
   readonly layers: string[];
+}
+
+interface RegionSelection {
+  sequence?: number; // notes of this key so far; a sequence region plays when (sequence % length) + 1 is its position
+  random?: number; // 0..1 draw; a random region plays when lo <= random < hi
+  legato?: boolean; // the note starts over a sounding one: legato regions play, first regions do not
 }
 
 interface SampleSource {
@@ -378,7 +395,15 @@ interface Instrument {
 }
 ```
 
-`resolveAll` returns every exact match in map order, since an SF2 preset layers zones by design (a
+`resolveAll` first filters out the regions that do not start at note-on: release regions never do,
+`first` regions play unless `select.legato`, `legato` regions only with it, a sequence region plays
+when `((select.sequence ?? 0) % length) + 1` is its position and a random region when
+`lo <= (select.random ?? 0) < hi`. Without counters the choice is the first take (position 1, the
+bucket holding 0, no legato) rather than layering every round robin at once, until WP-093 passes
+counters. The nearest-region fallback searches only the regions that pass. `candidates` is the
+unfiltered-by-counter set that `planSamples` and `Sampler.preload` use, so the round robins WP-093
+rotates through are resident before it does; on an SF2 map it equals `resolveAll`. `resolveAll` then
+returns every exact match in map order, since an SF2 preset layers zones by design (a
 body and an attack, two panned mono samples) and sounds them all; failing any, the one region
 nearest by key and then by velocity, so a pack that stops short of a drop tuning still sounds. A layer the map lacks
 falls back to the default layer (and a map with no default layer uses its only one), which is
@@ -467,6 +492,26 @@ soloed one; it still goes through the insert, the fader and the panner.
   to 0 and the source stopped), so the release reaches exact silence. Chromium's
   `cancelAndHoldAtTime` holds nothing when no ramp spans the release time, so the release also
   sets the analytic envelope value at that time to anchor the fade.
+- **One-shot is honored in `Voice.release`, not only in `Sampler.noteOff`.** The sink releases
+  handles directly at each note's end, so a guard in `noteOff` alone would never fire. `Voice.stop`
+  releases regardless, and `allNotesOff` uses it, so stop and seek still silence a drum tail.
+- **`previewNote` and one-shots.** A one-shot ignores the preview's timed release too, so clicking
+  one in the editor plays the whole sample.
+- **`velocityTrack` is a power of the MIDI curve.** `velocityGain(v) ** t` scales the dB curve, one
+  reading of sfzformat.com. sfizz blends linearly in amplitude instead (`1 - t * (1 - (v/127)^2)`);
+  for `amp_veltrack=73` at velocity 30 that is about -18 dB here against about -10 dB there. PR 2's
+  real-pack listening check decides whether to switch.
+- **SFZ loads are capped** (`LIMITS` in `sfz/report.ts`), because pack files are untrusted: 256
+  files read per load (the root and every include), 4,000,000 characters of preprocessed text, 65,536
+  characters in one `#define` value, 100,000 regions after `pitch_keytrack` expansion and keyswitch
+  layer copies. A cap stops the expansion cleanly, adds an entry to `report.limits` (so `isClean` is
+  false) and returns what was parsed; only an unreadable root file throws. Numeric opcodes are
+  clamped to their SFZ range and counted in `report.clamped`, and paths with percent-encoded
+  separators or dots, control characters or Windows device names are refused like escaping paths.
+  `SfzReader` receives literal, root-relative paths and must not decode or symlink-follow them.
+- **SFZ choke is one-way.** A new note's groups are `region.group ?? region.exclusiveClass ?? 0`; it
+  chokes voices whose `offBy ?? exclusiveClass ?? 0` is among them (0 is none). For SF2 that is
+  today's same-class choke; for SFZ, closed cuts open and open does not cut closed.
 - **Stealing** is released voices first, then the quietest at the new note's time, then the
   oldest. Quietest is what the voice plays: envelope × velocity × the articulation gain automation
   (a palm mute's -18 dB, a fade-in from -48 dB), all computed analytically. A note that has not
@@ -940,3 +985,24 @@ a test compares measurements, never a hash of the output.
 
 The smoke found the harmonic gap in `planInstruments` independently of #79, which fixed it (see
 Planning and preload).
+
+## Standalone click (#205)
+
+`engine.startClick(settings?)` runs a metronome with no score, for WP-072 and anything else that
+wants a click with no song open. `createStandaloneClick({ context, sink, scheduler?, lookahead?, startLatency? })`
+is the engine-free core; the engine gives it a `ClickSynth` on the master bus.
+
+- `ClickSettings`: `bpm` (10 to 600, of the beat the caller picks from the time signature: x/4 counts quarters, 6/8 is `beatsPerBar: 2, subdivision: 3` at the dotted quarter; the engine has no note value and WP-072's time-signature control owns the mapping), `beatsPerBar` (1 to 32),
+  `accents` (a boolean per beat of the bar; `[true]` stresses the downbeat, `[]` none),
+  `subdivision` (1 quarters, 2 eighths, 3 triplets, 4 sixteenths) and `volume` (0 to 1).
+  `DEFAULT_CLICK_SETTINGS` is 100 bpm in 4 with the downbeat stressed.
+- Same lookahead clock as the transport (a 200 ms window, a 25 ms worker tick, 30 ms start
+  latency), so clicks are on the audio clock, not on a timer. The first click is beat 1 of the bar (accented if `accents[0]`).
+- `bpm` changes re-time the next click from the last one sent, at the new gap (no waiting out
+  a slow old beat); `beatsPerBar`, `accents` and `subdivision` from the next beat (a new
+  `beatsPerBar` takes the bar in progress: it ends at once when the position is past the new length,
+  else runs on to it), and `volume` at once: no beat is cut short and none doubled.
+- Subdivision clicks are softer and lower than a beat (`click(when, false, true)`).
+- Exclusive with the song: `play` stops the click, `startClick` pauses the song. The `click`
+  event (a boolean) reports both, so a mirror needs no guess.
+- `stopClick` silences from `currentTime`, including the clicks already in the window.

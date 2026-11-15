@@ -1,0 +1,5 @@
+// Included by synthetic.sfz: shared defines and a group header, to prove includes work.
+#define $KICK 36
+#define $HALF 0.5
+<group>
+ampeg_release=0.3 volume=-3

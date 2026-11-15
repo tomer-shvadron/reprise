@@ -650,3 +650,109 @@ describe('the audio service', () => {
     });
   });
 });
+
+describe('the standalone click', () => {
+  it('clicks on the grid with no document open, and mirrors its state', async () => {
+    const { playback, audio, render, createContext } = setup({ seconds: 1.4 });
+    expect(playback.getState().click.running).toBe(false);
+
+    audio.startClick({ bpm: 120, volume: 1 });
+    expect(createContext).toHaveBeenCalledOnce();
+    expect(playback.getState().click).toMatchObject({
+      running: true,
+      settings: { bpm: 120, beatsPerBar: 4, volume: 1 },
+    });
+    expect(playback.getState().song.status).toBe('idle');
+    const buffer = await render();
+
+    const first = onset(buffer, 1e-3);
+    expect(Math.abs((first ?? 0) - (START + BUS_DELAY))).toBeLessThan(0.0005);
+    // The second beat half a second later, softer than the downbeat, with silence between.
+    const burst = (at: number) => rms(buffer, at, at + 0.03);
+    expect(rms(buffer, START + BUS_DELAY + 0.06, START + BUS_DELAY + 0.45)).toBeLessThan(1e-4);
+    expect(burst(START + BUS_DELAY + 0.5)).toBeGreaterThan(0.01);
+    expect(burst(START + BUS_DELAY + 0.5)).toBeLessThan(burst(START + BUS_DELAY));
+    audio.dispose();
+  });
+
+  it('applies updates, keeps settings across a stop and rejects bad ones', () => {
+    const { playback, audio } = setup({ seconds: 0.2 });
+    audio.updateClick({ bpm: 90, subdivision: 2 });
+    expect(playback.getState().click).toMatchObject({
+      running: false,
+      settings: { bpm: 90, subdivision: 2 },
+    });
+    audio.startClick();
+    expect(playback.getState().click.running).toBe(true);
+    audio.updateClick({ beatsPerBar: 3, accents: [true, false, false] });
+    expect(playback.getState().click.settings.beatsPerBar).toBe(3);
+    expect(() => {
+      audio.updateClick({ bpm: 1000 });
+    }).toThrow(RangeError);
+    expect(playback.getState().click.settings.bpm).toBe(90);
+    audio.stopClick();
+    expect(playback.getState().click.running).toBe(false);
+    audio.startClick({ bpm: 100 });
+    expect(playback.getState().click.settings).toMatchObject({ bpm: 100, subdivision: 2 });
+    audio.dispose();
+  });
+
+  it('gives way to a song and takes the floor back: the two never sound together', async () => {
+    const { playback, audio } = setup({ seconds: 0.5 });
+    await open(audio, quarters(1));
+    audio.startClick();
+    expect(playback.getState().click.running).toBe(true);
+
+    audio.play();
+    expect(playback.getState().click.running).toBe(false);
+    expect(playback.getState().transport).toBe('playing');
+
+    audio.startClick();
+    expect(playback.getState().click.running).toBe(true);
+    expect(playback.getState().transport).toBe('paused');
+    audio.dispose();
+  });
+
+  it('starts and stops with no document, and stopping twice or closing none is harmless', () => {
+    const { playback, audio } = setup({ seconds: 0.2 });
+    audio.startClick();
+    audio.stopClick();
+    audio.stopClick();
+    audio.setDocument(undefined);
+    expect(playback.getState().click.running).toBe(false);
+    audio.dispose();
+  });
+
+  it('refuses bad settings before it makes a context, and never throws for a dead output', () => {
+    const bad = setup({ seconds: 0.2 });
+    expect(() => {
+      bad.audio.startClick({ bpm: 1000 });
+    }).toThrow(RangeError);
+    expect(bad.createContext).not.toHaveBeenCalled();
+    expect(bad.playback.getState().click.running).toBe(false);
+    bad.audio.dispose();
+
+    const playback = createPlaybackStore();
+    const audio = createAudioService({
+      playback,
+      loadSoundfont: () => synthetic,
+      createContext: () => {
+        throw new Error('no audio device');
+      },
+    });
+    expect(() => {
+      audio.startClick();
+    }).not.toThrow();
+    expect(playback.getState().output.status).toBe('error');
+    expect(playback.getState().click.running).toBe(false);
+    audio.dispose();
+  });
+
+  it('shows the click stopped once the service is disposed', () => {
+    const { playback, audio } = setup({ seconds: 0.2 });
+    audio.startClick();
+    expect(playback.getState().click.running).toBe(true);
+    audio.dispose();
+    expect(playback.getState().click.running).toBe(false);
+  });
+});

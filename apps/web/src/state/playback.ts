@@ -1,5 +1,7 @@
 import {
+  DEFAULT_CLICK_SETTINGS,
   GM_BUDGET_BYTES,
+  type ClickSettings,
   type LoopEvent,
   type MemoryReport,
   type PlaybackState,
@@ -49,6 +51,8 @@ export interface PlaybackStoreState {
   /** The open song's planned instruments; the memory report's residents can add leftovers. */
   instruments: number;
   settings: TransportSettings;
+  /** The standalone click (no song needed): whether it runs, and what it plays. */
+  click: { running: boolean; settings: ClickSettings };
   /** The user's overrides over each track's `channel`; cleared on a switch. */
   mixer: Readonly<Record<Id, TrackParams>>;
   /** Tracks whose newly chosen instrument is still decoding; cleared on a switch. */
@@ -83,6 +87,7 @@ export function initialPlaybackState(): PlaybackStoreState {
       metronome: { on: false, volume: 0.7 },
       masterVolume: 1,
     },
+    click: { running: false, settings: DEFAULT_CLICK_SETTINGS },
     mixer: {},
     instrumentLoads: {},
   };

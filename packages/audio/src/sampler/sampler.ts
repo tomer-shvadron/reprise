@@ -249,7 +249,7 @@ export class Sampler {
     const { regions, source } = this.#state(id).instrument;
     const samples = new Set<SampleRef>();
     for (const { key, velocity, layer } of notes) {
-      for (const region of regions.resolveAll(key, velocity, layer)) samples.add(region.sample);
+      for (const region of regions.candidates(key, velocity, layer)) samples.add(region.sample);
     }
     await Promise.all([...samples].map((sample) => source.getBuffer(sample)));
   }
@@ -288,12 +288,13 @@ export class Sampler {
     if (layers.length === 0) return undefined;
 
     const string = request.string ?? 0;
-    const classes = new Set(layers.map(({ region }) => region.exclusiveClass ?? 0));
-    classes.delete(0);
+    // SF2's exclusive class c is group = offBy = c; an SFZ group chokes only voices off_by it.
+    const groups = new Set(layers.map(({ region }) => region.group ?? region.exclusiveClass ?? 0));
+    groups.delete(0);
     for (const voice of state.voices) {
       if (!voice.isSoundingAt(request.when)) continue;
       const struck = string > 0 && voice.string === string;
-      const excluded = voice.instrument === regions && classes.has(voice.exclusiveClass);
+      const excluded = voice.instrument === regions && groups.has(voice.offBy);
       if (struck || excluded) voice.choke(request.when);
     }
 
@@ -346,7 +347,7 @@ export class Sampler {
   allNotesOff(when: number, id?: Id): void {
     const states = id === undefined ? [...this.#tracks.values()] : [this.#state(id)];
     for (const state of states) {
-      for (const voice of state.voices) voice.release(when);
+      for (const voice of state.voices) voice.stop(when);
       state.changes = state.changes.filter((change) => change.at <= when);
       state.strip.cancelAfter(when);
     }

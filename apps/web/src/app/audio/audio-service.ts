@@ -4,7 +4,9 @@ import {
   Sf2ParseError,
   Sf2Soundfont,
   timelineNeutral,
+  checkClickSettings,
   type AudioEngine,
+  type ClickSettings,
   type LoadOptions,
   type PlaybackState,
   type TempoMode,
@@ -58,6 +60,17 @@ export interface AudioService {
   setCountIn(on: boolean): void;
   setMetronome(on: boolean, volume: number): void;
   /**
+   * Starts a metronome that needs no song, from `settings` over what the last call set
+   * (`playback.click.settings`; 100 bpm in 4 with the downbeat stressed at first). Unlocks the
+   * context, so call it from a gesture. Pauses a playing song; playing a song stops the click.
+   * A failing output is reported as `output.status: 'error'`, never thrown. Throws a `RangeError` for a bpm outside 10 to 600, beats outside 1 to 32, a subdivision
+   * outside 1 to 4 or a volume outside 0 to 1, leaving the click as it was.
+   */
+  startClick(settings?: Partial<ClickSettings>): void;
+  /** Applies settings to a running click from its next click or beat, or keeps them for the next start. */
+  updateClick(settings: Partial<ClickSettings>): void;
+  stopClick(): void;
+  /**
    * The master bus level, 0 to 1, mirrored into `settings.masterVolume`. The metronome feeds the
    * bus, so it scales the clicks too. Throws a `RangeError` outside 0 to 1.
    */
@@ -106,6 +119,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   engine.setCountIn(initial.countIn);
   engine.setMetronome(initial.metronome.on, initial.metronome.volume);
   engine.setMasterVolume(initial.masterVolume);
+  engine.updateClick(playback.getState().click.settings);
   let bankLoad: Promise<void> | undefined;
   let doc: OpenDocument | undefined;
   /** The engine has this document's song. */
@@ -144,6 +158,9 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     }),
     engine.on('loop', (loop) => {
       set({ lastLoop: loop });
+    }),
+    engine.on('click', (running) => {
+      set({ click: { ...playback.getState().click, running } });
     }),
     engine.on('memory', (memory) => {
       set({ memory });
@@ -330,6 +347,36 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
       setSettings({ metronome: { on, volume } });
     },
 
+    startClick(settings) {
+      if (disposed) return;
+      const next = { ...playback.getState().click.settings, ...settings };
+      // First, so a refused call makes no context.
+      checkClickSettings('startClick', next);
+      service.unlock();
+      if (playback.getState().output.status === 'error') return;
+      try {
+        engine.startClick(next);
+      } catch (error) {
+        set({
+          output: { status: 'error', error: `Audio output is unavailable: ${messageOf(error)}` },
+        });
+        return;
+      }
+      // After the engine has validated them, so a refused call leaves the mirror alone.
+      set({ click: { ...playback.getState().click, settings: next } });
+    },
+
+    updateClick(settings) {
+      if (disposed) return;
+      const next = { ...playback.getState().click.settings, ...settings };
+      engine.updateClick(next);
+      set({ click: { ...playback.getState().click, settings: next } });
+    },
+
+    stopClick() {
+      engine.stopClick();
+    },
+
     setMasterVolume(volume) {
       engine.setMasterVolume(volume);
       setSettings({ masterVolume: volume });
@@ -370,6 +417,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
 
     dispose() {
       if (disposed) return;
+      set({ click: { ...playback.getState().click, running: false } });
       disposed = true;
       generation += 1;
       for (const cleanup of cleanups.splice(0)) cleanup();

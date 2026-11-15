@@ -13,6 +13,12 @@ import type { InstrumentId, MemoryReport } from './samples/types';
 import type { Sf2Soundfont } from './sf2/soundfont';
 import type { Ticker } from './ticker';
 import { timelineNeutral } from './timeline-neutral';
+import {
+  checkClickSettings,
+  createStandaloneClick,
+  DEFAULT_CLICK_SETTINGS,
+} from './standalone-click';
+import type { ClickSettings, StandaloneClick } from './standalone-click';
 import { createTransport } from './transport';
 import type { TempoMode, Transport, TransportEvents, Unsubscribe } from './transport';
 
@@ -54,6 +60,8 @@ export type InstrumentLoads = Readonly<Record<Id, InstrumentLoad>>;
 export interface AudioEngineEvents extends TransportEvents {
   memory: MemoryReport;
   instrumentLoads: InstrumentLoads;
+  /** Whether the standalone click runs; also false when a song's `play` stopped it. */
+  click: boolean;
 }
 
 export interface AudioEngine {
@@ -71,6 +79,17 @@ export interface AudioEngine {
   setLoop(range?: { startBar: Id; endBar: Id }): void;
   setCountIn(on: boolean): void;
   setMetronome(on: boolean, volume: number): void;
+  /**
+   * Starts the standalone click: a metronome with no score, on the master bus. Makes the context
+   * if needed, pauses a playing song (it keeps its position) and keeps `settings` for later when
+   * given; a click already running only takes them like `updateClick`. `play` stops it again.
+   */
+  startClick(settings?: ClickSettings): void;
+  /** Applies the settings from the next click (tempo) or beat (meter, accents, subdivision). */
+  updateClick(settings: ClickSettings): void;
+  stopClick(): void;
+  /** The click's settings and whether it runs. */
+  click(): { running: boolean; settings: ClickSettings };
   /** A user override over the track's channel, kept through every baseline reset and edit. */
   setTrack(id: Id, params: TrackParams): void;
   /** Past mute and solo; silent the first time a sample is needed, which it then decodes. */
@@ -151,6 +170,7 @@ interface Live {
   context: BaseAudioContext;
   sampler: Sampler;
   transport: Transport;
+  click: StandaloneClick;
 }
 
 export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
@@ -164,6 +184,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       loop: new Set(),
       memory: new Set(),
       instrumentLoads: new Set(),
+      click: new Set(),
     };
   let live: Live | undefined;
   let source: ManagedSampleSource | undefined;
@@ -178,6 +199,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   let countIn = false;
   let metronome = { on: false, volume: 0.7 };
   let masterVolume = 1;
+  let clickSettings = DEFAULT_CLICK_SETTINGS;
   let loads: InstrumentLoads = {};
   // Per track, so a second instrument change drops the first one's progress.
   const loadTokens = new Map<Id, number>();
@@ -287,7 +309,14 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       resetBaseline(loop.when);
       emit('loop', loop);
     });
-    live = { context, sampler, transport };
+    const click = createStandaloneClick({
+      context,
+      sink: new ClickSynth(context, sampler.master.input),
+      ...(options.scheduler && { scheduler: options.scheduler }),
+      ...(options.lookahead !== undefined && { lookahead: options.lookahead }),
+      ...(options.startLatency !== undefined && { startLatency: options.startLatency }),
+    });
+    live = { context, sampler, transport, click };
     if (score) {
       attach(score, 'replace');
       transport.load(score);
@@ -384,6 +413,12 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     return live;
   }
 
+  function stopClick(): void {
+    if (!live?.click.running) return;
+    live.click.stop();
+    emit('click', false);
+  }
+
   function requireSong(method: string): Score {
     if (!score) throw new Error(`AudioEngine.${method}: load a score first`);
     return score;
@@ -412,7 +447,9 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
 
     play(fromTick) {
       requireSong('play');
-      unlock()?.transport.play(fromTick);
+      const made = unlock();
+      if (made) stopClick();
+      made?.transport.play(fromTick);
     },
 
     pause() {
@@ -451,6 +488,35 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       checkVolume('setMetronome', volume);
       metronome = { on, volume };
       live?.transport.setMetronome(on, volume);
+    },
+
+    startClick(settings) {
+      if (settings) checkClickSettings('startClick', settings);
+      if (disposed) return;
+      if (settings) clickSettings = settings;
+      const made = unlock();
+      if (!made) return;
+      if (made.click.running) {
+        made.click.update(clickSettings);
+        return;
+      }
+      made.transport.pause();
+      made.click.start(clickSettings);
+      emit('click', true);
+    },
+
+    updateClick(settings) {
+      checkClickSettings('updateClick', settings);
+      clickSettings = settings;
+      if (live?.click.running) live.click.update(settings);
+    },
+
+    stopClick() {
+      stopClick();
+    },
+
+    click() {
+      return { running: live?.click.running ?? false, settings: clickSettings };
     },
 
     setTrack(id, params) {
@@ -538,6 +604,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       if (disposed) return;
       disposed = true;
       song += 1;
+      live?.click.dispose();
       live?.transport.dispose();
       live?.sampler.dispose();
       source?.dispose();
