@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createTestServices } from '@/test/services';
 
 import { createAppRegistry } from './app-registry';
-import { runCommand, type Command } from './command-registry';
+import { runCommand } from './command-registry';
 import { installShortcutDispatcher } from './shortcut-dispatcher';
 
 describe('view.toggleViewMode', () => {
@@ -47,15 +47,10 @@ describe('the app registry and edit mode', () => {
     const registry = createAppRegistry(services);
     const transport = registry.get('transport.previousBeat');
     if (!transport) throw new Error('transport.previousBeat is not registered');
-    const run = vi.fn();
-    const move: Command = {
-      id: 'editor.test',
-      title: 'Cursor left',
-      shortcut: { key: 'ArrowLeft' },
-      context: 'editing',
-      run,
-    };
-    registry.register(move);
+    // WP-080's command on the key transport also binds; its own tests cover what it does.
+    const move = registry.get('editor.previousBeat');
+    if (!move) throw new Error('editor.previousBeat is not registered');
+    const run = vi.spyOn(move, 'run').mockImplementation(() => undefined);
     const spy = vi.spyOn(transport, 'run').mockImplementation(() => undefined);
     const off = installShortcutDispatcher(window, registry, 'other');
 

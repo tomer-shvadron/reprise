@@ -1,7 +1,16 @@
+import type { Notation, Score } from '@reprise/model';
 import { largeScore, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
-import { PAGE_SIZES, anchorBox, hitTest, layout, type Anchor, type LayoutOptions } from './index';
+import {
+  PAGE_SIZES,
+  anchorBox,
+  hitTest,
+  layout,
+  type Anchor,
+  type LayoutOptions,
+  type Rect,
+} from './index';
 
 const paged: LayoutOptions = {
   mode: 'paged',
@@ -152,6 +161,60 @@ describe('continuous', () => {
     },
   );
 
+  it('returns the very anchor the shifted-box implementation returned, offset systems included', () => {
+    // The implementation before the allocation fix, kept as the reference.
+    const rank = { note: 4, beat: 3, bar: 2, staff: 1, system: 0 } as const;
+    const specific = (a: Anchor, b: Anchor): boolean => {
+      if (rank[a.kind] !== rank[b.kind]) return rank[a.kind] > rank[b.kind];
+      if ((a.track === undefined) !== (b.track === undefined)) return a.track !== undefined;
+      return a.bbox.width * a.bbox.height < b.bbox.width * b.bbox.height;
+    };
+    const inBox = (box: Rect, x: number, y: number) =>
+      x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
+    const reference = (x: number, y: number): Anchor | undefined => {
+      let best: Anchor | undefined;
+      for (const system of laid.systems) {
+        if (!inBox(system.bbox, x, y)) continue;
+        for (let i = system.anchors.start; i < system.anchors.end; i++) {
+          const anchor = laid.anchors[i];
+          if (!anchor) continue;
+          const box = anchorBox(laid, anchor);
+          if (inBox(box, x, y) && (!best || specific(anchor, best))) best = anchor;
+        }
+      }
+      return best;
+    };
+    const right = Math.max(...laid.systems.map((s) => s.bbox.x + s.bbox.width));
+    const bottom = Math.max(...laid.systems.map((s) => s.bbox.y + s.bbox.height));
+    expect(laid.systems.some((s) => (s.offsetX ?? 0) > 0)).toBe(true);
+    let seed = 7;
+    const random = () => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return seed / 2_147_483_648;
+    };
+    for (let i = 0; i < 3000; i++) {
+      const x = random() * right;
+      const y = random() * bottom;
+      expect(hitTest(laid, x, y)).toBe(reference(x, y));
+    }
+    // On and just outside the edges of anchors in later systems.
+    for (const anchor of laid.anchors
+      .filter((a) => a.system > 3 && a.kind !== 'system')
+      .slice(0, 300)) {
+      const box = anchorBox(laid, anchor);
+      for (const [dx, dy] of [
+        [0, 0],
+        [box.width, box.height],
+        [-0.01, 0],
+        [box.width + 0.01, 0],
+      ] as const) {
+        const x = box.x + dx;
+        const y = box.y + dy;
+        expect(hitTest(laid, x, y)).toBe(reference(x, y));
+      }
+    }
+  });
+
   it("never returns another system's anchor inside a system", () => {
     const system = laid.systems[5];
     if (!system) throw new Error('no system 5');
@@ -172,5 +235,64 @@ describe('continuous', () => {
       const offsetX = laid.systems[anchor.system]?.offsetX ?? 0;
       expect(anchorBox(laid, anchor).x - anchor.bbox.x).toBeCloseTo(offsetX, 9);
     }
+  });
+});
+
+describe('every note is clickable', () => {
+  const MIXED: readonly Notation[] = ['tab', 'standard', 'both'];
+  const modes = { paged, continuous: { ...paged, mode: 'continuous', width: 640 } } as const;
+
+  function noteIds(built: Score): Set<string> {
+    const ids = new Set<string>();
+    for (const track of built.tracks) {
+      for (const bar of track.bars) {
+        for (const voice of bar.voices) {
+          for (const beat of voice.beats) {
+            for (const n of beat.notes) ids.add(n.id);
+            for (const grace of beat.grace ?? []) for (const n of grace.notes) ids.add(n.id);
+          }
+        }
+      }
+    }
+    return ids;
+  }
+
+  /** Every model note has a note anchor, and a hit at that anchor's centre returns it. */
+  function expectAllHit(built: Score, options: LayoutOptions) {
+    const laid = layout(built, options);
+    const wanted = noteIds(built);
+    const hit = new Set<string>();
+    for (const anchor of laid.anchors) {
+      if (anchor.kind !== 'note') continue;
+      const box = anchorBox(laid, anchor);
+      const found = hitTest(laid, box.x + box.width / 2, box.y + box.height / 2);
+      expect(found, `note ${anchor.id}`).toBe(anchor);
+      hit.add(anchor.id);
+    }
+    expect(hit.size).toBe(wanted.size);
+    expect([...wanted].filter((id) => !hit.has(id))).toEqual([]);
+  }
+
+  it.each(Object.keys(modes) as (keyof typeof modes)[])(
+    'the long score in mixed notation, %s',
+    (mode) => {
+      const long = largeScore(8, 300, { structure: true });
+      expectAllHit(long, {
+        ...modes[mode],
+        notation: Object.fromEntries(long.tracks.map(({ id }, i) => [id, MIXED[i % 3] ?? 'tab'])),
+      });
+    },
+  );
+
+  it.each(
+    MIXED.flatMap((notation) =>
+      (Object.keys(modes) as (keyof typeof modes)[]).map((mode) => [notation, mode] as const),
+    ),
+  )('a shorter score in %s notation, %s', (notation, mode) => {
+    const many = largeScore(3, 40);
+    expectAllHit(many, {
+      ...modes[mode],
+      notation: Object.fromEntries(many.tracks.map(({ id }) => [id, notation])),
+    });
   });
 });

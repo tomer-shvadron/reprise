@@ -75,4 +75,44 @@ describe('the gesture tracker', () => {
     tracker.handle(pointer('move', 120, 'b'));
     expect(tracker.handle(pointer('cancel', 120, undefined))).toEqual({ kind: 'cancel' });
   });
+
+  describe('in area mode', () => {
+    const over = (type: ScorePointerEvent['type'], x: number, id: string): ScorePointerEvent => ({
+      ...pointer(type, x, undefined),
+      anchor: { kind: 'beat', id, system: 0, bbox: { x: 0, y: 0, width: 1, height: 1 } },
+    });
+
+    it('starts a drag without a column under the press, reports every move and once done', () => {
+      const tracker = createGestureTracker();
+      const down = pointer('down', 10, undefined);
+      tracker.handle(down, 'area');
+      expect(tracker.handle(pointer('move', 12, undefined), 'area')).toBeUndefined();
+      expect(tracker.handle(over('move', 30, 'a'), 'area')).toMatchObject({
+        kind: 'area',
+        from: down,
+        to: { anchor: { id: 'a' } },
+        done: false,
+      });
+      expect(tracker.handle(over('move', 31, 'a'), 'area')).toMatchObject({ done: false });
+      expect(tracker.handle(over('move', 50, 'b'), 'area')).toMatchObject({ done: false });
+      expect(tracker.handle(over('up', 50, 'b'), 'area')).toMatchObject({
+        kind: 'area',
+        done: true,
+        to: { anchor: { id: 'b' } },
+      });
+    });
+
+    it('still reads a short press as a click, and a cancel after a drag', () => {
+      const tracker = createGestureTracker();
+      const down = pointer('down', 10, undefined);
+      tracker.handle(down, 'area');
+      expect(tracker.handle(pointer('up', 12, undefined), 'area')).toMatchObject({
+        kind: 'click',
+        event: down,
+      });
+      tracker.handle(pointer('down', 10, undefined), 'area');
+      tracker.handle(over('move', 50, 'a'), 'area');
+      expect(tracker.handle(pointer('cancel', 50, undefined), 'area')).toEqual({ kind: 'cancel' });
+    });
+  });
 });
