@@ -80,11 +80,12 @@ describe('the Electron platform’s file operations', () => {
     vi.mocked(bridge.openFolder).mockResolvedValueOnce({
       name: 'tabs',
       truncated: true,
+      skipped: 2,
       files: [{ name: 'b.gp', relativePath: 'x/b.gp', size: 1, path: '/Users/me/tabs/x/b.gp' }],
     });
 
     const folder = await platform.openFolder([]);
-    expect(folder).toMatchObject({ name: 'tabs', truncated: true });
+    expect(folder).toMatchObject({ name: 'tabs', truncated: true, skipped: 2 });
     expect(folder?.files[0]).toMatchObject({ name: 'b.gp', relativePath: 'x/b.gp', size: 1 });
     await expect(platform.openFolder([])).resolves.toBeUndefined();
   });

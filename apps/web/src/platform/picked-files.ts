@@ -25,8 +25,14 @@ function pickedFile(file: File, relativePath: string): PickedFile {
   };
 }
 
+/** Lower-case extension without the dot; '' for a name with no dot, as Node's `extname` gives. */
 function extensionOf(name: string): string {
-  return name.slice(name.lastIndexOf('.') + 1).toLowerCase();
+  const dot = name.lastIndexOf('.');
+  return dot <= 0 ? '' : name.slice(dot + 1).toLowerCase();
+}
+
+function isUnreadable(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'NotReadableError';
 }
 
 function wantedExtensions(filters: readonly FileFilter[]): Set<string> {
@@ -86,18 +92,31 @@ async function walkDirectory(
   filters: readonly FileFilter[],
 ): Promise<PickedFolder> {
   const wanted = wantedExtensions(filters);
-  const { maxFiles, maxDepth } = PICKED_FOLDER_LIMITS;
+  const { maxFiles, maxDepth, maxEntries } = PICKED_FOLDER_LIMITS;
   const files: PickedFile[] = [];
   let truncated = false;
-  // Only the file cap ends the walk; a folder cut by depth leaves its siblings to be listed.
+  // Only the file and entry caps end the walk; a folder cut by depth leaves its siblings listed.
   let full = false;
+  let visited = 0;
+  let skipped = 0;
 
   async function walk(dir: FileSystemDirectoryHandle, prefix: string, depth: number) {
     const entries: [string, FileSystemFileHandle | FileSystemDirectoryHandle][] = [];
-    for await (const entry of dir.entries()) entries.push(entry);
+    try {
+      for await (const entry of dir.entries()) entries.push(entry);
+    } catch (error) {
+      if (depth === 0 || !isUnreadable(error)) throw error;
+      skipped += 1;
+      return;
+    }
     entries.sort(([a], [b]) => byName(a, b));
     for (const [name, handle] of entries) {
       if (full) return;
+      if (visited >= maxEntries) {
+        truncated = full = true;
+        return;
+      }
+      visited += 1;
       if (name.startsWith('.')) continue;
       const relativePath = prefix === '' ? name : `${prefix}/${name}`;
       if (handle.kind === 'directory') {
@@ -105,13 +124,20 @@ async function walkDirectory(
         else await walk(handle, relativePath, depth + 1);
       } else if (wanted.has(extensionOf(name))) {
         if (files.length >= maxFiles) truncated = full = true;
-        else files.push(pickedFile(await handle.getFile(), relativePath));
+        else {
+          try {
+            files.push(pickedFile(await handle.getFile(), relativePath));
+          } catch (error) {
+            if (!isUnreadable(error)) throw error;
+            skipped += 1;
+          }
+        }
       }
     }
   }
 
   await walk(root, '', 0);
-  return { name: root.name, files, truncated };
+  return { name: root.name, files, truncated, skipped };
 }
 
 /** The same walk over what a `webkitdirectory` input returned: every file, already flattened. */
@@ -134,7 +160,7 @@ function folderFromInput(files: readonly File[], filters: readonly FileFilter[])
     }
     picked.push(pickedFile(file, inside.join('/')));
   }
-  return { name, files: picked, truncated };
+  return { name, files: picked, truncated, skipped: 0 };
 }
 
 export async function pickFolder(

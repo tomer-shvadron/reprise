@@ -10,7 +10,7 @@ const notUsed = () => Promise.reject(new Error('not used'));
 
 /**
  * A platform for tests. The pickers cancel and the file operations (`mkdir`, `listDir`, `move`,
- * `remove`, `readFile`, `writeFile`, `libraryDir`, `dataDir`) run over an in-memory store with the
+ * `remove`, `readFile`, `writeFile`, `writeHandle` with a path, `libraryDir`, `dataDir`) run over an in-memory store with the
  * real contract's path rules; every other call rejects unless the test overrides it. Pass
  * `createMemoryStorage().calls` in the overrides to keep a handle on the store.
  */
@@ -18,7 +18,6 @@ export function fakePlatform(overrides: Partial<Platform> = {}): Platform {
   return {
     openFile: vi.fn(() => Promise.resolve(undefined)),
     saveFile: notUsed,
-    writeHandle: notUsed,
     openFiles: vi.fn(() => Promise.resolve([])),
     openFolder: vi.fn(() => Promise.resolve(undefined)),
     ...createMemoryStorage().calls,

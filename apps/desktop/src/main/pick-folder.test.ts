@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -33,6 +33,7 @@ describe('walkFolder', () => {
     const folder = await walkFolder(base, filters);
 
     expect(folder.truncated).toBe(false);
+    expect(folder.skipped).toBe(0);
     expect(folder.files.map(({ relativePath, name, size }) => [relativePath, name, size])).toEqual([
       ['a.gp', 'a.gp', 3],
       ['b.GP5', 'b.GP5', 3],
@@ -65,11 +66,15 @@ describe('walkFolder', () => {
     put('d1', 'd2', 'deep.gp');
     put('z.gp');
 
-    const capped = await walkFolder(base, filters, { maxFiles: 2, maxDepth: 16 });
+    const capped = await walkFolder(base, filters, { maxFiles: 2, maxDepth: 16, maxEntries: 1000 });
     expect(capped.files).toHaveLength(2);
     expect(capped.truncated).toBe(true);
 
-    const shallow = await walkFolder(base, filters, { maxFiles: 100, maxDepth: 1 });
+    const shallow = await walkFolder(base, filters, {
+      maxFiles: 100,
+      maxDepth: 1,
+      maxEntries: 1000,
+    });
     expect(shallow.files.map((file) => file.relativePath)).toEqual([
       'a.gp',
       'b.gp',
@@ -78,7 +83,36 @@ describe('walkFolder', () => {
     ]);
     expect(shallow.truncated).toBe(true);
 
-    const exact = await walkFolder(base, filters, { maxFiles: 5, maxDepth: 3 });
+    const exact = await walkFolder(base, filters, { maxFiles: 5, maxDepth: 3, maxEntries: 1000 });
     expect(exact.truncated).toBe(false);
   });
+
+  it('stops after the entries it visited, matching or not, and says so', async () => {
+    for (let i = 0; i < 20; i += 1) put('junk', `n${String(i).padStart(2, '0')}.txt`);
+    put('z.gp');
+
+    const folder = await walkFolder(base, filters, { maxFiles: 100, maxDepth: 16, maxEntries: 10 });
+
+    expect(folder.truncated).toBe(true);
+    expect(folder.files).toEqual([]);
+  });
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'skips an unreadable subfolder and counts it, but rejects an unreadable root',
+    async () => {
+      put('ok.gp');
+      put('locked', 'hidden.gp');
+      const locked = join(base, 'locked');
+      chmodSync(locked, 0o000);
+      try {
+        const folder = await walkFolder(base, filters);
+        expect(folder.files.map((f) => f.relativePath)).toEqual(['ok.gp']);
+        expect(folder.skipped).toBe(1);
+        expect(folder.truncated).toBe(false);
+        await expect(walkFolder(locked, filters)).rejects.toThrow();
+      } finally {
+        chmodSync(locked, 0o755);
+      }
+    },
+  );
 });

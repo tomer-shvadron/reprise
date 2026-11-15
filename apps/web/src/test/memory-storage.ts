@@ -1,9 +1,17 @@
 import type { DirEntry, Platform } from '@/platform/platform';
-import { parseStoragePath } from '@/platform/storage-path';
+import { isStoragePath, parseStoragePath } from '@/platform/storage-path';
 
 export type MemoryStorageCalls = Pick<
   Platform,
-  'mkdir' | 'listDir' | 'move' | 'remove' | 'readFile' | 'writeFile' | 'libraryDir' | 'dataDir'
+  | 'mkdir'
+  | 'listDir'
+  | 'move'
+  | 'remove'
+  | 'readFile'
+  | 'writeFile'
+  | 'writeHandle'
+  | 'libraryDir'
+  | 'dataDir'
 >;
 
 export interface MemoryStorage {
@@ -23,8 +31,13 @@ export const MEMORY_DATA_DIR = '/data';
  * An in-memory stand-in for the platform's file operations, with the contract's rules: paths
  * start with `library` or `data`, `..` and absolute paths are rejected, `mkdir` is recursive,
  * `move` makes the target's parent and refuses an existing target. `readFile` and `writeFile`
- * take the absolute paths `libraryDir()` and `dataDir()` hand out, so lanes can exercise both
- * spellings against one store.
+ * take the same root-relative spelling, which is canonical, and still the absolute paths
+ * `libraryDir()` and `dataDir()` hand out, for the transition. As on desktop, `writeFile`
+ * creates the folders above a storage path and a path that names no root is rejected.
+ *
+ * Where file systems differ the double follows the browser: names are case-sensitive, so a
+ * case-only `move` (`library/a` to `library/A`) succeeds here and in OPFS, but is refused as
+ * "already exists" on the case-insensitive default file systems of macOS and Windows.
  */
 export function createMemoryStorage(): MemoryStorage {
   // A directory is `undefined`, a file its bytes. The two roots always exist.
@@ -54,6 +67,7 @@ export function createMemoryStorage(): MemoryStorage {
   const under = (key: string) => [...entries.keys()].filter((k) => k.startsWith(`${key}/`));
 
   const absoluteToStorage = (path: string) => {
+    if (isStoragePath(path)) return keyOf(path);
     for (const [prefix, root] of [
       [MEMORY_LIBRARY_DIR, 'library'],
       [MEMORY_DATA_DIR, 'data'],
@@ -81,6 +95,7 @@ export function createMemoryStorage(): MemoryStorage {
     listDir: (path) =>
       reply((): DirEntry[] => {
         const key = keyOf(path);
+        if (entries.get(key) !== undefined) throw new Error(`"${path}" is a file`);
         return [...entries.keys()]
           .filter((k) => k !== key && parentOf(k) === key)
           .sort()
@@ -121,6 +136,11 @@ export function createMemoryStorage(): MemoryStorage {
         makeDirs(parentOf(key));
         entries.set(key, bytes.slice());
       }),
+    // A handle in the double is the path of a storage file, as `nativePath` is in the library.
+    writeHandle: (handle, bytes) =>
+      typeof handle === 'string'
+        ? calls.writeFile(handle, bytes)
+        : Promise.reject(new Error('Not a file handle this platform issued')),
     libraryDir: () => Promise.resolve(MEMORY_LIBRARY_DIR),
     dataDir: () => Promise.resolve(MEMORY_DATA_DIR),
   };

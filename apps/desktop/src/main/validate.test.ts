@@ -72,9 +72,29 @@ describe('payload validators', () => {
 
 describe('storage and recent-list payloads', () => {
   it.each([['/etc'], ['library/../data'], ['C:/x'], [7]])('rejects the storage path %j', (path) => {
-    expect(() => parsers['storage:mkdir']([path])).toThrow();
-    expect(() => parsers['storage:remove']([path])).toThrow();
-    expect(() => parsers['storage:move'](['library/a', path])).toThrow();
+    expect(() => parsers['storage:mkdir']([path])).toThrow(PayloadError);
+    expect(() => parsers['storage:remove']([path])).toThrow(PayloadError);
+    expect(() => parsers['storage:move'](['library/a', path])).toThrow(PayloadError);
+  });
+
+  it('takes a storage path or an absolute path for file:read and file:write, nothing else', () => {
+    const bytes = new Uint8Array([1]);
+    expect(parsers['file:read'](['library/a.reprise'])).toEqual(['library/a.reprise']);
+    expect(parsers['file:write'](['data/x', bytes])).toEqual(['data/x', bytes]);
+    expect(() => parsers['file:read'](['library/../x'])).toThrow(PayloadError);
+    expect(() => parsers['file:write'](['relative/path', bytes])).toThrow(PayloadError);
+  });
+
+  it('strips control and bidi characters from recent titles, with an Untitled fallback', () => {
+    const parsed = parseRecentSongs([
+      { id: 'a', title: 'Two\tTitles\u202eevil\u2066x\u2069\u0085' },
+      { id: 'b', title: '\u202e\u0007  ' },
+    ]);
+
+    expect(parsed).toEqual([
+      { id: 'a', title: 'TwoTitlesevilx' },
+      { id: 'b', title: 'Untitled' },
+    ]);
   });
 
   it('caps the recent list and the title, and refuses a malformed item', () => {

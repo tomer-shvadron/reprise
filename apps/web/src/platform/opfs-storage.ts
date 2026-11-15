@@ -5,6 +5,13 @@ function errorName(error: unknown): string | undefined {
   return error instanceof DOMException ? error.name : undefined;
 }
 
+function isUnsupported(error: unknown): boolean {
+  return (
+    error instanceof TypeError ||
+    ['NotSupportedError', 'InvalidModificationError'].includes(errorName(error) ?? '')
+  );
+}
+
 /** The kind of the entry `name` in `dir`, or undefined when there is none. */
 async function entryKind(
   dir: FileSystemDirectoryHandle,
@@ -118,11 +125,21 @@ export function createOpfsStorage(getRoot: () => Promise<FileSystemDirectoryHand
         try {
           await handle.move(targetDir, target.name);
           return;
-        } catch {
-          // Engines differ on what `move` accepts (directories, other parents); copying always works.
+        } catch (error) {
+          // Engines differ on what `move` accepts (directories, other parents); only their
+          // "unsupported here" errors fall back to copying, anything else is a real failure.
+          if (!isUnsupported(error)) throw error;
         }
       }
-      await copyEntry(handle, targetDir, target.name);
+      // Re-checked: `move` may have failed late, or something else created the target meanwhile.
+      if (await entryKind(targetDir, target.name)) throw new Error(`"${to}" already exists`);
+      try {
+        await copyEntry(handle, targetDir, target.name);
+      } catch (error) {
+        // A partial copy would block every retry with "already exists"; the source is intact.
+        await targetDir.removeEntry(target.name, { recursive: true }).catch(() => undefined);
+        throw error;
+      }
       await sourceDir.removeEntry(source.name, { recursive: true });
     },
 

@@ -29,6 +29,7 @@ export function createElectronPlatform(bridge: RepriseBridge, win: Window = wind
         folder && {
           name: folder.name,
           truncated: folder.truncated,
+          skipped: folder.skipped,
           files: folder.files.map((info) => toPickedFile(bridge, info)),
         }
       );

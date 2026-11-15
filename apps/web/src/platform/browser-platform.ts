@@ -1,5 +1,6 @@
 import { createOpfsStorage } from './opfs-storage';
 import { pickFiles, pickFolder } from './picked-files';
+import { isStoragePath, parseStoragePath } from './storage-path';
 import type { FileFilter, OpenedFile, Platform } from './platform';
 
 /** Virtual paths inside origin-private storage; the browser has no real filesystem paths. */
@@ -102,6 +103,18 @@ function isFileHandle(value: unknown): value is FileSystemFileHandle {
   return typeof value === 'object' && value !== null && 'createWritable' in value;
 }
 
+/**
+ * Where a file path points in origin-private storage. `library/songs/a.reprise` is canonical;
+ * the absolute `/library/...` that `libraryDir()` implies is still read, for the transition.
+ */
+function storageLocation(path: string): { dirs: string[]; name: string } {
+  if (!isStoragePath(path)) return splitStoragePath(path);
+  const { root, segments } = parseStoragePath(path);
+  const name = segments.pop();
+  if (name === undefined) throw new Error(`"${root}" is a root, not a file`);
+  return { dirs: [root, ...segments], name };
+}
+
 export function requestMicrophone(win: Window = window): Promise<MediaStream> {
   return win.navigator.mediaDevices.getUserMedia({ audio: true });
 }
@@ -114,7 +127,7 @@ export function createBrowserPlatform(win: Window = window): Platform {
   async function storageFile(path: string, create: boolean): Promise<FileSystemFileHandle> {
     const saved = savedHandles.get(path);
     if (saved) return saved;
-    const { dirs, name } = splitStoragePath(path);
+    const { dirs, name } = storageLocation(path);
     const dir = await storageDir(win, dirs, create);
     return dir.getFileHandle(name, { create });
   }

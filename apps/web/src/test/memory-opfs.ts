@@ -5,6 +5,9 @@
  * engines differ, and the platform must work without it.
  */
 
+/** `true` moves natively; `false` has no `move`; the others make it reject, as engines do. */
+export type MoveMode = boolean | 'unsupported' | 'broken';
+
 class MemoryFileHandle {
   readonly kind = 'file';
   bytes: Uint8Array<ArrayBuffer> = new Uint8Array();
@@ -12,11 +15,15 @@ class MemoryFileHandle {
   constructor(
     readonly name: string,
     private readonly owner: MemoryDirectoryHandle,
-    private readonly withMove: boolean,
+    private readonly withMove: MoveMode,
   ) {
     if (withMove) {
       Object.defineProperty(this, 'move', {
         value: (destination: MemoryDirectoryHandle, name: string) => {
+          if (withMove === 'unsupported') {
+            return Promise.reject(new DOMException('no', 'NotSupportedError'));
+          }
+          if (withMove === 'broken') return Promise.reject(new Error('move failed'));
           this.owner.entries_.delete(this.name);
           destination.entries_.set(name, new MemoryFileHandle(name, destination, this.withMove));
           const moved = destination.entries_.get(name);
@@ -56,7 +63,7 @@ export class MemoryDirectoryHandle {
 
   constructor(
     readonly name = '',
-    private readonly withMove = true,
+    private readonly withMove: MoveMode = true,
   ) {}
 
   getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<MemoryDirectoryHandle> {
@@ -124,7 +131,7 @@ export class MemoryDirectoryHandle {
 /** Installs the fake as `win.navigator.storage` and returns its root; `persist` is a spy slot. */
 export function installMemoryOpfs(
   win: Window,
-  options: { withMove?: boolean; persist?: () => Promise<boolean> } = {},
+  options: { withMove?: MoveMode; persist?: () => Promise<boolean> } = {},
 ): MemoryDirectoryHandle {
   const root = new MemoryDirectoryHandle('', options.withMove ?? true);
   Object.defineProperty(win.navigator, 'storage', {

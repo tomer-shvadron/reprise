@@ -20,6 +20,7 @@ import type { FileFilter, MenuCommandId, RecentSong } from '@reprise/web';
 
 import { APP_INDEX_URL, APP_SCHEME, createAppProtocolHandler } from './app-protocol';
 import { isAppUrl } from './app-url';
+import { readPath, writePath } from './file-io';
 import { registerInvokeHandlers, sendEvent } from './ipc';
 import { menuTemplate } from './menu';
 import { openedFile } from './opened-file';
@@ -48,18 +49,17 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const libraryDir = join(app.getPath('music'), 'Reprise');
-const dataDir = app.getPath('userData');
-const windowStateFile = join(dataDir, 'window-state.json');
+// The app's own files get a folder of their own: userData is also Chromium's profile (IndexedDB,
+// Local Storage, cookies), which no renderer call may reach.
+const userDataDir = app.getPath('userData');
+const dataDir = join(userDataDir, 'files');
+const windowStateFile = join(userDataDir, 'window-state.json');
 const access = new PathAccess([libraryDir, dataDir]);
 const storageRoots: StorageRoots = { library: libraryDir, data: dataDir };
 let recentSongs: readonly RecentSong[] = [];
 
 const dialogFilters = (filters: readonly FileFilter[]): DialogFilter[] =>
   filters.map(({ name, extensions }) => ({ name, extensions: [...extensions] }));
-
-function assertAccess(path: string): void {
-  if (!access.allows(path)) throw new Error(`Access to ${path} was not granted`);
-}
 
 function isTrusted(event: IpcMainInvokeEvent): boolean {
   const frame = event.senderFrame;
@@ -96,13 +96,9 @@ registerInvokeHandlers(
       access.grant(result.filePath);
       return result.filePath;
     },
-    'file:read': async (_event, path) => {
-      assertAccess(path);
-      return readFile(path);
-    },
+    'file:read': (_event, path) => readPath(path, access, storageRoots),
     'file:write': async (_event, path, bytes) => {
-      assertAccess(path);
-      await writeFile(path, bytes);
+      await writePath(path, bytes, access, storageRoots);
       return undefined;
     },
     'file:open-many': async (event, filters) => {
@@ -113,7 +109,8 @@ registerInvokeHandlers(
       if (result.canceled) return [];
       return Promise.all(
         result.filePaths.map(async (path) => {
-          access.grant(path);
+          // Read-only: an import never writes back to the user's own files.
+          access.grantRead(path);
           return describePickedFile(path);
         }),
       );
@@ -125,8 +122,8 @@ registerInvokeHandlers(
       const [dir] = result.filePaths;
       if (result.canceled || dir === undefined) return undefined;
       const folder = await walkFolder(dir, filters);
-      // Each file is granted so the page can read it later; the folder itself is not.
-      for (const file of folder.files) access.grant(file.path);
+      // Each file is granted read-only so the page can import it later; the folder itself is not.
+      for (const file of folder.files) access.grantRead(file.path);
       return folder;
     },
     'storage:mkdir': async (_event, path) => {
@@ -286,6 +283,7 @@ function allowMicrophoneOnly(): void {
 async function start(): Promise<void> {
   await app.whenReady();
   await mkdir(libraryDir, { recursive: true });
+  await mkdir(dataDir, { recursive: true });
   protocol.handle(APP_SCHEME, createAppProtocolHandler(RENDERER_DIR));
   allowMicrophoneOnly();
   applyMenu();

@@ -1,10 +1,28 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { cp, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { listDirIn, mkdirIn, moveIn, removeIn, type StorageRoots } from './storage-fs';
+import {
+  listDirIn,
+  mkdirIn,
+  moveIn,
+  readFileIn,
+  removeIn,
+  writeFileIn,
+  type MoveOps,
+  type StorageRoots,
+} from './storage-fs';
 import { StoragePathError } from './storage-path';
 
 let base: string;
@@ -118,5 +136,81 @@ describe('storage file operations', () => {
 
     expect(readFileSync(join(outside, 'secret.txt'), 'utf8')).toBe('secret');
     await expect(listDirIn(roots, 'library')).resolves.toEqual([]);
+  });
+
+  describe('across volumes (EXDEV)', () => {
+    const exdev = Object.assign(new Error('cross-device link'), { code: 'EXDEV' });
+    const crossVolume: MoveOps = {
+      rename: () => Promise.reject(exdev),
+      cp,
+      rm,
+    };
+
+    it('copies, then removes the source', async () => {
+      put(join(roots.library, 'album', 'a.gp'), 'one');
+
+      await moveIn(roots, 'library/album', 'data/album', crossVolume);
+
+      expect(readFileSync(join(roots.data, 'album', 'a.gp'), 'utf8')).toBe('one');
+      expect(existsSync(join(roots.library, 'album'))).toBe(false);
+    });
+
+    it('removes a partial target when the copy fails, so a retry is not blocked', async () => {
+      put(join(roots.library, 'a.gp'), 'one');
+      const failingCopy: MoveOps = {
+        ...crossVolume,
+        cp: (_source, target) => {
+          writeFileSync(String(target), 'partial');
+          return Promise.reject(new Error('disk full'));
+        },
+      };
+
+      await expect(moveIn(roots, 'library/a.gp', 'data/a.gp', failingCopy)).rejects.toThrow(
+        /disk full/,
+      );
+
+      expect(existsSync(join(roots.data, 'a.gp'))).toBe(false);
+      expect(readFileSync(join(roots.library, 'a.gp'), 'utf8')).toBe('one');
+      await moveIn(roots, 'library/a.gp', 'data/a.gp', { rename, cp, rm });
+      expect(readFileSync(join(roots.data, 'a.gp'), 'utf8')).toBe('one');
+    });
+
+    it('passes force: false so a target created meanwhile is refused, never merged into', async () => {
+      put(join(roots.library, 'a.gp'), 'one');
+      let options: unknown;
+      const spy: MoveOps = {
+        ...crossVolume,
+        cp: (source, target, opts) => {
+          options = opts;
+          return cp(source, target, opts);
+        },
+      };
+
+      await moveIn(roots, 'library/a.gp', 'data/a.gp', spy);
+
+      expect(options).toMatchObject({ force: false, errorOnExist: true });
+    });
+
+    it('rethrows any other rename failure without copying', async () => {
+      put(join(roots.library, 'a.gp'), 'one');
+      const denied: MoveOps = { ...crossVolume, rename: () => Promise.reject(new Error('EACCES')) };
+
+      await expect(moveIn(roots, 'library/a.gp', 'data/a.gp', denied)).rejects.toThrow('EACCES');
+      expect(existsSync(join(roots.data, 'a.gp'))).toBe(false);
+    });
+  });
+
+  it('reads and writes a file under a root, making its folders, never through a symlink', async () => {
+    await writeFileIn(roots, 'library/a/b/c.gp', new Uint8Array([1, 2]));
+    await expect(readFileIn(roots, 'library/a/b/c.gp')).resolves.toEqual(Buffer.from([1, 2]));
+
+    const outside = join(base, 'outside');
+    mkdirSync(outside);
+    symlinkSync(outside, join(roots.library, 'link'));
+    await expect(writeFileIn(roots, 'library/link/x.gp', new Uint8Array([1]))).rejects.toThrow(
+      /symlink/,
+    );
+    await expect(readFileIn(roots, 'library')).rejects.toThrow(StoragePathError);
+    expect(existsSync(join(outside, 'x.gp'))).toBe(false);
   });
 });

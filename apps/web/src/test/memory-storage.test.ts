@@ -81,4 +81,37 @@ describe('the in-memory storage double', () => {
 
     expect(storage.bytes('data/x.json')).toEqual(bytes(5));
   });
+
+  it('uses the root-relative spelling for reads, writes and handles, creating parents on write', async () => {
+    const storage = createMemoryStorage();
+    const { calls } = storage;
+
+    await calls.writeFile('library/songs/a.reprise', bytes(1));
+    await calls.writeHandle('library/songs/a.reprise', bytes(2));
+
+    expect(storage.paths()).toEqual(['library/songs', 'library/songs/a.reprise']);
+    await expect(calls.readFile('library/songs/a.reprise')).resolves.toEqual(bytes(2));
+    await expect(calls.readFile('/library/songs/a.reprise')).resolves.toEqual(bytes(2));
+    await expect(calls.writeFile('/elsewhere/x', bytes(1))).rejects.toThrow();
+    await expect(calls.writeFile('library', bytes(1))).rejects.toThrow();
+    await expect(calls.writeHandle({}, bytes(1))).rejects.toThrow(/Not a file handle/);
+  });
+
+  it('rejects listDir on a file, and refuses Windows-hostile names', async () => {
+    const { calls } = createMemoryStorage();
+    await calls.writeFile('library/a.gp', bytes(1));
+
+    await expect(calls.listDir('library/a.gp')).rejects.toThrow(/is a file/);
+    await expect(calls.mkdir('library/CON')).rejects.toThrow();
+    await expect(calls.mkdir('library/a.')).rejects.toThrow();
+  });
+
+  it('treats names as case-sensitive, so a case-only move succeeds as in OPFS', async () => {
+    const storage = createMemoryStorage();
+    await storage.calls.writeFile('library/a.gp', bytes(1));
+
+    await storage.calls.move('library/a.gp', 'library/A.gp');
+
+    expect(storage.paths()).toEqual(['library/A.gp']);
+  });
 });

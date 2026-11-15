@@ -9,7 +9,7 @@ import {
 import { createBrowserPlatform } from './browser-platform';
 import { parseStoragePath } from './storage-path';
 
-const text = (value: string) => new TextEncoder().encode(value);
+const text = (value: string) => Uint8Array.from(new TextEncoder().encode(value));
 
 afterEach(() => {
   removeMemoryOpfs(window);
@@ -115,6 +115,22 @@ describe('browser storage paths', () => {
     ['library/a/'],
     ['other/a'],
     [''],
+    ['library/songs.'],
+    ['library/a '],
+    ['library/...'],
+    ['library/CON'],
+    ['data/nul.txt'],
+    ['library/lpt1.gp'],
+    ['library/a<b'],
+    ['library/a|b'],
+    ['library/a?b'],
+    ['library/a*b'],
+    ['library/a:b'],
+    ['library/a\tb'],
+    ['library/a\0b'],
+    [`library/${'x'.repeat(256)}`],
+    ['Library/a'],
+    ['library/.'],
   ])('refuses %j in every storage call without touching storage', async (path) => {
     const root = installMemoryOpfs(window);
     const platform = createBrowserPlatform();
@@ -156,5 +172,54 @@ describe('storage persistence', () => {
     removeMemoryOpfs(window);
     installMemoryOpfs(window);
     await expect(createBrowserPlatform().mkdir('library/a')).resolves.toBeUndefined();
+  });
+});
+
+describe('browser file paths', () => {
+  it('reads, writes and writes through a handle by the root-relative path, making folders', async () => {
+    const root = installMemoryOpfs(window);
+    const platform = createBrowserPlatform();
+
+    await platform.writeFile('library/songs/deep/a.reprise', text('one'));
+    await platform.writeHandle('library/songs/deep/a.reprise', text('two'));
+
+    expect(root.tree()).toEqual([
+      'library/',
+      'library/songs/',
+      'library/songs/deep/',
+      'library/songs/deep/a.reprise',
+    ]);
+    await expect(platform.readFile('library/songs/deep/a.reprise')).resolves.toEqual(text('two'));
+    // the absolute spelling libraryDir() implies still reaches the same file
+    await expect(platform.readFile('/library/songs/deep/a.reprise')).resolves.toEqual(text('two'));
+  });
+
+  it('refuses a root as a file and an escaping path', async () => {
+    installMemoryOpfs(window);
+    const platform = createBrowserPlatform();
+
+    await expect(platform.writeFile('library', text('x'))).rejects.toThrow(/root/);
+    await expect(platform.readFile('library/../data/x')).rejects.toThrow();
+  });
+});
+
+describe('move when FileSystemHandle.move is unreliable', () => {
+  it('falls back to a copy when the engine says move is unsupported', async () => {
+    const root = installMemoryOpfs(window, { withMove: 'unsupported' });
+    await root.put('library/a.gp', text('one'));
+
+    await createBrowserPlatform().move('library/a.gp', 'data/a.gp');
+
+    expect(root.tree()).toEqual(['data/', 'data/a.gp', 'library/']);
+  });
+
+  it('does not copy over any other move failure', async () => {
+    const root = installMemoryOpfs(window, { withMove: 'broken' });
+    await root.put('library/a.gp', text('one'));
+
+    await expect(createBrowserPlatform().move('library/a.gp', 'data/a.gp')).rejects.toThrow(
+      'move failed',
+    );
+    expect(root.tree()).toEqual(['data/', 'library/', 'library/a.gp']);
   });
 });

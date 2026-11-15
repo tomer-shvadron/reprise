@@ -46,9 +46,12 @@ export interface Platform {
    */
   openFolder(filters: readonly FileFilter[]): Promise<PickedFolder | undefined>;
   /**
-   * The four storage calls below take a path relative to `libraryDir()` or `dataDir()`, with the
-   * root named by its first segment: `library/songs/a.reprise`, `data/trash`. Absolute paths, `..`
-   * and symlinks are rejected; on desktop main checks them, never the renderer.
+   * Paths in the app's own roots are root-relative, with the root named by the first segment:
+   * `library/songs/a.reprise`, `data/trash`. That spelling is canonical: the four storage calls
+   * below take only it, and `readFile`, `writeFile` and a string `writeHandle` take it too (store
+   * it, not an absolute path). Absolute paths, `..`, symlinks and names Windows tools cannot open
+   * are rejected; on desktop main checks them, never the renderer. `libraryDir()` and
+   * `dataDir()` are for display; an absolute path is only for a file the user picked or saved.
    */
   /** Recursive and idempotent. */
   mkdir(path: string): Promise<void>;

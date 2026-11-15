@@ -4,6 +4,14 @@ import { PICKED_FOLDER_LIMITS } from './bridge';
 import { createBrowserPlatform } from './browser-platform';
 import { MemoryDirectoryHandle } from '@/test/memory-opfs';
 
+/** A folder the browser refuses to list, as for a permission the user did not give. */
+class UnreadableDirectory extends MemoryDirectoryHandle {
+  override async *entries() {
+    await Promise.reject(new DOMException('denied', 'NotReadableError'));
+    yield* [];
+  }
+}
+
 const filters = [{ name: 'Guitar Pro', extensions: ['gp', 'gp5'] }];
 
 afterEach(() => {
@@ -94,6 +102,7 @@ describe('openFolder with the directory picker', () => {
     const folder = await createBrowserPlatform().openFolder(filters);
 
     expect(folder).toMatchObject({ name: 'tabs', truncated: false });
+    expect(folder?.skipped).toBe(0);
     expect(folder?.files.map((f) => [f.relativePath, f.name, f.size])).toEqual([
       ['a.gp', 'a.gp', 2],
       ['b.GP5', 'b.GP5', 1],
@@ -122,6 +131,29 @@ describe('openFolder with the directory picker', () => {
 
     expect(folder?.truncated).toBe(true);
     expect(folder?.files.map((f) => f.relativePath)).toEqual(['top.gp']);
+  });
+});
+
+describe('openFolder with an unreadable subfolder or a name without a dot', () => {
+  it('skips and counts an unreadable subfolder, and matches an extension only after a dot', async () => {
+    const root = new MemoryDirectoryHandle('tabs');
+    await root.put('ok.gp', new Uint8Array([1]));
+    await root.put('gp5', new Uint8Array([1]));
+    root.entries_.set('locked', new UnreadableDirectory('locked'));
+    window.showDirectoryPicker = () =>
+      Promise.resolve(root as unknown as FileSystemDirectoryHandle);
+
+    const folder = await createBrowserPlatform().openFolder(filters);
+
+    expect(folder?.files.map((f) => f.relativePath)).toEqual(['ok.gp']);
+    expect(folder?.skipped).toBe(1);
+  });
+
+  it('rejects when the picked folder itself cannot be listed', async () => {
+    window.showDirectoryPicker = () =>
+      Promise.resolve(new UnreadableDirectory('tabs') as unknown as FileSystemDirectoryHandle);
+
+    await expect(createBrowserPlatform().openFolder(filters)).rejects.toThrow();
   });
 });
 

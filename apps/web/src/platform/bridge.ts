@@ -36,10 +36,17 @@ export interface PickedFolder {
   files: PickedFile[];
   /** True when the walk stopped at `PICKED_FOLDER_LIMITS`: the folder holds more than `files`. */
   truncated: boolean;
+  /** Folders below the picked one that could not be read (permissions) and were left out. */
+  skipped: number;
 }
 
 /** What a folder walk stops at, so a pick of a drive root cannot hang the app or flood IPC. */
-export const PICKED_FOLDER_LIMITS = { maxFiles: 10_000, maxDepth: 16 } as const;
+export const PICKED_FOLDER_LIMITS = {
+  maxFiles: 10_000,
+  maxDepth: 16,
+  /** Every entry looked at, matching or not, so a pick of a home folder ends in bounded time. */
+  maxEntries: 100_000,
+} as const;
 
 /**
  * The first segment of a path given to `mkdir`, `listDir`, `move` and `remove`: it names the
@@ -74,6 +81,7 @@ export interface PickedFolderInfo {
   name: string;
   files: PickedFileInfo[];
   truncated: boolean;
+  skipped: number;
 }
 
 /** The paper the system print dialog opens on; the browser reads the print's `@page` size instead. */

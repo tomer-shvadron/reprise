@@ -1,4 +1,4 @@
-import { cp, lstat, mkdir, readdir, rename, rm } from 'node:fs/promises';
+import { cp, lstat, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, sep } from 'node:path';
 
 import type { DirEntry, StorageRoot } from '@reprise/web';
@@ -73,7 +73,21 @@ export async function listDirIn(roots: StorageRoots, path: unknown): Promise<Dir
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
-export async function moveIn(roots: StorageRoots, from: unknown, to: unknown): Promise<void> {
+/** The three fs calls `moveIn` uses, so a test can make `rename` fail the way a second volume does. */
+export interface MoveOps {
+  rename: typeof rename;
+  cp: typeof cp;
+  rm: typeof rm;
+}
+
+const realMoveOps: MoveOps = { rename, cp, rm };
+
+export async function moveIn(
+  roots: StorageRoots,
+  from: unknown,
+  to: unknown,
+  ops: MoveOps = realMoveOps,
+): Promise<void> {
   const source = await resolveSafe(roots, from, { allowRoot: false });
   const target = await resolveSafe(roots, to, { allowRoot: false });
   if (!(await exists(source))) throw new Error(`Nothing to move at "${String(from)}"`);
@@ -83,15 +97,45 @@ export async function moveIn(roots: StorageRoots, from: unknown, to: unknown): P
   if (await exists(target)) throw new Error(`"${String(to)}" already exists`);
   await mkdir(dirname(target), { recursive: true });
   try {
-    await rename(source, target);
+    await ops.rename(source, target);
   } catch (error) {
     if (codeOf(error) !== 'EXDEV') throw error;
-    // The roots can sit on different volumes, where rename is refused.
-    await cp(source, target, { recursive: true, errorOnExist: true, verbatimSymlinks: true });
-    await rm(source, { recursive: true });
+    // The roots can sit on different volumes, where rename is refused. `force: false` is what
+    // makes `errorOnExist` bite, so a target that appeared since the check is never merged into.
+    try {
+      await ops.cp(source, target, {
+        recursive: true,
+        force: false,
+        errorOnExist: true,
+        verbatimSymlinks: true,
+      });
+    } catch (copyError) {
+      // A partial target would block every retry with "already exists"; the source is intact.
+      await ops.rm(target, { recursive: true, force: true }).catch(() => undefined);
+      throw copyError;
+    }
+    // If this fails both copies exist and the call rejects: nothing is lost, and the caller's
+    // cleanup finds a rejected move whose target exists.
+    await ops.rm(source, { recursive: true });
   }
 }
 
 export async function removeIn(roots: StorageRoots, path: unknown): Promise<void> {
   await rm(await resolveSafe(roots, path, { allowRoot: false }), { recursive: true, force: true });
+}
+
+/** The bytes of a file under a root; never follows a symlink, and a root is not a file. */
+export async function readFileIn(roots: StorageRoots, path: unknown): Promise<Uint8Array> {
+  return readFile(await resolveSafe(roots, path, { allowRoot: false }));
+}
+
+/** Writes a file under a root, making the folders above it, as the browser and the test double do. */
+export async function writeFileIn(
+  roots: StorageRoots,
+  path: unknown,
+  bytes: Uint8Array,
+): Promise<void> {
+  const target = await resolveSafe(roots, path, { allowRoot: false });
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, bytes);
 }

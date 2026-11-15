@@ -2,11 +2,16 @@ import { isAbsolute } from 'node:path';
 
 import type { FileFilter, InvokeArgs, InvokeChannel, PrintOptions, RecentSong } from '@reprise/web';
 
-import { parseStoragePath } from './storage-path';
+import { isStoragePath, parseStoragePath, StoragePathError } from './storage-path';
 
 /** The path as sent once it has passed the syntax check; main resolves it against a root. */
 const parseStoragePathText = (value: unknown): string => {
-  parseStoragePath(value);
+  try {
+    parseStoragePath(value);
+  } catch (error) {
+    if (error instanceof StoragePathError) throw new PayloadError(error.message);
+    throw error;
+  }
   return String(value);
 };
 
@@ -50,9 +55,11 @@ export function parseName(value: unknown): string {
   return value;
 }
 
+/** A storage path (`library/...`, `data/...`) or an absolute path of a picked or saved file. */
 export function parsePath(value: unknown): string {
+  if (typeof value === 'string' && isStoragePath(value)) return parseStoragePathText(value);
   if (typeof value !== 'string' || value.includes('\0') || !isAbsolute(value)) {
-    throw new PayloadError('Expected an absolute path');
+    throw new PayloadError('Expected a storage path or an absolute path');
   }
   return value;
 }
@@ -91,6 +98,30 @@ export function parsePrintOptions(value: unknown): PrintOptions {
   return { pageSize };
 }
 
+// C0 and C1 controls (a tab starts accelerator text in a Windows menu label), the line and
+// paragraph separators, and the bidi embeddings, overrides and isolates (one entry can be made
+// to read like another).
+function isUnsafeTitleChar(code: number): boolean {
+  return (
+    code < 0x20 ||
+    (code >= 0x7f && code <= 0x9f) ||
+    code === 0x2028 ||
+    code === 0x2029 ||
+    (code >= 0x202a && code <= 0x202e) ||
+    (code >= 0x2066 && code <= 0x2069)
+  );
+}
+
+function cleanTitle(title: string): string {
+  let kept = '';
+  // Every unsafe character is in the BMP, so UTF-16 units are the right grain.
+  for (let i = 0; i < title.length; i += 1) {
+    if (!isUnsafeTitleChar(title.charCodeAt(i))) kept += title.charAt(i);
+  }
+  const clean = kept.trim().slice(0, MAX_RECENT_TITLE_LENGTH);
+  return clean === '' ? 'Untitled' : clean;
+}
+
 /** At most ten items; an id is opaque so an overlong one is refused, a title is cut. */
 export function parseRecentSongs(value: unknown): RecentSong[] {
   if (!Array.isArray(value)) throw new PayloadError('Expected a list of recent songs');
@@ -105,7 +136,7 @@ export function parseRecentSongs(value: unknown): RecentSong[] {
     ) {
       throw new PayloadError('Expected a recent song with an id and a title');
     }
-    return { id, title: title.slice(0, MAX_RECENT_TITLE_LENGTH) };
+    return { id, title: cleanTitle(title) };
   });
 }
 
