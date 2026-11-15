@@ -165,8 +165,14 @@ export function SpeedTrainerPanel() {
             : 'Select bars and loop them to train'}
         </p>
         {!loop && score && (
-          <Button variant="outline" size="sm" className="w-fit" onClick={toggleLoop.run}>
-            Loop selected bars
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-fit"
+            title="Loops the selected bars, else the clicked bar while the playhead is in it, else the whole song"
+            onClick={toggleLoop.run}
+          >
+            Loop selection
           </Button>
         )}
         {loop && (
