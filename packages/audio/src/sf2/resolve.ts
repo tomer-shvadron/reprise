@@ -107,6 +107,13 @@ const MIN_FILTER_CENTS = 1500;
  */
 const BUTTERWORTH_Q_DB = -3.0103;
 
+/**
+ * FluidSynth and EMU hardware scale `initialAttenuation` by 0.4 on load; soundfonts such as
+ * GeneralUser GS are voiced for it and play 0.6 of their attenuation too quiet without it.
+ */
+const EMU_ATTENUATION_FACTOR = 0.4;
+const MAX_ATTENUATION_DB = 144;
+
 /** Absolute cents, A4 = 6900, to hertz. */
 function centsToHz(cents: number): number {
   return 440 * 2 ** ((cents - 6900) / 1200);
@@ -504,7 +511,12 @@ function buildRegions(
   const lowpass = filter(generators);
   // SF2 8.1.3 #9: the resonance lowers the DC gain by half of it, as FluidSynth's 1 / sqrt(Q) does.
   const resonanceCut = lowpass ? value(generators, Gen.initialFilterQ) / 20 : 0;
-  const attenuation = value(generators, Gen.initialAttenuation) / 10 + resonanceCut;
+  // FluidSynth scales the raw summed generator and clips it to 0..1440 cB once, last; `value`
+  // would clamp before the factor. The resonance cut is a filter loss, so it stays outside.
+  const rawAttenuation = generators.get(Gen.initialAttenuation) ?? 0;
+  const attenuation =
+    Math.min(MAX_ATTENUATION_DB, Math.max(0, (EMU_ATTENUATION_FACTOR * rawAttenuation) / 10)) +
+    resonanceCut;
   const pan = zone.samples.length === 1 ? value(generators, Gen.pan) / 500 : 0;
   const rate = zone.sample.sampleRate;
   const exclusiveClass = value(generators, Gen.exclusiveClass);

@@ -76,6 +76,8 @@ export interface RenderOptions {
    */
   tap?: 'master' | 'strips';
   metronome?: boolean;
+  /** The master bus gain, 0 to 1; 1 by default. */
+  masterVolume?: number;
   /** Calls into the engine at a context time, run at the first suspension after it. */
   actions?: readonly { at: number; run: (engine: Transport) => void }[];
 }
@@ -210,6 +212,7 @@ export async function renderScore(score: Score, options: RenderOptions): Promise
     });
     return handle;
   };
+  if (options.masterVolume !== undefined) sampler.master.gain = options.masterVolume;
   if (options.tap === 'strips') {
     sampler.master.input.disconnect();
     sampler.master.input.connect(context.destination);
