@@ -726,6 +726,17 @@ loadSfz(path, read, { packId, layer? }); // the parser alone: { regions, layers,
   anything else reject `fetch`, which the manager and sampler turn into a skipped note and
   `onMiss`. The decoder is injectable (`SfzDecoder`) for tests. `decodeAudioData` detaches its
   input, so the pack decodes a copy of the bytes.
+- **Caps on untrusted files** (`SAMPLE_LIMITS` in `sfz/decode.ts`), because a FLAC of constant
+  subframes is about 12 bytes per 65,535 frames and a 100 KB file can decode to gigabytes:
+  `fileBytes` 128 MiB per sample file, checked from `files.size` before the read (when known) and
+  from `bytes.length` after it; `decodedBytes` 256 MiB of Float32 per file, checked against the
+  size the header declares (WAV `data` chunk, capped by the bytes held; FLAC STREAMINFO total
+  samples times channels, where a total of 0 is refused since nothing then bounds it) before
+  `decodeAudioData`, and against the decoded buffer after. Ogg declares nothing in its first page,
+  so the file cap and the decoded check are its bound, the latter after the allocation. A refused
+  file rejects `fetch` like any other failure. The WAV format tag must be PCM, float or
+  extensible: ADPCM and MP3-in-WAV are refused, as Chromium does not decode them. The per-rate
+  offline contexts are an LRU of four.
 - **Memory.** The manager copies a decoded file once into a buffer of its own, so the transient
   `AudioBuffer` is one sample, not the budget. A decoded file is `channels x frames x 4` bytes, which
   is what `byteLength` returns after the first fetch. Before it the estimate is `files.size` times
@@ -757,7 +768,7 @@ skipped `<curve>`, `<effect>`, `<midi>`, `<sample>`, `invalid` values that did n
 is skipped, the region kept), `clamped` values pulled into range, `dropped` regions left out by
 reason, plus `embeddedLoop`, `unresolvedIncludes`, `escapedPaths`, `limits` and `notes`. A pack
 passes `isClean` when `invalid`, `unresolvedIncludes`, `escapedPaths` and `limits` are empty;
-`unknown` and `unsupported` are allowed. Only an unreadable root file throws (`SfzParseError`).
+`unknown`, `unsupported` and `unreachable` are allowed. Only an unreadable root file throws (`SfzParseError`).
 
 **`amp_veltrack`.** The voice applies `velocityGain(v) ** velocityTrack`, one reading of
 sfzformat.com, where sfizz blends linearly in amplitude. They differ most at low velocity with a
@@ -766,7 +777,9 @@ has listened to a real pack against both yet; the choice is open and a change is
 
 **Known gaps.** Release triggers (Salamander's release samples), loops embedded in a WAV or FLAC
 (`smpl` and cue chunks), filters and filter envelopes, LFOs, crossfades, controllers, and
-`seq_position` outside `seq_length` (an authoring error some packs ship, counted in `invalid`). Paths
+`seq_position` outside `seq_length` (an authoring error some packs ship: the region is kept with
+its impossible position so it never plays, as in sfizz, counted in `report.unreachable`, and
+`isClean` allows it). Paths
 are case-sensitive, so a pack made on Windows with mismatched case breaks on Linux; WP-091 can build
 a case-insensitive index from `listDir`.
 

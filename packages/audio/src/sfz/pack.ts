@@ -1,7 +1,7 @@
 import { RegionMap } from '../sampler/region-map';
 import type { SampleRef } from '../sampler/region-map';
 import type { InstrumentId, RawSample, SampleProvider } from '../samples/types';
-import { decodeAtNativeRate, sniffSampleHeader } from './decode';
+import { SAMPLE_LIMITS, decodeAtNativeRate, sniffSampleHeader } from './decode';
 import type { SfzDecoder } from './decode';
 import { loadSfz } from './load';
 import { resolvePath } from './paths';
@@ -38,6 +38,14 @@ const EXPANSION: Readonly<Record<string, number>> = {
   ogg: 10,
   opus: 10,
 };
+
+function tooBig(ref: SampleRef, what: string, bytes: number): Error {
+  return new RangeError(
+    `Sample ${ref}: ${what} of ${String(bytes)} bytes is over the cap of ${String(
+      what === 'file' ? SAMPLE_LIMITS.fileBytes : SAMPLE_LIMITS.decodedBytes,
+    )}`,
+  );
+}
 
 function extension(path: string): string {
   const dot = path.lastIndexOf('.');
@@ -107,13 +115,27 @@ export class SfzPack implements SampleProvider {
     // Only a ref an instrument issued is read: a ref is data from the manager, and the pack is
     // untrusted, so nothing else maps to a file.
     if (path === undefined || !this.#owners.has(ref)) throw new Error(`Unknown sample ${ref}`);
+    // Pack files are untrusted: bound what one can allocate, before the read, before the decode
+    // (by the size its header declares) and after it.
+    const size = this.#files.size?.(path);
+    if (size !== undefined && size > SAMPLE_LIMITS.fileBytes) throw tooBig(ref, 'file', size);
     const bytes = await this.#files.read(path);
+    if (bytes.length > SAMPLE_LIMITS.fileBytes) throw tooBig(ref, 'file', bytes.length);
     const header = sniffSampleHeader(bytes);
+    if (header.frames === undefined && header.format === 'flac') {
+      throw new Error(`Sample ${ref} declares no length, so its decoded size cannot be bounded`);
+    }
+    if (header.frames !== undefined) {
+      const declared = header.frames * header.channels * Float32Array.BYTES_PER_ELEMENT;
+      if (declared > SAMPLE_LIMITS.decodedBytes)
+        throw tooBig(ref, 'declared decoded size', declared);
+    }
     const buffer = await this.#decode(bytes, header.sampleRate);
     const channels = Array.from({ length: buffer.numberOfChannels }, (_, channel) =>
       buffer.getChannelData(channel),
     );
     const byteLength = buffer.numberOfChannels * buffer.length * Float32Array.BYTES_PER_ELEMENT;
+    if (byteLength > SAMPLE_LIMITS.decodedBytes) throw tooBig(ref, 'decoded size', byteLength);
     this.#decoded.set(ref, byteLength);
     return { sampleRate: buffer.sampleRate, channels, byteLength };
   }

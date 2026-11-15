@@ -9,5 +9,5 @@ export type { SfzReport } from './report';
 export type { SfzLayer } from './resolve';
 export { SfzPack } from './pack';
 export type { SfzFiles, SfzInstrument, SfzPackOptions } from './pack';
-export { decodeAtNativeRate, sniffSampleHeader } from './decode';
+export { SAMPLE_LIMITS, decodeAtNativeRate, sniffSampleHeader } from './decode';
 export type { DecodedAudio, SampleFormat, SampleHeader, SfzDecoder } from './decode';

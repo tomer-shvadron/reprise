@@ -49,6 +49,13 @@ describe('decodeAtNativeRate', () => {
     });
   }
 
+  it('keeps the native rate across more distinct rates than the context cache holds', async () => {
+    for (const rate of [8000, 11_025, 16_000, 22_050, 32_000, 44_100, 8000]) {
+      const bytes = encodeWav([sine(440, rate, 0.02)], rate);
+      expect((await decodeAtNativeRate(bytes, rate)).sampleRate).toBe(rate);
+    }
+  });
+
   it('leaves the caller bytes usable, since decodeAudioData detaches its input', async () => {
     const bytes = encodeWav([sine(440, 22_050, 0.05)], 22_050);
     await decodeAtNativeRate(bytes, 22_050);
