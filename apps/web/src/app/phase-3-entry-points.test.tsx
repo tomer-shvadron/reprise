@@ -50,14 +50,21 @@ describe('phase 3 entry points', () => {
     ).toBeInTheDocument();
   });
 
-  it.each([
-    ['trainer.tuner', 'WP-071'],
-    ['trainer.fretboard', 'WP-074'],
-  ])('%s opens the right panel on its placeholder', (id, workPackage) => {
+  it('trainer.tuner opens the right panel on its placeholder', () => {
     const { run } = renderApp();
     expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
-    run(id);
-    expect(screen.getByRole('complementary', { name: 'Panel' })).toHaveTextContent(workPackage);
+    run('trainer.tuner');
+    expect(screen.getByRole('complementary', { name: 'Panel' })).toHaveTextContent('WP-071');
+  });
+
+  it('trainer.fretboard opens the bottom region on its placeholder and toggles it closed', () => {
+    const { run } = renderApp();
+    expect(screen.queryByRole('region', { name: 'Bottom panel' })).not.toBeInTheDocument();
+    run('trainer.fretboard');
+    expect(screen.getByRole('region', { name: 'Bottom panel' })).toHaveTextContent('WP-074');
+    expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
+    run('trainer.fretboard');
+    expect(screen.queryByRole('region', { name: 'Bottom panel' })).not.toBeInTheDocument();
   });
 
   it('trainer.metronome opens the metronome with no song open', () => {
@@ -72,11 +79,17 @@ describe('phase 3 entry points', () => {
 
   it('switches the right panel back to the mixer', () => {
     const { services, run } = renderApp();
-    run('trainer.tuner');
+    run('trainer.speedTrainer');
+    const panel = screen.getByRole('complementary', { name: 'Panel' });
+    expect(within(panel).getByRole('region', { name: 'Speed trainer' })).toBeInTheDocument();
     act(() => {
       services.ui.getState().showPanelView('mixer');
     });
-    expect(screen.getByRole('complementary', { name: 'Panel' })).not.toHaveTextContent('WP-071');
+    expect(
+      within(screen.getByRole('complementary', { name: 'Panel' })).queryByRole('region', {
+        name: 'Speed trainer',
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it('lists the commands in the palette registry', () => {
@@ -126,10 +139,14 @@ describe('phase 3 entry points', () => {
     it('F8 shows the mixer when the panel holds a trainer view, then closes it', async () => {
       const { services, run } = renderApp();
       const user = userEvent.setup();
-      run('trainer.tuner');
+      run('trainer.speedTrainer');
       await user.keyboard('{F8}');
       expect(services.ui.getState().rightPanelView).toBe('mixer');
-      expect(screen.getByRole('complementary', { name: 'Panel' })).not.toHaveTextContent('WP-071');
+      expect(
+        within(screen.getByRole('complementary', { name: 'Panel' })).queryByRole('region', {
+          name: 'Speed trainer',
+        }),
+      ).not.toBeInTheDocument();
       await user.keyboard('{F8}');
       expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
     });

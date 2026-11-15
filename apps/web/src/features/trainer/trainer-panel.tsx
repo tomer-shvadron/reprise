@@ -1,10 +1,11 @@
 import { Placeholder } from '@/components/placeholder';
-import type { PanelView } from '@/state/ui';
+import type { BottomPanelView, PanelView } from '@/state/ui';
 
 import { MetronomePanel } from './metronome/metronome-panel';
 import { SpeedTrainerPanel } from './speed-trainer/speed-trainer-panel';
 
-export type TrainerView = Exclude<PanelView, 'mixer'>;
+/** The right panel's trainer views and the bottom region's. */
+export type TrainerView = Exclude<PanelView, 'mixer'> | BottomPanelView;
 
 const STUBS: Record<
   Exclude<TrainerView, 'speedTrainer' | 'metronome'>,

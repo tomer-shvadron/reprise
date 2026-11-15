@@ -1,7 +1,14 @@
 import type { LayoutOptions, PAGE_SIZES } from '@reprise/layout';
 import { create } from 'zustand';
 
+import {
+  BOTTOM_PANEL_HEIGHT,
+  readStoredBottomPanelHeight,
+  writeStoredBottomPanelHeight,
+} from './bottom-panel-storage';
 import { initialTheme, writeStoredTheme, type Theme } from './theme';
+
+export { BOTTOM_PANEL_HEIGHT };
 
 export type PanelId = 'sidebar' | 'rightPanel';
 
@@ -19,7 +26,10 @@ export const ZOOM = { min: 0.5, max: 3, default: 1 } as const;
 export type ScreenId = 'player' | 'library' | 'sounds';
 
 /** What the right panel shows; the mixer is the default and the trainer tools take turns with it. */
-export type PanelView = 'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'fretboard';
+export type PanelView = 'mixer' | 'speedTrainer' | 'tuner' | 'metronome';
+
+/** What the bottom region shows, one view at a time; the live fretboard (WP-074) is the first. */
+export type BottomPanelView = 'fretboard';
 
 /** The score's view mode and paper; what layout reads from the ui. */
 export interface UiView {
@@ -40,6 +50,9 @@ export interface UiState {
   screen: ScreenId;
   rightPanelView: PanelView;
   panelWidths: Record<PanelId, number>;
+  /** The bottom region (#206): above the transport, below the score. Only the height persists. */
+  bottomPanel: { open: boolean; view: BottomPanelView };
+  bottomPanelHeight: number;
   zoom: number;
   paletteOpen: boolean;
   follow: UiFollow;
@@ -53,6 +66,14 @@ export interface UiState {
   /** Shows `view` in the right panel and opens the panel. */
   showPanelView: (view: PanelView) => void;
   setPanelWidth: (panel: PanelId, width: number) => void;
+  /** Shows `view` in the bottom region and opens it. */
+  showBottomPanelView: (view: BottomPanelView) => void;
+  /** Closes the bottom region when it shows `view`; otherwise shows `view` there, opening it. */
+  toggleBottomPanelView: (view: BottomPanelView) => void;
+  /** Collapses or expands the bottom region, keeping its view. */
+  setBottomPanelOpen: (open: boolean) => void;
+  /** Clamped to `BOTTOM_PANEL_HEIGHT` and stored for the next session. */
+  setBottomPanelHeight: (height: number) => void;
   setZoom: (zoom: number) => void;
   setPaletteOpen: (open: boolean) => void;
   setViewMode: (mode: UiView['mode']) => void;
@@ -76,6 +97,8 @@ export function createUiStore(theme: Theme = initialTheme()) {
       sidebar: PANEL_WIDTH.sidebar.default,
       rightPanel: PANEL_WIDTH.rightPanel.default,
     },
+    bottomPanel: { open: false, view: 'fretboard' },
+    bottomPanelHeight: readStoredBottomPanelHeight(),
     zoom: ZOOM.default,
     paletteOpen: false,
     follow: { on: true, request: 0 },
@@ -109,6 +132,25 @@ export function createUiStore(theme: Theme = initialTheme()) {
     setPanelWidth: (panel, width) => {
       const { min, max } = PANEL_WIDTH[panel];
       set((state) => ({ panelWidths: { ...state.panelWidths, [panel]: clamp(width, min, max) } }));
+    },
+    showBottomPanelView: (view) => {
+      set({ bottomPanel: { open: true, view } });
+    },
+    toggleBottomPanelView: (view) => {
+      const { open, view: shown } = get().bottomPanel;
+      // `shown === view` is trivially true while `fretboard` is the only view; it matters with a second.
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      if (open && shown === view) get().setBottomPanelOpen(false);
+      else get().showBottomPanelView(view);
+    },
+    setBottomPanelOpen: (open) => {
+      set((state) => ({ bottomPanel: { ...state.bottomPanel, open } }));
+    },
+    setBottomPanelHeight: (height) => {
+      const { min, max } = BOTTOM_PANEL_HEIGHT;
+      const next = clamp(Math.round(height), min, max);
+      writeStoredBottomPanelHeight(next);
+      set({ bottomPanelHeight: next });
     },
     setZoom: (zoom) => {
       set({ zoom: clamp(zoom, ZOOM.min, ZOOM.max) });

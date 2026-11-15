@@ -74,7 +74,7 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Show tuner | Trainer | Global | — | — |
 | Show metronome | Trainer | Global | — | — |
 | Start or stop standalone metronome | Trainer | Global | ⌥B | Alt+B |
-| Show fretboard | Trainer | Global | — | — |
+| Toggle fretboard | Trainer | Global | — | — |
 | Toggle edit mode | Editor | Global | — | — |
 | Cursor to previous beat | Editor | Editing | ← | Left |
 | Cursor to next beat | Editor | Editing | → | Right |

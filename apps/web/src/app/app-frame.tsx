@@ -1,11 +1,11 @@
-import { PanelLeftIcon, PanelRightIcon } from 'lucide-react';
+import { ChevronDownIcon, PanelLeftIcon, PanelRightIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { PANEL_WIDTH, type PanelId, type UiStore } from '@/state/ui';
+import { BOTTOM_PANEL_HEIGHT, PANEL_WIDTH, type PanelId, type UiStore } from '@/state/ui';
 
 import { ResizeHandle } from './resize-handle';
 
@@ -21,6 +21,8 @@ interface AppFrameProps {
   panel?: ReactNode;
   /** A full-width strip above the panels, such as the library's "not in your library" banner. */
   banner?: ReactNode;
+  /** The bottom region's content (the live fretboard); the region shows while `ui.bottomPanel.open`. */
+  bottom?: ReactNode;
 }
 
 function PanelToggle({ ui, panel, label }: { ui: UiStore; panel: PanelId; label: string }) {
@@ -54,11 +56,15 @@ function PanelToggle({ ui, panel, label }: { ui: UiStore; panel: PanelId; label:
   );
 }
 
-export function AppFrame({ ui, score, transport, sidebar, panel, banner }: AppFrameProps) {
+export function AppFrame({ ui, score, transport, sidebar, panel, banner, bottom }: AppFrameProps) {
   const panels = useStore(ui, (state) => state.panels);
   const widths = useStore(ui, (state) => state.panelWidths);
   const zoom = useStore(ui, (state) => state.zoom);
   const setPanelWidth = useStore(ui, (state) => state.setPanelWidth);
+  const bottomOpen = useStore(ui, (state) => state.bottomPanel.open);
+  const bottomHeight = useStore(ui, (state) => state.bottomPanelHeight);
+  const setBottomPanelHeight = useStore(ui, (state) => state.setBottomPanelHeight);
+  const setBottomPanelOpen = useStore(ui, (state) => state.setBottomPanelOpen);
 
   return (
     <div className="flex h-full flex-col">
@@ -123,6 +129,38 @@ export function AppFrame({ ui, score, transport, sidebar, panel, banner }: AppFr
           </>
         )}
       </div>
+
+      {bottomOpen && (
+        <>
+          <ResizeHandle
+            label="Resize bottom panel"
+            axis="y"
+            value={bottomHeight}
+            min={BOTTOM_PANEL_HEIGHT.min}
+            max={BOTTOM_PANEL_HEIGHT.max}
+            direction={-1}
+            onResize={setBottomPanelHeight}
+          />
+          <section
+            aria-label="Bottom panel"
+            className="bg-sidebar text-sidebar-foreground relative flex shrink-0 flex-col overflow-auto border-t"
+            style={{ height: bottomHeight }}
+          >
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Collapse bottom panel"
+              className="absolute top-1 right-1 z-10"
+              onClick={() => {
+                setBottomPanelOpen(false);
+              }}
+            >
+              <ChevronDownIcon />
+            </Button>
+            {bottom}
+          </section>
+        </>
+      )}
 
       <footer
         aria-label="Transport"
