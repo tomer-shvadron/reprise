@@ -9,6 +9,7 @@ import { fourBars } from '@/test/position';
 import { createTestServices } from '@/test/services';
 
 import { speedTrainerFor } from './speed-trainer/speed-trainer-for';
+import { tunerFor } from './tuner/tuner-for';
 
 async function setup() {
   const services = createTestServices();
@@ -43,6 +44,17 @@ describe('trainer commands', () => {
       shortcut: { key: 's', alt: true, shift: true },
     });
     expect(find('trainer.speedTrainer')?.shortcut).toBeUndefined();
+    expect(find('trainer.tunerToggle')).toMatchObject({ title: 'Start or stop tuner' });
+    expect(find('trainer.tunerToggle')?.shortcut).toBeUndefined();
+  });
+
+  it('the tuner toggle shows the panel and flips whether the tuner is wanted', async () => {
+    const { services, registry } = await setup();
+    await registry.get('trainer.tunerToggle')?.run();
+    expect(services.ui.getState().rightPanelView).toBe('tuner');
+    expect(tunerFor(services).getState().wanted).toBe(true);
+    await registry.get('trainer.tunerToggle')?.run();
+    expect(tunerFor(services).getState().wanted).toBe(false);
   });
 
   it('toggle shows the panel, starts, holds and resumes', async () => {

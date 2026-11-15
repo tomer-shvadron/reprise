@@ -50,8 +50,18 @@ describe('phase 3 entry points', () => {
     ).toBeInTheDocument();
   });
 
+  it('trainer.tuner opens the right panel on the Tuner region', () => {
+    const { run } = renderApp();
+    expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
+    run('trainer.tuner');
+    expect(
+      within(screen.getByRole('complementary', { name: 'Panel' })).getByRole('region', {
+        name: 'Tuner',
+      }),
+    ).toBeInTheDocument();
+  });
+
   it.each([
-    ['trainer.tuner', 'WP-071'],
     ['trainer.metronome', 'WP-072'],
     ['trainer.fretboard', 'WP-074'],
   ])('%s opens the right panel on its placeholder', (id, workPackage) => {
@@ -63,11 +73,11 @@ describe('phase 3 entry points', () => {
 
   it('switches the right panel back to the mixer', () => {
     const { services, run } = renderApp();
-    run('trainer.tuner');
+    run('trainer.metronome');
     act(() => {
       services.ui.getState().showPanelView('mixer');
     });
-    expect(screen.getByRole('complementary', { name: 'Panel' })).not.toHaveTextContent('WP-071');
+    expect(screen.getByRole('complementary', { name: 'Panel' })).not.toHaveTextContent('WP-072');
   });
 
   it('lists the commands in the palette registry', () => {
@@ -81,6 +91,7 @@ describe('phase 3 entry points', () => {
         'sounds.show',
         'trainer.speedTrainer',
         'trainer.tuner',
+        'trainer.tunerToggle',
         'trainer.metronome',
         'trainer.fretboard',
         'editor.toggleMode',
@@ -117,10 +128,10 @@ describe('phase 3 entry points', () => {
     it('F8 shows the mixer when the panel holds a trainer view, then closes it', async () => {
       const { services, run } = renderApp();
       const user = userEvent.setup();
-      run('trainer.tuner');
+      run('trainer.metronome');
       await user.keyboard('{F8}');
       expect(services.ui.getState().rightPanelView).toBe('mixer');
-      expect(screen.getByRole('complementary', { name: 'Panel' })).not.toHaveTextContent('WP-071');
+      expect(screen.getByRole('complementary', { name: 'Panel' })).not.toHaveTextContent('WP-072');
       await user.keyboard('{F8}');
       expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
     });
