@@ -106,10 +106,16 @@ shared field is a `type:contract` issue for the lead.
   clears. In tune is entered after five readings within 3 cents and left beyond 5.
 - **Settling.** Moving the cutoff changes the filter under a loud periodic tone, and for as long
   as the window still holds the change the frames read tens of cents off at high clarity (the
-  browser test showed 17 to 27 cents). So a lock that closes the cutoff in stays hidden for
-  `settleFramesFor(window)` frames (7 at 2048 and 48 kHz, 9 at 4096), then the first median is
-  three frames from after the change. The price is latency: a fresh note shows a reading about
-  14 hops (0.3 s) after the window fills, against about 0.1 s without the settle.
+  browser test showed 17 to 19 cents). So whenever the cutoff closes in (a fresh lock, a move to
+  a lower note, or a string plucked again inside the hold after the silence opened the cutoff)
+  the reading is hidden, or shown held, for `settleFramesFor(window)` hops (7 at 2048 and 48 kHz,
+  9 at 4096), counted in time, not in accepted frames. The frames taken through the old cutoff
+  are dropped, and the first median is the frames after it. A fresh note shows a reading about 8
+  hops (0.16 s) after the window fills.
+- **Allocation.** `createDetector(n)` owns the FFT tables and every buffer, and the tracker sorts
+  its median in a scratch array, so a frame allocates only its small result objects; the panel
+  re-renders only the readout per frame. Over 5000 frames (100 s of hops) in Node: 0 GC events
+  (18 and 34 before at 2048 and 4096) and about 0.7 KB of heap a frame.
 - **Accuracy** (seeded synthetic plucks, 44.1 and 48 kHz, B0 to E5, detunes −23 to +41 cents,
   three seeds, every reading once locked): harmonic at 30 dB SNR within 0.92 cents; at 20 dB
   within 2.5 cents; an inharmonic string (B = 3e-4, weak fundamental) at 30 dB within 2.0 cents.

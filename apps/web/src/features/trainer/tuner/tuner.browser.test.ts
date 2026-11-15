@@ -58,30 +58,29 @@ const worstDifference = (a: Float32Array, b: Float64Array) => {
 };
 
 describe('the tuner on real Web Audio', () => {
-  it('reads a harmonic A2 +7 cents from a media stream within 2 cents', async () => {
+  it('reads a harmonic A2 +7 cents within 2 cents on every reading after the first', async () => {
     const mic = await fakeMicrophone(A2_PLUS_7);
     const services = createTestServices({
       platform: fakePlatform({ microphone: () => Promise.resolve(mic.stream) }),
     });
     const tuner = createTuner(services, { storage: () => memoryStorage() });
+    // Every live reading counts, from the first: the cutoff ramps on the real filter when the
+    // note locks, and frames read through the ramp are tens of cents off at high clarity unless
+    // the tracker holds the lock back until they have passed.
+    const errors: number[] = [];
+    const stop = tuner.subscribe((state, previous) => {
+      const { reading } = state;
+      if (!reading || reading.held || reading === previous.reading) return;
+      errors.push(Math.abs((reading.midi - 45) * 100 - 7));
+    });
     const detach = tuner.getState().attach();
     try {
       tuner.getState().start();
       await expect.poll(() => tuner.getState().status, { timeout: 10_000 }).toBe('listening');
-      await expect
-        .poll(
-          () => {
-            const midi = tuner.getState().reading?.midi;
-            if (midi === undefined) return Number.POSITIVE_INFINITY;
-            const error = Math.abs((midi - 45) * 100 - 7);
-            return error;
-          },
-          { timeout: 15_000 },
-        )
-        .toBeLessThan(2);
-      const reading = tuner.getState().reading;
-      expect(Math.abs(((reading?.midi ?? 0) - 45) * 100 - 7)).toBeLessThan(2);
+      await expect.poll(() => errors.length, { timeout: 15_000 }).toBeGreaterThanOrEqual(30);
+      expect(Math.max(...errors)).toBeLessThan(2);
     } finally {
+      stop();
       detach();
       mic.close();
     }

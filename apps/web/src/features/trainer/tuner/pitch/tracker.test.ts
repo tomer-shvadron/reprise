@@ -128,7 +128,7 @@ describe('the tracker', () => {
       return out?.reading;
     };
     // The lock is hidden for the settle frames, then each reading within 3 cents counts.
-    expect(push(2, 2 + settleFramesFor(43))?.inTune).toBe(false);
+    expect(push(2, settleFramesFor(43))?.inTune).toBe(false);
     expect(push(2, 3)?.inTune).toBe(false);
     expect(push(2, 1)?.inTune).toBe(true);
     expect(push(4.5, 1)?.inTune).toBe(true);
@@ -175,8 +175,64 @@ describe('the tracker', () => {
     expect(live.length).toBeLessThan(frames.length - 20);
   });
 
-  it('the cascade of two lowpass sections passes a tone below the cutoff', () => {
+  it('passes a tone below the cutoff at its full level through the two sections', () => {
     const out = lowpassChain(tone(110, 0.5), rate, 1500);
-    expect(Math.abs(out[rate / 4] ?? 0)).toBeGreaterThanOrEqual(0);
+    let peak = 0;
+    for (let i = out.length - 2000; i < out.length; i += 1) {
+      peak = Math.max(peak, Math.abs(out[i] ?? 0));
+    }
+    expect(peak).toBeGreaterThan(0.3 * 0.99);
+    expect(peak).toBeLessThan(0.3 * 1.01);
+  });
+
+  it('drops the frames taken through the old cutoff when a string is plucked again in the hold', () => {
+    const tracker = createTracker();
+    const at = (cents: number, rms = 0.1, timeMs = 0) =>
+      tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity: 0.99 }, rms, timeMs);
+    const settle = settleFramesFor(43);
+    for (let i = 0; i < settle + 8; i += 1) at(0);
+    // The string dies away: the cutoff opens, the last reading is held.
+    let step;
+    for (let i = 0; i < TRACKER.openAfterRejects + 2; i += 1) {
+      step = tracker.push(undefined, 0, 100 + i * 20);
+    }
+    expect(step?.cutoffHz).toBe(TRACKER.searchCutoffHz);
+    expect(step?.reading?.held).toBe(true);
+    // Plucked again: the frames through the open cutoff read 16 cents sharp, then the new
+    // cutoff has its effect. None of the sharp ones may reach a live reading.
+    const live: number[] = [];
+    for (let i = 0; i < settle + 6; i += 1) {
+      const result = at(i < settle - 2 ? 16 : 0, 0.1, 300 + i * 20);
+      if (result.reading && !result.reading.held) live.push((result.reading.midi - 45) * 100);
+    }
+    expect(live.length).toBeGreaterThan(3);
+    for (const cents of live) expect(Math.abs(cents)).toBeLessThan(3);
+    expect(Math.abs(at(0, 0.1, 900).cutoffHz - 275)).toBeLessThan(1);
+  });
+
+  it('keeps every reading within 3 cents when a string is plucked again inside the hold', () => {
+    const hz = 82.41 * 2 ** (7 / 1200);
+    const decayed = pluck({
+      hz,
+      sampleRate: rate,
+      seconds: 0.9,
+      inharmonicity: 3e-4,
+      weakFundamental: true,
+      snrDb: 30,
+      seed: 4,
+    }).map((v, i) => v * Math.exp(-i / rate / 0.12));
+    // Pluck, let it die away well under the tail gate, and pluck again within the 1.5 s hold.
+    const frames = run(concat(decayed, new Float32Array(Math.round(0.5 * rate)), decayed));
+    const target = midiFromHz(hz);
+    const secondOnsetMs = 1400;
+    const again = frames.filter((f) => f.timeMs > secondOnsetMs && f.reading && !f.reading.held);
+    expect(again.length).toBeGreaterThan(3);
+    for (const { reading } of again) {
+      expect(Math.abs(((reading?.midi ?? 0) - target) * 100)).toBeLessThan(3);
+    }
+    // The silence opened the cutoff, so the second pluck had to close it again.
+    expect(frames.some((f) => f.timeMs > 1000 && f.timeMs < 1400 && f.cutoffHz === 1500)).toBe(
+      true,
+    );
   });
 });

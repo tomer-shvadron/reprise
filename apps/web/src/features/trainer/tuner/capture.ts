@@ -20,6 +20,16 @@ export interface TunerInput {
 /** Web Audio's lowpass `Q` is in dB: a Butterworth section is 20·log10(1/√2). */
 export const BUTTERWORTH_Q_DB = 20 * Math.log10(Math.SQRT1_2);
 const CUTOFF_SMOOTHING_S = 0.008;
+/** A context Chromium declines to start leaves `resume()` pending, not rejected. */
+export const RESUME_TIMEOUT_MS = 3000;
+
+/** The context would not start running, usually for want of a user gesture. */
+export class ContextNotStartedError extends Error {
+  constructor() {
+    super('The audio context did not start');
+    this.name = 'ContextNotStartedError';
+  }
+}
 
 /**
  * Made synchronously inside the click that starts listening, so the user activation lets it run.
@@ -67,7 +77,17 @@ export async function openCapture(
 
   if (context.state === 'suspended') {
     try {
-      await context.resume();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new ContextNotStartedError());
+        }, RESUME_TIMEOUT_MS);
+      });
+      try {
+        await Promise.race([context.resume(), timeout]);
+      } finally {
+        clearTimeout(timer);
+      }
     } catch (error) {
       close();
       throw error;

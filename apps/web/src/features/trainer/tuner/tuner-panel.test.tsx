@@ -54,14 +54,14 @@ describe('TunerPanel', () => {
     const meter = screen.getByRole('meter', { name: 'Tuning' });
     expect(meter).toHaveAttribute('aria-valuenow', '12');
     expect(meter).toHaveAttribute('aria-valuetext', 'A2, 12 cents sharp');
-    expect(screen.getByRole('button', { name: 'String 5, A2' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
+    // Detected, not pinned: marked current, and pressed only means pinned.
+    const five = screen.getByRole('button', { name: 'String 5, A2' });
+    expect(five).toHaveAttribute('aria-current', 'true');
+    expect(five).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'String 6, E2' })).not.toHaveAttribute(
+      'aria-current',
     );
-    expect(screen.getByRole('button', { name: 'String 6, E2' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
+    expect(screen.getByRole('button', { name: 'Auto' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText(/110\.\d Hz/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
   });
@@ -90,14 +90,26 @@ describe('TunerPanel', () => {
       'aria-pressed',
       'true',
     );
+    expect(screen.getByRole('button', { name: 'Auto' })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByRole('meter', { name: 'Tuning' })).toHaveAttribute('aria-valuenow', '50');
     expect(screen.getByText(/Tune down/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Auto' }));
     expect(screen.getByRole('button', { name: 'String 5, A2' })).toHaveAttribute(
-      'aria-pressed',
+      'aria-current',
       'true',
     );
     expect(screen.queryByText(/Tune down/)).not.toBeInTheDocument();
+  });
+
+  it('a click on the pinned string lets go of the pin', async () => {
+    const { listen, user } = await setup();
+    await listen();
+    const six = screen.getByRole('button', { name: 'String 6, E2' });
+    await user.click(six);
+    expect(six).toHaveAttribute('aria-pressed', 'true');
+    await user.click(six);
+    expect(six).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Auto' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('moves the readout when the reference changes', async () => {

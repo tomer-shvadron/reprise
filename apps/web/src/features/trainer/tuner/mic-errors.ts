@@ -25,6 +25,12 @@ const nameOf = (error: unknown): string | undefined =>
     ? error.name
     : undefined;
 
+/** Anything the microphone request or the audio graph threw that is not a known cause. */
+export function failedError(error: unknown): TunerError {
+  const detail = error instanceof Error && error.message ? error.message : 'unknown error';
+  return { kind: 'failed', message: `Couldn't start the microphone: ${detail}`, retry: true };
+}
+
 /** Maps a `getUserMedia` rejection to what the panel tells the user. */
 export function micErrorOf(error: unknown): TunerError {
   switch (nameOf(error)) {
@@ -39,9 +45,7 @@ export function micErrorOf(error: unknown): TunerError {
       return tunerError('busy');
     case 'TypeError':
       return tunerError('unsupported');
-    default: {
-      const detail = error instanceof Error && error.message ? error.message : 'unknown error';
-      return { kind: 'failed', message: `Couldn't start the microphone: ${detail}`, retry: true };
-    }
+    default:
+      return failedError(error);
   }
 }

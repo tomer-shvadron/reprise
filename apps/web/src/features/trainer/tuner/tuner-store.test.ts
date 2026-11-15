@@ -5,11 +5,12 @@ import { describe, expect, it } from 'vitest';
 import { fourBars } from '@/test/position';
 import { createTestServices, fakePlatform } from '@/test/services';
 
-import { REFERENCE_STORAGE_KEY, type TunerState } from './tuner-store';
+import { ContextNotStartedError } from './capture';
+import { REFERENCE_STORAGE_KEY, type TunerDeps, type TunerState } from './tuner-store';
 import { tunerFor } from './tuner-for';
 import { createRig, type Rig } from './test-rig';
 
-async function setup(options: { score?: boolean } = {}) {
+async function setup(options: { score?: boolean; deps?: Partial<TunerDeps> } = {}) {
   const rig = createRig();
   const services = createTestServices({ platform: fakePlatform({ microphone: rig.microphone }) });
   if (options.score ?? true) {
@@ -18,7 +19,7 @@ async function setup(options: { score?: boolean } = {}) {
       await services.document.getState().openBytes('song.reprise', bytes);
     });
   }
-  const tuner = tunerFor(services, rig.deps);
+  const tuner = tunerFor(services, { ...rig.deps, ...options.deps });
   const detach = tuner.getState().attach();
   const flush = () => act(() => Promise.resolve());
   const state = (): TunerState => tuner.getState();
@@ -114,6 +115,36 @@ describe('the tuner store', () => {
     await flush();
     expect(state().status).toBe('error');
     expect(state().error?.kind).toBe('lost');
+  });
+
+  it('reports a revoked permission as blocked, not disconnected', async () => {
+    const { rig, state, flush, listen } = await setup();
+    await listen();
+    rig.microphone.mockRejectedValueOnce(new DOMException('x', 'NotAllowedError'));
+    rig.captures[0]?.end();
+    await flush();
+    expect(state().error?.kind).toBe('denied');
+    expect(state().wanted).toBe(false);
+  });
+
+  it('shows a failure of the audio graph as such, and keeps the button usable', async () => {
+    const { state, flush } = await setup({
+      deps: { openCapture: () => Promise.reject(new TypeError('bad node')) },
+    });
+    state().start();
+    await flush();
+    expect(state().error?.kind).toBe('failed');
+    expect(state().error?.retry).toBe(true);
+  });
+
+  it('goes back to the invitation when the context will not start', async () => {
+    const { rig, state, flush } = await setup({
+      deps: { openCapture: () => Promise.reject(new ContextNotStartedError()) },
+    });
+    state().start();
+    await flush();
+    expect(state()).toMatchObject({ status: 'idle', error: undefined, wanted: false });
+    expect(rig.contexts[0]?.close).toHaveBeenCalled();
   });
 
   it('restarts after the debounce on a device change while listening', async () => {

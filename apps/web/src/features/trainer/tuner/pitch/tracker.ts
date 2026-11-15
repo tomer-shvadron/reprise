@@ -61,10 +61,24 @@ export const TRACKER = {
   openAfterRejects: 5,
 } as const;
 
+// The median of at most `TRACKER.median` values, sorted into a scratch array that is kept.
+const scratch: number[] = [];
 const median = (values: readonly number[]) => {
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)] ?? 0;
+  scratch.length = values.length;
+  for (let i = 0; i < values.length; i += 1) {
+    const value = values[i] ?? 0;
+    let at = i;
+    while (at > 0 && (scratch[at - 1] ?? 0) > value) {
+      scratch[at] = scratch[at - 1] ?? 0;
+      at -= 1;
+    }
+    scratch[at] = value;
+  }
+  return scratch[Math.floor(values.length / 2)] ?? 0;
 };
+
+const cutoffFor = (hz: number) =>
+  Math.min(TRACKER.searchCutoffHz, Math.max(TRACKER.minCutoffHz, TRACKER.lockedCutoffFactor * hz));
 
 const centsBetween = (a: number, b: number) => Math.abs(a - b) * 100;
 
@@ -89,6 +103,8 @@ export function createTracker(options: TrackerOptions = {}) {
   let rejects = 0;
   let cutoffHz: number = TRACKER.searchCutoffHz;
   let settling = 0;
+  // Frames since the cutoff closed in are in the history until the window has left the change.
+  let dirty = false;
   let settleFrames = options.settleFrames ?? settleFramesFor(43);
 
   const unlock = () => {
@@ -102,6 +118,7 @@ export function createTracker(options: TrackerOptions = {}) {
     inTune = false;
     cutoffHz = TRACKER.searchCutoffHz;
     settling = 0;
+    dirty = false;
   };
 
   /** Starts a lock on `midi`'s note, hidden until the new cutoff has had its effect. */
@@ -113,12 +130,10 @@ export function createTracker(options: TrackerOptions = {}) {
     streak = 0;
     inTune = false;
     lastReading = undefined;
-    const target = Math.min(
-      TRACKER.searchCutoffHz,
-      Math.max(TRACKER.minCutoffHz, TRACKER.lockedCutoffFactor * hz),
-    );
+    const target = cutoffFor(hz);
     // Only a cutoff that closes in leaves sharp frames behind; one that opens does not.
     settling = target < 0.85 * cutoffHz ? settleFrames : 0;
+    dirty = settling > 0;
     cutoffHz = target;
   };
 
@@ -129,10 +144,7 @@ export function createTracker(options: TrackerOptions = {}) {
     if (inTune) inTune = cents <= TRACKER.outOfTuneCents;
     else inTune = streak >= TRACKER.inTuneReadings;
     const hz = referenceHz * 2 ** ((midi - 69) / 12);
-    cutoffHz = Math.min(
-      TRACKER.searchCutoffHz,
-      Math.max(TRACKER.minCutoffHz, TRACKER.lockedCutoffFactor * hz),
-    );
+    cutoffHz = cutoffFor(hz);
     lastReading = { hz, midi, held: false, inTune };
     return lastReading;
   };
@@ -152,6 +164,8 @@ export function createTracker(options: TrackerOptions = {}) {
     },
 
     push(detection: PitchDetection | undefined, rmsValue: number, timeMs: number): TrackerStep {
+      // Time, not accepted frames, is what moves the window past the change.
+      if (settling > 0) settling -= 1;
       const midi = detection ? midiOf(detection.hz) : undefined;
       const centre = locked ? median(history) : undefined;
       const near =
@@ -189,7 +203,7 @@ export function createTracker(options: TrackerOptions = {}) {
         if (pending !== undefined && centsBetween(pending, midi) <= TRACKER.lockWithinCents) {
           locked = true;
           begin([pending, midi], rmsValue, detection.hz);
-          return { reading: settling > 0 ? undefined : emit(median(history)), cutoffHz };
+          return { reading: dirty ? undefined : emit(median(history)), cutoffHz };
         }
         pending = midi;
         return { reading: undefined, cutoffHz };
@@ -197,15 +211,24 @@ export function createTracker(options: TrackerOptions = {}) {
 
       if (near) {
         away = [];
+        // A string plucked again inside the hold finds the cutoff opened by the silence; closing
+        // it again is the same step a fresh lock hides, so the frames taken through the old
+        // cutoff are dropped and the reading waits, held, until the window is clear.
+        if (!dirty && cutoffFor(detection.hz) < 0.85 * cutoffHz) {
+          settling = settleFrames;
+          dirty = true;
+          cutoffHz = cutoffFor(detection.hz);
+          history = [];
+        }
+        if (dirty && settling <= 2) {
+          // The frames from here on went through the new cutoff alone.
+          history = [];
+          dirty = false;
+        }
         history.push(midi);
         if (history.length > TRACKER.median) history.shift();
         peakRms = Math.max(peakRms, rmsValue);
-        if (settling > 0) {
-          settling -= 1;
-          // The first frames went through the old cutoff; keep only the later ones.
-          if (settling === 2) history = [midi];
-          if (settling > 0) return { reading: undefined, cutoffHz };
-        }
+        if (dirty) return { reading: lastReading && { ...lastReading, held: true }, cutoffHz };
         return { reading: emit(median(history)), cutoffHz };
       }
 
@@ -218,7 +241,7 @@ export function createTracker(options: TrackerOptions = {}) {
           : [...away, midi];
       if (away.length >= TRACKER.moveFrames) {
         begin(away, rmsValue, detection.hz);
-        return { reading: settling > 0 ? undefined : emit(median(history)), cutoffHz };
+        return { reading: dirty ? undefined : emit(median(history)), cutoffHz };
       }
       return { reading: lastReading, cutoffHz };
     },

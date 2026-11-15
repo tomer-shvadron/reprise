@@ -84,7 +84,7 @@ export default defineConfig(base, {
 
 ## The tuner's microphone
 
-`tuner.spec.ts` feeds Chromium's fake audio device a generated WAV (`tuner-a2.wav`). The headless shell answers `getUserMedia` with `NotSupportedError`, so this one spec sets `channel: 'chromium'` (new headless mode in full Chromium, which the e2e job installs with `playwright install chromium`). It is skipped off Linux: macOS asks the system for the microphone and the prompt hangs a headless run. Run it on Linux or in Playwright's image:
+`tuner.spec.ts` feeds Chromium's fake audio device a generated WAV (`tuner-a2.wav`). The headless shell answers `getUserMedia` with `NotSupportedError`, so this one spec sets `channel: 'chromium'` (new headless mode in full Chromium, which the e2e job installs with `playwright install chromium`). On Linux `pnpm bootstrap` installs only the shell, so `pnpm exec playwright install chromium` once before `pnpm e2e` runs this spec (it fails with a missing executable otherwise). It is skipped off Linux: macOS asks the system for the microphone and the prompt hangs a headless run. Run it on Linux or in Playwright's image:
 
 ```sh
 docker run --rm --init -v "$PWD":/src:ro mcr.microsoft.com/playwright:v1.64.1-noble bash -c \

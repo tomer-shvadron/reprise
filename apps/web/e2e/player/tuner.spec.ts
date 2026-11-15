@@ -32,7 +32,9 @@ test.describe('with the microphone allowed', () => {
     await expect(panel).toBeVisible();
     await panel.getByRole('button', { name: 'Start' }).click();
 
-    await expect(panel.getByLabel('A2', { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(panel.getByRole('img', { name: 'A2', exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
     const meter = panel.getByRole('meter', { name: 'Tuning' });
     await expect
       .poll(async () => {
@@ -41,7 +43,7 @@ test.describe('with the microphone allowed', () => {
       })
       .toBe(true);
     await expect(panel.getByRole('button', { name: 'String 5, A2' })).toHaveAttribute(
-      'aria-pressed',
+      'aria-current',
       'true',
     );
     // The tuner's context is the last one made, after the player's.

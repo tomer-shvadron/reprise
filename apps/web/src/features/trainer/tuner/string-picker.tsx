@@ -1,17 +1,19 @@
+import { memo } from 'react';
+
 import { Button } from '@/components/ui/button';
 
 import { noteLabel } from './notes';
 import type { StringSet } from './strings';
 
 /** The track's strings from the lowest, the auto-picked one marked, a click pinning another. */
-export function StringPicker({
+export const StringPicker = memo(function StringPicker({
   set,
   highlighted,
   override,
   onSelect,
 }: {
   set: StringSet;
-  /** The string the meter measures against: the pick, or what auto settled on. */
+  /** The string the meter measures against: the pin, or what auto settled on. */
   highlighted: number | undefined;
   override: number | undefined;
   onSelect: (string: number | undefined) => void;
@@ -29,17 +31,20 @@ export function StringPicker({
       <div className="flex flex-wrap gap-1" role="group" aria-label="Strings">
         {set.targets.map((target) => {
           const note = noteLabel(target.midi);
-          const pressed = target.string === highlighted;
+          const current = target.string === highlighted;
+          const pinned = target.string === override;
           return (
             <Button
               key={target.string}
               size="sm"
-              variant={pressed ? 'default' : 'outline'}
-              aria-pressed={pressed}
+              variant={current ? 'default' : 'outline'}
+              // Pressed means pinned; the string the meter follows is marked `current`.
+              aria-pressed={pinned}
+              aria-current={current ? 'true' : undefined}
               aria-label={`String ${String(target.string)}, ${note.text}`}
               className="h-9 min-w-11 flex-col gap-0 px-2 leading-tight"
               onClick={() => {
-                onSelect(target.string);
+                onSelect(pinned ? undefined : target.string);
               }}
             >
               <span>{note.text}</span>
@@ -61,4 +66,4 @@ export function StringPicker({
       </div>
     </div>
   );
-}
+});

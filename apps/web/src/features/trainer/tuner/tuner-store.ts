@@ -3,10 +3,15 @@ import { create } from 'zustand';
 
 import type { AppServices } from '@/app/services';
 
-import { createCaptureContext, openCapture, type TunerInput } from './capture';
-import { micErrorOf, tunerError, type TunerError } from './mic-errors';
+import {
+  ContextNotStartedError,
+  createCaptureContext,
+  openCapture,
+  type TunerInput,
+} from './capture';
+import { failedError, micErrorOf, tunerError, type TunerError } from './mic-errors';
 import { isValidReference, REFERENCE_HZ } from './notes';
-import { detectPitch, rms } from './pitch/mpm';
+import { createDetector, rms, type Detector } from './pitch/mpm';
 import { createTracker, settleFramesFor, type Reading } from './pitch/tracker';
 import {
   FLAT_ALLOWANCE,
@@ -15,6 +20,7 @@ import {
   pickString,
   stringTargets,
   windowFor,
+  type StringSet,
 } from './strings';
 
 export type TunerStatus = 'idle' | 'starting' | 'listening' | 'error';
@@ -118,6 +124,10 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
   let capture: TunerInput | undefined;
   let context: AudioContext | undefined;
   let frame = new Float32Array(0);
+  let detector: Detector | undefined;
+  // The string targets of the track and reference they were made for, so a frame recomputes none.
+  let cachedTargets:
+    { track: Track | undefined; referenceHz: number; set: StringSet | undefined } | undefined;
   let minHz = 30;
   let cancelTick: (() => void) | undefined;
   let cancelDevice: (() => void) | undefined;
@@ -127,7 +137,16 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
   let trackKey = '';
 
   const store = create<TunerState>()((set, get) => {
-    const targetsNow = () => stringTargets(trackOf(services), get().referenceHz);
+    const targetsNow = () => {
+      const track = trackOf(services);
+      const { referenceHz: reference } = get();
+      let cache = cachedTargets;
+      if (!cache || cache.track !== track || cache.referenceHz !== reference) {
+        cache = { track, referenceHz: reference, set: stringTargets(track, reference) };
+        cachedTargets = cache;
+      }
+      return cache.set;
+    };
 
     const teardown = () => {
       generation += 1;
@@ -137,6 +156,7 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
       cancelDevice = undefined;
       capture?.close();
       capture = undefined;
+      detector = undefined;
       // A context made but never given to a capture (the microphone was refused).
       if (context) void context.close().catch(() => undefined);
       context = undefined;
@@ -162,7 +182,10 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
     const tick = () => {
       if (!capture) return;
       capture.read(frame);
-      const detection = detectPitch(frame, capture.sampleRate, { minHz, maxHz: MAX_DETECT_HZ });
+      const detection = detector?.detect(frame, capture.sampleRate, {
+        minHz,
+        maxHz: MAX_DETECT_HZ,
+      });
       const step = tracker.push(detection, rms(frame), now());
       if (step.cutoffHz !== cutoff) {
         cutoff = step.cutoffHz;
@@ -171,8 +194,8 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
       const state = get();
       const { reading } = step;
       if (!reading && !state.reading) return;
-      const set_ = reading && !reading.held && state.override === undefined;
-      const auto = set_
+      const picking = reading && !reading.held && state.override === undefined;
+      const auto = picking
         ? pickString(targetsNow()?.targets ?? [], reading.midi, state.autoString)?.string
         : reading
           ? state.autoString
@@ -180,7 +203,7 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
       set({ reading, autoString: auto });
     };
 
-    const begin = async (onFailure: (error: unknown) => void) => {
+    const begin = async (onFailure: (error: unknown, from: 'microphone' | 'capture') => void) => {
       teardown();
       const mine = generation;
       set({ status: 'starting', error: undefined });
@@ -189,7 +212,7 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
       try {
         made = makeContext();
       } catch (error) {
-        onFailure(error);
+        onFailure(error, 'capture');
         return;
       }
       context = made;
@@ -197,7 +220,7 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
       try {
         stream = await platform.microphone();
       } catch (error) {
-        if (mine === generation) onFailure(error);
+        if (mine === generation) onFailure(error, 'microphone');
         return;
       }
       if (mine !== generation) {
@@ -214,18 +237,21 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
         capture = input;
         context = undefined;
         frame = new Float32Array(size);
+        detector = createDetector(size);
         trackKey = trackSignature();
         input.onEnded(() => {
           if (mine !== generation) return;
-          void begin(() => {
-            fail(tunerError('lost'));
+          // A revoked permission is a refusal, not an unplugged device.
+          void begin((error) => {
+            const cause = micErrorOf(error);
+            fail(cause.kind === 'noDevice' ? tunerError('lost') : cause);
           });
         });
         cancelTick = schedule.every(tick, HOP_MS);
         set({ status: 'listening', error: undefined });
       } catch (error) {
         for (const track of stream.getTracks()) track.stop();
-        if (mine === generation) onFailure(error);
+        if (mine === generation) onFailure(error, 'capture');
       }
     };
 
@@ -235,8 +261,15 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
     };
 
     const listen = () => {
-      void begin((error) => {
-        fail(micErrorOf(error));
+      void begin((error, from) => {
+        if (error instanceof ContextNotStartedError) {
+          // Chromium would not start the context without a gesture: back to the invitation.
+          teardown();
+          set({ status: 'idle', error: undefined, reading: undefined, wanted: false });
+          return;
+        }
+        // A failure of the audio graph is a bug to show as such, not a missing microphone.
+        fail(from === 'microphone' ? micErrorOf(error) : failedError(error));
       });
     };
 
@@ -254,6 +287,7 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
       const size = sizeFor(capture.sampleRate);
       if (size !== frame.length) {
         frame = new Float32Array(size);
+        detector = createDetector(size);
         capture.setFrameSize(size);
       }
     };

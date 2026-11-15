@@ -178,7 +178,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+          # Its own key: this job installs full Chromium too, and a cache saved by the other job holds
+          # the shell alone, so a shared key would never be saved again with the full browser.
+          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
