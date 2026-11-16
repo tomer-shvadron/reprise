@@ -97,10 +97,10 @@ export interface PathPrimitive extends PrimitiveBase {
   thickness: number;
 }
 
-/** UI-font text; (x, y) is the baseline point `anchor` refers to. */
 /** The row a word primitive sits in: a chord name, beat text, or lyric line `n` (0 to 4, as `lyric:0`). */
 export type WordLane = 'chord' | 'text' | `lyric:${number}`;
 
+/** UI-font text; (x, y) is the baseline point `anchor` refers to. */
 export interface TextPrimitive extends PrimitiveBase {
   kind: 'text';
   /** Set on chord names, beat text and syllables, so an editor finds a word's row without guessing from y. */
