@@ -11,6 +11,14 @@ describe('historyLabel', () => {
     expect(historyLabel('setTrackProperties')).toBe('Track properties');
   });
 
+  it('keeps the word-entry chain names', () => {
+    expect(['Chord name', 'Text', 'Lyrics'].map(historyLabel)).toEqual([
+      'Chord name',
+      'Text',
+      'Lyrics',
+    ]);
+  });
+
   it('calls both paste chains Paste and both cut chains Cut', () => {
     expect(historyLabel('pasteBars')).toBe('Paste');
     expect(historyLabel('pasteBeats')).toBe('Paste');

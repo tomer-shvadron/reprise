@@ -4,6 +4,7 @@ import type { Score } from '@reprise/model';
 import { act, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { openWord } from '@/features/editor';
 import { editScore } from '@/features/editor/test/scores';
 import { stubViewport } from '@/features/score/test/viewport-stub';
 import { mirrorAudio } from '@/test/mirror-audio';
@@ -70,6 +71,22 @@ describe('the score pane in edit mode', () => {
     expect(services.selection.getState().selection.noteIds).toHaveLength(1);
     expect(services.fakeAudio.seek).toHaveBeenLastCalledWith(BAR + 960);
     expect(document.querySelectorAll('.score-caret').length).toBeGreaterThan(0);
+  });
+
+  it('mounts the word field inside the score canvas when a chord name is opened', async () => {
+    const { services, score, result, canvas } = await setup();
+    act(() => {
+      services.editing.getState().setEditing(true);
+    });
+    const at = noteAt(result, score, 0, 0, 1);
+    fireEvent.pointerDown(canvas(), at);
+    fireEvent.pointerUp(canvas(), at);
+    act(() => {
+      openWord(services, 'chord');
+    });
+    const field = screen.getByRole('combobox', { name: /^Chord name, bar 1 beat 2/ });
+    expect(canvas().contains(field)).toBe(true);
+    expect(document.activeElement).toBe(field);
   });
 
   it('does not seek on a Shift+click, which extends a range drawn as boxes', async () => {

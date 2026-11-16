@@ -23,9 +23,9 @@ exports[`tab staff: both mode > shows numbers, ties and words only under a stand
     "path filled M90.39 7.67h3.97v5.67h-3.97Z (paper) <note00000004>",
     "text "1" @92.38,12.76 size 6.37 middle <note00000004>",
     "path filled M24.11 4.05C26.43 6.85 31.08 6.85 33.4 4.05C31.08 4.8 26.43 4.8 24.11 4.05Z <note00000002>",
-    "text "D" @15.89,-10.85 size 8.4 start <beat00000001>",
-    "text "riff" @15.89,-26.25 size 8.4 start <beat00000001>",
-    "text "la" @20,62.3 size 8.4 middle <beat00000001>",
+    "text "D" @15.89,-10.85 size 8.4 start {chord} <beat00000001>",
+    "text "riff" @15.89,-26.25 size 8.4 start {text} <beat00000001>",
+    "text "la" @20,62.3 size 8.4 middle {lyric:0} <beat00000001>",
   ],
 }
 `;
@@ -926,9 +926,9 @@ exports[`tab staff: words > writes chord names and beat text above the staff 1`]
     "text "1" @181.35,121.58 size 9.1 middle <note00000003>",
     "line @145.31,165.6 -> 145.31,188.35 w 0.84 <beat00000001>",
     "line @181.35,165.6 -> 181.35,188.35 w 0.84 <beat00000002>",
-    "text "Am7" @141.2,97 size 8.4 start <beat00000001>",
-    "text "Intro riff" @141.2,81.6 size 8.4 start <beat00000001>",
-    "text "C" @178.51,97 size 8.4 start <beat00000002>",
+    "text "Am7" @141.2,97 size 8.4 start {chord} <beat00000001>",
+    "text "Intro riff" @141.2,81.6 size 8.4 start {text} <beat00000001>",
+    "text "C" @178.51,97 size 8.4 start {chord} <beat00000002>",
   ],
 }
 `;
@@ -953,11 +953,11 @@ exports[`tab staff: words > writes one lyric line per line, aligned to the beat 
     "line @152.67,144.95 -> 152.67,167.7 w 0.84 <beat00000001>",
     "line @179.27,144.95 -> 179.27,167.7 w 0.84 <beat00000002>",
     "line @205.87,144.95 -> 205.87,167.7 w 0.84 <beat00000003>",
-    "text "Hel-" @152.67,196.05 size 8.4 middle <beat00000001>",
-    "text "Bon-" @152.67,210.05 size 8.4 middle <beat00000001>",
-    "text "lo" @179.27,196.05 size 8.4 middle <beat00000002>",
-    "text "world" @205.87,196.05 size 8.4 middle <beat00000003>",
-    "text "jour" @205.87,210.05 size 8.4 middle <beat00000003>",
+    "text "Hel-" @152.67,196.05 size 8.4 middle {lyric:0} <beat00000001>",
+    "text "Bon-" @152.67,210.05 size 8.4 middle {lyric:1} <beat00000001>",
+    "text "lo" @179.27,196.05 size 8.4 middle {lyric:0} <beat00000002>",
+    "text "world" @205.87,196.05 size 8.4 middle {lyric:0} <beat00000003>",
+    "text "jour" @205.87,210.05 size 8.4 middle {lyric:1} <beat00000003>",
   ],
 }
 `;

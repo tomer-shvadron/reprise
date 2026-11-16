@@ -99,17 +99,22 @@ export function drawWords(
   if (chord && lanes.chord) {
     const y = lanes.chord.bottom - WORDS.lift * space;
     const name = fitText(chord.name, size, limit - left);
-    if (name !== '' || chord.name === '') sink.primitives.push(text(name, left, y, size, { node }));
+    if (name !== '' || chord.name === '')
+      sink.primitives.push(text(name, left, y, size, { node, lane: 'chord' }));
   }
   if (beat.text && lanes.text) {
     const y = lanes.text.bottom - WORDS.lift * space;
     const said = fitText(beat.text, size, limit - left);
-    if (said !== '') sink.primitives.push(text(said, left, y, size, { node }));
+    if (said !== '') sink.primitives.push(text(said, left, y, size, { node, lane: 'text' }));
   }
   for (const [line, syllable] of (lyrics ?? []).entries()) {
     if (syllable === '' || !lanes.lyrics) continue;
     const y = lanes.lyrics.top + (line + 1) * WORDS.lyricRow * space - WORDS.descent * space;
     const sung = fitText(syllable, size, 2 * (limit - x));
-    if (sung !== '') sink.primitives.push(text(sung, x, y, size, { anchor: 'middle', node }));
+    if (sung !== '')
+      sink.primitives.push(
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- the lane type is a template over number
+        text(sung, x, y, size, { anchor: 'middle', node, lane: `lyric:${line}` }),
+      );
   }
 }

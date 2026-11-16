@@ -1,4 +1,10 @@
-import { anchorBox, type LayoutResult, type Rect, type StaffPlacement } from '@reprise/layout';
+import {
+  anchorBox,
+  type LayoutResult,
+  type Rect,
+  type StaffPlacement,
+  type WordLane,
+} from '@reprise/layout';
 import { beatTicks, type Id, type Score } from '@reprise/model';
 
 import {
@@ -208,4 +214,74 @@ export function rangeBoxes(
     });
   }
   return boxes;
+}
+
+/** The word field's box in layout space, and how its text sits in it. */
+export interface WordRect {
+  /** The left edge, or the centre when `align` is `middle`. */
+  x: number;
+  y: number;
+  height: number;
+  /** The word's font size in layout px. */
+  size: number;
+  align: 'start' | 'middle';
+}
+
+export interface WordTarget {
+  kind: 'chord' | 'text' | 'lyric';
+  trackId: Id;
+  beatId: Id;
+  /** The lyric line, 0 to 4. */
+  line: number;
+}
+
+/** The row a word of `target` is drawn in, as the layout tags it. */
+function laneOf(target: WordTarget): WordLane {
+  if (target.kind === 'chord') return 'chord';
+  if (target.kind === 'text') return 'text';
+  // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- the lane type is a template over number
+  return `lyric:${target.line}`;
+}
+
+/**
+ * Where the word field sits for `target` on the current layout: on the baseline of the word the
+ * beat already has in that row (found by the lane the layout tags it with), else on the row's
+ * baseline the layout reports for the staff that draws words, which holds for an empty row too.
+ * That staff is the tab, or the only staff of a track shown in standard; in `both` the words stay
+ * on the tab. No lane is reserved for the field: the layout only grows once a word is committed.
+ * Undefined when the beat is not drawn.
+ */
+export function wordFieldRect(layout: LayoutResult, target: WordTarget): WordRect | undefined {
+  const anchors = findAnchors(layout, target.beatId, 'beat').filter(
+    (a) => a.track === target.trackId,
+  );
+  for (const anchor of anchors) {
+    const system = layout.systems[anchor.system];
+    const words = system?.staves.find(
+      (s) => s.track === target.trackId && s.type === anchor.staff && s.words,
+    )?.words;
+    if (!system || !words) continue;
+    const lane = laneOf(target);
+    const found = layout.primitives
+      .slice(system.primitives.start, system.primitives.end)
+      .find((p) => p.kind === 'text' && p.node === target.beatId && p.lane === lane);
+    const box = anchorBox(layout, anchor);
+    const lyric = target.kind === 'lyric';
+    const baseline =
+      found?.y ??
+      (target.kind === 'chord'
+        ? words.chord
+        : target.kind === 'text'
+          ? words.text
+          : words.lyrics + target.line * words.lyricRow);
+    const size = words.size;
+    return {
+      x: found ? found.x + (system.offsetX ?? 0) : lyric ? box.x + box.width / 2 : box.x,
+      y: baseline - size * 1.1,
+      height: size * 1.5,
+      size,
+      align: lyric ? 'middle' : 'start',
+    };
+  }
+  return undefined;
 }

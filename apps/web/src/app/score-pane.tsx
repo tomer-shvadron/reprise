@@ -27,6 +27,7 @@ import {
   caretRect,
   EditStatusLine,
   useEditOverlays,
+  WordField,
 } from '@/features/editor';
 import { selectRunning } from '@/state/playback';
 import type { BarRange } from '@/state/selection';
@@ -247,7 +248,9 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
           onScorePointer={onScorePointer}
           onUserScroll={onUserScroll}
           className="h-full focus-visible:-outline-offset-2"
-        />
+        >
+          <WordField />
+        </ScoreView>
         <FollowButton />
       </div>
       <EditStatusLine
