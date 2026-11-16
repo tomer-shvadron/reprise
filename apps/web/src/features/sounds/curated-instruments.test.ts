@@ -37,7 +37,7 @@ function installedGrowlybass(
 }
 
 describe('reconcileCurated', () => {
-  it('gives Growlybass its staccato file on every sound but vicious, which is staccato already', () => {
+  it('gives Growlybass its staccato file on dirty and clean only', () => {
     const { pack, dropped } = reconcileCurated(installedGrowlybass());
     expect(dropped).toEqual([]);
     const sets = Object.fromEntries(pack.instruments.map((i) => [i.key, i.entries['staccato']]));
@@ -45,9 +45,9 @@ describe('reconcileCurated', () => {
       dirty: 'growlybass_vicious.sfz',
       clean: 'growlybass_vicious.sfz',
       vicious: undefined,
-      angry: 'growlybass_vicious.sfz',
-      excessive: 'growlybass_vicious.sfz',
-      shifty: 'growlybass_vicious.sfz',
+      angry: undefined,
+      excessive: undefined,
+      shifty: undefined,
     });
   });
 

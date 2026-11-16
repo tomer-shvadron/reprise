@@ -16,15 +16,19 @@ const emilyguitar = karoryfer(
 );
 
 /**
+ * Growlybass keeps its staccato samples in a file of their own, `growlybass_vicious.sfz`. Only the
+ * sounds that play sustained notes list it as their staccato set: angry and excessive already layer
+ * staccato samples into every note.
+ */
+const STACCATO = 'growlybass_vicious.sfz';
+
+/**
  * The packs the Sounds screen offers. Every entry's licence was read on the pack's own source page
  * (dates in `docs/reference/sound-packs.md`). A pack is listed only when its terms are confirmed;
  * `directDownload` also needs a stable archive URL whose hash and size were measured from one real
  * download. Ids are fixed, not derived from anything: a song names a pack by id, so changing one
  * orphans every song that uses the pack.
  */
-/** Growlybass keeps its staccato samples in one file of their own, shared by every sound. */
-const STACCATO = 'growlybass_vicious.sfz';
-
 export const CURATED_PACKS: readonly PackManifest[] = [
   {
     schema: 1,
@@ -99,17 +103,17 @@ export const CURATED_PACKS: readonly PackManifest[] = [
       {
         key: 'angry',
         name: 'Angry',
-        entries: { default: 'growlybass_angry.sfz', staccato: STACCATO },
+        entries: { default: 'growlybass_angry.sfz' },
       },
       {
         key: 'excessive',
         name: 'Excessive',
-        entries: { default: 'growlybass_excessive.sfz', staccato: STACCATO },
+        entries: { default: 'growlybass_excessive.sfz' },
       },
       {
         key: 'shifty',
         name: 'Shifty',
-        entries: { default: 'growlybass_shifty.sfz', staccato: STACCATO },
+        entries: { default: 'growlybass_shifty.sfz' },
       },
     ],
   },
