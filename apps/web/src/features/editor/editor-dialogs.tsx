@@ -4,6 +4,8 @@ import { LossDialog } from '@/app/loss-dialog';
 import { useAppServices } from '@/app/services-context';
 
 import { dialogsOf } from './dialogs';
+import { EffectPickerDialog } from './effect-pickers';
+import { GraceDialog } from './grace-dialog';
 import { MasterBarDialog } from './master-bar-dialog';
 import { removeTrackNow } from './track-edit';
 import { TrackDialog } from './track-dialog';
@@ -55,6 +57,19 @@ export function EditorDialogs() {
           onClose={close}
           onCloseAutoFocus={onCloseAutoFocus}
         />
+      );
+    case 'effectPicker':
+      return (
+        <EffectPickerDialog
+          key={dialog.picker}
+          picker={dialog.picker}
+          onClose={close}
+          onCloseAutoFocus={onCloseAutoFocus}
+        />
+      );
+    case 'grace':
+      return (
+        <GraceDialog before={dialog.before} onClose={close} onCloseAutoFocus={onCloseAutoFocus} />
       );
     case 'removeTrack':
       if (!track) return null;

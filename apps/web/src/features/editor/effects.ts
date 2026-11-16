@@ -9,6 +9,7 @@ import {
   type Bend,
   type Changes,
   type Command,
+  type Dynamics,
   type Harmonic,
   type Id,
   type Note,
@@ -19,7 +20,12 @@ import {
   type Whammy,
 } from '@reprise/model';
 
-import { effectTarget, type EffectTargetInput, type NoteRef } from './effect-targets';
+import {
+  effectTarget,
+  type EffectTarget,
+  type EffectTargetInput,
+  type NoteRef,
+} from './effect-targets';
 import type { EditPlan } from './entry';
 import { nextOnString } from './next-on-string';
 
@@ -39,7 +45,10 @@ export type EffectAction =
   /** Guitar Pro's H: the note picked is the origin, and the next note on its string takes `hammerPull`. */
   | { kind: 'hammer' }
   | { kind: 'harmonic'; harmonic: Harmonic }
+  | { kind: 'dynamics'; dynamics: Dynamics }
   | { kind: 'trill'; trill: Trill }
+  /** A trill to `interval` frets above each note, so a chord trills each of its notes. */
+  | { kind: 'trillInterval'; interval: number; speed: Trill['speed'] }
   | { kind: 'bend'; bend: Bend; label?: string }
   | { kind: 'beatFlag'; flag: BeatFlag }
   | { kind: 'tremolo'; speed: 8 | 16 | 32 }
@@ -79,6 +88,9 @@ export type Resolved =
   | { kind: 'beat'; label: string; items: Item<BeatChanges>[] };
 
 const refuse = (refused: string): { refused: string } => ({ refused });
+
+/** What `createNote` gives a note, so what clearing a dynamic returns to. */
+const DEFAULT_DYNAMICS: Dynamics = 'f';
 
 const FRETTED_ONLY = 'That effect needs a fretted track';
 const NOTHING_SELECTED = 'Select a note first';
@@ -178,6 +190,10 @@ const ANY_TRACK_BEAT_FLAGS: ReadonlySet<BeatFlag> = new Set<BeatFlag>([
   'fadeOut',
   'volumeSwell',
 ]);
+
+/** The highest fret a trill can go to: the neck, or a MIDI note off a fretted track. */
+const trillTop = (ref: NoteRef): number =>
+  ref.track.kind === 'fretted' ? ref.track.fretCount : 127;
 
 /** A shift or legato slide, and a hammer-on, need a note to go to; the slide reaches one bar on. */
 const SLIDE_REACH_BARS = 1;
@@ -308,6 +324,16 @@ function noteSpec(action: EffectAction): NoteSpec | undefined {
       return slideSpec(action.slide);
     case 'harmonic':
       return harmonicSpec(action.harmonic);
+    case 'dynamics':
+      return {
+        label: `dynamics ${action.dynamics}`,
+        anyTrack: true,
+        has: (note) => note.dynamics === action.dynamics,
+        // Every note has a dynamic; forte is the model's default and what Remove restores.
+        present: (note) => note.dynamics !== DEFAULT_DYNAMICS,
+        set: () => ({ dynamics: action.dynamics }),
+        clear: () => ({ dynamics: DEFAULT_DYNAMICS }),
+      };
     case 'trill':
       return valueSpec(
         'trill',
@@ -318,6 +344,21 @@ function noteSpec(action: EffectAction): NoteSpec | undefined {
           trill: null,
         },
       );
+    case 'trillInterval': {
+      const { interval, speed } = action;
+      return {
+        label: 'trill',
+        anyTrack: false,
+        has: (note) => note.trill?.speed === speed && note.trill.fret === note.fret + interval,
+        present: (note) => note.trill !== undefined,
+        set: (note) => ({ trill: { fret: note.fret + interval, speed } }),
+        clear: () => ({ trill: null }),
+        unavailable: (ref) =>
+          ref.note.fret + interval > trillTop(ref)
+            ? `A trill to fret ${String(ref.note.fret + interval)} is off the neck`
+            : undefined,
+      };
+    }
     case 'bend': {
       const prebend = action.bend.kind.startsWith('prebend');
       return valueSpec(
@@ -475,8 +516,11 @@ function resolveNotes(refs: readonly NoteRef[], spec: NoteSpec): Resolved {
  * Refusals are plain sentences for the status line; a node that cannot take the effect is marked
  * `unavailable` instead, so the rest of a mixed selection still gets it.
  */
-export function resolveEffect(input: EffectInput, action: EffectAction): Resolved {
-  const target = effectTarget(input);
+export function resolveEffect(
+  input: EffectInput,
+  action: EffectAction,
+  target: EffectTarget = effectTarget(input),
+): Resolved {
   const noteBased = noteSpec(action);
   if (noteBased || action.kind === 'hammer') {
     const refs = action.kind === 'flag' && action.wholeBeat ? target.beatNotes : target.notes;
