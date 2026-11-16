@@ -19,24 +19,32 @@ test('A sixteen-bar riff is entered from the keyboard alone, one undo step per e
   const bars = r.bars;
   expect(bars).toHaveLength(16);
   const status = page.getByTestId('edit-status');
-  // The palette closes with its input focused, where editor shortcuts do not apply.
+  // Radix keeps the palette mounted through its close animation, with the input focused, where
+  // the dispatcher leaves bare keys to the field. Focus must come back to the page or the score.
   const palette = async (text: string) => {
     await app.palette(text);
     await expect(page.getByRole('combobox')).toBeHidden();
-    await page.locator('body').focus();
+    await expect
+      .poll(() =>
+        app
+          .score()
+          .evaluate(
+            (region) =>
+              document.activeElement === document.body || region.contains(document.activeElement),
+          ),
+      )
+      .toBe(true);
   };
 
+  // New song opens in edit mode; the shortcut turns it off and on again.
   await palette('New song');
   await app.waitReady();
   await app.gesture();
+  await expect(status).toBeVisible();
   await page.keyboard.press('ControlOrMeta+e');
-  // On CI the first press has been lost to a document that was still settling (edit mode starts
-  // off with every document), so press again until the status line shows it, never toggling a
-  // mode that is already on.
-  await expect(async () => {
-    if (!(await status.isVisible())) await page.keyboard.press('ControlOrMeta+e');
-    await expect(status).toBeVisible({ timeout: 1000 });
-  }).toPass();
+  await expect(status).toBeHidden();
+  await page.keyboard.press('ControlOrMeta+e');
+  await expect(status).toBeVisible();
   await expect(status).toContainText('Bar 1 · End of bar · String 1');
 
   let heard = false;
@@ -60,14 +68,9 @@ test('A sixteen-bar riff is entered from the keyboard alone, one undo step per e
   await expect(status).not.toContainText('Fret ');
   expect(await app.description()).toBe('16 bars, 1 page');
 
-  // Save As the first time (a new song has no file), in place after.
-  const first = await saved(app, 'Untitled.reprise', async () => {
-    await page.keyboard.press('ControlOrMeta+s');
-    await page
-      .getByRole('dialog', { name: 'Save as' })
-      .getByRole('button', { name: 'Reprise', exact: true })
-      .click();
-  });
+  // A new song has no file, so the first Save is a Save As, which writes .reprise with no
+  // question; Save writes in place after.
+  const first = await saved(app, 'Untitled.reprise', () => page.keyboard.press('ControlOrMeta+s'));
   expect(shapeOf(first)).toEqual(shapeOf(expectedScore(bars)));
 
   const save = () => saved(app, 'Untitled.reprise', () => page.keyboard.press('ControlOrMeta+s'));
@@ -83,7 +86,7 @@ test('A sixteen-bar riff is entered from the keyboard alone, one undo step per e
   // All but one leaves the first beat alone; one more leaves the empty start score.
   await undo(barFive - 1);
   expect(shapeOf(await save())).toEqual(
-    shapeOf(expectedScore([{ 0: [{ rhythm: '4', notes: [[6, 0]] }] }])),
+    shapeOf(expectedScore([{ 0: [{ rhythm: '2', notes: [[6, 0]] }] }])),
   );
   await undo(1);
   expect(shapeOf(await save())).toEqual(shapeOf(expectedScore([{}])));

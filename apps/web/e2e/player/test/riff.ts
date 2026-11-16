@@ -125,6 +125,15 @@ export class Riff {
     this.#here().push({ rhythm, notes: [[string, fret]], tie: true });
   }
 
+  /** A chord with one note too many, which Backspace takes off again: two undo steps. */
+  mistaken(rhythm: Spec, notes: readonly Pitch[], wrong: Pitch) {
+    this.beat(rhythm, [...notes, wrong]);
+    this.#press('Backspace');
+    this.entries += 1;
+    const beat = this.#here().at(-1);
+    if (beat) beat.notes = notes;
+  }
+
   /** Types a wrong fret, then the right one over it. */
   corrected(rhythm: Spec, string: number, wrong: number, fret: number) {
     this.#advance();
@@ -163,9 +172,9 @@ export class Riff {
 
 export function riff(): Riff {
   const r = new Riff();
-  // 1. A quarter, long enough to be heard, then eighths on the low string.
-  r.beat('4', [[6, 0]]);
-  for (const fret of [0, 3, 0, 0, 5, 3]) r.beat('8', [[6, fret]]);
+  // 1. A half note, long enough to be heard, then eighths on the low string.
+  r.beat('2', [[6, 0]]);
+  for (const fret of [0, 3, 0, 5]) r.beat('8', [[6, fret]]);
   r.nextBar();
   // 2. A dotted quarter, an eighth and a half note.
   r.beat('4.', [[5, 5]]);
@@ -183,11 +192,14 @@ export function riff(): Riff {
     [4, 7],
     [5, 7],
   ]);
-  r.beat('4', [
-    [4, 5],
-    [5, 5],
-    [6, 3],
-  ]);
+  r.mistaken(
+    '4',
+    [
+      [4, 5],
+      [5, 5],
+    ],
+    [6, 9],
+  );
   r.rest('2', 'Enter');
   r.nextBar();
   // 5. A triplet group between a quarter and a half note.
@@ -240,7 +252,10 @@ export function riff(): Riff {
     [6, 0],
   ]);
   r.nextBar();
-  // 14.
+  // 14. Voice 2 again, under a half and two quarters.
+  r.voice(1);
+  r.beat('1', [[6, 5]]);
+  r.voice(0);
   r.beat('2', [[5, 3]]);
   r.beat('4', [[5, 5]]);
   r.beat('4', [[5, 7]]);
@@ -254,7 +269,7 @@ export function riff(): Riff {
   return r;
 }
 
-/** The first `count` bars of the riff as a score. */
+/** The given bars, from the first, as a score. */
 export function expectedScore(bars: readonly Bar[]): Score {
   const built = score().track('guitar');
   for (const bar of bars) {

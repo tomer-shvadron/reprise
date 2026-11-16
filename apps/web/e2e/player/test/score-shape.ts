@@ -5,7 +5,8 @@ export interface ShapedBeat {
   dots: number;
   tuplet: string | undefined;
   rest: boolean;
-  notes: { string: number; fret: number; tie: boolean }[];
+  /** The note as stored, without its id. */
+  notes: Record<string, unknown>[];
 }
 
 export interface ShapedScore {
@@ -17,7 +18,7 @@ export interface ShapedScore {
 /**
  * The musical content of a score, with ids and every default that two ways of making a score do
  * not share dropped: the master bars' time signatures, then per track, bar and voice each beat's
- * duration, dots, tuplet and rest and its notes (string, fret, tie) in string order.
+ * duration, dots, tuplet and rest and its notes (all but its id) in string order.
  */
 export function shapeOf(score: Score): ShapedScore {
   return {
@@ -40,9 +41,11 @@ export function shapeOf(score: Score): ShapedScore {
                       ? `${String(beat.tuplet.n)}:${String(beat.tuplet.of)}`
                       : undefined,
                     rest: beat.rest,
-                    notes: beat.notes
-                      .map(({ string, fret, tie }) => ({ string, fret, tie }))
-                      .sort((a, b) => a.string - b.string),
+                    notes: [...beat.notes]
+                      .sort((a, b) => a.string - b.string)
+                      .map((n) =>
+                        Object.fromEntries(Object.entries(n).filter(([key]) => key !== 'id')),
+                      ),
                   })),
                 },
               ],
