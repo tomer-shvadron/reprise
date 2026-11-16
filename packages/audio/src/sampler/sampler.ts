@@ -1,7 +1,12 @@
 import { midiNote } from '@reprise/model';
 import type { Id, Note, Track } from '@reprise/model';
 
+import { realtimeDefer } from '../effects/bypass-slot';
+import type { Defer } from '../effects/bypass-slot';
+import type { EffectSpec } from '../effects/presets';
+import { ImpulseBank, ReverbBus } from '../effects/reverb-bus';
 import { ChannelStrip, MasterBus, applySolo } from './channel-strip';
+import type { StripEffects } from './channel-strip';
 import type { Region, RegionMap, SampleRef } from './region-map';
 import type { SampleSource } from './sample-source';
 import { Voice, velocityGain } from './voice';
@@ -67,6 +72,8 @@ export interface SamplerOptions {
   destination?: AudioNode;
   previewVelocity?: number;
   previewSeconds?: number;
+  /** Runs a callback when the context clock reaches a time; for idle effects paths to be disconnected. Tests inject one. */
+  defer?: Defer;
   /** A note whose sample was not resident: it was skipped and its load requested. */
   onMiss?: (track: Id, sample: SampleRef) => void;
 }
@@ -171,11 +178,19 @@ export class Sampler {
   readonly pool: VoicePool;
   readonly #tracks = new Map<Id, TrackState>();
   readonly #options: SamplerOptions;
+  readonly #effects: StripEffects;
+  #impulses: ImpulseBank | undefined;
+  #reverb: ReverbBus | undefined;
   #misses = 0;
 
   constructor(context: BaseAudioContext, options: SamplerOptions = {}) {
     this.context = context;
     this.#options = options;
+    this.#effects = {
+      impulses: () => (this.#impulses ??= new ImpulseBank(context)),
+      reverb: () => this.#reverbBus().input,
+      defer: options.defer ?? realtimeDefer(context),
+    };
     this.master = new MasterBus(context, options.destination ?? context.destination);
     this.pool = new VoicePool(options.polyphony ?? DEFAULT_POLYPHONY);
   }
@@ -185,13 +200,33 @@ export class Sampler {
     return this.#misses;
   }
 
+  /** The shared reverb bus, once a strip has sent to it. */
+  get reverbBus(): ReverbBus | undefined {
+    return this.#reverb;
+  }
+
+  get impulseBytes(): number {
+    return this.#impulses?.bytes ?? 0;
+  }
+
+  #reverbBus(): ReverbBus {
+    this.#impulses ??= new ImpulseBank(this.context);
+    this.#reverb ??= new ReverbBus(this.context, this.#impulses, this.master.input);
+    return this.#reverb;
+  }
+
+  /** Moves a track's strip to the effects `spec`, glitch-free; `undefined` is no effects at all. */
+  setEffects(id: Id, spec: EffectSpec | undefined): void {
+    this.#state(id).strip.setEffects(spec);
+  }
+
   get trackIds(): Id[] {
     return [...this.#tracks.keys()];
   }
 
   addTrack(track: SamplerTrack, instrument: Instrument): ChannelStrip {
     this.removeTrack(track.id);
-    const strip = new ChannelStrip(this.context, this.master.input);
+    const strip = new ChannelStrip(this.context, this.master.input, this.#effects);
     this.#tracks.set(track.id, {
       track,
       instrument,
@@ -446,6 +481,7 @@ export class Sampler {
 
   dispose(): void {
     for (const id of [...this.#tracks.keys()]) this.removeTrack(id);
+    this.#reverb?.dispose();
     this.master.dispose();
   }
 

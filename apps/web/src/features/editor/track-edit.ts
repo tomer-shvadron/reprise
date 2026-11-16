@@ -1,5 +1,4 @@
 import {
-  CommandError,
   addTrack,
   moveTrack as moveTrackCommand,
   newId,
@@ -14,7 +13,7 @@ import { singleTrackOf } from '@/state/document';
 import { selectTrack } from '@/features/tracks';
 
 import { dialogsOf } from './dialogs';
-import { refusalMessage } from './track-refusal';
+import { describeRefusal } from './refusal';
 import {
   isEmptyChange,
   newTrackProperties,
@@ -64,8 +63,9 @@ function attempt(run: () => void): ApplyResult {
     run();
     return { ok: true };
   } catch (error) {
-    if (error instanceof CommandError) return { ok: false, message: refusalMessage(error) };
-    throw error;
+    const message = describeRefusal(error);
+    if (message === undefined) throw error;
+    return { ok: false, message };
   }
 }
 

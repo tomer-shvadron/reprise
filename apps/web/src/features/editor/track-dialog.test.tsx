@@ -103,7 +103,7 @@ describe('the track dialog, editing', () => {
     });
     await user.type(field('Name'), 'x');
     await user.click(screen.getByRole('button', { name: 'Apply' }));
-    expect(within(dialog()).getByRole('alert')).toHaveTextContent('the model said no');
+    expect(within(dialog()).getByRole('alert')).toHaveTextContent('The model said no');
     await user.type(field('Name'), 'y');
     expect(within(dialog()).queryByRole('alert')).toBeNull();
   });

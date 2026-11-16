@@ -3,6 +3,8 @@ import type { Id, Score, Track } from '@reprise/model';
 import { ClickSynth } from './click-synth';
 import { GmBank } from './gm-bank';
 import { outputLatencyOf } from './output-latency';
+import { resolveEffects, stagesOf } from './effects/presets';
+import type { EffectStage } from './effects/presets';
 import { Sampler } from './sampler/sampler';
 import type { PreviewNote, PreviewOptions, TrackParams } from './sampler/sampler';
 import { createSamplerSink } from './sampler/sampler-sink';
@@ -115,6 +117,17 @@ export interface AudioEngine {
   setMasterVolume(volume: number): void;
   /** A strip's volume or pan with no override: the next baseline reset or edit replaces it. */
   previewTrack(id: Id, params: Pick<TrackParams, 'volume' | 'pan'>): void;
+  /**
+   * Whether an automatic effects preset is skipped on GM-tier tracks (on by default): the
+   * soundfont's distorted samples are already processed. A preset the track names (`sound.preset`)
+   * applies on either tier. Applies to a loaded song at once.
+   */
+  setGmTierBypass(on: boolean): void;
+  /**
+   * Bypasses one stage of a track's effects chain for the session, like `setTrack`: not saved,
+   * kept through edits, cleared by `unload`. The reverb stage is the track's send.
+   */
+  setStageBypass(trackId: Id, stage: EffectStage, bypassed: boolean): void;
   /** Seconds from the context's clock to the speaker; 0 with no context. */
   outputLatency(): number;
   /** Resolves with no load, instrument load or sample fetch in flight. */
@@ -206,6 +219,10 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   let countIn = false;
   let metronome = { on: false, volume: 0.7 };
   let masterVolume = 1;
+  let gmTierBypass = true;
+  let packs: readonly PackAssignment[] = [];
+  /** Session stage bypasses, by track. */
+  let stageBypasses = new Map<Id, Set<EffectStage>>();
   let clickSettings = DEFAULT_CLICK_SETTINGS;
   let loads: InstrumentLoads = {};
   // Per track, so a second instrument change drops the first one's progress.
@@ -252,6 +269,23 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     }
   }
 
+  /** HQ once a pack is assigned to the track; WP-091 decides what a missing pack falls back to. */
+  function tierOf(track: Track): 'gm' | 'hq' {
+    return packs.some((pack) => pack.trackId === track.id) ? 'hq' : 'gm';
+  }
+
+  /** Re-resolves every held track's effects; a strip whose chain did not change does nothing. */
+  function applyEffects(tracks: readonly Track[]): void {
+    if (!live) return;
+    const { sampler } = live;
+    const held = new Set(sampler.trackIds);
+    for (const track of tracks) {
+      if (!held.has(track.id)) continue;
+      const { preset } = resolveEffects(track, { tier: tierOf(track), gmTierBypass });
+      sampler.setEffects(track.id, stagesOf(preset, stageBypasses.get(track.id)));
+    }
+  }
+
   function attach(next: Score, mode: 'replace' | 'sync'): void {
     if (!live || !bank) return;
     const { sampler } = live;
@@ -278,6 +312,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       if (old.channel !== track.channel) sampler.setTrack(track.id, baselineOf(track));
     }
     attached = next;
+    applyEffects(next.tracks);
   }
 
   function makeLive(context: BaseAudioContext): Live {
@@ -388,6 +423,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   /** A timeline-neutral edit: channel and program changes go straight to the strips. */
   function applyNeutral(previous: Score, next: Score): Promise<LoadResult> {
     if (live) attached = next;
+    applyEffects(next.tracks);
     const sampler = live?.sampler;
     const held = new Set(sampler?.trackIds);
     const reprogrammed: Id[] = [];
@@ -432,7 +468,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   }
 
   const engine: AudioEngine = {
-    load(next) {
+    load(next, loadOptions) {
       if (disposed) return Promise.reject(new Error('AudioEngine.load: the engine was disposed'));
       if (!source || !bank) {
         return Promise.reject(
@@ -441,7 +477,11 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       }
       const previous = score;
       score = next;
-      if (previous === next) return tracked(decode(next));
+      packs = loadOptions.packs;
+      if (previous === next) {
+        applyEffects(next.tracks);
+        return tracked(decode(next));
+      }
       if (previous && timelineNeutral(previous, next)) {
         return tracked(applyNeutral(previous, next));
       }
@@ -573,6 +613,8 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       // Its `stopped` resets the baseline while the old song is still attached.
       live?.transport.unload();
       overrides = {};
+      stageBypasses = new Map();
+      packs = [];
       loopBars = undefined;
       song += 1;
       loadTokens.clear();
@@ -592,6 +634,20 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       checkVolume('setMasterVolume', volume);
       masterVolume = volume;
       if (live) live.sampler.master.gain = volume;
+    },
+
+    setGmTierBypass(on) {
+      gmTierBypass = on;
+      if (attached) applyEffects(attached.tracks);
+    },
+
+    setStageBypass(trackId, stage, bypassed) {
+      const stages = new Set(stageBypasses.get(trackId));
+      if (bypassed) stages.add(stage);
+      else stages.delete(stage);
+      stageBypasses = new Map(stageBypasses).set(trackId, stages);
+      const track = attached?.tracks.find((entry) => entry.id === trackId);
+      if (track) applyEffects([track]);
     },
 
     previewTrack(id, params) {

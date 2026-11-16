@@ -1,5 +1,5 @@
 export { ChannelStrip, MasterBus, applySolo } from './channel-strip';
-export type { StripSettings } from './channel-strip';
+export type { StripEffects, StripSettings } from './channel-strip';
 export { RegionMap } from './region-map';
 export type { Envelope, Region, RegionSelection, SampleRef } from './region-map';
 export { SynthSampleSource, midiToFrequency } from './sample-source';
