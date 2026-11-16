@@ -18,17 +18,19 @@ interface SongListProps {
   onOpen: (id: string) => void;
   /** Asked for by the Delete key or a row's button; the caller confirms. */
   onDelete: (id: string) => void;
+  /** Opens the song's practice log. */
+  onPracticeLog: (id: string) => void;
 }
 
 const COLUMNS =
-  'grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)_minmax(0,2fr)_4rem_8rem_4rem] gap-3 px-3';
+  'grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)_minmax(0,2fr)_4rem_8rem_9.5rem] gap-3 px-3';
 
 /**
  * A listbox of fixed-height rows that mounts only the rows in view, so render cost does not grow
  * with the library. Focus stays on the listbox and `aria-activedescendant` names the active row,
  * so the active row may scroll out of the window without losing focus.
  */
-export function SongList({ entries, now, onOpen, onDelete }: SongListProps) {
+export function SongList({ entries, now, onOpen, onDelete, onPracticeLog }: SongListProps) {
   const scroller = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [height, setHeight] = useState(FALLBACK_HEIGHT);
@@ -188,21 +190,38 @@ export function SongList({ entries, now, onOpen, onDelete }: SongListProps) {
                 <span className="text-muted-foreground truncate">
                   {relativeDate(row.lastOpenedAt, now)}
                 </span>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  tabIndex={-1}
-                  aria-label={`Delete ${row.title}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onDelete(row.id);
-                  }}
-                  onDoubleClick={(event) => {
-                    event.stopPropagation();
-                  }}
-                >
-                  Delete
-                </Button>
+                <span className="flex justify-end gap-1">
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    tabIndex={-1}
+                    aria-label={`Practice log for ${row.title}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onPracticeLog(row.id);
+                    }}
+                    onDoubleClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                  >
+                    Practice log
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    tabIndex={-1}
+                    aria-label={`Delete ${row.title}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDelete(row.id);
+                    }}
+                    onDoubleClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </span>
               </div>
             );
           })}

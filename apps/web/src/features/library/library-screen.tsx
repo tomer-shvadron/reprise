@@ -3,6 +3,7 @@ import { useStore } from 'zustand';
 
 import { useAppServices } from '@/app/services-context';
 import { Input } from '@/components/ui/input';
+import { SongPracticePage } from '@/features/trainer';
 
 import { DeleteDialog } from './delete-dialog';
 import { ImportBar } from './import-bar';
@@ -29,6 +30,7 @@ export function LibraryScreen() {
   // Read once per mount: relative dates need not tick while the screen is open.
   const [now] = useState(() => Date.now());
   const [deleting, setDeleting] = useState<SongRow | undefined>();
+  const [viewing, setViewing] = useState<SongRow | undefined>();
 
   useEffect(() => {
     void library.load();
@@ -37,6 +39,28 @@ export function LibraryScreen() {
   // Filtering keeps the order, so a keystroke only runs the `includes` pass.
   const sorted = useMemo(() => sortEntries(entries, sort), [entries, sort]);
   const visible = useMemo(() => filterEntries(sorted, query), [sorted, query]);
+
+  if (viewing) {
+    return (
+      <div
+        className="flex min-h-0 flex-1 flex-col p-4"
+        onKeyDown={(event) => {
+          // Escape closes the page before it can close the screen.
+          if (event.key !== 'Escape') return;
+          event.stopPropagation();
+          setViewing(undefined);
+        }}
+      >
+        <SongPracticePage
+          song={viewing}
+          open={() => library.openSong(viewing.id)}
+          onBack={() => {
+            setViewing(undefined);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
@@ -91,6 +115,9 @@ export function LibraryScreen() {
           }}
           onDelete={(id) => {
             setDeleting(entries.find((entry) => entry.row.id === id)?.row);
+          }}
+          onPracticeLog={(id) => {
+            setViewing(entries.find((entry) => entry.row.id === id)?.row);
           }}
         />
       )}
