@@ -108,3 +108,6 @@ export { planWord, type WordEdit, type WordKind, type WordPlan } from './words';
 export { nextWordBeat, firstWordBeat } from './word-nav';
 export { chordNamesIn, suggestChords } from './chord-suggestions';
 export { wordFieldRect, type WordRect, type WordTarget } from './geometry';
+export { HistoryPanel } from './history-panel';
+export { historyLabel } from './history-labels';
+export { undoLanding } from './undo-landing';

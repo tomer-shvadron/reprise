@@ -102,7 +102,7 @@ The tab module is `packages/layout/src/staves/tab/`; every size below is in staf
 - **Two voices.** Voice 1 stems down below the tab; voices 2 to 4 stem up above it whenever voice 1 is present, Guitar Pro's convention for tab. A voice alone stems down. A voice is present only when it has a note or a rest: Guitar Pro's unused voices hold empty beats, and those draw nothing and reserve nothing.
 - **Words.** In lanes above the staff, outside the effect lanes (see [Note effects](#note-effects-wp-022)): chord names (1.2 spaces, starting at the left edge of the beat's numbers), left- and right-hand fingering stacked one per fingered note in string order (`T 1 2 3 4`, then `p i m a c`), then beat text. Below the rhythm notation and the dynamics: one lyric row per line used, each syllable centred on its beat. A lane exists in a system when a bar of it has the row, and every bar of the system writes it at the same height (WP-022). Words keep the room their beat measured; in a system's last bar a chord name, beat text or syllable that would pass the bar's content end is cut there with an ellipsis, which happens only in a squeezed bar (#107).
 - **Dynamics** are the Bravura dynamic glyphs at 0.8 size, centred on the beat in a dynamics lane below the rhythm notation, by the rule every staff shares (see [Dynamics](#dynamics-wp-022)).
-- **Both mode.** Under a standard staff (`StaffBar.staves` holds `standard`) the tab shows fret numbers, grace numbers, ties, chord names, beat text, lyrics and the note effects (lanes, bends, slides, hammer-ons) only: stems, flags, beams, dots, tuplets, rests, dynamics, fingering, articulations and tremolo strokes are the standard staff's, Guitar Pro's "both" ([ADR-0021](../decisions/0021-rhythm-on-the-standard-staff-in-both-mode.md), [ADR-0022](../decisions/0022-lane-effects-once-on-the-tab-in-both-mode.md)). Chord names, text and lyrics stay on the tab because the standard staff does not draw them.
+- **Both mode.** Under a standard staff (`StaffBar.staves` holds `standard`) the tab shows fret numbers, grace numbers, ties, chord names, beat text, lyrics and the note effects (lanes, bends, slides, hammer-ons) only: stems, flags, beams, dots, tuplets, rests, dynamics, fingering, articulations and tremolo strokes are the standard staff's, Guitar Pro's "both" ([ADR-0021](../decisions/0021-rhythm-on-the-standard-staff-in-both-mode.md), [ADR-0022](../decisions/0022-lane-effects-once-on-the-tab-in-both-mode.md)). Chord names, text and lyrics stay on the tab, and the standard staff draws none of them, so a word is never drawn twice; a track shown as standard alone draws them (see [Words on the five-line staves](#words-on-the-five-line-staves-wp-085)).
 - **Spacing.** A beat reserves its numbers and knockouts, grace columns, rest glyph, flag and dots either side of its onset, plus its chord name, text, lyrics, dynamic and effects (see [Note effects](#note-effects-wp-022)). Long notes follow the engine's curve (see [Spacing](#spacing-wp-020)).
 
 ## Rhythm notation (WP-021)
@@ -151,6 +151,7 @@ Fretted and pitched tracks. Pitches come from the model's `spellNote` and `staff
 - **Dynamics** in a lane below the staff, by the rule every staff shares (see [Dynamics](#dynamics-wp-022)); the glyphs are Bravura's precomposed dynamics (`dynamicPP` to `dynamicFFF`), as on the tab.
 - **Fingering** above the staff, one per note top to bottom: left hand as `T 1 2 3 4`, right hand as `p i m a c`; the room above reaches the top of the tallest glyph (the right hand's `i`, 1.54, is taller than the 1.1 step).
 - **Note effects**: articulations, tremolo strokes, ghost parentheses, harmonic diamonds, slides, slurs and stroke arrows at the notes, and when the staff is the track's only one, the lane effects and bends; see [Effects on the standard and percussion staves](#effects-on-the-standard-and-percussion-staves-86).
+- **Words**: chord names, beat text and lyrics, when the staff is the track's only one; see [Words on the five-line staves](#words-on-the-five-line-staves-wp-085).
 
 ## Percussion staff (WP-023)
 
@@ -160,6 +161,15 @@ Drum tracks. Five lines, the percussion clef, no key signature and no accidental
 - Stems point up with one voice; with two, the file's voices decide: voice 1 up, voice 2 down.
 - Rests, beams, flags, dots, ties, tuplets, grace notes and dynamics follow the standard staff, and so do chords and two voices at one onset: a drum hit both voices play shares its head, and two a second apart move apart.
 - Articulations always sit on the stem side, beyond the tip or the beam; ghost notes are in parentheses; tremolo picking is drawn as roll strokes on the stem. A drum note draws no lane effect, bend, slide or stroke, whatever it carries.
+
+## Words on the five-line staves (WP-085)
+
+A standard or percussion staff that is its track's only staff draws the words a beat carries, with the code the tab uses (`src/staves/words.ts`: measuring, lanes and drawing), so a vocal or keyboard track shown as standard notation shows its chord names, beat text and imported lyrics. In both mode nothing changes: the words stay on the tab ([Both mode](#both-mode-wp-023)).
+
+- **Lanes.** The same three lanes and sizes as the tab: `chord` (2.2 spaces) and `text` (2) above the staff, outside the effect lanes and in the order of the lane table, and `lyrics` below it, after the dynamics lane, 2 spaces per line used. A lane exists in a system when a bar of it has the row, and every bar of the system writes it at the same height. A system that gains a lane gets taller, as it does on the tab; in the continuous layout that is the shared vertical layout's height changing, which re-renders every segment (see the layout README, and #229).
+- **Position.** A chord name or beat text starts at the left edge of the beat's heads, accidentals left out (a rest: its left edge); syllables are centred on the beat's x. Words keep the room their beat measured, and in a system's last bar they are cut at the bar's content end with an ellipsis, as on the tab.
+- **Hyphens** stay attached to their syllable (`lo-`), as the readers store them; centring a hyphen in the gap to the next syllable is a follow-up, with a word on a whole-bar rest running past its bar and an empty syllable's reserved gap (#280).
+- Every word primitive carries `node = beat.id`. The beat's hit box is the one the staff already gives it; a word outside it is not a hit target, on the tab either.
 
 ## Both mode (WP-023)
 

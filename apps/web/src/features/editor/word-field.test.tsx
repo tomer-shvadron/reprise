@@ -80,18 +80,8 @@ async function setup(built: Score = wordScore()) {
   const type = (value: string) => {
     fireEvent.change(field(), { target: { value } });
   };
-  // The undo labels, newest first, read by walking the stack back and forward again.
-  const steps = () => {
-    const labels: string[] = [];
-    act(() => {
-      while (services.document.getState().canUndo) {
-        labels.push(must(services.document.getState().undoLabel));
-        services.document.getState().undo();
-      }
-      for (let i = 0; i < labels.length; i++) services.document.getState().redo();
-    });
-    return labels;
-  };
+  // The undo labels, oldest first.
+  const steps = () => [...services.document.getState().historyLabels.undo].reverse();
   return { services, score, beat, goTo, press, field, type, steps };
 }
 

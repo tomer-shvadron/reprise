@@ -3,7 +3,7 @@ import type { AppServices } from '@/app/services';
 
 import { effectCommands, type EffectCommandId } from './effect-commands';
 import { barCommands, type BarCommandId } from './bar-commands';
-import { pickerCommands, type PickerCommandId } from './picker-commands';
+import { pickerCommands, toggleHistoryPanel, type PickerCommandId } from './picker-commands';
 import { clipboardCommands, type ClipboardCommandId } from './clipboard-commands';
 import { entryCommands, type EntryCommandId } from './entry-commands';
 import { navigationCommands, type NavigationCommandId } from './navigation-commands';
@@ -12,6 +12,7 @@ import { trackEditCommands, type TrackEditCommandId } from './track-commands';
 
 export type EditorCommandId =
   | 'editor.toggleMode'
+  | 'editor.showHistory'
   | NavigationCommandId
   | EntryCommandId
   | BarCommandId
@@ -38,6 +39,13 @@ export function editorCommands(
       shortcut: { key: 'e', mod: true },
       run: () => {
         if (document.getState().score) editing.getState().toggle();
+      },
+    },
+    {
+      id: 'editor.showHistory',
+      title: 'Show history',
+      run: () => {
+        toggleHistoryPanel(services.ui);
       },
     },
     ...navigationCommands(services),

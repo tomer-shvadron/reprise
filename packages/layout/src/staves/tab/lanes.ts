@@ -1,6 +1,7 @@
 import { analyseEffects } from '../effects';
-import { LANE_HEIGHT, type LaneRequests } from '../lanes';
+import { LANE_HEIGHT, mergeLanes, type LaneRequests } from '../lanes';
 import { shownDynamics } from '../dynamics';
+import { wordLanes } from '../words';
 import type { StaffBar } from '../staff-module';
 import { analyseBar, type TabOptions } from './analysis';
 
@@ -12,10 +13,8 @@ export function tabLanes(input: StaffBar, options: TabOptions): LaneRequests {
   const lanes: LaneRequests = {
     ...analyseEffects(input.bar, space, { articulations: analysed.rhythm }).lanes,
   };
-  if (rows.chord > 0) lanes.chord = rows.chord;
+  mergeLanes(lanes, wordLanes(rows));
   if (rows.fingering > 0) lanes.fingering = rows.fingering;
-  if (rows.text > 0) lanes.text = rows.text;
-  if (rows.lyrics > 0) lanes.lyrics = rows.lyrics;
   if (analysed.rhythm && shownDynamics(input.track, input.barIndex).size > 0) {
     lanes.dynamics = LANE_HEIGHT.tabDynamics * space;
   }
