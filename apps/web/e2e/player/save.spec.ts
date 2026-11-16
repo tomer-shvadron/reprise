@@ -54,38 +54,29 @@ test('Save writes a .gp file in place, and it reopens as saved', async ({ app, p
   );
 });
 
-const SAVE_AS = [
-  { choice: 'Guitar Pro 7–8', extension: 'gp', format: 'gp', description: 'Guitar Pro 7–8' },
-  { choice: 'Reprise', extension: 'reprise', format: 'reprise', description: 'Reprise' },
-] as const;
+// Save As writes .reprise only, with no format question; .gp is an export (WP-061).
+test('Save As from a .gp5 file writes a .reprise, which reopens', async ({ app, page }) => {
+  await app.openWithPicker(fixture('gp5/chords.gp5'));
+  const name = 'chords.reprise';
+  const before = await app.writeCount(name);
+  await page.keyboard.press('ControlOrMeta+s');
 
-for (const { choice, extension, format, description } of SAVE_AS) {
-  test(`Save As from a .gp5 file as ${choice}, which reopens`, async ({ app, page }) => {
-    await app.openWithPicker(fixture('gp5/chords.gp5'));
-    await page.keyboard.press('ControlOrMeta+s');
-    const dialog = page.getByRole('dialog', { name: 'Save as' });
-    await expect(dialog).toContainText("Reprise can't write Guitar Pro 5 (.gp5) files");
-    const name = `chords.${extension}`;
-    const before = await app.writeCount(name);
-    await dialog.getByRole('button', { name: choice, exact: true }).click();
+  await app.waitForWrite(name, before);
+  expect(await app.saves()).toEqual([
+    {
+      suggestedName: name,
+      types: [{ description: 'Reprise', accept: { 'application/octet-stream': ['.reprise'] } }],
+    },
+  ]);
+  const saved = (await read(await app.readStored(name), 'reprise')).score;
+  const original = (await read(new Uint8Array(readFileSync(fixture('gp5/chords.gp5'))), 'gp5'))
+    .score;
+  expect(saved.masterBars).toHaveLength(2);
+  expect(saved.tracks).toHaveLength(original.tracks.length);
+  expect(notes(saved)).toBe(notes(original));
 
-    await app.waitForWrite(name, before);
-    expect(await app.saves()).toEqual([
-      {
-        suggestedName: name,
-        types: [{ description, accept: { 'application/octet-stream': [`.${extension}`] } }],
-      },
-    ]);
-    const saved = (await read(await app.readStored(name), format)).score;
-    const original = (await read(new Uint8Array(readFileSync(fixture('gp5/chords.gp5'))), 'gp5'))
-      .score;
-    expect(saved.masterBars).toHaveLength(2);
-    expect(saved.tracks).toHaveLength(original.tracks.length);
-    expect(notes(saved)).toBe(notes(original));
-
-    await app.pick(name);
-    await page.keyboard.press('ControlOrMeta+o');
-    await app.waitReady(name);
-    expect(await app.description()).toBe('2 bars, 1 page');
-  });
-}
+  await app.pick(name);
+  await page.keyboard.press('ControlOrMeta+o');
+  await app.waitReady(name);
+  expect(await app.description()).toBe('2 bars, 1 page');
+});

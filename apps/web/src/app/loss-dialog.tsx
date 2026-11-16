@@ -27,6 +27,9 @@ export function LossDialog<T extends string>({
   losses,
   choices,
   cancel,
+  cancelLabel = 'Cancel',
+  busy = false,
+  onCloseAutoFocus,
   onChoose,
 }: {
   open: boolean;
@@ -35,16 +38,22 @@ export function LossDialog<T extends string>({
   losses: readonly Warning[];
   choices: readonly LossChoice<T>[];
   cancel: T;
+  /** The cancel button's text, e.g. "OK" for a notice. */
+  cancelLabel?: string;
+  /** Disables every button and Escape, while what a choice started is still running. */
+  busy?: boolean;
+  /** Where focus goes when the dialog closes; the default is back to what had it. */
+  onCloseAutoFocus?: (event: Event) => void;
   onChoose: (value: T) => void;
 }) {
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) onChoose(cancel);
+        if (!next && !busy) onChoose(cancel);
       }}
     >
-      <DialogContent showCloseButton={false}>
+      <DialogContent showCloseButton={false} {...(onCloseAutoFocus && { onCloseAutoFocus })}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -53,17 +62,19 @@ export function LossDialog<T extends string>({
         <DialogFooter>
           <Button
             variant="outline"
+            disabled={busy}
             onClick={() => {
               onChoose(cancel);
             }}
           >
-            Cancel
+            {cancelLabel}
           </Button>
           {choices.map((choice) => (
             <Button
               key={choice.value}
               variant={choice.primary === true ? 'default' : 'outline'}
               autoFocus={choice.primary}
+              disabled={busy}
               onClick={() => {
                 onChoose(choice.value);
               }}

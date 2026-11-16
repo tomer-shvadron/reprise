@@ -1,6 +1,6 @@
 import type { Notation, Track } from '@reprise/model';
 import { cn } from 'cn';
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
 
 import { instrumentName } from './gm-programs';
 import type { TrackActions } from './track-actions';
@@ -28,6 +28,8 @@ interface TrackRowProps {
   single: boolean;
   loading: boolean;
   actions: TrackActions;
+  /** The app's menu for the row; see `TrackSidebar`. */
+  rowMenu?: ((track: Track, index: number) => ReactNode) | undefined;
 }
 
 export const TrackRow = memo(function TrackRow({
@@ -43,6 +45,7 @@ export const TrackRow = memo(function TrackRow({
   single,
   loading,
   actions,
+  rowMenu,
 }: TrackRowProps) {
   const label = trackLabel(track, index);
   const disabledReason = single
@@ -87,6 +90,7 @@ export const TrackRow = memo(function TrackRow({
             disabledReason={disabledReason}
             actions={actions}
           />
+          {rowMenu?.(track, index)}
         </div>
         <div className="flex items-center gap-1">
           <MuteToggle id={track.id} label={label} pressed={muted} actions={actions} />
