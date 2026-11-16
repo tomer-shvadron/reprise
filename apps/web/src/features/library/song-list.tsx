@@ -18,7 +18,7 @@ interface SongListProps {
   onOpen: (id: string) => void;
   /** Asked for by the Delete key or a row's button; the caller confirms. */
   onDelete: (id: string) => void;
-  /** Opens the song's practice log. */
+  /** Opens the song's practice log: a row's button, or L on the active row. */
   onPracticeLog: (id: string) => void;
 }
 
@@ -87,6 +87,12 @@ export function SongList({ entries, now, onOpen, onDelete, onPracticeLog }: Song
       const entry = entries[current];
       if (entry) onDelete(entry.row.id);
     };
+    const practice = () => {
+      const entry = entries[current];
+      if (entry) onPracticeLog(entry.row.id);
+    };
+    // A bare L only: Cmd+L and Ctrl+L belong to the browser and the shell.
+    const bare = !(event.metaKey || event.ctrlKey || event.altKey);
     const handlers: Record<string, () => void> = {
       ArrowDown: () => {
         move(current + 1);
@@ -111,6 +117,7 @@ export function SongList({ entries, now, onOpen, onDelete, onPracticeLog }: Song
         if (entry) onOpen(entry.row.id);
       },
       Delete: remove,
+      ...(bare && { l: practice, L: practice }),
       // The key labelled delete on a Mac keyboard sends Backspace.
       Backspace: remove,
     };
@@ -198,6 +205,8 @@ export function SongList({ entries, now, onOpen, onDelete, onPracticeLog }: Song
                     aria-label={`Practice log for ${row.title}`}
                     onClick={(event) => {
                       event.stopPropagation();
+                      // The row stays the active one, so closing the log lands back on it.
+                      setActive(index);
                       onPracticeLog(row.id);
                     }}
                     onDoubleClick={(event) => {
