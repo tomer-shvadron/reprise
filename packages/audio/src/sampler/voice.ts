@@ -112,6 +112,8 @@ export interface VoiceStart {
   preview?: boolean;
   /** The map the region came from: exclusive classes choke within one instrument. */
   instrument?: RegionMap;
+  /** A release region's voice: it never steals a slot and is the first a later note steals. */
+  tail?: boolean;
 }
 
 export interface FilterSettings {
@@ -147,6 +149,8 @@ export class Voice {
   /** The group that chokes this voice; a new note's own groups are read off its regions. */
   readonly offBy: number;
   readonly oneShot: boolean;
+  /** A release region's voice: decoration, the first thing lost at the polyphony cap. */
+  readonly tail: boolean;
   readonly instrument: RegionMap | undefined;
   letRing = false;
 
@@ -190,6 +194,7 @@ export class Voice {
     this.startTime = when;
     this.offBy = region.offBy ?? region.exclusiveClass ?? 0;
     this.oneShot = region.oneShot ?? false;
+    this.tail = start.tail ?? false;
     this.instrument = start.instrument;
     this.#region = region;
     this.#delay = Math.max(envelope.delay ?? 0, 0);
@@ -298,6 +303,11 @@ export class Voice {
 
   /** A fast fade for stealing, short enough not to count against the new note. */
   kill(at: number): void {
+    // A tail that has not started never sounds: cancel it rather than fade it in at its start.
+    if (this.tail && this.startTime > at) {
+      this.cancel();
+      return;
+    }
     this.#fadeOut(at, STEAL_FADE, 0);
     this.#cancelTails(at);
   }

@@ -199,6 +199,7 @@ export class Sampler {
   #impulses: ImpulseBank | undefined;
   #reverb: ReverbBus | undefined;
   #misses = 0;
+  #skippedReleases = 0;
 
   constructor(context: BaseAudioContext, options: SamplerOptions = {}) {
     this.context = context;
@@ -215,6 +216,11 @@ export class Sampler {
   /** Samples found not resident at a note: one per missing layer, not per note. */
   get misses(): number {
     return this.#misses;
+  }
+
+  /** Release samples skipped because the pool was full at their start: they never steal. */
+  get skippedReleases(): number {
+    return this.#skippedReleases;
   }
 
   /** The shared reverb bus, once a strip has sent to it. */
@@ -473,12 +479,17 @@ export class Sampler {
         source.getBuffer(region.sample).catch(() => undefined);
         continue;
       }
-      this.pool.reserve(at);
+      // Decoration never steals: a waiting tail would also hold a slot from the note-on.
+      if (this.pool.active(at).length >= this.pool.polyphony) {
+        this.#skippedReleases += 1;
+        continue;
+      }
       const voice = new Voice(
         this.context,
         destination,
         {
           track: id,
+          tail: true,
           region: {
             ...region,
             oneShot: true,

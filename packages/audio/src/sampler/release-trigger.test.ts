@@ -223,6 +223,27 @@ describe('release voices and the pool', () => {
     expect(toneLevel(await render(context), TAIL, 0.4, 0.5)).toBeLessThan(0.001);
   });
 
+  it('never steal: at the cap a release sample is skipped and counted, and the note stays', async () => {
+    const { context, sampler } = setup(1.4, guitar(), 1);
+    sampler.noteOn('t', { key: 69, velocity: 127, when: 0 })?.release(0.3);
+    sampler.noteOn('t', { key: 71, velocity: 127, when: 0.2 });
+    expect(sampler.skippedReleases).toBeGreaterThan(0);
+    expect(sampler.pool.stolen).toBe(1);
+    const data = await render(context);
+    expect(toneLevel(data, TAIL, 0.35, 0.6)).toBeLessThan(0.001);
+  });
+
+  it('are stolen first: a waiting tail does not cost a sounding note its slot', async () => {
+    const { context, sampler } = setup(1.4, guitar(), 2);
+    sampler.noteOn('t', { key: 69, velocity: 127, when: 0 })?.release(0.9);
+    sampler.noteOn('t', { key: 71, velocity: 127, when: 0.5 });
+    expect(sampler.pool.stolen).toBe(1);
+    const data = await render(context);
+    expect(toneLevel(data, NOTE, 0.6, 0.85)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, 440 * 2 ** (2 / 12), 0.6, 0.85)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, TAIL, 0.95, 1.2)).toBeLessThan(0.001);
+  });
+
   it('a release sample that is not resident is a miss, reported and requested', () => {
     const source = new SynthSampleSource(
       SAMPLE_RATE,

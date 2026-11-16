@@ -2,7 +2,7 @@ import type { Voice } from './voice';
 
 /**
  * Bounds the voices sounding at once, as a hard cap. A new note over the limit steals one voice:
- * released voices first, then ones already started (the quietest at that moment, then the
+ * released voices and release-region tails first, then ones already started (the quietest at that moment, then the
  * oldest), and only then one starting with or after the new note, the quietest of those.
  */
 export class VoicePool {
@@ -57,7 +57,7 @@ export class VoicePool {
     let victimRank: number[] = [];
     for (const voice of voices) {
       const rank = [
-        voice.released && voice.releaseAt <= time ? 0 : 1,
+        voice.tail || (voice.released && voice.releaseAt <= time) ? 0 : 1,
         voice.startTime < time ? 0 : 1,
         voice.stealLevelAt(time),
         voice.startTime,
