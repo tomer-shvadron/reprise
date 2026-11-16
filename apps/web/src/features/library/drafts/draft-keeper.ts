@@ -38,7 +38,7 @@ export interface DraftKeeperDeps {
   createParser: () => Pick<Parser, 'native' | 'dispose'>;
   /** Tells the user, without blocking, that drafts are not being kept. */
   notify?: (message: string) => void;
-  /** Whether a draft under this key is waiting for the user's answer: it is never overwritten. */
+  /** Whether a draft under this key is waiting for the user's answer: it is never overwritten, edits go under the document's own key. */
   deferred?: (key: string) => boolean;
   now?: () => number;
   debounceMs?: number;
@@ -141,11 +141,15 @@ export function startDraftKeeper(deps: DraftKeeperDeps): DraftKeeper {
   };
 
   // One restart of a worker that failed or hung, then the failure is reported.
-  const serialize = async (source: NonNullable<DocumentState['score']>): Promise<NativeOutcome> => {
+  const serialize = async (
+    source: NonNullable<DocumentState['score']>,
+    wanted: () => boolean,
+  ): Promise<NativeOutcome> => {
     let last: NativeOutcome = { ok: false, code: 'worker-failed', message: 'not started' };
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      const used = parser;
       try {
-        last = await timeout(parser.native(source));
+        last = await timeout(used.native(source));
         // A score that cannot be written fails the same way again: no new worker for it.
         if (last.ok || last.code !== 'worker-failed') return last;
       } catch (error) {
@@ -155,9 +159,14 @@ export function startDraftKeeper(deps: DraftKeeperDeps): DraftKeeper {
           message: error instanceof Error ? error.message : String(error),
         };
       }
-      if (stopped) return last;
-      parser.dispose();
-      parser = deps.createParser();
+      // A write that stopped being wanted neither retries nor reports.
+      if (stopped || !wanted()) return last;
+      // Only the worker that failed is replaced: another write may have replaced it already, and
+      // disposing that one would fail its calls too.
+      if (parser === used) {
+        used.dispose();
+        parser = deps.createParser();
+      }
     }
     return last;
   };
@@ -174,17 +183,20 @@ export function startDraftKeeper(deps: DraftKeeperDeps): DraftKeeper {
     const state = document.getState();
     if (!state.dirty || !state.score || state.id === undefined) return Promise.resolve(false);
     const { id, songId } = state;
-    const key = draftKeyOf(songId, id);
-    // The user has not answered what to do with the draft already there: it is not overwritten.
-    if (deps.deferred?.(key) === true) return Promise.resolve(false);
+    // The draft already under the song's key is waiting for the user's answer, so it is not
+    // overwritten: edits go under the document's own key, and recovery offers both.
+    const songKey = draftKeyOf(songId, id);
+    const key = deps.deferred?.(songKey) === true ? `doc-${id}` : songKey;
     const mine = ++generation;
     // Before any bytes go out: a removal that comes while this is writing then deletes them.
     written.add(key);
     const keys = written;
     const source = withViewNotation(state.score, state.view.notation);
+    // When the content was captured, not when it lands: a draft is judged newer than a save by
+    // the content it holds.
+    const capturedAt = now();
     const name = documentNameOf(state);
     const { title } = state.score.meta;
-    const { revision } = state;
     const run = (async (): Promise<boolean> => {
       // A pagehide cannot wait for idle time.
       if (!urgent) {
@@ -193,7 +205,7 @@ export function startDraftKeeper(deps: DraftKeeperDeps): DraftKeeper {
         });
       }
       if (mine !== generation) return false;
-      const outcome = await serialize(source);
+      const outcome = await serialize(source, () => mine === generation);
       if (mine !== generation) return false;
       if (!outcome.ok) {
         report(outcome.message);
@@ -204,11 +216,11 @@ export function startDraftKeeper(deps: DraftKeeperDeps): DraftKeeper {
         const sidecar: DraftSidecar = {
           version: 1,
           key,
-          ...(songId !== undefined && { songId }),
+          // Only a draft under the song's own key names the song; the other is an untitled copy.
+          ...(songId !== undefined && key === songKey && { songId }),
           name,
           title,
-          updatedAt: now(),
-          revision,
+          updatedAt: capturedAt,
         };
         // The bytes first: bytes without a sidecar are offered as an untitled recovery, a
         // sidecar without bytes is removed.

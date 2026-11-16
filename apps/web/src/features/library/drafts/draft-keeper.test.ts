@@ -374,7 +374,7 @@ describe('the parse worker', () => {
 });
 
 describe('a draft that is waiting for the user’s answer', () => {
-  it('is not overwritten by an edit', async () => {
+  it('is not overwritten: edits go under the document’s own key, which names no song', async () => {
     const { storage, services, rename, open, keeper } = await setup();
     await open(SONG_A);
     await services.platform.writeFile(draftNativePath(SONG_A), new Uint8Array([7]));
@@ -382,9 +382,79 @@ describe('a draft that is waiting for the user’s answer', () => {
     rename('One');
     await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS * 3);
     expect(storage.bytes(draftNativePath(SONG_A))).toEqual(new Uint8Array([7]));
-    // And undoing back to clean does not remove what the keeper never wrote.
+    const own = `doc-${services.document.getState().id ?? ''}`;
+    const sidecar = DraftSidecarSchema.parse(
+      JSON.parse(new TextDecoder().decode(storage.bytes(draftSidecarPath(own)))),
+    );
+    expect(sidecar.songId).toBeUndefined();
+    // And undoing back to clean removes only what the keeper wrote.
     services.document.getState().undo();
     await vi.advanceTimersByTimeAsync(0);
     expect(storage.bytes(draftNativePath(SONG_A))).toEqual(new Uint8Array([7]));
+    expect(storage.bytes(draftNativePath(own))).toBeUndefined();
+  });
+});
+
+describe('what a draft’s time means', () => {
+  it('is when its content was captured, not when it landed', async () => {
+    const { storage, rename, open, keeper, hold, release, reached } = await gated();
+    await open(SONG_A);
+    keeper();
+    hold();
+    rename('One');
+    const captured = Date.now() + DRAFT_DEBOUNCE_MS;
+    await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS);
+    await reached();
+    // A save begins, and the draft lands after it.
+    await vi.advanceTimersByTimeAsync(5000);
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0);
+    const sidecar = DraftSidecarSchema.parse(
+      JSON.parse(new TextDecoder().decode(storage.bytes(draftSidecarPath(SONG_A)))),
+    );
+    expect(sidecar.updatedAt).toBe(captured);
+  });
+});
+
+describe('two serializations sharing a worker that fails', () => {
+  it('replace it once, and say nothing while a healthy worker exists', async () => {
+    const { storage, rename, open, keeper } = await setup();
+    await open(SONG_A);
+    const failures: ((error: Error) => void)[] = [];
+    let made = 0;
+    const notify = vi.fn();
+    keeper({
+      notify,
+      createParser: () => {
+        made += 1;
+        if (made > 1) return { native: nativeOf, dispose: () => undefined };
+        return {
+          native: () =>
+            new Promise((_, reject) => {
+              failures.push(reject);
+            }),
+          dispose: () => {
+            for (const fail of failures) fail(new Error('The parser was disposed'));
+          },
+        };
+      },
+    });
+    rename('One');
+    await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS);
+    rename('Two');
+    await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS);
+    // Both calls are pending in the first worker; it dies.
+    expect(failures).toHaveLength(2);
+    for (const fail of failures) fail(new Error('worker died'));
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(made).toBe(2);
+    expect(notify).not.toHaveBeenCalled();
+    const { score: saved } = await read(
+      storage.bytes(draftNativePath(SONG_A)) ?? new Uint8Array(),
+      'reprise',
+    );
+    expect(saved.tracks[0]?.name).toBe('Two');
   });
 });

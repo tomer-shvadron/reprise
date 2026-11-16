@@ -92,7 +92,7 @@ title, updatedAt }`, bytes first), 1 s after the last edit and at least every 10
   deletes what it writes; serialization is not queued, so a hung worker never delays a removal, and
   a worker that fails or hangs is replaced once before autosave reports "Autosave is off". A save
   that ends with the document still modified is followed by a fresh draft, and `savedAt` is the
-  time the save began, so a draft written after that (an edit made during the save) is newer.
+  time the save began, so a draft whose content was captured after that (an edit made during the save) is newer; a draft's `updatedAt` is when its content was captured, not when it landed.
   The keeper flushes on `pagehide` and `visibilitychange`, best effort: the idle wait is skipped,
   but a worker round trip and a file write cannot finish once a page is being torn down, so on the
   web the last second of edits, or all of a first edit, can be missing after Leave. The
@@ -112,7 +112,7 @@ title, updatedAt }`, bytes first), 1 s after the last edit and at least every 10
     recovery and never removed unasked. Recover opens a song's draft with `modified: true`
     and restores its session; a `doc-` draft becomes an untitled modified document whose first
     Save joins the library. The recovered document is written under its own key at once, and only
-    then are the old files removed. Later (and Escape) keeps the drafts for the next launch; opening a song that has one waiting shows the dialog again, and the keeper never overwrites a draft that is still waiting. Undo
+    then are the old files removed. Later (and Escape) keeps the drafts for the next launch; opening a song that has one waiting shows the dialog again, and the keeper never overwrites a draft that is still waiting: edits go under `doc-<document.id>` (no song named) meanwhile, so autosave never stops, and recovery offers both. Undo
     history is not recovered.
   - **Known limit.** Two web tabs editing the same song write one draft key; the last writer wins.
 - **Recents.** The 5 most recently opened songs (`RecentSongs`), the palette command
