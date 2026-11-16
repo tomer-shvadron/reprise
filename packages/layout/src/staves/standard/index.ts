@@ -6,6 +6,8 @@ import type { StaffBar, StaffBarMeasure, StaffBarPlacement, StaffModule } from '
 import { defaultClef } from '../../context';
 import { glyphWidth } from '../../primitives';
 import { DYNAMICS_GLYPHS, beatDynamics, reservedDynamics, shownDynamics } from '../dynamics';
+import { drawsWords, wordStart } from './words';
+import { wordLanes, wordRows, wordsExtent } from '../words';
 import { MIN_ROOM, planBar, type BarPlan, type NotationOptions } from './plan';
 import { renderBar } from './render';
 
@@ -90,6 +92,11 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
           onset.left = Math.max(onset.left, room);
           onset.right = Math.max(onset.right, room);
         }
+        if (drawsWords(input)) {
+          const words = wordsExtent(beat.beat, wordStart(beat), input.space);
+          onset.left = Math.max(onset.left, words.left - (beat.shift ?? 0));
+          onset.right = Math.max(onset.right, (beat.shift ?? 0) + words.right);
+        }
         return onset;
       });
       for (const reserved of laneEffects(input, options.percussion)?.reserved ?? []) {
@@ -102,6 +109,10 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
     },
     lanes(input: StaffBar): LaneRequests {
       const lanes: LaneRequests = { ...laneEffects(input, options.percussion)?.lanes };
+      if (drawsWords(input)) {
+        const beats = input.bar.voices.flatMap((voice) => voice.beats);
+        mergeLanes(lanes, wordLanes(wordRows(beats, input.space)));
+      }
       if (shownDynamics(input.track, input.barIndex).size > 0) {
         mergeLanes(lanes, { dynamics: LANE_HEIGHT.dynamics * input.space });
       }
