@@ -26,12 +26,28 @@ describe('transport preferences', () => {
       readTransportPreferences(
         stored(JSON.stringify({ countIn: true, metronome: { volume: 3 }, masterVolume: 0.2 })),
       ),
-    ).toEqual({ countIn: true, metronome: { on: false, volume: 0.7 }, masterVolume: 0.2 });
+    ).toEqual({
+      countIn: true,
+      metronome: { on: false, volume: 0.7 },
+      masterVolume: 0.2,
+      gmTierBypass: true,
+    });
+    expect(
+      readTransportPreferences(stored(JSON.stringify({ gmTierBypass: false }))).gmTierBypass,
+    ).toBe(false);
+    expect(
+      readTransportPreferences(stored(JSON.stringify({ gmTierBypass: 'no' }))).gmTierBypass,
+    ).toBe(true);
   });
 
   it('round-trip, and survive a storage that throws', () => {
     const storage = memoryStorage();
-    const prefs = { countIn: true, metronome: { on: true, volume: 0.3 }, masterVolume: 0.9 };
+    const prefs = {
+      countIn: true,
+      metronome: { on: true, volume: 0.3 },
+      masterVolume: 0.9,
+      gmTierBypass: false,
+    };
     writeTransportPreferences(prefs, () => storage);
     expect(readTransportPreferences(() => storage)).toEqual(prefs);
 

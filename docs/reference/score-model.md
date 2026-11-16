@@ -43,6 +43,7 @@ The empty score (`createEmptyScore()`) is one fretted track in E standard, one 4
 | `drums`   | always 0                       | the GM percussion MIDI note | empty; `capo` and `fretCount` 0               | standard, percussion clef, `octaveShift` 0    |
 | `pitched` | always 0                       | the MIDI note      | usually empty; a GP3 to GP5 or gpif keyboard part keeps its tuning for export | standard, treble clef, `octaveShift` 0 |
 
+- **`Track.sound.preset` is an effects-preset id, opaque to the model.** It is valid without `packId` (the track keeps its GM instrument and takes the preset's effects chain), and an id the audio engine does not know means automatic. The schema is unchanged (#234).
 - **String 1 is the highest-pitched string**, as in Guitar Pro, but `Track.tuning` runs low to high, so string `s` sounds `tuning[tuning.length - s]` when open. On a six-string guitar string 6 is the low E (`tuning[0]`, MIDI 40) and string 1 the high E (`tuning[5]`, MIDI 64).
 - **Frets count from the capo**, as Guitar Pro writes them: the sounding note is `open + capo + fret`. The ceiling a note may sit on is `fretCount` (24 by default) whatever the capo, which is what Guitar Pro files hold.
 - Drums play on the GM percussion channel because of `kind`; the model stores no MIDI channel. On a drum track `program` picks the GM2 kit.

@@ -36,7 +36,13 @@ export const DisplaySettingsSchema = z.object({
 });
 export type DisplaySettings = z.infer<typeof DisplaySettingsSchema>;
 
-/** The HQ sound tier's assignment; absent = the GM tier plays `program`. */
+/**
+ * The track's sound choice: an optional HQ `packId` and an optional effects `preset`. With no
+ * `packId` the GM tier plays `program`. `preset` is an effects preset id, opaque to the model:
+ * it is valid without `packId` (the track keeps its GM instrument and takes the preset's effects
+ * chain), and an id the audio engine does not know means automatic. The engine owns the ids
+ * (#234).
+ */
 export const SoundOverrideSchema = z.object({
   packId: IdSchema.exactOptional(),
   preset: z.string().exactOptional(),

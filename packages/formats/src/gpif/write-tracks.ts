@@ -88,7 +88,13 @@ export function reportTrackLosses(track: Track, index: number, drops: DropCollec
     );
   }
   if (track.sound) {
-    drops.drop('sound-override', [...path, 'sound'], 'The HQ sound assignment is not in gp files');
+    drops.drop(
+      'sound-override',
+      [...path, 'sound'],
+      track.sound.packId === undefined
+        ? 'The effects preset is not saved in gp files'
+        : 'The HQ sound assignment is not in gp files',
+    );
   }
 }
 
