@@ -30,6 +30,19 @@ export interface ZipFileSpec {
   localName?: string;
   /** Shifts the central directory's offset for this entry. */
   offsetDelta?: number;
+  /** Version-made-by host: 3 is Unix (the default), 19 is OS X. */
+  host?: number;
+  /** Replaces the central extra field bytes, whatever `zip64` writes. */
+  centralExtra?: Uint8Array;
+  /** Extra bytes written after the local name. */
+  localExtra?: Uint8Array;
+  /** The local header's extra length field, when it should claim more than was written. */
+  localExtraClaim?: number;
+  /** The CRC and sizes the local header carries (without a descriptor), when they should differ. */
+  localCrc?: number;
+  localSize?: number;
+  /** Claimed compressed and uncompressed size in both headers, past the data that exists. */
+  claimSize?: number;
 }
 
 export interface ZipOptions {
@@ -110,32 +123,35 @@ export async function zipBytes(
     const stored = method === 'stored';
     const payload = file.compressed ?? (stored ? data : await deflateRaw(data));
     const crc = file.crc ?? crc32(data);
-    const size = file.declaredSize ?? data.length;
+    const size = file.claimSize ?? file.declaredSize ?? data.length;
     const name = file.rawName ?? encoder.encode(file.name);
     const localName = file.localName === undefined ? name : encoder.encode(file.localName);
     const flags = (file.utf8 ? 0x0800 : 0) | (file.descriptor ? 0x0008 : 0) | (file.flags ?? 0);
     const methodNumber = file.methodNumber ?? (stored ? 0 : 8);
     const offset = out.length;
     const wide = file.zip64 === true;
-    const localExtra = wide
-      ? record(20, (v) => {
-          v.setUint16(0, 1, true);
-          v.setUint16(2, 16, true);
-          v.setBigUint64(4, BigInt(size), true);
-          v.setBigUint64(12, BigInt(payload.length), true);
-        })
-      : new Uint8Array();
+    const localExtra =
+      file.localExtra ??
+      (wide
+        ? record(20, (v) => {
+            v.setUint16(0, 1, true);
+            v.setUint16(2, 16, true);
+            v.setBigUint64(4, BigInt(size), true);
+            v.setBigUint64(12, BigInt(payload.length), true);
+          })
+        : new Uint8Array());
+    const claimed = file.claimSize ?? payload.length;
     out.push(
       record(30, (v) => {
         v.setUint32(0, 0x04034b50, true);
         v.setUint16(4, 20, true);
         v.setUint16(6, flags, true);
         v.setUint16(8, methodNumber, true);
-        v.setUint32(14, file.descriptor ? 0 : crc, true);
-        v.setUint32(18, file.descriptor ? 0 : wide ? 0xffffffff : payload.length, true);
-        v.setUint32(22, file.descriptor ? 0 : wide ? 0xffffffff : size, true);
+        v.setUint32(14, file.descriptor ? 0 : (file.localCrc ?? crc), true);
+        v.setUint32(18, file.descriptor ? 0 : wide ? 0xffffffff : claimed, true);
+        v.setUint32(22, file.descriptor ? 0 : wide ? 0xffffffff : (file.localSize ?? size), true);
         v.setUint16(26, localName.length, true);
-        v.setUint16(28, localExtra.length, true);
+        v.setUint16(28, file.localExtraClaim ?? localExtra.length, true);
       }),
     );
     out.push(localName);
@@ -151,23 +167,25 @@ export async function zipBytes(
         }),
       );
     }
-    const extra = wide
-      ? record(28, (v) => {
-          v.setUint16(0, 1, true);
-          v.setUint16(2, 24, true);
-          v.setBigUint64(4, BigInt(size), true);
-          v.setBigUint64(12, BigInt(payload.length), true);
-          v.setBigUint64(20, BigInt(offset), true);
-        })
-      : new Uint8Array();
+    const extra =
+      file.centralExtra ??
+      (wide
+        ? record(28, (v) => {
+            v.setUint16(0, 1, true);
+            v.setUint16(2, 24, true);
+            v.setBigUint64(4, BigInt(size), true);
+            v.setBigUint64(12, BigInt(payload.length), true);
+            v.setBigUint64(20, BigInt(offset), true);
+          })
+        : new Uint8Array());
     const entry = record(46, (v) => {
       v.setUint32(0, 0x02014b50, true);
-      v.setUint16(4, (3 << 8) | 20, true);
+      v.setUint16(4, ((file.host ?? 3) << 8) | 20, true);
       v.setUint16(6, 20, true);
       v.setUint16(8, flags, true);
       v.setUint16(10, methodNumber, true);
       v.setUint32(16, crc, true);
-      v.setUint32(20, wide ? 0xffffffff : payload.length, true);
+      v.setUint32(20, wide ? 0xffffffff : claimed, true);
       v.setUint32(24, wide ? 0xffffffff : size, true);
       v.setUint16(28, name.length, true);
       v.setUint16(30, extra.length, true);

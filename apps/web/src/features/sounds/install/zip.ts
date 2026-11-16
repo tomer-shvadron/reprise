@@ -18,6 +18,12 @@ export const ZIP_LIMITS = {
   maxTotalBytes: 4 * 1024 * 1024 * 1024,
   /** One ranged read; inside the platform's cap. */
   chunkBytes: 4 * 1024 * 1024,
+  /**
+   * The most compressed bytes written to the decompressor at once. Chromium inflates a whole
+   * written chunk before the reader sees any of it, and deflate expands up to about 1032 to 1, so
+   * this bounds the burst of one write to about 16 MiB, whatever `chunkBytes` is.
+   */
+  inflateSliceBytes: 16 * 1024,
 } as const;
 
 export type ZipLimits = { -readonly [K in keyof typeof ZIP_LIMITS]: number };
@@ -66,6 +72,11 @@ export interface ZipEntry {
   localOffset: number;
   /** The name bytes of the central record, which the local header must repeat. */
   rawName: Uint8Array;
+  /**
+   * Where this entry's slot ends: the next file's local offset, or the start of the directory.
+   * Its local header, name, extra field, data and descriptor must all fit before it.
+   */
+  slotEnd: number;
 }
 
 export interface ZipDirectory {
@@ -204,7 +215,7 @@ async function findEndRecord(source: ZipSource, limits: ZipLimits): Promise<EndR
         throw new ZipError('unsupported', 'Archives split over several disks are not supported');
       }
       const wideAt = safeNumber(locatorView.getBigUint64(8, true), 'The ZIP64 record offset');
-      if (wideAt + 56 > recordAt)
+      if (wideAt + 56 > recordAt - 20)
         throw new ZipError('truncated', 'The ZIP64 record is out of bounds');
       const record = await readExactly(source, wideAt, 56, limits);
       const recordView = view(record);
@@ -263,6 +274,7 @@ function applyZip64(
 const S_IFMT = 0o170000;
 const S_IFLNK = 0o120000;
 const HOST_UNIX = 3;
+const HOST_OSX = 19;
 
 /**
  * Reads and checks the central directory. Names are checked for every entry, including the ones
@@ -323,7 +335,8 @@ export async function readZipDirectory(
     const rawName = bytes.slice(nameAt, extraAt);
     const rawText = decodeName(rawName, flags);
     const path = normalizeZipPath(rawText, limits.maxDepth);
-    const hostIsUnix = madeBy >>> 8 === HOST_UNIX;
+    const host = madeBy >>> 8;
+    const hostIsUnix = host === HOST_UNIX || host === HOST_OSX;
     const mode = externalAttributes >>> 16;
     if (hostIsUnix && (mode & S_IFMT) === S_IFLNK) {
       throw new ZipError('symlink', `"${rawText}" is a symbolic link`);
@@ -353,6 +366,7 @@ export async function readZipDirectory(
       crc32,
       localOffset: fields.localOffset,
       rawName,
+      slotEnd: end.directoryOffset,
     });
     at = next;
   }
@@ -363,19 +377,25 @@ export async function readZipDirectory(
 /** The bytes an entry takes at least: its local header, its name and its compressed data. */
 const spanOf = (entry: ZipEntry) => LOCAL_HEADER + entry.rawName.length + entry.compressedSize;
 
+/**
+ * Gives each file the slot up to the next file's local header and refuses a minimum span that
+ * does not fit. The local extra field is only known from the local header, so `readZipEntry`
+ * checks the real data range against the slot (`entry.slotEnd`).
+ */
 function checkOverlap(entries: readonly ZipEntry[], directoryOffset: number): void {
   const files = entries.filter((entry) => !entry.isDirectory);
   files.sort((a, b) => a.localOffset - b.localOffset);
-  let previousEnd = 0;
-  for (const entry of files) {
-    if (entry.localOffset < previousEnd) {
-      throw new ZipError('overlap', `"${entry.path}" overlaps another entry's data`);
+  files.forEach((entry, index) => {
+    entry.slotEnd = files[index + 1]?.localOffset ?? directoryOffset;
+    if (entry.localOffset + spanOf(entry) > entry.slotEnd) {
+      throw new ZipError(
+        entry.slotEnd === directoryOffset ? 'truncated' : 'overlap',
+        entry.slotEnd === directoryOffset
+          ? `"${entry.path}" runs past the end of the archive`
+          : `"${entry.path}" overlaps another entry's data`,
+      );
     }
-    previousEnd = entry.localOffset + spanOf(entry);
-    if (previousEnd > directoryOffset) {
-      throw new ZipError('truncated', `"${entry.path}" runs past the end of the archive`);
-    }
-  }
+  });
 }
 
 let crcTable: Uint32Array | undefined;
@@ -458,16 +478,23 @@ async function checkLocalHeader(
     }
   }
   const start = entry.localOffset + LOCAL_HEADER + nameLength + extraLength;
-  if (start + entry.compressedSize > directoryOffset) {
-    throw new ZipError('truncated', `"${entry.path}" runs past the end of the archive`);
+  // A descriptor follows the data: at least a CRC and two 32-bit sizes.
+  const end = start + entry.compressedSize + ((flags & FLAG_DESCRIPTOR) === 0 ? 0 : 12);
+  if (end > entry.slotEnd) {
+    throw new ZipError(
+      entry.slotEnd === directoryOffset ? 'truncated' : 'overlap',
+      entry.slotEnd === directoryOffset
+        ? `"${entry.path}" runs past the end of the archive`
+        : `"${entry.path}" overlaps another entry's data (through its local extra field)`,
+    );
   }
   return start;
 }
 
 /**
  * The bytes of a file entry. Refuses an entry that is encrypted, uses a method other than stored
- * or deflate, declares more than `maxEntryBytes`, inflates past what it declared (stopped at once,
- * so a bomb never grows beyond one chunk over its limit) or fails its CRC.
+ * or deflate, declares more than `maxEntryBytes`, inflates past what it declared (stopped at the next
+ * read, so a bomb never grows beyond its limit plus one slice's worst-case expansion) or fails its CRC.
  */
 export async function readZipEntry(
   source: ZipSource,
@@ -498,7 +525,8 @@ export async function readZipEntry(
   }
   if (signal?.aborted) throw aborted();
   const start = await checkLocalHeader(source, entry, directory.directoryOffset, limits);
-  const out = new Uint8Array(entry.size);
+  // Grown as data arrives, so an entry that declares 128 MiB over a few bytes costs a few bytes.
+  let out = new Uint8Array(Math.min(entry.size, 1024 * 1024));
   let produced = 0;
   let crc = 0;
   const take = (chunk: Uint8Array): void => {
@@ -507,6 +535,13 @@ export async function readZipEntry(
         'bomb',
         `"${entry.path}" inflates past its declared size of ${String(entry.size)} bytes`,
       );
+    }
+    if (produced + chunk.length > out.length) {
+      const grown = new Uint8Array(
+        Math.min(entry.size, Math.max(out.length * 2, produced + chunk.length)),
+      );
+      grown.set(out.subarray(0, produced));
+      out = grown;
     }
     out.set(chunk, produced);
     produced += chunk.length;
@@ -527,7 +562,7 @@ export async function readZipEntry(
   if (entry.method === 0) {
     for await (const chunk of compressed()) take(chunk);
   } else {
-    await inflate(compressed(), take);
+    await inflateStream(compressed(), take);
   }
   if (produced !== entry.size) {
     throw new ZipError(
@@ -536,15 +571,24 @@ export async function readZipEntry(
     );
   }
   if (crc !== entry.crc32) throw new ZipError('bad-crc', `"${entry.path}" fails its checksum`);
-  return out;
+  return out.length === produced ? out : out.slice(0, produced);
 }
 
 /** Streams `input` through a raw-deflate decompressor into `take`; a throw from `take` stops it. */
-async function inflate(
-  input: AsyncIterable<Uint8Array>,
+export async function inflateStream(
+  input: AsyncIterable<Uint8Array> | Iterable<Uint8Array>,
   take: (chunk: Uint8Array) => void,
+  options: {
+    sliceBytes?: number;
+    /** The decompressor; a test passes a stand-in to see what is written to it. */
+    createStream?: () => {
+      readable: ReadableStream<Uint8Array>;
+      writable: WritableStream<BufferSource>;
+    };
+  } = {},
 ): Promise<void> {
-  const stream = new DecompressionStream('deflate-raw');
+  const sliceBytes = options.sliceBytes ?? ZIP_LIMITS.inflateSliceBytes;
+  const stream = options.createStream?.() ?? new DecompressionStream('deflate-raw');
   const writer = stream.writable.getWriter();
   const reader = stream.readable.getReader();
   let failure: unknown;
@@ -556,7 +600,14 @@ async function inflate(
   const feed = (async () => {
     try {
       // A copy: the stream wants a plain ArrayBuffer, and the source may hand out a shared view.
-      for await (const chunk of input) await writer.write(chunk.slice());
+      for await (const chunk of input) {
+        for (let at = 0; at < chunk.length; at += sliceBytes) {
+          // Each write is awaited, so the reader has `take`n the last slice's output (and may have
+          // thrown) before the next one goes in.
+          if (failure !== undefined) return;
+          await writer.write(chunk.slice(at, at + sliceBytes));
+        }
+      }
       await writer.close();
     } catch (error) {
       await fail(error);
