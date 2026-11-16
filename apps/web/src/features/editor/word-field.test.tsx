@@ -262,6 +262,17 @@ describe('the word field', () => {
     expect(t.steps()).toEqual(['Text']);
   });
 
+  it('returns focus to the score when edit mode ends with the field open', async () => {
+    const t = await setup();
+    t.goTo(0, 0);
+    t.press('t');
+    act(() => {
+      t.services.editing.getState().setEditing(false);
+    });
+    expect(document.querySelector('input')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('region', { name: 'Score: words' }));
+  });
+
   it('stays open when the window loses focus, and commits on a click elsewhere', async () => {
     const t = await setup();
     t.goTo(0, 0);

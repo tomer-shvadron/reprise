@@ -55,7 +55,8 @@ export function WordField() {
     if (!word) return;
     if (!isEditing || !score || !scoreIndex(score).beats.has(word.beatId)) {
       closeWord(services);
-      if (isEditing) focusScore();
+      // The input unmounts with the field; without this focus falls to <body>, also when edit mode ends.
+      focusScore();
     }
   }, [word, isEditing, score, services]);
 
