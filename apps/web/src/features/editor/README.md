@@ -1,7 +1,7 @@
 # Editor
 
 **Owner**: the score lane (`[P:score]`, with `packages/layout`). **Filled by**: WP-080 (hit-testing
-and selection model), WP-081 (note entry, PR 2 of 3: the logic and keys; the end-to-end riff and its sound check are PR 3), WP-082 (effects palette), WP-083 (bar and track
+and selection model), WP-081 (note entry: the logic and keys, then the end-to-end riff and the preview sound check), WP-082 (effects palette), WP-083 (bar and track
 management), WP-084 (clipboard and undo UI), WP-085 (chord names, lyrics, transposition) and WP-086
 (editor end-to-end).
 
@@ -43,6 +43,6 @@ What it holds, after WP-056 (the mode toggle), WP-080 (hit-testing and the selec
   at the start of every document. Read it to switch clicks from seeking to editing.
 - `selection` (`state/selection.ts`) for the current track, the edit cursor, the range and the picked notes, written only through `setEdit`.
 - `document.apply(command)` for every edit, so each is one undo step through the history.
-- `audio.previewTrack`, and `audio.previewNote(trackId, { string, fret } | { pitch }, { velocity?, seconds? })` (#204), which throws `RangeError` on bad input, so an entry calls it last, after the edit.
+- `audio.previewTrack`, and `audio.previewNote(trackId, { string, fret } | { pitch }, { velocity?, seconds? })` (#204), which throws `RangeError` on bad input, so an entry calls it last, after the edit. An entry's preview takes its velocity from the note's dynamic (`DYNAMICS_VELOCITY`) and its seconds from the beat's written length at the tempo in force (`preview.ts`).
 
 Entry state that no other feature reads (duration, insert versus overwrite, the waiting digit) lives in `entry-store.ts`; the voice is the edit cursor's, which lives in the selection store.
