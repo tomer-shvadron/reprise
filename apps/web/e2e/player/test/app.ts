@@ -401,7 +401,9 @@ export async function relaunch(page: Page): Promise<App> {
 export const test = base.extend<{ app: App }>({
   app: async ({ page }, provide) => {
     // A modified page asks before it unloads; a test that reloads one must not wait on the prompt.
-    page.on('dialog', (dialog) => void dialog.accept());
+    page.on('dialog', (dialog) => {
+      void (dialog.type() === 'beforeunload' ? dialog.accept() : dialog.dismiss());
+    });
     await installHooks(page);
     await page.goto('/');
     await provide(new App(page));

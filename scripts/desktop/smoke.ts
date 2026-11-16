@@ -228,11 +228,8 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
     check((await again.title()).startsWith('● '), 'the recovered song opens as unsaved');
 
     // Closing the window with unsaved changes asks first; Don't save closes and clears the draft.
-    const closed = new Promise<void>((resolve) =>
-      relaunched.process().once('exit', () => {
-        resolve();
-      }),
-    );
+    // The window, not the process: closing the last window does not quit the app on macOS.
+    const closed = again.waitForEvent('close');
     await relaunched.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.close();
     });

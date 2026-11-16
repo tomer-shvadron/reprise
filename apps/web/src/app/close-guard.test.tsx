@@ -85,10 +85,13 @@ describe('the desktop close guard', () => {
     expect(unload()).toBe(false);
   });
 
-  it('closes at once when nothing is modified', () => {
-    const { confirmClose, ask } = setup(true);
+  it('clears the draft, then closes, when nothing is modified (a Save may have left one queued)', async () => {
+    const { confirmClose, discardDraft, ask } = setup(true);
     ask();
-    expect(confirmClose).toHaveBeenCalledWith(true);
+    await vi.waitFor(() => {
+      expect(confirmClose).toHaveBeenCalledWith(true);
+    });
+    expect(discardDraft).toHaveBeenCalledTimes(1);
   });
 
   it('Don’t save removes the draft and then confirms the close', async () => {

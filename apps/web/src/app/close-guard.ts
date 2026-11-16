@@ -17,8 +17,9 @@ export interface CloseGuardDeps {
  * dialog is already open changes nothing.
  *
  * Web: a `beforeunload` listener exists only while the document is modified and shows the
- * browser's generic prompt. Leaving anyway is no data loss, the draft is on disk for the next
- * launch. Returns the undo.
+ * browser's generic prompt, the protection there. A page that goes (Leave, a closed tab) cannot
+ * be waited for, so the last second of edits, or all of a first edit, can be missing from the
+ * draft the next launch offers; the draft the keeper wrote before that is kept. Returns the undo.
  */
 export function installCloseGuard(deps: CloseGuardDeps): () => void {
   const { services, discardDraft } = deps;
@@ -26,17 +27,15 @@ export function installCloseGuard(deps: CloseGuardDeps): () => void {
   const target = deps.target ?? window;
   if (Reflect.has(platform, 'onCloseRequest')) {
     const stop = platform.onCloseRequest?.(() => {
-      // Another request is being answered: its dialog is the answer to this one too.
+      // The open dialog is answered first (it may be about another action, which does not close
+      // the window); main asks again on the next close attempt.
       if (unsavedOf(services).getState().request) return;
       whenSaved(
         services,
         'quitting',
         () => {
-          if (!document.getState().dirty) {
-            platform.confirmClose?.(true);
-            return;
-          }
-          // Don't save leaves the document modified; its draft would be offered again.
+          // Both ways out clear the draft before the window goes: Don't save leaves the document
+          // modified, and a Save's own removal may still be queued behind a write in flight.
           void discardDraft()
             .catch((error: unknown) => {
               console.warn('Could not remove the draft', error);
