@@ -32,6 +32,8 @@ export interface SamplerSinkOptions {
 interface Pass {
   voicing: Voicing | undefined;
   sequenceIndex: number;
+  /** The next note on the string has grace notes on its beat, which strike before it does. */
+  nextOnBeatGrace: boolean;
 }
 
 /** FNV-1a over the parts, mapped to [0, 1): no `Math.random`, so a render repeats exactly. */
@@ -58,6 +60,20 @@ interface Chain {
 const CHAIN_TOLERANCE = 1e-4;
 /** A pitch curve ends this long before the next note's events: one inside a curve's span throws. */
 const CURVE_GAP = 2 * CHAIN_TOLERANCE;
+
+/**
+ * Whether the string passes straight to a hammer-on or pull-off when the note is let go: the
+ * string is not let go there, so the note's release sample is left to the end of the chain, the
+ * last note's own release. `releaseAt` is the moment the voice is released, the let-ring end for
+ * a ringing note. A grace note on the hammered note's beat is struck first, so the string has
+ * changed hands by then and the release stays.
+ */
+function handsOver(input: PlanInput, releaseAt: number, nextOnBeatGrace: boolean): boolean {
+  const { next } = input;
+  return (
+    next?.note.hammerPull === true && !nextOnBeatGrace && next.when <= releaseAt + CHAIN_TOLERANCE
+  );
+}
 
 function shapeGain(
   voice: VoiceHandle,
@@ -189,8 +205,10 @@ export function createSamplerSink(
       string: input.note.string,
       select: select(trackId, instrument.regions, input, pass, strikeIndex, key),
       // Only a note's final release plays its release regions: not a tremolo stroke, a trill
-      // alternation or a grace note, whose string is never let go.
-      releaseTrigger: final && last,
+      // alternation or a grace note, whose string is never let go, and not a note a hammer-on
+      // or pull-off starts from, which stays on the string until the legato chain ends.
+      releaseTrigger:
+        final && last && !handsOver(input, plan.letRingUntil ?? strike.end, pass.nextOnBeatGrace),
       ...(strike.offset !== undefined && { offset: strike.offset }),
       ...(plan.dead && deadNote && { instrument: deadNote }),
       ...(last && plan.letRingUntil !== undefined && { letRing: { until: plan.letRingUntil } }),
@@ -261,6 +279,7 @@ export function createSamplerSink(
       const pass: Pass = {
         voicing: options.voicingFor?.(track),
         sequenceIndex: event.sequenceIndex,
+        nextOnBeatGrace: event.nextOnString?.beat.grace?.some((grace) => !grace.before) ?? false,
       };
       for (const grace of graces) play(track.id, grace, pass, false);
       const length = Math.max(0, event.duration - delay);

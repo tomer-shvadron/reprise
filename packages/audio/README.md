@@ -560,8 +560,11 @@ string is never let go between a tremolo's strokes, a trill's alternations or a 
 main note, so each would play a release sample (at nearly full level with a high `rt_decay`). The
 sink therefore sets `releaseTrigger` true only on the last strike of the main note: that covers the
 end of a legato chain (the chain's first voice carries the release) and the let-ring `until`, and
-it sets it false on earlier strikes and on every grace note. A note with no
-release regions gets the plain voice handle as before, so GM playback is unchanged.
+it sets it false on earlier strikes and on every grace note. It is also false on a note whose
+next note on the string is a hammer-on or pull-off starting at its release (a let-ring note's is
+the ring's end), unless the hammered note has a grace note on its beat: the string is not let go
+there, so the chain plays one release sample, at the last note's release, not one per note. A note
+with no release regions gets the plain voice handle as before, so GM playback is unchanged.
 
 `createSamplerSink(sampler, { deadNote?, instrumentOf?, voicingFor? })` is the scheduler's `InstrumentSink` over the sampler,
 with the articulation layer described under [Articulations](#articulations). Every strike also
@@ -1190,7 +1193,10 @@ maps an `sw_label` to a set (`Palm Mute` to `palmMute`, `Hammer-on` to `legato`,
 types and hooks; the engine's table and the note-to-set mapping are WP-093's next PRs.
 `syntheticGuitarPack()` in `@reprise/audio/testing` is the reference guitar they are tested on: a
 sustain layer and palm-mute, harmonic and legato layers, each a sine of its own pitch, and release
-samples with `rt_decay`.
+samples with `rt_decay`. `syntheticGuitarPack({ selection: true })` adds, on keys below
+the layers' own, two velocity layers, a `seq_length` and a `lorand`/`hirand` round robin and a
+`trigger=first`/`trigger=legato` pair (`GUITAR_SELECTION` names the keys and tones); the default
+pack keeps its shape.
 
 The filter and envelope paths above are ADR-0004's fallback for packs without articulation
 samples. The sink passes no `layer` yet. WP-093 adds it for packs that carry `palmMute`,
@@ -1202,6 +1208,11 @@ vibrato, trills, tremolo, dynamics and fades stay automation in both tiers.
 
 ### Known and deliberate
 
+- **A legato slide into a hammer-on plays two release samples.** In `7/9h11` the slide's carried
+  voice keeps the release decision made at the first note, where the next note was a slide target,
+  so its release at the hammer-on's onset fires a sample, and the hammered note fires its own at
+  the chain's end. Dropping the trigger on an existing `VoiceHandle` would need a contract change;
+  `release-trigger-sink.test.ts` pins today's result.
 - **Not played on a tied link** (see Tied links above):
   - Trill or tremolo picking written only on a later link: the origin's span the chain, and a
     re-strike mid-chain would need a second strike carrying the remaining links.

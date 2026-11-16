@@ -230,6 +230,8 @@ export class RegionMap {
   readonly regions: readonly Region[];
   /** Whether any region triggers on release: a map without them (every SF2 preset) skips `resolveRelease`. */
   readonly hasReleaseRegions: boolean;
+  /** Whether any region plays only on a hammer-on or pull-off (`trigger=legato`). */
+  readonly hasLegatoRegions: boolean;
   readonly #layers = new Map<
     string | undefined,
     { all: Region[]; byKey: Region[][]; selections?: RegionSelection[] }
@@ -242,6 +244,7 @@ export class RegionMap {
     }
     this.regions = regions;
     this.hasReleaseRegions = regions.some((region) => region.trigger === 'release');
+    this.hasLegatoRegions = regions.some((region) => region.trigger === 'legato');
     for (const region of regions) {
       let layer = this.#layers.get(region.layer);
       if (!layer) {
