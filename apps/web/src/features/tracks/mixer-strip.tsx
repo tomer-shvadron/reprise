@@ -2,9 +2,10 @@ import type { Track } from '@reprise/model';
 import { cn } from 'cn';
 import { memo, useId } from 'react';
 
-import { TrackEffectsPicker } from '@/features/sounds';
+import { TrackEffectsPicker, TrackSoundPicker } from '@/features/sounds';
 import type { InstrumentLoad } from '@/state/playback';
 
+import { instrumentName } from './gm-programs';
 import type { TrackActions } from './track-actions';
 import {
   InstrumentSelect,
@@ -69,6 +70,10 @@ export const MixerStrip = memo(function MixerStrip({
         <div className="flex items-center gap-2">
           <span className={rowLabel}>Instrument</span>
           <InstrumentSelect track={track} label={label} actions={actions} />
+        </div>
+        <div className="flex items-start gap-2">
+          <span className={cn(rowLabel, 'pt-1')}>Sound</span>
+          <TrackSoundPicker trackId={track.id} label={label} generalMidi={instrumentName(track)} />
         </div>
         <div className="flex items-center gap-2">
           <span className={rowLabel}>Effects</span>

@@ -179,6 +179,9 @@ function build(
   if (trigger === 'release' || trigger === 'first' || trigger === 'legato') {
     common.trigger = trigger;
   }
+  // Only a release region has a held time to decay over; elsewhere the opcode is read and unused.
+  const decay = ranged(ops, report, 'rt_decay', 0, 200);
+  if (trigger === 'release' && decay !== undefined && decay > 0) common.releaseDecay = decay;
   const length = ranged(ops, report, 'seq_length', 0, 1024);
   const position = ranged(ops, report, 'seq_position', 0, 1024) ?? 1;
   if (length !== undefined && length > 1) {

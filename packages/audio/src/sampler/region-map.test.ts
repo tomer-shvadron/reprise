@@ -88,9 +88,9 @@ describe('RegionMap selection', () => {
     expect(names(map.resolveAll(60, 100))).toEqual(['far']);
   });
 
-  it('lists every region a note could start in candidates, release excluded', () => {
+  it('lists every region a note could start or release in candidates', () => {
     expect(names(kit.candidates(60, 100)).sort()).toEqual(
-      ['attack', 'first', 'legato', 'rr1', 'rr2', 'rr3', 'lowdraw', 'highdraw'].sort(),
+      ['attack', 'release', 'first', 'legato', 'rr1', 'rr2', 'rr3', 'lowdraw', 'highdraw'].sort(),
     );
     const sf2 = new RegionMap([region({ sample: 'a' }), region({ sample: 'b' })]);
     expect(sf2.candidates(60, 100)).toEqual(sf2.resolveAll(60, 100));
@@ -103,5 +103,66 @@ describe('RegionMap selection', () => {
     ]);
     expect(names(robin.resolveAll(60, 100, undefined, { sequence: 1 }))).toEqual(['rr2']);
     expect(names(robin.candidates(60, 100)).sort()).toEqual(['rr1', 'rr2']);
+  });
+});
+
+describe('RegionMap.resolveRelease', () => {
+  const tails = new RegionMap([
+    region({ sample: 'attack' }),
+    region({ keyLo: 40, keyHi: 59, sample: 'low-tail', trigger: 'release' }),
+    region({
+      keyLo: 60,
+      keyHi: 84,
+      sample: 'tail-a',
+      trigger: 'release',
+      random: { lo: 0, hi: 0.5 },
+    }),
+    region({
+      keyLo: 60,
+      keyHi: 84,
+      sample: 'tail-b',
+      trigger: 'release',
+      random: { lo: 0.5, hi: 1 },
+    }),
+    region({ sample: 'muted-tail', trigger: 'release', layer: 'palmMute' }),
+    region({ sample: 'muted', layer: 'palmMute' }),
+  ]);
+  const names = (regions: { sample: string }[]) => regions.map((r) => r.sample);
+
+  it('returns the release regions of the key, and only those', () => {
+    expect(names(tails.resolveRelease(45, 100))).toEqual(['low-tail']);
+    expect(names(tails.resolveRelease(70, 100))).toEqual(['tail-a']);
+  });
+
+  it('applies the counters the note was chosen by', () => {
+    expect(names(tails.resolveRelease(70, 100, undefined, { random: 0.7 }))).toEqual(['tail-b']);
+  });
+
+  it('follows the layer, falling back to the default layer', () => {
+    expect(names(tails.resolveRelease(70, 100, 'palmMute'))).toEqual(['muted-tail']);
+    expect(names(tails.resolveRelease(70, 100, 'harmonic'))).toEqual(['tail-a']);
+  });
+
+  it('matches key and velocity exactly: a note-off outside every release region is silent', () => {
+    expect(tails.resolveRelease(100, 100)).toEqual([]);
+    expect(tails.candidates(100, 100).map((r) => r.sample)).toEqual(['attack']);
+    const loud = new RegionMap([
+      region({ sample: 'a' }),
+      region({ sample: 'noise', trigger: 'release', velLo: 100, velHi: 127 }),
+    ]);
+    expect(names(loud.resolveRelease(60, 110))).toEqual(['noise']);
+    expect(loud.resolveRelease(60, 40)).toEqual([]);
+  });
+
+  it('flags a map with release regions, and returns nothing from one with none', () => {
+    expect(tails.hasReleaseRegions).toBe(true);
+    const plain = new RegionMap([region({ sample: 'a' })]);
+    expect(plain.hasReleaseRegions).toBe(false);
+    expect(plain.resolveRelease(60, 100)).toEqual([]);
+  });
+
+  it('keeps release regions out of resolveAll and includes both draws in candidates', () => {
+    expect(names(tails.resolveAll(70, 100))).toEqual(['attack']);
+    expect(names(tails.candidates(70, 100)).sort()).toEqual(['attack', 'tail-a', 'tail-b']);
   });
 });

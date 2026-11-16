@@ -112,6 +112,8 @@ export interface VoiceStart {
   preview?: boolean;
   /** The map the region came from: exclusive classes choke within one instrument. */
   instrument?: RegionMap;
+  /** A release region's voice: it never steals a slot and is the first a later note steals. */
+  tail?: boolean;
 }
 
 export interface FilterSettings {
@@ -147,6 +149,8 @@ export class Voice {
   /** The group that chokes this voice; a new note's own groups are read off its regions. */
   readonly offBy: number;
   readonly oneShot: boolean;
+  /** A release region's voice: decoration, the first thing lost at the polyphony cap. */
+  readonly tail: boolean;
   readonly instrument: RegionMap | undefined;
   letRing = false;
 
@@ -190,6 +194,7 @@ export class Voice {
     this.startTime = when;
     this.offBy = region.offBy ?? region.exclusiveClass ?? 0;
     this.oneShot = region.oneShot ?? false;
+    this.tail = start.tail ?? false;
     this.instrument = start.instrument;
     this.#region = region;
     this.#delay = Math.max(envelope.delay ?? 0, 0);
@@ -263,6 +268,12 @@ export class Voice {
     source.start(when, offset);
   }
 
+  /**
+   * The release voices queued for this note. A choke or steal at `t` cancels those that have not
+   * started by `t`: a cut note has no tail. Tails already sounding are left to play out.
+   */
+  readonly tails: Voice[] = [];
+
   get released(): boolean {
     return this.#releaseAt !== Infinity;
   }
@@ -292,12 +303,34 @@ export class Voice {
 
   /** A fast fade for stealing, short enough not to count against the new note. */
   kill(at: number): void {
+    // A tail that has not started never sounds: cancel it rather than fade it in at its start.
+    if (this.tail && this.startTime > at) {
+      this.cancel();
+      return;
+    }
     this.#fadeOut(at, STEAL_FADE, 0);
+    this.#cancelTails(at);
   }
 
   /** A new note on the same string: a short fade instead of the region's full release. */
   choke(at: number): void {
     this.#fadeOut(at, CHOKE_FADE, 0);
+    this.#cancelTails(at);
+  }
+
+  /** Silences a voice that has not started: no fade, since it never sounds. */
+  cancel(): void {
+    if (this.#ended) return;
+    this.#releaseAt = this.startTime;
+    this.#end = -Infinity;
+    const gain = this.#envelope.gain;
+    gain.cancelScheduledValues(0);
+    gain.setValueAtTime(0, 0);
+    this.#source.stop(0);
+  }
+
+  #cancelTails(at: number): void {
+    for (const tail of this.tails) if (tail.startTime > at) tail.cancel();
   }
 
   /** Relative to the note's own pitch, in semitones; fractions are cents. */

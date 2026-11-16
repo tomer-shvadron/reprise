@@ -40,7 +40,6 @@ describe('the synthetic fixture', () => {
         'off_mode',
         'polyphony',
         'resonance',
-        'rt_decay',
         'volume_oncc7',
       ].sort(),
     );
