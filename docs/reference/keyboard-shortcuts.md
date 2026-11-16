@@ -14,6 +14,8 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 - In edit mode a digit that can start a two-digit fret on the track's neck (1 and 2 on 24 frets) waits 500 ms for a second digit; any other key, a click or moving the cursor commits it at once, and Escape cancels it. Digits never move the cursor, so more digits on the same beat make a chord (with ↑ and ↓ between them); → moves on, and appends a bar past the end of a full last bar.
 - The library's song list takes its own keys while it has focus: the arrows, Home, End, Page Up and Page Down move, Enter opens, Delete or Backspace deletes, and L opens the song's practice log. Escape closes the log page.
 - Space and Enter on a focused button or toggle activate that control; transport buttons do not take focus on click, so Space keeps playing after one.
+- The effect keys are Guitar Pro 8's and work in edit mode only. Each toggles: when every note it acts on already has the effect it comes off all of them, otherwise it goes on the notes that lack it, as one undo step labelled with the effect. A note effect goes on the notes picked, or on every note of the beat the cursor or range is on; a beat effect (tapping, tremolo picking, fades, pick strokes, brush, arpeggio, whammy-bar vibrato) goes on the beat. H marks the note as the origin of a hammer-on or pull-off, so it sets the flag on the next note on that string. A refusal reads on the edit status line.
+- The punctuation effect keys (`;` `:` `!` `"` `)` `$` `<` `>`) are bound in both spellings, shifted and unshifted, because US needs Shift for most of them and other layouts do not; the table lists the shifted one first. On French and Belgian AZERTY two of the unshifted spellings never fire, because `$` is the physical `]` key (repeat end) and `"` is the physical `3` key (the fret digit), and those commands come first. A physical-key fallback for non-Latin layouts is tracked under #242, and until it lands those keys are reachable through Shift on US and through the command palette everywhere. The bend and whammy presets are palette-only until the effects panel (WP-082 PR B) adds the pickers (B, ⇧S, ⌥Y, ⌥V, N, G and ⌥G).
 
 <!-- shortcuts:start -->
 | Command | Category | Context | macOS | Windows |
@@ -132,5 +134,54 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Repeats and endings… | Editor | Editing | — | — |
 | Directions… | Editor | Editing | D | D |
 | Section… | Editor | Editing | — | — |
+| Toggle legato slide | Editor | Editing | S | S |
+| Toggle hammer-on or pull-off | Editor | Editing | H | H |
+| Toggle vibrato | Editor | Editing | V | V |
+| Toggle wide vibrato | Editor | Editing | ⇧V | Shift+V |
+| Toggle palm mute | Editor | Editing | P | P |
+| Toggle palm mute on the beat | Editor | Editing | ⇧P | Shift+P |
+| Toggle let ring | Editor | Editing | I | I |
+| Toggle dead note | Editor | Editing | X | X |
+| Toggle ghost note | Editor | Editing | O | O |
+| Toggle accent | Editor | Editing | ; | ; |
+| Toggle heavy accent | Editor | Editing | ⇧: or : | Shift+: or : |
+| Toggle staccato | Editor | Editing | ⇧! or ! | Shift+! or ! |
+| Toggle natural harmonic | Editor | Editing | Y | Y |
+| Toggle tremolo picking | Editor | Editing | ⇧" or " | Shift+" or " |
+| Toggle tapping | Editor | Editing | ⇧) or ) | Shift+) or ) |
+| Toggle slap | Editor | Editing | ⇧$ or $ | Shift+$ or $ |
+| Toggle pop | Editor | Editing | — | — |
+| Toggle pick stroke down | Editor | Editing | ⇧D | Shift+D |
+| Toggle pick stroke up | Editor | Editing | ⇧U | Shift+U |
+| Toggle fade in | Editor | Editing | ⇧< or < | Shift+< or < |
+| Toggle fade out | Editor | Editing | ⇧> or > | Shift+> or > |
+| Toggle volume swell | Editor | Editing | — | — |
+| Toggle whammy-bar vibrato | Editor | Editing | W | W |
+| Toggle wide whammy-bar vibrato | Editor | Editing | ⌥W | Alt+W |
+| Toggle brush down | Editor | Editing | ⌘D | Ctrl+D |
+| Toggle brush up | Editor | Editing | ⌘U | Ctrl+U |
+| Toggle arpeggio down | Editor | Editing | ⇧⌘D | Ctrl+Shift+D |
+| Toggle arpeggio up | Editor | Editing | ⇧⌘U | Ctrl+Shift+U |
+| Bend: ¼ bend | Editor | Editing | — | — |
+| Bend: ¼ bend and release | Editor | Editing | — | — |
+| Bend: ¼ prebend | Editor | Editing | — | — |
+| Bend: ¼ prebend and release | Editor | Editing | — | — |
+| Bend: ½ bend | Editor | Editing | — | — |
+| Bend: ½ bend and release | Editor | Editing | — | — |
+| Bend: ½ prebend | Editor | Editing | — | — |
+| Bend: ½ prebend and release | Editor | Editing | — | — |
+| Bend: Full bend | Editor | Editing | — | — |
+| Bend: Full bend and release | Editor | Editing | — | — |
+| Bend: Full prebend | Editor | Editing | — | — |
+| Bend: Full prebend and release | Editor | Editing | — | — |
+| Whammy: ½ step dive | Editor | Editing | — | — |
+| Whammy: ½ step dip | Editor | Editing | — | — |
+| Whammy: ½ step release up | Editor | Editing | — | — |
+| Whammy: Whole step dive | Editor | Editing | — | — |
+| Whammy: Whole step dip | Editor | Editing | — | — |
+| Whammy: Whole step release up | Editor | Editing | — | — |
+| Whammy: 2 steps dive | Editor | Editing | — | — |
+| Whammy: 2 steps dip | Editor | Editing | — | — |
+| Whammy: 2 steps release up | Editor | Editing | — | — |
 | Show sound manager | Sounds | Global | — | — |
 <!-- shortcuts:end -->
