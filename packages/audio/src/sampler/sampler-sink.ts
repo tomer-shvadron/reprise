@@ -5,7 +5,8 @@ import { DEAD_NOTE_KEY, deadNoteInstrument } from '../articulations/dead-note';
 import { placeGraces } from '../articulations/grace';
 import { ARTICULATION } from '../articulations/parameters';
 import { planNote } from '../articulations/plan';
-import type { Voicing } from '../articulations/sets';
+import { availableSets, voicingOf } from '../articulations/sets';
+import type { ArticulationSet, NoteVoicing, SetVoicing, Voicing } from '../articulations/sets';
 import type { GainPoint, NotePlan, PlanInput, Strike } from '../articulations/plan';
 import { levelAt } from '../articulations/tie-chain';
 import type { FilterSettings } from './voice';
@@ -28,9 +29,13 @@ export interface SamplerSinkOptions {
   voicingFor?: (track: Track) => Voicing | undefined;
 }
 
+const NO_SETS: ReadonlySet<ArticulationSet> = new Set();
+
 /** What one `NoteEvent` hands every strike it plays, its grace notes included. */
 interface Pass {
   voicing: Voicing | undefined;
+  /** The sets the voicing has, for `voicingOf`; empty without one. */
+  available: ReadonlySet<ArticulationSet>;
   sequenceIndex: number;
   /** The next note on the string has grace notes on its beat, which strike before it does. */
   nextOnBeatGrace: boolean;
@@ -167,6 +172,7 @@ export function createSamplerSink(
     strikeIndex: number,
     key: number,
     layer?: string,
+    legato = false,
   ): RegionSelection {
     let counts = counters.get(regions);
     if (!counts) {
@@ -180,7 +186,7 @@ export function createSamplerSink(
     return {
       sequence,
       random: draw(input.note.id, pass.sequenceIndex, strikeIndex),
-      ...(pass.voicing?.legatoTrigger && input.note.hammerPull && { legato: true }),
+      ...(legato && { legato: true }),
     };
   }
 
@@ -193,24 +199,34 @@ export function createSamplerSink(
     pass: Pass,
     strikeIndex: number,
     final: boolean,
+    set: SetVoicing | undefined,
   ): VoiceHandle | undefined {
     if (plan.dead) deadNote ??= deadNoteInstrument(sampler.context.sampleRate);
-    const instrument =
-      plan.dead && deadNote ? deadNote : sampler.instrumentAt(trackId, strike.when);
+    const burst = plan.dead && deadNote ? deadNote : undefined;
+    // The set's own file, else the default instrument (read at the strike, a program change moves it).
+    const own = burst ?? set?.instrument;
+    const instrument = own ?? sampler.instrumentAt(trackId, strike.when);
+    const layer = burst ? undefined : set?.layer;
     const key = plan.dead ? DEAD_NOTE_KEY : strike.key;
+    // The layer actually played decides, not any keyswitch layer of the pack.
+    const legato =
+      pass.voicing?.legatoTrigger === true &&
+      input.note.hammerPull &&
+      instrument.regions.hasLegatoRegionsIn(layer);
     return sampler.noteOn(trackId, {
       key,
       velocity: strike.velocity,
       when: strike.when,
       string: input.note.string,
-      select: select(trackId, instrument.regions, input, pass, strikeIndex, key),
+      ...(layer !== undefined && { layer }),
+      select: select(trackId, instrument.regions, input, pass, strikeIndex, key, layer, legato),
       // Only a note's final release plays its release regions: not a tremolo stroke, a trill
       // alternation or a grace note, whose string is never let go, and not a note a hammer-on
       // or pull-off starts from, which stays on the string until the legato chain ends.
       releaseTrigger:
         final && last && !handsOver(input, plan.letRingUntil ?? strike.end, pass.nextOnBeatGrace),
       ...(strike.offset !== undefined && { offset: strike.offset }),
-      ...(plan.dead && deadNote && { instrument: deadNote }),
+      ...(own && { instrument: own }),
       ...(last && plan.letRingUntil !== undefined && { letRing: { until: plan.letRingUntil } }),
     });
   }
@@ -227,14 +243,23 @@ export function createSamplerSink(
         chain.voice.release(chain.at);
       }
     }
-    const plan = planNote(carried ? { ...input, continues: carried.key } : input);
+    const chosen: NoteVoicing = voicingOf(
+      { kind: input.track.kind, note: input.note, effects: input.effects },
+      pass.available,
+    );
+    const set = chosen.set === 'default' ? undefined : pass.voicing?.sets[chosen.set];
+    const plan = planNote({
+      ...input,
+      ...(carried && { continues: carried.key }),
+      sampled: chosen.sampled,
+    });
     const lastIndex = plan.strikes.length - 1;
     for (const [index, strike] of plan.strikes.entries()) {
       const last = index === lastIndex;
       const voice =
         index === 0 && carried
           ? carried
-          : start(trackId, input, plan, strike, last, pass, index, final);
+          : start(trackId, input, plan, strike, last, pass, index, final, set);
       if (!voice) continue;
       const isCarried = voice === carried;
       const until = last && plan.legatoInto !== undefined ? plan.legatoInto : strike.end;
@@ -276,10 +301,17 @@ export function createSamplerSink(
       const { track, beat, note } = event;
       const secondsPerTick = event.durationTicks > 0 ? event.duration / event.durationTicks : 0;
       const { graces, delay } = placeGraces(event, secondsPerTick, sampler.context.currentTime);
+      const voicing = options.voicingFor?.(track);
+      const next = event.nextOnString;
       const pass: Pass = {
-        voicing: options.voicingFor?.(track),
+        voicing,
+        available: voicing ? availableSets(voicing.sets) : NO_SETS,
         sequenceIndex: event.sequenceIndex,
-        nextOnBeatGrace: event.nextOnString?.beat.grace?.some((grace) => !grace.before) ?? false,
+        // Only a grace note on the next note's own string takes the string before it.
+        nextOnBeatGrace:
+          next?.beat.grace?.some(
+            (grace) => !grace.before && grace.notes.some((n) => n.string === next.note.string),
+          ) ?? false,
       };
       for (const grace of graces) play(track.id, grace, pass, false);
       const length = Math.max(0, event.duration - delay);

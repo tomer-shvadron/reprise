@@ -246,7 +246,8 @@ assignments by track); it is not part of the contract.
 - `pack.files` is an `SfzFiles` reader, the same object for as long as the installed version lives;
   a new object means the pack changed. `entries` maps articulation-set keys (`ARTICULATION_SETS`,
   below) to SFZ paths in the pack; `default` is required and is what plays, a key outside the list
-  is ignored, and WP-093 maps the others to notes.
+  is ignored (listed in `debugAudioEngine(...).skippedEntries`), and the others are the sets a note
+  can play (Articulation sets, below). Any change to `entries` loads the track again.
 - `load` checks each assignment: the default SFZ must read, parse and map a region. One that does
   not goes to `LoadResult.fallbacks` (`{ trackId, packId, error }`), plays GM, and `load` still
   resolves. An assignment with the same pack id, files object and default path as the last `load`
@@ -298,8 +299,7 @@ assignments by track); it is not part of the contract.
   is resident, so only the failing ones are fetched) and the tracks whose pack cannot supply them
   go back to GM and into `fallbacks`. A sample missing from a later bar is not caught: the track
   stays on the pack and that note is skipped, as on any miss.
-- **Not here.** Articulation sets beyond `default` (WP-093); the budget setter and user setting
-  (WP-094).
+- **Not here.** The budget setter and user setting (WP-094).
 
 ### Known gaps
 
@@ -474,6 +474,9 @@ not carry over to a decorative tail. `candidates` includes only the release regi
 trigger, since one has to be resident at the note-off and nothing else would use it.
 `RegionMap.hasReleaseRegions` is true when any region triggers on release; a map without them
 (every SF2 preset) skips `resolveRelease` altogether, so a General MIDI note pays nothing for it.
+`RegionMap.hasLegatoRegions` is true when any region plays only on a hammer-on or pull-off
+(`trigger=legato`), in any layer; `hasLegatoRegionsIn(layer)` asks about one layer, with the
+default layer as the fallback, as `resolveAll` does.
 
 `resolveAll` first filters out the regions that do not start at note-on: release regions never do,
 `first` regions play unless `select.legato`, `legato` regions only with it, a sequence region plays
@@ -1009,21 +1012,21 @@ loadSfz(path, read, { packId, layer? }); // the parser alone: { regions, layers,
 
 ### Opcodes
 
-| Opcode(s)                                                           | Becomes                                                                                                                                             |
-| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<control>`, `<global>`, `<master>`, `<group>`, `<region>`          | Inheritance global, master, group, region; a header resets the levels below it. `<control>` holds `default_path`, `note_offset`, `octave_offset`.   |
-| `#define $NAME value`, `#include "path"`                            | Text substitution from the definition on; includes resolve against the root file, through the reader, to depth 16, cycles detected.                 |
-| `default_path`, `sample`                                            | The ref. A value may contain spaces. `*sine`, `*silence`, `*noise` drop the region, counted.                                                        |
-| `lokey`, `hikey`, `key`, `pitch_keycenter`                          | `keyLo`, `keyHi`, `rootKey` (default 60); note names accepted (c4 = 60); `key=-1` disables the region.                                              |
-| `lovel`, `hivel`                                                    | `velLo`, `velHi`; an inverted range drops the region.                                                                                               |
-| `tune`, `transpose`, `pitch_keytrack`                               | `tune` in cents; a keytrack other than 100 over a range expands to one region per key, as SF2's `scaleTuning` does.                                 |
-| `volume`, `pan`, `amp_veltrack`                                     | `attenuation = -volume`, `pan / 100`, `velocityTrack` (below).                                                                                      |
-| `ampeg_delay`, `_attack`, `_hold`, `_decay`, `_sustain`, `_release` | `envelope`, SFZ defaults (sustain 100 %, release 1 ms); the sampler's minimums still apply.                                                         |
-| `loop_mode`, `loop_start`, `loop_end`, `offset`                     | `oneShot`, or a frame-unit `loop`, and `startFrame`. A loop mode without points would need the loop embedded in the file: played unlooped, counted. |
-| `group`, `off_by`                                                   | One-way choke (closed hi-hat cuts open, not the reverse).                                                                                           |
-| `trigger`, `seq_length`, `seq_position`, `lorand`, `hirand`         | Parsed and kept; the selection rules and the release triggers are under Sampler.                                                                    |
-| `rt_decay`                                                          | `releaseDecay`, dB per second held, on `trigger=release` regions (0 to 200; elsewhere read and unused).                                             |
-| `sw_lokey`, `sw_hikey`, `sw_last`, `sw_default`, `sw_label`         | One layer per `sw_last` key, `sw:<k>`, which WP-093 selects by name. Unswitched regions are copied into every layer; the copies share a ref.        |
+| Opcode(s)                                                           | Becomes                                                                                                                                                              |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<control>`, `<global>`, `<master>`, `<group>`, `<region>`          | Inheritance global, master, group, region; a header resets the levels below it. `<control>` holds `default_path`, `note_offset`, `octave_offset`.                    |
+| `#define $NAME value`, `#include "path"`                            | Text substitution from the definition on; includes resolve against the root file, through the reader, to depth 16, cycles detected.                                  |
+| `default_path`, `sample`                                            | The ref. A value may contain spaces. `*sine`, `*silence`, `*noise` drop the region, counted.                                                                         |
+| `lokey`, `hikey`, `key`, `pitch_keycenter`                          | `keyLo`, `keyHi`, `rootKey` (default 60); note names accepted (c4 = 60); `key=-1` disables the region.                                                               |
+| `lovel`, `hivel`                                                    | `velLo`, `velHi`; an inverted range drops the region.                                                                                                                |
+| `tune`, `transpose`, `pitch_keytrack`                               | `tune` in cents; a keytrack other than 100 over a range expands to one region per key, as SF2's `scaleTuning` does.                                                  |
+| `volume`, `pan`, `amp_veltrack`                                     | `attenuation = -volume`, `pan / 100`, `velocityTrack` (below).                                                                                                       |
+| `ampeg_delay`, `_attack`, `_hold`, `_decay`, `_sustain`, `_release` | `envelope`, SFZ defaults (sustain 100 %, release 1 ms); the sampler's minimums still apply.                                                                          |
+| `loop_mode`, `loop_start`, `loop_end`, `offset`                     | `oneShot`, or a frame-unit `loop`, and `startFrame`. A loop mode without points would need the loop embedded in the file: played unlooped, counted.                  |
+| `group`, `off_by`                                                   | One-way choke (closed hi-hat cuts open, not the reverse).                                                                                                            |
+| `trigger`, `seq_length`, `seq_position`, `lorand`, `hirand`         | Parsed and kept; the selection rules and the release triggers are under Sampler.                                                                                     |
+| `rt_decay`                                                          | `releaseDecay`, dB per second held, on `trigger=release` regions (0 to 200; elsewhere read and unused).                                                              |
+| `sw_lokey`, `sw_hikey`, `sw_last`, `sw_default`, `sw_label`         | One layer per `sw_last` key, `sw:<k>`, which a labelled one makes a set (Articulation sets). Unswitched regions are copied into every layer; the copies share a ref. |
 
 Everything else is counted, never thrown. `report.unknown` holds opcodes this loader does not know,
 `report.unsupported` the ones it knows and v1 does not play (filters, envelopes other than amp, LFOs,
@@ -1180,7 +1183,7 @@ Tied links (`tied-links.test.ts`, same rig, A4 quarter tied at 120 BPM):
 | Palm-muted link, energy > 2 kHz   | 0.011 × the open origin's                                      |
 | Fade-in on the link               | ×0.006 the origin's level at its onset, ×0.69 at its end       |
 
-### Articulation sets and what the HQ tier will override (WP-093)
+### Articulation sets and what the HQ tier overrides (WP-093)
 
 `ARTICULATION_SETS` is the vocabulary a pack can declare, `default`, `palmMute`, `dead`,
 `harmonic`, `artificialHarmonic`, `legato`, `staccato`, `tap`, `slap` and `pop`, exported with the
@@ -1188,23 +1191,55 @@ type `ArticulationSet`. They are the keys of `PackAssignment.entries`: `entries.
 file of the pack that plays the set, and a key outside the list is ignored. A pack can also
 declare a set as a labelled keyswitch layer of its default file, and `articulationSetOf(label)`
 maps an `sw_label` to a set (`Palm Mute` to `palmMute`, `Hammer-on` to `legato`, `Sustain` to
-`default`), or to `undefined`. The sink takes what a track's pack has from `voicingFor(track)`, a
-`Voicing`: `sets`, `{ instrument?, layer? }` per set, and `legatoTrigger`. The contract is these
-types and hooks; the engine's table and the note-to-set mapping are WP-093's next PRs.
-`syntheticGuitarPack()` in `@reprise/audio/testing` is the reference guitar they are tested on: a
-sustain layer and palm-mute, harmonic and legato layers, each a sine of its own pitch, and release
-samples with `rt_decay`. `syntheticGuitarPack({ selection: true })` adds, on keys below
-the layers' own, two velocity layers, a `seq_length` and a `lorand`/`hirand` round robin and a
-`trigger=first`/`trigger=legato` pair (`GUITAR_SELECTION` names the keys and tones); the default
-pack keeps its shape.
+`default`), or to `undefined`.
 
-The filter and envelope paths above are ADR-0004's fallback for packs without articulation
-samples. The sink passes no `layer` yet. WP-093 adds it for packs that carry `palmMute`,
-`harmonic`, `dead` or legato layers (the sampler already resolves `layer`, falling back to the
-default layer), and drops the matching filter or envelope here when the layer exists: a sampled
-palm mute through a 900 Hz low-pass is muted twice. The dead note's noise burst gives way to the
-pack's dead-note region, and the hammer-on's 20 ms offset to its legato layer. Bends, slides,
-vibrato, trills, tremolo, dynamics and fades stay automation in both tiers.
+**The engine's table.** `resolvePacks` builds one `Voicing` per track, `sets`, `{ instrument?,
+layer? }` per set, plus `legatoTrigger`, and the sink reads it through `voicingFor(track)`. A set's
+file is parsed like the default one, once per install and path, and is an instrument of its own
+(`sfz:<pack>@<n>:<path>`), so eviction, the budget and `packInstrumentsOf` treat it like any other
+resident; it plays through the track's strip. A labelled layer of the default file (`setsOfLayers`)
+is the same set as a `layer` of the default instrument. An explicit file beats a label, the first
+labelled layer of a set wins, and a file that fails to read or parse drops only its set (it never
+reaches `LoadResult.fallbacks`, which stays "the track went to GM"). `legatoTrigger` is the cheap
+gate (a pack has `trigger=legato` regions somewhere); the sink then asks the map about the layer
+that plays (`RegionMap.hasLegatoRegionsIn(layer)`), so a hammer-on in a layer with no legato region
+plays that layer's attack and not nothing.
+
+**The note-to-set mapping** is one pure function, `voicingOf(input, available)`, which the sink
+(playback) and `planInstruments` (memory) both call, so what is played is what was loaded. A
+strike has one set, because keyswitches are exclusive, chosen by this priority: `dead`, `harmonic`
+or `artificialHarmonic`, `palmMute`, `staccato`, `legato` or `tap`, `slap`, `pop`, else `default`.
+Each effect has a fallback chain (an artificial harmonic to `harmonic`, a `tap` to `legato`), and
+the first effect whose chain reaches a set the pack has wins; an effect that loses keeps its
+synthesized automation on top, so a palm-muted pinch harmonic plays the harmonic layer and is
+still filtered at 900 Hz. A track on General MIDI, a drum track, and a pack without the set all
+get `default` and drop nothing.
+
+| The note has                  | The pack has the set                                    | The pack lacks it                             |
+| ----------------------------- | ------------------------------------------------------- | --------------------------------------------- |
+| palm mute                     | the layer; no 900 Hz low-pass, no -18 dB / 250 ms decay | default with both (ADR-0004)                  |
+| dead note                     | the layer at the note's key, still cut at 80 ms         | the noise burst and its 2.5 kHz filter        |
+| natural harmonic              | the layer at the sounding pitch; no +6 dB shelf         | default at the sounding pitch with the shelf  |
+| other harmonics               | `artificialHarmonic`, else `harmonic`; no shelf         | default with the shelf (`semi` keeps its +12) |
+| hammer-on or pull-off         | the layer, or `trigger=legato` regions; no 20 ms offset | the 20 ms offset                              |
+| staccato                      | the layer or file; the half-beat release stays          | default with the half-beat release            |
+| tap, slap, pop (beat effects) | `tap` (else `legato`), `slap`, `pop`                    | default (their GM sound is a separate issue)  |
+
+Bends, slides, vibrato, trills, tremolo, dynamics and fades stay automation in both tiers. This
+widens ADR-0004's "palm mute and harmonics" to the dead, legato and staccato layers the work
+package names, with no new decision. The limits are the ones a voice has: a palm-muted tied link
+on an open origin keeps the synthesized link filter, a legato slide's carried voice keeps its
+sample, and a trill's alternations and a tremolo's strokes take the note's own set (a trill's
+alternation is not given the `legato` layer). The velocity step of a hammer-on (one lower) stays,
+being dynamics and not timbre.
+
+`syntheticGuitarPack()` in `@reprise/audio/testing` is the reference guitar these are tested on:
+a sustain layer and palm-mute, harmonic and legato layers, each a sine of its own pitch, and
+release samples with `rt_decay`. Its options only add: `selection: true` adds, on keys below the
+layers' own, two velocity layers, a `seq_length` and a `lorand`/`hirand` round robin and a
+`trigger=first`/`trigger=legato` pair (`GUITAR_SELECTION`); `articulations: true` adds `Dead Note`
+and `Staccato` layers (`GUITAR_EXTRA_TONES`); `perFile: true` adds `gtr_pm.sfz` and `gtr_stacc.sfz`
+as `entries` (`GUITAR_FILE_TONES`). The default pack keeps its shape.
 
 ### Known and deliberate
 
@@ -1322,17 +1357,19 @@ Keys are the ones the sink strikes: the note's sounding pitch rounded (`sounding
 and the trill's alternate fret.
 `planSamples` takes every layered region of a key and every release region of it (`candidates`).
 
-WP-093 plans per note rather than per instrument: `InstrumentUse` gains
-`layers: { layer: string | undefined; keys: number[] }[]`, the keys the song strikes in each
-articulation layer, and `planSamples` walks only those layers, not `[undefined, ...map.layers]`,
-which is ADR-0005's "articulation layers derived from the score; nothing else is loaded". A song
-with no palm mute then decodes no palm-mute sample, while the release regions of its planned keys
-stay planned, since they must be resident at the note-off. The field and the walk land with
-the planner PR; until then `planSamples` walks every layer.
+The plan is per note, not per instrument: `planInstruments` asks `voicingOf` for each note, with
+`PlanOptions.voicingFor(track)` (the track's `PlanVoicing`, where each set lives as a layer id or
+an instrument id), and puts its keys where the note will sound. `InstrumentUse.keys` is the
+default layer, `InstrumentUse.layers` is `{ layer, keys }[]` for each keyswitch layer a note's
+set names, and a per-file set is an `InstrumentUse` of its own (so `switchSong` pins it). `planSamples`
+walks only those layers, not `[undefined, ...map.layers]`, which is ADR-0005's "articulation
+layers derived from the score; nothing else is loaded": a song with no palm mute decodes no
+palm-mute sample and plans no palm-mute file, while the release regions of its planned keys stay
+planned, since they must be resident at the note-off.
 
 `load` decodes every sample the opening `bars` (default 4) can reach before it resolves, at every
-velocity and in every articulation layer, since dynamics and articulations are the scheduler's
-to decide. It then warms the rest of the song in the background, four fetches at a time, but only
+velocity and in each articulation layer the score plays, since dynamics are the scheduler's to
+decide. It then warms the rest of the song in the background, four fetches at a time, but only
 if all of it fits the budget: otherwise warming would evict what the opening bars need. A song
 switch (or a later `load`) stops the warm-up after what is already in flight, so the previous song
 is never fetched into the new one's budget; `settled()` resolves once the queue has drained.

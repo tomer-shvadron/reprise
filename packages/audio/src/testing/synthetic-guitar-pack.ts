@@ -14,6 +14,12 @@ export const GUITAR_TONES = {
   release: 1100,
 } as const;
 
+/** The tones of the layers `articulations: true` adds. */
+export const GUITAR_EXTRA_TONES = { dead: 880, staccato: 990 } as const;
+
+/** The tones of the per-file sets `perFile: true` adds: `gtr_pm.sfz` and `gtr_stacc.sfz`. */
+export const GUITAR_FILE_TONES = { palmMute: 2000, staccato: 2100 } as const;
+
 /** `rt_decay` of the release samples, in dB per second held. */
 export const GUITAR_RELEASE_DECAY = 6;
 
@@ -21,7 +27,14 @@ export interface SyntheticGuitarPack extends SyntheticSfzPack {
   /** What `PackAssignment.entries` takes for it: only the default file, with its labelled layers. */
   entries: Readonly<Record<string, string>>;
   /** The keyswitch layer id the loader makes for each labelled set: `sw:<k>`. */
-  layers: Readonly<{ palmMute: string; harmonic: string; legato: string }>;
+  layers: Readonly<{
+    palmMute: string;
+    harmonic: string;
+    legato: string;
+    /** Only with `articulations: true`. */
+    dead?: string;
+    staccato?: string;
+  }>;
 }
 
 /**
@@ -49,14 +62,34 @@ export interface SyntheticGuitarPackOptions {
    * keeps the shape the articulation sets are tested on.
    */
   selection?: boolean;
+  /**
+   * Adds a `Dead Note` and a `Staccato` keyswitch layer (28 and 29) to the default file, tones
+   * `GUITAR_EXTRA_TONES`, so every set the planner maps has a layer to play.
+   */
+  articulations?: boolean;
+  /**
+   * Adds `gtr_pm.sfz` and `gtr_stacc.sfz`, one plain file per set (tones `GUITAR_FILE_TONES`),
+   * and returns them in `entries` beside the default, the way a pack that ships a file per
+   * articulation is declared.
+   */
+  perFile?: boolean;
 }
 
-const SWITCHES = { default: 24, palmMute: 25, harmonic: 26, legato: 27 } as const;
+const SWITCHES = {
+  default: 24,
+  palmMute: 25,
+  harmonic: 26,
+  legato: 27,
+  dead: 28,
+  staccato: 29,
+} as const;
 const LABELS = {
   default: 'Sustain',
   palmMute: 'Palm Mute',
   harmonic: 'Natural Harmonic',
   legato: 'Hammer-on',
+  dead: 'Dead Note',
+  staccato: 'Staccato',
 } as const;
 
 const selectionTones = (): number[] =>
@@ -111,11 +144,12 @@ export function syntheticGuitarPack(options: SyntheticGuitarPackOptions = {}): S
     `<region> sample=samples/${set}.wav sw_last=${String(SWITCHES[set])} sw_label=${LABELS[set]}`;
   const sfz = [
     '<global> lokey=40 hikey=88 pitch_keycenter=69',
-    `<group> sw_lokey=24 sw_hikey=27 sw_default=${String(SWITCHES.default)}`,
+    `<group> sw_lokey=24 sw_hikey=${options.articulations ? '29' : '27'} sw_default=${String(SWITCHES.default)}`,
     layerText('default'),
     layerText('palmMute'),
     layerText('harmonic'),
     layerText('legato'),
+    ...(options.articulations ? [layerText('dead'), layerText('staccato')] : []),
     `<region> sample=samples/release.wav trigger=release rt_decay=${String(GUITAR_RELEASE_DECAY)} loop_mode=one_shot`,
     ...(options.selection ? selectionRegions() : []),
     '',
@@ -130,6 +164,18 @@ export function syntheticGuitarPack(options: SyntheticGuitarPackOptions = {}): S
     ['samples/legato.wav', tone(GUITAR_TONES.legato, 0.5)],
     ['samples/release.wav', tone(GUITAR_TONES.release, 0.2)],
   ]);
+  if (options.articulations) {
+    contents.set('samples/dead.wav', tone(GUITAR_EXTRA_TONES.dead, 0.5));
+    contents.set('samples/staccato.wav', tone(GUITAR_EXTRA_TONES.staccato, 0.5));
+  }
+  if (options.perFile) {
+    const file = (name: string): string =>
+      `<global> lokey=40 hikey=88 pitch_keycenter=69\n<region> sample=samples/${name}.wav\n`;
+    contents.set('gtr_pm.sfz', new TextEncoder().encode(file('file-pm')));
+    contents.set('gtr_stacc.sfz', new TextEncoder().encode(file('file-stacc')));
+    contents.set('samples/file-pm.wav', tone(GUITAR_FILE_TONES.palmMute, 0.5));
+    contents.set('samples/file-stacc.wav', tone(GUITAR_FILE_TONES.staccato, 0.5));
+  }
   if (options.selection) {
     for (const hertz of selectionTones()) contents.set(selectionPath(hertz), tone(hertz, 0.5));
   }
@@ -147,13 +193,19 @@ export function syntheticGuitarPack(options: SyntheticGuitarPackOptions = {}): S
   return {
     files,
     contents,
-    sfz: ['default.sfz'],
+    sfz: options.perFile ? ['default.sfz', 'gtr_pm.sfz', 'gtr_stacc.sfz'] : ['default.sfz'],
     reads,
-    entries: { default: 'default.sfz' },
+    entries: options.perFile
+      ? { default: 'default.sfz', palmMute: 'gtr_pm.sfz', staccato: 'gtr_stacc.sfz' }
+      : { default: 'default.sfz' },
     layers: {
       palmMute: `sw:${String(SWITCHES.palmMute)}`,
       harmonic: `sw:${String(SWITCHES.harmonic)}`,
       legato: `sw:${String(SWITCHES.legato)}`,
+      ...(options.articulations && {
+        dead: `sw:${String(SWITCHES.dead)}`,
+        staccato: `sw:${String(SWITCHES.staccato)}`,
+      }),
     },
   };
 }

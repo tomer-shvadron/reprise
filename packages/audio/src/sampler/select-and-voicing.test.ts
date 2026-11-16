@@ -130,3 +130,29 @@ describe('the sampler sink fills select', () => {
     expect(toneLevel(without, 770, 0.55, 0.8)).toBeLessThan(0.001);
   });
 });
+
+describe('the legato trigger follows the layer that plays', () => {
+  const hammer = hammered.notes[0] ?? note(1, 5);
+  const regions = [
+    region({ ...at69, sample: 'a', trigger: 'first' }),
+    // A hammer-on in this keyswitch layer has a legato region; one in the default layer has none.
+    region({ ...at69, sample: 'c', trigger: 'legato', layer: 'sw:27' }),
+  ];
+  const voicing: Voicing = { sets: {}, legatoTrigger: true };
+
+  it('plays the attack on a hammer-on in a layer without legato regions', async () => {
+    const data = await run(regions, { voicingFor: () => voicing }, (sink) => {
+      sink.noteOn(event(plain, note(1, 5), 0));
+      sink.noteOn(event(hammered, hammer, 0.5));
+    });
+    expect(toneLevel(data, 440, 0.55, 0.8)).toBeGreaterThan(0.05);
+  });
+
+  it('asks the map about the layer, with the default layer as the fallback', () => {
+    const map = new RegionMap(regions);
+    expect(map.hasLegatoRegions).toBe(true);
+    expect(map.hasLegatoRegionsIn()).toBe(false);
+    expect(map.hasLegatoRegionsIn('sw:27')).toBe(true);
+    expect(map.hasLegatoRegionsIn('sw:99')).toBe(false);
+  });
+});

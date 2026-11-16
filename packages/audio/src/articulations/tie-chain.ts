@@ -170,14 +170,19 @@ export function fadePoints(
  * level there. Lifting the palm does not revive a damped string, so the first mute latches and a
  * later fade runs that much lower.
  */
-export function chainGain(segments: readonly PlanLink[], tonal: boolean): GainPoint[] {
+export function chainGain(
+  segments: readonly PlanLink[],
+  tonal: boolean,
+  sampledPalmMute = false,
+): GainPoint[] {
   const [origin, ...links] = segments;
   if (!origin) return [];
   const { decayTo, decayTime } = ARTICULATION.palmMute;
   let points = fadePoints(origin.effects, origin.when, origin.length) ?? [];
   let muted = tonal && origin.note.palmMute;
   let damped = 0;
-  if (points.length === 0 && muted) {
+  // A palm-mute layer is already damped, so only the latch is kept, not the decay.
+  if (points.length === 0 && muted && !sampledPalmMute) {
     points = [
       { at: origin.when, db: 0 },
       { at: origin.when + decayTime, db: decayTo },

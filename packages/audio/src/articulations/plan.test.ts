@@ -493,3 +493,75 @@ describe('placeGraces', () => {
     expect(placeGraces(event(beat, main, track), 0.5 / 960, 1.95).graces).toHaveLength(0);
   });
 });
+
+describe('planNote with the effects a layer carries', () => {
+  const sampled = (...effects: ('palmMute' | 'dead' | 'harmonic' | 'legato')[]) => new Set(effects);
+
+  it('is unchanged without `sampled`, and with an empty one', () => {
+    for (const n of [
+      note(1, 5, { palmMute: true }),
+      note(1, 5, { dead: true }),
+      note(1, 5, { harmonic: { kind: 'natural' } }),
+      note(1, 5, { hammerPull: true }),
+    ]) {
+      expect(planNote(input(guitar, n, { sampled: sampled() }))).toEqual(
+        planNote(input(guitar, n)),
+      );
+    }
+  });
+
+  it('drops the palm-mute low-pass and decay for a palm-mute layer', () => {
+    const muted = note(1, 5, { palmMute: true });
+    expect(planNote(input(guitar, muted)).filter).toEqual({
+      type: 'lowpass',
+      frequency: ARTICULATION.palmMute.cutoff,
+    });
+    expect(planNote(input(guitar, muted)).gain).not.toEqual([]);
+    const plan = planNote(input(guitar, muted, { sampled: sampled('palmMute') }));
+    expect(plan.filter).toBeUndefined();
+    expect(plan.gain).toEqual([]);
+  });
+
+  it('keeps the palm mute of a note whose layer carries only the harmonic', () => {
+    const both = note(1, 5, { palmMute: true, harmonic: { kind: 'natural' } });
+    const plan = planNote(input(guitar, both, { sampled: sampled('harmonic') }));
+    expect(plan.filter).toEqual({ type: 'lowpass', frequency: ARTICULATION.palmMute.cutoff });
+    expect(plan.gain).not.toEqual([]);
+  });
+
+  it('plays a dead layer as a note, not a noise burst, still ending at the dead length', () => {
+    const dead = note(1, 5, { dead: true });
+    expect(planNote(input(guitar, dead)).dead).toBe(true);
+    const plan = planNote(input(guitar, dead, { sampled: sampled('dead'), length: 2 }));
+    expect(plan.dead).toBe(false);
+    expect(plan.filter).toBeUndefined();
+    expect(plan.strikes[0]?.end).toBeCloseTo(1 + ARTICULATION.dead.length);
+  });
+
+  it('drops the harmonic shelf for a harmonic layer', () => {
+    const harmonic = note(1, 5, { harmonic: { kind: 'natural' } });
+    expect(planNote(input(guitar, harmonic)).filter?.type).toBe('highshelf');
+    expect(
+      planNote(input(guitar, harmonic, { sampled: sampled('harmonic') })).filter,
+    ).toBeUndefined();
+  });
+
+  it('drops the hammer-on offset for a legato layer and keeps the softer velocity', () => {
+    const hammer = note(1, 5, { hammerPull: true });
+    expect(planNote(input(guitar, hammer)).strikes[0]?.offset).toBe(ARTICULATION.hammerOffset);
+    const plan = planNote(input(guitar, hammer, { sampled: sampled('legato') }));
+    expect(plan.strikes[0]?.offset).toBeUndefined();
+    expect(plan.strikes[0]?.velocity).toBe(planNote(input(guitar, hammer)).strikes[0]?.velocity);
+  });
+
+  it('leaves a palm-muted link of a sampled palm-mute origin without its own filter', () => {
+    const origin = note(1, 5, { palmMute: true });
+    const links = [link({ palmMute: true }, 1.5)];
+    const synthesized = planNote(input(guitar, note(1, 5), { length: 1, links }));
+    expect(synthesized.filterChanges).toHaveLength(1);
+    const plan = planNote(
+      input(guitar, origin, { length: 1, links, sampled: sampled('palmMute') }),
+    );
+    expect(plan.filterChanges).toEqual([]);
+  });
+});

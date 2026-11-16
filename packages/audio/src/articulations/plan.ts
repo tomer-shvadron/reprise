@@ -3,9 +3,12 @@ import type { BeatEffects, Note, Track } from '@reprise/model';
 
 import type { FilterSettings } from '../sampler/voice';
 import { ARTICULATION } from './parameters';
+import type { SampledEffect } from './sets';
 import { bendTerm, chainGain, tieChain, vibratoTerm, whammyTerm } from './tie-chain';
 import type { PitchTerm, TieChain } from './tie-chain';
 import { noteVelocity } from './velocity';
+
+const NO_EFFECTS: ReadonlySet<SampledEffect> = new Set();
 
 export type PlanTrack = Pick<Track, 'kind' | 'tuning' | 'capo'>;
 
@@ -37,6 +40,11 @@ export interface PlanInput {
   next: { note: Note; when: number } | undefined;
   /** The key of the voice a legato slide carries into this note, which then has no attack. */
   continues?: number;
+  /**
+   * The effects the set that plays the note already carries in its samples (`voicingOf`): their
+   * synthesized automation is left out. Absent on General MIDI, where nothing is.
+   */
+  sampled?: ReadonlySet<SampledEffect>;
 }
 
 /** One attack: a voice started at `when` and released at `end`. */
@@ -60,7 +68,7 @@ export interface NotePlan {
   strikes: Strike[];
   /** The first strike is the voice a legato slide carried in, not a new one. */
   continues: boolean;
-  /** A dead note: a short filtered noise burst instead of the instrument. */
+  /** A dead note with no sampled layer: a short filtered noise burst instead of the instrument. */
   dead: boolean;
   /** Semitones relative to each strike's pitch at an absolute time; absent when flat. */
   pitch: ((time: number) => number) | undefined;
@@ -132,18 +140,38 @@ function pitchTerms(input: PlanInput, key: number, chain: TieChain): PitchTerm[]
   return terms;
 }
 
-function filterFor(note: Note): FilterSettings | undefined {
-  if (note.dead) return { type: 'lowpass', frequency: ARTICULATION.dead.cutoff };
-  if (note.palmMute) return { type: 'lowpass', frequency: ARTICULATION.palmMute.cutoff };
+/**
+ * The effect decides first (dead, then palm mute, then harmonic), and a sampled one then leaves
+ * no filter: a palm-muted harmonic with only the palm mute sampled does not take the shelf.
+ */
+function filterFor(note: Note, sampled: ReadonlySet<SampledEffect>): FilterSettings | undefined {
+  if (note.dead) {
+    return sampled.has('dead')
+      ? undefined
+      : { type: 'lowpass', frequency: ARTICULATION.dead.cutoff };
+  }
+  if (note.palmMute) {
+    return sampled.has('palmMute')
+      ? undefined
+      : { type: 'lowpass', frequency: ARTICULATION.palmMute.cutoff };
+  }
   if (note.harmonic) {
+    if (sampled.has('harmonic')) return undefined;
     const { shelfFrequency, shelfGain } = ARTICULATION.harmonic;
     return { type: 'highshelf', frequency: shelfFrequency, gain: shelfGain };
   }
   return undefined;
 }
 
-/** A palm-muted link damps an open string from its onset. */
-function linkFilters(chain: TieChain): NotePlan['filterChanges'] {
+/**
+ * A palm-muted link damps an open string from its onset; a sampled palm-muted origin is already
+ * damped by its layer, so a link there adds nothing.
+ */
+function linkFilters(
+  chain: TieChain,
+  sampled: ReadonlySet<SampledEffect>,
+): NotePlan['filterChanges'] {
+  if (sampled.has('palmMute') && chain.segments[0]?.note.palmMute) return [];
   const muted = chain.segments.slice(1).find((link) => link.note.palmMute);
   if (!muted) return [];
   return [{ at: muted.when, filter: { type: 'lowpass', frequency: ARTICULATION.palmMute.cutoff } }];
@@ -167,8 +195,10 @@ function retriggers(when: number, end: number, step: number): { when: number; en
 export function planNote(input: PlanInput): NotePlan {
   const { track, note, effects, when } = input;
   const tonal = track.kind !== 'drums';
+  const sampled = input.sampled ?? NO_EFFECTS;
   const key = soundingPitch(track, note);
   const rounded = Math.round(key);
+  // A dead note is short and has no pitch shape either way; only without a layer is it a burst.
   const dead = tonal && note.dead;
   const continues = input.continues;
 
@@ -198,7 +228,8 @@ export function planNote(input: PlanInput): NotePlan {
     velocity: note.hammerPull ? softened : velocity,
     when,
     end,
-    ...(note.hammerPull && { offset: ARTICULATION.hammerOffset }),
+    // A legato layer carries its own onset, so the 20 ms of a synthesized one is dropped.
+    ...(note.hammerPull && !sampled.has('legato') && { offset: ARTICULATION.hammerOffset }),
   };
 
   let strikes: Strike[] = [base];
@@ -223,7 +254,7 @@ export function planNote(input: PlanInput): NotePlan {
     });
   }
 
-  const filter = tonal ? filterFor(note) : undefined;
+  const filter = tonal ? filterFor(note, sampled) : undefined;
   const terms = tonal && !dead ? pitchTerms(input, key, chain) : [];
   const pitch =
     terms.length > 0
@@ -233,11 +264,11 @@ export function planNote(input: PlanInput): NotePlan {
   return {
     strikes,
     continues: continues !== undefined,
-    dead,
+    dead: dead && !sampled.has('dead'),
     pitch,
-    gain: chainGain(chain.segments, tonal),
+    gain: chainGain(chain.segments, tonal, sampled.has('palmMute')),
     filter,
-    filterChanges: tonal && !dead && filter === undefined ? linkFilters(chain) : [],
+    filterChanges: tonal && !dead && filter === undefined ? linkFilters(chain, sampled) : [],
     letRingUntil:
       tonal && note.letRing && legatoInto === undefined && !chain.cut
         ? Math.max(input.barEnd, end)
