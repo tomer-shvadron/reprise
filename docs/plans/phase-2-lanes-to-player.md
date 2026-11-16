@@ -437,7 +437,7 @@ Lead only. Starts as soon as WP-024, WP-032 and WP-045 are merged; the remaining
 
 - Playwright Test against the production web build in the Chromium headless shell (ADR-0025), in `apps/web/e2e/player/`: open by shortcut, palette and drop, every format, a cancelled picker, an unknown and a damaged file; play, pause, stop and play from start, tempo in BPM and percent, count-in; a loop by drag, seek by keys through a repeat and by click with the repeat pass rule; following in paged and continuous view; mute, solo, volume and instrument with undo and redo, notation per track; Save in place and Save As with the format choice, then reopen.
 - The two renderer budget rows, heap after opening the long score and drop to first paint, asserted against the roadmap table.
-- An `e2e` CI job on every pull request and push to `main`, a required check.
+- An `e2e` CI job on every pull request and push to `main`; it was planned as a required check and stays non-required by the owner's decision (2026-11-17).
 - Print to PDF is WP-025's, whose acceptance already names it.
 
 **Acceptance criteria**
