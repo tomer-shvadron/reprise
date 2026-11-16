@@ -6,7 +6,8 @@ import { createAppRegistry } from '@/app/app-registry';
 import { dispatchShortcut } from '@/app/shortcut-dispatcher';
 import { createTestServices } from '@/test/services';
 
-import { firstStop } from './cursor';
+import { cursorAtPosition, firstStop } from './cursor';
+import { fullBarScore } from './test/entry-scores';
 import { editScore } from './test/scores';
 
 async function setup(built: Score = editScore()) {
@@ -115,5 +116,34 @@ describe('the edit navigation commands', () => {
     services.editing.getState().setEditing(true);
     expect(registry.isShadowed(transport)).toBe(true);
     expect(registry.available()).toContain(move);
+  });
+
+  it('appends a bar with → past a full last bar, as its own undo step, and only there', async () => {
+    const { services, press, at } = await setup();
+    services.editing.getState().setEditing(true);
+    const bars = () => services.document.getState().score?.masterBars.length ?? 0;
+    // The edit score's last bar is empty: → stops at its end slot.
+    press('ArrowRight', { ctrlKey: true });
+    press('ArrowRight', { ctrlKey: true });
+    expect(at()).toMatchObject({ bar: 2 });
+    press('ArrowRight');
+    expect(bars()).toBe(3);
+
+    const full = await setup(fullBarScore());
+    full.services.editing.getState().setEditing(true);
+    const lastBeat = cursorAtPosition(
+      full.opened,
+      { track: 0, bar: 0, voice: 0, stop: 3 },
+      { string: 1, staff: 'tab' },
+    );
+    full.services.selection.getState().setEdit({ cursor: lastBeat });
+    const revision = full.services.document.getState().revision;
+    full.press('ArrowRight');
+    const after = full.services.document.getState();
+    expect(after.score?.masterBars).toHaveLength(2);
+    expect(after.revision).toBe(revision + 1);
+    expect(full.at()).toMatchObject({ bar: 1, beat: 0 });
+    after.undo();
+    expect(full.services.document.getState().score?.masterBars).toHaveLength(1);
   });
 });
