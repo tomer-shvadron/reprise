@@ -1,9 +1,11 @@
 import { setTrackProperties, type Id, type SoundOverride, type Track } from '@reprise/model';
+import { useId } from 'react';
 import { useStore } from 'zustand';
 
 import { useAppServices } from '@/app/services-context';
 
-import type { InstalledPack } from './manifest';
+import { curatedPack } from './curated-packs';
+import type { InstalledPack, PackInstrument } from './manifest';
 
 const GENERAL_MIDI = '';
 /** A pack the track names that is not installed; it can never collide with `<12 chars>/<key>`. */
@@ -15,12 +17,19 @@ interface Choice {
   packId: string;
   /** Stored as `sound.instrument`; absent for a pack with one instrument. */
   instrument: string | undefined;
+  /** The pack (or instrument) stands in for the track's General MIDI program, or its kit. */
+  suggested: boolean;
 }
 
 /** One choice per instrument of a multi-instrument pack, one per pack otherwise. */
-function choicesOf(pack: InstalledPack): Choice[] {
+function choicesOf(pack: InstalledPack, track: Track): Choice[] {
   const [first] = pack.instruments;
   if (first === undefined) return [];
+  const suggests = (instrument: PackInstrument): boolean => {
+    if (track.kind === 'drums') return pack.family === 'drums';
+    if (pack.family === 'drums') return false;
+    return (instrument.gmPrograms ?? pack.gmPrograms).includes(track.program);
+  };
   if (pack.instruments.length === 1) {
     return [
       {
@@ -28,6 +37,7 @@ function choicesOf(pack: InstalledPack): Choice[] {
         label: pack.name,
         packId: pack.id,
         instrument: undefined,
+        suggested: suggests(first),
       },
     ];
   }
@@ -36,14 +46,8 @@ function choicesOf(pack: InstalledPack): Choice[] {
     label: `${pack.name}: ${instrument.name}`,
     packId: pack.id,
     instrument: instrument.key,
+    suggested: suggests(instrument),
   }));
-}
-
-/** Whether the pack suggests itself for the track: a drum pack on a drum track, or its programs. */
-function suggests(pack: InstalledPack, track: Track): boolean {
-  if (track.kind === 'drums') return pack.family === 'drums';
-  if (pack.family === 'drums') return false;
-  return pack.gmPrograms.includes(track.program);
 }
 
 /** The track's sound with the pack set or removed; `null` removes `sound` once nothing is left. */
@@ -78,49 +82,56 @@ export function TrackSoundPicker({
   const { document, playback, sounds } = useAppServices();
   const track = useStore(document, (state) => state.score?.tracks.find((t) => t.id === trackId));
   const packs = useStore(sounds.api, (state) => state.packs);
+  const scanned = useStore(sounds.api, (state) => state.scanned);
   const status = useStore(playback, (state) => state.trackSounds[trackId]);
+  const noticeId = useId();
   if (!track) return null;
   const name = label ?? (track.name || 'track');
 
-  const all = packs.flatMap((pack) => ({ pack, choices: choicesOf(pack) }));
-  const choices = all.flatMap((entry) => entry.choices);
-  const suggested = all.filter((entry) => suggests(entry.pack, track));
-  const others = all.filter((entry) => !suggests(entry.pack, track));
+  const choices = packs.flatMap((installed) => choicesOf(installed, track));
+  const suggested = choices.filter((choice) => choice.suggested);
+  const others = choices.filter((choice) => !choice.suggested);
 
-  const packId = track.sound?.packId;
+  const { packId, instrument } = track.sound ?? {};
   const pack = packId === undefined ? undefined : packs.find((p) => p.id === packId);
-  const wanted = pack?.instruments.find((i) => i.key === track.sound?.instrument);
-  const selectedKey = wanted?.key ?? pack?.instruments[0]?.key;
+  // `instrument === undefined` is the audio service's rule for "the pack's first instrument".
+  const wanted = pack?.instruments.find((i) => i.key === instrument);
+  const selectedKey =
+    wanted?.key ?? (instrument === undefined ? pack?.instruments[0]?.key : undefined);
   let value = GENERAL_MIDI;
   let missing: string | undefined;
   if (packId !== undefined) {
-    if (pack !== undefined && selectedKey !== undefined && (wanted || !track.sound?.instrument)) {
+    if (pack !== undefined && selectedKey !== undefined) {
       value = `${packId}/${selectedKey}`;
     } else {
       value = MISSING;
-      missing = `${pack?.name ?? packId}${track.sound?.instrument ? `: ${track.sound.instrument}` : ''}`;
+      // A removed curated pack is still named, so the user knows what to install again.
+      const packName = pack?.name ?? curatedPack(packId)?.name ?? packId;
+      missing = instrument === undefined ? packName : `${packName}: ${instrument}`;
     }
   }
   const notice =
     missing !== undefined
-      ? `${missing} is not installed: playing General MIDI`
-      : status?.problem === 'failed'
+      ? // Before the first scan the directory is empty, and every pack would read as removed.
+        scanned
+        ? `${missing} is not installed: playing General MIDI`
+        : undefined
+      : packId !== undefined && status?.problem === 'failed' && status.packId === packId
         ? `The sound pack could not be loaded: playing General MIDI${status.message ? ` (${status.message})` : ''}`
         : undefined;
 
-  const options = (entries: typeof all) =>
-    entries.flatMap((entry) =>
-      entry.choices.map((choice) => (
-        <option key={choice.value} value={choice.value}>
-          {choice.label}
-        </option>
-      )),
-    );
+  const options = (entries: readonly Choice[]) =>
+    entries.map((choice) => (
+      <option key={choice.value} value={choice.value}>
+        {choice.label}
+      </option>
+    ));
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
       <select
         aria-label={`Sound of ${name}`}
+        aria-describedby={notice === undefined ? undefined : noticeId}
         value={value}
         className="border-input bg-background h-7 w-full min-w-0 rounded-md border px-1 text-xs"
         onChange={(event) => {
@@ -142,7 +153,13 @@ export function TrackSoundPicker({
           </optgroup>
         )}
       </select>
-      {notice !== undefined && <span className="text-muted-foreground text-xs">{notice}</span>}
+      <span
+        id={noticeId}
+        aria-live="polite"
+        className="text-muted-foreground text-xs empty:sr-only"
+      >
+        {notice}
+      </span>
     </div>
   );
 }
