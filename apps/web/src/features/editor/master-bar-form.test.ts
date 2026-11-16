@@ -1,4 +1,5 @@
 import { applyCommand, createEmptyScore, setMasterBars, type Score } from '@reprise/model';
+import { note, score as scoreBuilder } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { planInsertBar, targetOf } from './bar-edit';
@@ -10,13 +11,13 @@ import {
   overfullBars,
   validateMasterBarForm,
 } from './master-bar-form';
+import { must } from './test/must';
 
 function bars(count: number): Score {
   let score = createEmptyScore();
   for (let at = 1; at < count; at++) {
-    const target = targetOf([score.masterBars.at(-1)?.id ?? '']);
-    const plan = target && planInsertBar(score, target, 'after');
-    score = applyCommand(score, plan?.command ?? ({} as never)).score;
+    const target = must(targetOf([must(score.masterBars.at(-1)).id]));
+    score = applyCommand(score, must(planInsertBar(score, target, 'after')).command).score;
   }
   return score;
 }
@@ -77,7 +78,9 @@ describe('masterBarEdits', () => {
   it('puts endings, time and key on every bar of a range', () => {
     const { score, target, form } = setup(4, 1, 2);
     let next = edit(form, 'endings', { endings: [2, 1] });
-    next = edit(next, 'key', { key: { fifths: 2, minor: true } });
+    next = edit(edit(next, 'key', { key: { fifths: 2, minor: true } }), 'mode', {
+      key: { fifths: 2, minor: true },
+    });
     const edits = masterBarEdits(score, { ...target }, { ...next, continueSignatures: false });
     expect(edits.map(({ changes }) => changes)).toEqual([
       { alternateEndings: [1, 2], keySignature: { fifths: 2, minor: true } },
@@ -196,17 +199,63 @@ describe('validation', () => {
     expect(keyLabel(0, false)).toBe('C major, no sharps or flats');
   });
 
-  it('finds the bars a smaller signature would overfill', () => {
-    const { score, target, form } = setup(1, 1, 1);
+  it('finds the bars a smaller signature would cut, and only those that fitted before', () => {
+    const built = scoreBuilder().track('guitar');
+    const quarters = (count: number) => {
+      for (let beat = 0; beat < count; beat++) built.beat('4', [note(1, beat)]);
+    };
+    built.bar();
+    quarters(4);
+    built.bar();
+    quarters(5);
+    // An over-full bar, as an imported tab may hold.
+    const song = built.build({ validate: false });
+    const target = must(targetOf(song.masterBars.map(({ id }) => id)));
+    const form = must(formFromScore(song, target));
+    const time = (numerator: string) =>
+      masterBarEdits(
+        song,
+        target,
+        edit({ ...form, continueSignatures: false }, 'time', {
+          time: { numerator, denominator: '4' },
+        }),
+      );
+    // 3/4 cuts the four quarters of bar 1; bar 2 held five in a 4/4 bar, so it never fitted.
+    expect(overfullBars(song, time('3'))).toEqual([1]);
+    // 5/4 and an unchanged 4/4 give every bar the room it had or more.
+    expect(overfullBars(song, time('5'))).toEqual([]);
+    expect(overfullBars(song, time('4'))).toEqual([]);
+  });
+
+  it('writes nothing for a field the player touched and left as it was', () => {
+    const { score, target, form } = setup(3, 1, 3);
+    const retyped = edit(form, 'time', { time: { numerator: '4', denominator: '4' } });
+    const toggled = edit(edit(form, 'segno', { segno: true }), 'segno', { segno: false });
+    expect(masterBarEdits(score, target, retyped)).toEqual([]);
+    expect(masterBarEdits(score, target, toggled)).toEqual([]);
+  });
+
+  it('keeps each bar its own key when only the mode of mixed keys changes', () => {
+    const built = setup(2, 1, 2);
+    const keyed = applyCommand(
+      built.score,
+      setMasterBars([
+        {
+          masterBarId: must(built.score.masterBars[1]).id,
+          changes: { keySignature: { fifths: 3, minor: false } },
+        },
+      ]),
+    ).score;
+    const form = must(formFromScore(keyed, built.target));
+    expect(form.mixed).toEqual({ key: true });
+    const minor = edit(form, 'mode', { key: { ...form.key, minor: true } });
     expect(
-      overfullBars(
-        score,
-        masterBarEdits(
-          score,
-          target,
-          edit(form, 'time', { time: { numerator: '3', denominator: '4' } }),
-        ),
+      masterBarEdits(keyed, built.target, { ...minor, continueSignatures: false }).map(
+        ({ changes }) => changes.keySignature,
       ),
-    ).toEqual([]);
+    ).toEqual([
+      { fifths: 0, minor: true },
+      { fifths: 3, minor: true },
+    ]);
   });
 });

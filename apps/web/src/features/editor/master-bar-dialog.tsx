@@ -92,14 +92,6 @@ function Check({
   );
 }
 
-/** Where a refusal belongs, so focus can go to that section's first field. */
-function sectionOfRefusal(message: string): MasterBarSection | undefined {
-  if (/time signature|allows/i.test(message)) return 'time';
-  if (/ending|repeat/i.test(message)) return 'repeats';
-  if (/tempo/i.test(message)) return 'tempo';
-  return undefined;
-}
-
 /**
  * Edits the master bars of a target: one bar or a range. The dialog snapshots its bars when it
  * opens, writes only the fields the player touched, and applies them as one history step. A
@@ -155,10 +147,8 @@ export function MasterBarDialog({
       return;
     }
     setRefusal(result.message);
-    // After the alert renders; the field lives in the dialog, which stays mounted.
-    queueMicrotask(() => {
-      focusSection(sectionOfRefusal(result.message));
-    });
+    // The field lives in the dialog, which stays mounted.
+    focusSection(result.section);
   };
 
   const jumpOptions: JumpChoice[] = ['', ...JUMP_KINDS];
@@ -228,6 +218,9 @@ export function MasterBarDialog({
                   className={SELECT_CLASS}
                   value={form.time.denominator}
                   aria-invalid={errors.denominator !== undefined}
+                  aria-describedby={
+                    errors.denominator !== undefined ? id('denominator-error') : undefined
+                  }
                   onChange={(event) => {
                     update('time', { time: { ...form.time, denominator: event.target.value } });
                   }}
@@ -262,13 +255,14 @@ export function MasterBarDialog({
                   <select
                     id={id('mode')}
                     className={SELECT_CLASS}
-                    value={form.key.minor ? 'minor' : 'major'}
+                    value={form.mixed.mode ? '' : form.key.minor ? 'minor' : 'major'}
                     onChange={(event) => {
-                      update('key', {
+                      update('mode', {
                         key: { ...form.key, minor: event.target.value === 'minor' },
                       });
                     }}
                   >
+                    {form.mixed.mode && <option value="">Mixed</option>}
                     <option value="major">Major</option>
                     <option value="minor">Minor</option>
                   </select>

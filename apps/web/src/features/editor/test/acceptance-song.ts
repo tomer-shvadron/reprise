@@ -1,7 +1,8 @@
-import { applyCommand, createEmptyScore, setMasterBars, type Id, type Score } from '@reprise/model';
+import { applyCommand, createEmptyScore, setMasterBars, type Score } from '@reprise/model';
 
 import { planInsertBar, targetOf } from '../bar-edit';
 import { edit, formFromScore, masterBarEdits, type MasterBarForm } from '../master-bar-form';
+import { must } from './must';
 
 /** The bars the song's seven master bars are numbered by, 1-based. */
 export const EXPECTED_BARS = [1, 2, 3, 2, 4, 5, 6, 1, 2, 4, 7];
@@ -29,11 +30,8 @@ function dialog(
 export function acceptanceSong(): Score {
   let current = createEmptyScore();
   for (let bar = 1; bar < 7; bar++) {
-    const last = current.masterBars.at(-1)?.id as Id;
-    const target = targetOf([last]);
-    const plan = target && planInsertBar(current, target, 'after');
-    if (!plan) throw new Error('no insert');
-    current = applyCommand(current, plan.command).score;
+    const target = must(targetOf([must(current.masterBars.at(-1)).id]));
+    current = applyCommand(current, must(planInsertBar(current, target, 'after')).command).score;
   }
   current = dialog(current, 1, 1, (form) =>
     edit(edit(form, 'tempo', { tempo: { on: true, bpm: '240' } }), 'segno', { segno: true }),

@@ -54,7 +54,3 @@ export { AddTrackButton, TrackRowMenu } from './track-menu';
 export { createNewSong, startNewSong } from './new-song';
 export { whenSaved } from './when-saved';
 export { UnsavedChangesDialog } from './unsaved-dialog';
-export { barCommands, type BarCommandId } from './bar-commands';
-export { MasterBarDialog } from './master-bar-dialog';
-export { barTarget, planDeleteBars, planInsertBar, type BarTarget } from './bar-edit';
-export { masterBarEdits, formFromScore, type MasterBarForm } from './master-bar-form';

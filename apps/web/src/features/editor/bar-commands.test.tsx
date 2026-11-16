@@ -2,7 +2,7 @@ import type { Score } from '@reprise/model';
 import { note, score as scoreBuilder } from '@reprise/model/testing';
 import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createAppRegistry } from '@/app/app-registry';
 import { dispatchShortcut } from '@/app/shortcut-dispatcher';
@@ -44,6 +44,12 @@ function setup() {
   const message = () => services.entry.getState().message;
   return { services, registry, run, score, bar, toBar, message, user: userEvent.setup() };
 }
+
+/** The fake audio service's tempo calls, which a transport key makes and an edit does not. */
+const tempoCalls = (services: ReturnType<typeof setup>['services']): unknown[][] => {
+  const fn: unknown = Reflect.get(services.audio, 'setTempo');
+  return vi.isMockFunction(fn) ? fn.mock.calls : [];
+};
 
 const revision = (services: ReturnType<typeof setup>['services']) =>
   services.document.getState().revision;
@@ -94,7 +100,7 @@ describe('the bar commands', () => {
     run('editor.deleteBarsMac');
     expect(score().masterBars).toHaveLength(1);
     expect(revision(services)).toBe(before);
-    expect(message()).toBe('A score keeps at least one bar.');
+    expect(message()).toBe('A score keeps at least one bar');
   });
 
   it('toggle the repeat start on the first bar of a range and the repeat end on its last', () => {
@@ -132,26 +138,74 @@ describe('the bar commands', () => {
 });
 
 describe('the keys', () => {
-  it('[ and ] edit repeats in edit mode and still step the tempo outside it', () => {
-    const { services, registry, score } = setup();
-    const press = (code: 'BracketLeft' | 'BracketRight') =>
-      dispatchShortcut(
-        new KeyboardEvent('keydown', {
-          key: code === 'BracketLeft' ? '[' : ']',
-          code,
-          cancelable: true,
-        }),
+  const press = (
+    registry: ReturnType<typeof setup>['registry'],
+    init: KeyboardEventInit,
+    platform: 'mac' | 'other' = 'mac',
+  ) => {
+    let ran = false;
+    act(() => {
+      ran = dispatchShortcut(
+        new KeyboardEvent('keydown', { cancelable: true, ...init }),
         registry,
-        'mac',
+        platform,
       );
-    expect(press('BracketLeft')).toBe(true);
+    });
+    return ran;
+  };
+  const bracket = (code: 'BracketLeft' | 'BracketRight'): KeyboardEventInit => ({
+    key: code === 'BracketLeft' ? '[' : ']',
+    code,
+  });
+
+  it('[ and ] edit repeats in edit mode, where the tempo does not step', () => {
+    const { services, registry, score } = setup();
+    const calls = tempoCalls(services).length;
+    expect(press(registry, bracket('BracketLeft'))).toBe(true);
     expect(score().masterBars[0]?.repeat.start).toBe(true);
+    expect(press(registry, bracket('BracketRight'))).toBe(true);
+    expect(score().masterBars[0]?.repeat.endCount).toBe(2);
+    expect(tempoCalls(services)).toHaveLength(calls);
+  });
+
+  it('[ and ] step the tempo 5% down and up outside edit mode, and edit nothing', () => {
+    const { services, registry, score } = setup();
     act(() => {
       services.editing.getState().setEditing(false);
     });
     const before = revision(services);
-    press('BracketLeft');
+    expect(press(registry, bracket('BracketLeft'))).toBe(true);
+    expect(tempoCalls(services).at(-1)).toEqual(['percent', 95]);
+    expect(press(registry, bracket('BracketRight'))).toBe(true);
+    expect(tempoCalls(services).at(-1)).toEqual(['percent', 105]);
     expect(revision(services)).toBe(before);
+    expect(score().masterBars[0]?.repeat).toEqual({ start: false, endCount: 0 });
+  });
+
+  it('insert a bar before with ⌘+, ⇧⌘+ and ⇧⌘=, and leave zoom and the duration keys alone', () => {
+    const { services, registry, score } = setup();
+    for (const init of [
+      { key: '+', code: 'Equal', metaKey: true },
+      { key: '+', code: 'Equal', metaKey: true, shiftKey: true },
+      { key: '=', code: 'Equal', metaKey: true, shiftKey: true },
+    ]) {
+      const count = score().masterBars.length;
+      expect(press(registry, init)).toBe(true);
+      expect(score().masterBars).toHaveLength(count + 1);
+    }
+    // ⌘= still zooms in: it is a key, and no bar is added.
+    const bars = score().masterBars.length;
+    expect(press(registry, { key: '=', code: 'Equal', metaKey: true })).toBe(true);
+    expect(score().masterBars).toHaveLength(bars);
+    // Plain = and + still shorten the duration of the next note.
+    const rhythm = () => services.entry.getState().rhythm;
+    const start = rhythm();
+    expect(press(registry, { key: '=', code: 'Equal' })).toBe(true);
+    const shorter = rhythm();
+    expect(shorter).not.toEqual(start);
+    expect(press(registry, { key: '+', code: 'Equal', shiftKey: true })).toBe(true);
+    expect(rhythm()).not.toEqual(shorter);
+    expect(score().masterBars).toHaveLength(bars);
   });
 
   it('opens bar properties with the platform key and directions with D, and Insert inserts a bar on Windows', async () => {
@@ -258,11 +312,64 @@ describe('a smaller time signature that no longer holds the notes', () => {
     await user.clear(screen.getByLabelText('Beats per bar'));
     await user.type(screen.getByLabelText('Beats per bar'), '3{Enter}');
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Bar 1 holds more than 3/4 allows: shorten or delete the notes first.',
+      'Bar 1 holds more than 3/4 allows: shorten or delete the notes first',
     );
     expect(screen.getByRole('dialog', { name: 'Bar 1' })).toBeInTheDocument();
     expect(screen.getByLabelText('Beats per bar')).toHaveFocus();
     expect(revision(services)).toBe(before);
+  });
+});
+
+describe('a model refusal inside the dialog', () => {
+  it('keeps it open with the alert, focus on the section, and the score untouched', async () => {
+    const { services, run, user } = setup();
+    run('editor.barProperties');
+    await user.click(screen.getByRole('button', { name: 'Ending 1' }));
+    const before = revision(services);
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'An alternate ending needs a repeat end in its run of endings: add one to the last bar of ending 1',
+    );
+    expect(screen.getByRole('dialog', { name: 'Bar 1' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Repeat start')).toHaveFocus();
+    expect(revision(services)).toBe(before);
+  });
+});
+
+describe('structure warnings after an edit', () => {
+  it('say on the status line what playback would ignore, and clear on a sound edit', async () => {
+    const { services, run, message, user } = setup();
+    run('editor.barProperties');
+    await user.selectOptions(screen.getByLabelText('Jump'), 'D.S. al Coda');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(message()).toBe('D.S. al Coda at bar 1 has no segno; ignored');
+    // The edit stands: a warning never blocks it, and one apply is one named undo step.
+    expect(services.document.getState().score?.masterBars[0]?.jumps).toEqual([
+      { kind: 'dsAlCoda' },
+    ]);
+    expect(services.document.getState().undoLabel).toBe('setMasterBars');
+    run('editor.barProperties');
+    await user.click(screen.getByLabelText('Segno', { exact: true }));
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(message()).toBeUndefined();
+  });
+
+  it('warn about a repeat end with no start from the ] key too', () => {
+    const { run, message } = setup();
+    run('editor.toggleRepeatEnd');
+    expect(message()).toBe('Repeat end at bar 1 has no repeat start; repeating from bar 1');
+  });
+
+  it('warn about an ending past the play count', async () => {
+    const { run, message, user } = setup();
+    run('editor.insertBarAfter');
+    run('editor.barProperties');
+    await user.click(screen.getByRole('button', { name: 'Ending 3' }));
+    await user.click(screen.getByLabelText('Repeat end'));
+    await user.click(screen.getByLabelText('Repeat start'));
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(message()).toBe('Ending 3 at bar 2 is never played: the repeat plays 2 times');
   });
 });
 

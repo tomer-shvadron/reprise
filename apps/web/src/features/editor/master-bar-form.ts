@@ -26,6 +26,7 @@ const DEFAULT_PLAY_COUNT = 2;
 export type FieldKey =
   | 'time'
   | 'key'
+  | 'mode'
   | 'tempo'
   | 'repeatStart'
   | 'repeatEnd'
@@ -97,14 +98,12 @@ export function formFromScore(score: Score, target: BarTarget): MasterBarForm | 
   const present = bars.filter((bar): bar is MasterBar => bar !== undefined);
   const mixed: Flags = {};
   if (present.some((bar) => !sameTime(bar.timeSignature, first.timeSignature))) mixed.time = true;
-  if (
-    present.some(
-      (bar) =>
-        bar.keySignature.fifths !== first.keySignature.fifths ||
-        bar.keySignature.minor !== first.keySignature.minor,
-    )
-  ) {
+  // Key and mode are mixed on their own: touching one must keep each bar's value of the other.
+  if (present.some((bar) => bar.keySignature.fifths !== first.keySignature.fifths)) {
     mixed.key = true;
+  }
+  if (present.some((bar) => bar.keySignature.minor !== first.keySignature.minor)) {
+    mixed.mode = true;
   }
   if (present.some((bar) => bar.alternateEndings.join() !== first.alternateEndings.join())) {
     mixed.endings = true;
@@ -245,23 +244,37 @@ export function masterBarEdits(
   const { touched } = form;
 
   if (touched.time) {
-    const timeSignature: TimeSignature = {
+    // The form is validated first, so a denominator outside the list means no time change.
+    const denominator = DENOMINATORS.find((value) => value === Number(form.time.denominator));
+    const timeSignature: TimeSignature | undefined = denominator && {
       numerator: Number(form.time.numerator),
-      denominator: Number(form.time.denominator) as TimeSignature['denominator'],
+      denominator,
     };
     const extra = form.continueSignatures
       ? continuation(score, target.last, (bar, old) =>
           sameTime(bar.timeSignature, old.timeSignature),
         )
       : [];
-    for (const id of [...target.ids, ...extra]) set(id, { timeSignature: { ...timeSignature } });
+    if (timeSignature) {
+      for (const id of [...target.ids, ...extra]) set(id, { timeSignature: { ...timeSignature } });
+    }
   }
-  if (touched.key) {
+  if (touched.key || touched.mode) {
     const sameKey = (bar: MasterBar, old: MasterBar) =>
       bar.keySignature.fifths === old.keySignature.fifths &&
       bar.keySignature.minor === old.keySignature.minor;
     const extra = form.continueSignatures ? continuation(score, target.last, sameKey) : [];
-    for (const id of [...target.ids, ...extra]) set(id, { keySignature: { ...form.key } });
+    // Each bar keeps the half of its key the player did not touch.
+    for (const id of [...target.ids, ...extra]) {
+      const own = barOf(score, id)?.keySignature;
+      if (!own) continue;
+      set(id, {
+        keySignature: {
+          fifths: touched.key ? form.key.fifths : own.fifths,
+          minor: touched.mode ? form.key.minor : own.minor,
+        },
+      });
+    }
   }
   if (touched.endings) {
     for (const id of target.ids)
@@ -335,34 +348,70 @@ export function masterBarEdits(
     });
   }
 
-  return score.masterBars.flatMap(({ id }) => {
-    const bar = changes.get(id);
-    return bar ? [{ masterBarId: id, changes: bar }] : [];
+  // "Touched" is the player typing in a field, not the value changing: a field left at what the
+  // bar already has makes no change, and a bar with none makes no edit.
+  return score.masterBars.flatMap((bar) => {
+    const wanted = changes.get(bar.id);
+    if (!wanted) return [];
+    const differing = Object.fromEntries(
+      Object.entries(wanted).filter(([key, value]) =>
+        value === null
+          ? Reflect.get(bar, key) !== undefined
+          : !sameValue(Reflect.get(bar, key), value),
+      ),
+    );
+    return Object.keys(differing).length === 0 ? [] : [{ masterBarId: bar.id, changes: differing }];
   });
 }
 
-/** Bar numbers (1-based) whose notes would no longer fit the time signature an edit gives them. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  const left = Object.entries(a);
+  return (
+    left.length === Object.keys(b).length &&
+    left.every(([key, value]) => sameValue(value, Reflect.get(b, key)))
+  );
+}
+
+/**
+ * Bar numbers (1-based) a time edit would cut notes off: the model's own condition, a signature
+ * that gets smaller under a voice that fitted the old one. A bar imported over-full that gains
+ * room, or keeps it, is not named.
+ */
 export function overfullBars(score: Score, edits: readonly MasterBarEditPlan[]): number[] {
   const numbers: number[] = [];
   for (const { masterBarId, changes } of edits) {
     const index = indexOf(score, masterBarId);
     const bar = score.masterBars[index];
     if (!bar || !changes.timeSignature) continue;
-    const capacity = barTicks({ ...bar, timeSignature: changes.timeSignature }) + 1e-6;
-    const full = score.tracks.some((track) =>
-      (track.bars[index]?.voices ?? []).some(
-        (voice) => voice.beats.reduce((sum, beat) => sum + beatTicks(beat), 0) > capacity,
-      ),
+    const before = barTicks(bar) + 1e-6;
+    const after = barTicks({ ...bar, timeSignature: changes.timeSignature }) + 1e-6;
+    if (after >= before) continue;
+    const cut = score.tracks.some((track) =>
+      (track.bars[index]?.voices ?? []).some((voice) => {
+        const used = voice.beats.reduce((sum, beat) => sum + beatTicks(beat), 0);
+        return used > after && used <= before;
+      }),
     );
-    if (full) numbers.push(index + 1);
+    if (cut) numbers.push(index + 1);
   }
   return numbers;
 }
 
-function list(numbers: readonly number[]): string {
-  const text = numbers.map(String);
-  const last = text.at(-1);
-  return text.length < 2 ? text.join('') : `${text.slice(0, -1).join(', ')} and ${last ?? ''}`;
+/** Bar numbers as runs, "3–5, 8", as the track dialog writes them. */
+function runs(numbers: readonly number[]): string {
+  const parts: string[] = [];
+  let start = 0;
+  for (let at = 1; at <= numbers.length; at++) {
+    if (at < numbers.length && numbers[at] === (numbers[at - 1] ?? 0) + 1) continue;
+    const from = numbers[start];
+    const to = numbers[at - 1];
+    parts.push(from === to ? String(from) : `${String(from)}–${String(to)}`);
+    start = at;
+  }
+  const last = parts.pop();
+  return parts.length === 0 ? (last ?? '') : `${parts.join(', ')} and ${last ?? ''}`;
 }
 
 /** The refusal for notes a smaller time signature would cut off, naming the bars. */
@@ -377,7 +426,8 @@ export function overfullMessage(
   const sign = change
     ? `${String(change.numerator)}/${String(change.denominator)}`
     : 'that signature';
-  return `${numbers.length === 1 ? 'Bar' : 'Bars'} ${list(numbers)} ${numbers.length === 1 ? 'holds' : 'hold'} more than ${sign} allows: shorten or delete the notes first.`;
+  const many = numbers.length > 1 || runs(numbers).includes('–');
+  return `${many ? 'Bars' : 'Bar'} ${runs(numbers)} ${many ? 'hold' : 'holds'} more than ${sign} allows: shorten or delete the notes first`;
 }
 
 const NOTE_NAMES = {

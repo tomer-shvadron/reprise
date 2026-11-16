@@ -65,9 +65,9 @@ export function planInsertBar(
 }
 
 /**
- * Deletes the target's bars as one step, from the highest index down so every locator still
- * finds the bar it was given. A tempo mark on a deleted bar carries onto the next one, as
- * `removeBar` does. Refusing every bar is the model's rule; `deleteBlocker` asks first.
+ * Deletes the target's bars as one step. `chain` runs each `removeBar` on the score the one
+ * before left, so any order finds its bar; highest index first is kept for a predictable order.
+ * A tempo mark on a deleted bar carries onto the next one, as `removeBar` does. Refusing every bar is the model's rule; `deleteBlocker` asks first.
  */
 export function planDeleteBars(score: Score, target: BarTarget): Command | undefined {
   const ids = target.ids

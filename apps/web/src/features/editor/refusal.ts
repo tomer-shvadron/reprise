@@ -14,7 +14,7 @@ const RULES: Partial<Record<ViolationRule, string>> = {
   dots: 'That many dots is not allowed',
   'first-bar-tempo': 'The first bar always has a tempo',
   'alternate-ending-outside-repeat':
-    'An alternate ending needs a repeat end at the last bar of its run of endings',
+    'An alternate ending needs a repeat end in its run of endings: add one to the last bar of ending 1',
   'alternate-ending-order': 'Alternate endings must follow each other in order',
 };
 

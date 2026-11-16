@@ -14,6 +14,7 @@ import type { MasterBarSection } from './dialogs';
 export type BarCommandId =
   | 'editor.insertBarBeforeMac'
   | 'editor.insertBarBeforeMacShift'
+  | 'editor.insertBarBeforeMacEquals'
   | 'editor.insertBarBeforeWindows'
   | 'editor.insertBarAfter'
   | 'editor.deleteBarsMac'
@@ -56,13 +57,18 @@ export function barCommands(services: BarServices): BarCommand[] {
   };
 
   return [
-    // ⌘+ is a shifted key on most layouts, so both spellings are bound; Windows has Insert.
+    // ⌘+ is a shifted key on most layouts, so every spelling is bound; Windows has Insert.
     command('editor.insertBarBeforeMac', 'Insert bar before', before, {
       shortcut: { key: '+', mod: true, only: 'mac' },
       inPalette: mac,
     }),
     command('editor.insertBarBeforeMacShift', 'Insert bar before', before, {
       shortcut: { key: '+', mod: true, shift: true, only: 'mac' },
+      ...hidden,
+    }),
+    // On some Mac layouts ⇧⌘= reaches the page as `=`, not `+`; nothing else binds it.
+    command('editor.insertBarBeforeMacEquals', 'Insert bar before', before, {
+      shortcut: { key: '=', mod: true, shift: true, only: 'mac' },
       ...hidden,
     }),
     command('editor.insertBarBeforeWindows', 'Insert bar before', before, {
