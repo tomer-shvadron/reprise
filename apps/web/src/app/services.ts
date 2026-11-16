@@ -108,8 +108,8 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     selection,
     editing,
     entry,
-    preview: (trackId, note) => {
-      audio.previewNote(trackId, note);
+    preview: (trackId, note, options) => {
+      audio.previewNote(trackId, note, options);
     },
   });
 
