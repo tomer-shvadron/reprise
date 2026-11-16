@@ -114,12 +114,7 @@ describe('layout', () => {
       expectValid(result);
       expectInsidePages(result, DEFAULT_MARGINS.paged);
       expect(result.systems.at(-1)?.bars.end).toBe(300);
-      if (paper === 'letter' && notation === 'standard') {
-        // The one long-score case that mixes whole and split systems.
-        expect(result.systems.some(({ part }) => part === undefined)).toBe(true);
-        expect(result.systems.some(({ part }) => part === 1)).toBe(true);
-      }
-      if (paper === 'a4' && notation !== 'standard') {
+      if (paper === 'a4') {
         // Every system splits in two, each part at its page's top.
         for (const system of result.systems) {
           expect(system.part).toBe(system.index % 2);

@@ -4,6 +4,7 @@ import { engraving } from '../../metrics';
 import { glyph, glyphWidth, line, rect, union, type LayoutSink } from '../../primitives';
 import type { Rect, StaffType } from '../../types';
 import { DYNAMICS_GLYPHS, dynamicsBaseline, shownDynamics } from '../dynamics';
+import { drawWords } from '../words';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
 import { headEdges, loneHeadRight, mainHeads, tieDirection, type ChordPlan } from './chord';
 import {
@@ -16,6 +17,7 @@ import {
   headReach,
   type ConnectionContext,
 } from './effects';
+import { drawsWords, wordStart } from './words';
 import { GRACE_SCALE, noteMatches, restBounds, type BarPlan, type BeatPlan } from './plan';
 import {
   beamLine,
@@ -355,8 +357,14 @@ export function renderBar(
 
   const shown = shownDynamics(input.track, input.barIndex);
   const lane = placement.lanes.dynamics;
+  // The system's last bar cuts its words at its content end; elsewhere they keep their measured room.
+  const limit = placement.next ? Infinity : placement.x + placement.width;
+  const words = drawsWords(input);
   for (const beat of plan.beats) {
     const x = beatX(context, beat);
+    if (words) {
+      drawWords(sink, placement.lanes, beat.beat, x, wordStart(beat), space, limit);
+    }
     const dynamics = shown.get(beat.beat.id);
     if (dynamics && lane) {
       const name = DYNAMICS_GLYPHS[dynamics];

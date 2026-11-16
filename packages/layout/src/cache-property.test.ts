@@ -354,9 +354,8 @@ const SCORES: Record<'large' | 'sparse', () => Score> = {
 
 /**
  * Pages short enough that the large score's systems split across pages (#85): at 300 every system
- * splits, some through a track and some with a staff taller than the room; at 580 standard
- * notation, with its lanes and note marks, splits most systems and keeps some whole, so whole and
- * split systems share pages.
+ * splits, some through a track and some with a staff taller than the room; at 580 most systems
+ * split between tracks, and the split-system unit tests cover whole and split ones sharing pages.
  */
 const SPLIT_PAGE_HEIGHTS = [300, 580] as const;
 
@@ -449,9 +448,6 @@ describe('LayoutCache: random edits', () => {
             let systemKey = resolveOptions(score, options).systemKey;
             if (split && which === 'large' && subsetDie !== 0 && width === PAGE_SIZES.a4.width) {
               expect(first.systems.some(({ part }) => part !== undefined)).toBe(true);
-              if (height === 580 && notation === 'standard') {
-                expect(first.systems.some(({ part }) => part === undefined)).toBe(true);
-              }
             }
             const history = createHistory();
             for (const step of edits) {
