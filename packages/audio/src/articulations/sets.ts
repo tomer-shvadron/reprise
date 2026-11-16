@@ -37,7 +37,7 @@ const LABELS: readonly (readonly [ArticulationSet, RegExp])[] = [
   ['dead', token(String.raw`dead|x[- ]?notes?|mute[ds]?`)],
   ['harmonic', token(String.raw`harm\w*|n\.?h\.?`)],
   ['legato', token(String.raw`hammer\w*|pull\w*|legato|h\.?o\.?|p\.?o\.?`)],
-  ['staccato', token(String.raw`stacc\w*`)],
+  ['staccato', token(String.raw`stacc?\w*`)],
   ['tap', token(String.raw`tap\w*`)],
   ['slap', token(String.raw`slap\w*`)],
   ['pop', token(String.raw`pop\w*`)],

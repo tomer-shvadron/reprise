@@ -31,6 +31,8 @@ describe('articulationSetOf', () => {
     ['Legato', 'legato'],
     ['H.O.', 'legato'],
     ['Staccato', 'staccato'],
+    ['Stac.', 'staccato'],
+    ['stac', 'staccato'],
     ['Tapping', 'tap'],
     ['Slap', 'slap'],
     ['Pop', 'pop'],
