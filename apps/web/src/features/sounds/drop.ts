@@ -2,6 +2,25 @@ import { PICKED_FOLDER_LIMITS, type PickedFile, type PickedFolder } from '@/plat
 
 import type { ZipFile } from './pack-store';
 
+/** The files a pack install copies, as the folder picker's filter lists them. */
+export const PACK_EXTENSIONS = [
+  'sfz',
+  'sfzh',
+  'inc',
+  'wav',
+  'flac',
+  'ogg',
+  'oga',
+  'opus',
+  'txt',
+  'md',
+];
+
+const wanted = (name: string) => {
+  const dot = name.lastIndexOf('.');
+  return dot >= 0 && PACK_EXTENSIONS.includes(name.slice(dot + 1).toLowerCase());
+};
+
 /**
  * What a drop on the Sounds screen held, taken synchronously (a `DataTransfer` is emptied once the
  * handler returns). Folders are kept as entries to walk later.
@@ -90,7 +109,8 @@ export async function walkDroppedFolder(root: FileSystemDirectoryEntry): Promise
         if (isDirectoryEntry(entry)) {
           if (depth >= PICKED_FOLDER_LIMITS.maxDepth) folder.truncated = true;
           else await visit(entry, path, depth + 1);
-        } else if (!isFileEntry(entry)) {
+        } else if (!isFileEntry(entry) || !wanted(entry.name)) {
+          // Only files the install copies count toward the cap, as in the folder picker.
           continue;
         } else if (folder.files.length >= PICKED_FOLDER_LIMITS.maxFiles) {
           folder.truncated = true;
