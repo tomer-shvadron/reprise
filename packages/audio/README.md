@@ -548,8 +548,8 @@ exist seconds before it starts (a let-ring note's waits for the bar end); a chok
 note at `t` cancels its tails that have not started by `t` (they never sound), while one already
 sounding plays out. A release voice never steals: when the pool is full at its start it is skipped
 and counted (`Sampler.skippedReleases`), since release noise is decoration. It is also the first
-voice a later note steals (a waiting one is cancelled, a sounding one fades), so it holds no slot
-from the note-on. Otherwise it counts in the polyphony like any voice, `allNotesOff` still stops
+voice a later note steals (a waiting one is cancelled, a sounding one fades), so it holds a slot from the
+note-on, but the first one a later note takes. Otherwise it counts in the polyphony like any voice, `allNotesOff` still stops
 it (one waiting to start never sounds), and `Region.releaseDecay`
 (`rt_decay`) lowers it by that many dB for each second the note was held. A release sample that is
 not resident is a miss like any other: skipped, its load requested, `onMiss` told.

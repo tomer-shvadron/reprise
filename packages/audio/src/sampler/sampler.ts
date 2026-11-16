@@ -491,7 +491,7 @@ export class Sampler {
         continue;
       }
       // Decoration never steals: a waiting tail would also hold a slot from the note-on.
-      if (this.pool.active(at).length >= this.pool.polyphony) {
+      if (this.pool.countAt(at) >= this.pool.polyphony) {
         this.#skippedReleases += 1;
         continue;
       }

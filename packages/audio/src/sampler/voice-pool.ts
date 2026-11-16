@@ -27,6 +27,11 @@ export class VoicePool {
     return this.#voices;
   }
 
+  /** How many voices hold a slot at `time`, without pruning: a read ahead must not drop voices still sounding now. */
+  countAt(time: number): number {
+    return this.#voices.filter((voice) => voice.endTime > time).length;
+  }
+
   /** Frees a slot for a note starting at `time`, stealing if the pool is full. */
   reserve(time: number): void {
     while (this.active(time).length >= this.polyphony) {

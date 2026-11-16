@@ -250,6 +250,16 @@ describe('release voices and the pool', () => {
     expect(toneLevel(data, TAIL, 0.95, 1.2)).toBeLessThan(0.001);
   });
 
+  it('counting for a far-off tail does not prune voices still sounding now', () => {
+    const { sampler } = setup(3, guitar(), 8);
+    sampler.noteOn('t', { key: 69, velocity: 127, when: 0 })?.release(0.9);
+    sampler.noteOn('t', { key: 71, velocity: 127, when: 0 })?.release(2);
+    expect(sampler.pool.countAt(0.3)).toBe(4);
+    // Nothing is left at 2.5, yet the voices sounding at 0.3 are still held.
+    sampler.pool.countAt(2.5);
+    expect(sampler.pool.countAt(0.3)).toBe(4);
+  });
+
   it('a release sample that is not resident is a miss, reported and requested', () => {
     const source = new SynthSampleSource(
       SAMPLE_RATE,
