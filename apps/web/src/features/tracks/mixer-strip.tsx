@@ -5,7 +5,7 @@ import { memo, useId } from 'react';
 import { TrackEffectsPicker, TrackSoundPicker } from '@/features/sounds';
 import type { InstrumentLoad } from '@/state/playback';
 
-import { instrumentName } from './gm-programs';
+import { instrumentName } from '@/lib/gm-programs';
 import type { TrackActions } from './track-actions';
 import {
   InstrumentSelect,
