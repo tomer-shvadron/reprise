@@ -1,3 +1,4 @@
+import { applyCommand, setTrackProperties } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 import { cleanup, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
@@ -6,14 +7,21 @@ import { player } from '@/test/player-harness';
 
 import { packContents, syntheticManifest, zipFileOf, zipOf } from './test/pack-fixtures';
 
-/** A bass track on a GM program holding one whole note. */
-const song = () =>
-  score()
+/**
+ * A bass track on a GM program holding one whole note. Its effects preset is explicitly off: the
+ * HQ tier would otherwise get the automatic bass chain and the GM tier none, and the renders would
+ * differ by effects as well as by instrument.
+ */
+const song = () => {
+  const built = score()
     .tempo(120)
     .track('bass', { name: 'Bass', program: 33 })
     .bar()
     .beat('1', [note(1, 3)])
     .build();
+  const trackId = built.tracks[0]?.id ?? '';
+  return applyCommand(built, setTrackProperties({ trackId }, { sound: { preset: 'off' } })).score;
+};
 
 type Run = (p: ReturnType<typeof player>) => Promise<void>;
 
@@ -54,6 +62,8 @@ const pick: Run = async (p) => {
   expect(p.services.document.getState().score?.tracks[0]?.sound).toEqual({
     packId: 'SynthPack001',
     instrument: 'default',
+    // The picker keeps the effects preset when it adds the pack.
+    preset: 'off',
   });
 };
 
