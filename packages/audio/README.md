@@ -913,8 +913,8 @@ Measured over the GM set (bank 0 programs 0 to 127 and the standard kit, 129 pre
   refs, 579 of which are played by more than one preset. Resolving the whole set costs about
   50 ms (80 to 95 ms with 18,636 regions before #198 stopped expanding key-scaled hold and decay
   per key; 60 ms before #169, whose regions each carry a modulator list and, where a filter
-  can close, a `filter` object), its region maps 1 to 4 ms, and a note-on resolves on the largest
-  map (Timpani, 896 regions) in 40 to 145 ns, noisy at this scale. The heap figures (7 MiB to
+  can close, a `filter` object), its region maps 1 to 4 ms, and a note-on resolves in tens to
+  a few hundred ns, noisy at this scale (measured before #198, on the largest map then, Timpani's 896 regions). The heap figures (7 MiB to
   resolve, 3 MiB for the maps, 1 MiB for the `instrumentsOf` index) are from before #169 and not
   re-measured: the headless shell exposes no heap counter. Decoded sample memory, which the budget
   counts, is unchanged.

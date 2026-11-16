@@ -162,12 +162,15 @@ describe('envelope', () => {
     });
 
     it("keeps the edge key's timing for a key outside the region's range", async () => {
-      // keyHi 60 is unscaled by a key 84 strike, as the one-region-per-key expansion played it.
-      const edge = await level(84, { holdPerKey: 100 }, { keyLo: 0, keyHi: 60 }, 0.05);
-      const inside = await level(60, { holdPerKey: 100 }, { keyLo: 0, keyHi: 60 }, 0.05);
-      expect(edge).toBeGreaterThan(0.01);
-      expect(inside).toBeGreaterThan(0.01);
-      expect(await level(84, { holdPerKey: 100 }, { keyLo: 0, keyHi: 60 }, 0.2)).toBe(0);
+      // Range 48..60, 100 timecents per key below 60: key 48 holds 0.2 s, key 60 holds 0.1 s.
+      const range = { keyLo: 48, keyHi: 60 };
+      const spec = { holdPerKey: 100 };
+      // Above the range plays key 60's timing: silent at 0.2 s, sounding at 0.1 s.
+      expect(await level(84, spec, range, 0.1)).toBeGreaterThan(0.01);
+      expect(await level(84, spec, range, 0.2)).toBe(0);
+      // Below the range plays key 48's 0.2 s hold (an unclamped key 24 would hold 0.8 s).
+      expect(await level(24, spec, range, 0.2)).toBeGreaterThan(0.01);
+      expect(await level(24, spec, range, 0.4)).toBe(0);
     });
   });
 

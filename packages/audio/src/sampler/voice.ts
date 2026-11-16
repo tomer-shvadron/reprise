@@ -249,15 +249,7 @@ export class Voice {
     this.#gainEvents = [{ at: when, value: this.#baseLevel, ramp: false }];
 
     const nodes: AudioNode[] = [source, this.#envelope];
-    const lowpass =
-      region.filter &&
-      regionFilter(
-        context,
-        region.filter,
-        deltas,
-        when,
-        Math.min(Math.max(start.key, region.keyLo), region.keyHi),
-      );
+    const lowpass = region.filter && regionFilter(context, region.filter, deltas, when, scaleKey);
     if (lowpass) nodes.push(lowpass);
     nodes.push(this.#filter, this.#level);
     if (region.pan) {

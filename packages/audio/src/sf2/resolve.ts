@@ -622,8 +622,10 @@ function buildRegions(
   }
   report.keyExpanded += 1;
   const regions: Region[] = [];
+  // Per-key regions differ in pitch alone; the envelopes and filter are the same for every key.
+  const lowpass = filter(generators, modulators);
+  const shape = envelope(generators);
   for (let k = key.lo; k <= key.hi; k += 1) {
-    const lowpass = filter(generators, modulators);
     regions.push({
       ...base,
       ...(lowpass && { filter: lowpass }),
@@ -631,7 +633,7 @@ function buildRegions(
       keyHi: k,
       rootKey: k,
       tune: scale * (k - root) + cents,
-      envelope: envelope(generators),
+      envelope: shape,
     });
   }
   return regions;
