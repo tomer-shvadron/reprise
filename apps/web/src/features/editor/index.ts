@@ -101,3 +101,10 @@ export {
 export { effectInput, openEffectPicker, openGraceDialog, pickerBlocker } from './effect-dialogs';
 export { pickerCommands, type PickerCommandId } from './picker-commands';
 export type { EffectPicker } from './dialogs';
+export { WordField } from './word-field';
+export { wordCommands, type WordCommandId } from './word-commands';
+export { closeWord, commitWord, openWord, stepWord } from './word-session';
+export { planWord, type WordEdit, type WordKind, type WordPlan } from './words';
+export { nextWordBeat, firstWordBeat } from './word-nav';
+export { chordNamesIn, suggestChords } from './chord-suggestions';
+export { wordFieldRect, type WordRect, type WordTarget } from './geometry';

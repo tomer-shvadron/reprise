@@ -7,6 +7,7 @@ import { pickerCommands, type PickerCommandId } from './picker-commands';
 import { clipboardCommands, type ClipboardCommandId } from './clipboard-commands';
 import { entryCommands, type EntryCommandId } from './entry-commands';
 import { navigationCommands, type NavigationCommandId } from './navigation-commands';
+import { wordCommands, type WordCommandId } from './word-commands';
 import { trackEditCommands, type TrackEditCommandId } from './track-commands';
 
 export type EditorCommandId =
@@ -17,7 +18,8 @@ export type EditorCommandId =
   | TrackEditCommandId
   | EffectCommandId
   | PickerCommandId
-  | ClipboardCommandId;
+  | ClipboardCommandId
+  | WordCommandId;
 
 type EditorCommand = Command & { id: EditorCommandId };
 
@@ -45,5 +47,6 @@ export function editorCommands(
     ...effectCommands(services),
     ...pickerCommands(services),
     ...clipboardCommands(services),
+    ...wordCommands(services),
   ];
 }
