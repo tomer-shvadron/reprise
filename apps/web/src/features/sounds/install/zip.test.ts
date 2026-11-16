@@ -3,7 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { deflateRaw, sourceOf, zipBytes } from '../test/zip-writer';
 import type { ZipFileSpec } from '../test/zip-writer';
 
-import { crc32, normalizeZipPath, readZipDirectory, readZipEntry, ZipError } from './zip';
+import {
+  crc32,
+  inflateStream,
+  normalizeZipPath,
+  readZipDirectory,
+  readZipEntry,
+  ZIP_LIMITS,
+  ZipError,
+} from './zip';
 import type { ZipErrorCode } from './zip';
 
 const text = (value: string) => new TextEncoder().encode(value);
@@ -168,6 +176,87 @@ describe('zip reader: refusals in the directory', () => {
     expect(await codeOf(readZipDirectory(sourceOf(bytes)))).toBe('overlap');
   });
 
+  it('refuses a directory over the byte cap', async () => {
+    const source = sourceOf(await zipBytes([{ name: 'a.txt', data: 'x' }]));
+    expect(await codeOf(readZipDirectory(source, { maxDirectoryBytes: 10 }))).toBe('too-large');
+  });
+
+  it.each([
+    ['a NUL byte', 'a\0b.wav'],
+    ['a dot segment', 'a/./b.wav'],
+  ])('refuses a name with %s', async (_label, name) => {
+    expect(await refusedDirectory([{ name, data: 'x' }])).toBe('bad-path');
+  });
+
+  it('refuses names that differ only in Unicode normalization form', async () => {
+    expect(
+      await refusedDirectory([
+        { name: '\u00e9.wav', utf8: true, data: '1' },
+        { name: 'e\u0301.wav', utf8: true, data: '2' },
+      ]),
+    ).toBe('duplicate');
+  });
+
+  it('refuses a symlink written by an OS X host too', async () => {
+    expect(
+      await refusedDirectory([{ name: 'link', data: 'x', host: 19, unixMode: 0o120755 }]),
+    ).toBe('symlink');
+  });
+
+  it('refuses malformed ZIP64 and extra fields', async () => {
+    // Sizes overflow into ZIP64, but the field is absent.
+    expect(
+      await refusedDirectory([
+        { name: 'a', data: 'x', zip64: true, centralExtra: new Uint8Array() },
+      ]),
+    ).toBe('bad-header');
+    // The ZIP64 block is shorter than the fields that overflowed.
+    expect(
+      await refusedDirectory([
+        {
+          name: 'a',
+          data: 'x',
+          zip64: true,
+          centralExtra: Uint8Array.of(1, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+        },
+      ]),
+    ).toBe('bad-header');
+    // An extra field whose length runs past its record.
+    expect(
+      await refusedDirectory([
+        { name: 'a', data: 'x', centralExtra: Uint8Array.of(0x99, 0x99, 50, 0, 1, 2) },
+      ]),
+    ).toBe('bad-header');
+  });
+
+  it('refuses a ZIP64 end record that overlaps its locator', async () => {
+    const bytes = await zipBytes([{ name: 'a', data: 'x' }], { zip64End: true });
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const locator = bytes.length - 22 - 20;
+    view.setBigUint64(locator + 8, BigInt(locator - 30), true);
+    expect(await codeOf(readZipDirectory(sourceOf(bytes)))).toBe('truncated');
+  });
+
+  it('refuses an entry that claims more data than the archive holds', async () => {
+    expect(
+      await refusedDirectory([
+        { name: 'a.bin', data: 'x'.repeat(10), method: 'stored', claimSize: 9000 },
+      ]),
+    ).toBe('truncated');
+  });
+
+  it('refuses overlap that goes through the local extra field', async () => {
+    const { source, directory } = await open([
+      { name: 'a.wav', data: 'A'.repeat(16), method: 'stored', localExtraClaim: 60 },
+      { name: 'b.wav', data: 'B'.repeat(64), method: 'stored' },
+    ]);
+    const [a, b] = directory.entries;
+    if (!a || !b) throw new Error('missing');
+    // The directory alone cannot see a local extra length; reading the entry does.
+    expect(await codeOf(readZipEntry(source, directory, a))).toBe('overlap');
+    expect(decode(await readZipEntry(source, directory, b))).toBe('B'.repeat(64));
+  });
+
   it('refuses an archive with no end record, a truncated one and a directory out of bounds', async () => {
     expect(await codeOf(readZipDirectory(sourceOf(text('this is not a zip file at all'))))).toBe(
       'not-a-zip',
@@ -252,14 +341,57 @@ describe('zip reader: refusals reading an entry', () => {
     );
   });
 
-  it('refuses an entry whose data is cut off', async () => {
-    const bytes = await zipBytes([{ name: 'a.txt', data: 'x'.repeat(5000), method: 'stored' }]);
-    const source = sourceOf(bytes);
-    const directory = await readZipDirectory(source);
-    const [entry] = directory.entries;
-    if (!entry) throw new Error('missing');
-    const claims = { ...entry, size: 9000, compressedSize: 9000 };
-    expect(await codeOf(readZipEntry(source, directory, claims))).toBe('bad-header');
+  it('refuses a local header whose CRC or size disagrees with the directory', async () => {
+    const crc = await first([{ name: 'a', data: 'hello', localCrc: 5 }]);
+    expect(await codeOf(readZipEntry(crc.source, crc.directory, crc.entry))).toBe('bad-header');
+    const size = await first([{ name: 'a', data: 'hello', localSize: 1 }]);
+    expect(await codeOf(readZipEntry(size.source, size.directory, size.entry))).toBe('bad-header');
+  });
+
+  it('feeds the decompressor slices of at most inflateSliceBytes and awaits each', async () => {
+    const writes: number[] = [];
+    const stand = new TransformStream<BufferSource, Uint8Array>({
+      transform(chunk, controller) {
+        writes.push(chunk.byteLength);
+        controller.enqueue(new Uint8Array(chunk.byteLength));
+      },
+    });
+    const produced: number[] = [];
+    function* input() {
+      yield new Uint8Array(100 * 1024);
+      yield new Uint8Array(10);
+    }
+    await inflateStream(input(), (chunk) => produced.push(chunk.length), {
+      createStream: () => stand,
+    });
+    expect(ZIP_LIMITS.inflateSliceBytes).toBe(16 * 1024);
+    expect(Math.max(...writes)).toBe(ZIP_LIMITS.inflateSliceBytes);
+    expect(writes).toHaveLength(8);
+    expect(writes.reduce((a, b) => a + b, 0)).toBe(100 * 1024 + 10);
+    expect(produced.reduce((a, b) => a + b, 0)).toBe(100 * 1024 + 10);
+  });
+
+  it('stops feeding once the output was refused', async () => {
+    const writes: number[] = [];
+    const stand = new TransformStream<BufferSource, Uint8Array>({
+      transform(chunk, controller) {
+        writes.push(chunk.byteLength);
+        controller.enqueue(new Uint8Array(chunk.byteLength));
+      },
+    });
+    function* input() {
+      yield new Uint8Array(1024 * 1024);
+    }
+    await expect(
+      inflateStream(
+        input(),
+        () => {
+          throw new ZipError('bomb', 'too much');
+        },
+        { createStream: () => stand },
+      ),
+    ).rejects.toMatchObject({ code: 'bomb' });
+    expect(writes.length).toBeLessThan(64);
   });
 
   it('honours an aborted signal', async () => {

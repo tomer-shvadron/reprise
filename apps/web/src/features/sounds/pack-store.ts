@@ -126,6 +126,8 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
     { installedAt: string; name: string; source: InstalledPackSource }
   >();
   let controller: AbortController | undefined;
+  /** Installs that finished, so a scan can tell one landed while it was reading. */
+  let installs = 0;
 
   const sourceFor = (pack: InstalledPack): InstalledPackSource => {
     const known = sources.get(pack.id);
@@ -142,7 +144,13 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
 
   const setPacks = (packs: readonly InstalledPack[]) => {
     const sorted = [...packs].sort((a, b) => a.name.localeCompare(b.name));
-    store.setState({ packs: sorted, installed: sorted.map(sourceFor) });
+    const installed = sorted.map(sourceFor);
+    const previous = store.getState().installed;
+    // The same sources in the same order is not a change: the audio service would reload for it.
+    const same =
+      installed.length === previous.length &&
+      installed.every((source, i) => source === previous[i]);
+    store.setState({ packs: sorted, installed: same ? previous : installed });
   };
 
   const problem = (id: string, value: PackProblem | undefined) => {
@@ -157,6 +165,7 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
 
   async function scan(): Promise<void> {
     if (!store.getState().job) await sweepWorkAreas(platform);
+    const installsAtStart = installs;
     const packs: InstalledPack[] = [];
     const damaged: DamagedPack[] = [];
     const entries = await platform.listDir(SOUNDS_DIR).catch(() => []);
@@ -180,7 +189,16 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
         });
       }
     }
-    // A scan during an install keeps the pack the install just wrote, which the listing may predate.
+    // An install that finished while the folders were being read wrote a pack the listing may
+    // predate: keep it (or its newer version) rather than drop it until the next scan.
+    if (installs !== installsAtStart) {
+      for (const current of store.getState().packs) {
+        const listed = packs.findIndex((pack) => pack.id === current.id);
+        const found = packs[listed];
+        if (listed < 0) packs.push(current);
+        else if (found && found.installedAt < current.installedAt) packs[listed] = current;
+      }
+    }
     setPacks(packs);
     store.setState({ damaged, scanned: true });
   }
@@ -223,6 +241,7 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
           },
         },
       });
+      installs += 1;
       setPacks([...store.getState().packs.filter((other) => other.id !== pack.id), pack]);
       return true;
     } catch (error) {
@@ -260,7 +279,11 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
       ...(options.now && { now: options.now }),
     });
 
-  const customName = (name: string) => name.replace(/\.zip$/i, '').trim() || 'Sound pack';
+  const customName = (name: string) =>
+    name
+      .replace(/\.zip$/i, '')
+      .trim()
+      .slice(0, 120) || 'Sound pack';
 
   return {
     api: store,
@@ -312,7 +335,7 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
       return run({ packId: id, name: manifest?.name ?? folder.name }, (context) =>
         installFiles(id, filesFromFolder(folder), context, {
           ...(manifest && { manifest }),
-          name: folder.name.trim() || 'Sound pack',
+          name: folder.name.trim().slice(0, 120) || 'Sound pack',
           source: 'folder',
         }),
       );
@@ -363,7 +386,10 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
     rename: async (id, name) => {
       const pack = store.getState().packs.find((candidate) => candidate.id === id);
       const trimmed = name.trim();
-      if (!pack || trimmed === '' || trimmed.length > 120) return false;
+      // As `remove`: an update running now would be given the old manifest, index and date.
+      if (!pack || store.getState().job?.packId === id || trimmed === '' || trimmed.length > 120) {
+        return false;
+      }
       const renamed = { ...pack, name: trimmed };
       try {
         await platform.writeFile(

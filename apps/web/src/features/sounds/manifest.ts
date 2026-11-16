@@ -24,6 +24,19 @@ export const FAMILY_LABELS: Record<PackFamily, string> = {
   other: 'Other',
 };
 
+/** A path inside a pack: '/'-separated, relative, no empty, `.` or `..` segment, no NUL. */
+export const PackPathSchema = z
+  .string()
+  .min(1)
+  .max(1024)
+  .refine(
+    (path) =>
+      !path.includes('\\') &&
+      !path.includes('\0') &&
+      path.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..'),
+    { message: 'Expected a relative pack path' },
+  );
+
 const httpsUrl = z
   .url()
   .refine((value) => value.startsWith('https://'), { message: 'Expected an https URL' });
@@ -39,7 +52,7 @@ export const InstrumentSchema = z.object({
   gmPrograms: z.array(z.number().int().min(0).max(127)).exactOptional(),
   /** SFZ paths in the pack by articulation-set key; `default` is required to play. */
   entries: z
-    .record(z.string().min(1).max(64), z.string().min(1).max(512))
+    .record(z.string().min(1).max(64), PackPathSchema)
     .refine((entries) => Object.hasOwn(entries, 'default'), { message: 'entries needs a default' }),
 });
 export type PackInstrument = z.infer<typeof InstrumentSchema>;
@@ -94,7 +107,7 @@ export const InstalledPackSchema = z
      * Pack-relative '/' path and byte size of every file under `files/`. Pairs, not a record, so a
      * file named `__proto__` is data. It is the size estimate and the case-insensitive index.
      */
-    files: z.array(z.tuple([z.string(), z.number().int().nonnegative()])),
+    files: z.array(z.tuple([PackPathSchema, z.number().int().nonnegative()])),
   })
   .and(PackManifestSchema);
 export type InstalledPack = z.infer<typeof InstalledPackSchema>;
