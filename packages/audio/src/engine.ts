@@ -8,11 +8,18 @@ import type { EffectStage } from './effects/presets';
 import { Sampler } from './sampler/sampler';
 import type { PreviewNote, PreviewOptions, TrackParams } from './sampler/sampler';
 import { createSamplerSink } from './sampler/sampler-sink';
-import { GM_BUDGET_BYTES, ManagedSampleSource } from './samples/managed-sample-source';
+import {
+  GM_BUDGET_BYTES,
+  HQ_BUDGET_BYTES,
+  ManagedSampleSource,
+} from './samples/managed-sample-source';
 import type { BufferFactory } from './samples/managed-sample-source';
 import { planInstruments, planSamples } from './samples/plan';
 import type { InstrumentId, MemoryReport } from './samples/types';
 import type { Sf2Soundfont } from './sf2/soundfont';
+import { loadSfz } from './sfz/load';
+import type { SfzFiles } from './sfz/pack';
+import { tierOf } from './tier';
 import type { Ticker } from './ticker';
 import { timelineNeutral } from './timeline-neutral';
 import {
@@ -34,21 +41,40 @@ export type {
   Unsubscribe,
 } from './transport';
 
-/** Placeholder until the HQ tier (phase 3) defines how packs are assigned to tracks. */
+/** One track's pack instrument: the installed pack and which of its SFZ files to play. */
 export interface PackAssignment {
   trackId: Id;
-  packId: Id;
-  preset?: string;
+  /**
+   * `id` is the pack's id (no slash), the prefix of its sample refs. `files` is the same object
+   * for as long as the installed version lives: a new object means the pack changed and its
+   * tracks are loaded again.
+   */
+  pack: { id: string; files: SfzFiles };
+  /**
+   * SFZ paths inside the pack by articulation-set key. `default` is required and is what plays;
+   * the other keys are WP-093's.
+   */
+  entries: Readonly<Record<string, string>>;
 }
 
 export interface LoadOptions {
+  /** Selects the memory budget: `budgetBytes` for `gm`, `hqBudgetBytes` for `hq`. */
   tier: 'gm' | 'hq';
   packs: PackAssignment[];
+}
+
+/** An assigned track whose pack could not be loaded: it plays General MIDI. */
+export interface LoadFallback {
+  trackId: Id;
+  packId: string;
+  error: string;
 }
 
 /** The song plan's instruments, in first-use order. */
 export interface LoadResult {
   instruments: InstrumentId[];
+  /** The assigned tracks that fell back to General MIDI, in track order; empty with no packs. */
+  fallbacks: LoadFallback[];
 }
 
 export interface InstrumentLoad {
@@ -137,8 +163,10 @@ export interface AudioEngine {
 export interface AudioEngineOptions {
   /** A context, or how to make one on the first unlock, play or previewNote. */
   context: BaseAudioContext | (() => BaseAudioContext);
-  /** The memory manager's budget; `GM_BUDGET_BYTES` by default. */
+  /** The memory manager's budget on the GM tier; `GM_BUDGET_BYTES` by default. */
   budgetBytes?: number;
+  /** The budget while `load` is given `tier: 'hq'`; `HQ_BUDGET_BYTES` by default. */
+  hqBudgetBytes?: number;
   /** Runs the coalesced memory event; the next animation frame by default. */
   scheduleMemory?: (callback: () => void) => void;
   /** Drives the lookahead scheduler; defaults to a 25 ms interval in a worker. */
@@ -158,6 +186,8 @@ export interface AudioEngineDebug {
   source?: ManagedSampleSource;
   bank?: GmBank;
   transport?: Transport;
+  /** The pack assignments that loaded, by track, as `<packId>:<default path>`. */
+  assignments?: ReadonlyMap<Id, string>;
 }
 
 const debuggers = new WeakMap<AudioEngine, () => AudioEngineDebug>();
@@ -195,7 +225,9 @@ interface Live {
 
 export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   const factory = typeof options.context === 'function' ? options.context : undefined;
-  const budgetBytes = options.budgetBytes ?? GM_BUDGET_BYTES;
+  const gmBudgetBytes = options.budgetBytes ?? GM_BUDGET_BYTES;
+  const hqBudgetBytes = options.hqBudgetBytes ?? HQ_BUDGET_BYTES;
+  let budgetBytes = gmBudgetBytes;
 
   const handlers: { [K in keyof AudioEngineEvents]: Set<(payload: AudioEngineEvents[K]) => void> } =
     {
@@ -220,7 +252,12 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   let metronome = { on: false, volume: 0.7 };
   let masterVolume = 1;
   let gmTierBypass = true;
-  let packs: readonly PackAssignment[] = [];
+  /** The assignments whose pack loaded, by track: what the tier and the strips follow. */
+  let loadedPacks = new Map<Id, { assignment: PackAssignment; key: string }>();
+  /** Assignments whose check failed, remembered so an edit does not read a broken pack again. */
+  let failedPacks = new Map<Id, { key: string; files: SfzFiles; fallback: LoadFallback }>();
+  /** Bumped by every `load`, so a pack check that a newer load overtook changes nothing. */
+  let packLoads = 0;
   /** Session stage bypasses, by track. */
   let stageBypasses = new Map<Id, Set<EffectStage>>();
   let clickSettings = DEFAULT_CLICK_SETTINGS;
@@ -269,19 +306,15 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     }
   }
 
-  /** HQ once a pack is assigned to the track; WP-091 decides what a missing pack falls back to. */
-  function tierOf(track: Track): 'gm' | 'hq' {
-    return packs.some((pack) => pack.trackId === track.id) ? 'hq' : 'gm';
-  }
-
   /** Re-resolves every held track's effects; a strip whose chain did not change does nothing. */
   function applyEffects(tracks: readonly Track[]): void {
     if (!live) return;
     const { sampler } = live;
     const held = new Set(sampler.trackIds);
+    const assignments = [...loadedPacks.values()].map((entry) => entry.assignment);
     for (const track of tracks) {
       if (!held.has(track.id)) continue;
-      const { preset } = resolveEffects(track, { tier: tierOf(track), gmTierBypass });
+      const { preset } = resolveEffects(track, { tier: tierOf(track, assignments), gmTierBypass });
       sampler.setEffects(track.id, stagesOf(preset, stageBypasses.get(track.id)));
     }
   }
@@ -370,7 +403,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     if (!source || !bank) return Promise.reject(new Error('AudioEngine.load: no sound bank'));
     const decoding = source
       .load(next, bank.regionMap, { instrumentOf: bank.instrumentId })
-      .then((plan) => ({ instruments: plan.instruments }));
+      .then((plan) => ({ instruments: plan.instruments, fallbacks: [] }));
     latestDecode = decoding;
     return decoding;
   }
@@ -445,6 +478,62 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     );
   }
 
+  /**
+   * Checks each assignment against its pack: the default SFZ must read, parse and map a region. An
+   * assignment with the same pack id, files object and default path as the last load is not read
+   * again, whether it loaded or failed, so a reload swaps only the tracks whose pack changed and a
+   * broken pack is not retried on every edit (a reinstall brings a new files object). The provider
+   * routing that plays the pack's samples is WP-091 PR A, which should reuse the SFZ parsed here:
+   * until then an assignment that checks out changes the track's tier (effects and budget) but not
+   * its sound.
+   */
+  async function resolvePacks(
+    next: Score,
+    assignments: readonly PackAssignment[],
+  ): Promise<{ loaded: typeof loadedPacks; failed: typeof failedPacks }> {
+    const tracks = new Set(next.tracks.map((track) => track.id));
+    const loaded: typeof loadedPacks = new Map();
+    const failed: typeof failedPacks = new Map();
+    await Promise.all(
+      assignments
+        .filter((assignment) => tracks.has(assignment.trackId))
+        .map(async (assignment) => {
+          const { trackId, pack } = assignment;
+          const path = assignment.entries.default;
+          const key = `${pack.id}:${path ?? ''}`;
+          const ok = loadedPacks.get(trackId);
+          if (ok && ok.key === key && ok.assignment.pack.files === pack.files) {
+            loaded.set(trackId, { assignment, key });
+            return;
+          }
+          const bad = failedPacks.get(trackId);
+          if (bad && bad.key === key && bad.files === pack.files) {
+            failed.set(trackId, bad);
+            return;
+          }
+          try {
+            if (path === undefined) throw new Error('the assignment has no default entry');
+            const { regions } = await loadSfz(path, (file) => pack.files.read(file), {
+              packId: pack.id,
+            });
+            if (regions.length === 0) throw new Error(`${path} maps no regions`);
+            loaded.set(trackId, { assignment, key });
+          } catch (error) {
+            failed.set(trackId, {
+              key,
+              files: pack.files,
+              fallback: {
+                trackId,
+                packId: pack.id,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            });
+          }
+        }),
+    );
+    return { loaded, failed };
+  }
+
   function unlock(): Live | undefined {
     if (disposed) return undefined;
     if (!live) {
@@ -477,19 +566,40 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       }
       const previous = score;
       score = next;
-      packs = loadOptions.packs;
+      const budget = loadOptions.tier === 'hq' ? hqBudgetBytes : gmBudgetBytes;
+      budgetBytes = budget;
+      source.budgetBytes = budget;
+      const started = packLoads + 1;
+      packLoads = started;
+      const packing = resolvePacks(next, loadOptions.packs);
+      let loading: Promise<LoadResult>;
       if (previous === next) {
         applyEffects(next.tracks);
-        return tracked(decode(next));
+        loading = decode(next);
+      } else if (previous && timelineNeutral(previous, next)) {
+        loading = applyNeutral(previous, next);
+      } else {
+        if (live) {
+          attach(next, previous ? 'sync' : 'replace');
+          live.transport.load(next);
+        }
+        loading = decode(next);
       }
-      if (previous && timelineNeutral(previous, next)) {
-        return tracked(applyNeutral(previous, next));
-      }
-      if (live) {
-        attach(next, previous ? 'sync' : 'replace');
-        live.transport.load(next);
-      }
-      return tracked(decode(next));
+      return tracked(
+        Promise.all([loading, packing]).then(([result, { loaded, failed }]) => {
+          // A newer load, or `unload`, owns the packs now.
+          if (packLoads === started && score === next) {
+            loadedPacks = loaded;
+            failedPacks = failed;
+            applyEffects(next.tracks);
+          }
+          const order = new Map(next.tracks.map((track, index) => [track.id, index]));
+          const fallbacks = [...failed.values()]
+            .map((entry) => entry.fallback)
+            .sort((a, b) => (order.get(a.trackId) ?? 0) - (order.get(b.trackId) ?? 0));
+          return { ...result, fallbacks };
+        }),
+      );
     },
 
     play(fromTick) {
@@ -614,7 +724,9 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       live?.transport.unload();
       overrides = {};
       stageBypasses = new Map();
-      packs = [];
+      packLoads += 1;
+      loadedPacks = new Map();
+      failedPacks = new Map();
       loopBars = undefined;
       song += 1;
       loadTokens.clear();
@@ -681,6 +793,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     ...(live && { context: live.context, sampler: live.sampler, transport: live.transport }),
     ...(source && { source }),
     ...(bank && { bank }),
+    assignments: new Map([...loadedPacks].map(([id, entry]) => [id, entry.key])),
   }));
   if (typeof options.context !== 'function') makeLive(options.context);
   return engine;

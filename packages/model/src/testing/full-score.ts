@@ -100,7 +100,7 @@ export function fullScore(): Score {
       mute: false,
       solo: true,
     },
-    sound: { packId: newId(), preset: 'clean' },
+    sound: { packId: newId(), instrument: 'blue', preset: 'clean' },
     lyrics: [
       { startBar: 0, text: 'Hel-lo' },
       { startBar: 1, text: 'world' },

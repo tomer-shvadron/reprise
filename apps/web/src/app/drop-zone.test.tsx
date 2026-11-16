@@ -47,6 +47,28 @@ async function importLanded(services: ReturnType<typeof renderWithServices>['ser
 }
 
 describe('DropZone', () => {
+  it('cancels the drop but opens and imports nothing while the Sounds screen shows', async () => {
+    const { services } = renderWithServices(<DropZone />);
+    services.ui.getState().setScreen('sounds');
+    const file = await riff();
+
+    act(() => {
+      window.dispatchEvent(dragEvent('dragenter', [file]));
+    });
+    expect(screen.queryByText('Drop to open')).not.toBeInTheDocument();
+    const over = dragEvent('dragover', [file]);
+    window.dispatchEvent(over);
+    expect(over.defaultPrevented).toBe(true);
+    const drop = dragEvent('drop', [file]);
+    act(() => {
+      window.dispatchEvent(drop);
+    });
+    expect(drop.defaultPrevented).toBe(true);
+    expect(services.document.getState().score).toBeUndefined();
+    expect(libraryOf(services).store.getState().entries).toHaveLength(0);
+    expect(services.ui.getState().screen).toBe('sounds');
+  });
+
   it('shows the overlay while files are dragged over, and opens the dropped file', async () => {
     const { services } = renderWithServices(<DropZone />);
     const file = await riff();
