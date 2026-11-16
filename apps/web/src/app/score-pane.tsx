@@ -233,26 +233,30 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
     if (axis === 'both' || axis === (mode === 'paged' ? 'y' : 'x')) ui.getState().pauseFollow();
   };
 
+  // The status line is a row of its own below the score, so it covers neither the scrollbar, the
+  // lowest staff nor the follow button, which stays over the score's own area.
   return (
-    <>
-      <ScoreView
-        ref={handle}
-        layout={result}
-        zoom={zoom}
-        label={label}
-        overlays={overlays}
-        onScorePointer={onScorePointer}
-        onUserScroll={onUserScroll}
-        className="h-full focus-visible:-outline-offset-2"
-      />
-      <FollowButton />
+    <div className="flex h-full flex-col">
+      <div className="relative min-h-0 flex-1">
+        <ScoreView
+          ref={handle}
+          layout={result}
+          zoom={zoom}
+          label={label}
+          overlays={overlays}
+          onScorePointer={onScorePointer}
+          onUserScroll={onUserScroll}
+          className="h-full focus-visible:-outline-offset-2"
+        />
+        <FollowButton />
+      </div>
       <EditStatusLine
         entry={services.entry}
         editing={services.editing}
         selection={selection}
         document={document}
       />
-    </>
+    </div>
   );
 }
 

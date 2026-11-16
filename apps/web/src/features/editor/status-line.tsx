@@ -18,7 +18,8 @@ export interface EditStatusLineProps {
 /**
  * The entry state as text: insert or overwrite, the voice, the current duration and where the
  * cursor is, then the digit waiting for a second one and the last refusal. Shown only while
- * editing, as a polite live region so a refusal is announced.
+ * editing, in flow below the score. Only the refusal is a live region, so it is announced and the
+ * position that changes with every key is not.
  */
 export function EditStatusLine({ entry, editing, selection, document }: EditStatusLineProps) {
   const isEditing = useStore(editing, (state) => state.editing);
@@ -41,13 +42,15 @@ export function EditStatusLine({ entry, editing, selection, document }: EditStat
   ];
   return (
     <div
-      role="status"
-      aria-live="polite"
-      className="text-muted-foreground bg-background/90 absolute inset-x-0 bottom-0 flex flex-wrap items-center gap-x-2 border-t px-4 py-1 text-xs tabular-nums"
+      data-testid="edit-status"
+      className="text-muted-foreground bg-background flex shrink-0 flex-wrap items-center gap-x-2 border-t px-4 py-1 text-xs tabular-nums"
     >
       <span>{parts.join(' · ')}</span>
       {pending && <span className="text-foreground font-medium">Fret {String(pending.fret)}…</span>}
-      {message && <span className="text-destructive font-medium">{message}</span>}
+      {/* Only the refusal is announced; the position line changes with every key. */}
+      <span role="status" aria-live="polite" className="text-destructive font-medium">
+        {message}
+      </span>
     </div>
   );
 }

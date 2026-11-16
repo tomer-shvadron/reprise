@@ -1,5 +1,5 @@
 import type { Command } from '@/app/command-registry';
-import type { Shortcut } from '@/app/keyboard';
+import { detectKeyboardPlatform, type Shortcut } from '@/app/keyboard';
 import type { AppServices } from '@/app/services';
 
 import type { EntryAction } from './entry';
@@ -65,6 +65,8 @@ export function entryCommands(services: Pick<AppServices, 'entry'>): EntryComman
     ...extra,
   });
   const hidden = { inPalette: false } as const;
+  // The palette lists the one that has a key here, so its hint is the right one.
+  const mac = detectKeyboardPlatform() === 'mac';
 
   return [
     ...FRET_IDS.map((id, digit) =>
@@ -123,13 +125,14 @@ export function entryCommands(services: Pick<AppServices, 'entry'>): EntryComman
       'Delete beat',
       { key: 'Backspace', shift: true, only: 'mac' },
       act({ kind: 'deleteBeat' }),
+      { inPalette: mac },
     ),
     command(
       'editor.deleteBeatWindows',
       'Delete beat',
       { key: 'Delete', shift: true, only: 'other' },
       act({ kind: 'deleteBeat' }),
-      hidden,
+      { inPalette: !mac },
     ),
     command('editor.editVoice1', 'Edit voice 1', { key: '1', mod: true }, () => {
       entryController(entry)?.setVoice(0);

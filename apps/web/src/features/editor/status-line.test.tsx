@@ -38,8 +38,9 @@ describe('EditStatusLine', () => {
     act(() => {
       services.editing.getState().setEditing(true);
     });
-    const status = screen.getByRole('status');
-    expect(status.getAttribute('aria-live')).toBe('polite');
+    const status = screen.getByTestId('edit-status');
+    expect(screen.getByRole('status').getAttribute('aria-live')).toBe('polite');
+    expect(screen.getByRole('status').textContent).toBe('');
     expect(status.textContent).toBe('Overwrite · Voice 1 · Quarter · Bar 3 · Beat 2 · String 4');
     act(() => {
       entry.getState().setMode('insert');
@@ -56,9 +57,11 @@ describe('EditStatusLine', () => {
       if (cursor) entry.getState().setPending({ fret: 1, cursor });
       entry.getState().setMessage('Bar 2 has an eighth left: a quarter does not fit');
     });
-    const status = screen.getByRole('status');
-    expect(status.textContent).toContain('Fret 1…');
-    expect(status.textContent).toContain('Bar 2 has an eighth left: a quarter does not fit');
+    expect(screen.getByTestId('edit-status').textContent).toContain('Fret 1…');
+    // Only the refusal is the live region.
+    expect(screen.getByRole('status').textContent).toBe(
+      'Bar 2 has an eighth left: a quarter does not fit',
+    );
   });
 
   it('names the end of a bar and the voice', async () => {
@@ -75,7 +78,7 @@ describe('EditStatusLine', () => {
         );
       services.selection.getState().setEdit({ cursor });
     });
-    expect(screen.getByRole('status').textContent).toContain(
+    expect(screen.getByTestId('edit-status').textContent).toContain(
       'Voice 2 · Quarter · Bar 1 · End of bar',
     );
   });
