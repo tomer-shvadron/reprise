@@ -65,6 +65,28 @@ export interface Platform {
   setRecentSongs?(items: readonly RecentSong[]): void;
   /** Desktop only: a pick from Open Recent. Returns an unsubscribe function. */
   onOpenRecent?(listener: (id: string) => void): () => void;
+  /**
+   * Desktop only: whether the open document has unsaved changes. Main closes the window without
+   * asking while this is false, and sets the macOS edited dot while it is true. Call it on every
+   * change of the modified state; a document that is replaced or closed reports false. The
+   * bridge reports true to main only while an `onCloseRequest` listener is subscribed, so a page
+   * with nobody to answer never holds the window open.
+   */
+  setDocumentEdited?(edited: boolean): void;
+  /**
+   * Desktop only: the user asked to close the window (the close button, or Quit) while
+   * `setDocumentEdited(true)` stands. The listener asks the user, then answers with
+   * `confirmClose(true)` to go ahead or `confirmClose(false)` for Cancel. A request main sent
+   * again while the dialog is open (a second Quit) must be treated as a no-op. Returns an
+   * unsubscribe function. The window never shows a `beforeunload` prompt on desktop: Electron
+   * cancels such a close silently.
+   */
+  onCloseRequest?(listener: () => void): () => void;
+  /**
+   * Desktop only: answers the open close request. `true` closes the window now, and quits when
+   * the request came from Quit; `false` cancels the request. Ignored when none is open.
+   */
+  confirmClose?(close: boolean): void;
   /** ~/Music/Reprise on desktop; a directory in origin-private storage in the browser. */
   libraryDir(): Promise<string>;
   /** Electron userData on desktop; a directory in origin-private storage in the browser. */

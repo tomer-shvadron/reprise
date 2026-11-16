@@ -1,5 +1,4 @@
-import { createEmptyScore } from '@reprise/model';
-
+import { startNewSong } from '@/features/editor';
 import { libraryOf } from '@/features/library/library';
 import type { MenuCommandId } from '@/platform/bridge';
 import { ZOOM } from '@/state/ui';
@@ -38,12 +37,10 @@ export function appCommands(services: AppServices): AppCommand[] {
       id: 'file.new',
       title: 'New song',
       shortcut: { key: 'n', mod: true },
-      // A placeholder: WP-083 replaces it with the unsaved-changes prompt and edit mode on. Until
-      // then it never throws away edits, since newDocument leaves nothing to undo.
+      // Asks Save, Don't save or Cancel when the document is modified, then opens an empty song
+      // in edit mode (WP-083).
       run: () => {
-        if (document.getState().dirty) return;
-        document.getState().newDocument(createEmptyScore());
-        ui.getState().setScreen('player');
+        startNewSong(services);
       },
     },
     {
@@ -64,6 +61,14 @@ export function appCommands(services: AppServices): AppCommand[] {
       title: 'Save as…',
       shortcut: { key: 's', mod: true, shift: true },
       run: () => document.getState().saveAs(),
+    },
+    {
+      id: 'file.export',
+      title: 'Export as Guitar Pro…',
+      // A placeholder until WP-061 PR 1 wires the export flow; it stays out of the palette so
+      // nothing offers a command that does nothing. The desktop menu item sends it meanwhile.
+      inPalette: false,
+      run: () => undefined,
     },
     {
       id: 'file.close',

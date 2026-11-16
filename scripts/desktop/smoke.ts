@@ -4,10 +4,15 @@
  * stubbed, plays it, and checks the GM bank came from the app's own scheme and that the
  * GrantFileProtocolExtraPrivileges fuse is off.
  *
+ * The app runs under a temporary profile (REPRISE_PROFILE_DIR, read by main), deleted afterwards,
+ * so the run never imports into the real ~/Music/Reprise or touches the real userData.
+ *
  *   pnpm desktop:build && pnpm desktop:smoke [executable]
  */
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import process, { argv, exit } from 'node:process';
+import process, { argv } from 'node:process';
 
 import { _electron as electron } from 'playwright';
 
@@ -40,10 +45,11 @@ function check(ok: boolean, message: string): void {
   console.log(`ok: ${message}`);
 }
 
-async function main(): Promise<void> {
+async function main(profileDir: string): Promise<void> {
   const app = await electron.launch({
     executablePath: argv[2] ?? packagedExecutable(),
     timeout: TIMEOUT,
+    env: { ...process.env, REPRISE_PROFILE_DIR: profileDir },
   });
   try {
     const page = await app.firstWindow();
@@ -132,9 +138,19 @@ async function main(): Promise<void> {
   }
 }
 
+const profileDir = await mkdtemp(join(tmpdir(), 'reprise-smoke-'));
 try {
-  await main();
+  await main(profileDir);
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
-  exit(1);
+  // Not exit(): that would skip the cleanup below.
+  process.exitCode = 1;
+} finally {
+  // After app.close(), so Chromium no longer holds files open in it.
+  // Windows can keep a child process's files open for a moment after close: retry, then warn.
+  await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(
+    (error: unknown) => {
+      console.warn(`could not remove ${profileDir}: ${String(error)}`);
+    },
+  );
 }

@@ -16,6 +16,11 @@ export interface Command {
   context?: CommandContext;
   /** False keeps a command out of the palette while its shortcut still works. */
   inPalette?: boolean;
+  /**
+   * Whether the command can do anything now; false drops it from `available()`, so the palette
+   * omits it and its shortcut does nothing. Read on each call, never cached.
+   */
+  enabled?: () => boolean;
   /** False ignores auto-repeated keydowns, so holding Space does not toggle play on and off. */
   repeat?: false;
   run: () => void | Promise<void>;
@@ -59,9 +64,12 @@ export class CommandRegistry {
     };
   }
 
-  /** The commands usable now: those without a context and those whose context is active. */
+  /** The commands usable now: those without a context and those whose context is active, minus any that report themselves not `enabled`. */
   available(): Command[] {
-    return this.list().filter(({ context }) => context === undefined || this.#isActive(context));
+    return this.list().filter(
+      ({ context, enabled }) =>
+        (context === undefined || this.#isActive(context)) && enabled?.() !== false,
+    );
   }
 
   /** Whether an available command of an active context owns this command's shortcut instead. */

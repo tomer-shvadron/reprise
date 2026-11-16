@@ -22,6 +22,9 @@ function fakeBridge() {
     print: vi.fn(() => Promise.resolve(undefined)),
     onMenuCommand: vi.fn(() => () => undefined),
     onOpenRecent: vi.fn(() => () => undefined),
+    setDocumentEdited: vi.fn(() => Promise.resolve(undefined)),
+    confirmClose: vi.fn(() => Promise.resolve(undefined)),
+    onCloseRequest: vi.fn(() => () => undefined),
   };
   return { bridge, writeFile };
 }
@@ -43,6 +46,47 @@ describe('the Electron platform', () => {
     await platform.print();
 
     expect(vi.mocked(bridge.print).mock.calls).toEqual([[{ pageSize: 'Letter' }], []]);
+  });
+
+  it('reports the edited state, and confirms a close, over the bridge', () => {
+    const { bridge } = fakeBridge();
+    const platform = createElectronPlatform(bridge);
+
+    platform.setDocumentEdited?.(true);
+    platform.confirmClose?.(true);
+    platform.confirmClose?.(false);
+
+    expect(bridge.setDocumentEdited).toHaveBeenCalledWith(true);
+    expect(vi.mocked(bridge.confirmClose).mock.calls).toEqual([[true], [false]]);
+  });
+
+  it('subscribes a close listener through the bridge and returns its unsubscribe', () => {
+    const { bridge } = fakeBridge();
+    const off = vi.fn();
+    vi.mocked(bridge.onCloseRequest).mockReturnValue(off);
+    const listener = vi.fn();
+
+    const unsubscribe = createElectronPlatform(bridge).onCloseRequest?.(listener);
+    unsubscribe?.();
+
+    expect(bridge.onCloseRequest).toHaveBeenCalledWith(listener);
+    expect(off).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a failed report or close from rejecting into the caller', async () => {
+    const { bridge } = fakeBridge();
+    const failure = new Error('main is gone');
+    vi.mocked(bridge.setDocumentEdited).mockRejectedValue(failure);
+    vi.mocked(bridge.confirmClose).mockRejectedValue(failure);
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const platform = createElectronPlatform(bridge);
+
+    platform.setDocumentEdited?.(false);
+    platform.confirmClose?.(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(log).toHaveBeenCalledTimes(2);
+    log.mockRestore();
   });
 
   it('rejects any other handle without touching the bridge', async () => {

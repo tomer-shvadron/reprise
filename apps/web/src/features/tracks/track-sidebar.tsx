@@ -1,5 +1,6 @@
 import { LayersIcon } from 'lucide-react';
-import { useId, useMemo } from 'react';
+import type { Track } from '@reprise/model';
+import { useId, useMemo, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import type { CommandRegistry } from '@/app/command-registry';
@@ -14,7 +15,15 @@ import { useTrackActions } from './track-actions';
 import { TrackRow } from './track-row';
 import { audibleTracks, effectiveMix, effectiveNotation, visibleSet } from './track-model';
 
-interface TrackSidebarProps {
+/** What the app adds to the sidebar without this folder importing the editor. */
+interface TrackSidebarSlots {
+  /** Next to the multitrack toggle, e.g. the add-track button. */
+  headerActions?: ReactNode;
+  /** A row's menu, at the end of its first line; a stable function, so rows stay memoised. */
+  rowMenu?: ((track: Track, index: number) => ReactNode) | undefined;
+}
+
+interface TrackSidebarProps extends TrackSidebarSlots {
   registry: CommandRegistry;
   keyboard: KeyboardPlatform;
 }
@@ -42,7 +51,7 @@ function MultitrackToggle({ single, disabled }: { single: boolean; disabled: boo
   );
 }
 
-function TrackList() {
+function TrackList({ headerActions, rowMenu }: TrackSidebarSlots) {
   const { document, selection, playback } = useAppServices();
   const actions = useTrackActions();
   const score = useStore(document, (state) => state.score);
@@ -66,7 +75,10 @@ function TrackList() {
         >
           Tracks
         </h2>
-        <MultitrackToggle single={single} disabled={!score} />
+        <div className="flex items-center gap-0.5">
+          {headerActions}
+          <MultitrackToggle single={single} disabled={!score} />
+        </div>
       </div>
       {!tracks || !audible || !shown ? (
         <p className="text-muted-foreground px-3 py-2 text-sm">
@@ -92,6 +104,7 @@ function TrackList() {
                 single={single}
                 loading={loads[track.id] !== undefined}
                 actions={actions}
+                rowMenu={rowMenu}
               />
             );
           })}
@@ -102,11 +115,11 @@ function TrackList() {
 }
 
 /** The left sidebar: every track with its mute, solo, volume, notation and visibility. */
-export function TrackSidebar({ registry, keyboard }: TrackSidebarProps) {
+export function TrackSidebar({ registry, keyboard, headerActions, rowMenu }: TrackSidebarProps) {
   const source = useMemo(() => ({ registry, keyboard }), [registry, keyboard]);
   return (
     <CommandSourceContext value={source}>
-      <TrackList />
+      <TrackList headerActions={headerActions} rowMenu={rowMenu} />
     </CommandSourceContext>
   );
 }

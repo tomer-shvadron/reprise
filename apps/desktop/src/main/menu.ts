@@ -13,6 +13,8 @@ export const MENU_COMMANDS = {
   'file.open': { label: 'Open…', accelerator: 'CmdOrCtrl+O' },
   'file.save': { label: 'Save', accelerator: 'CmdOrCtrl+S' },
   'file.saveAs': { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S' },
+  // No accelerator yet: WP-061 PR 1 adds one together with the renderer shortcut it mirrors.
+  'file.export': { label: 'Export as Guitar Pro…' },
   'file.print': { label: 'Print…', accelerator: 'CmdOrCtrl+P' },
   // The renderer replays a focused text field's own undo, so these replace the native roles.
   'edit.undo': { label: 'Undo', accelerator: 'CmdOrCtrl+Z' },
@@ -79,6 +81,7 @@ export function menuTemplate({
         separator,
         command('file.save'),
         command('file.saveAs'),
+        command('file.export'),
         separator,
         command('file.print'),
         // macOS keeps Quit in the application menu.
