@@ -4,12 +4,20 @@ import { create } from 'zustand';
 /** A section of the master-bar dialog, for the commands that open it focused there. */
 export type MasterBarSection = 'time' | 'key' | 'tempo' | 'repeats' | 'directions' | 'section';
 
+/** The effects that take a choice before they apply; each has its own modal picker. */
+export type EffectPicker =
+  'bend' | 'slide' | 'harmonic' | 'whammy' | 'tremolo' | 'trill' | 'dynamics';
+
 /** The dialog the editor has open; one at a time, as Radix dialogs are modal. */
 export type EditorDialog =
   | { kind: 'track'; mode: 'add' }
   | { kind: 'track'; mode: 'edit'; trackId: Id }
   | { kind: 'removeTrack'; trackId: Id }
   /** The master-bar dialog; `ids` are the target's bars, fixed when it opens, and `focus` the section to start in. */
+  /** One of the effect pickers; it works on what the cursor, range or picked notes select now. */
+  | { kind: 'effectPicker'; picker: EffectPicker }
+  /** The grace-note dialog, preset to before the beat or on it. */
+  | { kind: 'grace'; before: boolean }
   | { kind: 'masterBar'; ids: Id[]; focus?: MasterBarSection };
 
 export interface DialogsState {
