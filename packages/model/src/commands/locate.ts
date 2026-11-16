@@ -87,6 +87,92 @@ export function findNotes(score: Score, noteIds: readonly Id[], command: string)
   return found;
 }
 
+/** Where a note sits: in `beat.notes[note]`, or in `beat.grace[grace].notes[note]`. */
+export interface NoteSlot extends NoteAt {
+  grace?: number;
+}
+
+/**
+ * One walk of the score that resolves every id in `beatIds` to its position, so a batch of
+ * edits pays for one scan rather than one per edit. Missing ids refuse as `not-found`.
+ */
+export function indexBeats(score: Score, beatIds: readonly Id[], command: string): Map<Id, BeatAt> {
+  const wanted = new Set(beatIds);
+  const found = new Map<Id, BeatAt>();
+  // A walk that stops once the last wanted id is found: a selection near the start is cheap.
+  scan: for (const [t, track] of baseOf(score).tracks.entries()) {
+    for (const [b, bar] of track.bars.entries()) {
+      for (const [v, voice] of bar.voices.entries()) {
+        for (const [i, beat] of voice.beats.entries()) {
+          if (wanted.size === 0) break scan;
+          if (wanted.delete(beat.id)) found.set(beat.id, { track: t, bar: b, voice: v, beat: i });
+        }
+      }
+    }
+  }
+  const [missing] = wanted;
+  if (missing !== undefined) throw new CommandError(command, 'not-found', `no beat ${missing}`);
+  return found;
+}
+
+export interface VoiceAt {
+  track: number;
+  bar: number;
+  voice: number;
+}
+
+/** `indexBeats` for voices: one walk, stopping once the last wanted voice is found. */
+export function indexVoices(
+  score: Score,
+  voiceIds: readonly Id[],
+  command: string,
+): Map<Id, VoiceAt> {
+  const wanted = new Set(voiceIds);
+  const found = new Map<Id, VoiceAt>();
+  scan: for (const [t, track] of baseOf(score).tracks.entries()) {
+    for (const [b, bar] of track.bars.entries()) {
+      for (const [v, voice] of bar.voices.entries()) {
+        if (wanted.size === 0) break scan;
+        if (wanted.delete(voice.id)) found.set(voice.id, { track: t, bar: b, voice: v });
+      }
+    }
+  }
+  const [missing] = wanted;
+  if (missing !== undefined) throw new CommandError(command, 'not-found', `no voice ${missing}`);
+  return found;
+}
+
+/** Like `indexBeats` for notes, grace notes included. */
+export function indexNotes(
+  score: Score,
+  noteIds: readonly Id[],
+  command: string,
+): Map<Id, NoteSlot> {
+  const wanted = new Set(noteIds);
+  const found = new Map<Id, NoteSlot>();
+  scan: for (const [t, track] of baseOf(score).tracks.entries()) {
+    for (const [b, bar] of track.bars.entries()) {
+      for (const [v, voice] of bar.voices.entries()) {
+        for (const [i, beat] of voice.beats.entries()) {
+          if (wanted.size === 0) break scan;
+          const place = { track: t, bar: b, voice: v, beat: i };
+          for (const [n, note] of beat.notes.entries()) {
+            if (wanted.delete(note.id)) found.set(note.id, { ...place, note: n });
+          }
+          for (const [g, grace] of (beat.grace ?? []).entries()) {
+            for (const [n, note] of grace.notes.entries()) {
+              if (wanted.delete(note.id)) found.set(note.id, { ...place, grace: g, note: n });
+            }
+          }
+        }
+      }
+    }
+  }
+  const [missing] = wanted;
+  if (missing !== undefined) throw new CommandError(command, 'not-found', `no note ${missing}`);
+  return found;
+}
+
 export function findMasterBar(score: Score, masterBarId: Id, command: string): number {
   const index = baseOf(score).masterBars.findIndex((masterBar) => masterBar.id === masterBarId);
   if (index < 0) throw new CommandError(command, 'not-found', `no master bar ${masterBarId}`);

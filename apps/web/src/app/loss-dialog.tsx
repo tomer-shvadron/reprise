@@ -1,4 +1,5 @@
 import type { Warning } from '@reprise/formats';
+import type { ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -27,7 +28,11 @@ export function LossDialog<T extends string>({
   losses,
   choices,
   cancel,
+  cancelLabel = 'Cancel',
+  busy = false,
+  onCloseAutoFocus,
   onChoose,
+  children,
 }: {
   open: boolean;
   title: string;
@@ -35,35 +40,46 @@ export function LossDialog<T extends string>({
   losses: readonly Warning[];
   choices: readonly LossChoice<T>[];
   cancel: T;
+  /** The cancel button's text, e.g. "OK" for a notice. */
+  cancelLabel?: string;
+  /** Disables every button and Escape, while what a choice started is still running. */
+  busy?: boolean;
+  /** Where focus goes when the dialog closes; the default is back to what had it. */
+  onCloseAutoFocus?: (event: Event) => void;
   onChoose: (value: T) => void;
+  /** Extra content under the list of losses, such as a checkbox. */
+  children?: ReactNode;
 }) {
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) onChoose(cancel);
+        if (!next && !busy) onChoose(cancel);
       }}
     >
-      <DialogContent showCloseButton={false}>
+      <DialogContent showCloseButton={false} {...(onCloseAutoFocus && { onCloseAutoFocus })}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         {losses.length > 0 && <WarningList warnings={losses} label="What will be lost" />}
+        {children}
         <DialogFooter>
           <Button
             variant="outline"
+            disabled={busy}
             onClick={() => {
               onChoose(cancel);
             }}
           >
-            Cancel
+            {cancelLabel}
           </Button>
           {choices.map((choice) => (
             <Button
               key={choice.value}
               variant={choice.primary === true ? 'default' : 'outline'}
               autoFocus={choice.primary}
+              disabled={busy}
               onClick={() => {
                 onChoose(choice.value);
               }}

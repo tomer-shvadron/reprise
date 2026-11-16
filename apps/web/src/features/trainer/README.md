@@ -5,17 +5,17 @@
 
 It holds the speed trainer (WP-070) and the entry points the lead stubbed in WP-056 for the rest:
 
-| Export                           | What it is                                                                                                                                                                                                                       |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TrainerPanel`                   | The speed trainer for its view and a placeholder for each other, naming its work package. The app shows it in the right panel for those views.                                                                                   |
-| `trainerCommands` (`./commands`) | `trainer.speedTrainer`, `trainer.tuner`, `trainer.metronome` and `trainer.fretboard`, each showing its view, and the speed trainer's `trainer.speedTrainerToggle`, `trainer.speedTrainerMissed` and `trainer.speedTrainerReset`. |
+| Export                           | What it is                                                                                                                                                                                                                                                         |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `TrainerPanel`                   | The speed trainer for its view and a placeholder for each other, naming its work package. The app shows it in the right panel for those views.                                                                                                                     |
+| `trainerCommands` (`./commands`) | `trainer.speedTrainer`, `trainer.tuner`, `trainer.metronome` and `trainer.fretboard` (which toggles the bottom region), each showing its view, and the speed trainer's `trainer.speedTrainerToggle`, `trainer.speedTrainerMissed` and `trainer.speedTrainerReset`. |
 
 ## What it can rely on
 
 - `ui.rightPanelView` and `ui.showPanelView(view)`: which tool the right panel shows
-  (`'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'fretboard'`). The fretboard is meant for a
-  bottom region (WP-074); until the shell has one it shares the right panel, and a bottom region is
-  a shell change for the lead (#206).
+  (`'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'effects' | 'history'`; the last two are not trainer tools, so `app.tsx` renders them and `TrainerView` excludes them). The fretboard lives in the bottom region
+  instead: `ui.bottomPanel` (`{ open, view }`), `ui.toggleBottomPanelView('fretboard')` and
+  `ui.bottomPanelHeight` (#206). `TrainerPanel` renders it there as `view="fretboard"`.
 - `practice` (`state/practice.ts`), the running session WP-073 stores: `start` on first play, which
   returns the session of another document it replaces so it can be stored, `addPlayed`, `noteLoop`,
   `recordTempo`, `recordStep(range, percent)` when the speed trainer completes a full step (the
@@ -25,6 +25,15 @@ It holds the speed trainer (WP-070) and the entry points the lead stubbed in WP-
 - `document.songId` ties a session to its library song.
 - `playback.lastLoop` and `playback.settings` for the loop event and the tempo; the speed trainer
   steps tempo through the audio service.
+
+## The fretboard (WP-074)
+
+`fretboard/` draws the current track's neck (its tuning, 24 frets, the capo) once as SVG and lights
+the notes of the beat under the drawn playhead (`heard`), named. `fretboard-model.ts` precomputes a
+bar-to-notes lookup per track when the score changes, so a tick is a binary search, and each bar is worked out on first use and cached per bar object (an edit recomputes one bar, a mixer change none); the position
+reader repaints only the few lit dots, outside React, and only when the lit set changes. In edit
+mode with the transport stopped, pausing included, it lights the edit cursor's beat. The left-handed flip is remembered
+per viewer (`reprise.fretboardLeftHanded`). The highlights are not a live region.
 
 A run state of the speed trainer is the feature's own (a store under this folder). Needing another
 shared field is a `type:contract` issue for the lead.
@@ -165,3 +174,33 @@ together: starting one stops the other.
   it from anywhere. Nothing outside the panel shows it running yet (a shell follow-up).
 - Alt+B starts or stops it and shows the panel. `metronome.browser.test.ts` renders the click
   offline at 60, 120 and 200 BPM and measures the onsets.
+
+## Practice log (WP-073)
+
+`practice-log/`. Logs each song's practice into the library database's `practiceSessions` table
+(Dexie version 2) and shows it on a song page in the library.
+
+- **Capture** (`capture.ts`, `accrual.ts`), installed by the shell with
+  `installPracticeLog(services, libraryOf(services).db.practiceSessions)`; the trainer never imports
+  library internals. It runs over the existing `practice` store and changes no state. A session starts on a document's first
+  play and counts only time `playing` (the count-in is left out). It ends on a document switch or
+  close, or after 10 minutes without playing; the check also runs when play starts, so a missed
+  timer changes nothing. Nothing runs on the position tick: the subscription compares `transport`,
+  the loop and the tempo by reference. Played time is added up at play and pause changes and every
+  30 s while playing, by the monotonic clock (one accrual is capped at 60 s, so a sleeping laptop logs nothing extra).
+  Writes are debounced by 1 s, and `pagehide` or a hidden window flushes at once. No row is written
+  below 10 s of play or one completed speed-trainer step. A file open without import (no `songId`)
+  is not stored; importing it mid-session starts storing it.
+- **Row** (`row.ts`): a zod schema, owned here; the library's `schema.ts` imports only its type. A
+  loop is stored by bar id (the truth) with its bar numbers and BPM at write time for display while
+  the song is closed. A deleted song's rows stay in the table, hidden: nothing lists them.
+- **Song page** (`song-page.tsx`, `summary.ts`): total time, sessions newest first, loops with their
+  best tempos, and Resume. Resume restores the most recent session's last loop at that session's
+  last tempo (`resume.ts`), by bar id, so it still works after bars were inserted before the loop; a
+  loop whose bars are gone restores the tempo only and says so. The library's song list has a
+  "Practice log" button per row and its screen hosts the page.
+- **Privacy.** The log lives only in this machine's IndexedDB: no network call, no `localStorage`,
+  never in the `.reprise` file, a gp export or the draft. The tuner's microphone and the standalone
+  metronome are never observed: the capture imports nothing from `tuner/` or `metronome/`.
+- Not done: a weekly summary and streaks (they would want a `startedAt` index, a Dexie version 3),
+  export of the log, pruning or a clear-history button, and a Resume command.

@@ -1,9 +1,11 @@
+import { startNewSong } from '@/features/editor';
 import { libraryOf } from '@/features/library/library';
 import type { MenuCommandId } from '@/platform/bridge';
 import { ZOOM } from '@/state/ui';
 
 import type { Command } from './command-registry';
 import type { AppServices } from './services';
+import { whenSaved } from './when-saved';
 
 const ZOOM_STEP = 0.1;
 
@@ -33,11 +35,26 @@ export function appCommands(services: AppServices): AppCommand[] {
       },
     },
     {
+      id: 'file.new',
+      title: 'New song',
+      shortcut: { key: 'n', mod: true },
+      // Asks Save, Don't save or Cancel when the document is modified, then opens an empty song
+      // in edit mode (WP-083).
+      run: () => {
+        startNewSong(services);
+      },
+    },
+    {
       id: 'file.open',
       title: 'Open file…',
       shortcut: { key: 'o', mod: true },
-      // Opens as before, then imports into the library in the background.
-      run: () => libraryOf(services).openFile(),
+      // Asks Save, Don't save or Cancel first when the document is modified, then opens and
+      // imports into the library in the background.
+      run: () => {
+        whenSaved(services, 'opening another song', () => {
+          void libraryOf(services).openFile();
+        });
+      },
     },
     {
       id: 'file.save',
@@ -52,10 +69,20 @@ export function appCommands(services: AppServices): AppCommand[] {
       run: () => document.getState().saveAs(),
     },
     {
+      id: 'file.export',
+      title: 'Export as Guitar Pro…',
+      // Writes a .gp copy and changes nothing about the open document; the desktop menu item
+      // mirrors the shortcut.
+      shortcut: { key: 'e', mod: true, shift: true },
+      run: () => libraryOf(services).exportGuitarPro(),
+    },
+    {
       id: 'file.close',
       title: 'Close file',
       run: () => {
-        document.getState().close();
+        whenSaved(services, 'closing the song', () => {
+          document.getState().close();
+        });
       },
     },
     {

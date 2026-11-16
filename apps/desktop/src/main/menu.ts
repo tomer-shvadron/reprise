@@ -1,6 +1,6 @@
 import type { MenuItemConstructorOptions } from 'electron';
 
-import type { MenuCommandId, RecentSong } from '@reprise/web';
+import type { HistoryMenuLabels, MenuCommandId, RecentSong } from '@reprise/web';
 
 interface MenuCommand {
   label: string;
@@ -9,9 +9,11 @@ interface MenuCommand {
 }
 
 export const MENU_COMMANDS = {
+  'file.new': { label: 'New Song', accelerator: 'CmdOrCtrl+N' },
   'file.open': { label: 'Open…', accelerator: 'CmdOrCtrl+O' },
   'file.save': { label: 'Save', accelerator: 'CmdOrCtrl+S' },
   'file.saveAs': { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S' },
+  'file.export': { label: 'Export as Guitar Pro…', accelerator: 'CmdOrCtrl+Shift+E' },
   'file.print': { label: 'Print…', accelerator: 'CmdOrCtrl+P' },
   // The renderer replays a focused text field's own undo, so these replace the native roles.
   'edit.undo': { label: 'Undo', accelerator: 'CmdOrCtrl+Z' },
@@ -25,6 +27,11 @@ export const MENU_COMMANDS = {
   'view.toggleViewMode': { label: 'Toggle Page and Continuous View', accelerator: 'F4' },
 } satisfies Record<MenuCommandId, MenuCommand>;
 
+/** "Undo <label>", or the bare name with no label; a lone & is a mnemonic in a Windows label. */
+export function historyItemLabel(name: string, label: string | undefined): string {
+  return label === undefined ? name : `${name} ${label.replaceAll('&', '&&')}`;
+}
+
 export interface MenuOptions {
   isMac: boolean;
   isPackaged: boolean;
@@ -34,6 +41,10 @@ export interface MenuOptions {
   /** The Open Recent entries, newest first; the list is empty until the renderer sends one. */
   recent?: readonly RecentSong[];
   openRecent?: (id: string) => void;
+  /**
+   * The newest undo and redo step names; an absent one leaves the plain item. Never disables.
+   */
+  history?: HistoryMenuLabels;
 }
 
 export function menuTemplate({
@@ -44,12 +55,22 @@ export function menuTemplate({
   openExternal,
   recent = [],
   openRecent = () => undefined,
+  history,
 }: MenuOptions): MenuItemConstructorOptions[] {
   const command = (id: MenuCommandId): MenuItemConstructorOptions => ({
     ...MENU_COMMANDS[id],
     click: () => {
       sendCommand(id);
     },
+  });
+  // Never disabled: a disabled item stops the accelerator reaching a focused text field's own
+  // undo (macOS), so an empty stack shows the plain name.
+  const historyCommand = (id: 'edit.undo' | 'edit.redo'): MenuItemConstructorOptions => ({
+    ...command(id),
+    label: historyItemLabel(
+      MENU_COMMANDS[id].label,
+      history?.[id === 'edit.undo' ? 'undo' : 'redo'],
+    ),
   });
   const separator: MenuItemConstructorOptions = { type: 'separator' };
 
@@ -72,11 +93,13 @@ export function menuTemplate({
     {
       label: 'File',
       submenu: [
+        command('file.new'),
         command('file.open'),
         openRecentMenu,
         separator,
         command('file.save'),
         command('file.saveAs'),
+        command('file.export'),
         separator,
         command('file.print'),
         // macOS keeps Quit in the application menu.
@@ -86,8 +109,8 @@ export function menuTemplate({
     {
       label: 'Edit',
       submenu: [
-        command('edit.undo'),
-        command('edit.redo'),
+        historyCommand('edit.undo'),
+        historyCommand('edit.redo'),
         separator,
         { role: 'cut' },
         { role: 'copy' },

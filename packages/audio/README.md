@@ -1,7 +1,7 @@
 # @reprise/audio
 
 The playback engine: the transport and lookahead scheduler (WP-030), the sampler (WP-031), the
-SF2 loader (WP-032), articulations (WP-033) and the memory manager (WP-034), composed by
+SF2 loader (WP-032), SFZ loader (WP-090), articulations (WP-033) and the memory manager (WP-034), composed by
 `createAudioEngine` into the frozen `AudioEngine` contract (#94). This README covers the transport
 and the contract the sampler plugs into first, then the engine that owns them all, the sampler
 itself, the SF2 loader, the articulation layer between the scheduler and the sampler, and the
@@ -194,12 +194,13 @@ Events:
 
 ## Engine API
 
-`createAudioEngine({ context, budgetBytes?, scheduleMemory?, scheduler?, frames?, lookahead?, startLatency? })`
+`createAudioEngine({ context, budgetBytes?, hqBudgetBytes?, scheduleMemory?, scheduler?, frames?, lookahead?, startLatency? })`
 returns the `AudioEngine` contract of `docs/specs/architecture.md`. `context` is a context or a
 factory; a factory is called on the first `unlock()`, `play()` or `previewNote()`, never in `load`,
 so a song is decoded before the first gesture. `budgetBytes` is the memory manager's
-(`GM_BUDGET_BYTES` by default); `scheduleMemory` runs the coalesced `memory` event (the next
-animation frame by default); the rest go to the transport.
+(`GM_BUDGET_BYTES`, 80 MiB, by default) while `load` is given `tier: 'gm'`, and `hqBudgetBytes`
+(`HQ_BUDGET_BYTES`, 300 MiB) is the "Memory for sounds" setting's initial value (see `setMemoryBudget`); `scheduleMemory` runs the coalesced
+`memory` event (the next animation frame by default); the rest go to the transport.
 
 | Object                                                                | Made                                                                   | Lives until                               |
 | --------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------- |
@@ -209,21 +210,23 @@ animation frame by default); the rest go to the transport.
 | the sampler's tracks                                                  | a new song's load once live, or the unlock for a song loaded before it | `unload`, or an edit that drops the track |
 | overrides and settings                                                | their setters, before or after the context                             | overrides and the loop: `unload`          |
 
-| Method                                                                     | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                     |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `setSoundfont(font)`                                                       | The parsed GM bank. Fetching it, and its errors, belong to the app. A second call throws; `load` before it rejects.                                                                                                                                                                                                                                                                                           |
-| `load(score, options)`                                                     | Resolves `{ instruments }`, the song plan's, once the opening bars are decoded. A new song is `stopped` at tick 0. Over a loaded song it is an edit: the placement rule above, the overrides kept, the tracks synced; a timeline-neutral edit (`timelineNeutral`) reaches the strips and instruments at once, with no rebuild. Loading the same score object again decodes it again and changes nothing else. |
-| `unload({ evict? })`                                                       | Stops, drops the song, its tracks, overrides, loop and instrument loads; `evict` frees every instrument too.                                                                                                                                                                                                                                                                                                  |
-| `unlock()`                                                                 | Makes the context (and everything that needs it), applies the settings, attaches a loaded song; resumes a suspended context.                                                                                                                                                                                                                                                                                  |
-| `play`, `pause`, `stop`, `seek`                                            | The transport's. `play` unlocks first; the others are no-ops before the context.                                                                                                                                                                                                                                                                                                                              |
-| `setTempo`, `setLoop`, `setCountIn`, `setMetronome`, `setMasterVolume`     | Validated, kept, and applied now or when the context is made. The master volume scales the bus, the metronome included.                                                                                                                                                                                                                                                                                       |
-| `startClick(settings?)`, `updateClick(settings)`, `stopClick()`, `click()` | The standalone click (below): a metronome with no score. `startClick` unlocks, pauses a playing song and starts; `play` stops it. Settings are validated (`RangeError`) and kept across stops.                                                                                                                                                                                                                |
-| `setTrack(id, params)`                                                     | A user override over the track's channel, applied at once and kept through every baseline reset and edit until `unload`.                                                                                                                                                                                                                                                                                      |
-| `previewTrack(id, params)`                                                 | Volume or pan for a slider being dragged: no override, so the next baseline reset or edit replaces it.                                                                                                                                                                                                                                                                                                        |
-| `previewNote(track, note)`                                                 | One note through the track's strip, past mute and solo. Throws with no song, and a `RangeError` for a track the song lacks.                                                                                                                                                                                                                                                                                   |
-| `memory()`                                                                 | The memory manager's report; zero bytes against the budget before the bank.                                                                                                                                                                                                                                                                                                                                   |
-| `outputLatency()`                                                          | `baseLatency + outputLatency` of the context (`outputLatencyOf`), 0 before it.                                                                                                                                                                                                                                                                                                                                |
-| `settled()`                                                                | Resolves with no load, instrument load or fetch in flight.                                                                                                                                                                                                                                                                                                                                                    |
+| Method                                                                     | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setSoundfont(font)`                                                       | The parsed GM bank. Fetching it, and its errors, belong to the app. A second call throws; `load` before it rejects.                                                                                                                                                                                                                                                                                                                                                                            |
+| `load(score, options)`                                                     | Resolves `{ instruments, fallbacks }`, the song plan's instruments and the assigned tracks whose pack failed to load (below), once the opening bars are decoded. A new song is `stopped` at tick 0. Over a loaded song it is an edit: the placement rule above, the overrides kept, the tracks synced; a timeline-neutral edit (`timelineNeutral`) reaches the strips and instruments at once, with no rebuild. Loading the same score object again decodes it again and changes nothing else. |
+| `unload({ evict? })`                                                       | Stops, drops the song, its tracks, overrides, loop and instrument loads; `evict` frees every instrument too; without it the instruments stay resident, now `unused` (`unloadUnused` frees them), and the song's warm-up stops.                                                                                                                                                                                                                                                                 |
+| `unlock()`                                                                 | Makes the context (and everything that needs it), applies the settings, attaches a loaded song; resumes a suspended context.                                                                                                                                                                                                                                                                                                                                                                   |
+| `play`, `pause`, `stop`, `seek`                                            | The transport's. `play` unlocks first; the others are no-ops before the context.                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `setTempo`, `setLoop`, `setCountIn`, `setMetronome`, `setMasterVolume`     | Validated, kept, and applied now or when the context is made. The master volume scales the bus, the metronome included.                                                                                                                                                                                                                                                                                                                                                                        |
+| `startClick(settings?)`, `updateClick(settings)`, `stopClick()`, `click()` | The standalone click (below): a metronome with no score. `startClick` unlocks, pauses a playing song and starts; `play` stops it. Settings are validated (`RangeError`) and kept across stops.                                                                                                                                                                                                                                                                                                 |
+| `setTrack(id, params)`                                                     | A user override over the track's channel, applied at once and kept through every baseline reset and edit until `unload`.                                                                                                                                                                                                                                                                                                                                                                       |
+| `previewTrack(id, params)`                                                 | Volume or pan for a slider being dragged: no override, so the next baseline reset or edit replaces it.                                                                                                                                                                                                                                                                                                                                                                                         |
+| `previewNote(track, note, options?)`                                       | One note through the track's strip, past mute and solo, stopped or playing. `note` is `{ string, fret }` (through the track's tuning and capo) or `{ pitch }`; `options` is `{ velocity?, seconds? }`; previews choke only previews. Throws with no song, and a `RangeError` for a track the song lacks.                                                                                                                                                                                       |
+| `memory()`                                                                 | The memory manager's report; zero bytes against the budget before the bank.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `setMemoryBudget(bytes)`                                                   | The "Memory for sounds" setting: the effective budget is `bytes` on the HQ tier and `min(bytes, budgetBytes)` (80 MiB) on GM, reported by `memory().budgetBytes`. Lowering evicts at once; raising decodes the loaded song again if it all fits; `RangeError` for a non-finite or negative value; applied at `setSoundfont` if called before.                                                                                                                                                  |
+| `unloadUnused()`                                                           | Frees the residents the open song does not plan (`memory().unused`; after `unload()`, all of them) and returns how many.                                                                                                                                                                                                                                                                                                                                                                       |
+| `outputLatency()`                                                          | `baseLatency + outputLatency` of the context (`outputLatencyOf`), 0 before it.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `settled()`                                                                | Resolves with no load, instrument load or fetch in flight.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 Events: the transport's `position`, `state` and `loop`; `memory` (the manager's, coalesced);
 `instrumentLoads`, `{ [trackId]: { loaded, total } }` for each track whose new instrument is
@@ -235,14 +238,79 @@ engine puts every strip back on its track's program and channel, with the user's
 top, as each run starts, on every `stopped`, and at each loop wrap (scheduled at the wrap's time).
 
 `debugAudioEngine(engine)`, from the test-only `@reprise/audio/testing` entry, returns the live
-objects (`context`, `sampler`, `source`, `bank`, `transport`); it is not part of the contract.
+objects (`context`, `sampler`, `source`, `bank`, `transport`, and `assignments`, the loaded pack
+assignments by track); it is not part of the contract.
+
+### Pack assignments (#267)
+
+`LoadOptions.packs` is a list of `PackAssignment`, `{ trackId, pack: { id, files }, entries }`:
+
+- `pack.files` is an `SfzFiles` reader, the same object for as long as the installed version lives;
+  a new object means the pack changed. `entries` maps articulation-set keys (`ARTICULATION_SETS`,
+  below) to SFZ paths in the pack; `default` is required and is what plays, a key outside the list
+  is ignored (listed in `debugAudioEngine(...).skippedEntries`), and the others are the sets a note
+  can play (Articulation sets, below). Any change to `entries` loads the track again.
+- `load` checks each assignment: the default SFZ must read, parse and map a region. One that does
+  not goes to `LoadResult.fallbacks` (`{ trackId, packId, error }`), plays GM, and `load` still
+  resolves. An assignment with the same pack id, files object and default path as the last `load`
+  is not read again, whether it loaded or failed, so loading the same score with different `packs`
+  checks only the tracks that changed, a broken pack is not retried on every edit (a reinstall
+  brings a new files object), and an assignment that is gone is dropped.
+- `tier` selects the memory budget on each `load`: the setting (`setMemoryBudget`) for `hq`, the
+  smaller of it and `budgetBytes` for `gm`. Lowering it evicts at once, so going back to GM frees the pack buffers. The app passes
+  `hq` when at least one assignment reaches the engine.
+- A loaded assignment plays the pack: see "HQ tier in the engine" below.
+- Root exports: `tierOf`, `checkPack`, `checkSfzFile` and the types `PackSnapshot`, `SnapshotFile`,
+  `SfzFileCheck` (the installer's validation) and `LoadFallback`. `@reprise/audio/testing` adds
+  `encodeWav`, `encodeFlac` and `syntheticSfzPack()`, a small valid pack in memory (`default.sfz`
+  and `alt.sfz`, each over one WAV) that counts its reads, so tests commit no samples.
+
+### HQ tier in the engine (WP-091 PR A)
+
+- **One source, two providers.** `ManagedSampleSource` reads through a `ProviderRouter`
+  (`samples/provider-router.ts`): a ref `sfz:<packId>/<path>` goes to that pack's `SfzPack`, anything
+  else to the soundfont. A ref of a pack the router does not hold rejects `fetch` and has no owners.
+  Accounting, LRU and pinning therefore cover the GM bank and every pack together, and the HQ budget
+  counts pack buffers with no extra code.
+- **Installs.** Every files object is an install, and sample refs and instrument ids carry it:
+  `sfz:<packId>@<n>/<path>` and `sfz:<packId>@<n>:<sfzPath>`. A reinstall under the same pack id, a
+  fetch of the old files still in flight and the buffers a removed pack left behind therefore never
+  answer for the new files; the old install's buffers are an unplanned instrument and the next song
+  switch evicts them.
+- **Pack instruments.** The check that decides `fallbacks` parses `entries.default` once per
+  (files object, path), shared by tracks and overlapping loads, and that parse is the instrument
+  (`SfzPack.adopt`). `packInstrumentsOf(residents, packId)` names a pack's SFZ files from
+  `memory().residents` for the memory screen (WP-094), whatever the install. `sound.instrument` is
+  the caller's to map: the app picks the instrument's entries, so a different instrument of a pack
+  arrives as a different `entries.default`, and the model's `instrument` change rebuilds the song.
+- **One resolver.** `instrumentFor(track, program)` is the pack instrument for a track whose
+  assignment loaded, whatever the program, else the GM preset. Attach, the baseline reset at each
+  run, loop wrap and stop, the planner and the region maps all use it, and the sink's program
+  changes leave an HQ track on its pack: the pack is the track's sound, as RSE is in Guitar Pro.
+- **Order.** A `load` with an assignment it has not seen waits for the SFZ text before it attaches,
+  so the router holds the pack before the first decode. A load that a newer load, or `unload`,
+  overtook attaches nothing, before and after every wait. Until it attaches, `previewNote` ignores a
+  track that is not in the sampler yet and `play` starts once the song is attached, never the
+  previous one. With nothing new to read it stays synchronous.
+- **Same score, other packs.** Only the tracks whose pack instrument changed are swapped
+  (`setInstrument`) and decoded with `instrumentLoads` progress. An instrument no assignment names
+  any more is freed by the next `load`'s song switch; the only leftovers are buffers of fetches
+  that were already in flight.
+- **Failure.** Only the samples the opening bars need (`DEFAULT_PRELOAD_BARS`) are checked at
+  load. If that decode fails, each pack track's opening-bar samples are probed again (what decoded
+  is resident, so only the failing ones are fetched) and the tracks whose pack cannot supply them
+  go back to GM and into `fallbacks`. A sample missing from a later bar is not caught: the track
+  stays on the pack and that note is skipped, as on any miss.
+- **Not here.** The Sounds screen's setting and readout
+  (WP-094 PR C).
 
 ### Known gaps
 
-- The memory budget has no setter on the engine; it arrives with the HQ tier (phase 3, WP-094).
-  The architecture's Memory model section describes the HQ default, 300 MB.
-- `previewNote` of a sample not yet decoded is silent the first time (a miss that requests it)
-  and sounds once decoded; the editor (phase 3, WP-081) will preload.
+- Effects presets are not driven by CC91/CC93 (`channel.reverb`, `channel.chorus`) or a beat's
+  `mix` reverb and chorus: the reverb send and chorus depth come from the preset only (#235).
+- The memory setting has no screen yet: `setMemoryBudget` is applied from the persisted preference (`installTransport`), the status bar only reads `memory`, and the Sounds screen's control is WP-094 PR C.
+- `previewNote` of a sample not yet decoded requests its decode (a miss) and starts the note when
+  the sample is resident, unless that takes over 500 ms, when the note is dropped; a newer preview on the same string (or key), a stop, `removeTrack` or `dispose` cancels it. Previews choke only previews (#204).
 - A load over a loaded song cuts the notes sounding at that moment and restarts after
   `startLatency`, as a seek does; only a timeline-neutral edit is seamless.
 - `ChannelStrip.cancelAfter` holds a ramp's level with `cancelAndHoldAtTime`; Firefox lacks it,
@@ -309,8 +377,9 @@ plug in.
                                        the mod envelope closes it           automation
 
  per track (ChannelStrip)
- input -> Gain (mute/solo gate) -> insert.input -> insert.output -> Gain (volume) -> StereoPanner -> master
- previewInput ---------------------^        (effects, WP-092; straight through now)
+ input -> Gain (mute/solo gate) -> insert.input -+-> direct (Gain 1) ---------+-> insert.output -> Gain (volume) -> StereoPanner -+-> master
+ previewInput ---------------------^             \-> effects chain (below) --/                                                     \-> send (Gain) -> reverb bus -> master
+                                                    (only while the track has one)                                (only with a reverb send)
 
  master bus (MasterBus)
  input -> DynamicsCompressor (limiter: -1 dBFS, ratio 20, knee 0) -> Gain (master)
@@ -365,7 +434,8 @@ interface Region {
   velocityTrack?: number; // 0..1: gain = velocityGain(v) ** velocityTrack, on the path without modulators
   group?: number; // a new note of this group chokes the voices whose offBy equals it
   offBy?: number; // one-way: a closed hi-hat (group 2) cuts the open one (off_by 2), not the reverse
-  trigger?: 'release' | 'first' | 'legato'; // absent plays at note-on; release regions are kept, not played yet (WP-093)
+  trigger?: 'release' | 'first' | 'legato'; // absent plays at note-on; a release region plays at the note-off (resolveRelease, VoiceHandle.release)
+  releaseDecay?: number; // SFZ rt_decay, release regions only: dB of attenuation per second the note was held
   sequence?: { length: number; position: number }; // round robin, position 1-based
   random?: { lo: number; hi: number }; // 0..1, lo inclusive, hi exclusive
 }
@@ -373,7 +443,8 @@ interface Region {
 class RegionMap {
   constructor(regions: readonly Region[]);
   resolveAll(key: number, velocity: number, layer?: string, select?: RegionSelection): Region[]; // every layer of the note
-  candidates(key: number, velocity: number, layer?: string): Region[]; // every region the note could start, all round-robin and random positions
+  resolveRelease(key: number, velocity: number, layer?: string, select?: RegionSelection): Region[]; // the release regions a note-off starts
+  candidates(key: number, velocity: number, layer?: string): Region[]; // every region the note could start or release, all round-robin and random positions
   resolve(key: number, velocity: number, layer?: string): Region | undefined; // resolveAll's first
   readonly layers: string[];
 }
@@ -395,13 +466,27 @@ interface Instrument {
 }
 ```
 
+`resolveRelease` returns the release regions of a note-off, with the same layer fallback and the
+same `select` counters (a sequence or random release region plays only when it passes), but with
+no nearest-region fallback: key and velocity match exactly, so a note-off outside every release
+region is silent. A release region is limited by `lokey`/`hikey` or `lovel`/`hivel` on purpose (noise
+only on loud notes, say), a transposed release sample sounds wrong, and in SFZ a note-off with no
+release region plays nothing; the attack fallback exists so that a note always sounds, which does
+not carry over to a decorative tail. `candidates` includes only the release regions a note-off can
+trigger, since one has to be resident at the note-off and nothing else would use it.
+`RegionMap.hasReleaseRegions` is true when any region triggers on release; a map without them
+(every SF2 preset) skips `resolveRelease` altogether, so a General MIDI note pays nothing for it.
+`RegionMap.hasLegatoRegions` is true when any region plays only on a hammer-on or pull-off
+(`trigger=legato`), in any layer; `hasLegatoRegionsIn(layer)` asks about one layer, with the
+default layer as the fallback, as `resolveAll` does.
+
 `resolveAll` first filters out the regions that do not start at note-on: release regions never do,
 `first` regions play unless `select.legato`, `legato` regions only with it, a sequence region plays
 when `((select.sequence ?? 0) % length) + 1` is its position and a random region when
 `lo <= (select.random ?? 0) < hi`. Without counters the choice is the first take (position 1, the
-bucket holding 0, no legato) rather than layering every round robin at once, until WP-093 passes
-counters. The nearest-region fallback searches only the regions that pass. `candidates` is the
-unfiltered-by-counter set that `planSamples` and `Sampler.preload` use, so the round robins WP-093
+bucket holding 0, no legato) rather than layering every round robin at once, until a caller passes
+`NoteOnRequest.select`; the sampler sink does. The nearest-region fallback searches only the regions that pass. `candidates` is the
+unfiltered-by-counter set that `planSamples` and `Sampler.preload` use, so the round robins the sink
 rotates through are resident before it does; on an SF2 map it equals `resolveAll`. `resolveAll` then
 returns every exact match in map order, since an SF2 preset layers zones by design (a
 body and an attack, two panned mono samples) and sounds them all; failing any, the one region
@@ -421,7 +506,7 @@ from `preload`.
 `AudioBufferSourceNode.loop` cannot be switched off sample-accurately; `delayVolEnv` becomes
 `Envelope.delay`; the filter and its modulation envelope become `Region.filter` (the voice plays the envelope over time); `initialAttenuation` is scaled by 0.4 as FluidSynth does, and the note-on modulators become `Region.modulators`; the stereo zones of a sample pair (ruling on this PR) are merged into one two-channel
 buffer, which the voice graph passes through unchanged; a mono zone's `pan` goes to `Region.pan`;
-`keynumToVolEnvHold` and `keynumToVolEnvDecay` are expanded to one region per key (see
+`keynumToVolEnvHold` and `keynumToVolEnvDecay` ride on `Envelope` as `holdPerKey` and `decayPerKey` (timecents per key) and the voice scales the hold and decay for the struck key at note-on (see
 [SF2 loader and GM tier](#sf2-loader-and-gm-tier), which has the full mapping).
 
 ### Sampler API
@@ -442,20 +527,64 @@ const voice = sampler.noteOn(trackId, {
   offset,
   letRing,
   instrument,
+  select, // { sequence?, random?, legato? }: chooses the round-robin and random takes, for the note and its release regions
+  releaseTrigger, // default true; false: this note's release starts no release regions (see Release triggers)
 });
 voice?.rampDetune(2, when + 0.2); // semitones, absolute times
 voice?.setGain(-6, when + 0.1); // dB relative to the velocity level
 voice?.setFilter({ frequency: 1200, q: 1 }, when); // the articulation filter, after Region.filter
 sampler.noteOff(voice, when + 0.5); // ignored for let-ring voices
-sampler.previewNote(trackId, note); // now, at velocity 96, through the strip past its mute gate
+sampler.previewNote(trackId, { string, fret } /* or { pitch } */, { velocity, seconds }); // now, through the strip past its mute gate; waits up to 500 ms on a decode
 await sampler.preload(trackId, [{ key, velocity }]);
 ```
 
 `noteOn` starts a voice per region `resolveAll` returns and hands back one handle for all of them:
 detune, gain, filter and release reach every layer, and `endTime` is the last one's.
 
-`createSamplerSink(sampler, { deadNote?, instrumentOf? })` is the scheduler's `InstrumentSink` over the sampler,
-with the articulation layer described under [Articulations](#articulations): each event becomes
+**Release triggers.** `handle.release(at)`, and the let-ring `until` release, also start the note's
+release regions (`resolveRelease`, with the note's own `layer` and `select`) at `at`, once however
+often the handle is released. They never start on a choke, a steal, `allNotesOff` or a preview,
+and a note already cut short by one of them has none. A release voice is a one-shot, so a later
+release does not cut it, and it carries string 0, so the next note on the string, which normally
+starts at the previous note's release, does not choke it.
+
+The release voices belong to their note. The sink calls `release` at scheduling time, so a tail can
+exist seconds before it starts (a let-ring note's waits for the bar end); a choke or steal of the
+note at `t` cancels its tails that have not started by `t` (they never sound), while one already
+sounding plays out. A release voice never steals: when the pool is full at its start it is skipped
+and counted (`Sampler.skippedReleases`), since release noise is decoration. It is also the first
+voice a later note steals (a waiting one is cancelled, a sounding one fades), so it holds a slot from the
+note-on, but the first one a later note takes. Otherwise it counts in the polyphony like any voice, `allNotesOff` still stops
+it (one waiting to start never sounds), and `Region.releaseDecay`
+(`rt_decay`) lowers it by that many dB for each second the note was held. A release sample that is
+not resident is a miss like any other: skipped, its load requested, `onMiss` told.
+
+`NoteOnRequest.releaseTrigger` (default true) lets a caller keep a strike from firing them. A
+release region is meant for the note's final release, but the sink releases every strike and the
+string is never let go between a tremolo's strokes, a trill's alternations or a grace note and its
+main note, so each would play a release sample (at nearly full level with a high `rt_decay`). The
+sink therefore sets `releaseTrigger` true only on the last strike of the main note: that covers the
+end of a legato chain (the chain's first voice carries the release) and the let-ring `until`, and
+it sets it false on earlier strikes and on every grace note. It is also false on a note whose
+next note on the string is a hammer-on or pull-off starting at its release (a let-ring note's is
+the ring's end), unless the hammered note has a grace note on its beat: the string is not let go
+there, so the chain plays one release sample, at the last note's release, not one per note. A note
+with no release regions gets the plain voice handle as before, so GM playback is unchanged.
+
+`createSamplerSink(sampler, { deadNote?, instrumentOf?, voicingFor? })` is the scheduler's `InstrumentSink` over the sampler,
+with the articulation layer described under [Articulations](#articulations). Every strike also
+carries `NoteOnRequest.select`: `sequence` counts the notes struck so far per track, region map, layer
+and key (a stop, pause or seek starts it over, so a repeat from the same start rotates the same way),
+`random` is a hash of the note's id, its pass of the sequence and the strike's index (no
+`Math.random`, so an offline render repeats exactly), and `legato` is set on a hammer-on or
+pull-off when `voicingFor(track)` says the track's default map has `trigger=legato` regions. A track
+with no voicing, every General MIDI track, plays as before. The counter is per key and layer, not
+per region as in sfizz (which advances one counter per region on every note-on in its key range,
+so a scale run inside one multi-key region rotates its takes; here each new key starts at take 1).
+Per key is deliberate: the takes of a keyswitched pack are recorded per pitch, and the layer is
+part of the slot so that alternating palm-mute and sustain strikes on one key do not share a
+counter, which with two takes each would give every palm-mute strike one take and every sustain
+strike the other. Each event becomes
 attacks, pitch and level automation, a filter and a release; `allNotesOff(when)` releases every
 voice, the ones scheduled after `when` included (a release before a voice's start time is a 0-to-0
 fade, so it never sounds), forgets any legato slide waiting for its next note, and drops the
@@ -499,8 +628,8 @@ soloed one; it still goes through the insert, the fader and the panner.
   one in the editor plays the whole sample.
 - **`velocityTrack` is a power of the MIDI curve.** `velocityGain(v) ** t` scales the dB curve, one
   reading of sfzformat.com. sfizz blends linearly in amplitude instead (`1 - t * (1 - (v/127)^2)`);
-  for `amp_veltrack=73` at velocity 30 that is about -18 dB here against about -10 dB there. PR 2's
-  real-pack listening check decides whether to switch.
+  for `amp_veltrack=73` at velocity 30 that is about -18 dB here against about -10 dB there. No
+  listening check against a real pack has been done, so the choice is open (see the SFZ section).
 - **SFZ loads are capped** (`LIMITS` in `sfz/report.ts`), because pack files are untrusted: 256
   files read per load (the root and every include), 4,000,000 characters of preprocessed text, 65,536
   characters in one `#define` value, 100,000 regions after `pitch_keytrack` expansion and keyswitch
@@ -512,7 +641,7 @@ soloed one; it still goes through the insert, the fader and the panner.
 - **SFZ choke is one-way.** A new note's groups are `region.group ?? region.exclusiveClass ?? 0`; it
   chokes voices whose `offBy ?? exclusiveClass ?? 0` is among them (0 is none). For SF2 that is
   today's same-class choke; for SFZ, closed cuts open and open does not cut closed.
-- **Stealing** is released voices first, then the quietest at the new note's time, then the
+- **Stealing** is released voices and release-region tails first, then the quietest at the new note's time, then the
   oldest. Quietest is what the voice plays: envelope × velocity × the articulation gain automation
   (a palm mute's -18 dB, a fade-in from -48 dB), all computed analytically. A note that has not
   started yet, or starts with the new one (its own layers, a chord), is stolen only when every
@@ -551,6 +680,145 @@ soloed one; it still goes through the insert, the fader and the panner.
   settle, and it has a fixed pre-delay, measured at 264 frames (5.99 ms at 44.1 kHz): everything
   through the master bus lands that much after its `when`. Tests that compare levels play below
   the threshold and measure after that; a test that measures onsets must tap before the bus.
+
+## Effects chain
+
+WP-092. The strip's insert (between `insert.input` and `insert.output`) holds a chain that exists
+only while the track resolves to a preset with an insert stage; a track without one is the
+direct connection and nothing else, which is bit-identical to a strip with no effects code.
+`src/effects/` holds it; the pure tables are root exports, the node classes stay internal.
+
+```text
+insert.input -+-> direct (Gain 1) ----------------------------------------------------+-> insert.output
+              \-> input -> drive -> tone -> cabinet -> modulation -> delay -> output --/
+                  (each a BypassSlot: a dry connection beside the stage's own nodes)
+
+strip, after the fader and the panner: send (Gain) -> shared ReverbBus (a convolver) -> master.input
+```
+
+| Stage        | Nodes                                                                                                                                                                | Channels |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `input`      | Gain (pre-drive level)                                                                                                                                               | mono     |
+| `drive`      | Gain (1/4), WaveShaper (curve `clean`, `overdrive`, `distortion`, `fuzz`; oversample none, 2x, 4x, 4x), 25 Hz highpass                                               | mono     |
+| `tone`       | three biquads: lowshelf 120 Hz, peaking 750 Hz, highshelf 3.2 kHz                                                                                                    | mono     |
+| `cabinet`    | Convolver (`disableNormalization`, a generated 46 ms cabinet)                                                                                                        | mono     |
+| `modulation` | chorus: two Delays (15 ms) swung by one Oscillator (0.8 Hz), the sides in antiphase, wet/dry mix; the head is explicitly stereo, so a mono source reaches both sides | stereo   |
+| `delay`      | Delay (up to 1.5 s), feedback Gain (at most 0.6) through a 4 kHz lowpass, wet mix                                                                                    | stereo   |
+| `output`     | Gain (the preset's makeup)                                                                                                                                           | stereo   |
+| `reverb`     | the strip's send Gain into the shared bus                                                                                                                            | stereo   |
+
+An amp is mono: `input` to `cabinet` take the sum of the channels (`channelCountMode: 'explicit'`),
+and a bypassed amp stage keeps a stereo sample stereo, because the dry connection is stereo.
+
+### Presets, and which one a track gets
+
+Ten ids: the eight families, `fuzz` and `off`. `presetFamilyOf(track)` reads `kind` first (drums),
+then the GM program: 29 `overdrive`, 30 `distortion`, 24 and 25 `acoustic`, 26 to 28 and 31
+`clean`, 32 to 39 `bass`, 0 to 23 `keys`, the rest `other`. `EFFECT_PRESETS` holds the stage
+values (an absent stage is bypassed): `clean`, `overdrive`, `distortion` and `fuzz` have the amp
+stages and a cabinet; `clean` a chorus, `overdrive` a delay; `acoustic` and `bass` only a tone
+stack; `keys`, `drums` and `other` only a reverb send; `off` nothing.
+
+`resolveEffects(track, { tier, gmTierBypass })` gives `{ preset, automatic }`:
+
+| `sound.preset`               | Tier | GM tier bypass | Result                            |
+| ---------------------------- | ---- | -------------- | --------------------------------- |
+| a known id (including `off`) | any  | any            | that preset                       |
+| absent or unknown            | hq   | any            | the family preset                 |
+| absent or unknown            | gm   | on (default)   | no chain, the GM tier's own sound |
+| absent or unknown            | gm   | off            | the family preset                 |
+
+So the bypass governs automatic presets on GM tracks only: a preset the user picks applies on
+either tier. The exported `tierOf(track, packs)` is `hq` when an assignment names the track, `gm`
+otherwise, and the engine applies it to the assignments that loaded; a track that names a pack in
+`sound.packId` only (not installed, failed) is `gm`. `setGmTierBypass(on)` re-resolves every
+track; and `setStageBypass(trackId, stage, bypassed)` is a session override like `setTrack` (not
+saved, kept through edits, cleared by `unload`); the reverb stage's bypass is its send at 0. A
+`sound` edit that changes only `preset` is timeline-neutral (`timelineNeutral`), so it and its undo
+are heard at once with no rebuild; a `packId` or `instrument` change is not.
+
+### Switching, bypass and idle paths
+
+- One primitive, `BypassSlot`: a dry connection that is always there, and processing paths
+  beside it. A switch is a 20 ms equal-power crossfade (a quarter sine in, a quarter cosine out,
+  ten straight segments that land exactly on 0 and 1; a reversal mid-fade restarts from the
+  interpolated value). Equal power, because the paths of a preset change are partly correlated:
+  a straight crossfade dipped 5 dB between `clean` and `overdrive` at its middle, and two
+  correlated paths sum to at most the square root of two. When the fade ends the idle side is
+  disconnected, so a bypassed slot is a single gain-1 connection and its nodes cost nothing.
+  A slot is made for each stage and for the strip.
+- A fully bypassed chain is structural: the chain is disposed, `insert.input -> direct ->
+insert.output` is all that is left, and the rendered samples are bit-identical to a strip that
+  never had effects, the sign of zero included.
+- A change of one stage (on, off, another curve or cabinet) crossfades that stage alone, ducking
+  through its dry connection: the new path is built when the old one has faded out. A change of
+  more than one stage is a preset change: the strip builds the new chain (inside the slot's
+  build step, so one that is replaced first is never made) and crosses over from the old chain
+  to it directly, the dry connection staying out of it. Going through dry put the raw GM signal
+  between two cabinet-filtered ones and doubled the time. Continuous parameters (gains, tone
+  gains, delay time, feedback, mix) are smoothed in place with the strip's 5 ms constant (50 ms
+  for a delay time).
+- The idle path is disconnected from a timer (`defer`, a poll of the context's clock; a test
+  injects its own and flushes it from `suspend`).
+
+### Reverb: one shared bus (a departure from the work package)
+
+The work package lists reverb among the inserts. A convolver per track would multiply the one long
+convolution (1.4 s, stereo) by the track count: measured offline over two runs, 8 tracks with a reverb
+each cost 2.1 to 2.8 times as much as the same chains sharing one bus (1.5 to 2.0 s against 0.72 s
+for 10 s of audio), 16 tracks 2.7 to 3.5 times (3.4 to 4.4 s against 1.26 s). On CI (run 43775156445) the ratio was 1.9
+at 8 tracks and 2.0 at 16. So each strip has a post-fader, post-pan send into one `ReverbBus`, whose return
+joins the master bus, and a track's "reverb stage" is its send level. The fader scales the send
+and the mute gate is before everything, so a muted track sends nothing. The bus is made on the
+first send and lives until `dispose`.
+
+### Impulse responses: generated, not shipped
+
+`src/effects/impulses.ts` generates every impulse at runtime, at the context's sample rate (a
+`ConvolverNode` refuses another rate), from fixed seeds (mulberry32): nothing is committed,
+fetched or taken from a recording, so there is no third-party material and no licence entry. The
+cabinets (`open-1x12`, `closed-2x12`, `closed-4x12`) are a unit impulse through an RBJ biquad
+cascade (highpass, cone resonance, presence peak, two notches, a sixth-order lowpass), cut at 46 ms
+with a half-Hann fade, normalised to unit energy. The room is stereo, 1.4 s, with a 10 ms
+pre-delay, twelve early taps and a two-band noise tail (RT60 about 0.9 s lows, 0.5 s highs), the
+channels on independent seeds. `ImpulseBank` makes them on first use and keeps the `AudioBuffer`s:
+about 0.5 MB for the room and 24 KB a cabinet at 44.1 kHz, under 2 MB for all of them at 48 kHz.
+They are not sample memory and stay out of `MemoryReport.decodedBytes`.
+
+### Measured (`effects/*.test.ts`)
+
+A 220 Hz sine at -12 dBFS through a strip (the reverb return left out), harmonics 2 to 8 by
+`toneLevel` over 0.25 to 0.75 s. The tests' thresholds are set from these values with margin:
+
+| Preset       | THD (2 to 8) | 2f / f | RMS against bypass, forte (-26 dBFS) / mezzo (-31) |
+| ------------ | ------------ | ------ | -------------------------------------------------- |
+| bypassed     | under 1e-6   | 0      | 0 dB                                               |
+| `clean`      | 0.010        | 0      | +0.1 / +0.2 dB                                     |
+| `overdrive`  | 0.15         | 0.0001 | -0.3 / +0.3 dB                                     |
+| `distortion` | 0.31         | 0      | about -2.2 / +2.2 dB                               |
+| `fuzz`       | 0.43         | 0.016  | about -2.1 / +2.1 dB                               |
+
+The level match is calibrated on a plucked line (harmonics at 1/k, a new pitch every half second)
+at **forte, -26 dBFS RMS**, which is about a forte GM note (`loudness.test.ts`: a steel note peaks
+near -18 dBFS), and checked at mezzo, -31 (velocity 96 against 127). A saturating preset puts out
+nearly the same level whatever it is fed (about 0.9 dB per dB), so the amp presets' `output.gainDb`
+sits midway between the two levels: they are 2 dB under bypass at forte and 2 dB over at mezzo,
+and wherever a note is much quieter than mezzo they get louder than bypass (about 8 dB over at
+-42 dBFS). Their peaks stay bounded, about -11 dBFS per strip at the hottest input, so one track
+cannot reach the master ceiling.
+
+The bench (`effects/effects.bench.ts`) renders 5 s offline of 16 tracks, each with a three-note
+chord every 1.25 s: 0.64 s with distortion chains and the shared reverb (the budgeted row of the
+roadmap, 1 000 ms), 0.27 s with no chain (Apple M4 Pro, headless Chromium).
+
+### Known limits
+
+- A saturating preset aliases on high notes: with the tone and cabinet stages out, `distortion`
+  puts energy 37 dB under the fundamental at 1760 Hz and `fuzz` 27 dB under (a curve with no
+  memory fed a pure sine can only fold harmonics below it). `WaveShaperNode` oversamples at most
+  4x, which `distortion` and `fuzz` use; `overdrive` uses 2x and `clean` none, its THD being 1%.
+  The cabinet's lowpass cannot remove what folded below the fundamental. A gentle lowpass ahead
+  of the shaper would, at the price of the tone; left for the ear.
 
 ## SF2 loader and GM tier
 
@@ -614,7 +882,7 @@ preset level.
 | `initialAttenuation`                                                                      | `attenuation` = 0.4 × cB / 10 dB (the EMU factor FluidSynth applies, which GeneralUser GS is voiced for), clamped to 0..144 dB                                                                                                                                                                                                                                                                                                                                                                  |
 | `pmod`, `imod` records                                                                    | `modulators`: velocity and key sources (linear, concave, convex, switch; both polarities and directions) on attenuation, cutoff, envelope depth and Q, merged with FluidSynth's default (velocity to attenuation; its velocity to cutoff default is inert in FluidSynth and not applied): an instrument modulator replaces a default of the same identity, a preset one adds to it (SF2 9.5)                                                                                                    |
 | `exclusiveClass`                                                                          | `exclusiveClass`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `keynumToVolEnvHold`, `keynumToVolEnvDecay`                                               | one region per key, with hold and decay at timecents + factor × (60 − key): exact                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `keynumToVolEnvHold`, `keynumToVolEnvDecay`                                               | `envelope.holdPerKey` and `decayPerKey`, in timecents per key; `hold` and `decay` are the values at key 60 and the voice multiplies them by 2 ^ (factor × (60 − key) / 1200) for the struck key, clamped to the region's range: exact. The filter's modulation envelope carries `keynumToModEnvHold` and `keynumToModEnvDecay` the same way                                                                                                                                                     |
 | `pan`                                                                                     | `pan` = value / 500, mono regions only                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | linked left and right samples                                                             | one region with a two-channel ref, left first (below)                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
@@ -633,7 +901,7 @@ regions, which the sampler layers where both cover the key.
 per preset, the zones with a non-neutral value for each generator the `Region` has no field for
 (modulation and vibrato LFOs, the modulation envelope's transient on pitch, effects sends,
 `keynum`, `velocity`), zones with a modulator that is not applied (controller, pressure and linked
-sources, other destinations), zones expanded per key,
+sources, other destinations), zones expanded per key (`scaleTuning` only),
 overlapping region pairs (`layered`, which the sampler sounds together; a key-expanded zone counts
 once per key), stereo mismatches and unpaired halves, and dropped zones and loops.
 
@@ -649,11 +917,12 @@ there; locally it skips with a message until the files are fetched.
 
 Measured over the GM set (bank 0 programs 0 to 127 and the standard kit, 129 presets):
 
-- Every program and every GM percussion key, 35 to 81, resolves. 18,636 regions over 971 sample
+- Every program and every GM percussion key, 35 to 81, resolves. 7,998 regions over 971 sample
   refs, 579 of which are played by more than one preset. Resolving the whole set costs about
-  80 to 95 ms (60 ms before #169, whose regions each carry a modulator list and, where a filter
-  can close, a `filter` object), its region maps 1 to 4 ms, and a note-on resolves on the largest
-  map (Timpani, 896 regions) in 40 to 145 ns, noisy at this scale. The heap figures (7 MiB to
+  50 ms (80 to 95 ms with 18,636 regions before #198 stopped expanding key-scaled hold and decay
+  per key; 60 ms before #169, whose regions each carry a modulator list and, where a filter
+  can close, a `filter` object), its region maps 1 to 4 ms, and a note-on resolves in tens to
+  a few hundred ns, noisy at this scale (measured before #198, on the largest map then, Timpani's 896 regions). The heap figures (7 MiB to
   resolve, 3 MiB for the maps, 1 MiB for the `instrumentsOf` index) are from before #169 and not
   re-measured: the headless shell exposes no heap counter. Decoded sample memory, which the budget
   counts, is unchanged.
@@ -665,7 +934,7 @@ Measured over the GM set (bank 0 programs 0 to 127 and the standard kit, 129 pre
 - The file is version 2.01: no `sm24`, and no linked stereo samples at all (all 920 are mono), so
   the stereo merge is proved by the synthetic fixture.
 - It uses the key-scaled envelope generators heavily: `keynumToVolEnvHold` in 287 zones and
-  `keynumToVolEnvDecay` in 676, `scaleTuning` in 156. All are expanded per key, exactly.
+  `keynumToVolEnvDecay` in 676, `scaleTuning` in 156. The envelope factors are carried on the region and scaled in the voice, so those zones stay one region; only the 132 resolved `scaleTuning` zones are still expanded per key, exactly.
 - `modEnvToPitch` is set in 457 zones; 447 are transients with a `sustainModEnv` of 1000, and 10
   zones in Ocarina, Bagpipes and Helicopter hold a pitch offset of 94 to 700 cents, which `tune`
   carries. One note of Whistle and of Ocarina rendered through the sampler lands within a cent of
@@ -686,6 +955,128 @@ Measured over the GM set (bank 0 programs 0 to 127 and the standard kit, 129 pre
 The fixture the parser tests run on is `test-fixtures/synthetic.sf2`, under 4 KB, written by
 `pnpm sounds:fixture` (`scripts/sounds/make-test-sf2.ts`); a scripts test fails when the committed
 file and the generator disagree.
+
+## SFZ loader and HQ tier
+
+In `src/sfz/`: a parser and resolver that map an SFZ file onto the shared `Region`, and `SfzPack`,
+a `SampleProvider` over one pack directory. The voice code is the SF2 tier's. WP-091 routes the GM
+bank and the packs through one `ManagedSampleSource` and owns pack installation; this package
+needs only a reader.
+
+```ts
+const pack = new SfzPack({ id: 'karoryfer-swagbass', files: { read, size? }, decode? });
+const inst = await pack.loadInstrument('swagbass.sfz', { id: 'sfz:karoryfer-swagbass:default', layer? });
+// { id, regions: RegionMap, layers: [{ id: 'sw:36', key: 36, label? }], keyswitchRange?, report }
+pack.instrumentsOf(ref); // every instrument that references the file
+pack.byteLength(ref); // an estimate from files.size before the first fetch, exact after, NaN without a size
+await pack.fetch(ref); // reads and decodes one file: { sampleRate, channels, byteLength }
+loadSfz(path, read, { packId, layer? }); // the parser alone: { regions, layers, keyswitchRange, report }
+```
+
+`loadSfz`, `SfzPack`, `sniffSampleHeader` and `decodeAtNativeRate` are root exports.
+
+### What is read, and when
+
+- **Paths and refs.** A pack is untrusted data. `read` gets pack-relative, `/`-separated paths with
+  backslashes already converted and `.`/`..` resolved; a path that leaves the root is refused and
+  counted. One ref per sample file, `sfz:<packId>/<path>`, however many regions play it, so loops,
+  offsets and keyswitch copies all share one decoded buffer. `fetch` reads only a ref some loaded
+  instrument issued. The prefix cannot collide with an SF2 ref (`<font>/<n>/<a>-<b>`), which is what
+  WP-091's dispatcher relies on.
+- **Lazy, per ADR-0005.** `loadInstrument` reads SFZ text only (the root file and its `#include`s).
+  A sample file is read and decoded on the first `fetch`: from the manager's preload plan, which
+  asks `RegionMap.candidates()` for every round-robin and random take of a key, or on a miss.
+  Eviction and the budget (`HQ_BUDGET_BYTES`, 300 MiB) are the manager's.
+- **Decoding at the native rate.** `decodeAudioData` resamples to its context's rate, and SFZ loop
+  points and offsets are frames of the file, so `decode.ts` first reads the file's own rate from
+  its header (WAV `fmt `, FLAC STREAMINFO's 20-bit field, the Vorbis identification header; Opus
+  is 48 kHz) and decodes on an `OfflineAudioContext` of that rate, one per rate, kept. Chromium
+  decodes WAV (PCM 8 to 32 bit, float), FLAC and Ogg; there is no decoder of our own. MP3, AIFF and
+  anything else reject `fetch`, which the manager and sampler turn into a skipped note and
+  `onMiss`. The decoder is injectable (`SfzDecoder`) for tests. `decodeAudioData` detaches its
+  input, so the pack decodes a copy of the bytes.
+- **Caps on untrusted files** (`SAMPLE_LIMITS` in `sfz/decode.ts`), because a FLAC of constant
+  subframes is about 12 bytes per 65,535 frames and a 100 KB file can decode to gigabytes:
+  `fileBytes` 128 MiB per sample file, checked from `files.size` before the read (when known) and
+  from `bytes.length` after it; `decodedBytes` 256 MiB of Float32 per file, checked against the
+  size the header declares (WAV `data` chunk, capped by the bytes held; FLAC STREAMINFO total
+  samples times channels, where a total of 0 is refused since nothing then bounds it) before
+  `decodeAudioData`, and against the decoded buffer after. Ogg declares nothing in its first page,
+  so the file cap and the decoded check are its bound, the latter after the allocation. A refused
+  file rejects `fetch` like any other failure. The WAV format tag must be PCM, float or
+  extensible: ADPCM and MP3-in-WAV are refused, as Chromium does not decode them. The per-rate
+  offline contexts are an LRU of four.
+- **Memory.** The manager copies a decoded file once into a buffer of its own, so the transient
+  `AudioBuffer` is one sample, not the budget. A decoded file is `channels x frames x 4` bytes, which
+  is what `byteLength` returns after the first fetch. Before it the estimate is `files.size` times
+  2 for WAV (16-bit PCM becomes 32-bit float), 4 for FLAC and 10 for Ogg. Measured on Karoryfer
+  Swagbass (WAV, 44.1 kHz mono, `swagbass_clean.sfz`, 254 samples): 40 files decode in about 10 ms and
+  the whole pack in about 175 ms, 184.1 MiB resident.
+
+### Opcodes
+
+| Opcode(s)                                                           | Becomes                                                                                                                                                              |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<control>`, `<global>`, `<master>`, `<group>`, `<region>`          | Inheritance global, master, group, region; a header resets the levels below it. `<control>` holds `default_path`, `note_offset`, `octave_offset`.                    |
+| `#define $NAME value`, `#include "path"`                            | Text substitution from the definition on; includes resolve against the root file, through the reader, to depth 16, cycles detected.                                  |
+| `default_path`, `sample`                                            | The ref. A value may contain spaces. `*sine`, `*silence`, `*noise` drop the region, counted.                                                                         |
+| `lokey`, `hikey`, `key`, `pitch_keycenter`                          | `keyLo`, `keyHi`, `rootKey` (default 60); note names accepted (c4 = 60); `key=-1` disables the region.                                                               |
+| `lovel`, `hivel`                                                    | `velLo`, `velHi`; an inverted range drops the region.                                                                                                                |
+| `tune`, `transpose`, `pitch_keytrack`                               | `tune` in cents; a keytrack other than 100 over a range expands to one region per key, as SF2's `scaleTuning` does.                                                  |
+| `volume`, `pan`, `amp_veltrack`                                     | `attenuation = -volume`, `pan / 100`, `velocityTrack` (below).                                                                                                       |
+| `ampeg_delay`, `_attack`, `_hold`, `_decay`, `_sustain`, `_release` | `envelope`, SFZ defaults (sustain 100 %, release 1 ms); the sampler's minimums still apply.                                                                          |
+| `loop_mode`, `loop_start`, `loop_end`, `offset`                     | `oneShot`, or a frame-unit `loop`, and `startFrame`. A loop mode without points would need the loop embedded in the file: played unlooped, counted.                  |
+| `group`, `off_by`                                                   | One-way choke (closed hi-hat cuts open, not the reverse).                                                                                                            |
+| `trigger`, `seq_length`, `seq_position`, `lorand`, `hirand`         | Parsed and kept; the selection rules and the release triggers are under Sampler.                                                                                     |
+| `rt_decay`                                                          | `releaseDecay`, dB per second held, on `trigger=release` regions (0 to 200; elsewhere read and unused).                                                              |
+| `sw_lokey`, `sw_hikey`, `sw_last`, `sw_default`, `sw_label`         | One layer per `sw_last` key, `sw:<k>`, which a labelled one makes a set (Articulation sets). Unswitched regions are copied into every layer; the copies share a ref. |
+
+Everything else is counted, never thrown. `report.unknown` holds opcodes this loader does not know,
+`report.unsupported` the ones it knows and v1 does not play (filters, envelopes other than amp, LFOs,
+`amp_velcurve_N`, `*_cc*`, crossfades, `bend_*`, `polyphony`, `*_random`, ...), `ignoredHeaders` the
+skipped `<curve>`, `<effect>`, `<midi>`, `<sample>`, `invalid` values that did not parse (the opcode
+is skipped, the region kept), `clamped` values pulled into range, `dropped` regions left out by
+reason, plus `embeddedLoop`, `unresolvedIncludes`, `escapedPaths`, `limits` and `notes`. A pack
+passes `isClean` when `invalid`, `unresolvedIncludes`, `escapedPaths` and `limits` are empty;
+`unknown`, `unsupported` and `unreachable` are allowed. Only an unreadable root file throws (`SfzParseError`).
+
+**`amp_veltrack`.** The voice applies `velocityGain(v) ** velocityTrack`, one reading of
+sfzformat.com, where sfizz blends linearly in amplitude. They differ most at low velocity with a
+partial track (about -18 dB here against about -10 dB for `amp_veltrack=73` at velocity 30). Nobody
+has listened to a real pack against both yet; the choice is open and a change is one line in the voice.
+
+**Known gaps.** Loops embedded in a WAV or FLAC
+(`smpl` and cue chunks), filters and filter envelopes, LFOs, crossfades, controllers, and
+`seq_position` outside `seq_length` (an authoring error some packs ship: the region is kept with
+its impossible position so it never plays, as in sfizz, counted in `report.unreachable`, and
+`isClean` allows it). Paths
+are case-sensitive, so a pack made on Windows with mismatched case breaks on Linux; WP-091 can build
+a case-insensitive index from `listDir`.
+
+### Real packs: `pnpm sfz:check <dir>`
+
+Loads every `.sfz` under a directory, checks that each sample file exists (a case-only difference is
+named) and that its header sniffs to WAV, FLAC or Ogg at a usable rate (no Web Audio needed), prints
+the report per file and exits 1 on an error: a lost-data entry in `isClean`, a missing file, a bad
+header, no regions. Downloaded packs live in the gitignored `local-sounds/` (see its README); the
+pure logic is `sfz/check-pack.ts`, covered by a Node test, and the script drives Vitest through
+`scripts/sounds/vitest.config.ts` because plain Node cannot import the workspace packages.
+
+### HQ memory budget (WP-094)
+
+`hq-memory-budget.test.ts` asserts the HQ row of the roadmap budgets table: four distinct
+Swagbass-shaped packs (254 files of 4.3 s each) on four tracks of the long score, each track
+reaching all 49 keys of a 24-fret guitar at both velocity layers, resident at 283.6 MiB of the
+300 MiB default with no miss and no eviction. A second case halves the budget and plays through.
+
+### Tests
+
+No sample bytes are committed. `sfz/test/encode.ts` writes PCM WAV (16 and 24 bit) and FLAC with
+verbatim subframes in memory. Node tests cover the header sniffing and `SfzPack` over a fake decoder
+(refs, `instrumentsOf`, the estimate then the exact size, refusals); browser tests decode real WAV
+and FLAC at 22,050, 32,000, 48,000 and 96,000 Hz and compare the integers, and run
+`ManagedSampleSource` over `SfzPack` over the synthetic fixture under the `Sampler` (lazy first-use
+decoding, `candidates()` preload, exact accounting, a one-shot past note-off, keyswitch layers).
 
 ## Articulations
 
@@ -795,18 +1186,77 @@ Tied links (`tied-links.test.ts`, same rig, A4 quarter tied at 120 BPM):
 | Palm-muted link, energy > 2 kHz   | 0.011 × the open origin's                                      |
 | Fade-in on the link               | ×0.006 the origin's level at its onset, ×0.69 at its end       |
 
-### What the HQ tier will override (WP-093)
+### Articulation sets and what the HQ tier overrides (WP-093)
 
-The filter and envelope paths above are ADR-0004's fallback for packs without articulation
-samples. The sink passes no `layer` yet. WP-093 adds it for packs that carry `palmMute`,
-`harmonic`, `dead` or legato layers (the sampler already resolves `layer`, falling back to the
-default layer), and drops the matching filter or envelope here when the layer exists: a sampled
-palm mute through a 900 Hz low-pass is muted twice. The dead note's noise burst gives way to the
-pack's dead-note region, and the hammer-on's 20 ms offset to its legato layer. Bends, slides,
-vibrato, trills, tremolo, dynamics and fades stay automation in both tiers.
+`ARTICULATION_SETS` is the vocabulary a pack can declare, `default`, `palmMute`, `dead`,
+`harmonic`, `artificialHarmonic`, `legato`, `staccato`, `tap`, `slap` and `pop`, exported with the
+type `ArticulationSet`. They are the keys of `PackAssignment.entries`: `entries.<set>` is an SFZ
+file of the pack that plays the set, and a key outside the list is ignored. A pack can also
+declare a set as a labelled keyswitch layer of its default file, and `articulationSetOf(label)`
+maps an `sw_label` to a set (`Palm Mute` to `palmMute`, `Hammer-on` to `legato`, `Sustain` to
+`default`), or to `undefined`.
+
+**The engine's table.** `resolvePacks` builds one `Voicing` per track, `sets`, `{ instrument?,
+layer? }` per set, plus `legatoTrigger`, and the sink reads it through `voicingFor(track)`. A set's
+file is parsed like the default one, once per install and path, and is an instrument of its own
+(`sfz:<pack>@<n>:<path>`), so eviction, the budget and `packInstrumentsOf` treat it like any other
+resident; it plays through the track's strip. A labelled layer of the default file (`setsOfLayers`)
+is the same set as a `layer` of the default instrument. An explicit file beats a label, the first
+labelled layer of a set wins, and a file that fails to read or parse drops only its set (it never
+reaches `LoadResult.fallbacks` for that). A set file that parses but whose samples then fail to
+decode for the opening bars is the other failure mode: `dropBrokenPacks` probes the set instruments
+too, so that track goes to GM and into `fallbacks`, as for a broken default. `legatoTrigger` is the cheap
+gate (a pack has `trigger=legato` regions somewhere); the sink then asks the map about the layer
+that plays (`RegionMap.hasLegatoRegionsIn(layer)`), so a hammer-on in a layer with no legato region
+plays that layer's attack and not nothing.
+
+**The note-to-set mapping** is one pure function, `voicingOf(input, available)`, which the sink
+(playback) and `planInstruments` (memory) both call, so what is played is what was loaded. A
+strike has one set, because keyswitches are exclusive, chosen by this priority: `dead`, `harmonic`
+or `artificialHarmonic`, `palmMute`, `staccato`, `legato` or `tap`, `slap`, `pop`, else `default`.
+Each effect has a fallback chain (an artificial harmonic to `harmonic`, a `tap` to `legato`), and
+the first effect whose chain reaches a set the pack has wins; an effect that loses keeps its
+synthesized automation on top, so a palm-muted pinch harmonic plays the harmonic layer and is
+still filtered at 900 Hz. A track on General MIDI, a drum track, a pack without the set, and a dead note
+when the pack has no `dead` set (it is the noise burst, which no other set replaces) all get
+`default` and drop nothing.
+
+| The note has                  | The pack has the set                                              | The pack lacks it                             |
+| ----------------------------- | ----------------------------------------------------------------- | --------------------------------------------- |
+| palm mute                     | the layer; no 900 Hz low-pass, no -18 dB / 250 ms decay           | default with both (ADR-0004)                  |
+| dead note                     | the layer at the note's key, released at 250 ms or the note's end | the noise burst and its 2.5 kHz filter        |
+| natural harmonic              | the layer at the sounding pitch; no +6 dB shelf                   | default at the sounding pitch with the shelf  |
+| other harmonics               | `artificialHarmonic`, else `harmonic`; no shelf                   | default with the shelf (`semi` keeps its +12) |
+| hammer-on or pull-off         | the layer, or `trigger=legato` regions; no 20 ms offset           | the 20 ms offset                              |
+| staccato                      | the layer or file; the half-beat release stays                    | default with the half-beat release            |
+| tap, slap, pop (beat effects) | `tap` (else `legato`), `slap`, `pop`                              | default (their GM sound is a separate issue)  |
+
+Bends, slides, vibrato, trills, tremolo, dynamics and fades stay automation in both tiers. This
+widens ADR-0004's "palm mute and harmonics" to the dead, legato and staccato layers the work
+package names, with no new decision. The limits are the ones a voice has: a palm-muted tied link
+on an open origin keeps the synthesized link filter, a legato slide's carried voice keeps its
+sample, and a trill's alternations and a tremolo's strokes take the note's own set (a trill's
+alternation is not given the `legato` layer). A voice a legato slide carries into a note whose set differs keeps the sample it was struck with,
+so the effects the new set would have sampled stay synthesized (the palm mute's gain decay still applies; a carried voice never takes a new filter).
+The 20 ms offset is dropped by a `legato` set and also whenever a `trigger=legato` region plays.
+A tied note is never struck, so the planner leaves it in the default layer. The velocity step of a hammer-on (one lower) stays,
+being dynamics and not timbre.
+
+`syntheticGuitarPack()` in `@reprise/audio/testing` is the reference guitar these are tested on:
+a sustain layer and palm-mute, harmonic and legato layers, each a sine of its own pitch, and
+release samples with `rt_decay`. Its options only add: `selection: true` adds, on keys below the
+layers' own, two velocity layers, a `seq_length` and a `lorand`/`hirand` round robin and a
+`trigger=first`/`trigger=legato` pair (`GUITAR_SELECTION`); `articulations: true` adds `Dead Note`
+and `Staccato` layers (`GUITAR_EXTRA_TONES`); `perFile: true` adds `gtr_pm.sfz` and `gtr_stacc.sfz`
+as `entries` (`GUITAR_FILE_TONES`). The default pack keeps its shape.
 
 ### Known and deliberate
 
+- **A legato slide into a hammer-on plays two release samples.** In `7/9h11` the slide's carried
+  voice keeps the release decision made at the first note, where the next note was a slide target,
+  so its release at the hammer-on's onset fires a sample, and the hammered note fires its own at
+  the chain's end. Dropping the trigger on an existing `VoiceHandle` would need a contract change;
+  `release-trigger-sink.test.ts` pins today's result.
 - **Not played on a tied link** (see Tied links above):
   - Trill or tremolo picking written only on a later link: the origin's span the chain, and a
     re-strike mid-chain would need a second strike carrying the remaining links.
@@ -872,7 +1322,7 @@ that is not a finite byte count reserves nothing.
 ```ts
 const source = new ManagedSampleSource(provider, context, { budgetBytes: GM_BUDGET_BYTES });
 const plan = await source.load(score, regionMapOf, { bars: 4 }); // AudioEngine.load's half
-source.memory(); // the engine's MemoryReport: { decodedBytes, budgetBytes, residents }
+source.memory(); // the engine's MemoryReport: { decodedBytes, budgetBytes, residents, unused, shortfall }
 const off = source.on('memory', (stats) => {}); // coalesced to one per animation frame
 source.budgetBytes = 300 * MEGABYTE; // settable at runtime; lowering it evicts at once
 source.counters; // { fetches, evictions, pinnedEvictions }
@@ -914,11 +1364,21 @@ plans its own program even when it has no notes (it costs nothing until a note a
 Keys are the ones the sink strikes: the note's sounding pitch rounded (`soundingPitch` from
 `@reprise/model`, so a harmonic plans the overtone it plays, not the fretted key), plus grace notes
 and the trill's alternate fret.
-`planSamples` takes every layered region of a key (`resolveAll`).
+`planSamples` takes every layered region of a key and every release region of it (`candidates`).
+
+The plan is per note, not per instrument: `planInstruments` asks `voicingOf` for each note, with
+`PlanOptions.voicingFor(track)` (the track's `PlanVoicing`, where each set lives as a layer id or
+an instrument id), and puts its keys where the note will sound. `InstrumentUse.keys` is the
+default layer, `InstrumentUse.layers` is `{ layer, keys }[]` for each keyswitch layer a note's
+set names, and a per-file set is an `InstrumentUse` of its own (so `switchSong` pins it). `planSamples`
+walks only those layers, not `[undefined, ...map.layers]`, which is ADR-0005's "articulation
+layers derived from the score; nothing else is loaded": a song with no palm mute decodes no
+palm-mute sample and plans no palm-mute file, while the release regions of its planned keys stay
+planned, since they must be resident at the note-off.
 
 `load` decodes every sample the opening `bars` (default 4) can reach before it resolves, at every
-velocity and in every articulation layer, since dynamics and articulations are the scheduler's
-to decide. It then warms the rest of the song in the background, four fetches at a time, but only
+velocity and in each articulation layer the score plays, since dynamics are the scheduler's to
+decide. It then warms the rest of the song in the background, four fetches at a time, but only
 if all of it fits the budget: otherwise warming would evict what the opening bars need. A song
 switch (or a later `load`) stops the warm-up after what is already in flight, so the previous song
 is never fetched into the new one's budget; `settled()` resolves once the queue has drained.

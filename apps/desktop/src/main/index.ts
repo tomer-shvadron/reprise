@@ -16,10 +16,14 @@ import {
   type IpcMainInvokeEvent,
 } from 'electron';
 
-import type { FileFilter, MenuCommandId, RecentSong } from '@reprise/web';
+import type { FileFilter, HistoryMenuLabels, MenuCommandId, RecentSong } from '@reprise/web';
 
 import { APP_INDEX_URL, APP_SCHEME, createAppProtocolHandler } from './app-protocol';
 import { isAppUrl } from './app-url';
+import { CloseGuard } from './close-guard';
+import { holdQuit, wireCloseGuard } from './close-wiring';
+import { createDownloadManager } from './download';
+import { electronGet } from './electron-http';
 import { readPath, writePath } from './file-io';
 import { registerInvokeHandlers, sendEvent } from './ipc';
 import { decideMediaPermission } from './media-permission';
@@ -27,7 +31,15 @@ import { menuTemplate } from './menu';
 import { openedFile } from './opened-file';
 import { PathAccess } from './path-access';
 import { describePickedFile, walkFolder } from './pick-folder';
-import { listDirIn, mkdirIn, moveIn, removeIn, type StorageRoots } from './storage-fs';
+import { profilePaths } from './profile';
+import {
+  listDirIn,
+  mkdirIn,
+  moveIn,
+  removeIn,
+  sweepTempFiles,
+  type StorageRoots,
+} from './storage-fs';
 import {
   DEFAULT_WINDOW_STATE,
   fitToDisplays,
@@ -49,7 +61,16 @@ protocol.registerSchemesAsPrivileged([
   { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 
-const libraryDir = join(app.getPath('music'), 'Reprise');
+// Before anything reads a path: a run under REPRISE_PROFILE_DIR (the smoke test) keeps all of its
+// state in that folder and leaves the user's own profile and library alone.
+const profile = profilePaths(process.env);
+if (profile) {
+  app.setPath('userData', profile.userData);
+  // A stray export must not pass silently: the real library would look empty.
+  console.error(`Using profile ${profile.userData} and ${profile.library} (REPRISE_PROFILE_DIR)`);
+}
+
+const libraryDir = profile?.library ?? join(app.getPath('music'), 'Reprise');
 // The app's own files get a folder of their own: userData is also Chromium's profile (IndexedDB,
 // Local Storage, cookies), which no renderer call may reach.
 const userDataDir = app.getPath('userData');
@@ -59,6 +80,9 @@ const windowStateFile = join(userDataDir, 'window-state.json');
 const access = new PathAccess();
 const storageRoots: StorageRoots = { library: libraryDir, data: dataDir };
 let recentSongs: readonly RecentSong[] = [];
+// Undefined until the renderer reports: the Edit menu then keeps plain, enabled Undo and Redo.
+let historyLabels: HistoryMenuLabels | undefined;
+const closeGuards = new Map<BrowserWindow, CloseGuard>();
 
 const dialogFilters = (filters: readonly FileFilter[]): DialogFilter[] =>
   filters.map(({ name, extensions }) => ({ name, extensions: [...extensions] }));
@@ -79,6 +103,8 @@ function ownerWindow(event: IpcMainInvokeEvent): BrowserWindow {
   return window;
 }
 
+const downloads = createDownloadManager({ roots: storageRoots, get: electronGet });
+
 registerInvokeHandlers(
   {
     'file:open': async (event, filters) => {
@@ -98,7 +124,7 @@ registerInvokeHandlers(
       access.grant(result.filePath);
       return result.filePath;
     },
-    'file:read': (_event, path) => readPath(path, access, storageRoots),
+    'file:read': (_event, path, range) => readPath(path, access, storageRoots, range),
     'file:write': async (_event, path, bytes) => {
       await writePath(path, bytes, access, storageRoots);
       return undefined;
@@ -141,9 +167,63 @@ registerInvokeHandlers(
       await removeIn(storageRoots, path);
       return undefined;
     },
+    'window:set-edited': (event, edited) => {
+      const window = ownerWindow(event);
+      closeGuards.get(window)?.setEdited(edited);
+      // macOS draws a dot in the close button; the call does nothing elsewhere.
+      window.setDocumentEdited(edited);
+      return Promise.resolve(undefined);
+    },
+    'window:close': (event, close) => {
+      closeGuards.get(ownerWindow(event))?.answer(close);
+      return Promise.resolve(undefined);
+    },
     'menu:set-recent': (_event, items) => {
       recentSongs = items;
       applyMenu();
+      return Promise.resolve(undefined);
+    },
+    'menu:set-history': (_event, labels) => {
+      historyLabels = labels;
+      applyMenu();
+      return Promise.resolve(undefined);
+    },
+    'download:start': async (event, id, url, to, sha256, maxBytes) => {
+      const contents = event.sender;
+      const owner = contents.id;
+      // The window closing or reloading ends its downloads: nobody is left to answer them.
+      const abandon = () => {
+        downloads.cancel(owner, id);
+      };
+      contents.once('destroyed', abandon);
+      contents.once('did-navigate', abandon);
+      try {
+        return await downloads.start({
+          owner,
+          id,
+          url,
+          to,
+          sha256,
+          maxBytes,
+          onProgress: (loaded, total) => {
+            if (!contents.isDestroyed()) {
+              sendEvent(
+                contents,
+                'download:progress',
+                id,
+                loaded,
+                ...(total === undefined ? [] : [total]),
+              );
+            }
+          },
+        });
+      } finally {
+        contents.removeListener('destroyed', abandon);
+        contents.removeListener('did-navigate', abandon);
+      }
+    },
+    'download:cancel': (event, id) => {
+      downloads.cancel(event.sender.id, id);
       return Promise.resolve(undefined);
     },
     'app:library-dir': () => Promise.resolve(libraryDir),
@@ -185,6 +265,7 @@ function applyMenu(): void {
         sendCommand: sendMenuCommand,
         openExternal: (url) => void shell.openExternal(url),
         recent: recentSongs,
+        ...(historyLabels && { history: historyLabels }),
         openRecent: sendOpenRecent,
       }),
     ),
@@ -217,6 +298,34 @@ function trackWindowState(window: BrowserWindow): void {
     clearTimeout(timer);
     persistWindowState(window);
   });
+}
+
+function guardClose(window: BrowserWindow): void {
+  const guard = wireCloseGuard(
+    {
+      events: window,
+      contents: window.webContents,
+      isDestroyed: () => window.isDestroyed(),
+      close: () => {
+        window.close();
+      },
+      setDocumentEdited: (edited) => {
+        window.setDocumentEdited(edited);
+      },
+    },
+    {
+      ask: () => {
+        sendEvent(window.webContents, 'window:close-requested');
+      },
+      quit: () => {
+        app.quit();
+      },
+      forget: () => {
+        closeGuards.delete(window);
+      },
+    },
+  );
+  closeGuards.set(window, guard);
 }
 
 function restrictNavigation(window: BrowserWindow): void {
@@ -255,6 +364,7 @@ async function createWindow(): Promise<BrowserWindow> {
     window.show();
   });
   trackWindowState(window);
+  guardClose(window);
   restrictNavigation(window);
 
   await window.loadURL(APP_URL);
@@ -284,6 +394,10 @@ async function start(): Promise<void> {
   await app.whenReady();
   await mkdir(libraryDir, { recursive: true });
   await mkdir(dataDir, { recursive: true });
+  // Off the startup path: a library can be large, and the sweep is housekeeping.
+  void sweepTempFiles(storageRoots).catch((error: unknown) => {
+    console.error('Could not sweep leftover temp files', error);
+  });
   protocol.handle(APP_SCHEME, createAppProtocolHandler(RENDERER_DIR));
   allowMicrophoneOnly();
   applyMenu();
@@ -294,7 +408,14 @@ async function start(): Promise<void> {
   });
 }
 
+app.on('before-quit', (event) => {
+  holdQuit(closeGuards.values(), event);
+});
+
 app.on('window-all-closed', () => {
+  // No window left to act on, so the Edit menu goes back to plain Undo and Redo (macOS keeps running).
+  historyLabels = undefined;
+  if (process.platform === 'darwin') applyMenu();
   if (process.platform !== 'darwin') app.quit();
 });
 

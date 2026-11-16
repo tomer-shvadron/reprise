@@ -1,4 +1,5 @@
 import type { DirEntry, Platform } from '@/platform/platform';
+import { rangeBounds } from '@/platform/read-range';
 import { parseStoragePath } from '@/platform/storage-path';
 
 export type MemoryStorageCalls = Pick<
@@ -110,11 +111,13 @@ export function createMemoryStorage(): MemoryStorage {
         if (!key.includes('/')) throw new Error(`"${key}" is a root`);
         for (const k of [key, ...under(key)]) entries.delete(k);
       }),
-    readFile: (path) =>
+    readFile: (path, range) =>
       reply(() => {
         const bytes = entries.get(keyOf(path));
         if (!bytes) throw new Error(`No file at ${path}`);
-        return bytes.slice();
+        if (!range) return bytes.slice();
+        const { start, end } = rangeBounds(range);
+        return bytes.slice(start, end);
       }),
     writeFile: (path, bytes) =>
       reply(() => {

@@ -20,8 +20,8 @@ shell wiring, which is one separate integration commit).
 
 - **Database** (`db/`). Dexie over IndexedDB, in the browser and in Electron alike. `schema.ts` holds
   `SCHEMA`, an **append-only** list of versions: a shipped version is never edited, because a user's
-  database may be at any of them. WP-073 appends version 2 (`practiceSessions`) there and extends the
-  harness in `db/schema.test.ts`, which reopens a database written at every earlier version and
+  database may be at any of them. Version 2 (`practiceSessions`, WP-073: the practice log's table, owned by `features/trainer`) is
+  appended there and extends the harness in `db/schema.test.ts`, which reopens a database written at every earlier version and
   asserts that no row is lost and every table exists. Rows (`rows.ts`) are Zod schemas, and the repository
   `safeParse`s on read: a bad row is skipped and logged, never thrown. `lastOpenedAt` is left out
   until a song is first opened, so the recents index only holds opened songs.
@@ -54,16 +54,72 @@ shell wiring, which is one separate integration commit).
   (`parser.native`, in the worker), never from a second read, so track ids match; the original and the
   row follow, and the session keeper starts. A duplicate opens the library's song instead. A failed
   write clears `songId`, keeps the file open and shows the banner. `openWithoutImport` keeps the bytes
-  in memory so the banner's Import (`importOpenDocument`) can still copy the original.
+  in memory so the banner's Import (`importOpenDocument`) can still copy the original. The banner
+  follows the library's own `unimportedId`, the document id those bytes belong to, so a new song
+  (`document.newDocument`), a new song saved with Save As and a song deleted from the library never
+  show it. The held bytes are released, and `bannerError` cleared, whenever the document id changes.
 - **Delete** (`library.deleteSong`). The song's native and original folder move to
   `library/trash/<id>/` beside a `song.json` copy of the row; then the row goes. An open song becomes
   unimported (`songId` cleared); its document still carries the save handle it was opened with, which
-  WP-061's Save must not follow without a `songId`.
+  Save does not follow without a `songId`: the saver and the built-in `save()` both treat a `library/`
+  handle with no song as no handle at all.
+- **Save** (`save/save-flow.ts`, installed with `document.setSaver` by `installLibrary`). In order:
+  a document with a `songId` whose row exists writes `.reprise` to `row.nativePath` (never the
+  original file, even a `.gp`) and updates the row's summary and `savedAt`; a file opened without
+  importing and with a writable handle in `.reprise` or `.gp` goes to the built-in in-place save,
+  keeping the Guitar Pro loss prompt; a document with no file at all (a new song) joins the
+  library on its first Save (a new `songId`, `library/songs/<id>.reprise`, a row with no
+  `originalPath`, `originalKey` the hash of the first saved bytes); anything else (a gp3, gp4,
+  gp5 or gpx file opened without importing, a deleted song) shows a short notice through
+  `store.notice` and goes to Save As. Save As is the built-in: `.reprise` anywhere, and the
+  document leaves its song. A Save while the song's row is not there yet (the import of a file
+  just opened runs in the background) waits for the library's imports before choosing.
+- **Export as Guitar Pro** (`save/export-flow.ts`, `export-dialog.tsx`, `library.exportGuitarPro`).
+  Writes `write(score, 'gp')` of the score as shown through `platform.saveFile`, and changes
+  neither `dirty`, the file, its handle nor `songId`. The dialog lists only what the writer drops,
+  not what the import dropped; a library song has a "Don't warn again for this song" box that stores
+  the accepted `Warning.code`s on the row (`exportAcknowledged`), and a later export asks again only
+  for a code not in the list. A document outside the library has no box.
+- **Drafts** (`drafts/`, started by `installLibrary`). While the document is modified the keeper
+  writes `data/drafts/<key>.reprise` and a `<key>.json` sidecar (`{ version, key, songId?, name,
+title, updatedAt }`, bytes first), 1 s after the last edit and at least every 10 s while edits
+  continue, serialized in the parse worker when the main thread is idle. The key is the `songId`,
+  else `doc-<document.id>`. The draft is removed when the document becomes clean (a save, or undo
+  to the saved point), is replaced or is closed (every replace path asks first), and when its
+  song is deleted. A write that has not started is dropped if the document changed meanwhile, and
+  the old key goes when a song id arrives while the edits stay unsaved. Writes and removals run
+  one at a time. A write records its key before any bytes go out, so a removal that comes during it
+  deletes what it writes; serialization is not queued, so a hung worker never delays a removal, and
+  a worker that fails or hangs is replaced once before autosave reports "Autosave is off". A save
+  that ends with the document still modified is followed by a fresh draft, and `savedAt` is the
+  time the save began, so a draft whose content was captured after that (an edit made during the save) is newer; a draft's `updatedAt` is when its content was captured, not when it landed.
+  The keeper flushes on `pagehide` and `visibilitychange`, best effort: the idle wait is skipped,
+  but a worker round trip and a file write cannot finish once a page is being torn down, so on the
+  web the last second of edits, or all of a first edit, can be missing after Leave. The
+  `beforeunload` prompt while modified is the protection there.
+  - **Cost.** The 13 ms measured by `drafts/draft-cost.browser.test.ts` for the 8 x 300 reference
+    score (about 29.5 MB of native) is the structured clone of the score into the worker only. The
+    main thread also pays for the 29.5 MB result cloned back and, on desktop, for serializing
+    those bytes for `ipcRenderer.invoke` to main (which then does an fsync and a rename per
+    draft). Levers if that shows up in practice: a longer debounce for large natives, or
+    transferring the result buffer. Over about 50 ms the next step is a worker that mirrors the score by
+    replaying `Change.patches`, which needs a model contract.
+  - **Recovery** (`drafts/recovery.ts`, `DraftRecoveryDialog`). After `load()` (and only when it
+    succeeded, or every draft would look orphaned) the folder is listed. A draft of a song is
+    offered when `updatedAt` is newer than the row's `savedAt` (else `importedAt`); a draft whose
+    song is gone or already saved past it, and a sidecar without bytes, are removed; a `doc-` draft
+    is always offered. Bytes whose sidecar is missing or unreadable are offered as an untitled
+    recovery and never removed unasked. Recover opens a song's draft with `modified: true`
+    and restores its session; a `doc-` draft becomes an untitled modified document whose first
+    Save joins the library. The recovered document is written under its own key at once, and only
+    then are the old files removed. Later (and Escape) keeps the drafts for the next launch; opening a song that has one waiting shows the dialog again, and the keeper never overwrites a draft that is still waiting: edits go under `doc-<document.id>` (no song named) meanwhile, so autosave never stops, and recovery offers both. Undo
+    history is not recovered.
+  - **Known limit.** Two web tabs editing the same song write one draft key; the last writer wins.
 - **Recents.** The 5 most recently opened songs (`RecentSongs`), the palette command
   `library.openRecent` (the library sorted by last opened), and on desktop the File menu through
   `setRecentSongs` (at most 10), with `onOpenRecent` opening the pick.
 - **Closing the window.** Nothing calls `Library.dispose()`; the session keeper flushes on `pagehide`
-  and on `visibilitychange` to hidden, so the last 500 ms of changes are kept without shell wiring.
+  and on `visibilitychange` to hidden, so the last 500 ms of changes are kept without shell wiring. An import running when the window closes is not awaited (no close hook can wait on a promise), so the worst case is files in the library folder with no row; files are written before the row. `dispose()` itself awaits the library's in-flight imports before closing the database.
 - **Parsing** (`import/`). `parseImport` is the pure detect, read, native write, summarize and hash
   step. `createParser` runs it in a module Worker (`parse.worker.ts`) with the bytes transferred both
   ways, and inline where there is no `Worker` (jsdom). Readers mint fresh ids on every read, so a song
@@ -74,7 +130,7 @@ shell wiring, which is one separate integration commit).
 
 - `document.songId`: the song a document was opened from, passed as `songId` in the options of
   `openBytes(name, bytes, { handle?, songId? })` and set later with `setSongId` after importing a file opened without import. Cleared by
-  `close` and by the next open.
+  `close`, `newDocument` and the next open.
 - `ui.screen` and `ui.setScreen`: the library is a full-window screen; leaving it sets `'player'`.
 - `captureTrackSession`, `restoreTrackSession` and `watchTrackSession` from `features/tracks` for the
   per-song settings.

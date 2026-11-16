@@ -158,7 +158,7 @@ describe('click to seek', () => {
     expect(document.querySelectorAll('.score-loop')).toHaveLength(2);
 
     click(centreOf(beatAnchor(result, id(5), 0)));
-    expect(services.playback.getState().settings.loop).toBeDefined();
+    expect(services.playback.getState().settings.loop).toEqual({ startBar: id(4), endBar: id(5) });
     expect(services.fakeAudio.seek).toHaveBeenLastCalledWith(7 * BAR);
 
     click(centreOf(beatAnchor(result, id(8), 0)));

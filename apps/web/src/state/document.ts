@@ -28,13 +28,8 @@ export const SCORE_FILES: readonly FileFilter[] = [
 export const REPRISE_FILES: readonly FileFilter[] = [{ name: 'Reprise', extensions: ['reprise'] }];
 export const GP_FILES: readonly FileFilter[] = [{ name: 'Guitar Pro 7–8', extensions: ['gp'] }];
 
-/** The formats Reprise can write; every other opened format is saved as a copy in one of these. */
+/** The formats Save writes in place; Save As writes `.reprise` only, and `.gp` is an export. */
 export type SaveFormat = 'reprise' | 'gp';
-
-const SAVE_FILTERS: Record<SaveFormat, readonly FileFilter[]> = {
-  reprise: REPRISE_FILES,
-  gp: GP_FILES,
-};
 
 export const FORMAT_NAMES: Record<Format, string> = {
   gp3: 'Guitar Pro 3 (.gp3)',
@@ -47,11 +42,39 @@ export const FORMAT_NAMES: Record<Format, string> = {
 
 export type SavePrompt =
   /** Overwriting a `.gp` loses these: the writer's drops, and what the read never kept. */
-  | { kind: 'overwrite'; fileName: string; losses: readonly Warning[] }
-  /** Save As asks for the format before the platform dialog, which takes the bytes up front. */
-  | { kind: 'save-as'; reason: string | undefined; gpLosses: readonly Warning[] };
+  { kind: 'overwrite'; fileName: string; losses: readonly Warning[] };
 
-export type SaveAnswer = 'cancel' | 'overwrite' | SaveFormat;
+export type SaveAnswer = 'cancel' | 'overwrite';
+
+/**
+ * What a save started by `beginSave` holds until `finishSave`: the document it began on, the undo
+ * depth and notation it captured, and `score`, the view-folded score a save writes.
+ */
+export interface SaveMark {
+  readonly score: Score;
+  readonly notation: Record<Id, Notation>;
+  readonly depth: number;
+  readonly token: number;
+}
+
+export type SaveOutcome =
+  | {
+      saved: { name: string; format: SaveFormat; handle: FileHandle; savedKey: string };
+      /** Present (even as undefined) sets or clears `songId`; absent leaves it. */
+      songId?: Id | undefined;
+    }
+  | { failed: unknown; fileName: string }
+  | { cancelled: true };
+
+/**
+ * Takes over Save and Save As (the library's rules); `builtin` is the store's own path. A saver
+ * must not call `builtin` while it holds a mark of its own (the built-in begins one), and must
+ * not call `store.save()` or `store.saveAs()` from inside itself.
+ */
+export interface Saver {
+  save(builtin: () => Promise<void>): Promise<void>;
+  saveAs(builtin: () => Promise<void>): Promise<void>;
+}
 
 export interface DocumentFile {
   name: string;
@@ -67,6 +90,12 @@ export interface DocumentFile {
 export interface OpenOptions {
   handle?: FileHandle;
   songId?: Id;
+  /** Opens as unsaved (a recovered draft): the document stays modified until a save. */
+  modified?: boolean;
+}
+
+export interface NewDocumentOptions {
+  modified?: boolean;
 }
 
 export interface DocumentError {
@@ -93,6 +122,17 @@ export interface DocumentView {
 /** The part of the view a session keeps: which tracks are shown, not how they are written. */
 export type TrackLayoutView = Omit<DocumentView, 'notation'>;
 
+/** The command names on each undo stack, newest first; a group or chain shows its own name. */
+export interface HistoryLabels {
+  undo: readonly string[];
+  redo: readonly string[];
+}
+
+/** What last moved the history, so the editor can put the cursor back after an undo. */
+export type HistoryStep = 'apply' | 'undo' | 'redo';
+
+const noLabels: HistoryLabels = { undo: [], redo: [] };
+
 export interface DocumentState {
   /** A new one per opened document; subscribers tell a switch from an edit by it. */
   id: Id | undefined;
@@ -113,6 +153,10 @@ export interface DocumentState {
   canRedo: boolean;
   undoLabel: string | undefined;
   redoLabel: string | undefined;
+  /** Every step's name, newest first; the same object while neither list has changed. */
+  historyLabels: HistoryLabels;
+  /** `apply`, `undo` or `redo`, whichever produced `score` last; undefined after an open or close. */
+  lastStep: HistoryStep | undefined;
   /** From the last successful read. */
   warnings: readonly Warning[];
   warningsOpen: boolean;
@@ -129,12 +173,33 @@ export interface DocumentState {
   openBytes(name: string, bytes: Uint8Array, options?: OpenOptions): Promise<void>;
   /** Ties the open document to a library song, as after importing a file opened without import. */
   setSongId(songId: Id | undefined): void;
+  /**
+   * Opens a never-saved document around `score` (the caller builds it, e.g. `createEmptyScore()`):
+   * fresh history, no file, no `songId`, not modified unless `modified` (a recovered draft). Save
+   * falls through to Save As for it.
+   */
+  newDocument(score: Score, options?: NewDocumentOptions): void;
   close(): void;
   apply(command: Command): readonly CommandWarning[];
   undo(): void;
   redo(): void;
+  /** Through the installed saver, else the built-in. */
   save(): Promise<void>;
+  /** Through the installed saver, else the built-in, which writes `.reprise` only. */
   saveAs(): Promise<void>;
+  /**
+   * Starts a save: captures the document, undo depth, notation and the view-folded score, and sets
+   * `saving`. Undefined when nothing is open or a save is running.
+   */
+  beginSave(): SaveMark | undefined;
+  /**
+   * Ends a save and always clears `saving`. Commits the saved point (and `file`, `songId`) only
+   * while the mark's document is still open, returning whether it did; an edit made since stays
+   * dirty.
+   */
+  finishSave(mark: SaveMark, outcome: SaveOutcome): boolean;
+  /** Installs (or, with undefined, removes) the saver `save` and `saveAs` go through. */
+  setSaver(saver: Saver | undefined): void;
   setVisibleTracks(tracks: Id[] | 'all'): void;
   setNotation(trackId: Id, notation: Notation | undefined): void;
   /** Single-track view of `id`, or multitrack view with `undefined`. */
@@ -235,9 +300,18 @@ export function readLosses(warnings: readonly Warning[]): Warning[] {
   );
 }
 
-function saveAsReason(format: Format | undefined): string | undefined {
-  if (format === undefined || isSaveFormat(format)) return undefined;
-  return `Reprise can't write ${FORMAT_NAMES[format]} files, so this saves a copy as Reprise or as Guitar Pro 7–8.`;
+/**
+ * `features/library/paths.ts` is the only place that makes `library/` paths (it cannot be
+ * imported here). A string handle under `library/` with no `songId` points at a deleted song, so
+ * the document has no handle at all.
+ */
+function hasUsableHandle(file: DocumentFile | undefined, songId: Id | undefined): boolean {
+  if (file?.handle === undefined) return false;
+  return !(
+    typeof file.handle === 'string' &&
+    songId === undefined &&
+    file.handle.startsWith('library/')
+  );
 }
 
 export function createDocumentStore(deps: DocumentStoreDeps) {
@@ -254,14 +328,29 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
   // Whether the file on disk still holds what the read dropped; false once Reprise wrote it as gp.
   let originalHasMore = true;
   let resolvePrompt: ((answer: SaveAnswer) => void) | undefined;
+  let saver: Saver | undefined;
+  // The save in flight, single-use: only its own mark can finish it.
+  let openMark: SaveMark | undefined;
+  // False once an edit follows an undo below the mark's depth: that history point is gone.
+  let markReachable = true;
 
   return create<DocumentState>()((set, get) => {
+    // Keeps the previous object when nothing changed, so a subscriber can compare by identity;
+    // the history hands back the same arrays while a stack is unchanged.
+    const labelsNow = (): HistoryLabels => {
+      const previous = get().historyLabels;
+      const undo = history.undoLabels;
+      const redo = history.redoLabels;
+      return undo === previous.undo && redo === previous.redo ? previous : { undo, redo };
+    };
+
     const snapshot = (notation: Record<Id, Notation> = get().view.notation) => ({
       dirty: depth !== savedDepth || !sameNotation(notation, savedNotation),
       canUndo: history.canUndo,
       canRedo: history.canRedo,
       undoLabel: history.undoLabel,
       redoLabel: history.redoLabel,
+      historyLabels: labelsNow(),
     });
 
     const replay = (step: 'undo' | 'redo') => {
@@ -271,6 +360,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       set((state) => ({
         score: applied.score,
         lastChange: applied.change,
+        lastStep: step,
         revision: state.revision + 1,
         ...snapshot(),
       }));
@@ -295,50 +385,127 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       settlePrompt('cancel');
     };
 
-    const saveAs = async () => {
-      const { score: current, file, saving, view } = get();
-      if (!current || saving) return;
-      const at = depth;
-      const notation = view.notation;
-      const score = withViewNotation(current, notation);
-      const token = documentToken;
-      const name = file ? baseName(file.name) : 'Untitled';
-      let target = `${name}.reprise`;
+    const beginSave = (): SaveMark | undefined => {
+      const { score, saving, view } = get();
+      if (!score || saving) return undefined;
       set({ saving: true });
-      try {
-        const gp = await write(score, 'gp');
-        const answer = await ask({
-          kind: 'save-as',
-          reason: saveAsReason(file?.format),
-          gpLosses: gp.dropped,
+      markReachable = true;
+      openMark = {
+        score: withViewNotation(score, view.notation),
+        notation: view.notation,
+        depth,
+        token: documentToken,
+      };
+      return openMark;
+    };
+
+    // Frees a mark a failing saver left open, so `saving` cannot stay stuck.
+    const releaseMark = () => {
+      openMark = undefined;
+      if (get().saving) set({ saving: false });
+    };
+
+    const finishSave = (mark: SaveMark, outcome: SaveOutcome): boolean => {
+      if (mark !== openMark) return false;
+      openMark = undefined;
+      if (mark.token !== documentToken) {
+        set({ saving: false });
+        return false;
+      }
+      if ('saved' in outcome) {
+        const { name, format, handle, savedKey } = outcome.saved;
+        const { file } = get();
+        // An edit after an undo below the mark made its depth unreachable: still modified.
+        savedDepth = markReachable ? mark.depth : -1;
+        savedNotation = mark.notation;
+        if (format === 'gp') originalHasMore = false;
+        set({
+          file: {
+            name,
+            format,
+            handle,
+            key: file?.key ?? savedKey,
+            savedKeys: [...(file?.savedKeys ?? []), savedKey],
+          },
+          ...('songId' in outcome ? { songId: outcome.songId } : {}),
+          saving: false,
+          ...snapshot(),
         });
-        if (token !== documentToken || !isSaveFormat(answer)) return;
-        target = `${name}.${answer}`;
-        const { bytes } = answer === 'gp' ? gp : await write(score, 'reprise');
+      } else if ('failed' in outcome) {
+        set({ error: errorOf('save', outcome.fileName, outcome.failed), saving: false });
+      } else {
+        set({ saving: false });
+      }
+      return true;
+    };
+
+    const viaSaver = async (run: () => Promise<void>) => {
+      try {
+        await run();
+      } catch (error) {
+        const { file } = get();
+        set({ error: errorOf('save', file?.name ?? 'Untitled', error) });
+        releaseMark();
+      }
+    };
+
+    const builtinSaveAs = async () => {
+      const mark = beginSave();
+      if (!mark) return;
+      const { file } = get();
+      const target = `${file ? baseName(file.name) : 'Untitled'}.reprise`;
+      try {
+        const { bytes } = await write(mark.score, 'reprise');
         const [path, savedKey] = await Promise.all([
-          platform.saveFile(target, bytes, SAVE_FILTERS[answer]),
+          platform.saveFile(target, bytes, REPRISE_FILES),
           contentKey(bytes),
         ]);
         // A cancel and a browser download look the same: nothing to write to again.
-        if (path !== undefined && token === documentToken) {
-          savedDepth = at;
-          savedNotation = notation;
-          if (answer === 'gp') originalHasMore = false;
-          set({
-            file: {
-              name: lastSegment(path),
-              format: answer,
-              handle: path,
-              key: file?.key ?? savedKey,
-              savedKeys: [...(file?.savedKeys ?? []), savedKey],
-            },
-            ...snapshot(),
-          });
-        }
+        finishSave(
+          mark,
+          path === undefined
+            ? { cancelled: true }
+            : {
+                saved: { name: lastSegment(path), format: 'reprise', handle: path, savedKey },
+                // Save As detaches the document from its library song.
+                songId: undefined,
+              },
+        );
       } catch (error) {
-        set({ error: errorOf('save', target, error) });
-      } finally {
-        set({ saving: false });
+        finishSave(mark, { failed: error, fileName: target });
+      }
+    };
+
+    const builtinSave = async () => {
+      const { file, songId } = get();
+      const format = file?.format;
+      if (!file || !hasUsableHandle(file, songId) || !isSaveFormat(format)) {
+        await builtinSaveAs();
+        return;
+      }
+      const { handle } = file;
+      if (handle === undefined) return;
+      const mark = beginSave();
+      if (!mark) return;
+      try {
+        const { bytes, dropped } = await write(mark.score, format);
+        if (format === 'gp') {
+          const losses = originalHasMore ? [...dropped, ...readLosses(get().warnings)] : dropped;
+          if (losses.length > 0) {
+            const answer = await ask({ kind: 'overwrite', fileName: file.name, losses });
+            if (answer !== 'overwrite') {
+              finishSave(mark, { cancelled: true });
+              return;
+            }
+          }
+        }
+        const [, savedKey] = await Promise.all([
+          platform.writeHandle(handle, bytes),
+          contentKey(bytes),
+        ]);
+        finishSave(mark, { saved: { name: file.name, format, handle, savedKey } });
+      } catch (error) {
+        finishSave(mark, { failed: error, fileName: file.name });
       }
     };
 
@@ -355,6 +522,8 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       canRedo: false,
       undoLabel: undefined,
       redoLabel: undefined,
+      historyLabels: noLabels,
+      lastStep: undefined,
       warnings: [],
       warningsOpen: false,
       detailsOpen: false,
@@ -380,7 +549,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       },
 
       async openBytes(name, bytes, options = {}) {
-        const { handle, songId } = options;
+        const { handle, songId, modified = false } = options;
         const token = ++openToken;
         set({ opening: name, error: undefined });
         try {
@@ -392,7 +561,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           if (token !== openToken) return;
           history = createHistory();
           depth = 0;
-          savedDepth = 0;
+          savedDepth = modified ? -1 : 0;
           savedNotation = {};
           forgetDocument();
           set((state) => ({
@@ -405,6 +574,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
             songId,
             view: emptyView(),
             lastChange: undefined,
+            lastStep: undefined,
             revision: state.revision + 1,
             warnings,
             warningsOpen: warnings.some((warning) => warning.severity !== 'info'),
@@ -416,6 +586,32 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           if (token !== openToken) return;
           set({ opening: undefined, error: errorOf('open', name, error) });
         }
+      },
+
+      newDocument(score, options = {}) {
+        // Drops an open still reading, so it cannot replace this document when it lands.
+        openToken += 1;
+        history = createHistory();
+        depth = 0;
+        savedDepth = options.modified === true ? -1 : 0;
+        savedNotation = {};
+        forgetDocument();
+        set((state) => ({
+          id: newId(),
+          score,
+          file: undefined,
+          songId: undefined,
+          view: emptyView(),
+          lastChange: undefined,
+          lastStep: undefined,
+          revision: state.revision + 1,
+          warnings: [],
+          warningsOpen: false,
+          detailsOpen: false,
+          opening: undefined,
+          error: undefined,
+          ...snapshot({}),
+        }));
       },
 
       close() {
@@ -432,6 +628,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           songId: undefined,
           view: emptyView(),
           lastChange: undefined,
+          lastStep: undefined,
           revision: state.revision + 1,
           warnings: [],
           warningsOpen: false,
@@ -452,10 +649,12 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
         const applied = history.apply(score, command);
         if (applied.change.patches.length === 0) return applied.warnings;
         if (depth < savedDepth) savedDepth = -1;
+        if (openMark && depth < openMark.depth) markReachable = false;
         depth += 1;
         set((state) => ({
           score: applied.score,
           lastChange: applied.change,
+          lastStep: 'apply',
           revision: state.revision + 1,
           ...snapshot(),
         }));
@@ -470,43 +669,19 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       },
 
       async save() {
-        const { score: current, file, saving, view } = get();
-        if (!current || saving) return;
-        const format = file?.format;
-        if (file?.handle === undefined || !isSaveFormat(format)) {
-          await saveAs();
-          return;
-        }
-        const at = depth;
-        const notation = view.notation;
-        const token = documentToken;
-        set({ saving: true });
-        try {
-          const { bytes, dropped } = await write(withViewNotation(current, notation), format);
-          if (format === 'gp') {
-            const losses = originalHasMore ? [...dropped, ...readLosses(get().warnings)] : dropped;
-            if (losses.length > 0) {
-              const answer = await ask({ kind: 'overwrite', fileName: file.name, losses });
-              if (answer !== 'overwrite' || token !== documentToken) return;
-            }
-          }
-          const [, savedKey] = await Promise.all([
-            platform.writeHandle(file.handle, bytes),
-            contentKey(bytes),
-          ]);
-          if (token !== documentToken) return;
-          savedDepth = at;
-          savedNotation = notation;
-          if (format === 'gp') originalHasMore = false;
-          set({ file: { ...file, savedKeys: [...file.savedKeys, savedKey] }, ...snapshot() });
-        } catch (error) {
-          set({ error: errorOf('save', file.name, error) });
-        } finally {
-          set({ saving: false });
-        }
+        await viaSaver(() => (saver ? saver.save(builtinSave) : builtinSave()));
       },
 
-      saveAs,
+      async saveAs() {
+        await viaSaver(() => (saver ? saver.saveAs(builtinSaveAs) : builtinSaveAs()));
+      },
+
+      beginSave,
+      finishSave,
+
+      setSaver(next) {
+        saver = next;
+      },
 
       setVisibleTracks(tracks) {
         set((state) => ({ view: { ...state.view, tracks } }));

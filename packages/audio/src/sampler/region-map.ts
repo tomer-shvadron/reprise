@@ -10,6 +10,21 @@ export interface Envelope {
   decay: number;
   sustain: number;
   release: number;
+  /**
+   * SF2's `keynumToVolEnvHold` and `keynumToVolEnvDecay`, in timecents per key: `hold` and `decay`
+   * above are the values at key 60, and the voice scales them for the struck key with
+   * `keyScaledTime`. Absent is 0, no scaling.
+   */
+  holdPerKey?: number;
+  decayPerKey?: number;
+}
+
+/**
+ * `seconds` (the value at key 60) moved for `key` by `perKey` timecents per key below middle C:
+ * 2 ** (timecents / 1200) is SF2's timecents-to-seconds, so adding timecents multiplies.
+ */
+export function keyScaledTime(seconds: number, perKey: number | undefined, key: number): number {
+  return perKey ? seconds * 2 ** ((perKey * (60 - key)) / 1200) : seconds;
 }
 
 /** A modulator's input: a note-on value, shaped by SF2 2.04's curve, polarity and direction (8.2). */
@@ -147,6 +162,9 @@ export interface Region {
       hold: number;
       decay: number;
       sustain: number;
+      /** `keynumToModEnvHold` and `keynumToModEnvDecay`, as on `Envelope`: `hold` and `decay` are at key 60. */
+      holdPerKey?: number;
+      decayPerKey?: number;
     };
   };
   /**
@@ -171,8 +189,16 @@ export interface Region {
    * one-way choke (a closed hi-hat cuts the open one, not the reverse).
    */
   offBy?: number;
-  /** Absent plays at note-on (SFZ `attack`); `release` regions are kept but not played yet. */
+  /**
+   * Absent plays at note-on (SFZ `attack`). A `release` region plays at the note's note-off, as a
+   * one-shot outside the string choke (`RegionMap.resolveRelease`, `VoiceHandle.release`).
+   */
   trigger?: 'release' | 'first' | 'legato';
+  /**
+   * SFZ `rt_decay`, release regions only: dB of attenuation per second the note was held before
+   * its release, so a long note's release noise is quieter than a short one's. Absent is 0.
+   */
+  releaseDecay?: number;
   /** SFZ `seq_length` / `seq_position` (1-based): a round robin. */
   sequence?: { length: number; position: number };
   /** SFZ `lorand` / `hirand`, 0..1: plays when `lo <= random < hi`. */
@@ -220,6 +246,10 @@ function distance(value: number, lo: number, hi: number): number {
  */
 export class RegionMap {
   readonly regions: readonly Region[];
+  /** Whether any region triggers on release: a map without them (every SF2 preset) skips `resolveRelease`. */
+  readonly hasReleaseRegions: boolean;
+  /** Whether any region plays only on a hammer-on or pull-off (`trigger=legato`). */
+  readonly hasLegatoRegions: boolean;
   readonly #layers = new Map<
     string | undefined,
     { all: Region[]; byKey: Region[][]; selections?: RegionSelection[] }
@@ -231,6 +261,8 @@ export class RegionMap {
       checkRange('Velocity', region.velLo, region.velHi);
     }
     this.regions = regions;
+    this.hasReleaseRegions = regions.some((region) => region.trigger === 'release');
+    this.hasLegatoRegions = regions.some((region) => region.trigger === 'legato');
     for (const region of regions) {
       let layer = this.#layers.get(region.layer);
       if (!layer) {
@@ -240,6 +272,15 @@ export class RegionMap {
       layer.all.push(region);
       for (let key = region.keyLo; key <= region.keyHi; key += 1) layer.byKey[key]?.push(region);
     }
+  }
+
+  /**
+   * Whether the layer a note plays has `trigger=legato` regions, with the same layer fallback as
+   * `resolveAll`: a pack whose legato regions sit in another keyswitch layer gives a hammer-on
+   * here nothing to start.
+   */
+  hasLegatoRegionsIn(layer?: string): boolean {
+    return this.#set(layer)?.all.some((region) => region.trigger === 'legato') ?? false;
   }
 
   get layers(): string[] {
@@ -252,7 +293,8 @@ export class RegionMap {
   }
 
   /**
-   * The regions a note on this key starts. Release regions never start at note-on; `first`
+   * The regions a note on this key starts. Release regions never start at note-on (see
+   * `resolveRelease`); `first`
    * regions play unless `select.legato`, `legato` regions only with it; a sequence region plays
    * when `((select.sequence ?? 0) % length) + 1` is its position, a random region when
    * `lo <= (select.random ?? 0) < hi`. The nearest-region fallback searches only the regions that
@@ -263,17 +305,43 @@ export class RegionMap {
   }
 
   /**
-   * Every region a note on this key and velocity could start across all round-robin and random
-   * positions and both legato states; release regions excluded. What a preload must make resident.
-   * The nearest-region fallback depends on the selection (it searches only the regions that
-   * pass), so it runs once per distinct selection and the results are united.
+   * The release regions the note-off of a note on this key starts, with the same layer fallback
+   * and the same `select` counters as `resolveAll` (a sequence or random release region plays
+   * only when it passes). Key and velocity match exactly, with no nearest-region fallback: a
+   * release region is limited by key or velocity on purpose, so a note-off outside them is
+   * silent, as in SFZ. A map with none returns nothing, and an SF2 map never has any.
+   */
+  resolveRelease(
+    key: number,
+    velocity: number,
+    layer?: string,
+    select?: RegionSelection,
+  ): Region[] {
+    if (!this.hasReleaseRegions) return [];
+    return this.#match(
+      key,
+      velocity,
+      layer,
+      (region) => region.trigger === 'release' && passes(region, select),
+      true,
+    );
+  }
+
+  /**
+   * Every region a note on this key and velocity could start, or release, across all round-robin
+   * and random positions and both legato states: what a preload must make resident, since a
+   * release region has to be there at the note-off. The nearest-region fallback depends on the
+   * selection (it searches only the regions that pass), so it runs once per distinct selection
+   * and the results are united.
    */
   candidates(key: number, velocity: number, layer?: string): Region[] {
-    const found = new Set(
-      this.#match(key, velocity, layer, (region) => region.trigger !== 'release'),
-    );
+    const found = new Set([
+      ...this.#match(key, velocity, layer, (region) => region.trigger !== 'release'),
+      ...this.#match(key, velocity, layer, (region) => region.trigger === 'release', true),
+    ]);
     for (const select of this.#selections(layer)) {
       for (const region of this.resolveAll(key, velocity, layer, select)) found.add(region);
+      for (const region of this.resolveRelease(key, velocity, layer, select)) found.add(region);
     }
     return [...found];
   }
@@ -319,6 +387,7 @@ export class RegionMap {
     velocity: number,
     layer: string | undefined,
     accept: (region: Region) => boolean,
+    exactOnly = false,
   ): Region[] {
     const set = this.#set(layer);
     if (!set) return [];
@@ -326,7 +395,7 @@ export class RegionMap {
       set.byKey[key]?.filter(
         (region) => velocity >= region.velLo && velocity <= region.velHi && accept(region),
       ) ?? [];
-    if (exact.length > 0) return exact;
+    if (exact.length > 0 || exactOnly) return exact;
 
     let best: Region | undefined;
     let bestKey = Infinity;
@@ -346,10 +415,16 @@ export class RegionMap {
 }
 
 function plays(region: Region, select: RegionSelection | undefined): boolean {
-  const { trigger, sequence, random } = region;
+  const { trigger } = region;
   if (trigger === 'release') return false;
   if (trigger === 'first' && select?.legato) return false;
   if (trigger === 'legato' && !select?.legato) return false;
+  return passes(region, select);
+}
+
+/** The round-robin and random tests, shared by note-on and release regions. */
+function passes(region: Region, select: RegionSelection | undefined): boolean {
+  const { sequence, random } = region;
   if (sequence && ((select?.sequence ?? 0) % sequence.length) + 1 !== sequence.position) {
     return false;
   }

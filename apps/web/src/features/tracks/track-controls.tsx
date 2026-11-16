@@ -15,7 +15,7 @@ import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { InstrumentLoad } from '@/state/playback';
 
-import { GM_DRUM_KITS, GM_FAMILIES, GM_PROGRAMS } from './gm-programs';
+import { GM_DRUM_KITS, GM_FAMILIES, GM_PROGRAMS } from '@/lib/gm-programs';
 import type { TrackActions } from './track-actions';
 import { NOTATION_NAMES, NO_TAB_REASON, notationChoices, panText, volumeText } from './track-model';
 

@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { setTrackVisible } from '@/features/tracks/track-actions';
+import { installPracticeLog } from '@/features/trainer';
 import { mirrorAudio } from '@/test/mirror-audio';
 import { renderWithServices } from '@/test/render';
 import { createTestServices, fakePlatform } from '@/test/services';
@@ -240,5 +241,62 @@ describe('reopening a song', () => {
     await expect(library.openSong(row.id)).resolves.toBeUndefined();
     expect(library.store.getState().error).toMatch(/disk gone/);
     expect(services.document.getState().score).toBeUndefined();
+  });
+});
+
+describe('the practice log page', () => {
+  async function withLog() {
+    const { services, library } = setup();
+    const alpha = await addSong(library, 'Alpha');
+    const beta = await addSong(library, 'Beta');
+    for (const song of [alpha, beta]) {
+      await library.db.practiceSessions.add({
+        id: `LOG${song.id.slice(3)}`,
+        songId: song.id,
+        startedAt: 1000,
+        endedAt: 301_000,
+        playedMs: 5 * 60_000,
+        loops: [],
+        tempoHistory: [],
+      });
+    }
+    cleanups.push(installPracticeLog(services, library.db.practiceSessions));
+    renderWithServices(<LibraryScreen />, services);
+    await screen.findByRole('option', { name: /Alpha/ });
+    return { services, alpha, beta };
+  }
+  const cleanups: (() => void)[] = [];
+  afterEach(() => {
+    for (const cleanup of cleanups.splice(0)) cleanup();
+  });
+  const listbox = () => screen.getByRole('listbox', { name: 'Songs' });
+
+  it('opens from a row, closes on Escape even after a click on its text, and refocuses the row', async () => {
+    const { beta } = await withLog();
+    await userEvent.click(screen.getByRole('button', { name: 'Practice log for Beta' }));
+    expect(await screen.findByRole('heading', { name: 'Beta' })).toBeInTheDocument();
+    expect((await screen.findAllByText('5 min')).length).toBeGreaterThan(0);
+
+    // A click on plain text moves focus off the heading; Escape must still close the page.
+    await userEvent.click(await screen.findByText(/Total practice time/));
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('heading', { name: 'Beta' })).not.toBeInTheDocument();
+    expect(listbox()).toHaveFocus();
+    expect(listbox()).toHaveAttribute('aria-activedescendant', `song-${beta.id}`);
+  });
+
+  it('returns focus to the list on the same row after Back', async () => {
+    const { beta } = await withLog();
+    await userEvent.click(screen.getByRole('button', { name: 'Practice log for Beta' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Back' }));
+    expect(listbox()).toHaveFocus();
+    expect(listbox()).toHaveAttribute('aria-activedescendant', `song-${beta.id}`);
+  });
+
+  it('opens the active row’s page with L from the list', async () => {
+    await withLog();
+    listbox().focus();
+    await userEvent.keyboard('{ArrowDown}l');
+    expect(await screen.findByRole('heading', { name: 'Beta' })).toBeInTheDocument();
   });
 });

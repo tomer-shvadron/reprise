@@ -205,7 +205,11 @@ export function text(
   x: number,
   y: number,
   size: number,
-  options: Common & { anchor?: TextPrimitive['anchor']; italic?: boolean } = {},
+  options: Common & {
+    anchor?: TextPrimitive['anchor'];
+    italic?: boolean;
+    lane?: TextPrimitive['lane'];
+  } = {},
 ): TextPrimitive {
   const anchor = options.anchor ?? 'start';
   const width = textWidth(content, size);
@@ -220,6 +224,7 @@ export function text(
     anchor,
     italic: options.italic ?? false,
     bbox: rect(left, y - ascent, width, ascent + descent),
+    ...(options.lane !== undefined && { lane: options.lane }),
     ...common(options),
   };
 }

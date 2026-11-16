@@ -1,7 +1,8 @@
-import { cp, lstat, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, sep } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { cp, lstat, mkdir, open, readdir, readFile, rename, rm } from 'node:fs/promises';
+import { basename, dirname, join, sep } from 'node:path';
 
-import type { DirEntry, StorageRoot } from '@reprise/web';
+import type { DirEntry, ReadRange, StorageRoot } from '@reprise/web';
 
 import { parseStoragePath, StoragePathError } from './storage-path';
 
@@ -65,6 +66,8 @@ export async function listDirIn(roots: StorageRoots, path: unknown): Promise<Dir
   }
   return entries
     .flatMap((entry): DirEntry[] => {
+      // A write in flight, or one a crash left behind, is not a file of the app's.
+      if (TEMP_NAME.test(entry.name)) return [];
       // Symlinks and special files are not ours to list: the other calls refuse to follow them.
       if (entry.isFile()) return [{ name: entry.name, kind: 'file' }];
       if (entry.isDirectory()) return [{ name: entry.name, kind: 'directory' }];
@@ -127,18 +130,165 @@ export async function removeIn(roots: StorageRoots, path: unknown): Promise<void
   await rm(await resolveSafe(roots, path, { allowRoot: false }), { recursive: true, force: true });
 }
 
-/** The bytes of a file under a root; never follows a symlink, and a root is not a file. */
-export async function readFileIn(roots: StorageRoots, path: unknown): Promise<Uint8Array> {
-  return readFile(await resolveSafe(roots, path, { allowRoot: false }));
+/**
+ * The absolute path of a file or folder below a root, symlink-checked; a root itself is refused.
+ * For callers that write there themselves (the download's `.part` file).
+ */
+export function resolveStoragePath(roots: StorageRoots, path: unknown): Promise<string> {
+  return resolveSafe(roots, path, { allowRoot: false });
 }
 
-/** Writes a file under a root, making the folders above it, as the browser and the test double do. */
+/**
+ * `range`'s bytes of the file at `path`, read at that position: a range past the end returns the
+ * bytes that exist (none when it starts at or past the end), as the browser's `Blob.slice` does.
+ * The range is checked by the caller (`parseReadRange`).
+ */
+export async function readRangeOf(path: string, range: ReadRange): Promise<Uint8Array> {
+  const file = await open(path, 'r');
+  try {
+    const { size } = await file.stat();
+    const length = Math.max(0, Math.min(range.length, size - range.offset));
+    const bytes = new Uint8Array(length);
+    let filled = 0;
+    while (filled < length) {
+      const { bytesRead } = await file.read(bytes, filled, length - filled, range.offset + filled);
+      // The file shrank under us: return what is there rather than spin.
+      if (bytesRead === 0) return bytes.subarray(0, filled);
+      filled += bytesRead;
+    }
+    return bytes;
+  } finally {
+    await file.close();
+  }
+}
+
+/** The bytes of a file under a root; never follows a symlink, and a root is not a file. */
+export async function readFileIn(
+  roots: StorageRoots,
+  path: unknown,
+  range?: ReadRange,
+): Promise<Uint8Array> {
+  const resolved = await resolveSafe(roots, path, { allowRoot: false });
+  return range ? readRangeOf(resolved, range) : readFile(resolved);
+}
+
+/**
+ * `.name.<12 hex>.tmp`, the sibling a write goes through before it replaces its target, and
+ * `.name.<12 hex>.part`, the one a download streams into.
+ */
+const TEMP_NAME = /^\..+\.[0-9a-f]{12}\.(tmp|part)$/;
+/** Keeps the temp name inside the 255 characters a file name may have; a segment can be 255. */
+export const TEMP_BASENAME_MAX = 200;
+
+/** The fs calls `writeFileIn` makes, so a test can make one of them fail. */
+export interface WriteOps {
+  open: typeof open;
+  rename: typeof rename;
+  rm: typeof rm;
+  /** Defaults to the running platform; only win32 retries a rename. */
+  platform?: NodeJS.Platform;
+  /** Pauses between rename attempts. */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+export const realWriteOps: WriteOps = { open, rename, rm };
+
+/** About a second in all: what `graceful-fs` and `write-file-atomic` wait out too. */
+const RENAME_RETRY_DELAYS_MS = [10, 30, 60, 100, 200, 300, 300];
+const RETRIED_ON_WINDOWS = new Set(['EPERM', 'EACCES', 'EBUSY']);
+
+/**
+ * On Windows a rename can fail for a moment while a scanner, the indexer or a sync client holds
+ * the just-closed temp file or the target without delete sharing.
+ */
+export async function renameWithRetry(ops: WriteOps, from: string, to: string): Promise<void> {
+  const platform = ops.platform ?? process.platform;
+  const sleep = ops.sleep ?? ((ms: number) => new Promise<void>((done) => setTimeout(done, ms)));
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await ops.rename(from, to);
+      return;
+    } catch (error) {
+      const delay = RENAME_RETRY_DELAYS_MS[attempt];
+      if (
+        platform !== 'win32' ||
+        delay === undefined ||
+        !RETRIED_ON_WINDOWS.has(String(codeOf(error)))
+      ) {
+        throw error;
+      }
+      await sleep(delay);
+    }
+  }
+}
+
+/**
+ * Writes a file under a root, making the folders above it, as the browser and the test double do.
+ * The bytes go to a temp file in the same folder, are fsynced, and replace the target in one
+ * `rename`, so a kill of the process mid-write leaves the old file whole, never half of the new
+ * one. That is protection against a process kill, not power loss: the folder is not fsynced, and
+ * macOS needs `F_FULLFSYNC` to flush the drive cache. A replace resets the file's mode and drops
+ * its extended attributes (Finder tags) too. A temp file a crash leaves behind is removed by
+ * `sweepTempFiles` at the next start.
+ */
 export async function writeFileIn(
   roots: StorageRoots,
   path: unknown,
   bytes: Uint8Array,
+  ops: WriteOps = realWriteOps,
 ): Promise<void> {
   const target = await resolveSafe(roots, path, { allowRoot: false });
   await mkdir(dirname(target), { recursive: true });
-  await writeFile(target, bytes);
+  const name = basename(target).slice(0, TEMP_BASENAME_MAX);
+  const temp = join(dirname(target), `.${name}.${randomBytes(6).toString('hex')}.tmp`);
+  try {
+    // `wx` never reuses a name, so two writes of one file cannot share a temp file.
+    const file = await ops.open(temp, 'wx');
+    try {
+      await file.writeFile(bytes);
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    await renameWithRetry(ops, temp, target);
+  } catch (error) {
+    await ops.rm(temp, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
+/**
+ * Removes the temp and `.part` files of writes and downloads a crash cut short, under every root, when they are older than
+ * `maxAgeMs` (a write in flight is newer). Never follows a symlink; unreadable folders are skipped.
+ */
+export async function sweepTempFiles(
+  roots: StorageRoots,
+  { now = Date.now(), maxAgeMs = 60_000 }: { now?: number; maxAgeMs?: number } = {},
+): Promise<number> {
+  let removed = 0;
+  const walk = async (dir: string): Promise<void> => {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(path);
+      } else if (entry.isFile() && TEMP_NAME.test(entry.name)) {
+        try {
+          if (now - (await lstat(path)).mtimeMs > maxAgeMs) {
+            await rm(path, { force: true });
+            removed += 1;
+          }
+        } catch {
+          // Gone already, or not ours to touch: the next start tries again.
+        }
+      }
+    }
+  };
+  for (const root of Object.values(roots)) await walk(root);
+  return removed;
 }

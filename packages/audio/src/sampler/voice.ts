@@ -1,4 +1,4 @@
-import { evaluateModulators } from './region-map';
+import { evaluateModulators, keyScaledTime } from './region-map';
 import type { ModulatorDeltas, Region, RegionMap } from './region-map';
 
 /** -80 dB: the floor exponential ramps aim at, since they cannot reach zero. */
@@ -51,6 +51,7 @@ function regionFilter(
   spec: NonNullable<Region['filter']>,
   deltas: ModulatorDeltas | undefined,
   when: number,
+  key: number,
 ): BiquadFilterNode | undefined {
   const nyquist = context.sampleRate / 2;
   if (!deltas && !spec.envelope) {
@@ -85,12 +86,12 @@ function regionFilter(
     const top = start + Math.max(envelope.attack, MIN_ATTACK);
     node.frequency.setValueAtTime(hz(rest), start);
     node.frequency.exponentialRampToValueAtTime(hz(peak), top);
-    const holdEnd = top + envelope.hold;
+    const holdEnd = top + keyScaledTime(envelope.hold, envelope.holdPerKey, key);
     node.frequency.setValueAtTime(hz(peak), holdEnd);
     if (envelope.sustain < 1) {
       node.frequency.exponentialRampToValueAtTime(
         hz(settled),
-        holdEnd + Math.max(envelope.decay, MIN_ATTACK),
+        holdEnd + Math.max(keyScaledTime(envelope.decay, envelope.decayPerKey, key), MIN_ATTACK),
       );
     }
   }
@@ -108,8 +109,12 @@ export interface VoiceStart {
   offset?: number;
   /** 0 when the note has no string to choke. */
   string?: number;
+  /** An editor preview: it chokes and is choked by previews only, never by the song's notes. */
+  preview?: boolean;
   /** The map the region came from: exclusive classes choke within one instrument. */
   instrument?: RegionMap;
+  /** A release region's voice: it never steals a slot and is the first a later note steals. */
+  tail?: boolean;
 }
 
 export interface FilterSettings {
@@ -140,10 +145,13 @@ export class Voice {
   readonly key: number;
   readonly velocity: number;
   readonly string: number;
+  readonly preview: boolean;
   readonly startTime: number;
   /** The group that chokes this voice; a new note's own groups are read off its regions. */
   readonly offBy: number;
   readonly oneShot: boolean;
+  /** A release region's voice: decoration, the first thing lost at the polyphony cap. */
+  readonly tail: boolean;
   readonly instrument: RegionMap | undefined;
   letRing = false;
 
@@ -157,6 +165,7 @@ export class Voice {
   readonly #gainEvents: GainEvent[];
   readonly #delay: number;
   readonly #attack: number;
+  readonly #hold: number;
   readonly #decay: number;
   readonly #sustain: number;
   readonly #playable: number;
@@ -183,14 +192,23 @@ export class Voice {
     this.key = start.key;
     this.velocity = start.velocity;
     this.string = start.string ?? 0;
+    this.preview = start.preview ?? false;
     this.startTime = when;
     this.offBy = region.offBy ?? region.exclusiveClass ?? 0;
     this.oneShot = region.oneShot ?? false;
+    this.tail = start.tail ?? false;
     this.instrument = start.instrument;
     this.#region = region;
     this.#delay = Math.max(envelope.delay ?? 0, 0);
     this.#attack = Math.max(envelope.attack, MIN_ATTACK);
-    this.#decay = Math.max(envelope.decay, MIN_ATTACK);
+    // A key outside the region's range (the map falls back to the nearest region) keeps the
+    // edge key's timing, as the per-key regions this replaces did.
+    const scaleKey = Math.min(Math.max(start.key, region.keyLo), region.keyHi);
+    this.#hold = keyScaledTime(envelope.hold, envelope.holdPerKey, scaleKey);
+    this.#decay = Math.max(
+      keyScaledTime(envelope.decay, envelope.decayPerKey, scaleKey),
+      MIN_ATTACK,
+    );
     this.#sustain = Math.min(1, Math.max(0, envelope.sustain));
     this.#releaseTime = Math.max(envelope.release, MIN_RELEASE);
     this.#rate = 2 ** ((start.key - region.rootKey + region.tune / 100) / 12);
@@ -231,7 +249,7 @@ export class Voice {
     this.#gainEvents = [{ at: when, value: this.#baseLevel, ramp: false }];
 
     const nodes: AudioNode[] = [source, this.#envelope];
-    const lowpass = region.filter && regionFilter(context, region.filter, deltas, when);
+    const lowpass = region.filter && regionFilter(context, region.filter, deltas, when, scaleKey);
     if (lowpass) nodes.push(lowpass);
     nodes.push(this.#filter, this.#level);
     if (region.pan) {
@@ -258,6 +276,12 @@ export class Voice {
     });
     source.start(when, offset);
   }
+
+  /**
+   * The release voices queued for this note. A choke or steal at `t` cancels those that have not
+   * started by `t`: a cut note has no tail. Tails already sounding are left to play out.
+   */
+  readonly tails: Voice[] = [];
 
   get released(): boolean {
     return this.#releaseAt !== Infinity;
@@ -288,12 +312,34 @@ export class Voice {
 
   /** A fast fade for stealing, short enough not to count against the new note. */
   kill(at: number): void {
+    // A tail that has not started never sounds: cancel it rather than fade it in at its start.
+    if (this.tail && this.startTime > at) {
+      this.cancel();
+      return;
+    }
     this.#fadeOut(at, STEAL_FADE, 0);
+    this.#cancelTails(at);
   }
 
   /** A new note on the same string: a short fade instead of the region's full release. */
   choke(at: number): void {
     this.#fadeOut(at, CHOKE_FADE, 0);
+    this.#cancelTails(at);
+  }
+
+  /** Silences a voice that has not started: no fade, since it never sounds. */
+  cancel(): void {
+    if (this.#ended) return;
+    this.#releaseAt = this.startTime;
+    this.#end = -Infinity;
+    const gain = this.#envelope.gain;
+    gain.cancelScheduledValues(0);
+    gain.setValueAtTime(0, 0);
+    this.#source.stop(0);
+  }
+
+  #cancelTails(at: number): void {
+    for (const tail of this.tails) if (tail.startTime > at) tail.cancel();
   }
 
   /** Relative to the note's own pitch, in semitones; fractions are cents. */
@@ -399,7 +445,7 @@ export class Voice {
     let elapsed = time - this.startTime - this.#delay;
     if (elapsed < 0) return 0;
     if (elapsed < this.#attack) return elapsed / this.#attack;
-    elapsed -= this.#attack + this.#region.envelope.hold;
+    elapsed -= this.#attack + this.#hold;
     if (elapsed < 0 || this.#sustain >= 1) return 1;
     if (elapsed < this.#decay) return Math.max(this.#sustain, SILENCE) ** (elapsed / this.#decay);
     return this.#sustain;
@@ -414,7 +460,7 @@ export class Voice {
     const peak = when + this.#attack;
     gain.linearRampToValueAtTime(1, peak);
     if (this.#sustain >= 1) return;
-    const decayStart = peak + this.#region.envelope.hold;
+    const decayStart = peak + this.#hold;
     gain.setValueAtTime(1, decayStart);
     const decayEnd = decayStart + this.#decay;
     gain.exponentialRampToValueAtTime(Math.max(this.#sustain, SILENCE), decayEnd);

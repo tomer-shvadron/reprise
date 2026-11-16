@@ -1,5 +1,9 @@
 import {
   applyCommand,
+  chain,
+  insertBeat,
+  newId,
+  removeBeat,
   setBeatDuration,
   setNote,
   setNoteEffect,
@@ -247,8 +251,10 @@ const segmentStarts = (systems: readonly { bars: { start: number } }[]): string 
 
 /**
  * Each edit's layout is timed alone, because an edit that keeps every segment break re-renders
- * three segments and one that moves a break re-renders until the breaks realign, so one p50 over
- * the mix flips between the two groups.
+ * three segments and one that would move a break re-renders more, so one p50 over the mix flips
+ * between the two groups. Segment breaks are stable (#147): the cached layout keeps them where
+ * they were while their segments fit, so an edit's kind is judged, untimed, by a cold layout of the
+ * score before and after it, whose breaks are greedy, as the paged bench judges page breaks.
  */
 async function rhythmBench(
   context: TestContext,
@@ -257,10 +263,12 @@ async function rhythmBench(
 ): Promise<{ p50: number; note: string }> {
   const cache = new LayoutCache();
   let score = longScore();
-  let starts = segmentStarts(layout(score, continuous, cache).systems);
+  layout(score, continuous, cache);
+  let starts = segmentStarts(layout(score, continuous).systems);
+  let moved = false;
   let count = 0;
   let dirtyBars: string[] = [];
-  const edits: { ms: number; moved: boolean }[] = [];
+  const edits: { ms: number; moved: boolean; rendered: number }[] = [];
   await context
     .bench(
       `${name} (all edits, unsplit)`,
@@ -270,28 +278,32 @@ async function rhythmBench(
           count += 1;
           score = next.score;
           dirtyBars = next.change.touchedBars;
+          const after = segmentStarts(layout(score, continuous).systems);
+          moved = after !== starts;
+          starts = after;
         },
       },
       () => {
         const began = now();
-        const { systems } = layout(score, { ...continuous, dirtyBars }, cache);
+        const { systems, metrics } = layout(score, { ...continuous, dirtyBars }, cache);
         const ms = now() - began;
-        const after = segmentStarts(systems);
-        edits.push({ ms, moved: after !== starts });
-        starts = after;
+        edits.push({ ms, moved, rendered: systems.length - metrics.reusedSystems });
       },
     )
     .run(RHYTHM_RUN);
   // tinybench calls the function once before any beforeEach, to see whether it is async.
   const timed = edits.slice(-RHYTHM_RUN.iterations);
-  const mine = timed.filter(({ moved }) => moved === (kind === 'moves')).map(({ ms }) => ms);
+  const chosen = timed.filter(({ moved }) => moved === (kind === 'moves'));
+  const mine = chosen.map(({ ms }) => ms);
   expect(
     mine.length,
     `${name}: ${String(mine.length)} edits ${kind === 'keeps' ? 'kept' : 'moved'} the segment breaks, expected ${String(EDITS_OF_KIND[kind])}`,
   ).toBe(EDITS_OF_KIND[kind]);
   const p50 = median(mine);
+  // With the breaks stable an edit renders about three systems; a larger count is a re-break.
+  const rendered = chosen.map((edit) => edit.rendered);
   await context.annotate(
-    `${name}: p50 ${String(round(p50))} ms over ${String(mine.length)} of ${String(timed.length)} edits`,
+    `${name}: p50 ${String(round(p50))} ms, max ${String(round(Math.max(...mine)))} ms over ${String(mine.length)} of ${String(timed.length)} edits, systems rendered median ${String(median(rendered))}, max ${String(Math.max(...rendered))}`,
   );
   return {
     p50,
@@ -308,8 +320,68 @@ test('Re-layout after a rhythm edit, continuous', RELAYOUT_BENCH, async (context
 test('Re-layout after a segment-break-moving edit, continuous', RELAYOUT_BENCH, async (context) => {
   const metric = 'Re-layout after a segment-break-moving edit, continuous';
   const { p50, note } = await rhythmBench(context, metric, 'moves');
-  await recordMeasurement(context, metric, p50, note);
+  await checkBudget(context, metric, p50, { enforced: true, note });
 });
+
+/**
+ * One note-entry keystroke as the editor sends it: a composed `enterNote` (insert a beat of the
+ * rhythm, set its note) through `applyCommand`, then the cached continuous re-layout of the bar it
+ * touched. Each edit first takes the last beat out of a different bar, untimed, so the entry has
+ * room. No budget: the row reports where a keystroke's time goes, the model side (it validates
+ * one track per step) against layout.
+ */
+test(
+  'Note entry keystroke (apply + re-layout), continuous, long score',
+  RELAYOUT_BENCH,
+  async (context) => {
+    const metric = 'Note entry keystroke (apply + re-layout), continuous, long score';
+    const cache = new LayoutCache();
+    let score = longScore();
+    layout(score, continuous, cache);
+    let count = 0;
+    let pending: ReturnType<typeof chain> | undefined;
+    const timings: { apply: number; layout: number }[] = [];
+    const result = await context
+      .bench(
+        metric,
+        {
+          beforeEach() {
+            const track = count % 8;
+            const bar = 100 + count;
+            count += 1;
+            const voice = score.tracks[track]?.bars[bar]?.voices[0];
+            const last = voice?.beats.at(-1);
+            if (!voice || !last) throw new Error(`no beat to make room in bar ${String(bar)}`);
+            score = applyCommand(score, removeBeat({ beatId: last.id })).score;
+            const id = newId();
+            pending = chain('enterNote', [
+              insertBeat(
+                { voiceId: voice.id, index: voice.beats.length - 1, id },
+                { duration: last.duration, dots: last.dots },
+              ),
+              setNote({ beatId: id }, { string: 1, fret: 5 }),
+            ]);
+          },
+        },
+        () => {
+          if (!pending) return;
+          const began = now();
+          const applied = applyCommand(score, pending);
+          const applyDone = now();
+          score = applied.score;
+          layout(score, { ...continuous, dirtyBars: applied.change.touchedBars }, cache);
+          timings.push({ apply: applyDone - began, layout: now() - applyDone });
+        },
+      )
+      .run(RUN);
+    // tinybench calls the function once before any beforeEach, to see whether it is async.
+    const timed = timings.slice(-RUN.iterations);
+    await context.annotate(
+      `${metric}: apply p50 ${String(round(median(timed.map((t) => t.apply))))} ms, re-layout p50 ${String(round(median(timed.map((t) => t.layout))))} ms, max total ${String(round(result.latency.max))} ms`,
+    );
+    await recordMeasurement(context, metric, result.latency.p50);
+  },
+);
 
 /**
  * The first dynamic in a system adds a lane, and once a page overflows every later page starts a

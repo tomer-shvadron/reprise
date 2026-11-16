@@ -19,7 +19,14 @@ function fakeBridge(): RepriseBridge {
     dataDir: vi.fn(() => Promise.resolve('/Users/me/Library/Application Support/Reprise')),
     print: vi.fn(() => Promise.resolve(undefined)),
     onMenuCommand: vi.fn(() => () => undefined),
+    setHistoryLabels: vi.fn(() => Promise.resolve(undefined)),
     onOpenRecent: vi.fn(() => () => undefined),
+    setDocumentEdited: vi.fn(() => Promise.resolve(undefined)),
+    confirmClose: vi.fn(() => Promise.resolve(undefined)),
+    startDownload: vi.fn(() => Promise.resolve({ size: 0 })),
+    cancelDownload: vi.fn(() => Promise.resolve(undefined)),
+    onDownloadProgress: vi.fn(() => () => undefined),
+    onCloseRequest: vi.fn(() => () => undefined),
   };
 }
 

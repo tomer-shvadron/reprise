@@ -1,4 +1,7 @@
+import { HQ_BUDGET_BYTES } from '@reprise/audio';
 import { describe, expect, it } from 'vitest';
+
+import { MEMORY_BUDGET_RANGE } from '@/app/audio/audio-service';
 
 import { memoryStorage } from '@/test/services';
 
@@ -26,12 +29,37 @@ describe('transport preferences', () => {
       readTransportPreferences(
         stored(JSON.stringify({ countIn: true, metronome: { volume: 3 }, masterVolume: 0.2 })),
       ),
-    ).toEqual({ countIn: true, metronome: { on: false, volume: 0.7 }, masterVolume: 0.2 });
+    ).toEqual({
+      countIn: true,
+      metronome: { on: false, volume: 0.7 },
+      masterVolume: 0.2,
+      gmTierBypass: true,
+      memoryBudgetBytes: HQ_BUDGET_BYTES,
+    });
+    const memory = (value: unknown) =>
+      readTransportPreferences(stored(JSON.stringify({ memoryBudgetBytes: value })))
+        .memoryBudgetBytes;
+    expect(memory(128 * 1024 * 1024)).toBe(128 * 1024 * 1024);
+    expect(memory(1024)).toBe(HQ_BUDGET_BYTES);
+    expect(memory(MEMORY_BUDGET_RANGE.max + 1)).toBe(HQ_BUDGET_BYTES);
+    expect(memory('300')).toBe(HQ_BUDGET_BYTES);
+    expect(
+      readTransportPreferences(stored(JSON.stringify({ gmTierBypass: false }))).gmTierBypass,
+    ).toBe(false);
+    expect(
+      readTransportPreferences(stored(JSON.stringify({ gmTierBypass: 'no' }))).gmTierBypass,
+    ).toBe(true);
   });
 
   it('round-trip, and survive a storage that throws', () => {
     const storage = memoryStorage();
-    const prefs = { countIn: true, metronome: { on: true, volume: 0.3 }, masterVolume: 0.9 };
+    const prefs = {
+      countIn: true,
+      metronome: { on: true, volume: 0.3 },
+      masterVolume: 0.9,
+      gmTierBypass: false,
+      memoryBudgetBytes: 512 * 1024 * 1024,
+    };
     writeTransportPreferences(prefs, () => storage);
     expect(readTransportPreferences(() => storage)).toEqual(prefs);
 

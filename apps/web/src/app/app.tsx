@@ -1,16 +1,36 @@
+import type { Track } from '@reprise/model';
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { installLibrary, LibraryScreen, RecentSongs, UnimportedBanner } from '@/features/library';
+import {
+  AddTrackButton,
+  EditorDialogs,
+  EffectsPanel,
+  HistoryPanel,
+  historyLabel,
+  TrackRowMenu,
+} from '@/features/editor';
+import {
+  DraftRecoveryDialog,
+  ExportDialog,
+  installLibrary,
+  libraryOf,
+  LibraryScreen,
+  RecentSongs,
+  UnimportedBanner,
+} from '@/features/library';
 import { SoundManager } from '@/features/sounds';
-import { TrainerPanel } from '@/features/trainer';
+import { installPracticeLog, TrainerPanel } from '@/features/trainer';
 import { PrintDialog, PrintRoot } from '@/features/score';
 import { MixerPanel, TrackSidebar } from '@/features/tracks';
 import { TransportBar } from '@/features/transport';
 import type { RepriseBridge } from '@/platform/bridge';
+import { installHistoryMenu } from '@/state/history-menu';
+import type { PanelView } from '@/state/ui';
 
 import { AppFrame } from './app-frame';
+import { installCloseGuard } from './close-guard';
 import { CommandPalette } from './command-palette';
 import { createAppRegistry } from './app-registry';
 import { runCommand } from './command-registry';
@@ -23,14 +43,30 @@ import { ScorePane } from './score-pane';
 import { ScreenHost } from './screen-host';
 import type { AppServices } from './services';
 import { AppServicesProvider } from './services-context';
-import { installShortcutDispatcher } from './shortcut-dispatcher';
+import { installShortcutDispatcher, menuCommandAllowed } from './shortcut-dispatcher';
+import { UnsavedChangesHost } from './unsaved-dialog';
+import { installWindowTitle } from './window-title';
 import { CommandSourceContext } from './use-command';
+
+// Module-level so the sidebar's memoised rows see the same function every render.
+const addTrackButton = <AddTrackButton />;
+const renderTrackRowMenu = (track: Track, index: number) => (
+  <TrackRowMenu track={track} index={index} />
+);
 
 interface AppProps {
   services: AppServices;
   keyboard: KeyboardPlatform;
   /** The native menu's command feed; absent outside Electron. */
   onMenuCommand?: RepriseBridge['onMenuCommand'] | undefined;
+}
+
+/** The right panel: the mixer, the effects, the history and the trainer tools. */
+function RightPanel({ view }: { view: PanelView }) {
+  if (view === 'mixer') return <MixerPanel />;
+  if (view === 'effects') return <EffectsPanel />;
+  if (view === 'history') return <HistoryPanel />;
+  return <TrainerPanel view={view} />;
 }
 
 export function App({ services, keyboard, onMenuCommand }: AppProps) {
@@ -40,6 +76,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   const theme = useStore(ui, (state) => state.theme);
   const screen = useStore(ui, (state) => state.screen);
   const rightPanelView = useStore(ui, (state) => state.rightPanelView);
+  const bottomView = useStore(ui, (state) => state.bottomPanel.view);
 
   useLayoutEffect(() => {
     document.documentElement.dataset['theme'] = theme;
@@ -57,11 +94,38 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
 
   useEffect(() => installLibrary(services), [services]);
 
+  // The installed sound packs, before any song names one; a failed scan leaves the list empty.
+  useEffect(() => {
+    services.sounds.scan().catch(() => undefined);
+  }, [services]);
+
+  // `● name — Reprise` while modified; on desktop the window follows the page title.
+  useEffect(() => installWindowTitle(services.document, services.platform), [services]);
+
+  useEffect(
+    () =>
+      installCloseGuard({
+        services,
+        discardDraft: () => libraryOf(services).drafts.discardOpen(),
+      }),
+    [services],
+  );
+
+  useEffect(
+    () => installHistoryMenu(services.document, services.platform, historyLabel),
+    [services],
+  );
+
+  useEffect(
+    () => installPracticeLog(services, libraryOf(services).db.practiceSessions),
+    [services],
+  );
+
   useEffect(
     () =>
       onMenuCommand?.((id) => {
         const command = registry.get(id);
-        if (command) runCommand(command);
+        if (command && menuCommandAllowed(id)) runCommand(command);
       }),
     [registry, onMenuCommand],
   );
@@ -88,14 +152,22 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             score={<ScorePane hint={hint} />}
             banner={<UnimportedBanner />}
             transport={<TransportBar registry={registry} keyboard={keyboard} />}
-            sidebar={<TrackSidebar registry={registry} keyboard={keyboard} />}
+            sidebar={
+              <TrackSidebar
+                registry={registry}
+                keyboard={keyboard}
+                headerActions={addTrackButton}
+                rowMenu={renderTrackRowMenu}
+              />
+            }
+            bottom={
+              <CommandSourceContext value={source}>
+                <TrainerPanel view={bottomView} />
+              </CommandSourceContext>
+            }
             panel={
               <CommandSourceContext value={source}>
-                {rightPanelView === 'mixer' ? (
-                  <MixerPanel />
-                ) : (
-                  <TrainerPanel view={rightPanelView} />
-                )}
+                <RightPanel view={rightPanelView} />
               </CommandSourceContext>
             }
           />
@@ -114,6 +186,10 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
         <DropZone />
         <Notices />
         <SavePromptDialog />
+        <EditorDialogs />
+        <UnsavedChangesHost />
+        <ExportDialog />
+        <DraftRecoveryDialog />
         <PrintDialog store={services.print} />
         <PrintRoot store={services.print} />
       </TooltipProvider>

@@ -23,7 +23,7 @@ export function trainerCommands(
 ): TrainerCommand[] {
   const { ui } = services;
   const speedTrainer = () => speedTrainerFor(services).getState();
-  const show = (view: 'speedTrainer' | 'tuner' | 'metronome' | 'fretboard') => () => {
+  const show = (view: 'speedTrainer' | 'tuner' | 'metronome') => () => {
     ui.getState().showPanelView(view);
   };
   return [
@@ -78,6 +78,13 @@ export function trainerCommands(
         else services.audio.startClick();
       },
     },
-    { id: 'trainer.fretboard', title: 'Show fretboard', run: show('fretboard') },
+    {
+      id: 'trainer.fretboard',
+      title: 'Toggle fretboard',
+      // The fretboard docks in the bottom region, and a second run closes it again.
+      run: () => {
+        ui.getState().toggleBottomPanelView('fretboard');
+      },
+    },
   ];
 }

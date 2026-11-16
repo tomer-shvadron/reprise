@@ -1,0 +1,285 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useStore } from 'zustand';
+
+import { useAppServices } from '@/app/services-context';
+import { Switch } from '@/components/ui/switch';
+import { selectRunning } from '@/state/playback';
+import { startPositionReader } from '@/state/position-reader';
+
+import {
+  boardOf,
+  createBeatIndex,
+  dotLabel,
+  fretMarker,
+  signature,
+  tuningNames,
+  type BoardShape,
+  type Dot,
+} from './fretboard-model';
+import { geometryOf, type Geometry } from './fretboard-geometry';
+import { readStoredLeftHanded, writeStoredLeftHanded } from './fretboard-prefs';
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const DOT_RADIUS = 10;
+
+/** The part that never changes during playback: strings, frets, markers and the capo. */
+function StaticBoard({
+  board,
+  geometry,
+  names,
+}: {
+  board: BoardShape;
+  geometry: Geometry;
+  names: readonly string[];
+}) {
+  const { lineX, stringY, wireTop: top, wireBottom: bottom, stringGap } = geometry;
+  const strings = Array.from({ length: board.strings }, (_, index) => index + 1);
+  const frets = Array.from({ length: board.frets }, (_, index) => index + 1);
+  return (
+    <g aria-hidden>
+      {strings.map((string) => (
+        <text
+          key={`name-${String(string)}`}
+          x={geometry.nameX}
+          y={stringY(string) + 3.5}
+          textAnchor="middle"
+          fontSize={10}
+          fill="currentColor"
+          fillOpacity={0.7}
+        >
+          {names[names.length - string]}
+        </text>
+      ))}
+      {strings.map((string) => (
+        <line
+          key={string}
+          x1={lineX(0)}
+          x2={lineX(board.frets)}
+          y1={stringY(string)}
+          y2={stringY(string)}
+          stroke="currentColor"
+          strokeOpacity={0.55}
+          strokeWidth={1 + (string - 1) * 0.15}
+        />
+      ))}
+      <line
+        x1={lineX(0)}
+        x2={lineX(0)}
+        y1={top}
+        y2={bottom}
+        stroke="currentColor"
+        strokeWidth={4}
+      />
+      {frets.map((fret) => (
+        <g key={fret}>
+          <line
+            x1={lineX(fret)}
+            x2={lineX(fret)}
+            y1={top}
+            y2={bottom}
+            stroke="currentColor"
+            strokeOpacity={0.35}
+          />
+          {fretMarker(fret) > 0 && (
+            <circle
+              cx={geometry.dotX(fret)}
+              cy={(top + bottom) / 2 + (fretMarker(fret) === 2 ? -stringGap : 0)}
+              r={3}
+              fill="currentColor"
+              fillOpacity={0.25}
+            />
+          )}
+          {fretMarker(fret) === 2 && (
+            <circle
+              cx={geometry.dotX(fret)}
+              cy={(top + bottom) / 2 + stringGap}
+              r={3}
+              fill="currentColor"
+              fillOpacity={0.25}
+            />
+          )}
+          <text
+            x={geometry.dotX(fret)}
+            y={bottom + 14}
+            textAnchor="middle"
+            fontSize={10}
+            fill="currentColor"
+            fillOpacity={0.55}
+          >
+            {fret}
+          </text>
+        </g>
+      ))}
+      {board.capo > 0 && (
+        <rect
+          data-capo
+          x={Math.min(lineX(board.capo), lineX(board.capo - 1)) + 2}
+          y={top}
+          width={Math.abs(lineX(board.capo) - lineX(board.capo - 1)) - 4}
+          height={bottom - top}
+          rx={4}
+          fill="currentColor"
+          fillOpacity={0.18}
+        />
+      )}
+    </g>
+  );
+}
+
+/** Replaces the lit dots' elements; the board and everything else is left alone. */
+function paintDots(layer: SVGGElement, dots: readonly Dot[], geometry: Geometry) {
+  const doc = layer.ownerDocument;
+  layer.replaceChildren(
+    ...dots.map((dot) => {
+      const group = doc.createElementNS(SVG_NS, 'g');
+      group.setAttribute('role', 'img');
+      group.setAttribute('aria-label', dotLabel(dot));
+      const circle = doc.createElementNS(SVG_NS, 'circle');
+      circle.setAttribute('cx', String(geometry.dotX(dot.absolute)));
+      circle.setAttribute('cy', String(geometry.stringY(dot.string)));
+      circle.setAttribute('r', String(DOT_RADIUS));
+      circle.setAttribute('fill', 'var(--color-primary, #2563eb)');
+      const label = doc.createElementNS(SVG_NS, 'text');
+      label.setAttribute('x', String(geometry.dotX(dot.absolute)));
+      label.setAttribute('y', String(geometry.stringY(dot.string) + 3.5));
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('font-size', '10');
+      label.setAttribute('font-weight', '600');
+      label.setAttribute('fill', 'var(--color-primary-foreground, #fff)');
+      label.setAttribute('aria-hidden', 'true');
+      label.textContent = dot.name;
+      group.append(circle, label);
+      return group;
+    }),
+  );
+}
+
+/**
+ * The current track's neck with the notes of the beat being heard lit and named. In edit mode,
+ * while the transport is stopped, the beat under the edit cursor is lit instead. The board is
+ * drawn once per track and handedness; a playback tick only swaps the few lit dots, from the
+ * position reader and outside React, and only when the lit set changes. Nothing is a live
+ * region, so the changing highlights are not announced.
+ */
+export function Fretboard() {
+  const { document, selection, playback, editing, heard } = useAppServices();
+  const score = useStore(document, (state) => state.score);
+  const currentTrack = useStore(selection, (state) => state.currentTrack);
+  const [leftHanded, setLeftHanded] = useState(() => readStoredLeftHanded());
+
+  const track = useMemo(
+    () => score?.tracks.find((candidate) => candidate.id === currentTrack) ?? score?.tracks[0],
+    [score, currentTrack],
+  );
+  const board = boardOf(track);
+  const index = useMemo(
+    () => (score && track && board ? createBeatIndex(track, score.masterBars) : undefined),
+    // `board` is derived from `track`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [score, track],
+  );
+  const geometry = useMemo(
+    () => (board ? geometryOf(board, leftHanded) : undefined),
+    // The shape is read through its parts so an unrelated score edit keeps the same board.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [board?.strings, board?.frets, board?.capo, leftHanded],
+  );
+  const tuning = track?.tuning;
+  const names = useMemo(() => (tuning ? tuningNames({ tuning }) : []), [tuning]);
+  const layer = useRef<SVGGElement>(null);
+
+  useEffect(() => {
+    const target = layer.current;
+    if (!target || !index || !geometry) return;
+    let shown: string | undefined;
+    let lastEvent = playback.getState().position;
+    const show = (dots: readonly Dot[]) => {
+      const key = signature(dots);
+      if (key === shown) return;
+      shown = key;
+      paintDots(target, dots, geometry);
+    };
+    const update = () => {
+      const state = playback.getState();
+      const { cursor } = selection.getState();
+      if (
+        cursor &&
+        editing.getState().editing &&
+        !selectRunning(state) &&
+        cursor.track === track?.id
+      ) {
+        show(index.dotsOfBeat(cursor.masterBar, cursor.beat));
+        return;
+      }
+      // While running, the drawn playhead's position, which already allows for the output
+      // latency; otherwise the engine's, which a seek or a stop has just moved.
+      const at = selectRunning(state) ? heard.current : undefined;
+      if (at) show(index.dotsAt(at.masterBarId, at.tick));
+      else if (lastEvent) show(index.dotsAt(lastEvent.masterBarId, lastEvent.position.tick));
+      else show([]);
+    };
+    const reader = startPositionReader(playback, (event) => {
+      lastEvent = event;
+      update();
+    });
+    const unsubscribers = [
+      selection.subscribe((state, previous) => {
+        if (state.cursor !== previous.cursor) update();
+      }),
+      editing.subscribe((state, previous) => {
+        if (state.editing !== previous.editing) update();
+      }),
+    ];
+    update();
+    return () => {
+      reader.stop();
+      for (const unsubscribe of unsubscribers) unsubscribe();
+    };
+  }, [index, geometry, playback, selection, editing, heard, track?.id]);
+
+  const title = track && board ? `${track.name} fretboard` : 'Fretboard';
+  if (!track || !board || !geometry) {
+    return (
+      <div
+        data-fretboard-empty
+        className="text-muted-foreground flex h-full items-center justify-center p-4 text-sm"
+      >
+        No fretted track selected. Pick a guitar or bass track to see its fretboard.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col gap-1 p-2">
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <span className="text-muted-foreground">
+          {board.strings} strings, tuning {names.join(' ')}
+          {board.capo > 0 ? `, capo ${String(board.capo)}` : ''}
+        </span>
+        <label className="flex items-center gap-2">
+          Left-handed
+          <Switch
+            size="sm"
+            checked={leftHanded}
+            onCheckedChange={(checked) => {
+              setLeftHanded(checked);
+              writeStoredLeftHanded(checked);
+            }}
+          />
+        </label>
+      </div>
+      <svg
+        role="group"
+        aria-label={title}
+        viewBox={`0 0 ${String(geometry.width)} ${String(geometry.height)}`}
+        className="text-foreground min-h-0 w-full flex-1"
+        preserveAspectRatio="xMidYMid meet"
+        data-fretboard
+        data-left-handed={leftHanded}
+      >
+        <StaticBoard board={board} geometry={geometry} names={names} />
+        <g ref={layer} data-fretboard-notes />
+      </svg>
+    </div>
+  );
+}

@@ -57,7 +57,7 @@ describe('the batch importer', () => {
     expect(rows).toHaveLength(3);
     for (const row of rows) {
       expect(storage.bytes(row.nativePath)).toBeDefined();
-      expect(storage.bytes(row.originalPath)).toBeDefined();
+      expect(storage.bytes(row.originalPath ?? '')).toBeDefined();
       expect(row.originalPath).toBe(`library/originals/${row.id}/${row.originalName}`);
     }
   });

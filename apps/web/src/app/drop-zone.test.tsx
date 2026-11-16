@@ -34,7 +34,41 @@ async function riff(title = 'Riff'): Promise<File> {
   return new File([bytes.slice()], `${title.toLowerCase()}.reprise`);
 }
 
+/**
+ * A single drop imports into the library in the background after the file opens. The shared
+ * teardown settles such writes anyway; this is the explicit check that the import finished, so a
+ * test that drops one file does not end before its row exists.
+ */
+async function importLanded(services: ReturnType<typeof renderWithServices>['services']) {
+  await waitFor(() => {
+    expect(libraryOf(services).store.getState().entries).toHaveLength(1);
+  });
+  expect(services.document.getState().dirty).toBe(false);
+}
+
 describe('DropZone', () => {
+  it('cancels the drop but opens and imports nothing while the Sounds screen shows', async () => {
+    const { services } = renderWithServices(<DropZone />);
+    services.ui.getState().setScreen('sounds');
+    const file = await riff();
+
+    act(() => {
+      window.dispatchEvent(dragEvent('dragenter', [file]));
+    });
+    expect(screen.queryByText('Drop to open')).not.toBeInTheDocument();
+    const over = dragEvent('dragover', [file]);
+    window.dispatchEvent(over);
+    expect(over.defaultPrevented).toBe(true);
+    const drop = dragEvent('drop', [file]);
+    act(() => {
+      window.dispatchEvent(drop);
+    });
+    expect(drop.defaultPrevented).toBe(true);
+    expect(services.document.getState().score).toBeUndefined();
+    expect(libraryOf(services).store.getState().entries).toHaveLength(0);
+    expect(services.ui.getState().screen).toBe('sounds');
+  });
+
   it('shows the overlay while files are dragged over, and opens the dropped file', async () => {
     const { services } = renderWithServices(<DropZone />);
     const file = await riff();
@@ -58,6 +92,24 @@ describe('DropZone', () => {
       expect(services.document.getState().score?.meta.title).toBe('Riff');
     });
     expect(services.document.getState().file?.name).toBe('riff.reprise');
+    await importLanded(services);
+  });
+
+  it('ignores a drop while a dialog is open', async () => {
+    const { services } = renderWithServices(
+      <>
+        <DropZone />
+        <div role="dialog" data-state="open" />
+      </>,
+    );
+    const file = await riff();
+    const drop = dragEvent('drop', [file]);
+    act(() => {
+      window.dispatchEvent(drop);
+    });
+    // Nothing replaced the document behind the dialog, and no question opened over it.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(services.document.getState().score).toBeUndefined();
   });
 
   it('imports a single dropped file into the library after opening it', async () => {
@@ -69,11 +121,7 @@ describe('DropZone', () => {
     await waitFor(() => {
       expect(services.document.getState().songId).toBeDefined();
     });
-    const library = libraryOf(services);
-    await waitFor(async () => {
-      expect(await library.repo.all()).toHaveLength(1);
-    });
-    expect(services.document.getState().dirty).toBe(false);
+    await importLanded(services);
   });
 
   it('opens without importing while Alt is held', async () => {
@@ -175,6 +223,7 @@ describe('DropZone', () => {
     await waitFor(() => {
       expect(services.document.getState().file?.handle).toBe(handle);
     });
+    await importLanded(services);
   });
 
   it('ignores drags that carry no files', () => {

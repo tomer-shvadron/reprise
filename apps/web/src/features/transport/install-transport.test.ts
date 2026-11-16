@@ -1,3 +1,4 @@
+import { HQ_BUDGET_BYTES } from '@reprise/audio';
 import { write } from '@reprise/formats';
 import { removeBar } from '@reprise/model';
 import { describe, expect, it } from 'vitest';
@@ -38,6 +39,38 @@ describe('installTransport', () => {
     // A reload: a second app over the same storage starts with the count-in off.
     const reloaded = createTestServices({ storage: () => storage });
     expect(reloaded.fakeAudio.setCountIn).toHaveBeenCalledWith(false);
+  });
+
+  it('applies the stored GM tier bypass and persists a change', () => {
+    const storage = memoryStorage();
+    const first = createTestServices({ storage: () => storage });
+    expect(first.fakeAudio.setGmTierBypass).toHaveBeenCalledWith(true);
+
+    mirrorAudio(first);
+    first.audio.setGmTierBypass(false);
+    expect(first.playback.getState().settings.gmTierBypass).toBe(false);
+    expect(JSON.parse(storage.getItem(TRANSPORT_STORAGE_KEY) ?? '{}')).toMatchObject({
+      gmTierBypass: false,
+    });
+
+    const reloaded = createTestServices({ storage: () => storage });
+    expect(reloaded.fakeAudio.setGmTierBypass).toHaveBeenCalledWith(false);
+  });
+
+  it('applies the stored memory budget and persists a change', () => {
+    const storage = memoryStorage();
+    const first = createTestServices({ storage: () => storage });
+    expect(first.fakeAudio.setMemoryBudget).toHaveBeenCalledWith(HQ_BUDGET_BYTES);
+
+    mirrorAudio(first);
+    first.audio.setMemoryBudget(128 * 1024 * 1024);
+    expect(first.playback.getState().settings.memoryBudgetBytes).toBe(128 * 1024 * 1024);
+    expect(JSON.parse(storage.getItem(TRANSPORT_STORAGE_KEY) ?? '{}')).toMatchObject({
+      memoryBudgetBytes: 128 * 1024 * 1024,
+    });
+
+    const reloaded = createTestServices({ storage: () => storage });
+    expect(reloaded.fakeAudio.setMemoryBudget).toHaveBeenCalledWith(128 * 1024 * 1024);
   });
 
   it('keys the speed by the bytes, so a same-named different song starts at 100%', async () => {

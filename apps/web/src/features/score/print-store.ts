@@ -149,7 +149,7 @@ export function createPrintStore(deps: PrintStoreDeps) {
     },
   }));
 
-  // Another file can open under the modal (a shortcut, the native menu, a drop): the dialog
+  // Another file can open under the modal (a drop; shortcuts and the native menu are blocked while a modal is open): the dialog
   // follows the score, keeping the tracks chosen while the score keeps the same tracks.
   document.subscribe((next, previous) => {
     const { dialog, preparing } = store.getState();

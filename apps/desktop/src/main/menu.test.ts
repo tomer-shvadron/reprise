@@ -1,7 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 
-import { MENU_COMMANDS, menuTemplate, type MenuOptions } from './menu';
+import { historyItemLabel, MENU_COMMANDS, menuTemplate, type MenuOptions } from './menu';
 
 function flatten(items: MenuItemConstructorOptions[]): MenuItemConstructorOptions[] {
   return items.flatMap((item) => [
@@ -38,6 +38,22 @@ describe('menuTemplate', () => {
       press(matches[0]);
       expect(options.sendCommand).toHaveBeenLastCalledWith(id);
     }
+  });
+
+  it('puts Export as Guitar Pro under Save As in the File menu', () => {
+    const { items } = template();
+    const file = items.find((item) => item.label === 'File');
+    const labels = Array.isArray(file?.submenu) ? file.submenu.map((item) => item.label) : [];
+
+    expect(labels.indexOf('Export as Guitar Pro…')).toBe(labels.indexOf('Save As…') + 1);
+  });
+
+  it('puts New Song first in the File menu on CmdOrCtrl+N', () => {
+    const { items } = template();
+    const file = items.find((item) => item.label === 'File');
+    const first = Array.isArray(file?.submenu) ? file.submenu[0] : undefined;
+
+    expect(first).toMatchObject({ label: 'New Song', accelerator: 'CmdOrCtrl+N' });
   });
 
   it('uses roles for the clipboard, and puts Quit in File only off macOS', () => {
@@ -88,5 +104,48 @@ describe('menuTemplate', () => {
     expect(items.find((item) => item.label === 'No Recent Songs')).toMatchObject({
       enabled: false,
     });
+  });
+});
+
+describe('the Edit menu history items', () => {
+  const edit = (items: MenuItemConstructorOptions[]) => {
+    const submenu = items.find((item) => item.label === 'Edit')?.submenu;
+    return Array.isArray(submenu) ? submenu : [];
+  };
+
+  it('builds the label from the command name, escaping a lone &', () => {
+    expect(historyItemLabel('Undo', undefined)).toBe('Undo');
+    expect(historyItemLabel('Undo', 'setNote')).toBe('Undo setNote');
+    expect(historyItemLabel('Redo', 'Fish & Chips')).toBe('Redo Fish && Chips');
+  });
+
+  it('keeps plain items until the renderer reports', () => {
+    const [undo, redo] = edit(template().items);
+
+    expect(undo).toMatchObject({ label: 'Undo', accelerator: 'CmdOrCtrl+Z' });
+    expect(redo).toMatchObject({ label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z' });
+  });
+
+  it('names the steps, shows the plain name for an empty stack, and never disables', () => {
+    const { options, items } = template({ history: { undo: 'setNote' } });
+    const [undo, redo] = edit(items);
+
+    expect(undo).toMatchObject({ label: 'Undo setNote', accelerator: 'CmdOrCtrl+Z' });
+    expect(redo).toMatchObject({ label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z' });
+    expect(undo?.enabled).toBeUndefined();
+    expect(redo?.enabled).toBeUndefined();
+    press(undo);
+    expect(options.sendCommand).toHaveBeenLastCalledWith('edit.undo');
+  });
+
+  it('leaves the other items as they were', () => {
+    const plain = flatten(menuTemplate(template().options)).map((item) => item.label);
+    const named = flatten(
+      menuTemplate(template({ history: { undo: 'x', redo: 'y' } }).options),
+    ).map((item) => item.label);
+
+    expect(
+      named.filter((label) => !label?.startsWith('Undo') && !label?.startsWith('Redo')),
+    ).toEqual(plain.filter((label) => label !== 'Undo' && label !== 'Redo'));
   });
 });

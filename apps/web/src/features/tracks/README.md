@@ -2,25 +2,28 @@
 
 The track list in the left sidebar and the mixer in the right panel (WP-052, ADR-0024). It owns no
 store: every control writes the document, selection or playback store through the actions in
-`track-actions.ts`, which the commands in `commands.ts` call too.
+`track-actions.ts`, which the commands in `commands.ts` call too. The one exception is the Effects
+row, `TrackEffectsPicker` from `features/sounds`, which applies its own command.
 
-| Export                                                            | What it is                                                                                                                    |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `TrackSidebar`                                                    | Each track's colour, name, instrument, visibility, mute, solo, notation and compact volume; the multitrack toggle.            |
-| `MixerPanel`                                                      | Per track: instrument, volume, pan, mute and solo, with the load status of a new instrument; the master volume.               |
-| `captureTrackSession`, `restoreTrackSession`, `watchTrackSession` | The per-song session the library keeps (WP-060): visibility, single-track view, mute and solo, current track; never notation. |
-| `trackCommands` (`./commands`)                                    | Previous and next track (⌘↑ ⌘↓), multitrack view (F3), mute, solo, clear, show all, and notation for the current track.       |
+| Export                                                            | What it is                                                                                                                                                    |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TrackSidebar`                                                    | Each track's colour, name, instrument, visibility, mute, solo, notation and compact volume; the multitrack toggle.                                            |
+| `MixerPanel`                                                      | Per track: instrument, effects preset, volume, pan, mute and solo, with the load status of a new instrument; the master volume and the GM tier bypass switch. |
+| `captureTrackSession`, `restoreTrackSession`, `watchTrackSession` | The per-song session the library keeps (WP-060): visibility, single-track view, mute and solo, current track; never notation.                                 |
+| `trackCommands` (`./commands`)                                    | Previous and next track (⌘↑ ⌘↓), multitrack view (F3), mute, solo, clear, show all, and notation for the current track.                                       |
 
 ## Where each value lives
 
-| Value                         | State                                           | Undo | Modified | Saved in the file                                                 |
-| ----------------------------- | ----------------------------------------------- | ---- | -------- | ----------------------------------------------------------------- |
-| Volume, pan, instrument       | the score, through `setTrackProperties`         | yes  | yes      | yes                                                               |
-| Notation per track            | `document.view.notation`                        | no   | yes      | yes, folded in on Save; a track without strings saved as standard |
-| Visibility, single-track view | `document.view.tracks`, `view.only`             | no   | no       | no (library, WP-060)                                              |
-| Mute, solo                    | `playback.mixer`, the audio service's overrides | no   | no       | the file's own flags, as read                                     |
-| Current track                 | `selection.currentTrack`                        | no   | no       | no (library, WP-060)                                              |
-| Master volume                 | `settings.masterVolume` (WP-051)                | no   | no       | no (a preference)                                                 |
+| Value                         | State                                                                                             | Undo | Modified | Saved in the file                                                 |
+| ----------------------------- | ------------------------------------------------------------------------------------------------- | ---- | -------- | ----------------------------------------------------------------- |
+| Volume, pan, instrument       | the score, through `setTrackProperties`                                                           | yes  | yes      | yes                                                               |
+| Effects preset                | the score, `sound.preset`, through `setTrackProperties` (`TrackEffectsPicker`, `features/sounds`) | yes  | yes      | yes                                                               |
+| Notation per track            | `document.view.notation`                                                                          | no   | yes      | yes, folded in on Save; a track without strings saved as standard |
+| Visibility, single-track view | `document.view.tracks`, `view.only`                                                               | no   | no       | no (library, WP-060)                                              |
+| Mute, solo                    | `playback.mixer`, the audio service's overrides                                                   | no   | no       | the file's own flags, as read                                     |
+| Current track                 | `selection.currentTrack`                                                                          | no   | no       | no (library, WP-060)                                              |
+| Master volume                 | `settings.masterVolume` (WP-051)                                                                  | no   | no       | no (a preference)                                                 |
+| GM tier bypass                | `settings.gmTierBypass`, the master strip's "No automatic effects on GM sounds" switch            | no   | no       | no (a preference)                                                 |
 
 ## Decisions
 
@@ -37,5 +40,5 @@ store: every control writes the document, selection or playback store through th
   disabled, with the reason; `setTrackNotation` ignores them, and Save writes such a track as
   standard (#125).
 - **Hidden tracks still sound.** Visibility is display only, as in Guitar Pro.
-- **Instrument names are the GM tables in `gm-programs.ts`**, not the sound bank's preset names,
+- **Instrument names are the GM tables in `lib/gm-programs.ts`**, not the sound bank's preset names,
   so the picker works before the bank loads.

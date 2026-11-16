@@ -3,7 +3,12 @@ import { basename } from 'node:path';
 
 import { test as base, expect, type Locator, type Page } from '@playwright/test';
 
-import { installPageHooks, type FollowWatch, type ReadoutField } from './page-hooks';
+import {
+  installPageHooks,
+  type FollowWatch,
+  type FrameWatch,
+  type ReadoutField,
+} from './page-hooks';
 
 export { expect };
 
@@ -105,10 +110,15 @@ export class App {
   }
 
   async palette(text: string): Promise<void> {
+    // The previous palette (or dialog) must be gone: Radix keeps a closing dialog mounted for its
+    // exit animation, and Ctrl+K or Enter then lands on it instead of the new one.
+    await expect(this.page.getByRole('dialog')).toHaveCount(0);
     await this.page.keyboard.press('ControlOrMeta+k');
-    const input = this.page.getByRole('combobox');
+    // Not by role: a dialog the command opens has comboboxes of its own.
+    const input = this.page.locator('[cmdk-input]');
     await input.fill(text);
     await input.press('Enter');
+    await expect(input).toHaveCount(0);
   }
 
   /** Builds the dropped `File` in the page before returning, so a timed drop is only the event. */
@@ -208,8 +218,16 @@ export class App {
     ] as const);
   }
 
+  barsUntilStopped() {
+    return this.page.evaluate(() => window.__e2e.barsUntilStopped());
+  }
+
   watchFollow(untilBar: string): Promise<FollowWatch> {
     return this.page.evaluate((bar) => window.__e2e.watchFollow(bar), untilBar);
+  }
+
+  watchFrames(untilBar: string): Promise<FrameWatch> {
+    return this.page.evaluate((bar) => window.__e2e.watchFrames(bar), untilBar);
   }
 
   async regionScroll(): Promise<{ rect: Box; left: number; top: number }> {
@@ -298,6 +316,64 @@ export class App {
     return Uint8Array.from(bytes);
   }
 
+  /** How many songs the library database holds; the row lands after the song's files do. */
+  async songRows(): Promise<number> {
+    return this.page.evaluate(
+      () =>
+        new Promise<number>((resolve) => {
+          const open = indexedDB.open('reprise');
+          open.onerror = () => {
+            resolve(0);
+          };
+          open.onsuccess = () => {
+            const db = open.result;
+            if (!db.objectStoreNames.contains('songs')) {
+              db.close();
+              resolve(0);
+              return;
+            }
+            const count = db.transaction('songs').objectStore('songs').count();
+            count.onsuccess = () => {
+              db.close();
+              resolve(count.result);
+            };
+            count.onerror = () => {
+              db.close();
+              resolve(0);
+            };
+          };
+        }),
+    );
+  }
+
+  /** The names in an origin-private folder (`library/songs`); empty when it does not exist yet. */
+  async listStored(path: string): Promise<string[]> {
+    return this.page.evaluate(async (folder) => {
+      try {
+        let dir = await navigator.storage.getDirectory();
+        for (const name of folder.split('/')) dir = await dir.getDirectoryHandle(name);
+        const names: string[] = [];
+        for await (const key of dir.keys()) names.push(key);
+        return names.sort();
+      } catch {
+        return [];
+      }
+    }, path);
+  }
+
+  /** A file under origin-private storage by its root-relative path (`library/songs/a.reprise`). */
+  async readStoredPath(path: string): Promise<Uint8Array> {
+    const bytes = await this.page.evaluate(async (file) => {
+      const parts = file.split('/');
+      const name = parts.pop() ?? '';
+      let dir = await navigator.storage.getDirectory();
+      for (const part of parts) dir = await dir.getDirectoryHandle(part);
+      const data = await (await dir.getFileHandle(name)).getFile();
+      return [...new Uint8Array(await data.arrayBuffer())];
+    }, path);
+    return Uint8Array.from(bytes);
+  }
+
   async saves() {
     return this.page.evaluate(() => window.__e2e.saves);
   }
@@ -307,8 +383,37 @@ export async function installHooks(page: Page): Promise<void> {
   await page.addInitScript(installPageHooks);
 }
 
+const spares = new WeakMap<Page, Page>();
+
+/**
+ * Ends the page the way a renderer crash does: no `pagehide`, no `beforeunload`, nothing flushed. Another
+ * page of the same context sees what the app had written to origin-private storage and the
+ * library database by then.
+ */
+export async function crash(page: Page): Promise<void> {
+  // A second page first: the context must outlive the page that crashes.
+  spares.set(page, await page.context().newPage());
+  const crashed = page.waitForEvent('crash');
+  // The renderer's own crash page: Chromium's headless shell takes the whole browser down with a
+  // CDP `Page.crash`, this takes the renderer only, with the same effect on the page.
+  await page.goto('chrome://crash').catch(() => undefined);
+  await crashed;
+}
+
+/** A new page in the same context, so storage survives, with the hooks installed. The crashed page is left to the context. */
+export async function relaunch(page: Page): Promise<App> {
+  const next = spares.get(page) ?? (await page.context().newPage());
+  await installHooks(next);
+  await next.goto('/');
+  return new App(next);
+}
+
 export const test = base.extend<{ app: App }>({
   app: async ({ page }, provide) => {
+    // A modified page asks before it unloads; a test that reloads one must not wait on the prompt.
+    page.on('dialog', (dialog) => {
+      void (dialog.type() === 'beforeunload' ? dialog.accept() : dialog.dismiss());
+    });
     await installHooks(page);
     await page.goto('/');
     await provide(new App(page));

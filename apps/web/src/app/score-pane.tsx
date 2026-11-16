@@ -21,7 +21,14 @@ import { orderedRange } from '@/features/transport/bar-range';
 import { loopBarNumbers } from '@/features/transport/loop';
 import { seekTick } from '@/features/transport/seek';
 import { playheadBar, playheadTick, seekTo } from '@/features/transport/seek-commands';
-import { cursorTick, createEditPointer, caretRect, useEditOverlays } from '@/features/editor';
+import {
+  cursorTick,
+  createEditPointer,
+  caretRect,
+  EditStatusLine,
+  useEditOverlays,
+  WordField,
+} from '@/features/editor';
 import { selectRunning } from '@/state/playback';
 import type { BarRange } from '@/state/selection';
 import { timelineOf } from '@/state/timeline';
@@ -227,20 +234,33 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
     if (axis === 'both' || axis === (mode === 'paged' ? 'y' : 'x')) ui.getState().pauseFollow();
   };
 
+  // The status line is a row of its own below the score, so it covers neither the scrollbar, the
+  // lowest staff nor the follow button, which stays over the score's own area.
   return (
-    <>
-      <ScoreView
-        ref={handle}
-        layout={result}
-        zoom={zoom}
-        label={label}
-        overlays={overlays}
-        onScorePointer={onScorePointer}
-        onUserScroll={onUserScroll}
-        className="h-full focus-visible:-outline-offset-2"
+    <div className="flex h-full flex-col">
+      <div className="relative min-h-0 flex-1">
+        <ScoreView
+          ref={handle}
+          layout={result}
+          zoom={zoom}
+          label={label}
+          overlays={overlays}
+          onScorePointer={onScorePointer}
+          onUserScroll={onUserScroll}
+          className="h-full focus-visible:-outline-offset-2"
+        >
+          <WordField />
+        </ScoreView>
+        <FollowButton />
+      </div>
+      <EditStatusLine
+        entry={services.entry}
+        editing={services.editing}
+        selection={selection}
+        document={document}
+        ui={services.ui}
       />
-      <FollowButton />
-    </>
+    </div>
   );
 }
 

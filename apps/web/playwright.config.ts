@@ -6,8 +6,8 @@ const PORT = 4319;
 const BASE = `http://127.0.0.1:${String(PORT)}`;
 
 export default defineConfig({
-  testDir: './e2e/player',
-  testMatch: '*.spec.ts',
+  testDir: './e2e',
+  testMatch: ['{player,editor}/**/*.spec.ts'],
   globalSetup: './e2e/player/test/global-setup.ts',
   // Audio is realtime, and the rate, following and budget checks want the machine to themselves.
   workers: 1,

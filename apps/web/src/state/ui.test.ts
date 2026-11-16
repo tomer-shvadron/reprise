@@ -123,4 +123,13 @@ describe('ui store screens and panel views', () => {
     expect(store.getState().rightPanelView).toBe('tuner');
     expect(store.getState().panels.rightPanel).toBe(true);
   });
+
+  it('shows the effects and history views in the right panel', () => {
+    const store = createUiStore('dark');
+    store.getState().showPanelView('effects');
+    expect(store.getState().rightPanelView).toBe('effects');
+    expect(store.getState().panels.rightPanel).toBe(true);
+    store.getState().showPanelView('history');
+    expect(store.getState().rightPanelView).toBe('history');
+  });
 });

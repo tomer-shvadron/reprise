@@ -17,6 +17,25 @@ export interface FollowWatch {
   firstOutside?: { frame: number; bar: string; line: number[]; view: number[] };
 }
 
+export interface FrameWatch {
+  frames: number;
+  /** The longest time between two animation frames, in ms. */
+  maxGap: number;
+  /** Which frame ended that gap, and when, in ms after the first frame (about when Play was pressed). */
+  maxIndex: number;
+  maxAt: number;
+  /** The frame where the position readout first changed, and when: the playhead starts moving. */
+  movingIndex: number;
+  movingAt: number;
+  /** The longest gap after the playhead started moving. */
+  steadyMaxGap: number;
+  /** The median gap, in ms. */
+  medianGap: number;
+  /** How many times the lit notes of the fretboard changed. */
+  changes: number;
+  timedOut: boolean;
+}
+
 export interface E2eProbe {
   /** Names the stubbed open picker returns, oldest first; empty means the user cancels. */
   picks: string[];
@@ -31,7 +50,15 @@ export interface E2eProbe {
   beatInterval(changes: number): Promise<number>;
   /** Every bar the readout shows until it has jumped from `from` back to `to` `times` times. */
   barTrail(from: string, to: string, times: number): Promise<{ bars: string[]; timedOut: boolean }>;
+  /**
+   * Every change of the bar readout from the moment the transport runs until it stops again, which
+   * is the song's end or a Stop. The readout rewinds as it stops, so that last frame is not
+   * recorded. Press Play after calling it: it waits for the transport to run first.
+   */
+  barsUntilStopped(): Promise<{ bars: string[]; timedOut: boolean }>;
   watchFollow(untilBar: string): Promise<FollowWatch>;
+  /** Frame gaps and fretboard changes until the bar readout shows `untilBar`. */
+  watchFrames(untilBar: string): Promise<FrameWatch>;
 }
 
 declare global {
@@ -209,6 +236,23 @@ export function installPageHooks(): void {
     return { bars, timedOut };
   };
 
+  const barsUntilStopped = async () => {
+    const bars: string[] = [];
+    // The playback group's button reads Pause while the transport runs or counts in.
+    const running = () =>
+      document.querySelector('[role="group"][aria-label="Playback"] button[aria-label="Pause"]') !==
+      null;
+    let started = false;
+    const timedOut = await everyFrame(() => {
+      if (!running()) return started;
+      started = true;
+      const bar = field('bar');
+      if (bar !== bars.at(-1)) bars.push(bar);
+      return false;
+    });
+    return { bars, timedOut };
+  };
+
   const watchFollow = async (untilBar: string): Promise<FollowWatch> => {
     const region = document.querySelector<HTMLElement>(
       '[role="region"][aria-roledescription="score"]',
@@ -253,6 +297,47 @@ export function installPageHooks(): void {
     return result;
   };
 
+  const watchFrames = async (untilBar: string): Promise<FrameWatch> => {
+    const lit = () => document.querySelector('[data-fretboard-notes]')?.textContent ?? '';
+    const times: number[] = [];
+    const startTime = field('time');
+    let moving = -1;
+    let last = lit();
+    let changes = 0;
+    const timedOut = await everyFrame((time) => {
+      times.push(time);
+      if (moving < 0 && field('time') !== startTime) moving = times.length - 1;
+      const now = lit();
+      if (now !== last) {
+        last = now;
+        changes += 1;
+      }
+      return field('bar') === untilBar;
+    });
+    const gaps = times
+      .slice(1)
+      .map((time, i) => ({ gap: time - (times[i] ?? time), index: i + 1 }));
+    const worst = (from: number) =>
+      gaps
+        .filter((g) => g.index > from)
+        .reduce((a, g) => (g.gap > a.gap ? g : a), { gap: 0, index: 0 });
+    const sorted = gaps.map((g) => g.gap).sort((a, b) => a - b);
+    const overall = worst(0);
+    const first = times[0] ?? 0;
+    return {
+      frames: times.length,
+      maxGap: overall.gap,
+      maxIndex: overall.index,
+      maxAt: (times[overall.index] ?? first) - first,
+      movingIndex: moving,
+      movingAt: moving < 0 ? -1 : (times[moving] ?? first) - first,
+      steadyMaxGap: moving < 0 ? Number.NaN : worst(moving).gap,
+      medianGap: sorted[Math.floor(sorted.length / 2)] ?? 0,
+      changes,
+      timedOut,
+    };
+  };
+
   window.__e2e = {
     picks,
     opens: 0,
@@ -263,6 +348,8 @@ export function installPageHooks(): void {
     peakWhile,
     beatInterval,
     barTrail,
+    barsUntilStopped,
     watchFollow,
+    watchFrames,
   };
 }

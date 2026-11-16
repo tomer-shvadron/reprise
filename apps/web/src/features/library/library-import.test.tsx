@@ -1,4 +1,5 @@
 import { read } from '@reprise/formats';
+import { createEmptyScore } from '@reprise/model';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -99,6 +100,7 @@ describe('open and import', () => {
     });
     expect(services.document.getState().score).toBeDefined();
     expect(services.document.getState().songId).toBeUndefined();
+    expect(library.store.getState().unimportedId).toBe(services.document.getState().id);
     expect(await library.repo.all()).toEqual([]);
   });
 
@@ -225,6 +227,41 @@ describe('open without import and the banner', () => {
     expect(storage.bytes(row?.originalPath ?? '')).toEqual(bytes);
   });
 
+  it('shows the banner for a file opened without import, with or without a handle', async () => {
+    const { services, library } = setup();
+    renderWithServices(<UnimportedBanner />, services);
+    const bytes = await songBytes('Loose');
+
+    await act(() => library.openWithoutImport({ name: 'a.reprise', bytes }));
+    expect(await screen.findByText('Not in your library')).toBeInTheDocument();
+
+    await act(() =>
+      library.openWithoutImport({ name: 'b.reprise', bytes: bytes.slice(), handle: '/b.reprise' }),
+    );
+    expect(await screen.findByText('Not in your library')).toBeInTheDocument();
+    expect(library.store.getState().unimportedId).toBe(services.document.getState().id);
+  });
+
+  it('hides the banner for a new song, also after a desktop Save As, and releases the bytes', async () => {
+    const { services, library } = setup({
+      saveFile: () => Promise.resolve('/home/Untitled.reprise'),
+    });
+    renderWithServices(<UnimportedBanner />, services);
+    const first = await songBytes('A');
+    await act(() => library.openWithoutImport({ name: 'a.reprise', bytes: first }));
+    expect(await screen.findByText('Not in your library')).toBeInTheDocument();
+
+    act(() => {
+      services.document.getState().newDocument(createEmptyScore());
+    });
+    expect(screen.queryByText('Not in your library')).not.toBeInTheDocument();
+    expect(library.store.getState().unimportedId).toBeUndefined();
+
+    await act(() => services.document.getState().saveAs());
+    expect(services.document.getState().file?.handle).toBe('/home/Untitled.reprise');
+    expect(screen.queryByText('Not in your library')).not.toBeInTheDocument();
+  });
+
   it('says so when the original is no longer held', async () => {
     const { services, library } = setup();
     const bytes = await songBytes('Loose');
@@ -349,6 +386,19 @@ describe('delete', () => {
     expect(services.document.getState().songId).toBeUndefined();
     expect(services.document.getState().score).toBeDefined();
     expect(library.store.getState().entries).toEqual([]);
+  });
+
+  it('shows no banner for an open song deleted from the library', async () => {
+    const { services, library } = setup();
+    renderWithServices(<UnimportedBanner />, services);
+    await library.openAndImport({ name: 'a.reprise', bytes: await songBytes('Alpha') });
+    await waitFor(async () => {
+      expect(await library.repo.all()).toHaveLength(1);
+    });
+    const [row] = await library.repo.all();
+    await library.deleteSong(row?.id ?? '');
+    expect(services.document.getState().songId).toBeUndefined();
+    expect(screen.queryByText('Not in your library')).not.toBeInTheDocument();
   });
 });
 

@@ -1,26 +1,38 @@
 import type {
   DirEntry,
+  DownloadRequest,
   FileFilter,
   FileHandle,
+  HistoryMenuLabels,
   OpenedFile,
   PickedFile,
   PickedFolder,
   PrintOptions,
+  ReadRange,
   RecentSong,
 } from './bridge';
 
 export type {
   DirEntry,
+  DownloadRequest,
   FileFilter,
   FileHandle,
+  HistoryMenuLabels,
   OpenedFile,
   PickedFile,
   PickedFolder,
   PrintOptions,
+  ReadRange,
   RecentSong,
   StorageRoot,
 } from './bridge';
-export { MAX_RECENT_SONGS, PICKED_FOLDER_LIMITS, STORAGE_ROOTS } from './bridge';
+export {
+  MAX_DOWNLOAD_BYTES,
+  MAX_READ_LENGTH,
+  MAX_RECENT_SONGS,
+  PICKED_FOLDER_LIMITS,
+  STORAGE_ROOTS,
+} from './bridge';
 
 export interface Platform {
   /** Resolves undefined when the user cancels. */
@@ -34,7 +46,11 @@ export interface Platform {
     bytes: Uint8Array,
     filters: readonly FileFilter[],
   ): Promise<string | undefined>;
-  readFile(path: string): Promise<Uint8Array>;
+  /**
+   * The whole file, or `range`'s bytes (a range past the end returns the bytes that exist, empty
+   * when it starts at or past the end); `range` is checked like a `PickedFile.read` range.
+   */
+  readFile(path: string, range?: ReadRange): Promise<Uint8Array>;
   writeFile(path: string, bytes: Uint8Array): Promise<void>;
   /** Writes over a file `openFile` returned the handle of, or a path `saveFile` returned. */
   writeHandle(handle: FileHandle, bytes: Uint8Array): Promise<void>;
@@ -63,8 +79,43 @@ export interface Platform {
   remove(path: string): Promise<void>;
   /** Desktop only: the native File menu's Open Recent list, at most `MAX_RECENT_SONGS`. */
   setRecentSongs?(items: readonly RecentSong[]): void;
+  /**
+   * Desktop only: the newest undo and redo step names, for the native Edit menu ("Undo <label>");
+   * an absent entry disables the item. Best effort, like the recent list.
+   */
+  setHistoryLabels?(labels: HistoryMenuLabels): void;
   /** Desktop only: a pick from Open Recent. Returns an unsubscribe function. */
   onOpenRecent?(listener: (id: string) => void): () => void;
+  /**
+   * Desktop only: whether the open document has unsaved changes. Main closes the window without
+   * asking while this is false, and sets the macOS edited dot while it is true. Call it on every
+   * change of the modified state; a document that is replaced or closed reports false. The
+   * bridge reports true to main only while an `onCloseRequest` listener is subscribed, so a page
+   * with nobody to answer never holds the window open.
+   */
+  setDocumentEdited?(edited: boolean): void;
+  /**
+   * Desktop only: the user asked to close the window (the close button, or Quit) while
+   * `setDocumentEdited(true)` stands. The listener asks the user, then answers with
+   * `confirmClose(true)` to go ahead or `confirmClose(false)` for Cancel. A request main sent
+   * again while the dialog is open (a second Quit) must be treated as a no-op. Returns an
+   * unsubscribe function. The window never shows a `beforeunload` prompt on desktop: Electron
+   * cancels such a close silently.
+   */
+  onCloseRequest?(listener: () => void): () => void;
+  /**
+   * Desktop only: answers the open close request. `true` closes the window now, and quits when
+   * the request came from Quit; `false` cancels the request. Ignored when none is open.
+   */
+  confirmClose?(close: boolean): void;
+  /**
+   * Desktop only (the browser has none): downloads `url` to `to`, a root-relative path under
+   * `data/sounds/`. Main enforces `https:` on the URL and every redirect, a hard size cap, and
+   * the SHA-256: the body streams to a hidden `.part` beside `to`, which is renamed into place
+   * only when the hash matches and deleted on a mismatch, a cancel or an error. Aborting
+   * `signal` rejects with an `AbortError`.
+   */
+  download?(request: DownloadRequest): Promise<{ size: number }>;
   /** ~/Music/Reprise on desktop; a directory in origin-private storage in the browser. */
   libraryDir(): Promise<string>;
   /** Electron userData on desktop; a directory in origin-private storage in the browser. */

@@ -57,6 +57,7 @@ export const OPCODES: readonly OpcodeSpec[] = [
   op('trigger', 'enum', { values: ['attack', 'release', 'first', 'legato'] }),
   op('seq_length', 'int'),
   op('seq_position', 'int'),
+  op('rt_decay', 'float'),
   op('lorand', 'float'),
   op('hirand', 'float'),
   op('sw_lokey', 'note'),
@@ -76,7 +77,6 @@ const UNSUPPORTED_NAMES = new Set([
   'off_mode',
   'offmode',
   'off_time',
-  'rt_decay',
   'cutoff',
   'resonance',
   'amp_keytrack',
@@ -92,6 +92,9 @@ const UNSUPPORTED_NAMES = new Set([
   'hichan',
   'lobend',
   'hibend',
+  'bend_up',
+  'bend_down',
+  'bend_step',
 ]);
 
 const UNSUPPORTED_PATTERNS: readonly RegExp[] = [

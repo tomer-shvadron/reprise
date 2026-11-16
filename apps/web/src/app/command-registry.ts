@@ -11,11 +11,28 @@ export const contextRank = (context: CommandContext | undefined): number =>
 export interface Command {
   id: string;
   title: string;
+  /**
+   * What the palette searches instead of `title`, for a title that changes with state ("Undo
+   * Insert bar" searches as "Undo"): typing another command's name must never match it.
+   */
+  searchTitle?: string;
   shortcut?: Shortcut;
   /** The shortcut works only while this context is active, and wins over a context-free binding of the same key. */
   context?: CommandContext;
   /** False keeps a command out of the palette while its shortcut still works. */
   inPalette?: boolean;
+  /**
+   * Whether the command can do anything now; false drops it from `available()`, so the palette
+   * omits it and its shortcut does nothing. Read on each call, never cached.
+   */
+  enabled?: () => boolean;
+  /**
+   * The key belongs to the browser: the dispatcher neither runs the command nor prevents the
+   * default on keydown, so the browser's own event fires (copy, cut and paste fire clipboard
+   * events with the system clipboard attached). The table and the palette still show the key, and
+   * `run` is the palette's way to the same action. Nothing else about the registry changes.
+   */
+  native?: true;
   /** False ignores auto-repeated keydowns, so holding Space does not toggle play on and off. */
   repeat?: false;
   run: () => void | Promise<void>;
@@ -59,9 +76,12 @@ export class CommandRegistry {
     };
   }
 
-  /** The commands usable now: those without a context and those whose context is active. */
+  /** The commands usable now: those without a context and those whose context is active, minus any that report themselves not `enabled`. */
   available(): Command[] {
-    return this.list().filter(({ context }) => context === undefined || this.#isActive(context));
+    return this.list().filter(
+      ({ context, enabled }) =>
+        (context === undefined || this.#isActive(context)) && enabled?.() !== false,
+    );
   }
 
   /** Whether an available command of an active context owns this command's shortcut instead. */

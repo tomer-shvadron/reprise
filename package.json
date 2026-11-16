@@ -27,6 +27,7 @@
     "check:files": "node scripts/check-files/run.ts",
     "bootstrap": "node scripts/bootstrap/run.ts",
     "sounds:fetch": "node scripts/sounds/fetch-gm.ts",
+    "sfz:check": "node scripts/sounds/check-sfz.ts",
     "sounds:fixture": "node scripts/sounds/make-test-sf2.ts",
     "layout:metrics": "node scripts/layout/metrics.ts",
     "layout:metrics:check": "node scripts/layout/metrics.ts --check",

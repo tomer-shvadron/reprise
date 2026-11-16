@@ -1,3 +1,4 @@
+import { createSoundPackStore, type SoundPackStore } from '@/features/sounds';
 import { createPrintStore, viewLayoutOptions, type PrintStore } from '@/features/score';
 // Not the feature's index: it re-exports the bar, whose services context imports this file.
 import { installTransport } from '@/features/transport/install-transport';
@@ -9,6 +10,9 @@ import {
   type DocumentStore,
   type DocumentStoreDeps,
 } from '@/state/document';
+import { installClipboard } from '@/features/editor/clipboard-events';
+import { installEntry } from '@/features/editor/entry-controller';
+import { createEntryStore, type EntryStore } from '@/features/editor/entry-store';
 import { installEditor } from '@/features/editor/install-editor';
 import { createEditingStore, type EditingStore } from '@/state/editing';
 import { createHeardRef, type HeardRef } from '@/state/heard';
@@ -28,6 +32,8 @@ export interface AppServices {
   playback: PlaybackStore;
   layout: LayoutStore;
   audio: AudioService;
+  /** The installed sound packs, which the audio service reads (WP-091). */
+  sounds: SoundPackStore;
   /** The transport bar's UI state, reachable from its commands. */
   transport: TransportUiStore;
   /** Where the drawn playhead is, so clicks and steps decide from what the user sees. */
@@ -36,6 +42,8 @@ export interface AppServices {
   print: PrintStore;
   /** The edit-mode flag (WP-080 onward). */
   editing: EditingStore;
+  /** Note entry's session state: current rhythm, insert or overwrite, the waiting digit (WP-081). */
+  entry: EntryStore;
   /** The running practice session (WP-070, WP-073). */
   practice: PracticeStore;
   dispose(): void;
@@ -44,7 +52,7 @@ export interface AppServices {
 export interface AppServicesOptions {
   platform: Platform;
   ui?: UiStore;
-  audio?: (playback: PlaybackStore) => AudioService;
+  audio?: (playback: PlaybackStore, sounds: SoundPackStore) => AudioService;
   read?: DocumentStoreDeps['read'];
   write?: DocumentStoreDeps['write'];
   /** Where the transport keeps its preferences; `localStorage` by default. */
@@ -71,11 +79,15 @@ export function createAppServices(options: AppServicesOptions): AppServices {
         notation: content.notation,
       }),
   });
-  const audio = (options.audio ?? ((store) => createAudioService({ playback: store })))(playback);
+  const sounds = createSoundPackStore({ platform, audio: () => audio });
+  const audio = (
+    options.audio ?? ((store, packs) => createAudioService({ playback: store, packs }))
+  )(playback, sounds);
 
   const transport = createTransportUi();
   const editing = createEditingStore();
   const practice = createPracticeStore();
+  const entry = createEntryStore();
 
   const unsubscribe = document.subscribe((state, previous) => {
     if (state.id === previous.id && state.score === previous.score) return;
@@ -97,6 +109,19 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   // After the document wiring above, so a new document has reset the selection before the editor
   // reconciles its cursor with an edit.
   const uninstallEditor = installEditor({ document, selection, editing, playback });
+  // After the editor, so its cursor reconcile has run before an entry lands the cursor.
+  const uninstallEntry = installEntry({
+    document,
+    selection,
+    editing,
+    entry,
+    preview: (trackId, note, options) => {
+      audio.previewNote(trackId, note, options);
+    },
+  });
+
+  // The clipboard events of edit mode; after the editor, whose reconcile an edit's range follows.
+  const uninstallClipboard = installClipboard({ document, selection, editing, entry });
 
   // After the document wiring above, so a switch reaches the audio service before the speed reset.
   const uninstallTransport = installTransport({
@@ -116,12 +141,16 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     playback,
     layout,
     audio,
+    sounds,
     transport,
     heard: createHeardRef(),
     print: createPrintStore({ document, ui, platform }),
     editing,
+    entry,
     practice,
     dispose() {
+      uninstallClipboard();
+      uninstallEntry();
       uninstallEditor();
       uninstallTransport();
       unsubscribe();

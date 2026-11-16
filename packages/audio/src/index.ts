@@ -6,6 +6,7 @@ export type {
   InstrumentId,
   InstrumentLoad,
   InstrumentLoads,
+  LoadFallback,
   LoadOptions,
   LoadResult,
   LoopEvent,
@@ -21,6 +22,7 @@ export { createTransport } from './transport';
 export type { Transport, TransportOptions } from './transport';
 export { GmBank } from './gm-bank';
 export { timelineNeutral } from './timeline-neutral';
+export { tierOf } from './tier';
 export { outputLatencyOf } from './output-latency';
 
 export type { InstrumentSink, MetronomeSink, NoteEvent } from './sink';
@@ -80,3 +82,11 @@ export type { RecordedMix } from './recording-sink';
 export type { ScheduledContinuation, ScheduledMix } from './scheduler';
 export { mixesInRange } from './timeline';
 export type { MixOnset, TiedContinuation } from './timeline';
+
+// SFZ loader and HQ tier packs (WP-090)
+export * from './sfz/index';
+export { checkPack, checkSfzFile } from './sfz/check-pack';
+export type { PackSnapshot, SfzFileCheck, SnapshotFile } from './sfz/check-pack';
+
+// Effects chains: the pure tables and resolution (WP-092)
+export * from './effects/index';

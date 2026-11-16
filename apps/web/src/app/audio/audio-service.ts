@@ -3,20 +3,32 @@ import {
   GM_BUDGET_BYTES,
   Sf2ParseError,
   Sf2Soundfont,
+  tierOf,
   timelineNeutral,
   checkClickSettings,
   type AudioEngine,
   type ClickSettings,
   type LoadOptions,
+  type PackAssignment,
   type PlaybackState,
+  type EffectStage,
+  type PreviewNote,
+  type PreviewOptions,
   type TempoMode,
   type Ticker,
   type TrackParams,
 } from '@reprise/audio';
 import type { Id, Score } from '@reprise/model';
 
-import { selectCanPlay, type PlaybackStore, type PlaybackStoreState } from '@/state/playback';
+import {
+  MEMORY_BUDGET_RANGE,
+  selectCanPlay,
+  type PlaybackStore,
+  type PlaybackStoreState,
+  type TrackSound,
+} from '@/state/playback';
 import type { BarRange } from '@/state/selection';
+import type { InstalledPackSource, PackDirectory } from '@/state/sound-packs';
 
 import { loadGmSoundfont, SoundfontError, type SoundfontLoader } from './soundfont-loader';
 
@@ -29,6 +41,13 @@ export interface AudioServiceOptions {
   frames?: Ticker;
   startLatency?: number;
   budgetBytes?: number;
+  /** The memory setting's initial value; `settings.memoryBudgetBytes` when absent. */
+  hqBudgetBytes?: number;
+  /**
+   * Where installed sound packs come from. A track naming a pack the directory has plays an HQ
+   * assignment; the service reloads when the directory changes. None: every track is GM.
+   */
+  packs?: PackDirectory;
   /** Runs an edit's rebuild; a task later by default, out of the layout's task. */
   defer?: (run: () => void) => void;
 }
@@ -41,6 +60,17 @@ export interface OpenDocument {
 /** The engine behind the service; tests reach its live objects with `@reprise/audio/testing`. */
 export interface AudioServiceDebug {
   engine: AudioEngine;
+}
+
+export type { PreviewNote, PreviewOptions };
+
+export { MEMORY_BUDGET_RANGE };
+export const PREVIEW_VELOCITY_RANGE = { min: 1, max: 127 } as const;
+export const PREVIEW_SECONDS_RANGE = { min: 0.05, max: 5 } as const;
+const MAX_FRET = 127;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 export interface AudioService {
@@ -75,6 +105,24 @@ export interface AudioService {
    * bus, so it scales the clicks too. Throws a `RangeError` outside 0 to 1.
    */
   setMasterVolume(volume: number): void;
+  /**
+   * Whether the automatic preset is skipped on GM-tier tracks, mirrored into
+   * `settings.gmTierBypass`; on by default. A track's known `sound.preset` applies either way.
+   */
+  setGmTierBypass(on: boolean): void;
+  /**
+   * "Memory for sounds": the HQ tier's budget, which also caps the GM tier's at 80 MiB, mirrored
+   * into `settings.memoryBudgetBytes` and `memory.budgetBytes`. Lowering it evicts at once and
+   * raising it decodes the open song again. Throws a `RangeError` outside `MEMORY_BUDGET_RANGE`.
+   */
+  setMemoryBudget(bytes: number): void;
+  /** Frees the instruments the open song does not use (`memory.unused`); returns how many. */
+  unloadUnused(): number;
+  /**
+   * Bypasses one stage of a track's effects chain, or restores it, for the session: nothing is
+   * saved, and the engine clears it when the song unloads. For the Sounds screen's demo.
+   */
+  setStageBypass(trackId: Id, stage: EffectStage, bypassed: boolean): void;
   /** A user override over the track's channel, kept through every baseline reset. */
   setTrack(id: Id, params: TrackParams): void;
   /**
@@ -82,6 +130,38 @@ export interface AudioService {
    * the next baseline reset or the committed edit replaces it.
    */
   previewTrack(id: Id, params: Pick<TrackParams, 'volume' | 'pan'>): void;
+  /**
+   * Sounds one note through the track's strip (its program, bank, volume and pan) past mute and
+   * solo, stopped or playing, so entering or clicking a note is heard. `{ string, fret }` resolves
+   * through the track's tuning and capo as playback does; `{ pitch }` is a MIDI key. `options`:
+   * `velocity` (1 to 127, default 96) and `seconds` (0.05 to 5, default 0.6), the note's length.
+   *
+   * Call it last in a handler: it throws before unlocking or touching the engine, and a handler
+   * that has already changed the score should not be cut short. Contract:
+   * - A `RangeError` for a track the open song lacks, a string outside the track's tuning (frets
+   *   count from 1 at the top string; not checked on a drum or pitched track), a fret that is not
+   *   an integer from 0 to 127, and a non-finite velocity, seconds or pitch.
+   * - A finite velocity, seconds or pitch outside its range is clamped (the pitch to 0 to 127,
+   *   rounded): unlike a string or fret, it names no place that does not exist.
+   * - Nothing happens, with no error, with no document, while it loads, in the window where the
+   *   document is ahead of the engine's song (a queued rebuild) for a track the engine lacks, or
+   *   when the output failed.
+   * - It unlocks the context, so call it from a gesture. A sample not yet decoded is requested and
+   *   the note starts when it is resident, unless that takes over half a second. A newer preview
+   *   on the same string (or key) replaces a waiting one; `stop` cancels it.
+   */
+  previewNote(trackId: Id, note: PreviewNote, options?: PreviewOptions): void;
+  /**
+   * Undoes `releasePack` for a pack that is still installed (the folder removal failed): the song
+   * reloads with it. A no-op for a pack that was not released.
+   */
+  reinstatePack(id: string): Promise<void>;
+  /**
+   * Reloads the open song without pack `id`: its tracks play GM, as a pack that is not installed.
+   * Resolves once the engine holds no reader for the pack's files, so the caller can delete them.
+   * The pack stays out until the directory lists a different version of it (or no longer lists it).
+   */
+  releasePack(id: string): Promise<void>;
   /** After a sound, song or output error. */
   retry(): void;
   /** Resolves with no rebuild pending, the document's load done and no decode in flight. */
@@ -89,8 +169,6 @@ export interface AudioService {
   debug(): AudioServiceDebug;
   dispose(): void;
 }
-
-const GM: LoadOptions = { tier: 'gm', packs: [] };
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -104,32 +182,55 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     loadSoundfont = loadGmSoundfont,
     createContext = () => new AudioContext({ latencyHint: 'interactive' }),
     budgetBytes = GM_BUDGET_BYTES,
+    packs: directory,
     defer = (run) => setTimeout(run, 0),
   } = options;
 
+  const initial = playback.getState().settings;
   const engine = createAudioEngine({
     context: createContext,
     budgetBytes,
+    hqBudgetBytes: options.hqBudgetBytes ?? initial.memoryBudgetBytes,
     ...(options.scheduler && { scheduler: options.scheduler }),
     ...(options.frames && { frames: options.frames }),
     ...(options.startLatency !== undefined && { startLatency: options.startLatency }),
   });
-  const initial = playback.getState().settings;
   engine.setTempo(initial.tempo.mode, initial.tempo.value);
   engine.setCountIn(initial.countIn);
   engine.setMetronome(initial.metronome.on, initial.metronome.volume);
   engine.setMasterVolume(initial.masterVolume);
+  engine.setGmTierBypass(initial.gmTierBypass);
   engine.updateClick(playback.getState().click.settings);
   let bankLoad: Promise<void> | undefined;
   let doc: OpenDocument | undefined;
   /** The engine has this document's song. */
   let loaded = false;
+  /** The score the engine holds, which trails `doc` while a rebuild is queued. */
+  let engineScore: Score | undefined;
   let mixer: Record<Id, TrackParams> = {};
   let generation = 0;
   let transport: PlaybackState = 'stopped';
   let rebuildQueued = false;
   let disposed = false;
   const inflight = new Set<Promise<unknown>>();
+  /** Packs `releasePack` took out, by the files object they had; see `releasePack`. */
+  const released = new Map<string, InstalledPackSource['files']>();
+  /** Bumped by every engine load, so only the latest one mirrors `trackSounds`. */
+  let loadSeq = 0;
+  /**
+   * Assignments the engine reported as fallbacks, by track, keyed by what it checked (pack id,
+   * files object, default path): the next load shows them failed at once and, with nothing else
+   * assigned, asks for the GM tier, instead of flickering through HQ while the engine confirms.
+   */
+  let failures = new Map<
+    Id,
+    {
+      packId: string;
+      files: InstalledPackSource['files'];
+      path: string | undefined;
+      message: string;
+    }
+  >();
 
   const track = <T>(promise: Promise<T>): Promise<T> => {
     const settled = promise.then(
@@ -149,6 +250,13 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   };
 
   const cleanups = [
+    ...(directory
+      ? [
+          directory.subscribe(() => {
+            if (!disposed && doc && loaded) scheduleRebuild();
+          }),
+        ]
+      : []),
     engine.on('state', (state) => {
       transport = state;
       set({ transport: state });
@@ -169,6 +277,136 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
       set({ instrumentLoads });
     }),
   ];
+
+  /** The installed pack a track names, unless it was released and not reinstalled since. */
+  function installedPack(id: string): InstalledPackSource | undefined {
+    const found = directory?.get(id);
+    if (!found) {
+      released.delete(id);
+      return undefined;
+    }
+    return released.get(id) === found.files ? undefined : found;
+  }
+
+  /**
+   * The engine's `LoadOptions` for a score, and what is already known about each track: a pack
+   * that is not installed, or whose instrument is not in it, is `missing`. The tier is `hq` while
+   * at least one assignment not known to fail reaches the engine, which selects the HQ memory
+   * budget.
+   */
+  function loadOptionsFor(score: Score): {
+    options: LoadOptions;
+    sounds: Record<Id, TrackSound>;
+  } {
+    const assignments: PackAssignment[] = [];
+    /** The assignments not already known to fail: the ones that make the song HQ. */
+    const playing: PackAssignment[] = [];
+    const sounds: Record<Id, TrackSound> = {};
+    for (const track of score.tracks) {
+      const wanted = track.sound?.packId;
+      if (wanted === undefined) {
+        sounds[track.id] = { tier: 'gm' };
+        continue;
+      }
+      const pack = installedPack(wanted);
+      const instrument = track.sound?.instrument;
+      const chosen = pack?.instruments.find(
+        (entry) => instrument === undefined || entry.key === instrument,
+      );
+      if (!pack || !chosen) {
+        sounds[track.id] = { tier: 'gm', packId: wanted, problem: 'missing' };
+        continue;
+      }
+      const assignment: PackAssignment = {
+        trackId: track.id,
+        pack: { id: pack.id, files: pack.files },
+        entries: chosen.entries,
+      };
+      assignments.push(assignment);
+      const failed = failures.get(track.id);
+      if (
+        failed?.packId === pack.id &&
+        failed.files === pack.files &&
+        failed.path === chosen.entries.default
+      ) {
+        sounds[track.id] = {
+          tier: 'gm',
+          packId: wanted,
+          problem: 'failed',
+          message: failed.message,
+        };
+      } else {
+        playing.push(assignment);
+        sounds[track.id] = { tier: 'gm', packId: wanted };
+      }
+    }
+    for (const track of score.tracks) {
+      const known = sounds[track.id];
+      if (known && known.problem === undefined) {
+        sounds[track.id] = { ...known, tier: tierOf(track, playing) };
+      }
+    }
+    return { options: { tier: playing.length > 0 ? 'hq' : 'gm', packs: assignments }, sounds };
+  }
+
+  /** Writes `trackSounds` only when it differs, so an edit that changes no sound wakes nobody. */
+  function setTrackSounds(next: Record<Id, TrackSound>): void {
+    const current = playback.getState().trackSounds;
+    const ids = Object.keys(next);
+    const same =
+      ids.length === Object.keys(current).length &&
+      ids.every((id) => {
+        const a = current[id];
+        const b = next[id];
+        return (
+          a !== undefined &&
+          b !== undefined &&
+          a.tier === b.tier &&
+          a.packId === b.packId &&
+          a.problem === b.problem &&
+          a.message === b.message
+        );
+      });
+    if (!same) set({ trackSounds: next });
+  }
+
+  /**
+   * Loads a score into the engine and, when no later load started meanwhile, mirrors the tiers
+   * with the engine's fallbacks as `failed`. Resolves with `latest: false` for an overtaken load,
+   * whose result the store must not show: the engine kept the newer one's packs.
+   */
+  async function runLoad(score: Score): Promise<{ instruments: number; latest: boolean }> {
+    loadSeq += 1;
+    const mine = loadSeq;
+    const { options: loadOptions, sounds } = loadOptionsFor(score);
+    setTrackSounds(sounds);
+    const { instruments, fallbacks } = await engine.load(score, loadOptions);
+    if (mine !== loadSeq) return { instruments: instruments.length, latest: false };
+    const next = { ...sounds };
+    failures = new Map();
+    for (const { trackId, error } of fallbacks) {
+      next[trackId] = { ...next[trackId], tier: 'gm', problem: 'failed', message: error };
+      const assigned = loadOptions.packs.find((entry) => entry.trackId === trackId);
+      if (assigned) {
+        failures.set(trackId, {
+          packId: assigned.pack.id,
+          files: assigned.pack.files,
+          path: assigned.entries.default,
+          message: error,
+        });
+      }
+    }
+    setTrackSounds(next);
+    // Every assignment failed on an HQ load: reload once so the budget and tiers return to GM.
+    if (
+      loadOptions.tier === 'hq' &&
+      fallbacks.length === loadOptions.packs.length &&
+      doc?.score === score
+    ) {
+      void track(runLoad(score).then(() => undefined));
+    }
+    return { instruments: instruments.length, latest: true };
+  }
 
   function ensureBank(): Promise<void> {
     bankLoad ??= (async () => {
@@ -206,9 +444,10 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
       await ensureBank();
       if (gen !== generation || !doc) return;
       loaded = true;
-      const { instruments } = await engine.load(doc.score, GM);
+      engineScore = doc.score;
+      const { instruments } = await runLoad(doc.score);
       if (gen === generation) {
-        set({ song: { status: 'ready', error: undefined }, instruments: instruments.length });
+        set({ song: { status: 'ready', error: undefined }, instruments });
       }
     } catch (error) {
       if (gen === generation) set({ song: { status: 'error', error: messageOf(error) } });
@@ -216,13 +455,15 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   }
 
   /** Hands the engine the document's latest score; the engine keeps the position (Q5). */
-  function reload(): void {
-    if (!doc || !loaded) return;
+  function reload(): Promise<void> {
+    if (!doc || !loaded) return Promise.resolve();
     const gen = generation;
-    void track(
-      engine.load(doc.score, GM).then(
+    engineScore = doc.score;
+    return track(
+      runLoad(doc.score).then(
         ({ instruments }) => {
-          if (gen === generation) set({ instruments: instruments.length });
+          if (gen !== generation) return;
+          set({ instruments });
         },
         (error: unknown) => {
           if (gen === generation) set({ song: { status: 'error', error: messageOf(error) } });
@@ -239,7 +480,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
         defer(() => {
           rebuildQueued = false;
           try {
-            if (!disposed) reload();
+            if (!disposed) void reload();
           } finally {
             resolve();
           }
@@ -250,8 +491,9 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
 
   function clear(partial: Partial<PlaybackStoreState>): void {
     loaded = false;
+    engineScore = undefined;
     mixer = {};
-    set({ mixer: {}, instrumentLoads: {}, position: undefined, ...partial });
+    set({ mixer: {}, instrumentLoads: {}, trackSounds: {}, position: undefined, ...partial });
   }
 
   const service: AudioService = {
@@ -285,7 +527,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
         const previous = doc.score;
         doc = next;
         if (!loaded) return;
-        if (!rebuildQueued && timelineNeutral(previous, next.score)) reload();
+        if (!rebuildQueued && timelineNeutral(previous, next.score)) void reload();
         else scheduleRebuild();
         return;
       }
@@ -382,6 +624,35 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
       setSettings({ masterVolume: volume });
     },
 
+    setGmTierBypass(on) {
+      engine.setGmTierBypass(on);
+      setSettings({ gmTierBypass: on });
+    },
+
+    setMemoryBudget(bytes) {
+      if (
+        !Number.isFinite(bytes) ||
+        bytes < MEMORY_BUDGET_RANGE.min ||
+        bytes > MEMORY_BUDGET_RANGE.max
+      ) {
+        throw new RangeError(
+          `setMemoryBudget: ${String(bytes)} is outside ${String(MEMORY_BUDGET_RANGE.min)} to ${String(MEMORY_BUDGET_RANGE.max)} bytes`,
+        );
+      }
+      engine.setMemoryBudget(bytes);
+      setSettings({ memoryBudgetBytes: bytes });
+      // Without a sound bank the engine has no source to announce the new budget.
+      set({ memory: engine.memory() });
+    },
+
+    unloadUnused() {
+      return engine.unloadUnused();
+    },
+
+    setStageBypass(trackId, stage, bypassed) {
+      engine.setStageBypass(trackId, stage, bypassed);
+    },
+
     setTrack(id, params) {
       engine.setTrack(id, params);
       mixer = { ...mixer, [id]: { ...mixer[id], ...params } };
@@ -390,6 +661,69 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
 
     previewTrack(id, params) {
       engine.previewTrack(id, params);
+    },
+
+    previewNote(trackId, note, options = {}) {
+      if (disposed) return;
+      for (const [name, value] of [
+        ['velocity', options.velocity],
+        ['seconds', options.seconds],
+        ['pitch', 'pitch' in note ? note.pitch : undefined],
+      ] as const) {
+        if (value !== undefined && !Number.isFinite(value)) {
+          throw new RangeError(`previewNote: ${name} must be a number, got ${String(value)}`);
+        }
+      }
+      // No document, or one still loading: there is no song to name a track in yet.
+      if (!doc || !loaded) return;
+      const target = doc.score.tracks.find((entry) => entry.id === trackId);
+      if (!target) throw new RangeError(`previewNote: the open song has no track ${trackId}`);
+      if (!('pitch' in note)) {
+        if (!Number.isInteger(note.fret) || note.fret < 0 || note.fret > MAX_FRET) {
+          throw new RangeError(
+            `previewNote: fret ${String(note.fret)} is not an integer in 0 to ${String(MAX_FRET)}`,
+          );
+        }
+        if (
+          target.kind === 'fretted' &&
+          (!Number.isInteger(note.string) || note.string < 1 || note.string > target.tuning.length)
+        ) {
+          throw new RangeError(
+            `previewNote: string ${String(note.string)} is outside the ${String(target.tuning.length)}-string tuning`,
+          );
+        }
+      }
+      // A queued rebuild: the track is new in the document and the engine does not have it yet.
+      if (!engineScore?.tracks.some((entry) => entry.id === trackId)) return;
+      service.unlock();
+      if (playback.getState().output.status === 'error') return;
+      engine.previewNote(
+        trackId,
+        'pitch' in note ? { pitch: Math.round(clamp(note.pitch, 0, 127)) } : note,
+        {
+          ...(options.velocity !== undefined && {
+            velocity: Math.round(
+              clamp(options.velocity, PREVIEW_VELOCITY_RANGE.min, PREVIEW_VELOCITY_RANGE.max),
+            ),
+          }),
+          ...(options.seconds !== undefined && {
+            seconds: clamp(options.seconds, PREVIEW_SECONDS_RANGE.min, PREVIEW_SECONDS_RANGE.max),
+          }),
+        },
+      );
+    },
+
+    async releasePack(id) {
+      const current = directory?.get(id);
+      if (current) released.set(id, current.files);
+      if (disposed) return;
+      await reload();
+      await service.settled();
+    },
+
+    async reinstatePack(id) {
+      if (!released.delete(id) || disposed) return;
+      await reload();
     },
 
     retry() {

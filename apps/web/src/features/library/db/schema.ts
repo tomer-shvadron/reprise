@@ -1,5 +1,7 @@
 import { Dexie, type EntityTable } from 'dexie';
 
+import type { PracticeSessionRow } from '@/features/trainer';
+
 import type { SettingRow, SongRow } from './rows';
 
 export const DB_NAME = 'reprise';
@@ -23,11 +25,15 @@ export const SCHEMA: readonly SchemaVersion[] = [
       settings: 'key',
     },
   },
+  // WP-073. `[songId+startedAt]` serves one song's sessions in order. There is deliberately no
+  // lone `startedAt` index: a weekly summary would add one in version 3.
+  { version: 2, stores: { practiceSessions: 'id, [songId+startedAt]' } },
 ];
 
 export type RepriseDb = Dexie & {
   songs: EntityTable<SongRow, 'id'>;
   settings: EntityTable<SettingRow, 'key'>;
+  practiceSessions: EntityTable<PracticeSessionRow, 'id'>;
 };
 
 /** Opens (lazily, on first query) the library database with every `schema` entry applied in order. */
