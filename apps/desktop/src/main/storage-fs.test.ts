@@ -1,5 +1,7 @@
 import {
   existsSync,
+  readdirSync,
+  utimesSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -7,11 +9,11 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { cp, rename, rm } from 'node:fs/promises';
+import { cp, open, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   listDirIn,
@@ -21,6 +23,8 @@ import {
   removeIn,
   writeFileIn,
   type MoveOps,
+  sweepTempFiles,
+  type WriteOps,
   type StorageRoots,
 } from './storage-fs';
 import { StoragePathError } from './storage-path';
@@ -227,5 +231,174 @@ describe('storage file operations', () => {
     );
     await expect(readFileIn(roots, 'library')).rejects.toThrow(StoragePathError);
     expect(existsSync(join(outside, 'x.gp'))).toBe(false);
+  });
+
+  describe('atomic writes', () => {
+    const real: WriteOps = { open, rename, rm };
+    const names = (dir: string) => readdirSync(dir);
+
+    it('replaces a file whole and leaves no temp file in its folder', async () => {
+      put(join(roots.data, 'drafts', 'a.reprise'), 'old');
+
+      await writeFileIn(roots, 'data/drafts/a.reprise', new Uint8Array([110, 101, 119]));
+
+      expect(readFileSync(join(roots.data, 'drafts', 'a.reprise'), 'utf8')).toBe('new');
+      expect(names(join(roots.data, 'drafts'))).toEqual(['a.reprise']);
+    });
+
+    it('flushes the temp file to disk before it renames it over the target', async () => {
+      const order: string[] = [];
+      const ops: WriteOps = {
+        ...real,
+        open: async (path, flags) => {
+          const file = await open(path, flags);
+          const sync = file.sync.bind(file);
+          file.sync = async () => {
+            order.push('sync');
+            await sync();
+          };
+          return file;
+        },
+        rename: async (from, to) => {
+          order.push('rename');
+          await rename(from, to);
+        },
+      };
+
+      await writeFileIn(roots, 'data/a.bin', new Uint8Array([1]), ops);
+
+      expect(order).toEqual(['sync', 'rename']);
+    });
+
+    it('keeps the old file and removes the temp file when the rename fails', async () => {
+      put(join(roots.data, 'a.bin'), 'old');
+      const ops: WriteOps = {
+        ...real,
+        rename: () => Promise.reject(Object.assign(new Error('EIO'), { code: 'EIO' })),
+      };
+
+      await expect(writeFileIn(roots, 'data/a.bin', new Uint8Array([1]), ops)).rejects.toThrow(
+        'EIO',
+      );
+
+      expect(readFileSync(join(roots.data, 'a.bin'), 'utf8')).toBe('old');
+      expect(names(roots.data)).toEqual(['a.bin']);
+    });
+
+    it('removes the temp file when the write itself fails', async () => {
+      const ops: WriteOps = {
+        ...real,
+        open: async (path, flags) => {
+          const file = await open(path, flags);
+          file.writeFile = () => Promise.reject(new Error('ENOSPC'));
+          return file;
+        },
+      };
+
+      await expect(writeFileIn(roots, 'data/a.bin', new Uint8Array([1]), ops)).rejects.toThrow(
+        'ENOSPC',
+      );
+
+      expect(names(roots.data)).toEqual([]);
+    });
+
+    it('hides a temp file a crash left behind from listings', async () => {
+      put(join(roots.data, 'a.bin'));
+      put(join(roots.data, '.a.bin.0123456789ab.tmp'));
+
+      await expect(listDirIn(roots, 'data')).resolves.toEqual([{ name: 'a.bin', kind: 'file' }]);
+    });
+
+    it('retries a rename on Windows for EPERM, then succeeds', async () => {
+      let calls = 0;
+      const sleep = vi.fn(() => Promise.resolve());
+      const ops: WriteOps = {
+        ...real,
+        platform: 'win32',
+        sleep,
+        rename: (from, to) => {
+          calls += 1;
+          if (calls <= 2)
+            return Promise.reject(Object.assign(new Error('EPERM'), { code: 'EPERM' }));
+          return rename(from, to);
+        },
+      };
+
+      await writeFileIn(roots, 'data/a.bin', new Uint8Array([7]), ops);
+
+      expect(calls).toBe(3);
+      expect(sleep).toHaveBeenCalledTimes(2);
+      expect(readFileSync(join(roots.data, 'a.bin'))).toEqual(Buffer.from([7]));
+      expect(names(roots.data)).toEqual(['a.bin']);
+    });
+
+    it('gives up after a bounded number of Windows retries and cleans up', async () => {
+      let calls = 0;
+      const ops: WriteOps = {
+        ...real,
+        platform: 'win32',
+        sleep: () => Promise.resolve(),
+        rename: () => {
+          calls += 1;
+          return Promise.reject(Object.assign(new Error('EBUSY'), { code: 'EBUSY' }));
+        },
+      };
+
+      await expect(writeFileIn(roots, 'data/a.bin', new Uint8Array([1]), ops)).rejects.toThrow(
+        'EBUSY',
+      );
+
+      expect(calls).toBeGreaterThan(1);
+      expect(calls).toBeLessThan(20);
+      expect(names(roots.data)).toEqual([]);
+    });
+
+    it('does not retry off Windows, nor for other codes', async () => {
+      for (const [platform, code] of [
+        ['darwin', 'EPERM'],
+        ['win32', 'ENOENT'],
+      ] as const) {
+        let calls = 0;
+        const ops: WriteOps = {
+          ...real,
+          platform,
+          rename: () => {
+            calls += 1;
+            return Promise.reject(Object.assign(new Error(code), { code }));
+          },
+        };
+
+        await expect(writeFileIn(roots, 'data/a.bin', new Uint8Array([1]), ops)).rejects.toThrow(
+          code,
+        );
+        expect(calls).toBe(1);
+      }
+    });
+
+    it('writes a file whose name takes the whole 255 characters', async () => {
+      const name = `${'n'.repeat(251)}.gp`;
+
+      await writeFileIn(roots, `data/${name}`, new Uint8Array([1]));
+
+      expect(names(roots.data)).toEqual([name]);
+    });
+  });
+
+  describe('sweepTempFiles', () => {
+    it('removes old temp files under every root, and keeps new ones and real files', async () => {
+      const old = join(roots.data, 'drafts', '.a.reprise.0123456789ab.tmp');
+      const fresh = join(roots.library, 'songs', '.b.reprise.ba9876543210.tmp');
+      put(old);
+      put(fresh);
+      put(join(roots.data, 'drafts', 'a.reprise'));
+      const past = new Date(Date.now() - 10 * 60_000);
+      utimesSync(old, past, past);
+
+      await expect(sweepTempFiles(roots)).resolves.toBe(1);
+
+      expect(existsSync(old)).toBe(false);
+      expect(existsSync(fresh)).toBe(true);
+      expect(existsSync(join(roots.data, 'drafts', 'a.reprise'))).toBe(true);
+    });
   });
 });

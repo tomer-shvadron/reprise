@@ -97,12 +97,6 @@ describe('New song', () => {
     start();
     await user.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => {
-      expect(services.document.getState().savePrompt).toBeDefined();
-    });
-    act(() => {
-      services.document.getState().answerSavePrompt('reprise');
-    });
-    await waitFor(() => {
       expect(trackNames(services)).toEqual(['Guitar']);
     });
     expect(save).toHaveBeenCalledOnce();
@@ -110,36 +104,10 @@ describe('New song', () => {
   });
 
   it('stops where it stood when Save As is cancelled', async () => {
-    const { services, save, dirty, start, user } = setup();
-    dirty();
-    start();
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => {
-      expect(services.document.getState().savePrompt).toBeDefined();
-    });
-    act(() => {
-      services.document.getState().answerSavePrompt('cancel');
-    });
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: 'Unsaved changes' })).toBeNull();
-    });
-    expect(save).not.toHaveBeenCalled();
-    expect(trackNames(services)?.[0]).toBe('Edited');
-    expect(services.document.getState().dirty).toBe(true);
-    expect(services.editing.getState().editing).toBe(false);
-  });
-
-  it('stops when the file picker is cancelled after choosing a format', async () => {
     const { services, dirty, start, user } = setup(() => Promise.resolve(undefined));
     dirty();
     start();
     await user.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => {
-      expect(services.document.getState().savePrompt).toBeDefined();
-    });
-    act(() => {
-      services.document.getState().answerSavePrompt('reprise');
-    });
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: 'Unsaved changes' })).toBeNull();
     });
@@ -159,12 +127,6 @@ describe('New song', () => {
       env.dirty();
       env.start();
       await env.user.click(screen.getByRole('button', { name: 'Save' }));
-      await waitFor(() => {
-        expect(env.services.document.getState().savePrompt).toBeDefined();
-      });
-      act(() => {
-        env.services.document.getState().answerSavePrompt('reprise');
-      });
       await waitFor(() => {
         expect(env.services.document.getState().saving).toBe(true);
         expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
@@ -213,12 +175,6 @@ describe('New song', () => {
     dirty();
     start();
     await user.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => {
-      expect(services.document.getState().savePrompt).toBeDefined();
-    });
-    act(() => {
-      services.document.getState().answerSavePrompt('reprise');
-    });
     await waitFor(() => {
       expect(trackNames(services)).toEqual(['Guitar']);
     });

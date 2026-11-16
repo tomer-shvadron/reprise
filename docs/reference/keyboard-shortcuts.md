@@ -22,6 +22,7 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Open file… | File | Global | ⌘O | Ctrl+O |
 | Save | File | Global | ⌘S | Ctrl+S |
 | Save as… | File | Global | ⇧⌘S | Ctrl+Shift+S |
+| Export as Guitar Pro… | File | Global | — | — |
 | Close file | File | Global | — | — |
 | Show import details | File | Global | — | — |
 | Print… | File | Global | ⌘P | Ctrl+P |
