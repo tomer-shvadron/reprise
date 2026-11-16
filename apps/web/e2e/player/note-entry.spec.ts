@@ -30,7 +30,12 @@ test('A sixteen-bar riff is entered from the keyboard alone, one undo step per e
   await app.waitReady();
   await app.gesture();
   await page.keyboard.press('ControlOrMeta+e');
-  await expect(status).toContainText('Bar 1 · End of bar · String 1');
+  const info = await page.evaluate(() => ({
+    active: document.activeElement?.outerHTML.slice(0, 200),
+    dialogs: document.querySelectorAll('[role=dialog],[aria-modal=true]').length,
+    ua: navigator.userAgent,
+  }));
+  await expect(status, JSON.stringify(info)).toContainText('Bar 1 · End of bar · String 1');
 
   let heard = false;
   for (const step of r.steps) {
