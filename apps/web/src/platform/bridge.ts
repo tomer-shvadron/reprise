@@ -28,8 +28,36 @@ export interface PickedFile {
   /** '/'-separated path inside the picked folder; equal to `name` for a file picked alone. */
   relativePath: string;
   size: number;
-  read(): Promise<Uint8Array>;
+  /** The whole file, or `range`'s bytes; a range past the end returns the bytes that exist. */
+  read(range?: ReadRange): Promise<Uint8Array>;
 }
+
+/** A byte range of a file: non-negative safe integers, `length` at most `MAX_READ_LENGTH`. */
+export interface ReadRange {
+  offset: number;
+  length: number;
+}
+
+/** The most bytes one ranged read returns; main refuses a longer `length`, and so does the browser. */
+export const MAX_READ_LENGTH = 64 * 1024 * 1024;
+
+/** What `Platform.download` asks main for; `to` is a root-relative path under `data/sounds/`. */
+export interface DownloadRequest {
+  /** `https:` only, and so is every redirect it follows. */
+  url: string;
+  to: string;
+  /** Lower- or upper-case hex; the file is kept only when its SHA-256 matches. */
+  sha256: string;
+  /** The download is refused past this many bytes; main clamps it to `MAX_DOWNLOAD_BYTES`. */
+  maxBytes: number;
+  /** Throttled by main; `total` is absent when the server sent no Content-Length. */
+  onProgress?: (loaded: number, total?: number) => void;
+  /** Aborting it cancels the download and removes the partial file. */
+  signal?: AbortSignal;
+}
+
+/** The hard cap on one download, applied by main whatever `maxBytes` says. */
+export const MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 
 export interface PickedFolder {
   name: string;
@@ -105,7 +133,7 @@ export interface InvokeChannels {
     args: [suggestedName: string, bytes: Uint8Array, filters: readonly FileFilter[]];
     result: string | undefined;
   };
-  'file:read': { args: [path: string]; result: Uint8Array };
+  'file:read': { args: [path: string, range?: ReadRange]; result: Uint8Array };
   'file:write': { args: [path: string, bytes: Uint8Array]; result: undefined };
   'file:open-many': { args: [filters: readonly FileFilter[]]; result: PickedFileInfo[] };
   'folder:open': {
@@ -121,6 +149,17 @@ export interface InvokeChannels {
   'app:library-dir': { args: []; result: string };
   'app:data-dir': { args: []; result: string };
   'app:print': { args: [options?: PrintOptions]; result: undefined };
+  /**
+   * Desktop only. `id` is the renderer's own, one per download in flight; main refuses one
+   * already in use. Resolves the size once the file is in place, and rejects (leaving no file)
+   * on a refused URL or path, a hash mismatch, an oversize body, an error or a cancel.
+   */
+  'download:start': {
+    args: [id: string, url: string, to: string, sha256: string, maxBytes: number];
+    result: { size: number };
+  };
+  /** Cancels the download with this id; nothing happens when there is none. */
+  'download:cancel': { args: [id: string]; result: undefined };
   /** The renderer reports whether the open document has unsaved changes; main keys the close guard on it. */
   'window:set-edited': { args: [edited: boolean]; result: undefined };
   /**
@@ -158,6 +197,8 @@ export interface EventChannels {
   'menu:open-recent': [id: string];
   /** The user asked to close the window while the document is edited; answer with `window:close`. */
   'window:close-requested': [];
+  /** Progress of the download `id`, throttled; always sent once more when the body ends. */
+  'download:progress': [id: string, loaded: number, total?: number];
 }
 
 export type EventChannel = keyof EventChannels;
@@ -190,6 +231,14 @@ export interface RepriseBridge {
     ...args: InvokeArgs<'window:set-edited'>
   ) => Promise<InvokeResult<'window:set-edited'>>;
   confirmClose: (...args: InvokeArgs<'window:close'>) => Promise<InvokeResult<'window:close'>>;
+  startDownload: (...args: InvokeArgs<'download:start'>) => Promise<InvokeResult<'download:start'>>;
+  cancelDownload: (
+    ...args: InvokeArgs<'download:cancel'>
+  ) => Promise<InvokeResult<'download:cancel'>>;
+  /** Returns an unsubscribe function. */
+  onDownloadProgress: (
+    listener: (...args: EventChannels['download:progress']) => void,
+  ) => () => void;
   /** Returns an unsubscribe function. */
   onMenuCommand: (listener: (...args: EventChannels['menu:command']) => void) => () => void;
   onOpenRecent: (listener: (...args: EventChannels['menu:open-recent']) => void) => () => void;

@@ -42,6 +42,25 @@ function answerInput(files: File[] | 'cancel') {
   });
 }
 
+describe('PickedFile.read with a range', () => {
+  it('slices the file instead of reading all of it', async () => {
+    const file = fileWith('a.zip', [0, 1, 2, 3, 4, 5]);
+    answerInput([file]);
+    const [picked] = await createBrowserPlatform().openFiles(filters);
+    const whole = vi.spyOn(file, 'arrayBuffer');
+    const slice = vi.spyOn(file, 'slice');
+
+    await expect(picked?.read({ offset: 1, length: 3 })).resolves.toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
+    await expect(picked?.read({ offset: 4, length: 50 })).resolves.toEqual(new Uint8Array([4, 5]));
+
+    expect(slice).toHaveBeenCalledWith(1, 4);
+    expect(whole).not.toHaveBeenCalled();
+    await expect(picked?.read({ offset: -1, length: 1 })).rejects.toThrow(RangeError);
+  });
+});
+
 describe('openFiles', () => {
   it('reads each file picked through the input fallback lazily', async () => {
     const a = fileWith('a.gp', [1, 2]);

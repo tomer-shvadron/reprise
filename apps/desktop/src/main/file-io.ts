@@ -1,7 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
+import type { ReadRange } from '@reprise/web';
+
 import type { PathAccess } from './path-access';
-import { readFileIn, writeFileIn, type StorageRoots } from './storage-fs';
+import { readFileIn, readRangeOf, writeFileIn, type StorageRoots } from './storage-fs';
 import { isStoragePath } from './storage-path';
 
 /**
@@ -15,10 +17,11 @@ export async function readPath(
   path: string,
   access: PathAccess,
   roots: StorageRoots,
+  range?: ReadRange,
 ): Promise<Uint8Array> {
-  if (isStoragePath(path)) return readFileIn(roots, path);
+  if (isStoragePath(path)) return readFileIn(roots, path, range);
   if (!access.allowsRead(path)) throw new Error(`Read access to ${path} was not granted`);
-  return readFile(path);
+  return range ? readRangeOf(path, range) : readFile(path);
 }
 
 export async function writePath(

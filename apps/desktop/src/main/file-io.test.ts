@@ -39,6 +39,29 @@ describe('file:read and file:write paths', () => {
     expect(readFileSync(picked, 'utf8')).toBe('original');
   });
 
+  it('reads a range of a picked file, and refuses a range of one nothing granted', async () => {
+    const picked = join(base, 'big.zip');
+    writeFileSync(picked, Uint8Array.from([9, 8, 7, 6, 5]));
+    const other = join(base, 'other.zip');
+    writeFileSync(other, 'x');
+    access.grantRead(picked);
+
+    await expect(readPath(picked, access, roots, { offset: 1, length: 2 })).resolves.toEqual(
+      Uint8Array.from([8, 7]),
+    );
+    await expect(readPath(other, access, roots, { offset: 0, length: 1 })).rejects.toThrow(
+      /Read access/,
+    );
+  });
+
+  it('reads a range of a root-relative file', async () => {
+    await writePath('data/sounds/a.zip', bytes(1, 2, 3, 4), access, roots);
+
+    await expect(
+      readPath('data/sounds/a.zip', access, roots, { offset: 2, length: 10 }),
+    ).resolves.toEqual(bytes(3, 4));
+  });
+
   it('writes a file the user opened or saved in a dialog', async () => {
     const saved = join(base, 'saved.gp');
     writeFileSync(saved, 'x');

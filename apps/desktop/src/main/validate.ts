@@ -6,6 +6,7 @@ import type {
   InvokeArgs,
   InvokeChannel,
   PrintOptions,
+  ReadRange,
   RecentSong,
 } from '@reprise/web';
 
@@ -29,6 +30,14 @@ export class PayloadError extends Error {
     this.name = 'PayloadError';
   }
 }
+
+// Repeated from the contract's MAX_READ_LENGTH and MAX_DOWNLOAD_BYTES: desktop imports web for
+// types only.
+export const MAX_READ_LENGTH = 64 * 1024 * 1024;
+export const MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024;
+const MAX_URL_LENGTH = 2048;
+const MAX_DOWNLOAD_ID_LENGTH = 64;
+const DOWNLOAD_DIR = ['data', 'sounds'];
 
 const MAX_FILTERS = 16;
 const MAX_EXTENSIONS = 32;
@@ -72,6 +81,79 @@ export function parsePath(value: unknown): string {
   // A UNC or device path (`\\host\share`, `\\?\C:`, `//host/share`) makes the realpath that
   // PathAccess runs open a network connection from main; picked paths never take that form.
   if (/^[\\/]{2}/.test(value)) throw new PayloadError('Network and device paths are not accepted');
+  return value;
+}
+
+/** `{ offset, length }` as non-negative safe integers, the length within `MAX_READ_LENGTH`. */
+export function parseReadRange(value: unknown): ReadRange {
+  const offset = isRecord(value) ? value['offset'] : undefined;
+  const length = isRecord(value) ? value['length'] : undefined;
+  if (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0) {
+    throw new PayloadError('Expected a read offset that is a non-negative integer');
+  }
+  if (
+    typeof length !== 'number' ||
+    !Number.isSafeInteger(length) ||
+    length < 0 ||
+    length > MAX_READ_LENGTH
+  ) {
+    throw new PayloadError(
+      `Expected a read length that is an integer from 0 to ${String(MAX_READ_LENGTH)}`,
+    );
+  }
+  return { offset, length };
+}
+
+/** An `https:` URL without credentials; main checks every redirect the same way. */
+export function parseHttpsUrl(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > MAX_URL_LENGTH) {
+    throw new PayloadError('Expected a URL');
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new PayloadError('Expected a URL');
+  }
+  if (url.protocol !== 'https:') throw new PayloadError('Only https: URLs are downloaded');
+  if (url.username !== '' || url.password !== '') {
+    throw new PayloadError('A download URL carries no credentials');
+  }
+  return url.href;
+}
+
+/** A storage path of a file below `data/sounds/`, the only place a download may write. */
+export function parseDownloadTarget(value: unknown): string {
+  const text = parseStoragePathText(value);
+  const segments = text.split('/');
+  if (
+    segments.length < DOWNLOAD_DIR.length + 1 ||
+    !DOWNLOAD_DIR.every((name, index) => segments[index] === name)
+  ) {
+    throw new PayloadError(`A download goes to a file under ${DOWNLOAD_DIR.join('/')}/`);
+  }
+  return text;
+}
+
+export function parseSha256(value: unknown): string {
+  if (typeof value !== 'string' || !/^[0-9a-f]{64}$/i.test(value)) {
+    throw new PayloadError('Expected a SHA-256 as 64 hex digits');
+  }
+  return value.toLowerCase();
+}
+
+/** A positive integer, clamped to `MAX_DOWNLOAD_BYTES`. */
+export function parseMaxBytes(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    throw new PayloadError('Expected maxBytes as a positive integer');
+  }
+  return Math.min(value, MAX_DOWNLOAD_BYTES);
+}
+
+export function parseDownloadId(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > MAX_DOWNLOAD_ID_LENGTH) {
+    throw new PayloadError('Expected a download id');
+  }
   return value;
 }
 
@@ -185,8 +267,9 @@ export const parsers: Parsers = {
     return [parseName(args[0]), parseBytes(args[1]), parseFilters(args[2])];
   },
   'file:read': (args) => {
-    arity(args, 1, 'file:read');
-    return [parsePath(args[0])];
+    if (args.length === 1) return [parsePath(args[0])];
+    arity(args, 2, 'file:read');
+    return [parsePath(args[0]), parseReadRange(args[1])];
   },
   'file:write': (args) => {
     arity(args, 2, 'file:write');
@@ -241,6 +324,20 @@ export const parsers: Parsers = {
     arity(args, 1, 'window:close');
     if (typeof args[0] !== 'boolean') throw new PayloadError('Expected a boolean');
     return [args[0]];
+  },
+  'download:start': (args) => {
+    arity(args, 5, 'download:start');
+    return [
+      parseDownloadId(args[0]),
+      parseHttpsUrl(args[1]),
+      parseDownloadTarget(args[2]),
+      parseSha256(args[3]),
+      parseMaxBytes(args[4]),
+    ];
+  },
+  'download:cancel': (args) => {
+    arity(args, 1, 'download:cancel');
+    return [parseDownloadId(args[0])];
   },
   'app:print': (args) => {
     if (args.length === 0) return [];
