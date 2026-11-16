@@ -113,6 +113,11 @@ export class App {
     await this.page.keyboard.press('ControlOrMeta+k');
     const input = this.page.getByRole('combobox');
     await input.fill(text);
+    // Enter runs the first match, and "Undo Bar properties" can sit above "Bar properties": go down
+    // to the entry whose title starts with the text.
+    const titles = await this.page.getByRole('option').allTextContents();
+    const at = titles.findIndex((title) => title.startsWith(text));
+    for (let step = 0; step < Math.max(at, 0); step += 1) await input.press('ArrowDown');
     await input.press('Enter');
   }
 
