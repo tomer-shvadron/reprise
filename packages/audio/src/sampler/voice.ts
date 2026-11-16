@@ -1,4 +1,4 @@
-import { evaluateModulators } from './region-map';
+import { evaluateModulators, keyScaledTime } from './region-map';
 import type { ModulatorDeltas, Region, RegionMap } from './region-map';
 
 /** -80 dB: the floor exponential ramps aim at, since they cannot reach zero. */
@@ -51,6 +51,7 @@ function regionFilter(
   spec: NonNullable<Region['filter']>,
   deltas: ModulatorDeltas | undefined,
   when: number,
+  key: number,
 ): BiquadFilterNode | undefined {
   const nyquist = context.sampleRate / 2;
   if (!deltas && !spec.envelope) {
@@ -85,12 +86,12 @@ function regionFilter(
     const top = start + Math.max(envelope.attack, MIN_ATTACK);
     node.frequency.setValueAtTime(hz(rest), start);
     node.frequency.exponentialRampToValueAtTime(hz(peak), top);
-    const holdEnd = top + envelope.hold;
+    const holdEnd = top + keyScaledTime(envelope.hold, envelope.holdPerKey, key);
     node.frequency.setValueAtTime(hz(peak), holdEnd);
     if (envelope.sustain < 1) {
       node.frequency.exponentialRampToValueAtTime(
         hz(settled),
-        holdEnd + Math.max(envelope.decay, MIN_ATTACK),
+        holdEnd + Math.max(keyScaledTime(envelope.decay, envelope.decayPerKey, key), MIN_ATTACK),
       );
     }
   }
@@ -164,6 +165,7 @@ export class Voice {
   readonly #gainEvents: GainEvent[];
   readonly #delay: number;
   readonly #attack: number;
+  readonly #hold: number;
   readonly #decay: number;
   readonly #sustain: number;
   readonly #playable: number;
@@ -199,7 +201,14 @@ export class Voice {
     this.#region = region;
     this.#delay = Math.max(envelope.delay ?? 0, 0);
     this.#attack = Math.max(envelope.attack, MIN_ATTACK);
-    this.#decay = Math.max(envelope.decay, MIN_ATTACK);
+    // A key outside the region's range (the map falls back to the nearest region) keeps the
+    // edge key's timing, as the per-key regions this replaces did.
+    const scaleKey = Math.min(Math.max(start.key, region.keyLo), region.keyHi);
+    this.#hold = keyScaledTime(envelope.hold, envelope.holdPerKey, scaleKey);
+    this.#decay = Math.max(
+      keyScaledTime(envelope.decay, envelope.decayPerKey, scaleKey),
+      MIN_ATTACK,
+    );
     this.#sustain = Math.min(1, Math.max(0, envelope.sustain));
     this.#releaseTime = Math.max(envelope.release, MIN_RELEASE);
     this.#rate = 2 ** ((start.key - region.rootKey + region.tune / 100) / 12);
@@ -240,7 +249,7 @@ export class Voice {
     this.#gainEvents = [{ at: when, value: this.#baseLevel, ramp: false }];
 
     const nodes: AudioNode[] = [source, this.#envelope];
-    const lowpass = region.filter && regionFilter(context, region.filter, deltas, when);
+    const lowpass = region.filter && regionFilter(context, region.filter, deltas, when, scaleKey);
     if (lowpass) nodes.push(lowpass);
     nodes.push(this.#filter, this.#level);
     if (region.pan) {
@@ -436,7 +445,7 @@ export class Voice {
     let elapsed = time - this.startTime - this.#delay;
     if (elapsed < 0) return 0;
     if (elapsed < this.#attack) return elapsed / this.#attack;
-    elapsed -= this.#attack + this.#region.envelope.hold;
+    elapsed -= this.#attack + this.#hold;
     if (elapsed < 0 || this.#sustain >= 1) return 1;
     if (elapsed < this.#decay) return Math.max(this.#sustain, SILENCE) ** (elapsed / this.#decay);
     return this.#sustain;
@@ -451,7 +460,7 @@ export class Voice {
     const peak = when + this.#attack;
     gain.linearRampToValueAtTime(1, peak);
     if (this.#sustain >= 1) return;
-    const decayStart = peak + this.#region.envelope.hold;
+    const decayStart = peak + this.#hold;
     gain.setValueAtTime(1, decayStart);
     const decayEnd = decayStart + this.#decay;
     gain.exponentialRampToValueAtTime(Math.max(this.#sustain, SILENCE), decayEnd);

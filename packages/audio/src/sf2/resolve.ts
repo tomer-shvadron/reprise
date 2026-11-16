@@ -29,7 +29,7 @@ export interface PresetReport {
    * destination other than attenuation, the cutoff, the filter envelope's depth and Q.
    */
   modulated: number;
-  /** Zones expanded to one region per key for `keynumToVolEnv*` or a `scaleTuning` other than 100. */
+  /** Zones expanded to one region per key for a `scaleTuning` other than 100. */
   keyExpanded: number;
   /** Stereo pairs whose right zone differs from the left in a non-pitch generator the merge drops. */
   stereoMismatches: number;
@@ -489,7 +489,6 @@ const FILTER_DESTINATIONS: ReadonlySet<string> = new Set([
 function filter(
   generators: ReadonlyMap<number, number>,
   modulators: readonly NoteModulator[],
-  key: number,
 ): Region['filter'] {
   const cutoff = value(generators, Gen.initialFilterFc);
   const resonance = value(generators, Gen.initialFilterQ);
@@ -502,11 +501,8 @@ function filter(
   };
   const depthModulated = modulators.some(({ destination }) => destination === 'modEnvToFilterFc');
   if (depth === 0 && !depthModulated) return settings;
-  const fromMiddleC = 60 - key;
-  const holdTc =
-    value(generators, Gen.holdModEnv) + value(generators, Gen.keynumToModEnvHold) * fromMiddleC;
-  const decayTc =
-    value(generators, Gen.decayModEnv) + value(generators, Gen.keynumToModEnvDecay) * fromMiddleC;
+  const holdPerKey = value(generators, Gen.keynumToModEnvHold);
+  const decayPerKey = value(generators, Gen.keynumToModEnvDecay);
   const fall = value(generators, Gen.sustainModEnv) / 1000;
   const delayTc = value(generators, Gen.delayModEnv);
   return {
@@ -515,21 +511,22 @@ function filter(
       cents: depth,
       delay: delayTc > defaultOf(Gen.delayModEnv) ? timecentsToSeconds(delayTc) : 0,
       attack: timecentsToSeconds(value(generators, Gen.attackModEnv)),
-      hold: timecentsToSeconds(holdTc),
+      // Hold and decay are at key 60; the voice scales them per key (`keyScaledTime`).
+      hold: timecentsToSeconds(value(generators, Gen.holdModEnv)),
       // SF2's modulation envelope falls linearly; its decay is the time of a full fall to 0, so
       // reaching the sustain level takes the fraction it drops.
-      decay: timecentsToSeconds(decayTc) * fall,
+      decay: timecentsToSeconds(value(generators, Gen.decayModEnv)) * fall,
       sustain: 1 - fall,
+      ...(holdPerKey !== 0 && { holdPerKey }),
+      ...(decayPerKey !== 0 && { decayPerKey }),
     },
   };
 }
 
-function envelope(generators: ReadonlyMap<number, number>, key: number): Envelope {
-  const fromMiddleC = 60 - key;
-  const holdTc =
-    value(generators, Gen.holdVolEnv) + value(generators, Gen.keynumToVolEnvHold) * fromMiddleC;
-  const decayTc =
-    value(generators, Gen.decayVolEnv) + value(generators, Gen.keynumToVolEnvDecay) * fromMiddleC;
+/** Hold and decay are the values at key 60; the voice scales them for the struck key. */
+function envelope(generators: ReadonlyMap<number, number>): Envelope {
+  const holdPerKey = value(generators, Gen.keynumToVolEnvHold);
+  const decayPerKey = value(generators, Gen.keynumToVolEnvDecay);
   const sustainCb = value(generators, Gen.sustainVolEnv);
   const sustainDb = sustainCb / 10;
   const delayTc = value(generators, Gen.delayVolEnv);
@@ -537,15 +534,19 @@ function envelope(generators: ReadonlyMap<number, number>, key: number): Envelop
     // The spec's default, -12000 timecents, is about a millisecond: nothing to carry.
     ...(delayTc > defaultOf(Gen.delayVolEnv) && { delay: timecentsToSeconds(delayTc) }),
     attack: timecentsToSeconds(value(generators, Gen.attackVolEnv)),
-    hold: timecentsToSeconds(holdTc),
+    hold: timecentsToSeconds(value(generators, Gen.holdVolEnv)),
     // SF2 decay and release are the time of a full 100 dB fall at a constant dB rate; the sampler
     // spends its time reaching the sustain level, or -80 dB at most, so the time scales with it.
     decay:
-      (timecentsToSeconds(decayTc) * Math.min(sustainDb, SAMPLER_FLOOR_DB)) / SF2_FULL_SCALE_DB,
+      (timecentsToSeconds(value(generators, Gen.decayVolEnv)) *
+        Math.min(sustainDb, SAMPLER_FLOOR_DB)) /
+      SF2_FULL_SCALE_DB,
     sustain: sustainDb >= SF2_FULL_SCALE_DB ? 0 : 10 ** (-sustainDb / 20),
     release:
       (timecentsToSeconds(value(generators, Gen.releaseVolEnv)) * SAMPLER_FLOOR_DB) /
       SF2_FULL_SCALE_DB,
+    ...(holdPerKey !== 0 && { holdPerKey }),
+    ...(decayPerKey !== 0 && { decayPerKey }),
   };
 }
 
@@ -603,17 +604,10 @@ function buildRegions(
     ...(exclusiveClass !== 0 && { exclusiveClass }),
   };
 
-  // The Region tunes and shapes per range, so per-key generators become one region per key.
-  const perKey =
-    scale !== 100 ||
-    value(generators, Gen.keynumToVolEnvHold) !== 0 ||
-    value(generators, Gen.keynumToVolEnvDecay) !== 0 ||
-    ((value(generators, Gen.modEnvToFilterFc) !== 0 ||
-      modulators.some(({ destination }) => destination === 'modEnvToFilterFc')) &&
-      (value(generators, Gen.keynumToModEnvHold) !== 0 ||
-        value(generators, Gen.keynumToModEnvDecay) !== 0));
-  if (!perKey) {
-    const lowpass = filter(generators, modulators, 60);
+  // The Region tunes per range, so a `scaleTuning` other than 100 becomes one region per key.
+  // Hold and decay scale per key in the voice instead, so those zones stay one region.
+  if (scale === 100) {
+    const lowpass = filter(generators, modulators);
     return [
       {
         ...base,
@@ -622,14 +616,16 @@ function buildRegions(
         keyHi: key.hi,
         rootKey: root,
         tune: cents,
-        envelope: envelope(generators, 60),
+        envelope: envelope(generators),
       },
     ];
   }
   report.keyExpanded += 1;
   const regions: Region[] = [];
+  // Per-key regions differ in pitch alone; the envelopes and filter are the same for every key.
+  const lowpass = filter(generators, modulators);
+  const shape = envelope(generators);
   for (let k = key.lo; k <= key.hi; k += 1) {
-    const lowpass = filter(generators, modulators, k);
     regions.push({
       ...base,
       ...(lowpass && { filter: lowpass }),
@@ -637,7 +633,7 @@ function buildRegions(
       keyHi: k,
       rootKey: k,
       tune: scale * (k - root) + cents,
-      envelope: envelope(generators, k),
+      envelope: shape,
     });
   }
   return regions;

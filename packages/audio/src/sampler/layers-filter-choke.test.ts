@@ -208,6 +208,7 @@ describe('region filter envelope and modulators', () => {
     spec: Partial<Region>,
     span: readonly [number, number],
     velocity = 127,
+    key = 69,
   ): Promise<number> {
     const play = async (extra: Partial<Region>): Promise<number> => {
       const { context, sampler } = setup(1);
@@ -215,7 +216,7 @@ describe('region filter envelope and modulators', () => {
         TRACK,
         instrument([region({ sample: 'high', ...extra })], { high: sine(4000) }),
       );
-      sampler.noteOn('t', { key: 69, velocity, when: 0 });
+      sampler.noteOn('t', { key, velocity, when: 0 });
       return toneLevel(await render(context), 4000, ...span);
     };
     return 20 * Math.log10((await play(spec)) / (await play({})));
@@ -246,6 +247,51 @@ describe('region filter envelope and modulators', () => {
     if (held.filter?.envelope) held.filter.envelope.hold = 0.3;
     expect(await levelDb(held, [0.2, 0.28])).toBeGreaterThan(-4);
     expect(await levelDb(held, [0.8, 0.95])).toBeLessThan(-30);
+  });
+
+  describe('key-scaled hold and decay of the filter envelope', () => {
+    const keyed = (
+      envelope: Partial<NonNullable<NonNullable<Region['filter']>['envelope']>>,
+      range = { keyLo: 0, keyHi: 127 },
+    ): Partial<Region> => ({
+      ...range,
+      filter: {
+        cutoffHz: 500,
+        q: BUTTERWORTH,
+        envelope: {
+          cents: 4800,
+          delay: 0,
+          attack: 0.001,
+          hold: 0,
+          decay: 0.2,
+          sustain: 0,
+          ...envelope,
+        },
+      },
+    });
+
+    it('holds the cutoff open longer for a lower key', async () => {
+      // 100 timecents per key below 60: hold 0.3 s at key 60, 0.6 s at key 48, then a 0.2 s fall.
+      const spec = keyed({ hold: 0.3, holdPerKey: 100 });
+      expect(await levelDb(spec, [0.52, 0.58], 127, 48)).toBeGreaterThan(-4);
+      expect(await levelDb(spec, [0.55, 0.65], 127, 60)).toBeLessThan(-20);
+    });
+
+    it("scales the hold by the region's edge key for a strike outside its range", async () => {
+      const spec = keyed({ hold: 0.3, holdPerKey: 100 }, { keyLo: 48, keyHi: 60 });
+      // Key 72 plays with key 60's 0.3 s hold, key 36 with key 48's 0.6 s.
+      expect(await levelDb(spec, [0.55, 0.65], 127, 72)).toBeLessThan(-20);
+      expect(await levelDb(spec, [0.52, 0.58], 127, 36)).toBeGreaterThan(-4);
+    });
+
+    it('stretches the fall for a lower key', async () => {
+      // Decay 0.2 s at key 60 and 0.8 s at key 36 (100 timecents per key): still closing at 0.5 s.
+      const spec = keyed({ decayPerKey: 100 });
+      // The notes differ in pitch too, so the closed one is the reference, not a fixed level.
+      const closed = await levelDb(spec, [0.5, 0.55], 127, 60);
+      expect(closed).toBeLessThan(-20);
+      expect(await levelDb(spec, [0.5, 0.55], 127, 36)).toBeGreaterThan(closed + 6);
+    });
   });
 
   it('plays the velocity curve from the modulators, and none when they leave it out', async () => {
