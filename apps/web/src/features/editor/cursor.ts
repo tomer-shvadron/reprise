@@ -229,8 +229,8 @@ function reconcileEnd(score: Score, end: RangeEnd): RangeEnd | undefined {
 /**
  * What to write to the store so its cursor, range and picked ids hold only what `score` still
  * has, or undefined when nothing changes. A beat that is gone moves the cursor to the stop at its
- * old index (undo brings the beat back with its id, but the cursor has already moved to the beat that
- * took its place and stays there; WP-084 restores it); a bar that is gone
+ * old index (undo brings the beat back with its id; `undoLanding` then moves the cursor onto it,
+ * which `installEditor` does before it reconciles); a bar that is gone
  * to the first stop of the bar at its old index; a range end whose beat is gone widens to its bar.
  */
 export function reconcile(score: Score, state: EditState): EditPatch | undefined {
