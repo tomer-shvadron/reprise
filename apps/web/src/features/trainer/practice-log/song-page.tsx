@@ -18,6 +18,9 @@ export interface SongPracticePageProps {
   onBack: () => void;
 }
 
+/** The newest sessions listed at first; the total and the loops summarise all of them. */
+const SESSION_LIMIT = 50;
+
 const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
 /** The practice log of one song: total time, sessions, loops with their best tempos, and Resume. */
@@ -25,6 +28,8 @@ export function SongPracticePage({ song, open, onBack }: SongPracticePageProps) 
   const services = useAppServices();
   const heading = useRef<HTMLHeadingElement>(null);
   const [rows, setRows] = useState<PracticeSessionRow[] | undefined>();
+  const [showAll, setShowAll] = useState(false);
+  const [error, setError] = useState<string | undefined>();
   const openScore = useStore(services.document, (state) =>
     state.songId === song.id ? state.score : undefined,
   );
@@ -55,18 +60,28 @@ export function SongPracticePage({ song, open, onBack }: SongPracticePageProps) 
 
   const resumeLabel = (() => {
     if (!target) return 'Resume';
-    const parts = [
-      target.loop
-        ? barsText(labelOf({ ...target.loop, label: latestLabel(rows, target.loop) }))
-        : '',
+    const bars = target.loop
+      ? labelOf({ ...target.loop, label: latestLabel(rows, target.loop) })
+      : undefined;
+    // Only a loop that cannot be found in the open song is called removed; a closed song with no
+    // stored label says nothing about its bars.
+    const removed = target.loop && openScore && !bars;
+    return [
+      'Resume',
+      bars ? barsText(bars) : '',
       target.tempo ? `at ${tempoText(target.tempo)}` : '',
-    ].filter(Boolean);
-    return parts.length > 0 ? `Resume ${parts.join(' ')}` : 'Resume';
+      removed ? '(loop’s bars removed)' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
   })();
+
+  const shown = showAll ? summary.sessions : summary.sessions.slice(0, SESSION_LIMIT);
 
   return (
     <section
-      className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto"
+      tabIndex={-1}
+      className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto outline-none"
       aria-label="Practice log"
     >
       <div className="flex items-center gap-3">
@@ -83,12 +98,21 @@ export function SongPracticePage({ song, open, onBack }: SongPracticePageProps) 
           className="ml-auto"
           disabled={!target}
           onClick={() => {
-            if (target) void resumePractice(services, song.id, target, open);
+            if (!target) return;
+            setError(undefined);
+            resumePractice(services, song.id, target, open).catch((failure: unknown) => {
+              setError(failure instanceof Error ? failure.message : 'Could not resume');
+            });
           }}
         >
           {resumeLabel}
         </Button>
       </div>
+      {error && (
+        <p role="alert" className="text-destructive text-sm">
+          Could not resume: {error}
+        </p>
+      )}
       {rows === undefined ? null : rows.length === 0 ? (
         <p className="text-muted-foreground text-sm">
           Nothing practised yet. Play this song and your sessions appear here.
@@ -124,7 +148,7 @@ export function SongPracticePage({ song, open, onBack }: SongPracticePageProps) 
           <div>
             <h3 className="mb-1 text-sm font-semibold">Sessions</h3>
             <ul className="flex flex-col gap-1 text-sm">
-              {summary.sessions.map((session) => (
+              {shown.map((session) => (
                 <li key={session.id} className="flex gap-3">
                   <span className="min-w-44">{dateTime.format(session.startedAt)}</span>
                   <span className="min-w-20">{formatDuration(session.playedMs)}</span>
@@ -135,6 +159,18 @@ export function SongPracticePage({ song, open, onBack }: SongPracticePageProps) 
                 </li>
               ))}
             </ul>
+            {!showAll && summary.sessions.length > SESSION_LIMIT && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-1"
+                onClick={() => {
+                  setShowAll(true);
+                }}
+              >
+                Show all {summary.sessions.length} sessions
+              </Button>
+            )}
           </div>
         </>
       )}

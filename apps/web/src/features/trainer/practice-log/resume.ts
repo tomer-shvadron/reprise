@@ -62,7 +62,10 @@ export async function resumePractice(
   }
   // After the open: its per-song speed restore has already run, so Resume wins.
   if (target.tempo) audio.setTempo(target.tempo.mode, target.tempo.value);
-  if (seekTo !== undefined) audio.seek(seekTo);
+  // `seek` does nothing before the song has loaded, which is the case right after `open()`; Play
+  // then starts at the loop's start, since the engine moves a start outside the loop to it. The
+  // same load is why a loop the engine cannot play is only dropped there, not rejected above.
+  if (seekTo !== undefined && playback.getState().song.status === 'ready') audio.seek(seekTo);
   ui.getState().setScreen('player');
   announce(['Resumed practice.', ...notes].join(' '));
 }

@@ -49,9 +49,23 @@ describe('resumePractice', () => {
       endBar: ids[2],
     });
     expect(services.playback.getState().settings.tempo).toEqual({ mode: 'percent', value: 85 });
-    expect(services.fakeAudio.seek).toHaveBeenCalledOnce();
+    // The song has not loaded in this test, and seeking before the load does nothing.
+    expect(services.fakeAudio.seek).not.toHaveBeenCalled();
     expect(services.ui.getState().screen).toBe('player');
     expect(announced(services)).toContain('bars 2 to 3');
+  });
+
+  it('seeks to the loop’s start once the song is loaded', async () => {
+    const { services, open, ids } = await setup();
+    await open();
+    services.playback.setState({ song: { status: 'ready', error: undefined } });
+    await resumePractice(
+      services,
+      SONG,
+      { loop: { startBar: ids[1] ?? '', endBar: ids[2] ?? '' }, tempo: undefined },
+      open,
+    );
+    expect(services.fakeAudio.seek).toHaveBeenCalledOnce();
   });
 
   it('does not open a song that is already open', async () => {

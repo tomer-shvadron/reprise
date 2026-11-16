@@ -3,8 +3,6 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { openLibraryDb } from '@/features/library/db/schema';
-import { uniqueDbName } from '@/features/library/test-support';
 import { mirrorAudio } from '@/test/mirror-audio';
 import { fourBars } from '@/test/position';
 import { renderWithServices } from '@/test/render';
@@ -12,7 +10,7 @@ import { createTestServices } from '@/test/services';
 
 import { installPracticeLog } from './install';
 import { SongPracticePage } from './song-page';
-import { rowOf } from './test-support';
+import { practiceTable, rowOf } from './test-support';
 
 const SONG = 'SONGSONGSONG';
 const song = { id: SONG, title: 'Blackbird', artist: 'The Beatles' };
@@ -24,10 +22,10 @@ afterEach(() => {
 async function renderPage(rows = [rowOf()]) {
   const services = createTestServices();
   mirrorAudio(services);
-  const db = openLibraryDb(uniqueDbName());
-  await db.practiceSessions.bulkAdd(rows);
-  cleanups.push(installPracticeLog(services, db.practiceSessions), () => {
-    db.close();
+  const table = practiceTable();
+  await table.bulkAdd(rows);
+  cleanups.push(installPracticeLog(services, table), () => {
+    table.db.close();
   });
   const open = vi.fn(() => Promise.resolve());
   const onBack = vi.fn();
@@ -84,6 +82,43 @@ describe('SongPracticePage', () => {
     });
     expect(open).toHaveBeenCalledOnce();
     expect(services.playback.getState().settings.tempo).toEqual({ mode: 'percent', value: 85 });
+  });
+
+  it('lists the newest 50 sessions and shows all on request', async () => {
+    const rows = Array.from({ length: 60 }, (_, index) =>
+      rowOf({ id: `SESSION${String(index).padStart(5, '0')}`, startedAt: 1000 * (index + 1) }),
+    );
+    await renderPage(rows);
+    const sessions = async () =>
+      (await screen.findByRole('heading', { name: 'Sessions' })).parentElement?.querySelectorAll(
+        'li',
+      ).length;
+    expect(await sessions()).toBe(50);
+    await userEvent.click(screen.getByRole('button', { name: 'Show all 60 sessions' }));
+    expect(await sessions()).toBe(60);
+  });
+
+  it('says the loop’s bars are gone, instead of resuming "bars removed"', async () => {
+    const { services } = await renderPage([
+      rowOf({
+        loops: [{ startBar: 'GONEGONEGONE', endBar: 'GONEGONEGONE', label: { start: 1, end: 1 } }],
+        tempoHistory: [{ atPlayedMs: 0, tempo: { mode: 'percent', value: 85 } }],
+      }),
+    ]);
+    const { bytes } = await write(fourBars(), 'reprise');
+    await services.document.getState().openBytes('song.reprise', bytes, { songId: SONG });
+    expect(
+      await screen.findByRole('button', { name: 'Resume at 85% (loop’s bars removed)' }),
+    ).toBeTruthy();
+  });
+
+  it('shows a Resume failure in the page', async () => {
+    const { open } = await renderPage([
+      rowOf({ tempoHistory: [{ atPlayedMs: 0, tempo: { mode: 'percent', value: 85 } }] }),
+    ]);
+    open.mockRejectedValue(new Error('disk gone'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Resume at 85%' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('disk gone');
   });
 
   it('goes back', async () => {
