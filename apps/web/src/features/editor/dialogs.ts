@@ -10,9 +10,7 @@ export type EditorDialog =
   | { kind: 'track'; mode: 'edit'; trackId: Id }
   | { kind: 'removeTrack'; trackId: Id }
   /** The master-bar dialog; `ids` are the target's bars, fixed when it opens, and `focus` the section to start in. */
-  | { kind: 'masterBar'; ids: Id[]; focus?: MasterBarSection }
-  /** Unsaved changes stand in the way; `onContinue` runs once they are saved or dropped. */
-  | { kind: 'unsaved'; action: string; onContinue: () => void };
+  | { kind: 'masterBar'; ids: Id[]; focus?: MasterBarSection };
 
 export interface DialogsState {
   dialog: EditorDialog | undefined;

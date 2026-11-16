@@ -4,11 +4,15 @@ import { expect, test, type App } from './test/app';
 import { expectedScore, riff } from './test/riff';
 import { shapeOf } from './test/score-shape';
 
-const saved = async (app: App, name: string, press: () => Promise<void>) => {
-  const before = await app.writeCount(name);
+// A new song's first Save adds it to the library, so the file is library/songs/<id>.reprise.
+const saved = async (app: App, press: () => Promise<void>) => {
+  const [known] = await app.listStored('library/songs');
+  const before = known === undefined ? 0 : await app.writeCount(known);
   await press();
-  await app.waitForWrite(name, before);
-  return (await read(await app.readStored(name), 'reprise')).score;
+  await expect.poll(() => app.listStored('library/songs')).toHaveLength(1);
+  const [native = ''] = await app.listStored('library/songs');
+  await app.waitForWrite(native, before);
+  return (await read(await app.readStoredPath(`library/songs/${native}`), 'reprise')).score;
 };
 
 test('A sixteen-bar riff is entered from the keyboard alone, one undo step per entry', async ({
@@ -68,12 +72,11 @@ test('A sixteen-bar riff is entered from the keyboard alone, one undo step per e
   await expect(status).not.toContainText('Fret ');
   expect(await app.description()).toBe('16 bars, 1 page');
 
-  // A new song has no file, so the first Save is a Save As, which writes .reprise with no
-  // question; Save writes in place after.
-  const first = await saved(app, 'Untitled.reprise', () => page.keyboard.press('ControlOrMeta+s'));
+  // A new song has no file, so the first Save adds it to the library; Save writes it there after.
+  const first = await saved(app, () => page.keyboard.press('ControlOrMeta+s'));
   expect(shapeOf(first)).toEqual(shapeOf(expectedScore(bars)));
 
-  const save = () => saved(app, 'Untitled.reprise', () => page.keyboard.press('ControlOrMeta+s'));
+  const save = () => saved(app, () => page.keyboard.press('ControlOrMeta+s'));
   const undo = async (times: number) => {
     for (let i = 0; i < times; i += 1) await page.keyboard.press('ControlOrMeta+z');
   };

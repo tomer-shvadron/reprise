@@ -27,3 +27,6 @@ export const TRASH_DIR = 'library/trash';
 export function trashDirOf(name: string): string {
   return `${TRASH_DIR}/${name}`;
 }
+
+/** What every library path starts with; a save handle under it points at a library song. */
+export const LIBRARY_PREFIX = 'library/';

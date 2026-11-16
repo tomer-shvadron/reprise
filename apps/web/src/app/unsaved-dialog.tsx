@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 import { useStore } from 'zustand';
 
-import { LossDialog } from '@/app/loss-dialog';
-import { useAppServices } from '@/app/services-context';
+import { LossDialog } from './loss-dialog';
+import { useAppServices } from './services-context';
+import { unsavedOf } from './when-saved';
 
 type Answer = 'save' | 'discard' | 'cancel';
 
@@ -70,6 +71,33 @@ export function UnsavedChangesDialog({
       busy={saving}
       onChoose={choose}
       {...(onCloseAutoFocus && { onCloseAutoFocus })}
+    />
+  );
+}
+
+/** Mounts the dialog `whenSaved` asks through; one instance in the app. */
+export function UnsavedChangesHost() {
+  const services = useAppServices();
+  const store = unsavedOf(services);
+  const request = useStore(store, (state) => state.request);
+  if (!request) return null;
+  // An answer counts only for the request that asked: one cancelled by a newer request, whose
+  // Save was still running, must neither continue nor close the newer dialog.
+  const current = () => store.getState().request === request;
+  return (
+    <UnsavedChangesDialog
+      key={request.id}
+      action={request.action}
+      onContinue={() => {
+        if (!current()) return;
+        store.getState().close();
+        request.onContinue();
+      }}
+      onCancel={() => {
+        if (!current()) return;
+        store.getState().close();
+        request.onCancel?.();
+      }}
     />
   );
 }
