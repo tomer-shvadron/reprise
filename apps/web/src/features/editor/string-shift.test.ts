@@ -143,7 +143,8 @@ describe('planShift', () => {
         'lower',
       );
       expect(plan).toEqual({
-        refused: 'The note on string 3 in bar 2 is tied to an earlier note: select the whole tie',
+        refused:
+          'The note on string 3 in bar 2 is tied to an earlier note: move the tie from its first note',
       });
     });
 

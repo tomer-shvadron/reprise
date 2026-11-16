@@ -160,7 +160,7 @@ export function planShift(input: StringShiftInput, direction: StringDirection): 
         const origin = tieOriginOf(track, { bar, voice, beat: at }, note);
         if (origin && !everyMoving.has(origin.note)) {
           return {
-            refused: `The note on string ${String(note.string)} ${where} is tied to an earlier note: select the whole tie`,
+            refused: `The note on string ${String(note.string)} ${where} is tied to an earlier note: move the tie from its first note`,
           };
         }
       }
