@@ -5,6 +5,7 @@ import { useAppServices } from '@/app/services-context';
 import { scoreIndex } from '@/features/score';
 
 import { suggestChords } from './chord-suggestions';
+import { MODIFIER_KEYS } from './entry-controller';
 import { wordFieldRect } from './geometry';
 import {
   closeWord,
@@ -120,6 +121,8 @@ export function WordField() {
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing) return;
+    // A modifier pressed on its own is not a command: its keydown carries the flag of the key itself.
+    if (MODIFIER_KEYS.has(event.key)) return;
     if (event.metaKey || event.ctrlKey) {
       // A shortcut leaves the field for the app (save, edit mode off), so the word goes in first.
       // These keys edit the field's own text.

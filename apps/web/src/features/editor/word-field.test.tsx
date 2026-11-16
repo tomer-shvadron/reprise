@@ -241,6 +241,27 @@ describe('the word field', () => {
     expect(t.beat(0, 1).text).toBeUndefined();
   });
 
+  it('ignores a modifier pressed on its own: undo then Escape drops the draft, a paste is one step', async () => {
+    const t = await setup();
+    t.goTo(0, 0);
+    t.press('t');
+    t.type('rit.');
+    t.press('Meta', { metaKey: true });
+    t.press('z', { metaKey: true });
+    t.press('Control', { ctrlKey: true });
+    t.press('Escape');
+    expect(t.beat(0, 0).text).toBeUndefined();
+    expect(t.steps()).toEqual([]);
+    t.goTo(0, 0);
+    t.press('t');
+    t.press('Control', { ctrlKey: true });
+    t.press('v', { ctrlKey: true });
+    t.type('pasted');
+    t.press('Enter');
+    expect(t.beat(0, 0).text).toBe('pasted');
+    expect(t.steps()).toEqual(['Text']);
+  });
+
   it('stays open when the window loses focus, and commits on a click elsewhere', async () => {
     const t = await setup();
     t.goTo(0, 0);
