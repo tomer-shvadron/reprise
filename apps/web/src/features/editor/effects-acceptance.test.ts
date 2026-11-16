@@ -8,17 +8,19 @@ import {
 } from '@reprise/audio';
 import { write } from '@reprise/formats';
 import { PAGE_SIZES, layout, type Primitive } from '@reprise/layout';
-import { PPQ, beatTicks, type Id, type Score } from '@reprise/model';
+import { PPQ, beatTicks, type Id, type Score, type SlideKind } from '@reprise/model';
 import { beatOf, note, noteOf, score } from '@reprise/model/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createAppRegistry } from '@/app/app-registry';
 import { createTestServices } from '@/test/services';
 
-import type { BendAmount, BendShape } from './bend-presets';
-import { runEffect } from './effect-commands';
+import { bendPreset, type BendAmount, type BendShape } from './bend-presets';
+import { applyEffect, commitEffectPlan, runEffect } from './effect-commands';
+import { effectInput } from './effect-dialogs';
 import type { EffectAction } from './effects';
-import type { WhammyAmount, WhammyShape } from './whammy-presets';
+import { planGrace, type GraceForm } from './grace-form';
+import { whammyPreset, type WhammyAmount, type WhammyShape } from './whammy-presets';
 
 /**
  * WP-082's acceptance criterion: every effect in scope-v1 (and the extras of D6) can be applied
@@ -555,4 +557,125 @@ describe('every effect applies, draws, sounds and comes off again', () => {
     it(row.name, check, 30_000);
     if ('todo' in row.sounds) it.todo(`${row.name} sounds (${row.sounds.todo})`);
   }
+});
+
+/**
+ * The grace-note dialog's outcomes, which no key applies: a grace note before the beat, one on
+ * it, and each transition. Same four checks. "Sounds" is the scheduler's: a grace note before the
+ * beat hands the beat out early by its length (the sampler sink then plays the grace ahead of
+ * `when`, which the audio package tests), and one on the beat does not.
+ */
+describe('grace notes apply, draw, sound and come off again', () => {
+  const FORM: GraceForm = { fret: 7, duration: 32, before: true, transition: 'none', dead: false };
+  const cases: readonly { name: string; form: GraceForm }[] = [
+    { name: 'before the beat', form: FORM },
+    { name: 'on the beat', form: { ...FORM, before: false } },
+    { name: 'a slide into the note', form: { ...FORM, transition: 'slide' } },
+    { name: 'a hammer-on to the note', form: { ...FORM, transition: 'hammer' } },
+    { name: 'a dead grace note', form: { ...FORM, dead: true } },
+  ];
+  for (const { name, form } of cases) {
+    it(
+      name,
+      async () => {
+        const { services, current } = await setup();
+        const original = current();
+        // The second beat: string 3, fret 9, with a beat before it to lead into.
+        const target = noteOf(original, 0, 0, 1);
+        services.selection.getState().select({ noteIds: [target.id] });
+        const input = effectInput(services);
+        if (!input) throw new Error('not open');
+        const plan = planGrace(input, form);
+        expect(commitEffectPlan(services, plan)).toEqual({ applied: true });
+        const applied = current();
+        const grace = beatOf(applied, 0, 0, 1).grace?.[0];
+        expect(grace).toMatchObject({ before: form.before, duration: 32 });
+        const graceNote = grace?.notes[0];
+        expect(graceNote).toMatchObject({ string: 3, fret: 7, dead: form.dead });
+
+        // Draws: the grace note is a node of its own in the drawing.
+        const drawing = drawn(applied);
+        expect(drawing.length).toBeGreaterThan(drawn(original).length);
+        expect(drawing.some((primitive) => primitive.node === graceNote?.id)).toBe(true);
+
+        // Sounds: a grace before the beat makes the scheduler hand the beat out early.
+        const timeline = createTimeline(applied);
+        const lead = beatTicks({ duration: 32, dots: 0 });
+        const early = notesInRange(timeline, PPQ - lead, PPQ, {
+          runStartTick: 0,
+          limitTick: timeline.endTick,
+        });
+        expect(early.some((onset) => onset.note.id === target.id)).toBe(form.before);
+        if (form.transition === 'hammer') {
+          expect(noteOf(applied, 0, 0, 1).hammerPull).toBe(true);
+        }
+
+        // Removes: the dialog's Remove, and the score is as it was (a hammer-on's flag aside, which
+        // belongs to the note and is the player's to clear).
+        const removal = planGrace(effectInput(services) ?? input, 'remove');
+        expect(commitEffectPlan(services, removal)).toEqual({ applied: true });
+        const removed = beatOf(current(), 0, 0, 1);
+        expect(removed.grace).toBeUndefined();
+        if (form.transition !== 'hammer') expect(current()).toEqual(original);
+        services.document.getState().undo();
+        expect(current()).toEqual(applied);
+      },
+      30_000,
+    );
+  }
+});
+
+describe('the pickers apply, replace and remove', () => {
+  it('replaces one bend with another and removes it, as the picker does', async () => {
+    const { services, current, id } = await setup();
+    const original = current();
+    const bend = (kind: BendShape, amount: BendAmount): EffectAction => ({
+      kind: 'bend',
+      bend: bendPreset(kind, amount),
+    });
+    expect(applyEffect(services, bend('bend', 'full'), 'set')).toEqual({ applied: true });
+    expect(applyEffect(services, bend('prebend', 'half'), 'set')).toEqual({ applied: true });
+    expect(noteOf(current(), 0, 0, 0).bend).toEqual(bendPreset('prebend', 'half'));
+    // Setting what is already there changes nothing.
+    expect(applyEffect(services, bend('prebend', 'half'), 'set')).toEqual({ nothing: true });
+    expect(applyEffect(services, bend('bend', 'full'), 'remove')).toEqual({ applied: true });
+    expect(current()).toEqual(original);
+    expect(id).toBe(noteOf(original, 0, 0, 0).id);
+  });
+
+  it('replaces a harmonic of one kind with another, and Remove takes any off', async () => {
+    const { services, current } = await setup();
+    const original = current();
+    const harmonic = (kind: 'artificial' | 'tapped', value: number): EffectAction => ({
+      kind: 'harmonic',
+      harmonic: { kind, value },
+    });
+    applyEffect(services, harmonic('artificial', 12), 'set');
+    applyEffect(services, harmonic('tapped', 7), 'set');
+    expect(noteOf(current(), 0, 0, 0).harmonic).toEqual({ kind: 'tapped', value: 7 });
+    applyEffect(services, { kind: 'harmonic', harmonic: { kind: 'natural' } }, 'remove');
+    expect(current()).toEqual(original);
+  });
+
+  it('keeps the slide groups apart: one way in and one way out', async () => {
+    const { services, current } = await setup();
+    const slide = (kind: SlideKind): EffectAction => ({ kind: 'slide', slide: kind });
+    applyEffect(services, slide('outDown'), 'toggle');
+    applyEffect(services, slide('intoFromBelow'), 'toggle');
+    applyEffect(services, slide('outUp'), 'toggle');
+    expect([...(noteOf(current(), 0, 0, 0).slide ?? [])].sort()).toEqual([
+      'intoFromBelow',
+      'outUp',
+    ]);
+  });
+
+  it('puts a whammy on a beat and removes it whatever its shape', async () => {
+    const { services, current } = await setup();
+    const original = current();
+    applyEffect(services, { kind: 'whammy', whammy: whammyPreset('dive', 'medium') }, 'set');
+    applyEffect(services, { kind: 'whammy', whammy: whammyPreset('dip', 'small') }, 'set');
+    expect(beatOf(current(), 0, 0, 0).effects.whammy?.kind).toBe('dip');
+    applyEffect(services, { kind: 'whammy', whammy: whammyPreset('dive', 'large') }, 'remove');
+    expect(current()).toEqual(original);
+  });
 });

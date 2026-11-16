@@ -11,55 +11,82 @@ import {
   type BendShape,
 } from './bend-presets';
 import { commitEdit } from './commit';
-import { planEffect, type EffectAction, type EffectMode } from './effects';
+import { planEffect, type EffectAction, type EffectMode, type EffectResult } from './effects';
 import { entryController } from './entry-controller';
 import { visibleTracks } from './visible';
 import {
   WHAMMY_AMOUNTS,
   WHAMMY_SHAPES,
   whammyPreset,
+  whammyPresetLabel,
   type WhammyAmount,
   type WhammyShape,
 } from './whammy-presets';
 
 export type EffectServices = Pick<AppServices, 'document' | 'selection' | 'entry'>;
 
+/** What applying an effect did: changed the score, was refused (with the reason), or had nothing to change. */
+export type EffectOutcome = { applied: true } | { refused: string } | { nothing: true };
+
+/**
+ * Commits a plan as one undo step, leaving the cursor where it is: an effect edits what is there,
+ * it does not move on. A refusal from the model (a fret off the neck) is caught like the
+ * planner's own and also reads on the edit status line.
+ */
+export function commitEffectPlan(services: EffectServices, plan: EffectResult): EffectOutcome {
+  const { document, selection, entry } = services;
+  if ('refused' in plan) return { refused: plan.refused };
+  if (!('command' in plan)) return { nothing: true };
+  const done = commitEdit({ document, selection, entry }, plan.command, { moveCursor: false });
+  if (!done) return { refused: entry.getState().message ?? 'That could not be applied' };
+  // What a mixed selection could not take, after the success message has cleared.
+  if (plan.notice) entry.getState().setMessage(plan.notice);
+  return { applied: true };
+}
+
 /**
  * Applies `action` to what the cursor, range or picked notes select, as one undo step under the
- * action's label. A refusal reads on the edit status line and changes nothing. The same path
- * serves the keys, the palette and, later, the panel, so they cannot drift apart. A digit still
- * waiting for its second figure is committed first, so "1, then P" mutes the note just entered.
- * Returns whether the score changed.
+ * action's label. A digit still waiting for its second figure is committed first, so "1, then P"
+ * mutes the note just entered. The outcome says why nothing changed; `runEffect` puts a refusal
+ * on the status line, a picker keeps its dialog open and shows it there.
+ */
+export function applyEffect(
+  services: EffectServices,
+  action: EffectAction,
+  mode: EffectMode = 'toggle',
+): EffectOutcome {
+  const { document, selection, entry } = services;
+  entryController(entry)?.flush();
+  const { score, view } = document.getState();
+  if (!score) return { nothing: true };
+  return commitEffectPlan(
+    services,
+    planEffect(
+      { score, state: selection.getState(), visible: visibleTracks(score, view) },
+      action,
+      mode,
+    ),
+  );
+}
+
+/**
+ * `applyEffect` for the keys, the palette and the panel, which all go through it so they cannot
+ * drift apart. A refusal changes nothing and reads on the edit status line. Returns whether the
+ * score changed.
  */
 export function runEffect(
   services: EffectServices,
   action: EffectAction,
   mode: EffectMode = 'toggle',
 ): boolean {
-  const { document, selection, entry } = services;
-  entryController(entry)?.flush();
-  const { score, view } = document.getState();
-  if (!score) return false;
-  const plan = planEffect(
-    { score, state: selection.getState(), visible: visibleTracks(score, view) },
-    action,
-    mode,
-  );
-  if ('refused' in plan) {
-    entry.getState().setMessage(plan.refused);
-    return false;
-  }
-  if (!('command' in plan)) return false;
-  // The cursor stays where it is: an effect edits what is there, it does not move on.
-  const done = commitEdit({ document, selection, entry }, plan.command, { moveCursor: false });
-  // What a mixed selection could not take, after the success message has cleared.
-  if (done && plan.notice) entry.getState().setMessage(plan.notice);
-  return done;
+  const outcome = applyEffect(services, action, mode);
+  if ('refused' in outcome) services.entry.getState().setMessage(outcome.refused);
+  return 'applied' in outcome;
 }
 
 type Key = { key: string; shift?: boolean; mod?: boolean; alt?: boolean };
 
-type EffectKeyName =
+export type EffectKeyName =
   | 'pop'
   | 'legatoSlide'
   | 'hammerOn'
@@ -89,7 +116,7 @@ type EffectKeyName =
   | 'arpeggioDown'
   | 'arpeggioUp';
 
-interface EffectKey {
+export interface EffectKey {
   id: EffectKeyName;
   title: string;
   action: EffectAction;
@@ -102,7 +129,7 @@ interface EffectKey {
  * Guitar Pro 8's keys for the effects that toggle. The punctuation ones need Shift on a US
  * keyboard and not on others, so both spellings are bound and only the shifted one is listed.
  */
-const KEY_TABLE: readonly EffectKey[] = [
+export const EFFECT_KEY_TABLE: readonly EffectKey[] = [
   {
     id: 'legatoSlide',
     title: 'Toggle legato slide',
@@ -284,17 +311,6 @@ export type EffectCommandId =
 
 type EffectCommand = Command & { id: EffectCommandId };
 
-const WHAMMY_AMOUNT_LABEL: Record<WhammyAmount, string> = {
-  small: '½ step',
-  medium: 'Whole step',
-  large: '2 steps',
-};
-const WHAMMY_SHAPE_LABEL: Record<WhammyShape, string> = {
-  dive: 'dive',
-  dip: 'dip',
-  releaseUp: 'release up',
-};
-
 const shortcutOf = (key: Key): Shortcut => ({
   key: key.key,
   ...(key.shift && { shift: true }),
@@ -306,7 +322,7 @@ const shortcutOf = (key: Key): Shortcut => ({
  * The effect keys of edit mode, and the bend and whammy presets as palette commands. Every one
  * is `context: 'editing'` and goes through `runEffect`, so outside edit mode no key does
  * anything, and a refusal reads on the status line. The picker keys (bend, slide kinds, harmonic
- * kinds, whammy) come with the panel.
+ * kinds, whammy, grace) are in `pickerCommands`.
  */
 export function effectCommands(services: EffectServices): EffectCommand[] {
   const commands: EffectCommand[] = [];
@@ -329,7 +345,7 @@ export function effectCommands(services: EffectServices): EffectCommand[] {
       },
     });
   };
-  for (const { id, title, action, key, alsoUnshifted } of KEY_TABLE) {
+  for (const { id, title, action, key, alsoUnshifted } of EFFECT_KEY_TABLE) {
     add(`editor.effect.${id}`, title, action, key && shortcutOf(key), true);
     if (key && alsoUnshifted) {
       add(`editor.effect.${id}Unshifted`, title, action, shortcutOf({ key: key.key }), false);
@@ -349,7 +365,7 @@ export function effectCommands(services: EffectServices): EffectCommand[] {
   }
   for (const amount of Object.keys(WHAMMY_AMOUNTS) as WhammyAmount[]) {
     for (const shape of WHAMMY_SHAPES) {
-      const label = `${WHAMMY_AMOUNT_LABEL[amount]} ${WHAMMY_SHAPE_LABEL[shape]}`;
+      const label = whammyPresetLabel(shape, amount);
       add(
         `editor.effect.whammy.${amount}.${shape}`,
         `Whammy: ${label}`,

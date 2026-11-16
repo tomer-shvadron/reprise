@@ -3,6 +3,7 @@ import type { AppServices } from '@/app/services';
 
 import { effectCommands, type EffectCommandId } from './effect-commands';
 import { barCommands, type BarCommandId } from './bar-commands';
+import { pickerCommands, type PickerCommandId } from './picker-commands';
 import { entryCommands, type EntryCommandId } from './entry-commands';
 import { navigationCommands, type NavigationCommandId } from './navigation-commands';
 import { trackEditCommands, type TrackEditCommandId } from './track-commands';
@@ -13,7 +14,8 @@ export type EditorCommandId =
   | EntryCommandId
   | BarCommandId
   | TrackEditCommandId
-  | EffectCommandId;
+  | EffectCommandId
+  | PickerCommandId;
 
 type EditorCommand = Command & { id: EditorCommandId };
 
@@ -21,7 +23,7 @@ type EditorCommand = Command & { id: EditorCommandId };
 export function editorCommands(
   services: Pick<
     AppServices,
-    'editing' | 'document' | 'selection' | 'layout' | 'entry' | 'playback' | 'audio'
+    'editing' | 'document' | 'selection' | 'layout' | 'entry' | 'playback' | 'audio' | 'ui'
   >,
 ): EditorCommand[] {
   const { editing, document } = services;
@@ -39,5 +41,6 @@ export function editorCommands(
     ...barCommands(services),
     ...trackEditCommands(services),
     ...effectCommands(services),
+    ...pickerCommands(services),
   ];
 }

@@ -81,4 +81,25 @@ export {
   type EffectMode,
 } from './effects';
 export { effectState, type EffectState } from './effect-state';
-export { effectCommands, runEffect, type EffectCommandId } from './effect-commands';
+export {
+  applyEffect,
+  commitEffectPlan,
+  effectCommands,
+  runEffect,
+  type EffectCommandId,
+  type EffectOutcome,
+} from './effect-commands';
+export { EffectsPanel } from './effects-panel';
+export { EffectPickerDialog } from './effect-pickers';
+export { GraceDialog } from './grace-dialog';
+export {
+  GRACE_DURATIONS,
+  defaultGraceForm,
+  graceBlocker,
+  planGrace,
+  type GraceForm,
+  type GraceTransition,
+} from './grace-form';
+export { effectInput, openEffectPicker, openGraceDialog, pickerBlocker } from './effect-dialogs';
+export { pickerCommands, type PickerCommandId } from './picker-commands';
+export type { EffectPicker } from './dialogs';
