@@ -32,10 +32,16 @@ function beatStart(score: Score, id: string): { masterBarIndex: number; tick: nu
 
 const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 
-/** Resolves once React has committed nothing for `frames` frames in a row. */
-async function quiet(commits: () => number, frames = 5): Promise<void> {
+/** Resolves once React has committed nothing for `frames` frames in a row, or fails after `limit`. */
+async function quiet(commits: () => number, frames = 5, limit = 120): Promise<void> {
   let seen = commits();
-  for (let still = 0; still < frames;) {
+  const start = seen;
+  for (let still = 0, waited = 0; still < frames; waited += 1) {
+    if (waited >= limit) {
+      throw new Error(
+        `React kept committing: ${String(commits() - start)} commits in ${String(limit)} frames`,
+      );
+    }
     await frame();
     const now = commits();
     still = now === seen ? still + 1 : 0;
@@ -122,9 +128,11 @@ describe('the playhead in the app', () => {
     const { services, score, result, map, clock, commits } = await setup();
     clock(0);
     // Starting to play is itself React work (the transport, the practice session) and starts a
-    // smooth scroll to the playhead, whose scroll events can commit a transition. Count from the
-    // first moment the app has nothing left to do, not after a fixed number of frames: on a busy
-    // runner that work lands later than any fixed number.
+    // smooth scroll to the playhead, whose scroll events commit a transition when the drawn
+    // systems or pages change. Count from the first moment the app has nothing left to do, not
+    // after a fixed number of frames: on a busy runner that work lands later than any fixed number.
+    // The position reader starts the scroll on its first frame, so let that frame pass first.
+    await frame();
     await waitFor(() => {
       expect(region()).not.toHaveAttribute('data-scrolling');
     });
