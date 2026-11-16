@@ -18,7 +18,7 @@ const synthetic = fetchSyntheticSf2();
 // The whole path a keystroke takes to the speakers: the controller's edit, its preview options
 // read from the score, the real audio service and engine, rendered offline.
 describe('a digit entered in edit mode', () => {
-  it('is heard, for about the length of the beat, and not before the key', async () => {
+  it('is heard for the length of its beat, past the default, and not before the key', async () => {
     const services = createTestServices();
     const entry = createEntryStore();
     const playback = createPlaybackStore();
@@ -26,7 +26,7 @@ describe('a digit entered in edit mode', () => {
     const frames = manualTicker();
     const context = new OfflineAudioContext({
       numberOfChannels: 2,
-      length: 2 * SAMPLE_RATE,
+      length: 3 * SAMPLE_RATE,
       sampleRate: SAMPLE_RATE,
     });
     const audio = createAudioService({
@@ -71,6 +71,8 @@ describe('a digit entered in edit mode', () => {
         {
           at: 0.5,
           run: () => {
+            // A half note: one second at 120 bpm, longer than the sampler's 0.6 s default.
+            entryController(entry)?.act({ kind: 'longer' });
             entryController(entry)?.fret(5);
           },
         },
@@ -82,8 +84,10 @@ describe('a digit entered in edit mode', () => {
     );
     expect(rms(buffer, 0, 0.45)).toBe(0);
     expect(rms(buffer, 0.6, 0.9)).toBeGreaterThan(1e-4);
-    // A quarter at 120 bpm is half a second; the preview ends with it rather than ringing on.
-    expect(rms(buffer, 1.6, 2)).toBeLessThan(1e-5);
+    // Still sounding well past the default's 0.6 s, so the beat's length was mapped...
+    expect(rms(buffer, 1.25, 1.4)).toBeGreaterThan(2e-5);
+    // ...and over once that second and the release are.
+    expect(rms(buffer, 2.4, 3)).toBeLessThan(1e-5);
     dispose();
     audio.dispose();
   });
