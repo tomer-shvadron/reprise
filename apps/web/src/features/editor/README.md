@@ -111,3 +111,5 @@ Effect keys are Guitar Pro 8's, bound in the `editing` context by `effect-comman
 - `audio.previewTrack`, and `audio.previewNote(trackId, { string, fret } | { pitch }, { velocity?, seconds? })` (#204), which throws `RangeError` on bad input, so an entry calls it last, after the edit. An entry's preview takes its velocity from the note's dynamic (`DYNAMICS_VELOCITY`) and its seconds from the beat's written length at the tempo in force (`preview.ts`).
 
 Entry state that no other feature reads (duration, insert versus overwrite, the waiting digit) lives in `entry-store.ts`; the voice is the edit cursor's, which lives in the selection store.
+
+The editing flows are tested end to end in [`apps/web/e2e/editor/`](../../../e2e/editor/README.md).
