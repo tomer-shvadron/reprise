@@ -99,14 +99,14 @@ together: starting one stops the other.
 `practice-log/`. Logs each song's practice into the library database's `practiceSessions` table
 (Dexie version 2) and shows it on a song page in the library.
 
-- **Capture** (`capture.ts`, `accrual.ts`), installed by the shell with `installPracticeLog(services,
-libraryOf(services).db.practiceSessions)`; the trainer never imports library internals. It runs
-  over the existing `practice` store and changes no state. A session starts on a document's first
+- **Capture** (`capture.ts`, `accrual.ts`), installed by the shell with
+  `installPracticeLog(services, libraryOf(services).db.practiceSessions)`; the trainer never imports
+  library internals. It runs over the existing `practice` store and changes no state. A session starts on a document's first
   play and counts only time `playing` (the count-in is left out). It ends on a document switch or
   close, or after 10 minutes without playing; the check also runs when play starts, so a missed
   timer changes nothing. Nothing runs on the position tick: the subscription compares `transport`,
   the loop and the tempo by reference. Played time is added up at play and pause changes and every
-  30 s while playing (one accrual is capped at 60 s, so a sleeping laptop logs nothing extra).
+  30 s while playing, by the monotonic clock (one accrual is capped at 60 s, so a sleeping laptop logs nothing extra).
   Writes are debounced by 1 s, and `pagehide` or a hidden window flushes at once. No row is written
   below 10 s of play or one completed speed-trainer step. A file open without import (no `songId`)
   is not stored; importing it mid-session starts storing it.

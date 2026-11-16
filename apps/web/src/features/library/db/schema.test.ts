@@ -139,6 +139,7 @@ describe('the library schema', () => {
       const ids = (rows: unknown[]) =>
         rows.map((row) => String(Reflect.get(Object(row), 'id'))).sort();
       expect(ids(songs)).toEqual(ids(sample.songs));
+      expect(ids(await db.practiceSessions.toArray())).toEqual(ids(sample.practiceSessions ?? []));
       for (const song of songs) expect(SongRowSchema.safeParse(song).success).toBe(true);
       expect((await db.settings.get('library.sort'))?.value).toBe('artist');
       const expected = new Set(SCHEMA.flatMap((entry) => Object.keys(entry.stores)));
