@@ -523,6 +523,7 @@ const voice = sampler.noteOn(trackId, {
   letRing,
   instrument,
   select, // { sequence?, random?, legato? }: chooses the round-robin and random takes, for the note and its release regions
+  releaseTrigger, // default true; false: this note's release starts no release regions (see Release triggers)
 });
 voice?.rampDetune(2, when + 0.2); // semitones, absolute times
 voice?.setGain(-6, when + 0.1); // dB relative to the velocity level
@@ -551,7 +552,15 @@ voice a later note steals (a waiting one is cancelled, a sounding one fades), so
 from the note-on. Otherwise it counts in the polyphony like any voice, `allNotesOff` still stops
 it (one waiting to start never sounds), and `Region.releaseDecay`
 (`rt_decay`) lowers it by that many dB for each second the note was held. A release sample that is
-not resident is a miss like any other: skipped, its load requested, `onMiss` told. A note with no
+not resident is a miss like any other: skipped, its load requested, `onMiss` told.
+
+`NoteOnRequest.releaseTrigger` (default true) lets a caller keep a strike from firing them. A
+release region is meant for the note's final release, but the sink releases every strike and the
+string is never let go between a tremolo's strokes, a trill's alternations or a grace note and its
+main note, so each would play a release sample (at nearly full level with a high `rt_decay`). The
+sink therefore sets `releaseTrigger` true only on the last strike of the main note: that covers the
+end of a legato chain (the chain's first voice carries the release) and the let-ring `until`, and
+it sets it false on earlier strikes and on every grace note. A note with no
 release regions gets the plain voice handle as before, so GM playback is unchanged.
 
 `createSamplerSink(sampler, { deadNote?, instrumentOf?, voicingOf? })` is the scheduler's `InstrumentSink` over the sampler,

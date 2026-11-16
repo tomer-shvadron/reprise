@@ -193,6 +193,12 @@ describe('what never starts a release region', () => {
     expect(toneLevel(data, NOTE, 0.5, 1)).toBeLessThan(0.001);
   });
 
+  it('a note whose releaseTrigger is false', async () => {
+    const { context, sampler } = setup(1.2, guitar());
+    sampler.noteOn('t', { key: 69, velocity: 127, when: 0, releaseTrigger: false })?.release(0.4);
+    expect(toneLevel(await render(context), TAIL, 0.45, 0.65)).toBeLessThan(0.001);
+  });
+
   it('a preview, which sounds its note and no release region', async () => {
     const { context, sampler } = setup(1.2, guitar());
     sampler.previewNote('t', { pitch: 69 }, { seconds: 0.3 });

@@ -54,6 +54,13 @@ export interface NoteOnRequest {
   instrument?: Instrument;
   /** A preview voice: see `Sampler.previewNote`. */
   preview?: boolean;
+  /**
+   * Whether this note's release starts its release regions (default true). A caller sets it false
+   * on a strike whose string is not let go: a tremolo stroke, a trill alternation, a grace note.
+   * Only the note's final release (the last strike, the end of a legato chain, the let-ring
+   * `until`) should fire.
+   */
+  releaseTrigger?: boolean;
 }
 
 /** When a `setTrack` volume or pan change happens: at `at`, gliding over `ramp` seconds. */
@@ -86,8 +93,10 @@ export interface SamplerOptions {
 /**
  * The handle a note-on returns, for note-off and the articulation automation. `release(at)` also
  * starts the note's release regions (SFZ `trigger=release`) at `at`, once, unless the note was
- * already cut short (choked, stolen, stopped) or is a preview; the let-ring `until` release does
- * the same. Those voices are one-shots, outside the string choke, and count in the polyphony.
+ * already cut short (choked, stolen, stopped), is a preview or was started with `releaseTrigger:
+ * false`; the let-ring `until` release does the same. Those voices are one-shots, outside the
+ * string choke, tied to their note (a choke or steal before they start cancels them), and they
+ * never steal a polyphony slot.
  */
 export interface VoiceHandle {
   readonly track: Id;
@@ -425,6 +434,7 @@ export class Sampler {
     // Only a note whose map has release regions for it pays for the hook; a GM note is unchanged.
     const releases =
       !request.preview &&
+      request.releaseTrigger !== false &&
       regions.hasReleaseRegions &&
       regions.resolveRelease(request.key, request.velocity, request.layer, request.select).length >
         0;

@@ -174,6 +174,7 @@ export function createSamplerSink(
     last: boolean,
     pass: Pass,
     strikeIndex: number,
+    final: boolean,
   ): VoiceHandle | undefined {
     if (plan.dead) deadNote ??= deadNoteInstrument(sampler.context.sampleRate);
     const instrument =
@@ -185,13 +186,16 @@ export function createSamplerSink(
       when: strike.when,
       string: input.note.string,
       select: select(trackId, instrument.regions, input, pass, strikeIndex, key),
+      // Only a note's final release plays its release regions: not a tremolo stroke, a trill
+      // alternation or a grace note, whose string is never let go.
+      releaseTrigger: final && last,
       ...(strike.offset !== undefined && { offset: strike.offset }),
       ...(plan.dead && deadNote && { instrument: deadNote }),
       ...(last && plan.letRingUntil !== undefined && { letRing: { until: plan.letRingUntil } }),
     });
   }
 
-  function play(trackId: Id, input: PlanInput, pass: Pass): void {
+  function play(trackId: Id, input: PlanInput, pass: Pass, final: boolean): void {
     const chainKey = `${trackId}:${String(input.note.string)}`;
     const chain = input.note.string > 0 ? chains.get(chainKey) : undefined;
     let carried: VoiceHandle | undefined;
@@ -208,7 +212,9 @@ export function createSamplerSink(
     for (const [index, strike] of plan.strikes.entries()) {
       const last = index === lastIndex;
       const voice =
-        index === 0 && carried ? carried : start(trackId, input, plan, strike, last, pass, index);
+        index === 0 && carried
+          ? carried
+          : start(trackId, input, plan, strike, last, pass, index, final);
       if (!voice) continue;
       const isCarried = voice === carried;
       const until = last && plan.legatoInto !== undefined ? plan.legatoInto : strike.end;
@@ -254,7 +260,7 @@ export function createSamplerSink(
         voicing: options.voicingOf?.(track),
         sequenceIndex: event.sequenceIndex,
       };
-      for (const grace of graces) play(track.id, grace, pass);
+      for (const grace of graces) play(track.id, grace, pass, false);
       const length = Math.max(0, event.duration - delay);
       const beatLength = Math.max(0, beatTicks(beat) * secondsPerTick - delay);
       play(
@@ -277,6 +283,7 @@ export function createSamplerSink(
           next: event.nextOnString,
         },
         pass,
+        true,
       );
     },
     mix,
