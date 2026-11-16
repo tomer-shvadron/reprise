@@ -9,6 +9,7 @@ const engine = vi.hoisted(() => ({
   previewNote: vi.fn<(...args: unknown[]) => void>(),
   unlock: vi.fn(),
   setGmTierBypass: vi.fn<(on: boolean) => void>(),
+  setStageBypass: vi.fn<(...args: unknown[]) => void>(),
   load: vi.fn(() => Promise.resolve({ instruments: [] })),
 }));
 
@@ -26,6 +27,7 @@ vi.mock('@reprise/audio', async (importOriginal) => {
       setMetronome: vi.fn(),
       setMasterVolume: vi.fn(),
       setGmTierBypass: engine.setGmTierBypass,
+      setStageBypass: engine.setStageBypass,
       updateClick: vi.fn(),
       setSoundfont: vi.fn(),
       unload: vi.fn(),
@@ -189,5 +191,13 @@ describe('AudioService.setGmTierBypass', () => {
     audio.setGmTierBypass(true);
     expect(engine.setGmTierBypass).toHaveBeenLastCalledWith(true);
     expect(playback.getState().settings.gmTierBypass).toBe(true);
+  });
+});
+
+describe('AudioService.setStageBypass', () => {
+  it('passes the stage to the engine', async () => {
+    const { audio } = await open();
+    audio.setStageBypass(trackId, 'drive', true);
+    expect(engine.setStageBypass).toHaveBeenCalledWith(trackId, 'drive', true);
   });
 });
