@@ -221,13 +221,12 @@ describe('stable continuous segment breaks', () => {
 
   it('lets a greedy segment end under the band when the next bar does not fit (#244)', () => {
     // Bars of about half a line, at a narrow width, where two never share a segment: a lone bar
-    // under UNDERFLOW is the greedy result, and the keep rule cannot merge it with a bar that
-    // would overflow the line. Found by the property test (seed -2084340291).
+    // under UNDERFLOW is the greedy result, and greedy cannot fill it further because the next
+    // bar would overflow the line. Found by the property test (seed -2084340291, all tracks).
     const wide = withNoteMarks(withEffects(largeScore(3, 32, { structure: true })));
     const narrow: LayoutOptions = {
       ...options,
       width: 480,
-      tracks: wide.tracks.filter((_, i) => i % 3 !== 1).map(({ id }) => id),
       notation: Object.fromEntries(wide.tracks.map(({ id }) => [id, 'both' as const])),
     };
     const cache = new LayoutCache();
@@ -239,21 +238,21 @@ describe('stable continuous segment breaks', () => {
       cache,
     );
     const short = result.systems.filter(
-      ({ bars, bbox }, i) =>
-        i > 0 &&
-        i < result.systems.length - 1 &&
-        bbox.width < MIN_LINES * narrow.width &&
-        bars.end > 0,
+      ({ bbox }, i) =>
+        i > 0 && i < result.systems.length - 1 && bbox.width < MIN_LINES * narrow.width,
     );
-    // The premise: the edit leaves a segment under the band.
+    // The premise: a segment is under the band; it is plain greedy output, already there before the edit.
     expect(short.length).toBeGreaterThan(0);
+    // The CI counterexample: [14,15) at 0.46 lines, followed by the two-bar [15,17).
+    expect(short.some(({ bars }) => bars.start === 14 && bars.end === 15)).toBe(true);
+    expect(result.systems.some(({ bars }) => bars.start === 15 && bars.end === 17)).toBe(true);
     for (const segment of short) {
       const next = result.systems[segment.index + 1];
       const id = applied.score.masterBars[next?.bars.start ?? 0]?.id;
       const column = result.anchors.find(
         (a) => a.kind === 'bar' && a.track === undefined && a.masterBar === id,
       );
-      // Filling the line again would overflow it, so the segment is as full as it can be.
+      // Filling the line again would overflow it, so greedy cannot fill the segment further.
       expect((segment.bbox.width + (column?.bbox.width ?? 0)) / narrow.width).toBeGreaterThan(0.97);
       expect(segment.bars.end - segment.bars.start).toBe(1);
     }
