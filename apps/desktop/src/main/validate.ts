@@ -199,6 +199,15 @@ export const parsers: Parsers = {
     arity(args, 0, 'app:data-dir');
     return [];
   },
+  'window:set-edited': (args) => {
+    arity(args, 1, 'window:set-edited');
+    if (typeof args[0] !== 'boolean') throw new PayloadError('Expected a boolean');
+    return [args[0]];
+  },
+  'window:close': (args) => {
+    arity(args, 0, 'window:close');
+    return [];
+  },
   'app:print': (args) => {
     if (args.length === 0) return [];
     arity(args, 1, 'app:print');

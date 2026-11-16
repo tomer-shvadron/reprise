@@ -111,6 +111,10 @@ export interface InvokeChannels {
   'app:library-dir': { args: []; result: string };
   'app:data-dir': { args: []; result: string };
   'app:print': { args: [options?: PrintOptions]; result: undefined };
+  /** The renderer reports whether the open document has unsaved changes; main keys the close guard on it. */
+  'window:set-edited': { args: [edited: boolean]; result: undefined };
+  /** The renderer answers a close request: it saved or discarded, so main may close now. */
+  'window:close': { args: []; result: undefined };
 }
 
 export type InvokeChannel = keyof InvokeChannels;
@@ -123,6 +127,7 @@ export type MenuCommandId =
   | 'file.open'
   | 'file.save'
   | 'file.saveAs'
+  | 'file.export'
   | 'file.print'
   | 'edit.undo'
   | 'edit.redo'
@@ -138,6 +143,8 @@ export type MenuCommandId =
 export interface EventChannels {
   'menu:command': [id: MenuCommandId];
   'menu:open-recent': [id: string];
+  /** The user asked to close the window while the document is edited; answer with `window:close`. */
+  'window:close-requested': [];
 }
 
 export type EventChannel = keyof EventChannels;
@@ -163,7 +170,14 @@ export interface RepriseBridge {
   libraryDir: () => Promise<InvokeResult<'app:library-dir'>>;
   dataDir: () => Promise<InvokeResult<'app:data-dir'>>;
   print: (...args: InvokeArgs<'app:print'>) => Promise<InvokeResult<'app:print'>>;
+  setDocumentEdited: (
+    ...args: InvokeArgs<'window:set-edited'>
+  ) => Promise<InvokeResult<'window:set-edited'>>;
+  confirmClose: (...args: InvokeArgs<'window:close'>) => Promise<InvokeResult<'window:close'>>;
   /** Returns an unsubscribe function. */
   onMenuCommand: (listener: (...args: EventChannels['menu:command']) => void) => () => void;
   onOpenRecent: (listener: (...args: EventChannels['menu:open-recent']) => void) => () => void;
+  onCloseRequest: (
+    listener: (...args: EventChannels['window:close-requested']) => void,
+  ) => () => void;
 }

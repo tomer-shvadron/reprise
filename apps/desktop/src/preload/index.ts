@@ -30,6 +30,13 @@ function on<C extends EventChannel>(
   };
 }
 
+// The page world calls these through contextBridge with whatever it likes, so the one argument
+// is checked here as well as in main.
+function setDocumentEdited(edited: boolean): Promise<undefined> {
+  if (typeof edited !== 'boolean') return Promise.reject(new TypeError('Expected a boolean'));
+  return invoke('window:set-edited', edited);
+}
+
 const bridge: RepriseBridge = {
   openFile: (filters) => invoke('file:open', filters),
   saveFile: (suggestedName, bytes, filters) => invoke('file:save', suggestedName, bytes, filters),
@@ -45,6 +52,9 @@ const bridge: RepriseBridge = {
   libraryDir: () => invoke('app:library-dir'),
   dataDir: () => invoke('app:data-dir'),
   print: (options) => (options ? invoke('app:print', options) : invoke('app:print')),
+  setDocumentEdited,
+  confirmClose: () => invoke('window:close'),
+  onCloseRequest: (listener) => on('window:close-requested', listener),
   onMenuCommand: (listener) => on('menu:command', listener),
   onOpenRecent: (listener) => on('menu:open-recent', listener),
 };

@@ -122,3 +122,18 @@ describe('storage and recent-list payloads', () => {
     expect(() => parseRecentSongs('nope')).toThrow(PayloadError);
   });
 });
+
+describe('window payloads', () => {
+  it('takes one boolean for window:set-edited, and nothing else', () => {
+    expect(parsers['window:set-edited']([true])).toEqual([true]);
+    expect(parsers['window:set-edited']([false])).toEqual([false]);
+    for (const bad of [['true'], [1], [undefined], [null], [], [true, false]]) {
+      expect(() => parsers['window:set-edited'](bad)).toThrow(PayloadError);
+    }
+  });
+
+  it('takes no arguments for window:close', () => {
+    expect(parsers['window:close']([])).toEqual([]);
+    expect(() => parsers['window:close']([true])).toThrow(PayloadError);
+  });
+});

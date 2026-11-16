@@ -40,6 +40,14 @@ describe('menuTemplate', () => {
     }
   });
 
+  it('puts Export as Guitar Pro under Save As in the File menu', () => {
+    const { items } = template();
+    const file = items.find((item) => item.label === 'File');
+    const labels = Array.isArray(file?.submenu) ? file.submenu.map((item) => item.label) : [];
+
+    expect(labels.indexOf('Export as Guitar Pro…')).toBe(labels.indexOf('Save As…') + 1);
+  });
+
   it('puts New Song first in the File menu on CmdOrCtrl+N', () => {
     const { items } = template();
     const file = items.find((item) => item.label === 'File');

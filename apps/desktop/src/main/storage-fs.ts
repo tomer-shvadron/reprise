@@ -1,5 +1,6 @@
-import { cp, lstat, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, sep } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { cp, lstat, mkdir, open, readdir, readFile, rename, rm } from 'node:fs/promises';
+import { basename, dirname, join, sep } from 'node:path';
 
 import type { DirEntry, StorageRoot } from '@reprise/web';
 
@@ -65,6 +66,8 @@ export async function listDirIn(roots: StorageRoots, path: unknown): Promise<Dir
   }
   return entries
     .flatMap((entry): DirEntry[] => {
+      // A write in flight, or one a crash left behind, is not a file of the app's.
+      if (TEMP_NAME.test(entry.name)) return [];
       // Symlinks and special files are not ours to list: the other calls refuse to follow them.
       if (entry.isFile()) return [{ name: entry.name, kind: 'file' }];
       if (entry.isDirectory()) return [{ name: entry.name, kind: 'directory' }];
@@ -132,13 +135,44 @@ export async function readFileIn(roots: StorageRoots, path: unknown): Promise<Ui
   return readFile(await resolveSafe(roots, path, { allowRoot: false }));
 }
 
-/** Writes a file under a root, making the folders above it, as the browser and the test double do. */
+/** `.name.<12 hex>.tmp`, the sibling a write goes through before it replaces its target. */
+const TEMP_NAME = /^\..+\.[0-9a-f]{12}\.tmp$/;
+
+/** The fs calls `writeFileIn` makes, so a test can make one of them fail. */
+export interface WriteOps {
+  open: typeof open;
+  rename: typeof rename;
+  rm: typeof rm;
+}
+
+const realWriteOps: WriteOps = { open, rename, rm };
+
+/**
+ * Writes a file under a root, making the folders above it, as the browser and the test double do.
+ * The bytes go to a temp file in the same folder, are flushed to disk, and replace the target in
+ * one `rename`, so a kill mid-write leaves the old file whole, never half of the new one.
+ */
 export async function writeFileIn(
   roots: StorageRoots,
   path: unknown,
   bytes: Uint8Array,
+  ops: WriteOps = realWriteOps,
 ): Promise<void> {
   const target = await resolveSafe(roots, path, { allowRoot: false });
   await mkdir(dirname(target), { recursive: true });
-  await writeFile(target, bytes);
+  const temp = join(dirname(target), `.${basename(target)}.${randomBytes(6).toString('hex')}.tmp`);
+  try {
+    // `wx` never reuses a name, so two writes of one file cannot share a temp file.
+    const file = await ops.open(temp, 'wx');
+    try {
+      await file.writeFile(bytes);
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    await ops.rename(temp, target);
+  } catch (error) {
+    await ops.rm(temp, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }

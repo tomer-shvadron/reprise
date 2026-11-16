@@ -1,5 +1,6 @@
 import {
   existsSync,
+  readdirSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -7,7 +8,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { cp, rename, rm } from 'node:fs/promises';
+import { cp, open, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -21,6 +22,7 @@ import {
   removeIn,
   writeFileIn,
   type MoveOps,
+  type WriteOps,
   type StorageRoots,
 } from './storage-fs';
 import { StoragePathError } from './storage-path';
@@ -227,5 +229,82 @@ describe('storage file operations', () => {
     );
     await expect(readFileIn(roots, 'library')).rejects.toThrow(StoragePathError);
     expect(existsSync(join(outside, 'x.gp'))).toBe(false);
+  });
+
+  describe('atomic writes', () => {
+    const real: WriteOps = { open, rename, rm };
+    const names = (dir: string) => readdirSync(dir);
+
+    it('replaces a file whole and leaves no temp file in its folder', async () => {
+      put(join(roots.data, 'drafts', 'a.reprise'), 'old');
+
+      await writeFileIn(roots, 'data/drafts/a.reprise', new Uint8Array([110, 101, 119]));
+
+      expect(readFileSync(join(roots.data, 'drafts', 'a.reprise'), 'utf8')).toBe('new');
+      expect(names(join(roots.data, 'drafts'))).toEqual(['a.reprise']);
+    });
+
+    it('flushes the temp file to disk before it renames it over the target', async () => {
+      const order: string[] = [];
+      const ops: WriteOps = {
+        ...real,
+        open: async (path, flags) => {
+          const file = await open(path, flags);
+          const sync = file.sync.bind(file);
+          file.sync = async () => {
+            order.push('sync');
+            await sync();
+          };
+          return file;
+        },
+        rename: async (from, to) => {
+          order.push('rename');
+          await rename(from, to);
+        },
+      };
+
+      await writeFileIn(roots, 'data/a.bin', new Uint8Array([1]), ops);
+
+      expect(order).toEqual(['sync', 'rename']);
+    });
+
+    it('keeps the old file and removes the temp file when the rename fails', async () => {
+      put(join(roots.data, 'a.bin'), 'old');
+      const ops: WriteOps = {
+        ...real,
+        rename: () => Promise.reject(Object.assign(new Error('EIO'), { code: 'EIO' })),
+      };
+
+      await expect(writeFileIn(roots, 'data/a.bin', new Uint8Array([1]), ops)).rejects.toThrow(
+        'EIO',
+      );
+
+      expect(readFileSync(join(roots.data, 'a.bin'), 'utf8')).toBe('old');
+      expect(names(roots.data)).toEqual(['a.bin']);
+    });
+
+    it('removes the temp file when the write itself fails', async () => {
+      const ops: WriteOps = {
+        ...real,
+        open: async (path, flags) => {
+          const file = await open(path, flags);
+          file.writeFile = () => Promise.reject(new Error('ENOSPC'));
+          return file;
+        },
+      };
+
+      await expect(writeFileIn(roots, 'data/a.bin', new Uint8Array([1]), ops)).rejects.toThrow(
+        'ENOSPC',
+      );
+
+      expect(names(roots.data)).toEqual([]);
+    });
+
+    it('hides a temp file a crash left behind from listings', async () => {
+      put(join(roots.data, 'a.bin'));
+      put(join(roots.data, '.a.bin.0123456789ab.tmp'));
+
+      await expect(listDirIn(roots, 'data')).resolves.toEqual([{ name: 'a.bin', kind: 'file' }]);
+    });
   });
 });

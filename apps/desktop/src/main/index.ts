@@ -20,12 +20,14 @@ import type { FileFilter, MenuCommandId, RecentSong } from '@reprise/web';
 
 import { APP_INDEX_URL, APP_SCHEME, createAppProtocolHandler } from './app-protocol';
 import { isAppUrl } from './app-url';
+import { CloseGuard } from './close-guard';
 import { readPath, writePath } from './file-io';
 import { registerInvokeHandlers, sendEvent } from './ipc';
 import { menuTemplate } from './menu';
 import { openedFile } from './opened-file';
 import { PathAccess } from './path-access';
 import { describePickedFile, walkFolder } from './pick-folder';
+import { profilePaths } from './profile';
 import { listDirIn, mkdirIn, moveIn, removeIn, type StorageRoots } from './storage-fs';
 import {
   DEFAULT_WINDOW_STATE,
@@ -48,7 +50,12 @@ protocol.registerSchemesAsPrivileged([
   { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 
-const libraryDir = join(app.getPath('music'), 'Reprise');
+// Before anything reads a path: a run under REPRISE_PROFILE_DIR (the smoke test) keeps all of its
+// state in that folder and leaves the user's own profile and library alone.
+const profile = profilePaths(process.env);
+if (profile) app.setPath('userData', profile.userData);
+
+const libraryDir = profile?.library ?? join(app.getPath('music'), 'Reprise');
 // The app's own files get a folder of their own: userData is also Chromium's profile (IndexedDB,
 // Local Storage, cookies), which no renderer call may reach.
 const userDataDir = app.getPath('userData');
@@ -58,6 +65,7 @@ const windowStateFile = join(userDataDir, 'window-state.json');
 const access = new PathAccess();
 const storageRoots: StorageRoots = { library: libraryDir, data: dataDir };
 let recentSongs: readonly RecentSong[] = [];
+const closeGuards = new Map<BrowserWindow, CloseGuard>();
 
 const dialogFilters = (filters: readonly FileFilter[]): DialogFilter[] =>
   filters.map(({ name, extensions }) => ({ name, extensions: [...extensions] }));
@@ -140,6 +148,17 @@ registerInvokeHandlers(
       await removeIn(storageRoots, path);
       return undefined;
     },
+    'window:set-edited': (event, edited) => {
+      const window = ownerWindow(event);
+      closeGuards.get(window)?.setEdited(edited);
+      // macOS draws a dot in the close button; the call does nothing elsewhere.
+      window.setDocumentEdited(edited);
+      return Promise.resolve(undefined);
+    },
+    'window:close': (event) => {
+      closeGuards.get(ownerWindow(event))?.confirm();
+      return Promise.resolve(undefined);
+    },
     'menu:set-recent': (_event, items) => {
       recentSongs = items;
       applyMenu();
@@ -218,6 +237,46 @@ function trackWindowState(window: BrowserWindow): void {
   });
 }
 
+/**
+ * Holds a close of an edited document until the renderer answers. No `beforeunload` is involved:
+ * Electron cancels a close silently when one is registered, so the renderer is asked over IPC.
+ */
+function guardClose(window: BrowserWindow): void {
+  const { webContents } = window;
+  const guard = new CloseGuard({
+    ask: () => {
+      if (!window.isDestroyed()) sendEvent(webContents, 'window:close-requested');
+    },
+    closeWindow: () => {
+      if (!window.isDestroyed()) window.close();
+    },
+    quitApp: () => {
+      app.quit();
+    },
+  });
+  closeGuards.set(window, guard);
+  window.on('close', (event) => {
+    if (guard.onClose()) event.preventDefault();
+  });
+  window.on('closed', () => {
+    guard.markDestroyed();
+    closeGuards.delete(window);
+  });
+  webContents.on('render-process-gone', () => {
+    guard.markRendererGone();
+  });
+  webContents.on('unresponsive', () => {
+    guard.markUnresponsive(true);
+  });
+  webContents.on('responsive', () => {
+    guard.markUnresponsive(false);
+  });
+  // A page that navigates away starts unreported; the new one reports for itself.
+  webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) guard.setEdited(false);
+  });
+}
+
 function restrictNavigation(window: BrowserWindow): void {
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) void shell.openExternal(url);
@@ -254,6 +313,7 @@ async function createWindow(): Promise<BrowserWindow> {
     window.show();
   });
   trackWindowState(window);
+  guardClose(window);
   restrictNavigation(window);
 
   await window.loadURL(APP_URL);
@@ -294,6 +354,14 @@ async function start(): Promise<void> {
     if (BrowserWindow.getAllWindows().length === 0) void createWindow();
   });
 }
+
+// Quit (the menu, Cmd+Q, the dock) does not go through a window's close button, so it is held
+// here the same way. Any window that holds the answer back keeps the app open.
+app.on('before-quit', (event) => {
+  for (const guard of closeGuards.values()) {
+    if (guard.onBeforeQuit()) event.preventDefault();
+  }
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
