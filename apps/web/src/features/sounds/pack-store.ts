@@ -208,7 +208,7 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
         dropped[pack.id] = {
           name: pack.name,
           message:
-            'Some articulation files of this pack are missing, so those sounds are left out.',
+            'Some articulation files of this pack are missing, so those sounds are left out. Remove the pack and download it again to restore them.',
           problems: result.dropped,
         };
       return result.pack;

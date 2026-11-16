@@ -78,7 +78,10 @@ export const PackManifestSchema = z
     /** General MIDI programs the pack can stand in for; a drum pack lists none. */
     gmPrograms: z.array(z.number().int().min(0).max(127)),
     format: z.literal('sfz'),
-    /** A curated pack's version bumps when its url, hash or entries change ("update available"). */
+    /**
+     * A curated pack's version bumps when its url or hash change ("update available"). A copy of
+     * the listed version takes the list's instruments and entries on every scan, with no bump.
+     */
     version: z.string().min(1).max(40),
     /** Absent for a custom pack, which has no list entry; the curated list's test requires all three. */
     sourceUrl: httpsUrl.exactOptional(),

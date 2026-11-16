@@ -12,7 +12,8 @@ const fold = (path: string) => path.normalize('NFC').toLowerCase();
 /**
  * An installed curated pack stores the manifest of its install, so entries the list gained later
  * (the Growlybass staccato file) never reach it. The files are the same while the version is, so
- * the instruments are taken from the list instead of forcing a re-download for a metadata change.
+ * the instruments are taken from the list instead of forcing a re-download for a metadata change:
+ * the version bumps for a url or hash change only (see `PackManifest.version`).
  * A listed file the copy does not hold drops that set, or the instrument when it is the default;
  * the pack stays. A copy of another version, or a custom pack, is left as it is.
  */

@@ -91,19 +91,25 @@ An instrument's `entries` map an articulation set (`ARTICULATION_SETS` in `@repr
 SFZ file; `default` is required. A pack can also carry its sets as labelled keyswitch layers in one
 file (`sw_label`), which the engine reads at load with no entry.
 
-- **Growlybass**: `staccato` is `growlybass_vicious.sfz` on `dirty`, `clean`, `angry`, `excessive`
-  and `shifty` (`vicious` is the staccato sound already). Emilyguitar and Swagbass list no
-  articulation files: their palm-mute, dead and harmonic sounds are not separate files, and their
-  dead-note noise keys are left to #286. No curated pack has a keyswitch library.
+- **Growlybass**: `staccato` is `growlybass_vicious.sfz` on `dirty` and `clean`. `angry` and
+  `excessive` already layer staccato samples into every note, `vicious` is staccato
+  already, so the other sounds list no set. Emilyguitar and Swagbass list no articulation files: their
+  palm-mute, dead and harmonic sounds are not separate files, and their dead-note noise keys are
+  left to #286. No curated pack has a keyswitch library.
 - **Installed copies** keep the manifest of their install, so a same-version copy takes its
   instruments from the list on every scan (the files are the same). A listed file the copy lacks
-  drops that set, or that instrument when it is the default, and the Sounds screen says so.
-- **Custom packs**: a root `.sfz` named as another root file's stem plus an articulation tail is
-  that instrument's file for the set, not an instrument: `guitar.sfz`, `guitar_pm.sfz`,
-  `guitar harm.sfz` become one instrument `guitar` with `default`, `palmMute` and `harmonic`. The
-  tail is the last one or two words after `_`, `-` or a space, read by `articulationSetOf`. A tail
-  that names no set, only the default set, or a set a file already has, and a tail whose base file
-  is not there or did not pass the check, stays an instrument of its own. There is no mapping UI.
+  drops that set, or that instrument when it is the default, and the Sounds screen says so and
+  suggests removing the pack and downloading it again.
+- **Custom packs**: a `.sfz` named as another `.sfz` in the same folder (the root, when any
+  `.sfz` sits there) plus an articulation tail is that instrument's file for the set, not an
+  instrument: `guitar.sfz`, `guitar_pm.sfz`, `guitar harm.sfz` become one instrument `guitar` with
+  `default`, `palmMute` and `harmonic`. The tail is the last one or two words after `_`, `-` or a
+  space, and all of it must be a whole articulation name: `pm`, `palm mute`, `dead`, `harm`,
+  `harmonics`, `nh`, `pinch`, `artificial harmonics`, `legato`, `hammer on`, `ho`, `stacc`,
+  `staccato`, `tap`, `slap`. `trumpet_mute`, `piano_hammer`, `piano_tape`, `synth_pop` and
+  `guitar_slapback` are instruments. A file already grouped never serves as a base (so
+  `guitar_pm_harm.sfz` stays an instrument), a second file for a taken set, and a tail whose base is
+  not there or did not pass the check, stay instruments. There is no mapping UI.
 
 ## Impulse responses
 
