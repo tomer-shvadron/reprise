@@ -82,3 +82,18 @@ export function saveKey(app: App): Promise<Score> {
     await app.page.keyboard.press('ControlOrMeta+s');
   });
 }
+
+/**
+ * Shows the History panel of a song typed from `riff` and returns its rows, how many it held once
+ * typed, and `rowCount(n)`: exactly `n` rows, the last one current. (Undo leaves the rows and moves
+ * the current one, so a spec checks that with `aria-current` itself.)
+ */
+export async function openHistory(app: App, riff: Riff) {
+  await palette(app, 'Show history');
+  const rows = app.page.getByRole('region', { name: 'History' }).getByRole('option');
+  const rowCount = async (count: number) => {
+    await expect(rows).toHaveCount(count);
+    await expect(rows.last()).toHaveAttribute('aria-current', 'step');
+  };
+  return { rows, typed: 1 + riff.entries, rowCount };
+}

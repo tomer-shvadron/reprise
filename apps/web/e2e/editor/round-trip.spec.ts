@@ -2,7 +2,7 @@ import { read } from '@reprise/formats';
 import type { Score } from '@reprise/model';
 
 import { expect, test } from '../player/test/app';
-import { palette, savedToLibrary } from './test/editor';
+import { palette, savedToLibrary, typeSong } from './test/editor';
 import { Riff, expectedScore } from './test/riff';
 import { shapeOf } from './test/score-shape';
 
@@ -74,15 +74,7 @@ test('A song typed in the app takes effects, bars and a paste, survives undo and
   };
 
   // 1 and 2. A new song from the palette, and the riff typed in.
-  await palette(app, 'New song');
-  await app.waitReady();
-  await app.gesture();
-  await expect(status).toContainText('Bar 1 · End of bar · String 1');
-  for (const step of r.steps) {
-    if ('toggleInsert' in step) throw new Error('The riff does not use insert mode');
-    await page.keyboard.press(step.press);
-    if (step.pending !== undefined) await expect(status).toContainText(`Fret ${step.pending}…`);
-  }
+  await typeSong(app, r);
   expect(await app.description()).toBe('4 bars, 1 page');
 
   await palette(app, 'Show history');

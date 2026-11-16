@@ -3,7 +3,15 @@ import { readFileSync } from 'node:fs';
 import { read } from '@reprise/formats';
 
 import { expect, test } from '../player/test/app';
-import { palette, quarters, saveKey, saveAndRead, toBar, typeSong } from './test/editor';
+import {
+  palette,
+  quarters,
+  saveKey,
+  saveAndRead,
+  toBar,
+  typeSong,
+  openHistory,
+} from './test/editor';
 import { shapeOf } from './test/score-shape';
 import { generated } from '../player/test/scores';
 
@@ -95,16 +103,10 @@ test('Cut leaves rests, Paste as insert adds bars, and Paste over a bar too shor
 }) => {
   const r = quarters([6, [0, 3, 5, 3]], [5, [0, 2, 3, 2]]);
   await typeSong(app, r);
-  await palette(app, 'Show history');
-  const rows = page.getByRole('region', { name: 'History' }).getByRole('option');
+  const { rows, typed, rowCount } = await openHistory(app, r);
   const status = page.getByTestId('edit-status');
-  const typed = 1 + r.entries;
-  const rowCount = async (count: number) => {
-    await expect(rows).toHaveCount(count);
-    await expect(rows.last()).toHaveAttribute('aria-current', 'step');
-  };
 
-  // Cut of the first two beats: one Cut row, and a half rest, the length of the two beats,.
+  // Cut of the first two beats: one Cut row, and a half rest, the length of the two beats.
   await toBar(app, 1);
   await page.keyboard.press('Shift+ArrowRight');
   await page.keyboard.press('ControlOrMeta+x');
@@ -138,4 +140,13 @@ test('Cut leaves rests, Paste as insert adds bars, and Paste over a bar too shor
   await expect.poll(() => app.description()).toBe('4 bars, 1 page');
   await rowCount(typed + 2);
   await expect(rows.last()).toHaveText('Paste');
+  // The copied bars went in at bar 2, and the old bar 2 moved to the end.
+  const inserted = await saveKey(app);
+  const frets = (bar: number) =>
+    inserted.tracks[0]?.bars[bar]?.voices[0]?.beats.map((beat) =>
+      beat.rest ? 'rest' : beat.notes.map(({ string, fret }) => [string, fret]),
+    );
+  expect(frets(1)).toEqual(['rest', [[6, 5]], [[6, 3]]]);
+  expect(frets(2)).toEqual([[[5, 0]], [[5, 2]], [[5, 3]], [[5, 2]]]);
+  expect(frets(3)).toEqual(frets(2));
 });

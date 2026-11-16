@@ -1,7 +1,7 @@
 import type { Score } from '@reprise/model';
 
 import { expect, test } from '../player/test/app';
-import { palette, quarters, saveKey, toBar, typeSong } from './test/editor';
+import { palette, quarters, saveKey, toBar, typeSong, openHistory } from './test/editor';
 import { shapeOf } from './test/score-shape';
 
 type Bar = Score['tracks'][number]['bars'][number];
@@ -18,14 +18,8 @@ test('Transpose moves frets and chord names, the keys nudge and move notes, and 
 }) => {
   const r = quarters([6, [0, 3, 5, 3]], [5, [0, 2, 3, 2]]);
   await typeSong(app, r);
-  await palette(app, 'Show history');
-  const rows = page.getByRole('region', { name: 'History' }).getByRole('option');
+  const { rows, typed, rowCount } = await openHistory(app, r);
   const status = page.getByTestId('edit-status');
-  const typed = 1 + r.entries;
-  const rowCount = async (count: number) => {
-    await expect(rows).toHaveCount(count);
-    await expect(rows.last()).toHaveAttribute('aria-current', 'step');
-  };
 
   // A chord name on the first beat, for the dialog to carry along.
   await toBar(app, 1);

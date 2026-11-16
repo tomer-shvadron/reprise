@@ -1,6 +1,10 @@
+import { readFileSync } from 'node:fs';
+
+import { read } from '@reprise/formats';
+
 import { expect, test } from '../player/test/app';
 import { fixture } from '../player/test/scores';
-import { palette, quarters, saveKey, toBar, typeSong } from './test/editor';
+import { quarters, saveKey, toBar, typeSong, openHistory } from './test/editor';
 
 // WP-085's inline field: a chord name, beat text and a lyric line typed over the beat they belong
 // to, one History row per word, and what the file holds afterwards.
@@ -10,16 +14,10 @@ test('A chord name, beat text and a lyric line are typed in the inline field, on
 }) => {
   const r = quarters([6, [0, 3, 5, 3]], [5, [0, 2, 3, 2]]);
   await typeSong(app, r);
-  await palette(app, 'Show history');
-  const rows = page.getByRole('region', { name: 'History' }).getByRole('option');
-  const typed = 1 + r.entries;
+  const { rows, typed, rowCount } = await openHistory(app, r);
   const field = (name: RegExp) =>
     page.getByRole('textbox', { name }).or(page.getByRole('combobox', { name }));
   const inScore = (text: string) => page.locator('svg text', { hasText: new RegExp(`^${text}$`) });
-  const rowCount = async (count: number) => {
-    await expect(rows).toHaveCount(count);
-    await expect(rows.last()).toHaveAttribute('aria-current', 'step');
-  };
   await rowCount(typed);
 
   // A names the chord on the beat; Tab commits it and moves to the next beat; Enter commits and closes.
@@ -60,6 +58,7 @@ test('A chord name, beat text and a lyric line are typed in the inline field, on
   await page.keyboard.type('again');
   await page.keyboard.press('Enter');
   await rowCount(typed + 7);
+  for (let word = 3; word < 7; word += 1) await expect(rows.nth(typed + word)).toHaveText('Lyrics');
   await expect(inScore('Hel-')).toHaveCount(1);
   await expect(inScore('lo')).toHaveCount(1);
   await expect(inScore('world')).toHaveCount(1);
@@ -87,6 +86,9 @@ test('Editing a lyric of a song that has its words on the beats replaces the wor
   app,
   page,
 }) => {
+  // The precondition of the last check: the fixture carries a raw lyrics block to be cleared.
+  const original = await read(readFileSync(fixture('gp/beat-lyrics.gp')), 'gp');
+  expect(original.score.tracks[0]?.lyrics.length).toBeGreaterThan(0);
   await app.openWithPicker(fixture('gp/beat-lyrics.gp'));
   await page.keyboard.press('ControlOrMeta+e');
   const status = page.getByTestId('edit-status');
@@ -102,6 +104,7 @@ test('Editing a lyric of a song that has its words on the beats replaces the wor
   const saved = await saveKey(app);
   const beats = saved.tracks[0]?.bars[0]?.voices[0]?.beats ?? [];
   expect(beats.map((beat) => beat.lyrics?.[0])).toEqual(['That', 'is', 'a', 'test file']);
-  // The file's raw lyrics block would bring the old text back on a re-read: it is gone.
+  // The raw lyrics block (one sentence for the whole track) would be laid out again by readers
+  // once the beat lyrics are gone: an edit of the beat lyrics clears it.
   expect(saved.tracks[0]?.lyrics).toEqual([]);
 });
