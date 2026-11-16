@@ -30,19 +30,13 @@ test('A sixteen-bar riff is entered from the keyboard alone, one undo step per e
   await app.waitReady();
   await app.gesture();
   await page.keyboard.press('ControlOrMeta+e');
-  const viaKey = await expect(status)
-    .toBeVisible({ timeout: 3000 })
-    .then(
-      () => true,
-      () => false,
-    );
-  console.log('DIAG status visible after the key press:', viaKey);
-  if (!viaKey) {
-    await page.keyboard.press('ControlOrMeta+e');
-    console.log('DIAG after a second press:', await status.isVisible());
-    await palette('Toggle edit mode');
-    console.log('DIAG after the palette:', await status.isVisible());
-  }
+  // On CI the first press has been lost to a document that was still settling (edit mode starts
+  // off with every document), so press again until the status line shows it, never toggling a
+  // mode that is already on.
+  await expect(async () => {
+    if (!(await status.isVisible())) await page.keyboard.press('ControlOrMeta+e');
+    await expect(status).toBeVisible({ timeout: 1000 });
+  }).toPass();
   await expect(status).toContainText('Bar 1 · End of bar · String 1');
 
   let heard = false;
