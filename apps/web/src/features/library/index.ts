@@ -4,3 +4,4 @@ export { installLibrary } from './install';
 export { RecentSongs } from './recent-songs';
 export { UnimportedBanner } from './unimported-banner';
 export { snapshotDrop } from './import/sources';
+export { ExportDialog } from './save/export-dialog';

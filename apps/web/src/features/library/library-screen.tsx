@@ -100,7 +100,7 @@ export function LibraryScreen() {
               entries={visible}
               now={now}
               onOpen={(id) => {
-                void library.openSong(id);
+                void library.requestOpenSong(id);
               }}
               onDelete={(id) => {
                 setDeleting(entries.find((entry) => entry.row.id === id)?.row);
@@ -136,7 +136,7 @@ export function LibraryScreen() {
         >
           <SongPracticePage
             song={viewing}
-            open={() => library.openSong(viewing.id)}
+            open={() => library.requestOpenSong(viewing.id)}
             onBack={() => {
               setViewing(undefined);
             }}

@@ -33,3 +33,10 @@ export function uniqueDbName(): string {
   databases += 1;
   return `reprise-test-${String(databases)}-${newId()}`;
 }
+
+/** A row of a song that began in Reprise, which has no original file. */
+export function rowWithoutOriginal(overrides: Partial<SongRow> = {}): SongRow {
+  const row = rowOf(overrides);
+  delete row.originalPath;
+  return row;
+}

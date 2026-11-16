@@ -5,6 +5,7 @@ import { ZOOM } from '@/state/ui';
 
 import type { Command } from './command-registry';
 import type { AppServices } from './services';
+import { whenSaved } from './when-saved';
 
 const ZOOM_STEP = 0.1;
 
@@ -47,8 +48,13 @@ export function appCommands(services: AppServices): AppCommand[] {
       id: 'file.open',
       title: 'Open file…',
       shortcut: { key: 'o', mod: true },
-      // Opens as before, then imports into the library in the background.
-      run: () => libraryOf(services).openFile(),
+      // Asks Save, Don't save or Cancel first when the document is modified, then opens and
+      // imports into the library in the background.
+      run: () => {
+        whenSaved(services, 'opening another song', () => {
+          void libraryOf(services).openFile();
+        });
+      },
     },
     {
       id: 'file.save',
@@ -65,16 +71,18 @@ export function appCommands(services: AppServices): AppCommand[] {
     {
       id: 'file.export',
       title: 'Export as Guitar Pro…',
-      // A placeholder until WP-061 PR 1 wires the export flow; it stays out of the palette so
-      // nothing offers a command that does nothing. The desktop menu item sends it meanwhile.
-      inPalette: false,
-      run: () => undefined,
+      // Writes a .gp copy and changes nothing about the open document; the desktop menu item
+      // mirrors the shortcut.
+      shortcut: { key: 'e', mod: true, shift: true },
+      run: () => libraryOf(services).exportGuitarPro(),
     },
     {
       id: 'file.close',
       title: 'Close file',
       run: () => {
-        document.getState().close();
+        whenSaved(services, 'closing the song', () => {
+          document.getState().close();
+        });
       },
     },
     {

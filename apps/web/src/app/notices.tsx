@@ -4,6 +4,7 @@ import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 
 import { Button } from '@/components/ui/button';
+import { libraryOf } from '@/features/library/library';
 
 import { useAppServices } from './services-context';
 
@@ -148,6 +149,22 @@ function DocumentErrorNotice() {
   );
 }
 
+/** Why Save did something other than asked, or why an export failed; the library holds it. */
+function LibraryNotice() {
+  const library = libraryOf(useAppServices());
+  const notice = useStore(library.store, (state) => state.notice);
+  if (!notice) return null;
+  return (
+    <Notice
+      kind={notice.kind === 'error' ? 'error' : 'warning'}
+      title={notice.message}
+      onDismiss={() => {
+        library.dismissNotice();
+      }}
+    />
+  );
+}
+
 function SoundsNotice() {
   const { playback, audio } = useAppServices();
   const message = useStore(
@@ -188,6 +205,7 @@ export function Notices() {
     >
       <DocumentErrorNotice />
       <WarningsNotice />
+      <LibraryNotice />
       <SoundsNotice />
     </section>
   );

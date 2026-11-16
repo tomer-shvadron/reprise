@@ -22,9 +22,20 @@ export interface NewSongRow {
   now: number;
   /** A song imported by opening it counts as opened. */
   opened?: boolean;
+  /** False for a song that began in Reprise: no original file, so no `originalPath`. */
+  hasOriginal?: boolean;
 }
 
-export function newSongRow({ id, name, format, key, meta, now, opened }: NewSongRow): SongRow {
+export function newSongRow({
+  id,
+  name,
+  format,
+  key,
+  meta,
+  now,
+  opened,
+  hasOriginal = true,
+}: NewSongRow): SongRow {
   const originalName = name.split('/').pop() ?? name;
   return {
     id,
@@ -33,7 +44,7 @@ export function newSongRow({ id, name, format, key, meta, now, opened }: NewSong
     album: meta.album,
     sourceFormat: format,
     nativePath: nativePathOf(id),
-    originalPath: originalPathOf(id, safeName(originalName)),
+    ...(hasOriginal && { originalPath: originalPathOf(id, safeName(originalName)) }),
     originalName,
     originalKey: key,
     importedAt: now,

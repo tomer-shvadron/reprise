@@ -13,8 +13,16 @@ const notes = (score: Score) =>
     .flatMap((voice) => voice.beats)
     .reduce((sum, beat) => sum + beat.notes.length, 0);
 
-test('Save writes a .gp file in place, and it reopens as saved', async ({ app, page }) => {
-  await app.openWithPicker(generated('song.gp'));
+// Only a file opened without importing is saved where it is; an imported one is saved to its
+// library copy (WP-061).
+test('Save writes a .gp file opened without importing in place, and it reopens as saved', async ({
+  app,
+  page,
+}) => {
+  await app.stage(generated('song.gp'));
+  await app.pick('song.gp');
+  await app.palette('Open without importing');
+  await app.waitReady('song.gp');
   await page.getByRole('button', { name: 'Notation for Track 1: Tab' }).click();
   await page.getByRole('menuitemradio', { name: 'Standard notation', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Notation for Track 1: Std' })).toBeVisible();
@@ -54,14 +62,51 @@ test('Save writes a .gp file in place, and it reopens as saved', async ({ app, p
   );
 });
 
-// Save As writes .reprise only, with no format question; .gp is an export (WP-061).
-test('Save As from a .gp5 file writes a .reprise, which reopens', async ({ app, page }) => {
-  await app.openWithPicker(fixture('gp5/chords.gp5'));
+test('Save writes an imported .gp to its library copy and leaves the original alone', async ({
+  app,
+  page,
+}) => {
+  await app.openWithPicker(generated('song.gp'));
+  await expect.poll(() => app.listStored('library/songs')).toHaveLength(1);
+  const [native] = await app.listStored('library/songs');
+  const original = await app.readStored('song.gp');
+  await page.keyboard.press('F8');
+  const volume = app.strip(1).getByRole('slider', { name: 'Volume of Track 1' });
+  await volume.focus();
+  await volume.press('PageDown');
+  await expect(volume).toHaveAttribute('aria-valuenow', '90');
+
+  const before = await app.writeCount(native ?? '');
+  await page.locator('body').focus();
+  await page.keyboard.press('ControlOrMeta+s');
+  await app.waitForWrite(native ?? '', before);
+  // No question about Guitar Pro losses and no picker: the song is in the library.
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await app.saves()).toEqual([]);
+
+  const { score } = await read(
+    await app.readStoredPath(`library/songs/${native ?? ''}`),
+    'reprise',
+  );
+  expect(score.tracks[0]?.channel.volume).toBe(90);
+  expect(await app.readStored('song.gp')).toEqual(original);
+});
+
+test('Save on a .gp5 opened without importing becomes Save As, and the notice goes once it wrote', async ({
+  app,
+  page,
+}) => {
+  await app.stage(fixture('gp5/chords.gp5'));
+  await app.pick('chords.gp5');
+  await app.palette('Open without importing');
+  await app.waitReady('chords.gp5');
   const name = 'chords.reprise';
   const before = await app.writeCount(name);
   await page.keyboard.press('ControlOrMeta+s');
 
   await app.waitForWrite(name, before);
+  // The notice that said why Save became Save As is gone: that Save As has written.
+  await expect(page.getByText(/so Save became Save As/)).toHaveCount(0);
   expect(await app.saves()).toEqual([
     {
       suggestedName: name,

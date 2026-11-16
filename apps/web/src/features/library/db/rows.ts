@@ -39,8 +39,12 @@ export const SongRowSchema = z.object({
    * handle. The spelling is persisted, so it is part of the schema (changing it needs an upgrade).
    */
   nativePath: z.string(),
-  /** Root-relative (`library/originals/<id>/<name>`), built in `paths.ts`; persisted like `nativePath`. */
-  originalPath: z.string(),
+  /**
+   * Root-relative (`library/originals/<id>/<name>`), built in `paths.ts`; persisted like
+   * `nativePath`. Absent for a song that began in Reprise (a new song's first Save): there is no
+   * original file.
+   */
+  originalPath: z.string().exactOptional(),
   originalName: z.string(),
   /** SHA-256 hex of the imported bytes; a unique index, so a duplicate import is skipped. */
   originalKey: z.string(),
@@ -50,6 +54,13 @@ export const SongRowSchema = z.object({
   bars: z.number().int().nonnegative(),
   tracks: z.array(z.object({ name: z.string() })),
   session: TrackSessionSchema.exactOptional(),
+  /** When the native was last written by a Save; absent until then. Drafts compare against it. */
+  savedAt: z.number().exactOptional(),
+  /**
+   * The Guitar Pro export warnings (`Warning.code`) the user chose not to be asked about again for
+   * this song. Not indexed, so it needs no schema version. Travels with the row to the trash.
+   */
+  exportAcknowledged: z.array(z.string()).exactOptional(),
 });
 export type SongRow = z.infer<typeof SongRowSchema>;
 

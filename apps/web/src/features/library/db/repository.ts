@@ -5,6 +5,11 @@ import type { TrackSession } from '@/features/tracks';
 import { SongRowSchema, type SongRow } from './rows';
 import type { RepriseDb } from './schema';
 
+/** The fields a save or an export acknowledgement changes; the id and the key never change. */
+export type SongPatch = Partial<
+  Pick<SongRow, 'title' | 'artist' | 'album' | 'bars' | 'tracks' | 'savedAt' | 'exportAcknowledged'>
+>;
+
 export interface SongsRepository {
   /** Every valid row; a row that fails its schema is skipped and logged, never thrown. */
   all(): Promise<SongRow[]>;
@@ -14,6 +19,8 @@ export interface SongsRepository {
   /** Rejects when the id or the key is taken. */
   add(row: SongRow): Promise<void>;
   remove(id: Id): Promise<void>;
+  /** Merges `patch` into the row; resolves false when the song is gone. Never touches the id. */
+  update(id: Id, patch: SongPatch): Promise<boolean>;
   setSession(id: Id, session: TrackSession): Promise<void>;
   touch(id: Id, openedAt: number): Promise<void>;
   /** Most recently opened first; never-opened songs are not listed. */
@@ -48,6 +55,9 @@ export function createSongsRepository(db: RepriseDb): SongsRepository {
     },
     async remove(id) {
       await db.songs.delete(id);
+    },
+    async update(id, patch) {
+      return (await db.songs.update(id, patch)) > 0;
     },
     async setSession(id, session) {
       await db.songs.update(id, { session });

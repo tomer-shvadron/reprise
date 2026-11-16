@@ -84,8 +84,12 @@ test('A song built from the UI saves with its structure and plays in order, one 
   const saved = async (before: number) => {
     await page.locator('body').focus();
     await page.keyboard.press('ControlOrMeta+s');
-    await app.waitForWrite('Untitled.reprise', before);
-    return (await read(await app.readStored('Untitled.reprise'), 'reprise')).score.masterBars;
+    // A new song's first Save adds it to the library: its file is `library/songs/<id>.reprise`.
+    await expect.poll(() => app.listStored('library/songs')).toHaveLength(1);
+    const [native = ''] = await app.listStored('library/songs');
+    await app.waitForWrite(native, before);
+    return (await read(await app.readStoredPath(`library/songs/${native}`), 'reprise')).score
+      .masterBars;
   };
 
   const bars = await saved(0);
