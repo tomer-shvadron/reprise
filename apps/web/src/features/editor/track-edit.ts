@@ -10,6 +10,7 @@ import {
 } from '@reprise/model';
 
 import type { AppServices } from '@/app/services';
+import { singleTrackOf } from '@/state/document';
 // The module, not the feature's index: the index's components import the services context, which
 // imports the registry that imports this file.
 import { selectTrack } from '@/features/tracks/track-actions';
@@ -106,11 +107,13 @@ export function removeBlocker(services: TrackEditServices): string | undefined {
 
 export function removeTrackNow(services: TrackEditServices, id: Id): ApplyResult {
   const { document } = services;
-  const score = document.getState().score;
+  const { score, view } = document.getState();
   const index = score?.tracks.findIndex((track) => track.id === id) ?? -1;
   if (!score || index < 0) return { ok: false, message: 'That track is gone.' };
-  // Read first: the app's own subscription moves a removed current track to the first one.
+  // Read first: the app's own subscription moves a removed current track to the first one, and
+  // single-track view stops matching once its track is gone.
   const wasCurrent = services.selection.getState().currentTrack === id;
+  const wasShown = singleTrackOf(view, score) === id;
   const result = attempt(() => {
     document.getState().apply(removeTrack({ trackId: id }));
   });
@@ -119,6 +122,10 @@ export function removeTrackNow(services: TrackEditServices, id: Id): ApplyResult
     const next = document.getState().score?.tracks[Math.min(index, score.tracks.length - 2)];
     if (next) selectTrack(services, next.id);
   }
+  // Single-track view follows the current track, so undo (which brings the removed track back
+  // under the same id) leaves the view on the track the sidebar highlights.
+  const current = services.selection.getState().currentTrack;
+  if (wasShown && current !== undefined) document.getState().setSingleTrack(current);
   return result;
 }
 

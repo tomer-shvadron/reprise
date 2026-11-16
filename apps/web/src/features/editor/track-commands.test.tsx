@@ -71,6 +71,23 @@ describe('the track commands', () => {
     expect(names(services)).toEqual(['Lead', 'Bass', 'Drums']);
   });
 
+  it('keeps single-track view on the current track when the shown track is removed', () => {
+    const { services, ids, run } = setupTracks();
+    act(() => {
+      services.selection.getState().setCurrentTrack(ids[1]);
+      services.document.getState().setSingleTrack(ids[1]);
+    });
+    run('track.remove');
+    expect(services.selection.getState().currentTrack).toBe(ids[2]);
+    expect(services.document.getState().view.only).toBe(ids[2]);
+    act(() => {
+      services.document.getState().undo();
+    });
+    expect(names(services)).toEqual(['Lead', 'Bass', 'Drums']);
+    expect(services.document.getState().view.only).toBe(ids[2]);
+    expect(services.selection.getState().currentTrack).toBe(ids[2]);
+  });
+
   it('ask before removing a track that holds notes, and keep it on Cancel', () => {
     const { services, run } = setupTracks();
     run('track.remove');
