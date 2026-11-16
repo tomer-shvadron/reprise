@@ -11,6 +11,11 @@ export const contextRank = (context: CommandContext | undefined): number =>
 export interface Command {
   id: string;
   title: string;
+  /**
+   * What the palette searches instead of `title`, for a title that changes with state ("Undo
+   * Insert bar" searches as "Undo"): typing another command's name must never match it.
+   */
+  searchTitle?: string;
   shortcut?: Shortcut;
   /** The shortcut works only while this context is active, and wins over a context-free binding of the same key. */
   context?: CommandContext;

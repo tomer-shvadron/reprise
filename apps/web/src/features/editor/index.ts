@@ -101,3 +101,6 @@ export {
 export { effectInput, openEffectPicker, openGraceDialog, pickerBlocker } from './effect-dialogs';
 export { pickerCommands, type PickerCommandId } from './picker-commands';
 export type { EffectPicker } from './dialogs';
+export { HistoryPanel } from './history-panel';
+export { historyLabel } from './history-labels';
+export { undoLanding } from './undo-landing';
