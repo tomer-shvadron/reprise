@@ -45,6 +45,18 @@ export function createElectronPlatform(bridge: RepriseBridge, win: Window = wind
       });
     },
     onOpenRecent: (listener) => bridge.onOpenRecent(listener),
+    // Best effort, like the menu: a failed report leaves main on its last known state.
+    setDocumentEdited: (edited) => {
+      bridge.setDocumentEdited(edited).catch((error: unknown) => {
+        console.error('Could not report the document state', error);
+      });
+    },
+    onCloseRequest: (listener) => bridge.onCloseRequest(listener),
+    confirmClose: (close) => {
+      bridge.confirmClose(close).catch((error: unknown) => {
+        console.error('Could not close the window', error);
+      });
+    },
     libraryDir: () => bridge.libraryDir(),
     dataDir: () => bridge.dataDir(),
     print: (options) => (options ? bridge.print(options) : bridge.print()),

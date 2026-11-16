@@ -63,6 +63,14 @@ export function appCommands(services: AppServices): AppCommand[] {
       run: () => document.getState().saveAs(),
     },
     {
+      id: 'file.export',
+      title: 'Export as Guitar Pro…',
+      // A placeholder until WP-061 PR 1 wires the export flow; it stays out of the palette so
+      // nothing offers a command that does nothing. The desktop menu item sends it meanwhile.
+      inPalette: false,
+      run: () => undefined,
+    },
+    {
       id: 'file.close',
       title: 'Close file',
       run: () => {
