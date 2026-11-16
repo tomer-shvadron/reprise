@@ -5,10 +5,12 @@ import { DEAD_NOTE_KEY, deadNoteInstrument } from '../articulations/dead-note';
 import { placeGraces } from '../articulations/grace';
 import { ARTICULATION } from '../articulations/parameters';
 import { planNote } from '../articulations/plan';
+import type { Voicing } from '../articulations/sets';
 import type { GainPoint, NotePlan, PlanInput, Strike } from '../articulations/plan';
 import { levelAt } from '../articulations/tie-chain';
 import type { FilterSettings } from './voice';
 import type { InstrumentSink, MixEvent, NoteEvent } from '../sink';
+import type { RegionMap, RegionSelection } from './region-map';
 import type { Instrument, Sampler, TrackParams, VoiceHandle } from './sampler';
 
 export interface SamplerSinkOptions {
@@ -19,6 +21,26 @@ export interface SamplerSinkOptions {
    * `undefined` (or no resolver) keeps the current one.
    */
   instrumentOf?: (track: Track, program: number) => Instrument | undefined;
+  /**
+   * What the track's sample pack offers beyond its default instrument; `undefined`, or no
+   * resolver, is a track with none (General MIDI), which plays as it always did.
+   */
+  voicingOf?: (track: Track) => Voicing | undefined;
+}
+
+/** What one `NoteEvent` hands every strike it plays, its grace notes included. */
+interface Pass {
+  voicing: Voicing | undefined;
+  sequenceIndex: number;
+}
+
+/** FNV-1a over the parts, mapped to [0, 1): no `Math.random`, so a render repeats exactly. */
+function draw(...parts: readonly (string | number)[]): number {
+  let hash = 0x81_1c_9d_c5;
+  for (const char of parts.join(':')) {
+    hash = Math.imul(hash ^ (char.codePointAt(0) ?? 0), 0x01_00_01_93);
+  }
+  return (hash >>> 0) / 2 ** 32;
 }
 
 /**
@@ -117,6 +139,32 @@ export function createSamplerSink(
 ): InstrumentSink {
   let deadNote = options.deadNote;
   const chains = new Map<string, Chain>();
+  // Notes struck so far per track, region map and key, for the round robins; a stop starts over.
+  let counters = new WeakMap<RegionMap, Map<string, number>>();
+
+  /** The counters a strike's regions are chosen by; `sequence` advances with each strike. */
+  function select(
+    trackId: Id,
+    regions: RegionMap,
+    input: PlanInput,
+    pass: Pass,
+    strikeIndex: number,
+    key: number,
+  ): RegionSelection {
+    let counts = counters.get(regions);
+    if (!counts) {
+      counts = new Map<string, number>();
+      counters.set(regions, counts);
+    }
+    const slot = `${trackId}:${String(key)}`;
+    const sequence = counts.get(slot) ?? 0;
+    counts.set(slot, sequence + 1);
+    return {
+      sequence,
+      random: draw(input.note.id, pass.sequenceIndex, strikeIndex),
+      ...(pass.voicing?.legatoTrigger && input.note.hammerPull && { legato: true }),
+    };
+  }
 
   function start(
     trackId: Id,
@@ -124,20 +172,26 @@ export function createSamplerSink(
     plan: NotePlan,
     strike: Strike,
     last: boolean,
+    pass: Pass,
+    strikeIndex: number,
   ): VoiceHandle | undefined {
     if (plan.dead) deadNote ??= deadNoteInstrument(sampler.context.sampleRate);
+    const instrument =
+      plan.dead && deadNote ? deadNote : sampler.instrumentAt(trackId, strike.when);
+    const key = plan.dead ? DEAD_NOTE_KEY : strike.key;
     return sampler.noteOn(trackId, {
-      key: plan.dead ? DEAD_NOTE_KEY : strike.key,
+      key,
       velocity: strike.velocity,
       when: strike.when,
       string: input.note.string,
+      select: select(trackId, instrument.regions, input, pass, strikeIndex, key),
       ...(strike.offset !== undefined && { offset: strike.offset }),
       ...(plan.dead && deadNote && { instrument: deadNote }),
       ...(last && plan.letRingUntil !== undefined && { letRing: { until: plan.letRingUntil } }),
     });
   }
 
-  function play(trackId: Id, input: PlanInput): void {
+  function play(trackId: Id, input: PlanInput, pass: Pass): void {
     const chainKey = `${trackId}:${String(input.note.string)}`;
     const chain = input.note.string > 0 ? chains.get(chainKey) : undefined;
     let carried: VoiceHandle | undefined;
@@ -153,7 +207,8 @@ export function createSamplerSink(
     const lastIndex = plan.strikes.length - 1;
     for (const [index, strike] of plan.strikes.entries()) {
       const last = index === lastIndex;
-      const voice = index === 0 && carried ? carried : start(trackId, input, plan, strike, last);
+      const voice =
+        index === 0 && carried ? carried : start(trackId, input, plan, strike, last, pass, index);
       if (!voice) continue;
       const isCarried = voice === carried;
       const until = last && plan.legatoInto !== undefined ? plan.legatoInto : strike.end;
@@ -195,30 +250,39 @@ export function createSamplerSink(
       const { track, beat, note } = event;
       const secondsPerTick = event.durationTicks > 0 ? event.duration / event.durationTicks : 0;
       const { graces, delay } = placeGraces(event, secondsPerTick, sampler.context.currentTime);
-      for (const grace of graces) play(track.id, grace);
+      const pass: Pass = {
+        voicing: options.voicingOf?.(track),
+        sequenceIndex: event.sequenceIndex,
+      };
+      for (const grace of graces) play(track.id, grace, pass);
       const length = Math.max(0, event.duration - delay);
       const beatLength = Math.max(0, beatTicks(beat) * secondsPerTick - delay);
-      play(track.id, {
-        track,
-        note,
-        effects: beat.effects,
-        when: event.when + delay,
-        length,
-        beatLength,
-        links: event.continuations.map((link) => ({
-          note: link.note,
-          effects: link.beat.effects,
-          when: link.when,
-          length: link.durationTicks * secondsPerTick,
-        })),
-        secondsPerTick,
-        barEnd: event.barEnd,
-        next: event.nextOnString,
-      });
+      play(
+        track.id,
+        {
+          track,
+          note,
+          effects: beat.effects,
+          when: event.when + delay,
+          length,
+          beatLength,
+          links: event.continuations.map((link) => ({
+            note: link.note,
+            effects: link.beat.effects,
+            when: link.when,
+            length: link.durationTicks * secondsPerTick,
+          })),
+          secondsPerTick,
+          barEnd: event.barEnd,
+          next: event.nextOnString,
+        },
+        pass,
+      );
     },
     mix,
     allNotesOff(when: number): void {
       chains.clear();
+      counters = new WeakMap();
       sampler.allNotesOff(when);
     },
   };

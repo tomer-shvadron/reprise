@@ -106,15 +106,22 @@ describe('SfzPack under the memory manager and the sampler', () => {
     expect(rms(rendered, 0.05, 0.19)).toBeGreaterThan(0.05);
     expect(rms(rendered, 0.4, 0.9)).toBeGreaterThan(0.05);
 
+    // The note-off at 0.2 s started the pack's release region, which was not resident: a miss, so
+    // its load was requested too (WP-093). It did not sound.
+    expect([...missed]).toContain('sfz:synthetic/samples/release.wav');
+    await source.settled();
+
     // Accounting is the decoded Float32 size, counted once.
     const memory = source.memory();
-    expect(memory.decodedBytes).toBe((frames('ride.wav') + frames('piano loud C3.wav')) * 4);
+    expect(memory.decodedBytes).toBe(
+      (frames('ride.wav') + frames('piano loud C3.wav') + frames('release.wav')) * 4,
+    );
     expect(memory.residents).toEqual(['sfz:synthetic:default']);
-    expect(source.counters.fetches).toBe(2);
+    expect(source.counters.fetches).toBe(3);
     expect(pack.byteLength('sfz:synthetic/samples/ride.wav')).toBe(frames('ride.wav') * 4);
   });
 
-  it('preloads every round-robin and random take of a key through candidates()', async () => {
+  it('preloads every round-robin and random take and the release of a key through candidates()', async () => {
     const { pack, reads } = packOf();
     const instrument = await pack.loadInstrument('synthetic.sfz', { id: 'a' });
     const source = new ManagedSampleSource(pack, offline(0.1), {
@@ -128,6 +135,7 @@ describe('SfzPack under the memory manager and the sampler', () => {
       [
         'rr1.wav',
         'rr2.wav',
+        'release.wav',
         'rand low.wav',
         'rand high.wav',
         'attack first.wav',
@@ -138,8 +146,8 @@ describe('SfzPack under the memory manager and the sampler', () => {
     await Promise.all(refs.map((ref) => source.getBuffer(ref)));
     const read = reads.filter((path) => path.startsWith('samples/')).sort();
     expect(read).toEqual(names.map((name) => `samples/${name}`).sort());
-    // A release region is never a candidate, so its file is never read.
-    expect(read).not.toContain('samples/release.wav');
+    // A release region is a candidate, since it must be resident at the note-off.
+    expect(read).toContain('samples/release.wav');
     const expected = names.reduce((sum, name) => sum + frames(name) * 4, 0);
     expect(source.memory().decodedBytes).toBe(expected);
     expect(source.counters.fetches).toBe(names.length);
