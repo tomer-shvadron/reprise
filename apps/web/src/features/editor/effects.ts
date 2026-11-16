@@ -47,6 +47,8 @@ export type EffectAction =
   | { kind: 'harmonic'; harmonic: Harmonic }
   | { kind: 'dynamics'; dynamics: Dynamics }
   | { kind: 'trill'; trill: Trill }
+  /** A trill to `interval` frets above each note, so a chord trills each of its notes. */
+  | { kind: 'trillInterval'; interval: number; speed: Trill['speed'] }
   | { kind: 'bend'; bend: Bend; label?: string }
   | { kind: 'beatFlag'; flag: BeatFlag }
   | { kind: 'tremolo'; speed: 8 | 16 | 32 }
@@ -188,6 +190,10 @@ const ANY_TRACK_BEAT_FLAGS: ReadonlySet<BeatFlag> = new Set<BeatFlag>([
   'fadeOut',
   'volumeSwell',
 ]);
+
+/** The highest fret a trill can go to: the neck, or a MIDI note off a fretted track. */
+const trillTop = (ref: NoteRef): number =>
+  ref.track.kind === 'fretted' ? ref.track.fretCount : 127;
 
 /** A shift or legato slide, and a hammer-on, need a note to go to; the slide reaches one bar on. */
 const SLIDE_REACH_BARS = 1;
@@ -338,6 +344,21 @@ function noteSpec(action: EffectAction): NoteSpec | undefined {
           trill: null,
         },
       );
+    case 'trillInterval': {
+      const { interval, speed } = action;
+      return {
+        label: 'trill',
+        anyTrack: false,
+        has: (note) => note.trill?.speed === speed && note.trill.fret === note.fret + interval,
+        present: (note) => note.trill !== undefined,
+        set: (note) => ({ trill: { fret: note.fret + interval, speed } }),
+        clear: () => ({ trill: null }),
+        unavailable: (ref) =>
+          ref.note.fret + interval > trillTop(ref)
+            ? `A trill to fret ${String(ref.note.fret + interval)} is off the neck`
+            : undefined,
+      };
+    }
     case 'bend': {
       const prebend = action.bend.kind.startsWith('prebend');
       return valueSpec(

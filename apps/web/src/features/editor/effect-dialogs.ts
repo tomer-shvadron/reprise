@@ -13,7 +13,8 @@ export const PICKER_PROBE: Record<EffectPicker, EffectAction> = {
   harmonic: { kind: 'harmonic', harmonic: { kind: 'natural' } },
   whammy: { kind: 'whammy', whammy: { kind: 'dive', points: [] } },
   tremolo: { kind: 'tremolo', speed: 32 },
-  trill: { kind: 'trill', trill: { fret: 0, speed: 16 } },
+  // An interval of 0 is never off the neck, so only the track kind can block it.
+  trill: { kind: 'trillInterval', interval: 0, speed: 16 },
   dynamics: { kind: 'dynamics', dynamics: 'f' },
 };
 

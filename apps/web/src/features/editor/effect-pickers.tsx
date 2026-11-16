@@ -64,8 +64,10 @@ const DYNAMICS: readonly Dynamics[] = ['ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 
 
 /** Default offset of a non-natural harmonic's node above the fretted note: the octave. */
 const DEFAULT_NODE = 12;
-/** A trill goes to the fret two above: the usual trill. */
+/** A note trills to the fret a whole tone above unless told otherwise. */
 const TRILL_STEP = 2;
+
+const ORDINAL = { 8: '8th', 16: '16th', 32: '32nd', 64: '64th' } as const;
 
 /** A number a choice carries and the player can type: the harmonic's node, the trill's fret. */
 interface Field {
@@ -73,8 +75,9 @@ interface Field {
   hint: string;
   /** Its value on opening: the one the whole target shares, else a default. */
   seed(input: EffectInput | undefined): number;
-  /** The most it can be, for the input's `max`. */
-  max(input: EffectInput | undefined): number | undefined;
+  /** Whole frets only (a trill's interval), or any number (a harmonic's fractional node). */
+  integer: boolean;
+  min: number;
 }
 
 interface Spec {
@@ -145,7 +148,8 @@ const SPECS: Record<EffectPicker, Spec> = {
               DEFAULT_NODE)
           : DEFAULT_NODE;
       },
-      max: () => undefined,
+      integer: false,
+      min: 0,
     },
     choices: (node) =>
       HARMONICS.map(({ kind, label }) => ({
@@ -189,37 +193,35 @@ const SPECS: Record<EffectPicker, Spec> = {
     choices: () =>
       ([8, 16, 32] as const).map((speed) => ({
         value: String(speed),
-        label: `${String(speed)}th notes`,
+        label: `${ORDINAL[speed]} notes`,
         action: { kind: 'tremolo', speed },
       })),
     removes: PICKER_PROBE.tremolo,
   },
   trill: {
     title: 'Trill',
-    description: 'Choose the speed of a trill to the fret below, on the selected notes.',
+    description: 'Choose how many frets above each note it trills to, and how fast.',
     mode: 'set',
     columns: 3,
     field: {
-      label: 'Trill to fret',
-      hint: 'The fret the note alternates with.',
+      label: 'Frets above the note',
+      hint: 'A chord trills each of its notes by this much; a note it would take off the neck is skipped.',
+      // The interval the whole target already trills by, else a whole tone.
       seed: (input) => {
         const refs = input ? effectTarget(input).notes : [];
-        const first = refs[0];
-        if (!first) return 0;
-        const trilled = shared(refs.map((ref) => ref.note.trill?.fret));
-        const top = first.track.kind === 'fretted' ? first.track.fretCount : 127;
-        return trilled ?? Math.min(first.note.fret + TRILL_STEP, top);
+        return (
+          shared(refs.map((ref) => ref.note.trill && ref.note.trill.fret - ref.note.fret)) ??
+          TRILL_STEP
+        );
       },
-      max: (input) => {
-        const track = input ? effectTarget(input).notes[0]?.track : undefined;
-        return track?.kind === 'fretted' ? track.fretCount : 127;
-      },
+      integer: true,
+      min: 1,
     },
-    choices: (fret) =>
+    choices: (interval) =>
       ([16, 32, 64] as const).map((speed) => ({
         value: String(speed),
-        label: `${String(speed)}th notes`,
-        action: { kind: 'trill', trill: { fret, speed } },
+        label: `${ORDINAL[speed]} notes`,
+        action: { kind: 'trillInterval', interval, speed },
       })),
     removes: PICKER_PROBE.trill,
   },
@@ -266,7 +268,6 @@ export function EffectPickerDialog({
     const input = effectInput(services);
     return {
       value: String(spec.field?.seed(input) ?? 0),
-      max: spec.field?.max(input),
     };
   });
   const [typed, setTyped] = useState(seed.value);
@@ -276,8 +277,8 @@ export function EffectPickerDialog({
   const typedValid =
     typed.trim() !== '' &&
     Number.isFinite(typedNumber) &&
-    typedNumber >= 0 &&
-    (seed.max === undefined || typedNumber <= seed.max);
+    typedNumber >= (spec.field?.min ?? 0) &&
+    (spec.field?.integer !== true || Number.isInteger(typedNumber));
   const choices = useMemo(
     () => spec.choices(typedValid ? typedNumber : 0),
     [spec, typedValid, typedNumber],
@@ -305,7 +306,8 @@ export function EffectPickerDialog({
   const moveByRow = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="button"], button')];
-    const at = items.indexOf(event.target as HTMLElement);
+    const { target } = event;
+    const at = target instanceof HTMLElement ? items.indexOf(target) : -1;
     if (at < 0) return;
     event.preventDefault();
     // Radix would also step to the next item; this is the one move.
@@ -338,9 +340,8 @@ export function EffectPickerDialog({
               id={fieldId}
               type="number"
               inputMode="decimal"
-              min={0}
-              {...(seed.max !== undefined && { max: seed.max })}
-              step="any"
+              min={spec.field.min}
+              step={spec.field.integer ? 1 : 'any'}
               value={typed}
               aria-invalid={!typedValid}
               onChange={(event) => {

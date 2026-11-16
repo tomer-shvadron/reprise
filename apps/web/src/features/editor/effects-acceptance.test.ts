@@ -610,13 +610,10 @@ describe('grace notes apply, draw, sound and come off again', () => {
           expect(noteOf(applied, 0, 0, 1).hammerPull).toBe(true);
         }
 
-        // Removes: the dialog's Remove, and the score is as it was (a hammer-on's flag aside, which
-        // belongs to the note and is the player's to clear).
+        // Removes: the dialog's Remove clears the grace note and the hammer flag it owned.
         const removal = planGrace(effectInput(services) ?? input, 'remove');
         expect(commitEffectPlan(services, removal)).toEqual({ applied: true });
-        const removed = beatOf(current(), 0, 0, 1);
-        expect(removed.grace).toBeUndefined();
-        if (form.transition !== 'hammer') expect(current()).toEqual(original);
+        expect(current()).toEqual(original);
         services.document.getState().undo();
         expect(current()).toEqual(applied);
       },

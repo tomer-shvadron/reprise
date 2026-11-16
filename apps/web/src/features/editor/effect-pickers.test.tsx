@@ -199,16 +199,16 @@ describe('the effect pickers', () => {
     expect(at('½ bend')).toHaveFocus();
   });
 
-  it('sets a trill from a typed fret and speed, and N takes it off again', async () => {
+  it('sets a trill from a typed interval and speed, and N takes it off again', async () => {
     const { press, beats } = await setupEffects();
     const user = userEvent.setup();
     expect(press('n')).toBe(true);
-    // The note is fret 5: the trill goes two above.
-    const fret = within(dialog()).getByLabelText('Trill to fret');
-    expect(fret).toHaveValue(7);
-    await user.clear(fret);
-    await user.type(fret, '8');
-    await user.click(within(dialog()).getByRole('button', { name: '32th notes' }));
+    // The note is fret 5; the interval is two frets unless changed.
+    const interval = within(dialog()).getByLabelText('Frets above the note');
+    expect(interval).toHaveValue(2);
+    await user.clear(interval);
+    await user.type(interval, '3');
+    await user.click(within(dialog()).getByRole('button', { name: '32nd notes' }));
     expect(beats()[0]?.notes[0]?.trill).toEqual({ fret: 8, speed: 32 });
     // Every note has one now, so N removes it and opens nothing.
     expect(press('n')).toBe(true);
@@ -216,15 +216,70 @@ describe('the effect pickers', () => {
     expect(beats()[0]?.notes[0]?.trill).toBeUndefined();
   });
 
-  it('keeps a trill fret on the neck', async () => {
+  it('trills each note of a chord by the interval, not to one fret', async () => {
+    const { services, press, goTo, beats } = await setupEffects();
+    const user = userEvent.setup();
+    goTo(1);
+    press('n');
+    await user.click(within(dialog()).getByRole('button', { name: '16th notes' }));
+    // The chord is frets 7 and 0 on strings 2 and 3.
+    expect(beats()[1]?.notes.map((n) => [n.fret, n.trill?.fret])).toEqual([
+      [7, 9],
+      [0, 2],
+    ]);
+    // The panel's button opens the picker on the interval both share.
+    act(() => {
+      openEffectPicker(services, 'trill');
+    });
+    expect(within(dialog()).getByLabelText('Frets above the note')).toHaveValue(2);
+    expect(within(dialog()).getByRole('button', { name: '16th notes' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('opens the picker, not Remove, when only some of the target has a trill', async () => {
+    const { services, press, goTo } = await setupEffects();
+    const user = userEvent.setup();
+    goTo(1);
+    const chord = services.document.getState().score?.tracks[0]?.bars[0]?.voices[0]?.beats[1];
+    act(() => {
+      services.selection.getState().select({ noteIds: [must(chord?.notes[0]).id] });
+    });
+    press('n');
+    await user.click(within(dialog()).getByRole('button', { name: '16th notes' }));
+    act(() => {
+      services.selection.getState().select({});
+    });
+    goTo(1);
+    expect(press('n')).toBe(true);
+    // One of the two has a trill: a toggle would be ambiguous, so the picker opens, on 2 frets.
+    expect(within(dialog()).getByLabelText('Frets above the note')).toHaveValue(2);
+  });
+
+  it('leaves a message and opens nothing for N with no note selected', async () => {
+    const { services, press } = await setupEffects();
+    act(() => {
+      services.selection.getState().setEdit({ cursor: undefined });
+    });
+    expect(press('n')).toBe(true);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(services.entry.getState().message).toBe('Select a note first');
+  });
+
+  it('keeps the interval whole, and skips a note a trill would take off the neck', async () => {
     const { press } = await setupEffects();
     const user = userEvent.setup();
     press('n');
-    const fret = within(dialog()).getByLabelText('Trill to fret');
-    await user.clear(fret);
-    await user.type(fret, '99');
-    expect(fret).toHaveAttribute('aria-invalid', 'true');
+    const interval = within(dialog()).getByLabelText('Frets above the note');
+    await user.clear(interval);
+    await user.type(interval, '1.5');
+    expect(interval).toHaveAttribute('aria-invalid', 'true');
     expect(within(dialog()).getByRole('button', { name: '16th notes' })).toBeDisabled();
+    await user.clear(interval);
+    await user.type(interval, '99');
+    await user.click(within(dialog()).getByRole('button', { name: '16th notes' }));
+    expect(within(dialog()).getByRole('alert')).toHaveTextContent(/off the neck/);
   });
 
   it('sets the tremolo speed from the picker', async () => {

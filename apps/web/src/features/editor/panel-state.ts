@@ -20,16 +20,6 @@ export interface PanelState {
   empty: boolean;
 }
 
-const PICKERS: readonly EffectPicker[] = [
-  'bend',
-  'slide',
-  'harmonic',
-  'whammy',
-  'tremolo',
-  'trill',
-  'dynamics',
-];
-
 const OFF = 'Turn on edit mode first';
 
 /**
@@ -40,12 +30,18 @@ const OFF = 'Turn on edit mode first';
 export function panelState(input: EffectInput | undefined, editing: boolean): PanelState {
   const target = input && editing ? effectTarget(input) : undefined;
   const known = new Map<EffectKeyName, Known>();
-  const blockers = {
+  const blocker = (picker: EffectPicker) =>
+    input && target ? pickerBlockerFor(input, picker, target) : OFF;
+  const blockers: PanelState['blockers'] = {
     grace: input && target ? graceBlocker(input, target) : OFF,
-  } as PanelState['blockers'];
-  for (const picker of PICKERS) {
-    blockers[picker] = input && target ? pickerBlockerFor(input, picker, target) : OFF;
-  }
+    bend: blocker('bend'),
+    slide: blocker('slide'),
+    harmonic: blocker('harmonic'),
+    whammy: blocker('whammy'),
+    tremolo: blocker('tremolo'),
+    trill: blocker('trill'),
+    dynamics: blocker('dynamics'),
+  };
   if (input && target) {
     for (const { id, action } of EFFECT_KEY_TABLE) {
       const state = effectState(input, action, target);
