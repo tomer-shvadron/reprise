@@ -425,6 +425,7 @@ export class Sampler {
     // Only a note whose map has release regions for it pays for the hook; a GM note is unchanged.
     const releases =
       !request.preview &&
+      regions.hasReleaseRegions &&
       regions.resolveRelease(request.key, request.velocity, request.layer, request.select).length >
         0;
     const handle: VoiceHandle =

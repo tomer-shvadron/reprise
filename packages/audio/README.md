@@ -464,11 +464,16 @@ interface Instrument {
 }
 ```
 
-`resolveRelease` returns the release regions of a note-off, with the same layer fallback, the same
-`select` counters (a sequence or random release region plays only when it passes) and the same
-nearest-region fallback, searched among the release regions only: a map with none returns nothing,
-and an SF2 map never has any. `candidates` includes them, since a release region has to be
-resident at the note-off.
+`resolveRelease` returns the release regions of a note-off, with the same layer fallback and the
+same `select` counters (a sequence or random release region plays only when it passes), but with
+no nearest-region fallback: key and velocity match exactly, so a note-off outside every release
+region is silent. A release region is limited by `lokey`/`hikey` or `lovel`/`hivel` on purpose (noise
+only on loud notes, say), a transposed release sample sounds wrong, and in SFZ a note-off with no
+release region plays nothing; the attack fallback exists so that a note always sounds, which does
+not carry over to a decorative tail. `candidates` includes only the release regions a note-off can
+trigger, since one has to be resident at the note-off and nothing else would use it.
+`RegionMap.hasReleaseRegions` is true when any region triggers on release; a map without them
+(every SF2 preset) skips `resolveRelease` altogether, so a General MIDI note pays nothing for it.
 
 `resolveAll` first filters out the regions that do not start at note-on: release regions never do,
 `first` regions play unless `select.legato`, `legato` regions only with it, a sequence region plays

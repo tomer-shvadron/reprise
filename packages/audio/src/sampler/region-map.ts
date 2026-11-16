@@ -228,6 +228,8 @@ function distance(value: number, lo: number, hi: number): number {
  */
 export class RegionMap {
   readonly regions: readonly Region[];
+  /** Whether any region triggers on release: a map without them (every SF2 preset) skips `resolveRelease`. */
+  readonly hasReleaseRegions: boolean;
   readonly #layers = new Map<
     string | undefined,
     { all: Region[]; byKey: Region[][]; selections?: RegionSelection[] }
@@ -239,6 +241,7 @@ export class RegionMap {
       checkRange('Velocity', region.velLo, region.velHi);
     }
     this.regions = regions;
+    this.hasReleaseRegions = regions.some((region) => region.trigger === 'release');
     for (const region of regions) {
       let layer = this.#layers.get(region.layer);
       if (!layer) {
@@ -274,8 +277,9 @@ export class RegionMap {
   /**
    * The release regions the note-off of a note on this key starts, with the same layer fallback
    * and the same `select` counters as `resolveAll` (a sequence or random release region plays
-   * only when it passes). The nearest-region fallback searches only the release regions, so a map
-   * with none returns nothing, and an SF2 map never has any.
+   * only when it passes). Key and velocity match exactly, with no nearest-region fallback: a
+   * release region is limited by key or velocity on purpose, so a note-off outside them is
+   * silent, as in SFZ. A map with none returns nothing, and an SF2 map never has any.
    */
   resolveRelease(
     key: number,
@@ -283,11 +287,13 @@ export class RegionMap {
     layer?: string,
     select?: RegionSelection,
   ): Region[] {
+    if (!this.hasReleaseRegions) return [];
     return this.#match(
       key,
       velocity,
       layer,
       (region) => region.trigger === 'release' && passes(region, select),
+      true,
     );
   }
 
@@ -301,7 +307,7 @@ export class RegionMap {
   candidates(key: number, velocity: number, layer?: string): Region[] {
     const found = new Set([
       ...this.#match(key, velocity, layer, (region) => region.trigger !== 'release'),
-      ...this.#match(key, velocity, layer, (region) => region.trigger === 'release'),
+      ...this.#match(key, velocity, layer, (region) => region.trigger === 'release', true),
     ]);
     for (const select of this.#selections(layer)) {
       for (const region of this.resolveAll(key, velocity, layer, select)) found.add(region);
@@ -351,6 +357,7 @@ export class RegionMap {
     velocity: number,
     layer: string | undefined,
     accept: (region: Region) => boolean,
+    exactOnly = false,
   ): Region[] {
     const set = this.#set(layer);
     if (!set) return [];
@@ -358,7 +365,7 @@ export class RegionMap {
       set.byKey[key]?.filter(
         (region) => velocity >= region.velLo && velocity <= region.velHi && accept(region),
       ) ?? [];
-    if (exact.length > 0) return exact;
+    if (exact.length > 0 || exactOnly) return exact;
 
     let best: Region | undefined;
     let bestKey = Infinity;

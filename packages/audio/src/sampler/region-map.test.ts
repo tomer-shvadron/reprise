@@ -143,9 +143,22 @@ describe('RegionMap.resolveRelease', () => {
     expect(names(tails.resolveRelease(70, 100, 'harmonic'))).toEqual(['tail-a']);
   });
 
-  it('falls back to the nearest release region and returns nothing from a map with none', () => {
-    expect(names(tails.resolveRelease(100, 100))).toEqual(['tail-a']);
-    expect(new RegionMap([region({ sample: 'a' })]).resolveRelease(60, 100)).toEqual([]);
+  it('matches key and velocity exactly: a note-off outside every release region is silent', () => {
+    expect(tails.resolveRelease(100, 100)).toEqual([]);
+    expect(tails.candidates(100, 100).map((r) => r.sample)).toEqual(['attack']);
+    const loud = new RegionMap([
+      region({ sample: 'a' }),
+      region({ sample: 'noise', trigger: 'release', velLo: 100, velHi: 127 }),
+    ]);
+    expect(names(loud.resolveRelease(60, 110))).toEqual(['noise']);
+    expect(loud.resolveRelease(60, 40)).toEqual([]);
+  });
+
+  it('flags a map with release regions, and returns nothing from one with none', () => {
+    expect(tails.hasReleaseRegions).toBe(true);
+    const plain = new RegionMap([region({ sample: 'a' })]);
+    expect(plain.hasReleaseRegions).toBe(false);
+    expect(plain.resolveRelease(60, 100)).toEqual([]);
   });
 
   it('keeps release regions out of resolveAll and includes both draws in candidates', () => {

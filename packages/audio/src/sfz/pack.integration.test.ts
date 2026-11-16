@@ -106,18 +106,16 @@ describe('SfzPack under the memory manager and the sampler', () => {
     expect(rms(rendered, 0.05, 0.19)).toBeGreaterThan(0.05);
     expect(rms(rendered, 0.4, 0.9)).toBeGreaterThan(0.05);
 
-    // The note-off at 0.2 s started the pack's release region, which was not resident: a miss, so
-    // its load was requested too (WP-093). It did not sound.
-    expect([...missed]).toContain('sfz:synthetic/samples/release.wav');
+    // The pack's release region is on key 60 only: the note-off of key 51 matches none, so it is
+    // silent and its sample is never requested.
+    expect([...missed]).not.toContain('sfz:synthetic/samples/release.wav');
     await source.settled();
 
     // Accounting is the decoded Float32 size, counted once.
     const memory = source.memory();
-    expect(memory.decodedBytes).toBe(
-      (frames('ride.wav') + frames('piano loud C3.wav') + frames('release.wav')) * 4,
-    );
+    expect(memory.decodedBytes).toBe((frames('ride.wav') + frames('piano loud C3.wav')) * 4);
     expect(memory.residents).toEqual(['sfz:synthetic:default']);
-    expect(source.counters.fetches).toBe(3);
+    expect(source.counters.fetches).toBe(2);
     expect(pack.byteLength('sfz:synthetic/samples/ride.wav')).toBe(frames('ride.wav') * 4);
   });
 
