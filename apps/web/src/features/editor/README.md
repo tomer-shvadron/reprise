@@ -19,6 +19,12 @@ What it holds, after WP-056 (the mode toggle) and WP-080 (hit-testing and the se
 | `installEditor`                                                     | Keeps the cursor honest across edits, undo and track changes, and places it when edit mode turns on; `services.ts` calls it (`install-editor.ts`).                                    |
 | `navigationCommands`                                                | The cursor commands, bound with `context: 'editing'` (`navigation-commands.ts`).                                                                                                      |
 | `useEditOverlays`                                                   | The caret (editing only) and range boxes for the open score (`use-edit-overlays.ts`).                                                                                                 |
+| `trackEditCommands`                                                 | `track.properties`, `track.add`, `track.addWindows`, `track.remove`, `track.moveUp` and `track.moveDown` (`track-commands.ts`).                                                       |
+| `EditorDialogs`                                                     | The host for the track, remove, notice and unsaved-changes dialogs; mounted once in the app (`editor-dialogs.tsx`).                                                                   |
+| `AddTrackButton`, `TrackRowMenu`                                    | The sidebar's "+" and "⋯", passed to `TrackSidebar`'s slots (`track-menu.tsx`).                                                                                                       |
+| `startNewSong`, `createNewSong`                                     | File > New Song with its unsaved-changes check, and without it (`new-song.ts`).                                                                                                       |
+| `whenSaved(services, action, onContinue)`                           | Runs `onContinue` now, or after Save / Don't save on a modified document; shared by New song and, from WP-061, Open, Close and quit (`when-saved.ts`).                                |
+| `UnsavedChangesDialog`                                              | The Save / Don't save / Cancel dialog `whenSaved` opens (`unsaved-dialog.tsx`).                                                                                                       |
 
 ## The model, in short
 

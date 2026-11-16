@@ -31,18 +31,28 @@ test('New song replaces a modified song, and tracks are added, moved and removed
   await add.getByLabel('Capo').fill('2');
   await add.getByRole('button', { name: 'Add track' }).click();
   await expect(tracks.getByRole('listitem')).toHaveCount(2);
-  const names = () => tracks.getByRole('listitem').locator('button.truncate .font-medium');
-  await expect(names()).toHaveText(['Guitar', 'Bass']);
+  // Each row's menu button is named after its track, so the order reads off them.
+  const order = () =>
+    expect.poll(() =>
+      tracks
+        .getByRole('button', { name: /^Track actions for / })
+        .evaluateAll((buttons) =>
+          buttons.map((button) =>
+            button.getAttribute('aria-label')?.replace(/^Track actions for /, ''),
+          ),
+        ),
+    );
+  await order().toEqual(['Guitar', 'Bass']);
 
   await page.getByRole('button', { name: 'Track actions for Bass' }).click();
   await page.getByRole('menuitem', { name: 'Move up' }).click();
-  await expect(names()).toHaveText(['Bass', 'Guitar']);
+  await order().toEqual(['Bass', 'Guitar']);
 
   await page.getByRole('button', { name: 'Track actions for Bass' }).click();
   await page.getByRole('menuitem', { name: 'Remove…' }).click();
-  await expect(names()).toHaveText(['Guitar']);
+  await order().toEqual(['Guitar']);
 
   await page.locator('body').focus();
   await page.keyboard.press('ControlOrMeta+z');
-  await expect(names()).toHaveText(['Bass', 'Guitar']);
+  await order().toEqual(['Bass', 'Guitar']);
 });

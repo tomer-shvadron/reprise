@@ -108,18 +108,39 @@ describe('the track dialog, editing', () => {
     expect(within(dialog()).queryByRole('alert')).toBeNull();
   });
 
-  it('lets Tab reach every control in order, ending on the footer', async () => {
+  it('lets Tab visit the controls in the visual order, ending on the footer', async () => {
     const { run, user } = setup();
     run('track.properties');
-    const order: string[] = [];
-    for (let i = 0; i < 40; i++) {
+    const nameOf = (element: Element) =>
+      element.getAttribute('aria-label') ??
+      document.querySelector(`label[for="${element.id}"]`)?.textContent ??
+      element.textContent;
+    const order: (string | null)[] = [nameOf(document.activeElement ?? document.body)];
+    while (order.at(-1) !== 'Apply' && order.length < 40) {
       await user.tab();
       const active = document.activeElement;
       if (active === null || !dialog().contains(active)) break;
-      order.push(active.getAttribute('aria-label') ?? active.textContent);
-      if (active.textContent === 'Apply') break;
+      order.push(nameOf(active));
     }
-    expect(order.at(-1)).toBe('Apply');
+    expect(order).toEqual([
+      'Name',
+      'Short name',
+      'Colour #d9480f',
+      'Colour hex',
+      'Instrument',
+      'Strings',
+      'Tuning',
+      'Capo',
+      'String 1',
+      'String 2',
+      'String 3',
+      'String 4',
+      'String 5',
+      'String 6',
+      'String 7',
+      'Cancel',
+      'Apply',
+    ]);
   });
 });
 

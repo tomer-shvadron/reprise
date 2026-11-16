@@ -1,6 +1,4 @@
-// The module, not the feature's index: its components import the services context, which imports
-// the registry that imports this file.
-import { startNewSong } from '@/features/editor/new-song';
+import { startNewSong } from '@/features/editor';
 import { libraryOf } from '@/features/library/library';
 import type { MenuCommandId } from '@/platform/bridge';
 import { ZOOM } from '@/state/ui';

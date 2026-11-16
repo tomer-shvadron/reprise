@@ -11,9 +11,7 @@ import {
 
 import type { AppServices } from '@/app/services';
 import { singleTrackOf } from '@/state/document';
-// The module, not the feature's index: the index's components import the services context, which
-// imports the registry that imports this file.
-import { selectTrack } from '@/features/tracks/track-actions';
+import { selectTrack } from '@/features/tracks';
 
 import { dialogsOf } from './dialogs';
 import { refusalMessage } from './track-refusal';
