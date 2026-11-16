@@ -103,8 +103,10 @@ export class ManagedSampleSource implements SampleSource {
   readonly #listeners = new Set<(stats: MemoryReport) => void>();
   readonly #counters: MemoryCounters = { fetches: 0, evictions: 0, pinnedEvictions: 0 };
   #pinned = new Set<InstrumentId>();
-  /** Set by an eviction of a pinned instrument, cleared by a song switch. */
-  #shortfall = false;
+  /** The current plan's instruments that were evicted and are not resident again. */
+  #evicted = new Set<InstrumentId>();
+  /** The plan of the last `switchSong`: what `warm` restores. */
+  #plan: SongPlan | undefined;
   #budget: number;
   #bytes = 0;
   /** Estimated bytes of fetches in flight, reserved so a burst of loads cannot overshoot. */
@@ -168,7 +170,7 @@ export class ManagedSampleSource implements SampleSource {
       budgetBytes: this.#budget,
       residents: [...this.#residents].sort(),
       unused: [...this.#residents].filter((instrument) => !this.#pinned.has(instrument)).sort(),
-      shortfall: this.#shortfall,
+      shortfall: this.#evicted.size > 0,
     };
   }
 
@@ -186,7 +188,11 @@ export class ManagedSampleSource implements SampleSource {
     const plan = planInstruments(score, options);
     this.#generation += 1;
     this.#pinned = new Set(plan.instruments);
-    this.#shortfall = false;
+    this.#plan = plan;
+    // An edit that keeps an instrument leaves it evicted; a song that drops it forgets it.
+    for (const instrument of this.#evicted) {
+      if (!this.#pinned.has(instrument)) this.#evicted.delete(instrument);
+    }
     // A planned preset whose samples are resident under an alias takes them over, or evicting
     // the alias below would free the samples the new song needs.
     for (const instrument of this.#pinned) {
@@ -223,11 +229,12 @@ export class ManagedSampleSource implements SampleSource {
   }
 
   /**
-   * The background warm-up of `load`, run again: a raised budget restores a song whose samples
-   * were evicted. It does nothing unless the whole plan fits, and stops at the next song switch.
+   * The background warm-up of `load`, run again over the plan of the last `switchSong`: a raised
+   * budget restores a song whose samples were evicted. It does nothing unless what is missing
+   * fits, and stops at the next song switch.
    */
-  warm(plan: SongPlan, regionMaps: RegionMaps): void {
-    this.#warm(planSamples(plan, regionMaps), this.#generation);
+  warm(regionMaps: RegionMaps): void {
+    if (this.#plan) this.#warm(planSamples(this.#plan, regionMaps), this.#generation);
   }
 
   /**
@@ -237,7 +244,8 @@ export class ManagedSampleSource implements SampleSource {
   unpin(): void {
     this.#generation += 1;
     this.#pinned = new Set();
-    this.#shortfall = false;
+    this.#plan = undefined;
+    this.#evicted.clear();
     this.#changed();
   }
 
@@ -337,7 +345,10 @@ export class ManagedSampleSource implements SampleSource {
     }
     // With no planned owner every owner is resident, so the buffer always has one to free it.
     const planned = owners.filter((owner) => this.#pinned.has(owner));
-    for (const owner of planned.length > 0 ? planned : owners) this.#touch(owner);
+    for (const owner of planned.length > 0 ? planned : owners) {
+      this.#touch(owner);
+      this.#evicted.delete(owner);
+    }
     this.#recent = ref;
     this.#reclaim(owners);
     this.#changed();
@@ -384,7 +395,7 @@ export class ManagedSampleSource implements SampleSource {
       this.#counters.evictions += 1;
       if (this.#pinned.has(instrument)) {
         this.#counters.pinnedEvictions += 1;
-        this.#shortfall = true;
+        this.#evicted.add(instrument);
       }
     }
     this.#changed();

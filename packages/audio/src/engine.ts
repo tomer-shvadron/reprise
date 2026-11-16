@@ -16,7 +16,6 @@ import {
 } from './samples/managed-sample-source';
 import type { BufferFactory } from './samples/managed-sample-source';
 import { planInstruments, planSamples } from './samples/plan';
-import type { SongPlan } from './samples/plan';
 import { ProviderRouter, packInstrumentId } from './samples/provider-router';
 import type { InstrumentId, MemoryReport } from './samples/types';
 import type { Sf2Soundfont } from './sf2/soundfont';
@@ -327,8 +326,6 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   /** The last score whose load got past its pack check: what the next load is an edit of. */
   let committed: Score | undefined;
   let latestDecode: Promise<LoadResult> | undefined;
-  /** The plan of the last decode, which a raised budget warms again. */
-  let lastPlan: SongPlan | undefined;
   let overrides: Record<Id, TrackParams> = {};
   let tempo: { mode: TempoMode; value: number } = { mode: 'percent', value: 100 };
   let loopBars: { startBar: Id; endBar: Id } | undefined;
@@ -531,10 +528,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     if (!source || !bank) return Promise.reject(new Error('AudioEngine.load: no sound bank'));
     const decoding = source
       .load(next, regionMapOf, { instrumentOf: instrumentIdFor })
-      .then((plan) => {
-        lastPlan = plan;
-        return { instruments: plan.instruments, fallbacks: [] };
-      });
+      .then((plan) => ({ instruments: plan.instruments, fallbacks: [] }));
     latestDecode = decoding;
     return decoding;
   }
@@ -1000,7 +994,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       budgetBytes = effectiveBudget();
       if (!source) return;
       source.budgetBytes = budgetBytes;
-      if (raised && score && lastPlan) source.warm(lastPlan, regionMapOf);
+      if (raised && score) source.warm(regionMapOf);
     },
 
     unloadUnused() {
@@ -1053,7 +1047,6 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       score = undefined;
       attached = undefined;
       latestDecode = undefined;
-      lastPlan = undefined;
     },
 
     setMasterVolume(volume) {

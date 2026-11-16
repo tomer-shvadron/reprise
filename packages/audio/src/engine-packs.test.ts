@@ -406,9 +406,7 @@ describe('the HQ budget', () => {
     engine.setMemoryBudget(1024 * 1024);
     await engine.settled();
     expect(engine.memory().decodedBytes).toBe(full.decodedBytes);
-    // The flag is per song switch: raising the budget does not clear it.
-    expect(engine.memory().shortfall).toBe(true);
-    await engine.load(song, packOptions([{ trackId: id, files: pack.files }]));
+    // The raise restored everything the song uses, so nothing is short any more.
     expect(engine.memory().shortfall).toBe(false);
     engine.dispose();
   });
