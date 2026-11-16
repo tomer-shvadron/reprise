@@ -156,7 +156,7 @@ flowchart TB
 ## Checkpoints and their definition of done
 
 - **Player checkpoint** (end of phase 2). Tomer can drag a gp3, gp4, gp5, gp or gpx file onto the app, read it as tab with rhythm stems, hear it through the GM tier with repeats, alternate endings and jumps played correctly, slow it to 50% BPM-accurate, loop four bars, mute the guitar track to play along, and print it. Performance budgets hold on the benchmark score.
-  **Reached on 2026-11-15 at `b17d2bb`** (WP-056, #52), except that the print check of the definition above was deferred by the owner to the end of phase 3 (#52), and `e2e` stays a non-required check by the owner's decision. Budgets measured: `pnpm bench` on the reference machine (Apple M4 Pro, Node 24, local, a load of 4.5 from other work, time budgets ×1) and the two renderer rows from the `e2e` job of the CI run on that commit ([run 43752851238](https://github.com/tomer-shvadron/reprise/actions/runs/43752851238), threshold = budget ×3.4 for time).
+  **Reached on 2026-11-15 at `b17d2bb`** (WP-056, #52), except that the print check of the definition above was deferred by the owner to the end of phase 3 (#52) and again at the end of phase 3 (2026-11-17), and `e2e` stays a non-required check by the owner's decision. Budgets measured: `pnpm bench` on the reference machine (Apple M4 Pro, Node 24, local, a load of 4.5 from other work, time budgets ×1) and the two renderer rows from the `e2e` job of the CI run on that commit ([run 43752851238](https://github.com/tomer-shvadron/reprise/actions/runs/43752851238), threshold = budget ×3.4 for time).
 
   | Metric                                     | Budget | Measured                           | Verdict |
   | ------------------------------------------ | ------ | ---------------------------------- | ------- |
@@ -170,9 +170,30 @@ flowchart TB
 
   The drop-to-paint row ranged 679.8 to 1360 ms over twelve CI runs on `main` (the runs listed in the body of PR #176), all under its 1700 ms threshold. Without a budget: cold layout 92 ms (tab), 141.6 ms (standard), 202.1 ms (both); a segment-break-moving continuous edit 23.6 ms; a page-break-moving paged edit 5.2 ms. The HQ-tier row waits for WP-094.
 - **Library checkpoint**. Imported songs appear in a library with search and sort; a song reopens from the library with its settings; save, save-as and export-to-gp work with a lossy warning; the editor's drafts survive a crash.
+  **Reached on 2026-11-17 at `fb70f227`** (WP-060 and WP-061; phase 3 complete). The desktop smoke (#308) kills the app, relaunches it and recovers the draft. Owner-deferred: the import of the owner's local tabs, which the owner has not done yet.
 - **Trainer checkpoint**. Speed trainer ramps a loop; the tuner shows cents for an open string through the mic; the standalone metronome runs without a song; the practice log shows time and tempos per song; the live fretboard follows playback.
+  **Reached on 2026-11-17 at `fb70f227`** (WP-070 to WP-074). The tuner (#218) was checked by the owner by hand in Electron.
 - **Editor checkpoint**. A new song can be written from scratch with the keyboard only, saved as native and exported as gp, with every effect in scope applied and heard, with undo across all of it.
+  **Reached on 2026-11-17 at `fb70f227`** (WP-080 to WP-086). The e2e round trip covers it, and the owner edited, undid and redid by hand.
 - **HQ sound checkpoint**. A downloaded SFZ guitar pack plays a track with palm mutes and harmonics on their own layers through a distortion preset; memory stays under budget with four HQ tracks loaded; switching songs evicts.
+  **Reached on 2026-11-17 at `fb70f227`** (WP-090 to WP-094), with one deviation the owner accepted: the palm-mute and harmonic layers are proven only with the synthetic reference guitar pack, because no curated guitar pack has those layers (lead decision 1 on #197). The owner accepted this, and the sounds will be improved later.
+
+  Phase 3 budgets, measured by `pnpm bench` on the reference machine (Apple M4 Pro, Node 24.18, local, a load of 3.7 from other work, time budgets ×1). The rows without a bench figure are asserted by their unit and e2e tests, green on `main`'s CI at that commit.
+
+  | Metric                                                  | Budget   | Measured                                   | Verdict |
+  | ------------------------------------------------------- | -------- | ------------------------------------------ | ------- |
+  | Full layout, cold                                       | 250 ms   | 161.7 ms (bench)                           | pass    |
+  | Re-layout after a single-note edit                      | 16 ms    | 6 ms (bench)                               | pass    |
+  | Re-layout after a rhythm edit, continuous               | 16 ms    | 3 ms (bench)                               | pass    |
+  | Re-layout after a segment-break-moving edit, continuous | 16 ms    | 2.8 ms (bench)                             | pass    |
+  | Hit test, 1 000 points, long score                      | 20 ms    | 6.4 ms (bench)                             | pass    |
+  | Effects: 16 tracks, shared reverb, 5 s offline          | 1 000 ms | 731.4 ms (bench)                           | pass    |
+  | Decoded audio resident, HQ tier, default                | 300 MB   | 283.6 MiB (`hq-memory-budget.test.ts`)     | pass    |
+  | Mounted SVG elements at any zoom                        | 20 000   | asserted by the unit suite                 | pass    |
+  | Decoded audio resident, GM tier, any song               | 80 MB    | asserted by the unit suite                 | pass    |
+  | Renderer heap after opening the long score              | 400 MB   | asserted by the e2e suite                  | pass    |
+  | Time from file drop to first paint                      | 500 ms   | asserted by the e2e suite                  | pass    |
+
 - **Release**. v1 tag, installers for macOS and Windows attached to a GitHub Release, the light theme audited screen by screen, the shortcut reference complete.
 
 ## Budgets

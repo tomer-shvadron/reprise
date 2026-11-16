@@ -56,7 +56,7 @@ The repository lives on the owner's personal account (`tomer-shvadron/reprise`),
 export GH_TOKEN="$(gh auth token --user tomer-shvadron)"
 ```
 
-Labels, milestones and the **Reprise** project board come from `scripts/github/bootstrap.sh` (idempotent, `DRY_RUN=1` to preview). `scripts/github/protect-main.sh` applies the merge settings and the branch protection on `main`, which requires the CI checks named `ci` and `e2e`. A third job, `bench-compare`, is not required yet: it becomes required once it has run on ten PRs with no false failure, and the PR that adds it to `protect-main.sh` cites those runs.
+Labels, milestones and the **Reprise** project board come from `scripts/github/bootstrap.sh` (idempotent, `DRY_RUN=1` to preview). `scripts/github/protect-main.sh` applies the merge settings and the branch protection on `main`, which requires the CI check named `ci`. The `e2e` job runs on every PR but is not required, by the owner's decision (2026-11-17). A third job, `bench-compare`, is not required yet: it becomes required once it has run on ten PRs with no false failure, and the PR that adds it to `protect-main.sh` cites those runs.
 
 ## Layout and boundaries
 
