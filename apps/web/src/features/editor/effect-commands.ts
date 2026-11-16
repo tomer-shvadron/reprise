@@ -51,13 +51,46 @@ export function runEffect(
   }
   if (!('command' in plan)) return false;
   // The cursor stays where it is: an effect edits what is there, it does not move on.
-  return commitEdit({ document, selection, entry }, plan.command, { moveCursor: false });
+  const done = commitEdit({ document, selection, entry }, plan.command, { moveCursor: false });
+  // What a mixed selection could not take, after the success message has cleared.
+  if (done && plan.notice) entry.getState().setMessage(plan.notice);
+  return done;
 }
 
 type Key = { key: string; shift?: boolean; mod?: boolean; alt?: boolean };
 
+type EffectKeyName =
+  | 'pop'
+  | 'legatoSlide'
+  | 'hammerOn'
+  | 'vibrato'
+  | 'wideVibrato'
+  | 'palmMute'
+  | 'palmMuteBeat'
+  | 'letRing'
+  | 'deadNote'
+  | 'ghostNote'
+  | 'accent'
+  | 'heavyAccent'
+  | 'staccato'
+  | 'naturalHarmonic'
+  | 'tremoloPicking'
+  | 'tapping'
+  | 'slap'
+  | 'pickStrokeDown'
+  | 'pickStrokeUp'
+  | 'fadeIn'
+  | 'fadeOut'
+  | 'volumeSwell'
+  | 'whammyVibrato'
+  | 'wideWhammyVibrato'
+  | 'brushDown'
+  | 'brushUp'
+  | 'arpeggioDown'
+  | 'arpeggioUp';
+
 interface EffectKey {
-  id: string;
+  id: EffectKeyName;
   title: string;
   action: EffectAction;
   key?: Key;
@@ -241,14 +274,13 @@ const KEY_TABLE: readonly EffectKey[] = [
   },
 ];
 
-const KEYS: readonly EffectKey[] = KEY_TABLE.map((entry) => ({
-  ...entry,
-  id: `editor.effect.${entry.id}`,
-}));
-
 export type BendPresetId = `editor.effect.bend.${BendAmount}.${BendShape}`;
 export type WhammyPresetId = `editor.effect.whammy.${WhammyAmount}.${WhammyShape}`;
-export type EffectCommandId = `editor.effect.${string}` | BendPresetId | WhammyPresetId;
+export type EffectCommandId =
+  | `editor.effect.${EffectKeyName}`
+  | `editor.effect.${EffectKeyName}Unshifted`
+  | BendPresetId
+  | WhammyPresetId;
 
 type EffectCommand = Command & { id: EffectCommandId };
 
@@ -279,14 +311,14 @@ const shortcutOf = (key: Key): Shortcut => ({
 export function effectCommands(services: EffectServices): EffectCommand[] {
   const commands: EffectCommand[] = [];
   const add = (
-    id: string,
+    id: EffectCommandId,
     title: string,
     action: EffectAction,
     shortcut: Shortcut | undefined,
     inPalette: boolean,
   ) => {
     commands.push({
-      id: id as EffectCommandId,
+      id,
       title,
       ...(shortcut && { shortcut }),
       context: 'editing',
@@ -297,10 +329,10 @@ export function effectCommands(services: EffectServices): EffectCommand[] {
       },
     });
   };
-  for (const { id, title, action, key, alsoUnshifted } of KEYS) {
-    add(id, title, action, key && shortcutOf(key), true);
+  for (const { id, title, action, key, alsoUnshifted } of KEY_TABLE) {
+    add(`editor.effect.${id}`, title, action, key && shortcutOf(key), true);
     if (key && alsoUnshifted) {
-      add(`${id}Unshifted`, title, action, shortcutOf({ key: key.key }), false);
+      add(`editor.effect.${id}Unshifted`, title, action, shortcutOf({ key: key.key }), false);
     }
   }
   for (const amount of Object.keys(BEND_AMOUNTS) as BendAmount[]) {

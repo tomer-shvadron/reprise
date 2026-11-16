@@ -75,7 +75,3 @@ export function bendPreset(shape: BendShape, amount: BendAmount): Bend {
 export function bendPresetLabel(shape: BendShape, amount: BendAmount): string {
   return `${AMOUNT_LABEL[amount]} ${SHAPE_LABEL[shape]}`;
 }
-
-/** Whether a bend starts raised: its first point is above rest. */
-export const startsRaised = (shape: BendShape): boolean =>
-  shape === 'prebend' || shape === 'prebendRelease';

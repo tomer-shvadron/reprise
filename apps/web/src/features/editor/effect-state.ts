@@ -10,8 +10,11 @@ export type EffectState = 'on' | 'off' | 'mixed' | 'unavailable';
  */
 export function effectState(input: EffectInput, action: EffectAction): EffectState {
   const resolved = resolveEffect(input, action);
-  if ('refused' in resolved || resolved.items.length === 0) return 'unavailable';
-  const on = resolved.items.filter((item) => item.has).length;
-  if (on === resolved.items.length) return 'on';
+  if ('refused' in resolved) return 'unavailable';
+  // A node that cannot take the effect and does not carry it is not part of the answer.
+  const items = resolved.items.filter((item) => item.unavailable === undefined || item.present);
+  if (items.length === 0) return 'unavailable';
+  const on = items.filter((item) => item.has).length;
+  if (on === items.length) return 'on';
   return on === 0 ? 'off' : 'mixed';
 }

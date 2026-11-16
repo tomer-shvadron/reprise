@@ -139,14 +139,17 @@ describe('the effect commands', () => {
     expect(services.entry.getState().message).toBe('Nothing to hammer to on string 4');
   });
 
-  it('commits a digit still waiting before it acts, so one then P mutes the note entered', async () => {
+  it('commits a digit still waiting before it acts, so 1 then P mutes the note entered', async () => {
     const { services, press, goTo, beats } = await setup();
     services.editing.getState().setEditing(true);
     goTo(0, 2);
-    expect(press('3')).toBe(true);
+    // On 24 frets a 1 could start 10 to 19, so it waits for a second digit.
+    expect(press('1')).toBe(true);
+    expect(services.entry.getState().pending).toBeDefined();
     press('p');
+    expect(services.entry.getState().pending).toBeUndefined();
     expect(beats()[0]?.notes.find((n) => n.string === 2)).toMatchObject({
-      fret: 3,
+      fret: 1,
       palmMute: true,
     });
   });

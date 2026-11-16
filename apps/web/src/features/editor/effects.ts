@@ -1,8 +1,8 @@
 import {
   TIE_REACH_BARS,
   chain,
-  setBeatEffect,
-  setNoteEffect,
+  setBeatEffects,
+  setNoteEffects,
   type Beat,
   type BeatChanges,
   type BeatEffects,
@@ -20,7 +20,7 @@ import {
 } from '@reprise/model';
 
 import { effectTarget, type EffectTargetInput, type NoteRef } from './effect-targets';
-import type { EntryPlan } from './entry';
+import type { EditPlan } from './entry';
 import { nextOnString } from './next-on-string';
 
 export type NoteFlag = 'palmMute' | 'letRing' | 'dead' | 'ghost' | 'staccato';
@@ -66,8 +66,11 @@ interface Item<C> {
   present: boolean;
   set: C;
   clear: C;
-  /** Why setting this item is refused, which refuses the whole action. */
-  blocked?: string;
+  /**
+   * Why this item cannot take the effect. Setting skips it and says so, and refuses only when no
+   * item can; removing ignores it, since an effect already there must always come off.
+   */
+  unavailable?: string;
 }
 
 export type Resolved =
@@ -80,14 +83,31 @@ const refuse = (refused: string): { refused: string } => ({ refused });
 const FRETTED_ONLY = 'That effect needs a fretted track';
 const NOTHING_SELECTED = 'Select a note first';
 
-const sameValue = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+/** Structural equality, blind to key order and to keys holding `undefined`. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((item, index) => sameValue(item, b[index]))
+    );
+  }
+  const left = Object.entries(a).filter(([, value]) => value !== undefined);
+  const right = Object.entries(b).filter(([, value]) => value !== undefined);
+  return (
+    left.length === right.length &&
+    left.every(([key, value]) => sameValue(value, Reflect.get(b, key)))
+  );
+}
 const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 
-/** The model's own bounds are a step in the change, not a shape the editor repeats. */
 const SLIDE_GROUPS: readonly (readonly SlideKind[])[] = [
-  ['shift', 'legato'],
+  // As in Guitar Pro (and alphaTab's single `slideOutType`): one way out of a note, one way in.
+  ['shift', 'legato', 'outDown', 'outUp'],
   ['intoFromBelow', 'intoFromAbove'],
-  ['outDown', 'outUp'],
 ];
 
 const SLIDE_LABEL: Record<SlideKind, string> = {
@@ -169,12 +189,39 @@ interface NoteSpec {
   present?(note: Note): boolean;
   set(note: Note): Changes<NoteEffects>;
   clear(note: Note): Changes<NoteEffects>;
-  blocked?(ref: NoteRef): string | undefined;
+  /** Why a note cannot take the effect, when it cannot. */
+  unavailable?(ref: NoteRef): string | undefined;
+}
+
+/**
+ * The note a hammer-on or a shift or legato slide from `ref` goes to. A tied note is held, not
+ * struck, so one is nothing to connect to. A grace note goes to the main note of its beat on its
+ * string, as layout draws it.
+ */
+function connectionTarget(ref: NoteRef, reach: number): Note | undefined {
+  if (ref.grace) {
+    const main = ref.beat.notes.find((candidate) => candidate.string === ref.note.string);
+    return main && !main.tie ? main : undefined;
+  }
+  const link = nextOnString(
+    ref.track,
+    { bar: ref.bar, voice: ref.voice, beat: ref.index },
+    ref.note.string,
+    reach,
+  );
+  return link && !link.note.tie ? link.note : undefined;
 }
 
 function slideSpec(kind: SlideKind): NoteSpec {
   const group = SLIDE_GROUPS.find((peers) => peers.includes(kind)) ?? [kind];
+  const connects = kind === 'shift' || kind === 'legato';
   return {
+    ...(connects && {
+      unavailable: (ref: NoteRef) =>
+        connectionTarget(ref, SLIDE_REACH_BARS)
+          ? undefined
+          : `Nothing to slide to on string ${String(ref.note.string)}`,
+    }),
     label: SLIDE_LABEL[kind],
     anyTrack: false,
     has: (note) => note.slide?.includes(kind) ?? false,
@@ -204,6 +251,23 @@ function valueSpec<T>(
     set: () => set,
     clear: () => clear,
     ...extra,
+  };
+}
+
+/**
+ * A harmonic matches on its kind, and on its node only when the action names one: a gp3 to gp5
+ * file stores a natural harmonic with its node, and Y must take that one off as well.
+ */
+function harmonicSpec(harmonic: Harmonic): NoteSpec {
+  return {
+    label: `${harmonic.kind} harmonic`,
+    anyTrack: false,
+    has: (note) =>
+      note.harmonic?.kind === harmonic.kind &&
+      (harmonic.value === undefined || note.harmonic.value === harmonic.value),
+    present: (note) => note.harmonic !== undefined,
+    set: () => ({ harmonic }),
+    clear: () => ({ harmonic: null }),
   };
 }
 
@@ -243,13 +307,7 @@ function noteSpec(action: EffectAction): NoteSpec | undefined {
     case 'slide':
       return slideSpec(action.slide);
     case 'harmonic':
-      return valueSpec(
-        `${action.harmonic.kind} harmonic`,
-        (note) => note.harmonic,
-        action.harmonic,
-        { harmonic: action.harmonic },
-        { harmonic: null },
-      );
+      return harmonicSpec(action.harmonic);
     case 'trill':
       return valueSpec(
         'trill',
@@ -269,7 +327,7 @@ function noteSpec(action: EffectAction): NoteSpec | undefined {
         { bend: action.bend },
         { bend: null },
         {
-          blocked: (ref) =>
+          unavailable: (ref) =>
             prebend && ref.note.tie
               ? 'A tied note continues its bend; put the prebend on the first note'
               : undefined,
@@ -364,57 +422,41 @@ function beatSpec(action: EffectAction): BeatSpec | undefined {
 }
 
 function resolveHammer(refs: readonly NoteRef[]): Resolved {
-  const items: Item<Changes<NoteEffects>>[] = [];
+  const items = new Map<Id, Item<Changes<NoteEffects>>>();
   for (const ref of refs) {
-    if (ref.grace) continue;
-    const target = nextOnString(
-      ref.track,
-      { bar: ref.bar, voice: ref.voice, beat: ref.index },
-      ref.note.string,
-      TIE_REACH_BARS,
-    );
-    if (!target) continue;
-    const has = target.note.hammerPull;
-    items.push({
-      id: target.note.id,
+    const unfretted = ref.track.kind !== 'fretted';
+    const target = unfretted ? undefined : connectionTarget(ref, TIE_REACH_BARS);
+    if (!target) {
+      // Keyed by the origin: it has no target, so nothing of it is ever written.
+      items.set(ref.note.id, {
+        id: ref.note.id,
+        has: false,
+        present: false,
+        set: {},
+        clear: {},
+        unavailable: unfretted
+          ? FRETTED_ONLY
+          : `Nothing to hammer to on string ${String(ref.note.string)}`,
+      });
+      continue;
+    }
+    const has = target.hammerPull;
+    // Two grace notes on one string share the main note they hammer into.
+    items.set(target.id, {
+      id: target.id,
       has,
       present: has,
       set: { hammerPull: true },
       clear: { hammerPull: false },
     });
   }
-  const [first] = refs;
-  if (items.length === 0 && first) {
-    return refuse(`Nothing to hammer to on string ${String(first.note.string)}`);
-  }
-  return { kind: 'note', label: 'hammer-on or pull-off', items };
+  return { kind: 'note', label: 'hammer-on or pull-off', items: [...items.values()] };
 }
 
-function resolveNotes(action: EffectAction, refs: readonly NoteRef[], spec: NoteSpec): Resolved {
-  if (!spec.anyTrack && refs.some((ref) => ref.track.kind !== 'fretted')) {
-    return refuse(FRETTED_ONLY);
-  }
-  // A shift or a legato slide goes somewhere: a note with nothing after it on its string is left out.
-  const connects =
-    action.kind === 'slide' && (action.slide === 'shift' || action.slide === 'legato');
-  const used = connects
-    ? refs.filter(
-        (ref) =>
-          !ref.grace &&
-          nextOnString(
-            ref.track,
-            { bar: ref.bar, voice: ref.voice, beat: ref.index },
-            ref.note.string,
-            SLIDE_REACH_BARS,
-          ),
-      )
-    : refs;
-  const [first] = refs;
-  if (used.length === 0 && first) {
-    return refuse(`Nothing to slide to on string ${String(first.note.string)}`);
-  }
-  const items = used.map((ref) => {
-    const blocked = spec.blocked?.(ref);
+function resolveNotes(refs: readonly NoteRef[], spec: NoteSpec): Resolved {
+  const items = refs.map((ref) => {
+    const unavailable =
+      !spec.anyTrack && ref.track.kind !== 'fretted' ? FRETTED_ONLY : spec.unavailable?.(ref);
     const has = spec.has(ref.note);
     return {
       id: ref.note.id,
@@ -422,7 +464,7 @@ function resolveNotes(action: EffectAction, refs: readonly NoteRef[], spec: Note
       present: spec.present ? spec.present(ref.note) : has,
       set: spec.set(ref.note),
       clear: spec.clear(ref.note),
-      ...(blocked !== undefined && { blocked }),
+      ...(unavailable !== undefined && { unavailable }),
     };
   });
   return { kind: 'note', label: spec.label, items };
@@ -430,7 +472,8 @@ function resolveNotes(action: EffectAction, refs: readonly NoteRef[], spec: Note
 
 /**
  * What an action does to each node of its target, before the toggle rule picks which to write.
- * Refusals are plain sentences for the status line.
+ * Refusals are plain sentences for the status line; a node that cannot take the effect is marked
+ * `unavailable` instead, so the rest of a mixed selection still gets it.
  */
 export function resolveEffect(input: EffectInput, action: EffectAction): Resolved {
   const target = effectTarget(input);
@@ -438,23 +481,14 @@ export function resolveEffect(input: EffectInput, action: EffectAction): Resolve
   if (noteBased || action.kind === 'hammer') {
     const refs = action.kind === 'flag' && action.wholeBeat ? target.beatNotes : target.notes;
     if (refs.length === 0) return refuse(NOTHING_SELECTED);
-    if (!noteBased) {
-      return refs.some((ref) => ref.track.kind !== 'fretted')
-        ? refuse(FRETTED_ONLY)
-        : resolveHammer(refs);
-    }
-    return resolveNotes(action, refs, noteBased);
+    return noteBased ? resolveNotes(refs, noteBased) : resolveHammer(refs);
   }
   const spec = beatSpec(action);
-  if (!spec) return refuse(NOTHING_SELECTED);
-  if (target.beats.length === 0) return refuse(NOTHING_SELECTED);
-  if (!spec.anyTrack && target.beats.some((ref) => ref.track.kind !== 'fretted')) {
-    return refuse(FRETTED_ONLY);
-  }
+  if (!spec || target.beats.length === 0) return refuse(NOTHING_SELECTED);
   return {
     kind: 'beat',
     label: spec.label,
-    items: target.beats.map(({ beat }) => {
+    items: target.beats.map(({ beat, track }) => {
       const has = spec.has(beat);
       return {
         id: beat.id,
@@ -462,6 +496,7 @@ export function resolveEffect(input: EffectInput, action: EffectAction): Resolve
         present: spec.present ? spec.present(beat) : has,
         set: spec.set,
         clear: spec.clear,
+        ...(!spec.anyTrack && track.kind !== 'fretted' && { unavailable: FRETTED_ONLY }),
       };
     }),
   };
@@ -474,55 +509,82 @@ export interface EffectEdits {
 
 /**
  * The one place an effect becomes a model command: every edit of the action in a single history
- * step under `label`, which the Undo menu shows.
+ * step under `label`, which the Undo menu shows. Each batch is pushed only when it has edits,
+ * since the model refuses an empty one.
  */
 export function effectCommand(label: string, edits: EffectEdits): Command {
+  const { notes = [], beats = [] } = edits;
   return chain(label, [
-    ...(edits.notes ?? []).map(({ noteId, effects }) => setNoteEffect({ noteId }, effects)),
-    ...(edits.beats ?? []).map(({ beatId, changes }) => setBeatEffect({ beatId }, changes)),
+    ...(notes.length > 0 ? [setNoteEffects(notes)] : []),
+    ...(beats.length > 0 ? [setBeatEffects(beats)] : []),
   ]);
+}
+
+/** An applied effect, with what was left out of a mixed selection, to show after it. */
+export type EffectPlan = EditPlan & { notice?: string };
+export type EffectResult = EffectPlan | { refused: string } | { nothing: true };
+
+type Choice<C> =
+  | { refused: string }
+  | { nothing: true }
+  | { removing: boolean; chosen: Item<C>[]; notice?: string };
+
+/** Which items the toggle rule writes, and whether it removes. */
+function choose<C>(items: readonly Item<C>[], mode: EffectMode): Choice<C> {
+  const usable = items.filter((item) => item.unavailable === undefined || item.present);
+  const removing =
+    mode === 'remove' ||
+    (mode === 'toggle' && usable.length > 0 && usable.every((item) => item.has));
+  if (removing) {
+    const chosen = items.filter((item) => (mode === 'remove' ? item.present : item.has));
+    return chosen.length > 0 ? { removing, chosen } : { nothing: true };
+  }
+  const lacking = items.filter((item) => !item.has);
+  const chosen = lacking.filter((item) => item.unavailable === undefined);
+  const [first] = lacking.filter((item) => item.unavailable !== undefined);
+  if (chosen.length === 0)
+    return first?.unavailable ? refuse(first.unavailable) : { nothing: true };
+  if (!first?.unavailable) return { removing, chosen };
+  const skipped = items.length - chosen.length - items.filter((item) => item.has).length;
+  return {
+    removing,
+    chosen,
+    notice: `Skipped ${String(skipped)} of ${String(items.length)}: ${first.unavailable}`,
+  };
 }
 
 /**
  * The command that applies `action` to what the input selects, or why not. Guitar Pro's toggle:
- * when every target already has the effect it comes off all of them, else it goes on those that
- * lack it. Only nodes that change are written; when none do, `{ nothing: true }`.
+ * when every target that can take the effect already has it, it comes off all of them, else it
+ * goes on those that lack it. Targets that cannot take it (a drum note for a fretted effect, a
+ * slide with nothing to slide to) are skipped and counted in `notice`; only when none can is the
+ * action refused. Only nodes that change are written; when none do, `{ nothing: true }`.
  */
 export function planEffect(
   input: EffectInput,
   action: EffectAction,
   mode: EffectMode = 'toggle',
-): EntryPlan {
+): EffectResult {
   const resolved = resolveEffect(input, action);
   if ('refused' in resolved) return resolved;
-  const removing = mode === 'remove' || (mode === 'toggle' && resolved.items.every((i) => i.has));
-  const label = removing ? `Remove ${resolved.label}` : capitalize(resolved.label);
+  const named = (removing: boolean) =>
+    removing ? `Remove ${resolved.label}` : capitalize(resolved.label);
   if (resolved.kind === 'note') {
-    const chosen = resolved.items.filter((item) =>
-      removing ? (mode === 'remove' ? item.present : item.has) : !item.has,
-    );
-    const blocked = removing ? undefined : chosen.find((item) => item.blocked !== undefined);
-    if (blocked?.blocked) return refuse(blocked.blocked);
-    if (chosen.length === 0) return { nothing: true };
-    return {
-      command: effectCommand(label, {
-        notes: chosen.map((item) => ({
-          noteId: item.id,
-          effects: removing ? item.clear : item.set,
-        })),
-      }),
-    };
+    const choice = choose(resolved.items, mode);
+    if ('refused' in choice || 'nothing' in choice) return choice;
+    const { removing, chosen, notice } = choice;
+    const notes = chosen.map((item) => ({
+      noteId: item.id,
+      effects: removing ? item.clear : item.set,
+    }));
+    return { command: effectCommand(named(removing), { notes }), ...(notice && { notice }) };
   }
-  const chosen = resolved.items.filter((item) =>
-    removing ? (mode === 'remove' ? item.present : item.has) : !item.has,
-  );
-  if (chosen.length === 0) return { nothing: true };
-  return {
-    command: effectCommand(label, {
-      beats: chosen.map((item) => ({
-        beatId: item.id,
-        changes: removing ? item.clear : item.set,
-      })),
-    }),
-  };
+  const choice = choose(resolved.items, mode);
+  if ('refused' in choice || 'nothing' in choice) return choice;
+  const { removing, chosen, notice } = choice;
+  const beats = chosen.map((item) => ({
+    beatId: item.id,
+    changes: removing ? item.clear : item.set,
+  }));
+  return { command: effectCommand(named(removing), { beats }), ...(notice && { notice }) };
 }
