@@ -15,6 +15,7 @@ import {
   type TupletGroup,
 } from '../rhythm';
 import { reservedDynamics } from '../dynamics';
+import { WORDS, wordRows } from '../words';
 import {
   BEND_ROOM,
   KNOCKOUT,
@@ -46,12 +47,12 @@ export const TAB = {
   tupletGap: 1.45,
   /** Below the beams: the row of tuplet numbers and dynamics, and a margin. */
   tupletRoom: 2.65,
-  textSize: 1.2,
-  chordRow: 2.2,
-  textRow: 2,
+  textSize: WORDS.size,
+  chordRow: WORDS.chordRow,
+  textRow: WORDS.textRow,
   fingerSize: 1,
   fingerRow: 1.1,
-  lyricRow: 2,
+  lyricRow: WORDS.lyricRow,
   dynamicsScale: 0.8,
   /** Room kept above the top string when nothing is drawn there; a repeat count sits in it. */
   minAbove: 2,
@@ -153,8 +154,6 @@ export interface TabBar {
   voices: TabVoice[];
   beats: TabBeat[];
   rows: TabRows;
-  /** Lyric lines the bar has a syllable on: 0 to `lyricLines`. */
-  lyricLines: number;
   maxFingers: number;
 }
 
@@ -440,10 +439,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   const voices: TabVoice[] = [];
   const beats: TabBeat[] = [];
   const reserved: ReadonlySet<string> = rhythm ? reservedDynamics(bar) : new Set();
-  let lyricLines = 0;
   let maxFingers = 0;
-  let chord = false;
-  let text = false;
   for (const [index, voice] of bar.voices.entries()) {
     if (!voicePresent(voice)) continue;
     const direction = voiceDirection(bar, index);
@@ -454,11 +450,6 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
       analysed.dynamicsChange = reserved.has(beat.id);
       voiceBeats.push(analysed);
       tick += analysed.event.ticks;
-      if (beat.chord) chord = true;
-      if (beat.text !== undefined && beat.text !== '') text = true;
-      for (const [line, syllable] of (beat.lyrics ?? []).entries()) {
-        if (syllable !== '') lyricLines = Math.max(lyricLines, line + 1);
-      }
       if (rhythm) {
         maxFingers = Math.max(
           maxFingers,
@@ -488,6 +479,10 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
     beats.push(...voiceBeats);
   }
 
+  const words = wordRows(
+    beats.map((analysed) => analysed.beat),
+    space,
+  );
   const lowerExtra = Math.max(
     0,
     ...voices.filter((v) => v.direction === 'down').map((v) => v.extraStem),
@@ -496,14 +491,14 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   const rows: TabRows = {
     upper: uppers.length > 0 ? stemZone(Math.max(...uppers.map((v) => v.extraStem)), space) : 0,
     fingering: maxFingers * TAB.fingerRow * space,
-    chord: chord ? TAB.chordRow * space : 0,
-    text: text ? TAB.textRow * space : 0,
+    chord: words.chord,
+    text: words.text,
     lower: rhythm ? stemZone(lowerExtra, space) : 0,
     lowerExtra,
-    lyrics: lyricLines * TAB.lyricRow * space,
+    lyrics: words.lyrics,
     ...arcRoom(bar, strings, space),
   };
-  const analysed: TabBar = { rhythm, voices, beats, rows, lyricLines, maxFingers };
+  const analysed: TabBar = { rhythm, voices, beats, rows, maxFingers };
   let byKey = analyses.get(bar);
   if (!byKey) {
     byKey = new Map();
