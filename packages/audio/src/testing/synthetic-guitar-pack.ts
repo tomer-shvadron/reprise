@@ -63,27 +63,38 @@ const selectionTones = (): number[] =>
   Object.values(GUITAR_SELECTION).flatMap((group) => [...group.tones]);
 const selectionPath = (hertz: number): string => `samples/take${String(hertz)}.wav`;
 
-/** The extra regions: one `<group>` per kind, each on its own key and rooted there. */
+/**
+ * The extra regions: one `<group>` per kind, on its own key and rooted there, the way real packs
+ * lay out their round robins, so that nothing inherits the keyswitch group's `sw_*` opcodes.
+ */
 function selectionRegions(): string[] {
   const { velocity, sequence, random, legato } = GUITAR_SELECTION;
-  const region = (key: number, hertz: number, opcodes = ''): string =>
-    `<region> sample=${selectionPath(hertz)} lokey=${String(key)} hikey=${String(key)} pitch_keycenter=${String(key)} ${opcodes}`.trimEnd();
-  const release = (key: number): string =>
-    `<region> sample=samples/release.wav lokey=${String(key)} hikey=${String(key)} pitch_keycenter=${String(key)} trigger=release rt_decay=${String(GUITAR_RELEASE_DECAY)} loop_mode=one_shot`;
+  const group = (key: number): string =>
+    `<group> lokey=${String(key)} hikey=${String(key)} pitch_keycenter=${String(key)}`;
+  const region = (hertz: number, opcodes = ''): string =>
+    `<region> sample=${selectionPath(hertz)} ${opcodes}`.trimEnd();
+  const release = `<region> sample=samples/release.wav trigger=release rt_decay=${String(GUITAR_RELEASE_DECAY)} loop_mode=one_shot`;
   const [soft, loud] = velocity.tones;
   const [legatoAttack, legatoTrigger] = legato.tones;
   return [
-    region(velocity.key, soft, 'lovel=1 hivel=63'),
-    region(velocity.key, loud, 'lovel=64 hivel=127'),
+    group(velocity.key),
+    region(soft, 'lovel=1 hivel=63'),
+    region(loud, 'lovel=64 hivel=127'),
+    release,
+    group(sequence.key),
     ...sequence.tones.map((hertz, index) =>
-      region(sequence.key, hertz, `seq_length=3 seq_position=${String(index + 1)}`),
+      region(hertz, `seq_length=3 seq_position=${String(index + 1)}`),
     ),
+    release,
+    group(random.key),
     ...random.tones.map((hertz, index) =>
-      region(random.key, hertz, `lorand=${String(index / 3)} hirand=${String((index + 1) / 3)}`),
+      region(hertz, `lorand=${String(index / 3)} hirand=${String((index + 1) / 3)}`),
     ),
-    region(legato.key, legatoAttack, 'trigger=first'),
-    region(legato.key, legatoTrigger, 'trigger=legato'),
-    ...[velocity.key, sequence.key, random.key, legato.key].map(release),
+    release,
+    group(legato.key),
+    region(legatoAttack, 'trigger=first'),
+    region(legatoTrigger, 'trigger=legato'),
+    release,
   ];
 }
 

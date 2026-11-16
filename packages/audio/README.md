@@ -561,10 +561,10 @@ main note, so each would play a release sample (at nearly full level with a high
 sink therefore sets `releaseTrigger` true only on the last strike of the main note: that covers the
 end of a legato chain (the chain's first voice carries the release) and the let-ring `until`, and
 it sets it false on earlier strikes and on every grace note. It is also false on a note whose
-next note on the string is a hammer-on or pull-off starting at its release: the string is not let
-go there, so the chain plays one release sample, at the last note's release, not one per note.
-A note with no
-release regions gets the plain voice handle as before, so GM playback is unchanged.
+next note on the string is a hammer-on or pull-off starting at its release (a let-ring note's is
+the ring's end), unless the hammered note has a grace note on its beat: the string is not let go
+there, so the chain plays one release sample, at the last note's release, not one per note. A note
+with no release regions gets the plain voice handle as before, so GM playback is unchanged.
 
 `createSamplerSink(sampler, { deadNote?, instrumentOf?, voicingFor? })` is the scheduler's `InstrumentSink` over the sampler,
 with the articulation layer described under [Articulations](#articulations). Every strike also
@@ -1208,6 +1208,11 @@ vibrato, trills, tremolo, dynamics and fades stay automation in both tiers.
 
 ### Known and deliberate
 
+- **A legato slide into a hammer-on plays two release samples.** In `7/9h11` the slide's carried
+  voice keeps the release decision made at the first note, where the next note was a slide target,
+  so its release at the hammer-on's onset fires a sample, and the hammered note fires its own at
+  the chain's end. Dropping the trigger on an existing `VoiceHandle` would need a contract change;
+  `release-trigger-sink.test.ts` pins today's result.
 - **Not played on a tied link** (see Tied links above):
   - Trill or tremolo picking written only on a later link: the origin's span the chain, and a
     re-strike mid-chain would need a second strike carrying the remaining links.
