@@ -12,6 +12,7 @@ import { packInstrumentsOf } from './samples/provider-router';
 import { Sf2Soundfont } from './sf2/soundfont';
 import { signalOf, toneLevel } from './test/signal';
 import { encodeWav, sine } from './sfz/test/encode';
+import { GUITAR_SELECTION, syntheticGuitarPack } from './testing/synthetic-guitar-pack';
 import { syntheticSfzPack } from './testing/synthetic-pack';
 
 const SAMPLE_RATE = 44_100;
@@ -706,4 +707,33 @@ describe('a Swagbass-sized pack with seven GM tracks', () => {
       engine.dispose();
     },
   );
+});
+
+describe('an HQ track and its legato regions', () => {
+  it('plays the legato region of a pack on a hammer-on, and the attack on a plain note', async () => {
+    const { key, tones } = GUITAR_SELECTION.legato;
+    const song = score()
+      .tempo(120)
+      .track('guitar', { program: 25, tuning: [key] })
+      .bar()
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0, { hammerPull: true })])
+      .rest('2')
+      .build();
+    const id = song.tracks[0]?.id ?? '';
+    const pack = syntheticGuitarPack({ selection: true });
+    const { engine, render } = await setup(1.5);
+    await engine.load(song, packOptions([{ trackId: id, files: pack.files }]));
+    engine.play();
+    const signal = signalOf(await render());
+    // Beats at START and START + 0.5 s.
+    expect(toneLevel(signal, tones[0], 0.15, 0.45)).toBeGreaterThan(0.004);
+    expect(toneLevel(signal, tones[1], 0.15, 0.45)).toBeLessThan(0.001);
+    expect(toneLevel(signal, tones[1], 0.65, 0.95)).toBeGreaterThan(0.004);
+    // The first note's release tail is still in the window, so the attack tone is only small.
+    expect(toneLevel(signal, tones[0], 0.75, 0.95)).toBeLessThan(
+      toneLevel(signal, tones[1], 0.75, 0.95) / 5,
+    );
+    engine.dispose();
+  });
 });
