@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { read } from '@reprise/formats';
 
 import { expect, test } from '../player/test/app';
+import { saveAndRead } from './test/editor';
 import { shapeOf } from './test/score-shape';
 import { generated } from '../player/test/scores';
 
@@ -54,14 +55,8 @@ test('A four-bar cross-track paste is one Paste row, and one undo restores the s
     'step',
   );
 
-  const saveAndRead = async () => {
-    const before = await app.writeCount('song.reprise');
-    await page.locator('body').focus();
-    await page.keyboard.press('ControlOrMeta+s');
-    await app.waitForWrite('song.reprise', before);
-    return shapeOf((await read(await app.readStored('song.reprise'), 'reprise')).score);
-  };
-  const pasted = await saveAndRead();
+  const savedShape = async () => shapeOf(await saveAndRead(app, 'song.reprise'));
+  const pasted = await savedShape();
   expect(pasted.tracks[1]?.slice(0, 4)).toEqual(firstTrack);
 
   // Move the cursor away first (track 1, bar 4), so that coming back is the landing's doing: the
@@ -88,6 +83,6 @@ test('A four-bar cross-track paste is one Paste row, and one undo restores the s
     'aria-current',
     'true',
   );
-  const undone = await saveAndRead();
+  const undone = await savedShape();
   expect(undone).toEqual(shapeOf(original.score));
 });

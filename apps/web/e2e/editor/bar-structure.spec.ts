@@ -1,6 +1,5 @@
-import { read } from '@reprise/formats';
-
 import { expect, test } from '../player/test/app';
+import { palette, savedToLibrary } from './test/editor';
 
 // Everything goes through the palette and the keys; browsers keep Ctrl+N, Ctrl+T and Ctrl+S for
 // themselves, so New song and the bar dialog are reached from the palette (Save stays on its key,
@@ -14,17 +13,12 @@ test('A song built from the UI saves with its structure and plays in order, one 
 }) => {
   // Building seven bars through dialogs, two saves and a 10.5 s song, on a loaded runner.
   test.setTimeout(60_000);
-  // Keys reach the page only once the palette has finished closing: until then its input has focus.
-  const palette = async (text: string) => {
-    await app.palette(text);
-    await expect(page.getByPlaceholder('Type a command…')).toHaveCount(0);
-  };
-  await palette('New song');
+  await palette(app, 'New song');
   await app.waitReady();
   await expect(app.field('bar')).toHaveText('1/1');
   await app.gesture();
 
-  for (let bar = 1; bar < 7; bar++) await palette('Insert bar after');
+  for (let bar = 1; bar < 7; bar++) await palette(app, 'Insert bar after');
   await expect(app.field('bar')).toHaveText('1/7');
 
   const toBar = async (bar: number) => {
@@ -42,7 +36,7 @@ test('A song built from the UI saves with its structure and plays in order, one 
     await dialog.getByRole('button', { name: 'Apply' }).click();
     await expect(dialog).toBeHidden();
   };
-  const properties = (title: string) => dialogFor(title, () => palette('Bar properties'));
+  const properties = (title: string) => dialogFor(title, () => palette(app, 'Bar properties'));
 
   await toBar(1);
   const first = await properties('Bar 1');
@@ -81,18 +75,15 @@ test('A song built from the UI saves with its structure and plays in order, one 
   await range.getByLabel('Jump').selectOption({ label: 'D.S. al Coda' });
   await apply(range);
 
-  const saved = async (before: number) => {
-    await page.locator('body').focus();
-    await page.keyboard.press('ControlOrMeta+s');
-    // A new song's first Save adds it to the library: its file is `library/songs/<id>.reprise`.
-    await expect.poll(() => app.listStored('library/songs')).toHaveLength(1);
-    const [native = ''] = await app.listStored('library/songs');
-    await app.waitForWrite(native, before);
-    return (await read(await app.readStoredPath(`library/songs/${native}`), 'reprise')).score
-      .masterBars;
-  };
+  const saved = async () =>
+    (
+      await savedToLibrary(app, async () => {
+        await page.locator('body').focus();
+        await page.keyboard.press('ControlOrMeta+s');
+      })
+    ).masterBars;
 
-  const bars = await saved(0);
+  const bars = await saved();
   expect(bars).toHaveLength(7);
   expect(bars[0]).toMatchObject({ tempo: { bpm: 240 }, targets: ['segno'] });
   expect(bars[1]?.repeat).toEqual({ start: true, endCount: 0 });
@@ -111,7 +102,7 @@ test('A song built from the UI saves with its structure and plays in order, one 
 
   await page.locator('body').focus();
   await page.keyboard.press('ControlOrMeta+z');
-  const undone = await saved(1);
+  const undone = await saved();
   expect(undone.map((bar) => bar.timeSignature.numerator)).toEqual([4, 4, 4, 4, 4, 4, 4]);
   expect(undone[5]?.jumps).toEqual([]);
   expect(undone[6]).toMatchObject({ targets: ['coda'] });

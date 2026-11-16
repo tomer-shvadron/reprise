@@ -1,19 +1,7 @@
-import { read } from '@reprise/formats';
-
-import { expect, test, type App } from '../player/test/app';
+import { expect, test } from '../player/test/app';
+import { palette, savedToLibrary } from './test/editor';
 import { expectedScore, riff } from './test/riff';
 import { shapeOf } from './test/score-shape';
-
-// A new song's first Save adds it to the library, so the file is library/songs/<id>.reprise.
-const saved = async (app: App, press: () => Promise<void>) => {
-  const [known] = await app.listStored('library/songs');
-  const before = known === undefined ? 0 : await app.writeCount(known);
-  await press();
-  await expect.poll(() => app.listStored('library/songs')).toHaveLength(1);
-  const [native = ''] = await app.listStored('library/songs');
-  await app.waitForWrite(native, before);
-  return (await read(await app.readStoredPath(`library/songs/${native}`), 'reprise')).score;
-};
 
 test('A sixteen-bar riff is entered from the keyboard alone, one undo step per entry', async ({
   app,
@@ -23,25 +11,8 @@ test('A sixteen-bar riff is entered from the keyboard alone, one undo step per e
   const bars = r.bars;
   expect(bars).toHaveLength(16);
   const status = page.getByTestId('edit-status');
-  // Radix keeps the palette mounted through its close animation, with the input focused, where
-  // the dispatcher leaves bare keys to the field. Focus must come back to the page or the score.
-  const palette = async (text: string) => {
-    await app.palette(text);
-    await expect(page.getByRole('combobox')).toBeHidden();
-    await expect
-      .poll(() =>
-        app
-          .score()
-          .evaluate(
-            (region) =>
-              document.activeElement === document.body || region.contains(document.activeElement),
-          ),
-      )
-      .toBe(true);
-  };
-
   // New song opens in edit mode; the shortcut turns it off and on again.
-  await palette('New song');
+  await palette(app, 'New song');
   await app.waitReady();
   await app.gesture();
   await expect(status).toBeVisible();
@@ -54,7 +25,7 @@ test('A sixteen-bar riff is entered from the keyboard alone, one undo step per e
   let heard = false;
   for (const step of r.steps) {
     if ('toggleInsert' in step) {
-      await palette('Toggle insert mode');
+      await palette(app, 'Toggle insert mode');
       await expect(status).toContainText(step.toggleInsert);
       continue;
     }
@@ -73,10 +44,10 @@ test('A sixteen-bar riff is entered from the keyboard alone, one undo step per e
   expect(await app.description()).toBe('16 bars, 1 page');
 
   // A new song has no file, so the first Save adds it to the library; Save writes it there after.
-  const first = await saved(app, () => page.keyboard.press('ControlOrMeta+s'));
+  const first = await savedToLibrary(app, () => page.keyboard.press('ControlOrMeta+s'));
   expect(shapeOf(first)).toEqual(shapeOf(expectedScore(bars)));
 
-  const save = () => saved(app, () => page.keyboard.press('ControlOrMeta+s'));
+  const save = () => savedToLibrary(app, () => page.keyboard.press('ControlOrMeta+s'));
   const undo = async (times: number) => {
     for (let i = 0; i < times; i += 1) await page.keyboard.press('ControlOrMeta+z');
   };
