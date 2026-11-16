@@ -1,4 +1,5 @@
 import type { Warning } from '@reprise/formats';
+import type { ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -31,6 +32,7 @@ export function LossDialog<T extends string>({
   busy = false,
   onCloseAutoFocus,
   onChoose,
+  children,
 }: {
   open: boolean;
   title: string;
@@ -45,6 +47,8 @@ export function LossDialog<T extends string>({
   /** Where focus goes when the dialog closes; the default is back to what had it. */
   onCloseAutoFocus?: (event: Event) => void;
   onChoose: (value: T) => void;
+  /** Extra content under the list of losses, such as a checkbox. */
+  children?: ReactNode;
 }) {
   return (
     <Dialog
@@ -59,6 +63,7 @@ export function LossDialog<T extends string>({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         {losses.length > 0 && <WarningList warnings={losses} label="What will be lost" />}
+        {children}
         <DialogFooter>
           <Button
             variant="outline"

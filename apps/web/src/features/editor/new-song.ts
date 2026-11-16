@@ -1,8 +1,7 @@
 import { createEmptyScore } from '@reprise/model';
 
 import type { AppServices } from '@/app/services';
-
-import { whenSaved } from './when-saved';
+import { whenSaved } from '@/app/when-saved';
 
 export type NewSongServices = Pick<AppServices, 'document' | 'ui' | 'editing'>;
 

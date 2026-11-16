@@ -5,6 +5,8 @@ import { useStore } from 'zustand';
 import { libraryOf, snapshotDrop } from '@/features/library';
 
 import { useAppServices } from './services-context';
+import { modalBlocksCommand } from './shortcut-dispatcher';
+import { whenSaved } from './when-saved';
 
 const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes('Files') === true;
 
@@ -54,6 +56,9 @@ export function DropZone() {
       event.preventDefault();
       depth = 0;
       setOver(false);
+      // As for a shortcut or a menu command: a dialog is up, and a file dropped onto it must not
+      // replace the document behind it (it would also ask the unsaved question over the dialog).
+      if (modalBlocksCommand('app.drop')) return;
       if (!event.dataTransfer) return;
       // Before the first await: a DataTransfer is emptied once this handler returns.
       const snapshot = snapshotDrop(event.dataTransfer);
@@ -88,7 +93,10 @@ export function DropZone() {
             bytes: new Uint8Array(buffer),
             ...(picked?.kind === 'file' && { handle: picked }),
           };
-          return altKey ? library.openWithoutImport(opened) : library.openAndImport(opened);
+          // The bytes are read already; the question comes before they replace the document.
+          whenSaved(services, 'opening the dropped file', () => {
+            void (altKey ? library.openWithoutImport(opened) : library.openAndImport(opened));
+          });
         },
         (error: unknown) => {
           document

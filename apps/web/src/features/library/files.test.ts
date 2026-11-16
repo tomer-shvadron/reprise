@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createMemoryStorage } from '@/test/memory-storage';
 
 import { createLibraryFiles } from './files';
-import { rowOf } from './test-support';
+import { rowOf, rowWithoutOriginal } from './test-support';
 
 const bytes = (...values: number[]) => new Uint8Array(values);
 
@@ -18,7 +18,17 @@ describe('library files', () => {
     const row = rowOf({ originalName: 'a.gp5' });
     await files.write(row, bytes(1), bytes(2));
     expect(storage.bytes(row.nativePath)).toEqual(bytes(1));
-    expect(storage.bytes(row.originalPath)).toEqual(bytes(2));
+    expect(storage.bytes(row.originalPath ?? '')).toEqual(bytes(2));
+  });
+
+  it('writes a song with no original, and overwrites its native', async () => {
+    const { storage, files } = setup();
+    const row = rowWithoutOriginal();
+    await files.write(row, bytes(1), undefined);
+    await files.writeNative(row, bytes(3));
+    expect(storage.bytes(row.nativePath)).toEqual(bytes(3));
+    await files.trash(row);
+    expect(storage.paths().some((path) => path.endsWith('/original'))).toBe(false);
   });
 
   it('leaves no file behind when the second write fails', async () => {
@@ -42,7 +52,7 @@ describe('library files', () => {
     await files.write(row, bytes(1), bytes(2));
     await files.trash(row);
     expect(storage.bytes(row.nativePath)).toBeUndefined();
-    expect(storage.bytes(row.originalPath)).toBeUndefined();
+    expect(storage.bytes(row.originalPath ?? '')).toBeUndefined();
     const trashed = storage.paths().filter((path) => path.startsWith(`library/trash/${row.id}/`));
     expect(trashed).toEqual(
       expect.arrayContaining([

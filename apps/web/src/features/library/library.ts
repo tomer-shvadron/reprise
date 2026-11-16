@@ -2,9 +2,10 @@ import { newId, type Id } from '@reprise/model';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 import type { AppServices } from '@/app/services';
+import { whenSaved } from '@/app/when-saved';
 import { restoreTrackSession } from '@/features/tracks';
 import type { FileHandle } from '@/platform/platform';
-import { contentKey, SCORE_FILES } from '@/state/document';
+import { contentKey, SCORE_FILES, type Saver } from '@/state/document';
 
 import { createSongsRepository, type SongsRepository } from './db/repository';
 import type { SongRow } from './db/rows';
@@ -15,10 +16,19 @@ import { createParser, type Parser } from './import/parser';
 import { persistDocument } from './import/persist-document';
 import { stem } from './import/song-row';
 import { fromPicked, resolveDrop, type DropSnapshot, type ImportSource } from './import/sources';
+import {
+  createExporter,
+  createExportPromptStore,
+  type ExportPromptStore,
+} from './save/export-flow';
+import { createLibrarySaver } from './save/save-flow';
 import { entryOf, isSortKey, type LibraryEntry, type SortKey } from './search';
 import { startSessionKeeper, type SessionKeeper } from './session-keeper';
 
 const SORT_SETTING = 'library.sort';
+
+/** How long a Save waits for the import of the file just opened before it goes to Save As. */
+export const IMPORT_WAIT_MS = 5000;
 
 export interface LibraryState {
   entries: LibraryEntry[];
@@ -34,6 +44,13 @@ export interface LibraryState {
    * the one state the "Not in your library" banner shows for.
    */
   unimportedId: Id | undefined;
+  /** A short, non-blocking message about a save or an export, until dismissed. */
+  notice: LibraryNotice | undefined;
+}
+
+export interface LibraryNotice {
+  kind: 'info' | 'error';
+  message: string;
 }
 
 export interface Library {
@@ -46,6 +63,18 @@ export interface Library {
   setSort(sort: SortKey): void;
   /** Opens the song in the player with its track session restored, never marking it modified. */
   openSong(id: Id): Promise<void>;
+  /**
+   * `openSong` after the unsaved-changes question, for every entry the user starts. Resolves when
+   * the song is open, or when the user cancels the question.
+   */
+  requestOpenSong(id: Id): Promise<void>;
+  /** The library's Save and Save As, which `installLibrary` gives the document store. */
+  saver: Saver;
+  /** File > Export as Guitar Pro: writes a `.gp` copy; never a save. */
+  exportGuitarPro(): Promise<void>;
+  /** The question the export dialog is asking, if any. */
+  exportPrompt: ExportPromptStore;
+  dismissNotice(): void;
   /** The progress of the running or last batch import. */
   importer: Importer;
   /** One dialog for several files, imported as a batch. */
@@ -104,6 +133,7 @@ export function createLibrary(
     error: undefined,
     bannerError: undefined,
     unimportedId: undefined,
+    notice: undefined,
   }));
   let keeper: SessionKeeper | undefined;
   let keeperId: Id | undefined;
@@ -119,7 +149,8 @@ export function createLibrary(
   // Any other document, a new song included, releases the bytes of an unimported file.
   services.document.subscribe((state) => {
     if (held && held.documentId !== state.id) hold(undefined);
-    if (state.id !== previousId) store.setState({ bannerError: undefined });
+    // A notice about the last document (why its Save became Save As) is stale on another.
+    if (state.id !== previousId) store.setState({ bannerError: undefined, notice: undefined });
     previousId = state.id;
   });
 
@@ -155,6 +186,35 @@ export function createLibrary(
       return { entries: [...kept, ...[...incoming.values()].filter((e) => !known.has(e.row.id))] };
     });
   };
+
+  const notify = (message: string, kind: 'info' | 'error' = 'info') => {
+    store.setState({ notice: { kind, message } });
+  };
+  const exportPrompt = createExportPromptStore();
+  const saver = createLibrarySaver({
+    document: services.document,
+    repo,
+    files,
+    now,
+    onAdded: (row) => {
+      addEntries([row]);
+    },
+    onUpdated: replaceRow,
+    onJoined: startKeeper,
+    settled: (id) => importSettled(id),
+    clearNotice: () => {
+      if (store.getState().notice?.kind === 'info') store.setState({ notice: undefined });
+    },
+    notify,
+  });
+  const exportGuitarPro = createExporter({
+    document: services.document,
+    platform: services.platform,
+    repo,
+    promptStore: exportPrompt,
+    onUpdated: replaceRow,
+    notify,
+  });
 
   const importer = createImporter({
     repo,
@@ -207,9 +267,39 @@ export function createLibrary(
     return write;
   };
 
-  const openAndImport = async ({ name, bytes, handle }: OpenedBytes) => {
-    const { document } = services;
+  // The import of each file just opened, by the song id it was opened with, until it finishes.
+  const importsInFlight = new Map<Id, Promise<void>>();
+  const importSettled = async (id: Id): Promise<boolean> => {
+    const running = importsInFlight.get(id);
+    if (!running) return true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => {
+        resolve(false);
+      }, IMPORT_WAIT_MS);
+    });
+    try {
+      return await Promise.race([running.then(() => true), late]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const openAndImport = (file: OpenedBytes): Promise<void> => {
     const songId = newId();
+    const run = openAndImportAs(file, songId).finally(() => {
+      importsInFlight.delete(songId);
+    });
+    // Never rejects for a waiter: Save only needs to know when the import is over.
+    importsInFlight.set(
+      songId,
+      run.catch(() => undefined),
+    );
+    return run;
+  };
+
+  const openAndImportAs = async ({ name, bytes, handle }: OpenedBytes, songId: Id) => {
+    const { document } = services;
     const token = ++opening;
     // Looked up while the file opens, not before: a first open of the database must not
     // delay the first paint. A duplicate is rare and swaps to the library's copy afterwards.
@@ -315,6 +405,23 @@ export function createLibrary(
     store,
     repo,
     importer,
+    saver,
+    exportGuitarPro,
+    exportPrompt,
+    dismissNotice() {
+      store.setState({ notice: undefined });
+    },
+    requestOpenSong: (id) =>
+      new Promise<void>((resolve) => {
+        whenSaved(
+          services,
+          'opening another song',
+          () => {
+            void library.openSong(id).finally(resolve);
+          },
+          resolve,
+        );
+      }),
     async load() {
       const tracker = { added: new Set<Id>(), removed: new Set<Id>() };
       loads.add(tracker);

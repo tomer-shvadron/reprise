@@ -13,6 +13,8 @@ import { originalsDirOf, trashDirOf, TRASH_DIR } from './paths';
 export interface LibraryFiles {
   /** Writes the native and, when there is one, the original; removes both again if one fails. */
   write(row: SongRow, native: Uint8Array, original: Uint8Array | undefined): Promise<void>;
+  /** Overwrites the song's native; the platform writes it atomically. */
+  writeNative(row: SongRow, native: Uint8Array): Promise<void>;
   /** Removes whatever `write` may have left for the row; never rejects. */
   discard(row: SongRow): Promise<void>;
   /** Moves the song's files and a JSON copy of its row to `trash/<id>/`. */
@@ -47,10 +49,13 @@ export function createLibraryFiles(platform: FileOps): LibraryFiles {
   };
   return {
     discard,
+    writeNative: (row, native) => platform.writeFile(row.nativePath, native),
     async write(row, native, original) {
       try {
         await platform.writeFile(row.nativePath, native);
-        if (original) await platform.writeFile(row.originalPath, original);
+        if (original && row.originalPath !== undefined) {
+          await platform.writeFile(row.originalPath, original);
+        }
       } catch (error) {
         await discard(row);
         throw error;
