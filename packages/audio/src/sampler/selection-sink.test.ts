@@ -4,6 +4,7 @@ import { note, score } from '@reprise/model/testing';
 import { GUITAR_SELECTION, syntheticGuitarPack } from '@reprise/audio/testing';
 import { describe, expect, it } from 'vitest';
 
+import { ARTICULATION } from '../articulations/parameters';
 import { loadSfz } from '../sfz/load';
 import type { NoteEvent } from '../sink';
 import { RegionMap } from './region-map';
@@ -158,5 +159,18 @@ describe('the sink selects takes from the synthetic guitar pack', () => {
       .build();
     const made = await strikes(song);
     expect(made.map((strike) => strike.sample)).toEqual(legato.tones.map(take));
+    // The legato region is the transition itself, so it starts at frame 0, not 20 ms in.
+    expect(made[1]?.request.offset).toBeUndefined();
+  });
+
+  it('still starts a hammer-on 20 ms in when no legato region plays', async () => {
+    const song = score()
+      .track('guitar', { tuning: tuning(velocity.key) })
+      .bar()
+      .beat('8', [note(1, 0)])
+      .beat('8', [note(1, 0, { hammerPull: true })])
+      .build();
+    const made = await strikes(song);
+    expect(made[1]?.request.offset).toBe(ARTICULATION.hammerOffset);
   });
 });

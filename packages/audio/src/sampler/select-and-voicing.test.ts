@@ -156,3 +156,37 @@ describe('the legato trigger follows the layer that plays', () => {
     expect(map.hasLegatoRegionsIn('sw:99')).toBe(false);
   });
 });
+
+describe('a legato slide carries its voice into a palm-muted note', () => {
+  const sustain = region({ ...at69, sample: 'a' });
+  const mute = region({ ...at69, sample: 'b', layer: 'sw:25' });
+  const origin = note(1, 5, { slide: ['legato'] });
+  const target = (palmMute: boolean) => note(1, 5, { palmMute });
+
+  /** The 440 Hz level over the target's second 100 ms: the origin's voice, if it carries. */
+  const carried = async (options: SamplerSinkOptions, palmMute: boolean): Promise<number> => {
+    const data = await run([sustain, mute], options, (sink) => {
+      sink.noteOn({
+        ...event(plain, origin, 0),
+        duration: 0.4,
+        nextOnString: { beat: plain, note: target(palmMute), when: 0.4 },
+      });
+      sink.noteOn({ ...event(plain, target(palmMute), 0.4), duration: 0.5 });
+    });
+    return toneLevel(data, 440, 0.65, 0.75);
+  };
+
+  const withMuteLayer: SamplerSinkOptions = {
+    voicingFor: () => ({ sets: { palmMute: { layer: 'sw:25' } } }),
+  };
+
+  it('keeps the synthesized palm mute, since the voice keeps the sustain sample', async () => {
+    const open = await carried(withMuteLayer, false);
+    const muted = await carried(withMuteLayer, true);
+    const synthesized = await carried({}, true);
+    expect(open).toBeGreaterThan(0.05);
+    // 18 dB down by 250 ms, as on a pack without the layer.
+    expect(muted).toBeLessThan(open * 0.4);
+    expect(muted).toBeCloseTo(synthesized, 2);
+  });
+});

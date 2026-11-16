@@ -60,6 +60,8 @@ interface Chain {
   at: number;
   /** The filter type the voice was left with, which the note it carries into keeps. */
   filterType: BiquadFilterType;
+  /** The set the voice was struck with: the sample it keeps, whatever the next note's set. */
+  set: ArticulationSet;
 }
 
 const CHAIN_TOLERANCE = 1e-4;
@@ -213,19 +215,36 @@ export function createSamplerSink(
       pass.voicing?.legatoTrigger === true &&
       input.note.hammerPull &&
       instrument.regions.hasLegatoRegionsIn(layer);
+    const selection = select(
+      trackId,
+      instrument.regions,
+      input,
+      pass,
+      strikeIndex,
+      key,
+      layer,
+      legato,
+    );
+    // A legato region is itself the transition, so its start is not trimmed further: only when one
+    // really plays on this key, not merely exists in the layer.
+    const transition =
+      legato &&
+      instrument.regions
+        .resolveAll(key, strike.velocity, layer, selection)
+        .some((region) => region.trigger === 'legato');
     return sampler.noteOn(trackId, {
       key,
       velocity: strike.velocity,
       when: strike.when,
       string: input.note.string,
       ...(layer !== undefined && { layer }),
-      select: select(trackId, instrument.regions, input, pass, strikeIndex, key, layer, legato),
+      select: selection,
       // Only a note's final release plays its release regions: not a tremolo stroke, a trill
       // alternation or a grace note, whose string is never let go, and not a note a hammer-on
       // or pull-off starts from, which stays on the string until the legato chain ends.
       releaseTrigger:
         final && last && !handsOver(input, plan.letRingUntil ?? strike.end, pass.nextOnBeatGrace),
-      ...(strike.offset !== undefined && { offset: strike.offset }),
+      ...(strike.offset !== undefined && !transition && { offset: strike.offset }),
       ...(own && { instrument: own }),
       ...(last && plan.letRingUntil !== undefined && { letRing: { until: plan.letRingUntil } }),
     });
@@ -248,10 +267,13 @@ export function createSamplerSink(
       pass.available,
     );
     const set = chosen.set === 'default' ? undefined : pass.voicing?.sets[chosen.set];
+    // A carried voice keeps the sample it was struck with, so the effects the new note's set
+    // would have sampled are still the synthesized ones when the sets differ.
+    const sampled = carried && chain?.set !== chosen.set ? undefined : chosen.sampled;
     const plan = planNote({
       ...input,
       ...(carried && { continues: carried.key }),
-      sampled: chosen.sampled,
+      ...(sampled && { sampled }),
     });
     const lastIndex = plan.strikes.length - 1;
     for (const [index, strike] of plan.strikes.entries()) {
@@ -273,7 +295,7 @@ export function createSamplerSink(
       shapeGain(voice, plan.gain, strike.when, until);
       shapePitch(voice, plan, strike, until, isCarried);
       if (last && plan.legatoInto !== undefined) {
-        chains.set(chainKey, { voice, at: plan.legatoInto, filterType });
+        chains.set(chainKey, { voice, at: plan.legatoInto, filterType, set: chosen.set });
       } else if (last && plan.letRingUntil !== undefined) {
         if (isCarried) voice.release(plan.letRingUntil);
       } else {
