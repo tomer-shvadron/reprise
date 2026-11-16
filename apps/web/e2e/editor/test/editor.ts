@@ -4,23 +4,17 @@ import type { Score } from '@reprise/model';
 import { expect, type App } from '../../player/test/app';
 
 /**
- * Runs a palette command and returns once the keys reach the page again. Radix keeps the palette
- * mounted through its close animation, with the input focused, where the dispatcher leaves bare
- * keys to the field: focus must be back on the page or the score first.
+ * Runs a palette command and returns once the keys reach the page, or the dialog the command
+ * opened, again. Radix keeps the palette mounted through its close animation, with its input
+ * focused, where the dispatcher leaves bare keys to the field: that input must be gone and
+ * unfocused first.
  */
 export async function palette(app: App, text: string): Promise<void> {
   await app.palette(text);
-  await expect(app.page.getByRole('combobox')).toBeHidden();
+  await expect(app.page.locator('[cmdk-input]')).toHaveCount(0);
   await expect
-    .poll(() =>
-      app
-        .score()
-        .evaluate(
-          (region) =>
-            document.activeElement === document.body || region.contains(document.activeElement),
-        ),
-    )
-    .toBe(true);
+    .poll(() => app.page.evaluate(() => document.activeElement?.hasAttribute('cmdk-input')))
+    .toBe(false);
 }
 
 /**
