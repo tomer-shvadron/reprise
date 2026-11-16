@@ -1,6 +1,6 @@
 import { read } from '@reprise/formats';
 
-import { expect, test, type App } from './test/app';
+import { expect, test, type App } from '../player/test/app';
 import { expectedScore, riff } from './test/riff';
 import { shapeOf } from './test/score-shape';
 

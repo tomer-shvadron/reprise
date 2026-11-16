@@ -1,6 +1,6 @@
 import { read } from '@reprise/formats';
 
-import { expect, test } from './test/app';
+import { expect, test } from '../player/test/app';
 
 // Everything goes through the palette and the keys; browsers keep Ctrl+N, Ctrl+T and Ctrl+S for
 // themselves, so New song and the bar dialog are reached from the palette (Save stays on its key,

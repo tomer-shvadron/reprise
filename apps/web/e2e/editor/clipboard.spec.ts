@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs';
 
 import { read } from '@reprise/formats';
 
-import { expect, test } from './test/app';
+import { expect, test } from '../player/test/app';
 import { shapeOf } from './test/score-shape';
-import { generated } from './test/scores';
+import { generated } from '../player/test/scores';
 
 // WP-084 acceptance: a cross-track paste of four bars is one undo step, the history panel shows it
 // as one Paste row, and undo restores the score and puts the cursor back where the paste began.
