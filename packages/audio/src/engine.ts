@@ -451,6 +451,12 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       // An HQ track keeps its pack through a beat's program change.
       instrumentOf: (track, program) =>
         loadedPacks.has(track.id) ? undefined : bank?.instrument(track, program),
+      // The articulation sets are the engine's next step; until then a pack's voicing is whether
+      // its default map has legato regions for a hammer-on to start.
+      voicingFor: (track) => {
+        const regions = loadedPacks.get(track.id)?.regions;
+        return regions && { sets: {}, legatoTrigger: regions.hasLegatoRegions };
+      },
     });
     const transport = createTransport({
       context,
