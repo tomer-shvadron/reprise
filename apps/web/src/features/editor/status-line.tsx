@@ -23,7 +23,7 @@ export interface EditStatusLineProps {
  */
 export function EditStatusLine({ entry, editing, selection, document }: EditStatusLineProps) {
   const isEditing = useStore(editing, (state) => state.editing);
-  const { rhythm, mode, pending, message } = useStore(entry);
+  const { rhythm, mode, pending, message, tone } = useStore(entry);
   const cursor = useStore(selection, (state) => state.cursor);
   const score = useStore(document, (state) => state.score);
   if (!isEditing) return null;
@@ -47,8 +47,14 @@ export function EditStatusLine({ entry, editing, selection, document }: EditStat
     >
       <span>{parts.join(' · ')}</span>
       {pending && <span className="text-foreground font-medium">Fret {String(pending.fret)}…</span>}
-      {/* Only the refusal is announced; the position line changes with every key. */}
-      <span role="status" aria-live="polite" className="text-destructive font-medium">
+      {/* Only the message is announced; the position line changes with every key. */}
+      <span
+        role="status"
+        aria-live="polite"
+        className={
+          tone === 'notice' ? 'text-foreground font-medium' : 'text-destructive font-medium'
+        }
+      >
         {message}
       </span>
     </div>

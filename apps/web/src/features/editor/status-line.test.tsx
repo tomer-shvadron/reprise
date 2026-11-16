@@ -64,6 +64,19 @@ describe('EditStatusLine', () => {
     );
   });
 
+  it('shows a notice as information, not as an error, and a refusal after it as one again', async () => {
+    const { services, entry } = await setup();
+    act(() => {
+      services.editing.getState().setEditing(true);
+      entry.getState().setMessage('Pasted 4 bars', 'notice');
+    });
+    expect(screen.getByRole('status').className).not.toContain('text-destructive');
+    act(() => {
+      entry.getState().setMessage('Bar 2 is full: a quarter does not fit');
+    });
+    expect(screen.getByRole('status').className).toContain('text-destructive');
+  });
+
   it('names the end of a bar and the voice', async () => {
     const { services } = await setup();
     act(() => {
