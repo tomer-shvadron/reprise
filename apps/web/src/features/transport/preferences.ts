@@ -6,12 +6,14 @@ export interface TransportPreferences {
   countIn: boolean;
   metronome: { on: boolean; volume: number };
   masterVolume: number;
+  gmTierBypass: boolean;
 }
 
 export const DEFAULT_TRANSPORT_PREFERENCES: TransportPreferences = {
   countIn: false,
   metronome: { on: false, volume: 0.7 },
   masterVolume: 1,
+  gmTierBypass: true,
 };
 
 const isLevel = (value: unknown): value is number =>
@@ -38,6 +40,7 @@ export function readTransportPreferences(
   const on = field(metronome, 'on');
   const volume = field(metronome, 'volume');
   const masterVolume = field(stored, 'masterVolume');
+  const gmTierBypass = field(stored, 'gmTierBypass');
   return {
     countIn: typeof countIn === 'boolean' ? countIn : defaults.countIn,
     metronome: {
@@ -45,6 +48,7 @@ export function readTransportPreferences(
       volume: isLevel(volume) ? volume : defaults.metronome.volume,
     },
     masterVolume: isLevel(masterVolume) ? masterVolume : defaults.masterVolume,
+    gmTierBypass: typeof gmTierBypass === 'boolean' ? gmTierBypass : defaults.gmTierBypass,
   };
 }
 

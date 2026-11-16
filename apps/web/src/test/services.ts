@@ -48,6 +48,7 @@ export function fakeAudioService(): FakeAudioService {
     updateClick: vi.fn(),
     stopClick: vi.fn(),
     setMasterVolume: vi.fn(),
+    setGmTierBypass: vi.fn(),
     setTrack: vi.fn(),
     previewTrack: vi.fn(),
     previewNote: vi.fn(),
