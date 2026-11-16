@@ -24,6 +24,8 @@ const G = {
   initialFilterFc: 8,
   initialFilterQ: 9,
   modEnvToFilterFc: 11,
+  keynumToModEnvHold: 31,
+  keynumToModEnvDecay: 32,
   pan: 17,
   sustainModEnv: 29,
   delayVolEnv: 33,
@@ -223,6 +225,9 @@ const INSTRUMENTS: readonly { name: string; global?: Zone; zones: Zone[] }[] = [
           [G.initialFilterFc, 6000],
           [G.initialFilterQ, 60],
           [G.modEnvToFilterFc, -1200],
+          // Key-scaled filter envelope: carried on `filter.envelope`, scaled by the voice.
+          [G.keynumToModEnvHold, 50],
+          [G.keynumToModEnvDecay, -100],
           [G.delayVolEnv, -3600],
           [G.coarseTune, 1],
           [G.modEnvToPitch, 700],

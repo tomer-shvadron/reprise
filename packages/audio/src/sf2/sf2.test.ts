@@ -153,6 +153,12 @@ describe('Sf2Soundfont regions', () => {
     expect(high?.filter?.envelope).toMatchObject({ cents: -1200, delay: 0, sustain: 0.5 });
     expect(high?.filter?.envelope?.attack).toBeCloseTo(ms, 12);
     expect(high?.filter?.envelope?.decay).toBeCloseTo(ms * 0.5, 12);
+    // keynumToModEnvHold 50 and keynumToModEnvDecay -100 ride on the envelope, not on per-key
+    // regions: the zone is one region and the voice scales the values at key 60.
+    expect(high?.filter?.envelope?.holdPerKey).toBe(50);
+    expect(high?.filter?.envelope?.decayPerKey).toBe(-100);
+    expect(high?.filter?.envelope?.hold).toBeCloseTo(ms, 12);
+    expect(high?.keyHi).toBeGreaterThan(high?.keyLo ?? 127);
     // 60 cB of resonance over FluidSynth's Butterworth floor.
     expect(high?.filter?.q).toBeCloseTo(6 - 3.0103, 9);
     // Half of the 6 dB peak comes off the DC gain.
