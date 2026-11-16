@@ -33,7 +33,7 @@ export class PayloadError extends Error {
 
 // Repeated from the contract's MAX_READ_LENGTH and MAX_DOWNLOAD_BYTES: desktop imports web for
 // types only.
-export const MAX_READ_LENGTH = 64 * 1024 * 1024;
+export const MAX_READ_LENGTH = 16 * 1024 * 1024;
 export const MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_URL_LENGTH = 2048;
 const MAX_DOWNLOAD_ID_LENGTH = 64;

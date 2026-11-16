@@ -58,7 +58,7 @@ describe.each([
     [{ offset: -1, length: 1 }],
     [{ offset: 0.5, length: 1 }],
     [{ offset: 0, length: -1 }],
-    [{ offset: 0, length: 64 * 1024 * 1024 + 1 }],
+    [{ offset: 0, length: 16 * 1024 * 1024 + 1 }],
   ])('refuses the read range %j', async (range) => {
     const { root, platform } = setup();
     await root.put('data/a.bin', new Uint8Array([1]));

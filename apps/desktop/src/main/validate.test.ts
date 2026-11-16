@@ -196,7 +196,7 @@ describe('ranged reads and download payloads', () => {
     [{ offset: -1, length: 4 }],
     [{ offset: 1.5, length: 4 }],
     [{ offset: 0, length: -1 }],
-    [{ offset: 0, length: 64 * 1024 * 1024 + 1 }],
+    [{ offset: 0, length: 16 * 1024 * 1024 + 1 }],
     [{ offset: Number.MAX_SAFE_INTEGER + 1, length: 1 }],
     [{ offset: Number.NaN, length: 1 }],
     [{ offset: '0', length: 1 }],
@@ -208,7 +208,7 @@ describe('ranged reads and download payloads', () => {
 
   it('accepts the longest read and a zero-length one', () => {
     expect(() =>
-      parsers['file:read'](['library/a', { offset: 0, length: 64 * 1024 * 1024 }]),
+      parsers['file:read'](['library/a', { offset: 0, length: 16 * 1024 * 1024 }]),
     ).not.toThrow();
     expect(() => parsers['file:read'](['library/a', { offset: 9, length: 0 }])).not.toThrow();
   });

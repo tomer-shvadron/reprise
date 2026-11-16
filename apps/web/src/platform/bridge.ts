@@ -39,7 +39,7 @@ export interface ReadRange {
 }
 
 /** The most bytes one ranged read returns; main refuses a longer `length`, and so does the browser. */
-export const MAX_READ_LENGTH = 64 * 1024 * 1024;
+export const MAX_READ_LENGTH = 16 * 1024 * 1024;
 
 /** What `Platform.download` asks main for; `to` is a root-relative path under `data/sounds/`. */
 export interface DownloadRequest {
