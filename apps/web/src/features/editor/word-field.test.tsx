@@ -1,5 +1,5 @@
 import { write } from '@reprise/formats';
-import { setTrackProperties, type Score } from '@reprise/model';
+import { setBeatEffect, setTrackProperties, type Score } from '@reprise/model';
 import { act, cleanup, fireEvent, screen } from '@testing-library/react';
 import { useStore } from 'zustand';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -134,10 +134,17 @@ describe('the word field', () => {
     t.press('t');
     expect(t.field().getAttribute('aria-label')).toContain('Text');
     t.type('rit.');
+    const cursor = t.services.selection.getState().cursor;
+    const selection = t.services.selection.getState().selection;
     t.press('Escape');
     expect(t.services.entry.getState().word).toBeUndefined();
     expect(t.score()).toBe(before);
     expect(document.querySelector('input')).toBeNull();
+    // The #226 promise: edit mode, cursor and selection survive, and focus is back on the score.
+    expect(t.services.editing.getState().editing).toBe(true);
+    expect(t.services.selection.getState().cursor).toBe(cursor);
+    expect(t.services.selection.getState().selection).toBe(selection);
+    expect(document.activeElement).toBe(screen.getByRole('region', { name: 'Score: words' }));
   });
 
   it('commits on Enter and closes, and on blur', async () => {
@@ -179,6 +186,108 @@ describe('the word field', () => {
       message: 'Chord diagram removed',
       tone: 'notice',
     });
+  });
+
+  it('keeps more of its keys: digits, brackets, Delete and Backspace edit its text only', async () => {
+    const t = await setup();
+    t.goTo(0, 0);
+    t.press('t');
+    t.type('abc');
+    const before = t.score();
+    for (const key of ['1', '2', '[', ']', 'Delete', 'Backspace', 'r', 'l']) t.press(key);
+    expect(t.score()).toBe(before);
+    expect(t.services.editing.getState().editing).toBe(true);
+    expect(t.services.entry.getState().word?.draft).toBe('abc');
+  });
+
+  it('writes what was typed on Enter, not a suggestion highlighted before typing', async () => {
+    const built = wordScore();
+    const t = await setup(built);
+    t.goTo(1, 1);
+    t.press('a');
+    t.press('ArrowDown');
+    t.type('A');
+    t.press('Enter');
+    expect(t.beat(1, 1).chord?.name).toBe('A');
+  });
+
+  it('closes the suggestion list on the first Escape and the field on the second', async () => {
+    const t = await setup();
+    t.goTo(1, 1);
+    t.press('a');
+    expect(screen.queryByRole('listbox')).not.toBeNull();
+    t.press('Escape');
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(t.services.entry.getState().word).toBeDefined();
+    t.press('Escape');
+    expect(t.services.entry.getState().word).toBeUndefined();
+  });
+
+  it('commits a word before a shortcut leaves the field, and leaves the field its own keys', async () => {
+    const t = await setup();
+    t.goTo(0, 0);
+    t.press('t');
+    t.type('rit.');
+    t.press('e', { ctrlKey: true });
+    expect(t.beat(0, 0).text).toBe('rit.');
+    expect(t.services.editing.getState().editing).toBe(false);
+    t.goTo(0, 1);
+    act(() => {
+      t.services.editing.getState().setEditing(true);
+    });
+    t.press('t');
+    t.type('kept');
+    t.press('a', { ctrlKey: true });
+    expect(t.beat(0, 1).text).toBeUndefined();
+  });
+
+  it('stays open when the window loses focus, and commits on a click elsewhere', async () => {
+    const t = await setup();
+    t.goTo(0, 0);
+    t.press('t');
+    t.type('away');
+    const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    act(() => {
+      fireEvent.blur(t.field());
+    });
+    expect(t.services.entry.getState().word).toBeDefined();
+    expect(t.beat(0, 0).text).toBeUndefined();
+    focus.mockReturnValue(true);
+    act(() => {
+      fireEvent.blur(t.field());
+    });
+    focus.mockRestore();
+    expect(t.beat(0, 0).text).toBe('away');
+  });
+
+  it('returns focus to the score when it closes at the end of the track', async () => {
+    const t = await setup();
+    t.goTo(2, 3);
+    t.press('t');
+    t.press('Tab');
+    expect(t.services.entry.getState().word).toBeUndefined();
+    expect(document.activeElement).toBe(screen.getByRole('region', { name: 'Score: words' }));
+  });
+
+  it('does nothing on Backspace in an empty lyric field at the first played beat', async () => {
+    const t = await setup();
+    t.goTo(0, 0);
+    t.press('l', { altKey: true });
+    t.press('Backspace');
+    expect(t.services.entry.getState().word?.beatId).toBe(t.beat(0, 0).id);
+  });
+
+  it('shows a changed word instead of reverting it with a stale draft', async () => {
+    const t = await setup();
+    t.goTo(0, 0);
+    t.press('t');
+    const beatId = t.beat(0, 0).id;
+    act(() => {
+      t.services.document.getState().apply(setBeatEffect({ beatId }, { text: 'elsewhere' }));
+    });
+    expect(t.services.entry.getState().word?.draft).toBe('elsewhere');
+    t.press('Enter');
+    expect(t.beat(0, 0).text).toBe('elsewhere');
   });
 
   it('does nothing outside edit mode', async () => {

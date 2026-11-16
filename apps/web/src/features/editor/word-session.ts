@@ -1,4 +1,4 @@
-import type { Id } from '@reprise/model';
+import { LYRIC_LINES, type Id } from '@reprise/model';
 
 import type { AppServices } from '@/app/services';
 
@@ -9,7 +9,7 @@ import { beatWithTrack, planWord, wordValue, type WordKind } from './words';
 
 export type WordServices = Pick<AppServices, 'document' | 'selection' | 'entry' | 'editing'>;
 
-const LAST_LINE = 4;
+const LAST_LINE = LYRIC_LINES - 1;
 
 const refusals: Record<WordKind, string> = {
   chord: 'Move onto a beat to name its chord',
@@ -41,6 +41,11 @@ function show(services: WordServices, kind: WordKind, beatId: Id, line: number):
     draft: wordValue(found.beat, kind, line),
   });
   return true;
+}
+
+/** Puts focus back on the score region, so the keys keep working after the field is gone. */
+export function focusScore(): void {
+  globalThis.document.querySelector<HTMLElement>('.score-view')?.focus();
 }
 
 /** Closes the field without committing. */
@@ -109,7 +114,12 @@ export function openWord(services: WordServices, kind: WordKind, line?: number):
  * either end of the track the field closes, which says there is no more room. Returns false when
  * the commit was refused.
  */
-export function stepWord(services: WordServices, direction: 1 | -1): boolean {
+export function stepWord(
+  services: WordServices,
+  direction: 1 | -1,
+  /** False keeps the field open at either end of the track, where there is nowhere to go. */
+  closeAtEnd = true,
+): boolean {
   const { document, entry } = services;
   if (!commitWord(services)) return false;
   const word = entry.getState().word;
@@ -117,7 +127,10 @@ export function stepWord(services: WordServices, direction: 1 | -1): boolean {
   if (!word || !score) return true;
   const next = nextWordBeat(score, word.beatId, word.kind, direction);
   if (!next) {
-    closeWord(services);
+    if (closeAtEnd) {
+      closeWord(services);
+      focusScore();
+    }
     return true;
   }
   // A notice from the commit (a removed diagram) survives the cursor move that clears messages.

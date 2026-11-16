@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { createTestServices } from '@/test/services';
 
 import { cursorAtPosition } from './cursor';
+import { wordFieldRect } from './geometry';
 import { must } from './test/must';
 import { wordScore } from './test/word-scores';
 import { openWord, stepWord } from './word-session';
@@ -24,7 +25,7 @@ import { planWord } from './words';
  * and every syllable is drawn centred on its beat, on one baseline per system.
  */
 describe('lyrics entered across a verse', () => {
-  it('render aligned on the tab staff', async () => {
+  it.each(['tab', 'standard'] as const)('render aligned on the %s staff', async (notation) => {
     const services = createTestServices();
     const { document, selection, entry, editing } = services;
     await document
@@ -62,7 +63,7 @@ describe('lyrics entered across a verse', () => {
       width: PAGE_SIZES.a4.width,
       zoom: 1,
       tracks: 'all',
-      notation: {},
+      notation: { [must(score.tracks[0]).id]: notation },
     });
     const baselines = new Map<number, Set<number>>();
     for (const [index, beat] of (played ?? []).slice(0, 7).entries()) {
@@ -76,6 +77,17 @@ describe('lyrics entered across a verse', () => {
       const anchor = must(result.anchors.find((a) => a.kind === 'beat' && a.id === beat.id));
       const box = anchorBox(result, anchor);
       expect(syllable.x).toBeCloseTo(box.x + box.width / 2, 0);
+      // The field for that syllable sits on the same x and baseline.
+      const rect = must(
+        wordFieldRect(result, {
+          kind: 'lyric',
+          trackId: must(score.tracks[0]).id,
+          beatId: beat.id,
+          line: 0,
+        }),
+      );
+      expect(rect.x).toBeCloseTo(syllable.x, 0);
+      expect(rect.y + rect.size * 1.1).toBeCloseTo(syllable.y, 1);
       const set = baselines.get(anchor.system) ?? new Set<number>();
       set.add(syllable.y);
       baselines.set(anchor.system, set);

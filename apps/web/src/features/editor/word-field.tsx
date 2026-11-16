@@ -10,6 +10,7 @@ import {
   closeWord,
   commitWord,
   finishWord,
+  focusScore,
   stepWord,
   switchLyricLine,
   wordLabel,
@@ -21,6 +22,9 @@ const stop = (event: { stopPropagation(): void }) => {
 };
 
 const LIST_ID = 'word-suggestions';
+
+/** Cmd or Ctrl with these keys act on the field's own text and history. */
+const FIELD_KEYS = new Set(['z', 'y', 'a', 'c', 'x', 'v']);
 
 /**
  * The inline field of WP-085, over the score at the beat it edits: a chord name, beat text or a
@@ -42,12 +46,36 @@ export function WordField() {
     where: undefined,
     index: -1,
   });
+  // The draft whose suggestion list Escape closed; typing shows it again.
+  const [dismissed, setDismissed] = useState<string>();
 
   // Gone when edit mode ends or the beat does (an undo, another document).
   useEffect(() => {
     if (!word) return;
-    if (!isEditing || !score || !scoreIndex(score).beats.has(word.beatId)) closeWord(services);
+    if (!isEditing || !score || !scoreIndex(score).beats.has(word.beatId)) {
+      closeWord(services);
+      if (isEditing) focusScore();
+    }
   }, [word, isEditing, score, services]);
+
+  // Something other than the field changed the word on this beat (it should not, today): show it
+  // rather than let the stale draft revert it on the next commit. Edits the user typed are kept.
+  const seen = useRef<{ where: string; value: string }>(undefined);
+  useEffect(() => {
+    const open = entry.getState().word;
+    const beat = open && score && beatWithTrack(score, open.beatId)?.beat;
+    if (!open || !beat) {
+      seen.current = undefined;
+      return;
+    }
+    const key = `${open.kind}:${open.beatId}:${String(open.line)}`;
+    const value = wordValue(beat, open.kind, open.line);
+    const before = seen.current;
+    seen.current = { where: key, value };
+    if (before?.where === key && before.value !== value && open.draft === before.value) {
+      entry.getState().setWord({ ...open, draft: value });
+    }
+  }, [score, word?.beatId, word?.kind, word?.line, entry]);
 
   const opened = word !== undefined && isEditing;
   const where = word && `${word.kind}:${word.beatId}:${String(word.line)}`;
@@ -58,7 +86,10 @@ export function WordField() {
     input.current?.select();
   }, [opened, where]);
 
-  const active = picked.where === where ? picked.index : -1;
+  // A highlight belongs to the draft it was chosen on: typing clears it, so Enter writes what was typed.
+  const pickKey = word && `${where ?? ''}|${word.draft}`;
+  const active = picked.where === pickKey ? picked.index : -1;
+  const hidden = dismissed === pickKey;
   const kind = word?.kind;
   const draft = word?.draft ?? '';
   const suggestions = useMemo(
@@ -70,13 +101,8 @@ export function WordField() {
   const line = word?.line ?? 0;
   const rect = useMemo(() => {
     if (!result || !kind || !trackId || !beatId) return undefined;
-    const beat = score && beatWithTrack(score, beatId)?.beat;
-    return wordFieldRect(
-      result,
-      { kind, trackId, beatId, line },
-      beat ? wordValue(beat, kind, line) : '',
-    );
-  }, [result, score, kind, trackId, beatId, line]);
+    return wordFieldRect(result, { kind, trackId, beatId, line });
+  }, [result, kind, trackId, beatId, line]);
   if (!word || !isEditing || !rect) return null;
 
   const lyric = word.kind === 'lyric';
@@ -85,9 +111,7 @@ export function WordField() {
     entry.getState().setWord({ ...word, draft: value });
     then();
   };
-  const toScore = () => {
-    (input.current?.closest('.score-view') as HTMLElement | null)?.focus();
-  };
+  const toScore = focusScore;
   const handled = (event: KeyboardEvent, run: () => void) => {
     event.preventDefault();
     event.stopPropagation();
@@ -96,7 +120,13 @@ export function WordField() {
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing) return;
-    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.metaKey || event.ctrlKey) {
+      // A shortcut leaves the field for the app (save, edit mode off), so the word goes in first.
+      // These keys edit the field's own text.
+      if (!FIELD_KEYS.has(event.key.toLowerCase())) commitWord(services);
+      return;
+    }
+    if (event.altKey) return;
     const { key, shiftKey } = event;
     const pick = suggestions[active];
     const step = (direction: 1 | -1) => () => stepWord(services, direction);
@@ -115,6 +145,12 @@ export function WordField() {
         return;
       case 'Escape':
         handled(event, () => {
+          // The combobox pattern: the first Escape closes the list, the second drops the draft.
+          if (suggestions.length > 0 && !hidden) {
+            setDismissed(pickKey);
+            setPicked({ where: undefined, index: -1 });
+            return;
+          }
           closeWord(services);
           toScore();
         });
@@ -126,7 +162,7 @@ export function WordField() {
           if (lyric) switchLyricLine(services, down ? 1 : -1);
           else
             setPicked({
-              where,
+              where: pickKey,
               index: Math.min(Math.max(active + (down ? 1 : -1), -1), suggestions.length - 1),
             });
         });
@@ -146,7 +182,7 @@ export function WordField() {
         return;
       case 'Backspace':
         if (!lyric || word.draft !== '') return;
-        handled(event, step(-1));
+        handled(event, () => stepWord(services, -1, false));
         return;
       default:
     }
@@ -170,8 +206,8 @@ export function WordField() {
         type="text"
         role={chord ? 'combobox' : undefined}
         aria-label={label}
-        aria-expanded={chord ? suggestions.length > 0 : undefined}
-        aria-controls={chord && suggestions.length > 0 ? LIST_ID : undefined}
+        aria-expanded={chord ? suggestions.length > 0 && !hidden : undefined}
+        aria-controls={chord && suggestions.length > 0 && !hidden ? LIST_ID : undefined}
         aria-activedescendant={
           active >= 0 && suggestions[active] ? `${LIST_ID}-${String(active)}` : undefined
         }
@@ -192,10 +228,14 @@ export function WordField() {
         onKeyDown={onKeyDown}
         onBlur={() => {
           // Reads the store, so a field a key already closed is gone and does nothing here.
+          // Not when the whole window lost focus (Cmd+Tab to a lyrics sheet): the field stays, and
+          // the browser refocuses it on return. A click on the History panel does blur first and so
+          // commits before its jump runs; the editor README says so.
+          if (!globalThis.document.hasFocus()) return;
           if (entry.getState().word && commitWord(services)) closeWord(services);
         }}
       />
-      {suggestions.length > 0 && (
+      {suggestions.length > 0 && !hidden && (
         <ul
           id={LIST_ID}
           role="listbox"
