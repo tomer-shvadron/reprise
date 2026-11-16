@@ -1,6 +1,13 @@
 import { isAbsolute } from 'node:path';
 
-import type { FileFilter, InvokeArgs, InvokeChannel, PrintOptions, RecentSong } from '@reprise/web';
+import type {
+  FileFilter,
+  HistoryMenuLabels,
+  InvokeArgs,
+  InvokeChannel,
+  PrintOptions,
+  RecentSong,
+} from '@reprise/web';
 
 import { isStoragePath, parseStoragePath, StoragePathError } from './storage-path';
 
@@ -30,6 +37,7 @@ const MAX_NAME_LENGTH = 255;
 const MAX_RECENT_SONGS = 10;
 const MAX_RECENT_ID_LENGTH = 128;
 const MAX_RECENT_TITLE_LENGTH = 200;
+const MAX_HISTORY_LABEL_LENGTH = 100;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -115,14 +123,35 @@ function isUnsafeTitleChar(code: number): boolean {
   );
 }
 
-function cleanTitle(title: string): string {
+function stripUnsafe(text: string): string {
   let kept = '';
   // Every unsafe character is in the BMP, so UTF-16 units are the right grain.
-  for (let i = 0; i < title.length; i += 1) {
-    if (!isUnsafeTitleChar(title.charCodeAt(i))) kept += title.charAt(i);
+  for (let i = 0; i < text.length; i += 1) {
+    if (!isUnsafeTitleChar(text.charCodeAt(i))) kept += text.charAt(i);
   }
-  const clean = kept.trim().slice(0, MAX_RECENT_TITLE_LENGTH);
+  return kept;
+}
+
+function cleanTitle(title: string): string {
+  const clean = stripUnsafe(title).trim().slice(0, MAX_RECENT_TITLE_LENGTH);
   return clean === '' ? 'Untitled' : clean;
+}
+
+/**
+ * `{ undo?, redo? }` of command names; a label is cleaned like a title and cut at 100, and one
+ * left empty is left out, so main shows the bare item.
+ */
+export function parseHistoryLabels(value: unknown): HistoryMenuLabels {
+  if (!isRecord(value)) throw new PayloadError('Expected the history labels');
+  const labels: HistoryMenuLabels = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (key !== 'undo' && key !== 'redo') throw new PayloadError(`Unknown history label '${key}'`);
+    if (raw === undefined) continue;
+    if (typeof raw !== 'string') throw new PayloadError(`Expected a text label for '${key}'`);
+    const clean = stripUnsafe(raw).trim().slice(0, MAX_HISTORY_LABEL_LENGTH);
+    if (clean !== '') labels[key] = clean;
+  }
+  return labels;
 }
 
 /** At most ten items; an id is opaque so an overlong one is refused, a title is cut. */
@@ -190,6 +219,10 @@ export const parsers: Parsers = {
   'menu:set-recent': (args) => {
     arity(args, 1, 'menu:set-recent');
     return [parseRecentSongs(args[0])];
+  },
+  'menu:set-history': (args) => {
+    arity(args, 1, 'menu:set-history');
+    return [parseHistoryLabels(args[0])];
   },
   'app:library-dir': (args) => {
     arity(args, 0, 'app:library-dir');

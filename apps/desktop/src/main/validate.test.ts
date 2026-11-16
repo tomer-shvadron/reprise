@@ -140,3 +140,32 @@ describe('window payloads', () => {
     }
   });
 });
+
+describe('menu:set-history', () => {
+  it('takes one record of optional undo and redo names, cleaned and cut', () => {
+    expect(parsers['menu:set-history']([{}])).toEqual([{}]);
+    expect(parsers['menu:set-history']([{ undo: 'setNote', redo: undefined }])).toEqual([
+      { undo: 'setNote' },
+    ]);
+    expect(parsers['menu:set-history']([{ undo: ' a\u202eb\n ', redo: '   ' }])).toEqual([
+      { undo: 'ab' },
+    ]);
+    const [cut] = parsers['menu:set-history']([{ redo: 'x'.repeat(500) }]);
+    expect(cut.redo).toHaveLength(100);
+  });
+
+  it('rejects anything else', () => {
+    for (const bad of [
+      [],
+      [null],
+      ['undo'],
+      [[]],
+      [{ undo: 1 }],
+      [{ redo: null }],
+      [{ other: 'x' }],
+      [{}, {}],
+    ]) {
+      expect(() => parsers['menu:set-history'](bad)).toThrow(PayloadError);
+    }
+  });
+});
