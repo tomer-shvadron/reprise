@@ -562,7 +562,7 @@ export async function readZipEntry(
   if (entry.method === 0) {
     for await (const chunk of compressed()) take(chunk);
   } else {
-    await inflateStream(compressed(), take);
+    await inflateStream(compressed(), take, { sliceBytes: limits.inflateSliceBytes });
   }
   if (produced !== entry.size) {
     throw new ZipError(

@@ -20,6 +20,9 @@ import type { ZipSource } from './zip';
 /** Work areas under `data/sounds/`: skipped by the scan, swept at startup. */
 export const STAGING_DIR = `${SOUNDS_DIR}/.staging`;
 export const TRASH_DIR = `${SOUNDS_DIR}/.trash`;
+/** `<12-character id>-<8 hex digits>`, as `stagingName` writes it. */
+const TRASH_NAME = /^([0-9A-Za-z]{12})-[0-9a-f]{8}$/;
+
 export const DOWNLOADS_DIR = `${SOUNDS_DIR}/.downloads`;
 
 export const INSTALL_LIMITS = {
@@ -511,9 +514,8 @@ async function recoverInterruptedUpdates(
   if (trashed.length === 0) return;
   const present = new Set((await platform.listDir(SOUNDS_DIR).catch(() => [])).map((e) => e.name));
   for (const entry of trashed) {
-    // `<12-character id>-<8 hex digits>`, as `stagingName` writes it.
-    const id = entry.name.slice(0, -9);
-    if (entry.kind !== 'directory' || id.length === 0 || present.has(id)) continue;
+    const id = TRASH_NAME.exec(entry.name)?.[1];
+    if (entry.kind !== 'directory' || id === undefined || present.has(id)) continue;
     try {
       await platform.move(`${TRASH_DIR}/${entry.name}`, packFolder(id));
       present.add(id);
@@ -569,4 +571,17 @@ export async function downloadPackArchive(options: {
 
 export function zipSourceOfPicked(file: Pick<PickedFile, 'size' | 'read'>): ZipSource {
   return { size: file.size, read: (offset, length) => file.read({ offset, length }) };
+}
+
+/** Removes what an update left in `.trash/` for a pack, so a removed pack cannot be restored by the sweep. */
+export async function clearTrashOf(
+  platform: Pick<Platform, 'listDir' | 'remove'>,
+  id: string,
+): Promise<void> {
+  const trashed = await platform.listDir(TRASH_DIR).catch(() => []);
+  for (const entry of trashed) {
+    if (TRASH_NAME.exec(entry.name)?.[1] === id) {
+      await platform.remove(`${TRASH_DIR}/${entry.name}`).catch(() => undefined);
+    }
+  }
 }

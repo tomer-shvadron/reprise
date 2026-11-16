@@ -438,6 +438,20 @@ describe('sweepWorkAreas', () => {
     ).toEqual([]);
   });
 
+  it('only restores trash folders named like an update leaves them', async () => {
+    const { platform, storage } = testPlatform();
+    for (const name of ['short-0a1b2c3d', `${ID}-ZZZZZZZZ`, `${ID}-0a1b2c3d0`]) {
+      await platform.writeFile(
+        `data/sounds/.trash/${name}/pack.json`,
+        new TextEncoder().encode('x'),
+      );
+    }
+    await sweepWorkAreas(platform);
+    expect(
+      storage.paths().filter((path) => path.startsWith('data/sounds/') && storage.bytes(path)),
+    ).toEqual([]);
+  });
+
   it('deletes the trash of a finished update and leaves the installed pack alone', async () => {
     const { platform, storage } = testPlatform();
     await platform.writeFile(`data/sounds/${ID}/pack.json`, new TextEncoder().encode('current'));
