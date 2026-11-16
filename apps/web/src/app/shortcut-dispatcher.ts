@@ -103,6 +103,9 @@ function leavesKeyToTarget(event: KeyboardEvent): boolean {
  * - Arrows, Home, End and Page keys in a text field, select, range or checkbox, whatever the
  *   modifiers.
  * - Backspace and Delete in a text field, whatever the modifiers: they edit its text.
+ * - A `native` command's key (Cmd or Ctrl with C, X or V): the key is left alone, not even its
+ *   default is prevented, so the browser raises its own copy, cut or paste event, which the
+ *   clipboard handler answers by the same rules (a text field and a modal keep the event).
  */
 export function dispatchShortcut(
   event: KeyboardEvent,
@@ -112,8 +115,8 @@ export function dispatchShortcut(
 ): boolean {
   if (event.defaultPrevented || event.isComposing) return false;
 
-  const matching = registry.available().filter(({ shortcut }) => {
-    if (!shortcut) return false;
+  const matching = registry.available().filter(({ shortcut, native }) => {
+    if (!shortcut || native) return false;
     if (DELETE_KEYS.has(event.key) && isTextField(event.target)) return false;
     if (NAVIGATION_KEYS.has(event.key) && isEditable(event.target)) return false;
     if (!shortcut.mod && leavesKeyToTarget(event)) return false;

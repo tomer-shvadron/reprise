@@ -10,6 +10,7 @@ import {
   type DocumentStore,
   type DocumentStoreDeps,
 } from '@/state/document';
+import { installClipboard } from '@/features/editor/clipboard-events';
 import { installEntry } from '@/features/editor/entry-controller';
 import { createEntryStore, type EntryStore } from '@/features/editor/entry-store';
 import { installEditor } from '@/features/editor/install-editor';
@@ -119,6 +120,9 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     },
   });
 
+  // The clipboard events of edit mode; after the editor, whose reconcile an edit's range follows.
+  const uninstallClipboard = installClipboard({ document, selection, editing, entry });
+
   // After the document wiring above, so a switch reaches the audio service before the speed reset.
   const uninstallTransport = installTransport({
     audio,
@@ -145,6 +149,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     entry,
     practice,
     dispose() {
+      uninstallClipboard();
       uninstallEntry();
       uninstallEditor();
       uninstallTransport();

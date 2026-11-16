@@ -50,6 +50,16 @@ describe('phase 3 entry points', () => {
     ).toBeInTheDocument();
   });
 
+  it('editor.toggleEffectsPanel shows the effects panel in the right panel and hides it again', () => {
+    const { services, run } = renderApp();
+    run('editor.toggleEffectsPanel');
+    const panel = screen.getByRole('complementary', { name: 'Panel' });
+    expect(within(panel).getByRole('region', { name: 'Effects' })).toBeInTheDocument();
+    expect(panel).not.toHaveTextContent('Placeholder');
+    run('editor.toggleEffectsPanel');
+    expect(services.ui.getState().panels.rightPanel).toBe(false);
+  });
+
   it('trainer.tuner opens the right panel on its placeholder', () => {
     const { run } = renderApp();
     expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
@@ -108,6 +118,7 @@ describe('phase 3 entry points', () => {
         'trainer.metronome',
         'trainer.fretboard',
         'editor.toggleMode',
+        'editor.toggleEffectsPanel',
       ]),
     );
   });

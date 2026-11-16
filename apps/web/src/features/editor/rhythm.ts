@@ -1,4 +1,12 @@
-import { PPQ, beatTicks, type Beat, type Dots, type Duration, type Tuplet } from '@reprise/model';
+import {
+  PPQ,
+  beatTicks,
+  createBeat,
+  type Beat,
+  type Dots,
+  type Duration,
+  type Tuplet,
+} from '@reprise/model';
 
 /** The length of a beat as the entry keys edit it: note value, dots and tuplet. */
 export interface Rhythm {
@@ -121,4 +129,36 @@ export function overfullMessage(bar: number, room: number, needed: number): stri
   const wanted = ticksLabel(needed);
   if (room < EPSILON) return `Bar ${String(bar)} is full: ${wanted} does not fit`;
   return `Bar ${String(bar)} has ${ticksLabel(room)} left: ${wanted} does not fit`;
+}
+
+/** Every plain and single-dotted value a rest can take, longest first. */
+const REST_VALUES: Rhythm[] = DURATIONS.flatMap((duration) =>
+  ([0, 1] as const).map((dots): Rhythm => ({ duration, dots, tuplet: undefined })),
+).sort((a, b) => rhythmTicks(b) - rhythmTicks(a));
+
+/**
+ * A length in ticks as rests, longest first (a greedy split into plain and dotted values);
+ * undefined when it cannot be written that way, a gap shorter than a 64th or a tuplet's remainder.
+ */
+export function restsFor(ticks: number): Rhythm[] | undefined {
+  const rests: Rhythm[] = [];
+  let left = ticks;
+  while (left > EPSILON) {
+    const next = REST_VALUES.find((rhythm) => rhythmTicks(rhythm) <= left + EPSILON);
+    if (!next) return undefined;
+    rests.push(next);
+    left -= rhythmTicks(next);
+  }
+  return rests;
+}
+
+/** The total length of beats, in ticks. */
+export const ticksOf = (beats: readonly Pick<Beat, 'duration' | 'dots' | 'tuplet'>[]): number =>
+  beats.reduce((sum, beat) => sum + beatTicks(beat), 0);
+
+/** Rest beats, with fresh ids, that fill `ticks`; undefined when no run of plain and dotted rests does. */
+export function restBeats(ticks: number): Beat[] | undefined {
+  return restsFor(ticks)?.map(({ duration, dots, tuplet }) =>
+    createBeat({ duration, dots, rest: true, ...(tuplet && { tuplet }) }),
+  );
 }

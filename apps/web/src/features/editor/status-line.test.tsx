@@ -41,7 +41,9 @@ describe('EditStatusLine', () => {
     const status = screen.getByTestId('edit-status');
     expect(screen.getByRole('status').getAttribute('aria-live')).toBe('polite');
     expect(screen.getByRole('status').textContent).toBe('');
-    expect(status.textContent).toBe('Overwrite · Voice 1 · Quarter · Bar 3 · Beat 2 · String 4');
+    expect(status.textContent).toBe(
+      'Overwrite · Voice 1 · Quarter · Bar 3 · Beat 2 · String 4Effects',
+    );
     act(() => {
       entry.getState().setMode('insert');
       entry.getState().setRhythm({ duration: 8, dots: 1, tuplet: undefined });
@@ -64,6 +66,19 @@ describe('EditStatusLine', () => {
     );
   });
 
+  it('shows a notice as information, not as an error, and a refusal after it as one again', async () => {
+    const { services, entry } = await setup();
+    act(() => {
+      services.editing.getState().setEditing(true);
+      entry.getState().setMessage('Pasted 4 bars', 'notice');
+    });
+    expect(screen.getByRole('status').className).not.toContain('text-destructive');
+    act(() => {
+      entry.getState().setMessage('Bar 2 is full: a quarter does not fit');
+    });
+    expect(screen.getByRole('status').className).toContain('text-destructive');
+  });
+
   it('names the end of a bar and the voice', async () => {
     const { services } = await setup();
     act(() => {
@@ -81,5 +96,24 @@ describe('EditStatusLine', () => {
     expect(screen.getByTestId('edit-status').textContent).toContain(
       'Voice 2 · Quarter · Bar 1 · End of bar',
     );
+  });
+
+  it('has an Effects button that shows and hides the effects panel, when it has the ui', async () => {
+    const { services } = await setup();
+    act(() => {
+      services.editing.getState().setEditing(true);
+    });
+    const effects = screen.getByRole('button', { name: 'Effects' });
+    expect(effects).toHaveAttribute('aria-pressed', 'false');
+    act(() => {
+      effects.click();
+    });
+    expect(services.ui.getState()).toMatchObject({ rightPanelView: 'effects' });
+    expect(services.ui.getState().panels.rightPanel).toBe(true);
+    expect(effects).toHaveAttribute('aria-pressed', 'true');
+    act(() => {
+      effects.click();
+    });
+    expect(services.ui.getState().panels.rightPanel).toBe(false);
   });
 });

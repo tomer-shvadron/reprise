@@ -4,7 +4,7 @@ import { useStore } from 'zustand';
 
 import { Placeholder } from '@/components/placeholder';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { AddTrackButton, EditorDialogs, TrackRowMenu } from '@/features/editor';
+import { AddTrackButton, EditorDialogs, EffectsPanel, TrackRowMenu } from '@/features/editor';
 import {
   ExportDialog,
   installLibrary,
@@ -52,10 +52,10 @@ interface AppProps {
   onMenuCommand?: RepriseBridge['onMenuCommand'] | undefined;
 }
 
-/** The right panel: the mixer, the trainer tools, and placeholders the WP-082 and WP-084 PRs replace. */
+/** The right panel: the mixer, the trainer tools, and a placeholder the WP-084 PR replaces. */
 function RightPanel({ view }: { view: PanelView }) {
   if (view === 'mixer') return <MixerPanel />;
-  if (view === 'effects') return <Placeholder title="Effects" workPackage="WP-082" />;
+  if (view === 'effects') return <EffectsPanel />;
   if (view === 'history') return <Placeholder title="History" workPackage="WP-084" />;
   return <TrainerPanel view={view} />;
 }
