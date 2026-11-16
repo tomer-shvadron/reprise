@@ -215,26 +215,29 @@ export default defineConfig(
     settings: { react: { version: 'detect' } },
   },
   {
-    files: ['apps/web/e2e/player/**/*.ts'],
+    files: ['apps/web/e2e/{player,editor}/**/*.ts'],
     languageOptions: { globals: globals.node },
     rules: {
       'no-restricted-properties': [
         'error',
         {
           property: 'waitForTimeout',
-          message: 'Wait on app state, never on time: apps/web/e2e/player/README.md',
+          message:
+            'Wait on app state, never on time: apps/web/e2e/player/README.md (and apps/web/e2e/editor/README.md)',
         },
         {
           object: 'window',
           property: 'setTimeout',
-          message: 'Wait on app state, never on time: apps/web/e2e/player/README.md',
+          message:
+            'Wait on app state, never on time: apps/web/e2e/player/README.md (and apps/web/e2e/editor/README.md)',
         },
       ],
       'no-restricted-globals': [
         'error',
         {
           name: 'setTimeout',
-          message: 'Wait on app state, never on time: apps/web/e2e/player/README.md',
+          message:
+            'Wait on app state, never on time: apps/web/e2e/player/README.md (and apps/web/e2e/editor/README.md)',
         },
       ],
     },

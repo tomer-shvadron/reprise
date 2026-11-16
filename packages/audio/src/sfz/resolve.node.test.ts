@@ -66,6 +66,7 @@ describe('opcode to Region', () => {
     ['trigger=release', { trigger: 'release' }],
     ['trigger=first', { trigger: 'first' }],
     ['trigger=attack', {}],
+    ['trigger=release rt_decay=7', { trigger: 'release', releaseDecay: 7 }],
     ['seq_length=4 seq_position=3', { sequence: { length: 4, position: 3 } }],
     ['lorand=0.25 hirand=0.75', { random: { lo: 0.25, hi: 0.75 } }],
   ])('%s', async (body, expected) => {
@@ -73,6 +74,16 @@ describe('opcode to Region', () => {
     expect(first).toMatchObject(expected);
     expect(report.invalid).toEqual({});
     if (!('loop' in expected)) expect(first?.loop).toBeUndefined();
+  });
+
+  it('reads rt_decay on release regions only, and clamps it', async () => {
+    expect((await regionsOf('rt_decay=7')).first?.releaseDecay).toBeUndefined();
+    expect((await regionsOf('trigger=release')).first?.releaseDecay).toBeUndefined();
+    expect((await regionsOf('trigger=release rt_decay=0')).first?.releaseDecay).toBeUndefined();
+    const { first, report } = await regionsOf('trigger=release rt_decay=900');
+    expect(first?.releaseDecay).toBe(200);
+    expect(report.clamped).toEqual({ rt_decay: 1 });
+    expect(report.unsupported).toEqual({});
   });
 
   it('applies note_offset and octave_offset to the keys', async () => {

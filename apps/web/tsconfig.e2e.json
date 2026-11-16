@@ -6,7 +6,7 @@
     "allowImportingTsExtensions": true,
     "outDir": ".tsbuild/e2e"
   },
-  "include": ["e2e/player", "playwright.config.ts"],
+  "include": ["e2e/player", "e2e/editor", "playwright.config.ts"],
   "references": [
     { "path": "../../packages/model" },
     { "path": "../../packages/formats" },

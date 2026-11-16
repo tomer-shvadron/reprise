@@ -7,7 +7,7 @@ import type { EffectSpec } from '../effects/presets';
 import { ImpulseBank, ReverbBus } from '../effects/reverb-bus';
 import { ChannelStrip, MasterBus, applySolo } from './channel-strip';
 import type { StripEffects } from './channel-strip';
-import type { Region, RegionMap, SampleRef } from './region-map';
+import type { Region, RegionMap, RegionSelection, SampleRef } from './region-map';
 import type { SampleSource } from './sample-source';
 import { Voice, velocityGain } from './voice';
 import type { FilterSettings } from './voice';
@@ -42,6 +42,11 @@ export interface NoteOnRequest {
   /** 1 = highest string; a new note on a string chokes the one sounding there. 0 never chokes. */
   string?: number;
   layer?: string;
+  /**
+   * The round-robin, random and legato counters the note's regions are chosen by, for the note's
+   * regions and its release regions alike; absent plays the first take (`RegionMap.resolveAll`).
+   */
+  select?: RegionSelection;
   offset?: number;
   /** Ignore note-off: ring until the next note on the string, or `until` when given. */
   letRing?: boolean | { until: number };
@@ -49,6 +54,13 @@ export interface NoteOnRequest {
   instrument?: Instrument;
   /** A preview voice: see `Sampler.previewNote`. */
   preview?: boolean;
+  /**
+   * Whether this note's release starts its release regions (default true). A caller sets it false
+   * on a strike whose string is not let go: a tremolo stroke, a trill alternation, a grace note.
+   * Only the note's final release (the last strike, the end of a legato chain, the let-ring
+   * `until`) should fire.
+   */
+  releaseTrigger?: boolean;
 }
 
 /** When a `setTrack` volume or pan change happens: at `at`, gliding over `ramp` seconds. */
@@ -78,7 +90,14 @@ export interface SamplerOptions {
   onMiss?: (track: Id, sample: SampleRef) => void;
 }
 
-/** The handle a note-on returns, for note-off and the articulation automation. */
+/**
+ * The handle a note-on returns, for note-off and the articulation automation. `release(at)` also
+ * starts the note's release regions (SFZ `trigger=release`) at `at`, once, unless the note was
+ * already cut short (choked, stolen, stopped), is a preview or was started with `releaseTrigger:
+ * false`; the let-ring `until` release does the same. Those voices are one-shots, outside the
+ * string choke, tied to their note (a choke or steal before they start cancels them), and they
+ * never steal a polyphony slot.
+ */
 export interface VoiceHandle {
   readonly track: Id;
   readonly key: number;
@@ -115,8 +134,10 @@ class LayeredVoice implements VoiceHandle {
   readonly string: number;
   readonly startTime: number;
   readonly #voices: readonly Voice[];
+  #onRelease: ((at: number) => void) | undefined;
 
-  constructor(voices: readonly [Voice, ...Voice[]]) {
+  constructor(voices: readonly [Voice, ...Voice[]], onRelease?: (at: number) => void) {
+    this.#onRelease = onRelease;
     const [first] = voices;
     this.track = first.track;
     this.key = first.key;
@@ -135,7 +156,12 @@ class LayeredVoice implements VoiceHandle {
   }
 
   release(at: number): void {
+    // A voice already released was choked, stolen or stopped: a cut note has no release sound.
+    const cut = this.#voices.some((voice) => voice.released);
     for (const voice of this.#voices) voice.release(at);
+    const onRelease = this.#onRelease;
+    this.#onRelease = undefined;
+    if (!cut) onRelease?.(at);
   }
 
   setDetune(semitones: number, at: number): void {
@@ -182,6 +208,7 @@ export class Sampler {
   #impulses: ImpulseBank | undefined;
   #reverb: ReverbBus | undefined;
   #misses = 0;
+  #skippedReleases = 0;
 
   constructor(context: BaseAudioContext, options: SamplerOptions = {}) {
     this.context = context;
@@ -198,6 +225,11 @@ export class Sampler {
   /** Samples found not resident at a note: one per missing layer, not per note. */
   get misses(): number {
     return this.#misses;
+  }
+
+  /** Release samples skipped because the pool was full at their start: they never steal. */
+  get skippedReleases(): number {
+    return this.#skippedReleases;
   }
 
   /** The shared reverb bus, once a strip has sent to it. */
@@ -332,7 +364,13 @@ export class Sampler {
     if (request.velocity <= 0) return undefined;
     const { regions, source } = request.instrument ?? this.#instrumentAt(state, request.when);
     const layers: { region: Region; buffer: AudioBuffer }[] = [];
-    for (const region of regions.resolveAll(request.key, request.velocity, request.layer)) {
+    const resolved = regions.resolveAll(
+      request.key,
+      request.velocity,
+      request.layer,
+      request.select,
+    );
+    for (const region of resolved) {
       const buffer = source.peekBuffer(region.sample);
       if (buffer) {
         layers.push({ region, buffer });
@@ -388,15 +426,106 @@ export class Sampler {
       );
       state.voices.add(voice);
       this.pool.add(voice);
-      if (request.letRing) {
-        voice.letRing = true;
-        if (typeof request.letRing === 'object') voice.release(request.letRing.until);
-      }
+      if (request.letRing) voice.letRing = true;
       voices.push(voice);
     }
     const [first, ...rest] = voices;
     if (!first) return undefined;
-    return rest.length === 0 ? first : new LayeredVoice([first, ...rest]);
+    // Only a note whose map has release regions for it pays for the hook; a GM note is unchanged.
+    const releases =
+      !request.preview &&
+      request.releaseTrigger !== false &&
+      regions.hasReleaseRegions &&
+      regions.resolveRelease(request.key, request.velocity, request.layer, request.select).length >
+        0;
+    const handle: VoiceHandle =
+      rest.length === 0 && !releases
+        ? first
+        : new LayeredVoice(
+            [first, ...rest],
+            releases
+              ? (at) => {
+                  const tails = this.#startRelease(
+                    state,
+                    request,
+                    { regions, source },
+                    destination,
+                    at,
+                  );
+                  // The tails belong to the note: a later choke or steal before they start cancels them.
+                  for (const voice of voices) voice.tails.push(...tails);
+                }
+              : undefined,
+          );
+    if (typeof request.letRing === 'object') handle.release(request.letRing.until);
+    return handle;
+  }
+
+  /**
+   * The release regions of a note whose note-off is at `at`. A release sample that is not
+   * resident is a miss like any other: skipped, its load requested, reported through `onMiss`.
+   * Each is a one-shot with `string` 0, so no later note on the string chokes it, and its
+   * `releaseDecay` lowers it by the seconds the note was held.
+   */
+  #startRelease(
+    state: TrackState,
+    request: NoteOnRequest,
+    { regions, source }: Instrument,
+    destination: AudioNode,
+    at: number,
+  ): Voice[] {
+    const id = state.track.id;
+    const tails: Voice[] = [];
+    const held = Math.max(0, at - request.when);
+    for (const region of regions.resolveRelease(
+      request.key,
+      request.velocity,
+      request.layer,
+      request.select,
+    )) {
+      const buffer = source.peekBuffer(region.sample);
+      if (!buffer) {
+        this.#misses += 1;
+        this.#options.onMiss?.(id, region.sample);
+        source.getBuffer(region.sample).catch(() => undefined);
+        continue;
+      }
+      // Decoration never steals: a waiting tail would also hold a slot from the note-on.
+      if (this.pool.countAt(at) >= this.pool.polyphony) {
+        this.#skippedReleases += 1;
+        continue;
+      }
+      const voice = new Voice(
+        this.context,
+        destination,
+        {
+          track: id,
+          tail: true,
+          region: {
+            ...region,
+            oneShot: true,
+            ...((region.releaseDecay ?? 0) > 0 && {
+              attenuation: (region.attenuation ?? 0) + (region.releaseDecay ?? 0) * held,
+            }),
+          },
+          buffer,
+          key: request.key,
+          velocity: request.velocity,
+          when: at,
+          string: 0,
+          preview: false,
+          instrument: regions,
+        },
+        (ended) => {
+          state.voices.delete(ended);
+          this.pool.remove(ended);
+        },
+      );
+      state.voices.add(voice);
+      this.pool.add(voice);
+      tails.push(voice);
+    }
+    return tails;
   }
 
   /** Releases the note, unless it lets ring: then the next note on its string releases it. */

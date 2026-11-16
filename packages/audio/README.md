@@ -244,8 +244,9 @@ assignments by track); it is not part of the contract.
 `LoadOptions.packs` is a list of `PackAssignment`, `{ trackId, pack: { id, files }, entries }`:
 
 - `pack.files` is an `SfzFiles` reader, the same object for as long as the installed version lives;
-  a new object means the pack changed. `entries` maps articulation-set keys to SFZ paths in the
-  pack; `default` is required and is what plays (WP-093 maps the rest).
+  a new object means the pack changed. `entries` maps articulation-set keys (`ARTICULATION_SETS`,
+  below) to SFZ paths in the pack; `default` is required and is what plays, a key outside the list
+  is ignored, and WP-093 maps the others to notes.
 - `load` checks each assignment: the default SFZ must read, parse and map a region. One that does
   not goes to `LoadResult.fallbacks` (`{ trackId, packId, error }`), plays GM, and `load` still
   resolves. An assignment with the same pack id, files object and default path as the last `load`
@@ -431,7 +432,8 @@ interface Region {
   velocityTrack?: number; // 0..1: gain = velocityGain(v) ** velocityTrack, on the path without modulators
   group?: number; // a new note of this group chokes the voices whose offBy equals it
   offBy?: number; // one-way: a closed hi-hat (group 2) cuts the open one (off_by 2), not the reverse
-  trigger?: 'release' | 'first' | 'legato'; // absent plays at note-on; release regions are kept, not played yet (WP-093)
+  trigger?: 'release' | 'first' | 'legato'; // absent plays at note-on; a release region plays at the note-off (resolveRelease, VoiceHandle.release)
+  releaseDecay?: number; // SFZ rt_decay, release regions only: dB of attenuation per second the note was held
   sequence?: { length: number; position: number }; // round robin, position 1-based
   random?: { lo: number; hi: number }; // 0..1, lo inclusive, hi exclusive
 }
@@ -439,7 +441,8 @@ interface Region {
 class RegionMap {
   constructor(regions: readonly Region[]);
   resolveAll(key: number, velocity: number, layer?: string, select?: RegionSelection): Region[]; // every layer of the note
-  candidates(key: number, velocity: number, layer?: string): Region[]; // every region the note could start, all round-robin and random positions
+  resolveRelease(key: number, velocity: number, layer?: string, select?: RegionSelection): Region[]; // the release regions a note-off starts
+  candidates(key: number, velocity: number, layer?: string): Region[]; // every region the note could start or release, all round-robin and random positions
   resolve(key: number, velocity: number, layer?: string): Region | undefined; // resolveAll's first
   readonly layers: string[];
 }
@@ -461,13 +464,24 @@ interface Instrument {
 }
 ```
 
+`resolveRelease` returns the release regions of a note-off, with the same layer fallback and the
+same `select` counters (a sequence or random release region plays only when it passes), but with
+no nearest-region fallback: key and velocity match exactly, so a note-off outside every release
+region is silent. A release region is limited by `lokey`/`hikey` or `lovel`/`hivel` on purpose (noise
+only on loud notes, say), a transposed release sample sounds wrong, and in SFZ a note-off with no
+release region plays nothing; the attack fallback exists so that a note always sounds, which does
+not carry over to a decorative tail. `candidates` includes only the release regions a note-off can
+trigger, since one has to be resident at the note-off and nothing else would use it.
+`RegionMap.hasReleaseRegions` is true when any region triggers on release; a map without them
+(every SF2 preset) skips `resolveRelease` altogether, so a General MIDI note pays nothing for it.
+
 `resolveAll` first filters out the regions that do not start at note-on: release regions never do,
 `first` regions play unless `select.legato`, `legato` regions only with it, a sequence region plays
 when `((select.sequence ?? 0) % length) + 1` is its position and a random region when
 `lo <= (select.random ?? 0) < hi`. Without counters the choice is the first take (position 1, the
-bucket holding 0, no legato) rather than layering every round robin at once, until WP-093 passes
-counters. The nearest-region fallback searches only the regions that pass. `candidates` is the
-unfiltered-by-counter set that `planSamples` and `Sampler.preload` use, so the round robins WP-093
+bucket holding 0, no legato) rather than layering every round robin at once, until a caller passes
+`NoteOnRequest.select`; the sampler sink does. The nearest-region fallback searches only the regions that pass. `candidates` is the
+unfiltered-by-counter set that `planSamples` and `Sampler.preload` use, so the round robins the sink
 rotates through are resident before it does; on an SF2 map it equals `resolveAll`. `resolveAll` then
 returns every exact match in map order, since an SF2 preset layers zones by design (a
 body and an attack, two panned mono samples) and sounds them all; failing any, the one region
@@ -508,6 +522,8 @@ const voice = sampler.noteOn(trackId, {
   offset,
   letRing,
   instrument,
+  select, // { sequence?, random?, legato? }: chooses the round-robin and random takes, for the note and its release regions
+  releaseTrigger, // default true; false: this note's release starts no release regions (see Release triggers)
 });
 voice?.rampDetune(2, when + 0.2); // semitones, absolute times
 voice?.setGain(-6, when + 0.1); // dB relative to the velocity level
@@ -520,8 +536,47 @@ await sampler.preload(trackId, [{ key, velocity }]);
 `noteOn` starts a voice per region `resolveAll` returns and hands back one handle for all of them:
 detune, gain, filter and release reach every layer, and `endTime` is the last one's.
 
-`createSamplerSink(sampler, { deadNote?, instrumentOf? })` is the scheduler's `InstrumentSink` over the sampler,
-with the articulation layer described under [Articulations](#articulations): each event becomes
+**Release triggers.** `handle.release(at)`, and the let-ring `until` release, also start the note's
+release regions (`resolveRelease`, with the note's own `layer` and `select`) at `at`, once however
+often the handle is released. They never start on a choke, a steal, `allNotesOff` or a preview,
+and a note already cut short by one of them has none. A release voice is a one-shot, so a later
+release does not cut it, and it carries string 0, so the next note on the string, which normally
+starts at the previous note's release, does not choke it.
+
+The release voices belong to their note. The sink calls `release` at scheduling time, so a tail can
+exist seconds before it starts (a let-ring note's waits for the bar end); a choke or steal of the
+note at `t` cancels its tails that have not started by `t` (they never sound), while one already
+sounding plays out. A release voice never steals: when the pool is full at its start it is skipped
+and counted (`Sampler.skippedReleases`), since release noise is decoration. It is also the first
+voice a later note steals (a waiting one is cancelled, a sounding one fades), so it holds a slot from the
+note-on, but the first one a later note takes. Otherwise it counts in the polyphony like any voice, `allNotesOff` still stops
+it (one waiting to start never sounds), and `Region.releaseDecay`
+(`rt_decay`) lowers it by that many dB for each second the note was held. A release sample that is
+not resident is a miss like any other: skipped, its load requested, `onMiss` told.
+
+`NoteOnRequest.releaseTrigger` (default true) lets a caller keep a strike from firing them. A
+release region is meant for the note's final release, but the sink releases every strike and the
+string is never let go between a tremolo's strokes, a trill's alternations or a grace note and its
+main note, so each would play a release sample (at nearly full level with a high `rt_decay`). The
+sink therefore sets `releaseTrigger` true only on the last strike of the main note: that covers the
+end of a legato chain (the chain's first voice carries the release) and the let-ring `until`, and
+it sets it false on earlier strikes and on every grace note. A note with no
+release regions gets the plain voice handle as before, so GM playback is unchanged.
+
+`createSamplerSink(sampler, { deadNote?, instrumentOf?, voicingFor? })` is the scheduler's `InstrumentSink` over the sampler,
+with the articulation layer described under [Articulations](#articulations). Every strike also
+carries `NoteOnRequest.select`: `sequence` counts the notes struck so far per track, region map, layer
+and key (a stop, pause or seek starts it over, so a repeat from the same start rotates the same way),
+`random` is a hash of the note's id, its pass of the sequence and the strike's index (no
+`Math.random`, so an offline render repeats exactly), and `legato` is set on a hammer-on or
+pull-off when `voicingFor(track)` says the track's default map has `trigger=legato` regions. A track
+with no voicing, every General MIDI track, plays as before. The counter is per key and layer, not
+per region as in sfizz (which advances one counter per region on every note-on in its key range,
+so a scale run inside one multi-key region rotates its takes; here each new key starts at take 1).
+Per key is deliberate: the takes of a keyswitched pack are recorded per pitch, and the layer is
+part of the slot so that alternating palm-mute and sustain strikes on one key do not share a
+counter, which with two takes each would give every palm-mute strike one take and every sustain
+strike the other. Each event becomes
 attacks, pitch and level automation, a filter and a release; `allNotesOff(when)` releases every
 voice, the ones scheduled after `when` included (a release before a voice's start time is a 0-to-0
 fade, so it never sounds), forgets any legato slide waiting for its next note, and drops the
@@ -578,7 +633,7 @@ soloed one; it still goes through the insert, the fader and the panner.
 - **SFZ choke is one-way.** A new note's groups are `region.group ?? region.exclusiveClass ?? 0`; it
   chokes voices whose `offBy ?? exclusiveClass ?? 0` is among them (0 is none). For SF2 that is
   today's same-class choke; for SFZ, closed cuts open and open does not cut closed.
-- **Stealing** is released voices first, then the quietest at the new note's time, then the
+- **Stealing** is released voices and release-region tails first, then the quietest at the new note's time, then the
   oldest. Quietest is what the voice plays: envelope × velocity × the articulation gain automation
   (a palm mute's -18 dB, a fade-in from -48 dB), all computed analytically. A note that has not
   started yet, or starts with the new one (its own layers, a chord), is stolen only when every
@@ -963,7 +1018,8 @@ loadSfz(path, read, { packId, layer? }); // the parser alone: { regions, layers,
 | `ampeg_delay`, `_attack`, `_hold`, `_decay`, `_sustain`, `_release` | `envelope`, SFZ defaults (sustain 100 %, release 1 ms); the sampler's minimums still apply.                                                         |
 | `loop_mode`, `loop_start`, `loop_end`, `offset`                     | `oneShot`, or a frame-unit `loop`, and `startFrame`. A loop mode without points would need the loop embedded in the file: played unlooped, counted. |
 | `group`, `off_by`                                                   | One-way choke (closed hi-hat cuts open, not the reverse).                                                                                           |
-| `trigger`, `seq_length`, `seq_position`, `lorand`, `hirand`         | Parsed and kept; the selection rules are under Sampler. Release regions are not played in v1; WP-093 rotates round robins.                          |
+| `trigger`, `seq_length`, `seq_position`, `lorand`, `hirand`         | Parsed and kept; the selection rules and the release triggers are under Sampler.                                                                    |
+| `rt_decay`                                                          | `releaseDecay`, dB per second held, on `trigger=release` regions (0 to 200; elsewhere read and unused).                                             |
 | `sw_lokey`, `sw_hikey`, `sw_last`, `sw_default`, `sw_label`         | One layer per `sw_last` key, `sw:<k>`, which WP-093 selects by name. Unswitched regions are copied into every layer; the copies share a ref.        |
 
 Everything else is counted, never thrown. `report.unknown` holds opcodes this loader does not know,
@@ -980,7 +1036,7 @@ sfzformat.com, where sfizz blends linearly in amplitude. They differ most at low
 partial track (about -18 dB here against about -10 dB for `amp_veltrack=73` at velocity 30). Nobody
 has listened to a real pack against both yet; the choice is open and a change is one line in the voice.
 
-**Known gaps.** Release triggers (Salamander's release samples), loops embedded in a WAV or FLAC
+**Known gaps.** Loops embedded in a WAV or FLAC
 (`smpl` and cue chunks), filters and filter envelopes, LFOs, crossfades, controllers, and
 `seq_position` outside `seq_length` (an authoring error some packs ship: the region is kept with
 its impossible position so it never plays, as in sfizz, counted in `report.unreachable`, and
@@ -996,6 +1052,13 @@ the report per file and exits 1 on an error: a lost-data entry in `isClean`, a m
 header, no regions. Downloaded packs live in the gitignored `local-sounds/` (see its README); the
 pure logic is `sfz/check-pack.ts`, covered by a Node test, and the script drives Vitest through
 `scripts/sounds/vitest.config.ts` because plain Node cannot import the workspace packages.
+
+### HQ memory budget (WP-094)
+
+`hq-memory-budget.test.ts` asserts the HQ row of the roadmap budgets table: four distinct
+Swagbass-shaped packs (254 files of 4.3 s each) on four tracks of the long score, each track
+reaching all 49 keys of a 24-fret guitar at both velocity layers, resident at 283.6 MiB of the
+300 MiB default with no miss and no eviction. A second case halves the budget and plays through.
 
 ### Tests
 
@@ -1114,7 +1177,20 @@ Tied links (`tied-links.test.ts`, same rig, A4 quarter tied at 120 BPM):
 | Palm-muted link, energy > 2 kHz   | 0.011 × the open origin's                                      |
 | Fade-in on the link               | ×0.006 the origin's level at its onset, ×0.69 at its end       |
 
-### What the HQ tier will override (WP-093)
+### Articulation sets and what the HQ tier will override (WP-093)
+
+`ARTICULATION_SETS` is the vocabulary a pack can declare, `default`, `palmMute`, `dead`,
+`harmonic`, `artificialHarmonic`, `legato`, `staccato`, `tap`, `slap` and `pop`, exported with the
+type `ArticulationSet`. They are the keys of `PackAssignment.entries`: `entries.<set>` is an SFZ
+file of the pack that plays the set, and a key outside the list is ignored. A pack can also
+declare a set as a labelled keyswitch layer of its default file, and `articulationSetOf(label)`
+maps an `sw_label` to a set (`Palm Mute` to `palmMute`, `Hammer-on` to `legato`, `Sustain` to
+`default`), or to `undefined`. The sink takes what a track's pack has from `voicingFor(track)`, a
+`Voicing`: `sets`, `{ instrument?, layer? }` per set, and `legatoTrigger`. The contract is these
+types and hooks; the engine's table and the note-to-set mapping are WP-093's next PRs.
+`syntheticGuitarPack()` in `@reprise/audio/testing` is the reference guitar they are tested on: a
+sustain layer and palm-mute, harmonic and legato layers, each a sine of its own pitch, and release
+samples with `rt_decay`.
 
 The filter and envelope paths above are ADR-0004's fallback for packs without articulation
 samples. The sink passes no `layer` yet. WP-093 adds it for packs that carry `palmMute`,
@@ -1233,7 +1309,15 @@ plans its own program even when it has no notes (it costs nothing until a note a
 Keys are the ones the sink strikes: the note's sounding pitch rounded (`soundingPitch` from
 `@reprise/model`, so a harmonic plans the overtone it plays, not the fretted key), plus grace notes
 and the trill's alternate fret.
-`planSamples` takes every layered region of a key (`resolveAll`).
+`planSamples` takes every layered region of a key and every release region of it (`candidates`).
+
+WP-093 plans per note rather than per instrument: `InstrumentUse` gains
+`layers: { layer: string | undefined; keys: number[] }[]`, the keys the song strikes in each
+articulation layer, and `planSamples` walks only those layers, not `[undefined, ...map.layers]`,
+which is ADR-0005's "articulation layers derived from the score; nothing else is loaded". A song
+with no palm mute then decodes no palm-mute sample, while the release regions of its planned keys
+stay planned, since they must be resident at the note-off. The field and the walk land with
+the planner PR; until then `planSamples` walks every layer.
 
 `load` decodes every sample the opening `bars` (default 4) can reach before it resolves, at every
 velocity and in every articulation layer, since dynamics and articulations are the scheduler's
