@@ -10,6 +10,7 @@ Today it holds only the entry points the lead stubbed in WP-056:
 | `SoundManager`                  | The Sounds screen (WP-091): packs, curated list, installs, remove. Shown while `ui.screen` is `'sounds'`. |
 | `soundsCommands` (`./commands`) | `sounds.show` ("Show sound manager"), which sets the screen.                                              |
 | `TrackEffectsPicker`            | `({ trackId, label? })`: a select of the track's effects preset (WP-092), see below.                      |
+| `TrackSoundPicker`              | `({ trackId, label?, generalMidi? })`: a select of the track's sound pack (WP-091), see below.            |
 
 ## What it can rely on
 
@@ -18,8 +19,8 @@ Today it holds only the entry points the lead stubbed in WP-056:
 - `playback.memory` mirrors the engine's memory report, for the readout of WP-094.
 - `platform().dataDir()` for `sounds/<id>/`.
 
-Per-track sound assignment shows in the mixer (`features/tracks`, the lead's); WP-091 adds the
-control through a small export that the lead wires, not by editing the mixer. Needing a shared
+Per-track sound assignment shows in the mixer (`features/tracks`, the lead's): `TrackSoundPicker`
+is the "Sound" row of each strip, wired by the integration commit of WP-091 PR C. Needing a shared
 store field is a `type:contract` issue for the lead.
 
 ## Effects presets (WP-092)
@@ -87,3 +88,26 @@ and Cancel. "Install from zip" and "Install from folder" add a custom pack. A zi
 anywhere on the screen installs as a custom pack, and a zip dropped on a curated row installs that
 pack (`drop.ts`; the drop zone leaves drops to this screen). `data-slot="memory-readout"` is the
 slot WP-094 fills with the memory readout; the effects demo stays below the lists.
+
+## Sound picker (WP-091 PR C)
+
+`TrackSoundPicker` is a compact select in the mixer strip, under "Instrument":
+
+- The first option is "General MIDI (<program name>)", the mixer supplying the name. Installed packs
+  follow, "Suggested" first (a pack whose `gmPrograms` include the track's program, or a drum pack on
+  a drum track), then "Other packs". A pack with several instruments has one option each
+  ("Black and Blue Basses: Blue"); a single-instrument pack has one.
+- A choice is one undoable `setTrackProperties` with `sound: { ...sound, packId, instrument? }`.
+  `instrument` is stored only for a multi-instrument pack (absent means the pack's first). General
+  MIDI drops `packId` and `instrument`, and drops `sound` with `null` once nothing is left, so the
+  effects preset survives and the gp writer reports no `sound-override` loss.
+- A `packId` (or instrument) the directory lacks stays selected as "<name or id> (not installed)",
+  with "<name> is not installed: playing General MIDI" under the select. The score is never edited:
+  reinstalling the pack brings the sound back. A pack the engine could not load shows
+  `trackSounds[id].message` the same way.
+- The audio service turns the score and the pack directory into the engine's assignments and mirrors
+  `playback.trackSounds` (tier, `missing`, `failed`); the effects label reads the tier from it, so an
+  HQ bass track shows "Automatic (Bass)" with the GM tier bypass on.
+- The acceptance test, `sound-packs.browser.test.tsx`, installs a synthetic pack zip through the pack
+  store, picks it in the mixer, renders offline and compares with the GM render; it then removes the
+  pack and the render matches GM again with `trackSounds` marked `missing` and no error.
