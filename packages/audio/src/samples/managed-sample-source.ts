@@ -194,6 +194,15 @@ export class ManagedSampleSource implements SampleSource {
     return plan;
   }
 
+  /**
+   * Frees one instrument's buffers now, as a pack reinstalled under the same id needs: its refs
+   * would otherwise keep answering with the old files' audio. A buffer another resident
+   * instrument references stays.
+   */
+  evict(instrument: InstrumentId): void {
+    this.#evict(instrument);
+  }
+
   /** Decodes every sample the plan's keys can reach; rejects if any of them fails to load. */
   async preload(plan: SongPlan, regionMaps: RegionMaps): Promise<void> {
     await Promise.all(planSamples(plan, regionMaps).map((ref) => this.getBuffer(ref)));
