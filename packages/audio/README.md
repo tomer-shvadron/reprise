@@ -1053,6 +1053,13 @@ header, no regions. Downloaded packs live in the gitignored `local-sounds/` (see
 pure logic is `sfz/check-pack.ts`, covered by a Node test, and the script drives Vitest through
 `scripts/sounds/vitest.config.ts` because plain Node cannot import the workspace packages.
 
+### HQ memory budget (WP-094)
+
+`hq-memory-budget.test.ts` asserts the HQ row of the roadmap budgets table: four distinct
+Swagbass-shaped packs (254 files of 4.3 s each) on four tracks of the long score, each track
+reaching all 49 keys of a 24-fret guitar at both velocity layers, resident at 283.6 MiB of the
+300 MiB default with no miss and no eviction. A second case halves the budget and plays through.
+
 ### Tests
 
 No sample bytes are committed. `sfz/test/encode.ts` writes PCM WAV (16 and 24 bit) and FLAC with
