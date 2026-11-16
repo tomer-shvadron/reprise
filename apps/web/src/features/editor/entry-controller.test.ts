@@ -64,7 +64,12 @@ describe('installEntry', () => {
     expect(doc().revision).toBe(before + 1);
     expect(beats(0)[0]?.notes[0]).toMatchObject({ string: 1, fret: 3 });
     expect(preview).toHaveBeenCalledTimes(1);
-    expect(preview).toHaveBeenCalledWith(score().tracks[0]?.id, { string: 1, fret: 3 });
+    // The default quarter at 120 bpm, at the dynamic a new note gets (f).
+    expect(preview).toHaveBeenCalledWith(
+      score().tracks[0]?.id,
+      { string: 1, fret: 3 },
+      { velocity: 95, seconds: 0.5 },
+    );
     controller().fret(0);
     expect(beats(0)[0]?.notes[0]?.fret).toBe(0);
     expect(preview).toHaveBeenCalledTimes(2);
