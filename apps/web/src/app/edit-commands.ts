@@ -1,3 +1,5 @@
+import { historyLabel } from '@/features/editor';
+
 import type { Command } from './command-registry';
 import type { AppServices } from './services';
 import { isTextField } from './text-field';
@@ -25,12 +27,34 @@ export function editCommands(services: Pick<AppServices, 'document'>): EditComma
   const redo = () => {
     if (!fieldStep('redo')) document.getState().redo();
   };
+  // Read when the palette draws, so the title names the step the key would replay.
+  const titled = (verb: 'Undo' | 'Redo') => {
+    const stacks = document.getState().historyLabels;
+    const next = (verb === 'Undo' ? stacks.undo : stacks.redo)[0];
+    return next === undefined ? verb : `${verb} ${historyLabel(next)}`;
+  };
   return [
-    { id: 'edit.undo', title: 'Undo', shortcut: { key: 'z', mod: true }, run: undo },
-    { id: 'edit.redo', title: 'Redo', shortcut: { key: 'z', mod: true, shift: true }, run: redo },
+    {
+      id: 'edit.undo',
+      get title() {
+        return titled('Undo');
+      },
+      shortcut: { key: 'z', mod: true },
+      run: undo,
+    },
+    {
+      id: 'edit.redo',
+      get title() {
+        return titled('Redo');
+      },
+      shortcut: { key: 'z', mod: true, shift: true },
+      run: redo,
+    },
     {
       id: 'edit.redoAlternate',
-      title: 'Redo',
+      get title() {
+        return titled('Redo');
+      },
       shortcut: { key: 'y', mod: true, only: 'other' },
       inPalette: false,
       run: redo,

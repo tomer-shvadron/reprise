@@ -30,6 +30,14 @@ export function toggleEffectsPanel(ui: UiStore): void {
   else ui.getState().showPanelView('effects');
 }
 
+/** Shows the history in the right panel, or closes the panel when it already shows it. */
+export function toggleHistoryPanel(ui: UiStore): void {
+  const { panels, rightPanelView } = ui.getState();
+  if (panels.rightPanel && rightPanelView === 'history')
+    ui.getState().setPanelOpen('rightPanel', false);
+  else ui.getState().showPanelView('history');
+}
+
 /**
  * The effects that take a choice, each opening a modal dialog (a popover would let a key edit the
  * score under it): B, Shift+S, Alt+Y, Alt+V and N for the pickers (the tremolo speed and dynamics

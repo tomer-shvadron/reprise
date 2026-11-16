@@ -70,13 +70,13 @@ describe('installEditor, as the services wire it', () => {
     const first = score().tracks[0]?.bars[0]?.voices[0]?.beats[0]?.id ?? '';
     apply(removeBeat({ beatId: first }));
     expect(state().cursor).toMatchObject({ beat: cursor?.beat, at: { beat: 1 } });
-    apply(removeBeat({ beatId: cursor?.beat ?? '' }));
+    const removed = cursor?.beat ?? '';
+    apply(removeBeat({ beatId: removed }));
     expect(state().cursor?.beat).toBe(score().tracks[0]?.bars[0]?.voices[0]?.beats[1]?.id);
     expect(state().cursor?.at.beat).toBe(1);
-    // Undo restores the beat with its id, but the cursor already sits on a beat that still exists.
-    const neighbour = state().cursor?.beat;
+    // Undo restores the beat with its id, and the cursor goes back onto it.
     services.document.getState().undo();
-    expect(state().cursor?.beat).toBe(neighbour);
+    expect(state().cursor?.beat).toBe(removed);
     expect(score().tracks[0]?.bars[0]?.voices[0]?.beats).toHaveLength(3);
   });
 
