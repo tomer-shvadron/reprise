@@ -1,6 +1,6 @@
 # Sound packs: sources and licenses
 
-What Reprise plays with, where it comes from, and what each license allows. Verified 2026-11-05 from secondary sources; **confirm each license on its own download page before adding a pack to the curated manifest** (WP-091). Nothing here is committed to git; the GM soundfont is bundled into the app build, everything else is downloaded or user-supplied.
+What Reprise plays with, where it comes from, and what each license allows. Verified 2026-11-05 from secondary sources; **confirm each license on its own download page before adding a pack to the curated manifest** (WP-091). The packs of the curated list below were confirmed that way on 2026-11-16. Nothing here is committed to git; the GM soundfont is bundled into the app build, everything else is downloaded or user-supplied.
 
 ## How Guitar Pro does it, for reference
 
@@ -50,6 +50,41 @@ Keys and orchestral:
 
 Acoustic guitar is the weak spot: Pianobook's MDM Acoustic Guitar exists with a license to verify; otherwise the GM tier fills in.
 
+## The curated list
+
+`apps/web/src/features/sounds/curated-packs.ts` is what the Sounds screen offers. A pack is listed
+only when its licence is confirmed on its own source page, and `directDownload` also needs an open
+licence, a stable archive URL, and a SHA-256 and size measured from one real download (the three
+archives below were downloaded once into the gitignored `local-sounds/`, installed through the
+real installer, and every entry passed `checkSfzFile`). The list's test requires every listed
+pack to appear in this document with its hash. Ids are fixed (a song names a pack by id) and never
+change. See [ADR-0028](../decisions/0028-sound-packs-stored-under-data-sounds-and-a-curated-list-of-confirmed-licences.md).
+
+| Pack                  | Id             | Version | Licence (confirmed 2026-11-16)                                                    | Archive (size)  | SHA-256                                                            |
+| --------------------- | -------------- | ------- | --------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------ |
+| Karoryfer Swagbass    | `HetrHZohZ3oo` | 1.001   | CC0 1.0, the `LICENSE` of [the repository](https://github.com/sfzinstruments/karoryfer.swagbass) | 144,579,232 B   | `4b4db964413be99a597da246651961e1c4dbb0004db49daccd11387c5f9a535a` |
+| Karoryfer Growlybass  | `oP2Y6UriacYx` | 1.002   | CC0 1.0, the `LICENSE` of [the repository](https://github.com/sfzinstruments/karoryfer.growlybass) | 167,454,256 B   | `b92dca75494fa39d6e8d8b8addaabfe70c5aaa59b5f9a0f624be6de51a2374bc` |
+| Karoryfer Emilyguitar | `qxmLveBRBWt8` | 1.001   | CC0 1.0, the `LICENSE` of [the repository](https://github.com/sfzinstruments/karoryfer.emilyguitar) | 103,484,350 B   | `ffef3b28972763820bee73660a25cf47ea6e13b184342fd5d325a5631598cacb` |
+
+The archives are the GitHub release assets (a 302 to the release CDN; the desktop download follows
+https redirects only). Installed size is the sum of the copied files: 174,246,979, 190,765,319 and
+125,538,629 bytes. Each pack's own `readme.txt` also says "Royalty-free for all commercial and
+non-commercial use". The instruments listed are the mappings that play per note: Growlybass's
+"strange" (release samples only) and Emilyguitar's two chord mappings are left out.
+
+Not listed, with the reason:
+
+- **Karoryfer Black and Blue Basses** (CC0 on its repository): a 1.0 GB archive, which was not measured here. It is a candidate for a follow-up with the hash and entries measured.
+- **Unreal Instruments** (Standard Guitar, Metal GTX): the terms are on a Japanese site and were not confirmed. Drop-only when added.
+- **Pianobook MDM Acoustic Guitar**: needs a login to download; drop-only when its terms are confirmed.
+- **Salamander Grand Piano, Salamander Drumkit, AVL Drumkits, SM Drums, Sonatina Symphonic Orchestra, Virtual Playing Orchestra**: not confirmed on their source pages yet, so not listed. A user can still drop any of them as a custom pack.
+- **Impulse responses**: out of scope for the pack manager (decision 11 on #195).
+
+A custom pack (any folder or zip of an SFZ instrument, not in the list) installs through the same
+pipeline: it gets a new id, one instrument per root-level `.sfz` that passes the check, and no
+licence record. The installer copies only `.sfz`, `.sfzh`, `.inc`, `.wav`, `.flac`, `.ogg`, `.oga`,
+`.opus`, `.txt`, `.md` and `LICENSE`/`README` files.
+
 ## Impulse responses
 
 - **Cabinets**: free packs exist (God's Cab, Metal Cabs by Erik Ekholm, Origin Effects' library, forward audio faIR) but their terms are "free to use", not "free to redistribute". They are user-downloaded through the pack manager, never bundled.
@@ -58,7 +93,7 @@ Acoustic guitar is the weak spot: Pianobook's MDM Acoustic Guitar exists with a 
 
 ## Pack manifest fields (for WP-091)
 
-`id`, `name`, `family` (electric-guitar, acoustic-guitar, bass, drums, keys, orchestral, other), `gmPrograms` it can stand in for, `format`, `sourceUrl`, `licenseName`, `licenseUrl`, `directDownload` (boolean), `sizeBytes`, `entries` (articulation set name to SFZ path), `sha256` of the archive when known.
+`schema` (1), `id` (12 letters or digits), `name`, `family` (electric-guitar, acoustic-guitar, bass, drums, keys, orchestral, other), `gmPrograms` it can stand in for, `format` (`sfz`), `version`, `sourceUrl`, `licenseName`, `licenseUrl`, `directDownload` (boolean), `download` (`url`, `sha256` and `sizeBytes` of the archive, and the `root` folder inside it), `sizeBytes` (installed), and `instruments`: each a `key`, a `name` and `entries` (articulation set name to SFZ path, `default` required). The schema is `features/sounds/manifest.ts`; `pack.json` adds `curated`, `source`, `installedAt` and the file index.
 
 ## Sources consulted
 

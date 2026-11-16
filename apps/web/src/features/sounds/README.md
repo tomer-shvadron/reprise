@@ -5,11 +5,11 @@
 
 Today it holds only the entry points the lead stubbed in WP-056:
 
-| Export                          | What it is                                                                                    |
-| ------------------------------- | --------------------------------------------------------------------------------------------- |
-| `SoundManager`                  | A placeholder naming WP-091. The app shows it over the score while `ui.screen` is `'sounds'`. |
-| `soundsCommands` (`./commands`) | `sounds.show` ("Show sound manager"), which sets the screen.                                  |
-| `TrackEffectsPicker`            | `({ trackId, label? })`: a select of the track's effects preset (WP-092), see below.          |
+| Export                          | What it is                                                                                                |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `SoundManager`                  | The Sounds screen (WP-091): packs, curated list, installs, remove. Shown while `ui.screen` is `'sounds'`. |
+| `soundsCommands` (`./commands`) | `sounds.show` ("Show sound manager"), which sets the screen.                                              |
+| `TrackEffectsPicker`            | `({ trackId, label? })`: a select of the track's effects preset (WP-092), see below.                      |
 
 ## What it can rely on
 
@@ -47,13 +47,43 @@ folder holds the UI:
 
 ## Pack contract (#267)
 
-- `AppServices.sounds` is the `SoundPackStore` from `createSoundPackStore({ platform })`: the minimal
-  shape, `getState().installed`, `get(id)`, `setInstalled(packs)` and `subscribe(listener)`. It is the
-  `PackDirectory` the audio service reads; WP-091 adds the scan of `data/sounds`, the installer and
-  the actions. `InstalledPackSource` and `PackDirectory` are in `state/sound-packs.ts`.
+- `AppServices.sounds` is the `SoundPackStore` from `createSoundPackStore({ platform, audio })`. It is
+  the `PackDirectory` the audio service reads (`get(id)`, `subscribe(listener)`, which fires only when
+  the installed set changes, never on install progress) and a zustand store (`api`, for `useStore`)
+  with the actions of the pack manager, below. `InstalledPackSource` and `PackDirectory` are in
+  `state/sound-packs.ts`.
 - `playback.trackSounds[trackId]` is `{ tier, packId?, problem?: 'missing' | 'failed', message? }`:
   `missing` is a pack (or instrument) the directory lacks, `failed` one the engine could not load.
   Both play GM.
 - `audio.releasePack(id)` reloads without the pack and resolves once the engine holds no reader for
   it; call it before deleting the folder.
 - The drop zone ignores drops while `ui.screen` is `'sounds'`: the screen takes a dropped zip.
+
+## Pack manager (WP-091, [ADR-0028](../../../../../docs/decisions/0028-sound-packs-stored-under-data-sounds-and-a-curated-list-of-confirmed-licences.md))
+
+- `manifest.ts`: the zod schemas (`PackManifest`, `InstalledPack`) and the `data/sounds/<id>/` layout:
+  `pack.json` and `files/`. A `Track.sound.packId` is the 12-character pack id.
+- `curated-packs.ts`: the list the screen offers, only packs whose licence was confirmed on the source
+  page, with the pinned SHA-256 and size of each direct download. `docs/reference/sound-packs.md` is
+  the record, and a test keeps the two in step.
+- `install/zip.ts`: the zip reader for untrusted archives (ranged reads, `DecompressionStream`,
+  caps on entries, depth and sizes, no traversal, symlinks, encryption or overlap).
+- `install/install.ts`: `installPack` stages, checks (`checkSfzFile`, `checkPack`) and swaps a pack in;
+  `downloadPackArchive` goes through `Platform.download`; `sweepWorkAreas` clears leftovers.
+- `pack-store.ts`: the scan (startup, from `App`), `installCurated`, `installZip`, `installFolder`,
+  `cancel`, `remove` (releases the pack from the engine first, reinstates it if the folder cannot be
+  removed), `removeDamaged` and `rename`. One install runs at a time.
+- `pack-files.ts`: the reader the engine gets for a pack: a path is looked up in the pack's own file
+  index (exactly, then ignoring case) and never reaches the platform otherwise.
+
+## Sounds screen (WP-091)
+
+`SoundManager` lists installed packs by family (licence link, size, version, tracks of the open song
+that use it, Update when the list has a newer version, Rename for custom packs, Remove behind a
+confirm that says how many tracks fall back to General MIDI), the curated packs not yet installed
+(Download where `Platform.download` exists; else "Open download page" and "Choose zip"), damaged
+folders with Remove, and every refusal with its details. One install runs at a time, with progress
+and Cancel. "Install from zip" and "Install from folder" add a custom pack. A zip or folder dropped
+anywhere on the screen installs as a custom pack, and a zip dropped on a curated row installs that
+pack (`drop.ts`; the drop zone leaves drops to this screen). `data-slot="memory-readout"` is the
+slot WP-094 fills with the memory readout; the effects demo stays below the lists.
