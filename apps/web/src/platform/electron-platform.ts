@@ -52,8 +52,8 @@ export function createElectronPlatform(bridge: RepriseBridge, win: Window = wind
       });
     },
     onCloseRequest: (listener) => bridge.onCloseRequest(listener),
-    confirmClose: () => {
-      bridge.confirmClose().catch((error: unknown) => {
+    confirmClose: (close) => {
+      bridge.confirmClose(close).catch((error: unknown) => {
         console.error('Could not close the window', error);
       });
     },

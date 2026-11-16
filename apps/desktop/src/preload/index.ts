@@ -30,11 +30,39 @@ function on<C extends EventChannel>(
   };
 }
 
-// The page world calls these through contextBridge with whatever it likes, so the one argument
-// is checked here as well as in main.
-function setDocumentEdited(edited: boolean): Promise<undefined> {
-  if (typeof edited !== 'boolean') return Promise.reject(new TypeError('Expected a boolean'));
-  return invoke('window:set-edited', edited);
+// The page world calls these through contextBridge with whatever it likes, so arguments are
+// checked here as well as in main. Main is told the document is edited only while a close
+// listener is subscribed: with nobody to answer, holding the close would trap the user.
+let edited = false;
+let closeListeners = 0;
+
+function reportEdited(): Promise<undefined> {
+  return invoke('window:set-edited', edited && closeListeners > 0);
+}
+
+function setDocumentEdited(value: boolean): Promise<undefined> {
+  if (typeof value !== 'boolean') return Promise.reject(new TypeError('Expected a boolean'));
+  edited = value;
+  return reportEdited();
+}
+
+function confirmClose(close: boolean): Promise<undefined> {
+  if (typeof close !== 'boolean') return Promise.reject(new TypeError('Expected a boolean'));
+  return invoke('window:close', close);
+}
+
+function onCloseRequest(listener: () => void): () => void {
+  const off = on('window:close-requested', listener);
+  closeListeners += 1;
+  if (closeListeners === 1 && edited) void reportEdited();
+  let subscribed = true;
+  return () => {
+    if (!subscribed) return;
+    subscribed = false;
+    off();
+    closeListeners -= 1;
+    if (closeListeners === 0 && edited) void reportEdited();
+  };
 }
 
 const bridge: RepriseBridge = {
@@ -53,8 +81,8 @@ const bridge: RepriseBridge = {
   dataDir: () => invoke('app:data-dir'),
   print: (options) => (options ? invoke('app:print', options) : invoke('app:print')),
   setDocumentEdited,
-  confirmClose: () => invoke('window:close'),
-  onCloseRequest: (listener) => on('window:close-requested', listener),
+  confirmClose,
+  onCloseRequest,
   onMenuCommand: (listener) => on('menu:command', listener),
   onOpenRecent: (listener) => on('menu:open-recent', listener),
 };

@@ -132,8 +132,11 @@ describe('window payloads', () => {
     }
   });
 
-  it('takes no arguments for window:close', () => {
-    expect(parsers['window:close']([])).toEqual([]);
-    expect(() => parsers['window:close']([true])).toThrow(PayloadError);
+  it('takes one boolean for window:close, and nothing else', () => {
+    expect(parsers['window:close']([true])).toEqual([true]);
+    expect(parsers['window:close']([false])).toEqual([false]);
+    for (const bad of [[], ['yes'], [0], [true, true]]) {
+      expect(() => parsers['window:close'](bad)).toThrow(PayloadError);
+    }
   });
 });

@@ -49,7 +49,7 @@ describe('CloseGuard', () => {
     expect(ports.ask).toHaveBeenCalledOnce();
     expect(ports.closeWindow).not.toHaveBeenCalled();
 
-    g.confirm();
+    g.answer(true);
 
     expect(ports.closeWindow).toHaveBeenCalledOnce();
     expect(ports.quitApp).not.toHaveBeenCalled();
@@ -62,7 +62,7 @@ describe('CloseGuard', () => {
     g.setEdited(true);
 
     expect(g.onBeforeQuit()).toBe(true);
-    g.confirm();
+    g.answer(true);
 
     expect(ports.closeWindow).toHaveBeenCalledOnce();
     expect(ports.quitApp).toHaveBeenCalledOnce();
@@ -76,7 +76,7 @@ describe('CloseGuard', () => {
 
     // The user cancelled: nothing was sent. Later they press the window's close button.
     expect(g.onClose()).toBe(true);
-    g.confirm();
+    g.answer(true);
 
     expect(ports.closeWindow).toHaveBeenCalledOnce();
     expect(ports.quitApp).not.toHaveBeenCalled();
@@ -96,16 +96,31 @@ describe('CloseGuard', () => {
     const { ports, guard: g } = guard();
     g.setEdited(true);
 
-    g.confirm();
+    g.answer(true);
     expect(ports.closeWindow).not.toHaveBeenCalled();
 
     g.onClose();
     g.setEdited(false);
-    g.confirm();
+    g.answer(true);
     expect(ports.closeWindow).not.toHaveBeenCalled();
   });
 
-  it('closes without an answer when the renderer crashes or hangs mid-question', () => {
+  it('ends the request on Cancel: a late answer or a later hang neither closes nor quits', () => {
+    const { ports, guard: g } = guard();
+    g.setEdited(true);
+    g.onBeforeQuit();
+
+    g.answer(false);
+    g.setEdited(true);
+    g.markUnresponsive(true);
+    g.markRendererGone();
+    g.answer(true);
+
+    expect(ports.closeWindow).not.toHaveBeenCalled();
+    expect(ports.quitApp).not.toHaveBeenCalled();
+  });
+
+  it('does not finish an open request when the renderer hangs or crashes', () => {
     for (const fail of [
       (g: CloseGuard) => {
         g.markRendererGone();
@@ -116,23 +131,42 @@ describe('CloseGuard', () => {
     ]) {
       const { ports, guard: g } = guard();
       g.setEdited(true);
-      g.onClose();
+      g.onBeforeQuit();
 
       fail(g);
 
-      expect(ports.closeWindow).toHaveBeenCalledOnce();
+      expect(ports.closeWindow).not.toHaveBeenCalled();
+      expect(ports.quitApp).not.toHaveBeenCalled();
+      // The user's next attempt goes through without a question nobody can answer.
+      expect(g.onBeforeQuit()).toBe(false);
     }
   });
 
-  it('quits after an unanswered Quit when the renderer hangs', () => {
+  it('forgets a cancelled Quit, so a plain close after it does not quit', () => {
     const { ports, guard: g } = guard();
     g.setEdited(true);
     g.onBeforeQuit();
+    g.answer(false);
 
-    g.markUnresponsive(true);
+    g.onClose();
+    g.answer(true);
 
     expect(ports.closeWindow).toHaveBeenCalledOnce();
-    expect(ports.quitApp).toHaveBeenCalledOnce();
+    expect(ports.quitApp).not.toHaveBeenCalled();
+  });
+
+  it('reset starts a reloaded window over: unedited, alive and responsive', () => {
+    const { ports, guard: g } = guard();
+    g.setEdited(true);
+    g.markRendererGone();
+    g.markUnresponsive(true);
+
+    g.reset();
+    expect(g.onClose()).toBe(false);
+
+    g.setEdited(true);
+    expect(g.onClose()).toBe(true);
+    expect(ports.ask).toHaveBeenCalledOnce();
   });
 
   it('never asks a crashed, hung or destroyed window', () => {

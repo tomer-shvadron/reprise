@@ -57,22 +57,32 @@ export class CloseGuard {
   setEdited(edited: boolean): void {
     this.#edited = edited;
     // A document that was edited and is now clean no longer owes anyone a question.
-    if (!edited) this.#asking = false;
+    if (!edited) this.#end();
   }
 
+  // A crash or a hang only lets the next close or Quit through unasked. It never finishes a
+  // request already open: a transient hang minutes after a Cancel must not quit the app.
   markRendererGone(): void {
     this.#rendererGone = true;
-    this.#abandon();
   }
 
   markUnresponsive(unresponsive: boolean): void {
     this.#unresponsive = unresponsive;
-    if (unresponsive) this.#abandon();
+  }
+
+  /** A new page loaded in the window: it has reported nothing, and a dead renderer is replaced. */
+  reset(): void {
+    this.#edited = false;
+    this.#rendererGone = false;
+    this.#unresponsive = false;
+    this.#confirmed = false;
+    this.#asking = false;
+    this.#quitting = false;
   }
 
   markDestroyed(): void {
     this.#destroyed = true;
-    this.#asking = false;
+    this.#end();
   }
 
   /** The window's `close` event. */
@@ -88,9 +98,16 @@ export class CloseGuard {
     return hold;
   }
 
-  /** The renderer's `window:close`. Ignored unless a request is open, so a page cannot close at will. */
-  confirm(): void {
+  /**
+   * The renderer's `window:close`: `true` after it saved or discarded, `false` for Cancel. Either
+   * ends the request; ignored when none is open, so a page cannot close the window at will.
+   */
+  answer(close: boolean): void {
     if (!this.#asking) return;
+    if (!close) {
+      this.#end();
+      return;
+    }
     this.#asking = false;
     this.#confirmed = true;
     this.#finish();
@@ -110,11 +127,9 @@ export class CloseGuard {
     return true;
   }
 
-  /** The renderer died with a question open: close without it, and quit if that is what was asked. */
-  #abandon(): void {
-    if (!this.#asking || this.#destroyed) return;
+  #end(): void {
     this.#asking = false;
-    this.#finish();
+    this.#quitting = false;
   }
 
   #finish(): void {

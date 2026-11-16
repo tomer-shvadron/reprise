@@ -10,7 +10,8 @@ export interface ProfilePaths {
 /**
  * Where the app keeps its state when `REPRISE_PROFILE_DIR` names a folder: Chromium's profile and
  * the library both move inside it, so a run (the smoke test) never touches the user's own
- * `userData` or `~/Music/Reprise`. Undefined without the variable. Only the environment of the
+ * `userData` or `~/Music/Reprise`. Undefined without the variable; a relative value throws, which
+ * kills the app at load, fine for a dev hook. Only the environment of the
  * process that launches the app can set it; the renderer has no way to.
  */
 export function profilePaths(

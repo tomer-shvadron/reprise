@@ -53,10 +53,11 @@ describe('the Electron platform', () => {
     const platform = createElectronPlatform(bridge);
 
     platform.setDocumentEdited?.(true);
-    platform.confirmClose?.();
+    platform.confirmClose?.(true);
+    platform.confirmClose?.(false);
 
     expect(bridge.setDocumentEdited).toHaveBeenCalledWith(true);
-    expect(bridge.confirmClose).toHaveBeenCalledOnce();
+    expect(vi.mocked(bridge.confirmClose).mock.calls).toEqual([[true], [false]]);
   });
 
   it('subscribes a close listener through the bridge and returns its unsubscribe', () => {
@@ -81,7 +82,7 @@ describe('the Electron platform', () => {
     const platform = createElectronPlatform(bridge);
 
     platform.setDocumentEdited?.(false);
-    platform.confirmClose?.();
+    platform.confirmClose?.(true);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(log).toHaveBeenCalledTimes(2);

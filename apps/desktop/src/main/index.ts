@@ -21,6 +21,7 @@ import type { FileFilter, MenuCommandId, RecentSong } from '@reprise/web';
 import { APP_INDEX_URL, APP_SCHEME, createAppProtocolHandler } from './app-protocol';
 import { isAppUrl } from './app-url';
 import { CloseGuard } from './close-guard';
+import { holdQuit, wireCloseGuard } from './close-wiring';
 import { readPath, writePath } from './file-io';
 import { registerInvokeHandlers, sendEvent } from './ipc';
 import { menuTemplate } from './menu';
@@ -28,7 +29,14 @@ import { openedFile } from './opened-file';
 import { PathAccess } from './path-access';
 import { describePickedFile, walkFolder } from './pick-folder';
 import { profilePaths } from './profile';
-import { listDirIn, mkdirIn, moveIn, removeIn, type StorageRoots } from './storage-fs';
+import {
+  listDirIn,
+  mkdirIn,
+  moveIn,
+  removeIn,
+  sweepTempFiles,
+  type StorageRoots,
+} from './storage-fs';
 import {
   DEFAULT_WINDOW_STATE,
   fitToDisplays,
@@ -53,7 +61,11 @@ protocol.registerSchemesAsPrivileged([
 // Before anything reads a path: a run under REPRISE_PROFILE_DIR (the smoke test) keeps all of its
 // state in that folder and leaves the user's own profile and library alone.
 const profile = profilePaths(process.env);
-if (profile) app.setPath('userData', profile.userData);
+if (profile) {
+  app.setPath('userData', profile.userData);
+  // A stray export must not pass silently: the real library would look empty.
+  console.error(`Using profile ${profile.userData} and ${profile.library} (REPRISE_PROFILE_DIR)`);
+}
 
 const libraryDir = profile?.library ?? join(app.getPath('music'), 'Reprise');
 // The app's own files get a folder of their own: userData is also Chromium's profile (IndexedDB,
@@ -155,8 +167,8 @@ registerInvokeHandlers(
       window.setDocumentEdited(edited);
       return Promise.resolve(undefined);
     },
-    'window:close': (event) => {
-      closeGuards.get(ownerWindow(event))?.confirm();
+    'window:close': (event, close) => {
+      closeGuards.get(ownerWindow(event))?.answer(close);
       return Promise.resolve(undefined);
     },
     'menu:set-recent': (_event, items) => {
@@ -237,44 +249,32 @@ function trackWindowState(window: BrowserWindow): void {
   });
 }
 
-/**
- * Holds a close of an edited document until the renderer answers. No `beforeunload` is involved:
- * Electron cancels a close silently when one is registered, so the renderer is asked over IPC.
- */
 function guardClose(window: BrowserWindow): void {
-  const { webContents } = window;
-  const guard = new CloseGuard({
-    ask: () => {
-      if (!window.isDestroyed()) sendEvent(webContents, 'window:close-requested');
+  const guard = wireCloseGuard(
+    {
+      events: window,
+      contents: window.webContents,
+      isDestroyed: () => window.isDestroyed(),
+      close: () => {
+        window.close();
+      },
+      setDocumentEdited: (edited) => {
+        window.setDocumentEdited(edited);
+      },
     },
-    closeWindow: () => {
-      if (!window.isDestroyed()) window.close();
+    {
+      ask: () => {
+        sendEvent(window.webContents, 'window:close-requested');
+      },
+      quit: () => {
+        app.quit();
+      },
+      forget: () => {
+        closeGuards.delete(window);
+      },
     },
-    quitApp: () => {
-      app.quit();
-    },
-  });
+  );
   closeGuards.set(window, guard);
-  window.on('close', (event) => {
-    if (guard.onClose()) event.preventDefault();
-  });
-  window.on('closed', () => {
-    guard.markDestroyed();
-    closeGuards.delete(window);
-  });
-  webContents.on('render-process-gone', () => {
-    guard.markRendererGone();
-  });
-  webContents.on('unresponsive', () => {
-    guard.markUnresponsive(true);
-  });
-  webContents.on('responsive', () => {
-    guard.markUnresponsive(false);
-  });
-  // A page that navigates away starts unreported; the new one reports for itself.
-  webContents.on('did-start-navigation', (details) => {
-    if (details.isMainFrame && !details.isSameDocument) guard.setEdited(false);
-  });
 }
 
 function restrictNavigation(window: BrowserWindow): void {
@@ -345,6 +345,10 @@ async function start(): Promise<void> {
   await app.whenReady();
   await mkdir(libraryDir, { recursive: true });
   await mkdir(dataDir, { recursive: true });
+  // Off the startup path: a library can be large, and the sweep is housekeeping.
+  void sweepTempFiles(storageRoots).catch((error: unknown) => {
+    console.error('Could not sweep leftover temp files', error);
+  });
   protocol.handle(APP_SCHEME, createAppProtocolHandler(RENDERER_DIR));
   allowMicrophoneOnly();
   applyMenu();
@@ -355,12 +359,8 @@ async function start(): Promise<void> {
   });
 }
 
-// Quit (the menu, Cmd+Q, the dock) does not go through a window's close button, so it is held
-// here the same way. Any window that holds the answer back keeps the app open.
 app.on('before-quit', (event) => {
-  for (const guard of closeGuards.values()) {
-    if (guard.onBeforeQuit()) event.preventDefault();
-  }
+  holdQuit(closeGuards.values(), event);
 });
 
 app.on('window-all-closed', () => {

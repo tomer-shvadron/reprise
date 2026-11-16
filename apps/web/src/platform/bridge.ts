@@ -113,8 +113,11 @@ export interface InvokeChannels {
   'app:print': { args: [options?: PrintOptions]; result: undefined };
   /** The renderer reports whether the open document has unsaved changes; main keys the close guard on it. */
   'window:set-edited': { args: [edited: boolean]; result: undefined };
-  /** The renderer answers a close request: it saved or discarded, so main may close now. */
-  'window:close': { args: []; result: undefined };
+  /**
+   * The renderer answers a close request: `true` once it saved or discarded, so main closes now
+   * (and quits, for a Quit); `false` for Cancel, which ends the request. Ignored with none open.
+   */
+  'window:close': { args: [close: boolean]; result: undefined };
 }
 
 export type InvokeChannel = keyof InvokeChannels;
