@@ -5,6 +5,9 @@ import type { InstalledPackSource } from '@/state/sound-packs';
 
 import { packFilePath, type InstalledPack } from './manifest';
 
+/** The installer refuses two paths with the same fold, so the lookup stays unambiguous. */
+const fold = (path: string) => path.normalize('NFC').toLowerCase();
+
 /**
  * The reader the audio engine gets for one installed pack. A path is looked up in the pack's own
  * file index, exactly first and then ignoring case (a pack written on a case-insensitive file
@@ -17,9 +20,9 @@ export function createPackFiles(
 ): SfzFiles {
   const sizes = new Map<string, number>(pack.files);
   const folded = new Map<string, string>();
-  for (const [path] of pack.files) folded.set(path.toLowerCase(), path);
+  for (const [path] of pack.files) folded.set(fold(path), path);
   const resolve = (path: string): string | undefined =>
-    sizes.has(path) ? path : folded.get(path.toLowerCase());
+    sizes.has(path) ? path : folded.get(fold(path));
   return {
     read(path) {
       const resolved = resolve(path);

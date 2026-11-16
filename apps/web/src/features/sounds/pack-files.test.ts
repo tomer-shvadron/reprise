@@ -46,6 +46,11 @@ describe('createPackFiles', () => {
     expect(files.size?.('SAMPLES/A.wav')).toBe(10);
   });
 
+  it('resolves a sample named in decomposed form to the composed file', () => {
+    const accented = createPackFiles({ readFile }, pack([['samples/caf\u00e9.wav', 7]]));
+    expect(accented.size?.('samples/cafe\u0301.wav')).toBe(7);
+  });
+
   it('never passes a path outside the index to the platform', async () => {
     readFile.mockClear();
     await expect(files.read('../../library/songs/x.reprise')).rejects.toThrow('No file');

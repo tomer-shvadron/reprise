@@ -362,7 +362,98 @@ describe('selectPackFiles caps', () => {
   });
 });
 
+describe('installPack: what is held and what is written', () => {
+  it('refuses a pack whose SFZ text adds up to more than the check holds', async () => {
+    const { platform, storage } = testPlatform();
+    const big = new Uint8Array(4 * 1024 * 1024).fill(10);
+    const files = Array.from({ length: 5 }, (_, i) => ({
+      path: `big${String(i)}.sfz`,
+      size: big.length,
+      read: () => Promise.resolve(big),
+    }));
+    const error = await refusal(installPack({ platform, id: ID, files, name: 'x', source: 'zip' }));
+    expect(error.message).toContain('SFZ text');
+    expect(packPaths(storage)).toEqual([]);
+  });
+
+  it('does not hold notes and licences for the check, but still installs them', async () => {
+    const { platform } = testPlatform();
+    const contents = packContents({ 'notes.txt': 'x'.repeat(3 * 1024 * 1024), LICENSE: 'CC0' });
+    const pack = await installPack({
+      platform,
+      id: ID,
+      files: incomingOf(contents),
+      name: 'x',
+      source: 'zip',
+    });
+    expect(pack.files.map(([path]) => path)).toEqual(
+      expect.arrayContaining(['notes.txt', 'LICENSE']),
+    );
+  });
+
+  it('truncates an overlong name so pack.json still reads back after a restart', async () => {
+    const { platform, storage } = testPlatform();
+    const pack = await installPack({
+      platform,
+      id: ID,
+      files: incomingOf(packContents()),
+      name: 'n'.repeat(300),
+      source: 'zip',
+    });
+    expect(pack.name).toHaveLength(120);
+    expect(parseInstalledPack(decode(storage.bytes(`data/sounds/${ID}/pack.json`)))).toEqual(pack);
+  });
+
+  it('refuses a path too long to store, naming it', async () => {
+    const { platform } = testPlatform();
+    const path = `${'a'.repeat(200)}/${'b'.repeat(200)}/${'c'.repeat(200)}/${'d'.repeat(200)}/${'e'.repeat(200)}/x.wav`;
+    const error = await refusal(
+      installPack({
+        platform,
+        id: ID,
+        files: incomingOf(packContents({ [path]: 'x' })),
+        name: 'x',
+        source: 'zip',
+      }),
+    );
+    expect(error.message).toContain('cannot be stored');
+  });
+});
+
 describe('sweepWorkAreas', () => {
+  it('restores a pack whose update was interrupted between the two moves', async () => {
+    const { platform, storage } = testPlatform();
+    await platform.writeFile(
+      `data/sounds/.trash/${ID}-0a1b2c3d/pack.json`,
+      new TextEncoder().encode('old'),
+    );
+    await platform.writeFile(
+      `data/sounds/.staging/${ID}-0a1b2c3d/pack.json`,
+      new TextEncoder().encode('new'),
+    );
+    await sweepWorkAreas(platform);
+    expect(decode(storage.bytes(`data/sounds/${ID}/pack.json`))).toBe('old');
+    expect(
+      storage.paths().filter((path) => path.startsWith('data/sounds/.') && storage.bytes(path)),
+    ).toEqual([]);
+  });
+
+  it('deletes the trash of a finished update and leaves the installed pack alone', async () => {
+    const { platform, storage } = testPlatform();
+    await platform.writeFile(`data/sounds/${ID}/pack.json`, new TextEncoder().encode('current'));
+    await platform.writeFile(
+      `data/sounds/.trash/${ID}-0a1b2c3d/pack.json`,
+      new TextEncoder().encode('old'),
+    );
+    await sweepWorkAreas(platform);
+    expect(decode(storage.bytes(`data/sounds/${ID}/pack.json`))).toBe('current');
+    expect(
+      storage
+        .paths()
+        .filter((path) => path.startsWith('data/sounds/.trash/') && storage.bytes(path)),
+    ).toEqual([]);
+  });
+
   it('removes staging, trash and downloads', async () => {
     const { platform, storage } = testPlatform();
     for (const dir of ['.staging/x', '.trash/y', '.downloads']) {

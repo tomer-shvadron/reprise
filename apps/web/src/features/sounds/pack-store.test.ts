@@ -220,7 +220,61 @@ describe('the pack store: install', () => {
   });
 });
 
+describe('the pack store: stability', () => {
+  it('does not tell the directory when a scan finds the same packs', async () => {
+    const { store, zip } = await storeWithZip();
+    await store.installZip(zip);
+    const listener = vi.fn();
+    store.subscribe(listener);
+    await store.scan();
+    await store.scan();
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('keeps a pack an install finished while a scan was reading', async () => {
+    const t = testPlatform();
+    const manifest = syntheticManifest();
+    const zip = zipFileOf('a.zip', await zipOf(packContents()));
+    const holder: { store?: ReturnType<typeof createSoundPackStore> } = {};
+    let installed = false;
+    const platform = {
+      ...t.platform,
+      listDir: async (path: string) => {
+        // The scan lists the folders (none yet); the install then lands before the scan ends.
+        const entries = await t.platform.listDir(path);
+        if (path === 'data/sounds' && !installed) {
+          installed = true;
+          await holder.store?.installZip(zip, manifest);
+        }
+        return entries;
+      },
+    };
+    const store = createSoundPackStore({ platform });
+    holder.store = store;
+    await store.scan();
+    expect(store.get(manifest.id)).toBeDefined();
+  });
+});
+
 describe('the pack store: remove and rename', () => {
+  it('refuses a rename while that pack is installing', async () => {
+    const { store, zip } = await storeWithZip();
+    await store.installZip(zip);
+    const [pack] = store.getState().packs;
+    if (!pack) throw new Error('not installed');
+    const slow = {
+      ...zip,
+      read: (range: { offset: number; length: number }) =>
+        new Promise<Uint8Array>((resolve) => {
+          setTimeout(() => void zip.read(range).then(resolve), 5);
+        }),
+    };
+    const running = store.installZip(slow, syntheticManifest({ id: pack.id }));
+    expect(await store.rename(pack.id, 'New name')).toBe(false);
+    expect(await running).toBe(true);
+    expect(store.get(pack.id)?.name).not.toBe('New name');
+  });
+
   it('releases the pack from the engine before the folder is deleted', async () => {
     const t = testPlatform();
     const order: string[] = [];

@@ -8,6 +8,7 @@ import {
   PACK_FILES_DIR,
   SOUNDS_DIR,
   packFolder,
+  InstalledPackSchema,
   type InstalledPack,
   type PackInstrument,
   type PackManifest,
@@ -32,10 +33,14 @@ export const INSTALL_LIMITS = {
   maxTotalBytes: ZIP_LIMITS.maxTotalBytes,
   /** A curated pack may hold this many times its manifest's `sizeBytes`. */
   curatedMargin: 1.25,
+  /** SFZ text kept in memory for the check, all files together. */
+  maxCheckedTextBytes: 16 * 1024 * 1024,
   /** The first bytes of a sample kept for its header check. */
   headerBytes: 64 * 1024,
 };
 
+/** Text the check reads whole; every other text file is written and then forgotten. */
+const CHECKED_TEXT_EXTENSIONS = new Set(['sfz', 'sfzh', 'inc']);
 const TEXT_EXTENSIONS = new Set(['sfz', 'sfzh', 'inc', 'txt', 'md']);
 const SAMPLE_EXTENSIONS = new Set(['wav', 'flac', 'ogg', 'oga', 'opus']);
 /** The pack's own folder tree is the only thing copied: images, NKI and PDF files never are. */
@@ -130,6 +135,9 @@ export const isTextFile = (path: string): boolean => {
   const name = path.slice(path.lastIndexOf('/') + 1);
   return TEXT_EXTENSIONS.has(extensionOf(name)) || isLicenceOrReadme(name);
 };
+
+const isCheckedText = (path: string): boolean =>
+  CHECKED_TEXT_EXTENSIONS.has(extensionOf(path.slice(path.lastIndexOf('/') + 1)));
 
 const isCopied = (path: string): boolean => {
   const name = path.slice(path.lastIndexOf('/') + 1);
@@ -280,7 +288,7 @@ function customInstruments(checks: readonly SfzFileCheck[]): {
     keys.add(key);
     instruments.push({
       key,
-      name: titleOf(file) || 'Instrument',
+      name: (titleOf(file) || 'Instrument').slice(0, 120),
       entries: { default: check.path },
     });
   }
@@ -355,6 +363,7 @@ export async function installPack(options: InstallOptions): Promise<InstalledPac
     const snapshot: Record<string, { size: number; bytes: Uint8Array; truncated?: boolean }> = {};
     const index: [string, number][] = [];
     let done = 0;
+    let checkedText = 0;
     onProgress?.({ phase: 'extracting', done, total });
     for (const file of files) {
       if (signal?.aborted) throw abortError();
@@ -365,17 +374,27 @@ export async function installPack(options: InstallOptions): Promise<InstalledPac
       }
       await platform.writeFile(`${staging}/${PACK_FILES_DIR}/${file.path}`, bytes);
       index.push([file.path, bytes.length]);
-      const kept = text ? bytes : bytes.slice(0, INSTALL_LIMITS.headerBytes);
-      Object.defineProperty(snapshot, file.path, {
-        value: {
-          size: bytes.length,
-          bytes: text ? bytes : kept,
-          ...(!text && bytes.length > kept.length && { truncated: true }),
-        },
-        enumerable: true,
-        configurable: true,
-        writable: true,
-      });
+      const checked = isCheckedText(file.path);
+      if (checked) {
+        checkedText += bytes.length;
+        if (checkedText > INSTALL_LIMITS.maxCheckedTextBytes) {
+          throw new InstallError('The pack holds more SFZ text than expected, so it was refused.');
+        }
+      }
+      // Notes, licences and the like are on disk now and need no check, so they are not held.
+      if (!text || checked) {
+        const kept = text ? bytes : bytes.slice(0, INSTALL_LIMITS.headerBytes);
+        Object.defineProperty(snapshot, file.path, {
+          value: {
+            size: bytes.length,
+            bytes: kept,
+            ...(!text && bytes.length > kept.length && { truncated: true }),
+          },
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
+      }
       done += bytes.length;
       onProgress?.({ phase: 'extracting', done, total });
     }
@@ -401,13 +420,23 @@ export async function installPack(options: InstallOptions): Promise<InstalledPac
       instruments = found.instruments;
     }
     if (signal?.aborted) throw abortError();
-    const pack: InstalledPack = {
-      ...(manifest ?? customManifest(id, options.name ?? 'Sound pack', instruments)),
+    const candidate = {
+      ...(manifest ??
+        customManifest(id, (options.name ?? 'Sound pack').slice(0, 120), instruments)),
       curated: manifest !== undefined,
       source: options.source,
       installedAt: (options.now?.() ?? new Date()).toISOString(),
       files: index,
     };
+    // What is written must read back, or the pack would be "damaged" after a restart.
+    const parsed = InstalledPackSchema.safeParse(candidate);
+    if (!parsed.success) {
+      throw new InstallError(
+        'This pack cannot be described in pack.json, so it was refused.',
+        parsed.error.issues.slice(0, 5).map((issue) => `${issue.path.join('.')}: ${issue.message}`),
+      );
+    }
+    const pack: InstalledPack = parsed.data;
     onProgress?.({ phase: 'committing', done: 0 });
     await platform.writeFile(
       `${staging}/pack.json`,
@@ -459,12 +488,39 @@ function customManifest(id: string, name: string, instruments: PackInstrument[])
 }
 
 /** Removes leftovers of an install that never finished: staging, trash and downloads. */
-export async function sweepWorkAreas(platform: Pick<Platform, 'remove'>): Promise<void> {
+export async function sweepWorkAreas(
+  platform: Pick<Platform, 'remove' | 'listDir' | 'move'>,
+): Promise<void> {
+  await recoverInterruptedUpdates(platform);
   await Promise.all(
     [STAGING_DIR, TRASH_DIR, DOWNLOADS_DIR].map((dir) =>
       platform.remove(dir).catch(() => undefined),
     ),
   );
+}
+
+/**
+ * An update moves the old pack to `.trash/<id>-<hex>` before the new one goes in. If the app died
+ * between the two moves, `data/sounds/<id>` is missing and the trash holds the only copy: put it
+ * back rather than delete it.
+ */
+async function recoverInterruptedUpdates(
+  platform: Pick<Platform, 'listDir' | 'move'>,
+): Promise<void> {
+  const trashed = await platform.listDir(TRASH_DIR).catch(() => []);
+  if (trashed.length === 0) return;
+  const present = new Set((await platform.listDir(SOUNDS_DIR).catch(() => [])).map((e) => e.name));
+  for (const entry of trashed) {
+    // `<12-character id>-<8 hex digits>`, as `stagingName` writes it.
+    const id = entry.name.slice(0, -9);
+    if (entry.kind !== 'directory' || id.length === 0 || present.has(id)) continue;
+    try {
+      await platform.move(`${TRASH_DIR}/${entry.name}`, packFolder(id));
+      present.add(id);
+    } catch {
+      // The scan reports whatever could not be restored.
+    }
+  }
 }
 
 export interface DownloadedZip {
