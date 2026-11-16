@@ -18,7 +18,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process, { argv } from 'node:process';
 
-import { read } from '@reprise/formats';
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright';
 
 import { loadBundle } from '../sounds/fetch-gm.ts';
@@ -67,11 +66,27 @@ async function draftNames(profileDir: string): Promise<string[]> {
   return readdir(draftsDir(profileDir)).catch(() => []);
 }
 
-/** The first track's volume in the draft with this sidecar, read back with our own reader. */
+/**
+ * The first track's volume in the draft with this sidecar. A draft is a native `.reprise` file,
+ * plain JSON, so it is parsed here: plain Node cannot import `@reprise/*` (the packages export
+ * TypeScript source with extensionless imports), and scripts/node-entry-imports.test.ts guards it.
+ */
 async function draftVolume(profileDir: string, sidecar: string): Promise<number | undefined> {
   const bytes = await readFile(join(draftsDir(profileDir), sidecar.replace(/\.json$/, '.reprise')));
-  const { score } = await read(new Uint8Array(bytes), 'reprise');
-  return score.tracks[0]?.channel.volume;
+  const document: unknown = JSON.parse(bytes.toString('utf8'));
+  return firstTrackVolume(document);
+}
+
+function firstTrackVolume(document: unknown): number | undefined {
+  const score = isRecord(document) ? document['score'] : undefined;
+  const tracks = isRecord(score) ? score['tracks'] : undefined;
+  const channel = Array.isArray(tracks) && isRecord(tracks[0]) ? tracks[0]['channel'] : undefined;
+  const volume = isRecord(channel) ? channel['volume'] : undefined;
+  return typeof volume === 'number' ? volume : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 async function waitFor<T>(what: string, probe: () => Promise<T | undefined | false>): Promise<T> {
@@ -85,7 +100,9 @@ async function waitFor<T>(what: string, probe: () => Promise<T | undefined | fal
 }
 
 async function volumeSlider(page: Page) {
-  const slider = page.getByRole('slider', { name: 'Volume of Track 1' });
+  // The strip is labelled with the track's own name (the fixture's is "Steel Guitar"), so match
+  // the first track's slider by prefix; the master slider is "Master volume".
+  const slider = page.getByRole('slider', { name: /^Volume of / }).first();
   // The mixer panel is a remembered setting: F8 toggles it, so press it only when it is closed.
   if (!(await slider.isVisible())) await page.keyboard.press('F8');
   await slider.waitFor();
