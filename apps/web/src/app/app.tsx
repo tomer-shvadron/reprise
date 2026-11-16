@@ -4,7 +4,13 @@ import { useStore } from 'zustand';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AddTrackButton, EditorDialogs, TrackRowMenu } from '@/features/editor';
-import { installLibrary, LibraryScreen, RecentSongs, UnimportedBanner } from '@/features/library';
+import {
+  ExportDialog,
+  installLibrary,
+  LibraryScreen,
+  RecentSongs,
+  UnimportedBanner,
+} from '@/features/library';
 import { SoundManager } from '@/features/sounds';
 import { TrainerPanel } from '@/features/trainer';
 import { PrintDialog, PrintRoot } from '@/features/score';
@@ -138,6 +144,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
         <SavePromptDialog />
         <EditorDialogs />
         <UnsavedChangesHost />
+        <ExportDialog />
         <PrintDialog store={services.print} />
         <PrintRoot store={services.print} />
       </TooltipProvider>

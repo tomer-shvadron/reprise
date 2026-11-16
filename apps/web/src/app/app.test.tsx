@@ -257,6 +257,82 @@ describe('App', () => {
     expect(services.ui.getState().panels.rightPanel).toBe(true);
   });
 
+  it('asks before Close and Open replace a modified document, and Cancel keeps it', async () => {
+    const bytes = await riffBytes();
+    const openFile = vi.fn(() => Promise.resolve({ name: 'riff.reprise', bytes }));
+    const { services, send, user } = renderApp(fakePlatform({ openFile }));
+    act(() => {
+      services.document.getState().newDocument(score().title('Draft').track('guitar').build());
+      services.document
+        .getState()
+        .apply(
+          setTrackProperties(
+            { trackId: services.document.getState().score?.tracks[0]?.id ?? '' },
+            { name: 'Edited' },
+          ),
+        );
+    });
+
+    // Close has no menu item: the palette runs it.
+    await user.keyboard('{Meta>}k{/Meta}');
+    await user.type(await screen.findByRole('combobox'), 'Close file{Enter}');
+    const closing = await screen.findByRole('dialog', { name: 'Unsaved changes' });
+    expect(closing).toHaveTextContent('before closing the song?');
+    await user.click(within(closing).getByRole('button', { name: 'Cancel' }));
+    expect(services.document.getState().score).toBeDefined();
+
+    await send('file.open');
+    const opening = await screen.findByRole('dialog', { name: 'Unsaved changes' });
+    expect(opening).toHaveTextContent('before opening another song?');
+    // The picker waits for the answer.
+    expect(openFile).not.toHaveBeenCalled();
+    await user.click(within(opening).getByRole('button', { name: 'Don’t save' }));
+    await waitFor(() => {
+      expect(openFile).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('exports a .gp copy from the menu without touching the document', async () => {
+    const saveFile = vi.fn(() => Promise.resolve('/Users/me/Draft.gp'));
+    const { services, send } = renderApp(fakePlatform({ saveFile }));
+    act(() => {
+      services.document.getState().newDocument(score().title('Draft').track('guitar').build());
+    });
+    await send('file.export');
+    await waitFor(() => {
+      expect(saveFile).toHaveBeenCalledOnce();
+    });
+    expect(saveFile).toHaveBeenCalledWith('Draft.gp', expect.anything(), [
+      { name: 'Guitar Pro 7–8', extensions: ['gp'] },
+    ]);
+    expect(services.document.getState().file).toBeUndefined();
+  });
+
+  it('says why Save became Save As', async () => {
+    const saveFile = vi.fn(() => Promise.resolve('/Users/me/Draft.reprise'));
+    const { services, send } = renderApp(fakePlatform({ saveFile }));
+    act(() => {
+      // A handle into the library with no song: the song was deleted.
+      services.document
+        .getState()
+        .newDocument(score().title('Draft').track('guitar').build(), { modified: true });
+    });
+    services.document.setState({
+      file: {
+        name: 'Gone.reprise',
+        format: 'reprise',
+        key: 'k',
+        savedKeys: [],
+        handle: 'library/songs/x.reprise',
+      },
+    });
+    await send('file.save');
+    expect(
+      await screen.findByText(/no longer in your library, so Save became Save As/),
+    ).toBeVisible();
+    expect(saveFile).toHaveBeenCalledOnce();
+  });
+
   it('drops native menu commands while a modal is open', async () => {
     const openFile = vi.fn(() => Promise.resolve(undefined));
     const { send, user } = renderApp(fakePlatform({ openFile }));
