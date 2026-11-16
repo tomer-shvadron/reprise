@@ -218,8 +218,6 @@ describe('App', () => {
       expect(services.document.getState().score).toBeDefined();
     });
     await send('file.save');
-    const dialog = await screen.findByRole('dialog', { name: 'Save as' });
-    await user.click(within(dialog).getByRole('button', { name: 'Reprise' }));
     await waitFor(() => {
       expect(services.document.getState().saving).toBe(false);
     });
