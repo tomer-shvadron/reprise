@@ -1,5 +1,6 @@
 import type { Command } from '@/app/command-registry';
 import type { AppServices } from '@/app/services';
+import { whenSaved } from '@/app/when-saved';
 
 import { libraryOf } from './library';
 
@@ -40,7 +41,11 @@ export function libraryCommands(services: AppServices): LibraryCommand[] {
     {
       id: 'library.openWithoutImport',
       title: 'Open without importing…',
-      run: () => libraryOf(services).openFileWithoutImport(),
+      run: () => {
+        whenSaved(services, 'opening another song', () => {
+          void libraryOf(services).openFileWithoutImport();
+        });
+      },
     },
     {
       id: 'library.openRecent',

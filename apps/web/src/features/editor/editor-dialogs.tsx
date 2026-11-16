@@ -9,7 +9,6 @@ import { GraceDialog } from './grace-dialog';
 import { MasterBarDialog } from './master-bar-dialog';
 import { removeTrackNow } from './track-edit';
 import { TrackDialog } from './track-dialog';
-import { UnsavedChangesDialog } from './unsaved-dialog';
 
 /** Mounts whichever editor dialog is open; one instance in the app, next to the save prompt. */
 export function EditorDialogs() {
@@ -87,18 +86,6 @@ export function EditorDialogs() {
             close();
             if (answer === 'remove') removeTrackNow(services, track.id);
           }}
-        />
-      );
-    case 'unsaved':
-      return (
-        <UnsavedChangesDialog
-          action={dialog.action}
-          onContinue={() => {
-            close();
-            dialog.onContinue();
-          }}
-          onCancel={close}
-          onCloseAutoFocus={onCloseAutoFocus}
         />
       );
     default:

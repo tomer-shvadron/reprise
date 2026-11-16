@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { write } from '@reprise/formats';
 import type { Notation, Score } from '@reprise/model';
-import { largeScore } from '@reprise/model/testing';
+import { fullScore, largeScore } from '@reprise/model/testing';
 
 export const REPO = fileURLToPath(new URL('../../../../../', import.meta.url));
 export const GENERATED = fileURLToPath(new URL('../.generated/', import.meta.url));
@@ -87,6 +87,8 @@ export async function generateScores(): Promise<Record<string, Uint8Array>> {
     'song.gp': (await write(song, 'gp')).bytes,
     'song.reprise': (await write(song, 'reprise')).bytes,
     'song48.gp': (await write(largeScore(2, 48, { structure: true }), 'gp')).bytes,
+    // Every kind of thing the model holds: the Guitar Pro writer drops some of them (WP-061).
+    'export-full.reprise': (await write(fullScore(), 'reprise')).bytes,
     'long-score.reprise': (await write(longScore(), 'reprise')).bytes,
   };
 }

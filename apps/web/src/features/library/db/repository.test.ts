@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { rowOf, uniqueDbName } from '../test-support';
+import { rowOf, rowWithoutOriginal, uniqueDbName } from '../test-support';
 
 import { createSongsRepository, type SongsRepository } from './repository';
 import { openLibraryDb, type RepriseDb } from './schema';
@@ -24,6 +24,27 @@ describe('the songs repository', () => {
     expect(await repo.get(row.id)).toEqual(row);
     await repo.remove(row.id);
     expect(await repo.get(row.id)).toBeUndefined();
+  });
+
+  it('updates the fields a save changes, and says when the song is gone', async () => {
+    const row = rowOf();
+    await repo.add(row);
+    expect(await repo.update(row.id, { title: 'New', savedAt: 5, exportAcknowledged: ['a'] })).toBe(
+      true,
+    );
+    expect(await repo.get(row.id)).toEqual({
+      ...row,
+      title: 'New',
+      savedAt: 5,
+      exportAcknowledged: ['a'],
+    });
+    expect(await repo.update('missing', { title: 'x' })).toBe(false);
+  });
+
+  it('reads a row with no original, as a song that began in Reprise has none', async () => {
+    const bare = rowWithoutOriginal();
+    await repo.add(bare);
+    expect((await repo.get(bare.id))?.originalPath).toBeUndefined();
   });
 
   it('finds a song by the hash of its original and refuses a second one', async () => {

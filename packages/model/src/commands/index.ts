@@ -13,12 +13,19 @@ export type { NoteEffectEdit, NoteEffects, NoteInput, Selection } from './note-c
 export {
   insertBeat,
   removeBeat,
+  replaceBeats,
   setBeatDuration,
   setBeatEffect,
   setBeatEffects,
   setBeatRest,
 } from './beat-commands';
-export type { BeatChanges, BeatEffectEdit, BeatInput, BeatRhythm } from './beat-commands';
+export type {
+  BeatChanges,
+  BeatEffectEdit,
+  BeatInput,
+  BeatRhythm,
+  BeatSpliceEdit,
+} from './beat-commands';
 export { insertBar, removeBar, setMasterBar, setMasterBars } from './bar-commands';
 export type { MasterBarChanges, MasterBarEdit, MasterBarInput } from './bar-commands';
 export { addTrack, moveTrack, removeTrack, setTrackProperties } from './track-commands';

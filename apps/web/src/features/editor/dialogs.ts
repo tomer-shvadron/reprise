@@ -17,9 +17,7 @@ export type EditorDialog =
   | { kind: 'effectPicker'; picker: EffectPicker }
   /** The grace-note dialog, preset to before the beat or on it. */
   | { kind: 'grace'; before: boolean }
-  | { kind: 'masterBar'; ids: Id[]; focus?: MasterBarSection }
-  /** Unsaved changes stand in the way; `onContinue` runs once they are saved or dropped. */
-  | { kind: 'unsaved'; action: string; onContinue: () => void };
+  | { kind: 'masterBar'; ids: Id[]; focus?: MasterBarSection };
 
 export interface DialogsState {
   dialog: EditorDialog | undefined;

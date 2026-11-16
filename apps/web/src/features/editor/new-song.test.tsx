@@ -3,12 +3,13 @@ import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
+import { UnsavedChangesHost } from '@/app/unsaved-dialog';
+import { whenSaved } from '@/app/when-saved';
 import { renderWithServices } from '@/test/render';
 import { createTestServices, fakePlatform } from '@/test/services';
 
 import { EditorDialogs } from './editor-dialogs';
 import { startNewSong } from './new-song';
-import { whenSaved } from './when-saved';
 import { bandScore } from './test/tracks';
 
 function setup(
@@ -17,7 +18,13 @@ function setup(
   const save = vi.fn(saveFile);
   const platform = fakePlatform({ saveFile: save });
   const services = createTestServices({ platform });
-  renderWithServices(<EditorDialogs />, services);
+  renderWithServices(
+    <>
+      <EditorDialogs />
+      <UnsavedChangesHost />
+    </>,
+    services,
+  );
   act(() => {
     services.document.getState().newDocument(bandScore());
   });
