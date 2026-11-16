@@ -40,5 +40,5 @@ row, `TrackEffectsPicker` from `features/sounds`, which applies its own command.
   disabled, with the reason; `setTrackNotation` ignores them, and Save writes such a track as
   standard (#125).
 - **Hidden tracks still sound.** Visibility is display only, as in Guitar Pro.
-- **Instrument names are the GM tables in `gm-programs.ts`**, not the sound bank's preset names,
+- **Instrument names are the GM tables in `lib/gm-programs.ts`**, not the sound bank's preset names,
   so the picker works before the bank loads.

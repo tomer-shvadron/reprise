@@ -586,7 +586,7 @@ describe('SoundManager: keyboard, focus and announcements', () => {
         }),
     );
     const { user } = setup({ download });
-    const region = screen.getAllByRole('status')[0];
+    const region = screen.getAllByRole('status').find((el) => el.classList.contains('sr-only'));
     if (!region) throw new Error('no live region');
     expect(region).toBeEmptyDOMElement();
     await user.click(screen.getByRole('button', { name: `Download ${SWAG.name}` }));

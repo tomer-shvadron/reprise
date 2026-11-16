@@ -9,6 +9,7 @@ Today it holds only the entry points the lead stubbed in WP-056:
 | ------------------------------- | --------------------------------------------------------------------------------------------------------- |
 | `SoundManager`                  | The Sounds screen (WP-091): packs, curated list, installs, remove. Shown while `ui.screen` is `'sounds'`. |
 | `soundsCommands` (`./commands`) | `sounds.show` ("Show sound manager"), which sets the screen.                                              |
+| `instrumentLabel`               | `(instrumentId, packs)`: the name of a resident instrument, see "Memory" below.                           |
 | `TrackEffectsPicker`            | `({ trackId, label? })`: a select of the track's effects preset (WP-092), see below.                      |
 | `TrackSoundPicker`              | `({ trackId, label?, generalMidi? })`: a select of the track's sound pack (WP-091), see below.            |
 
@@ -16,7 +17,7 @@ Today it holds only the entry points the lead stubbed in WP-056:
 
 - `ui.screen` and `ui.setScreen`: the sound manager is a full-window screen.
 - `document.songId`: the library song a pack assignment attaches to (ADR-0012); WP-091 stores it per song.
-- `playback.memory` mirrors the engine's memory report, for the readout of WP-094.
+- `playback.memory` mirrors the engine's memory report; the memory panel reads it.
 - `platform().dataDir()` for `sounds/<id>/`.
 
 Per-track sound assignment shows in the mixer (`features/tracks`, the lead's): `TrackSoundPicker`
@@ -90,8 +91,8 @@ confirm that says how many tracks fall back to General MIDI), the curated packs 
 folders with Remove, and every refusal with its details. One install runs at a time, with progress
 and Cancel. "Install from zip" and "Install from folder" add a custom pack. A zip or folder dropped
 anywhere on the screen installs as a custom pack, and a zip dropped on a curated row installs that
-pack (`drop.ts`; the drop zone leaves drops to this screen). `data-slot="memory-readout"` is the
-slot WP-094 fills with the memory readout; the effects demo stays below the lists.
+pack (`drop.ts`; the drop zone leaves drops to this screen). The memory panel is at the top
+(below); the effects demo stays below the lists.
 
 ## Sound picker (WP-091 PR C)
 
@@ -115,3 +116,30 @@ slot WP-094 fills with the memory readout; the effects demo stays below the list
 - The acceptance test, `sound-packs.browser.test.tsx`, installs a synthetic pack zip through the pack
   store, picks it in the mixer, renders offline and compares with the GM render; it then removes the
   pack and the render matches GM again with `trackSounds` marked `missing` and no error.
+
+## Memory (WP-094)
+
+`MemoryPanel`, at the top of the Sounds screen (`data-slot="memory-readout"`), reads `playback.memory`
+and `playback.settings.memoryBudgetBytes`:
+
+- A meter (`role="meter"`, in MB, with `aria-valuetext` "X MB of Y MB") and the same text beside it.
+- "Memory for sounds": a select of 64, 128, 200, 300 (the default), 500, 750, 1000, 1500 and 2000 MB
+  (MiB, as the status bar counts) that calls `audio.setMemoryBudget`. A stored value that is not a
+  preset is added to the list, so the select never shows a figure the setting does not hold.
+  Lowering it evicts at once; raising it re-warms the open song.
+- The instruments held in memory, sorted by name, behind "Show all N" past eight. "No sounds loaded"
+  when there are none.
+- "Unload unused", disabled and reading "Nothing unused" while `memory.unused` is empty; otherwise it
+  calls `audio.unloadUnused()` and announces "Freed N instruments" (the engine returns a count).
+- While `memory.shortfall` is true, the note "This song needs more than the budget; some notes may
+  start late."
+- `instrumentLabel(id, packs)` (`memory-labels.ts`): `gm:<bank>:<program>` reads "General MIDI:
+  Overdriven Guitar" (with " (bank N)" when the bank is not 0), `gm:drums:<kit>` "General MIDI:
+  Standard Kit". A pack resident, `sfz:<packId>@<install>:<sfzPath>`, is mapped back through the
+  entries of the installed pack: "Pack name: Instrument", "Pack name" for a single-instrument pack,
+  " (set)" after a non-default articulation set, "Pack name: path" when no instrument holds the
+  path, "<packId> (removed)" when the pack is gone. Any other id comes back unchanged.
+- The acceptance test, `memory-panel.browser.test.tsx`, installs a synthetic pack of about 67 MiB
+  decoded, picks it for a bass track, chooses 64 MB (the panel shows at most 64 MB and the shortfall
+  note, and `decodedBytes` agrees), then 300 MB again: after `settled()` the figure is back and the
+  note is gone.
