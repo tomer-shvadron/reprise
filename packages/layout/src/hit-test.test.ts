@@ -273,6 +273,8 @@ describe('every note is clickable', () => {
     expect([...wanted].filter((id) => !hit.has(id))).toEqual([]);
   }
 
+  // Worst run: 1.3 s alone, 2.8 s under two parallel `pnpm test` runs, 5.2 s on CI (issue #290,
+  // it timed out at the 5 s default). 4x the CI worst, rounded up to the 30 s step.
   it.each(Object.keys(modes) as (keyof typeof modes)[])(
     'the long score in mixed notation, %s',
     (mode) => {
@@ -282,6 +284,7 @@ describe('every note is clickable', () => {
         notation: Object.fromEntries(long.tracks.map(({ id }, i) => [id, MIXED[i % 3] ?? 'tab'])),
       });
     },
+    30_000,
   );
 
   it.each(
