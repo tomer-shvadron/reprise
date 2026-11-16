@@ -14,6 +14,9 @@ import { createLibraryFiles, type LibraryFiles } from './files';
 import { createImporter, type Importer } from './import/importer';
 import { createParser, type Parser } from './import/parser';
 import { persistDocument } from './import/persist-document';
+import { startDraftKeeper, type DraftKeeper } from './drafts/draft-keeper';
+import { draftNativePath, draftSidecarPath } from './drafts/draft-paths';
+import { createDraftRecovery, type DraftRecovery } from './drafts/recovery';
 import { stem } from './import/song-row';
 import { fromPicked, resolveDrop, type DropSnapshot, type ImportSource } from './import/sources';
 import {
@@ -62,7 +65,7 @@ export interface Library {
   setQuery(query: string): void;
   setSort(sort: SortKey): void;
   /** Opens the song in the player with its track session restored, never marking it modified. */
-  openSong(id: Id): Promise<void>;
+  openSong(id: Id, options?: OpenSongOptions): Promise<void>;
   /**
    * `openSong` after the unsaved-changes question, for every entry the user starts. Resolves when
    * the song is open, or when the user cancels the question.
@@ -75,6 +78,7 @@ export interface Library {
   /** The question the export dialog is asking, if any. */
   exportPrompt: ExportPromptStore;
   dismissNotice(): void;
+  drafts: Drafts;
   /** The progress of the running or last batch import. */
   importer: Importer;
   /** One dialog for several files, imported as a batch. */
@@ -101,6 +105,21 @@ export interface Library {
   /** Shows the library sorted by last opened, for the recent-songs command. */
   showRecent(): void;
   dispose(): Promise<void>;
+}
+
+export interface OpenSongOptions {
+  /** Open these bytes (a recovered draft) instead of the song's file, as unsaved. */
+  bytes?: Uint8Array;
+  modified?: boolean;
+}
+
+/** The open document's autosave and what the next launch offers back. */
+export interface Drafts {
+  recovery: DraftRecovery;
+  /** Starts keeping drafts; returns the undo. `installLibrary` calls it. */
+  start(): () => void;
+  /** Removes the open document's draft, after a Don't save that closes the window. */
+  discardOpen(): Promise<void>;
 }
 
 export interface OpenedBytes {
@@ -400,8 +419,36 @@ export function createLibrary(
     }
   };
 
+  let draftKeeper: DraftKeeper | undefined;
+  const recovery = createDraftRecovery({
+    services,
+    repo,
+    openSong: (id, options) => library.openSong(id, options),
+    keeper: () => draftKeeper,
+    ready: () => store.getState().loaded && store.getState().error === undefined,
+    notify: (message) => {
+      notify(message, 'error');
+    },
+  });
+  const drafts: Drafts = {
+    recovery,
+    start() {
+      const parser = parserOf();
+      const started = startDraftKeeper({ services, platform: services.platform, parser });
+      draftKeeper = started;
+      return () => {
+        if (draftKeeper === started) draftKeeper = undefined;
+        void started.stop();
+      };
+    },
+    async discardOpen() {
+      await draftKeeper?.discard();
+    },
+  };
+
   const library: Library = {
     db,
+    drafts,
     store,
     repo,
     importer,
@@ -456,7 +503,7 @@ export function createLibrary(
         console.warn('Could not save the library sort', error);
       });
     },
-    async openSong(id) {
+    async openSong(id, { bytes: draft, modified = false } = {}) {
       const token = ++opening;
       const { document, platform, ui } = services;
       try {
@@ -470,7 +517,7 @@ export function createLibrary(
         }
         let bytes: Uint8Array;
         try {
-          bytes = await platform.readFile(row.nativePath);
+          bytes = draft ?? (await platform.readFile(row.nativePath));
         } catch {
           store.setState({
             error: `The file for "${row.title}" is missing from the library folder.`,
@@ -481,6 +528,7 @@ export function createLibrary(
         await document.getState().openBytes(`${stem(row.originalName)}.reprise`, bytes, {
           handle: row.nativePath,
           songId: id,
+          ...(modified && { modified }),
         });
         const state = document.getState();
         // A failed read, or another open that overtook this one, leaves a document that is not ours.
@@ -557,6 +605,11 @@ export function createLibrary(
         const row = await repo.get(id);
         if (row) await files.trash(row);
         await repo.remove(id);
+        // Its unsaved changes have nowhere to go back to.
+        await Promise.allSettled([
+          services.platform.remove(draftNativePath(id)),
+          services.platform.remove(draftSidecarPath(id)),
+        ]);
         for (const load of loads) {
           load.removed.add(id);
           load.added.delete(id);

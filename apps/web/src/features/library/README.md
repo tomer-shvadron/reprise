@@ -80,6 +80,29 @@ shell wiring, which is one separate integration commit).
   not what the import dropped; a library song has a "Don't warn again for this song" box that stores
   the accepted `Warning.code`s on the row (`exportAcknowledged`), and a later export asks again only
   for a code not in the list. A document outside the library has no box.
+- **Drafts** (`drafts/`, started by `installLibrary`). While the document is modified the keeper
+  writes `data/drafts/<key>.reprise` and a `<key>.json` sidecar (`{ version, key, songId?, name,
+title, updatedAt }`, bytes first), 1 s after the last edit and at least every 10 s while edits
+  continue, serialized in the parse worker when the main thread is idle. The key is the `songId`,
+  else `doc-<document.id>`. The draft is removed when the document becomes clean (a save, or undo
+  to the saved point), is replaced or is closed (every replace path asks first), and when its
+  song is deleted. A write that has not started is dropped if the document changed meanwhile, and
+  the old key goes when a song id arrives while the edits stay unsaved. Writes and removals run
+  one at a time. It flushes on `pagehide` and `visibilitychange`, best effort.
+  - **Cost.** The main thread pays only the structured clone of the score into the worker:
+    `drafts/draft-cost.browser.test.ts` measured about 13 ms for the 8 x 300 reference score
+    (about 29.5 MB of native). Over about 50 ms the next step is a worker that mirrors the score by
+    replaying `Change.patches`, which needs a model contract.
+  - **Recovery** (`drafts/recovery.ts`, `DraftRecoveryDialog`). After `load()` (and only when it
+    succeeded, or every draft would look orphaned) the folder is listed. A draft of a song is
+    offered when `updatedAt` is newer than the row's `savedAt` (else `importedAt`); a draft whose
+    song is gone or already saved past it, an unpaired file and a sidecar that does not parse are
+    removed; a `doc-` draft is always offered. Recover opens a song's draft with `modified: true`
+    and restores its session; a `doc-` draft becomes an untitled modified document whose first
+    Save joins the library. The recovered document is written under its own key at once, and only
+    then are the old files removed. Later (and Escape) keeps the drafts for the next launch. Undo
+    history is not recovered.
+  - **Known limit.** Two web tabs editing the same song write one draft key; the last writer wins.
 - **Recents.** The 5 most recently opened songs (`RecentSongs`), the palette command
   `library.openRecent` (the library sorted by last opened), and on desktop the File menu through
   `setRecentSongs` (at most 10), with `onOpenRecent` opening the pick.
