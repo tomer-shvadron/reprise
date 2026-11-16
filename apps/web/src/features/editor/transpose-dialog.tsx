@@ -1,4 +1,4 @@
-import { useId, useState, type SyntheticEvent } from 'react';
+import { useEffect, useId, useRef, useState, type SyntheticEvent } from 'react';
 
 import { useAppServices } from '@/app/services-context';
 import { Button } from '@/components/ui/button';
@@ -23,7 +23,7 @@ import {
   semitoneError,
   semitoneLabel,
 } from './transpose-form';
-import type { TransposeScope } from './transpose';
+import { selectionCount, type TransposeScope } from './transpose';
 
 const SCOPES: readonly { value: TransposeScope; label: string }[] = [
   { value: 'selection', label: 'Selection' },
@@ -44,11 +44,15 @@ export function TransposeDialog({
   onCloseAutoFocus?: (event: Event) => void;
 }) {
   const services = useAppServices();
+  // The dialog is modal, so what is selected cannot change under it: read it once.
   const [initial] = useState(() => {
     const input = transposeInput(services);
     return {
       scope: input ? defaultScope(input) : 'track',
       amount: String(lastSemitones(services.document)),
+      offers:
+        input && Object.fromEntries(SCOPES.map(({ value }) => [value, scopeOffer(input, value)])),
+      held: input && selectionCount(input),
     } as const;
   });
   const [scope, setScope] = useState<TransposeScope>(initial.scope);
@@ -56,22 +60,26 @@ export function TransposeDialog({
   const [chordNames, setChordNames] = useState(true);
   const [keySignature, setKeySignature] = useState(true);
   const [refusal, setRefusal] = useState<string>();
+  const [busy, setBusy] = useState(false);
+  const pending = useRef<number>(undefined);
+  useEffect(
+    () => () => {
+      window.clearTimeout(pending.current);
+    },
+    [],
+  );
   const ids = useId();
   const id = (field: string) => `${ids}-${field}`;
 
-  const input = transposeInput(services);
-  if (!input) return null;
-  const offer = scopeOffer(input, scope);
-  const everything = SCOPES.map(({ value }) => scopeOffer(input, value));
+  const offer = initial.offers?.[scope];
+  if (!offer) return null;
   const semitones = amount.trim() === '' ? Number.NaN : Number(amount);
   const error = semitoneError(semitones);
   const changed = () => {
     setRefusal(undefined);
   };
 
-  const submit = (event: SyntheticEvent) => {
-    event.preventDefault();
-    if (error !== undefined) return;
+  const run = () => {
     const outcome = applyTranspose(
       services,
       {
@@ -83,6 +91,7 @@ export function TransposeDialog({
       true,
     );
     if ('refused' in outcome) {
+      setBusy(false);
       setRefusal(outcome.refused);
       return;
     }
@@ -90,6 +99,16 @@ export function TransposeDialog({
     if ('nothing' in outcome)
       services.entry.getState().setMessage('There is nothing to transpose there');
     onClose();
+  };
+
+  const submit = (event: SyntheticEvent) => {
+    event.preventDefault();
+    if (error !== undefined || busy) return;
+    // A whole-song transposition takes a while: show it working before the main thread is taken.
+    setBusy(true);
+    window.requestAnimationFrame(() => {
+      pending.current = window.setTimeout(run, 0);
+    });
   };
 
   return (
@@ -141,8 +160,9 @@ export function TransposeDialog({
           </div>
           <fieldset className="grid gap-1">
             <legend className="mb-1 text-xs font-medium">Apply to</legend>
-            {SCOPES.map(({ value, label }, index) => {
-              const disabled = value === 'selection' && everything[index]?.selection === false;
+            {SCOPES.map(({ value, label }) => {
+              const disabled =
+                value === 'selection' && initial.offers?.selection?.selection === false;
               return (
                 <label key={value} className="flex items-center gap-1.5 text-sm">
                   <input
@@ -156,7 +176,7 @@ export function TransposeDialog({
                       changed();
                     }}
                   />
-                  {label}
+                  {value === 'selection' && initial.held ? `${label} (${initial.held})` : label}
                 </label>
               );
             })}
@@ -199,11 +219,11 @@ export function TransposeDialog({
             </p>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={error !== undefined}>
-              Apply
+            <Button type="submit" disabled={error !== undefined || busy}>
+              {busy ? 'Transposing…' : 'Apply'}
             </Button>
           </DialogFooter>
         </form>

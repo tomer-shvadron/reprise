@@ -1,5 +1,5 @@
 import { score, note } from '@reprise/model/testing';
-import { act, screen, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
@@ -7,6 +7,10 @@ import { openTransposeDialog } from './transpose-commands';
 import { setupEffects } from './test/effects';
 
 const dialog = () => screen.getByRole('dialog', { name: 'Transpose' });
+const closed = () =>
+  waitFor(() => {
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 const field = (name: string) => within(dialog()).getByLabelText(name);
 
 function twoTracks() {
@@ -56,7 +60,7 @@ describe('the Transpose dialog', () => {
     await user.type(field('Semitones'), '2');
     expect(within(dialog()).getByText('Up 2 semitones')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Apply' }));
-    expect(screen.queryByRole('dialog')).toBeNull();
+    await closed();
     expect(beats()[0]?.notes[0]?.fret).toBe(7);
     expect(beats()[3]?.notes[0]?.fret).toBe(4);
     expect(services.document.getState().revision).toBe(before + 1);
@@ -99,8 +103,7 @@ describe('the Transpose dialog', () => {
     await user.clear(field('Semitones'));
     await user.type(field('Semitones'), '-1');
     await user.click(screen.getByRole('button', { name: 'Apply' }));
-    expect(dialog()).toBeInTheDocument();
-    expect(within(dialog()).getByRole('alert')).toHaveTextContent(
+    expect(await within(dialog()).findByRole('alert')).toHaveTextContent(
       'Track 1, bar 1, string 3: fret 0 cannot go down 1 semitone without falling below the open string',
     );
     expect(services.entry.getState().message).toBeUndefined();
@@ -109,7 +112,7 @@ describe('the Transpose dialog', () => {
     await user.type(field('Semitones'), '1');
     expect(within(dialog()).queryByRole('alert')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Apply' }));
-    expect(screen.queryByRole('dialog')).toBeNull();
+    await closed();
     expect(beats()[0]?.notes[0]?.fret).toBe(6);
   });
 
@@ -129,6 +132,7 @@ describe('the Transpose dialog', () => {
     await user.clear(field('Semitones'));
     await user.type(field('Semitones'), '2');
     await user.click(screen.getByRole('button', { name: 'Apply' }));
+    await closed();
     expect(services.document.getState().score?.masterBars[0]?.keySignature.fifths).toBe(2);
     expect(frets(services)).toEqual([[7, 2], [2]]);
   });
@@ -143,9 +147,41 @@ describe('the Transpose dialog', () => {
     await user.type(field('Semitones'), '2');
     await user.click(within(dialog()).getByRole('radio', { name: 'All tracks' }));
     await user.click(screen.getByRole('button', { name: 'Apply' }));
+    await closed();
     const chord =
       services.document.getState().score?.tracks[0]?.bars[0]?.voices[0]?.beats[0]?.chord;
     expect(chord?.name).toBe('D');
+  });
+
+  it('shows Transposing… and disables the buttons while it applies', async () => {
+    const { services } = await setupEffects();
+    const user = userEvent.setup();
+    act(() => {
+      openTransposeDialog(services);
+    });
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(screen.getByRole('button', { name: 'Transposing…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    await closed();
+  });
+
+  it('says what Selection holds, and counts a whole-song range as covering every track for the key', async () => {
+    const { services } = await setupEffects(undefined, twoTracks());
+    const built = services.document.getState().score;
+    const beatIds = built?.tracks.flatMap((track) =>
+      track.bars.flatMap((bar) => bar.voices[0].beats.map((beat) => beat.id)),
+    );
+    act(() => {
+      services.selection
+        .getState()
+        .setEdit({ selection: { beatIds: beatIds ?? [] }, cursor: undefined });
+      openTransposeDialog(services);
+    });
+    const radio = within(dialog()).getByRole('radio', { name: 'Selection (3 beats)' });
+    expect(radio).toBeChecked();
+    expect(
+      within(dialog()).getByRole('checkbox', { name: 'Adjust the key signature' }),
+    ).toBeEnabled();
   });
 
   it('says so on the status line when a drum-only score has nothing to transpose', async () => {

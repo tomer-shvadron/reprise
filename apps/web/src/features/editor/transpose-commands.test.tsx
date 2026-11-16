@@ -61,7 +61,7 @@ describe('the transpose and string keys', () => {
   it('refuses the top string on the status line', async () => {
     const { services, press, beats } = await setupEffects();
     press('ArrowUp', alt);
-    expect(services.entry.getState().message).toBe('There is no string above string 1');
+    expect(services.entry.getState().message).toBe('There is no string above string 1 in bar 1');
     expect(beats()[0]?.notes[0]).toMatchObject({ string: 1, fret: 5 });
   });
 
