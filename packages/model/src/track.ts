@@ -40,10 +40,10 @@ export type DisplaySettings = z.infer<typeof DisplaySettingsSchema>;
  * The track's sound choice: an optional HQ `packId`, an optional `instrument` and an optional
  * effects `preset`. With no `packId` the GM tier plays `program`. `instrument` is a key into the
  * pack's instruments, opaque to the model; absent means the pack's first (Black and Blue Basses
- * ships two basses, a drum pack several kits). It has no meaning without `packId` (#267). `preset` is an effects preset id, opaque to the model:
- * it is valid without `packId` (the track keeps its GM instrument and takes the preset's effects
- * chain), and an id the audio engine does not know means automatic. The engine owns the ids
- * (#234).
+ * ships two basses, a drum pack several kits). It has no meaning without `packId` (#267).
+ * `preset` is an effects preset id, opaque to the model: it is valid without `packId` (the track
+ * keeps its GM instrument and takes the preset's effects chain), and an id the audio engine does
+ * not know means automatic. The engine owns the ids (#234).
  */
 export const SoundOverrideSchema = z.object({
   packId: IdSchema.exactOptional(),

@@ -142,6 +142,11 @@ export interface AudioService {
    */
   previewNote(trackId: Id, note: PreviewNote, options?: PreviewOptions): void;
   /**
+   * Undoes `releasePack` for a pack that is still installed (the folder removal failed): the song
+   * reloads with it. A no-op for a pack that was not released.
+   */
+  reinstatePack(id: string): Promise<void>;
+  /**
    * Reloads the open song without pack `id`: its tracks play GM, as a pack that is not installed.
    * Resolves once the engine holds no reader for the pack's files, so the caller can delete them.
    * The pack stays out until the directory lists a different version of it (or no longer lists it).
@@ -200,6 +205,22 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   const inflight = new Set<Promise<unknown>>();
   /** Packs `releasePack` took out, by the files object they had; see `releasePack`. */
   const released = new Map<string, InstalledPackSource['files']>();
+  /** Bumped by every engine load, so only the latest one mirrors `trackSounds`. */
+  let loadSeq = 0;
+  /**
+   * Assignments the engine reported as fallbacks, by track, keyed by what it checked (pack id,
+   * files object, default path): the next load shows them failed at once and, with nothing else
+   * assigned, asks for the GM tier, instead of flickering through HQ while the engine confirms.
+   */
+  let failures = new Map<
+    Id,
+    {
+      packId: string;
+      files: InstalledPackSource['files'];
+      path: string | undefined;
+      message: string;
+    }
+  >();
 
   const track = <T>(promise: Promise<T>): Promise<T> => {
     const settled = promise.then(
@@ -260,13 +281,16 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   /**
    * The engine's `LoadOptions` for a score, and what is already known about each track: a pack
    * that is not installed, or whose instrument is not in it, is `missing`. The tier is `hq` while
-   * at least one assignment reaches the engine, which selects the HQ memory budget.
+   * at least one assignment not known to fail reaches the engine, which selects the HQ memory
+   * budget.
    */
   function loadOptionsFor(score: Score): {
     options: LoadOptions;
     sounds: Record<Id, TrackSound>;
   } {
     const assignments: PackAssignment[] = [];
+    /** The assignments not already known to fail: the ones that make the song HQ. */
+    const playing: PackAssignment[] = [];
     const sounds: Record<Id, TrackSound> = {};
     for (const track of score.tracks) {
       const wanted = track.sound?.packId;
@@ -283,20 +307,36 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
         sounds[track.id] = { tier: 'gm', packId: wanted, problem: 'missing' };
         continue;
       }
-      assignments.push({
+      const assignment: PackAssignment = {
         trackId: track.id,
         pack: { id: pack.id, files: pack.files },
         entries: chosen.entries,
-      });
-      sounds[track.id] = { tier: 'gm', packId: wanted };
+      };
+      assignments.push(assignment);
+      const failed = failures.get(track.id);
+      if (
+        failed?.packId === pack.id &&
+        failed.files === pack.files &&
+        failed.path === chosen.entries.default
+      ) {
+        sounds[track.id] = {
+          tier: 'gm',
+          packId: wanted,
+          problem: 'failed',
+          message: failed.message,
+        };
+      } else {
+        playing.push(assignment);
+        sounds[track.id] = { tier: 'gm', packId: wanted };
+      }
     }
     for (const track of score.tracks) {
       const known = sounds[track.id];
       if (known && known.problem === undefined) {
-        sounds[track.id] = { ...known, tier: tierOf(track, assignments) };
+        sounds[track.id] = { ...known, tier: tierOf(track, playing) };
       }
     }
-    return { options: { tier: assignments.length > 0 ? 'hq' : 'gm', packs: assignments }, sounds };
+    return { options: { tier: playing.length > 0 ? 'hq' : 'gm', packs: assignments }, sounds };
   }
 
   /** Writes `trackSounds` only when it differs, so an edit that changes no sound wakes nobody. */
@@ -320,17 +360,42 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     if (!same) set({ trackSounds: next });
   }
 
-  /** Mirrors the tiers, with the engine's fallbacks as `failed`. */
-  function mirrorSounds(
-    sounds: Record<Id, TrackSound>,
-    fallbacks: readonly { trackId: Id; error: string }[],
-  ): void {
+  /**
+   * Loads a score into the engine and, when no later load started meanwhile, mirrors the tiers
+   * with the engine's fallbacks as `failed`. Resolves with `latest: false` for an overtaken load,
+   * whose result the store must not show: the engine kept the newer one's packs.
+   */
+  async function runLoad(score: Score): Promise<{ instruments: number; latest: boolean }> {
+    loadSeq += 1;
+    const mine = loadSeq;
+    const { options: loadOptions, sounds } = loadOptionsFor(score);
+    setTrackSounds(sounds);
+    const { instruments, fallbacks } = await engine.load(score, loadOptions);
+    if (mine !== loadSeq) return { instruments: instruments.length, latest: false };
     const next = { ...sounds };
+    failures = new Map();
     for (const { trackId, error } of fallbacks) {
-      const known = next[trackId];
-      next[trackId] = { ...known, tier: 'gm', problem: 'failed', message: error };
+      next[trackId] = { ...next[trackId], tier: 'gm', problem: 'failed', message: error };
+      const assigned = loadOptions.packs.find((entry) => entry.trackId === trackId);
+      if (assigned) {
+        failures.set(trackId, {
+          packId: assigned.pack.id,
+          files: assigned.pack.files,
+          path: assigned.entries.default,
+          message: error,
+        });
+      }
     }
     setTrackSounds(next);
+    // Every assignment failed on an HQ load: reload once so the budget and tiers return to GM.
+    if (
+      loadOptions.tier === 'hq' &&
+      fallbacks.length === loadOptions.packs.length &&
+      doc?.score === score
+    ) {
+      void track(runLoad(score).then(() => undefined));
+    }
+    return { instruments: instruments.length, latest: true };
   }
 
   function ensureBank(): Promise<void> {
@@ -370,12 +435,9 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
       if (gen !== generation || !doc) return;
       loaded = true;
       engineScore = doc.score;
-      const { options: loadOptions, sounds } = loadOptionsFor(doc.score);
-      setTrackSounds(sounds);
-      const { instruments, fallbacks } = await engine.load(doc.score, loadOptions);
+      const { instruments } = await runLoad(doc.score);
       if (gen === generation) {
-        mirrorSounds(sounds, fallbacks);
-        set({ song: { status: 'ready', error: undefined }, instruments: instruments.length });
+        set({ song: { status: 'ready', error: undefined }, instruments });
       }
     } catch (error) {
       if (gen === generation) set({ song: { status: 'error', error: messageOf(error) } });
@@ -387,14 +449,11 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     if (!doc || !loaded) return Promise.resolve();
     const gen = generation;
     engineScore = doc.score;
-    const { options: loadOptions, sounds } = loadOptionsFor(doc.score);
-    setTrackSounds(sounds);
     return track(
-      engine.load(doc.score, loadOptions).then(
-        ({ instruments, fallbacks }) => {
+      runLoad(doc.score).then(
+        ({ instruments }) => {
           if (gen !== generation) return;
-          mirrorSounds(sounds, fallbacks);
-          set({ instruments: instruments.length });
+          set({ instruments });
         },
         (error: unknown) => {
           if (gen === generation) set({ song: { status: 'error', error: messageOf(error) } });
@@ -630,6 +689,11 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
       if (disposed) return;
       await reload();
       await service.settled();
+    },
+
+    async reinstatePack(id) {
+      if (!released.delete(id) || disposed) return;
+      await reload();
     },
 
     retry() {

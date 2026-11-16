@@ -199,8 +199,8 @@ returns the `AudioEngine` contract of `docs/specs/architecture.md`. `context` is
 factory; a factory is called on the first `unlock()`, `play()` or `previewNote()`, never in `load`,
 so a song is decoded before the first gesture. `budgetBytes` is the memory manager's
 (`GM_BUDGET_BYTES`, 80 MiB, by default) while `load` is given `tier: 'gm'`, and `hqBudgetBytes`
-(`HQ_BUDGET_BYTES`, 300 MiB) while it is given `tier: 'hq'`; `scheduleMemory` runs the coalesced `memory` event (the next
-animation frame by default); the rest go to the transport.
+(`HQ_BUDGET_BYTES`, 300 MiB) while it is given `tier: 'hq'`; `scheduleMemory` runs the coalesced
+`memory` event (the next animation frame by default); the rest go to the transport.
 
 | Object                                                                | Made                                                                   | Lives until                               |
 | --------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------- |
@@ -249,8 +249,9 @@ assignments by track); it is not part of the contract.
 - `load` checks each assignment: the default SFZ must read, parse and map a region. One that does
   not goes to `LoadResult.fallbacks` (`{ trackId, packId, error }`), plays GM, and `load` still
   resolves. An assignment with the same pack id, files object and default path as the last `load`
-  is kept without reading again, so loading the same score with different `packs` checks only the
-  tracks that changed, and an assignment that is gone is dropped.
+  is not read again, whether it loaded or failed, so loading the same score with different `packs`
+  checks only the tracks that changed, a broken pack is not retried on every edit (a reinstall
+  brings a new files object), and an assignment that is gone is dropped.
 - `tier` selects the memory budget on each `load`: `budgetBytes` for `gm`, `hqBudgetBytes` for
   `hq`. Lowering it evicts at once, so going back to GM frees the pack buffers. The app passes
   `hq` when at least one assignment reaches the engine.
@@ -628,13 +629,13 @@ stack; `keys`, `drums` and `other` only a reverb send; `off` nothing.
 | absent or unknown            | gm   | off            | the family preset                 |
 
 So the bypass governs automatic presets on GM tracks only: a preset the user picks applies on
-either tier. The exported `tierOf(track, packs)` is `hq` when an assignment names the track, `gm` otherwise, and
-the engine applies it to the assignments that loaded; a track that names a pack in `sound.packId`
-only (not installed, failed) is `gm`. `setGmTierBypass(on)` re-resolves every track; and
-`setStageBypass(trackId, stage, bypassed)` is a session override like `setTrack` (not saved, kept
-through edits, cleared by `unload`); the reverb stage's bypass is its send at 0. A `sound` edit
-that changes only `preset` is timeline-neutral (`timelineNeutral`), so it and its undo are heard at
-once with no rebuild; a `packId` or `instrument` change is not.
+either tier. The exported `tierOf(track, packs)` is `hq` when an assignment names the track, `gm`
+otherwise, and the engine applies it to the assignments that loaded; a track that names a pack in
+`sound.packId` only (not installed, failed) is `gm`. `setGmTierBypass(on)` re-resolves every
+track; and `setStageBypass(trackId, stage, bypassed)` is a session override like `setTrack` (not
+saved, kept through edits, cleared by `unload`); the reverb stage's bypass is its send at 0. A
+`sound` edit that changes only `preset` is timeline-neutral (`timelineNeutral`), so it and its undo
+are heard at once with no rebuild; a `packId` or `instrument` change is not.
 
 ### Switching, bypass and idle paths
 

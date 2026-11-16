@@ -799,6 +799,74 @@ describe('pack assignments', () => {
     engine.dispose();
   });
 
+  it('does not read a failed pack again until its files object changes', async () => {
+    const { engine } = await setup();
+    const song = quarters(1);
+    const id = trackOf(song);
+    const broken = syntheticSfzPack();
+    const options = (files: typeof broken.files): LoadOptions => ({
+      tier: 'hq',
+      packs: [assignment(id, { id: 'brokenpack01', files }, 'nope.sfz')],
+    });
+    const first = await engine.load(song, options(broken.files));
+    const again = await engine.load(song, options(broken.files));
+    expect(again.fallbacks).toEqual(first.fallbacks);
+    expect(broken.reads.get('nope.sfz')).toBe(1);
+    const reinstalled = syntheticSfzPack();
+    await engine.load(song, options(reinstalled.files));
+    expect(reinstalled.reads.get('nope.sfz')).toBe(1);
+    engine.dispose();
+  });
+
+  /** A pack whose reads wait for `release()`, to hold a pack check open. */
+  function gatedPack() {
+    const pack = syntheticSfzPack();
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return {
+      release,
+      files: { ...pack.files, read: (path: string) => gate.then(() => pack.files.read(path)) },
+    };
+  }
+
+  it('installs no assignments from a load that a newer load overtook', async () => {
+    const { engine } = await setup();
+    const song = quarters(1);
+    const id = trackOf(song);
+    const slow = gatedPack();
+    const older = engine.load(song, {
+      tier: 'hq',
+      packs: [assignment(id, { id: 'slowpack0001', files: slow.files })],
+    });
+    const quick = syntheticSfzPack();
+    await engine.load(song, {
+      tier: 'hq',
+      packs: [assignment(id, { id: 'quickpack001', files: quick.files })],
+    });
+    expect(assigned(engine)?.get(id)).toBe('quickpack001:default.sfz');
+    slow.release();
+    await older;
+    expect(assigned(engine)?.get(id)).toBe('quickpack001:default.sfz');
+    engine.dispose();
+  });
+
+  it('installs no assignments when the song unloads during the pack check', async () => {
+    const { engine } = await setup();
+    const song = quarters(1);
+    const slow = gatedPack();
+    const loading = engine.load(song, {
+      tier: 'hq',
+      packs: [assignment(trackOf(song), { id: 'slowpack0001', files: slow.files })],
+    });
+    engine.unload();
+    slow.release();
+    await loading;
+    expect(assigned(engine)?.size).toBe(0);
+    engine.dispose();
+  });
+
   it('swaps only the changed tracks when the same score loads with different packs', async () => {
     const { engine } = await setup();
     let song = quarters(1);

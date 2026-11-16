@@ -1,4 +1,4 @@
-import { syntheticSfzPack } from '@reprise/audio/testing';
+import { debugAudioEngine, syntheticSfzPack } from '@reprise/audio/testing';
 import { applyCommand, newId, setTrackProperties, type Score } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
@@ -156,6 +156,96 @@ describe('the audio service with sound packs', () => {
     sounds.setInstalled([installed(packId)]);
     await audio.settled();
     expect(playback.getState().trackSounds[track]?.tier).toBe('hq');
+    audio.dispose();
+  });
+
+  it('shows what the engine holds when releasePack races a load that is still checking the pack', async () => {
+    const { playback, sounds, audio } = setup();
+    const packId = newId();
+    const { score: open, track } = song({ packId });
+    audio.setDocument({ id: newId(), score: open });
+    await audio.settled();
+
+    const pack = syntheticSfzPack();
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const slow: InstalledPackSource = installed(packId, {
+      files: { ...pack.files, read: (path) => gate.then(() => pack.files.read(path)) },
+    });
+    sounds.setInstalled([slow]);
+    await Promise.resolve();
+    // It waits for the pack's reader that is still open, so the gate opens while it waits.
+    const releasing = audio.releasePack(packId);
+    release();
+    await releasing;
+    await audio.settled();
+
+    expect(playback.getState().trackSounds[track]).toMatchObject({
+      tier: 'gm',
+      problem: 'missing',
+    });
+    const { engine } = audio.debug();
+    expect(debugAudioEngine(engine).assignments?.size).toBe(0);
+    audio.dispose();
+  });
+
+  it('remembers a failed pack: no re-read on an edit and no flicker through HQ', async () => {
+    const { playback, sounds, audio } = setup();
+    const packId = newId();
+    const pack = syntheticSfzPack();
+    sounds.setInstalled([
+      installed(packId, { files: pack.files, entries: { default: 'nope.sfz' } }),
+    ]);
+    const { score: open, track } = song({ packId });
+    const id = newId();
+    audio.setDocument({ id, score: open });
+    await audio.settled();
+    expect(playback.getState().trackSounds[track]).toMatchObject({ tier: 'gm', problem: 'failed' });
+    expect(pack.reads.get('nope.sfz')).toBe(1);
+
+    const seen: string[] = [];
+    const unsubscribe = playback.subscribe((state) => {
+      const sound = state.trackSounds[track];
+      seen.push(`${sound?.tier ?? '-'}/${sound?.problem ?? '-'}`);
+    });
+    const edited = applyCommand(
+      open,
+      setTrackProperties({ trackId: track }, { name: 'Renamed' }),
+    ).score;
+    audio.setDocument({ id, score: edited });
+    await audio.settled();
+    unsubscribe();
+    expect(pack.reads.get('nope.sfz')).toBe(1);
+    expect(seen.filter((entry) => entry !== 'gm/failed')).toEqual([]);
+    audio.dispose();
+  });
+
+  it('plays every pack GM, with the GM budget, once all of them failed', async () => {
+    const { playback, sounds, audio } = setup();
+    const packId = newId();
+    sounds.setInstalled([installed(packId, { entries: { default: 'nope.sfz' } })]);
+    const { score: open } = song({ packId });
+    audio.setDocument({ id: newId(), score: open });
+    await audio.settled();
+    await frame();
+    expect(playback.getState().memory.budgetBytes).toBe(80 * MIB);
+    audio.dispose();
+  });
+
+  it('reinstatePack brings a released pack back', async () => {
+    const { playback, sounds, audio } = setup();
+    const packId = newId();
+    sounds.setInstalled([installed(packId)]);
+    const { score: open, track } = song({ packId });
+    audio.setDocument({ id: newId(), score: open });
+    await audio.settled();
+    await audio.releasePack(packId);
+    expect(playback.getState().trackSounds[track]?.problem).toBe('missing');
+    await audio.reinstatePack(packId);
+    await audio.settled();
+    expect(playback.getState().trackSounds[track]).toEqual({ tier: 'hq', packId });
     audio.dispose();
   });
 });

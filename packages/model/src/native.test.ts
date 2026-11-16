@@ -104,8 +104,6 @@ describe('round trip', () => {
   );
 });
 
-// Serialise and parse measured 65 to 68 ms alone on the 200-bar, 6-track score, and up to 528
-// and 703 ms under three parallel runs; the bounds only catch a quadratic regression.
 describe('the sound choice', () => {
   it('keeps the pack instrument through the native format', () => {
     const score = fullScore();
@@ -126,6 +124,8 @@ describe('the sound choice', () => {
   });
 });
 
+// Serialise and parse measured 65 to 68 ms alone on the 200-bar, 6-track score, and up to 528
+// and 703 ms under three parallel runs; the bounds only catch a quadratic regression.
 describe('a large score', () => {
   it('serialises and parses in linear time', { timeout: 30_000 }, () => {
     const score = largeScore(6, 200, { structure: true });

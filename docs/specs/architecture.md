@@ -556,7 +556,6 @@ The scheduler drives an `InstrumentSink` (`noteOn(NoteEvent)`, optional `mix(Mix
 
 Changed by #234 (2026-11-16): `AudioEngine` gains `setGmTierBypass(on)` (default on) and `setStageBypass(trackId, stage, bypassed)`, and `@reprise/audio` exports the pure `resolveEffects`, `presetFamilyOf`, `EFFECT_PRESETS` and `EFFECT_PRESET_IDS`, and the types `EffectPresetId`, `EffectStage`, `EffectFamily`, `ResolvedEffects` and `ResolveContext`. `Track.sound.preset` is an effects-preset id, opaque to the model, valid without `packId`; an unknown id means automatic. A `sound` change that touches only `preset` is timeline-neutral (ADR-0024). The web app's `AudioService` passes `setGmTierBypass` through and keeps it in `settings.gmTierBypass`, persisted with the transport preferences.
 
-
 Internals: a lookahead scheduler on the main thread (schedule ~200 ms ahead on a 25 ms timer), a voice pool with per-voice gain and detune automation, region maps produced by the SF2 and SFZ loaders, an LRU cache of decoded buffers under the memory budget, per-track channel strips with an effects chain, a master bus.
 
 ### Platform (`apps/web/src/platform`)
@@ -606,7 +605,7 @@ The browser implementation exists so `pnpm dev` works without Electron; the Elec
 
 ## Memory model
 
-- Decoded audio buffers are owned by the audio package's cache. Budget default 300 MB, readable and settable through the engine API and shown in the sound settings.
+- Decoded audio buffers are owned by the audio package's cache. The budget follows the tier of the last `load` (#267): 80 MiB on the GM tier (`budgetBytes`) and 300 MiB on the HQ tier (`hqBudgetBytes`), until WP-094 makes it a setting readable and settable through the engine API and shown in the sound settings.
 - A song's `load` computes the instrument set it needs, loads those regions lazily on first use, and evicts least-recently-used instruments when over budget. Switching songs evicts everything the new song doesn't use.
 - Layout caches are per bar and dropped when the score is closed.
 - The benchmark test opens a long eight-track score and asserts layout time and resident memory stay under the budgets recorded in `plans/roadmap.md`.

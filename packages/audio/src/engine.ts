@@ -254,6 +254,8 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   let gmTierBypass = true;
   /** The assignments whose pack loaded, by track: what the tier and the strips follow. */
   let loadedPacks = new Map<Id, { assignment: PackAssignment; key: string }>();
+  /** Assignments whose check failed, remembered so an edit does not read a broken pack again. */
+  let failedPacks = new Map<Id, { key: string; files: SfzFiles; fallback: LoadFallback }>();
   /** Bumped by every `load`, so a pack check that a newer load overtook changes nothing. */
   let packLoads = 0;
   /** Session stage bypasses, by track. */
@@ -309,15 +311,10 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     if (!live) return;
     const { sampler } = live;
     const held = new Set(sampler.trackIds);
+    const assignments = [...loadedPacks.values()].map((entry) => entry.assignment);
     for (const track of tracks) {
       if (!held.has(track.id)) continue;
-      const { preset } = resolveEffects(track, {
-        tier: tierOf(
-          track,
-          [...loadedPacks.values()].map((entry) => entry.assignment),
-        ),
-        gmTierBypass,
-      });
+      const { preset } = resolveEffects(track, { tier: tierOf(track, assignments), gmTierBypass });
       sampler.setEffects(track.id, stagesOf(preset, stageBypasses.get(track.id)));
     }
   }
@@ -483,48 +480,58 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
 
   /**
    * Checks each assignment against its pack: the default SFZ must read, parse and map a region. An
-   * assignment with the same pack files and path as the last load is kept without reading again,
-   * so a reload swaps only the tracks whose pack changed. The provider routing that plays the
-   * pack's samples is WP-091 PR A: until then an assignment that checks out changes the track's
-   * tier (effects and budget) but not its sound.
+   * assignment with the same pack id, files object and default path as the last load is not read
+   * again, whether it loaded or failed, so a reload swaps only the tracks whose pack changed and a
+   * broken pack is not retried on every edit (a reinstall brings a new files object). The provider
+   * routing that plays the pack's samples is WP-091 PR A, which should reuse the SFZ parsed here:
+   * until then an assignment that checks out changes the track's tier (effects and budget) but not
+   * its sound.
    */
   async function resolvePacks(
     next: Score,
     assignments: readonly PackAssignment[],
-  ): Promise<{ loaded: typeof loadedPacks; fallbacks: LoadFallback[] }> {
+  ): Promise<{ loaded: typeof loadedPacks; failed: typeof failedPacks }> {
     const tracks = new Set(next.tracks.map((track) => track.id));
-    const loaded = new Map<Id, { assignment: PackAssignment; key: string }>();
-    const fallbacks: LoadFallback[] = [];
+    const loaded: typeof loadedPacks = new Map();
+    const failed: typeof failedPacks = new Map();
     await Promise.all(
       assignments
         .filter((assignment) => tracks.has(assignment.trackId))
         .map(async (assignment) => {
+          const { trackId, pack } = assignment;
           const path = assignment.entries.default;
-          const key = `${assignment.pack.id}:${path ?? ''}`;
-          const old = loadedPacks.get(assignment.trackId);
-          if (old && old.key === key && old.assignment.pack.files === assignment.pack.files) {
-            loaded.set(assignment.trackId, { assignment, key });
+          const key = `${pack.id}:${path ?? ''}`;
+          const ok = loadedPacks.get(trackId);
+          if (ok && ok.key === key && ok.assignment.pack.files === pack.files) {
+            loaded.set(trackId, { assignment, key });
+            return;
+          }
+          const bad = failedPacks.get(trackId);
+          if (bad && bad.key === key && bad.files === pack.files) {
+            failed.set(trackId, bad);
             return;
           }
           try {
             if (path === undefined) throw new Error('the assignment has no default entry');
-            const { regions } = await loadSfz(path, (file) => assignment.pack.files.read(file), {
-              packId: assignment.pack.id,
+            const { regions } = await loadSfz(path, (file) => pack.files.read(file), {
+              packId: pack.id,
             });
             if (regions.length === 0) throw new Error(`${path} maps no regions`);
-            loaded.set(assignment.trackId, { assignment, key });
+            loaded.set(trackId, { assignment, key });
           } catch (error) {
-            fallbacks.push({
-              trackId: assignment.trackId,
-              packId: assignment.pack.id,
-              error: error instanceof Error ? error.message : String(error),
+            failed.set(trackId, {
+              key,
+              files: pack.files,
+              fallback: {
+                trackId,
+                packId: pack.id,
+                error: error instanceof Error ? error.message : String(error),
+              },
             });
           }
         }),
     );
-    const order = new Map(next.tracks.map((track, index) => [track.id, index]));
-    fallbacks.sort((a, b) => (order.get(a.trackId) ?? 0) - (order.get(b.trackId) ?? 0));
-    return { loaded, fallbacks };
+    return { loaded, failed };
   }
 
   function unlock(): Live | undefined {
@@ -579,12 +586,17 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
         loading = decode(next);
       }
       return tracked(
-        Promise.all([loading, packing]).then(([result, { loaded, fallbacks }]) => {
+        Promise.all([loading, packing]).then(([result, { loaded, failed }]) => {
           // A newer load, or `unload`, owns the packs now.
           if (packLoads === started && score === next) {
             loadedPacks = loaded;
+            failedPacks = failed;
             applyEffects(next.tracks);
           }
+          const order = new Map(next.tracks.map((track, index) => [track.id, index]));
+          const fallbacks = [...failed.values()]
+            .map((entry) => entry.fallback)
+            .sort((a, b) => (order.get(a.trackId) ?? 0) - (order.get(b.trackId) ?? 0));
           return { ...result, fallbacks };
         }),
       );
@@ -714,6 +726,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       stageBypasses = new Map();
       packLoads += 1;
       loadedPacks = new Map();
+      failedPacks = new Map();
       loopBars = undefined;
       song += 1;
       loadTokens.clear();
