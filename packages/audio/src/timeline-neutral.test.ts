@@ -76,6 +76,12 @@ describe('timelineNeutral', () => {
       setTrackProperties(first(s), { sound: { packId: 'steelpack002', preset: 'clean' } }),
     ).after;
     expect(timelineNeutral(withPack, otherPack)).toBe(false);
+    const otherInstrument = edit(withPack, (s) =>
+      setTrackProperties(first(s), {
+        sound: { packId: 'steelpack001', instrument: 'blue', preset: 'clean' },
+      }),
+    ).after;
+    expect(timelineNeutral(withPack, otherInstrument)).toBe(false);
   });
 
   it('is false for note, track-list and master-bar edits', () => {

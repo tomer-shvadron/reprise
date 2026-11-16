@@ -3,11 +3,13 @@ import {
   GM_BUDGET_BYTES,
   Sf2ParseError,
   Sf2Soundfont,
+  tierOf,
   timelineNeutral,
   checkClickSettings,
   type AudioEngine,
   type ClickSettings,
   type LoadOptions,
+  type PackAssignment,
   type PlaybackState,
   type EffectStage,
   type PreviewNote,
@@ -18,8 +20,14 @@ import {
 } from '@reprise/audio';
 import type { Id, Score } from '@reprise/model';
 
-import { selectCanPlay, type PlaybackStore, type PlaybackStoreState } from '@/state/playback';
+import {
+  selectCanPlay,
+  type PlaybackStore,
+  type PlaybackStoreState,
+  type TrackSound,
+} from '@/state/playback';
 import type { BarRange } from '@/state/selection';
+import type { InstalledPackSource, PackDirectory } from '@/state/sound-packs';
 
 import { loadGmSoundfont, SoundfontError, type SoundfontLoader } from './soundfont-loader';
 
@@ -32,6 +40,13 @@ export interface AudioServiceOptions {
   frames?: Ticker;
   startLatency?: number;
   budgetBytes?: number;
+  /** The HQ tier's budget; the engine's default (300 MiB) when absent. */
+  hqBudgetBytes?: number;
+  /**
+   * Where installed sound packs come from. A track naming a pack the directory has plays an HQ
+   * assignment; the service reloads when the directory changes. None: every track is GM.
+   */
+  packs?: PackDirectory;
   /** Runs an edit's rebuild; a task later by default, out of the layout's task. */
   defer?: (run: () => void) => void;
 }
@@ -126,6 +141,17 @@ export interface AudioService {
    *   on the same string (or key) replaces a waiting one; `stop` cancels it.
    */
   previewNote(trackId: Id, note: PreviewNote, options?: PreviewOptions): void;
+  /**
+   * Undoes `releasePack` for a pack that is still installed (the folder removal failed): the song
+   * reloads with it. A no-op for a pack that was not released.
+   */
+  reinstatePack(id: string): Promise<void>;
+  /**
+   * Reloads the open song without pack `id`: its tracks play GM, as a pack that is not installed.
+   * Resolves once the engine holds no reader for the pack's files, so the caller can delete them.
+   * The pack stays out until the directory lists a different version of it (or no longer lists it).
+   */
+  releasePack(id: string): Promise<void>;
   /** After a sound, song or output error. */
   retry(): void;
   /** Resolves with no rebuild pending, the document's load done and no decode in flight. */
@@ -133,8 +159,6 @@ export interface AudioService {
   debug(): AudioServiceDebug;
   dispose(): void;
 }
-
-const GM: LoadOptions = { tier: 'gm', packs: [] };
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -148,12 +172,14 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     loadSoundfont = loadGmSoundfont,
     createContext = () => new AudioContext({ latencyHint: 'interactive' }),
     budgetBytes = GM_BUDGET_BYTES,
+    packs: directory,
     defer = (run) => setTimeout(run, 0),
   } = options;
 
   const engine = createAudioEngine({
     context: createContext,
     budgetBytes,
+    ...(options.hqBudgetBytes !== undefined && { hqBudgetBytes: options.hqBudgetBytes }),
     ...(options.scheduler && { scheduler: options.scheduler }),
     ...(options.frames && { frames: options.frames }),
     ...(options.startLatency !== undefined && { startLatency: options.startLatency }),
@@ -177,6 +203,24 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   let rebuildQueued = false;
   let disposed = false;
   const inflight = new Set<Promise<unknown>>();
+  /** Packs `releasePack` took out, by the files object they had; see `releasePack`. */
+  const released = new Map<string, InstalledPackSource['files']>();
+  /** Bumped by every engine load, so only the latest one mirrors `trackSounds`. */
+  let loadSeq = 0;
+  /**
+   * Assignments the engine reported as fallbacks, by track, keyed by what it checked (pack id,
+   * files object, default path): the next load shows them failed at once and, with nothing else
+   * assigned, asks for the GM tier, instead of flickering through HQ while the engine confirms.
+   */
+  let failures = new Map<
+    Id,
+    {
+      packId: string;
+      files: InstalledPackSource['files'];
+      path: string | undefined;
+      message: string;
+    }
+  >();
 
   const track = <T>(promise: Promise<T>): Promise<T> => {
     const settled = promise.then(
@@ -196,6 +240,13 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   };
 
   const cleanups = [
+    ...(directory
+      ? [
+          directory.subscribe(() => {
+            if (!disposed && doc && loaded) scheduleRebuild();
+          }),
+        ]
+      : []),
     engine.on('state', (state) => {
       transport = state;
       set({ transport: state });
@@ -216,6 +267,136 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
       set({ instrumentLoads });
     }),
   ];
+
+  /** The installed pack a track names, unless it was released and not reinstalled since. */
+  function installedPack(id: string): InstalledPackSource | undefined {
+    const found = directory?.get(id);
+    if (!found) {
+      released.delete(id);
+      return undefined;
+    }
+    return released.get(id) === found.files ? undefined : found;
+  }
+
+  /**
+   * The engine's `LoadOptions` for a score, and what is already known about each track: a pack
+   * that is not installed, or whose instrument is not in it, is `missing`. The tier is `hq` while
+   * at least one assignment not known to fail reaches the engine, which selects the HQ memory
+   * budget.
+   */
+  function loadOptionsFor(score: Score): {
+    options: LoadOptions;
+    sounds: Record<Id, TrackSound>;
+  } {
+    const assignments: PackAssignment[] = [];
+    /** The assignments not already known to fail: the ones that make the song HQ. */
+    const playing: PackAssignment[] = [];
+    const sounds: Record<Id, TrackSound> = {};
+    for (const track of score.tracks) {
+      const wanted = track.sound?.packId;
+      if (wanted === undefined) {
+        sounds[track.id] = { tier: 'gm' };
+        continue;
+      }
+      const pack = installedPack(wanted);
+      const instrument = track.sound?.instrument;
+      const chosen = pack?.instruments.find(
+        (entry) => instrument === undefined || entry.key === instrument,
+      );
+      if (!pack || !chosen) {
+        sounds[track.id] = { tier: 'gm', packId: wanted, problem: 'missing' };
+        continue;
+      }
+      const assignment: PackAssignment = {
+        trackId: track.id,
+        pack: { id: pack.id, files: pack.files },
+        entries: chosen.entries,
+      };
+      assignments.push(assignment);
+      const failed = failures.get(track.id);
+      if (
+        failed?.packId === pack.id &&
+        failed.files === pack.files &&
+        failed.path === chosen.entries.default
+      ) {
+        sounds[track.id] = {
+          tier: 'gm',
+          packId: wanted,
+          problem: 'failed',
+          message: failed.message,
+        };
+      } else {
+        playing.push(assignment);
+        sounds[track.id] = { tier: 'gm', packId: wanted };
+      }
+    }
+    for (const track of score.tracks) {
+      const known = sounds[track.id];
+      if (known && known.problem === undefined) {
+        sounds[track.id] = { ...known, tier: tierOf(track, playing) };
+      }
+    }
+    return { options: { tier: playing.length > 0 ? 'hq' : 'gm', packs: assignments }, sounds };
+  }
+
+  /** Writes `trackSounds` only when it differs, so an edit that changes no sound wakes nobody. */
+  function setTrackSounds(next: Record<Id, TrackSound>): void {
+    const current = playback.getState().trackSounds;
+    const ids = Object.keys(next);
+    const same =
+      ids.length === Object.keys(current).length &&
+      ids.every((id) => {
+        const a = current[id];
+        const b = next[id];
+        return (
+          a !== undefined &&
+          b !== undefined &&
+          a.tier === b.tier &&
+          a.packId === b.packId &&
+          a.problem === b.problem &&
+          a.message === b.message
+        );
+      });
+    if (!same) set({ trackSounds: next });
+  }
+
+  /**
+   * Loads a score into the engine and, when no later load started meanwhile, mirrors the tiers
+   * with the engine's fallbacks as `failed`. Resolves with `latest: false` for an overtaken load,
+   * whose result the store must not show: the engine kept the newer one's packs.
+   */
+  async function runLoad(score: Score): Promise<{ instruments: number; latest: boolean }> {
+    loadSeq += 1;
+    const mine = loadSeq;
+    const { options: loadOptions, sounds } = loadOptionsFor(score);
+    setTrackSounds(sounds);
+    const { instruments, fallbacks } = await engine.load(score, loadOptions);
+    if (mine !== loadSeq) return { instruments: instruments.length, latest: false };
+    const next = { ...sounds };
+    failures = new Map();
+    for (const { trackId, error } of fallbacks) {
+      next[trackId] = { ...next[trackId], tier: 'gm', problem: 'failed', message: error };
+      const assigned = loadOptions.packs.find((entry) => entry.trackId === trackId);
+      if (assigned) {
+        failures.set(trackId, {
+          packId: assigned.pack.id,
+          files: assigned.pack.files,
+          path: assigned.entries.default,
+          message: error,
+        });
+      }
+    }
+    setTrackSounds(next);
+    // Every assignment failed on an HQ load: reload once so the budget and tiers return to GM.
+    if (
+      loadOptions.tier === 'hq' &&
+      fallbacks.length === loadOptions.packs.length &&
+      doc?.score === score
+    ) {
+      void track(runLoad(score).then(() => undefined));
+    }
+    return { instruments: instruments.length, latest: true };
+  }
 
   function ensureBank(): Promise<void> {
     bankLoad ??= (async () => {
@@ -254,9 +435,9 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
       if (gen !== generation || !doc) return;
       loaded = true;
       engineScore = doc.score;
-      const { instruments } = await engine.load(doc.score, GM);
+      const { instruments } = await runLoad(doc.score);
       if (gen === generation) {
-        set({ song: { status: 'ready', error: undefined }, instruments: instruments.length });
+        set({ song: { status: 'ready', error: undefined }, instruments });
       }
     } catch (error) {
       if (gen === generation) set({ song: { status: 'error', error: messageOf(error) } });
@@ -264,14 +445,15 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   }
 
   /** Hands the engine the document's latest score; the engine keeps the position (Q5). */
-  function reload(): void {
-    if (!doc || !loaded) return;
+  function reload(): Promise<void> {
+    if (!doc || !loaded) return Promise.resolve();
     const gen = generation;
     engineScore = doc.score;
-    void track(
-      engine.load(doc.score, GM).then(
+    return track(
+      runLoad(doc.score).then(
         ({ instruments }) => {
-          if (gen === generation) set({ instruments: instruments.length });
+          if (gen !== generation) return;
+          set({ instruments });
         },
         (error: unknown) => {
           if (gen === generation) set({ song: { status: 'error', error: messageOf(error) } });
@@ -288,7 +470,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
         defer(() => {
           rebuildQueued = false;
           try {
-            if (!disposed) reload();
+            if (!disposed) void reload();
           } finally {
             resolve();
           }
@@ -301,7 +483,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     loaded = false;
     engineScore = undefined;
     mixer = {};
-    set({ mixer: {}, instrumentLoads: {}, position: undefined, ...partial });
+    set({ mixer: {}, instrumentLoads: {}, trackSounds: {}, position: undefined, ...partial });
   }
 
   const service: AudioService = {
@@ -335,7 +517,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
         const previous = doc.score;
         doc = next;
         if (!loaded) return;
-        if (!rebuildQueued && timelineNeutral(previous, next.score)) reload();
+        if (!rebuildQueued && timelineNeutral(previous, next.score)) void reload();
         else scheduleRebuild();
         return;
       }
@@ -499,6 +681,19 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
           }),
         },
       );
+    },
+
+    async releasePack(id) {
+      const current = directory?.get(id);
+      if (current) released.set(id, current.files);
+      if (disposed) return;
+      await reload();
+      await service.settled();
+    },
+
+    async reinstatePack(id) {
+      if (!released.delete(id) || disposed) return;
+      await reload();
     },
 
     retry() {

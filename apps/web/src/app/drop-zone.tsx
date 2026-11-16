@@ -33,6 +33,7 @@ export function DropZone() {
   const services = useAppServices();
   const { document, ui } = services;
   const onLibrary = useStore(ui, (state) => state.screen === 'library');
+  const onSounds = useStore(ui, (state) => state.screen === 'sounds');
   const [over, setOver] = useState(false);
 
   useEffect(() => {
@@ -53,9 +54,12 @@ export function DropZone() {
     };
     const onDrop = (event: DragEvent) => {
       if (!hasFiles(event)) return;
+      // Cancelled on every screen, or the browser navigates to the dropped file.
       event.preventDefault();
       depth = 0;
       setOver(false);
+      // The Sounds screen takes a dropped pack zip itself: the window opens and imports nothing.
+      if (ui.getState().screen === 'sounds') return;
       // As for a shortcut or a menu command: a dialog is up, and a file dropped onto it must not
       // replace the document behind it (it would also ask the unsaved question over the dialog).
       if (modalBlocksCommand('app.drop')) return;
@@ -117,7 +121,7 @@ export function DropZone() {
     };
   }, [services, document, ui]);
 
-  if (!over) return null;
+  if (!over || onSounds) return null;
   return (
     <div
       aria-hidden

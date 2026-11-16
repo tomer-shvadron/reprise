@@ -91,6 +91,8 @@ export function fakeAudioService(): FakeAudioService {
     setTrack: vi.fn(),
     previewTrack: vi.fn(),
     previewNote: vi.fn(),
+    releasePack: vi.fn(() => Promise.resolve()),
+    reinstatePack: vi.fn(() => Promise.resolve()),
     retry: vi.fn(),
     settled: vi.fn(() => Promise.resolve()),
     debug: vi.fn(() => {
