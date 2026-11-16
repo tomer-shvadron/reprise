@@ -55,8 +55,9 @@ export interface PackAssignment {
    */
   pack: { id: string; files: SfzFiles };
   /**
-   * SFZ paths inside the pack by articulation-set key. `default` is required and is what plays;
-   * the other keys are WP-093's.
+   * SFZ paths inside the pack by articulation-set key (`ARTICULATION_SETS`). `default` is
+   * required and is what plays; the other keys name the sets a pack has a file for, and a key
+   * outside the list is ignored (WP-093 maps them to notes).
    */
   entries: Readonly<Record<string, string>>;
 }
