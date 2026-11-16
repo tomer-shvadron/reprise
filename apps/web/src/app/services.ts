@@ -1,3 +1,4 @@
+import { createSoundPackStore, type SoundPackStore } from '@/features/sounds';
 import { createPrintStore, viewLayoutOptions, type PrintStore } from '@/features/score';
 // Not the feature's index: it re-exports the bar, whose services context imports this file.
 import { installTransport } from '@/features/transport/install-transport';
@@ -30,6 +31,8 @@ export interface AppServices {
   playback: PlaybackStore;
   layout: LayoutStore;
   audio: AudioService;
+  /** The installed sound packs, which the audio service reads (WP-091). */
+  sounds: SoundPackStore;
   /** The transport bar's UI state, reachable from its commands. */
   transport: TransportUiStore;
   /** Where the drawn playhead is, so clicks and steps decide from what the user sees. */
@@ -48,7 +51,7 @@ export interface AppServices {
 export interface AppServicesOptions {
   platform: Platform;
   ui?: UiStore;
-  audio?: (playback: PlaybackStore) => AudioService;
+  audio?: (playback: PlaybackStore, sounds: SoundPackStore) => AudioService;
   read?: DocumentStoreDeps['read'];
   write?: DocumentStoreDeps['write'];
   /** Where the transport keeps its preferences; `localStorage` by default. */
@@ -75,7 +78,10 @@ export function createAppServices(options: AppServicesOptions): AppServices {
         notation: content.notation,
       }),
   });
-  const audio = (options.audio ?? ((store) => createAudioService({ playback: store })))(playback);
+  const sounds = createSoundPackStore({ platform });
+  const audio = (
+    options.audio ?? ((store, packs) => createAudioService({ playback: store, packs }))
+  )(playback, sounds);
 
   const transport = createTransportUi();
   const editing = createEditingStore();
@@ -131,6 +137,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     playback,
     layout,
     audio,
+    sounds,
     transport,
     heard: createHeardRef(),
     print: createPrintStore({ document, ui, platform }),

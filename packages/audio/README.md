@@ -194,11 +194,12 @@ Events:
 
 ## Engine API
 
-`createAudioEngine({ context, budgetBytes?, scheduleMemory?, scheduler?, frames?, lookahead?, startLatency? })`
+`createAudioEngine({ context, budgetBytes?, hqBudgetBytes?, scheduleMemory?, scheduler?, frames?, lookahead?, startLatency? })`
 returns the `AudioEngine` contract of `docs/specs/architecture.md`. `context` is a context or a
 factory; a factory is called on the first `unlock()`, `play()` or `previewNote()`, never in `load`,
 so a song is decoded before the first gesture. `budgetBytes` is the memory manager's
-(`GM_BUDGET_BYTES` by default); `scheduleMemory` runs the coalesced `memory` event (the next
+(`GM_BUDGET_BYTES`, 80 MiB, by default) while `load` is given `tier: 'gm'`, and `hqBudgetBytes`
+(`HQ_BUDGET_BYTES`, 300 MiB) while it is given `tier: 'hq'`; `scheduleMemory` runs the coalesced `memory` event (the next
 animation frame by default); the rest go to the transport.
 
 | Object                                                                | Made                                                                   | Lives until                               |
@@ -209,21 +210,21 @@ animation frame by default); the rest go to the transport.
 | the sampler's tracks                                                  | a new song's load once live, or the unlock for a song loaded before it | `unload`, or an edit that drops the track |
 | overrides and settings                                                | their setters, before or after the context                             | overrides and the loop: `unload`          |
 
-| Method                                                                     | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                     |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `setSoundfont(font)`                                                       | The parsed GM bank. Fetching it, and its errors, belong to the app. A second call throws; `load` before it rejects.                                                                                                                                                                                                                                                                                           |
-| `load(score, options)`                                                     | Resolves `{ instruments }`, the song plan's, once the opening bars are decoded. A new song is `stopped` at tick 0. Over a loaded song it is an edit: the placement rule above, the overrides kept, the tracks synced; a timeline-neutral edit (`timelineNeutral`) reaches the strips and instruments at once, with no rebuild. Loading the same score object again decodes it again and changes nothing else. |
-| `unload({ evict? })`                                                       | Stops, drops the song, its tracks, overrides, loop and instrument loads; `evict` frees every instrument too.                                                                                                                                                                                                                                                                                                  |
-| `unlock()`                                                                 | Makes the context (and everything that needs it), applies the settings, attaches a loaded song; resumes a suspended context.                                                                                                                                                                                                                                                                                  |
-| `play`, `pause`, `stop`, `seek`                                            | The transport's. `play` unlocks first; the others are no-ops before the context.                                                                                                                                                                                                                                                                                                                              |
-| `setTempo`, `setLoop`, `setCountIn`, `setMetronome`, `setMasterVolume`     | Validated, kept, and applied now or when the context is made. The master volume scales the bus, the metronome included.                                                                                                                                                                                                                                                                                       |
-| `startClick(settings?)`, `updateClick(settings)`, `stopClick()`, `click()` | The standalone click (below): a metronome with no score. `startClick` unlocks, pauses a playing song and starts; `play` stops it. Settings are validated (`RangeError`) and kept across stops.                                                                                                                                                                                                                |
-| `setTrack(id, params)`                                                     | A user override over the track's channel, applied at once and kept through every baseline reset and edit until `unload`.                                                                                                                                                                                                                                                                                      |
-| `previewTrack(id, params)`                                                 | Volume or pan for a slider being dragged: no override, so the next baseline reset or edit replaces it.                                                                                                                                                                                                                                                                                                        |
-| `previewNote(track, note, options?)`                                       | One note through the track's strip, past mute and solo, stopped or playing. `note` is `{ string, fret }` (through the track's tuning and capo) or `{ pitch }`; `options` is `{ velocity?, seconds? }`; previews choke only previews. Throws with no song, and a `RangeError` for a track the song lacks.                                                                                                      |
-| `memory()`                                                                 | The memory manager's report; zero bytes against the budget before the bank.                                                                                                                                                                                                                                                                                                                                   |
-| `outputLatency()`                                                          | `baseLatency + outputLatency` of the context (`outputLatencyOf`), 0 before it.                                                                                                                                                                                                                                                                                                                                |
-| `settled()`                                                                | Resolves with no load, instrument load or fetch in flight.                                                                                                                                                                                                                                                                                                                                                    |
+| Method                                                                     | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setSoundfont(font)`                                                       | The parsed GM bank. Fetching it, and its errors, belong to the app. A second call throws; `load` before it rejects.                                                                                                                                                                                                                                                                                                                                                                            |
+| `load(score, options)`                                                     | Resolves `{ instruments, fallbacks }`, the song plan's instruments and the assigned tracks whose pack failed to load (below), once the opening bars are decoded. A new song is `stopped` at tick 0. Over a loaded song it is an edit: the placement rule above, the overrides kept, the tracks synced; a timeline-neutral edit (`timelineNeutral`) reaches the strips and instruments at once, with no rebuild. Loading the same score object again decodes it again and changes nothing else. |
+| `unload({ evict? })`                                                       | Stops, drops the song, its tracks, overrides, loop and instrument loads; `evict` frees every instrument too.                                                                                                                                                                                                                                                                                                                                                                                   |
+| `unlock()`                                                                 | Makes the context (and everything that needs it), applies the settings, attaches a loaded song; resumes a suspended context.                                                                                                                                                                                                                                                                                                                                                                   |
+| `play`, `pause`, `stop`, `seek`                                            | The transport's. `play` unlocks first; the others are no-ops before the context.                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `setTempo`, `setLoop`, `setCountIn`, `setMetronome`, `setMasterVolume`     | Validated, kept, and applied now or when the context is made. The master volume scales the bus, the metronome included.                                                                                                                                                                                                                                                                                                                                                                        |
+| `startClick(settings?)`, `updateClick(settings)`, `stopClick()`, `click()` | The standalone click (below): a metronome with no score. `startClick` unlocks, pauses a playing song and starts; `play` stops it. Settings are validated (`RangeError`) and kept across stops.                                                                                                                                                                                                                                                                                                 |
+| `setTrack(id, params)`                                                     | A user override over the track's channel, applied at once and kept through every baseline reset and edit until `unload`.                                                                                                                                                                                                                                                                                                                                                                       |
+| `previewTrack(id, params)`                                                 | Volume or pan for a slider being dragged: no override, so the next baseline reset or edit replaces it.                                                                                                                                                                                                                                                                                                                                                                                         |
+| `previewNote(track, note, options?)`                                       | One note through the track's strip, past mute and solo, stopped or playing. `note` is `{ string, fret }` (through the track's tuning and capo) or `{ pitch }`; `options` is `{ velocity?, seconds? }`; previews choke only previews. Throws with no song, and a `RangeError` for a track the song lacks.                                                                                                                                                                                       |
+| `memory()`                                                                 | The memory manager's report; zero bytes against the budget before the bank.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `outputLatency()`                                                          | `baseLatency + outputLatency` of the context (`outputLatencyOf`), 0 before it.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `settled()`                                                                | Resolves with no load, instrument load or fetch in flight.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 Events: the transport's `position`, `state` and `loop`; `memory` (the manager's, coalesced);
 `instrumentLoads`, `{ [trackId]: { loaded, total } }` for each track whose new instrument is
@@ -235,14 +236,38 @@ engine puts every strip back on its track's program and channel, with the user's
 top, as each run starts, on every `stopped`, and at each loop wrap (scheduled at the wrap's time).
 
 `debugAudioEngine(engine)`, from the test-only `@reprise/audio/testing` entry, returns the live
-objects (`context`, `sampler`, `source`, `bank`, `transport`); it is not part of the contract.
+objects (`context`, `sampler`, `source`, `bank`, `transport`, and `assignments`, the loaded pack
+assignments by track); it is not part of the contract.
+
+### Pack assignments (#267)
+
+`LoadOptions.packs` is a list of `PackAssignment`, `{ trackId, pack: { id, files }, entries }`:
+
+- `pack.files` is an `SfzFiles` reader, the same object for as long as the installed version lives;
+  a new object means the pack changed. `entries` maps articulation-set keys to SFZ paths in the
+  pack; `default` is required and is what plays (WP-093 maps the rest).
+- `load` checks each assignment: the default SFZ must read, parse and map a region. One that does
+  not goes to `LoadResult.fallbacks` (`{ trackId, packId, error }`), plays GM, and `load` still
+  resolves. An assignment with the same pack id, files object and default path as the last `load`
+  is kept without reading again, so loading the same score with different `packs` checks only the
+  tracks that changed, and an assignment that is gone is dropped.
+- `tier` selects the memory budget on each `load`: `budgetBytes` for `gm`, `hqBudgetBytes` for
+  `hq`. Lowering it evicts at once, so going back to GM frees the pack buffers. The app passes
+  `hq` when at least one assignment reaches the engine.
+- Not yet (WP-091's engine PR): the provider that routes `sfz:` refs to `SfzPack` and attaches the
+  pack's instrument to the strip. Until then a loaded assignment changes the track's tier, and so
+  its effects, but not its sound.
+- Root exports: `tierOf`, `checkPack`, `checkSfzFile` and the types `PackSnapshot`, `SnapshotFile`,
+  `SfzFileCheck` (the installer's validation) and `LoadFallback`. `@reprise/audio/testing` adds
+  `encodeWav`, `encodeFlac` and `syntheticSfzPack()`, a small valid pack in memory (`default.sfz`
+  and `alt.sfz`, each over one WAV) that counts its reads, so tests commit no samples.
 
 ### Known gaps
 
 - Effects presets are not driven by CC91/CC93 (`channel.reverb`, `channel.chorus`) or a beat's
   `mix` reverb and chorus: the reverb send and chorus depth come from the preset only (#235).
-- The memory budget has no setter on the engine; it arrives with the HQ tier (phase 3, WP-094).
-  The architecture's Memory model section describes the HQ default, 300 MB.
+- The memory budget follows the tier of the last `load` and has no setter; the setter and the user
+  setting are WP-094's. The architecture's Memory model section describes the HQ default, 300 MB.
 - `previewNote` of a sample not yet decoded requests its decode (a miss) and starts the note when
   the sample is resident, unless that takes over 500 ms, when the note is dropped; a newer preview on the same string (or key), a stop, `removeTrack` or `dispose` cancels it. Previews choke only previews (#204).
 - A load over a loaded song cuts the notes sounding at that moment and restarts after
@@ -603,12 +628,13 @@ stack; `keys`, `drums` and `other` only a reverb send; `off` nothing.
 | absent or unknown            | gm   | off            | the family preset                 |
 
 So the bypass governs automatic presets on GM tracks only: a preset the user picks applies on
-either tier. The engine's `tierOf(track)` is `hq` when the last `load` assigned the track a pack,
-`gm` otherwise; WP-091 refines it. `setGmTierBypass(on)` re-resolves every track; and
+either tier. The exported `tierOf(track, packs)` is `hq` when an assignment names the track, `gm` otherwise, and
+the engine applies it to the assignments that loaded; a track that names a pack in `sound.packId`
+only (not installed, failed) is `gm`. `setGmTierBypass(on)` re-resolves every track; and
 `setStageBypass(trackId, stage, bypassed)` is a session override like `setTrack` (not saved, kept
 through edits, cleared by `unload`); the reverb stage's bypass is its send at 0. A `sound` edit
 that changes only `preset` is timeline-neutral (`timelineNeutral`), so it and its undo are heard at
-once with no rebuild; a `packId` change is not.
+once with no rebuild; a `packId` or `instrument` change is not.
 
 ### Switching, bypass and idle paths
 

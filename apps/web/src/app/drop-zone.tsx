@@ -38,21 +38,23 @@ export function DropZone() {
   useEffect(() => {
     // Enter and leave fire for every child crossed; the count is zero only outside the window.
     let depth = 0;
+    // The Sounds screen takes a dropped pack zip itself, so the window does not claim the drop.
+    const onSounds = () => ui.getState().screen === 'sounds';
     const onEnter = (event: DragEvent) => {
-      if (!hasFiles(event)) return;
+      if (!hasFiles(event) || onSounds()) return;
       depth += 1;
       setOver(true);
     };
     const onLeave = (event: DragEvent) => {
-      if (!hasFiles(event)) return;
+      if (!hasFiles(event) || onSounds()) return;
       depth = Math.max(0, depth - 1);
       if (depth === 0) setOver(false);
     };
     const onOver = (event: DragEvent) => {
-      if (hasFiles(event)) event.preventDefault();
+      if (hasFiles(event) && !onSounds()) event.preventDefault();
     };
     const onDrop = (event: DragEvent) => {
-      if (!hasFiles(event)) return;
+      if (!hasFiles(event) || onSounds()) return;
       event.preventDefault();
       depth = 0;
       setOver(false);

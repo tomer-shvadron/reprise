@@ -6,8 +6,8 @@ import type { Score } from '@reprise/model';
  * rebuilding the sequence. Identity is exact: Immer keeps every node an edit did not touch, and
  * undo and redo keep them too. `bank` is not neutral because the sink resolves a beat's program
  * change against the timeline's copy of the track. A `sound` change is neutral when only its
- * `preset` (an effects preset, which the strips apply at once) differs; a `packId` change is the
- * HQ tier switch and rebuilds.
+ * `preset` (an effects preset, which the strips apply at once) differs; a `packId` or `instrument`
+ * change is the HQ tier switch or a different pack instrument and rebuilds.
  */
 export function timelineNeutral(previous: Score, next: Score): boolean {
   if (previous.masterBars !== next.masterBars || previous.tracks.length !== next.tracks.length) {
@@ -24,7 +24,8 @@ export function timelineNeutral(previous: Score, next: Score): boolean {
           old.tuning === track.tuning &&
           old.capo === track.capo &&
           old.bank === track.bank &&
-          old.sound?.packId === track.sound?.packId))
+          old.sound?.packId === track.sound?.packId &&
+          old.sound?.instrument === track.sound?.instrument))
     );
   });
 }

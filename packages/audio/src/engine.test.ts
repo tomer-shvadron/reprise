@@ -1,4 +1,11 @@
-import { applyCommand, createTrack, PPQ, setNote, setTrackProperties } from '@reprise/model';
+import {
+  addTrack,
+  applyCommand,
+  createTrack,
+  PPQ,
+  setNote,
+  setTrackProperties,
+} from '@reprise/model';
 import type { Score } from '@reprise/model';
 import { beatOf, note, score } from '@reprise/model/testing';
 import type { BeatSpec } from '@reprise/model/testing';
@@ -7,6 +14,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createAudioEngine, debugAudioEngine } from './engine';
 import type {
   AudioEngine,
+  AudioEngineOptions,
   InstrumentLoads,
   LoadOptions,
   PlaybackState,
@@ -17,6 +25,7 @@ import { channelVolumeToGain } from './sampler/sampler';
 import { GM_BUDGET_BYTES } from './samples/managed-sample-source';
 import { Sf2Soundfont } from './sf2/soundfont';
 import { loadGeneralUser } from './test/harness';
+import { syntheticSfzPack } from './testing/synthetic-pack';
 import { rms as signalRms, signalOf } from './test/signal';
 
 const SAMPLE_RATE = 44_100;
@@ -60,7 +69,14 @@ function quarters(
 
 const trackOf = (song: Score) => song.tracks[0]?.id ?? '';
 
-async function setup(options: { seconds?: number; lazy?: boolean; font?: Sf2Soundfont } = {}) {
+async function setup(
+  options: {
+    seconds?: number;
+    lazy?: boolean;
+    font?: Sf2Soundfont;
+    engine?: Partial<AudioEngineOptions>;
+  } = {},
+) {
   const context = new OfflineAudioContext({
     numberOfChannels: 2,
     length: Math.round((options.seconds ?? 1) * SAMPLE_RATE),
@@ -77,6 +93,7 @@ async function setup(options: { seconds?: number; lazy?: boolean; font?: Sf2Soun
     scheduler: scheduler.ticker,
     frames: frames.ticker,
     startLatency: START,
+    ...options.engine,
   });
   engine.setSoundfont(options.font ?? (await synthetic()));
   const states: PlaybackState[] = [];
@@ -98,7 +115,10 @@ const tickOf = (positions: readonly PositionEvent[]) => positions.at(-1)?.positi
 describe('createAudioEngine', () => {
   it('makes its context lazily, on the first play, and only once', async () => {
     const { engine, factory } = await setup({ lazy: true });
-    await expect(engine.load(quarters(1), GM)).resolves.toEqual({ instruments: ['gm:0:25'] });
+    await expect(engine.load(quarters(1), GM)).resolves.toEqual({
+      instruments: ['gm:0:25'],
+      fallbacks: [],
+    });
     expect(engine.memory().decodedBytes).toBeGreaterThan(0);
     expect(factory).not.toHaveBeenCalled();
 
@@ -439,7 +459,10 @@ describe('createAudioEngine', () => {
       const track = next.tracks[0];
       if (!track) throw new Error('no track');
       expect(sampler.instrumentAt(id, context.currentTime)).toBe(bank.instrument(track, 0));
-      await expect(loading).resolves.toEqual({ instruments: [bank.instrumentId(track, 0)] });
+      await expect(loading).resolves.toEqual({
+        instruments: [bank.instrumentId(track, 0)],
+        fallbacks: [],
+      });
       await engine.settled();
 
       expect(load).not.toHaveBeenCalled();
@@ -695,9 +718,125 @@ describe('effects chains', () => {
   it('uses the family preset on a track with a pack assigned, the HQ tier', async () => {
     const { id, song } = guitar();
     const { engine, live } = await setup();
-    await engine.load(song, { tier: 'hq', packs: [{ trackId: id, packId: 'steelpack001' }] });
+    const pack = syntheticSfzPack();
+    const { fallbacks } = await engine.load(song, {
+      tier: 'hq',
+      packs: [
+        {
+          trackId: id,
+          pack: { id: 'steelpack001', files: pack.files },
+          entries: { default: 'default.sfz' },
+        },
+      ],
+    });
+    expect(fallbacks).toEqual([]);
     engine.unlock();
     expect(live().sampler.strip(id)?.chain?.active).toContain('drive');
+    engine.dispose();
+  });
+});
+
+describe('pack assignments', () => {
+  const MIB = 1024 * 1024;
+  const assignment = (
+    trackId: string,
+    pack: { id: string; files: ReturnType<typeof syntheticSfzPack>['files'] },
+    path = 'default.sfz',
+  ) => ({ trackId, pack, entries: { default: path } });
+  const assigned = (engine: AudioEngine) => debugAudioEngine(engine).assignments;
+
+  it('selects the budget by tier on each load', async () => {
+    const { engine } = await setup({ engine: { budgetBytes: 40 * MIB, hqBudgetBytes: 120 * MIB } });
+    const song = quarters(1);
+    await engine.load(song, GM);
+    expect(engine.memory().budgetBytes).toBe(40 * MIB);
+    await engine.load(song, { tier: 'hq', packs: [] });
+    expect(engine.memory().budgetBytes).toBe(120 * MIB);
+    await engine.load(song, GM);
+    expect(engine.memory().budgetBytes).toBe(40 * MIB);
+    engine.dispose();
+  });
+
+  it('defaults the budgets to 80 and 300 MiB', async () => {
+    const { engine } = await setup();
+    const song = quarters(1);
+    await engine.load(song, GM);
+    expect(engine.memory().budgetBytes).toBe(80 * MIB);
+    await engine.load(song, { tier: 'hq', packs: [] });
+    expect(engine.memory().budgetBytes).toBe(300 * MIB);
+    engine.dispose();
+  });
+
+  it('reports an assigned track whose pack fails to load as a fallback and keeps it GM', async () => {
+    const { engine, live } = await setup();
+    const song = quarters(1);
+    const id = trackOf(song);
+    const pack = syntheticSfzPack();
+    const result = await engine.load(song, {
+      tier: 'hq',
+      packs: [assignment(id, { id: 'brokenpack01', files: pack.files }, 'nope.sfz')],
+    });
+    expect(result.fallbacks).toHaveLength(1);
+    expect(result.fallbacks[0]).toMatchObject({ trackId: id, packId: 'brokenpack01' });
+    expect(result.fallbacks[0]?.error).toContain('nope.sfz');
+    expect(assigned(engine)?.size).toBe(0);
+    engine.unlock();
+    expect(live().sampler.trackIds).toContain(id);
+    engine.dispose();
+  });
+
+  it('treats a pack file that maps no region as a fallback', async () => {
+    const { engine } = await setup();
+    const song = quarters(1);
+    const files = {
+      read: () => Promise.resolve(new TextEncoder().encode('// nothing here\n')),
+    };
+    const { fallbacks } = await engine.load(song, {
+      tier: 'hq',
+      packs: [assignment(trackOf(song), { id: 'emptypack001', files }, 'default.sfz')],
+    });
+    expect(fallbacks.map((entry) => entry.packId)).toEqual(['emptypack001']);
+    engine.dispose();
+  });
+
+  it('swaps only the changed tracks when the same score loads with different packs', async () => {
+    const { engine } = await setup();
+    let song = quarters(1);
+    song = applyCommand(song, addTrack({ kind: 'fretted' })).score;
+    const [a, b] = song.tracks.map((track) => track.id);
+    if (!a || !b) throw new Error('two tracks expected');
+    const one = syntheticSfzPack();
+    const two = syntheticSfzPack();
+    const options = (packs: ReturnType<typeof assignment>[]) =>
+      ({ tier: 'hq', packs }) satisfies LoadOptions;
+    await engine.load(
+      song,
+      options([
+        assignment(a, { id: 'packone00001', files: one.files }),
+        assignment(b, { id: 'packtwo00001', files: two.files }),
+      ]),
+    );
+    expect([...(assigned(engine)?.keys() ?? [])].sort()).toEqual([a, b].sort());
+    expect(one.reads.get('default.sfz')).toBe(1);
+    expect(two.reads.get('default.sfz')).toBe(1);
+
+    // Track b gets another SFZ of its pack; track a is the same assignment, so it is not read again.
+    const result = await engine.load(
+      song,
+      options([
+        assignment(a, { id: 'packone00001', files: one.files }),
+        assignment(b, { id: 'packtwo00001', files: two.files }, 'alt.sfz'),
+      ]),
+    );
+    expect(result.fallbacks).toEqual([]);
+    expect(one.reads.get('default.sfz')).toBe(1);
+    expect(two.reads.get('alt.sfz')).toBe(1);
+    expect(assigned(engine)?.get(b)).toBe('packtwo00001:alt.sfz');
+
+    // Dropping the assignment of b leaves a alone.
+    await engine.load(song, options([assignment(a, { id: 'packone00001', files: one.files })]));
+    expect([...(assigned(engine)?.keys() ?? [])]).toEqual([a]);
+    expect(one.reads.get('default.sfz')).toBe(1);
     engine.dispose();
   });
 });
