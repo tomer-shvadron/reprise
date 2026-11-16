@@ -24,9 +24,31 @@ export interface SyntheticGuitarPack extends SyntheticSfzPack {
   layers: Readonly<{ palmMute: string; harmonic: string; legato: string }>;
 }
 
+/**
+ * The keys and tones of the regions `selection: true` adds, below the layers' own range
+ * (40 to 88) so that nothing a pack without them plays changes. Each key's attack regions are
+ * of the default layer, and each has the one-shot release sample of the layers too.
+ */
+export const GUITAR_SELECTION = {
+  /** Two velocity layers: `lovel`/`hivel` 1 to 63 and 64 to 127. */
+  velocity: { key: 30, tones: [300, 350] },
+  /** Three takes by `seq_length=3` and `seq_position`. */
+  sequence: { key: 31, tones: [1200, 1300, 1400] },
+  /** Three takes by `lorand`/`hirand`, thirds of [0, 1). */
+  random: { key: 32, tones: [1500, 1600, 1700] },
+  /** A `trigger=first` attack and a `trigger=legato` region, the second for a hammer-on or a pull-off. */
+  legato: { key: 33, tones: [1800, 1900] },
+} as const;
+
 export interface SyntheticGuitarPackOptions {
   /** Sample rate of the generated WAV files; 22,050 Hz by default. */
   sampleRate?: number;
+  /**
+   * Adds the velocity layers, round robins and legato trigger of `GUITAR_SELECTION` on keys
+   * below the keyswitch layers' range, each with a release sample. Off by default, so the pack
+   * keeps the shape the articulation sets are tested on.
+   */
+  selection?: boolean;
 }
 
 const SWITCHES = { default: 24, palmMute: 25, harmonic: 26, legato: 27 } as const;
@@ -36,6 +58,34 @@ const LABELS = {
   harmonic: 'Natural Harmonic',
   legato: 'Hammer-on',
 } as const;
+
+const selectionTones = (): number[] =>
+  Object.values(GUITAR_SELECTION).flatMap((group) => [...group.tones]);
+const selectionPath = (hertz: number): string => `samples/take${String(hertz)}.wav`;
+
+/** The extra regions: one `<group>` per kind, each on its own key and rooted there. */
+function selectionRegions(): string[] {
+  const { velocity, sequence, random, legato } = GUITAR_SELECTION;
+  const region = (key: number, hertz: number, opcodes = ''): string =>
+    `<region> sample=${selectionPath(hertz)} lokey=${String(key)} hikey=${String(key)} pitch_keycenter=${String(key)} ${opcodes}`.trimEnd();
+  const release = (key: number): string =>
+    `<region> sample=samples/release.wav lokey=${String(key)} hikey=${String(key)} pitch_keycenter=${String(key)} trigger=release rt_decay=${String(GUITAR_RELEASE_DECAY)} loop_mode=one_shot`;
+  const [soft, loud] = velocity.tones;
+  const [legatoAttack, legatoTrigger] = legato.tones;
+  return [
+    region(velocity.key, soft, 'lovel=1 hivel=63'),
+    region(velocity.key, loud, 'lovel=64 hivel=127'),
+    ...sequence.tones.map((hertz, index) =>
+      region(sequence.key, hertz, `seq_length=3 seq_position=${String(index + 1)}`),
+    ),
+    ...random.tones.map((hertz, index) =>
+      region(random.key, hertz, `lorand=${String(index / 3)} hirand=${String((index + 1) / 3)}`),
+    ),
+    region(legato.key, legatoAttack, 'trigger=first'),
+    region(legato.key, legatoTrigger, 'trigger=legato'),
+    ...[velocity.key, sequence.key, random.key, legato.key].map(release),
+  ];
+}
 
 /**
  * A reference electric guitar built in memory, shaped like a keyswitch library: `default.sfz`
@@ -56,6 +106,7 @@ export function syntheticGuitarPack(options: SyntheticGuitarPackOptions = {}): S
     layerText('harmonic'),
     layerText('legato'),
     `<region> sample=samples/release.wav trigger=release rt_decay=${String(GUITAR_RELEASE_DECAY)} loop_mode=one_shot`,
+    ...(options.selection ? selectionRegions() : []),
     '',
   ].join('\n');
   const tone = (frequency: number, seconds: number): Uint8Array =>
@@ -68,6 +119,9 @@ export function syntheticGuitarPack(options: SyntheticGuitarPackOptions = {}): S
     ['samples/legato.wav', tone(GUITAR_TONES.legato, 0.5)],
     ['samples/release.wav', tone(GUITAR_TONES.release, 0.2)],
   ]);
+  if (options.selection) {
+    for (const hertz of selectionTones()) contents.set(selectionPath(hertz), tone(hertz, 0.5));
+  }
   const reads = new Map<string, number>();
   const files: SfzFiles = {
     read(path) {

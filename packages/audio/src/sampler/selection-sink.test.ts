@@ -1,0 +1,147 @@
+import { PPQ } from '@reprise/model';
+import type { Beat, Track } from '@reprise/model';
+import { note, score } from '@reprise/model/testing';
+import { GUITAR_SELECTION, syntheticGuitarPack } from '@reprise/audio/testing';
+import { describe, expect, it } from 'vitest';
+
+import { loadSfz } from '../sfz/load';
+import type { NoteEvent } from '../sink';
+import { RegionMap } from './region-map';
+import { SynthSampleSource } from './sample-source';
+import { Sampler } from './sampler';
+import type { NoteOnRequest } from './sampler';
+import { createSamplerSink } from './sampler-sink';
+import { SAMPLE_RATE, offline } from './test/offline';
+
+const { velocity, sequence, random, legato } = GUITAR_SELECTION;
+
+// String 1 of the builder's guitar is E4 (64): fret = key - 64 is not reachable for keys 30 to 33,
+// so each test hands the sink a track whose tuning puts the key on an open string.
+const tuning = (key: number): number[] => [key];
+
+async function regionsOf() {
+  const pack = syntheticGuitarPack({ selection: true });
+  const { regions } = await loadSfz('default.sfz', pack.files.read.bind(pack.files), {
+    packId: 'guitar',
+  });
+  return new RegionMap(regions);
+}
+
+const beatsOf = (key: number, count: number, dynamics: 'pp' | 'f' = 'f') => {
+  const builder = score()
+    .track('guitar', { tuning: tuning(key) })
+    .bar();
+  for (let index = 0; index < count; index += 1) {
+    builder.beat('8', [note(1, 0, { dynamics })]);
+  }
+  return builder.build();
+};
+
+interface Strike {
+  request: NoteOnRequest;
+  sample: string | undefined;
+}
+
+/** What the sink asks of the sampler and the take the map gives each request, in order. */
+async function strikes(
+  song: ReturnType<typeof beatsOf>,
+  options: { passes?: number } = {},
+): Promise<Strike[]> {
+  const regions = await regionsOf();
+  const sampler = new Sampler(offline(1));
+  const [track] = song.tracks;
+  if (!track) throw new Error('a track');
+  sampler.addTrack(track, { regions, source: new SynthSampleSource(SAMPLE_RATE, {}) });
+  const made: NoteOnRequest[] = [];
+  const original = sampler.noteOn.bind(sampler);
+  sampler.noteOn = (id, request) => {
+    made.push(request);
+    return original(id, request);
+  };
+  const sink = createSamplerSink(sampler, {
+    voicingFor: () => ({ sets: {}, legatoTrigger: true }),
+  });
+  const beats: Beat[] = song.tracks[0]?.bars[0]?.voices[0].beats ?? [];
+  for (let pass = 0; pass < (options.passes ?? 1); pass += 1) {
+    for (const [index, beat] of beats.entries()) {
+      sink.noteOn(eventOf(track, beat, index, pass));
+    }
+    sink.allNotesOff(0);
+  }
+  return made.map((request) => ({
+    request,
+    sample: regions
+      .resolveAll(request.key, request.velocity, request.layer, request.select)[0]
+      ?.sample.split('/')
+      .pop(),
+  }));
+}
+
+function eventOf(track: Track, beat: Beat, index: number, passIndex: number): NoteEvent {
+  const first = beat.notes[0];
+  if (!first) throw new Error('a note');
+  return {
+    track,
+    trackIndex: 0,
+    voiceIndex: 0,
+    beat,
+    beatIndex: index,
+    note: first,
+    when: 0.1 + index * 0.1,
+    duration: 0.05,
+    playbackTick: index * (PPQ / 2),
+    durationTicks: PPQ / 2,
+    sequenceIndex: index,
+    masterBarIndex: 0,
+    passIndex,
+    barEnd: 5,
+    nextOnString: undefined,
+    continuations: [],
+  };
+}
+
+const take = (hertz: number): string => `take${String(hertz)}.wav`;
+
+describe('the sink selects takes from the synthetic guitar pack', () => {
+  it('rotates a key through its round-robin takes in order, and starts over', async () => {
+    const made = await strikes(beatsOf(sequence.key, 4));
+    expect(made.map((strike) => strike.sample)).toEqual(
+      [...sequence.tones, sequence.tones[0]].map(take),
+    );
+  });
+
+  it('starts the rotation again after a stop, so a repeat plays the same takes', async () => {
+    const made = await strikes(beatsOf(sequence.key, 2), { passes: 2 });
+    expect(made.map((strike) => strike.sample)).toEqual(
+      [sequence.tones[0], sequence.tones[1], sequence.tones[0], sequence.tones[1]].map(take),
+    );
+  });
+
+  it('picks the velocity layer by the note velocity', async () => {
+    const soft = await strikes(beatsOf(velocity.key, 1, 'pp'));
+    const loud = await strikes(beatsOf(velocity.key, 1));
+    expect(soft[0]?.sample).toBe(take(velocity.tones[0]));
+    expect(loud[0]?.sample).toBe(take(velocity.tones[1]));
+  });
+
+  it('draws the random takes from the note, so the same notes repeat exactly', async () => {
+    const song = beatsOf(random.key, 6);
+    const first = await strikes(song);
+    const again = await strikes(song);
+    expect(first.map((strike) => strike.sample)).toEqual(again.map((strike) => strike.sample));
+    const heard = new Set(first.map((strike) => strike.sample));
+    for (const sample of heard) expect(random.tones.map(take)).toContain(sample);
+    expect(heard.size).toBeGreaterThan(1);
+  });
+
+  it('plays the legato region on a hammer-on and the attack otherwise', async () => {
+    const song = score()
+      .track('guitar', { tuning: tuning(legato.key) })
+      .bar()
+      .beat('8', [note(1, 0)])
+      .beat('8', [note(1, 0, { hammerPull: true })])
+      .build();
+    const made = await strikes(song);
+    expect(made.map((strike) => strike.sample)).toEqual(legato.tones.map(take));
+  });
+});

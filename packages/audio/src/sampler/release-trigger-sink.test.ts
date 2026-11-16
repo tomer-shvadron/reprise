@@ -9,7 +9,7 @@ import { SynthSampleSource } from './sample-source';
 import { Sampler } from './sampler';
 import type { NoteOnRequest } from './sampler';
 import { createSamplerSink } from './sampler-sink';
-import { SAMPLE_RATE, offline, region } from './test/offline';
+import { SAMPLE_RATE, offline, region, toneLevel } from './test/offline';
 
 const main = note(1, 5);
 const song = score()
@@ -26,7 +26,7 @@ const [plain, tremolo, graced] = guitar?.bars[0]?.voices[0].beats ?? [];
 if (!guitar || !plain || !tremolo || !graced) throw new Error('the song has three beats');
 const track: Track = guitar;
 
-function event(beat: Beat, when: number): NoteEvent {
+function event(beat: Beat, when: number, next?: { note: Note; when: number }): NoteEvent {
   const first: Note | undefined = beat.notes[0];
   if (!first) throw new Error('a beat with a note');
   return {
@@ -44,32 +44,39 @@ function event(beat: Beat, when: number): NoteEvent {
     masterBarIndex: 0,
     passIndex: 0,
     barEnd: when + 2,
-    nextOnString: undefined,
+    nextOnString: next && { ...next, beat },
     continuations: [],
   };
 }
 
 /** The `noteOn` requests a sink makes for one beat, in order. */
-function requests(beat: Beat): NoteOnRequest[] {
-  const context = offline(1);
+function setup(seconds: number) {
+  const context = offline(seconds);
   const sampler = new Sampler(context);
+  sampler.master.input.disconnect();
+  sampler.master.input.connect(context.destination);
   sampler.addTrack(track, {
     regions: new RegionMap([
       region({ sample: 'a' }),
       region({ sample: 'tail', trigger: 'release' }),
     ]),
     source: new SynthSampleSource(SAMPLE_RATE, {
-      a: { kind: 'sine', frequency: 440, duration: 1 },
+      a: { kind: 'sine', frequency: 440, duration: 2 },
       tail: { kind: 'sine', frequency: 1100, duration: 0.2 },
     }),
   });
+  return { context, sampler };
+}
+
+function requests(beat: Beat, next?: { note: Note; when: number }): NoteOnRequest[] {
+  const { sampler } = setup(1);
   const made: NoteOnRequest[] = [];
   const original = sampler.noteOn.bind(sampler);
   sampler.noteOn = (id, request) => {
     made.push(request);
     return original(id, request);
   };
-  createSamplerSink(sampler).noteOn(event(beat, 0.5));
+  createSamplerSink(sampler).noteOn(event(beat, 0.5, next));
   return made;
 }
 
@@ -88,5 +95,32 @@ describe('the sampler sink sets releaseTrigger', () => {
   it('does not fire a grace note, only the main note it leads into', () => {
     const made = requests(graced).map((r) => r.releaseTrigger);
     expect(made).toEqual([false, true]);
+  });
+});
+
+describe('the sampler sink and a hammer-on or pull-off chain', () => {
+  const hammered = note(1, 5, { hammerPull: true });
+
+  it('keeps the release sample of a note a hammer-on starts from, and fires the last note', () => {
+    expect(requests(plain, { note: hammered, when: 1 }).map((r) => r.releaseTrigger)).toEqual([
+      false,
+    ]);
+    expect(requests(plain, { note: main, when: 1 }).map((r) => r.releaseTrigger)).toEqual([true]);
+  });
+
+  it('fires it when the string is let go before the hammer-on', () => {
+    expect(requests(plain, { note: hammered, when: 1.2 }).map((r) => r.releaseTrigger)).toEqual([
+      true,
+    ]);
+  });
+
+  it('plays one release sample for the chain, at its last note, not at the next onset', async () => {
+    const { context, sampler } = setup(2);
+    const sink = createSamplerSink(sampler);
+    sink.noteOn(event(plain, 0.5, { note: hammered, when: 1 }));
+    sink.noteOn({ ...event(plain, 1), note: hammered });
+    const data = (await context.startRendering()).getChannelData(0);
+    expect(toneLevel(data, 1100, 1.02, 1.18)).toBeLessThan(0.001);
+    expect(toneLevel(data, 1100, 1.52, 1.68)).toBeGreaterThan(0.05);
   });
 });

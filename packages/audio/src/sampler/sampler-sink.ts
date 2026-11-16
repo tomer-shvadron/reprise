@@ -59,6 +59,16 @@ const CHAIN_TOLERANCE = 1e-4;
 /** A pitch curve ends this long before the next note's events: one inside a curve's span throws. */
 const CURVE_GAP = 2 * CHAIN_TOLERANCE;
 
+/**
+ * Whether the string passes straight to a hammer-on or pull-off at the strike's release: the
+ * string is not let go there, so the note's release sample is left to the end of the chain, the
+ * last note's own release.
+ */
+function handsOver(input: PlanInput, strike: Strike): boolean {
+  const { next } = input;
+  return next?.note.hammerPull === true && next.when <= strike.end + CHAIN_TOLERANCE;
+}
+
 function shapeGain(
   voice: VoiceHandle,
   points: readonly GainPoint[],
@@ -189,8 +199,9 @@ export function createSamplerSink(
       string: input.note.string,
       select: select(trackId, instrument.regions, input, pass, strikeIndex, key),
       // Only a note's final release plays its release regions: not a tremolo stroke, a trill
-      // alternation or a grace note, whose string is never let go.
-      releaseTrigger: final && last,
+      // alternation or a grace note, whose string is never let go, and not a note a hammer-on
+      // or pull-off starts from, which stays on the string until the legato chain ends.
+      releaseTrigger: final && last && !handsOver(input, strike),
       ...(strike.offset !== undefined && { offset: strike.offset }),
       ...(plan.dead && deadNote && { instrument: deadNote }),
       ...(last && plan.letRingUntil !== undefined && { letRing: { until: plan.letRingUntil } }),
