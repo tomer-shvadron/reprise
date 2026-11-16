@@ -147,5 +147,10 @@ try {
   process.exitCode = 1;
 } finally {
   // After app.close(), so Chromium no longer holds files open in it.
-  await rm(profileDir, { recursive: true, force: true });
+  // Windows can keep a child process's files open for a moment after close: retry, then warn.
+  await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(
+    (error: unknown) => {
+      console.warn(`could not remove ${profileDir}: ${String(error)}`);
+    },
+  );
 }

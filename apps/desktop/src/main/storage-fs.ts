@@ -137,20 +137,59 @@ export async function readFileIn(roots: StorageRoots, path: unknown): Promise<Ui
 
 /** `.name.<12 hex>.tmp`, the sibling a write goes through before it replaces its target. */
 const TEMP_NAME = /^\..+\.[0-9a-f]{12}\.tmp$/;
+/** Keeps the temp name inside the 255 characters a file name may have; a segment can be 255. */
+const TEMP_BASENAME_MAX = 200;
 
 /** The fs calls `writeFileIn` makes, so a test can make one of them fail. */
 export interface WriteOps {
   open: typeof open;
   rename: typeof rename;
   rm: typeof rm;
+  /** Defaults to the running platform; only win32 retries a rename. */
+  platform?: NodeJS.Platform;
+  /** Pauses between rename attempts. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 const realWriteOps: WriteOps = { open, rename, rm };
 
+/** About a second in all: what `graceful-fs` and `write-file-atomic` wait out too. */
+const RENAME_RETRY_DELAYS_MS = [10, 30, 60, 100, 200, 300, 300];
+const RETRIED_ON_WINDOWS = new Set(['EPERM', 'EACCES', 'EBUSY']);
+
+/**
+ * On Windows a rename can fail for a moment while a scanner, the indexer or a sync client holds
+ * the just-closed temp file or the target without delete sharing.
+ */
+async function renameWithRetry(ops: WriteOps, from: string, to: string): Promise<void> {
+  const platform = ops.platform ?? process.platform;
+  const sleep = ops.sleep ?? ((ms: number) => new Promise<void>((done) => setTimeout(done, ms)));
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await ops.rename(from, to);
+      return;
+    } catch (error) {
+      const delay = RENAME_RETRY_DELAYS_MS[attempt];
+      if (
+        platform !== 'win32' ||
+        delay === undefined ||
+        !RETRIED_ON_WINDOWS.has(String(codeOf(error)))
+      ) {
+        throw error;
+      }
+      await sleep(delay);
+    }
+  }
+}
+
 /**
  * Writes a file under a root, making the folders above it, as the browser and the test double do.
- * The bytes go to a temp file in the same folder, are flushed to disk, and replace the target in
- * one `rename`, so a kill mid-write leaves the old file whole, never half of the new one.
+ * The bytes go to a temp file in the same folder, are fsynced, and replace the target in one
+ * `rename`, so a kill of the process mid-write leaves the old file whole, never half of the new
+ * one. That is protection against a process kill, not power loss: the folder is not fsynced, and
+ * macOS needs `F_FULLFSYNC` to flush the drive cache. A replace resets the file's mode and drops
+ * its extended attributes (Finder tags) too. A temp file a crash leaves behind is removed by
+ * `sweepTempFiles` at the next start.
  */
 export async function writeFileIn(
   roots: StorageRoots,
@@ -160,7 +199,8 @@ export async function writeFileIn(
 ): Promise<void> {
   const target = await resolveSafe(roots, path, { allowRoot: false });
   await mkdir(dirname(target), { recursive: true });
-  const temp = join(dirname(target), `.${basename(target)}.${randomBytes(6).toString('hex')}.tmp`);
+  const name = basename(target).slice(0, TEMP_BASENAME_MAX);
+  const temp = join(dirname(target), `.${name}.${randomBytes(6).toString('hex')}.tmp`);
   try {
     // `wx` never reuses a name, so two writes of one file cannot share a temp file.
     const file = await ops.open(temp, 'wx');
@@ -170,9 +210,45 @@ export async function writeFileIn(
     } finally {
       await file.close();
     }
-    await ops.rename(temp, target);
+    await renameWithRetry(ops, temp, target);
   } catch (error) {
     await ops.rm(temp, { force: true }).catch(() => undefined);
     throw error;
   }
+}
+
+/**
+ * Removes the temp files of writes a crash cut short, under every root, when they are older than
+ * `maxAgeMs` (a write in flight is newer). Never follows a symlink; unreadable folders are skipped.
+ */
+export async function sweepTempFiles(
+  roots: StorageRoots,
+  { now = Date.now(), maxAgeMs = 60_000 }: { now?: number; maxAgeMs?: number } = {},
+): Promise<number> {
+  let removed = 0;
+  const walk = async (dir: string): Promise<void> => {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(path);
+      } else if (entry.isFile() && TEMP_NAME.test(entry.name)) {
+        try {
+          if (now - (await lstat(path)).mtimeMs > maxAgeMs) {
+            await rm(path, { force: true });
+            removed += 1;
+          }
+        } catch {
+          // Gone already, or not ours to touch: the next start tries again.
+        }
+      }
+    }
+  };
+  for (const root of Object.values(roots)) await walk(root);
+  return removed;
 }
