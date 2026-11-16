@@ -2,6 +2,7 @@ import type { Track } from '@reprise/model';
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 
+import { Placeholder } from '@/components/placeholder';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AddTrackButton, EditorDialogs, TrackRowMenu } from '@/features/editor';
 import {
@@ -17,6 +18,7 @@ import { PrintDialog, PrintRoot } from '@/features/score';
 import { MixerPanel, TrackSidebar } from '@/features/tracks';
 import { TransportBar } from '@/features/transport';
 import type { RepriseBridge } from '@/platform/bridge';
+import type { PanelView } from '@/state/ui';
 
 import { AppFrame } from './app-frame';
 import { CommandPalette } from './command-palette';
@@ -45,6 +47,14 @@ interface AppProps {
   keyboard: KeyboardPlatform;
   /** The native menu's command feed; absent outside Electron. */
   onMenuCommand?: RepriseBridge['onMenuCommand'] | undefined;
+}
+
+/** The right panel: the mixer, the trainer tools, and placeholders the WP-082 and WP-084 PRs replace. */
+function RightPanel({ view }: { view: PanelView }) {
+  if (view === 'mixer') return <MixerPanel />;
+  if (view === 'effects') return <Placeholder title="Effects" workPackage="WP-082" />;
+  if (view === 'history') return <Placeholder title="History" workPackage="WP-084" />;
+  return <TrainerPanel view={view} />;
 }
 
 export function App({ services, keyboard, onMenuCommand }: AppProps) {
@@ -123,11 +133,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             }
             panel={
               <CommandSourceContext value={source}>
-                {rightPanelView === 'mixer' ? (
-                  <MixerPanel />
-                ) : (
-                  <TrainerPanel view={rightPanelView} />
-                )}
+                <RightPanel view={rightPanelView} />
               </CommandSourceContext>
             }
           />
