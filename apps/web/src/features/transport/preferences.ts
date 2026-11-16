@@ -1,6 +1,6 @@
 import { HQ_BUDGET_BYTES } from '@reprise/audio';
 
-import { MEMORY_BUDGET_RANGE } from '@/app/audio/audio-service';
+import { MEMORY_BUDGET_RANGE } from '@/state/playback';
 
 // WP-060 moves this key into Dexie's `settings` table.
 export const TRANSPORT_STORAGE_KEY = 'reprise.transport';

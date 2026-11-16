@@ -21,6 +21,7 @@ import {
 import type { Id, Score } from '@reprise/model';
 
 import {
+  MEMORY_BUDGET_RANGE,
   selectCanPlay,
   type PlaybackStore,
   type PlaybackStoreState,
@@ -40,7 +41,7 @@ export interface AudioServiceOptions {
   frames?: Ticker;
   startLatency?: number;
   budgetBytes?: number;
-  /** The HQ tier's budget; the engine's default (300 MiB) when absent. */
+  /** The memory setting's initial value; `settings.memoryBudgetBytes` when absent. */
   hqBudgetBytes?: number;
   /**
    * Where installed sound packs come from. A track naming a pack the directory has plays an HQ
@@ -63,8 +64,7 @@ export interface AudioServiceDebug {
 
 export type { PreviewNote, PreviewOptions };
 
-/** The "Memory for sounds" setting, in bytes: 64 MiB to 4 GiB. */
-export const MEMORY_BUDGET_RANGE = { min: 64 * 1024 * 1024, max: 4 * 1024 * 1024 * 1024 } as const;
+export { MEMORY_BUDGET_RANGE };
 export const PREVIEW_VELOCITY_RANGE = { min: 1, max: 127 } as const;
 export const PREVIEW_SECONDS_RANGE = { min: 0.05, max: 5 } as const;
 const MAX_FRET = 127;

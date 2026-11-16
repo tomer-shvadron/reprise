@@ -17,6 +17,9 @@ import type { BarRange } from './selection';
 
 export type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
+/** The "Memory for sounds" setting, in bytes: 64 MiB to 4 GiB. */
+export const MEMORY_BUDGET_RANGE = { min: 64 * 1024 * 1024, max: 4 * 1024 * 1024 * 1024 } as const;
+
 export interface TempoSetting {
   mode: TempoMode;
   value: number;
