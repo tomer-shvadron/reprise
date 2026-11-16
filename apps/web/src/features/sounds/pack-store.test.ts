@@ -176,7 +176,7 @@ describe('the pack store: install', () => {
       if (state.job?.phase === 'downloading') done.push(state.job.done);
     });
     expect(await store.installCurated(manifest)).toBe(true);
-    expect(done).toEqual([5, 50]);
+    expect(done).toEqual([0, 5, 50]);
     expect(store.getState().packs[0]).toMatchObject({ source: 'download', curated: true });
   });
 

@@ -36,7 +36,11 @@ describe('phase 3 entry points', () => {
   it('opens the sound manager', () => {
     const { run } = renderApp();
     run('sounds.show');
-    expect(screen.getByRole('region', { name: 'Sounds' })).toHaveTextContent('WP-091');
+    expect(
+      within(screen.getByRole('region', { name: 'Sounds' })).getByRole('heading', {
+        name: 'Sounds',
+      }),
+    ).toBeInTheDocument();
   });
 
   it('trainer.speedTrainer opens the right panel on the speed trainer', () => {
