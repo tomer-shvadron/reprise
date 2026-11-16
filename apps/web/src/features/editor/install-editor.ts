@@ -7,13 +7,15 @@ import { timelineOf } from '@/state/timeline';
 import type { DocumentView } from '@/state/document';
 
 import { cursorAtTick, defaultStaff, reconcile } from './cursor';
-import { wantedNotation } from './visible';
+import { undoLanding } from './undo-landing';
+import { visibleTracks, wantedNotation } from './visible';
 import { cursorOnTrack } from './navigation';
 
 type InstallDeps = Pick<AppServices, 'document' | 'selection' | 'editing' | 'playback'>;
 
 /**
- * Keeps the edit cursor honest. After each edit, undo or redo it reconciles the selection store's
+ * Keeps the edit cursor honest. After an undo or redo it first puts the cursor where the replayed
+ * edit was (`undoLanding`); after each edit, undo or redo it reconciles the selection store's
  * cursor, range and picked ids with the new score; it moves the cursor to the same bar and onset
  * when the current track changes; and when edit mode turns on without a cursor it puts one at the
  * playhead's beat in the current track, else at the first stop. Returns the cleanup.
@@ -24,8 +26,28 @@ export function installEditor(deps: InstallDeps): () => void {
   const stopDocument = document.subscribe((state, previous) => {
     // A new document resets the selection store itself; only an edit of the same one reconciles.
     if (state.id !== previous.id || state.score === previous.score || !state.score) return;
-    const patch = reconcile(state.score, selection.getState());
-    if (patch) selection.getState().setEdit(patch);
+    const current = selection.getState();
+    const landed =
+      // Only while editing: the cursor outlives edit mode, and an undo in play mode must not move
+      // the hidden cursor or switch the current track under the sidebar and the fretboard.
+      (state.lastStep === 'undo' || state.lastStep === 'redo') &&
+      state.lastChange &&
+      current.cursor &&
+      editing.getState().editing
+        ? undoLanding(
+            state.score,
+            state.lastChange,
+            current.cursor,
+            visibleTracks(state.score, state.view),
+          )
+        : undefined;
+    // The landing is a cursor the score holds, so reconcile only has the range and picks to settle.
+    const patch = reconcile(state.score, landed ? { ...current, cursor: landed } : current);
+    if (!landed) {
+      if (patch) current.setEdit(patch);
+      return;
+    }
+    current.setEdit({ currentTrack: landed.track, ...patch, cursor: patch?.cursor ?? landed });
   });
 
   const stopSelection = selection.subscribe((state, previous) => {

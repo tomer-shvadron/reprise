@@ -110,10 +110,15 @@ export class App {
   }
 
   async palette(text: string): Promise<void> {
+    // The previous palette (or dialog) must be gone: Radix keeps a closing dialog mounted for its
+    // exit animation, and Ctrl+K or Enter then lands on it instead of the new one.
+    await expect(this.page.getByRole('dialog')).toHaveCount(0);
     await this.page.keyboard.press('ControlOrMeta+k');
-    const input = this.page.getByRole('combobox');
+    // Not by role: a dialog the command opens has comboboxes of its own.
+    const input = this.page.locator('[cmdk-input]');
     await input.fill(text);
     await input.press('Enter');
+    await expect(input).toHaveCount(0);
   }
 
   /** Builds the dropped `File` in the page before returning, so a timed drop is only the event. */
