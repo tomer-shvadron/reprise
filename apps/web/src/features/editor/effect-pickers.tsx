@@ -1,5 +1,5 @@
-import type { HarmonicKind, SlideKind } from '@reprise/model';
-import { useId, useMemo, useState } from 'react';
+import type { Dynamics, HarmonicKind, SlideKind } from '@reprise/model';
+import { useId, useMemo, useState, type KeyboardEvent } from 'react';
 import { useStore } from 'zustand';
 
 import { useAppServices } from '@/app/services-context';
@@ -24,9 +24,10 @@ import {
 } from './bend-presets';
 import type { EffectPicker } from './dialogs';
 import { applyEffect } from './effect-commands';
-import { effectInput } from './effect-dialogs';
+import { PICKER_PROBE, effectInput } from './effect-dialogs';
 import { effectState } from './effect-state';
-import type { EffectAction, EffectMode } from './effects';
+import { effectTarget } from './effect-targets';
+import type { EffectAction, EffectInput, EffectMode } from './effects';
 import {
   WHAMMY_AMOUNTS,
   WHAMMY_SHAPES,
@@ -59,18 +60,39 @@ const HARMONICS: readonly { kind: HarmonicKind; label: string }[] = [
   { kind: 'feedback', label: 'Feedback' },
 ];
 
+const DYNAMICS: readonly Dynamics[] = ['ppp', 'pp', 'p', 'mp', 'mf', 'f', 'ff', 'fff'];
+
 /** Default offset of a non-natural harmonic's node above the fretted note: the octave. */
 const DEFAULT_NODE = 12;
+/** A trill goes to the fret two above: the usual trill. */
+const TRILL_STEP = 2;
+
+/** A number a choice carries and the player can type: the harmonic's node, the trill's fret. */
+interface Field {
+  label: string;
+  hint: string;
+  /** Its value on opening: the one the whole target shares, else a default. */
+  seed(input: EffectInput | undefined): number;
+  /** The most it can be, for the input's `max`. */
+  max(input: EffectInput | undefined): number | undefined;
+}
 
 interface Spec {
   title: string;
   description: string;
   /** `toggle` flips each choice as its key would; `set` sets it, and Remove clears the effect. */
   mode: EffectMode;
-  choices(node: number): Choice[];
-  columns: string;
-  /** What Remove clears; absent when the choices are toggles. */
+  choices(field: number): Choice[];
+  columns: number;
+  /** What Remove clears; absent when the choices are toggles or cannot be removed. */
   removes?: EffectAction;
+  field?: Field;
+}
+
+/** The value all of `values` share, or undefined when they differ or there are none. */
+function shared(values: readonly (number | undefined)[]): number | undefined {
+  const [first] = values;
+  return first !== undefined && values.every((value) => value === first) ? first : undefined;
 }
 
 const SPECS: Record<EffectPicker, Spec> = {
@@ -78,7 +100,7 @@ const SPECS: Record<EffectPicker, Spec> = {
     title: 'Bend',
     description: 'Choose a bend for the selected notes. It replaces any bend they have.',
     mode: 'set',
-    columns: 'grid-cols-3',
+    columns: 3,
     choices: () =>
       BEND_SHAPES.flatMap((shape) =>
         (Object.keys(BEND_AMOUNTS) as BendAmount[]).map((amount) => {
@@ -90,14 +112,14 @@ const SPECS: Record<EffectPicker, Spec> = {
           } satisfies Choice;
         }),
       ),
-    removes: { kind: 'bend', bend: { kind: 'bend', points: [] } },
+    removes: PICKER_PROBE.bend,
   },
   slide: {
     title: 'Slide',
     description:
       'Each kind switches on or off for the selected notes; a note has one way in and one way out.',
     mode: 'toggle',
-    columns: 'grid-cols-2',
+    columns: 2,
     choices: () =>
       SLIDES.map(({ slide, label }) => ({
         value: slide,
@@ -109,7 +131,22 @@ const SPECS: Record<EffectPicker, Spec> = {
     title: 'Harmonic',
     description: 'Choose a harmonic for the selected notes. It replaces any harmonic they have.',
     mode: 'set',
-    columns: 'grid-cols-3',
+    columns: 3,
+    field: {
+      label: 'Node above the fretted note (frets)',
+      hint: 'A natural harmonic is the node of its own fret and ignores this.',
+      seed: (input) => {
+        const notes = input ? effectTarget(input).notes : [];
+        const harmonics = notes.map((ref) => ref.note.harmonic);
+        const first = harmonics[0];
+        // The value the target shares, when none of it is natural (which has no offset).
+        return first && first.kind !== 'natural'
+          ? (shared(harmonics.map((h) => (h?.kind === 'natural' ? undefined : h?.value))) ??
+              DEFAULT_NODE)
+          : DEFAULT_NODE;
+      },
+      max: () => undefined,
+    },
     choices: (node) =>
       HARMONICS.map(({ kind, label }) => ({
         value: kind,
@@ -120,13 +157,13 @@ const SPECS: Record<EffectPicker, Spec> = {
           harmonic: kind === 'natural' ? { kind } : { kind, value: node },
         },
       })),
-    removes: { kind: 'harmonic', harmonic: { kind: 'natural' } },
+    removes: PICKER_PROBE.harmonic,
   },
   whammy: {
     title: 'Whammy bar',
     description: 'Choose a whammy-bar move for the selected beats. It replaces any move they have.',
     mode: 'set',
-    columns: 'grid-cols-3',
+    columns: 3,
     choices: () =>
       WHAMMY_SHAPES.flatMap((shape) =>
         (Object.keys(WHAMMY_AMOUNTS) as WhammyAmount[]).map((amount) => {
@@ -142,15 +179,77 @@ const SPECS: Record<EffectPicker, Spec> = {
           } satisfies Choice;
         }),
       ),
-    removes: { kind: 'whammy', whammy: { kind: 'dive', points: [] } },
+    removes: PICKER_PROBE.whammy,
+  },
+  tremolo: {
+    title: 'Tremolo picking',
+    description: 'Choose how fast the selected beats are picked. The key toggles the 32nd notes.',
+    mode: 'set',
+    columns: 3,
+    choices: () =>
+      ([8, 16, 32] as const).map((speed) => ({
+        value: String(speed),
+        label: `${String(speed)}th notes`,
+        action: { kind: 'tremolo', speed },
+      })),
+    removes: PICKER_PROBE.tremolo,
+  },
+  trill: {
+    title: 'Trill',
+    description: 'Choose the speed of a trill to the fret below, on the selected notes.',
+    mode: 'set',
+    columns: 3,
+    field: {
+      label: 'Trill to fret',
+      hint: 'The fret the note alternates with.',
+      seed: (input) => {
+        const refs = input ? effectTarget(input).notes : [];
+        const first = refs[0];
+        if (!first) return 0;
+        const trilled = shared(refs.map((ref) => ref.note.trill?.fret));
+        const top = first.track.kind === 'fretted' ? first.track.fretCount : 127;
+        return trilled ?? Math.min(first.note.fret + TRILL_STEP, top);
+      },
+      max: (input) => {
+        const track = input ? effectTarget(input).notes[0]?.track : undefined;
+        return track?.kind === 'fretted' ? track.fretCount : 127;
+      },
+    },
+    choices: (fret) =>
+      ([16, 32, 64] as const).map((speed) => ({
+        value: String(speed),
+        label: `${String(speed)}th notes`,
+        action: { kind: 'trill', trill: { fret, speed } },
+      })),
+    removes: PICKER_PROBE.trill,
+  },
+  dynamics: {
+    title: 'Dynamics',
+    description: 'Choose how loud the selected notes are played.',
+    mode: 'set',
+    columns: 4,
+    choices: () =>
+      DYNAMICS.map((dynamics) => ({
+        value: dynamics,
+        label: dynamics,
+        action: { kind: 'dynamics', dynamics },
+      })),
   },
 };
 
+const COLUMNS: Record<number, string> = {
+  2: 'grid-cols-2',
+  3: 'grid-cols-3',
+  4: 'grid-cols-4',
+};
+
 /**
- * One of the effect pickers as a modal dialog: a grid of choices the arrow keys move over, Enter
- * or Space applies and closes, and (where the effect has a value) Remove clears it. Each
- * application is one undo step. A refusal keeps the dialog open with the sentence in an alert, and
- * focus goes back to the control that opened it, or to where it was when a key did.
+ * One of the effect pickers as a modal dialog: a grid of choices (Left and Right walk them in
+ * reading order, Up and Down move by row), Enter or Space applies and closes, and where the effect
+ * has a value Remove clears it. It opens on what the target already has: that choice pressed and
+ * focused, and a typed value filled in. Each application is one undo step. A refusal keeps the
+ * dialog open with the sentence in an alert, and only there. Focus goes back to the control that
+ * opened it when that was the keyboard, else to where it was.
  */
 export function EffectPickerDialog({
   picker,
@@ -163,32 +262,55 @@ export function EffectPickerDialog({
 }) {
   const services = useAppServices();
   const spec = SPECS[picker];
-  const [node, setNode] = useState(String(DEFAULT_NODE));
+  const [seed] = useState(() => {
+    const input = effectInput(services);
+    return {
+      value: String(spec.field?.seed(input) ?? 0),
+      max: spec.field?.max(input),
+    };
+  });
+  const [typed, setTyped] = useState(seed.value);
   const [refusal, setRefusal] = useState<string>();
-  const nodeId = useId();
-  const nodeValue = Number(node);
-  const nodeValid = node.trim() !== '' && Number.isFinite(nodeValue) && nodeValue >= 0;
+  const fieldId = useId();
+  const typedNumber = Number(typed);
+  const typedValid =
+    typed.trim() !== '' &&
+    Number.isFinite(typedNumber) &&
+    typedNumber >= 0 &&
+    (seed.max === undefined || typedNumber <= seed.max);
   const choices = useMemo(
-    () => spec.choices(nodeValid ? nodeValue : DEFAULT_NODE),
-    [spec, nodeValid, nodeValue],
+    () => spec.choices(typedValid ? typedNumber : 0),
+    [spec, typedValid, typedNumber],
   );
   // What is on the target now, so the dialog opens on it: pressed for a value all of it has.
   const score = useStore(services.document, (state) => state.score);
   const selection = useStore(services.selection);
   const pressed = useMemo(() => {
     const input = effectInput(services);
-    return input
-      ? choices
-          .filter(({ action }) => effectState(input, action) === 'on')
-          .map(({ value }) => value)
-      : [];
+    if (!input) return [];
+    const target = effectTarget(input);
+    return choices
+      .filter(({ action }) => effectState(input, action, target) === 'on')
+      .map(({ value }) => value);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the stores' state is the dependency
   }, [choices, score, selection]);
 
   const apply = (action: EffectAction, mode: EffectMode) => {
-    const outcome = applyEffect(services, action, mode);
+    const outcome = applyEffect(services, action, mode, true);
     if ('refused' in outcome) setRefusal(outcome.refused);
     else onClose();
+  };
+
+  // The grid is two-dimensional but roving focus is a line: Up and Down jump a row.
+  const moveByRow = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="button"], button')];
+    const at = items.indexOf(event.target as HTMLElement);
+    if (at < 0) return;
+    event.preventDefault();
+    // Radix would also step to the next item; this is the one move.
+    event.stopPropagation();
+    items[at + (event.key === 'ArrowDown' ? spec.columns : -spec.columns)]?.focus();
   };
 
   return (
@@ -207,27 +329,26 @@ export function EffectPickerDialog({
           <DialogTitle>{spec.title}</DialogTitle>
           <DialogDescription>{spec.description}</DialogDescription>
         </DialogHeader>
-        {picker === 'harmonic' && (
+        {spec.field && (
           <div className="grid gap-1">
-            <label htmlFor={nodeId} className="text-xs font-medium">
-              Node above the fretted note (frets)
+            <label htmlFor={fieldId} className="text-xs font-medium">
+              {spec.field.label}
             </label>
             <Input
-              id={nodeId}
+              id={fieldId}
               type="number"
               inputMode="decimal"
               min={0}
+              {...(seed.max !== undefined && { max: seed.max })}
               step="any"
-              value={node}
-              aria-invalid={!nodeValid}
+              value={typed}
+              aria-invalid={!typedValid}
               onChange={(event) => {
-                setNode(event.target.value);
+                setTyped(event.target.value);
                 setRefusal(undefined);
               }}
             />
-            <p className="text-muted-foreground text-xs">
-              A natural harmonic is the node of its own fret and ignores this.
-            </p>
+            <p className="text-muted-foreground text-xs">{spec.field.hint}</p>
           </div>
         )}
         <ToggleGroup
@@ -237,17 +358,17 @@ export function EffectPickerDialog({
           value={pressed}
           // Applying is the click, so a pressed choice can be applied again (a no-op that closes).
           onValueChange={() => undefined}
-          className={`grid w-full gap-2 ${spec.columns}`}
+          onKeyDownCapture={moveByRow}
+          className={`grid w-full gap-2 ${COLUMNS[spec.columns] ?? 'grid-cols-3'}`}
         >
           {choices.map(({ value, label, action }) => (
             <ToggleGroupItem
               key={value}
               value={value}
               disabled={
-                picker === 'harmonic' &&
-                !nodeValid &&
-                action.kind === 'harmonic' &&
-                action.harmonic.kind !== 'natural'
+                spec.field !== undefined &&
+                !typedValid &&
+                !(action.kind === 'harmonic' && action.harmonic.kind === 'natural')
               }
               className="h-auto min-h-8 py-1.5 text-xs whitespace-normal"
               onClick={() => {

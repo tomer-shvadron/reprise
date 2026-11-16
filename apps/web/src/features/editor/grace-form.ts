@@ -35,8 +35,10 @@ function graceTargets(target: EffectTarget): { notes: NoteRef[]; hasGrace: boole
 }
 
 /** Why a grace note cannot go on the target, or undefined when it can. */
-export function graceBlocker(input: EffectInput): string | undefined {
-  const target = effectTarget(input);
+export function graceBlocker(
+  input: EffectInput,
+  target: EffectTarget = effectTarget(input),
+): string | undefined {
   if (target.beats.length === 0) return NOTHING_SELECTED;
   if (target.beats.every((beat) => beat.track.kind !== 'fretted')) return FRETTED_ONLY;
   return undefined;

@@ -84,7 +84,7 @@ describe('the effects panel', () => {
     expect(screen.getByText(/Turn on edit mode \(Ctrl\+E\) to apply effects/)).toBeInTheDocument();
   });
 
-  it('opens a picker and returns focus to its button when it closes', async () => {
+  it('returns focus to its button after the keyboard opened the picker, not after a click', async () => {
     const { user, beats } = await setup();
     const bend = button('Bend…');
     act(() => {
@@ -95,10 +95,42 @@ describe('the effects panel', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(bend).toHaveFocus();
+    // A click never took focus, so closing must not give it to the button: Space would reopen it.
+    act(() => {
+      bend.blur();
+    });
     await user.click(bend);
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Full bend' }));
     expect(beats()[0]?.notes[0]?.bend?.kind).toBe('bend');
-    expect(bend).toHaveFocus();
+    expect(bend).not.toHaveFocus();
+  });
+
+  it('lets a label wrap instead of spilling into the next button', async () => {
+    await setup();
+    for (const name of ['Wide whammy-bar vibrato', 'Hammer-on or pull-off']) {
+      expect(button(name).className).toContain('whitespace-normal');
+      expect(button(name).className).not.toContain('whitespace-nowrap');
+    }
+  });
+
+  it('says why a control is disabled, as its description', async () => {
+    const { goTo } = await setup();
+    goTo(0, 1, 1);
+    const hammer = button('Hammer-on or pull-off');
+    expect(hammer).toBeDisabled();
+    expect(hammer).toHaveAccessibleDescription(/Nothing to hammer to on string 1/);
+  });
+
+  it('opens the trill, tremolo-speed and dynamics pickers', async () => {
+    const { user } = await setup();
+    await user.click(button('Trill…'));
+    expect(screen.getByRole('dialog', { name: 'Trill' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await user.click(button('Tremolo speed…'));
+    expect(screen.getByRole('dialog', { name: 'Tremolo picking' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await user.click(button('Dynamics…'));
+    expect(screen.getByRole('dialog', { name: 'Dynamics' })).toBeInTheDocument();
   });
 
   it('opens the grace dialog', async () => {

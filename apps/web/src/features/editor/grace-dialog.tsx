@@ -69,7 +69,7 @@ export function GraceDialog({
   const run = (what: GraceForm | 'remove') => {
     const input = effectInput(services);
     if (!input) return;
-    const outcome = commitEffectPlan(services, planGrace(input, what));
+    const outcome = commitEffectPlan(services, planGrace(input, what), true);
     if ('refused' in outcome) setRefusal(outcome.refused);
     else onClose();
   };

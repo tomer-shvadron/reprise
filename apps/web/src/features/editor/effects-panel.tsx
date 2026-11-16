@@ -1,3 +1,4 @@
+import { cn } from 'cn';
 import { useEffect, useId, useMemo, useRef, type MouseEvent } from 'react';
 import { useStore } from 'zustand';
 
@@ -7,17 +8,22 @@ import { toggleVariants } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import type { EffectPicker } from './dialogs';
-import { EFFECT_KEY_TABLE, type EffectKeyName } from './effect-commands';
-import { effectInput, openEffectPicker, openGraceDialog, pickerBlocker } from './effect-dialogs';
-import { effectState, type EffectState } from './effect-state';
-import { graceBlocker } from './grace-form';
+import type { EffectKeyName } from './effect-commands';
+import { effectInput, openEffectPicker, openGraceDialog } from './effect-dialogs';
+import type { EffectState } from './effect-state';
+import { panelState, type Known } from './panel-state';
 
 /** A click must not take focus from the page: typing frets carries on after it. */
 const keepFocus = (event: MouseEvent) => {
   event.preventDefault();
 };
 
-const BUTTON_CLASS = `${toggleVariants({ variant: 'outline', size: 'sm' })} aria-[pressed=mixed]:border-dashed aria-[pressed=mixed]:bg-muted/50 justify-start`;
+// The label wraps (toggleVariants says nowrap and a fixed height) so it never spills into the next
+// button at the panel's narrow widths.
+const BUTTON_CLASS = cn(
+  toggleVariants({ variant: 'outline', size: 'sm' }),
+  'h-auto min-h-7 w-full justify-start py-1 text-left whitespace-normal aria-[pressed=mixed]:border-dashed aria-[pressed=mixed]:bg-muted/50',
+);
 
 type ToggleItem = { toggle: EffectKeyName; label: string };
 type PickerItem = { picker: EffectPicker | 'grace'; label: string };
@@ -38,11 +44,14 @@ const NOTE_ITEMS: readonly Item[] = [
   { toggle: 'staccato', label: 'Staccato' },
   { toggle: 'naturalHarmonic', label: 'Natural harmonic' },
   { picker: 'harmonic', label: 'Harmonic…' },
+  { picker: 'trill', label: 'Trill…' },
+  { picker: 'dynamics', label: 'Dynamics…' },
 ];
 
 const BEAT_ITEMS: readonly Item[] = [
   { picker: 'grace', label: 'Grace note…' },
   { toggle: 'tremoloPicking', label: 'Tremolo picking' },
+  { picker: 'tremolo', label: 'Tremolo speed…' },
   { toggle: 'tapping', label: 'Tapping' },
   { toggle: 'slap', label: 'Slap' },
   { toggle: 'pop', label: 'Pop' },
@@ -65,17 +74,42 @@ const PICKER_COMMAND: Record<EffectPicker | 'grace', RegisteredCommandId> = {
   slide: 'editor.effect.slidePicker',
   harmonic: 'editor.effect.harmonicPicker',
   whammy: 'editor.effect.whammyPicker',
+  trill: 'editor.effect.trillPicker',
+  tremolo: 'editor.effect.tremoloPicker',
+  dynamics: 'editor.effect.dynamicsPicker',
   grace: 'editor.effect.grace',
 };
 
-const pressedOf = (state: EffectState): boolean | 'mixed' | undefined =>
+const pressedOf = (state: EffectState): boolean | 'mixed' =>
   state === 'on' ? true : state === 'mixed' ? 'mixed' : false;
 
-function Tip({ text, children }: { text: string; children: React.ReactElement }) {
+/**
+ * The tooltip sits on a wrapper: a disabled button takes no pointer events, so it could never
+ * show why it is disabled. The reason is also the button's description for assistive tech.
+ */
+function Tip({
+  text,
+  reason,
+  children,
+}: {
+  text: string;
+  reason?: string | undefined;
+  children: (describedBy: string | undefined) => React.ReactElement;
+}) {
+  const reasonId = useId();
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent>{text}</TooltipContent>
+      <TooltipTrigger asChild>
+        <span className="flex min-w-0">
+          {children(reason === undefined ? undefined : reasonId)}
+          {reason !== undefined && (
+            <span id={reasonId} className="sr-only">
+              {reason}
+            </span>
+          )}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{reason ?? text}</TooltipContent>
     </Tooltip>
   );
 }
@@ -85,32 +119,40 @@ const tipText = (label: string, keys: string | undefined) => (keys ? `${label} (
 /** An effect that toggles: pressed, not pressed or mixed from the selection, run as its key does. */
 function EffectToggle({
   item,
-  state,
+  known,
   disabled,
 }: {
   item: ToggleItem;
-  state: EffectState;
+  known: Known | undefined;
   disabled: boolean;
 }) {
   const bound = useCommand(`editor.effect.${item.toggle}`);
+  const state = known?.state ?? 'unavailable';
   return (
-    <Tip text={tipText(item.label, bound.keys)}>
-      <button
-        type="button"
-        className={BUTTON_CLASS}
-        aria-pressed={pressedOf(state)}
-        aria-keyshortcuts={bound.ariaKeys}
-        disabled={disabled || state === 'unavailable'}
-        onMouseDown={keepFocus}
-        onClick={bound.run}
-      >
-        {item.label}
-      </button>
+    <Tip text={tipText(item.label, bound.keys)} reason={known?.reason}>
+      {(describedBy) => (
+        <button
+          type="button"
+          className={BUTTON_CLASS}
+          aria-pressed={pressedOf(state)}
+          aria-keyshortcuts={bound.ariaKeys}
+          aria-describedby={describedBy}
+          disabled={disabled || state === 'unavailable'}
+          onMouseDown={keepFocus}
+          onClick={bound.run}
+        >
+          {item.label}
+        </button>
+      )}
     </Tip>
   );
 }
 
-/** An effect that asks first: opens its dialog, and focus comes back here when it closes. */
+/**
+ * An effect that asks first: opens its dialog. From the keyboard focus comes back to this button;
+ * after a click it stays with the page (the click never took it), so Space and Enter keep their
+ * meaning there.
+ */
 function EffectOpener({
   item,
   disabled,
@@ -118,28 +160,32 @@ function EffectOpener({
 }: {
   item: PickerItem;
   disabled: boolean;
-  blocked: boolean;
+  blocked: string | undefined;
 }) {
   const services = useAppServices();
   const bound = useCommand(PICKER_COMMAND[item.picker]);
   const open = (event: MouseEvent<HTMLButtonElement>) => {
-    const from = event.currentTarget;
+    // A click has no detail 0; Enter and Space on the focused button do.
+    const from = event.detail === 0 ? event.currentTarget : undefined;
     if (item.picker === 'grace') openGraceDialog(services, true, from);
     else openEffectPicker(services, item.picker, from);
   };
   return (
-    <Tip text={tipText(item.label.replace('…', ''), bound.keys)}>
-      <button
-        type="button"
-        className={BUTTON_CLASS}
-        aria-haspopup="dialog"
-        aria-keyshortcuts={bound.ariaKeys}
-        disabled={disabled || blocked}
-        onMouseDown={keepFocus}
-        onClick={open}
-      >
-        {item.label}
-      </button>
+    <Tip text={tipText(item.label.replace('…', ''), bound.keys)} reason={blocked}>
+      {(describedBy) => (
+        <button
+          type="button"
+          className={BUTTON_CLASS}
+          aria-haspopup="dialog"
+          aria-keyshortcuts={bound.ariaKeys}
+          aria-describedby={describedBy}
+          disabled={disabled || blocked !== undefined}
+          onMouseDown={keepFocus}
+          onClick={open}
+        >
+          {item.label}
+        </button>
+      )}
     </Tip>
   );
 }
@@ -147,15 +193,15 @@ function EffectOpener({
 function Group({
   title,
   items,
-  states,
+  known,
   disabled,
   blockers,
 }: {
   title: string;
   items: readonly Item[];
-  states: Map<EffectKeyName, EffectState>;
+  known: Map<EffectKeyName, Known>;
   disabled: boolean;
-  blockers: Record<EffectPicker | 'grace', boolean>;
+  blockers: Record<EffectPicker | 'grace', string | undefined>;
 }) {
   const headingId = useId();
   return (
@@ -169,7 +215,7 @@ function Group({
             <EffectToggle
               key={item.toggle}
               item={item}
-              state={states.get(item.toggle) ?? 'unavailable'}
+              known={known.get(item.toggle)}
               disabled={disabled}
             />
           ) : (
@@ -209,27 +255,11 @@ export function EffectsPanel() {
     section.current?.focus();
   }, []);
 
-  const { states, blockers, empty } = useMemo(() => {
-    const input = effectInput(services);
-    const computed = new Map<EffectKeyName, EffectState>();
-    if (input && isEditing) {
-      for (const { id, action } of EFFECT_KEY_TABLE) computed.set(id, effectState(input, action));
-    }
-    const blocked = (picker: EffectPicker) =>
-      !input || pickerBlocker(services, picker) !== undefined;
-    return {
-      states: computed,
-      blockers: {
-        bend: blocked('bend'),
-        slide: blocked('slide'),
-        harmonic: blocked('harmonic'),
-        whammy: blocked('whammy'),
-        grace: !input || graceBlocker(input) !== undefined,
-      },
-      empty: !input || [...computed.values()].every((value) => value === 'unavailable'),
-    };
+  const { known, blockers, empty } = useMemo(
+    () => panelState(effectInput(services), isEditing),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the stores' state is the dependency
-  }, [services, isEditing, score, view, state]);
+    [services, isEditing, score, view, state],
+  );
 
   const disabled = !isEditing || !score;
   return (
@@ -258,14 +288,14 @@ export function EffectsPanel() {
         <Group
           title="Note"
           items={NOTE_ITEMS}
-          states={states}
+          known={known}
           disabled={disabled}
           blockers={blockers}
         />
         <Group
           title="Beat"
           items={BEAT_ITEMS}
-          states={states}
+          known={known}
           disabled={disabled}
           blockers={blockers}
         />

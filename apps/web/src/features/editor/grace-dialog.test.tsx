@@ -52,13 +52,15 @@ describe('the grace-note dialog', () => {
   });
 
   it('stays open with the model sentence for a fret off the neck, and fixes on retry', async () => {
-    const { press, beats } = await setupEffects();
+    const { services, press, beats } = await setupEffects();
     const user = userEvent.setup();
     press('g');
     await user.clear(field('Fret'));
     await user.type(field('Fret'), '60');
     await user.click(screen.getByRole('button', { name: 'Apply' }));
     expect(dialog()).toBeInTheDocument();
+    // The alert says it; the status line behind the dialog does not repeat it.
+    expect(services.entry.getState().message).toBeUndefined();
     expect(within(dialog()).getByRole('alert')).toHaveTextContent('That fret is not on the neck');
     expect(beats()[0]?.grace).toBeUndefined();
     await user.clear(field('Fret'));

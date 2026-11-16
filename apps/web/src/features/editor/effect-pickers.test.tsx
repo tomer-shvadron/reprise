@@ -98,7 +98,13 @@ describe('the effect pickers', () => {
     await user.type(node, '7');
     await user.click(within(dialog()).getByRole('button', { name: 'Artificial' }));
     expect(beats()[0]?.notes[0]?.harmonic).toEqual({ kind: 'artificial', value: 7 });
+    // It opens on what the note has: Artificial pressed and the node filled in.
     press('y', { altKey: true });
+    expect(within(dialog()).getByRole('button', { name: 'Artificial' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(dialog()).getByLabelText('Node above the fretted note (frets)')).toHaveValue(7);
     await user.click(within(dialog()).getByRole('button', { name: 'Remove' }));
     expect(beats()[0]?.notes[0]?.harmonic).toBeUndefined();
   });
@@ -166,5 +172,104 @@ describe('the effect pickers', () => {
     expect(press('g')).toBe(false);
     expect(beats()[0]?.notes[0]?.palmMute).toBe(false);
     expect(beats()[0]?.notes[0]?.fret).toBe(5);
+  });
+
+  it('opens focused on the pressed choice', async () => {
+    const { press } = await setupEffects();
+    const user = userEvent.setup();
+    press('b');
+    await user.click(within(dialog()).getByRole('button', { name: '½ prebend' }));
+    press('b');
+    expect(within(dialog()).getByRole('button', { name: '½ prebend' })).toHaveFocus();
+  });
+
+  it('moves by row with Up and Down and along the reading order with Left and Right', async () => {
+    const { press } = await setupEffects();
+    const user = userEvent.setup();
+    press('b');
+    const at = (name: string) => within(dialog()).getByRole('button', { name });
+    act(() => {
+      at('¼ bend').focus();
+    });
+    await user.keyboard('{ArrowDown}');
+    expect(at('¼ bend and release')).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
+    expect(at('½ bend and release')).toHaveFocus();
+    await user.keyboard('{ArrowUp}');
+    expect(at('½ bend')).toHaveFocus();
+  });
+
+  it('sets a trill from a typed fret and speed, and N takes it off again', async () => {
+    const { press, beats } = await setupEffects();
+    const user = userEvent.setup();
+    expect(press('n')).toBe(true);
+    // The note is fret 5: the trill goes two above.
+    const fret = within(dialog()).getByLabelText('Trill to fret');
+    expect(fret).toHaveValue(7);
+    await user.clear(fret);
+    await user.type(fret, '8');
+    await user.click(within(dialog()).getByRole('button', { name: '32th notes' }));
+    expect(beats()[0]?.notes[0]?.trill).toEqual({ fret: 8, speed: 32 });
+    // Every note has one now, so N removes it and opens nothing.
+    expect(press('n')).toBe(true);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(beats()[0]?.notes[0]?.trill).toBeUndefined();
+  });
+
+  it('keeps a trill fret on the neck', async () => {
+    const { press } = await setupEffects();
+    const user = userEvent.setup();
+    press('n');
+    const fret = within(dialog()).getByLabelText('Trill to fret');
+    await user.clear(fret);
+    await user.type(fret, '99');
+    expect(fret).toHaveAttribute('aria-invalid', 'true');
+    expect(within(dialog()).getByRole('button', { name: '16th notes' })).toBeDisabled();
+  });
+
+  it('sets the tremolo speed from the picker', async () => {
+    const { registry, beats } = await setupEffects();
+    const user = userEvent.setup();
+    act(() => {
+      void registry.get('editor.effect.tremoloPicker')?.run();
+    });
+    await user.click(within(dialog()).getByRole('button', { name: '16th notes' }));
+    expect(beats()[0]?.effects.tremoloPicking).toBe(16);
+    act(() => {
+      void registry.get('editor.effect.tremoloPicker')?.run();
+    });
+    expect(within(dialog()).getByRole('button', { name: '16th notes' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await user.click(within(dialog()).getByRole('button', { name: 'Remove' }));
+    expect(beats()[0]?.effects.tremoloPicking).toBeUndefined();
+  });
+
+  it('sets the dynamics of the notes', async () => {
+    const { registry, services, beats } = await setupEffects();
+    const user = userEvent.setup();
+    act(() => {
+      void registry.get('editor.effect.dynamicsPicker')?.run();
+    });
+    await user.click(within(dialog()).getByRole('button', { name: 'ff' }));
+    expect(beats()[0]?.notes[0]?.dynamics).toBe('ff');
+    expect(services.document.getState().undoLabel).toBe('Dynamics ff');
+  });
+
+  it('shows a refusal in the dialog only, not on the status line', async () => {
+    const built = score().track('guitar');
+    built.bar().beat('2', [note(4, 2)]);
+    built.bar().beat('2', [note(4, 2, { tie: true })]);
+    const { services, press, goTo } = await setupEffects(
+      undefined,
+      built.build({ ids: 'sequential' }),
+    );
+    const user = userEvent.setup();
+    goTo(0, 4, 1);
+    press('b');
+    await user.click(within(dialog()).getByRole('button', { name: '½ prebend' }));
+    expect(within(dialog()).getByRole('alert')).toBeInTheDocument();
+    expect(services.entry.getState().message).toBeUndefined();
   });
 });

@@ -5,7 +5,8 @@ import { create } from 'zustand';
 export type MasterBarSection = 'time' | 'key' | 'tempo' | 'repeats' | 'directions' | 'section';
 
 /** The effects that take a choice before they apply; each has its own modal picker. */
-export type EffectPicker = 'bend' | 'slide' | 'harmonic' | 'whammy';
+export type EffectPicker =
+  'bend' | 'slide' | 'harmonic' | 'whammy' | 'tremolo' | 'trill' | 'dynamics';
 
 /** The dialog the editor has open; one at a time, as Radix dialogs are modal. */
 export type EditorDialog =

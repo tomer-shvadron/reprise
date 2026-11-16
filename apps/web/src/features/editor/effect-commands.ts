@@ -31,14 +31,23 @@ export type EffectOutcome = { applied: true } | { refused: string } | { nothing:
 /**
  * Commits a plan as one undo step, leaving the cursor where it is: an effect edits what is there,
  * it does not move on. A refusal from the model (a fret off the neck) is caught like the
- * planner's own and also reads on the edit status line.
+ * planner's own; it reads on the edit status line unless `quiet`.
  */
-export function commitEffectPlan(services: EffectServices, plan: EffectResult): EffectOutcome {
+export function commitEffectPlan(
+  services: EffectServices,
+  plan: EffectResult,
+  /** The caller shows a refusal itself (a dialog's alert), so the status line stays clear of it. */
+  quiet = false,
+): EffectOutcome {
   const { document, selection, entry } = services;
   if ('refused' in plan) return { refused: plan.refused };
   if (!('command' in plan)) return { nothing: true };
   const done = commitEdit({ document, selection, entry }, plan.command, { moveCursor: false });
-  if (!done) return { refused: entry.getState().message ?? 'That could not be applied' };
+  if (!done) {
+    const refused = entry.getState().message ?? 'That could not be applied';
+    if (quiet) entry.getState().setMessage(undefined);
+    return { refused };
+  }
   // What a mixed selection could not take, after the success message has cleared.
   if (plan.notice) entry.getState().setMessage(plan.notice);
   return { applied: true };
@@ -54,6 +63,7 @@ export function applyEffect(
   services: EffectServices,
   action: EffectAction,
   mode: EffectMode = 'toggle',
+  quiet = false,
 ): EffectOutcome {
   const { document, selection, entry } = services;
   entryController(entry)?.flush();
@@ -66,6 +76,7 @@ export function applyEffect(
       action,
       mode,
     ),
+    quiet,
   );
 }
 

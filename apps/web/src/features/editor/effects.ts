@@ -9,6 +9,7 @@ import {
   type Bend,
   type Changes,
   type Command,
+  type Dynamics,
   type Harmonic,
   type Id,
   type Note,
@@ -19,7 +20,12 @@ import {
   type Whammy,
 } from '@reprise/model';
 
-import { effectTarget, type EffectTargetInput, type NoteRef } from './effect-targets';
+import {
+  effectTarget,
+  type EffectTarget,
+  type EffectTargetInput,
+  type NoteRef,
+} from './effect-targets';
 import type { EditPlan } from './entry';
 import { nextOnString } from './next-on-string';
 
@@ -39,6 +45,7 @@ export type EffectAction =
   /** Guitar Pro's H: the note picked is the origin, and the next note on its string takes `hammerPull`. */
   | { kind: 'hammer' }
   | { kind: 'harmonic'; harmonic: Harmonic }
+  | { kind: 'dynamics'; dynamics: Dynamics }
   | { kind: 'trill'; trill: Trill }
   | { kind: 'bend'; bend: Bend; label?: string }
   | { kind: 'beatFlag'; flag: BeatFlag }
@@ -79,6 +86,9 @@ export type Resolved =
   | { kind: 'beat'; label: string; items: Item<BeatChanges>[] };
 
 const refuse = (refused: string): { refused: string } => ({ refused });
+
+/** What `createNote` gives a note, so what clearing a dynamic returns to. */
+const DEFAULT_DYNAMICS: Dynamics = 'f';
 
 const FRETTED_ONLY = 'That effect needs a fretted track';
 const NOTHING_SELECTED = 'Select a note first';
@@ -308,6 +318,16 @@ function noteSpec(action: EffectAction): NoteSpec | undefined {
       return slideSpec(action.slide);
     case 'harmonic':
       return harmonicSpec(action.harmonic);
+    case 'dynamics':
+      return {
+        label: `dynamics ${action.dynamics}`,
+        anyTrack: true,
+        has: (note) => note.dynamics === action.dynamics,
+        // Every note has a dynamic; forte is the model's default and what Remove restores.
+        present: (note) => note.dynamics !== DEFAULT_DYNAMICS,
+        set: () => ({ dynamics: action.dynamics }),
+        clear: () => ({ dynamics: DEFAULT_DYNAMICS }),
+      };
     case 'trill':
       return valueSpec(
         'trill',
@@ -475,8 +495,11 @@ function resolveNotes(refs: readonly NoteRef[], spec: NoteSpec): Resolved {
  * Refusals are plain sentences for the status line; a node that cannot take the effect is marked
  * `unavailable` instead, so the rest of a mixed selection still gets it.
  */
-export function resolveEffect(input: EffectInput, action: EffectAction): Resolved {
-  const target = effectTarget(input);
+export function resolveEffect(
+  input: EffectInput,
+  action: EffectAction,
+  target: EffectTarget = effectTarget(input),
+): Resolved {
   const noteBased = noteSpec(action);
   if (noteBased || action.kind === 'hammer') {
     const refs = action.kind === 'flag' && action.wholeBeat ? target.beatNotes : target.notes;
