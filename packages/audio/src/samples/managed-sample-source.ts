@@ -103,6 +103,8 @@ export class ManagedSampleSource implements SampleSource {
   readonly #listeners = new Set<(stats: MemoryReport) => void>();
   readonly #counters: MemoryCounters = { fetches: 0, evictions: 0, pinnedEvictions: 0 };
   #pinned = new Set<InstrumentId>();
+  /** Set by an eviction of a pinned instrument, cleared by a song switch. */
+  #shortfall = false;
   #budget: number;
   #bytes = 0;
   /** Estimated bytes of fetches in flight, reserved so a burst of loads cannot overshoot. */
@@ -165,6 +167,8 @@ export class ManagedSampleSource implements SampleSource {
       decodedBytes: this.#bytes,
       budgetBytes: this.#budget,
       residents: [...this.#residents].sort(),
+      unused: [...this.#residents].filter((instrument) => !this.#pinned.has(instrument)).sort(),
+      shortfall: this.#shortfall,
     };
   }
 
@@ -182,6 +186,7 @@ export class ManagedSampleSource implements SampleSource {
     const plan = planInstruments(score, options);
     this.#generation += 1;
     this.#pinned = new Set(plan.instruments);
+    this.#shortfall = false;
     // A planned preset whose samples are resident under an alias takes them over, or evicting
     // the alias below would free the samples the new song needs.
     for (const instrument of this.#pinned) {
@@ -201,6 +206,39 @@ export class ManagedSampleSource implements SampleSource {
    */
   evict(instrument: InstrumentId): void {
     this.#evict(instrument);
+  }
+
+  /**
+   * Frees every resident the current song does not plan, or every resident when none is loaded,
+   * and returns how many it freed.
+   */
+  evictUnused(): number {
+    let count = 0;
+    for (const instrument of [...this.#residents]) {
+      if (this.#pinned.has(instrument)) continue;
+      this.#evict(instrument);
+      count += 1;
+    }
+    return count;
+  }
+
+  /**
+   * The background warm-up of `load`, run again: a raised budget restores a song whose samples
+   * were evicted. It does nothing unless the whole plan fits, and stops at the next song switch.
+   */
+  warm(plan: SongPlan, regionMaps: RegionMaps): void {
+    this.#warm(planSamples(plan, regionMaps), this.#generation);
+  }
+
+  /**
+   * Ends the song's claim on its instruments without freeing them: they become unused residents,
+   * and a warm-up still running for it stops.
+   */
+  unpin(): void {
+    this.#generation += 1;
+    this.#pinned = new Set();
+    this.#shortfall = false;
+    this.#changed();
   }
 
   /** Decodes every sample the plan's keys can reach; rejects if any of them fails to load. */
@@ -344,7 +382,10 @@ export class ManagedSampleSource implements SampleSource {
     }
     if (freed) {
       this.#counters.evictions += 1;
-      if (this.#pinned.has(instrument)) this.#counters.pinnedEvictions += 1;
+      if (this.#pinned.has(instrument)) {
+        this.#counters.pinnedEvictions += 1;
+        this.#shortfall = true;
+      }
     }
     this.#changed();
   }

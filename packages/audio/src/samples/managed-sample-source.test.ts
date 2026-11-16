@@ -63,6 +63,8 @@ describe('ManagedSampleSource accounting', () => {
       decodedBytes: total,
       budgetBytes: source.budgetBytes,
       residents: ['gm:0:25', 'gm:0:33'],
+      unused: ['gm:0:25', 'gm:0:33'],
+      shortfall: false,
     });
   });
 
@@ -135,6 +137,32 @@ describe('ManagedSampleSource accounting', () => {
     await expect(source.getBuffer('a#0')).rejects.toThrow('no instrument');
     expect(source.memory()).toMatchObject({ decodedBytes: 0, residents: [] });
     expect(source.counters.fetches).toBe(0);
+  });
+});
+
+describe('ManagedSampleSource unused residents and shortfall', () => {
+  it('reports the residents the song does not plan, and evictUnused frees only those', async () => {
+    const source = new ManagedSampleSource(small(), factory, { budgetBytes: 100 * ZONE });
+    await source.getBuffer('a#0');
+    await source.getBuffer('b#0');
+    expect(source.memory().unused).toEqual(['a', 'b']);
+    expect(source.evictUnused()).toBe(2);
+    expect(source.memory()).toMatchObject({ residents: [], unused: [], decodedBytes: 0 });
+    expect(source.evictUnused()).toBe(0);
+  });
+
+  it('keeps the planned instruments, and flags a shortfall when the budget evicts one', async () => {
+    const source = new ManagedSampleSource(small(), factory, { budgetBytes: 100 * ZONE });
+    source.switchSong(songA);
+    await source.getBuffer('gm:0:25#0');
+    await source.getBuffer('stray#0');
+    expect(source.memory()).toMatchObject({ unused: ['stray'], shortfall: false });
+    expect(source.evictUnused()).toBe(1);
+    expect(source.memory().residents).toEqual(['gm:0:25']);
+    source.budgetBytes = 1;
+    expect(source.memory().shortfall).toBe(true);
+    source.switchSong(songA);
+    expect(source.memory().shortfall).toBe(false);
   });
 });
 
@@ -309,7 +337,13 @@ describe('ManagedSampleSource budget and events', () => {
     expect(source.budgetBytes).toBe(10 * ZONE);
 
     source.budgetBytes = ZONE;
-    expect(source.memory()).toEqual({ decodedBytes: ZONE, budgetBytes: ZONE, residents: ['c'] });
+    expect(source.memory()).toEqual({
+      decodedBytes: ZONE,
+      budgetBytes: ZONE,
+      residents: ['c'],
+      unused: ['c'],
+      shortfall: false,
+    });
     expect(() => {
       source.budgetBytes = -1;
     }).toThrow(RangeError);
@@ -336,6 +370,8 @@ describe('ManagedSampleSource budget and events', () => {
       decodedBytes: 2 * ZONE,
       budgetBytes: 2 * ZONE,
       residents: ['a'],
+      unused: ['a'],
+      shortfall: false,
     });
 
     unsubscribe();

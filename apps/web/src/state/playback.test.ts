@@ -9,7 +9,13 @@ describe('the playback store', () => {
     expect(state.transport).toBe('stopped');
     expect(state.output.status).toBe('locked');
     expect(state.sounds.status).toBe('idle');
-    expect(state.memory).toEqual({ decodedBytes: 0, budgetBytes: GM_BUDGET_BYTES, residents: [] });
+    expect(state.memory).toEqual({
+      decodedBytes: 0,
+      budgetBytes: GM_BUDGET_BYTES,
+      residents: [],
+      unused: [],
+      shortfall: false,
+    });
     expect(state.settings).toEqual({
       tempo: { mode: 'percent', value: 100 },
       loop: undefined,

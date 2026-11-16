@@ -15,6 +15,7 @@ import { encodeWav, sine } from './sfz/test/encode';
 import { syntheticSfzPack } from './testing/synthetic-pack';
 
 const SAMPLE_RATE = 44_100;
+const MIB = 1024 * 1024;
 const START = 0.1;
 const SYNTHETIC = new URL('../test-fixtures/synthetic.sf2', import.meta.url);
 /** The pack's sample is played at key 67 (string 1, fret 3) from a root of 60: seven semitones up. */
@@ -341,6 +342,93 @@ describe('the HQ budget', () => {
     );
     expect(live().source.counters.evictions).toBeGreaterThan(0);
     expect(engine.memory().decodedBytes).toBeLessThanOrEqual(10_000);
+    engine.dispose();
+  });
+
+  it('caps the GM tier at 80 MiB whatever the setting, and reports the effective budget', async () => {
+    const song = quarters(1);
+    const { engine } = await setup(1, { hqBudgetBytes: 300 * MIB });
+    await engine.load(song, { tier: 'gm', packs: [] });
+    expect(engine.memory().budgetBytes).toBe(80 * MIB);
+    engine.setMemoryBudget(1024 * MIB);
+    expect(engine.memory().budgetBytes).toBe(80 * MIB);
+    engine.setMemoryBudget(64 * MIB);
+    expect(engine.memory().budgetBytes).toBe(64 * MIB);
+    await engine.load(song, { tier: 'hq', packs: [] });
+    expect(engine.memory().budgetBytes).toBe(64 * MIB);
+    engine.setMemoryBudget(1024 * MIB);
+    expect(engine.memory().budgetBytes).toBe(1024 * MIB);
+    expect(() => {
+      engine.setMemoryBudget(Number.NaN);
+    }).toThrow(RangeError);
+    expect(() => {
+      engine.setMemoryBudget(-1);
+    }).toThrow(RangeError);
+    engine.dispose();
+  });
+
+  it('stores a budget set before the sound bank and applies it', async () => {
+    const context = new OfflineAudioContext({
+      numberOfChannels: 2,
+      length: 441,
+      sampleRate: 44_100,
+    });
+    const engine = createAudioEngine({
+      context,
+      scheduleMemory: (run) => {
+        run();
+      },
+    });
+    engine.setMemoryBudget(50 * MIB);
+    expect(engine.memory().budgetBytes).toBe(50 * MIB);
+    engine.setSoundfont(await synthetic());
+    expect(engine.memory().budgetBytes).toBe(50 * MIB);
+    engine.dispose();
+  });
+
+  it('lowering the budget evicts at once and sets shortfall; raising it warms the song again', async () => {
+    const song = quarters(1);
+    const id = song.tracks[0]?.id ?? '';
+    const pack = syntheticSfzPack({ sampleRate: 22_050 });
+    const { engine } = await setup(1, { hqBudgetBytes: 1024 * 1024 });
+    await engine.load(song, packOptions([{ trackId: id, files: pack.files }]));
+    await engine.settled();
+    const full = engine.memory();
+    expect(full.decodedBytes).toBeGreaterThan(0);
+    expect(full.shortfall).toBe(false);
+
+    engine.setMemoryBudget(1000);
+    const lowered = engine.memory();
+    expect(lowered.budgetBytes).toBe(1000);
+    expect(lowered.decodedBytes).toBeLessThanOrEqual(1000);
+    expect(lowered.shortfall).toBe(true);
+
+    engine.setMemoryBudget(1024 * 1024);
+    await engine.settled();
+    expect(engine.memory().decodedBytes).toBe(full.decodedBytes);
+    // The flag is per song switch: raising the budget does not clear it.
+    expect(engine.memory().shortfall).toBe(true);
+    await engine.load(song, packOptions([{ trackId: id, files: pack.files }]));
+    expect(engine.memory().shortfall).toBe(false);
+    engine.dispose();
+  });
+
+  it('lists the residents the song does not use and frees them on request', async () => {
+    const song = quarters(1);
+    const id = song.tracks[0]?.id ?? '';
+    const pack = syntheticSfzPack({ sampleRate: 22_050 });
+    const { engine } = await setup(1, { hqBudgetBytes: 1024 * 1024 });
+    await engine.load(song, packOptions([{ trackId: id, files: pack.files }]));
+    await engine.settled();
+    expect(engine.memory().unused).toEqual([]);
+    expect(engine.unloadUnused()).toBe(0);
+
+    const residents = engine.memory().residents;
+    engine.unload();
+    expect(engine.memory().unused).toEqual(residents);
+    expect(engine.unloadUnused()).toBe(residents.length);
+    expect(engine.memory()).toMatchObject({ residents: [], unused: [], decodedBytes: 0 });
+    expect(engine.unloadUnused()).toBe(0);
     engine.dispose();
   });
 

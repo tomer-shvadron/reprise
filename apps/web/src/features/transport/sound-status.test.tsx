@@ -42,6 +42,8 @@ describe('SoundStatus', () => {
           decodedBytes: 0.63 * 1024 * 1024,
           budgetBytes: 80 * 1024 * 1024,
           residents: ['gm:0:25', 'gm:0:93', 'gm:12:27', 'gm:8:107', 'gm:8:25'],
+          unused: [],
+          shortfall: false,
         },
         instruments: 1,
       });

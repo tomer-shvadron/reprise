@@ -16,6 +16,7 @@ import {
 } from './samples/managed-sample-source';
 import type { BufferFactory } from './samples/managed-sample-source';
 import { planInstruments, planSamples } from './samples/plan';
+import type { SongPlan } from './samples/plan';
 import { ProviderRouter, packInstrumentId } from './samples/provider-router';
 import type { InstrumentId, MemoryReport } from './samples/types';
 import type { Sf2Soundfont } from './sf2/soundfont';
@@ -63,7 +64,10 @@ export interface PackAssignment {
 }
 
 export interface LoadOptions {
-  /** Selects the memory budget: `budgetBytes` for `gm`, `hqBudgetBytes` for `hq`. */
+  /**
+   * Selects the memory budget: the setting (`setMemoryBudget`, `hqBudgetBytes` at first) on `hq`,
+   * and the smaller of it and `budgetBytes` on `gm`.
+   */
   tier: 'gm' | 'hq';
   packs: PackAssignment[];
 }
@@ -139,6 +143,19 @@ export interface AudioEngine {
     handler: (payload: AudioEngineEvents[K]) => void,
   ): Unsubscribe;
   memory(): MemoryReport;
+  /**
+   * The "Memory for sounds" setting, applied at once: the effective budget is `bytes` on the HQ
+   * tier and the smaller of it and the GM budget on the GM tier, and `memory().budgetBytes`
+   * reports it. Lowering it evicts down to it; raising it decodes the loaded song's missing
+   * samples again if all of them fit. Called before `setSoundfont`, it is applied then. Throws a
+   * `RangeError` for a value that is not a finite, non-negative byte count.
+   */
+  setMemoryBudget(bytes: number): void;
+  /**
+   * Frees the instruments the open song does not use (`memory().unused`) and returns how many;
+   * with no song loaded, every resident.
+   */
+  unloadUnused(): number;
   dispose(): void;
   /** Makes the context on the first call, from the factory; resumes a suspended one after. */
   unlock(): void;
@@ -173,7 +190,7 @@ export interface AudioEngineOptions {
   context: BaseAudioContext | (() => BaseAudioContext);
   /** The memory manager's budget on the GM tier; `GM_BUDGET_BYTES` by default. */
   budgetBytes?: number;
-  /** The budget while `load` is given `tier: 'hq'`; `HQ_BUDGET_BYTES` by default. */
+  /** The memory setting at first, used on the HQ tier; `HQ_BUDGET_BYTES` by default. */
   hqBudgetBytes?: number;
   /** Runs the coalesced memory event; the next animation frame by default. */
   scheduleMemory?: (callback: () => void) => void;
@@ -275,11 +292,21 @@ interface Live {
   click: StandaloneClick;
 }
 
+function checkBudget(bytes: number): number {
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    throw new RangeError(`setMemoryBudget: ${String(bytes)} is not a non-negative byte count`);
+  }
+  return bytes;
+}
+
 export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   const factory = typeof options.context === 'function' ? options.context : undefined;
   const gmBudgetBytes = options.budgetBytes ?? GM_BUDGET_BYTES;
-  const hqBudgetBytes = options.hqBudgetBytes ?? HQ_BUDGET_BYTES;
-  let budgetBytes = gmBudgetBytes;
+  let memorySetting = checkBudget(options.hqBudgetBytes ?? HQ_BUDGET_BYTES);
+  let tier: LoadOptions['tier'] = 'gm';
+  const effectiveBudget = (): number =>
+    tier === 'hq' ? memorySetting : Math.min(memorySetting, gmBudgetBytes);
+  let budgetBytes = effectiveBudget();
 
   const handlers: { [K in keyof AudioEngineEvents]: Set<(payload: AudioEngineEvents[K]) => void> } =
     {
@@ -300,6 +327,8 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   /** The last score whose load got past its pack check: what the next load is an edit of. */
   let committed: Score | undefined;
   let latestDecode: Promise<LoadResult> | undefined;
+  /** The plan of the last decode, which a raised budget warms again. */
+  let lastPlan: SongPlan | undefined;
   let overrides: Record<Id, TrackParams> = {};
   let tempo: { mode: TempoMode; value: number } = { mode: 'percent', value: 100 };
   let loopBars: { startBar: Id; endBar: Id } | undefined;
@@ -502,7 +531,10 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     if (!source || !bank) return Promise.reject(new Error('AudioEngine.load: no sound bank'));
     const decoding = source
       .load(next, regionMapOf, { instrumentOf: instrumentIdFor })
-      .then((plan) => ({ instruments: plan.instruments, fallbacks: [] }));
+      .then((plan) => {
+        lastPlan = plan;
+        return { instruments: plan.instruments, fallbacks: [] };
+      });
     latestDecode = decoding;
     return decoding;
   }
@@ -766,9 +798,9 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
         );
       }
       score = next;
-      const budget = loadOptions.tier === 'hq' ? hqBudgetBytes : gmBudgetBytes;
-      budgetBytes = budget;
-      source.budgetBytes = budget;
+      tier = loadOptions.tier;
+      budgetBytes = effectiveBudget();
+      source.budgetBytes = budgetBytes;
       const started = packLoads + 1;
       packLoads = started;
       // A newer load, or `unload`, owns the song and the packs once this is false.
@@ -951,7 +983,28 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     },
 
     memory() {
-      return source?.memory() ?? { decodedBytes: 0, budgetBytes, residents: [] };
+      return (
+        source?.memory() ?? {
+          decodedBytes: 0,
+          budgetBytes,
+          residents: [],
+          unused: [],
+          shortfall: false,
+        }
+      );
+    },
+
+    setMemoryBudget(bytes) {
+      memorySetting = checkBudget(bytes);
+      const raised = effectiveBudget() > budgetBytes;
+      budgetBytes = effectiveBudget();
+      if (!source) return;
+      source.budgetBytes = budgetBytes;
+      if (raised && score && lastPlan) source.warm(lastPlan, regionMapOf);
+    },
+
+    unloadUnused() {
+      return source?.evictUnused() ?? 0;
     },
 
     unlock() {
@@ -994,11 +1047,13 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
         emit('instrumentLoads', loads);
       }
       if (live) for (const id of live.sampler.trackIds) live.sampler.removeTrack(id);
+      source?.unpin();
       // A song with no tracks plans no instruments, so the switch evicts every one.
       if (unloadOptions.evict && score && source) source.switchSong({ ...score, tracks: [] });
       score = undefined;
       attached = undefined;
       latestDecode = undefined;
+      lastPlan = undefined;
     },
 
     setMasterVolume(volume) {
