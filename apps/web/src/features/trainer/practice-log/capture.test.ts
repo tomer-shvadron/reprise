@@ -170,6 +170,30 @@ describe('writing', () => {
   });
 });
 
+describe('a song deleted mid-session', () => {
+  it('stops writing once the document has no song, and keeps what was written', async () => {
+    const { services, transport, puts } = await setup();
+    transport('playing');
+    seconds(CHECKPOINT_MS / 1000 + 1);
+    expect(puts).toHaveLength(1);
+    services.document.getState().setSongId(undefined);
+    seconds(CHECKPOINT_MS / 1000);
+    dispatchEvent(new Event('pagehide'));
+    expect(puts).toHaveLength(1);
+  });
+});
+
+describe('tempo samples', () => {
+  it('are stamped with the time played when the tempo changed, not the last checkpoint', async () => {
+    const { services, transport, session } = await setup();
+    transport('playing');
+    seconds(12);
+    services.fakeAudio.setTempo('percent', 80);
+    seconds(1);
+    expect(session()?.tempoHistory.at(-1)).toMatchObject({ atPlayedMs: 12_500 });
+  });
+});
+
 describe('ending after idle', () => {
   it('ends after 10 minutes without playing, and the next play is a new session', async () => {
     const { transport, puts, session } = await setup();
@@ -224,6 +248,28 @@ describe('loops and tempo', () => {
     transport('stopped');
     services.fakeAudio.setLoop(bars(third, third));
     expect(session()?.loops).toHaveLength(2);
+  });
+
+  it('notes a loop set while paused when play resumes, as the most recent', async () => {
+    const { services, transport, session } = await setup();
+    const [first, second, third] = services.document.getState().score?.masterBars ?? [];
+    const bars = (a?: { id: string }, b?: { id: string }) => ({
+      startBar: a?.id ?? '',
+      endBar: b?.id ?? '',
+    });
+    services.fakeAudio.setLoop(bars(first, first));
+    transport('playing');
+    seconds(20);
+    transport('paused');
+    services.fakeAudio.setLoop(bars(second, third));
+    expect(session()?.loops).toHaveLength(1);
+    transport('playing');
+    expect(session()?.loops.map((loop) => loop.startBar)).toEqual([first?.id, second?.id]);
+    // Back to the first loop while paused: it becomes the last one, which is what Resume reads.
+    transport('paused');
+    services.fakeAudio.setLoop(bars(first, first));
+    transport('playing');
+    expect(session()?.loops.at(-1)?.startBar).toBe(first?.id);
   });
 
   it('records a tempo only once it has held', async () => {

@@ -25,8 +25,8 @@ describe('played time', () => {
 
 describe('idle and storable', () => {
   it('is idle at exactly IDLE_MS', () => {
-    expect(isIdle(0, IDLE_MS - 1)).toBe(false);
-    expect(isIdle(0, IDLE_MS)).toBe(true);
+    expect(isIdle(IDLE_MS - 1)).toBe(false);
+    expect(isIdle(IDLE_MS)).toBe(true);
   });
 
   it('stores from MIN_PLAYED_MS of play or one completed step', () => {

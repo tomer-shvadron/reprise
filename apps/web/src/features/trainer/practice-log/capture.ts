@@ -18,8 +18,10 @@ import { toRow, type PracticeSessionRow } from './row';
 export type CaptureServices = Pick<AppServices, 'document' | 'playback' | 'practice'>;
 
 export interface CaptureOptions {
-  /** Epoch milliseconds; replaced in tests. */
+  /** Epoch milliseconds, for the `startedAt` and `endedAt` stamps; replaced in tests. */
   now?: () => number;
+  /** Monotonic milliseconds, for durations; replaced in tests. */
+  monotonic?: () => number;
 }
 
 export interface PracticeCapture {
@@ -49,10 +51,15 @@ export function startPracticeCapture(
   // The DOM document, which the store named `document` shadows.
   const document_ = globalThis.document;
   const now = options.now ?? Date.now;
+  // Durations and the idle gap come from the monotonic clock, so setting the system clock does not
+  // stretch or merge sessions. Chromium's monotonic clock stands still while a Mac sleeps, so the
+  // idle gap is the larger of the two readings and an overnight sleep still ends the session.
+  const mono = options.monotonic ?? (() => performance.now());
 
   let rowId: Id | undefined;
   let playingSince: number | undefined;
   let lastActiveAt = 0;
+  let lastActiveMono = 0;
   // The score of the open document, kept so a session that outlives its document still labels
   // its loops from the score they were played on.
   let score: Score | undefined = document.getState().score;
@@ -62,21 +69,15 @@ export function startPracticeCapture(
   let tempoTimer: ReturnType<typeof setTimeout> | undefined;
   let writeTimer: ReturnType<typeof setTimeout> | undefined;
   let writing: Promise<void> = Promise.resolve();
-  let inflight = 0;
 
   const store = () => practice.getState();
 
   const put = (row: PracticeSessionRow) => {
-    // Started synchronously when nothing is in flight, so a flush from `pagehide` reaches
-    // IndexedDB before the page goes; writes in flight are kept in order.
-    const run = () =>
-      repo.put(row).catch((error: unknown) => {
-        console.warn('Could not keep the practice session', error);
-      });
-    writing = inflight === 0 ? run() : writing.then(run);
-    inflight += 1;
-    void writing.finally(() => {
-      inflight -= 1;
+    // Always started at once, never queued behind a write in flight: a flush from `pagehide` must
+    // reach IndexedDB before the page goes, and IndexedDB runs transactions on a store in the
+    // order they were created, so the order of the rows is kept.
+    writing = repo.put(row).catch((error: unknown) => {
+      console.warn('Could not keep the practice session', error);
     });
   };
 
@@ -96,10 +97,17 @@ export function startPracticeCapture(
   /** Adds the time played since the last accrual to the session. */
   const accrue = () => {
     if (playingSince === undefined) return;
-    const at = now();
+    const at = mono();
     store().addPlayed(accrued(playingSince, at));
     playingSince = at;
-    lastActiveAt = at;
+    lastActiveAt = now();
+    lastActiveMono = at;
+  };
+
+  /** Stamps the sample with the time played so far, which `accrue` first brings up to date. */
+  const recordTempoNow = () => {
+    accrue();
+    store().recordTempo(playback.getState().settings.tempo);
   };
 
   /** A tempo that has held is recorded; a pending one is committed when the transport changes. */
@@ -107,7 +115,7 @@ export function startPracticeCapture(
     if (tempoTimer === undefined) return;
     clearTimeout(tempoTimer);
     tempoTimer = undefined;
-    store().recordTempo(playback.getState().settings.tempo);
+    recordTempoNow();
   };
 
   const clearTimers = () => {
@@ -144,21 +152,22 @@ export function startPracticeCapture(
     if (store().session?.documentId !== id) return;
     rowId = newId();
     lastActiveAt = at;
+    lastActiveMono = mono();
     const { settings } = playback.getState();
     store().recordTempo(settings.tempo);
-    // The speed trainer's Start notes its loop before any session exists.
-    if (settings.loop) store().noteLoop(settings.loop);
   };
+
+  const idleFor = () => Math.max(mono() - lastActiveMono, now() - lastActiveAt);
 
   const armIdle = () => {
     clearTimeout(idle);
     idle = setTimeout(
       () => {
         if (playback.getState().transport === 'playing') return;
-        if (isIdle(lastActiveAt, now())) end();
+        if (isIdle(idleFor())) end();
         else armIdle();
       },
-      Math.max(lastActiveAt + IDLE_MS - now(), 0),
+      Math.max(IDLE_MS - idleFor(), 0),
     );
   };
 
@@ -169,12 +178,17 @@ export function startPracticeCapture(
 
     if (running) {
       // A timer that was throttled or missed changes nothing: the check runs here too.
-      if (store().session && isIdle(lastActiveAt, now())) end();
+      if (store().session && isIdle(idleFor())) end();
       if (!store().session) begin();
     }
+    // The loop is noted every time the transport starts, so one set while paused counts, and it
+    // moves to the end of the list, where Resume reads it. The speed trainer's Start notes its own
+    // loop before any session exists, which this covers too.
+    const { loop } = playback.getState().settings;
+    if (running && loop && store().session) store().noteLoop(loop);
     if (!wasPlaying && isPlaying && store().session) {
       commitTempo();
-      playingSince = now();
+      playingSince = mono();
       clearTimeout(idle);
       idle = undefined;
       clearInterval(checkpoint);
@@ -187,6 +201,7 @@ export function startPracticeCapture(
       checkpoint = undefined;
       if (store().session) {
         lastActiveAt = now();
+        lastActiveMono = mono();
         armIdle();
       }
     }
@@ -201,7 +216,7 @@ export function startPracticeCapture(
       clearTimeout(tempoTimer);
       tempoTimer = setTimeout(() => {
         tempoTimer = undefined;
-        store().recordTempo(playback.getState().settings.tempo);
+        recordTempoNow();
       }, TEMPO_SETTLE_MS);
     }
   });

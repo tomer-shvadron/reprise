@@ -20,9 +20,9 @@ export function accrued(since: number, now: number): number {
   return Math.min(Math.max(now - since, 0), 2 * CHECKPOINT_MS);
 }
 
-/** Whether a session whose play last stopped at `lastActiveAt` has been idle long enough to end. */
-export function isIdle(lastActiveAt: number, now: number): boolean {
-  return now - lastActiveAt >= IDLE_MS;
+/** Whether a session whose play stopped `gapMs` ago has been idle long enough to end. */
+export function isIdle(gapMs: number): boolean {
+  return gapMs >= IDLE_MS;
 }
 
 /** Whether the session is worth a row: enough play, or one completed speed-trainer step. */
