@@ -18,17 +18,19 @@ interface SongListProps {
   onOpen: (id: string) => void;
   /** Asked for by the Delete key or a row's button; the caller confirms. */
   onDelete: (id: string) => void;
+  /** Opens the song's practice log: a row's button, or L on the active row. */
+  onPracticeLog: (id: string) => void;
 }
 
 const COLUMNS =
-  'grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)_minmax(0,2fr)_4rem_8rem_4rem] gap-3 px-3';
+  'grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)_minmax(0,2fr)_4rem_8rem_9.5rem] gap-3 px-3';
 
 /**
  * A listbox of fixed-height rows that mounts only the rows in view, so render cost does not grow
  * with the library. Focus stays on the listbox and `aria-activedescendant` names the active row,
  * so the active row may scroll out of the window without losing focus.
  */
-export function SongList({ entries, now, onOpen, onDelete }: SongListProps) {
+export function SongList({ entries, now, onOpen, onDelete, onPracticeLog }: SongListProps) {
   const scroller = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [height, setHeight] = useState(FALLBACK_HEIGHT);
@@ -85,6 +87,12 @@ export function SongList({ entries, now, onOpen, onDelete }: SongListProps) {
       const entry = entries[current];
       if (entry) onDelete(entry.row.id);
     };
+    const practice = () => {
+      const entry = entries[current];
+      if (entry) onPracticeLog(entry.row.id);
+    };
+    // A bare L only: Cmd+L and Ctrl+L belong to the browser and the shell.
+    const bare = !(event.metaKey || event.ctrlKey || event.altKey);
     const handlers: Record<string, () => void> = {
       ArrowDown: () => {
         move(current + 1);
@@ -109,6 +117,7 @@ export function SongList({ entries, now, onOpen, onDelete }: SongListProps) {
         if (entry) onOpen(entry.row.id);
       },
       Delete: remove,
+      ...(bare && { l: practice, L: practice }),
       // The key labelled delete on a Mac keyboard sends Backspace.
       Backspace: remove,
     };
@@ -188,21 +197,40 @@ export function SongList({ entries, now, onOpen, onDelete }: SongListProps) {
                 <span className="text-muted-foreground truncate">
                   {relativeDate(row.lastOpenedAt, now)}
                 </span>
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  tabIndex={-1}
-                  aria-label={`Delete ${row.title}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onDelete(row.id);
-                  }}
-                  onDoubleClick={(event) => {
-                    event.stopPropagation();
-                  }}
-                >
-                  Delete
-                </Button>
+                <span className="flex justify-end gap-1">
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    tabIndex={-1}
+                    aria-label={`Practice log for ${row.title}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      // The row stays the active one, so closing the log lands back on it.
+                      setActive(index);
+                      onPracticeLog(row.id);
+                    }}
+                    onDoubleClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                  >
+                    Practice log
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    tabIndex={-1}
+                    aria-label={`Delete ${row.title}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDelete(row.id);
+                    }}
+                    onDoubleClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </span>
               </div>
             );
           })}
