@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { read } from '@reprise/formats';
 
 import { expect, test } from '../player/test/app';
-import { saveAndRead } from './test/editor';
+import { palette, quarters, saveKey, saveAndRead, toBar, typeSong } from './test/editor';
 import { shapeOf } from './test/score-shape';
 import { generated } from '../player/test/scores';
 
@@ -85,4 +85,57 @@ test('A four-bar cross-track paste is one Paste row, and one undo restores the s
   );
   const undone = await savedShape();
   expect(undone).toEqual(shapeOf(original.score));
+});
+
+// WP-084: a cut leaves rests where the beats were, Paste as insert makes room for what it carries,
+// and Paste over refuses a bar it cannot fit in, naming the bar.
+test('Cut leaves rests, Paste as insert adds bars, and Paste over a bar too short is refused', async ({
+  app,
+  page,
+}) => {
+  const r = quarters([6, [0, 3, 5, 3]], [5, [0, 2, 3, 2]]);
+  await typeSong(app, r);
+  await palette(app, 'Show history');
+  const rows = page.getByRole('region', { name: 'History' }).getByRole('option');
+  const status = page.getByTestId('edit-status');
+  const typed = 1 + r.entries;
+  const rowCount = async (count: number) => {
+    await expect(rows).toHaveCount(count);
+    await expect(rows.last()).toHaveAttribute('aria-current', 'step');
+  };
+
+  // Cut of the first two beats: one Cut row, and a half rest, the length of the two beats,.
+  await toBar(app, 1);
+  await page.keyboard.press('Shift+ArrowRight');
+  await page.keyboard.press('ControlOrMeta+x');
+  await expect(status).toContainText('Cut');
+  await rowCount(typed + 1);
+  await expect(rows.last()).toHaveText('Cut');
+  const cut = await saveKey(app);
+  const beats = cut.tracks[0]?.bars[0]?.voices[0]?.beats ?? [];
+  expect(beats.map((beat) => [beat.rest, beat.duration])).toEqual([
+    [true, 2],
+    [false, 4],
+    [false, 4],
+  ]);
+
+  // Paste over at the last beat of the bar (the half rest is one beat): two quarters do not fit, and the bar is named.
+  await toBar(app, 1);
+  for (let beat = 0; beat < 2; beat += 1) await page.keyboard.press('ArrowRight');
+  await expect(status).toContainText('Bar 1 · Beat 3');
+  await palette(app, 'Paste over');
+  await expect(status.getByRole('status')).toContainText(/^Bar 1 has .* left/);
+  await rowCount(typed + 1);
+
+  // Copy both bars and paste them as an insert at bar 2: the song grows by two bars.
+  expect(await app.description()).toBe('2 bars, 1 page');
+  await toBar(app, 1);
+  await page.keyboard.press('ControlOrMeta+Shift+ArrowRight');
+  await page.keyboard.press('ControlOrMeta+c');
+  await expect(status).toContainText('Copied');
+  await toBar(app, 2);
+  await palette(app, 'Paste as insert');
+  await expect.poll(() => app.description()).toBe('4 bars, 1 page');
+  await rowCount(typed + 2);
+  await expect(rows.last()).toHaveText('Paste');
 });
