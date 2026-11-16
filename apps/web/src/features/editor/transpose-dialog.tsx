@@ -62,8 +62,10 @@ export function TransposeDialog({
   const [refusal, setRefusal] = useState<string>();
   const [busy, setBusy] = useState(false);
   const pending = useRef<number>(undefined);
+  const frame = useRef<number>(undefined);
   useEffect(
     () => () => {
+      if (frame.current !== undefined) window.cancelAnimationFrame(frame.current);
       window.clearTimeout(pending.current);
     },
     [],
@@ -106,7 +108,7 @@ export function TransposeDialog({
     if (error !== undefined || busy) return;
     // A whole-song transposition takes a while: show it working before the main thread is taken.
     setBusy(true);
-    window.requestAnimationFrame(() => {
+    frame.current = window.requestAnimationFrame(() => {
       pending.current = window.setTimeout(run, 0);
     });
   };
