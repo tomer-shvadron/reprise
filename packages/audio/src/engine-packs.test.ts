@@ -103,6 +103,14 @@ function isPack(instrument: Instrument): boolean {
   return regions.length > 0 && regions.every((region) => region.sample.startsWith('sfz:'));
 }
 
+/** A pack instrument's resident id: the install number is the engine's. */
+const residentOf = (path: string, id = 'packone00001'): unknown => {
+  const matcher: unknown = expect.stringMatching(
+    new RegExp(`^sfz:${id}@\\d+:${path.replaceAll('.', '\\.')}$`),
+  );
+  return matcher;
+};
+
 const level = (buffer: AudioBuffer, from = 0.15, to = 0.45) =>
   toneLevel(signalOf(buffer), HEARD_HZ, from, to);
 
@@ -125,7 +133,7 @@ describe('HQ tracks play their pack', () => {
     expect(level(hqBuffer)).toBeGreaterThan(0.004);
     expect(level(hqBuffer)).toBeGreaterThan(5 * gmLevel);
     const { residents } = hq.engine.memory();
-    expect(residents).toEqual(['sfz:packone00001:default.sfz']);
+    expect(residents).toEqual([residentOf('default.sfz')]);
     expect(packInstrumentsOf(residents, 'packone00001')).toEqual(['default.sfz']);
     expect(packInstrumentsOf(residents, 'otherpack001')).toEqual([]);
     hq.engine.dispose();
@@ -141,7 +149,7 @@ describe('HQ tracks play their pack', () => {
     expect(isPack(sampler.instrumentAt(a, 0))).toBe(true);
     expect(isPack(sampler.instrumentAt(b, 0))).toBe(false);
     // The pack track no longer plans a soundfont preset; the GM track's samples are resident.
-    expect(engine.memory().residents).toEqual(['gm:0:25', 'sfz:packone00001:default.sfz'].sort());
+    expect(engine.memory().residents).toEqual(['gm:0:25', residentOf('default.sfz')]);
     engine.dispose();
   });
 
@@ -151,23 +159,24 @@ describe('HQ tracks play their pack', () => {
     );
     const id = song.tracks[0]?.id ?? '';
     const pack = syntheticSfzPack({ frequency: PACK_HZ });
-    const { engine, render, live } = await setup(2.2);
+    const { engine, render, live } = await setup(3);
     await engine.load(song, packOptions([{ trackId: id, files: pack.files }]));
     // The planner never asked the soundfont for program 30.
-    expect(engine.memory().residents).toEqual(['sfz:packone00001:default.sfz']);
+    expect(engine.memory().residents).toEqual([residentOf('default.sfz')]);
     engine.play();
     const { sampler } = live();
-    let after = true;
+    let after = false;
+    // The change on bar 1 sounds at 2.1 s and the sink has queued it by 2.05 s.
     const buffer = await render([
       {
-        at: 1.5,
+        at: 2.05,
         run: () => {
-          after = isPack(sampler.instrumentAt(id, 1.6));
+          after = isPack(sampler.instrumentAt(id, 2.2));
         },
       },
     ]);
     expect(after).toBe(true);
-    expect(level(buffer, 1.15, 1.45)).toBeGreaterThan(0.004);
+    expect(level(buffer, 2.11, 2.19)).toBeGreaterThan(0.004);
     engine.dispose();
   });
 
@@ -237,7 +246,7 @@ describe('a same-score load with other packs', () => {
     expect(isPack(sampler.instrumentAt(b, 0))).toBe(true);
     expect(loads.some((current) => b in current)).toBe(true);
     expect(loads.some((current) => a in current)).toBe(false);
-    expect(engine.memory().residents).toContain('sfz:packtwo00001:alt.sfz');
+    expect(engine.memory().residents).toContainEqual(residentOf('alt.sfz', 'packtwo00001'));
 
     // Without its assignment the track is GM again.
     await engine.load(song, packOptions([{ trackId: a, files: one.files, id: 'packone00001' }]));
@@ -317,17 +326,218 @@ describe('the HQ budget', () => {
     engine.dispose();
   });
 
-  it('evicts the pack under pressure like any other instrument', async () => {
+  it('evicts under real pressure: two packs that do not fit one budget', async () => {
+    const [song, a, b] = twoTracks();
+    const one = syntheticSfzPack({ sampleRate: 22_050 });
+    const two = syntheticSfzPack({ sampleRate: 22_050 });
+    // One pack's sample is 8,820 bytes: room for one of the two.
+    const { engine, live } = await setup(1, { hqBudgetBytes: 10_000 });
+    await engine.load(
+      song,
+      packOptions([
+        { trackId: a, files: one.files, id: 'packone00001' },
+        { trackId: b, files: two.files, id: 'packtwo00001' },
+      ]),
+    );
+    expect(live().source.counters.evictions).toBeGreaterThan(0);
+    expect(engine.memory().decodedBytes).toBeLessThanOrEqual(10_000);
+    engine.dispose();
+  });
+
+  it('frees the pack at once when the song goes back to GM', async () => {
     const song = quarters(1);
     const id = song.tracks[0]?.id ?? '';
     const pack = syntheticSfzPack();
     const { engine } = await setup(1, { hqBudgetBytes: 1024 * 1024 });
     await engine.load(song, packOptions([{ trackId: id, files: pack.files }]));
-    expect(engine.memory().residents).toContain('sfz:packone00001:default.sfz');
-    // Back on GM with no pack: the pack instrument is a leftover, and unloading frees it.
+    expect(engine.memory().residents).toContainEqual(residentOf('default.sfz'));
     await engine.load(song, { tier: 'gm', packs: [] });
+    expect(engine.memory().residents).toEqual(['gm:0:25']);
+    engine.dispose();
+  });
+});
+
+/** A pack whose reads of the listed files wait for `release()`. */
+function gated(pack: ReturnType<typeof syntheticSfzPack>, gatedPaths: string[]) {
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return {
+    release,
+    files: {
+      ...pack.files,
+      read: (path: string) =>
+        gatedPaths.includes(path) ? gate.then(() => pack.files.read(path)) : pack.files.read(path),
+    },
+  };
+}
+
+describe('a load that is overtaken', () => {
+  it('does not decode the old song when it is unloaded during the recovery', async () => {
+    const song = quarters(1);
+    const id = song.tracks[0]?.id ?? '';
+    const pack = syntheticSfzPack();
+    let reads = 0;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const files = {
+      ...pack.files,
+      // The first read breaks the decode; the recovery's probe waits.
+      read: (path: string) => {
+        if (path !== 'samples/a.wav') return pack.files.read(path);
+        reads += 1;
+        return reads === 1
+          ? Promise.reject(new Error('gone'))
+          : gate.then(() => pack.files.read(path));
+      },
+    };
+    const { engine } = await setup();
+    const loading = engine.load(song, packOptions([{ trackId: id, files }]));
+    await vi.waitFor(() => {
+      expect(reads).toBe(2);
+    });
     engine.unload({ evict: true });
-    expect(engine.memory()).toMatchObject({ decodedBytes: 0, residents: [] });
+    release();
+    await loading.catch(() => undefined);
+    await engine.settled();
+    // The probe's own fetch may land after the unload as a leftover (the manager lets a fetch in
+    // flight finish); the old song must not have been decoded again.
+    expect(engine.memory().residents.filter((id) => id.startsWith('gm:'))).toEqual([]);
+    expect(debugAudioEngine(engine).assignments?.size).toBe(0);
+    engine.dispose();
+  });
+
+  it('never routes a new install through a stale check over the old files', async () => {
+    const song = quarters(1);
+    const id = song.tracks[0]?.id ?? '';
+    const old = syntheticSfzPack({ frequency: 200 });
+    const next = syntheticSfzPack({ frequency: PACK_HZ });
+    const slow = gated(old, ['default.sfz']);
+    const { engine } = await setup();
+    const first = engine.load(song, packOptions([{ trackId: id, files: slow.files }]));
+    await engine.load(song, packOptions([{ trackId: id, files: next.files }]));
+    slow.release();
+    await first;
+    // Served from the known install; every sample must still come from the new files.
+    engine.unload({ evict: true });
+    await engine.load(song, packOptions([{ trackId: id, files: next.files }]));
+    expect(old.reads.get('samples/a.wav')).toBeUndefined();
+    expect(next.reads.get('samples/a.wav')).toBeGreaterThanOrEqual(1);
+    expect(debugAudioEngine(engine).packs).toHaveLength(1);
+    engine.dispose();
+  });
+
+  it('keeps an in-flight fetch of the old install out of the new one', async () => {
+    const song = quarters(1);
+    const id = song.tracks[0]?.id ?? '';
+    const old = syntheticSfzPack({ frequency: 200 });
+    const next = syntheticSfzPack({ frequency: PACK_HZ });
+    const slow = gated(old, ['samples/a.wav']);
+    const { engine, render } = await setup();
+    const first = engine.load(song, packOptions([{ trackId: id, files: slow.files }]));
+    await vi.waitFor(() => {
+      expect(old.reads.get('default.sfz')).toBe(1);
+    });
+    await engine.load(song, packOptions([{ trackId: id, files: next.files }]));
+    slow.release();
+    await first.catch(() => undefined);
+    await engine.settled();
+    engine.play();
+    expect(level(await render())).toBeGreaterThan(0.004);
+    engine.dispose();
+  });
+
+  it('plays a pack reinstalled after it was removed', async () => {
+    const song = quarters(1);
+    const id = song.tracks[0]?.id ?? '';
+    const old = syntheticSfzPack({ frequency: 200 });
+    const next = syntheticSfzPack({ frequency: PACK_HZ });
+    const { engine, render } = await setup();
+    await engine.load(song, packOptions([{ trackId: id, files: old.files }]));
+    await engine.load(song, { tier: 'gm', packs: [] });
+    await engine.settled();
+    await engine.load(song, packOptions([{ trackId: id, files: next.files }]));
+    engine.play();
+    expect(level(await render())).toBeGreaterThan(0.004);
+    engine.dispose();
+  });
+});
+
+describe('a load that waits for a pack', () => {
+  it('lets a preview of a new track through, and plays nothing of the old song', async () => {
+    const [first] = [quarters(1)];
+    const [song, a, b] = twoTracks();
+    const pack = syntheticSfzPack({ frequency: PACK_HZ });
+    const slow = gated(pack, ['default.sfz']);
+    const { engine, render } = await setup();
+    await engine.load(first, { tier: 'gm', packs: [] });
+    const states: string[] = [];
+    engine.on('state', (state) => states.push(state));
+    const loading = engine.load(song, packOptions([{ trackId: a, files: slow.files }]));
+    expect(() => {
+      engine.previewNote(b, { string: 1, fret: 3 });
+    }).not.toThrow();
+    engine.play();
+    expect(states).not.toContain('playing');
+    slow.release();
+    await loading;
+    await vi.waitFor(() => {
+      expect(states).toContain('playing');
+    });
+    await render();
+    engine.dispose();
+  });
+
+  it('plays the pack for a preview on an attached HQ track', async () => {
+    const song = quarters(1);
+    const id = song.tracks[0]?.id ?? '';
+    const pack = syntheticSfzPack({ frequency: PACK_HZ });
+    const { engine, render } = await setup();
+    await engine.load(song, packOptions([{ trackId: id, files: pack.files }]));
+    engine.previewNote(id, { string: 1, fret: 3 });
+    await engine.settled();
+    const buffer = await render();
+    expect(level(buffer, 0.01, 0.1)).toBeGreaterThan(0.004);
+    engine.dispose();
+  });
+});
+
+describe('the pack bookkeeping', () => {
+  it('drops a pack from the router when its assignment goes', async () => {
+    const [song, a, b] = twoTracks();
+    const one = syntheticSfzPack();
+    const two = syntheticSfzPack();
+    const { engine } = await setup();
+    await engine.load(
+      song,
+      packOptions([
+        { trackId: a, files: one.files, id: 'packone00001' },
+        { trackId: b, files: two.files, id: 'packtwo00001' },
+      ]),
+    );
+    expect(debugAudioEngine(engine).packs).toHaveLength(2);
+    await engine.load(song, packOptions([{ trackId: a, files: one.files, id: 'packone00001' }]));
+    expect(debugAudioEngine(engine).packs).toEqual([expect.stringMatching(/^packone00001@/)]);
+    engine.dispose();
+  });
+
+  it('reads one SFZ once for tracks that share it and for overlapping loads', async () => {
+    const [song, a, b] = twoTracks();
+    const pack = syntheticSfzPack();
+    const slow = gated(pack, ['default.sfz']);
+    const { engine } = await setup();
+    const options = packOptions([
+      { trackId: a, files: slow.files },
+      { trackId: b, files: slow.files },
+    ]);
+    const first = engine.load(song, options);
+    const second = engine.load(song, options);
+    slow.release();
+    await Promise.all([first, second]);
+    expect(pack.reads.get('default.sfz')).toBe(1);
     engine.dispose();
   });
 });

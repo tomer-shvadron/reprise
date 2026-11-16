@@ -5,20 +5,29 @@ import type { InstrumentId, RawSample, SampleProvider } from './types';
 const PACK_REF = 'sfz:';
 const PACK_INSTRUMENT = 'sfz:';
 
-/** The memory manager's id for one SFZ file of an installed pack: `sfz:<packId>:<path>`. */
-export function packInstrumentId(packId: string, path: string): InstrumentId {
-  return `${PACK_INSTRUMENT}${packId}:${path}`;
+/**
+ * The memory manager's id for one SFZ file of an installed pack: `sfz:<packKey>:<path>`, where the
+ * pack key is `<packId>@<install>`, so each install of a pack has instruments of its own.
+ */
+export function packInstrumentId(packKey: string, path: string): InstrumentId {
+  return `${PACK_INSTRUMENT}${packKey}:${path}`;
 }
 
-/** The pack and SFZ path an instrument id names; `undefined` for a GM id. */
+/** The pack, its install and the SFZ path an instrument id names; `undefined` for a GM id. */
 export function parsePackInstrumentId(
   id: InstrumentId,
-): { packId: string; path: string } | undefined {
+): { packId: string; install: string; path: string } | undefined {
   if (!id.startsWith(PACK_INSTRUMENT)) return undefined;
   const rest = id.slice(PACK_INSTRUMENT.length);
   const colon = rest.indexOf(':');
   if (colon <= 0) return undefined;
-  return { packId: rest.slice(0, colon), path: rest.slice(colon + 1) };
+  const key = rest.slice(0, colon);
+  const at = key.lastIndexOf('@');
+  return {
+    packId: at === -1 ? key : key.slice(0, at),
+    install: at === -1 ? '' : key.slice(at + 1),
+    path: rest.slice(colon + 1),
+  };
 }
 
 /**
@@ -58,6 +67,10 @@ export class ProviderRouter implements SampleProvider {
   /** Replaces the packs the router holds; one that is left out can no longer be fetched from. */
   setPacks(packs: ReadonlyMap<string, SfzPack>): void {
     this.#packs = packs;
+  }
+
+  packIds(): string[] {
+    return [...this.#packs.keys()];
   }
 
   #route(ref: SampleRef): SampleProvider | undefined {
