@@ -14,6 +14,7 @@ import {
   type EntryPlan,
 } from './entry';
 import type { EntryStore } from './entry-store';
+import { previewOptions, type PreviewSound } from './preview';
 import { rhythmOf, sameRhythm } from './rhythm';
 import { visibleTracks } from './visible';
 
@@ -31,7 +32,11 @@ export interface EntryDeps {
   editing: EditingStore;
   entry: EntryStore;
   /** Sounds the note just entered; called after the edit, never before, since it may throw. */
-  preview: (trackId: Id, note: { string: number; fret: number }) => void;
+  preview: (
+    trackId: Id,
+    note: { string: number; fret: number },
+    options?: { velocity?: number; seconds?: number },
+  ) => void;
   /** Where the capture-phase key and pointer listeners go; the window by default. */
   target?: Pick<Window, 'addEventListener' | 'removeEventListener'>;
   clock?: EntryClock;
@@ -114,9 +119,11 @@ export function installEntry(deps: EntryDeps): () => void {
     };
   };
 
-  const sound = (trackId: Id, note: { string: number; fret: number }) => {
+  const sound = (plan: PreviewSound) => {
     try {
-      preview(trackId, note);
+      const { score } = document.getState();
+      const options = score ? previewOptions(score, plan) : {};
+      preview(plan.track, { string: plan.string, fret: plan.fret }, options);
     } catch (error) {
       // The edit is done; a refused preview must not look like a failed entry.
       console.error(error);
@@ -144,7 +151,7 @@ export function installEntry(deps: EntryDeps): () => void {
     });
     // Last, so a throw from the audio side cannot skip the edit.
     if (applied && plan.sound) {
-      sound(plan.sound.track, { string: plan.sound.string, fret: plan.sound.fret });
+      sound(plan.sound);
     }
   };
 
