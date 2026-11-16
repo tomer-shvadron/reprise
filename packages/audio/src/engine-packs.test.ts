@@ -385,13 +385,12 @@ describe('a load that is overtaken', () => {
     });
     const files = {
       ...pack.files,
-      // The first read breaks the decode; the recovery's probe waits.
+      // Every read of the sample fails, the recovery's probe after the gate.
       read: (path: string) => {
         if (path !== 'samples/a.wav') return pack.files.read(path);
         reads += 1;
-        return reads === 1
-          ? Promise.reject(new Error('gone'))
-          : gate.then(() => pack.files.read(path));
+        if (reads === 1) return Promise.reject(new Error('gone'));
+        return gate.then(() => Promise.reject(new Error('gone')));
       },
     };
     const { engine } = await setup();
@@ -501,6 +500,95 @@ describe('a load that waits for a pack', () => {
     await engine.settled();
     const buffer = await render();
     expect(level(buffer, 0.01, 0.1)).toBeGreaterThan(0.004);
+    engine.dispose();
+  });
+});
+
+describe('two SFZ files of one install', () => {
+  it('play their own samples, with no fallback', async () => {
+    const [song, a, b] = twoTracks();
+    const pack = syntheticSfzPack({ frequency: PACK_HZ });
+    const { engine, live } = await setup();
+    const result = await engine.load(
+      song,
+      packOptions([
+        { trackId: a, files: pack.files, path: 'default.sfz' },
+        { trackId: b, files: pack.files, path: 'alt.sfz' },
+      ]),
+    );
+    expect(result.fallbacks).toEqual([]);
+    engine.unlock();
+    const { sampler } = live();
+    const sampleOf = (id: Id) =>
+      sampler.instrumentAt(id, 0).regions.candidates(67, 100)[0]?.sample ?? '';
+    expect(sampleOf(a)).toMatch(/\/samples\/a\.wav$/);
+    expect(sampleOf(b)).toMatch(/\/samples\/b\.wav$/);
+    expect(debugAudioEngine(engine).packs).toHaveLength(1);
+    expect(engine.memory().residents).toEqual([residentOf('alt.sfz'), residentOf('default.sfz')]);
+    engine.dispose();
+  });
+});
+
+describe('a deferred play', () => {
+  const stateLog = (engine: ReturnType<typeof createAudioEngine>) => {
+    const states: string[] = [];
+    engine.on('state', (state) => states.push(state));
+    return states;
+  };
+
+  it('does not wait on an overtaken read, even one that never settles', async () => {
+    const song = quarters(1);
+    const id = song.tracks[0]?.id ?? '';
+    const stuck = gated(syntheticSfzPack(), ['default.sfz']);
+    const { engine } = await setup();
+    const states = stateLog(engine);
+    void engine.load(song, packOptions([{ trackId: id, files: stuck.files }]));
+    await engine.load(song, { tier: 'gm', packs: [] });
+    engine.play();
+    expect(states).toContain('playing');
+    engine.dispose();
+  });
+
+  it('is cancelled by stop and by pause', async () => {
+    for (const cut of ['stop', 'pause'] as const) {
+      const song = quarters(1);
+      const id = song.tracks[0]?.id ?? '';
+      const slow = gated(syntheticSfzPack(), ['default.sfz']);
+      const { engine } = await setup();
+      const states = stateLog(engine);
+      const loading = engine.load(song, packOptions([{ trackId: id, files: slow.files }]));
+      engine.play();
+      engine[cut]();
+      slow.release();
+      await loading;
+      expect(states).not.toContain('playing');
+      engine.dispose();
+    }
+  });
+});
+
+describe('a transient pack failure', () => {
+  it('is retried when the song is opened again', async () => {
+    const song = quarters(1);
+    const id = song.tracks[0]?.id ?? '';
+    const pack = syntheticSfzPack();
+    let failing = true;
+    const files = {
+      ...pack.files,
+      read: (path: string) =>
+        failing && path === 'default.sfz'
+          ? Promise.reject(new Error('ipc'))
+          : pack.files.read(path),
+    };
+    const { engine, live } = await setup();
+    const first = await engine.load(song, packOptions([{ trackId: id, files }]));
+    expect(first.fallbacks).toHaveLength(1);
+    failing = false;
+    engine.unload();
+    const second = await engine.load(song, packOptions([{ trackId: id, files }]));
+    expect(second.fallbacks).toEqual([]);
+    engine.unlock();
+    expect(isPack(live().sampler.instrumentAt(id, 0))).toBe(true);
     engine.dispose();
   });
 });

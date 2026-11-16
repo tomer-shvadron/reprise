@@ -142,7 +142,10 @@ export interface AudioEngine {
   /** Makes the context on the first call, from the factory; resumes a suspended one after. */
   unlock(): void;
   setSoundfont(font: Sf2Soundfont): void;
-  /** Ends the song; `evict` frees every instrument too, as closing it should. */
+  /**
+   * Ends the song; `evict` frees every instrument too, as closing it should. A sample fetch
+   * already in flight (a pack check's probe) can still land afterwards as a leftover resident.
+   */
   unload(options?: { evict?: boolean }): void;
   setMasterVolume(volume: number): void;
   /** A strip's volume or pan with no override: the next baseline reset or edit replaces it. */
@@ -306,17 +309,23 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   /** The assignments whose pack loaded, by track: what the tier and the strips follow. */
   let loadedPacks = new Map<Id, LoadedPack>();
   /**
-   * The default SFZ of each (files object, path), parsed once and shared by tracks and by
-   * overlapping loads, failures included. Keyed by identity, so a stale check cannot leak into a
-   * reinstall.
+   * Per files object (an install), its one `SfzPack` and the default SFZ of each path, parsed once
+   * and shared by tracks and by overlapping loads. A parse that fails is dropped, so the next load
+   * retries it; `failedPacks` is what remembers a failure. Keyed by identity, so a stale check
+   * cannot leak into a reinstall; cleared by `unload`.
    */
-  const parses = new WeakMap<SfzFiles, Map<string, Promise<ParsedEntry>>>();
+  let installs = new WeakMap<
+    SfzFiles,
+    { sfz: SfzPack; parses: Map<string, Promise<ParsedEntry>> }
+  >();
   /** Assignments whose check failed, remembered so an edit does not read a broken pack again. */
   let failedPacks = new Map<Id, { key: string; files: SfzFiles; fallback: LoadFallback }>();
   /** Bumped by every `load`, so a pack check that a newer load overtook changes nothing. */
   let packLoads = 0;
   /** Pending while the latest load waits on a pack's SFZ and has not attached its song. */
-  let attachGate: Promise<void> | undefined;
+  let attaching = false;
+  /** A `play` asked for while the latest load had not attached its song. */
+  let pendingPlay: { tick: number | undefined } | undefined;
   /** Session stage bypasses, by track. */
   let stageBypasses = new Map<Id, Set<EffectStage>>();
   let clickSettings = DEFAULT_CLICK_SETTINGS;
@@ -637,22 +646,26 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   type Resolved = { loaded: Map<Id, LoadedPack>; failed: typeof failedPacks };
 
   function parseEntry(pack: PackAssignment['pack'], path: string): Promise<ParsedEntry> {
-    let byPath = parses.get(pack.files);
-    if (!byPath) {
-      byPath = new Map();
-      parses.set(pack.files, byPath);
-    }
-    let parsing = byPath.get(path);
-    if (!parsing) {
+    let install = installs.get(pack.files);
+    if (!install) {
       const key = `${pack.id}@${String(installOf(pack.files))}`;
-      parsing = (async () => {
-        const parsed = await loadSfz(path, (file) => pack.files.read(file), { packId: key });
+      install = { sfz: new SfzPack({ id: key, files: pack.files }), parses: new Map() };
+      installs.set(pack.files, install);
+    }
+    const { sfz, parses } = install;
+    let parsing = parses.get(path);
+    if (!parsing) {
+      const own = (async () => {
+        const parsed = await loadSfz(path, (file) => pack.files.read(file), { packId: sfz.id });
         if (parsed.regions.length === 0) throw new Error(`${path} maps no regions`);
-        const sfz = new SfzPack({ id: key, files: pack.files });
-        const id = packInstrumentId(key, path);
+        const id = packInstrumentId(sfz.id, path);
         return { id, sfz, regions: sfz.adopt(parsed, { id }).regions };
       })();
-      byPath.set(path, parsing);
+      parsing = own;
+      parses.set(path, own);
+      own.catch(() => {
+        if (parses.get(path) === own) parses.delete(path);
+      });
     }
     return parsing;
   }
@@ -738,8 +751,6 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     emit('click', false);
   }
 
-  const gateOpen = (): boolean => attachGate !== undefined;
-
   function requireSong(method: string): Score {
     if (!score) throw new Error(`AudioEngine.${method}: load a score first`);
     return score;
@@ -768,6 +779,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
         }));
       const run = ({ loaded, failed }: Resolved): Promise<LoadResult> => {
         if (!current()) return overtaken();
+        attaching = false;
         const swapped = new Set<Id>();
         for (const id of new Set([...loadedPacks.keys(), ...loaded.keys()])) {
           if (loadedPacks.get(id)?.instrument !== loaded.get(id)?.instrument) swapped.add(id);
@@ -803,12 +815,16 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
           }
           loading = decode(next);
         }
+        const pending = pendingPlay;
+        pendingPlay = undefined;
+        if (pending) live?.transport.play(pending.tick);
         const recovering = loading.catch(async (error: unknown) => {
           // A pack whose samples will not decode plays GM; any other failure is the caller's.
           if (!current()) return overtaken();
           const dropped = await dropBrokenPacks(next, loaded, failed, current);
           if (dropped === undefined) return overtaken();
           if (dropped === 0) throw error;
+          if (!current()) return overtaken();
           return decode(next);
         });
         const order = new Map(next.tracks.map((track, index) => [track.id, index]));
@@ -821,14 +837,9 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       };
       const resolution = resolvePacks(next, loadOptions.packs);
       if (!(resolution instanceof Promise)) return tracked(run(resolution));
+      // Until `run` attaches, the sampler and transport hold the previous song.
+      attaching = true;
       const loading = resolution.then(run);
-      // After `run` (registered first): until it attaches, the sampler holds the previous song.
-      const gate: Promise<void> = resolution
-        .then(() => undefined)
-        .then(() => {
-          if (attachGate === gate) attachGate = undefined;
-        });
-      attachGate = gate;
       return tracked(loading);
     },
 
@@ -836,29 +847,29 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       requireSong('play');
       const made = unlock();
       if (made) stopClick();
-      if (!attachGate) {
-        made?.transport.play(fromTick);
+      if (attaching) {
+        // The transport still holds the previous song: the load that attaches this one starts it.
+        pendingPlay = { tick: fromTick };
         return;
       }
-      // The transport still holds the previous song: start once the load has attached this one.
-      void (async () => {
-        while (gateOpen()) await attachGate;
-        if (score && !disposed) live?.transport.play(fromTick);
-      })();
+      made?.transport.play(fromTick);
     },
 
     pause() {
+      pendingPlay = undefined;
       live?.transport.pause();
     },
 
     stop() {
+      pendingPlay = undefined;
       live?.transport.stop();
     },
 
     seek(tick) {
       if (!live) return;
       requireSong('seek');
-      live.transport.seek(tick);
+      if (pendingPlay) pendingPlay = { tick };
+      else live.transport.seek(tick);
     },
 
     setTempo(mode, value) {
@@ -895,6 +906,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
         made.click.update(clickSettings);
         return;
       }
+      pendingPlay = undefined;
       made.transport.pause();
       made.click.start(clickSettings);
       emit('click', true);
@@ -966,6 +978,9 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       overrides = {};
       stageBypasses = new Map();
       packLoads += 1;
+      attaching = false;
+      pendingPlay = undefined;
+      installs = new WeakMap();
       loadedPacks = new Map();
       failedPacks = new Map();
       router?.setPacks(new Map());
