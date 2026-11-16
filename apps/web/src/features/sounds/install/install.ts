@@ -1,4 +1,4 @@
-import { checkPack, checkSfzFile } from '@reprise/audio';
+import { articulationSetOf, checkPack, checkSfzFile } from '@reprise/audio';
 import type { PackSnapshot, SfzFileCheck } from '@reprise/audio';
 
 import type { PickedFile, PickedFolder, Platform } from '@/platform/platform';
@@ -265,7 +265,49 @@ const titleOf = (stem: string) =>
     .trim()
     .replace(/^./, (letter) => letter.toUpperCase());
 
-/** Instruments of a custom pack: one per `.sfz` at the root that passes (any that passes if none is at the root). */
+const fileStem = (path: string) => path.slice(path.lastIndexOf('/') + 1).replace(/\.sfz$/i, '');
+
+/**
+ * The tails of a file name that mean a set, whole and exact. `articulationSetOf` reads a keyswitch
+ * label and matches a word anywhere (`trumpet_mute`, `piano_tape`, `guitar_slapback`); a file name
+ * is stricter, so a tail that is not listed here leaves the file an instrument of its own. `pop` is
+ * left out because `synth_pop` is a genre far more often than a bass technique.
+ */
+const FILE_TAIL =
+  /^(?:pm|palm|palm mute[d]?|dead|dead notes?|x notes?|harm|harms|harmonics?|nh|natural harmonics?|ah|pinch|pinch harmonics?|artificial harmonics?|legato|hammer[- ]?ons?|ho|stacc|staccato|tap|tapping|slap|slapping)$/i;
+
+/**
+ * A stem split into an instrument's stem and the set its tail names (`guitar_pm` is `guitar` plus
+ * `palmMute`; `guitar palm mute` too): the tail is one or two words after the last separators, all
+ * of it a `FILE_TAIL`, and the shortest one that leaves a stem `isBase` accepts. `undefined` when
+ * there is none.
+ */
+function splitSetSuffix(
+  stem: string,
+  isBase: (base: string) => boolean,
+): { base: string; set: string } | undefined {
+  const separators = [...stem.matchAll(/[ _-]+/g)];
+  for (const separator of separators.slice(-2).reverse()) {
+    const base = stem.slice(0, separator.index);
+    const tail = stem.slice(separator.index + separator[0].length).replaceAll(/[ _-]+/g, ' ');
+    if (!FILE_TAIL.test(tail)) continue;
+    const set = articulationSetOf(tail);
+    if (set !== undefined && set !== 'default' && isBase(base)) return { base, set };
+  }
+  return undefined;
+}
+
+const dirOf = (path: string) => path.slice(0, path.lastIndexOf('/') + 1);
+
+/**
+ * Instruments of a custom pack: one per `.sfz` at the root that passes (any that passes if none is
+ * at the root). A file named as another file's stem plus an articulation tail (`guitar.sfz`,
+ * `guitar_pm.sfz`, `guitar_harm.sfz`) is that instrument's file for the set, not an instrument of
+ * its own, when both sit in the same folder. A file that is itself grouped never serves as a base,
+ * so every passing file ends up in an instrument or as one; a second file for a set already taken,
+ * a tail that is not a whole articulation name and a tail whose base is not a passing file stay
+ * instruments. A keyswitch library in one file needs no grouping: the engine reads its labels.
+ */
 function customInstruments(checks: readonly SfzFileCheck[]): {
   instruments: PackInstrument[];
   problems: string[];
@@ -275,12 +317,38 @@ function customInstruments(checks: readonly SfzFileCheck[]): {
   const instruments: PackInstrument[] = [];
   const keys = new Set<string>();
   const problems: string[] = [];
+  const passing: SfzFileCheck[] = [];
   for (const check of candidates) {
-    if (!passes(check)) {
-      problems.push(...summarizeCheck(check));
-      continue;
-    }
-    const file = check.path.slice(check.path.lastIndexOf('/') + 1).replace(/\.sfz$/i, '');
+    if (passes(check)) passing.push(check);
+    else problems.push(...summarizeCheck(check));
+  }
+  const baseKey = (path: string, stem: string) => `${dirOf(path)}${stem}`.toLowerCase();
+  const bases = new Map(
+    passing.map((check) => [baseKey(check.path, fileStem(check.path)), check.path]),
+  );
+  const setFiles = new Map<string, Record<string, string>>();
+  const grouped = new Set<string>();
+  // A base is a strict prefix of its file's stem, so shorter stems are settled first and a grouped
+  // file is known to be grouped before anything could name it as a base. Path order breaks ties,
+  // so which of two files claims a set does not depend on the archive's order.
+  const ordered = [...passing].sort(
+    (a, b) => fileStem(a.path).length - fileStem(b.path).length || a.path.localeCompare(b.path),
+  );
+  for (const check of ordered) {
+    const split = splitSetSuffix(fileStem(check.path), (base) => {
+      const path = bases.get(baseKey(check.path, base));
+      return path !== undefined && !grouped.has(path);
+    });
+    const basePath = split && bases.get(baseKey(check.path, split.base));
+    if (!split || basePath === undefined) continue;
+    const taken = setFiles.get(basePath) ?? {};
+    if (Object.hasOwn(taken, split.set)) continue;
+    setFiles.set(basePath, { ...taken, [split.set]: check.path });
+    grouped.add(check.path);
+  }
+  for (const check of passing) {
+    if (grouped.has(check.path)) continue;
+    const file = fileStem(check.path);
     const base =
       file
         .toLowerCase()
@@ -292,7 +360,7 @@ function customInstruments(checks: readonly SfzFileCheck[]): {
     instruments.push({
       key,
       name: (titleOf(file) || 'Instrument').slice(0, 120),
-      entries: { default: check.path },
+      entries: { ...setFiles.get(check.path), default: check.path },
     });
   }
   return { instruments, problems };

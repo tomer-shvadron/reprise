@@ -16,6 +16,13 @@ const emilyguitar = karoryfer(
 );
 
 /**
+ * Growlybass keeps its staccato samples in a file of their own, `growlybass_vicious.sfz`. Only the
+ * sounds that play sustained notes list it as their staccato set: angry and excessive already layer
+ * staccato samples into every note.
+ */
+const STACCATO = 'growlybass_vicious.sfz';
+
+/**
  * The packs the Sounds screen offers. Every entry's licence was read on the pack's own source page
  * (dates in `docs/reference/sound-packs.md`). A pack is listed only when its terms are confirmed;
  * `directDownload` also needs a stable archive URL whose hash and size were measured from one real
@@ -78,16 +85,36 @@ export const CURATED_PACKS: readonly PackManifest[] = [
     },
     sizeBytes: 190_765_319,
     instruments: [
-      { key: 'dirty', name: 'Dirty', entries: { default: 'growlybass_dirty.sfz' } },
-      { key: 'clean', name: 'Clean', entries: { default: 'growlybass_clean.sfz' } },
+      {
+        key: 'dirty',
+        name: 'Dirty',
+        entries: { default: 'growlybass_dirty.sfz', staccato: STACCATO },
+      },
+      {
+        key: 'clean',
+        name: 'Clean',
+        entries: { default: 'growlybass_clean.sfz', staccato: STACCATO },
+      },
       {
         key: 'vicious',
         name: 'Vicious (staccato)',
         entries: { default: 'growlybass_vicious.sfz' },
       },
-      { key: 'angry', name: 'Angry', entries: { default: 'growlybass_angry.sfz' } },
-      { key: 'excessive', name: 'Excessive', entries: { default: 'growlybass_excessive.sfz' } },
-      { key: 'shifty', name: 'Shifty', entries: { default: 'growlybass_shifty.sfz' } },
+      {
+        key: 'angry',
+        name: 'Angry',
+        entries: { default: 'growlybass_angry.sfz' },
+      },
+      {
+        key: 'excessive',
+        name: 'Excessive',
+        entries: { default: 'growlybass_excessive.sfz' },
+      },
+      {
+        key: 'shifty',
+        name: 'Shifty',
+        entries: { default: 'growlybass_shifty.sfz' },
+      },
     ],
   },
   {

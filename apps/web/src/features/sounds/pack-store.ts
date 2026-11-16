@@ -25,6 +25,7 @@ import {
   type InstalledPack,
   type PackManifest,
 } from './manifest';
+import { reconcileCurated } from './curated-instruments';
 import { sourceOfPack } from './pack-files';
 
 /** A folder under `data/sounds` that is not a readable pack; the screen offers to remove it. */
@@ -200,7 +201,20 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
         else if (found && found.installedAt < current.installedAt) packs[listed] = current;
       }
     }
-    setPacks(packs);
+    const dropped: Record<string, PackProblem> = {};
+    const reconciled = packs.map((pack) => {
+      const result = reconcileCurated(pack);
+      if (result.dropped.length > 0)
+        dropped[pack.id] = {
+          name: pack.name,
+          message:
+            'Some articulation files of this pack are missing, so those sounds are left out. Remove the pack and download it again to restore them.',
+          problems: result.dropped,
+        };
+      return result.pack;
+    });
+    setPacks(reconciled);
+    for (const [id, value] of Object.entries(dropped)) problem(id, value);
     store.setState({ damaged, scanned: true });
   }
 

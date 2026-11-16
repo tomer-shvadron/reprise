@@ -68,6 +68,10 @@ folder holds the UI:
 - `curated-packs.ts`: the list the screen offers, only packs whose licence was confirmed on the source
   page, with the pinned SHA-256 and size of each direct download. `docs/reference/sound-packs.md` is
   the record, and a test keeps the two in step.
+- `curated-instruments.ts`: `reconcileCurated`, run by the scan, gives a same-version installed curated
+  pack the list's instruments (so new `entries`, like Growlybass's staccato file, need no
+  re-download) and drops what the copy's file index lacks. `install/install.ts` groups a custom
+  pack's `guitar.sfz` + `guitar_pm.sfz` files into one instrument with `palmMute` (WP-093).
 - `install/zip.ts`: the zip reader for untrusted archives (ranged reads, `DecompressionStream`,
   caps on entries, depth and sizes, no traversal, symlinks, encryption or overlap).
 - `install/install.ts`: `installPack` stages, checks (`checkSfzFile`, `checkPack`) and swaps a pack in;

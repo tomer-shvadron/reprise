@@ -110,6 +110,129 @@ describe('installPack: a custom pack', () => {
     });
   });
 
+  describe('groups files named as an instrument plus an articulation', () => {
+    const sfz = '<region> sample=samples/a.wav\n';
+    const install = async (names: string[]) => {
+      const { platform } = testPlatform();
+      const contents = packContents({
+        'default.sfz': null,
+        'alt.sfz': null,
+        ...Object.fromEntries(
+          names.map((name) => [name, name.includes('/') ? sfz.replace('=', '=../') : sfz]),
+        ),
+      });
+      const pack = await installPack({
+        platform,
+        id: ID,
+        files: incomingOf(contents),
+        name: 'x',
+        source: 'zip',
+      });
+      return pack.instruments.map((i) => [i.key, i.entries]);
+    };
+
+    it('makes one instrument of guitar.sfz, guitar_pm.sfz and guitar harm.sfz', async () => {
+      expect(await install(['guitar.sfz', 'guitar_pm.sfz', 'guitar harm.sfz'])).toEqual([
+        [
+          'guitar',
+          { default: 'guitar.sfz', palmMute: 'guitar_pm.sfz', harmonic: 'guitar harm.sfz' },
+        ],
+      ]);
+    });
+
+    it('reads a two-word tail, and is case-blind about the stem', async () => {
+      expect(await install(['Bass.sfz', 'bass-palm-mute.sfz'])).toEqual([
+        ['bass', { default: 'Bass.sfz', palmMute: 'bass-palm-mute.sfz' }],
+      ]);
+    });
+
+    it('keeps a file whose base is absent, a default-set tail and a duplicate set as instruments', async () => {
+      const found = await install([
+        'lead.sfz',
+        'lead_pm.sfz',
+        'lead_palm.sfz',
+        'lead_open.sfz',
+        'solo_pm.sfz',
+      ]);
+      expect(found.map(([key]) => key)).toEqual(['lead', 'lead-open', 'lead-palm', 'solo-pm']);
+      expect(found[0]).toEqual(['lead', { default: 'lead.sfz', palmMute: 'lead_pm.sfz' }]);
+    });
+
+    it('does not let a grouped file serve as a base: a chained tail stays an instrument', async () => {
+      const found = await install(['guitar.sfz', 'guitar_pm.sfz', 'guitar_pm_harm.sfz']);
+      expect(found).toEqual([
+        ['guitar', { default: 'guitar.sfz', palmMute: 'guitar_pm.sfz' }],
+        ['guitar-pm-harm', { default: 'guitar_pm_harm.sfz' }],
+      ]);
+      expect(await install(['bass.sfz', 'bass_slap.sfz', 'bass_slap_muted.sfz'])).toEqual([
+        ['bass', { default: 'bass.sfz', slap: 'bass_slap.sfz' }],
+        ['bass-slap-muted', { default: 'bass_slap_muted.sfz' }],
+      ]);
+    });
+
+    it('never loses a passing file: every one is an instrument or an entry', async () => {
+      const names = [
+        'a.sfz',
+        'a_pm.sfz',
+        'a_pm_harm.sfz',
+        'a_harm.sfz',
+        'a_harm_pm.sfz',
+        'a_dead.sfz',
+        'a_dead_pm.sfz',
+        'b_pm.sfz',
+        'b_pm_pm.sfz',
+        'c.sfz',
+        'c_slap_muted.sfz',
+      ];
+      const found = await install(names);
+      const used = found.flatMap(([, entries]) => Object.values(entries as Record<string, string>));
+      expect(new Set(used)).toEqual(new Set(names));
+      expect(used).toHaveLength(names.length);
+    });
+
+    it.each([
+      ['trumpet', 'trumpet_mute'],
+      ['piano', 'piano_hammer'],
+      ['piano', 'piano_tape'],
+      ['synth', 'synth_pop'],
+      ['guitar', 'guitar_slapback'],
+    ])(
+      'keeps %s.sfz and %s.sfz as two instruments: the tail is not an articulation name',
+      async (base, other) => {
+        const found = await install([`${base}.sfz`, `${other}.sfz`]);
+        expect(found.map(([, entries]) => entries)).toEqual([
+          { default: `${base}.sfz` },
+          { default: `${other}.sfz` },
+        ]);
+      },
+    );
+
+    it('makes guitar_clean_pm the palm mute of guitar_clean, and an instrument with no such base', async () => {
+      expect(await install(['guitar.sfz', 'guitar_clean.sfz', 'guitar_clean_pm.sfz'])).toEqual([
+        ['guitar', { default: 'guitar.sfz' }],
+        ['guitar-clean', { default: 'guitar_clean.sfz', palmMute: 'guitar_clean_pm.sfz' }],
+      ]);
+      expect(await install(['guitar.sfz', 'guitar_clean_pm.sfz'])).toEqual([
+        ['guitar', { default: 'guitar.sfz' }],
+        ['guitar-clean-pm', { default: 'guitar_clean_pm.sfz' }],
+      ]);
+    });
+
+    it('pairs files only inside one folder', async () => {
+      // No file at the root, so the instruments come from the folders.
+      expect(
+        await install(['electric/guitar.sfz', 'acoustic/guitar_pm.sfz', 'acoustic/nylon.sfz']),
+      ).toEqual([
+        ['guitar-pm', { default: 'acoustic/guitar_pm.sfz' }],
+        ['nylon', { default: 'acoustic/nylon.sfz' }],
+        ['guitar', { default: 'electric/guitar.sfz' }],
+      ]);
+      expect(await install(['electric/guitar.sfz', 'electric/guitar_pm.sfz'])).toEqual([
+        ['guitar', { default: 'electric/guitar.sfz', palmMute: 'electric/guitar_pm.sfz' }],
+      ]);
+    });
+  });
+
   it.each([
     ['a sample file is missing', { 'samples/a.wav': null }],
     ['a sample has a bad header', { 'samples/a.wav': 'not a wav file at all, just text' }],
