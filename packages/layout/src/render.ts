@@ -32,6 +32,7 @@ import { staffBar, trackBar, type StaffSlot } from './slots';
 import { stretch } from './spacing';
 import { separateAnchors } from './squeeze';
 import type { LaneBands, NeighbourBar } from './staves';
+import { WORDS } from './staves/words';
 import type { Range, Rect, StaffPlacement } from './types';
 import type { VerticalLayout } from './vertical';
 
@@ -418,6 +419,15 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
       type: slot.type,
       top: round(staff.top),
       bottom: round(staff.bottom),
+      ...(extent.words && {
+        words: {
+          size: round(WORDS.size * space),
+          chord: round(input.y + extent.words.chord),
+          text: round(input.y + extent.words.text),
+          lyrics: round(input.y + extent.words.lyrics),
+          lyricRow: round(WORDS.lyricRow * space),
+        },
+      }),
     });
     sink.anchors.push({
       kind: 'staff',

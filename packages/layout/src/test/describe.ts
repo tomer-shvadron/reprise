@@ -15,7 +15,7 @@ export function describePrimitive(primitive: Primitive): string {
     case 'path':
       return `path ${primitive.fill ? 'filled' : 'stroked'} ${primitive.d}${role}${node}`;
     case 'text':
-      return `text "${primitive.text}" ${at} size ${n(primitive.size)} ${primitive.anchor}${primitive.italic ? ' italic' : ''}${role}${node}`;
+      return `text "${primitive.text}" ${at} size ${n(primitive.size)} ${primitive.anchor}${primitive.italic ? ' italic' : ''}${primitive.lane === undefined ? '' : ` {${primitive.lane}}`}${role}${node}`;
   }
 }
 
