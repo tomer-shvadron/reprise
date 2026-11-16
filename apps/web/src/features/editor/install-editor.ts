@@ -28,10 +28,15 @@ export function installEditor(deps: InstallDeps): () => void {
     if (state.id !== previous.id || state.score === previous.score || !state.score) return;
     const current = selection.getState();
     const landed =
-      (state.lastStep === 'undo' || state.lastStep === 'redo') && state.lastChange && current.cursor
+      // Only while editing: the cursor outlives edit mode, and an undo in play mode must not move
+      // the hidden cursor or switch the current track under the sidebar and the fretboard.
+      (state.lastStep === 'undo' || state.lastStep === 'redo') &&
+      state.lastChange &&
+      current.cursor &&
+      editing.getState().editing
         ? undoLanding(
             state.score,
-            state.lastChange.patches,
+            state.lastChange,
             current.cursor,
             visibleTracks(state.score, state.view),
           )

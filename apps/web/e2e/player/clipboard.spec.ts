@@ -64,14 +64,30 @@ test('A four-bar cross-track paste is one Paste row, and one undo restores the s
   const pasted = await saveAndRead();
   expect(pasted.tracks[1]?.slice(0, 4)).toEqual(firstTrack);
 
-  // One undo restores the second track, and the cursor is back at the start of the paste.
+  // Move the cursor away first (track 1, bar 4), so that coming back is the landing's doing: the
+  // paste itself leaves it on the first pasted bar of track 2.
+  const sidebar = page.getByRole('list', { name: 'Tracks' });
+  await sidebar.getByRole('button', { name: /^Track 1/ }).click();
   await page.locator('body').focus();
+  await page.keyboard.press('ControlOrMeta+Home');
+  for (let bar = 0; bar < 3; bar += 1) await page.keyboard.press('ControlOrMeta+ArrowRight');
+  await expect(status).toContainText('Bar 4 ·');
+  await expect(sidebar.getByRole('button', { name: /^Track 1/ })).toHaveAttribute(
+    'aria-current',
+    'true',
+  );
+
+  // One undo restores the second track, and the cursor is back at the start of the paste.
   await page.keyboard.press('ControlOrMeta+z');
   await expect(history.getByRole('option', { name: 'Opened' })).toHaveAttribute(
     'aria-current',
     'step',
   );
   await expect(status).toContainText('Bar 1 ·');
+  await expect(sidebar.getByRole('button', { name: /^Track 2/ })).toHaveAttribute(
+    'aria-current',
+    'true',
+  );
   const undone = await saveAndRead();
   expect(undone).toEqual(shapeOf(original.score));
 });

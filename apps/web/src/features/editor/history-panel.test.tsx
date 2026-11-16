@@ -118,3 +118,14 @@ describe('the history panel', () => {
     expect(options()[2]).toBe(document.activeElement);
   });
 });
+
+describe('the history panel start row', () => {
+  it('reads New song for a document made in the app', () => {
+    const services = createTestServices();
+    renderWithServices(<HistoryPanel />, services);
+    act(() => {
+      services.document.getState().newDocument(clipboardScore());
+    });
+    expect(rows()).toEqual(['New song']);
+  });
+});

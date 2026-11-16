@@ -1,4 +1,4 @@
-import type { Id, Patch, Score } from '@reprise/model';
+import type { Change, Id, Patch, Score } from '@reprise/model';
 
 import type { EditCursor } from '@/state/selection';
 
@@ -6,6 +6,8 @@ import { cursorAtPosition, resolveCursor, stopCount } from './cursor';
 
 /** Where in the score one patch's path points; what is missing from the path is undefined. */
 interface Spot {
+  /** The patch's own path and operation, to look up what it removed. */
+  patch?: Patch;
   track?: number;
   bar?: number;
   voice?: number;
@@ -62,7 +64,7 @@ function reach(spot: Spot): 'masterBar' | 'track' | 'bar' | 'voice' | 'beat' | '
  */
 export function undoLanding(
   score: Score,
-  patches: readonly Patch[],
+  change: Pick<Change, 'patches' | 'inverse'>,
   cursor: EditCursor,
   visible: readonly Id[],
 ): EditCursor | undefined {
@@ -76,7 +78,7 @@ export function undoLanding(
     }),
   );
   const spots: Spot[] = [];
-  for (const patch of patches) {
+  for (const patch of change.patches) {
     const spot = spotOf(patch.path);
     if (!spot) continue;
     const depth = reach(spot);
@@ -84,16 +86,22 @@ export function undoLanding(
     if (patch.op === 'remove' && depth !== 'note' && depth !== 'beat') continue;
     // A bar or voice that is only a property of the track (no bar level) is no position.
     if (depth === 'track') continue;
-    spots.push(spot);
+    spots.push({ ...spot, patch });
   }
+  // Content (a beat or a note) says more than structure: `insertBar` adds a bar to every track, so
+  // a bar-level patch under the cursor's track must not outrank pasted beats on another one.
+  const content = (spot: Spot) => spot.beat !== undefined;
+  const visibleSpot = (spot: Spot) => spot.track !== undefined && visibleIndexes.has(spot.track);
   const first =
+    spots.find((spot) => spot.track === ownTrack && content(spot)) ??
+    spots.find((spot) => visibleSpot(spot) && content(spot)) ??
     spots.find((spot) => spot.track === ownTrack) ??
     spots.find((spot) => spot.masterBar !== undefined) ??
-    spots.find((spot) => spot.track !== undefined && visibleIndexes.has(spot.track));
+    spots.find(visibleSpot);
   if (!first) return undefined;
   // A grouped edit (a paste) patches many places and not in score order: land on the earliest.
   const chosen = spots
-    .filter((spot) => spot.track === first.track)
+    .filter((spot) => spot.track === first.track && (!content(first) || content(spot)))
     .reduce((best, spot) => (before(spot, best) ? spot : best));
 
   const track = chosen.track ?? ownTrack;
@@ -104,12 +112,40 @@ export function undoLanding(
   if (chosen.beat === undefined) {
     return cursorAtPosition(score, { track, bar, voice, stop: 0 }, base);
   }
-  const beat = score.tracks[track]?.bars[bar]?.voices[voice]?.beats[chosen.beat];
   const stop = Math.min(chosen.beat, Math.max(stopCount(score, track, bar, voice) - 1, 0));
-  const noteString = chosen.note === undefined ? undefined : beat?.notes[chosen.note]?.string;
+  const noteString =
+    chosen.note === undefined ? undefined : noteStringOf(score, chosen, track, voice, change);
   return cursorAtPosition(
     score,
     { track, bar, voice, stop },
     { string: noteString ?? base.string, staff: base.staff },
   );
+}
+
+/**
+ * The string of the note a patch names: the note now at that place, or for a removal the note that
+ * was removed, read from the opposite patches (the removed value is in the inverse of a `remove`).
+ */
+function noteStringOf(
+  score: Score,
+  spot: Spot,
+  track: number,
+  voice: number,
+  change: Pick<Change, 'patches' | 'inverse'>,
+): number | undefined {
+  const { patch } = spot;
+  if (patch?.op === 'remove') {
+    const path = JSON.stringify(patch.path);
+    const gone = change.inverse.find(
+      (other) => other.op !== 'remove' && JSON.stringify(other.path) === path,
+    );
+    const value: unknown = gone?.value;
+    if (typeof value === 'object' && value !== null && 'string' in value) {
+      return typeof value.string === 'number' ? value.string : undefined;
+    }
+    return undefined;
+  }
+  const bar = spot.bar ?? 0;
+  const beat = score.tracks[track]?.bars[bar]?.voices[voice]?.beats[spot.beat ?? 0];
+  return beat?.notes[spot.note ?? 0]?.string;
 }

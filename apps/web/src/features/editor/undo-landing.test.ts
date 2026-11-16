@@ -1,7 +1,9 @@
 import { write } from '@reprise/formats';
 import {
+  chain,
   insertBar,
   removeBeat,
+  removeNote,
   setNote,
   setTrackProperties,
   type Command,
@@ -60,13 +62,55 @@ describe('the cursor after an undo or a redo', () => {
     expect(at()).toEqual({ track: 0, bar: 1, beat: 1 });
   });
 
+  it('returns to the string of the removed note after an undone removeNote, and keeps it on a redo', async () => {
+    const { services, score, goTo, apply, state } = await setup();
+    const first = must(score().tracks[0]?.bars[0]?.voices[0]?.beats[0]).id;
+    apply(setNote({ beatId: first }, { string: 3, fret: 4 }));
+    const added = must(
+      score().tracks[0]?.bars[0]?.voices[0]?.beats[0]?.notes.find((n) => n.string === 3),
+    );
+    apply(removeNote({ noteId: added.id }));
+    goTo(0, 0, 0, 1);
+    services.document.getState().undo();
+    expect(state().cursor?.string).toBe(3);
+    goTo(0, 0, 0, 1);
+    services.document.getState().redo();
+    // The note that slid into the removed note's index must not decide the string.
+    expect(state().cursor?.string).toBe(3);
+  });
+
+  it('prefers pasted content on another track to a bar added under the cursor track', async () => {
+    const { services, score, goTo, apply, at } = await setup();
+    const other = must(score().tracks[1]?.bars[0]?.voices[0]?.beats[0]).id;
+    apply(
+      chain('mixed', [insertBar({ index: 2 }), setNote({ beatId: other }, { string: 5, fret: 1 })]),
+    );
+    goTo(0, 0, 0);
+    services.document.getState().undo();
+    goTo(0, 0, 0);
+    services.document.getState().redo();
+    expect(at()).toEqual({ track: 1, bar: 0, beat: 0 });
+  });
+
+  it('does not move the cursor outside edit mode', async () => {
+    const { services, score, goTo, apply, at, state } = await setup();
+    apply(removeBeat({ beatId: must(score().tracks[0]?.bars[0]?.voices[0]?.beats[2]).id }));
+    goTo(1, 1, 1);
+    services.editing.getState().setEditing(false);
+    const before = at();
+    const track = state().currentTrack;
+    services.document.getState().undo();
+    expect(at()).toEqual(before);
+    expect(state().currentTrack).toBe(track);
+  });
+
   it('lands on the bar an undone insert-bar patch names', async () => {
     const { services, goTo, apply, at } = await setup();
     apply(insertBar({ index: 2 }));
     goTo(0, 0, 1);
     services.document.getState().undo();
-    // The inserted bar is gone: the cursor is reconciled, never left on a missing bar.
-    expect(at()).toMatchObject({ track: 0 });
+    // The inserted bar is gone and the cursor, which was before it, stays where it was.
+    expect(at()).toEqual({ track: 0, bar: 0, beat: 1 });
     services.document.getState().redo();
     expect(at()).toMatchObject({ track: 0, bar: 2, beat: 0 });
   });

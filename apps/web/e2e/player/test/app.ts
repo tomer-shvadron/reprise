@@ -110,15 +110,15 @@ export class App {
   }
 
   async palette(text: string): Promise<void> {
+    // The previous palette (or dialog) must be gone: Radix keeps a closing dialog mounted for its
+    // exit animation, and Ctrl+K or Enter then lands on it instead of the new one.
+    await expect(this.page.getByRole('dialog')).toHaveCount(0);
     await this.page.keyboard.press('ControlOrMeta+k');
-    const input = this.page.getByRole('combobox');
+    // Not by role: a dialog the command opens has comboboxes of its own.
+    const input = this.page.locator('[cmdk-input]');
     await input.fill(text);
-    // Enter runs the first match, and "Undo Bar properties" can sit above "Bar properties": go down
-    // to the entry whose title starts with the text.
-    const titles = await this.page.getByRole('option').allTextContents();
-    const at = titles.findIndex((title) => title.startsWith(text));
-    for (let step = 0; step < Math.max(at, 0); step += 1) await input.press('ArrowDown');
     await input.press('Enter');
+    await expect(input).toHaveCount(0);
   }
 
   /** Builds the dropped `File` in the page before returning, so a timed drop is only the event. */

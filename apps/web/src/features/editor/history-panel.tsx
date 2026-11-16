@@ -24,13 +24,15 @@ export function HistoryPanel() {
   const { document } = useAppServices();
   const labels = useStore(document, (state) => state.historyLabels);
   const open = useStore(document, (state) => state.score !== undefined);
+  // A song made in the app has no file until it is saved.
+  const made = useStore(document, (state) => state.file === undefined);
   const headingId = useId();
   const rows = useRef<(HTMLLIElement | null)[]>([]);
   const [tab, setTab] = useState<{ index: number; current: number }>();
 
   // Newest first on both stacks; the redo stack's first entry is the very next redo.
   const list: Row[] = [
-    { label: 'Opened', kind: 'start' },
+    { label: made ? 'New song' : 'Opened', kind: 'start' },
     ...[...labels.undo].reverse().map((name): Row => ({ label: historyLabel(name), kind: 'done' })),
     ...labels.redo.map((name): Row => ({ label: historyLabel(name), kind: 'undone' })),
   ];
@@ -135,8 +137,7 @@ export function HistoryPanel() {
                 tabIndex={index === tabbable ? 0 : -1}
                 className={cn(
                   'hover:bg-muted focus-visible:ring-ring cursor-pointer px-3 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-inset',
-                  row.kind === 'undone' && 'text-muted-foreground opacity-60',
-                  row.kind === 'start' && 'text-muted-foreground',
+                  row.kind === 'undone' && 'text-muted-foreground italic',
                   index === current && 'bg-muted font-medium',
                 )}
                 onMouseDown={keepFocus}
