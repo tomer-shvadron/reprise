@@ -101,7 +101,8 @@ async function waitFor<T>(what: string, probe: () => Promise<T | undefined | fal
 
 async function volumeSlider(page: Page) {
   // The strip is labelled with the track's own name (the fixture's is "Steel Guitar"), so match
-  // the first track's slider by prefix; the master slider is "Master volume".
+  // by prefix; the master slider is "Master volume". A fresh profile has the sidebar on, so
+  // the first match is the sidebar row's slider and the mixer's is a second, hidden one.
   const slider = page.getByRole('slider', { name: /^Volume of / }).first();
   // The mixer panel is a remembered setting: F8 toggles it, so press it only when it is closed.
   if (!(await slider.isVisible())) await page.keyboard.press('F8');
