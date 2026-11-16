@@ -84,7 +84,15 @@ function Field({
  * afterwards, as the model's `TrackChanges` has no `kind`. The dialog snapshots its track when it
  * opens, so the form never shifts under the typing.
  */
-export function TrackDialog({ target, onClose }: { target: Id | undefined; onClose: () => void }) {
+export function TrackDialog({
+  target,
+  onClose,
+  onCloseAutoFocus,
+}: {
+  target: Id | undefined;
+  onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
+}) {
   const services = useAppServices();
   const track = useStore(services.document, (state) =>
     state.score?.tracks.find(({ id }) => id === target),
@@ -123,7 +131,11 @@ export function TrackDialog({ target, onClose }: { target: Id | undefined; onClo
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg" showCloseButton={false}>
+      <DialogContent
+        className="max-h-[90vh] overflow-y-auto sm:max-w-lg"
+        showCloseButton={false}
+        {...(onCloseAutoFocus && { onCloseAutoFocus })}
+      >
         <form onSubmit={submit} className="grid gap-4" noValidate>
           <DialogHeader>
             <DialogTitle>{adding ? 'Add track' : 'Track properties'}</DialogTitle>

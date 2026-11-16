@@ -1,5 +1,6 @@
 import type { Track } from '@reprise/model';
 import { EllipsisIcon, PlusIcon } from 'lucide-react';
+import { useRef } from 'react';
 import { useStore } from 'zustand';
 
 import { useAppServices } from '@/app/services-context';
@@ -16,15 +17,16 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 
 import {
   LAST_TRACK_REASON,
-  canMoveTrack,
   moveTrackBy,
+  openAddTrack,
   openTrackProperties,
   requestRemoveTrack,
 } from './track-edit';
 
-/** The sidebar's "+": the same command as the palette and the shortcut. */
+/** The sidebar's "+": the same action as the palette and the shortcut, but focus returns here. */
 export function AddTrackButton() {
-  const { document } = useAppServices();
+  const services = useAppServices();
+  const { document } = services;
   const open = useStore(document, (state) => state.score !== undefined);
   // The mac and Windows bindings are two commands with one title; only one prints keys per platform.
   const mac = useCommand('track.add');
@@ -39,7 +41,9 @@ export function AddTrackButton() {
           aria-label="Add track"
           aria-keyshortcuts={mac.ariaKeys ?? other.ariaKeys}
           disabled={!open}
-          onClick={mac.run}
+          onClick={(event) => {
+            openAddTrack(services, event.currentTarget);
+          }}
         >
           <PlusIcon />
         </Button>
@@ -55,25 +59,29 @@ export function TrackRowMenu({ track, index }: { track: Track; index: number }) 
   const count = useStore(services.document, (state) => state.score?.tracks.length ?? 0);
   const label = track.name || `Track ${String(index + 1)}`;
   const last = count <= 1;
-  // Read when the menu opens, as the items are rendered then.
-  const can = (delta: -1 | 1) => canMoveTrack(services, track.id, delta);
+  const trigger = useRef<HTMLButtonElement>(null);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-xs" aria-label={`Track actions for ${label}`}>
+        <Button
+          ref={trigger}
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Track actions for ${label}`}
+        >
           <EllipsisIcon />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem
           onSelect={() => {
-            openTrackProperties(services, track.id);
+            openTrackProperties(services, track.id, trigger.current);
           }}
         >
           Properties…
         </DropdownMenuItem>
         <DropdownMenuItem
-          disabled={!can(-1)}
+          disabled={index === 0}
           onSelect={() => {
             moveTrackBy(services, track.id, -1);
           }}
@@ -81,7 +89,7 @@ export function TrackRowMenu({ track, index }: { track: Track; index: number }) 
           Move up
         </DropdownMenuItem>
         <DropdownMenuItem
-          disabled={!can(1)}
+          disabled={index >= count - 1}
           onSelect={() => {
             moveTrackBy(services, track.id, 1);
           }}
@@ -93,7 +101,7 @@ export function TrackRowMenu({ track, index }: { track: Track; index: number }) 
           variant="destructive"
           disabled={last}
           onSelect={() => {
-            requestRemoveTrack(services, track.id);
+            requestRemoveTrack(services, track.id, { returnFocus: trigger.current });
           }}
         >
           Remove…

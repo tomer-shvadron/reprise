@@ -7,19 +7,25 @@ export type EditorDialog =
   | { kind: 'track'; mode: 'edit'; trackId: Id }
   | { kind: 'removeTrack'; trackId: Id }
   /** Unsaved changes stand in the way; `onContinue` runs once they are saved or dropped. */
-  | { kind: 'unsaved'; action: string; onContinue: () => void };
+  | { kind: 'unsaved'; action: string; onContinue: () => void }
+  /** Why a keyboard or palette command did nothing, as those cannot be greyed out. */
+  | { kind: 'notice'; message: string };
 
 export interface DialogsState {
   dialog: EditorDialog | undefined;
-  open(dialog: EditorDialog): void;
+  /** Where focus returns when the dialog closes; kept after `close` for Radix to read, replaced by the next `open`. */
+  returnFocus: HTMLElement | undefined;
+  /** `returnFocus` is the control that opened it, when there is one (the sidebar's "+" or "⋯"). */
+  open(dialog: EditorDialog, returnFocus?: HTMLElement | null): void;
   close(): void;
 }
 
 function createDialogsStore() {
   return create<DialogsState>()((set) => ({
     dialog: undefined,
-    open(dialog) {
-      set({ dialog });
+    returnFocus: undefined,
+    open(dialog, returnFocus) {
+      set({ dialog, returnFocus: returnFocus ?? undefined });
     },
     close() {
       set({ dialog: undefined });

@@ -21,6 +21,20 @@ export function EditorDialogs() {
   const close = () => {
     store.getState().close();
   };
+  // Back to the "+" or "⋯" that opened the dialog; Radix would otherwise land on the menu item it
+  // is unmounting, and so on <body>. Without a trigger (a shortcut, the palette) the default holds.
+  const onCloseAutoFocus = (event: Event) => {
+    const target = store.getState().returnFocus;
+    if (target?.isConnected === true) {
+      event.preventDefault();
+      target.focus();
+    }
+  };
+  const removeIndex = useStore(services.document, (state) =>
+    dialog?.kind === 'removeTrack'
+      ? (state.score?.tracks.findIndex(({ id }) => id === dialog.trackId) ?? -1)
+      : -1,
+  );
 
   switch (dialog?.kind) {
     case 'track':
@@ -29,6 +43,7 @@ export function EditorDialogs() {
           key={dialog.mode === 'edit' ? dialog.trackId : 'add'}
           target={dialog.mode === 'edit' ? dialog.trackId : undefined}
           onClose={close}
+          onCloseAutoFocus={onCloseAutoFocus}
         />
       );
     case 'removeTrack':
@@ -36,11 +51,12 @@ export function EditorDialogs() {
       return (
         <LossDialog<'remove' | 'cancel'>
           open
-          title={`Remove “${track.name}”?`}
+          title={`Remove “${track.name || `Track ${String(removeIndex + 1)}`}”?`}
           description="Its notes go with it. Undo brings it back."
           losses={[]}
           choices={[{ value: 'remove', label: 'Remove' }]}
           cancel="cancel"
+          onCloseAutoFocus={onCloseAutoFocus}
           onChoose={(answer) => {
             close();
             if (answer === 'remove') removeTrackNow(services, track.id);
@@ -56,6 +72,21 @@ export function EditorDialogs() {
             dialog.onContinue();
           }}
           onCancel={close}
+          onCloseAutoFocus={onCloseAutoFocus}
+        />
+      );
+    case 'notice':
+      return (
+        <LossDialog<'ok'>
+          open
+          title="Track"
+          description={dialog.message}
+          losses={[]}
+          choices={[]}
+          cancel="ok"
+          cancelLabel="OK"
+          onChoose={close}
+          onCloseAutoFocus={onCloseAutoFocus}
         />
       );
     default:

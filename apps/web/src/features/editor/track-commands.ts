@@ -60,21 +60,21 @@ export function trackEditCommands(services: TrackEditServices): TrackEditCommand
       id: 'track.remove',
       title: 'Remove track…',
       run: () => {
-        requestRemoveTrack(services);
+        requestRemoveTrack(services, undefined, { explain: true });
       },
     },
     {
       id: 'track.moveUp',
       title: 'Move track up',
       run: onCurrent((id) => {
-        moveTrackBy(services, id, -1);
+        moveTrackBy(services, id, -1, true);
       }),
     },
     {
       id: 'track.moveDown',
       title: 'Move track down',
       run: onCurrent((id) => {
-        moveTrackBy(services, id, 1);
+        moveTrackBy(services, id, 1, true);
       }),
     },
   ];

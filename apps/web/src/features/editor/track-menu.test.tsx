@@ -11,7 +11,7 @@ import { EditorDialogs } from './editor-dialogs';
 import { bandScore, tracksOf } from './test/tracks';
 import { AddTrackButton, TrackRowMenu } from './track-menu';
 
-function setup(platform: 'mac' | 'other' = 'mac') {
+function setup(platform: 'mac' | 'other' = 'mac', open = true) {
   const services = createTestServices();
   const registry = createAppRegistry(services);
   renderWithServices(
@@ -26,16 +26,19 @@ function setup(platform: 'mac' | 'other' = 'mac') {
     </>,
     services,
   );
-  act(() => {
-    services.document.getState().newDocument(bandScore());
-  });
-  return { services, user: userEvent.setup() };
+  const openScore = () => {
+    act(() => {
+      services.document.getState().newDocument(bandScore());
+    });
+  };
+  if (open) openScore();
+  return { services, openScore, user: userEvent.setup() };
 }
 
 const menuOf = (name: string) => screen.getByRole('button', { name: `Track actions for ${name}` });
 
 describe('the track sidebar with the editor’s slots', () => {
-  it('adds a track from the header button, which is disabled with no file open', async () => {
+  it('adds a track from the header button', async () => {
     const { services, user } = setup();
     await user.click(screen.getByRole('button', { name: 'Add track' }));
     expect(screen.getByRole('dialog', { name: 'Add track' })).toBeInTheDocument();
@@ -46,6 +49,42 @@ describe('the track sidebar with the editor’s slots', () => {
       'Drums',
       'Guitar',
     ]);
+  });
+
+  it('disables the header button until a file is open', () => {
+    const { openScore } = setup('mac', false);
+    expect(screen.getByRole('button', { name: 'Add track' })).toBeDisabled();
+    openScore();
+    expect(screen.getByRole('button', { name: 'Add track' })).toBeEnabled();
+  });
+
+  it('returns focus to the row menu button that opened a dialog, and frees the page', async () => {
+    const { user } = setup();
+    await user.click(menuOf('Bass'));
+    await user.click(screen.getByRole('menuitem', { name: 'Properties…' }));
+    expect(screen.getByRole('dialog', { name: 'Track properties' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(menuOf('Bass')).toHaveFocus();
+    expect(document.body.style.pointerEvents).not.toBe('none');
+    await user.click(screen.getByRole('button', { name: 'Multitrack view' }));
+  });
+
+  it('returns focus to the "+" after Add track, and after Escape', async () => {
+    const { user } = setup();
+    await user.click(screen.getByRole('button', { name: 'Add track' }));
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('button', { name: 'Add track' })).toHaveFocus();
+    expect(document.body.style.pointerEvents).not.toBe('none');
+  });
+
+  it('returns focus to the row menu button after the remove confirmation is cancelled', async () => {
+    const { user } = setup();
+    await user.click(menuOf('Lead'));
+    await user.click(screen.getByRole('menuitem', { name: 'Remove…' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(menuOf('Lead')).toHaveFocus();
+    expect(document.body.style.pointerEvents).not.toBe('none');
   });
 
   it('keeps the sidebar without the slots as it was', () => {
