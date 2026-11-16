@@ -233,6 +233,7 @@ export {
   setBeatDuration,
   setBeatEffect,
   setBeatEffects,
+  replaceBeats,
   setBeatRest,
   setMasterBar,
   setMasterBars,
@@ -246,6 +247,7 @@ export {
 export type {
   BeatChanges,
   BeatEffectEdit,
+  BeatSpliceEdit,
   BeatInput,
   BeatRhythm,
   ChainStep,
