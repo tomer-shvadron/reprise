@@ -57,6 +57,15 @@ describe('TrackEffectsPicker', () => {
     expect(screen.getByRole('option', { name: 'Automatic (Distortion)' })).toBeInTheDocument();
   });
 
+  it('names the family on an HQ track even while the GM tier bypass is on', async () => {
+    const { services } = await setup();
+    const id = services.document.getState().score?.tracks[0]?.id ?? '';
+    act(() => {
+      services.playback.setState({ trackSounds: { [id]: { tier: 'hq', packId: 'abcdefghijkl' } } });
+    });
+    expect(screen.getByRole('option', { name: 'Automatic (Distortion)' })).toBeInTheDocument();
+  });
+
   it('stores the chosen preset in the score and undoes it', async () => {
     const { services, select, sound, user } = await setup();
     await user.selectOptions(select, 'fuzz');

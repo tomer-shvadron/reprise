@@ -165,6 +165,8 @@ Changed by #260 (2026-11-16): history labels for the undo UI (WP-084). `@reprise
 
 Changed by #259 (2026-11-16): `@reprise/model` gains `replaceBeats(edits)` and the type `BeatSpliceEdit` (`{ voiceId, index, remove, beats: readonly Beat[] }`), a batched splice of voices' beats for paste and cut: one `chain` of `insertBar` steps plus one `replaceBeats`, where the single `removeBeat`/`insertBeat` steps each walked the whole score. It does one voice-index pass (`indexVoices`), one `assertFreshIds` over every new beat, note and grace note across the edits (`duplicate-id`), validates each touched track once (an over-full voice is refused `invariant`), releases ties in a second pass after every voice is spliced, once per voice from its first splice's index, so the result does not depend on the order of the edits (a note whose origin a splice removed loses its tie, and so does an orphan tie on a pasted beat, unlike `insertBeat`, which refuses it, because a pasted clip often starts with a tied note), and is one history step, atomic, with `touchedBars` the union. Several edits on one voice are indexed against the voice as it was and applied back to front. An empty list, edits on one voice that overlap or share an index, and an index or count out of range are refused as `invalid-value`, an unknown voice as `not-found`. A 4-bar by 8-track paste on `largeScore(8, 300)` measures about 37 ms, against about 2.5 s for the equivalent `chain` of `removeBeat` and `insertBeat` steps.
 
+Changed by #267 (2026-11-16), the pack assignment contract of WP-091. Model: `Track.sound.instrument?: string`, a key into the pack's instruments (absent means the pack's first), round-tripped by the native format and dropped by the gp writer under the same `sound-override` warning as `packId`. Audio: `PackAssignment` is `{ trackId, pack: { id, files: SfzFiles }, entries }`, where `entries` maps articulation-set keys to SFZ paths in the pack and `default` is required; `LoadOptions.tier` selects the memory budget (`budgetBytes`, 80 MiB, for `gm`; the new `AudioEngineOptions.hqBudgetBytes`, 300 MiB, for `hq`); `LoadResult` gains `fallbacks: { trackId, packId, error }[]`, the assigned tracks whose pack failed to load and play GM; loading the same score again with different `packs` checks only the tracks whose assignment changed. `timelineNeutral` also compares `sound.instrument`. The root exports `tierOf(track, packs)` (hq when an assignment names the track, the one rule the engine and the web share), `checkPack`, `checkSfzFile` and the types `PackSnapshot`, `SnapshotFile`, `SfzFileCheck` and `LoadFallback`; `@reprise/audio/testing` exports `encodeWav`, `encodeFlac` and `syntheticSfzPack()`. The provider routing that plays a pack's samples is WP-091's engine PR: until it lands, a loaded assignment changes the track's tier but not its sound. Web: `playback.trackSounds` (`{ tier, packId?, problem?: 'missing' | 'failed', message? }` per track), `AudioServiceOptions.packs?: PackDirectory` and `hqBudgetBytes`, `AudioService.releasePack(id)`, `AppServices.sounds` (`createSoundPackStore({ platform })`, the minimal `PackDirectory` store the pack manager fills), and the drop zone leaves drops alone while `ui.screen` is `'sounds'`.
+
 Synced by #74 (2026-11-06), no contract change: the Layout sketch lists the `LayoutOptions`, `LayoutMetrics` and `Anchor` fields #59 shipped and the `tiedNotes` option #68 added, and the Audio sketch names the `InstrumentSink` #55 shipped and #73 widened.
 
 The lanes code against these. The model subsections below are drawn from `@reprise/model`'s source and match its root export; [`../reference/score-model.md`](../reference/score-model.md) explains them in prose and `packages/model/README.md` records why each decision was made. Formats, Layout, Audio and Platform are the sketches their phases implement.
@@ -223,7 +225,7 @@ interface Track {
   program: number; bank: number; // GM program 0..127 and bank 0..16383; on drums, program is the GM2 kit
   channel: { volume; pan; chorus; reverb; phaser; tremolo: number; mute: boolean; solo: boolean };   // 0..127, pan 64 = centre
   display: { notation: 'tab' | 'standard' | 'both'; clef?: Clef; octaveShift: number };   // clef absent = treble, percussion on drums; octaveShift: written minus sounding, in octaves (1 fretted, 0 otherwise)
-  sound?: { packId?: Id; preset?: string };       // the sound choice: optional HQ packId, optional effects preset; with no packId the GM tier plays `program`; preset is an effects-preset id, opaque to the model, valid without packId, unknown = automatic (#234)
+  sound?: { packId?: Id; instrument?: string; preset?: string };       // the sound choice: optional HQ packId, optional instrument (a key into the pack's instruments, absent = its first; only meaningful with packId), optional effects preset; with no packId the GM tier plays `program`; preset is an effects-preset id, opaque to the model, valid without packId, unknown = automatic (#234)
   lyrics: { startBar: number; text: string }[];   // the raw Guitar Pro block, up to LYRIC_LINES (5); startBar is 0-based
   bars: Bar[];                   // one per master bar, same order
 }
@@ -528,7 +530,7 @@ Layout never touches the DOM. Text widths come from a metrics table generated fr
 
 ```ts
 interface AudioEngine {
-  load(score: Score, options: { tier: 'gm' | 'hq'; packs: PackAssignment[] }): Promise<{ instruments: InstrumentId[] }>; // once the opening bars are decoded; over a loaded song, an edit that keeps the position
+  load(score: Score, options: { tier: 'gm' | 'hq'; packs: PackAssignment[] }): Promise<{ instruments: InstrumentId[]; fallbacks: { trackId: Id; packId: string; error: string }[] }>; // once the opening bars are decoded; over a loaded song, an edit that keeps the position
   play(fromTick?: number): void; pause(): void; stop(): void; seek(tick: number): void;
   setTempo(mode: 'bpm' | 'percent', value: number): void;
   setLoop(range?: { startBar: Id; endBar: Id }): void;
@@ -603,7 +605,7 @@ The browser implementation exists so `pnpm dev` works without Electron; the Elec
 
 ## Memory model
 
-- Decoded audio buffers are owned by the audio package's cache. Budget default 300 MB, readable and settable through the engine API and shown in the sound settings.
+- Decoded audio buffers are owned by the audio package's cache. The budget follows the tier of the last `load` (#267): 80 MiB on the GM tier (`budgetBytes`) and 300 MiB on the HQ tier (`hqBudgetBytes`), until WP-094 makes it a setting readable and settable through the engine API and shown in the sound settings.
 - A song's `load` computes the instrument set it needs, loads those regions lazily on first use, and evicts least-recently-used instruments when over budget. Switching songs evicts everything the new song doesn't use.
 - Layout caches are per bar and dropped when the score is closed.
 - The benchmark test opens a long eight-track score and asserts layout time and resident memory stay under the budgets recorded in `plans/roadmap.md`.

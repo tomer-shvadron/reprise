@@ -91,7 +91,7 @@ export function reportTrackLosses(track: Track, index: number, drops: DropCollec
     drops.drop(
       'sound-override',
       [...path, 'sound'],
-      track.sound.packId === undefined
+      track.sound.packId === undefined && track.sound.instrument === undefined
         ? 'The effects preset is not saved in gp files'
         : 'The HQ sound assignment is not in gp files',
     );

@@ -62,6 +62,21 @@ export interface PlaybackStoreState {
   mixer: Readonly<Record<Id, TrackParams>>;
   /** Tracks whose newly chosen instrument is still decoding; cleared on a switch. */
   instrumentLoads: Readonly<Record<Id, InstrumentLoad>>;
+  /** Every track of the open song, by id; cleared on a switch. */
+  trackSounds: Readonly<Record<Id, TrackSound>>;
+}
+
+/**
+ * How one track sounds: its tier, and why a pack it names is not playing. `tier` follows the
+ * audio package's `tierOf`: `hq` only while a pack plays; a track naming a pack that is not
+ * installed (`missing`) or whose pack failed to load (`failed`, with the engine's `message`) is
+ * `gm` and plays the soundfont. `packId` is the pack the track names.
+ */
+export interface TrackSound {
+  tier: 'gm' | 'hq';
+  packId?: string;
+  problem?: 'missing' | 'failed';
+  message?: string;
 }
 
 export interface InstrumentLoad {
@@ -96,6 +111,7 @@ export function initialPlaybackState(): PlaybackStoreState {
     click: { running: false, settings: DEFAULT_CLICK_SETTINGS },
     mixer: {},
     instrumentLoads: {},
+    trackSounds: {},
   };
 }
 

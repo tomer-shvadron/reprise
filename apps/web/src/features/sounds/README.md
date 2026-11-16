@@ -42,5 +42,18 @@ folder holds the UI:
   ("per-track effects editing beyond preset choice" is out).
 - The GM tier bypass switch ("No automatic effects on GM sounds", with a note that a track's own
   preset still applies) is in the mixer's master strip (`features/tracks`).
-- Every track counts as GM tier here until WP-091 assigns packs; WP-091 must switch the label to a
-  `tierOf` shared with the engine.
+- The label reads the track's tier from `playback.trackSounds`, which the audio service derives with
+  the audio package's `tierOf` (#267); a track with no entry is GM.
+
+## Pack contract (#267)
+
+- `AppServices.sounds` is the `SoundPackStore` from `createSoundPackStore({ platform })`: the minimal
+  shape, `getState().installed`, `get(id)`, `setInstalled(packs)` and `subscribe(listener)`. It is the
+  `PackDirectory` the audio service reads; WP-091 adds the scan of `data/sounds`, the installer and
+  the actions. `InstalledPackSource` and `PackDirectory` are in `state/sound-packs.ts`.
+- `playback.trackSounds[trackId]` is `{ tier, packId?, problem?: 'missing' | 'failed', message? }`:
+  `missing` is a pack (or instrument) the directory lacks, `failed` one the engine could not load.
+  Both play GM.
+- `audio.releasePack(id)` reloads without the pack and resolves once the engine holds no reader for
+  it; call it before deleting the folder.
+- The drop zone ignores drops while `ui.screen` is `'sounds'`: the screen takes a dropped zip.
