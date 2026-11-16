@@ -177,7 +177,7 @@ describe('installEntry', () => {
   });
 
   it('makes each entry exactly one history step, and one undo restores the score', async () => {
-    const { controller, doc, goTo, score } = await setup();
+    const { controller, doc, goTo, score, services } = await setup();
     const cases: [string, () => void][] = [
       [
         'fret at the end slot',
@@ -234,6 +234,30 @@ describe('installEntry', () => {
         () => {
           goTo(2, 1);
           controller().act({ kind: 'deleteNote' });
+        },
+      ],
+      [
+        'insert-mode insertion in the middle of a bar',
+        () => {
+          services.entry.getState().setMode('insert');
+          services.entry.getState().setRhythm({ duration: 8, dots: 0, tuplet: undefined });
+          goTo(1, 0);
+          controller().fret(4);
+          services.entry.getState().setMode('overwrite');
+        },
+      ],
+      [
+        'dot',
+        () => {
+          goTo(1, 3);
+          controller().act({ kind: 'dot' });
+        },
+      ],
+      [
+        'triplet',
+        () => {
+          goTo(2, 1);
+          controller().act({ kind: 'triplet' });
         },
       ],
       [
@@ -384,5 +408,47 @@ describe('installEntry', () => {
     expect(entry.getState().pending).toBeUndefined();
     dispose();
     expect(entryController(entry)).toBeUndefined();
+  });
+
+  it('joins a second digit typed on a layout whose digit row prints something else (AZERTY)', async () => {
+    const { controller, doc, beats } = await setup();
+    const before = doc().revision;
+    controller().fret(1);
+    // The physical Digit2 key prints "é" there: the capture listener must not flush on it.
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'é', code: 'Digit2' }));
+    expect(doc().revision).toBe(before);
+    controller().fret(2);
+    expect(doc().revision).toBe(before + 1);
+    expect(beats(0)[0]?.notes[0]?.fret).toBe(12);
+    // A shifted digit is not the fret command, so it commits what waits.
+    controller().fret(1);
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: '2', code: 'Digit2', shiftKey: true }),
+    );
+    expect(doc().revision).toBe(before + 2);
+  });
+
+  it('drops a waiting digit when the score changes under it so its beat no longer resolves', async () => {
+    const { controller, doc, goTo, entry, beats, services } = await setup();
+    goTo(2, 1);
+    controller().fret(1);
+    const revision = doc().revision;
+    const beat = beats(2)[1];
+    if (!beat) throw new Error('missing');
+    const { removeBeat } = await import('@reprise/model');
+    doc().apply(removeBeat({ beatId: beat.id }));
+    expect(entry.getState().pending).toBeUndefined();
+    vi.advanceTimersByTime(TWO_DIGIT_MS * 2);
+    expect(doc().revision).toBe(revision + 1);
+    expect(services.selection.getState().cursor).toBeDefined();
+  });
+
+  it('does not remember an inserted beat for an entry committed after the cursor moved away', async () => {
+    const { controller, entry, goTo, services, cursorAt } = await setup();
+    entry.getState().setMode('insert');
+    goTo(0, 0);
+    controller().fret(1);
+    services.selection.getState().setEdit({ cursor: cursorAt(2, 3, 4) });
+    expect(entry.getState().inserted).toBeUndefined();
   });
 });

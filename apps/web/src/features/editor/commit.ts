@@ -71,6 +71,7 @@ export function commitEdit(
     const cursor = landingCursor(score, options.land, base);
     if (cursor) selection.getState().setEdit({ cursor, currentTrack: cursor.track });
   }
-  entry.getState().setInserted(options.inserted);
+  // Only where the cursor is: an entry committed after the cursor moved away names no beat it sits on.
+  if (options.moveCursor !== false) entry.getState().setInserted(options.inserted);
   return true;
 }

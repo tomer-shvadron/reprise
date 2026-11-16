@@ -167,7 +167,9 @@ export function installEntry(deps: EntryDeps): () => void {
     const { pending } = entry.getState();
     if (!pending) return;
     clearPending();
-    enter(pending.fret, pending.cursor);
+    // Replayed at its own beat only: a beat the score lost would resolve to a neighbour.
+    const { score } = document.getState();
+    if (score && resolveCursor(score, pending.cursor)?.exact) enter(pending.fret, pending.cursor);
   };
 
   const start = (digit: number, cursor: EditCursor) => {
@@ -249,7 +251,13 @@ export function installEntry(deps: EntryDeps): () => void {
       entry.getState().setMessage(undefined);
       return;
     }
-    if (state.score !== previous.score) mirrorRhythm();
+    if (state.score === previous.score) return;
+    // A waiting digit replays at the beat it was typed at; if the score moved under it, that beat
+    // is no longer certain, so it is dropped rather than landing somewhere else.
+    const { pending } = entry.getState();
+    if (pending && state.score && !resolveCursor(state.score, pending.cursor)?.exact)
+      clearPending();
+    mirrorRhythm();
   });
 
   const stopSelection = selection.subscribe((state, previous) => {
@@ -273,9 +281,10 @@ export function installEntry(deps: EntryDeps): () => void {
       cancelPending(event);
       return;
     }
-    const bare = !event.metaKey && !event.ctrlKey && !event.altKey;
-    // The digit command itself decides whether it joins the waiting one.
-    if (bare && /^\d$/.test(event.key)) return;
+    const bare = !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
+    // By the printed digit or the physical key, as the fret commands match it, so a layout whose
+    // digit row prints something else (AZERTY) still joins the waiting digit.
+    if (bare && (/^\d$/.test(event.key) || /^Digit\d$/.test(event.code))) return;
     flush();
   };
   const cancelPending = (event: KeyboardEvent) => {
