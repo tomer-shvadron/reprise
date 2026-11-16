@@ -248,7 +248,7 @@ describe('planTranspose', () => {
       built.bar().beat('1', [midi(126)]);
       const before = built.build({ ids: 'sequential' });
       expect(refusal(run(before, { semitones: 5 }))).toMatch(
-        /^Track 1, bar 1: note 126 .*MIDI range$/,
+        /^Track 1, bar 1: F♯9 cannot go up 5 semitones without leaving the MIDI range$/,
       );
     });
   });
@@ -260,5 +260,90 @@ describe('planTranspose', () => {
     const before = built.build({ ids: 'sequential' });
     expect(noteOf(applied(before, run(before, { semitones: 7 })), 0, 0, 0).fret).toBe(67);
     expect(run(before, { semitones: 0 })).toEqual({ nothing: true });
+  });
+
+  it('refuses a picked grace note up front', () => {
+    const built = score();
+    built.track('guitar');
+    built.bar().beat('1', [note(3, 7)], {
+      grace: [{ before: true, duration: 32, notes: [note(2, 3)] }],
+    });
+    const model = built.build({ ids: 'sequential' });
+    const graceNote = model.tracks[0]?.bars[0]?.voices[0]?.beats[0]?.grace?.[0]?.notes[0];
+    const plan = run(
+      model,
+      { scope: 'selection' },
+      { selection: { noteIds: [graceNote?.id ?? ''] } },
+    );
+    expect(refusal(plan)).toBe('Grace notes move with their beat: select the beat');
+  });
+
+  it('moves the grid of a chord whose name cannot be read, or removes it with the notice', () => {
+    const built = score();
+    built.track('guitar');
+    built.bar().beat('4', [note(1, 3)], {
+      chord: { name: 'Riff', diagram: { baseFret: 1, frets: [3, 5, 5, 4, 3, 3] } },
+    });
+    const model = built.build({ ids: 'sequential' });
+    const moved = applied(model, run(model, { semitones: 2, keySignature: false }));
+    expect(beatOf(moved, 0, 0, 0).chord).toEqual({
+      name: 'Riff',
+      diagram: { baseFret: 3, frets: [5, 7, 7, 6, 5, 5] },
+    });
+  });
+
+  it('removes the grid of a chord whose name cannot be read when it cannot move', () => {
+    const built = score();
+    built.track('guitar');
+    built.bar().beat('4', [note(1, 3)], {
+      chord: { name: 'Riff', diagram: { baseFret: 1, frets: [0, 2, 2, 1, 0, 0] } },
+    });
+    const model = built.build({ ids: 'sequential' });
+    const plan = run(model, { semitones: 2, keySignature: false });
+    expect(beatOf(applied(model, plan), 0, 0, 0).chord).toEqual({ name: 'Riff' });
+    expect('notice' in plan && plan.notice).toMatch(
+      /1 chord diagram could not move and was removed/,
+    );
+  });
+
+  it('leaves chord names on drum tracks and says so', () => {
+    const built = score();
+    built.track('guitar');
+    built.bar().beat('1', [note(1, 3)], { chord: { name: 'C' } });
+    built.track('drums');
+    built.bar().beat('1', [midi(38)], { chord: { name: 'G' } });
+    const model = built.build({ ids: 'sequential' });
+    const plan = run(model, { keySignature: false });
+    const after = applied(model, plan);
+    expect(beatOf(after, 1, 0, 0).chord?.name).toBe('G');
+    expect(beatOf(after, 0, 0, 0).chord?.name).toBe('C#');
+    expect('notice' in plan && plan.notice).toMatch(
+      /1 chord name on drum tracks was left as written/,
+    );
+  });
+
+  it('says drum notes have no pitch when only drums are in scope', () => {
+    const built = score();
+    built.track('drums');
+    built.bar().beat('1', [midi(38)]);
+    const model = built.build({ ids: 'sequential' });
+    expect(refusal(run(model, { scope: 'track' }))).toBe('Drum notes have no pitch to transpose');
+  });
+
+  it('counts a range over every beat of every pitched track as covering the key', () => {
+    const built = band();
+    const beatIds = built.tracks
+      .filter((track) => track.kind !== 'drums')
+      .flatMap((track) =>
+        track.bars.flatMap((bar) => bar.voices.flatMap((voice) => voice.beats.map((b) => b.id))),
+      );
+    const plan = run(built, { scope: 'selection', semitones: 2 }, { selection: { beatIds } });
+    expect(key(applied(built, plan))).toEqual({ fifths: 2, minor: false });
+    const partial = run(
+      built,
+      { scope: 'selection', semitones: 2 },
+      { selection: { beatIds: beatIds.slice(1) } },
+    );
+    expect(key(applied(built, partial))).toEqual({ fifths: 0, minor: false });
   });
 });

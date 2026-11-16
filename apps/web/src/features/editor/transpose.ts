@@ -1,5 +1,6 @@
 import {
   chain,
+  spell,
   setBeatEffects,
   setMasterBars,
   tieChainOf,
@@ -59,6 +60,8 @@ interface Reach {
   selection: Selection;
   beats: Placed[];
   picked: { at: Placed; note: Note }[];
+  /** Drum-track beats in scope that carry a chord name; they are left as written. */
+  drumChords: number;
   /** Whether the scope names beats, which have chord names; notes picked on their own do not. */
   beatTarget: boolean;
   sawDrums: boolean;
@@ -144,6 +147,7 @@ function reachOf(input: TransposeInput, scope: TransposeScope): Reach {
     picked: keptNotes,
     beatTarget,
     sawDrums,
+    drumChords: beats.filter((at) => !pitched(at) && at.beat.chord).length,
   };
 }
 
@@ -152,7 +156,15 @@ export function coversEveryTrack(input: TransposeInput, scope: TransposeScope): 
   const pitched = input.score.tracks.filter(({ kind }) => kind !== 'drums');
   if (pitched.length === 0) return false;
   if (scope === 'song') return true;
-  if (scope !== 'track') return false;
+  if (scope === 'selection') {
+    // A range over every beat of every pitched track is the whole song, whatever it was called.
+    const named = new Set(reachOf(input, scope).beats.map(({ beat }) => beat.id));
+    return pitched.every((track) =>
+      track.bars.every((bar) =>
+        bar.voices.every((voice) => voice.beats.every(({ id }) => named.has(id))),
+      ),
+    );
+  }
   const current = currentTrack(input)?.track;
   return pitched.length === 1 && current === pitched[0];
 }
@@ -168,8 +180,25 @@ export function selectionHasTarget(input: TransposeInput): boolean {
   return (selection.beatIds?.length ?? 0) + (selection.noteIds?.length ?? 0) > 0;
 }
 
+/** What "Selection" holds, for its label: the beats named, else the notes picked; undefined when empty. */
+export function selectionCount(input: TransposeInput): string | undefined {
+  const reach = reachOf(input, 'selection');
+  if (reach.beats.length > 0) return plural(reach.beats.length, 'beat', 'beats');
+  if (reach.picked.length > 0) return plural(reach.picked.length, 'note', 'notes');
+  return undefined;
+}
+
+const GRACE_PICK = 'Grace notes move with their beat: select the beat';
+
 const plural = (count: number, one: string, many: string): string =>
   `${String(count)} ${count === 1 ? one : many}`;
+
+/** A MIDI note as a player reads it: letter, sign and octave, like G♯9. */
+function pitchName(midi: number, key: KeySignature): string {
+  const { letter, alter, octave } = spell(midi, key);
+  const marks = alter > 0 ? '♯'.repeat(alter) : '♭'.repeat(-alter);
+  return `${letter}${marks}${String(octave)}`;
+}
 
 /** The refusal sentence: where the note is, and what it would run into. */
 function refusalText(
@@ -179,13 +208,14 @@ function refusalText(
   note: Note,
   semitones: number,
   reason: TransposeFailure,
+  key: KeySignature,
 ): string {
   const where = [`Track ${String(trackIndex + 1)}`, `bar ${String(bar + 1)}`];
   if (track.kind === 'fretted') where.push(`string ${String(note.string)}`);
   const amount = plural(Math.abs(semitones), 'semitone', 'semitones');
   const direction = semitones < 0 ? 'down' : 'up';
   const subject =
-    track.kind === 'fretted' ? `fret ${String(note.fret)}` : `note ${String(note.fret)}`;
+    track.kind === 'fretted' ? `fret ${String(note.fret)}` : pitchName(note.fret, key);
   let end: string;
   if (reason === 'belowOpenString') {
     end = track.capo > 0 ? 'falling below the capo' : 'falling below the open string';
@@ -212,6 +242,9 @@ export function planTranspose(input: TransposeInput, options: TransposeOptions):
 
   // Pre-check what the model will move, with its own rules: grace notes of the beats, the notes
   // picked, and the notes tied to a main note.
+  if (reach.picked.some(({ at, note }) => !at.beat.notes.includes(note))) {
+    return { refused: GRACE_PICK };
+  }
   const seen = new Set<Note>();
   let trills = 0;
   let harmonics = 0;
@@ -221,7 +254,15 @@ export function planTranspose(input: TransposeInput, options: TransposeOptions):
     seen.add(note);
     const result = transpose(at.track, note, semitones);
     if (!result.ok) {
-      refused = refusalText(at.track, at.trackIndex, bar, note, semitones, result.reason);
+      refused = refusalText(
+        at.track,
+        at.trackIndex,
+        bar,
+        note,
+        semitones,
+        result.reason,
+        score.masterBars[bar]?.keySignature ?? { fifths: 0, minor: false },
+      );
       return;
     }
     trills += result.warnings.filter((code) => code === 'trill-dropped').length;
@@ -271,22 +312,25 @@ export function planTranspose(input: TransposeInput, options: TransposeOptions):
       const { chord } = at.beat;
       if (!chord) continue;
       const key = keys[at.bar] ?? { fifths: 0, minor: false };
-      const name = transposeChordName(chord.name, semitones, key);
-      if (name === undefined) {
-        unreadable += 1;
-        continue;
-      }
+      const read = transposeChordName(chord.name, semitones, key);
+      if (read === undefined) unreadable += 1;
+      // Whether the name reads says nothing about whether the grid can move with the notes.
       const diagram = chord.diagram && shiftDiagram(chord.diagram, semitones, at.track.fretCount);
       if (chord.diagram && !diagram) removedDiagrams += 1;
+      if (read === undefined && chord.diagram === undefined) continue;
       chordEdits.push({
         beatId: at.beat.id,
-        changes: { chord: { name, ...(diagram && { diagram }) } },
+        changes: { chord: { name: read ?? chord.name, ...(diagram && { diagram }) } },
       });
     }
   }
   if (chordEdits.length > 0) steps.push(setBeatEffects(chordEdits));
   if (keyEdits.length > 0) steps.push(setMasterBars(keyEdits));
-  if (steps.length === 0) return { nothing: true };
+  if (steps.length === 0) {
+    return reach.sawDrums
+      ? { refused: 'Drum notes have no pitch to transpose' }
+      : { nothing: true };
+  }
 
   if (trills > 0) {
     notes.push(
@@ -311,6 +355,11 @@ export function planTranspose(input: TransposeInput, options: TransposeOptions):
     );
   }
   if (reach.sawDrums) notes.push('Drum tracks were left as they are');
+  if (options.chordNames && reach.beatTarget && semitones % 12 !== 0 && reach.drumChords > 0) {
+    notes.push(
+      `${plural(reach.drumChords, 'chord name', 'chord names')} on drum tracks ${reach.drumChords === 1 ? 'was' : 'were'} left as written`,
+    );
+  }
   const [first = '', ...rest] = notes;
   const notice =
     notes.length > 0
