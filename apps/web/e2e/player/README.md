@@ -48,6 +48,7 @@ pnpm exec playwright show-trace path/to/trace.zip
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `song.gp`, `.reprise` | 2 guitar tracks × 16 bars at 90 BPM, 3/4 at bars 5, 10 and 15, bars 1–8 and 9–16 each played twice, `1:21` long; facts in `scores.ts` |
 | `song48.gp`           | the same at 48 bars, for following across pages                                                                                       |
+| `tuner-a2.wav`        | 3 s of a harmonic A2 at +12 cents, 48 kHz mono, a whole number of periods; Chromium's fake microphone loops it (`tuner.spec.ts`)      |
 | `long-score.reprise`  | the roadmap's reference long score, 8 × 300 bars with track _i_ in tab, standard or both notation, for the budget rows                |
 
 `library-NN.reprise` are 23 four-bar songs with distinct titles (`Library Song 01` and on) that, with the 27 committed fixtures, make the library flow's fifty.
@@ -84,6 +85,18 @@ export default defineConfig(base, {
   use: { connectOptions: { wsEndpoint: 'ws://127.0.0.1:3000/' } },
 });
 ```
+
+## The tuner's microphone
+
+`tuner.spec.ts` feeds Chromium's fake audio device a generated WAV (`tuner-a2.wav`). The headless shell answers `getUserMedia` with `NotSupportedError`, so this one spec sets `channel: 'chromium'` (new headless mode in full Chromium, which the e2e job installs with `playwright install chromium`). On Linux `pnpm bootstrap` installs only the shell, so `pnpm exec playwright install chromium` once before `pnpm e2e` runs this spec (it fails with a missing executable otherwise). It is skipped off Linux: macOS asks the system for the microphone and the prompt hangs a headless run. Run it on Linux or in Playwright's image:
+
+```sh
+docker run --rm --init -v "$PWD":/src:ro mcr.microsoft.com/playwright:v1.64.1-noble bash -c \
+  'mkdir /work && cd /src && tar --exclude=node_modules --exclude=.git -cf - . | tar -xf - -C /work && cd /work \
+   && npm i -g pnpm@11.4.0 && pnpm install --frozen-lockfile && CI=1 pnpm e2e tuner.spec.ts'
+```
+
+The Electron grant for the microphone is checked by hand with `pnpm desktop:dev` (see the PR that added the tuner).
 
 ## Adding a flow
 

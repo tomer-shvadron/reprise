@@ -75,6 +75,87 @@ shared field is a `type:contract` issue for the lead.
   keeps the exact value, so flipping it twice changes nothing; the fields round for display.
 - Keys: Alt+S start, hold or resume; Alt+X mark the pass missed; Alt+Shift+S reset.
 
+## Tuner
+
+`tuner/`: `pitch/` (`fft.ts`, `mpm.ts`, `tracker.ts`), `notes.ts`, `strings.ts`, `mic-errors.ts`,
+`capture.ts` (the only file that touches Web Audio), `tuner-store.ts`, `tuner-for.ts`,
+`tuner-panel.tsx`, `cents-meter.tsx`, `string-picker.tsx`, and `test-signals.ts` and `test-rig.ts`
+(test-only). The store is vanilla zustand, one per `AppServices` like the speed trainer's.
+
+- **Pipeline.** Microphone, two cascaded lowpass sections, an `AnalyserNode`, then every 20 ms a
+  window read on the main thread, `detectPitch` (McLeod's method, the autocorrelation done by an
+  FFT of the frame zero-padded to 2N) and `tracker.push`. The detector and tracker take plain
+  `Float32Array` frames, so moving them into a worklet later changes only `capture.ts`. The mic
+  is never connected to the destination; Chromium pulls an analyser with no output.
+- **Raw capture.** `Platform.microphone()` asks for echo cancellation, noise suppression and
+  automatic gain control off: the browser's noise suppression fades a sustained tone and the gain
+  control pumps the level the gate watches.
+- **Detector.** NSDF `n(τ) = 2r(τ)/m(τ)`, key maxima between positive zero crossings, the first
+  at or above `k = 0.9` of the highest, a parabola through its neighbours. Lags run from
+  `sampleRate / 1500` (above E6) to `sampleRate / (0.84 · lowest target)`, so a string three
+  semitones flat is still found. `clarity` is `n(τ*)`.
+- **Window.** `windowFor`: the smallest power of two that is at least 2048 and at least twice the
+  longest lag, capped at 8192. That is 2048 for every guitar (7-string and drop tunings
+  included) and 4096 when the lowest target is under about 56 Hz at 48 kHz (51 Hz at 44.1 kHz):
+  4- and 5-string bass, a low B, and no track (a 30 Hz floor). It follows the current track's
+  tuning and capo and changes live (`analyser.fftSize`).
+- **Lowpass.** 1500 Hz while searching; once a note is locked the cutoff moves to
+  `clamp(2.5 · f, 80, 1500)` with `setTargetAtTime`, and returns to 1500 Hz after five rejected
+  frames or when the hold ends. Broadband noise is the main error source (a plucked tone at
+  20 dB SNR is off by up to 14 cents unfiltered, under 3 filtered), and a stiff string's upper
+  partials raise the autocorrelation (up to 15 cents sharp at a fixed 1.5 kHz). **Web Audio's
+  lowpass `Q` is in dB**: a Butterworth section is `20·log10(1/√2)`, not 0.707, and
+  `tuner.browser.test.ts` pins it against an `OfflineAudioContext` render.
+- **Tracker thresholds** (`TRACKER` in `pitch/tracker.ts`, set by `tracker.test.ts`). A frame
+  counts at −55 dBFS RMS or more, and while locked no more than 30 dB below the note's peak. A
+  new note needs clarity 0.90, a lock continues to 0.80. Two accepted frames within 30 cents
+  lock; three accepted frames more than 50 cents from the median move the lock, and a single
+  octave-off frame is ignored. The reading is the median of the last five accepted frames in
+  fractional MIDI. When the gate closes the last reading is held 1.5 s (`held`, dimmed), then
+  clears. In tune is entered after five readings within 3 cents and left beyond 5.
+- **Settling.** Moving the cutoff changes the filter under a loud periodic tone, and for as long
+  as the window still holds the change the frames read tens of cents off at high clarity (the
+  browser test showed 17 to 19 cents). So whenever the cutoff closes in (a fresh lock, a move to
+  a lower note, or a string plucked again inside the hold after the silence opened the cutoff)
+  the reading is hidden, or shown held, for `settleFramesFor(window)` hops (7 at 2048 and 48 kHz,
+  9 at 4096), counted in time, not in accepted frames. The frames taken through the old cutoff
+  are dropped, and the first median is the frames after it. A fresh note shows a reading about 8
+  hops (0.16 s) after the window fills.
+- **Allocation.** `createDetector(n)` owns the FFT tables and every buffer, and the tracker sorts
+  its median in a scratch array, so a frame allocates only its small result objects; the panel
+  re-renders only the readout per frame. Over 5000 frames (100 s of hops) in Node: 0 GC events
+  (18 and 34 before at 2048 and 4096) and about 0.7 KB of heap a frame.
+- **Accuracy** (seeded synthetic plucks, 44.1 and 48 kHz, B0 to E5, detunes −23 to +41 cents,
+  three seeds, every reading once locked): harmonic at 30 dB SNR within 0.92 cents; at 20 dB
+  within 2.5 cents; an inharmonic string (B = 3e-4, weak fundamental) at 30 dB within 2.0 cents.
+  Pure sines within 0.1 cent.
+- **Own AudioContext.** Made synchronously in the click that starts listening (so the user
+  activation lets it run), with no fixed sample rate and, where the engine supports it,
+  `sinkId: { type: 'none' }`. Closed when listening stops. It never touches the playback
+  engine and never pauses it; while a song plays the panel suggests headphones.
+- **Privacy.** Audio is processed in memory one window at a time and overwritten. Nothing is
+  recorded, stored, logged, sent anywhere or put in the practice log. The mic is on only while
+  the user wants it (`wanted`, set by Start and cleared by Stop and a permission error), the
+  panel is mounted and the page is visible. Stopping stops every track, disconnects the nodes
+  and closes the context.
+- **Errors and devices.** `mic-errors.ts` maps a rejection to `denied`, `noDevice`, `busy`,
+  `unsupported`, `lost` or `failed`, each with a message and "Try again". A track that ends
+  restarts once and then reports `lost`. A `devicechange` while listening restarts capture after
+  500 ms, since Chromium does not move a live track to a new default device; in `noDevice` or
+  `lost` it retries. The input device cannot be chosen: `microphone()` takes none.
+- **Display.** Note, octave, frequency and a ±50 cent meter (`role="meter"`). The panel lists the
+  current track's strings, from the lowest, with the capo added; auto picks the nearest target
+  within 300 cents and keeps it until another is 50 cents nearer, and a click pins a string until
+  Auto, a track change or a document change. With no fretted track the tuner is chromatic.
+  Beyond ±50 cents the needle pins and a label says how far to tune. A4 is a whole number from
+  415 to 466 in `reprise.tuner.referenceHz`.
+- **Command.** `trainer.tunerToggle` ("Start or stop tuner") shows the panel and toggles; it has
+  no default shortcut (Guitar Pro has none, and Alt+T is "Set tempo…").
+- **Tests.** `fft`, `mpm` and `tracker` tests on seeded signals; `tuner-store.test.ts` and
+  `tuner-panel.test.tsx` on a fake microphone and manual timers (`test-rig.ts`);
+  `tuner.browser.test.ts` on real Web Audio; `e2e/player/tuner.spec.ts` on Chromium's fake
+  microphone (see the e2e README for why it runs in full Chromium, on Linux).
+
 ## Metronome
 
 `metronome/`: `metronome-panel.tsx` and `tap-tempo.ts` (pure). The panel drives the audio service's

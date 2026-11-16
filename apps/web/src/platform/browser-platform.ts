@@ -106,8 +106,15 @@ function storageLocation(path: string): { dirs: string[]; name: string } {
   return { dirs: [root, ...segments], name };
 }
 
+/**
+ * Raw audio: the browser's noise suppression treats a sustained tone as noise and fades it, its
+ * level control pumps the gain, and echo cancellation filters an instrument played over a song.
+ * Chromium does not reliably honour turning them off after capture starts, so they are off here.
+ */
 export function requestMicrophone(win: Window = window): Promise<MediaStream> {
-  return win.navigator.mediaDevices.getUserMedia({ audio: true });
+  return win.navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+  });
 }
 
 export function createBrowserPlatform(win: Window = window): Platform {

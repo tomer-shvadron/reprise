@@ -74,11 +74,15 @@ describe('phase 3 entry points', () => {
     expect(services.ui.getState().panels.rightPanel).toBe(false);
   });
 
-  it('trainer.tuner opens the right panel on its placeholder', () => {
+  it('trainer.tuner opens the right panel on the Tuner region', () => {
     const { run } = renderApp();
     expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
     run('trainer.tuner');
-    expect(screen.getByRole('complementary', { name: 'Panel' })).toHaveTextContent('WP-071');
+    expect(
+      within(screen.getByRole('complementary', { name: 'Panel' })).getByRole('region', {
+        name: 'Tuner',
+      }),
+    ).toBeInTheDocument();
   });
 
   it('trainer.fretboard opens the bottom region on the fretboard and toggles it closed', () => {
@@ -129,6 +133,7 @@ describe('phase 3 entry points', () => {
         'sounds.show',
         'trainer.speedTrainer',
         'trainer.tuner',
+        'trainer.tunerToggle',
         'trainer.metronome',
         'trainer.fretboard',
         'editor.toggleMode',

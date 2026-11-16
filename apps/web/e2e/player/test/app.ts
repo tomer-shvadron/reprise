@@ -189,6 +189,11 @@ export class App {
     return this.page.evaluate(() => window.__e2e.contexts[0]?.state ?? 'none');
   }
 
+  /** The state of every AudioContext the page has made, the player's first. */
+  async contextStates(): Promise<string[]> {
+    return this.page.evaluate(() => window.__e2e.contexts.map((context) => context.state));
+  }
+
   async opens(): Promise<number> {
     return this.page.evaluate(() => window.__e2e.opens);
   }
