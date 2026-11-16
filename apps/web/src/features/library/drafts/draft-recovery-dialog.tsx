@@ -45,7 +45,7 @@ export function DraftRecoveryDialog() {
               <span className="min-w-0">
                 <span className="block truncate font-medium">{offer.name}</span>
                 <span className="text-ink-muted block text-sm">
-                  {relativeDate(offer.updatedAt, now)}
+                  {offer.updatedAt === 0 ? 'Time unknown' : relativeDate(offer.updatedAt, now)}
                 </span>
               </span>
               <span className="flex shrink-0 gap-2">
@@ -75,7 +75,7 @@ export function DraftRecoveryDialog() {
           >
             Later
           </Button>
-          <Button variant="outline" onClick={() => void recovery.discardAll()}>
+          <Button variant="destructive" onClick={() => void recovery.discardAll()}>
             Discard all
           </Button>
         </DialogFooter>

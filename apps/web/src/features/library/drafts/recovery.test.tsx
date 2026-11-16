@@ -1,4 +1,4 @@
-import { write } from '@reprise/formats';
+import { read, write } from '@reprise/formats';
 import { newId, setTrackProperties } from '@reprise/model';
 import { score } from '@reprise/model/testing';
 import { act, screen } from '@testing-library/react';
@@ -26,9 +26,21 @@ afterEach(async () => {
 
 const enc = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
 
-async function setup() {
+async function setup(failDrafts = false) {
   const storage = createMemoryStorage();
-  const services = createTestServices({ platform: fakePlatform({ ...storage.calls }) });
+  // Writes of any draft but the old `doc-xyz` fail once `failing` is set.
+  const failing = { on: false };
+  const services = createTestServices({
+    platform: fakePlatform({
+      ...storage.calls,
+      ...(failDrafts && {
+        writeFile: (path: string, bytes: Uint8Array) =>
+          failing.on && path.includes('drafts/doc-') && !path.includes('doc-xyz')
+            ? Promise.reject(new Error('disk full'))
+            : storage.calls.writeFile(path, bytes),
+      }),
+    }),
+  });
   mirrorAudio(services);
   const library = createLibrary(services, {
     db: openLibraryDb(uniqueDbName()),
@@ -58,7 +70,7 @@ async function setup() {
       enc({ version: 1, key, name: title, title, updatedAt: 5000, ...sidecar }),
     );
   };
-  return { storage, services, library, row, draftOf };
+  return { storage, services, library, row, draftOf, failing };
 }
 
 describe('finding drafts to offer', () => {
@@ -82,13 +94,17 @@ describe('finding drafts to offer', () => {
     expect(storage.bytes(draftNativePath(gone))).toBeUndefined();
   });
 
-  it('removes unpaired files and a sidecar that does not parse', async () => {
+  it('removes a sidecar with no bytes, and offers bytes whose sidecar is missing or unreadable', async () => {
     const { storage, services, library } = await setup();
+    await services.platform.writeFile(draftSidecarPath('doc-nobytes'), enc({ nope: true }));
     await services.platform.writeFile(draftNativePath('doc-lonely'), new Uint8Array([1]));
     await services.platform.writeFile(draftSidecarPath('doc-bad'), enc({ nope: true }));
     await services.platform.writeFile(draftNativePath('doc-bad'), new Uint8Array([1]));
-    expect(await findDraftOffers(services.platform, library.repo)).toEqual([]);
-    expect(storage.paths().filter((path) => path.includes('drafts/'))).toEqual([]);
+    const offers = await findDraftOffers(services.platform, library.repo);
+    expect(offers.map((offer) => offer.key).sort()).toEqual(['doc-bad', 'doc-lonely']);
+    expect(storage.bytes(draftNativePath('doc-bad'))).toBeDefined();
+    expect(storage.bytes(draftNativePath('doc-lonely'))).toBeDefined();
+    expect(storage.bytes(draftSidecarPath('doc-nobytes'))).toBeUndefined();
   });
 
   it('lists the newest first', async () => {
@@ -197,5 +213,54 @@ describe('recovering a draft', () => {
     await library.drafts.recovery.recover('doc-broken');
     expect(library.store.getState().notice?.kind).toBe('error');
     expect(storage.paths().filter((path) => path.includes('doc-broken'))).toEqual([]);
+  });
+
+  it('keeps a deferred song draft through opening the song, and asks again before an edit', async () => {
+    const { services, library, row, draftOf, storage } = await setup();
+    renderWithServices(<DraftRecoveryDialog />, services);
+    const edited = score().title('A').track('guitar', { name: 'Crashed' }).build();
+    await draftOf(
+      row.id,
+      { songId: row.id, updatedAt: 5000 },
+      'A',
+      (await write(edited, 'reprise')).bytes,
+    );
+    const stop = library.drafts.start();
+    await act(() => library.drafts.recovery.scan());
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Later' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // Opening the song brings the question back, and an edit does not overwrite the draft.
+    await act(() => library.openSong(row.id));
+    expect(await screen.findByRole('dialog', { name: /closed with unsaved/i })).toBeVisible();
+    act(() => {
+      const { document } = services;
+      document
+        .getState()
+        .apply(
+          setTrackProperties(
+            { trackId: document.getState().score?.tracks[0]?.id ?? '' },
+            { name: 'Later edit' },
+          ),
+        );
+    });
+    await user.click(screen.getByRole('button', { name: 'Later' }));
+    await act(() => library.drafts.discardOpen());
+    const kept = await read(storage.bytes(draftNativePath(row.id)) ?? new Uint8Array(), 'reprise');
+    expect(kept.score.tracks[0]?.name).toBe('Crashed');
+    stop();
+  });
+
+  it('keeps the old document draft when the new one could not be written', async () => {
+    const { services, library, draftOf, storage, failing } = await setup(true);
+    await draftOf('doc-xyz', {}, 'Fresh');
+    const stop = library.drafts.start();
+    failing.on = true;
+    await library.drafts.recovery.scan();
+    await library.drafts.recovery.recover('doc-xyz');
+    expect(services.document.getState().dirty).toBe(true);
+    expect(storage.bytes(draftNativePath('doc-xyz'))).toBeDefined();
+    expect(library.store.getState().notice?.kind).toBe('error');
+    stop();
   });
 });

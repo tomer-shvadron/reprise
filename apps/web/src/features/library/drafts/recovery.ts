@@ -43,7 +43,8 @@ async function removeDraft(platform: Pick<Platform, 'remove'>, key: string): Pro
 /**
  * The drafts worth offering. A draft of a library song is offered only when it is newer than the
  * song's last save (or its import); one whose song is gone or already saved past it is removed,
- * as is a file with no partner or a sidecar that does not parse. Newest first.
+ * as is a sidecar without bytes. Bytes whose sidecar is missing or unreadable are offered as an
+ * untitled recovery, never removed. Newest first.
  */
 export async function findDraftOffers(
   platform: DraftFiles,
@@ -64,34 +65,48 @@ export async function findDraftOffers(
   }
   const offers: DraftOffer[] = [];
   for (const [key, half] of halves) {
-    if (!half.native || !half.sidecar) {
-      console.warn(`Removed an unpaired draft: ${key}`);
+    if (!half.native) {
+      // A sidecar with no bytes holds nothing to recover.
       await removeDraft(platform, key);
       continue;
     }
+    // Bytes that cannot be judged (no sidecar yet: a crash between the two writes; one this
+    // version cannot read) may be the only copy of an edit, so they are offered as an untitled
+    // recovery and never removed unasked.
+    const unjudged = (why: string): DraftOffer => {
+      console.warn(`Offering a draft that cannot be judged (${why}): ${key}`);
+      return { key, name: 'Unsaved changes (details lost)', updatedAt: 0 };
+    };
     let sidecar;
-    try {
-      const text = new TextDecoder().decode(await platform.readFile(draftSidecarPath(key)));
-      sidecar = DraftSidecarSchema.parse(JSON.parse(text));
-    } catch (error) {
-      console.warn(`Removed a draft with an unreadable sidecar: ${key}`, error);
-      await removeDraft(platform, key);
-      continue;
+    if (half.sidecar) {
+      try {
+        const text = new TextDecoder().decode(await platform.readFile(draftSidecarPath(key)));
+        sidecar = DraftSidecarSchema.parse(JSON.parse(text));
+      } catch {
+        sidecar = undefined;
+      }
     }
-    if (sidecar.key !== key) {
-      console.warn(`Removed a draft whose sidecar names another key: ${key}`);
-      await removeDraft(platform, key);
+    if (!sidecar || sidecar.key !== key) {
+      offers.push(unjudged(half.sidecar ? 'unreadable sidecar' : 'no sidecar'));
       continue;
     }
     if (sidecar.songId !== undefined) {
       const row = await repo.get(sidecar.songId);
-      if (!row || key !== sidecar.songId || sidecar.updatedAt <= (row.savedAt ?? row.importedAt)) {
+      if (!row) {
+        // Its song is gone: nothing to put the changes back on.
+        await removeDraft(platform, key);
+        continue;
+      }
+      if (key !== sidecar.songId) {
+        offers.push(unjudged('a sidecar that names another song'));
+        continue;
+      }
+      if (sidecar.updatedAt <= (row.savedAt ?? row.importedAt)) {
         await removeDraft(platform, key);
         continue;
       }
     } else if (!key.startsWith('doc-')) {
-      console.warn(`Removed a draft with an unknown key: ${key}`);
-      await removeDraft(platform, key);
+      offers.push(unjudged('an unknown key'));
       continue;
     }
     offers.push({
@@ -124,6 +139,13 @@ export interface DraftRecovery {
   discardAll(): Promise<void>;
   /** Closes the dialog and keeps the drafts. */
   later(): void;
+  /** Whether a draft under this key is still waiting for an answer: the keeper never overwrites it. */
+  isDeferred(key: string): boolean;
+  /**
+   * Opens the dialog again when this song has a draft waiting, so Recover or Discard comes
+   * before an edit. Call it after the song opens.
+   */
+  reoffer(songId: Id): void;
 }
 
 export function createDraftRecovery(deps: DraftRecoveryDeps): DraftRecovery {
@@ -138,15 +160,29 @@ export function createDraftRecovery(deps: DraftRecoveryDeps): DraftRecovery {
     });
   };
 
-  const recoverNow = async (offer: DraftOffer) => {
+  // While a recovery runs the offer is not "waiting": the recovered document writes under the same
+  // key (a song's), which the keeper otherwise refuses to overwrite.
+  const withdrawn = async (offer: DraftOffer, run: () => Promise<boolean>) => {
+    const before = store.getState();
+    drop(offer.key);
+    const done = await run();
+    if (!done && !store.getState().offers.some((candidate) => candidate.key === offer.key)) {
+      store.setState((state) => ({
+        offers: [...state.offers, offer].sort((a, b) => b.updatedAt - a.updatedAt),
+        open: before.open || state.open,
+      }));
+    }
+  };
+
+  /** True when the draft is dealt with (recovered, or removed as unreadable). */
+  const recoverNow = async (offer: DraftOffer): Promise<boolean> => {
     let bytes: Uint8Array;
     try {
       bytes = await platform.readFile(draftNativePath(offer.key));
     } catch {
       deps.notify(`The draft of “${offer.name}” could not be read, so it was removed.`);
       await removeDraft(platform, offer.key);
-      drop(offer.key);
-      return;
+      return true;
     }
     try {
       if (offer.songId !== undefined) {
@@ -154,7 +190,7 @@ export function createDraftRecovery(deps: DraftRecoveryDeps): DraftRecovery {
         const state = document.getState();
         if (state.songId !== offer.songId || !state.dirty) {
           deps.notify(`“${offer.name}” could not be recovered.`);
-          return;
+          return false;
         }
       } else {
         let score;
@@ -166,8 +202,7 @@ export function createDraftRecovery(deps: DraftRecoveryDeps): DraftRecovery {
             `The draft of “${offer.name}” could not be read, so it was removed: ${error instanceof Error ? error.message : String(error)}`,
           );
           await removeDraft(platform, offer.key);
-          drop(offer.key);
-          return;
+          return true;
         }
         document.getState().newDocument(score, { modified: true });
         services.ui.getState().setScreen('player');
@@ -176,15 +211,22 @@ export function createDraftRecovery(deps: DraftRecoveryDeps): DraftRecovery {
       deps.notify(
         `The draft of “${offer.name}” could not be opened: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return;
+      return false;
     }
-    // The recovered document is written under its own key at once; the old files go only after
-    // that, so a second crash cannot lose it.
-    await deps.keeper()?.flush();
+    // The recovered document is written under its own key at once; the old files go only once
+    // that is confirmed on disk, so a second crash cannot lose it.
     const state = document.getState();
     const current = state.id === undefined ? undefined : draftKeyOf(state.songId, state.id);
-    if (offer.key !== current) await removeDraft(platform, offer.key);
-    drop(offer.key);
+    const confirmed = (await deps.keeper()?.flush()) === true;
+    if (offer.key === current) return true;
+    if (!confirmed) {
+      deps.notify(
+        `“${offer.name}” is open again, but its draft could not be rewritten, so the old one was kept.`,
+      );
+      return true;
+    }
+    await removeDraft(platform, offer.key);
+    return true;
   };
 
   return {
@@ -206,7 +248,7 @@ export function createDraftRecovery(deps: DraftRecoveryDeps): DraftRecovery {
           services,
           'recovering a draft',
           () => {
-            void recoverNow(offer).finally(resolve);
+            void withdrawn(offer, () => recoverNow(offer)).finally(resolve);
           },
           resolve,
         );
@@ -223,6 +265,12 @@ export function createDraftRecovery(deps: DraftRecoveryDeps): DraftRecovery {
     },
     later() {
       store.setState({ open: false });
+    },
+    isDeferred: (key) => store.getState().offers.some((offer) => offer.key === key),
+    reoffer(songId) {
+      if (store.getState().offers.some((offer) => offer.songId === songId)) {
+        store.setState({ open: true });
+      }
     },
   };
 }

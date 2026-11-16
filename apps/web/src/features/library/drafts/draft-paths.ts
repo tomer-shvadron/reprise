@@ -33,6 +33,8 @@ export const DraftSidecarSchema = z.object({
   name: z.string(),
   title: z.string(),
   updatedAt: z.number(),
+  /** The document's revision when written: what a later write is newer than. */
+  revision: z.number().exactOptional(),
 });
 
 export type DraftSidecar = z.infer<typeof DraftSidecarSchema>;

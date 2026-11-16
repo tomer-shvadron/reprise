@@ -3,11 +3,17 @@ import { newId, setTrackProperties } from '@reprise/model';
 import { score } from '@reprise/model/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { Platform } from '@/platform/platform';
 import { createMemoryStorage } from '@/test/memory-storage';
 import { createTestServices, fakePlatform } from '@/test/services';
 
 import { nativeOf } from '../import/parse-import';
-import { DRAFT_DEBOUNCE_MS, DRAFT_MAX_WAIT_MS, startDraftKeeper } from './draft-keeper';
+import {
+  DRAFT_DEBOUNCE_MS,
+  DRAFT_MAX_WAIT_MS,
+  startDraftKeeper,
+  type DraftKeeperDeps,
+} from './draft-keeper';
 import { DraftSidecarSchema, draftNativePath, draftSidecarPath } from './draft-paths';
 
 const SONG_A = newId();
@@ -15,9 +21,12 @@ const SONG_B = newId();
 const SONG_Z = newId();
 const song = () => score().title('Riff').track('guitar').build();
 
-async function setup() {
+async function setup(wrap?: (real: Platform['writeFile']) => Platform['writeFile']) {
   const storage = createMemoryStorage();
-  const services = createTestServices({ platform: fakePlatform({ ...storage.calls }) });
+  const real: Platform['writeFile'] = (path, bytes) => storage.calls.writeFile(path, bytes);
+  const services = createTestServices({
+    platform: fakePlatform({ ...storage.calls, ...(wrap && { writeFile: wrap(real) }) }),
+  });
   const bytes = (await write(song(), 'reprise')).bytes;
   const open = (songId?: string, modified = false) =>
     services.document.getState().openBytes('riff.reprise', bytes, {
@@ -32,14 +41,15 @@ async function setup() {
         setTrackProperties({ trackId: document.getState().score?.tracks[0]?.id ?? '' }, { name }),
       );
   };
-  const keeper = () =>
+  const keeper = (options: Partial<DraftKeeperDeps> = {}) =>
     startDraftKeeper({
       services,
       platform: services.platform,
-      parser: { native: nativeOf, dispose: () => undefined },
+      createParser: () => ({ native: nativeOf, dispose: () => undefined }),
       idle: (task) => {
         task();
       },
+      ...options,
     });
   return { storage, services, open, rename, keeper };
 }
@@ -174,5 +184,207 @@ describe('the draft keeper', () => {
     await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS);
     expect(storage.bytes(draftNativePath(SONG_Z))).toBeDefined();
     expect(storage.bytes(draftNativePath(docKey))).toBeUndefined();
+  });
+
+  it('flush reports whether the open document’s draft is on disk', async () => {
+    const { rename, open, keeper, services } = await setup();
+    await open(SONG_A);
+    const started = keeper();
+    expect(await started.flush()).toBe(false);
+    rename('One');
+    expect(await started.flush()).toBe(true);
+    services.document.getState().close();
+    expect(await started.flush()).toBe(false);
+  });
+});
+
+/** A platform whose writes of `.reprise` bytes wait until the test lets them through. */
+async function gated() {
+  let release = () => {
+    // Nothing is held until `hold`.
+  };
+  let waiting = Promise.resolve();
+  let reached = Promise.resolve();
+  let reach = () => {
+    // Replaced by `hold`.
+  };
+  const base = await setup((real) => async (path, bytes) => {
+    if (path.endsWith('.reprise') && path.includes('drafts/')) {
+      reach();
+      await waiting;
+    }
+    return real(path, bytes);
+  });
+  const hold = () => {
+    waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    reached = new Promise<void>((resolve) => {
+      reach = resolve;
+    });
+  };
+  return {
+    ...base,
+    hold,
+    release: () => {
+      release();
+    },
+    reached: () => reached,
+  };
+}
+
+describe('a draft write that is already writing when it stops being wanted', () => {
+  const drafts = (storage: { paths(): string[] }) =>
+    storage.paths().filter((path) => path.includes('drafts/') && !path.endsWith('drafts'));
+
+  it('is removed by a discard', async () => {
+    const { storage, rename, open, keeper, hold, release, reached } = await gated();
+    await open(SONG_A);
+    const started = keeper();
+    hold();
+    rename('One');
+    await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS);
+    await reached();
+    const discarded = started.discard();
+    release();
+    await discarded;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(drafts(storage)).toEqual([]);
+  });
+
+  it('is removed when the document is undone back to clean', async () => {
+    const { storage, services, rename, open, keeper, hold, release, reached } = await gated();
+    await open(SONG_A);
+    keeper();
+    hold();
+    rename('One');
+    await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS);
+    await reached();
+    services.document.getState().undo();
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(drafts(storage)).toEqual([]);
+  });
+
+  it('is removed when the document is closed or replaced', async () => {
+    const { storage, services, rename, open, keeper, hold, release, reached } = await gated();
+    await open(SONG_A);
+    keeper();
+    hold();
+    rename('One');
+    await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS);
+    await reached();
+    services.document.getState().close();
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(drafts(storage)).toEqual([]);
+  });
+});
+
+describe('a save that ends with the document still modified', () => {
+  it('is followed by a fresh draft', async () => {
+    const { storage, services, rename, open, keeper } = await setup();
+    await open(SONG_A);
+    keeper();
+    rename('One');
+    await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS);
+    const first = storage.bytes(draftSidecarPath(SONG_A));
+    const sidecarOf = () =>
+      DraftSidecarSchema.parse(
+        JSON.parse(new TextDecoder().decode(storage.bytes(draftSidecarPath(SONG_A)))),
+      );
+    const before = sidecarOf().updatedAt;
+    expect(first).toBeDefined();
+    const mark = services.document.getState().beginSave();
+    expect(mark).toBeDefined();
+    rename('Two');
+    await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS);
+    // The save ends having written only 'One': the document is still modified.
+    vi.setSystemTime(Date.now() + 5000);
+    if (!mark) throw new Error('no mark');
+    services.document.getState().finishSave(mark, { cancelled: true });
+    await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS);
+    expect(sidecarOf().updatedAt).toBeGreaterThan(before);
+    const { score: saved } = await read(
+      storage.bytes(draftNativePath(SONG_A)) ?? new Uint8Array(),
+      'reprise',
+    );
+    expect(saved.tracks[0]?.name).toBe('Two');
+  });
+});
+
+describe('the parse worker', () => {
+  it('is replaced once when it fails, and the draft is written', async () => {
+    const { storage, rename, open, keeper } = await setup();
+    await open(SONG_A);
+    let made = 0;
+    keeper({
+      createParser: () => {
+        made += 1;
+        return made === 1
+          ? { native: () => Promise.reject(new Error('worker died')), dispose: () => undefined }
+          : { native: nativeOf, dispose: () => undefined };
+      },
+    });
+    rename('One');
+    await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS);
+    expect(made).toBe(2);
+    expect(storage.bytes(draftNativePath(SONG_A))).toBeDefined();
+  });
+
+  it('says autosave is off when it fails again, once', async () => {
+    const { rename, open, keeper } = await setup();
+    await open(SONG_A);
+    const notify = vi.fn();
+    keeper({
+      notify,
+      createParser: () => ({
+        native: () => Promise.reject(new Error('no worker')),
+        dispose: () => undefined,
+      }),
+    });
+    rename('One');
+    await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS);
+    rename('Two');
+    await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith('Autosave is off: no worker');
+  });
+
+  it('does not stall a removal while it hangs', async () => {
+    const { storage, services, rename, open, keeper } = await setup();
+    await open(SONG_A);
+    keeper({
+      serializeTimeoutMs: 60_000,
+      createParser: () => ({
+        native: () => new Promise(() => undefined),
+        dispose: () => undefined,
+      }),
+    });
+    // A draft from before, which the hung write then has to be removed with.
+    await services.platform.writeFile(draftNativePath(SONG_A), new Uint8Array([1]));
+    rename('One');
+    await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS);
+    services.document.getState().undo();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(storage.bytes(draftNativePath(SONG_A))).toBeUndefined();
+  });
+});
+
+describe('a draft that is waiting for the user’s answer', () => {
+  it('is not overwritten by an edit', async () => {
+    const { storage, services, rename, open, keeper } = await setup();
+    await open(SONG_A);
+    await services.platform.writeFile(draftNativePath(SONG_A), new Uint8Array([7]));
+    keeper({ deferred: (key) => key === SONG_A });
+    rename('One');
+    await vi.advanceTimersByTimeAsync(DRAFT_DEBOUNCE_MS * 3);
+    expect(storage.bytes(draftNativePath(SONG_A))).toEqual(new Uint8Array([7]));
+    // And undoing back to clean does not remove what the keeper never wrote.
+    services.document.getState().undo();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(storage.bytes(draftNativePath(SONG_A))).toEqual(new Uint8Array([7]));
   });
 });

@@ -433,8 +433,15 @@ export function createLibrary(
   const drafts: Drafts = {
     recovery,
     start() {
-      const parser = parserOf();
-      const started = startDraftKeeper({ services, platform: services.platform, parser });
+      const started = startDraftKeeper({
+        services,
+        platform: services.platform,
+        createParser: parserOf,
+        notify: (message) => {
+          notify(message, 'error');
+        },
+        deferred: (key) => recovery.isDeferred(key),
+      });
       draftKeeper = started;
       return () => {
         if (draftKeeper === started) draftKeeper = undefined;
@@ -549,6 +556,8 @@ export function createLibrary(
           console.warn('Could not record the open time', error);
         });
         ui.getState().setScreen('player');
+        // A draft the user put off at launch is answered before an edit can overwrite it.
+        if (draft === undefined) recovery.reoffer(id);
       } catch (error) {
         store.setState({
           error: `Could not open the song: ${error instanceof Error ? error.message : String(error)}`,
