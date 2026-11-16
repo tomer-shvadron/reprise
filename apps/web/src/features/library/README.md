@@ -80,6 +80,41 @@ shell wiring, which is one separate integration commit).
   not what the import dropped; a library song has a "Don't warn again for this song" box that stores
   the accepted `Warning.code`s on the row (`exportAcknowledged`), and a later export asks again only
   for a code not in the list. A document outside the library has no box.
+- **Drafts** (`drafts/`, started by `installLibrary`). While the document is modified the keeper
+  writes `data/drafts/<key>.reprise` and a `<key>.json` sidecar (`{ version, key, songId?, name,
+title, updatedAt }`, bytes first), 1 s after the last edit and at least every 10 s while edits
+  continue, serialized in the parse worker when the main thread is idle. The key is the `songId`,
+  else `doc-<document.id>`. The draft is removed when the document becomes clean (a save, or undo
+  to the saved point), is replaced or is closed (every replace path asks first), and when its
+  song is deleted. A write that has not started is dropped if the document changed meanwhile, and
+  the old key goes when a song id arrives while the edits stay unsaved. Writes and removals run
+  one at a time. A write records its key before any bytes go out, so a removal that comes during it
+  deletes what it writes; serialization is not queued, so a hung worker never delays a removal, and
+  a worker that fails or hangs is replaced once before autosave reports "Autosave is off". A save
+  that ends with the document still modified is followed by a fresh draft, and `savedAt` is the
+  time the save began, so a draft whose content was captured after that (an edit made during the save) is newer; a draft's `updatedAt` is when its content was captured, not when it landed.
+  The keeper flushes on `pagehide` and `visibilitychange`, best effort: the idle wait is skipped,
+  but a worker round trip and a file write cannot finish once a page is being torn down, so on the
+  web the last second of edits, or all of a first edit, can be missing after Leave. The
+  `beforeunload` prompt while modified is the protection there.
+  - **Cost.** The 13 ms measured by `drafts/draft-cost.browser.test.ts` for the 8 x 300 reference
+    score (about 29.5 MB of native) is the structured clone of the score into the worker only. The
+    main thread also pays for the 29.5 MB result cloned back and, on desktop, for serializing
+    those bytes for `ipcRenderer.invoke` to main (which then does an fsync and a rename per
+    draft). Levers if that shows up in practice: a longer debounce for large natives, or
+    transferring the result buffer. Over about 50 ms the next step is a worker that mirrors the score by
+    replaying `Change.patches`, which needs a model contract.
+  - **Recovery** (`drafts/recovery.ts`, `DraftRecoveryDialog`). After `load()` (and only when it
+    succeeded, or every draft would look orphaned) the folder is listed. A draft of a song is
+    offered when `updatedAt` is newer than the row's `savedAt` (else `importedAt`); a draft whose
+    song is gone or already saved past it, and a sidecar without bytes, are removed; a `doc-` draft
+    is always offered. Bytes whose sidecar is missing or unreadable are offered as an untitled
+    recovery and never removed unasked. Recover opens a song's draft with `modified: true`
+    and restores its session; a `doc-` draft becomes an untitled modified document whose first
+    Save joins the library. The recovered document is written under its own key at once, and only
+    then are the old files removed. Later (and Escape) keeps the drafts for the next launch; opening a song that has one waiting shows the dialog again, and the keeper never overwrites a draft that is still waiting: edits go under `doc-<document.id>` (no song named) meanwhile, so autosave never stops, and recovery offers both. Undo
+    history is not recovered.
+  - **Known limit.** Two web tabs editing the same song write one draft key; the last writer wins.
 - **Recents.** The 5 most recently opened songs (`RecentSongs`), the palette command
   `library.openRecent` (the library sorted by last opened), and on desktop the File menu through
   `setRecentSongs` (at most 10), with `onOpenRecent` opening the pick.

@@ -16,3 +16,4 @@ export type {
 export { gmInstrumentId, planInstruments, planSamples } from './plan';
 export type { InstrumentResolver, InstrumentUse, PlanOptions, SongPlan, TrackPlan } from './plan';
 export type { RawSample, SampleProvider } from './types';
+export { packInstrumentId, packInstrumentsOf, parsePackInstrumentId } from './provider-router';

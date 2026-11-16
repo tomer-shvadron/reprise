@@ -6,6 +6,7 @@ import { Placeholder } from '@/components/placeholder';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AddTrackButton, EditorDialogs, EffectsPanel, TrackRowMenu } from '@/features/editor';
 import {
+  DraftRecoveryDialog,
   ExportDialog,
   installLibrary,
   libraryOf,
@@ -23,6 +24,7 @@ import { installHistoryMenu } from '@/state/history-menu';
 import type { PanelView } from '@/state/ui';
 
 import { AppFrame } from './app-frame';
+import { installCloseGuard } from './close-guard';
 import { CommandPalette } from './command-palette';
 import { createAppRegistry } from './app-registry';
 import { runCommand } from './command-registry';
@@ -37,6 +39,7 @@ import type { AppServices } from './services';
 import { AppServicesProvider } from './services-context';
 import { installShortcutDispatcher, menuCommandAllowed } from './shortcut-dispatcher';
 import { UnsavedChangesHost } from './unsaved-dialog';
+import { installWindowTitle } from './window-title';
 import { CommandSourceContext } from './use-command';
 
 // Module-level so the sidebar's memoised rows see the same function every render.
@@ -89,6 +92,18 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   useEffect(() => {
     services.sounds.scan().catch(() => undefined);
   }, [services]);
+
+  // `● name — Reprise` while modified; on desktop the window follows the page title.
+  useEffect(() => installWindowTitle(services.document, services.platform), [services]);
+
+  useEffect(
+    () =>
+      installCloseGuard({
+        services,
+        discardDraft: () => libraryOf(services).drafts.discardOpen(),
+      }),
+    [services],
+  );
 
   useEffect(() => installHistoryMenu(services.document, services.platform), [services]);
 
@@ -165,6 +180,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
         <EditorDialogs />
         <UnsavedChangesHost />
         <ExportDialog />
+        <DraftRecoveryDialog />
         <PrintDialog store={services.print} />
         <PrintRoot store={services.print} />
       </TooltipProvider>
