@@ -2,6 +2,7 @@ export { layout } from './layout';
 export { anchorBox, hitTest } from './hit-test';
 export { LayoutCache } from './cache';
 export { DEFAULT_MARGINS, PAGE_SIZES, STAFF_SPACE } from './options';
+export { JUMP_LABELS } from './header';
 export type { GlyphName } from './metrics';
 export type {
   Anchor,
