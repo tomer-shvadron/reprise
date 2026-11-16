@@ -10,12 +10,13 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 - Arrows, Home and End stay with a text field or a control that uses them (a slider, a menu); elsewhere they move the playhead.
 - Backspace and Delete stay with a text field whatever the modifiers, so Cmd+Backspace in the palette's input deletes text and never runs an editor command.
 - While a modal dialog is open (a dialog, an alert dialog, the command palette), no shortcut and no native menu command runs, except Cmd or Ctrl+K when the palette is the only modal (it closes the palette but opens none over another dialog), and a focused text field's own undo and redo. Escape stays with the dialog. This holds wherever focus is, including on the page behind the dialog. The rules live in the dispatcher's doc comment, `apps/web/src/app/shortcut-dispatcher.ts`.
+- In edit mode, ⌘C, ⌘X and ⌘V (Ctrl on Windows) copy, cut and paste notes, beats or whole bars, through the browser's own clipboard events: the key is left to the browser, which is why Copy, Cut and Paste show their keys here but the dispatcher never runs them. Paste follows the status line's insert or overwrite mode; Paste as insert and Paste over, in the palette, choose one. Text fields and dialogs keep their own copy, cut and paste, and so does selected text anywhere on the page.
 - Undo and redo in a focused text field undo the field's typing, not the score.
 - In edit mode a digit that can start a two-digit fret on the track's neck (1 and 2 on 24 frets) waits 500 ms for a second digit; any other key, a click or moving the cursor commits it at once, and Escape cancels it. Digits never move the cursor, so more digits on the same beat make a chord (with ↑ and ↓ between them); → moves on, and appends a bar past the end of a full last bar.
 - The library's song list takes its own keys while it has focus: the arrows, Home, End, Page Up and Page Down move, Enter opens, Delete or Backspace deletes, and L opens the song's practice log. Escape closes the log page.
 - Space and Enter on a focused button or toggle activate that control; transport buttons do not take focus on click, so Space keeps playing after one.
 - The effect keys are Guitar Pro 8's and work in edit mode only. Each toggles: when every note it acts on already has the effect it comes off all of them, otherwise it goes on the notes that lack it, as one undo step labelled with the effect. A note effect goes on the notes picked, or on every note of the beat the cursor or range is on; a beat effect (tapping, tremolo picking, fades, pick strokes, brush, arpeggio, whammy-bar vibrato) goes on the beat. H marks the note as the origin of a hammer-on or pull-off, so it sets the flag on the next note on that string. A refusal reads on the edit status line.
-- The punctuation effect keys (`;` `:` `!` `"` `)` `$` `<` `>`) are bound in both spellings, shifted and unshifted, because US needs Shift for most of them and other layouts do not; the table lists the shifted one first. On French and Belgian AZERTY two of the unshifted spellings never fire, because `$` is the physical `]` key (repeat end) and `"` is the physical `3` key (the fret digit), and those commands come first. A physical-key fallback for non-Latin layouts is tracked under #242, and until it lands those keys are reachable through Shift on US and through the command palette everywhere. The bend and whammy presets are palette-only until the effects panel (WP-082 PR B) adds the pickers (B, ⇧S, ⌥Y, ⌥V, N, G and ⌥G).
+- The punctuation effect keys (`;` `:` `!` `"` `)` `$` `<` `>`) are bound in both spellings, shifted and unshifted, because US needs Shift for most of them and other layouts do not; the table lists the shifted one first. On French and Belgian AZERTY two of the unshifted spellings never fire, because `$` is the physical `]` key (repeat end) and `"` is the physical `3` key (the fret digit), and those commands come first. A physical-key fallback for non-Latin layouts is tracked under #242, and until it lands those keys are reachable through Shift on US and through the command palette everywhere. The effects that take a choice open a modal dialog, so no key reaches the score under it: B (bend), ⇧S (slide kinds), ⌥Y (harmonic kinds), ⌥V (whammy bar), and G or ⌥G (a grace note before the beat or on it). Arrows move over the choices, Enter or Space applies and closes, Escape cancels. Up and Down move by row, Left and Right in reading order. Focus goes back to where it was; after a click on the panel's button it stays with the score. N is Guitar Pro's trill key: it takes the trill off when every note has one, and otherwise opens the trill dialog (how many frets above each note to trill to, two by default, and the speed). The tremolo speed (8th, 16th, 32nd) and dynamics dialogs have no key, as Guitar Pro has none; the panel and the command palette open them. "Toggle effects panel" has no key; it is in the command palette, and the right panel shows every effect as a button with its state.
 
 <!-- shortcuts:start -->
 | Command | Category | Context | macOS | Windows |
@@ -183,5 +184,20 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Whammy: 2 steps dive | Editor | Editing | — | — |
 | Whammy: 2 steps dip | Editor | Editing | — | — |
 | Whammy: 2 steps release up | Editor | Editing | — | — |
+| Bend… | Editor | Editing | B | B |
+| Slide… | Editor | Editing | ⇧S | Shift+S |
+| Harmonic… | Editor | Editing | ⌥Y | Alt+Y |
+| Whammy bar… | Editor | Editing | ⌥V | Alt+V |
+| Trill… | Editor | Editing | N | N |
+| Tremolo picking speed… | Editor | Editing | — | — |
+| Dynamics… | Editor | Editing | — | — |
+| Grace note… | Editor | Editing | G | G |
+| Grace note on the beat… | Editor | Editing | ⌥G | Alt+G |
+| Toggle effects panel | Editor | Global | — | — |
+| Copy | Editor | Editing | ⌘C | Ctrl+C |
+| Cut | Editor | Editing | ⌘X | Ctrl+X |
+| Paste | Editor | Editing | ⌘V | Ctrl+V |
+| Paste as insert | Editor | Editing | — | — |
+| Paste over | Editor | Editing | — | — |
 | Show sound manager | Sounds | Global | — | — |
 <!-- shortcuts:end -->

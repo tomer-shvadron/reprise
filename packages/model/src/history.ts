@@ -240,6 +240,12 @@ export interface History {
   /** The label of the step `undo` or `redo` would replay, for the menu. */
   readonly undoLabel: string | undefined;
   readonly redoLabel: string | undefined;
+  /**
+   * Every label on each stack, newest first (the step `undo` or `redo` replays comes first); a
+   * group or a chain shows its own name. The same array while the stack is unchanged.
+   */
+  readonly undoLabels: readonly string[];
+  readonly redoLabels: readonly string[];
   /** Forward and inverse patches of every step held, for budgets and debugging. */
   readonly steps: readonly Change[];
 }
@@ -255,6 +261,8 @@ export function createHistory(): History {
   let redoStack: Change[] = [];
   let currentScore: Score | undefined;
   let group: Group | undefined;
+  let undoLabelCache: LabelCache | undefined;
+  let redoLabelCache: LabelCache | undefined;
 
   const push = (change: Change): void => {
     undoStack.push(change);
@@ -331,10 +339,41 @@ export function createHistory(): History {
     get redoLabel() {
       return redoStack.at(-1)?.command;
     },
+    get undoLabels() {
+      undoLabelCache = cachedLabels(undoStack, undoLabelCache);
+      return undoLabelCache.labels;
+    },
+    get redoLabels() {
+      redoLabelCache = cachedLabels(redoStack, redoLabelCache);
+      return redoLabelCache.labels;
+    },
     get steps() {
       return undoStack.concat(redoStack);
     },
   };
+}
+
+/** The labels built for a stack of this length whose top was this change; a push or pop changes one. */
+interface LabelCache {
+  readonly length: number;
+  readonly top: Change | undefined;
+  readonly labels: string[];
+}
+
+// A stack only grows or shrinks at its top, and a step's label never changes, so the same length
+// and top mean the same labels: reuse the array, which makes the result stable by identity.
+// Pop-then-push to the same length with another change differs in `top`.
+function cachedLabels(stack: readonly Change[], cache: LabelCache | undefined): LabelCache {
+  const top = stack.at(-1);
+  return cache?.length === stack.length && cache.top === top
+    ? cache
+    : { length: stack.length, top, labels: labelsNewestFirst(stack) };
+}
+
+function labelsNewestFirst(stack: readonly Change[]): string[] {
+  const labels: string[] = [];
+  for (let i = stack.length - 1; i >= 0; i -= 1) labels.push(stack[i]?.command ?? '');
+  return labels;
 }
 
 function mergeChanges(label: string, changes: Change[]): Change {

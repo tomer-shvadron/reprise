@@ -255,6 +255,7 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
         editing={services.editing}
         selection={selection}
         document={document}
+        ui={services.ui}
       />
     </div>
   );

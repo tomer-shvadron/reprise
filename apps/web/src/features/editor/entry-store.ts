@@ -7,6 +7,9 @@ import { QUARTER, type Rhythm } from './rhythm';
 
 export type EntryMode = 'overwrite' | 'insert';
 
+/** A refusal reads as an error; a notice (a paste's summary, a re-fingering) is only information. */
+export type MessageTone = 'refusal' | 'notice';
+
 /** A first fret digit that waits for a second, with the place it was typed at. */
 export interface PendingFret {
   fret: number;
@@ -20,14 +23,15 @@ export interface EntryState {
   pending: PendingFret | undefined;
   /** The beat insert mode just created: further digits on it are chord notes, not new beats. */
   inserted: Id | undefined;
-  /** The last refusal; clears on the next successful entry or cursor move. */
+  /** The last refusal or notice; clears on the next successful entry or cursor move. */
   message: string | undefined;
+  tone: MessageTone;
   setRhythm(rhythm: Rhythm): void;
   setMode(mode: EntryMode): void;
   toggleMode(): void;
   setPending(pending: PendingFret | undefined): void;
   setInserted(inserted: Id | undefined): void;
-  setMessage(message: string | undefined): void;
+  setMessage(message: string | undefined, tone?: MessageTone): void;
 }
 
 /**
@@ -41,6 +45,7 @@ export function createEntryStore() {
     pending: undefined,
     inserted: undefined,
     message: undefined,
+    tone: 'refusal',
     setRhythm: (rhythm) => {
       set({ rhythm });
     },
@@ -56,8 +61,8 @@ export function createEntryStore() {
     setInserted: (inserted) => {
       set({ inserted });
     },
-    setMessage: (message) => {
-      set({ message });
+    setMessage: (message, tone = 'refusal') => {
+      set({ message, tone });
     },
   }));
 }

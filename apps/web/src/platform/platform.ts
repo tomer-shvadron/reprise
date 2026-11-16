@@ -2,6 +2,7 @@ import type {
   DirEntry,
   FileFilter,
   FileHandle,
+  HistoryMenuLabels,
   OpenedFile,
   PickedFile,
   PickedFolder,
@@ -13,6 +14,7 @@ export type {
   DirEntry,
   FileFilter,
   FileHandle,
+  HistoryMenuLabels,
   OpenedFile,
   PickedFile,
   PickedFolder,
@@ -63,6 +65,11 @@ export interface Platform {
   remove(path: string): Promise<void>;
   /** Desktop only: the native File menu's Open Recent list, at most `MAX_RECENT_SONGS`. */
   setRecentSongs?(items: readonly RecentSong[]): void;
+  /**
+   * Desktop only: the newest undo and redo step names, for the native Edit menu ("Undo <label>");
+   * an absent entry disables the item. Best effort, like the recent list.
+   */
+  setHistoryLabels?(labels: HistoryMenuLabels): void;
   /** Desktop only: a pick from Open Recent. Returns an unsubscribe function. */
   onOpenRecent?(listener: (id: string) => void): () => void;
   /**

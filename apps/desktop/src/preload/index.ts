@@ -77,6 +77,7 @@ const bridge: RepriseBridge = {
   move: (from, to) => invoke('storage:move', from, to),
   remove: (path) => invoke('storage:remove', path),
   setRecentSongs: (items) => invoke('menu:set-recent', items),
+  setHistoryLabels: (labels) => invoke('menu:set-history', labels),
   libraryDir: () => invoke('app:library-dir'),
   dataDir: () => invoke('app:data-dir'),
   print: (options) => (options ? invoke('app:print', options) : invoke('app:print')),

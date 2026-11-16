@@ -21,6 +21,7 @@ function fakeBridge() {
     dataDir: vi.fn(() => Promise.resolve('/data')),
     print: vi.fn(() => Promise.resolve(undefined)),
     onMenuCommand: vi.fn(() => () => undefined),
+    setHistoryLabels: vi.fn(() => Promise.resolve(undefined)),
     onOpenRecent: vi.fn(() => () => undefined),
     setDocumentEdited: vi.fn(() => Promise.resolve(undefined)),
     confirmClose: vi.fn(() => Promise.resolve(undefined)),
@@ -46,6 +47,14 @@ describe('the Electron platform', () => {
     await platform.print();
 
     expect(vi.mocked(bridge.print).mock.calls).toEqual([[{ pageSize: 'Letter' }], []]);
+  });
+
+  it('forwards the history labels over the bridge', () => {
+    const { bridge } = fakeBridge();
+
+    createElectronPlatform(bridge).setHistoryLabels?.({ undo: 'setNote' });
+
+    expect(bridge.setHistoryLabels).toHaveBeenCalledWith({ undo: 'setNote' });
   });
 
   it('reports the edited state, and confirms a close, over the bridge', () => {

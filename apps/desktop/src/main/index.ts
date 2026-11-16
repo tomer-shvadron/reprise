@@ -16,7 +16,7 @@ import {
   type IpcMainInvokeEvent,
 } from 'electron';
 
-import type { FileFilter, MenuCommandId, RecentSong } from '@reprise/web';
+import type { FileFilter, HistoryMenuLabels, MenuCommandId, RecentSong } from '@reprise/web';
 
 import { APP_INDEX_URL, APP_SCHEME, createAppProtocolHandler } from './app-protocol';
 import { isAppUrl } from './app-url';
@@ -77,6 +77,8 @@ const windowStateFile = join(userDataDir, 'window-state.json');
 const access = new PathAccess();
 const storageRoots: StorageRoots = { library: libraryDir, data: dataDir };
 let recentSongs: readonly RecentSong[] = [];
+// Undefined until the renderer reports: the Edit menu then keeps plain, enabled Undo and Redo.
+let historyLabels: HistoryMenuLabels | undefined;
 const closeGuards = new Map<BrowserWindow, CloseGuard>();
 
 const dialogFilters = (filters: readonly FileFilter[]): DialogFilter[] =>
@@ -176,6 +178,11 @@ registerInvokeHandlers(
       applyMenu();
       return Promise.resolve(undefined);
     },
+    'menu:set-history': (_event, labels) => {
+      historyLabels = labels;
+      applyMenu();
+      return Promise.resolve(undefined);
+    },
     'app:library-dir': () => Promise.resolve(libraryDir),
     'app:data-dir': () => Promise.resolve(dataDir),
     'app:print': (event, options) =>
@@ -215,6 +222,7 @@ function applyMenu(): void {
         sendCommand: sendMenuCommand,
         openExternal: (url) => void shell.openExternal(url),
         recent: recentSongs,
+        ...(historyLabels && { history: historyLabels }),
         openRecent: sendOpenRecent,
       }),
     ),
@@ -364,6 +372,9 @@ app.on('before-quit', (event) => {
 });
 
 app.on('window-all-closed', () => {
+  // No window left to act on, so the Edit menu goes back to plain Undo and Redo (macOS keeps running).
+  historyLabels = undefined;
+  if (process.platform === 'darwin') applyMenu();
   if (process.platform !== 'darwin') app.quit();
 });
 

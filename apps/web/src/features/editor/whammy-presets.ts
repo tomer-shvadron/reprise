@@ -42,3 +42,19 @@ export function whammyPreset(shape: WhammyShape, amount: WhammyAmount): Whammy {
       };
   }
 }
+
+const AMOUNT_LABEL: Record<WhammyAmount, string> = {
+  small: '½ step',
+  medium: 'Whole step',
+  large: '2 steps',
+};
+const SHAPE_LABEL: Record<WhammyShape, string> = {
+  dive: 'dive',
+  dip: 'dip',
+  releaseUp: 'release up',
+};
+
+/** "Whole step dive", "2 steps release up": how a preset reads in a label. */
+export function whammyPresetLabel(shape: WhammyShape, amount: WhammyAmount): string {
+  return `${AMOUNT_LABEL[amount]} ${SHAPE_LABEL[shape]}`;
+}
