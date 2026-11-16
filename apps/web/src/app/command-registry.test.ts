@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { CommandRegistry, type Command } from './command-registry';
+import { dispatchShortcut } from './shortcut-dispatcher';
 
 const command = (overrides: Partial<Command> = {}): Command => ({
   id: 'test.command',
@@ -111,5 +112,24 @@ describe('CommandRegistry', () => {
     expect(registry.isShadowed(seek)).toBe(true);
     expect(registry.isShadowed(other)).toBe(false);
     expect(registry.isShadowed(move)).toBe(false);
+  });
+
+  it('leaves a command out of available() while it reports itself not enabled', () => {
+    let on = false;
+    const registry = new CommandRegistry();
+    const gated = command({ id: 'gated', enabled: () => on, shortcut: { key: 'g' } });
+    registry.register(gated);
+    expect(registry.available()).toEqual([]);
+    expect(registry.list()).toEqual([gated]);
+    on = true;
+    expect(registry.available()).toEqual([gated]);
+  });
+
+  it('does not run an unavailable command from its shortcut', () => {
+    const run = vi.fn();
+    const registry = new CommandRegistry();
+    registry.register(command({ enabled: () => false, shortcut: { key: 'g' }, run }));
+    dispatchShortcut(new KeyboardEvent('keydown', { key: 'g' }), registry, 'other');
+    expect(run).not.toHaveBeenCalled();
   });
 });

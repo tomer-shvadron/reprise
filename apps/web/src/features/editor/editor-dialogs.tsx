@@ -75,20 +75,6 @@ export function EditorDialogs() {
           onCloseAutoFocus={onCloseAutoFocus}
         />
       );
-    case 'notice':
-      return (
-        <LossDialog<'ok'>
-          open
-          title="Track"
-          description={dialog.message}
-          losses={[]}
-          choices={[]}
-          cancel="ok"
-          cancelLabel="OK"
-          onChoose={close}
-          onCloseAutoFocus={onCloseAutoFocus}
-        />
-      );
     default:
       return null;
   }

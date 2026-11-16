@@ -57,11 +57,6 @@ export function openAddTrack(services: TrackEditServices, returnFocus?: HTMLElem
   }
 }
 
-/** Tells the user why a command with no greyed-out form had no effect. */
-export function notify(services: TrackEditServices, message: string): void {
-  dialogsOf(services).getState().open({ kind: 'notice', message });
-}
-
 export type ApplyResult = { ok: true } | { ok: false; message: string };
 
 function attempt(run: () => void): ApplyResult {
@@ -139,22 +134,16 @@ export function removeTrackNow(services: TrackEditServices, id: Id): ApplyResult
   return result;
 }
 
-/**
- * Removes a track; one holding notes asks first, since only undo brings its notes back. From a
- * command (`explain`) the last track gets a notice instead of silence; the sidebar greys it out.
- */
+/** Removes a track; one holding notes asks first, since only undo brings its notes back. */
 export function requestRemoveTrack(
   services: TrackEditServices,
   id?: Id,
-  options: { returnFocus?: HTMLElement | null; explain?: boolean } = {},
+  options: { returnFocus?: HTMLElement | null } = {},
 ): void {
   const { score } = services.document.getState();
   const track = id === undefined ? currentTrackOf(services) : trackOf(services, id);
   if (!score || !track) return;
-  if (removeBlocker(services) !== undefined) {
-    if (options.explain === true) notify(services, `${LAST_TRACK_REASON}.`);
-    return;
-  }
+  if (removeBlocker(services) !== undefined) return;
   if (trackHasNotes(score, track.id)) {
     dialogsOf(services)
       .getState()
@@ -171,20 +160,8 @@ export function canMoveTrack(services: TrackEditServices, id: Id, delta: -1 | 1)
   return index >= 0 && index + delta >= 0 && index + delta < tracks.length;
 }
 
-export function moveTrackBy(
-  services: TrackEditServices,
-  id: Id,
-  delta: -1 | 1,
-  explain = false,
-): void {
-  if (!canMoveTrack(services, id, delta)) {
-    if (explain)
-      notify(
-        services,
-        delta < 0 ? 'This is already the first track.' : 'This is already the last track.',
-      );
-    return;
-  }
+export function moveTrackBy(services: TrackEditServices, id: Id, delta: -1 | 1): void {
+  if (!canMoveTrack(services, id, delta)) return;
   const index = (services.document.getState().score?.tracks ?? []).findIndex(
     (track) => track.id === id,
   );

@@ -1,10 +1,12 @@
 import type { Command } from '@/app/command-registry';
 
 import {
+  canMoveTrack,
   currentTrackOf,
   moveTrackBy,
   openAddTrack,
   openTrackProperties,
+  removeBlocker,
   requestRemoveTrack,
   type TrackEditServices,
 } from './track-edit';
@@ -28,6 +30,10 @@ export function trackEditCommands(services: TrackEditServices): TrackEditCommand
   const onCurrent = (run: (id: string) => void) => () => {
     const track = currentTrackOf(services);
     if (track) run(track.id);
+  };
+  const canMove = (delta: -1 | 1) => () => {
+    const track = currentTrackOf(services);
+    return track !== undefined && canMoveTrack(services, track.id, delta);
   };
   const add = () => {
     openAddTrack(services);
@@ -59,22 +65,26 @@ export function trackEditCommands(services: TrackEditServices): TrackEditCommand
     {
       id: 'track.remove',
       title: 'Remove track…',
+      // A score keeps at least one track.
+      enabled: () => removeBlocker(services) === undefined,
       run: () => {
-        requestRemoveTrack(services, undefined, { explain: true });
+        requestRemoveTrack(services);
       },
     },
     {
       id: 'track.moveUp',
       title: 'Move track up',
+      enabled: canMove(-1),
       run: onCurrent((id) => {
-        moveTrackBy(services, id, -1, true);
+        moveTrackBy(services, id, -1);
       }),
     },
     {
       id: 'track.moveDown',
       title: 'Move track down',
+      enabled: canMove(1),
       run: onCurrent((id) => {
-        moveTrackBy(services, id, 1, true);
+        moveTrackBy(services, id, 1);
       }),
     },
   ];

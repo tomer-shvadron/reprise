@@ -7,9 +7,7 @@ export type EditorDialog =
   | { kind: 'track'; mode: 'edit'; trackId: Id }
   | { kind: 'removeTrack'; trackId: Id }
   /** Unsaved changes stand in the way; `onContinue` runs once they are saved or dropped. */
-  | { kind: 'unsaved'; action: string; onContinue: () => void }
-  /** Why a keyboard or palette command did nothing, as those cannot be greyed out. */
-  | { kind: 'notice'; message: string };
+  | { kind: 'unsaved'; action: string; onContinue: () => void };
 
 export interface DialogsState {
   dialog: EditorDialog | undefined;

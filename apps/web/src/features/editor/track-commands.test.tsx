@@ -117,77 +117,28 @@ describe('the track commands', () => {
     run('track.remove');
     expect(names(services)).toEqual(['Drums']);
     expect(services.document.getState().revision).toBe(before);
-    // From the palette there is no greyed-out item, so the refusal is said aloud.
-    expect(screen.getByRole('dialog')).toHaveTextContent('A score keeps at least one track.');
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('say why a move at the end of the list did nothing', () => {
-    const { services, ids, run } = setupTracks();
+  it('drop out of the available commands where they could do nothing', () => {
+    const { services, ids, registry, run } = setupTracks();
+    const available = () => registry.available().map((command) => command.id);
     act(() => {
       services.selection.getState().setCurrentTrack(ids[0]);
     });
-    run('track.moveUp');
-    expect(screen.getByRole('dialog')).toHaveTextContent('This is already the first track.');
-    expect(names(services)).toEqual(['Lead', 'Bass', 'Drums']);
-  });
-
-  it('keeps single-track view on the current track when the shown track is removed', () => {
-    const { services, ids, run } = setupTracks();
+    expect(available()).not.toContain('track.moveUp');
+    expect(available()).toEqual(expect.arrayContaining(['track.moveDown', 'track.remove']));
     act(() => {
-      services.selection.getState().setCurrentTrack(ids[1]);
-      services.document.getState().setSingleTrack(ids[1]);
+      services.selection.getState().setCurrentTrack(ids[2]);
     });
+    expect(available()).not.toContain('track.moveDown');
+    expect(available()).toContain('track.moveUp');
+    // Drums, then Bass: both empty, so they go without asking.
     run('track.remove');
-    expect(services.selection.getState().currentTrack).toBe(ids[2]);
-    expect(services.document.getState().view.only).toBe(ids[2]);
-    act(() => {
-      services.document.getState().undo();
-    });
-    expect(names(services)).toEqual(['Lead', 'Bass', 'Drums']);
-    expect(services.document.getState().view.only).toBe(ids[2]);
-    expect(services.selection.getState().currentTrack).toBe(ids[2]);
-  });
-
-  it('ask before removing a track that holds notes, and keep it on Cancel', () => {
-    const { services, run } = setupTracks();
     run('track.remove');
-    const dialog = screen.getByRole('dialog', { name: 'Remove “Lead”?' });
-    expect(dialog).toHaveTextContent('Its notes go with it. Undo brings it back.');
-    act(() => {
-      screen.getByRole('button', { name: 'Cancel' }).click();
-    });
-    expect(names(services)).toEqual(['Lead', 'Bass', 'Drums']);
-    run('track.remove');
-    act(() => {
-      screen.getByRole('button', { name: 'Remove' }).click();
-    });
-    expect(names(services)).toEqual(['Bass', 'Drums']);
-  });
-
-  it('refuse to remove the last track', () => {
-    const { services, run } = setupTracks();
-    run('track.remove');
-    act(() => {
-      screen.getByRole('button', { name: 'Remove' }).click();
-    });
-    run('track.remove');
-    expect(names(services)).toEqual(['Drums']);
-    const before = services.document.getState().revision;
-    run('track.remove');
-    expect(names(services)).toEqual(['Drums']);
-    expect(services.document.getState().revision).toBe(before);
-    // From the palette there is no greyed-out item, so the refusal is said aloud.
-    expect(screen.getByRole('dialog')).toHaveTextContent('A score keeps at least one track.');
-  });
-
-  it('say why a move at the end of the list did nothing', () => {
-    const { services, ids, run } = setupTracks();
-    act(() => {
-      services.selection.getState().setCurrentTrack(ids[0]);
-    });
-    run('track.moveUp');
-    expect(screen.getByRole('dialog')).toHaveTextContent('This is already the first track.');
-    expect(names(services)).toEqual(['Lead', 'Bass', 'Drums']);
+    expect(names(services)).toEqual(['Lead']);
+    expect(available()).not.toContain('track.remove');
+    expect(available()).not.toContain('track.moveUp');
   });
 
   it('titles the removal of a track with no name by its position', () => {
