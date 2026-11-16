@@ -114,6 +114,7 @@ describe('layout', () => {
       expectValid(result);
       expectInsidePages(result, DEFAULT_MARGINS.paged);
       expect(result.systems.at(-1)?.bars.end).toBe(300);
+      // The words every staff now draws make each system of the 8-track score taller than a page.
       if (paper === 'a4') {
         // Every system splits in two, each part at its page's top.
         for (const system of result.systems) {

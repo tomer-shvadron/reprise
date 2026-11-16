@@ -124,14 +124,20 @@ describe('words on a standard staff', () => {
     const sharp = score()
       .track('guitar')
       .bar()
-      .beat('4', [note(1, 1)], { chord: { name: 'F#' } })
+      .beat('4', [note(1, 2)], { chord: { name: 'F#' } })
       .build({ ids: 'sequential' });
     const result = laid(sharp, 'standard');
     const head = result.primitives.find(
       (p) => p.kind === 'glyph' && p.glyph.startsWith('notehead'),
     );
+    const accidental = result.primitives.find(
+      (p) => p.kind === 'glyph' && p.glyph.startsWith('accidental'),
+    );
     const name = texts(result).find((p) => p.text === 'F#');
-    expect(head?.kind === 'glyph' && name?.x).toBeCloseTo(head?.kind === 'glyph' ? head.x : NaN, 5);
+    if (head?.kind !== 'glyph' || accidental?.kind !== 'glyph' || !name) throw new Error('missing');
+    expect(accidental.x).toBeLessThan(head.x);
+    expect(name.x).toBeCloseTo(head.x, 5);
+    expect(name.x).toBeGreaterThan(accidental.x + accidental.bbox.width - 1e-6);
   });
 
   it('cuts the last bar of a system with an ellipsis', () => {

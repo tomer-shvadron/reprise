@@ -94,7 +94,7 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
         }
         if (drawsWords(input)) {
           const words = wordsExtent(beat.beat, wordStart(beat), input.space);
-          onset.left = Math.max(onset.left, words.left);
+          onset.left = Math.max(onset.left, words.left - (beat.shift ?? 0));
           onset.right = Math.max(onset.right, (beat.shift ?? 0) + words.right);
         }
         return onset;

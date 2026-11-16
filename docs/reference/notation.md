@@ -168,7 +168,7 @@ A standard or percussion staff that is its track's only staff draws the words a 
 
 - **Lanes.** The same three lanes and sizes as the tab: `chord` (2.2 spaces) and `text` (2) above the staff, outside the effect lanes and in the order of the lane table, and `lyrics` below it, after the dynamics lane, 2 spaces per line used. A lane exists in a system when a bar of it has the row, and every bar of the system writes it at the same height. A system that gains a lane gets taller, as it does on the tab; in the continuous layout that is the shared vertical layout's height changing, which re-renders every segment (see the layout README, and #229).
 - **Position.** A chord name or beat text starts at the left edge of the beat's heads, accidentals left out (a rest: its left edge); syllables are centred on the beat's x. Words keep the room their beat measured, and in a system's last bar they are cut at the bar's content end with an ellipsis, as on the tab.
-- **Hyphens** stay attached to their syllable (`lo-`), as the readers store them; centring a hyphen in the gap to the next syllable is a follow-up.
+- **Hyphens** stay attached to their syllable (`lo-`), as the readers store them; centring a hyphen in the gap to the next syllable is a follow-up, with a word on a whole-bar rest running past its bar and an empty syllable's reserved gap (#280).
 - Every word primitive carries `node = beat.id`. The beat's hit box is the one the staff already gives it; a word outside it is not a hit target, on the tab either.
 
 ## Both mode (WP-023)
