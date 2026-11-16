@@ -5,9 +5,7 @@ import { create } from 'zustand';
 export type EditorDialog =
   | { kind: 'track'; mode: 'add' }
   | { kind: 'track'; mode: 'edit'; trackId: Id }
-  | { kind: 'removeTrack'; trackId: Id }
-  /** Unsaved changes stand in the way; `onContinue` runs once they are saved or dropped. */
-  | { kind: 'unsaved'; action: string; onContinue: () => void };
+  | { kind: 'removeTrack'; trackId: Id };
 
 export interface DialogsState {
   dialog: EditorDialog | undefined;

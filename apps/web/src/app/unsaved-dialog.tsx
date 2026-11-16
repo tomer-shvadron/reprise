@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 import { useStore } from 'zustand';
 
-import { LossDialog } from '@/app/loss-dialog';
-import { useAppServices } from '@/app/services-context';
+import { LossDialog } from './loss-dialog';
+import { useAppServices } from './services-context';
+import { unsavedOf } from './when-saved';
 
 type Answer = 'save' | 'discard' | 'cancel';
 
@@ -70,6 +71,27 @@ export function UnsavedChangesDialog({
       busy={saving}
       onChoose={choose}
       {...(onCloseAutoFocus && { onCloseAutoFocus })}
+    />
+  );
+}
+
+/** Mounts the dialog `whenSaved` asks through; one instance in the app. */
+export function UnsavedChangesHost() {
+  const services = useAppServices();
+  const store = unsavedOf(services);
+  const request = useStore(store, (state) => state.request);
+  if (!request) return null;
+  const close = () => {
+    store.getState().close();
+  };
+  return (
+    <UnsavedChangesDialog
+      action={request.action}
+      onContinue={() => {
+        close();
+        request.onContinue();
+      }}
+      onCancel={close}
     />
   );
 }

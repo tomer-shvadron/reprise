@@ -52,5 +52,3 @@ export { trackEditCommands, type TrackEditCommandId } from './track-commands';
 export { EditorDialogs } from './editor-dialogs';
 export { AddTrackButton, TrackRowMenu } from './track-menu';
 export { createNewSong, startNewSong } from './new-song';
-export { whenSaved } from './when-saved';
-export { UnsavedChangesDialog } from './unsaved-dialog';

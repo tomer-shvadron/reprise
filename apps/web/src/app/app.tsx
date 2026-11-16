@@ -26,6 +26,7 @@ import { ScreenHost } from './screen-host';
 import type { AppServices } from './services';
 import { AppServicesProvider } from './services-context';
 import { installShortcutDispatcher, menuCommandAllowed } from './shortcut-dispatcher';
+import { UnsavedChangesHost } from './unsaved-dialog';
 import { CommandSourceContext } from './use-command';
 
 // Module-level so the sidebar's memoised rows see the same function every render.
@@ -136,6 +137,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
         <Notices />
         <SavePromptDialog />
         <EditorDialogs />
+        <UnsavedChangesHost />
         <PrintDialog store={services.print} />
         <PrintRoot store={services.print} />
       </TooltipProvider>
