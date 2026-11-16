@@ -535,8 +535,16 @@ release regions (`resolveRelease`, with the note's own `layer` and `select`) at 
 often the handle is released. They never start on a choke, a steal, `allNotesOff` or a preview,
 and a note already cut short by one of them has none. A release voice is a one-shot, so a later
 release does not cut it, and it carries string 0, so the next note on the string, which normally
-starts at the previous note's release, does not choke it. It counts in the polyphony like any
-voice, `allNotesOff` still stops it (one waiting to start never sounds), and `Region.releaseDecay`
+starts at the previous note's release, does not choke it.
+
+The release voices belong to their note. The sink calls `release` at scheduling time, so a tail can
+exist seconds before it starts (a let-ring note's waits for the bar end); a choke or steal of the
+note at `t` cancels its tails that have not started by `t` (they never sound), while one already
+sounding plays out. A release voice never steals: when the pool is full at its start it is skipped
+and counted (`Sampler.skippedReleases`), since release noise is decoration. It is also the first
+voice a later note steals (a waiting one is cancelled, a sounding one fades), so it holds no slot
+from the note-on. Otherwise it counts in the polyphony like any voice, `allNotesOff` still stops
+it (one waiting to start never sounds), and `Region.releaseDecay`
 (`rt_decay`) lowers it by that many dB for each second the note was held. A release sample that is
 not resident is a miss like any other: skipped, its load requested, `onMiss` told. A note with no
 release regions gets the plain voice handle as before, so GM playback is unchanged.
@@ -605,7 +613,7 @@ soloed one; it still goes through the insert, the fader and the panner.
 - **SFZ choke is one-way.** A new note's groups are `region.group ?? region.exclusiveClass ?? 0`; it
   chokes voices whose `offBy ?? exclusiveClass ?? 0` is among them (0 is none). For SF2 that is
   today's same-class choke; for SFZ, closed cuts open and open does not cut closed.
-- **Stealing** is released voices first, then the quietest at the new note's time, then the
+- **Stealing** is released voices and release-region tails first, then the quietest at the new note's time, then the
   oldest. Quietest is what the voice plays: envelope × velocity × the articulation gain automation
   (a palm mute's -18 dB, a fade-in from -48 dB), all computed analytically. A note that has not
   started yet, or starts with the new one (its own layers, a chord), is stolen only when every
