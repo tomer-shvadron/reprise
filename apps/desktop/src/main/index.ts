@@ -189,14 +189,16 @@ registerInvokeHandlers(
     },
     'download:start': async (event, id, url, to, sha256, maxBytes) => {
       const contents = event.sender;
+      const owner = contents.id;
       // The window closing or reloading ends its downloads: nobody is left to answer them.
       const abandon = () => {
-        downloads.cancel(id);
+        downloads.cancel(owner, id);
       };
       contents.once('destroyed', abandon);
       contents.once('did-navigate', abandon);
       try {
         return await downloads.start({
+          owner,
           id,
           url,
           to,
@@ -219,8 +221,8 @@ registerInvokeHandlers(
         contents.removeListener('did-navigate', abandon);
       }
     },
-    'download:cancel': (_event, id) => {
-      downloads.cancel(id);
+    'download:cancel': (event, id) => {
+      downloads.cancel(event.sender.id, id);
       return Promise.resolve(undefined);
     },
     'app:library-dir': () => Promise.resolve(libraryDir),

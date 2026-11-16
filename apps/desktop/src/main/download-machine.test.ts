@@ -193,4 +193,38 @@ describe('runDownload', () => {
       [12, 12],
     ]);
   });
+
+  it('fails as a timeout when no chunk arrives within the idle limit, and discards', async () => {
+    const { sink, events } = fakeSink();
+    let released = false;
+    const body = (async function* () {
+      yield a;
+      try {
+        await new Promise(() => undefined);
+      } finally {
+        released = true;
+      }
+    })();
+
+    await expect(
+      run({ source: source(body), sha256: sha(a), idleTimeoutMs: 30 }, sink),
+    ).rejects.toMatchObject({ reason: 'timeout' });
+
+    expect(events).toEqual(['write:3', 'discard']);
+    expect(released).toBe(false);
+  });
+
+  it('does not time out while chunks keep arriving', async () => {
+    const { sink } = fakeSink();
+    const body = (async function* () {
+      for (const c of [a, b]) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        yield c;
+      }
+    })();
+
+    await expect(
+      run({ source: source(body), sha256: sha(a, b), idleTimeoutMs: 60 }, sink),
+    ).resolves.toEqual({ size: 5 });
+  });
 });

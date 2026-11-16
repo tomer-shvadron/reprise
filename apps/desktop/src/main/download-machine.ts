@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 /** Why a download ended without a file; `message` is what the renderer's promise rejects with. */
-export type DownloadFailure = 'cancelled' | 'too-large' | 'hash-mismatch';
+export type DownloadFailure = 'cancelled' | 'too-large' | 'hash-mismatch' | 'timeout';
 
 export class DownloadError extends Error {
   readonly reason: DownloadFailure;
@@ -37,7 +37,31 @@ export interface RunDownload {
   onProgress: (loaded: number, total?: number) => void;
   /** Progress is passed on at most this often, plus once at the end. */
   progressIntervalMs?: number;
+  /** The download fails when no chunk arrives for this long; 30 s by default. */
+  idleTimeoutMs?: number;
   now?: () => number;
+}
+
+/**
+ * The next chunk, or a `timeout` failure when none comes within `ms`; the stream is then
+ * released (its `return`, not awaited: a stalled one may never answer).
+ */
+async function nextWithin(
+  iterator: AsyncIterator<Uint8Array>,
+  ms: number,
+): Promise<IteratorResult<Uint8Array>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const idle = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      void iterator.return?.().catch(() => undefined);
+      reject(new DownloadError('timeout', 'The download stalled: no data arrived'));
+    }, ms);
+  });
+  try {
+    return await Promise.race([iterator.next(), idle]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const cancelled = () => new DownloadError('cancelled', 'The download was cancelled');
@@ -55,11 +79,13 @@ export async function runDownload({
   signal,
   onProgress,
   progressIntervalMs = 100,
+  idleTimeoutMs = 30_000,
   now = Date.now,
 }: RunDownload): Promise<{ size: number }> {
   // A function, not `signal.aborted` inline: the flag changes across awaits, which control-flow
   // analysis cannot see.
   const isAborted = () => signal.aborted;
+  let iterator: AsyncIterator<Uint8Array> | undefined;
   try {
     if (isAborted()) throw cancelled();
     if (source.total !== undefined && source.total > maxBytes) {
@@ -71,7 +97,12 @@ export async function runDownload({
     const hash = createHash('sha256');
     let loaded = 0;
     let lastReport = Number.NEGATIVE_INFINITY;
-    for await (const chunk of source.body) {
+    const stream = source.body[Symbol.asyncIterator]();
+    iterator = stream;
+    for (;;) {
+      const next = await nextWithin(stream, idleTimeoutMs);
+      if (next.done) break;
+      const chunk = next.value;
       if (isAborted()) throw cancelled();
       loaded += chunk.byteLength;
       if (loaded > maxBytes) {
@@ -96,6 +127,8 @@ export async function runDownload({
     onProgress(loaded, source.total);
     return { size: loaded };
   } catch (error) {
+    // What `for await` did on an early exit: release the stream, without waiting on it.
+    void iterator?.return?.().catch(() => undefined);
     await sink.discard();
     throw error;
   }

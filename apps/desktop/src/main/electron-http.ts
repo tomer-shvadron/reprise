@@ -11,7 +11,7 @@ import type { HttpGet } from './download-http';
  */
 export const electronGet: HttpGet = (url, signal) =>
   new Promise((resolve, reject) => {
-    const request = net.request({ url, method: 'GET', redirect: 'manual' });
+    const request = net.request({ url, method: 'GET', redirect: 'manual', credentials: 'omit' });
     const abort = () => {
       request.abort();
       reject(new Error('The download was cancelled'));

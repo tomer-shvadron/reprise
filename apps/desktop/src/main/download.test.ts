@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync }
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createDownloadManager } from './download';
 import type { HttpGet, HttpHop } from './download-http';
@@ -43,6 +43,7 @@ const okGet = (bytes: Uint8Array = payload): HttpGet => {
 const job = (
   over: Partial<Parameters<ReturnType<typeof createDownloadManager>['start']>[0]> = {},
 ) => ({
+  owner: 1,
   id: 'd1',
   url: 'https://example.com/pack.zip',
   to: 'data/sounds/pack.zip',
@@ -117,32 +118,129 @@ describe('the download manager', () => {
 
     const pending = manager.start(job());
     await new Promise((r) => setTimeout(r, 20));
-    manager.cancel('d1');
+    manager.cancel(1, 'd1');
     release();
 
     await expect(pending).rejects.toMatchObject({ reason: 'cancelled' });
     expect(readdirSync(soundsDir())).toEqual([]);
   });
 
-  it('refuses an id already in use, and lets it be reused afterwards', async () => {
-    let release: () => void = () => undefined;
+  /** A `get` that answers each request only when the test calls the matching release. */
+  function gated() {
+    const releases: (() => void)[] = [];
     const get: HttpGet = () =>
       new Promise((resolve) => {
-        release = () => {
+        releases.push(() => {
           resolve({ status: 200, close: () => undefined, body: okBody() });
-        };
+        });
       });
+    const releaseAll = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      for (const release of releases) release();
+    };
+    return { get, releaseAll };
+  }
+
+  it('refuses an id already in use, and lets the same manager reuse it afterwards', async () => {
+    const { get, releaseAll } = gated();
     const manager = createDownloadManager({ roots, get });
 
     const first = manager.start(job());
     await expect(manager.start(job())).rejects.toThrow(/already running/);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    release();
+    await releaseAll();
     await first;
 
-    await expect(createDownloadManager({ roots, get: okGet() }).start(job())).resolves.toEqual({
-      size: 6,
-    });
+    const again = manager.start(job());
+    await releaseAll();
+    await expect(again).resolves.toEqual({ size: 6 });
+  });
+
+  it('allows four downloads at once and refuses a fifth until one ends', async () => {
+    const { get, releaseAll } = gated();
+    const manager = createDownloadManager({ roots, get });
+
+    const running = ['a', 'b', 'c', 'd'].map((id) =>
+      manager.start(job({ id, to: `data/sounds/${id}.zip` })),
+    );
+    await expect(manager.start(job({ id: 'e', to: 'data/sounds/e.zip' }))).rejects.toThrow(
+      /Too many downloads/,
+    );
+    await releaseAll();
+    await Promise.all(running);
+
+    const fifth = manager.start(job({ id: 'e', to: 'data/sounds/e.zip' }));
+    await releaseAll();
+    await expect(fifth).resolves.toEqual({ size: 6 });
+  });
+
+  it('scopes ids to the window: another window can neither collide with nor cancel one', async () => {
+    const { get, releaseAll } = gated();
+    const manager = createDownloadManager({ roots, get });
+
+    const mine = manager.start(job({ owner: 1 }));
+    const theirs = manager.start(job({ owner: 2, to: 'data/sounds/other.zip' }));
+    manager.cancel(2, 'nope');
+    manager.cancel(3, 'd1');
+    await releaseAll();
+
+    await expect(mine).resolves.toEqual({ size: 6 });
+    await expect(theirs).resolves.toEqual({ size: 6 });
+  });
+
+  it('cancels only the owner’s download of that id', async () => {
+    const { get, releaseAll } = gated();
+    const manager = createDownloadManager({ roots, get });
+
+    const mine = manager.start(job({ owner: 1 }));
+    const theirs = manager.start(job({ owner: 2, to: 'data/sounds/other.zip' }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    manager.cancel(2, 'd1');
+    await releaseAll();
+
+    await expect(theirs).rejects.toMatchObject({ reason: 'cancelled' });
+    await expect(mine).resolves.toEqual({ size: 6 });
+  });
+
+  it('ends a download whose body stalls as a timeout and deletes the part file', async () => {
+    const get: HttpGet = () =>
+      Promise.resolve<HttpHop>({
+        status: 200,
+        close: () => undefined,
+        body: (async function* () {
+          yield payload.subarray(0, 2);
+          await new Promise(() => undefined);
+        })(),
+      });
+    const manager = createDownloadManager({ roots, get, idleTimeoutMs: 40 });
+
+    await expect(manager.start(job())).rejects.toMatchObject({ reason: 'timeout' });
+
+    expect(readdirSync(soundsDir())).toEqual([]);
+  });
+
+  it('ends a request that never answers as a timeout', async () => {
+    const get: HttpGet = (_url, signal) =>
+      new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => {
+          reject(new Error('aborted'));
+        });
+      });
+    const manager = createDownloadManager({ roots, get, idleTimeoutMs: 40 });
+
+    await expect(manager.start(job())).rejects.toMatchObject({ reason: 'timeout' });
+  });
+
+  it('aborts the request signal when the download ends, so the response closes', async () => {
+    let seen: AbortSignal | undefined;
+    const get: HttpGet = (_url, signal) => {
+      seen = signal;
+      return okGet()(_url, signal);
+    };
+    const manager = createDownloadManager({ roots, get });
+
+    await manager.start(job({ sha256: '0'.repeat(64) })).catch(() => undefined);
+
+    expect(seen?.aborted).toBe(true);
   });
 
   it('refuses a Content-Length over maxBytes and writes no file', async () => {
@@ -170,11 +268,17 @@ describe('the download manager', () => {
     expect(existsSync(soundsDir())).toBe(false);
   });
 
-  it('refuses a target that escapes its root, before any request', async () => {
-    const manager = createDownloadManager({ roots, get: okGet() });
+  it.each([['data/sounds/../x.zip'], ['library/a.zip'], ['data/other/a.zip'], ['data/sounds-x/a']])(
+    'refuses the target %s before any request',
+    async (to) => {
+      const get = vi.fn(okGet());
+      const manager = createDownloadManager({ roots, get });
 
-    await expect(manager.start(job({ to: 'data/sounds/../x.zip' }))).rejects.toThrow();
-  });
+      await expect(manager.start(job({ to }))).rejects.toThrow();
+
+      expect(get).not.toHaveBeenCalled();
+    },
+  );
 });
 
 async function* okBody() {

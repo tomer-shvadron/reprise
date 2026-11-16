@@ -21,18 +21,20 @@ export interface FakeDownloadScript {
 
 /**
  * A desktop `Platform.download` for tests: reports the scripted progress, then either fails or
- * writes the bytes through `storage.writeFile`, with the real contract's checks on `to`
- * (a storage path under `data/sounds/`). An aborted `signal` rejects with an `AbortError` and
+ * writes the bytes through `storage.writeFile`, with the real contract's checks: an `https:` URL,
+ * `to` a storage path under `data/sounds/`, and the bytes within `maxBytes`. An aborted `signal` rejects with an `AbortError` and
  * writes nothing. The browser has no `download`, so `fakePlatform` leaves it out by default.
  */
 export function fakeDownload(
   storage: Pick<Platform, 'writeFile'>,
   script: FakeDownloadScript = {},
 ): NonNullable<Platform['download']> {
-  return async ({ to, onProgress, signal }) => {
+  return async ({ url, to, maxBytes, onProgress, signal }) => {
+    if (!url.startsWith('https://')) throw new Error('Only https: URLs are downloaded');
     parseStoragePath(to);
     if (!to.startsWith('data/sounds/')) throw new Error('A download goes under data/sounds/');
     const bytes = script.bytes ?? new Uint8Array();
+    if (bytes.byteLength > maxBytes) throw new Error('The download is over maxBytes');
     const abort = () => new DOMException('The download was cancelled', 'AbortError');
     if (signal?.aborted) throw abort();
     for (const loaded of script.progress ?? []) {

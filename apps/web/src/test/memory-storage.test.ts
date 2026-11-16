@@ -179,4 +179,21 @@ describe('ranged reads and the scripted download in the platform double', () => 
 
     expect(storage.paths()).toEqual([]);
   });
+
+  it('refuses an http: URL and bytes over maxBytes', async () => {
+    const storage = createMemoryStorage();
+    const request = {
+      url: 'https://example.com/a.zip',
+      to: 'data/sounds/a.zip',
+      sha256: 'a'.repeat(64),
+      maxBytes: 2,
+    };
+    const download = fakeDownload(storage.calls, { bytes: bytes(1, 2, 3) });
+
+    await expect(download({ ...request, url: 'http://example.com/a.zip' })).rejects.toThrow(
+      /https/,
+    );
+    await expect(download(request)).rejects.toThrow(/maxBytes/);
+    expect(storage.paths()).toEqual([]);
+  });
 });
