@@ -130,3 +130,87 @@ describe('the sampler sink fills select', () => {
     expect(toneLevel(without, 770, 0.55, 0.8)).toBeLessThan(0.001);
   });
 });
+
+describe('the legato trigger follows the layer that plays', () => {
+  const hammer = hammered.notes[0] ?? note(1, 5);
+  const regions = [
+    region({ ...at69, sample: 'a', trigger: 'first' }),
+    // A hammer-on in this keyswitch layer has a legato region; one in the default layer has none.
+    region({ ...at69, sample: 'c', trigger: 'legato', layer: 'sw:27' }),
+  ];
+  const voicing: Voicing = { sets: {}, legatoTrigger: true };
+
+  it('plays the attack on a hammer-on in a layer without legato regions', async () => {
+    const data = await run(regions, { voicingFor: () => voicing }, (sink) => {
+      sink.noteOn(event(plain, note(1, 5), 0));
+      sink.noteOn(event(hammered, hammer, 0.5));
+    });
+    expect(toneLevel(data, 440, 0.55, 0.8)).toBeGreaterThan(0.05);
+  });
+
+  it('asks the map about the layer, with the default layer as the fallback', () => {
+    const map = new RegionMap(regions);
+    expect(map.hasLegatoRegions).toBe(true);
+    expect(map.hasLegatoRegionsIn()).toBe(false);
+    expect(map.hasLegatoRegionsIn('sw:27')).toBe(true);
+    expect(map.hasLegatoRegionsIn('sw:99')).toBe(false);
+  });
+});
+
+describe('a legato slide carries its voice into a palm-muted note', () => {
+  const sustain = region({ ...at69, sample: 'a' });
+  const mute = region({ ...at69, sample: 'b', layer: 'sw:25' });
+  const origin = note(1, 5, { slide: ['legato'] });
+  const target = (palmMute: boolean) => note(1, 5, { palmMute });
+
+  /** The 440 Hz level over the target's second 100 ms: the origin's voice, if it carries. */
+  const carried = async (options: SamplerSinkOptions, palmMute: boolean): Promise<number> => {
+    const data = await run([sustain, mute], options, (sink) => {
+      sink.noteOn({
+        ...event(plain, origin, 0),
+        duration: 0.4,
+        nextOnString: { beat: plain, note: target(palmMute), when: 0.4 },
+      });
+      sink.noteOn({ ...event(plain, target(palmMute), 0.4), duration: 0.5 });
+    });
+    return toneLevel(data, 440, 0.65, 0.75);
+  };
+
+  const withMuteLayer: SamplerSinkOptions = {
+    voicingFor: () => ({ sets: { palmMute: { layer: 'sw:25' } } }),
+  };
+
+  it('keeps the synthesized palm mute, since the voice keeps the sustain sample', async () => {
+    const open = await carried(withMuteLayer, false);
+    const muted = await carried(withMuteLayer, true);
+    const synthesized = await carried({}, true);
+    expect(open).toBeGreaterThan(0.05);
+    // 18 dB down by 250 ms, as on a pack without the layer.
+    expect(muted).toBeLessThan(open * 0.4);
+    expect(muted).toBeCloseTo(synthesized, 2);
+  });
+
+  it("keeps the first note's set across a second carry, so a palm-muted third note is not decayed twice", async () => {
+    const slid = note(1, 5, { slide: ['legato'] });
+    const mutedSlid = note(1, 5, { slide: ['legato'], palmMute: true });
+    const data = await run([sustain, mute], withMuteLayer, (sink) => {
+      // Palm mute (layer, 660 Hz) slides into an open note, which slides into a palm mute again.
+      sink.noteOn({
+        ...event(plain, mutedSlid, 0),
+        duration: 0.4,
+        nextOnString: { beat: plain, note: slid, when: 0.4 },
+      });
+      sink.noteOn({
+        ...event(plain, slid, 0.4),
+        duration: 0.4,
+        nextOnString: { beat: plain, note: target(true), when: 0.8 },
+      });
+      sink.noteOn({ ...event(plain, target(true), 0.8), duration: 0.6 });
+    });
+    const first = toneLevel(data, 660, 0.15, 0.25);
+    const third = toneLevel(data, 660, 1.05, 1.15);
+    expect(first).toBeGreaterThan(0.05);
+    // The layer's sample is already muted: no 18 dB decay is added on the third note.
+    expect(third).toBeGreaterThan(first * 0.6);
+  });
+});

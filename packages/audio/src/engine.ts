@@ -8,6 +8,8 @@ import type { EffectStage } from './effects/presets';
 import { Sampler } from './sampler/sampler';
 import type { Instrument, PreviewNote, PreviewOptions, TrackParams } from './sampler/sampler';
 import { createSamplerSink } from './sampler/sampler-sink';
+import { ARTICULATION_SETS, setsOfLayers } from './articulations/sets';
+import type { ArticulationSet, PlanVoicing, Voicing } from './articulations/sets';
 import {
   DEFAULT_PRELOAD_BARS,
   GM_BUDGET_BYTES,
@@ -22,6 +24,7 @@ import type { Sf2Soundfont } from './sf2/soundfont';
 import { loadSfz } from './sfz/load';
 import { SfzPack } from './sfz/pack';
 import type { SfzFiles } from './sfz/pack';
+import type { SfzLayer } from './sfz/resolve';
 import type { RegionMap } from './sampler/region-map';
 import { tierOf } from './tier';
 import type { Ticker } from './ticker';
@@ -214,6 +217,8 @@ export interface AudioEngineDebug {
   assignments?: ReadonlyMap<Id, string>;
   /** The packs the router can fetch from, by install (`<packId>@<n>`). */
   packs?: readonly string[];
+  /** Per track, the `entries` keys of its pack that are not played: not a set, or a file that failed. */
+  skippedEntries?: ReadonlyMap<Id, readonly string[]>;
 }
 
 const debuggers = new WeakMap<AudioEngine, () => AudioEngineDebug>();
@@ -252,11 +257,21 @@ function checkVolume(method: string, volume: number): void {
 interface LoadedPack {
   assignment: PackAssignment;
   key: string;
+  /** `key` and every other entry: a change in any of them loads the track again. */
+  signature: string;
   id: InstrumentId;
   instrument: Instrument;
   regions: RegionMap;
   /** The pack object behind the router, for this install of the files. */
   sfz: SfzPack;
+  /** What the pack offers beyond its default instrument, for the sink. */
+  voicing: Voicing;
+  /** The same table as ids, for the planner. */
+  planned: PlanVoicing;
+  /** The region maps of the pack's per-file sets, by instrument id. */
+  setMaps: ReadonlyMap<InstrumentId, RegionMap>;
+  /** The `entries` keys ignored (not a set) or dropped (their file failed), for `debugAudioEngine`. */
+  skipped: readonly string[];
 }
 
 /** A parsed default SFZ of one install: shared by every track and load that names it. */
@@ -264,6 +279,7 @@ interface ParsedEntry {
   id: InstrumentId;
   regions: RegionMap;
   sfz: SfzPack;
+  layers: SfzLayer[];
 }
 
 let installCount = 0;
@@ -395,8 +411,18 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     return bank.instrumentId(track, program);
   };
 
+  /** How the planner places a song's notes: the track's instrument, and each set's file or layer. */
+  const planOptions = {
+    instrumentOf: instrumentIdFor,
+    voicingFor: (track: Track): PlanVoicing | undefined => loadedPacks.get(track.id)?.planned,
+  };
+
   const regionMapOf = (id: InstrumentId): RegionMap | undefined => {
-    for (const entry of loadedPacks.values()) if (entry.id === id) return entry.regions;
+    for (const entry of loadedPacks.values()) {
+      if (entry.id === id) return entry.regions;
+      const own = entry.setMaps.get(id);
+      if (own) return own;
+    }
     return bank?.regionMap(id);
   };
 
@@ -477,12 +503,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       // An HQ track keeps its pack through a beat's program change.
       instrumentOf: (track, program) =>
         loadedPacks.has(track.id) ? undefined : bank?.instrument(track, program),
-      // The articulation sets are the engine's next step; until then a pack's voicing is whether
-      // its default map has legato regions for a hammer-on to start.
-      voicingFor: (track) => {
-        const regions = loadedPacks.get(track.id)?.regions;
-        return regions && { sets: {}, legatoTrigger: regions.hasLegatoRegions };
-      },
+      voicingFor: (track) => loadedPacks.get(track.id)?.voicing,
     });
     const transport = createTransport({
       context,
@@ -533,7 +554,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   function decode(next: Score): Promise<LoadResult> {
     if (!source || !bank) return Promise.reject(new Error('AudioEngine.load: no sound bank'));
     const decoding = source
-      .load(next, regionMapOf, { instrumentOf: instrumentIdFor })
+      .load(next, regionMapOf, planOptions)
       .then((plan) => ({ instruments: plan.instruments, fallbacks: [] }));
     latestDecode = decoding;
     return decoding;
@@ -553,7 +574,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     loadTokens.set(id, token);
     const started = song;
     const current = () => started === song && loadTokens.get(id) === token;
-    const plan = planInstruments(next, { instrumentOf: instrumentIdFor });
+    const plan = planInstruments(next, planOptions);
     const trackPlan = plan.tracks.find((entry) => entry.track === id);
     const refs = trackPlan
       ? planSamples({ instruments: plan.instruments, tracks: [trackPlan] }, regionMapOf)
@@ -643,7 +664,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
         if (!track) return undefined;
         const plan = planInstruments(
           { ...next, tracks: [track] },
-          { bars: DEFAULT_PRELOAD_BARS, instrumentOf: instrumentIdFor },
+          { ...planOptions, bars: DEFAULT_PRELOAD_BARS },
         );
         const refs = planSamples(plan, regionMapOf);
         const results = await Promise.allSettled(refs.map((ref) => managed.getBuffer(ref)));
@@ -692,7 +713,8 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
         const parsed = await loadSfz(path, (file) => pack.files.read(file), { packId: sfz.id });
         if (parsed.regions.length === 0) throw new Error(`${path} maps no regions`);
         const id = packInstrumentId(sfz.id, path);
-        return { id, sfz, regions: sfz.adopt(parsed, { id }).regions };
+        const adopted = sfz.adopt(parsed, { id });
+        return { id, sfz, regions: adopted.regions, layers: adopted.layers };
       })();
       parsing = own;
       parses.set(path, own);
@@ -701,6 +723,63 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       });
     }
     return parsing;
+  }
+
+  /** The assignment's whole `entries`, in key order: any change to it loads the track again. */
+  function signatureOf({ pack, entries }: PackAssignment): string {
+    const rest = Object.keys(entries)
+      .filter((set) => set !== 'default')
+      .sort()
+      .map((set) => `|${set}=${entries[set] ?? ''}`);
+    return `${pack.id}:${entries.default ?? ''}${rest.join('')}`;
+  }
+
+  /**
+   * The sets a pack has beyond its default: each `entries.<set>` file becomes an instrument of
+   * its own, and a labelled keyswitch layer of the default file names a set too, an explicit file
+   * winning. A file that fails drops only its set, and a key that names no set is ignored; both
+   * are listed for `debugAudioEngine` and nothing else.
+   */
+  async function resolveSets(assignment: PackAssignment, layers: readonly SfzLayer[]) {
+    const { pack, entries } = assignment;
+    const voicing: Voicing['sets'] = {};
+    const planned: PlanVoicing = {};
+    const ids: { id: InstrumentId; regions: RegionMap }[] = [];
+    const skipped: string[] = [];
+    const named = Object.keys(entries)
+      .filter((set) => set !== 'default')
+      .sort();
+    await Promise.all(
+      named.map(async (name) => {
+        const path = entries[name];
+        const set = ARTICULATION_SETS.find((known) => known === name);
+        if (set === undefined || path === undefined) {
+          skipped.push(name);
+          return;
+        }
+        try {
+          const parsed = await parseEntry(pack, path);
+          voicing[set] = { instrument: { regions: parsed.regions, source: required(source) } };
+          planned[set] = { instrument: parsed.id };
+          ids.push({ id: parsed.id, regions: parsed.regions });
+        } catch {
+          skipped.push(name);
+        }
+      }),
+    );
+    for (const [set, found] of Object.entries(setsOfLayers(layers))) {
+      const known: ArticulationSet | undefined = ARTICULATION_SETS.find((name) => name === set);
+      if (known === undefined || voicing[known] || !found.layer) continue;
+      voicing[known] = found;
+      planned[known] = { layer: found.layer };
+    }
+    return {
+      voicing,
+      planned,
+      ids,
+      maps: ids.map((entry) => entry.regions),
+      skipped: skipped.sort(),
+    };
   }
 
   /**
@@ -722,14 +801,14 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     for (const assignment of assignments) {
       if (!tracks.has(assignment.trackId)) continue;
       const { trackId, pack } = assignment;
-      const key = `${pack.id}:${assignment.entries.default ?? ''}`;
+      const signature = signatureOf(assignment);
       const ok = loadedPacks.get(trackId);
-      if (ok && ok.key === key && ok.assignment.pack.files === pack.files) {
+      if (ok && ok.signature === signature && ok.assignment.pack.files === pack.files) {
         loaded.set(trackId, { ...ok, assignment });
         continue;
       }
       const bad = failedPacks.get(trackId);
-      if (bad && bad.key === key && bad.files === pack.files) {
+      if (bad && bad.key === signature && bad.files === pack.files) {
         failed.set(trackId, bad);
         continue;
       }
@@ -743,18 +822,26 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
         const key = `${pack.id}:${path ?? ''}`;
         try {
           if (path === undefined) throw new Error('the assignment has no default entry');
-          const { id, regions, sfz } = await parseEntry(pack, path);
+          const { id, regions, sfz, layers } = await parseEntry(pack, path);
+          const sets = await resolveSets(assignment, layers);
+          const hasLegato =
+            regions.hasLegatoRegions || sets.maps.some((map) => map.hasLegatoRegions);
           loaded.set(trackId, {
             assignment,
             key,
+            signature: signatureOf(assignment),
             id,
             regions,
             sfz,
             instrument: { regions, source: required(source) },
+            voicing: { sets: sets.voicing, legatoTrigger: hasLegato },
+            planned: sets.planned,
+            setMaps: new Map(sets.ids.map(({ id: setId, regions: map }) => [setId, map])),
+            skipped: sets.skipped,
           });
         } catch (error) {
           failed.set(trackId, {
-            key,
+            key: signatureOf(assignment),
             files: pack.files,
             fallback: {
               trackId,
@@ -1108,6 +1195,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     ...(source && { source }),
     ...(bank && { bank }),
     assignments: new Map([...loadedPacks].map(([id, entry]) => [id, entry.key])),
+    skippedEntries: new Map([...loadedPacks].map(([id, entry]) => [id, entry.skipped])),
     ...(router && { packs: router.packIds() }),
   }));
   if (typeof options.context !== 'function') makeLive(options.context);

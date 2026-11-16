@@ -44,7 +44,7 @@ export const ARTICULATION = {
 
   palmMute: { cutoff: 900, decayTo: -18, decayTime: 0.25 },
   harmonic: { shelfFrequency: 2000, shelfGain: 6 },
-  dead: { length: 0.08, cutoff: 2500 },
+  dead: { length: 0.08, sampledLength: 0.25, cutoff: 2500 },
 
   staccatoFraction: 0.5,
   /** Where fade-in, fade-out and volume swell start or end. */
