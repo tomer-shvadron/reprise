@@ -61,7 +61,25 @@ shell wiring, which is one separate integration commit).
 - **Delete** (`library.deleteSong`). The song's native and original folder move to
   `library/trash/<id>/` beside a `song.json` copy of the row; then the row goes. An open song becomes
   unimported (`songId` cleared); its document still carries the save handle it was opened with, which
-  WP-061's Save must not follow without a `songId`.
+  Save does not follow without a `songId`: the saver and the built-in `save()` both treat a `library/`
+  handle with no song as no handle at all.
+- **Save** (`save/save-flow.ts`, installed with `document.setSaver` by `installLibrary`). In order:
+  a document with a `songId` whose row exists writes `.reprise` to `row.nativePath` (never the
+  original file, even a `.gp`) and updates the row's summary and `savedAt`; a file opened without
+  importing and with a writable handle in `.reprise` or `.gp` goes to the built-in in-place save,
+  keeping the Guitar Pro loss prompt; a document with no file at all (a new song) joins the
+  library on its first Save (a new `songId`, `library/songs/<id>.reprise`, a row with no
+  `originalPath`, `originalKey` the hash of the first saved bytes); anything else (a gp3, gp4,
+  gp5 or gpx file opened without importing, a deleted song) shows a short notice through
+  `store.notice` and goes to Save As. Save As is the built-in: `.reprise` anywhere, and the
+  document leaves its song. A Save while the song's row is not there yet (the import of a file
+  just opened runs in the background) waits for the library's imports before choosing.
+- **Export as Guitar Pro** (`save/export-flow.ts`, `export-dialog.tsx`, `library.exportGuitarPro`).
+  Writes `write(score, 'gp')` of the score as shown through `platform.saveFile`, and changes
+  neither `dirty`, the file, its handle nor `songId`. The dialog lists only what the writer drops,
+  not what the import dropped; a library song has a "Don't warn again for this song" box that stores
+  the accepted `Warning.code`s on the row (`exportAcknowledged`), and a later export asks again only
+  for a code not in the list. A document outside the library has no box.
 - **Recents.** The 5 most recently opened songs (`RecentSongs`), the palette command
   `library.openRecent` (the library sorted by last opened), and on desktop the File menu through
   `setRecentSongs` (at most 10), with `onOpenRecent` opening the pick.
