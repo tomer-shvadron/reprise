@@ -119,24 +119,21 @@ describe('the Edit menu history items', () => {
     expect(historyItemLabel('Redo', 'Fish & Chips')).toBe('Redo Fish && Chips');
   });
 
-  it('keeps plain, enabled items until the renderer reports', () => {
+  it('keeps plain items until the renderer reports', () => {
     const [undo, redo] = edit(template().items);
 
     expect(undo).toMatchObject({ label: 'Undo', accelerator: 'CmdOrCtrl+Z' });
-    expect(undo?.enabled).toBeUndefined();
     expect(redo).toMatchObject({ label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z' });
   });
 
-  it('names the steps and disables an empty stack, keeping accelerators and clicks', () => {
+  it('names the steps, shows the plain name for an empty stack, and never disables', () => {
     const { options, items } = template({ history: { undo: 'setNote' } });
     const [undo, redo] = edit(items);
 
-    expect(undo).toMatchObject({
-      label: 'Undo setNote',
-      enabled: true,
-      accelerator: 'CmdOrCtrl+Z',
-    });
-    expect(redo).toMatchObject({ label: 'Redo', enabled: false, accelerator: 'Shift+CmdOrCtrl+Z' });
+    expect(undo).toMatchObject({ label: 'Undo setNote', accelerator: 'CmdOrCtrl+Z' });
+    expect(redo).toMatchObject({ label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z' });
+    expect(undo?.enabled).toBeUndefined();
+    expect(redo?.enabled).toBeUndefined();
     press(undo);
     expect(options.sendCommand).toHaveBeenLastCalledWith('edit.undo');
   });

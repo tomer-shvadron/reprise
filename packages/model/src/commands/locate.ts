@@ -115,6 +115,33 @@ export function indexBeats(score: Score, beatIds: readonly Id[], command: string
   return found;
 }
 
+export interface VoiceAt {
+  track: number;
+  bar: number;
+  voice: number;
+}
+
+/** `indexBeats` for voices: one walk, stopping once the last wanted voice is found. */
+export function indexVoices(
+  score: Score,
+  voiceIds: readonly Id[],
+  command: string,
+): Map<Id, VoiceAt> {
+  const wanted = new Set(voiceIds);
+  const found = new Map<Id, VoiceAt>();
+  scan: for (const [t, track] of baseOf(score).tracks.entries()) {
+    for (const [b, bar] of track.bars.entries()) {
+      for (const [v, voice] of bar.voices.entries()) {
+        if (wanted.size === 0) break scan;
+        if (wanted.delete(voice.id)) found.set(voice.id, { track: t, bar: b, voice: v });
+      }
+    }
+  }
+  const [missing] = wanted;
+  if (missing !== undefined) throw new CommandError(command, 'not-found', `no voice ${missing}`);
+  return found;
+}
+
 /** Like `indexBeats` for notes, grace notes included. */
 export function indexNotes(
   score: Score,

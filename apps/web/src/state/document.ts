@@ -133,10 +133,6 @@ export type HistoryStep = 'apply' | 'undo' | 'redo';
 
 const noLabels: HistoryLabels = { undo: [], redo: [] };
 
-function sameList(a: readonly string[], b: readonly string[]): boolean {
-  return a.length === b.length && a.every((label, index) => label === b[index]);
-}
-
 export interface DocumentState {
   /** A new one per opened document; subscribers tell a switch from an edit by it. */
   id: Id | undefined;
@@ -339,13 +335,13 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
   let markReachable = true;
 
   return create<DocumentState>()((set, get) => {
-    // Keeps the previous object when nothing changed, so a subscriber can compare by identity.
+    // Keeps the previous object when nothing changed, so a subscriber can compare by identity;
+    // the history hands back the same arrays while a stack is unchanged.
     const labelsNow = (): HistoryLabels => {
       const previous = get().historyLabels;
       const undo = history.undoLabels;
       const redo = history.redoLabels;
-      if (sameList(undo, previous.undo) && sameList(redo, previous.redo)) return previous;
-      return { undo, redo };
+      return undo === previous.undo && redo === previous.redo ? previous : { undo, redo };
     };
 
     const snapshot = (notation: Record<Id, Notation> = get().view.notation) => ({

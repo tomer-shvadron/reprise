@@ -372,6 +372,9 @@ app.on('before-quit', (event) => {
 });
 
 app.on('window-all-closed', () => {
+  // No window left to act on, so the Edit menu goes back to plain Undo and Redo (macOS keeps running).
+  historyLabels = undefined;
+  if (process.platform === 'darwin') applyMenu();
   if (process.platform !== 'darwin') app.quit();
 });
 

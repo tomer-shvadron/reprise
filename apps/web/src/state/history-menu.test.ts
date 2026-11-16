@@ -41,6 +41,16 @@ describe('installHistoryMenu', () => {
     expect(setHistoryLabels).toHaveBeenLastCalledWith({ redo: 'setNote' });
   });
 
+  it('maps each name through display before pushing', () => {
+    const { document, setHistoryLabels, platform, edit } = setup();
+    installHistoryMenu(document, platform, (name) => `<${name}>`);
+
+    edit(2);
+    document.getState().undo();
+
+    expect(setHistoryLabels).toHaveBeenLastCalledWith({ redo: '<setNote>' });
+  });
+
   it('stays quiet when only a deeper entry changes, or an unrelated field does', () => {
     const { document, setHistoryLabels, platform, edit } = setup();
     installHistoryMenu(document, platform);

@@ -54,3 +54,31 @@ export { AddTrackButton, TrackRowMenu } from './track-menu';
 export { createNewSong, startNewSong } from './new-song';
 export { whenSaved } from './when-saved';
 export { UnsavedChangesDialog } from './unsaved-dialog';
+export {
+  BEND_AMOUNTS,
+  BEND_SHAPES,
+  bendPreset,
+  bendPresetLabel,
+  type BendAmount,
+  type BendShape,
+} from './bend-presets';
+export {
+  WHAMMY_AMOUNTS,
+  WHAMMY_SHAPES,
+  whammyPreset,
+  type WhammyAmount,
+  type WhammyShape,
+} from './whammy-presets';
+export { effectTarget, type EffectTarget, type NoteRef, type BeatRef } from './effect-targets';
+export { nextOnString, type StringLink } from './next-on-string';
+export {
+  effectCommand,
+  planEffect,
+  resolveEffect,
+  type EffectAction,
+  type EffectEdits,
+  type EffectInput,
+  type EffectMode,
+} from './effects';
+export { effectState, type EffectState } from './effect-state';
+export { effectCommands, runEffect, type EffectCommandId } from './effect-commands';

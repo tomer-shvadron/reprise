@@ -43,8 +43,7 @@ export interface MenuOptions {
   recent?: readonly RecentSong[];
   openRecent?: (id: string) => void;
   /**
-   * The newest undo and redo step names. Absent until the renderer reports, which leaves the
-   * items plain and enabled; once reported, an absent label disables its item.
+   * The newest undo and redo step names; an absent one leaves the plain item. Never disables.
    */
   history?: HistoryMenuLabels;
 }
@@ -65,16 +64,15 @@ export function menuTemplate({
       sendCommand(id);
     },
   });
-  const historyCommand = (id: 'edit.undo' | 'edit.redo'): MenuItemConstructorOptions => {
-    const item = command(id);
-    if (!history) return item;
-    const label = history[id === 'edit.undo' ? 'undo' : 'redo'];
-    return {
-      ...item,
-      label: historyItemLabel(MENU_COMMANDS[id].label, label),
-      enabled: label !== undefined,
-    };
-  };
+  // Never disabled: a disabled item stops the accelerator reaching a focused text field's own
+  // undo (macOS), so an empty stack shows the plain name.
+  const historyCommand = (id: 'edit.undo' | 'edit.redo'): MenuItemConstructorOptions => ({
+    ...command(id),
+    label: historyItemLabel(
+      MENU_COMMANDS[id].label,
+      history?.[id === 'edit.undo' ? 'undo' : 'redo'],
+    ),
+  });
   const separator: MenuItemConstructorOptions = { type: 'separator' };
 
   const openRecentMenu: MenuItemConstructorOptions = {

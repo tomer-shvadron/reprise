@@ -242,7 +242,7 @@ export interface History {
   readonly redoLabel: string | undefined;
   /**
    * Every label on each stack, newest first (the step `undo` or `redo` replays comes first); a
-   * group or a chain shows its own name. Strings only, no patches: cheap enough per edit.
+   * group or a chain shows its own name. The same array while the stack is unchanged.
    */
   readonly undoLabels: readonly string[];
   readonly redoLabels: readonly string[];
@@ -261,6 +261,8 @@ export function createHistory(): History {
   let redoStack: Change[] = [];
   let currentScore: Score | undefined;
   let group: Group | undefined;
+  let undoLabelCache: LabelCache | undefined;
+  let redoLabelCache: LabelCache | undefined;
 
   const push = (change: Change): void => {
     undoStack.push(change);
@@ -338,15 +340,34 @@ export function createHistory(): History {
       return redoStack.at(-1)?.command;
     },
     get undoLabels() {
-      return labelsNewestFirst(undoStack);
+      undoLabelCache = cachedLabels(undoStack, undoLabelCache);
+      return undoLabelCache.labels;
     },
     get redoLabels() {
-      return labelsNewestFirst(redoStack);
+      redoLabelCache = cachedLabels(redoStack, redoLabelCache);
+      return redoLabelCache.labels;
     },
     get steps() {
       return undoStack.concat(redoStack);
     },
   };
+}
+
+/** The labels built for a stack of this length whose top was this change; a push or pop changes one. */
+interface LabelCache {
+  readonly length: number;
+  readonly top: Change | undefined;
+  readonly labels: string[];
+}
+
+// A stack only grows or shrinks at its top, and a step's label never changes, so the same length
+// and top mean the same labels: reuse the array, which makes the result stable by identity.
+// Pop-then-push to the same length with another change differs in `top`.
+function cachedLabels(stack: readonly Change[], cache: LabelCache | undefined): LabelCache {
+  const top = stack.at(-1);
+  return cache?.length === stack.length && cache.top === top
+    ? cache
+    : { length: stack.length, top, labels: labelsNewestFirst(stack) };
 }
 
 function labelsNewestFirst(stack: readonly Change[]): string[] {

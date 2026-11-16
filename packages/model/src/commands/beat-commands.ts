@@ -19,7 +19,7 @@ import {
   releaseTies,
 } from './checks';
 import { CommandError } from './command-error';
-import { at, baseOf, beatAt, findBeat, findVoice, indexBeats } from './locate';
+import { at, baseOf, beatAt, findBeat, findVoice, indexBeats, indexVoices } from './locate';
 import type { BeatAt } from './locate';
 
 export type BeatInput = Partial<Omit<Beat, 'id'>>;
@@ -215,6 +215,131 @@ export function setBeatEffects(edits: readonly BeatEffectEdit[]): Command {
         });
         tracks.add(position.track);
       }
+      for (const track of tracks) assertTrackValid(draft, track, name);
+    },
+  };
+}
+
+export interface BeatSpliceEdit {
+  voiceId: Id;
+  /** Where the splice starts: 0 to the voice's beat count. */
+  index: number;
+  /** How many beats from `index` on are removed first. */
+  remove: number;
+  /** The beats put in their place, with fresh ids throughout. */
+  beats: readonly Beat[];
+}
+
+/**
+ * Splices the beats of many voices at once, the batched `removeBeat` plus `insertBeat`: one
+ * voice-index pass, one fresh-id walk over every new beat, note and grace note across the edits,
+ * each touched track validated once, one history step, atomic. Every voice is spliced first, then
+ * ties are released in a second pass, once per voice from its first splice's index, so the result
+ * does not depend on the order of `edits`: a note whose origin a splice removed loses its tie,
+ * and so does an orphan tie on a pasted beat (its origin is not the previous note on that
+ * string), which `insertBeat` would refuse; a clip often starts with a tied note. An empty list,
+ * two edits on one voice that overlap or share an index, and an index or count out of range are
+ * refused as `invalid-value`.
+ */
+export function replaceBeats(edits: readonly BeatSpliceEdit[]): Command {
+  const name = 'replaceBeats';
+  return {
+    name,
+    run(draft) {
+      if (edits.length === 0) {
+        throw new CommandError(name, 'invalid-value', 'no beat splices');
+      }
+      const positions = indexVoices(draft, [...new Set(edits.map((e) => e.voiceId))], name);
+      const base = baseOf(draft);
+      const byVoice = new Map<Id, BeatSpliceEdit[]>();
+      for (const edit of edits) {
+        const where = positions.get(edit.voiceId);
+        if (!where) throw new CommandError(name, 'not-found', `no voice ${edit.voiceId}`);
+        const count = at(
+          at(at(base.tracks, where.track, name).bars, where.bar, name).voices,
+          where.voice,
+          name,
+        ).beats.length;
+        forTarget(`voice ${edit.voiceId}`, name, () => {
+          if (!Number.isInteger(edit.index) || edit.index < 0 || edit.index > count) {
+            throw new CommandError(
+              name,
+              'invalid-value',
+              `index ${String(edit.index)} is outside 0 to ${String(count)}`,
+            );
+          }
+          if (
+            !Number.isInteger(edit.remove) ||
+            edit.remove < 0 ||
+            edit.index + edit.remove > count
+          ) {
+            throw new CommandError(
+              name,
+              'invalid-value',
+              `cannot remove ${String(edit.remove)} beats from index ${String(edit.index)} of ${String(count)}`,
+            );
+          }
+        });
+        byVoice.set(edit.voiceId, [...(byVoice.get(edit.voiceId) ?? []), edit]);
+      }
+      for (const [voiceId, list] of byVoice) {
+        const sorted = [...list].sort((a, b) => a.index - b.index);
+        sorted.forEach((edit, i) => {
+          const previous = sorted[i - 1];
+          if (
+            previous &&
+            (edit.index === previous.index || edit.index < previous.index + previous.remove)
+          ) {
+            throw new CommandError(
+              name,
+              'invalid-value',
+              `voice ${voiceId} has overlapping splices`,
+            );
+          }
+        });
+        byVoice.set(voiceId, sorted);
+      }
+      const added: { track: Track; notes: Note[] }[] = [];
+      const ids: Id[] = [];
+      for (const edit of edits) {
+        const where = positions.get(edit.voiceId);
+        if (!where) continue;
+        const track = at(base.tracks, where.track, name);
+        for (const beat of edit.beats) {
+          const notes = [...beat.notes, ...graceNotes(beat.grace)];
+          ids.push(beat.id, ...notes.map((note) => note.id));
+          added.push({ track, notes });
+        }
+      }
+      assertFreshIds(draft, ids, name);
+      for (const { track, notes } of added) {
+        for (const note of notes) assertNotePlaced(track, note, name);
+      }
+      const tracks = new Set<number>();
+      const spliced: { track: Track; bar: number; voice: number; index: number }[] = [];
+      for (const [voiceId, list] of byVoice) {
+        const where = positions.get(voiceId);
+        if (!where) continue;
+        const track = at(draft.tracks, where.track, name);
+        const voice = at(at(track.bars, where.bar, name).voices, where.voice, name);
+        // Back to front, so each edit's index still means a position in the voice as it was.
+        for (const edit of [...list].reverse()) {
+          const parsed: Beat[] = [];
+          forTarget(`voice ${voiceId}`, name, () => {
+            for (const beat of edit.beats) parsed.push(parseOrThrow(BeatSchema, beat, name));
+          });
+          voice.beats.splice(edit.index, edit.remove, ...parsed);
+        }
+        spliced.push({
+          track,
+          bar: where.bar,
+          voice: where.voice,
+          index: at(list, 0, name).index,
+        });
+        tracks.add(where.track);
+      }
+      // After every splice, so each release reads the end state whatever order the voices came in.
+      for (const { track, bar, voice, index } of spliced) releaseTies(track, bar, voice, index);
       for (const track of tracks) assertTrackValid(draft, track, name);
     },
   };

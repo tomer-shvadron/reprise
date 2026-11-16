@@ -1141,12 +1141,12 @@ describe('document store history labels and the last step', () => {
     expect(store.getState().historyLabels).toEqual({ undo: ['Fill the bar'], redo: [] });
   });
 
-  it('keeps the same object while neither list changes, and resets on a new document', async () => {
+  it('keeps the same object across a save, and resets on a new document', async () => {
     const store = await opened();
     store.getState().apply(editOf(store, 2));
     const labels = store.getState().historyLabels;
-    store.getState().setNotation('t', undefined);
-    store.getState().setWarningsOpen(true);
+    // A save spreads a snapshot over unchanged stacks: the labels must stay the same object.
+    await store.getState().save();
     expect(store.getState().historyLabels).toBe(labels);
 
     store.getState().newDocument(song('Fresh'));

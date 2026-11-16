@@ -5,19 +5,21 @@ import type { DocumentStore } from './document';
 /**
  * Keeps the native Edit menu's Undo and Redo labels in step with the document's history. Pushes
  * only when the newest label on a stack changes (an edit deeper in the stacks is no news), and
- * does nothing on a platform without a menu, such as the web build. Returns the undo.
+ * does nothing on a platform without a menu, such as the web build. `display` turns a command
+ * name into the menu text (the identity by default). Returns the undo.
  */
 export function installHistoryMenu(
   document: DocumentStore,
   platform: Pick<Platform, 'setHistoryLabels'>,
+  display: (command: string) => string = (command) => command,
 ): () => void {
   const { setHistoryLabels } = platform;
   if (!setHistoryLabels) return () => undefined;
   const labelsOf = (): HistoryMenuLabels => {
     const { undo, redo } = document.getState().historyLabels;
     return {
-      ...(undo[0] !== undefined && { undo: undo[0] }),
-      ...(redo[0] !== undefined && { redo: redo[0] }),
+      ...(undo[0] !== undefined && { undo: display(undo[0]) }),
+      ...(redo[0] !== undefined && { redo: display(redo[0]) }),
     };
   };
   // Nothing sent yet, so the first push always goes: it tells main the stacks are empty.
