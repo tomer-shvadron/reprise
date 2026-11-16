@@ -2,6 +2,7 @@ import {
   barTicks,
   beatTicks,
   chain,
+  createNote,
   insertBar,
   insertBeat,
   newId,
@@ -174,10 +175,13 @@ function insertion(
   const full = noRoom(input, where, rhythm);
   if (full) return full;
   const id = newId();
-  const steps: Command[] = [insertBeat({ voiceId: where.voiceId, index, id }, beatInput(rhythm))];
-  if (note) steps.push(setNote({ beatId: id }, note));
+  const beat: BeatInput = note
+    ? { ...beatInput(rhythm), notes: [{ ...createNote(note), id: newId() }] }
+    : beatInput(rhythm);
   return {
-    command: chain(note ? 'enterNote' : 'enterRest', steps),
+    command: chain(note ? 'enterNote' : 'enterRest', [
+      insertBeat({ voiceId: where.voiceId, index, id }, beat),
+    ]),
     land: { beat: id },
     ...(note && { inserted: id, sound: { track: where.track.id, ...note } }),
   };
@@ -276,8 +280,8 @@ function planRhythm(
     return next ? [{ ...target, next }] : [];
   });
   if (changes.length === 0) return limit ? refuse(limit) : { nothing: true };
-  // Each voice's total after the whole change, so a lengthening one beat pays for is not refused
-  // because another beat of the same selection is shortened.
+  // Only a lengthening can overfill, so only a voice that grows is checked: shortening works in
+  // a bar that is already over-full, which is the edit that fixes it.
   const voices = new Map<
     string,
     { track: number; bar: number; voice: number; delta: number; needed: number }
@@ -285,15 +289,21 @@ function planRhythm(
   for (const change of changes) {
     const key = `${String(change.track)}:${String(change.bar)}:${String(change.voice)}`;
     const entry = voices.get(key) ?? { ...change, delta: 0, needed: 0 };
-    const grown = rhythmTicks(change.next) - beatTicks(change.beat);
-    entry.delta += grown;
+    entry.delta += rhythmTicks(change.next) - beatTicks(change.beat);
     entry.needed = Math.max(entry.needed, rhythmTicks(change.next));
     voices.set(key, entry);
   }
   for (const { track, bar, voice, delta, needed } of voices.values()) {
     const room = roomLeft(input.score, track, bar, voice);
-    if (delta > room + EPSILON) return refuse(overfullMessage(bar + 1, room, needed));
+    if (delta > EPSILON && delta > room + EPSILON) {
+      return refuse(overfullMessage(bar + 1, room, needed));
+    }
   }
+  // The model validates after each step, so the beats that shrink run first and pay for the ones
+  // that grow; the voice's total then never passes its final size.
+  changes.sort(
+    (a, b) => rhythmTicks(a.next) - beatTicks(a.beat) - (rhythmTicks(b.next) - beatTicks(b.beat)),
+  );
   return {
     command: chain(
       'setRhythm',

@@ -34,3 +34,31 @@ export function entryScore(): Score {
     .beat('4', [note(4, 3)]);
   return built.build({ ids: 'sequential' });
 }
+
+/**
+ * Three full 4/4 bars whose beats a toggle can both grow and shrink: a dotted quarter, a
+ * double-dotted quarter and a triplet quarter each next to a beat the same toggle lengthens.
+ */
+export function mixedScore(): Score {
+  const built = score().track('guitar');
+  built
+    .bar()
+    .beat('4.', [note(1, 1)])
+    .beat('4', [note(1, 2)])
+    .beat('4', [note(1, 3)])
+    .beat('8', [note(1, 4)]);
+  built
+    .bar()
+    .beat('4..', [note(1, 1)])
+    .beat('4', [note(1, 2)])
+    .beat('4', [note(1, 3)])
+    .beat('16', [note(1, 4)]);
+  built
+    .bar()
+    .beat('4t', [note(1, 1)])
+    .beat('4t', [note(1, 2)])
+    .beat('4t', [note(1, 3)])
+    .beat('4', [note(1, 4)])
+    .beat('4', [note(1, 5)]);
+  return built.build({ ids: 'sequential' });
+}

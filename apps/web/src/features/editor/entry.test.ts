@@ -12,7 +12,7 @@ import {
   type EntryPlan,
 } from './entry';
 import { QUARTER, type Rhythm } from './rhythm';
-import { entryScore, fullBarScore } from './test/entry-scores';
+import { entryScore, fullBarScore, mixedScore } from './test/entry-scores';
 import { editScore } from './test/scores';
 
 const EIGHTH: Rhythm = { duration: 8, dots: 0, tuplet: undefined };
@@ -335,5 +335,95 @@ describe('appending a bar', () => {
     expect(planAppendBar(score, cursorAt(score, 2, 3))).toBeDefined();
     expect(planAppendBar(score, cursorAt(score, 1, 1))).toBeUndefined();
     expect(planAppendBar(score, cursorAt(score, 1, 4))).toBeUndefined();
+  });
+});
+
+describe('a toggle over a mixed pick in a full bar', () => {
+  // The growing beat comes first in the pick: run in that order the model would refuse it, so
+  // the plan puts the shrinking beat first.
+  const pick = (score: Score, bar: number, first: number, second: number) => {
+    const beats = beatsOf(score, bar);
+    const ids = [beats[first]?.id, beats[second]?.id].filter(
+      (id): id is string => id !== undefined,
+    );
+    return { range: undefined, selection: { beatIds: ids } };
+  };
+
+  // [kind, bar, the beat that grows (first in the pick), the beat that shrinks, what to read]
+  it.each([
+    ['dot', 0, 3, 0, (b: Beat[]) => [b[0]?.dots, b[3]?.dots], [0, 1]],
+    ['doubleDot', 1, 3, 0, (b: Beat[]) => [b[0]?.dots, b[3]?.dots], [0, 2]],
+    ['triplet', 2, 0, 3, (b: Beat[]) => [b[0]?.tuplet, b[3]?.tuplet?.n], [undefined, 3]],
+  ] as const)('toggles %s on both beats', (kind, bar, grows, shrinks, read, expected) => {
+    const score = mixedScore();
+    const planned = plan(
+      score,
+      cursorAt(score, bar, 0),
+      { kind },
+      { state: pick(score, bar, grows, shrinks) },
+    );
+    const next = after(score, planned);
+    expect(read(beatsOf(next, bar))).toEqual(expected);
+  });
+
+  it('is not refused when the net change fits, whatever the order', () => {
+    const score = mixedScore();
+    const planned = plan(
+      score,
+      cursorAt(score, 0, 0),
+      { kind: 'dot' },
+      {
+        state: pick(score, 0, 3, 0),
+      },
+    );
+    expect('command' in planned).toBe(true);
+  });
+
+  it('still refuses a mixed pick that grows the voice past the bar', () => {
+    const score = mixedScore();
+    const beats = beatsOf(score, 0);
+    const planned = plan(
+      score,
+      cursorAt(score, 0, 0),
+      { kind: 'dot' },
+      {
+        state: {
+          range: undefined,
+          selection: { beatIds: [beats[1]?.id ?? '', beats[2]?.id ?? ''] },
+        },
+      },
+    );
+    expect('refused' in planned).toBe(true);
+  });
+
+  it('shortens in a bar that is already over-full, which fixes it', () => {
+    const score = fullBarScore();
+    const track = score.tracks[0];
+    const bar = track?.bars[0];
+    const voice = bar?.voices[0];
+    if (!track || !bar || !voice) throw new Error('missing');
+    const extra = { ...voice.beats[3], id: 'extra000001', notes: [] } as Beat;
+    const over: Score = {
+      ...score,
+      tracks: [
+        {
+          ...track,
+          bars: [
+            {
+              ...bar,
+              voices: [
+                { ...voice, beats: [...voice.beats, extra] },
+                ...bar.voices.slice(1),
+              ] as typeof bar.voices,
+            },
+          ],
+        },
+      ],
+    };
+    const planned = plan(over, cursorAt(over, 0, 0), { kind: 'shorter' });
+    expect('command' in planned).toBe(true);
+    expect(plan(over, cursorAt(over, 0, 0), { kind: 'longer' })).toEqual({
+      refused: 'Bar 1 is full: a half does not fit',
+    });
   });
 });
