@@ -580,7 +580,7 @@ interface Platform {
   libraryDir(): Promise<string>;     // ~/Music/Reprise on desktop; OPFS root in the browser
   dataDir(): Promise<string>;        // Electron userData; OPFS in the browser
   print(options?: { pageSize: 'A4' | 'Letter' }): Promise<void>;   // Electron opens the system dialog on that paper
-  microphone(): Promise<MediaStream>;
+  microphone(): Promise<MediaStream>;   // raw capture: echoCancellation, noiseSuppression and autoGainControl off (WP-071)
 
   // Added by #202: several files, a folder, and file operations inside the app's own roots.
   openFiles(filters): Promise<PickedFile[]>;               // [] on cancel

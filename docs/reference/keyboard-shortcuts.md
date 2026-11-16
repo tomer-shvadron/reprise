@@ -89,6 +89,7 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Mark speed trainer pass missed | Trainer | Global | ⌥X | Alt+X |
 | Reset speed trainer | Trainer | Global | ⌥⇧S | Alt+Shift+S |
 | Show tuner | Trainer | Global | — | — |
+| Start or stop tuner | Trainer | Global | — | — |
 | Show metronome | Trainer | Global | — | — |
 | Start or stop standalone metronome | Trainer | Global | ⌥B | Alt+B |
 | Toggle fretboard | Trainer | Global | — | — |

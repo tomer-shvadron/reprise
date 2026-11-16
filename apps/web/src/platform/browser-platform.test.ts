@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createBrowserPlatform } from './browser-platform';
+import { createBrowserPlatform, requestMicrophone } from './browser-platform';
 
 const filters = [{ name: 'Guitar Pro', extensions: ['gp', 'gp5'] }];
 
@@ -84,5 +84,15 @@ describe('browser platform', () => {
 
   it('rejects storage access when origin-private storage is missing', async () => {
     await expect(createBrowserPlatform().libraryDir()).rejects.toThrow(/Origin-private storage/);
+  });
+
+  it('asks for raw microphone audio, with the browser processing off', async () => {
+    const stream = {} as MediaStream;
+    const getUserMedia = vi.fn(() => Promise.resolve(stream));
+    const win = { navigator: { mediaDevices: { getUserMedia } } } as unknown as Window;
+    await expect(requestMicrophone(win)).resolves.toBe(stream);
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
   });
 });

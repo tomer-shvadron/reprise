@@ -104,7 +104,11 @@ export default defineConfig({
           setupFiles: ['./src/test/browser-setup.ts'],
           browser: {
             enabled: true,
-            provider: playwright(),
+            // The tuner's browser test runs real AudioContexts, which Chromium keeps suspended until the
+            // page has seen a user gesture; there is nobody to click in a headless run.
+            provider: playwright({
+              launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] },
+            }),
             headless: true,
             screenshotFailures: false,
             instances: [{ browser: 'chromium' }],

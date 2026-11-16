@@ -1,6 +1,7 @@
 import type { Command } from '@/app/command-registry';
 import type { AppServices } from '@/app/services';
 
+import { tunerFor } from './tuner/tuner-for';
 import { speedTrainerFor } from './speed-trainer/speed-trainer-for';
 import type { SpeedTrainerServices } from './speed-trainer/speed-trainer-store';
 
@@ -10,6 +11,7 @@ export type TrainerCommandId =
   | 'trainer.speedTrainerMissed'
   | 'trainer.speedTrainerReset'
   | 'trainer.tuner'
+  | 'trainer.tunerToggle'
   | 'trainer.metronome'
   | 'trainer.metronomeToggle'
   | 'trainer.fretboard';
@@ -17,7 +19,7 @@ export type TrainerCommandId =
 type TrainerCommand = Command & { id: TrainerCommandId };
 
 export function trainerCommands(
-  services: Pick<AppServices, 'ui'> & SpeedTrainerServices,
+  services: Pick<AppServices, 'ui' | 'platform' | 'document' | 'selection'> & SpeedTrainerServices,
 ): TrainerCommand[] {
   const { ui } = services;
   const speedTrainer = () => speedTrainerFor(services).getState();
@@ -55,6 +57,15 @@ export function trainerCommands(
       },
     },
     { id: 'trainer.tuner', title: 'Show tuner', run: show('tuner') },
+    {
+      id: 'trainer.tunerToggle',
+      title: 'Start or stop tuner',
+      repeat: false,
+      run: () => {
+        ui.getState().showPanelView('tuner');
+        tunerFor(services).getState().toggle();
+      },
+    },
     { id: 'trainer.metronome', title: 'Show metronome', run: show('metronome') },
     {
       id: 'trainer.metronomeToggle',
