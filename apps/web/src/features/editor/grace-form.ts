@@ -1,4 +1,4 @@
-import { createNote, type GraceBeat, type Id, type Note } from '@reprise/model';
+import { createNote, type Beat, type GraceBeat, type Id, type Note } from '@reprise/model';
 
 import { effectTarget, type EffectTarget, type NoteRef } from './effect-targets';
 import { effectCommand, type EffectEdits, type EffectInput, type EffectResult } from './effects';
@@ -45,7 +45,8 @@ export function graceBlocker(input: EffectInput): string | undefined {
 /**
  * The form the dialog opens on. A target that already has grace notes shows the first one's
  * values and offers Remove; otherwise the fret is two below the first target note, which is the
- * usual approach note, and never below the open string.
+ * usual approach note, and never below the open string. The transition is read from the beat the
+ * grace notes are on.
  */
 export function defaultGraceForm(
   input: EffectInput,
@@ -54,9 +55,10 @@ export function defaultGraceForm(
   const target = effectTarget(input);
   const groups = graceTargets(target);
   const first = groups.find((group) => group.notes.length > 0)?.notes[0];
-  const existing = target.beats.find((beat) => (beat.beat.grace?.length ?? 0) > 0)?.beat.grace?.[0];
+  const owner = target.beats.find((beat) => (beat.beat.grace?.length ?? 0) > 0);
+  const existing = owner?.beat.grace?.[0];
   const graceNote = existing?.notes[0];
-  if (existing && graceNote) {
+  if (owner && existing && graceNote) {
     return {
       existing: true,
       form: {
@@ -65,7 +67,7 @@ export function defaultGraceForm(
         before: existing.before,
         transition: graceNote.slide?.includes('shift')
           ? 'slide'
-          : first?.beat.notes.some((note) => note.hammerPull && note.string === graceNote.string)
+          : owner.beat.notes.some((note) => note.hammerPull && note.string === graceNote.string)
             ? 'hammer'
             : 'none',
         dead: graceNote.dead,
@@ -91,11 +93,32 @@ export function graceFretError(fret: unknown): string | undefined {
     : 'Enter a fret from 0 to 127';
 }
 
+const graceStrings = (grace: readonly GraceBeat[] | undefined): Set<number> =>
+  new Set((grace ?? []).flatMap((g) => g.notes.map((n) => n.string)));
+
+/**
+ * While a grace note is on a string, `hammerPull` on that string's main note can only mean "from
+ * the grace note", so the dialog owns it: the notes of `strings` get `wanted`, and a note whose
+ * flag already matches is not written. Strings that lost their grace note get it cleared.
+ */
+function hammerEdits(
+  beat: Beat,
+  wanted: ReadonlyMap<number, boolean>,
+): { noteId: Id; effects: { hammerPull: boolean } }[] {
+  return beat.notes
+    .filter((note) => wanted.has(note.string) && note.hammerPull !== wanted.get(note.string))
+    .map((note) => ({
+      noteId: note.id,
+      effects: { hammerPull: wanted.get(note.string) === true },
+    }));
+}
+
 /**
  * The command that gives each target beat one grace beat, with a grace note on every targeted
- * string at the form's fret, replacing any grace notes already there. A hammer-on transition sets
- * `hammerPull` on the main notes, which is what layout and audio read; a slide puts a shift slide
- * on the grace note. `'remove'` clears the grace notes of every target beat. One undo step.
+ * string at the form's fret, replacing any grace notes already there. The transition owns
+ * `hammerPull` on those strings' main notes (on for a hammer-on, which is what layout and audio
+ * read, off otherwise) and a slide puts a shift slide on the grace note. `'remove'` clears the
+ * grace notes of every target beat and the flag they owned. One undo step.
  */
 export function planGrace(input: EffectInput, form: GraceForm | 'remove'): EffectResult {
   const blocked = graceBlocker(input);
@@ -103,19 +126,21 @@ export function planGrace(input: EffectInput, form: GraceForm | 'remove'): Effec
   const target = effectTarget(input);
   const groups = graceTargets(target);
   if (form === 'remove') {
-    const beats = target.beats
-      .filter((beat) => (beat.beat.grace?.length ?? 0) > 0)
-      .map((beat) => ({ beatId: beat.beat.id, changes: { grace: null } }));
+    const withGrace = target.beats.filter((beat) => (beat.beat.grace?.length ?? 0) > 0);
+    const beats = withGrace.map((beat) => ({ beatId: beat.beat.id, changes: { grace: null } }));
+    const notes = withGrace.flatMap(({ beat }) =>
+      hammerEdits(beat, new Map([...graceStrings(beat.grace)].map((string) => [string, false]))),
+    );
     return beats.length > 0
-      ? { command: effectCommand('Remove grace note', { beats }) }
+      ? { command: effectCommand('Remove grace note', { beats, notes }) }
       : { nothing: true };
   }
   const beats: NonNullable<EffectEdits['beats']>[number][] = [];
-  const hammered = new Map<Id, { noteId: Id; effects: { hammerPull: true } }>();
+  const notes: NonNullable<EffectEdits['notes']>[number][] = [];
   target.beats.forEach((beat, index) => {
     const refs = groups[index]?.notes ?? [];
     if (beat.track.kind !== 'fretted' || refs.length === 0) return;
-    const notes: Note[] = refs.map(({ note }) =>
+    const graceNotes: Note[] = refs.map(({ note }) =>
       createNote({
         string: note.string,
         fret: form.fret,
@@ -123,17 +148,13 @@ export function planGrace(input: EffectInput, form: GraceForm | 'remove'): Effec
         ...(form.transition === 'slide' && { slide: ['shift' as const] }),
       }),
     );
-    const grace: GraceBeat = { duration: form.duration, before: form.before, notes };
+    const grace: GraceBeat = { duration: form.duration, before: form.before, notes: graceNotes };
     beats.push({ beatId: beat.beat.id, changes: { grace: [grace] } });
-    if (form.transition === 'hammer') {
-      for (const { note } of refs) {
-        if (!note.hammerPull)
-          hammered.set(note.id, { noteId: note.id, effects: { hammerPull: true } });
-      }
-    }
+    const wanted = new Map<number, boolean>();
+    for (const string of graceStrings(beat.beat.grace)) wanted.set(string, false);
+    for (const { note } of refs) wanted.set(note.string, form.transition === 'hammer');
+    notes.push(...hammerEdits(beat.beat, wanted));
   });
   if (beats.length === 0) return { refused: FRETTED_ONLY };
-  return {
-    command: effectCommand('Grace note', { beats, notes: [...hammered.values()] }),
-  };
+  return { command: effectCommand('Grace note', { beats, notes }) };
 }

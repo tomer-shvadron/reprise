@@ -92,4 +92,42 @@ describe('the grace form', () => {
     const result = planGrace(input(built), { ...FORM, fret: 100 });
     expect(() => apply(built, result)).toThrow(CommandError);
   });
+
+  it('clears the hammer-on flag with the grace note it belonged to', () => {
+    const built = riff();
+    const hammered = apply(built, planGrace(input(built), { ...FORM, transition: 'hammer' }));
+    expect(noteOf(hammered, 0, 0, 0).hammerPull).toBe(true);
+    const removed = apply(hammered, planGrace(input(hammered), 'remove'));
+    expect(noteOf(removed, 0, 0, 0).hammerPull).toBe(false);
+    expect(removed).toEqual(built);
+  });
+
+  it('lets a later Apply change the transition off a hammer-on, and reads it back', () => {
+    const built = riff();
+    const hammered = apply(built, planGrace(input(built), { ...FORM, transition: 'hammer' }));
+    expect(defaultGraceForm(input(hammered), true).form.transition).toBe('hammer');
+    const slid = apply(hammered, planGrace(input(hammered), { ...FORM, transition: 'slide' }));
+    expect(noteOf(slid, 0, 0, 0).hammerPull).toBe(false);
+    expect(defaultGraceForm(input(slid), true).form.transition).toBe('slide');
+    const plain = apply(slid, planGrace(input(slid), { ...FORM, transition: 'none' }));
+    expect(defaultGraceForm(input(plain), true).form.transition).toBe('none');
+  });
+
+  it('writes only the notes whose flag changes, and clears strings that lost their grace note', () => {
+    const built = riff();
+    // A grace note on both strings of the chord, then one on the first string only.
+    const both = apply(built, planGrace(input(built, 1), { ...FORM, transition: 'hammer' }));
+    expect(beatOf(both, 0, 0, 1).notes.every((n) => n.hammerPull)).toBe(true);
+    const onlyFirst = {
+      score: both,
+      state: {
+        cursor: undefined,
+        range: undefined,
+        selection: { noteIds: [noteOf(both, 0, 0, 1, 0).id] },
+      },
+    };
+    const next = apply(both, planGrace(onlyFirst, { ...FORM, transition: 'hammer' }));
+    expect(noteOf(next, 0, 0, 1, 0).hammerPull).toBe(true);
+    expect(noteOf(next, 0, 0, 1, 1).hammerPull).toBe(false);
+  });
 });
