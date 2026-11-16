@@ -10,6 +10,21 @@ export interface Envelope {
   decay: number;
   sustain: number;
   release: number;
+  /**
+   * SF2's `keynumToVolEnvHold` and `keynumToVolEnvDecay`, in timecents per key: `hold` and `decay`
+   * above are the values at key 60, and the voice scales them for the struck key with
+   * `keyScaledTime`. Absent is 0, no scaling.
+   */
+  holdPerKey?: number;
+  decayPerKey?: number;
+}
+
+/**
+ * `seconds` (the value at key 60) moved for `key` by `perKey` timecents per key below middle C:
+ * 2 ** (timecents / 1200) is SF2's timecents-to-seconds, so adding timecents multiplies.
+ */
+export function keyScaledTime(seconds: number, perKey: number | undefined, key: number): number {
+  return perKey ? seconds * 2 ** ((perKey * (60 - key)) / 1200) : seconds;
 }
 
 /** A modulator's input: a note-on value, shaped by SF2 2.04's curve, polarity and direction (8.2). */
@@ -147,6 +162,9 @@ export interface Region {
       hold: number;
       decay: number;
       sustain: number;
+      /** `keynumToModEnvHold` and `keynumToModEnvDecay`, as on `Envelope`: `hold` and `decay` are at key 60. */
+      holdPerKey?: number;
+      decayPerKey?: number;
     };
   };
   /**
