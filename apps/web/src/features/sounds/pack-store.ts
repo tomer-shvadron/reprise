@@ -205,7 +205,7 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
   }
 
   async function run(
-    job: { packId: string; name: string },
+    job: { packId: string; name: string; phase?: InstallPhase },
     work: (context: {
       signal: AbortSignal;
       onProgress: (progress: InstallProgress) => void;
@@ -223,7 +223,9 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
     const mine = new AbortController();
     controller = mine;
     problem(job.packId, undefined);
-    store.setState({ job: { ...job, phase: 'extracting', done: 0, total: undefined } });
+    store.setState({
+      job: { ...job, phase: job.phase ?? 'extracting', done: 0, total: undefined },
+    });
     const onProgress = (progress: InstallProgress) => {
       store.setState({
         job: { ...job, phase: progress.phase, done: progress.done, total: progress.total },
@@ -300,7 +302,7 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
     scan,
 
     installCurated: (manifest) =>
-      run({ packId: manifest.id, name: manifest.name }, async (context) => {
+      run({ packId: manifest.id, name: manifest.name, phase: 'downloading' }, async (context) => {
         const archive = await downloadPackArchive({
           platform,
           manifest,
