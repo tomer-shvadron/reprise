@@ -32,7 +32,7 @@ const beatsOf = (key: number, count: number, dynamics: 'pp' | 'f' = 'f') => {
     .track('guitar', { tuning: tuning(key) })
     .bar();
   for (let index = 0; index < count; index += 1) {
-    builder.beat('8', [note(1, 0, { dynamics })]);
+    builder.beat('8', [note(1, 0, { dynamics, id: `rnote${String(index).padStart(7, '0')}` })]);
   }
   return builder.build();
 };
@@ -45,7 +45,7 @@ interface Strike {
 /** What the sink asks of the sampler and the take the map gives each request, in order. */
 async function strikes(
   song: ReturnType<typeof beatsOf>,
-  options: { passes?: number } = {},
+  options: { passes?: number; from?: number } = {},
 ): Promise<Strike[]> {
   const regions = await regionsOf();
   const sampler = new Sampler(offline(1));
@@ -64,6 +64,7 @@ async function strikes(
   const beats: Beat[] = song.tracks[0]?.bars[0]?.voices[0].beats ?? [];
   for (let pass = 0; pass < (options.passes ?? 1); pass += 1) {
     for (const [index, beat] of beats.entries()) {
+      if (index < (options.from ?? 0)) continue;
       sink.noteOn(eventOf(track, beat, index, pass));
     }
     sink.allNotesOff(0);
@@ -91,7 +92,8 @@ function eventOf(track: Track, beat: Beat, index: number, passIndex: number): No
     duration: 0.05,
     playbackTick: index * (PPQ / 2),
     durationTicks: PPQ / 2,
-    sequenceIndex: index,
+    // The bar's place in the playback sequence: one value for a bar, higher on a repeat.
+    sequenceIndex: passIndex,
     masterBarIndex: 0,
     passIndex,
     barEnd: 5,
@@ -124,14 +126,27 @@ describe('the sink selects takes from the synthetic guitar pack', () => {
     expect(loud[0]?.sample).toBe(take(velocity.tones[1]));
   });
 
-  it('draws the random takes from the note, so the same notes repeat exactly', async () => {
+  describe('the random takes', () => {
     const song = beatsOf(random.key, 6);
-    const first = await strikes(song);
-    const again = await strikes(song);
-    expect(first.map((strike) => strike.sample)).toEqual(again.map((strike) => strike.sample));
-    const heard = new Set(first.map((strike) => strike.sample));
-    for (const sample of heard) expect(random.tones.map(take)).toContain(sample);
-    expect(heard.size).toBeGreaterThan(1);
+    const samples = (made: Strike[]) => made.map((strike) => strike.sample);
+    // Drawn from the note's id, the pass and the strike alone, so these are fixed.
+    const SECOND_PASS = [1700, 1600, 1500, 1700, 1500, 1700].map(take);
+    const FIRST_PASS = [1700, 1600, 1500, 1500, 1700, 1600].map(take);
+
+    it('draws them from the note, in a known order across more than one bucket', async () => {
+      expect(samples(await strikes(song))).toEqual(FIRST_PASS);
+    });
+
+    it('draws the same takes for a run that starts at beat 3 (a seek)', async () => {
+      expect(samples(await strikes(song, { from: 2 }))).toEqual(FIRST_PASS.slice(2));
+    });
+
+    it('draws other takes for the same notes on a second pass', async () => {
+      const made = samples(await strikes(song, { passes: 2 }));
+      expect(made.slice(0, 6)).toEqual(FIRST_PASS);
+      expect(made.slice(6)).toEqual(SECOND_PASS);
+      expect(SECOND_PASS).not.toEqual(FIRST_PASS);
+    });
   });
 
   it('plays the legato region on a hammer-on and the attack otherwise', async () => {
