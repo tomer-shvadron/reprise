@@ -2,7 +2,7 @@ import type { Notation, Track } from '@reprise/model';
 import { cn } from 'cn';
 import { memo, type ReactNode } from 'react';
 
-import { instrumentName } from './gm-programs';
+import { instrumentName } from '@/lib/gm-programs';
 import type { TrackActions } from './track-actions';
 import {
   MuteToggle,

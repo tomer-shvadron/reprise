@@ -41,6 +41,7 @@ Enforced by lint. In addition:
 apps/web/src/
   app/            shell, routing, theme, command palette, keyboard map, services (the stores wired together)
     audio/        the audio service: the sound bank fetch and the adapter from the engine to the playback store
+  lib/            shared, framework-light helpers that belong to no feature (utils, the GM name tables)
   platform/       Platform interface + browser and electron implementations
   state/          zustand stores: document, selection, playback, layout (derived), ui, practice, editing
   features/

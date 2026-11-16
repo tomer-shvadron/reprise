@@ -1,6 +1,6 @@
 import { parsePackInstrumentId } from '@reprise/audio';
 
-import { GM_DRUM_KITS, GM_PROGRAMS } from '@/features/tracks/gm-programs';
+import { GM_DRUM_KITS, GM_PROGRAMS } from '@/lib/gm-programs';
 
 import type { InstalledPack } from './manifest';
 

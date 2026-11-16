@@ -4,7 +4,7 @@ import { useStore } from 'zustand';
 
 import { useAppServices } from '@/app/services-context';
 import { Button } from '@/components/ui/button';
-import { megabytes } from '@/features/transport/sound-status';
+import { megabytes } from '@/features/transport';
 
 import { instrumentLabel } from './memory-labels';
 
