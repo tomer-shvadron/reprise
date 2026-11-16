@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { RegionMap } from '../sampler/region-map';
+import { RegionMap, keyScaledTime } from '../sampler/region-map';
 import type { Region, SampleRef } from '../sampler/region-map';
 import type { SampleSource } from '../sampler/sample-source';
 import { Sampler } from '../sampler/sampler';
@@ -221,14 +221,88 @@ describe.skipIf(!font)('GeneralUser GS', () => {
     console.info(`GeneralUser GS GM set report: ${JSON.stringify(summary)}`);
     // The file is pinned by hash, so these are fixed; a change here is a change in the resolver.
     expect(summary).toMatchObject({
-      // Up from 16,100 and 687: a zone with a filter sweep and a key-scaled modulation envelope
-      // is now expanded per key too, to keep each key's own hold and decay.
-      regions: 18_636,
-      keyExpanded: 1255,
+      // Hold and decay scale per key in the voice (`keyScaledTime`), so only a `scaleTuning`
+      // zone is still one region per key: down from 18,636 regions and 1,255 expanded zones.
+      regions: 7998,
+      keyExpanded: 132,
       stereoMismatches: 0,
       unpairedStereo: 0,
       skippedZones: 0,
       invalidLoops: 3,
+    });
+  });
+
+  // Expected values were captured from `main` before the key scaling moved to the voice, when
+  // each key had its own region: a temporary checkout of origin/main at 507f7c94 resolved the
+  // preset and read `resolveAll(key, 64)`'s hold and decay for the sample. The new resolver
+  // keeps one region and scales at note-on (clamped to the region's range, as the old edge key's
+  // region answered a strike beyond it); a full 129-preset sweep matched to 1e-8 when this landed.
+  describe('key-scaled envelope times match the per-key regions they replaced', () => {
+    const scaledAt = (
+      program: number,
+      sample: string,
+      key: number,
+      pick: 'volume' | 'filter',
+    ): { hold: number; decay: number } => {
+      const region = font
+        ?.regionMapFor(0, program)
+        ?.resolveAll(key, 64)
+        .find((r) => r.sample === sample);
+      const envelope = pick === 'volume' ? region?.envelope : region?.filter?.envelope;
+      if (!region || !envelope) throw new Error(`No ${pick} envelope at key ${String(key)}`);
+      const at = Math.min(Math.max(key, region.keyLo), region.keyHi);
+      return {
+        hold: keyScaledTime(envelope.hold, envelope.holdPerKey, at),
+        decay: keyScaledTime(envelope.decay, envelope.decayPerKey, at),
+      };
+    };
+
+    it.each([
+      // Zone 0..38: both factors 84, seconds at the range ends.
+      { program: 2, sample: 'gm/80/1489580-1499877', key: 0, hold: 5.530845339, decay: 441.031708 },
+      {
+        program: 2,
+        sample: 'gm/80/1489580-1499877',
+        key: 38,
+        hold: 0.8750879947,
+        decay: 69.77984906,
+      },
+      // Program 10 zone 98..125 (decay 17 per key): the low end, the high end and a key past it.
+      {
+        program: 10,
+        sample: 'gm/99/1753767-1763329',
+        key: 98,
+        hold: 0.0009765625,
+        decay: 1.652601144,
+      },
+      {
+        program: 10,
+        sample: 'gm/99/1753767-1763329',
+        key: 125,
+        hold: 0.0009765625,
+        decay: 1.267722142,
+      },
+      {
+        program: 10,
+        sample: 'gm/99/1753767-1763329',
+        key: 127,
+        hold: 0.0009765625,
+        decay: 1.267722142,
+      },
+    ])('volume envelope, program $program key $key', ({ program, sample, key, hold, decay }) => {
+      const got = scaledAt(program, sample, key, 'volume');
+      expect(got.hold).toBeCloseTo(hold, 8);
+      expect(got.decay).toBeCloseTo(decay, 6);
+    });
+
+    it.each([
+      // Zone 0..27 with a filter sweep: the modulation envelope's decay is 68 timecents per key.
+      { key: 0, hold: 0.0009765625, decay: 40.10842288 },
+      { key: 27, hold: 0.0009765625, decay: 13.88863907 },
+    ])('filter envelope, program 0 key $key', ({ key, hold, decay }) => {
+      const got = scaledAt(0, 'gm/285/6104555-6175342', key, 'filter');
+      expect(got.hold).toBeCloseTo(hold, 8);
+      expect(got.decay).toBeCloseTo(decay, 6);
     });
   });
 
