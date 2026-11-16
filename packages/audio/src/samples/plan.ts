@@ -78,7 +78,10 @@ interface Placing {
 
 function addNote(placing: Placing, note: Note, effects: BeatEffects): void {
   const { track, voicing, usedBy } = placing;
-  const { set } = voicingOf({ kind: track.kind, note, effects }, placing.available);
+  // A tied note is not struck: it keeps its origin's voice, and the origin plans the key.
+  const { set } = note.tie
+    ? { set: 'default' as const }
+    : voicingOf({ kind: track.kind, note, effects }, placing.available);
   const target = set === 'default' ? undefined : voicing?.[set];
   const used = target?.instrument === undefined ? placing.base : usedBy(target.instrument);
   let keys = used.keys;

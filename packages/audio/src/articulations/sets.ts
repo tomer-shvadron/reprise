@@ -152,6 +152,8 @@ export function voicingOf(
 ): NoteVoicing {
   if (available.size === 0 || input.kind === 'drums') return { set: 'default', sampled: NONE };
   const { note, effects } = input;
+  // A dead note without a dead set is the noise burst, which no other set's sample replaces.
+  if (note.dead && !available.has('dead')) return { set: 'default', sampled: NONE };
   const wanted: (readonly ArticulationSet[])[] = [];
   if (note.dead) wanted.push(['dead']);
   if (note.harmonic) {

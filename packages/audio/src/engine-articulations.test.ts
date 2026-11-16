@@ -17,7 +17,6 @@ import {
   syntheticGuitarPack,
 } from './testing/synthetic-guitar-pack';
 import type { SyntheticGuitarPack } from './testing/synthetic-guitar-pack';
-import { syntheticSfzPack } from './testing/synthetic-pack';
 
 const SAMPLE_RATE = 44_100;
 const START = 0.1;
@@ -150,25 +149,34 @@ describe('HQ articulation layers', () => {
     engine.dispose();
   });
 
-  it('plays a pack with no sets as it always did', async () => {
-    const plain = syntheticSfzPack({ frequency: 440 });
+  it('plays a pack with no sets as it always did: the synthesized palm mute decays', async () => {
+    // The reference guitar with its labels removed: its layers name no set, so only the default plays.
+    const pack = syntheticGuitarPack();
+    const files = {
+      ...pack.files,
+      read: async (path: string) => {
+        const bytes = await pack.files.read(path);
+        if (path !== 'default.sfz') return bytes;
+        const text = new TextDecoder().decode(bytes).replaceAll(/sw_label=.*$/gm, '');
+        return new TextEncoder().encode(text);
+      },
+    };
     const built = song({ palmMute: true });
     const { engine, render } = await setup(START + BEAT + 0.3);
     await engine.load(built, {
       tier: 'hq',
       packs: [
-        {
-          trackId: trackOf(built),
-          pack: { id: 'plainpack001', files: plain.files },
-          entries: { default: 'default.sfz' },
-        },
+        { trackId: trackOf(built), pack: { id: 'plainpack001', files }, entries: pack.entries },
       ],
     });
     engine.play();
     const signal = signalOf(await render());
-    // The plain pack roots its sample at key 60, so key 69 sounds nine semitones up.
-    expect(toneLevel(signal, 440 * 2 ** (9 / 12), START + 0.02, START + 0.1)).toBeGreaterThan(
-      0.004,
+    const early = toneLevel(signal, GUITAR_TONES.default, START + 0.02, START + 0.1);
+    expect(early).toBeGreaterThan(0.004);
+    expect(toneLevel(signal, GUITAR_TONES.palmMute, START + 0.02, START + 0.1)).toBeLessThan(0.001);
+    // The WP-033 decay stays: 18 dB down by 250 ms, so the tail is a fraction of the attack.
+    expect(toneLevel(signal, GUITAR_TONES.default, START + 0.3, START + 0.4)).toBeLessThan(
+      early * 0.3,
     );
     engine.dispose();
   });
@@ -206,6 +214,38 @@ describe('HQ articulation files', () => {
     expect(heard(signal, 0)).toBe(GUITAR_TONES.default);
     expect(heard(signal, 1)).toBe(GUITAR_FILE_TONES.palmMute);
     expect(debugAudioEngine(engine).skippedEntries?.get(trackOf(built))).toEqual([]);
+    engine.dispose();
+  });
+
+  it('loads the track again when a non-default entry changes, and not when only the key order does', async () => {
+    const pack = syntheticGuitarPack({ perFile: true });
+    const built = song({}, { palmMute: true });
+    const { engine, render } = await setup(START + 2 * BEAT + 0.3);
+    const pack_ = { id: 'guitarpack01', files: pack.files };
+    const trackId = trackOf(built);
+    await engine.load(built, {
+      tier: 'hq',
+      packs: [{ trackId, pack: pack_, entries: { default: 'default.sfz' } }],
+    });
+    expect(pack.reads.get('gtr_pm.sfz')).toBeUndefined();
+
+    const entries = { default: 'default.sfz', palmMute: 'gtr_pm.sfz' };
+    await engine.load(built, { tier: 'hq', packs: [{ trackId, pack: pack_, entries }] });
+    expect([...packInstrumentsOf(engine.memory().residents, 'guitarpack01')].sort()).toEqual([
+      'default.sfz',
+      'gtr_pm.sfz',
+    ]);
+    const reads = pack.reads.get('gtr_pm.sfz');
+    expect(reads).toBeGreaterThan(0);
+
+    // The same entries in another key order are the same assignment: nothing is read again.
+    const reordered = { palmMute: 'gtr_pm.sfz', default: 'default.sfz' };
+    await engine.load(built, { tier: 'hq', packs: [{ trackId, pack: pack_, entries: reordered }] });
+    expect(pack.reads.get('gtr_pm.sfz')).toBe(reads);
+
+    engine.play();
+    const signal = signalOf(await render());
+    expect(heard(signal, 1)).toBe(GUITAR_FILE_TONES.palmMute);
     engine.dispose();
   });
 

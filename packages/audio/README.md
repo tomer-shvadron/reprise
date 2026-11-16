@@ -1202,7 +1202,9 @@ file is parsed like the default one, once per install and path, and is an instru
 resident; it plays through the track's strip. A labelled layer of the default file (`setsOfLayers`)
 is the same set as a `layer` of the default instrument. An explicit file beats a label, the first
 labelled layer of a set wins, and a file that fails to read or parse drops only its set (it never
-reaches `LoadResult.fallbacks`, which stays "the track went to GM"). `legatoTrigger` is the cheap
+reaches `LoadResult.fallbacks` for that). A set file that parses but whose samples then fail to
+decode for the opening bars is the other failure mode: `dropBrokenPacks` probes the set instruments
+too, so that track goes to GM and into `fallbacks`, as for a broken default. `legatoTrigger` is the cheap
 gate (a pack has `trigger=legato` regions somewhere); the sink then asks the map about the layer
 that plays (`RegionMap.hasLegatoRegionsIn(layer)`), so a hammer-on in a layer with no legato region
 plays that layer's attack and not nothing.
@@ -1214,25 +1216,29 @@ or `artificialHarmonic`, `palmMute`, `staccato`, `legato` or `tap`, `slap`, `pop
 Each effect has a fallback chain (an artificial harmonic to `harmonic`, a `tap` to `legato`), and
 the first effect whose chain reaches a set the pack has wins; an effect that loses keeps its
 synthesized automation on top, so a palm-muted pinch harmonic plays the harmonic layer and is
-still filtered at 900 Hz. A track on General MIDI, a drum track, and a pack without the set all
-get `default` and drop nothing.
+still filtered at 900 Hz. A track on General MIDI, a drum track, a pack without the set, and a dead note
+when the pack has no `dead` set (it is the noise burst, which no other set replaces) all get
+`default` and drop nothing.
 
-| The note has                  | The pack has the set                                    | The pack lacks it                             |
-| ----------------------------- | ------------------------------------------------------- | --------------------------------------------- |
-| palm mute                     | the layer; no 900 Hz low-pass, no -18 dB / 250 ms decay | default with both (ADR-0004)                  |
-| dead note                     | the layer at the note's key, still cut at 80 ms         | the noise burst and its 2.5 kHz filter        |
-| natural harmonic              | the layer at the sounding pitch; no +6 dB shelf         | default at the sounding pitch with the shelf  |
-| other harmonics               | `artificialHarmonic`, else `harmonic`; no shelf         | default with the shelf (`semi` keeps its +12) |
-| hammer-on or pull-off         | the layer, or `trigger=legato` regions; no 20 ms offset | the 20 ms offset                              |
-| staccato                      | the layer or file; the half-beat release stays          | default with the half-beat release            |
-| tap, slap, pop (beat effects) | `tap` (else `legato`), `slap`, `pop`                    | default (their GM sound is a separate issue)  |
+| The note has                  | The pack has the set                                              | The pack lacks it                             |
+| ----------------------------- | ----------------------------------------------------------------- | --------------------------------------------- |
+| palm mute                     | the layer; no 900 Hz low-pass, no -18 dB / 250 ms decay           | default with both (ADR-0004)                  |
+| dead note                     | the layer at the note's key, released at 250 ms or the note's end | the noise burst and its 2.5 kHz filter        |
+| natural harmonic              | the layer at the sounding pitch; no +6 dB shelf                   | default at the sounding pitch with the shelf  |
+| other harmonics               | `artificialHarmonic`, else `harmonic`; no shelf                   | default with the shelf (`semi` keeps its +12) |
+| hammer-on or pull-off         | the layer, or `trigger=legato` regions; no 20 ms offset           | the 20 ms offset                              |
+| staccato                      | the layer or file; the half-beat release stays                    | default with the half-beat release            |
+| tap, slap, pop (beat effects) | `tap` (else `legato`), `slap`, `pop`                              | default (their GM sound is a separate issue)  |
 
 Bends, slides, vibrato, trills, tremolo, dynamics and fades stay automation in both tiers. This
 widens ADR-0004's "palm mute and harmonics" to the dead, legato and staccato layers the work
 package names, with no new decision. The limits are the ones a voice has: a palm-muted tied link
 on an open origin keeps the synthesized link filter, a legato slide's carried voice keeps its
 sample, and a trill's alternations and a tremolo's strokes take the note's own set (a trill's
-alternation is not given the `legato` layer). The velocity step of a hammer-on (one lower) stays,
+alternation is not given the `legato` layer). A voice a legato slide carries into a note whose set differs keeps the sample it was struck with,
+so the effects the new set would have sampled stay synthesized (the palm mute still filters it).
+The 20 ms offset is dropped by a `legato` set and also whenever a `trigger=legato` region plays.
+A tied note is never struck, so the planner leaves it in the default layer. The velocity step of a hammer-on (one lower) stays,
 being dynamics and not timbre.
 
 `syntheticGuitarPack()` in `@reprise/audio/testing` is the reference guitar these are tested on:

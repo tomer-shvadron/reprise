@@ -70,6 +70,12 @@ describe('voicingOf', () => {
     expect(result.sampled.size).toBe(0);
   });
 
+  it('plays the default for a dead note the pack has no dead set for, whatever else it has', () => {
+    const result = voicingOf(input({ dead: true, palmMute: true }), avail('palmMute', 'staccato'));
+    expect(result.set).toBe('default');
+    expect(result.sampled.size).toBe(0);
+  });
+
   it('plays the default for a drum track, whatever the pack has', () => {
     expect(voicingOf(input({ palmMute: true }, {}, 'drums'), ALL).set).toBe('default');
   });

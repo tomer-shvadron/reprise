@@ -207,7 +207,11 @@ export function planNote(input: PlanInput): NotePlan {
   if (tonal && note.staccato) {
     end = when + Math.min(input.length, input.beatLength) * ARTICULATION.staccatoFraction;
   }
-  if (dead) end = Math.min(end, when + ARTICULATION.dead.length);
+  // A sampled mute has its own decay, so it is let go later than the noise burst.
+  if (dead) {
+    const limit = sampled.has('dead') ? ARTICULATION.dead.sampledLength : ARTICULATION.dead.length;
+    end = Math.min(end, when + limit);
+  }
   const chain = tieChain(input, tonal, end);
   end = chain.end;
   const last = chain.segments.at(-1)?.note ?? note;

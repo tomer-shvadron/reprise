@@ -529,13 +529,20 @@ describe('planNote with the effects a layer carries', () => {
     expect(plan.gain).not.toEqual([]);
   });
 
-  it('plays a dead layer as a note, not a noise burst, still ending at the dead length', () => {
+  it('plays a dead layer as a note, not a noise burst, ending at 250 ms or the note end', () => {
     const dead = note(1, 5, { dead: true });
     expect(planNote(input(guitar, dead)).dead).toBe(true);
     const plan = planNote(input(guitar, dead, { sampled: sampled('dead'), length: 2 }));
     expect(plan.dead).toBe(false);
     expect(plan.filter).toBeUndefined();
-    expect(plan.strikes[0]?.end).toBeCloseTo(1 + ARTICULATION.dead.length);
+    expect(plan.strikes[0]?.end).toBeCloseTo(1 + ARTICULATION.dead.sampledLength);
+    expect(ARTICULATION.dead.sampledLength).toBe(0.25);
+    const short = planNote(input(guitar, dead, { sampled: sampled('dead'), length: 0.1 }));
+    expect(short.strikes[0]?.end).toBeCloseTo(1.1);
+    // The burst keeps its own length.
+    expect(planNote(input(guitar, dead, { length: 2 })).strikes[0]?.end).toBeCloseTo(
+      1 + ARTICULATION.dead.length,
+    );
   });
 
   it('drops the harmonic shelf for a harmonic layer', () => {

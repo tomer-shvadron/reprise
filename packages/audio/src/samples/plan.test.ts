@@ -231,4 +231,30 @@ describe('planInstruments with a pack voicing', () => {
     expect(only(true)).toEqual(['sustain']);
     expect(only(false)).toEqual(['mute']);
   });
+
+  it('plans no layer or file for a dead note when the pack has no dead set', () => {
+    const dead = planInstruments(
+      score()
+        .track('guitar')
+        .bar()
+        .beat('1', [note(1, 0, { dead: true, palmMute: true })])
+        .build(),
+      { instrumentOf: () => 'file-default', voicingFor: () => voicing },
+    );
+    expect(dead.instruments).toEqual(['file-default']);
+    expect(dead.tracks[0]?.uses[0]?.layers).toEqual([]);
+  });
+
+  it('plans a tied note in the default layer, since it is never struck', () => {
+    const tied = planInstruments(
+      score()
+        .track('guitar')
+        .bar()
+        .beat('2', [note(1, 0)])
+        .beat('2', [note(1, 0, { tie: true, palmMute: true })])
+        .build(),
+      { instrumentOf: () => 'file-default', voicingFor: () => voicing },
+    );
+    expect(tied.tracks[0]?.uses[0]?.layers).toEqual([]);
+  });
 });
