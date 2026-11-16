@@ -11,7 +11,7 @@ export type GpifDropCode =
   | 'channel-effect'
   /** `Beat.mix` volume, pan, chorus, reverb, phaser or tremolo changes. */
   | 'mixer-change'
-  /** `Track.sound`, the HQ sound tier's pack assignment. */
+  /** `Track.sound`: the HQ pack assignment, or a preset-only effects choice. */
   | 'sound-override'
   /** Notes of one beat (or one grace beat) with different dynamics; gpif has one per beat. */
   | 'note-dynamics'

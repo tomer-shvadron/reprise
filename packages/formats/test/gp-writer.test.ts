@@ -98,6 +98,18 @@ describe('the gp writer round trip', () => {
     30_000,
   );
 
+  it('words a preset-only sound drop apart from a pack assignment', () => {
+    const only = roundTrip(
+      score()
+        .track('guitar', { sound: { preset: 'clean' } })
+        .bar()
+        .build(),
+    ).dropped.find((entry) => entry.code === 'sound-override');
+    expect(only?.message).toBe('The effects preset is not saved in gp files');
+    const pack = roundTrip(fullScore()).dropped.find((entry) => entry.code === 'sound-override');
+    expect(pack?.message).toBe('The HQ sound assignment is not in gp files');
+  });
+
   it('drops exactly the known set from fullScore and keeps the rest', () => {
     const source = fullScore();
     const result = roundTrip(source);

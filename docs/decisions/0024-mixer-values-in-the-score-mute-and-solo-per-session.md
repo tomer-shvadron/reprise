@@ -63,6 +63,13 @@ commands). Visibility as view state follows the lead's ruling on #46 Q6.
 - WP-060 persists `TrackSession` per song: visibility and single-track view, the mute and solo
   overrides and the current track, never notation.
 
+## Consequences added by #234 (2026-11-16)
+
+A `sound` change that touches only `preset` joins the timeline-neutral list: the effects preset
+is read by the channel strips, never by the timeline, so choosing one is heard at once during
+playback without rebuilding the sequence. A change to `packId` is not neutral, because it
+changes the instruments the song plan loads.
+
 ## Related
 
 - `0007-notation-display-modes.md`
