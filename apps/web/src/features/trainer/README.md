@@ -13,7 +13,7 @@ It holds the speed trainer (WP-070) and the entry points the lead stubbed in WP-
 ## What it can rely on
 
 - `ui.rightPanelView` and `ui.showPanelView(view)`: which tool the right panel shows
-  (`'mixer' | 'speedTrainer' | 'tuner' | 'metronome'`). The fretboard lives in the bottom region
+  (`'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'effects' | 'history'`; the last two are not trainer tools, so `app.tsx` renders them and `TrainerView` excludes them). The fretboard lives in the bottom region
   instead: `ui.bottomPanel` (`{ open, view }`), `ui.toggleBottomPanelView('fretboard')` and
   `ui.bottomPanelHeight` (#206). `TrainerPanel` renders it there as `view="fretboard"`.
 - `practice` (`state/practice.ts`), the running session WP-073 stores: `start` on first play, which

@@ -6,7 +6,7 @@ import { MetronomePanel } from './metronome/metronome-panel';
 import { SpeedTrainerPanel } from './speed-trainer/speed-trainer-panel';
 
 /** The right panel's trainer views and the bottom region's. */
-export type TrainerView = Exclude<PanelView, 'mixer'> | BottomPanelView;
+export type TrainerView = Exclude<PanelView, 'mixer' | 'effects' | 'history'> | BottomPanelView;
 
 const STUBS: Record<
   Exclude<TrainerView, 'speedTrainer' | 'metronome' | 'fretboard'>,
