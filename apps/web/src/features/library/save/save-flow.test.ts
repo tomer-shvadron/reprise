@@ -43,6 +43,7 @@ function setup(
   const repo = createSongsRepository(db);
   const files = (options.files ?? ((f) => f))(createLibraryFiles(services.platform));
   const notices: string[] = [];
+  const settles = { count: 0 };
   const events = { added: [] as SongRow[], updated: [] as SongRow[], joined: [] as Id[] };
   const saver = createLibrarySaver({
     document: services.document,
@@ -52,6 +53,10 @@ function setup(
     onAdded: (row) => events.added.push(row),
     onUpdated: (row) => events.updated.push(row),
     onJoined: (id) => events.joined.push(id),
+    settled: () => {
+      settles.count += 1;
+      return Promise.resolve();
+    },
     notify: (message) => notices.push(message),
   });
   services.document.getState().setSaver(saver);
@@ -81,6 +86,7 @@ function setup(
     return row;
   };
   return {
+    settles,
     storage,
     services,
     repo,
@@ -167,6 +173,20 @@ describe('the library saver', () => {
       title: 'Untitled',
       originalName: 'Untitled.reprise',
     });
+  });
+
+  it('waits for the import of a file just opened before choosing where to save', async () => {
+    const { document, writeHandle, settles, edit } = setup();
+    const { bytes } = await write(song(), 'reprise');
+    await document.getState().openBytes('new.reprise', bytes, {
+      handle: '/m/new.reprise',
+      songId: 'imported-later',
+    });
+    edit('Lead');
+    await document.getState().save();
+    expect(settles.count).toBe(1);
+    // No row after the wait: the file's own path, as when the import failed.
+    expect(writeHandle.mock.calls.map(([handle]) => handle)).toEqual(['/m/new.reprise']);
   });
 
   it('ignores a second Save while the first is looking up its song', async () => {

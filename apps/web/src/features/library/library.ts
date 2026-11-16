@@ -194,6 +194,9 @@ export function createLibrary(
     },
     onUpdated: replaceRow,
     onJoined: startKeeper,
+    settled: async () => {
+      await Promise.allSettled([...pending]);
+    },
     notify,
   });
   const exportGuitarPro = createExporter({

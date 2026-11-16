@@ -21,6 +21,8 @@ export interface SaveFlowDeps {
   onUpdated(row: SongRow): void;
   /** The document now is this library song: start keeping its session. */
   onJoined(id: Id): void;
+  /** Resolves once the imports running now have finished, so a song being imported has its row. */
+  settled(): Promise<void>;
   /** Tells the user, without blocking, why Save did something other than they asked. */
   notify(message: string): void;
   write?: typeof writeScore;
@@ -163,7 +165,13 @@ export function createLibrarySaver(deps: SaveFlowDeps): Saver {
     const { songId, file, score } = document.getState();
     if (!score) return;
     if (songId !== undefined) {
-      const row = await repo.get(songId);
+      let row = await repo.get(songId);
+      // A file just opened is imported in the background: its row lands a moment after the
+      // document opens, and Save must not take the file's own path in that gap.
+      if (!row && !pointsIntoLibrary(file)) {
+        await deps.settled();
+        row = await repo.get(songId);
+      }
       if (row) {
         await saveToSong(row);
         return;

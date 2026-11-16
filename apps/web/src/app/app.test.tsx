@@ -228,8 +228,8 @@ describe('App', () => {
     await waitFor(() => {
       expect(services.document.getState().score).toBeDefined();
     });
-    // A gp5 cannot be written back: Save becomes Save As, which `.reprise`s the document.
-    await send('file.save');
+    // Save As detaches the document from its library song and points it at the new file.
+    await send('file.saveAs');
     await waitFor(() => {
       expect(services.document.getState().file?.name).toBe('riff.reprise');
     });
@@ -365,9 +365,10 @@ describe('App', () => {
       writeHandle,
     });
     const { services, send, user } = renderApp(platform);
-    await send('file.open');
-    await waitFor(() => {
-      expect(services.document.getState().score).toBeDefined();
+    // Without importing: an imported file saves to its library copy, and only a file left where
+    // it is saves in place.
+    await act(async () => {
+      await libraryOf(services).openFileWithoutImport();
     });
     // What a real Guitar Pro file's read reports: something the model does not hold.
     act(() => {
