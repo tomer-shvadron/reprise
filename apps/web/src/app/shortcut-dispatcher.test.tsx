@@ -39,6 +39,24 @@ function setup(platform: KeyboardPlatform) {
 }
 
 describe('shortcut dispatcher', () => {
+  it('leaves a native command its key: it neither runs nor prevents the default, yet stays listed', () => {
+    const registry = new CommandRegistry();
+    const run = vi.fn();
+    registry.register({
+      id: 'editor.copy',
+      title: 'Copy',
+      shortcut: { key: 'c', mod: true },
+      native: true,
+      run,
+    });
+    uninstall = installShortcutDispatcher(window, registry, 'other');
+    const event = new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, cancelable: true });
+    window.dispatchEvent(event);
+    expect(run).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+    expect(registry.available().map(({ id }) => id)).toContain('editor.copy');
+  });
+
   it('runs the command whose shortcut matches, with Cmd on macOS', () => {
     const { open, toggle } = setup('mac');
 

@@ -21,6 +21,13 @@ export interface Command {
    * omits it and its shortcut does nothing. Read on each call, never cached.
    */
   enabled?: () => boolean;
+  /**
+   * The key belongs to the browser: the dispatcher neither runs the command nor prevents the
+   * default on keydown, so the browser's own event fires (copy, cut and paste fire clipboard
+   * events with the system clipboard attached). The table and the palette still show the key, and
+   * `run` is the palette's way to the same action. Nothing else about the registry changes.
+   */
+  native?: true;
   /** False ignores auto-repeated keydowns, so holding Space does not toggle play on and off. */
   repeat?: false;
   run: () => void | Promise<void>;
