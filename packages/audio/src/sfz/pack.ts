@@ -4,6 +4,7 @@ import type { InstrumentId, RawSample, SampleProvider } from '../samples/types';
 import { SAMPLE_LIMITS, decodeAtNativeRate, sniffSampleHeader } from './decode';
 import type { SfzDecoder } from './decode';
 import { loadSfz } from './load';
+import type { SfzParsed } from './load';
 import { resolvePath } from './paths';
 import type { SfzReport } from './report';
 import type { SfzLayer } from './resolve';
@@ -86,6 +87,14 @@ export class SfzPack implements SampleProvider {
       packId: this.id,
       ...(options.layer !== undefined && { layer: options.layer }),
     });
+    return this.adopt(parsed, { id: options.id });
+  }
+
+  /**
+   * Takes an SFZ the caller already parsed with this pack's id (`loadSfz`), so a file that was
+   * read to check the pack is not read and parsed a second time.
+   */
+  adopt(parsed: SfzParsed, options: { id: InstrumentId }): SfzInstrument {
     this.#own(options.id, parsed.regions);
     return {
       id: options.id,

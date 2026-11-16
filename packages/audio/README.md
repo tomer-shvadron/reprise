@@ -255,13 +255,40 @@ assignments by track); it is not part of the contract.
 - `tier` selects the memory budget on each `load`: `budgetBytes` for `gm`, `hqBudgetBytes` for
   `hq`. Lowering it evicts at once, so going back to GM frees the pack buffers. The app passes
   `hq` when at least one assignment reaches the engine.
-- Not yet (WP-091's engine PR): the provider that routes `sfz:` refs to `SfzPack` and attaches the
-  pack's instrument to the strip. Until then a loaded assignment changes the track's tier, and so
-  its effects, but not its sound.
+- A loaded assignment plays the pack: see "HQ tier in the engine" below.
 - Root exports: `tierOf`, `checkPack`, `checkSfzFile` and the types `PackSnapshot`, `SnapshotFile`,
   `SfzFileCheck` (the installer's validation) and `LoadFallback`. `@reprise/audio/testing` adds
   `encodeWav`, `encodeFlac` and `syntheticSfzPack()`, a small valid pack in memory (`default.sfz`
   and `alt.sfz`, each over one WAV) that counts its reads, so tests commit no samples.
+
+### HQ tier in the engine (WP-091 PR A)
+
+- **One source, two providers.** `ManagedSampleSource` reads through a `ProviderRouter`
+  (`samples/provider-router.ts`): a ref `sfz:<packId>/<path>` goes to that pack's `SfzPack`, anything
+  else to the soundfont. A ref of a pack the router does not hold rejects `fetch` and has no owners.
+  Accounting, LRU and pinning therefore cover the GM bank and every pack together, and the HQ budget
+  counts pack buffers with no extra code.
+- **Pack instruments.** The check that decides `fallbacks` parses `entries.default` once, and that
+  parse is the instrument (`SfzPack.adopt`): its id is `sfz:<packId>:<sfzPath>` and its regions are
+  the track's. A pack's instruments are the SFZ files its tracks play; `packInstrumentsOf(residents,
+packId)` names them from `memory().residents` for the memory screen (WP-094). `sound.instrument` is
+  the caller's to map: the app picks the instrument's entries, so a different instrument of a pack
+  arrives as a different `entries.default`, and the model's `instrument` change rebuilds the song.
+- **One resolver.** `instrumentFor(track, program)` is the pack instrument for a track whose
+  assignment loaded, whatever the program, else the GM preset. Attach, the baseline reset at each
+  run, loop wrap and stop, the planner and the region maps all use it, and the sink's program
+  changes leave an HQ track on its pack: the pack is the track's sound, as RSE is in Guitar Pro.
+- **Order.** A `load` with an assignment it has not seen waits for the SFZ text before it attaches,
+  so the router holds the pack before the first decode. A load that a newer load, or `unload`,
+  overtook attaches nothing. With nothing new to read it stays synchronous.
+- **Same score, other packs.** Only the tracks whose pack instrument changed are swapped
+  (`setInstrument`) and decoded with `instrumentLoads` progress. A pack reinstalled under the same id
+  has its old buffers evicted first, since the refs match. An instrument no assignment names any
+  more stays resident as a leftover until the budget needs it ("unload unused" is WP-094's).
+- **Failure.** A missing or corrupt sample file does not reject `load`: the tracks whose samples
+  fail go back to GM and into `fallbacks`, like an unreadable SFZ.
+- **Not here.** Articulation sets beyond `default` (WP-093); the budget setter and user setting
+  (WP-094).
 
 ### Known gaps
 

@@ -6,7 +6,7 @@ import { outputLatencyOf } from './output-latency';
 import { resolveEffects, stagesOf } from './effects/presets';
 import type { EffectStage } from './effects/presets';
 import { Sampler } from './sampler/sampler';
-import type { PreviewNote, PreviewOptions, TrackParams } from './sampler/sampler';
+import type { Instrument, PreviewNote, PreviewOptions, TrackParams } from './sampler/sampler';
 import { createSamplerSink } from './sampler/sampler-sink';
 import {
   GM_BUDGET_BYTES,
@@ -15,10 +15,13 @@ import {
 } from './samples/managed-sample-source';
 import type { BufferFactory } from './samples/managed-sample-source';
 import { planInstruments, planSamples } from './samples/plan';
+import { ProviderRouter, packInstrumentId } from './samples/provider-router';
 import type { InstrumentId, MemoryReport } from './samples/types';
 import type { Sf2Soundfont } from './sf2/soundfont';
 import { loadSfz } from './sfz/load';
+import { SfzPack } from './sfz/pack';
 import type { SfzFiles } from './sfz/pack';
+import type { RegionMap } from './sampler/region-map';
 import { tierOf } from './tier';
 import type { Ticker } from './ticker';
 import { timelineNeutral } from './timeline-neutral';
@@ -210,10 +213,25 @@ function sameTuning(a: Track, b: Track): boolean {
   );
 }
 
+function required<T>(value: T | undefined): T {
+  if (value === undefined)
+    throw new Error('AudioEngine.load: no sound bank; call setSoundfont first');
+  return value;
+}
+
 function checkVolume(method: string, volume: number): void {
   if (!Number.isFinite(volume) || volume < 0 || volume > 1) {
     throw new RangeError(`${method}: volume must be 0 to 1, got ${String(volume)}`);
   }
+}
+
+/** A pack assignment whose default SFZ parsed: the instrument its track plays. */
+interface LoadedPack {
+  assignment: PackAssignment;
+  key: string;
+  id: InstrumentId;
+  instrument: Instrument;
+  regions: RegionMap;
 }
 
 interface Live {
@@ -241,9 +259,12 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   let live: Live | undefined;
   let source: ManagedSampleSource | undefined;
   let bank: GmBank | undefined;
+  let router: ProviderRouter | undefined;
   let score: Score | undefined;
   /** The score the sampler's tracks were last built from. */
   let attached: Score | undefined;
+  /** The last score whose load got past its pack check: what the next load is an edit of. */
+  let committed: Score | undefined;
   let latestDecode: Promise<LoadResult> | undefined;
   let overrides: Record<Id, TrackParams> = {};
   let tempo: { mode: TempoMode; value: number } = { mode: 'percent', value: 100 };
@@ -253,7 +274,9 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   let masterVolume = 1;
   let gmTierBypass = true;
   /** The assignments whose pack loaded, by track: what the tier and the strips follow. */
-  let loadedPacks = new Map<Id, { assignment: PackAssignment; key: string }>();
+  let loadedPacks = new Map<Id, LoadedPack>();
+  /** One `SfzPack` per installed pack id, rebuilt when its files object changes. */
+  let packCache = new Map<string, { files: SfzFiles; pack: SfzPack }>();
   /** Assignments whose check failed, remembered so an edit does not read a broken pack again. */
   let failedPacks = new Map<Id, { key: string; files: SfzFiles; fallback: LoadFallback }>();
   /** Bumped by every `load`, so a pack check that a newer load overtook changes nothing. */
@@ -284,6 +307,27 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     return promise;
   }
 
+  /**
+   * The one answer to "which instrument" for a track: its pack instrument when an assignment
+   * loaded, whatever the program (a pack is the track's sound, so a beat's program change does
+   * not leave it), else the GM preset.
+   */
+  function instrumentFor(track: Track, program: number): Instrument | undefined {
+    return loadedPacks.get(track.id)?.instrument ?? bank?.instrument(track, program);
+  }
+
+  const instrumentIdFor = (track: Track, program: number): InstrumentId => {
+    const packed = loadedPacks.get(track.id);
+    if (packed) return packed.id;
+    if (!bank) throw new Error('AudioEngine: no sound bank');
+    return bank.instrumentId(track, program);
+  };
+
+  const regionMapOf = (id: InstrumentId): RegionMap | undefined => {
+    for (const entry of loadedPacks.values()) if (entry.id === id) return entry.regions;
+    return bank?.regionMap(id);
+  };
+
   function baselineOf(track: Track): Required<TrackParams> {
     const { volume, pan, mute, solo } = track.channel;
     return { volume, pan, mute, solo, ...overrides[track.id] };
@@ -299,7 +343,8 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     const held = new Set(sampler.trackIds);
     for (const track of attached.tracks) {
       if (!held.has(track.id)) continue;
-      sampler.setInstrument(track.id, bank.instrument(track, track.program), at);
+      const instrument = instrumentFor(track, track.program);
+      if (instrument) sampler.setInstrument(track.id, instrument, at);
       const params = baselineOf(track);
       if (at === undefined) sampler.setTrack(track.id, params);
       else sampler.setTrack(track.id, { volume: params.volume, pan: params.pan }, { at });
@@ -319,7 +364,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     }
   }
 
-  function attach(next: Score, mode: 'replace' | 'sync'): void {
+  function attach(next: Score, mode: 'replace' | 'sync', swapped: ReadonlySet<Id>): void {
     if (!live || !bank) return;
     const { sampler } = live;
     const previous = mode === 'sync' ? attached : undefined;
@@ -331,17 +376,23 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     const held = new Set(sampler.trackIds);
     for (const track of next.tracks) {
       const old = before.get(track.id);
-      const base = bank.instrument(track, track.program);
+      const base = instrumentFor(track, track.program);
+      if (!base) continue;
       if (!old || !held.has(track.id) || !sameTuning(old, track)) {
         sampler.addTrack(track, base);
         const override = overrides[track.id];
         if (override) sampler.setTrack(track.id, override);
         continue;
       }
-      if (old === track) continue;
-      if (old.program !== track.program || old.bank !== track.bank || old.kind !== track.kind) {
+      if (
+        old.program !== track.program ||
+        old.bank !== track.bank ||
+        old.kind !== track.kind ||
+        swapped.has(track.id)
+      ) {
         sampler.setInstrument(track.id, base);
       }
+      if (old === track) continue;
       if (old.channel !== track.channel) sampler.setTrack(track.id, baselineOf(track));
     }
     attached = next;
@@ -351,7 +402,9 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   function makeLive(context: BaseAudioContext): Live {
     const sampler = new Sampler(context);
     const sink = createSamplerSink(sampler, {
-      instrumentOf: (track, program) => bank?.instrument(track, program),
+      // An HQ track keeps its pack through a beat's program change.
+      instrumentOf: (track, program) =>
+        loadedPacks.has(track.id) ? undefined : bank?.instrument(track, program),
     });
     const transport = createTransport({
       context,
@@ -393,7 +446,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     });
     live = { context, sampler, transport, click };
     if (score) {
-      attach(score, 'replace');
+      attach(score, 'replace', new Set());
       transport.load(score);
     }
     return live;
@@ -402,7 +455,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   function decode(next: Score): Promise<LoadResult> {
     if (!source || !bank) return Promise.reject(new Error('AudioEngine.load: no sound bank'));
     const decoding = source
-      .load(next, bank.regionMap, { instrumentOf: bank.instrumentId })
+      .load(next, regionMapOf, { instrumentOf: instrumentIdFor })
       .then((plan) => ({ instruments: plan.instruments, fallbacks: [] }));
     latestDecode = decoding;
     return decoding;
@@ -422,10 +475,10 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     loadTokens.set(id, token);
     const started = song;
     const current = () => started === song && loadTokens.get(id) === token;
-    const plan = planInstruments(next, { instrumentOf: bank.instrumentId });
+    const plan = planInstruments(next, { instrumentOf: instrumentIdFor });
     const trackPlan = plan.tracks.find((entry) => entry.track === id);
     const refs = trackPlan
-      ? planSamples({ instruments: plan.instruments, tracks: [trackPlan] }, bank.regionMap)
+      ? planSamples({ instruments: plan.instruments, tracks: [trackPlan] }, regionMapOf)
       : [];
     if (refs.length === 0) {
       if (current() && id in loads) setLoad(id, undefined);
@@ -453,85 +506,165 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     );
   }
 
-  /** A timeline-neutral edit: channel and program changes go straight to the strips. */
-  function applyNeutral(previous: Score, next: Score): Promise<LoadResult> {
+  /**
+   * A timeline-neutral edit: channel and program changes go straight to the strips, and a track
+   * whose pack instrument changed takes the new one.
+   */
+  function applyNeutral(
+    previous: Score,
+    next: Score,
+    swapped: ReadonlySet<Id>,
+  ): Promise<LoadResult> {
     if (live) attached = next;
     applyEffects(next.tracks);
     const sampler = live?.sampler;
     const held = new Set(sampler?.trackIds);
-    const reprogrammed: Id[] = [];
+    const reprogrammed = new Set<Id>();
     next.tracks.forEach((track, index) => {
       const old = previous.tracks[index];
-      if (!old || old === track) return;
-      if (old.program !== track.program) reprogrammed.push(track.id);
-      if (!sampler || !bank || !held.has(track.id)) return;
+      if (!old) return;
+      const resample = swapped.has(track.id);
+      if (old === track && !resample) return;
+      // A pack instrument ignores the program, so only a GM track decodes for one.
+      if (resample || (old.program !== track.program && !loadedPacks.has(track.id))) {
+        reprogrammed.add(track.id);
+      }
+      if (!sampler || !held.has(track.id)) return;
       if (old.channel !== track.channel) sampler.setTrack(track.id, baselineOf(track));
-      if (old.program !== track.program) {
-        sampler.setInstrument(track.id, bank.instrument(track, track.program));
+      if (resample || old.program !== track.program) {
+        const instrument = instrumentFor(track, track.program);
+        if (instrument) sampler.setInstrument(track.id, instrument);
       }
     });
-    if (reprogrammed.length === 0) return latestDecode ?? decode(next);
+    if (reprogrammed.size === 0) return latestDecode ?? decode(next);
     // First: its switchSong pins the new programs before their samples are inserted.
     const decoding = decode(next);
-    return Promise.all([decoding, ...reprogrammed.map((id) => loadInstrument(next, id))]).then(
+    return Promise.all([decoding, ...[...reprogrammed].map((id) => loadInstrument(next, id))]).then(
       ([result]) => result,
     );
   }
 
   /**
-   * Checks each assignment against its pack: the default SFZ must read, parse and map a region. An
-   * assignment with the same pack id, files object and default path as the last load is not read
-   * again, whether it loaded or failed, so a reload swaps only the tracks whose pack changed and a
-   * broken pack is not retried on every edit (a reinstall brings a new files object). The provider
-   * routing that plays the pack's samples is WP-091 PR A, which should reuse the SFZ parsed here:
-   * until then an assignment that checks out changes the track's tier (effects and budget) but not
-   * its sound.
+   * After a decode failed: loads each pack track's samples on its own, and sends the tracks whose
+   * pack cannot supply them (a missing or corrupt sample file) back to General MIDI, reported as
+   * fallbacks. Resolves with how many tracks it dropped.
    */
-  async function resolvePacks(
+  async function dropBrokenPacks(
+    next: Score,
+    loaded: Map<Id, LoadedPack>,
+    failed: Map<Id, { key: string; files: SfzFiles; fallback: LoadFallback }>,
+  ): Promise<number> {
+    const managed = source;
+    if (!managed) return 0;
+    let dropped = 0;
+    await Promise.all(
+      [...loaded].map(async ([id, entry]) => {
+        const track = next.tracks.find((candidate) => candidate.id === id);
+        if (!track) return;
+        const plan = planInstruments(
+          { ...next, tracks: [track] },
+          { instrumentOf: instrumentIdFor },
+        );
+        const refs = planSamples(plan, regionMapOf);
+        const results = await Promise.allSettled(refs.map((ref) => managed.getBuffer(ref)));
+        const bad = results.find((result) => result.status === 'rejected');
+        if (!bad || loaded.get(id) !== entry) return;
+        const reason: unknown = bad.reason;
+        loaded.delete(id);
+        failed.set(id, {
+          key: entry.key,
+          files: entry.assignment.pack.files,
+          fallback: {
+            trackId: id,
+            packId: entry.assignment.pack.id,
+            error: reason instanceof Error ? reason.message : String(reason),
+          },
+        });
+        const instrument = bank?.instrument(track, track.program);
+        if (live?.sampler.trackIds.includes(id) && instrument) {
+          live.sampler.setInstrument(id, instrument);
+        }
+        applyEffects([track]);
+        dropped += 1;
+      }),
+    );
+    return dropped;
+  }
+
+  type Resolved = { loaded: Map<Id, LoadedPack>; failed: typeof failedPacks };
+
+  function packFor(id: string, files: SfzFiles): SfzPack {
+    const cached = packCache.get(id);
+    if (cached?.files === files) return cached.pack;
+    const pack = new SfzPack({ id, files });
+    packCache.set(id, { files, pack });
+    return pack;
+  }
+
+  /**
+   * Checks each assignment against its pack: the default SFZ must read, parse and map a region,
+   * and that parse becomes the track's instrument (the file is read once). An assignment with the
+   * same pack id, files object and default path as the last load is not read again, whether it
+   * loaded or failed, so a reload swaps only the tracks whose pack changed and a broken pack is
+   * not retried on every edit (a reinstall brings a new files object). Synchronous when every
+   * assignment is already known.
+   */
+  function resolvePacks(
     next: Score,
     assignments: readonly PackAssignment[],
-  ): Promise<{ loaded: typeof loadedPacks; failed: typeof failedPacks }> {
+  ): Resolved | Promise<Resolved> {
     const tracks = new Set(next.tracks.map((track) => track.id));
-    const loaded: typeof loadedPacks = new Map();
-    const failed: typeof failedPacks = new Map();
-    await Promise.all(
-      assignments
-        .filter((assignment) => tracks.has(assignment.trackId))
-        .map(async (assignment) => {
-          const { trackId, pack } = assignment;
-          const path = assignment.entries.default;
-          const key = `${pack.id}:${path ?? ''}`;
-          const ok = loadedPacks.get(trackId);
-          if (ok && ok.key === key && ok.assignment.pack.files === pack.files) {
-            loaded.set(trackId, { assignment, key });
-            return;
-          }
-          const bad = failedPacks.get(trackId);
-          if (bad && bad.key === key && bad.files === pack.files) {
-            failed.set(trackId, bad);
-            return;
-          }
-          try {
-            if (path === undefined) throw new Error('the assignment has no default entry');
-            const { regions } = await loadSfz(path, (file) => pack.files.read(file), {
+    const loaded: Resolved['loaded'] = new Map();
+    const failed: Resolved['failed'] = new Map();
+    const unknown: PackAssignment[] = [];
+    for (const assignment of assignments) {
+      if (!tracks.has(assignment.trackId)) continue;
+      const { trackId, pack } = assignment;
+      const key = `${pack.id}:${assignment.entries.default ?? ''}`;
+      const ok = loadedPacks.get(trackId);
+      if (ok && ok.key === key && ok.assignment.pack.files === pack.files) {
+        loaded.set(trackId, { ...ok, assignment });
+        continue;
+      }
+      const bad = failedPacks.get(trackId);
+      if (bad && bad.key === key && bad.files === pack.files) {
+        failed.set(trackId, bad);
+        continue;
+      }
+      unknown.push(assignment);
+    }
+    if (unknown.length === 0) return { loaded, failed };
+    return Promise.all(
+      unknown.map(async (assignment) => {
+        const { trackId, pack } = assignment;
+        const path = assignment.entries.default;
+        const key = `${pack.id}:${path ?? ''}`;
+        try {
+          if (path === undefined) throw new Error('the assignment has no default entry');
+          const parsed = await loadSfz(path, (file) => pack.files.read(file), { packId: pack.id });
+          if (parsed.regions.length === 0) throw new Error(`${path} maps no regions`);
+          const id = packInstrumentId(pack.id, path);
+          const { regions } = packFor(pack.id, pack.files).adopt(parsed, { id });
+          loaded.set(trackId, {
+            assignment,
+            key,
+            id,
+            regions,
+            instrument: { regions, source: required(source) },
+          });
+        } catch (error) {
+          failed.set(trackId, {
+            key,
+            files: pack.files,
+            fallback: {
+              trackId,
               packId: pack.id,
-            });
-            if (regions.length === 0) throw new Error(`${path} maps no regions`);
-            loaded.set(trackId, { assignment, key });
-          } catch (error) {
-            failed.set(trackId, {
-              key,
-              files: pack.files,
-              fallback: {
-                trackId,
-                packId: pack.id,
-                error: error instanceof Error ? error.message : String(error),
-              },
-            });
-          }
-        }),
-    );
-    return { loaded, failed };
+              error: error instanceof Error ? error.message : String(error),
+            },
+          });
+        }
+      }),
+    ).then(() => ({ loaded, failed }));
   }
 
   function unlock(): Live | undefined {
@@ -564,42 +697,81 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
           new Error('AudioEngine.load: no sound bank; call setSoundfont first'),
         );
       }
-      const previous = score;
       score = next;
       const budget = loadOptions.tier === 'hq' ? hqBudgetBytes : gmBudgetBytes;
       budgetBytes = budget;
       source.budgetBytes = budget;
       const started = packLoads + 1;
       packLoads = started;
-      const packing = resolvePacks(next, loadOptions.packs);
-      let loading: Promise<LoadResult>;
-      if (previous === next) {
-        applyEffects(next.tracks);
-        loading = decode(next);
-      } else if (previous && timelineNeutral(previous, next)) {
-        loading = applyNeutral(previous, next);
-      } else {
-        if (live) {
-          attach(next, previous ? 'sync' : 'replace');
-          live.transport.load(next);
+      const run = ({ loaded, failed }: Resolved): Promise<LoadResult> => {
+        // A newer load, or `unload`, owns the song and the packs now: this one attaches nothing.
+        if (packLoads !== started || score !== next) {
+          return (latestDecode ?? Promise.resolve({ instruments: [], fallbacks: [] })).then(
+            (result) => ({ ...result, fallbacks: [] }),
+          );
         }
-        loading = decode(next);
-      }
-      return tracked(
-        Promise.all([loading, packing]).then(([result, { loaded, failed }]) => {
-          // A newer load, or `unload`, owns the packs now.
-          if (packLoads === started && score === next) {
-            loadedPacks = loaded;
-            failedPacks = failed;
-            applyEffects(next.tracks);
+        const swapped = new Set<Id>();
+        for (const id of new Set([...loadedPacks.keys(), ...loaded.keys()])) {
+          if (loadedPacks.get(id)?.instrument !== loaded.get(id)?.instrument) swapped.add(id);
+        }
+        // A pack reinstalled under the same id reuses its refs: drop the old files' buffers.
+        for (const id of swapped) {
+          const old = loadedPacks.get(id);
+          if (old && old.id === loaded.get(id)?.id) source?.evict(old.id);
+        }
+        loadedPacks = loaded;
+        failedPacks = failed;
+        const used = new Map<string, SfzPack>();
+        for (const { assignment } of loaded.values()) {
+          const entry = packCache.get(assignment.pack.id);
+          if (entry) used.set(assignment.pack.id, entry.pack);
+        }
+        packCache = new Map([...packCache].filter(([id]) => used.has(id)));
+        router?.setPacks(used);
+        const previous = committed;
+        committed = next;
+        let loading: Promise<LoadResult>;
+        if (previous === next) {
+          applyEffects(next.tracks);
+          const held = live ? new Set(live.sampler.trackIds) : new Set<Id>();
+          const changed = next.tracks.filter(
+            (track) => swapped.has(track.id) && held.has(track.id),
+          );
+          for (const track of changed) {
+            const instrument = instrumentFor(track, track.program);
+            if (instrument) live?.sampler.setInstrument(track.id, instrument);
           }
-          const order = new Map(next.tracks.map((track, index) => [track.id, index]));
-          const fallbacks = [...failed.values()]
+          // First: its switchSong pins the pack instruments before their samples are inserted.
+          const decoding = decode(next);
+          loading = Promise.all([
+            decoding,
+            ...changed.map((track) => loadInstrument(next, track.id)),
+          ]).then(([result]) => result);
+        } else if (previous && timelineNeutral(previous, next)) {
+          loading = applyNeutral(previous, next, swapped);
+        } else {
+          if (live) {
+            attach(next, previous ? 'sync' : 'replace', swapped);
+            live.transport.load(next);
+          }
+          loading = decode(next);
+        }
+        const recovering = loading.catch(async (error: unknown) => {
+          // A pack whose samples will not decode plays GM; any other failure is the caller's.
+          const stale = packLoads !== started || score !== next;
+          if (stale || (await dropBrokenPacks(next, loaded, failed)) === 0) throw error;
+          return decode(next);
+        });
+        const order = new Map(next.tracks.map((track, index) => [track.id, index]));
+        return recovering.then((result) => ({
+          ...result,
+          fallbacks: [...failed.values()]
             .map((entry) => entry.fallback)
-            .sort((a, b) => (order.get(a.trackId) ?? 0) - (order.get(b.trackId) ?? 0));
-          return { ...result, fallbacks };
-        }),
-      );
+            .sort((a, b) => (order.get(a.trackId) ?? 0) - (order.get(b.trackId) ?? 0)),
+        }));
+      };
+      const resolution = resolvePacks(next, loadOptions.packs);
+      return tracked(resolution instanceof Promise ? resolution.then(run) : run(resolution));
     },
 
     play(fromTick) {
@@ -708,7 +880,8 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     setSoundfont(font) {
       if (disposed) return;
       if (source) throw new Error('AudioEngine.setSoundfont: the sound bank is already set');
-      source = new ManagedSampleSource(font, CONSTRUCTED_BUFFERS, {
+      router = new ProviderRouter(font);
+      source = new ManagedSampleSource(router, CONSTRUCTED_BUFFERS, {
         budgetBytes,
         ...(options.scheduleMemory && { schedule: options.scheduleMemory }),
       });
@@ -727,6 +900,9 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       packLoads += 1;
       loadedPacks = new Map();
       failedPacks = new Map();
+      packCache = new Map();
+      router?.setPacks(new Map());
+      committed = undefined;
       loopBars = undefined;
       song += 1;
       loadTokens.clear();
