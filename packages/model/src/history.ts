@@ -240,6 +240,12 @@ export interface History {
   /** The label of the step `undo` or `redo` would replay, for the menu. */
   readonly undoLabel: string | undefined;
   readonly redoLabel: string | undefined;
+  /**
+   * Every label on each stack, newest first (the step `undo` or `redo` replays comes first); a
+   * group or a chain shows its own name. Strings only, no patches: cheap enough per edit.
+   */
+  readonly undoLabels: readonly string[];
+  readonly redoLabels: readonly string[];
   /** Forward and inverse patches of every step held, for budgets and debugging. */
   readonly steps: readonly Change[];
 }
@@ -331,10 +337,22 @@ export function createHistory(): History {
     get redoLabel() {
       return redoStack.at(-1)?.command;
     },
+    get undoLabels() {
+      return labelsNewestFirst(undoStack);
+    },
+    get redoLabels() {
+      return labelsNewestFirst(redoStack);
+    },
     get steps() {
       return undoStack.concat(redoStack);
     },
   };
+}
+
+function labelsNewestFirst(stack: readonly Change[]): string[] {
+  const labels: string[] = [];
+  for (let i = stack.length - 1; i >= 0; i -= 1) labels.push(stack[i]?.command ?? '');
+  return labels;
 }
 
 function mergeChanges(label: string, changes: Change[]): Change {

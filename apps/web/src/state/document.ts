@@ -122,6 +122,21 @@ export interface DocumentView {
 /** The part of the view a session keeps: which tracks are shown, not how they are written. */
 export type TrackLayoutView = Omit<DocumentView, 'notation'>;
 
+/** The command names on each undo stack, newest first; a group or chain shows its own name. */
+export interface HistoryLabels {
+  undo: readonly string[];
+  redo: readonly string[];
+}
+
+/** What last moved the history, so the editor can put the cursor back after an undo. */
+export type HistoryStep = 'apply' | 'undo' | 'redo';
+
+const noLabels: HistoryLabels = { undo: [], redo: [] };
+
+function sameList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((label, index) => label === b[index]);
+}
+
 export interface DocumentState {
   /** A new one per opened document; subscribers tell a switch from an edit by it. */
   id: Id | undefined;
@@ -142,6 +157,10 @@ export interface DocumentState {
   canRedo: boolean;
   undoLabel: string | undefined;
   redoLabel: string | undefined;
+  /** Every step's name, newest first; the same object while neither list has changed. */
+  historyLabels: HistoryLabels;
+  /** `apply`, `undo` or `redo`, whichever produced `score` last; undefined after an open or close. */
+  lastStep: HistoryStep | undefined;
   /** From the last successful read. */
   warnings: readonly Warning[];
   warningsOpen: boolean;
@@ -320,12 +339,22 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
   let markReachable = true;
 
   return create<DocumentState>()((set, get) => {
+    // Keeps the previous object when nothing changed, so a subscriber can compare by identity.
+    const labelsNow = (): HistoryLabels => {
+      const previous = get().historyLabels;
+      const undo = history.undoLabels;
+      const redo = history.redoLabels;
+      if (sameList(undo, previous.undo) && sameList(redo, previous.redo)) return previous;
+      return { undo, redo };
+    };
+
     const snapshot = (notation: Record<Id, Notation> = get().view.notation) => ({
       dirty: depth !== savedDepth || !sameNotation(notation, savedNotation),
       canUndo: history.canUndo,
       canRedo: history.canRedo,
       undoLabel: history.undoLabel,
       redoLabel: history.redoLabel,
+      historyLabels: labelsNow(),
     });
 
     const replay = (step: 'undo' | 'redo') => {
@@ -335,6 +364,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       set((state) => ({
         score: applied.score,
         lastChange: applied.change,
+        lastStep: step,
         revision: state.revision + 1,
         ...snapshot(),
       }));
@@ -496,6 +526,8 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       canRedo: false,
       undoLabel: undefined,
       redoLabel: undefined,
+      historyLabels: noLabels,
+      lastStep: undefined,
       warnings: [],
       warningsOpen: false,
       detailsOpen: false,
@@ -546,6 +578,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
             songId,
             view: emptyView(),
             lastChange: undefined,
+            lastStep: undefined,
             revision: state.revision + 1,
             warnings,
             warningsOpen: warnings.some((warning) => warning.severity !== 'info'),
@@ -574,6 +607,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           songId: undefined,
           view: emptyView(),
           lastChange: undefined,
+          lastStep: undefined,
           revision: state.revision + 1,
           warnings: [],
           warningsOpen: false,
@@ -598,6 +632,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           songId: undefined,
           view: emptyView(),
           lastChange: undefined,
+          lastStep: undefined,
           revision: state.revision + 1,
           warnings: [],
           warningsOpen: false,
@@ -623,6 +658,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
         set((state) => ({
           score: applied.score,
           lastChange: applied.change,
+          lastStep: 'apply',
           revision: state.revision + 1,
           ...snapshot(),
         }));

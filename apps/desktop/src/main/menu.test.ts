@@ -1,7 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 
-import { MENU_COMMANDS, menuTemplate, type MenuOptions } from './menu';
+import { historyItemLabel, MENU_COMMANDS, menuTemplate, type MenuOptions } from './menu';
 
 function flatten(items: MenuItemConstructorOptions[]): MenuItemConstructorOptions[] {
   return items.flatMap((item) => [
@@ -104,5 +104,51 @@ describe('menuTemplate', () => {
     expect(items.find((item) => item.label === 'No Recent Songs')).toMatchObject({
       enabled: false,
     });
+  });
+});
+
+describe('the Edit menu history items', () => {
+  const edit = (items: MenuItemConstructorOptions[]) => {
+    const submenu = items.find((item) => item.label === 'Edit')?.submenu;
+    return Array.isArray(submenu) ? submenu : [];
+  };
+
+  it('builds the label from the command name, escaping a lone &', () => {
+    expect(historyItemLabel('Undo', undefined)).toBe('Undo');
+    expect(historyItemLabel('Undo', 'setNote')).toBe('Undo setNote');
+    expect(historyItemLabel('Redo', 'Fish & Chips')).toBe('Redo Fish && Chips');
+  });
+
+  it('keeps plain, enabled items until the renderer reports', () => {
+    const [undo, redo] = edit(template().items);
+
+    expect(undo).toMatchObject({ label: 'Undo', accelerator: 'CmdOrCtrl+Z' });
+    expect(undo?.enabled).toBeUndefined();
+    expect(redo).toMatchObject({ label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z' });
+  });
+
+  it('names the steps and disables an empty stack, keeping accelerators and clicks', () => {
+    const { options, items } = template({ history: { undo: 'setNote' } });
+    const [undo, redo] = edit(items);
+
+    expect(undo).toMatchObject({
+      label: 'Undo setNote',
+      enabled: true,
+      accelerator: 'CmdOrCtrl+Z',
+    });
+    expect(redo).toMatchObject({ label: 'Redo', enabled: false, accelerator: 'Shift+CmdOrCtrl+Z' });
+    press(undo);
+    expect(options.sendCommand).toHaveBeenLastCalledWith('edit.undo');
+  });
+
+  it('leaves the other items as they were', () => {
+    const plain = flatten(menuTemplate(template().options)).map((item) => item.label);
+    const named = flatten(
+      menuTemplate(template({ history: { undo: 'x', redo: 'y' } }).options),
+    ).map((item) => item.label);
+
+    expect(
+      named.filter((label) => !label?.startsWith('Undo') && !label?.startsWith('Redo')),
+    ).toEqual(plain.filter((label) => label !== 'Undo' && label !== 'Redo'));
   });
 });

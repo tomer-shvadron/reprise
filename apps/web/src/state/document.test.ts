@@ -2,6 +2,7 @@ import { FormatError, read, write, type ReadResult, type Warning } from '@repris
 import {
   CommandError,
   STANDARD_TUNING,
+  chain,
   setNote,
   setTrackProperties,
   type Score,
@@ -1100,5 +1101,73 @@ describe('document store library handles', () => {
 
     expect(saveFile).not.toHaveBeenCalled();
     expect(writeHandle).toHaveBeenCalledWith('library/songs/a.reprise', REPRISE_BYTES);
+  });
+});
+
+describe('document store history labels and the last step', () => {
+  async function opened() {
+    const ctx = setup({ read: () => Promise.resolve({ score: song(), warnings: [] }) });
+    await ctx.store.getState().open();
+    return ctx.store;
+  }
+
+  it('lists each stack newest first through apply, undo and redo', async () => {
+    const store = await opened();
+    expect(store.getState().historyLabels).toEqual({ undo: [], redo: [] });
+    expect(store.getState().lastStep).toBeUndefined();
+
+    store.getState().apply(editOf(store, 2));
+    store.getState().apply(editOf(store, 3));
+    const name = store.getState().undoLabel;
+    expect(name).toBeDefined();
+    expect(store.getState().historyLabels).toEqual({ undo: [name, name], redo: [] });
+    expect(store.getState().lastStep).toBe('apply');
+
+    store.getState().undo();
+    expect(store.getState().historyLabels).toEqual({ undo: [name], redo: [name] });
+    expect(store.getState().lastStep).toBe('undo');
+
+    store.getState().redo();
+    expect(store.getState().historyLabels).toEqual({ undo: [name, name], redo: [] });
+    expect(store.getState().lastStep).toBe('redo');
+  });
+
+  it('shows a chain under its own name, and clears redo on a new edit', async () => {
+    const store = await opened();
+    store.getState().apply(editOf(store, 2));
+    store.getState().undo();
+    store.getState().apply(chain('Fill the bar', [() => editOf(store, 4)]));
+
+    expect(store.getState().historyLabels).toEqual({ undo: ['Fill the bar'], redo: [] });
+  });
+
+  it('keeps the same object while neither list changes, and resets on a new document', async () => {
+    const store = await opened();
+    store.getState().apply(editOf(store, 2));
+    const labels = store.getState().historyLabels;
+    store.getState().setNotation('t', undefined);
+    store.getState().setWarningsOpen(true);
+    expect(store.getState().historyLabels).toBe(labels);
+
+    store.getState().newDocument(song('Fresh'));
+    expect(store.getState().historyLabels).toEqual({ undo: [], redo: [] });
+    expect(store.getState().lastStep).toBeUndefined();
+  });
+
+  it('leaves lastStep alone for an edit that changes nothing, and clears it on close', async () => {
+    const store = await opened();
+    store.getState().apply(editOf(store, 2));
+    store.getState().undo();
+    store.getState().apply(editOf(store, 0));
+    store.getState().undo();
+    store.getState().redo();
+    store
+      .getState()
+      .apply(setTrackProperties({ trackId: store.getState().score?.tracks[0]?.id ?? '' }, {}));
+    expect(store.getState().lastStep).toBe('redo');
+
+    store.getState().close();
+    expect(store.getState().lastStep).toBeUndefined();
+    expect(store.getState().historyLabels).toEqual({ undo: [], redo: [] });
   });
 });
