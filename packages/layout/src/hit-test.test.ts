@@ -273,7 +273,7 @@ describe('every note is clickable', () => {
     expect([...wanted].filter((id) => !hit.has(id))).toEqual([]);
   }
 
-  // Worst run: 1.3 s alone, 2.8 s under three parallel `pnpm test` runs, 5.2 s on CI (issue #290,
+  // Worst run: 1.3 s alone, 2.8 s under two parallel `pnpm test` runs, 5.2 s on CI (issue #290,
   // it timed out at the 5 s default). 4x the CI worst, rounded up to the 30 s step.
   it.each(Object.keys(modes) as (keyof typeof modes)[])(
     'the long score in mixed notation, %s',
