@@ -28,9 +28,10 @@ export function player(soundfont: () => Promise<Uint8Array> = fetchSyntheticSf2)
     storage: () => storage,
     platform: fakePlatform({ openFile: () => Promise.resolve(next.file) }),
     ui: createUiStore('light'),
-    audio: (playback) =>
+    audio: (playback, sounds) =>
       createAudioService({
         playback,
+        packs: sounds,
         loadSoundfont: soundfont,
         createContext: () => {
           if (!context) throw new Error('the test has not made a context yet');
