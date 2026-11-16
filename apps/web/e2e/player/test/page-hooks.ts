@@ -50,6 +50,12 @@ export interface E2eProbe {
   beatInterval(changes: number): Promise<number>;
   /** Every bar the readout shows until it has jumped from `from` back to `to` `times` times. */
   barTrail(from: string, to: string, times: number): Promise<{ bars: string[]; timedOut: boolean }>;
+  /**
+   * Every change of the bar readout from the moment the transport runs until it stops again, which
+   * is the song's end or a Stop. The readout rewinds as it stops, so that last frame is not
+   * recorded. Press Play after calling it: it waits for the transport to run first.
+   */
+  barsUntilStopped(): Promise<{ bars: string[]; timedOut: boolean }>;
   watchFollow(untilBar: string): Promise<FollowWatch>;
   /** Frame gaps and fretboard changes until the bar readout shows `untilBar`. */
   watchFrames(untilBar: string): Promise<FrameWatch>;
@@ -230,6 +236,23 @@ export function installPageHooks(): void {
     return { bars, timedOut };
   };
 
+  const barsUntilStopped = async () => {
+    const bars: string[] = [];
+    // The playback group's button reads Pause while the transport runs or counts in.
+    const running = () =>
+      document.querySelector('[role="group"][aria-label="Playback"] button[aria-label="Pause"]') !==
+      null;
+    let started = false;
+    const timedOut = await everyFrame(() => {
+      if (!running()) return started;
+      started = true;
+      const bar = field('bar');
+      if (bar !== bars.at(-1)) bars.push(bar);
+      return false;
+    });
+    return { bars, timedOut };
+  };
+
   const watchFollow = async (untilBar: string): Promise<FollowWatch> => {
     const region = document.querySelector<HTMLElement>(
       '[role="region"][aria-roledescription="score"]',
@@ -325,6 +348,7 @@ export function installPageHooks(): void {
     peakWhile,
     beatInterval,
     barTrail,
+    barsUntilStopped,
     watchFollow,
     watchFrames,
   };

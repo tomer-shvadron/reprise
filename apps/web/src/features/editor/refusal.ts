@@ -12,6 +12,10 @@ const RULES: Partial<Record<ViolationRule, string>> = {
   'tie-pitch': 'A tied note must keep the pitch of the note it continues',
   tuplet: 'That tuplet is not allowed',
   dots: 'That many dots is not allowed',
+  'first-bar-tempo': 'The first bar always has a tempo',
+  'alternate-ending-outside-repeat':
+    'An alternate ending needs a repeat end in its run of endings: add one to the last bar of ending 1',
+  'alternate-ending-order': 'Alternate endings must follow each other in order',
 };
 
 /** The model prefixes its messages with the command name, and an invariant adds a path: neither means anything to a player. */
@@ -34,7 +38,10 @@ export function describeRefusal(error: unknown): string | undefined {
   if (!(error instanceof CommandError)) return undefined;
   switch (error.code) {
     case 'voice-overfull':
-      return RULES['voice-overfull'];
+      // A bar edit cuts the room notes already fill; an entry just has no room left.
+      return error.command.startsWith('setMasterBar')
+        ? 'A smaller time signature cannot hold the notes already in the bar: shorten or delete them first'
+        : RULES['voice-overfull'];
     case 'not-fretted':
       return 'Note entry works on fretted tracks only';
     case 'off-fretboard':

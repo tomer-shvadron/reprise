@@ -121,5 +121,16 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Edit voice 1 | Editor | Editing | ⌘1 | Ctrl+1 |
 | Edit voice 2 | Editor | Editing | ⌘2 | Ctrl+2 |
 | Toggle insert mode | Editor | Editing | — | — |
+| Insert bar before | Editor | Editing | ⌘+ or ⇧⌘+ or ⇧⌘= | Insert |
+| Insert bar after | Editor | Editing | — | — |
+| Delete bars | Editor | Editing | ⌘Backspace | Ctrl+Delete |
+| Toggle repeat start | Editor | Editing | [ | [ |
+| Toggle repeat end | Editor | Editing | ] | ] |
+| Bar properties… | Editor | Editing | ⌘T | Ctrl+T |
+| Key signature… | Editor | Editing | — | — |
+| Tempo change… | Editor | Editing | — | — |
+| Repeats and endings… | Editor | Editing | — | — |
+| Directions… | Editor | Editing | D | D |
+| Section… | Editor | Editing | — | — |
 | Show sound manager | Sounds | Global | — | — |
 <!-- shortcuts:end -->
