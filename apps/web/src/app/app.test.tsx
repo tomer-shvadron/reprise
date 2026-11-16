@@ -228,9 +228,10 @@ describe('App', () => {
     await waitFor(() => {
       expect(services.document.getState().score).toBeDefined();
     });
+    // A gp5 cannot be written back: Save becomes Save As, which `.reprise`s the document.
     await send('file.save');
     await waitFor(() => {
-      expect(services.document.getState().saving).toBe(false);
+      expect(services.document.getState().file?.name).toBe('riff.reprise');
     });
     await send('file.save');
     await send('file.print');

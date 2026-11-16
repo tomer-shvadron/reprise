@@ -87,7 +87,7 @@ export function LibraryScreen() {
           entries={visible}
           now={now}
           onOpen={(id) => {
-            void library.openSong(id);
+            library.requestOpenSong(id);
           }}
           onDelete={(id) => {
             setDeleting(entries.find((entry) => entry.row.id === id)?.row);

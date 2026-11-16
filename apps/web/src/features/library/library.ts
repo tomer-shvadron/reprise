@@ -2,9 +2,10 @@ import { newId, type Id } from '@reprise/model';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 import type { AppServices } from '@/app/services';
+import { whenSaved } from '@/app/when-saved';
 import { restoreTrackSession } from '@/features/tracks';
 import type { FileHandle } from '@/platform/platform';
-import { contentKey, SCORE_FILES } from '@/state/document';
+import { contentKey, SCORE_FILES, type Saver } from '@/state/document';
 
 import { createSongsRepository, type SongsRepository } from './db/repository';
 import type { SongRow } from './db/rows';
@@ -15,6 +16,12 @@ import { createParser, type Parser } from './import/parser';
 import { persistDocument } from './import/persist-document';
 import { stem } from './import/song-row';
 import { fromPicked, resolveDrop, type DropSnapshot, type ImportSource } from './import/sources';
+import {
+  createExporter,
+  createExportPromptStore,
+  type ExportPromptStore,
+} from './save/export-flow';
+import { createLibrarySaver } from './save/save-flow';
 import { entryOf, isSortKey, type LibraryEntry, type SortKey } from './search';
 import { startSessionKeeper, type SessionKeeper } from './session-keeper';
 
@@ -34,6 +41,13 @@ export interface LibraryState {
    * the one state the "Not in your library" banner shows for.
    */
   unimportedId: Id | undefined;
+  /** A short, non-blocking message about a save or an export, until dismissed. */
+  notice: LibraryNotice | undefined;
+}
+
+export interface LibraryNotice {
+  kind: 'info' | 'error';
+  message: string;
 }
 
 export interface Library {
@@ -46,6 +60,15 @@ export interface Library {
   setSort(sort: SortKey): void;
   /** Opens the song in the player with its track session restored, never marking it modified. */
   openSong(id: Id): Promise<void>;
+  /** `openSong` after the unsaved-changes question, for every entry the user starts. */
+  requestOpenSong(id: Id): void;
+  /** The library's Save and Save As, which `installLibrary` gives the document store. */
+  saver: Saver;
+  /** File > Export as Guitar Pro: writes a `.gp` copy; never a save. */
+  exportGuitarPro(): Promise<void>;
+  /** The question the export dialog is asking, if any. */
+  exportPrompt: ExportPromptStore;
+  dismissNotice(): void;
   /** The progress of the running or last batch import. */
   importer: Importer;
   /** One dialog for several files, imported as a batch. */
@@ -104,6 +127,7 @@ export function createLibrary(
     error: undefined,
     bannerError: undefined,
     unimportedId: undefined,
+    notice: undefined,
   }));
   let keeper: SessionKeeper | undefined;
   let keeperId: Id | undefined;
@@ -155,6 +179,31 @@ export function createLibrary(
       return { entries: [...kept, ...[...incoming.values()].filter((e) => !known.has(e.row.id))] };
     });
   };
+
+  const notify = (message: string, kind: 'info' | 'error' = 'info') => {
+    store.setState({ notice: { kind, message } });
+  };
+  const exportPrompt = createExportPromptStore();
+  const saver = createLibrarySaver({
+    document: services.document,
+    repo,
+    files,
+    now,
+    onAdded: (row) => {
+      addEntries([row]);
+    },
+    onUpdated: replaceRow,
+    onJoined: startKeeper,
+    notify,
+  });
+  const exportGuitarPro = createExporter({
+    document: services.document,
+    platform: services.platform,
+    repo,
+    promptStore: exportPrompt,
+    onUpdated: replaceRow,
+    notify,
+  });
 
   const importer = createImporter({
     repo,
@@ -315,6 +364,17 @@ export function createLibrary(
     store,
     repo,
     importer,
+    saver,
+    exportGuitarPro,
+    exportPrompt,
+    dismissNotice() {
+      store.setState({ notice: undefined });
+    },
+    requestOpenSong(id) {
+      whenSaved(services, 'opening another song', () => {
+        void library.openSong(id);
+      });
+    },
     async load() {
       const tracker = { added: new Set<Id>(), removed: new Set<Id>() };
       loads.add(tracker);
