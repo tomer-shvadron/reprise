@@ -1237,7 +1237,7 @@ package names, with no new decision. The limits are the ones a voice has: a palm
 on an open origin keeps the synthesized link filter, a legato slide's carried voice keeps its
 sample, and a trill's alternations and a tremolo's strokes take the note's own set (a trill's
 alternation is not given the `legato` layer). A voice a legato slide carries into a note whose set differs keeps the sample it was struck with,
-so the effects the new set would have sampled stay synthesized (the palm mute still filters it).
+so the effects the new set would have sampled stay synthesized (the palm mute's gain decay still applies; a carried voice never takes a new filter).
 The 20 ms offset is dropped by a `legato` set and also whenever a `trigger=legato` region plays.
 A tied note is never struck, so the planner leaves it in the default layer. The velocity step of a hammer-on (one lower) stays,
 being dynamics and not timbre.

@@ -1,7 +1,7 @@
 import type { Id, Score } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 import type { NoteSpec } from '@reprise/model/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createAudioEngine, debugAudioEngine } from './engine';
 import type { LoadOptions } from './engine';
@@ -229,7 +229,7 @@ describe('HQ articulation files', () => {
     });
     expect(pack.reads.get('gtr_pm.sfz')).toBeUndefined();
 
-    const entries = { default: 'default.sfz', palmMute: 'gtr_pm.sfz' };
+    const entries = { default: 'default.sfz', palmMute: 'gtr_pm.sfz', staccato: 'gtr_stacc.sfz' };
     await engine.load(built, { tier: 'hq', packs: [{ trackId, pack: pack_, entries }] });
     expect([...packInstrumentsOf(engine.memory().residents, 'guitarpack01')].sort()).toEqual([
       'default.sfz',
@@ -239,9 +239,16 @@ describe('HQ articulation files', () => {
     expect(reads).toBeGreaterThan(0);
 
     // The same entries in another key order are the same assignment: nothing is read again.
-    const reordered = { palmMute: 'gtr_pm.sfz', default: 'default.sfz' };
+    // Two non-default keys, so the order matters to a key that is not sorted.
+    const reordered = { staccato: 'gtr_stacc.sfz', palmMute: 'gtr_pm.sfz', default: 'default.sfz' };
+    const swaps = vi.fn();
+    const off = engine.on('instrumentLoads', swaps);
     await engine.load(built, { tier: 'hq', packs: [{ trackId, pack: pack_, entries: reordered }] });
+    await engine.settled();
+    off();
     expect(pack.reads.get('gtr_pm.sfz')).toBe(reads);
+    // A reload would swap the track's instrument and report its decode.
+    expect(swaps).not.toHaveBeenCalled();
 
     engine.play();
     const signal = signalOf(await render());

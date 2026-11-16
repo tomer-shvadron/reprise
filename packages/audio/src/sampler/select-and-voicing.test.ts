@@ -189,4 +189,28 @@ describe('a legato slide carries its voice into a palm-muted note', () => {
     expect(muted).toBeLessThan(open * 0.4);
     expect(muted).toBeCloseTo(synthesized, 2);
   });
+
+  it("keeps the first note's set across a second carry, so a palm-muted third note is not decayed twice", async () => {
+    const slid = note(1, 5, { slide: ['legato'] });
+    const mutedSlid = note(1, 5, { slide: ['legato'], palmMute: true });
+    const data = await run([sustain, mute], withMuteLayer, (sink) => {
+      // Palm mute (layer, 660 Hz) slides into an open note, which slides into a palm mute again.
+      sink.noteOn({
+        ...event(plain, mutedSlid, 0),
+        duration: 0.4,
+        nextOnString: { beat: plain, note: slid, when: 0.4 },
+      });
+      sink.noteOn({
+        ...event(plain, slid, 0.4),
+        duration: 0.4,
+        nextOnString: { beat: plain, note: target(true), when: 0.8 },
+      });
+      sink.noteOn({ ...event(plain, target(true), 0.8), duration: 0.6 });
+    });
+    const first = toneLevel(data, 660, 0.15, 0.25);
+    const third = toneLevel(data, 660, 1.05, 1.15);
+    expect(first).toBeGreaterThan(0.05);
+    // The layer's sample is already muted: no 18 dB decay is added on the third note.
+    expect(third).toBeGreaterThan(first * 0.6);
+  });
 });

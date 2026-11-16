@@ -295,7 +295,13 @@ export function createSamplerSink(
       shapeGain(voice, plan.gain, strike.when, until);
       shapePitch(voice, plan, strike, until, isCarried);
       if (last && plan.legatoInto !== undefined) {
-        chains.set(chainKey, { voice, at: plan.legatoInto, filterType, set: chosen.set });
+        chains.set(chainKey, {
+          voice,
+          at: plan.legatoInto,
+          filterType,
+          // A second carry still holds the sample of the note that struck the voice.
+          set: isCarried && chain ? chain.set : chosen.set,
+        });
       } else if (last && plan.letRingUntil !== undefined) {
         if (isCarried) voice.release(plan.letRingUntil);
       } else {
