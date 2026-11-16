@@ -188,6 +188,37 @@ describe('ManagedSampleSource unused residents and shortfall', () => {
     expect(source.memory().residents.length).toBeGreaterThan(0);
   });
 
+  it('stays short until every evicted sample of the instrument is back', async () => {
+    const source = new ManagedSampleSource(small(), factory, { budgetBytes: 100 * ZONE });
+    source.switchSong(songA);
+    await source.getBuffer('gm:0:25#0');
+    await source.getBuffer('gm:0:25#1');
+    source.budgetBytes = 1;
+    expect(source.memory().shortfall).toBe(true);
+    source.budgetBytes = 100 * ZONE;
+    await source.getBuffer('gm:0:25#0');
+    expect(source.memory().shortfall).toBe(true);
+    await source.getBuffer('gm:0:25#1');
+    expect(source.memory().shortfall).toBe(false);
+  });
+
+  it('is not short when a song switch revives an instrument through a shared sample', async () => {
+    const provider: SampleProvider = {
+      instrumentsOf: () => ['gm:0:25', 'other'],
+      byteLength: () => ZONE,
+      fetch: () =>
+        Promise.resolve({
+          sampleRate: 44_100,
+          channels: [new Float32Array(1000)],
+          byteLength: ZONE,
+        }),
+    };
+    const source = new ManagedSampleSource(provider, factory, { budgetBytes: 100 * ZONE });
+    await source.getBuffer('s');
+    source.switchSong(songA);
+    expect(source.memory()).toMatchObject({ shortfall: false, residents: ['gm:0:25'] });
+  });
+
   it('warms only the plan of the last song switch', async () => {
     const provider = small();
     const source = new ManagedSampleSource(provider, factory, { budgetBytes: 100 * ZONE });

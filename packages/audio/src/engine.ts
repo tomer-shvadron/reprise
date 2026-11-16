@@ -994,7 +994,8 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       budgetBytes = effectiveBudget();
       if (!source) return;
       source.budgetBytes = budgetBytes;
-      if (raised && score) source.warm(regionMapOf);
+      // While a load's pack check runs the source still holds the previous song's plan.
+      if (raised && score && !attaching) source.warm(regionMapOf);
     },
 
     unloadUnused() {

@@ -103,8 +103,8 @@ export class ManagedSampleSource implements SampleSource {
   readonly #listeners = new Set<(stats: MemoryReport) => void>();
   readonly #counters: MemoryCounters = { fetches: 0, evictions: 0, pinnedEvictions: 0 };
   #pinned = new Set<InstrumentId>();
-  /** The current plan's instruments that were evicted and are not resident again. */
-  #evicted = new Set<InstrumentId>();
+  /** Per planned instrument, the samples an eviction freed and nothing has decoded again. */
+  #missing = new Map<InstrumentId, Set<SampleRef>>();
   /** The plan of the last `switchSong`: what `warm` restores. */
   #plan: SongPlan | undefined;
   #budget: number;
@@ -170,7 +170,7 @@ export class ManagedSampleSource implements SampleSource {
       budgetBytes: this.#budget,
       residents: [...this.#residents].sort(),
       unused: [...this.#residents].filter((instrument) => !this.#pinned.has(instrument)).sort(),
-      shortfall: this.#evicted.size > 0,
+      shortfall: this.#missing.size > 0,
     };
   }
 
@@ -190,13 +190,18 @@ export class ManagedSampleSource implements SampleSource {
     this.#pinned = new Set(plan.instruments);
     this.#plan = plan;
     // An edit that keeps an instrument leaves it evicted; a song that drops it forgets it.
-    for (const instrument of this.#evicted) {
-      if (!this.#pinned.has(instrument)) this.#evicted.delete(instrument);
+    for (const instrument of [...this.#missing.keys()]) {
+      if (!this.#pinned.has(instrument)) this.#missing.delete(instrument);
     }
     // A planned preset whose samples are resident under an alias takes them over, or evicting
     // the alias below would free the samples the new song needs.
     for (const instrument of this.#pinned) {
       if (this.#refsOf.has(instrument)) this.#touch(instrument);
+    }
+    // An instrument whose samples came back without a decode (shared with a resident one) is whole.
+    for (const [instrument, refs] of this.#missing) {
+      for (const ref of refs) if (this.#entries.has(ref)) refs.delete(ref);
+      if (refs.size === 0) this.#missing.delete(instrument);
     }
     for (const instrument of [...this.#residents]) {
       if (!this.#pinned.has(instrument)) this.#evict(instrument);
@@ -245,7 +250,7 @@ export class ManagedSampleSource implements SampleSource {
     this.#generation += 1;
     this.#pinned = new Set();
     this.#plan = undefined;
-    this.#evicted.clear();
+    this.#missing.clear();
     this.#changed();
   }
 
@@ -347,7 +352,11 @@ export class ManagedSampleSource implements SampleSource {
     const planned = owners.filter((owner) => this.#pinned.has(owner));
     for (const owner of planned.length > 0 ? planned : owners) {
       this.#touch(owner);
-      this.#evicted.delete(owner);
+    }
+    for (const owner of owners) {
+      const refs = this.#missing.get(owner);
+      if (!refs?.delete(ref) || refs.size > 0) continue;
+      this.#missing.delete(owner);
     }
     this.#recent = ref;
     this.#reclaim(owners);
@@ -390,13 +399,17 @@ export class ManagedSampleSource implements SampleSource {
       if (!entry || entry.owners.some((owner) => this.#residents.has(owner))) continue;
       this.#free(ref, entry);
       freed = true;
+      // Every planned owner lost the sample, not only the one being evicted.
+      for (const owner of entry.owners) {
+        if (!this.#pinned.has(owner)) continue;
+        const refs = this.#missing.get(owner) ?? new Set<SampleRef>();
+        refs.add(ref);
+        this.#missing.set(owner, refs);
+      }
     }
     if (freed) {
       this.#counters.evictions += 1;
-      if (this.#pinned.has(instrument)) {
-        this.#counters.pinnedEvictions += 1;
-        this.#evicted.add(instrument);
-      }
+      if (this.#pinned.has(instrument)) this.#counters.pinnedEvictions += 1;
     }
     this.#changed();
   }

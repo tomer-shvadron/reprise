@@ -9,7 +9,7 @@ export interface MemoryReport {
   /** Residents the loaded song does not plan: what `unloadUnused` frees. */
   unused: InstrumentId[];
   /**
-   * An instrument the song uses was evicted and is not resident again, so the budget is below
+   * An instrument the song uses lost samples to an eviction and has not got every one back, so the budget is below
    * the song's needs and some notes may start late. A raise that restores them clears it.
    */
   shortfall: boolean;
