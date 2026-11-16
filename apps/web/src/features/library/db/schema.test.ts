@@ -16,7 +16,10 @@ afterEach(() => {
  * version that adds a field fills it in an `upgrade`, and rows built from the current shape would
  * hide a missing or wrong one. WP-073 appends its own entry when it appends its version.
  */
-const SAMPLES: Record<number, { songs: unknown[]; settings: unknown[] }> = {
+const SAMPLES: Record<
+  number,
+  { songs: unknown[]; settings: unknown[]; practiceSessions?: unknown[] }
+> = {
   1: {
     songs: [
       {
@@ -56,6 +59,34 @@ const SAMPLES: Record<number, { songs: unknown[]; settings: unknown[] }> = {
     ],
     settings: [{ key: 'library.sort', value: 'artist' }],
   },
+  2: {
+    get songs() {
+      return SAMPLES[1]?.songs ?? [];
+    },
+    get settings() {
+      return SAMPLES[1]?.settings ?? [];
+    },
+    practiceSessions: [
+      {
+        id: 'SSSSSSSSSSSS',
+        songId: 'BBBBBBBBBBBB',
+        startedAt: 5000,
+        endedAt: 65_000,
+        playedMs: 60_000,
+        loops: [{ startBar: 'LLLLLLLLLLLL', endBar: 'MMMMMMMMMMMM', bestPercent: 80 }],
+        tempoHistory: [{ atPlayedMs: 0, tempo: { mode: 'percent', value: 80 } }],
+      },
+      {
+        id: 'TTTTTTTTTTTT',
+        songId: 'AAAAAAAAAAAA',
+        startedAt: 9000,
+        endedAt: 19_000,
+        playedMs: 10_000,
+        loops: [],
+        tempoHistory: [],
+      },
+    ],
+  },
 };
 
 /** The database as a user who last ran with `schema` left it. */
@@ -66,6 +97,7 @@ async function writeAt(name: string, schema: readonly SchemaVersion[]) {
   open.push(db);
   await db.table('songs').bulkAdd(sample.songs);
   await db.table('settings').bulkAdd(sample.settings);
+  if (sample.practiceSessions) await db.table('practiceSessions').bulkAdd(sample.practiceSessions);
   db.close();
   return sample;
 }
@@ -79,7 +111,11 @@ describe('the library schema', () => {
     const db = openLibraryDb(uniqueDbName());
     open.push(db);
     await db.open();
-    expect(db.tables.map((table) => table.name).sort()).toEqual(['settings', 'songs']);
+    expect(db.tables.map((table) => table.name).sort()).toEqual([
+      'practiceSessions',
+      'settings',
+      'songs',
+    ]);
     const songs = db.table('songs').schema;
     expect(songs.primKey.name).toBe('id');
     const unique = songs.indexes.filter((index) => index.unique).map((index) => index.name);
@@ -103,11 +139,24 @@ describe('the library schema', () => {
       const ids = (rows: unknown[]) =>
         rows.map((row) => String(Reflect.get(Object(row), 'id'))).sort();
       expect(ids(songs)).toEqual(ids(sample.songs));
+      expect(ids(await db.practiceSessions.toArray())).toEqual(ids(sample.practiceSessions ?? []));
       for (const song of songs) expect(SongRowSchema.safeParse(song).success).toBe(true);
       expect((await db.settings.get('library.sort'))?.value).toBe('artist');
       const expected = new Set(SCHEMA.flatMap((entry) => Object.keys(entry.stores)));
       expect(new Set(db.tables.map((table) => table.name))).toEqual(expected);
     });
+  });
+
+  it('indexes practice sessions by song and start, so one song reads in order', async () => {
+    const name = uniqueDbName();
+    await writeAt(name, SCHEMA);
+    const db = openLibraryDb(name);
+    open.push(db);
+    const rows = await db.practiceSessions
+      .where('[songId+startedAt]')
+      .between(['BBBBBBBBBBBB', 0], ['BBBBBBBBBBBB', Infinity])
+      .toArray();
+    expect(rows.map((row) => row.id)).toEqual(['SSSSSSSSSSSS']);
   });
 
   it('applies a later version on top of version 1 without touching rows', async () => {

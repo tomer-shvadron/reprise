@@ -20,8 +20,8 @@ shell wiring, which is one separate integration commit).
 
 - **Database** (`db/`). Dexie over IndexedDB, in the browser and in Electron alike. `schema.ts` holds
   `SCHEMA`, an **append-only** list of versions: a shipped version is never edited, because a user's
-  database may be at any of them. WP-073 appends version 2 (`practiceSessions`) there and extends the
-  harness in `db/schema.test.ts`, which reopens a database written at every earlier version and
+  database may be at any of them. Version 2 (`practiceSessions`, WP-073: the practice log's table, owned by `features/trainer`) is
+  appended there and extends the harness in `db/schema.test.ts`, which reopens a database written at every earlier version and
   asserts that no row is lost and every table exists. Rows (`rows.ts`) are Zod schemas, and the repository
   `safeParse`s on read: a bad row is skipped and logged, never thrown. `lastOpenedAt` is left out
   until a song is first opened, so the recents index only holds opened songs.
