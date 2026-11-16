@@ -428,7 +428,15 @@ export class Sampler {
             [first, ...rest],
             releases
               ? (at) => {
-                  this.#startRelease(state, request, { regions, source }, destination, at);
+                  const tails = this.#startRelease(
+                    state,
+                    request,
+                    { regions, source },
+                    destination,
+                    at,
+                  );
+                  // The tails belong to the note: a later choke or steal before they start cancels them.
+                  for (const voice of voices) voice.tails.push(...tails);
                 }
               : undefined,
           );
@@ -448,8 +456,9 @@ export class Sampler {
     { regions, source }: Instrument,
     destination: AudioNode,
     at: number,
-  ): void {
+  ): Voice[] {
     const id = state.track.id;
+    const tails: Voice[] = [];
     const held = Math.max(0, at - request.when);
     for (const region of regions.resolveRelease(
       request.key,
@@ -492,7 +501,9 @@ export class Sampler {
       );
       state.voices.add(voice);
       this.pool.add(voice);
+      tails.push(voice);
     }
+    return tails;
   }
 
   /** Releases the note, unless it lets ring: then the next note on its string releases it. */

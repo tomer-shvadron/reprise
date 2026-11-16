@@ -157,6 +157,32 @@ describe('what never starts a release region', () => {
     expect(toneLevel(await render(context), TAIL, 0.65, 0.85)).toBeLessThan(0.001);
   });
 
+  it('a choke after the release was scheduled: the let-ring tail waiting at the until is cancelled', async () => {
+    const { context, sampler } = setup(1.4, guitar());
+    sampler.noteOn('t', { key: 69, velocity: 127, when: 0, string: 1, letRing: { until: 0.9 } });
+    sampler.noteOn('t', { key: 69, velocity: 127, when: 0.4, string: 1 });
+    const data = await render(context);
+    expect(toneLevel(data, TAIL, 0.95, 1.2)).toBeLessThan(0.001);
+    expect(toneLevel(data, NOTE, 0.5, 0.8)).toBeGreaterThan(0.1);
+  });
+
+  it('a steal after the release was scheduled: the tail waiting to start is cancelled', async () => {
+    const { context, sampler } = setup(1.4, guitar(), 2);
+    const first = sampler.noteOn('t', { key: 69, velocity: 127, when: 0 });
+    first?.release(0.9);
+    sampler.noteOn('t', { key: 71, velocity: 127, when: 0.3 });
+    expect(sampler.pool.stolen).toBe(1);
+    const data = await render(context);
+    expect(toneLevel(data, TAIL, 0.95, 1.2)).toBeLessThan(0.001);
+  });
+
+  it('a choke after the tail started leaves it playing', async () => {
+    const { context, sampler } = setup(1.4, guitar());
+    sampler.noteOn('t', { key: 69, velocity: 127, when: 0, string: 1 })?.release(0.4);
+    sampler.noteOn('t', { key: 69, velocity: 127, when: 0.5, string: 1 });
+    expect(toneLevel(await render(context), TAIL, 0.45, 0.65)).toBeGreaterThan(0.1);
+  });
+
   it('allNotesOff, which also silences a release still waiting to start', async () => {
     const { context, sampler } = setup(1.2, guitar());
     sampler.noteOn('t', { key: 69, velocity: 127, when: 0 })?.release(0.6);

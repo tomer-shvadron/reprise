@@ -263,6 +263,12 @@ export class Voice {
     source.start(when, offset);
   }
 
+  /**
+   * The release voices queued for this note. A choke or steal at `t` cancels those that have not
+   * started by `t`: a cut note has no tail. Tails already sounding are left to play out.
+   */
+  readonly tails: Voice[] = [];
+
   get released(): boolean {
     return this.#releaseAt !== Infinity;
   }
@@ -293,11 +299,28 @@ export class Voice {
   /** A fast fade for stealing, short enough not to count against the new note. */
   kill(at: number): void {
     this.#fadeOut(at, STEAL_FADE, 0);
+    this.#cancelTails(at);
   }
 
   /** A new note on the same string: a short fade instead of the region's full release. */
   choke(at: number): void {
     this.#fadeOut(at, CHOKE_FADE, 0);
+    this.#cancelTails(at);
+  }
+
+  /** Silences a voice that has not started: no fade, since it never sounds. */
+  cancel(): void {
+    if (this.#ended) return;
+    this.#releaseAt = this.startTime;
+    this.#end = -Infinity;
+    const gain = this.#envelope.gain;
+    gain.cancelScheduledValues(0);
+    gain.setValueAtTime(0, 0);
+    this.#source.stop(0);
+  }
+
+  #cancelTails(at: number): void {
+    for (const tail of this.tails) if (tail.startTime > at) tail.cancel();
   }
 
   /** Relative to the note's own pitch, in semitones; fractions are cents. */
