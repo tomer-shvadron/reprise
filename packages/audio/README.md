@@ -199,7 +199,7 @@ returns the `AudioEngine` contract of `docs/specs/architecture.md`. `context` is
 factory; a factory is called on the first `unlock()`, `play()` or `previewNote()`, never in `load`,
 so a song is decoded before the first gesture. `budgetBytes` is the memory manager's
 (`GM_BUDGET_BYTES`, 80 MiB, by default) while `load` is given `tier: 'gm'`, and `hqBudgetBytes`
-(`HQ_BUDGET_BYTES`, 300 MiB) while it is given `tier: 'hq'`; `scheduleMemory` runs the coalesced
+(`HQ_BUDGET_BYTES`, 300 MiB) is the "Memory for sounds" setting's initial value (see `setMemoryBudget`); `scheduleMemory` runs the coalesced
 `memory` event (the next animation frame by default); the rest go to the transport.
 
 | Object                                                                | Made                                                                   | Lives until                               |
@@ -223,6 +223,8 @@ so a song is decoded before the first gesture. `budgetBytes` is the memory manag
 | `previewTrack(id, params)`                                                 | Volume or pan for a slider being dragged: no override, so the next baseline reset or edit replaces it.                                                                                                                                                                                                                                                                                                                                                                                         |
 | `previewNote(track, note, options?)`                                       | One note through the track's strip, past mute and solo, stopped or playing. `note` is `{ string, fret }` (through the track's tuning and capo) or `{ pitch }`; `options` is `{ velocity?, seconds? }`; previews choke only previews. Throws with no song, and a `RangeError` for a track the song lacks.                                                                                                                                                                                       |
 | `memory()`                                                                 | The memory manager's report; zero bytes against the budget before the bank.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `setMemoryBudget(bytes)`                                                   | The "Memory for sounds" setting: the effective budget is `bytes` on the HQ tier and `min(bytes, budgetBytes)` (80 MiB) on GM, reported by `memory().budgetBytes`. Lowering evicts at once; raising decodes the loaded song again if it all fits; `RangeError` for a non-finite or negative value; applied at `setSoundfont` if called before.                                                                                                                                                  |
+| `unloadUnused()`                                                           | Frees the residents the open song does not plan (`memory().unused`; after `unload()`, all of them) and returns how many.                                                                                                                                                                                                                                                                                                                                                                       |
 | `outputLatency()`                                                          | `baseLatency + outputLatency` of the context (`outputLatencyOf`), 0 before it.                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `settled()`                                                                | Resolves with no load, instrument load or fetch in flight.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
@@ -253,8 +255,8 @@ assignments by track); it is not part of the contract.
   is not read again, whether it loaded or failed, so loading the same score with different `packs`
   checks only the tracks that changed, a broken pack is not retried on every edit (a reinstall
   brings a new files object), and an assignment that is gone is dropped.
-- `tier` selects the memory budget on each `load`: `budgetBytes` for `gm`, `hqBudgetBytes` for
-  `hq`. Lowering it evicts at once, so going back to GM frees the pack buffers. The app passes
+- `tier` selects the memory budget on each `load`: the setting (`setMemoryBudget`) for `hq`, the
+  smaller of it and `budgetBytes` for `gm`. Lowering it evicts at once, so going back to GM frees the pack buffers. The app passes
   `hq` when at least one assignment reaches the engine.
 - A loaded assignment plays the pack: see "HQ tier in the engine" below.
 - Root exports: `tierOf`, `checkPack`, `checkSfzFile` and the types `PackSnapshot`, `SnapshotFile`,
@@ -298,15 +300,14 @@ assignments by track); it is not part of the contract.
   is resident, so only the failing ones are fetched) and the tracks whose pack cannot supply them
   go back to GM and into `fallbacks`. A sample missing from a later bar is not caught: the track
   stays on the pack and that note is skipped, as on any miss.
-- **Not here.** Articulation sets beyond `default` (WP-093); the budget setter and user setting
-  (WP-094).
+- **Not here.** Articulation sets beyond `default` (WP-093); the Sounds screen's setting and readout
+  (WP-094 PR C).
 
 ### Known gaps
 
 - Effects presets are not driven by CC91/CC93 (`channel.reverb`, `channel.chorus`) or a beat's
   `mix` reverb and chorus: the reverb send and chorus depth come from the preset only (#235).
-- The memory budget follows the tier of the last `load` and has no setter; the setter and the user
-  setting are WP-094's. The architecture's Memory model section describes the HQ default, 300 MB.
+- The memory setting has no screen yet: `setMemoryBudget` is wired to the status bar's readout and the persisted preference, and the Sounds screen's control is WP-094 PR C.
 - `previewNote` of a sample not yet decoded requests its decode (a miss) and starts the note when
   the sample is resident, unless that takes over 500 ms, when the note is dropped; a newer preview on the same string (or key), a stop, `removeTrack` or `dispose` cancels it. Previews choke only previews (#204).
 - A load over a loaded song cuts the notes sounding at that moment and restarts after
@@ -1267,7 +1268,7 @@ that is not a finite byte count reserves nothing.
 ```ts
 const source = new ManagedSampleSource(provider, context, { budgetBytes: GM_BUDGET_BYTES });
 const plan = await source.load(score, regionMapOf, { bars: 4 }); // AudioEngine.load's half
-source.memory(); // the engine's MemoryReport: { decodedBytes, budgetBytes, residents }
+source.memory(); // the engine's MemoryReport: { decodedBytes, budgetBytes, residents, unused, shortfall }
 const off = source.on('memory', (stats) => {}); // coalesced to one per animation frame
 source.budgetBytes = 300 * MEGABYTE; // settable at runtime; lowering it evicts at once
 source.counters; // { fetches, evictions, pinnedEvictions }
