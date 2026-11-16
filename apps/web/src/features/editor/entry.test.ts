@@ -69,7 +69,12 @@ describe('a fret digit', () => {
     expect(frets(beatsOf(next, 0)[0])).toEqual([[1, 7]]);
     if (!('command' in planned)) throw new Error('refused');
     expect(planned.land).toEqual({ beat: beatsOf(next, 0)[0]?.id });
-    expect(planned.sound).toEqual({ track: score.tracks[0]?.id, string: 1, fret: 7 });
+    expect(planned.sound).toEqual({
+      track: score.tracks[0]?.id,
+      beat: beatsOf(next, 0)[0]?.id,
+      string: 1,
+      fret: 7,
+    });
   });
 
   it('on a beat replaces the fret on that string, or adds a chord note on another', () => {

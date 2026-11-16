@@ -72,7 +72,7 @@ export interface EditPlan {
   /** The beat to remember as just inserted; absent forgets it. */
   inserted?: Id;
   /** The note to sound once the edit has been applied. */
-  sound?: { track: Id; string: number; fret: number };
+  sound?: { track: Id; beat: Id; string: number; fret: number };
 }
 
 /**
@@ -183,7 +183,7 @@ function insertion(
       insertBeat({ voiceId: where.voiceId, index, id }, beat),
     ]),
     land: { beat: id },
-    ...(note && { inserted: id, sound: { track: where.track.id, ...note } }),
+    ...(note && { inserted: id, sound: { track: where.track.id, beat: id, ...note } }),
   };
 }
 
@@ -192,8 +192,8 @@ function planFret(input: EntryInput, where: Where, fret: number): EntryPlan {
   if (refusal) return refusal;
   const { string } = input.cursor;
   const note = { string, fret };
-  const sound = { track: where.track.id, string, fret };
   const { beat } = where;
+  const sound = beat && { track: where.track.id, beat: beat.id, string, fret };
   if (!beat) return insertion(input, where, where.beats.length, input.rhythm, note);
   if (input.mode === 'insert' && input.inserted !== beat.id) {
     return insertion(input, where, where.at.stop, input.rhythm, note);
@@ -201,7 +201,7 @@ function planFret(input: EntryInput, where: Where, fret: number): EntryPlan {
   return {
     command: chain('enterNote', [setNote({ beatId: beat.id }, note)]),
     ...(input.inserted === beat.id && { inserted: beat.id }),
-    sound,
+    ...(sound && { sound }),
   };
 }
 
@@ -338,7 +338,7 @@ function planTie(input: EntryInput, where: Where): EntryPlan {
   if (!beat) return insertion(input, where, where.beats.length, input.rhythm, note);
   return {
     command: chain('toggleTie', [setNote({ beatId: beat.id }, note)]),
-    sound: { track: track.id, string, fret: note.fret },
+    sound: { track: track.id, beat: beat.id, string, fret: note.fret },
   };
 }
 
