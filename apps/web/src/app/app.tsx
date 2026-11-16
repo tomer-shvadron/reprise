@@ -1,7 +1,9 @@
+import type { Track } from '@reprise/model';
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { AddTrackButton, EditorDialogs, TrackRowMenu } from '@/features/editor';
 import { installLibrary, LibraryScreen, RecentSongs, UnimportedBanner } from '@/features/library';
 import { SoundManager } from '@/features/sounds';
 import { TrainerPanel } from '@/features/trainer';
@@ -25,6 +27,12 @@ import type { AppServices } from './services';
 import { AppServicesProvider } from './services-context';
 import { installShortcutDispatcher, menuCommandAllowed } from './shortcut-dispatcher';
 import { CommandSourceContext } from './use-command';
+
+// Module-level so the sidebar's memoised rows see the same function every render.
+const addTrackButton = <AddTrackButton />;
+const renderTrackRowMenu = (track: Track, index: number) => (
+  <TrackRowMenu track={track} index={index} />
+);
 
 interface AppProps {
   services: AppServices;
@@ -89,7 +97,14 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             score={<ScorePane hint={hint} />}
             banner={<UnimportedBanner />}
             transport={<TransportBar registry={registry} keyboard={keyboard} />}
-            sidebar={<TrackSidebar registry={registry} keyboard={keyboard} />}
+            sidebar={
+              <TrackSidebar
+                registry={registry}
+                keyboard={keyboard}
+                headerActions={addTrackButton}
+                rowMenu={renderTrackRowMenu}
+              />
+            }
             bottom={
               <CommandSourceContext value={source}>
                 <TrainerPanel view={bottomView} />
@@ -120,6 +135,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
         <DropZone />
         <Notices />
         <SavePromptDialog />
+        <EditorDialogs />
         <PrintDialog store={services.print} />
         <PrintRoot store={services.print} />
       </TooltipProvider>

@@ -90,12 +90,13 @@ describe('App', () => {
     const state = services.document.getState();
     expect(state.score?.tracks).toHaveLength(1);
     expect(state.file).toBeUndefined();
+    expect(services.editing.getState().editing).toBe(true);
     expect(screen.queryByText('Not in your library')).not.toBeInTheDocument();
   });
 
-  it('keeps a modified document when file.new runs, until the prompt exists', async () => {
+  it('asks before file.new replaces a modified document, and Cancel keeps it', async () => {
     const bytes = await riffBytes();
-    const { services, send } = renderApp(
+    const { services, send, user } = renderApp(
       fakePlatform({ openFile: () => Promise.resolve({ name: 'riff.reprise', bytes }) }),
     );
     await send('file.open');
@@ -108,8 +109,18 @@ describe('App', () => {
       .apply(setTrackProperties({ trackId: score?.tracks[0]?.id ?? '' }, { name: 'Renamed' }));
     expect(services.document.getState().dirty).toBe(true);
     const id = services.document.getState().id;
+
     await send('file.new');
+    const dialog = await screen.findByRole('dialog', { name: 'Unsaved changes' });
+    expect(dialog).toHaveTextContent('Save changes to “riff.reprise” before starting a new song?');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(services.document.getState().id).toBe(id);
+
+    await send('file.new');
+    await user.click(await screen.findByRole('button', { name: 'Don’t save' }));
+    expect(services.document.getState().id).not.toBe(id);
+    expect(services.document.getState().score?.tracks).toHaveLength(1);
+    expect(services.editing.getState().editing).toBe(true);
   });
 
   it('opens the palette with the platform shortcut and runs a command from it', async () => {
