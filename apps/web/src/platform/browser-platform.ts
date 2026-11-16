@@ -1,5 +1,6 @@
 import { createOpfsStorage } from './opfs-storage';
 import { pickFiles, pickFolder } from './picked-files';
+import { readBlob } from './read-range';
 import { isStoragePath, parseStoragePath } from './storage-path';
 import type { FileFilter, OpenedFile, Platform } from './platform';
 
@@ -174,9 +175,8 @@ export function createBrowserPlatform(win: Window = window): Platform {
       return key;
     },
 
-    async readFile(path) {
-      const file = await (await storageFile(path, false)).getFile();
-      return new Uint8Array(await file.arrayBuffer());
+    async readFile(path, range) {
+      return readBlob(await (await storageFile(path, false)).getFile(), range);
     },
 
     async writeFile(path, bytes) {

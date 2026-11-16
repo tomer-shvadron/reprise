@@ -4,17 +4,22 @@
  * stubbed, plays it, and checks the GM bank came from the app's own scheme and that the
  * GrantFileProtocolExtraPrivileges fuse is off.
  *
+ * Then it makes an edit, waits for the draft on disk, kills the app with SIGKILL, relaunches it on
+ * the same profile, recovers the draft, checks the edit is there, and closes the window to check
+ * the unsaved-changes prompt (Don't save closes it and removes the draft).
+ *
  * The app runs under a temporary profile (REPRISE_PROFILE_DIR, read by main), deleted afterwards,
  * so the run never imports into the real ~/Music/Reprise or touches the real userData.
  *
  *   pnpm desktop:build && pnpm desktop:smoke [executable]
  */
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import process, { argv } from 'node:process';
 
-import { _electron as electron } from 'playwright';
+import { read } from '@reprise/formats';
+import { _electron as electron, type ElectronApplication, type Page } from 'playwright';
 
 import { loadBundle } from '../sounds/fetch-gm.ts';
 
@@ -45,12 +50,56 @@ function check(ok: boolean, message: string): void {
   console.log(`ok: ${message}`);
 }
 
-async function main(profileDir: string): Promise<void> {
-  const app = await electron.launch({
+const RECOVERY = 'Reprise closed with unsaved changes';
+
+function launch(profileDir: string): Promise<ElectronApplication> {
+  return electron.launch({
     executablePath: argv[2] ?? packagedExecutable(),
     timeout: TIMEOUT,
     env: { ...process.env, REPRISE_PROFILE_DIR: profileDir },
   });
+}
+
+/** `userData/files/drafts`: where the keeper writes under the profile main was given. */
+const draftsDir = (profileDir: string) => join(profileDir, 'userData', 'files', 'drafts');
+
+async function draftNames(profileDir: string): Promise<string[]> {
+  return readdir(draftsDir(profileDir)).catch(() => []);
+}
+
+/** The first track's volume in the draft with this sidecar, read back with our own reader. */
+async function draftVolume(profileDir: string, sidecar: string): Promise<number | undefined> {
+  const bytes = await readFile(join(draftsDir(profileDir), sidecar.replace(/\.json$/, '.reprise')));
+  const { score } = await read(new Uint8Array(bytes), 'reprise');
+  return score.tracks[0]?.channel.volume;
+}
+
+async function waitFor<T>(what: string, probe: () => Promise<T | undefined | false>): Promise<T> {
+  const deadline = Date.now() + TIMEOUT;
+  for (;;) {
+    const found = await probe();
+    if (found !== undefined && found !== false) return found;
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+async function volumeSlider(page: Page) {
+  const slider = page.getByRole('slider', { name: 'Volume of Track 1' });
+  // The mixer panel is a remembered setting: F8 toggles it, so press it only when it is closed.
+  if (!(await slider.isVisible())) await page.keyboard.press('F8');
+  await slider.waitFor();
+  return slider;
+}
+
+/** The app may be dead already (killed on purpose), which makes `close` reject. */
+async function closeQuietly(running: { app?: ElectronApplication }): Promise<void> {
+  await running.app?.close().catch(() => undefined);
+}
+
+async function main(profileDir: string, running: { app?: ElectronApplication }): Promise<void> {
+  const app = await launch(profileDir);
+  running.app = app;
   try {
     const page = await app.firstWindow();
     page.setDefaultTimeout(TIMEOUT);
@@ -133,14 +182,74 @@ async function main(profileDir: string): Promise<void> {
       bankRequests.includes(`GET ${BANK_URL}`),
       `the app's loader fetches the bank over the scheme (${bankRequests.join(', ')})`,
     );
+
+    // Autosave: an edit, the draft on disk, a kill, a relaunch on the same profile, a recovery.
+    await page.getByRole('button', { name: 'Pause' }).click();
+    const slider = await volumeSlider(page);
+    const before = Number(await slider.getAttribute('aria-valuenow'));
+    await slider.focus();
+    await slider.press('PageDown');
+    const volume = Number(await slider.getAttribute('aria-valuenow'));
+    check(volume === before - 10, `the volume edit takes (${String(before)} to ${String(volume)})`);
+    check(
+      (await page.title()).startsWith('● '),
+      `the title marks the edit (${await page.title()})`,
+    );
+    // The library import writes its own files; only drafts are looked at here.
+    const sidecar = await waitFor('the draft with the edit', async () => {
+      const found = (await draftNames(profileDir)).find((name) => name.endsWith('.json'));
+      return found !== undefined && (await draftVolume(profileDir, found)) === volume && found;
+    });
+    check(true, `the draft ${sidecar} holds the edit`);
+
+    const exited = new Promise<void>((resolve) =>
+      app.process().once('exit', () => {
+        resolve();
+      }),
+    );
+    app.process().kill('SIGKILL');
+    await exited;
+    check(true, 'the app was killed with SIGKILL');
+
+    const relaunched = await launch(profileDir);
+    running.app = relaunched;
+    const again = await relaunched.firstWindow();
+    again.setDefaultTimeout(TIMEOUT);
+    const dialog = again.getByRole('dialog', { name: RECOVERY });
+    await dialog.waitFor();
+    check(true, 'the relaunch offers the draft');
+    await dialog.getByRole('button', { name: /^Recover / }).click();
+    await again.locator('[data-system-id]').first().waitFor();
+    const recovered = await volumeSlider(again);
+    check(
+      Number(await recovered.getAttribute('aria-valuenow')) === volume,
+      `the recovered song has the last edit (volume ${String(volume)})`,
+    );
+    check((await again.title()).startsWith('● '), 'the recovered song opens as unsaved');
+
+    // Closing the window with unsaved changes asks first; Don't save closes and clears the draft.
+    // The window, not the process: closing the last window does not quit the app on macOS.
+    const closed = again.waitForEvent('close');
+    await relaunched.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.close();
+    });
+    const prompt = again.getByRole('dialog', { name: 'Unsaved changes' });
+    await prompt.waitFor();
+    check(true, 'closing the window asks about the unsaved changes');
+    await prompt.getByRole('button', { name: 'Don’t save' }).click();
+    await closed;
+    check(
+      (await draftNames(profileDir)).length === 0,
+      "Don't save closed the window and removed the draft",
+    );
   } finally {
-    await app.close();
+    await closeQuietly(running);
   }
 }
 
 const profileDir = await mkdtemp(join(tmpdir(), 'reprise-smoke-'));
 try {
-  await main(profileDir);
+  await main(profileDir, {});
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   // Not exit(): that would skip the cleanup below.

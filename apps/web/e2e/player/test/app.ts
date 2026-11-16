@@ -378,8 +378,37 @@ export async function installHooks(page: Page): Promise<void> {
   await page.addInitScript(installPageHooks);
 }
 
+const spares = new WeakMap<Page, Page>();
+
+/**
+ * Ends the page the way a renderer crash does: no `pagehide`, no `beforeunload`, nothing flushed. Another
+ * page of the same context sees what the app had written to origin-private storage and the
+ * library database by then.
+ */
+export async function crash(page: Page): Promise<void> {
+  // A second page first: the context must outlive the page that crashes.
+  spares.set(page, await page.context().newPage());
+  const crashed = page.waitForEvent('crash');
+  // The renderer's own crash page: Chromium's headless shell takes the whole browser down with a
+  // CDP `Page.crash`, this takes the renderer only, with the same effect on the page.
+  await page.goto('chrome://crash').catch(() => undefined);
+  await crashed;
+}
+
+/** A new page in the same context, so storage survives, with the hooks installed. The crashed page is left to the context. */
+export async function relaunch(page: Page): Promise<App> {
+  const next = spares.get(page) ?? (await page.context().newPage());
+  await installHooks(next);
+  await next.goto('/');
+  return new App(next);
+}
+
 export const test = base.extend<{ app: App }>({
   app: async ({ page }, provide) => {
+    // A modified page asks before it unloads; a test that reloads one must not wait on the prompt.
+    page.on('dialog', (dialog) => {
+      void (dialog.type() === 'beforeunload' ? dialog.accept() : dialog.dismiss());
+    });
     await installHooks(page);
     await page.goto('/');
     await provide(new App(page));

@@ -1,5 +1,6 @@
 import type {
   DirEntry,
+  DownloadRequest,
   FileFilter,
   FileHandle,
   HistoryMenuLabels,
@@ -7,11 +8,13 @@ import type {
   PickedFile,
   PickedFolder,
   PrintOptions,
+  ReadRange,
   RecentSong,
 } from './bridge';
 
 export type {
   DirEntry,
+  DownloadRequest,
   FileFilter,
   FileHandle,
   HistoryMenuLabels,
@@ -19,10 +22,17 @@ export type {
   PickedFile,
   PickedFolder,
   PrintOptions,
+  ReadRange,
   RecentSong,
   StorageRoot,
 } from './bridge';
-export { MAX_RECENT_SONGS, PICKED_FOLDER_LIMITS, STORAGE_ROOTS } from './bridge';
+export {
+  MAX_DOWNLOAD_BYTES,
+  MAX_READ_LENGTH,
+  MAX_RECENT_SONGS,
+  PICKED_FOLDER_LIMITS,
+  STORAGE_ROOTS,
+} from './bridge';
 
 export interface Platform {
   /** Resolves undefined when the user cancels. */
@@ -36,7 +46,11 @@ export interface Platform {
     bytes: Uint8Array,
     filters: readonly FileFilter[],
   ): Promise<string | undefined>;
-  readFile(path: string): Promise<Uint8Array>;
+  /**
+   * The whole file, or `range`'s bytes (a range past the end returns the bytes that exist, empty
+   * when it starts at or past the end); `range` is checked like a `PickedFile.read` range.
+   */
+  readFile(path: string, range?: ReadRange): Promise<Uint8Array>;
   writeFile(path: string, bytes: Uint8Array): Promise<void>;
   /** Writes over a file `openFile` returned the handle of, or a path `saveFile` returned. */
   writeHandle(handle: FileHandle, bytes: Uint8Array): Promise<void>;
@@ -94,6 +108,14 @@ export interface Platform {
    * the request came from Quit; `false` cancels the request. Ignored when none is open.
    */
   confirmClose?(close: boolean): void;
+  /**
+   * Desktop only (the browser has none): downloads `url` to `to`, a root-relative path under
+   * `data/sounds/`. Main enforces `https:` on the URL and every redirect, a hard size cap, and
+   * the SHA-256: the body streams to a hidden `.part` beside `to`, which is renamed into place
+   * only when the hash matches and deleted on a mismatch, a cancel or an error. Aborting
+   * `signal` rejects with an `AbortError`.
+   */
+  download?(request: DownloadRequest): Promise<{ size: number }>;
   /** ~/Music/Reprise on desktop; a directory in origin-private storage in the browser. */
   libraryDir(): Promise<string>;
   /** Electron userData on desktop; a directory in origin-private storage in the browser. */
