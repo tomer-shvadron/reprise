@@ -66,6 +66,15 @@ export interface RecentSong {
   title: string;
 }
 
+/**
+ * What the native Edit menu's Undo and Redo read: the newest step's command name on each stack.
+ * An absent entry means that stack is empty, so main disables the item.
+ */
+export interface HistoryMenuLabels {
+  undo?: string;
+  redo?: string;
+}
+
 /** The most Open Recent entries a platform shows; main caps the list at this. */
 export const MAX_RECENT_SONGS = 10;
 
@@ -108,6 +117,7 @@ export interface InvokeChannels {
   'storage:move': { args: [from: string, to: string]; result: undefined };
   'storage:remove': { args: [path: string]; result: undefined };
   'menu:set-recent': { args: [items: readonly RecentSong[]]; result: undefined };
+  'menu:set-history': { args: [labels: HistoryMenuLabels]; result: undefined };
   'app:library-dir': { args: []; result: string };
   'app:data-dir': { args: []; result: string };
   'app:print': { args: [options?: PrintOptions]; result: undefined };
@@ -170,6 +180,9 @@ export interface RepriseBridge {
   setRecentSongs: (
     ...args: InvokeArgs<'menu:set-recent'>
   ) => Promise<InvokeResult<'menu:set-recent'>>;
+  setHistoryLabels: (
+    ...args: InvokeArgs<'menu:set-history'>
+  ) => Promise<InvokeResult<'menu:set-history'>>;
   libraryDir: () => Promise<InvokeResult<'app:library-dir'>>;
   dataDir: () => Promise<InvokeResult<'app:data-dir'>>;
   print: (...args: InvokeArgs<'app:print'>) => Promise<InvokeResult<'app:print'>>;

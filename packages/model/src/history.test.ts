@@ -241,3 +241,36 @@ describe('createHistory', () => {
     expect(history.canUndo).toBe(false);
   });
 });
+
+describe('history labels', () => {
+  it('lists every label newest first, a group under its own name', () => {
+    const history = createHistory();
+    const base = buildScore();
+    const first = history.apply(base, retitle('A'));
+    history.beginGroup('Two edits');
+    const second = history.apply(first.score, retitle('B'));
+    history.apply(second.score, retitle('C'));
+    history.endGroup();
+
+    expect(history.undoLabels).toEqual(['Two edits', 'retitle']);
+    expect(history.redoLabels).toEqual([]);
+
+    history.undo();
+    expect(history.undoLabels).toEqual(['retitle']);
+    expect(history.redoLabels).toEqual(['Two edits']);
+  });
+
+  it('returns the same array until the stack changes', () => {
+    const history = createHistory();
+    const first = history.apply(buildScore(), retitle('A'));
+    const labels = history.undoLabels;
+
+    expect(history.undoLabels).toBe(labels);
+    history.undo();
+    expect(history.undoLabels).not.toBe(labels);
+    expect(history.redoLabels).toBe(history.redoLabels);
+    history.redo();
+    expect(history.undoLabels).toEqual(['retitle']);
+    expect(first.change.command).toBe('retitle');
+  });
+});

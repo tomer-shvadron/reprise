@@ -13,6 +13,7 @@ export type {
   PickedFileInfo,
   PickedFolderInfo,
   PrintOptions,
+  HistoryMenuLabels,
   RecentSong,
   RepriseBridge,
   StorageRoot,

@@ -10,6 +10,7 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 - Arrows, Home and End stay with a text field or a control that uses them (a slider, a menu); elsewhere they move the playhead.
 - Backspace and Delete stay with a text field whatever the modifiers, so Cmd+Backspace in the palette's input deletes text and never runs an editor command.
 - While a modal dialog is open (a dialog, an alert dialog, the command palette), no shortcut and no native menu command runs, except Cmd or Ctrl+K when the palette is the only modal (it closes the palette but opens none over another dialog), and a focused text field's own undo and redo. Escape stays with the dialog. This holds wherever focus is, including on the page behind the dialog. The rules live in the dispatcher's doc comment, `apps/web/src/app/shortcut-dispatcher.ts`.
+- In edit mode, ⌘C, ⌘X and ⌘V (Ctrl on Windows) copy, cut and paste notes, beats or whole bars, through the browser's own clipboard events: the key is left to the browser, which is why Copy, Cut and Paste show their keys here but the dispatcher never runs them. Paste follows the status line's insert or overwrite mode; Paste as insert and Paste over, in the palette, choose one. Text fields and dialogs keep their own copy, cut and paste, and so does selected text anywhere on the page.
 - Undo and redo in a focused text field undo the field's typing, not the score.
 - In edit mode a digit that can start a two-digit fret on the track's neck (1 and 2 on 24 frets) waits 500 ms for a second digit; any other key, a click or moving the cursor commits it at once, and Escape cancels it. Digits never move the cursor, so more digits on the same beat make a chord (with ↑ and ↓ between them); → moves on, and appends a bar past the end of a full last bar.
 - The library's song list takes its own keys while it has focus: the arrows, Home, End, Page Up and Page Down move, Enter opens, Delete or Backspace deletes, and L opens the song's practice log. Escape closes the log page.
@@ -193,5 +194,10 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Grace note… | Editor | Editing | G | G |
 | Grace note on the beat… | Editor | Editing | ⌥G | Alt+G |
 | Toggle effects panel | Editor | Global | — | — |
+| Copy | Editor | Editing | ⌘C | Ctrl+C |
+| Cut | Editor | Editing | ⌘X | Ctrl+X |
+| Paste | Editor | Editing | ⌘V | Ctrl+V |
+| Paste as insert | Editor | Editing | — | — |
+| Paste over | Editor | Editing | — | — |
 | Show sound manager | Sounds | Global | — | — |
 <!-- shortcuts:end -->

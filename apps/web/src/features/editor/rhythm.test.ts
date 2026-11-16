@@ -5,7 +5,9 @@ import {
   QUARTER,
   longer,
   overfullMessage,
+  restsFor,
   rhythmLabel,
+  rhythmTicks,
   shorter,
   toggleDot,
   toggleDoubleDot,
@@ -59,5 +61,19 @@ describe('labels', () => {
       'Bar 3 has an eighth left: a quarter does not fit',
     );
     expect(overfullMessage(3, 0, PPQ)).toBe('Bar 3 is full: a quarter does not fit');
+  });
+});
+
+describe('restsFor', () => {
+  it('splits a length into the fewest plain and dotted rests, longest first', () => {
+    expect(restsFor(0)).toEqual([]);
+    expect(restsFor(PPQ)).toEqual([{ duration: 4, dots: 0, tuplet: undefined }]);
+    expect(restsFor(PPQ * 1.5)).toEqual([{ duration: 4, dots: 1, tuplet: undefined }]);
+    expect(restsFor(PPQ * 2.5)?.map(rhythmTicks)).toEqual([PPQ * 2, PPQ / 2]);
+    expect(restsFor(PPQ * 4)).toEqual([{ duration: 1, dots: 0, tuplet: undefined }]);
+  });
+
+  it('refuses a length no rest can write', () => {
+    expect(restsFor(10)).toBeUndefined();
   });
 });

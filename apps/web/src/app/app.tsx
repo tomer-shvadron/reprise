@@ -19,6 +19,7 @@ import { PrintDialog, PrintRoot } from '@/features/score';
 import { MixerPanel, TrackSidebar } from '@/features/tracks';
 import { TransportBar } from '@/features/transport';
 import type { RepriseBridge } from '@/platform/bridge';
+import { installHistoryMenu } from '@/state/history-menu';
 import type { PanelView } from '@/state/ui';
 
 import { AppFrame } from './app-frame';
@@ -83,6 +84,8 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   );
 
   useEffect(() => installLibrary(services), [services]);
+
+  useEffect(() => installHistoryMenu(services.document, services.platform), [services]);
 
   useEffect(
     () => installPracticeLog(services, libraryOf(services).db.practiceSessions),

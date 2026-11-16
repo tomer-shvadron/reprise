@@ -4,6 +4,7 @@ import type { AppServices } from '@/app/services';
 import { effectCommands, type EffectCommandId } from './effect-commands';
 import { barCommands, type BarCommandId } from './bar-commands';
 import { pickerCommands, type PickerCommandId } from './picker-commands';
+import { clipboardCommands, type ClipboardCommandId } from './clipboard-commands';
 import { entryCommands, type EntryCommandId } from './entry-commands';
 import { navigationCommands, type NavigationCommandId } from './navigation-commands';
 import { trackEditCommands, type TrackEditCommandId } from './track-commands';
@@ -15,11 +16,12 @@ export type EditorCommandId =
   | BarCommandId
   | TrackEditCommandId
   | EffectCommandId
-  | PickerCommandId;
+  | PickerCommandId
+  | ClipboardCommandId;
 
 type EditorCommand = Command & { id: EditorCommandId };
 
-/** The edit-mode toggle, the cursor commands, the note-entry keys and bar and track management. */
+/** The edit-mode toggle, the cursor commands, the note-entry keys, bar and track management and the clipboard. */
 export function editorCommands(
   services: Pick<
     AppServices,
@@ -42,5 +44,6 @@ export function editorCommands(
     ...trackEditCommands(services),
     ...effectCommands(services),
     ...pickerCommands(services),
+    ...clipboardCommands(services),
   ];
 }
