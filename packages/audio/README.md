@@ -565,12 +565,18 @@ release regions gets the plain voice handle as before, so GM playback is unchang
 
 `createSamplerSink(sampler, { deadNote?, instrumentOf?, voicingOf? })` is the scheduler's `InstrumentSink` over the sampler,
 with the articulation layer described under [Articulations](#articulations). Every strike also
-carries `NoteOnRequest.select`: `sequence` counts the notes struck so far per track, region map and
-key (a stop, pause or seek starts it over, so a repeat from the same start rotates the same way),
+carries `NoteOnRequest.select`: `sequence` counts the notes struck so far per track, region map, layer
+and key (a stop, pause or seek starts it over, so a repeat from the same start rotates the same way),
 `random` is a hash of the note's id, its pass of the sequence and the strike's index (no
 `Math.random`, so an offline render repeats exactly), and `legato` is set on a hammer-on or
 pull-off when `voicingOf(track)` says the track's default map has `trigger=legato` regions. A track
-with no voicing, every General MIDI track, plays as before. Each event becomes
+with no voicing, every General MIDI track, plays as before. The counter is per key and layer, not
+per region as in sfizz (which advances one counter per region on every note-on in its key range,
+so a scale run inside one multi-key region rotates its takes; here each new key starts at take 1).
+Per key is deliberate: the takes of a keyswitched pack are recorded per pitch, and the layer is
+part of the slot so that alternating palm-mute and sustain strikes on one key do not share a
+counter, which with two takes each would give every palm-mute strike one take and every sustain
+strike the other. Each event becomes
 attacks, pitch and level automation, a filter and a release; `allNotesOff(when)` releases every
 voice, the ones scheduled after `when` included (a release before a voice's start time is a 0-to-0
 fade, so it never sounds), forgets any legato slide waiting for its next note, and drops the

@@ -139,7 +139,7 @@ export function createSamplerSink(
 ): InstrumentSink {
   let deadNote = options.deadNote;
   const chains = new Map<string, Chain>();
-  // Notes struck so far per track, region map and key, for the round robins; a stop starts over.
+  // Notes struck so far per track, region map, layer and key, for the round robins; a stop starts over.
   let counters = new WeakMap<RegionMap, Map<string, number>>();
 
   /** The counters a strike's regions are chosen by; `sequence` advances with each strike. */
@@ -150,13 +150,15 @@ export function createSamplerSink(
     pass: Pass,
     strikeIndex: number,
     key: number,
+    layer?: string,
   ): RegionSelection {
     let counts = counters.get(regions);
     if (!counts) {
       counts = new Map<string, number>();
       counters.set(regions, counts);
     }
-    const slot = `${trackId}:${String(key)}`;
+    // The layer is in the slot so a palm-mute and a sustain strike of one key rotate apart; `undefined` until a layer is passed.
+    const slot = `${trackId}:${layer ?? ''}:${String(key)}`;
     const sequence = counts.get(slot) ?? 0;
     counts.set(slot, sequence + 1);
     return {
