@@ -6,17 +6,13 @@ import { MetronomePanel } from './metronome/metronome-panel';
 import { SpeedTrainerPanel } from './speed-trainer/speed-trainer-panel';
 
 /** The right panel's trainer views and the bottom region's. */
-export type TrainerView = Exclude<PanelView, 'mixer'> | BottomPanelView;
+export type TrainerView = Exclude<PanelView, 'mixer' | 'effects' | 'history'> | BottomPanelView;
 
 const STUBS: Record<
   Exclude<TrainerView, 'speedTrainer' | 'metronome' | 'fretboard'>,
   { title: string; workPackage: string }
 > = {
   tuner: { title: 'Tuner', workPackage: 'WP-071' },
-  // The effects palette is not a trainer tool; it parks here until WP-082 PR B gives it a home.
-  effects: { title: 'Effects', workPackage: 'WP-082' },
-  // Likewise for the history panel: WP-084 PR 2 replaces this entry.
-  history: { title: 'History', workPackage: 'WP-084' },
 };
 
 /**

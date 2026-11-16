@@ -124,7 +124,7 @@ describe('ui store screens and panel views', () => {
     expect(store.getState().panels.rightPanel).toBe(true);
   });
 
-  it('shows the effects view in the right panel', () => {
+  it('shows the effects and history views in the right panel', () => {
     const store = createUiStore('dark');
     store.getState().showPanelView('effects');
     expect(store.getState().rightPanelView).toBe('effects');
