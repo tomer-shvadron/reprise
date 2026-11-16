@@ -1,27 +1,18 @@
-import { glyphMetrics, textWidth } from '../../metrics';
+import { glyphMetrics } from '../../metrics';
 import type { OnsetExtent, StaffBar, StaffBarMeasure } from '../staff-module';
 import { DYNAMICS_GLYPHS, beatDynamics } from '../dynamics';
 import { analyseEffects } from '../effects';
+import { wordsExtent } from '../words';
 import { TAB, analyseBar, type TabBeat, type TabOptions } from './analysis';
 
 const TICK_EPSILON = 1e-6;
-/** Room between a beat's words and the next onset's, in staff spaces. */
-const WORD_GAP = 0.4;
-
 /** Where a chord name or beat text starts: at the left edge of the beat's fret numbers. */
 export function wordStart(beat: TabBeat): number {
   return -beat.half;
 }
 
 function wordsRight(beat: TabBeat, space: number): number {
-  const { chord, text, lyrics } = beat.beat;
-  const gap = WORD_GAP * space;
-  let right = 0;
-  if (chord)
-    right = Math.max(right, wordStart(beat) + textWidth(chord.name, TAB.textSize * space) + gap);
-  if (text) right = Math.max(right, wordStart(beat) + textWidth(text, TAB.textSize * space) + gap);
-  for (const syllable of lyrics ?? [])
-    right = Math.max(right, textWidth(syllable, TAB.textSize * space) / 2 + gap);
+  let { right } = wordsExtent(beat.beat, wordStart(beat), space);
   const dynamics = beatDynamics(beat.beat);
   if (dynamics && beat.dynamicsChange) {
     right = Math.max(
@@ -33,10 +24,7 @@ function wordsRight(beat: TabBeat, space: number): number {
 }
 
 function wordsLeft(beat: TabBeat, space: number): number {
-  let left = 0;
-  for (const syllable of beat.beat.lyrics ?? []) {
-    left = Math.max(left, textWidth(syllable, TAB.textSize * space) / 2 + WORD_GAP * space);
-  }
+  let { left } = wordsExtent(beat.beat, wordStart(beat), space);
   const dynamics = beatDynamics(beat.beat);
   if (dynamics && beat.dynamicsChange) {
     left = Math.max(

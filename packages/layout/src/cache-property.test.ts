@@ -354,11 +354,11 @@ const SCORES: Record<'large' | 'sparse', () => Score> = {
 
 /**
  * Pages short enough that the large score's systems split across pages (#85): at 300 every system
- * splits, some through a track and some with a staff taller than the room; at 580 standard
- * notation, with its lanes and note marks, splits most systems and keeps some whole, so whole and
- * split systems share pages.
+ * splits, some through a track and some with a staff taller than the room; at 640 standard
+ * notation, with its words, lanes and note marks, splits most systems and keeps some whole, so
+ * whole and split systems share pages.
  */
-const SPLIT_PAGE_HEIGHTS = [300, 580] as const;
+const SPLIT_PAGE_HEIGHTS = [300, 640] as const;
 
 /** Widths a sequence starts at and steps through: A4, the narrow content widths 320, 480 and 640 px, Letter. */
 const WIDTHS: Readonly<Record<LayoutOptions['mode'], readonly number[]>> = {
@@ -449,7 +449,7 @@ describe('LayoutCache: random edits', () => {
             let systemKey = resolveOptions(score, options).systemKey;
             if (split && which === 'large' && subsetDie !== 0 && width === PAGE_SIZES.a4.width) {
               expect(first.systems.some(({ part }) => part !== undefined)).toBe(true);
-              if (height === 580 && notation === 'standard') {
+              if (height === 640 && notation === 'standard') {
                 expect(first.systems.some(({ part }) => part === undefined)).toBe(true);
               }
             }
