@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { RegionMap } from './region-map';
+import type { Region } from './region-map';
 import { SynthSampleSource, midiToFrequency } from './sample-source';
 import { Sampler, channelVolumeToGain } from './sampler';
 import type { SamplerTrack } from './sampler';
@@ -125,6 +126,49 @@ describe('envelope', () => {
     const data = await render(context);
     const held = toneLevel(data, 440, 0.25, 0.4);
     expect(toneLevel(data, 440, 0.6, 0.95) / held).toBeCloseTo(0.25, 2);
+  });
+
+  describe('key-scaled hold and decay', () => {
+    // Base hold 0.1 s and decay 0.05 s at key 60, 1200 timecents (an octave in time) per 12 keys.
+    const keyed = { attack: 0.001, hold: 0.1, decay: 0.05, sustain: 0, release: 0.05 };
+    async function level(
+      key: number,
+      envelope: Partial<Region['envelope']>,
+      range = { keyLo: 0, keyHi: 127 },
+      from = 0.3,
+    ): Promise<number> {
+      const context = offline(0.6);
+      const sampler = new Sampler(context);
+      sampler.addTrack(samplerTrack('t'), {
+        ...sineInstrument(),
+        regions: new RegionMap([region({ ...range, envelope: { ...keyed, ...envelope } })]),
+      });
+      sampler.noteOn('t', { key, velocity: 64, when: 0 });
+      return rms(await render(context), from, from + 0.05);
+    }
+
+    it('scales the hold with the struck key: a lower key holds longer, a higher one shorter', async () => {
+      // 100 timecents per key below key 60: key 48 holds 0.2 s (+0.05 s decay), key 72 holds 0.05 s.
+      expect(await level(48, { holdPerKey: 100 }, undefined, 0.2)).toBeGreaterThan(0.01);
+      expect(await level(60, { holdPerKey: 100 }, undefined, 0.2)).toBe(0);
+      expect(await level(72, { holdPerKey: 100 }, undefined, 0.15)).toBe(0);
+      expect(await level(72, {}, undefined, 0.1)).toBeGreaterThan(0.01);
+    });
+
+    it('scales the decay with the struck key', async () => {
+      // Decay 0.05 s at key 60 and 0.2 s at key 36 (2400 timecents per 24 keys): still sounding at 0.25.
+      expect(await level(36, { decayPerKey: 100 }, undefined, 0.22)).toBeGreaterThan(0);
+      expect(await level(60, { decayPerKey: 100 }, undefined, 0.22)).toBe(0);
+    });
+
+    it("keeps the edge key's timing for a key outside the region's range", async () => {
+      // keyHi 60 is unscaled by a key 84 strike, as the one-region-per-key expansion played it.
+      const edge = await level(84, { holdPerKey: 100 }, { keyLo: 0, keyHi: 60 }, 0.05);
+      const inside = await level(60, { holdPerKey: 100 }, { keyLo: 0, keyHi: 60 }, 0.05);
+      expect(edge).toBeGreaterThan(0.01);
+      expect(inside).toBeGreaterThan(0.01);
+      expect(await level(84, { holdPerKey: 100 }, { keyLo: 0, keyHi: 60 }, 0.2)).toBe(0);
+    });
   });
 
   it('applies the region attenuation', async () => {

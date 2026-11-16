@@ -501,7 +501,7 @@ from `preload`.
 `AudioBufferSourceNode.loop` cannot be switched off sample-accurately; `delayVolEnv` becomes
 `Envelope.delay`; the filter and its modulation envelope become `Region.filter` (the voice plays the envelope over time); `initialAttenuation` is scaled by 0.4 as FluidSynth does, and the note-on modulators become `Region.modulators`; the stereo zones of a sample pair (ruling on this PR) are merged into one two-channel
 buffer, which the voice graph passes through unchanged; a mono zone's `pan` goes to `Region.pan`;
-`keynumToVolEnvHold` and `keynumToVolEnvDecay` are expanded to one region per key (see
+`keynumToVolEnvHold` and `keynumToVolEnvDecay` ride on `Envelope` as `holdPerKey` and `decayPerKey` (timecents per key) and the voice scales the hold and decay for the struck key at note-on (see
 [SF2 loader and GM tier](#sf2-loader-and-gm-tier), which has the full mapping).
 
 ### Sampler API
@@ -874,7 +874,7 @@ preset level.
 | `initialAttenuation`                                                                      | `attenuation` = 0.4 × cB / 10 dB (the EMU factor FluidSynth applies, which GeneralUser GS is voiced for), clamped to 0..144 dB                                                                                                                                                                                                                                                                                                                                                                  |
 | `pmod`, `imod` records                                                                    | `modulators`: velocity and key sources (linear, concave, convex, switch; both polarities and directions) on attenuation, cutoff, envelope depth and Q, merged with FluidSynth's default (velocity to attenuation; its velocity to cutoff default is inert in FluidSynth and not applied): an instrument modulator replaces a default of the same identity, a preset one adds to it (SF2 9.5)                                                                                                    |
 | `exclusiveClass`                                                                          | `exclusiveClass`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `keynumToVolEnvHold`, `keynumToVolEnvDecay`                                               | one region per key, with hold and decay at timecents + factor × (60 − key): exact                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `keynumToVolEnvHold`, `keynumToVolEnvDecay`                                               | `envelope.holdPerKey` and `decayPerKey`, in timecents per key; `hold` and `decay` are the values at key 60 and the voice multiplies them by 2 ^ (factor × (60 − key) / 1200) for the struck key, clamped to the region's range: exact. The filter's modulation envelope carries `keynumToModEnvHold` and `keynumToModEnvDecay` the same way                                                                                                                                                     |
 | `pan`                                                                                     | `pan` = value / 500, mono regions only                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | linked left and right samples                                                             | one region with a two-channel ref, left first (below)                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
@@ -893,7 +893,7 @@ regions, which the sampler layers where both cover the key.
 per preset, the zones with a non-neutral value for each generator the `Region` has no field for
 (modulation and vibrato LFOs, the modulation envelope's transient on pitch, effects sends,
 `keynum`, `velocity`), zones with a modulator that is not applied (controller, pressure and linked
-sources, other destinations), zones expanded per key,
+sources, other destinations), zones expanded per key (`scaleTuning` only),
 overlapping region pairs (`layered`, which the sampler sounds together; a key-expanded zone counts
 once per key), stereo mismatches and unpaired halves, and dropped zones and loops.
 
@@ -909,9 +909,10 @@ there; locally it skips with a message until the files are fetched.
 
 Measured over the GM set (bank 0 programs 0 to 127 and the standard kit, 129 presets):
 
-- Every program and every GM percussion key, 35 to 81, resolves. 18,636 regions over 971 sample
+- Every program and every GM percussion key, 35 to 81, resolves. 7,998 regions over 971 sample
   refs, 579 of which are played by more than one preset. Resolving the whole set costs about
-  80 to 95 ms (60 ms before #169, whose regions each carry a modulator list and, where a filter
+  50 ms (80 to 95 ms with 18,636 regions before #198 stopped expanding key-scaled hold and decay
+  per key; 60 ms before #169, whose regions each carry a modulator list and, where a filter
   can close, a `filter` object), its region maps 1 to 4 ms, and a note-on resolves on the largest
   map (Timpani, 896 regions) in 40 to 145 ns, noisy at this scale. The heap figures (7 MiB to
   resolve, 3 MiB for the maps, 1 MiB for the `instrumentsOf` index) are from before #169 and not
@@ -925,7 +926,7 @@ Measured over the GM set (bank 0 programs 0 to 127 and the standard kit, 129 pre
 - The file is version 2.01: no `sm24`, and no linked stereo samples at all (all 920 are mono), so
   the stereo merge is proved by the synthetic fixture.
 - It uses the key-scaled envelope generators heavily: `keynumToVolEnvHold` in 287 zones and
-  `keynumToVolEnvDecay` in 676, `scaleTuning` in 156. All are expanded per key, exactly.
+  `keynumToVolEnvDecay` in 676, `scaleTuning` in 156. The envelope factors are carried on the region and scaled in the voice, so those zones stay one region; only the 132 resolved `scaleTuning` zones are still expanded per key, exactly.
 - `modEnvToPitch` is set in 457 zones; 447 are transients with a `sustainModEnv` of 1000, and 10
   zones in Ocarina, Bagpipes and Helicopter hold a pitch offset of 94 to 700 cents, which `tune`
   carries. One note of Whistle and of Ocarina rendered through the sampler lands within a cent of

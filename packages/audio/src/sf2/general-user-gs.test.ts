@@ -221,10 +221,10 @@ describe.skipIf(!font)('GeneralUser GS', () => {
     console.info(`GeneralUser GS GM set report: ${JSON.stringify(summary)}`);
     // The file is pinned by hash, so these are fixed; a change here is a change in the resolver.
     expect(summary).toMatchObject({
-      // Up from 16,100 and 687: a zone with a filter sweep and a key-scaled modulation envelope
-      // is now expanded per key too, to keep each key's own hold and decay.
-      regions: 18_636,
-      keyExpanded: 1255,
+      // Hold and decay scale per key in the voice (`keyScaledTime`), so only a `scaleTuning`
+      // zone is still one region per key: down from 18,636 regions and 1,255 expanded zones.
+      regions: 7998,
+      keyExpanded: 132,
       stereoMismatches: 0,
       unpairedStereo: 0,
       skippedZones: 0,
