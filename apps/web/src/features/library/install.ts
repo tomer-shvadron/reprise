@@ -30,8 +30,11 @@ export function installLibrary(services: AppServices): () => void {
   });
   // Save and Save As follow the library's rules from here on: a song saves to its own file.
   services.document.getState().setSaver(library.saver);
-  void library.load();
+  // The drafts are judged against the rows, so they are looked at once those have loaded.
+  const stopDrafts = library.drafts.start();
+  void library.load().then(() => library.drafts.recovery.scan());
   return () => {
+    stopDrafts();
     services.document.getState().setSaver(undefined);
     unsubscribe();
     unlisten?.();

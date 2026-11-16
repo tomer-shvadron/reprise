@@ -80,9 +80,13 @@ export function fallthroughMessage(file: DocumentFile): string {
 export function createLibrarySaver(deps: SaveFlowDeps): Saver {
   const { document, repo, files, now, write = writeScore } = deps;
 
+  // `savedAt` is when the save began, not when it ended: the mark holds the score as it was then,
+  // so a draft written after that may hold an edit the save did not (drafts are offered when
+  // newer than `savedAt`).
   const saveToSong = async (row: SongRow) => {
     const mark = document.getState().beginSave();
     if (!mark) return;
+    const startedAt = now();
     const name = `${stem(row.originalName)}.reprise`;
     try {
       const { bytes } = await write(mark.score, 'reprise');
@@ -98,7 +102,7 @@ export function createLibrarySaver(deps: SaveFlowDeps): Saver {
         album: meta.album,
         bars: meta.bars,
         tracks: meta.tracks,
-        savedAt: now(),
+        savedAt: startedAt,
       };
       // The file is saved by now: a row that cannot be updated costs only a stale list entry.
       try {
@@ -114,6 +118,7 @@ export function createLibrarySaver(deps: SaveFlowDeps): Saver {
   const addToLibrary = async () => {
     const mark = document.getState().beginSave();
     if (!mark) return;
+    const startedAt = now();
     const id = newId();
     const meta = summarize(mark.score);
     // The row keeps the title as typed ("AC/DC"); only the file name is made safe, so the
@@ -129,7 +134,7 @@ export function createLibrarySaver(deps: SaveFlowDeps): Saver {
         format: 'reprise',
         key: savedKey,
         meta,
-        now: now(),
+        now: startedAt,
         opened: true,
         hasOriginal: false,
       });
