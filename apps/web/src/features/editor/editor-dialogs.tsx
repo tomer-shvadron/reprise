@@ -9,6 +9,7 @@ import { GraceDialog } from './grace-dialog';
 import { MasterBarDialog } from './master-bar-dialog';
 import { removeTrackNow } from './track-edit';
 import { TrackDialog } from './track-dialog';
+import { TransposeDialog } from './transpose-dialog';
 
 /** Mounts whichever editor dialog is open; one instance in the app, next to the save prompt. */
 export function EditorDialogs() {
@@ -71,6 +72,8 @@ export function EditorDialogs() {
       return (
         <GraceDialog before={dialog.before} onClose={close} onCloseAutoFocus={onCloseAutoFocus} />
       );
+    case 'transpose':
+      return <TransposeDialog onClose={close} onCloseAutoFocus={onCloseAutoFocus} />;
     case 'removeTrack':
       if (!track) return null;
       return (

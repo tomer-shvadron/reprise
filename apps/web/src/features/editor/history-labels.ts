@@ -42,7 +42,7 @@ const LABELS: ReadonlyMap<string, string> = new Map(
     setBeatEffect: 'Change beat effect',
     setBeatEffects: 'Change beat effects',
     replaceBeats: 'Edit beats',
-    shiftStrings: 'Shift strings',
+    shiftStrings: 'Move to next string',
     transposeSelection: 'Transpose',
     // Word entry (WP-085): chain names that are already the label, listed so this stays the one place.
     'Chord name': 'Chord name',
