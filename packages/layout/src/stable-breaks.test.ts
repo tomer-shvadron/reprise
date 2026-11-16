@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 
 import { LayoutCache, layout, type LayoutOptions } from './index';
 import { layoutWith } from './layout';
+import { withEffects, withNoteMarks } from './test/effects';
 
 /** The keep rule's band in lines, written out so that changing `UNDERFLOW` or `OVERFLOW` fails here. */
 const MIN_LINES = 0.5;
@@ -216,5 +217,45 @@ describe('stable continuous segment breaks', () => {
     expect(after.map(({ id }) => id)).toEqual(before.map(({ id }) => id));
     expect(startsOf(result)[4]).toBe((starts[4] ?? 0) + 1);
     expect(startsOf(result).slice(-3)).toEqual(starts.slice(-3));
+  });
+
+  it('lets a greedy segment end under the band when the next bar does not fit (#244)', () => {
+    // Bars of about half a line, at a narrow width, where two never share a segment: a lone bar
+    // under UNDERFLOW is the greedy result, and the keep rule cannot merge it with a bar that
+    // would overflow the line. Found by the property test (seed -2084340291).
+    const wide = withNoteMarks(withEffects(largeScore(3, 32, { structure: true })));
+    const narrow: LayoutOptions = {
+      ...options,
+      width: 480,
+      tracks: wide.tracks.filter((_, i) => i % 3 !== 1).map(({ id }) => id),
+      notation: Object.fromEntries(wide.tracks.map(({ id }) => [id, 'both' as const])),
+    };
+    const cache = new LayoutCache();
+    layout(wide, narrow, cache);
+    const applied = applyCommand(wide, insertBar({ index: 16 }));
+    const result = layout(
+      applied.score,
+      { ...narrow, dirtyBars: applied.change.touchedBars },
+      cache,
+    );
+    const short = result.systems.filter(
+      ({ bars, bbox }, i) =>
+        i > 0 &&
+        i < result.systems.length - 1 &&
+        bbox.width < MIN_LINES * narrow.width &&
+        bars.end > 0,
+    );
+    // The premise: the edit leaves a segment under the band.
+    expect(short.length).toBeGreaterThan(0);
+    for (const segment of short) {
+      const next = result.systems[segment.index + 1];
+      const id = applied.score.masterBars[next?.bars.start ?? 0]?.id;
+      const column = result.anchors.find(
+        (a) => a.kind === 'bar' && a.track === undefined && a.masterBar === id,
+      );
+      // Filling the line again would overflow it, so the segment is as full as it can be.
+      expect((segment.bbox.width + (column?.bbox.width ?? 0)) / narrow.width).toBeGreaterThan(0.97);
+      expect(segment.bars.end - segment.bars.start).toBe(1);
+    }
   });
 });

@@ -501,7 +501,17 @@ describe('LayoutCache: random edits', () => {
                     expect(lines).toBeLessThanOrEqual(MAX_LINES + 0.03);
                   const next = cached.systems[i + 1];
                   const lone = next !== undefined && next.bars.end - next.bars.start === 1;
-                  if (i > 0 && next && !lone)
+                  // Greedy filling ends a segment where the next bar no longer fits, so a segment
+                  // may be short when that bar is wide: its column plus this segment overflows
+                  // the line (#244). Several bars at about half a line each do this at a narrow
+                  // width.
+                  const columnId = next && score.masterBars[next.bars.start]?.id;
+                  const column = cached.anchors.find(
+                    (a) => a.kind === 'bar' && a.track === undefined && a.masterBar === columnId,
+                  );
+                  const blocked =
+                    column !== undefined && lines + column.bbox.width / options.width > 1 - 0.03;
+                  if (i > 0 && next && !lone && !blocked)
                     expect(lines).toBeGreaterThanOrEqual(MIN_LINES - 0.03);
                 });
                 expect(end).toBe(score.masterBars.length);
