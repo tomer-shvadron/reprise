@@ -302,6 +302,34 @@ export class App {
     return Uint8Array.from(bytes);
   }
 
+  /** The names in an origin-private folder (`library/songs`); empty when it does not exist yet. */
+  async listStored(path: string): Promise<string[]> {
+    return this.page.evaluate(async (folder) => {
+      try {
+        let dir = await navigator.storage.getDirectory();
+        for (const name of folder.split('/')) dir = await dir.getDirectoryHandle(name);
+        const names: string[] = [];
+        for await (const key of dir.keys()) names.push(key);
+        return names.sort();
+      } catch {
+        return [];
+      }
+    }, path);
+  }
+
+  /** A file under origin-private storage by its root-relative path (`library/songs/a.reprise`). */
+  async readStoredPath(path: string): Promise<Uint8Array> {
+    const bytes = await this.page.evaluate(async (file) => {
+      const parts = file.split('/');
+      const name = parts.pop() ?? '';
+      let dir = await navigator.storage.getDirectory();
+      for (const part of parts) dir = await dir.getDirectoryHandle(part);
+      const data = await (await dir.getFileHandle(name)).getFile();
+      return [...new Uint8Array(await data.arrayBuffer())];
+    }, path);
+    return Uint8Array.from(bytes);
+  }
+
   async saves() {
     return this.page.evaluate(() => window.__e2e.saves);
   }
