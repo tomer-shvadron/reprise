@@ -2,9 +2,15 @@ import type { Track } from '@reprise/model';
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 
-import { Placeholder } from '@/components/placeholder';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { AddTrackButton, EditorDialogs, EffectsPanel, TrackRowMenu } from '@/features/editor';
+import {
+  AddTrackButton,
+  EditorDialogs,
+  EffectsPanel,
+  HistoryPanel,
+  historyLabel,
+  TrackRowMenu,
+} from '@/features/editor';
 import {
   DraftRecoveryDialog,
   ExportDialog,
@@ -55,11 +61,11 @@ interface AppProps {
   onMenuCommand?: RepriseBridge['onMenuCommand'] | undefined;
 }
 
-/** The right panel: the mixer, the trainer tools, and a placeholder the WP-084 PR replaces. */
+/** The right panel: the mixer, the effects, the history and the trainer tools. */
 function RightPanel({ view }: { view: PanelView }) {
   if (view === 'mixer') return <MixerPanel />;
   if (view === 'effects') return <EffectsPanel />;
-  if (view === 'history') return <Placeholder title="History" workPackage="WP-084" />;
+  if (view === 'history') return <HistoryPanel />;
   return <TrainerPanel view={view} />;
 }
 
@@ -105,7 +111,10 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
     [services],
   );
 
-  useEffect(() => installHistoryMenu(services.document, services.platform), [services]);
+  useEffect(
+    () => installHistoryMenu(services.document, services.platform, historyLabel),
+    [services],
+  );
 
   useEffect(
     () => installPracticeLog(services, libraryOf(services).db.practiceSessions),

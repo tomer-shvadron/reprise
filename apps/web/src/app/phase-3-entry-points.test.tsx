@@ -60,6 +60,16 @@ describe('phase 3 entry points', () => {
     expect(services.ui.getState().panels.rightPanel).toBe(false);
   });
 
+  it('editor.showHistory shows the history panel in the right panel and hides it again', () => {
+    const { services, run } = renderApp();
+    run('editor.showHistory');
+    const panel = screen.getByRole('complementary', { name: 'Panel' });
+    expect(within(panel).getByRole('region', { name: 'History' })).toBeInTheDocument();
+    expect(panel).not.toHaveTextContent('WP-084');
+    run('editor.showHistory');
+    expect(services.ui.getState().panels.rightPanel).toBe(false);
+  });
+
   it('trainer.tuner opens the right panel on its placeholder', () => {
     const { run } = renderApp();
     expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
@@ -119,6 +129,7 @@ describe('phase 3 entry points', () => {
         'trainer.fretboard',
         'editor.toggleMode',
         'editor.toggleEffectsPanel',
+        'editor.showHistory',
       ]),
     );
   });
