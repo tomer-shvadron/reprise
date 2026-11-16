@@ -202,21 +202,17 @@ describe('ManagedSampleSource unused residents and shortfall', () => {
     expect(source.memory().shortfall).toBe(false);
   });
 
-  it('is not short when a song switch revives an instrument through a shared sample', async () => {
-    const provider: SampleProvider = {
-      instrumentsOf: () => ['gm:0:25', 'other'],
-      byteLength: () => ZONE,
-      fetch: () =>
-        Promise.resolve({
-          sampleRate: 44_100,
-          channels: [new Float32Array(1000)],
-          byteLength: ZONE,
-        }),
-    };
+  it('does not count a sample the song never plays toward the shortfall', async () => {
+    const provider = small();
     const source = new ManagedSampleSource(provider, factory, { budgetBytes: 100 * ZONE });
-    await source.getBuffer('s');
-    source.switchSong(songA);
-    expect(source.memory()).toMatchObject({ shortfall: false, residents: ['gm:0:25'] });
+    await source.load(songA, provider.regionMap, { warm: false });
+    // Only the pinned guitar holds this one, and no key of the song reaches it.
+    await source.getBuffer('gm:0:25#0');
+    source.budgetBytes = 1;
+    source.budgetBytes = 100 * ZONE;
+    source.warm(provider.regionMap);
+    await source.settled();
+    expect(source.memory().shortfall).toBe(false);
   });
 
   it('warms only the plan of the last song switch', async () => {

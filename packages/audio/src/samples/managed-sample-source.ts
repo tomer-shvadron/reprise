@@ -105,6 +105,11 @@ export class ManagedSampleSource implements SampleSource {
   #pinned = new Set<InstrumentId>();
   /** Per planned instrument, the samples an eviction freed and nothing has decoded again. */
   #missing = new Map<InstrumentId, Set<SampleRef>>();
+  /**
+   * The samples the plan's keys can reach, known once `load` or `warm` has the region maps. Only
+   * these count toward `shortfall`: the warm-up never brings back a sample the song does not play.
+   */
+  #planned: Set<SampleRef> | undefined;
   /** The plan of the last `switchSong`: what `warm` restores. */
   #plan: SongPlan | undefined;
   #budget: number;
@@ -198,11 +203,7 @@ export class ManagedSampleSource implements SampleSource {
     for (const instrument of this.#pinned) {
       if (this.#refsOf.has(instrument)) this.#touch(instrument);
     }
-    // An instrument whose samples came back without a decode (shared with a resident one) is whole.
-    for (const [instrument, refs] of this.#missing) {
-      for (const ref of refs) if (this.#entries.has(ref)) refs.delete(ref);
-      if (refs.size === 0) this.#missing.delete(instrument);
-    }
+    this.#planned = undefined;
     for (const instrument of [...this.#residents]) {
       if (!this.#pinned.has(instrument)) this.#evict(instrument);
     }
@@ -239,7 +240,10 @@ export class ManagedSampleSource implements SampleSource {
    * fits, and stops at the next song switch.
    */
   warm(regionMaps: RegionMaps): void {
-    if (this.#plan) this.#warm(planSamples(this.#plan, regionMaps), this.#generation);
+    if (!this.#plan) return;
+    const refs = planSamples(this.#plan, regionMaps);
+    this.#prune(refs);
+    this.#warm(refs, this.#generation);
   }
 
   /**
@@ -271,6 +275,7 @@ export class ManagedSampleSource implements SampleSource {
     const { bars = DEFAULT_PRELOAD_BARS, warm = true, ...planOptions } = options;
     const plan = this.switchSong(score, planOptions);
     const generation = this.#generation;
+    this.#prune(planSamples(plan, regionMaps));
     await this.preload(planInstruments(score, { ...planOptions, bars }), regionMaps);
     if (warm && generation === this.#generation) {
       this.#warm(planSamples(plan, regionMaps), generation);
@@ -309,6 +314,18 @@ export class ManagedSampleSource implements SampleSource {
       if (this.#warming === warming) this.#warming = undefined;
     });
     this.#warming = warming;
+  }
+
+  /** Narrows `shortfall` to samples the song plays, and says so when that clears it. */
+  #prune(refs: readonly SampleRef[]): void {
+    const planned = new Set(refs);
+    this.#planned = planned;
+    const before = this.#missing.size;
+    for (const [instrument, missing] of this.#missing) {
+      for (const ref of missing) if (!planned.has(ref)) missing.delete(ref);
+      if (missing.size === 0) this.#missing.delete(instrument);
+    }
+    if (this.#missing.size !== before) this.#changed();
   }
 
   /** A bad estimate must not reach `#reserved`: one `NaN` there would disable the budget. */
@@ -401,7 +418,7 @@ export class ManagedSampleSource implements SampleSource {
       freed = true;
       // Every planned owner lost the sample, not only the one being evicted.
       for (const owner of entry.owners) {
-        if (!this.#pinned.has(owner)) continue;
+        if (!this.#pinned.has(owner) || (this.#planned && !this.#planned.has(ref))) continue;
         const refs = this.#missing.get(owner) ?? new Set<SampleRef>();
         refs.add(ref);
         this.#missing.set(owner, refs);
