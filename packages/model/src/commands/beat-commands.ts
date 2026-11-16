@@ -227,15 +227,18 @@ export interface BeatSpliceEdit {
   /** How many beats from `index` on are removed first. */
   remove: number;
   /** The beats put in their place, with fresh ids throughout. */
-  beats: Beat[];
+  beats: readonly Beat[];
 }
 
 /**
  * Splices the beats of many voices at once, the batched `removeBeat` plus `insertBeat`: one
  * voice-index pass, one fresh-id walk over every new beat, note and grace note across the edits,
- * each touched track validated once, one history step, atomic. Ties are released from each
- * splice's trailing edge, so a note tied into a removed beat loses its tie. An empty list, two
- * edits on one voice that overlap or share an index, and an index or count out of range are
+ * each touched track validated once, one history step, atomic. Every voice is spliced first, then
+ * ties are released in a second pass, once per voice from its first splice's index, so the result
+ * does not depend on the order of `edits`: a note whose origin a splice removed loses its tie,
+ * and so does an orphan tie on a pasted beat (its origin is not the previous note on that
+ * string), which `insertBeat` would refuse; a clip often starts with a tied note. An empty list,
+ * two edits on one voice that overlap or share an index, and an index or count out of range are
  * refused as `invalid-value`.
  */
 export function replaceBeats(edits: readonly BeatSpliceEdit[]): Command {
@@ -313,6 +316,7 @@ export function replaceBeats(edits: readonly BeatSpliceEdit[]): Command {
         for (const note of notes) assertNotePlaced(track, note, name);
       }
       const tracks = new Set<number>();
+      const spliced: { track: Track; bar: number; voice: number; index: number }[] = [];
       for (const [voiceId, list] of byVoice) {
         const where = positions.get(voiceId);
         if (!where) continue;
@@ -326,10 +330,16 @@ export function replaceBeats(edits: readonly BeatSpliceEdit[]): Command {
           });
           voice.beats.splice(edit.index, edit.remove, ...parsed);
         }
-        const first = at(list, 0, name);
-        releaseTies(track, where.bar, where.voice, first.index + first.beats.length);
+        spliced.push({
+          track,
+          bar: where.bar,
+          voice: where.voice,
+          index: at(list, 0, name).index,
+        });
         tracks.add(where.track);
       }
+      // After every splice, so each release reads the end state whatever order the voices came in.
+      for (const { track, bar, voice, index } of spliced) releaseTies(track, bar, voice, index);
       for (const track of tracks) assertTrackValid(draft, track, name);
     },
   };
