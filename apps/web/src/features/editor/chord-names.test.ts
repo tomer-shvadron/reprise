@@ -32,6 +32,10 @@ describe('transposeChordName', () => {
     expect(transposeChordName('Cmi7', 2, key(0))).toBe('Dmi7');
     expect(transposeChordName('CMA7', 2, key(0))).toBe('DMA7');
     expect(transposeChordName('CM7', 2, key(0))).toBe('DM7');
+    expect(transposeChordName('Cmadd9', 2, key(0))).toBe('Dmadd9');
+    expect(transposeChordName('Cmadd11', 2, key(0))).toBe('Dmadd11');
+    expect(transposeChordName('Cmaug', 2, key(0))).toBe('Dmaug');
+    expect(transposeChordName('Cmalt', 2, key(0))).toBe('Dmalt');
     expect(transposeChordName('Csus4', 2, key(0))).toBe('Dsus4');
   });
 

@@ -4,7 +4,7 @@ const NAME = /^([A-G])([#b♯♭]{0,2})(.*?)(?:\/([A-G])([#b♯♭]{0,2}))?$/;
 const PITCH_CLASS: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 const ALTER: Record<string, number> = { '#': 1, '♯': 1, b: -1, '♭': -1 };
 // What may follow a root in a chord name; any letter left over is a word ("Riff", "Break"), not a quality.
-const QUALITY = /maj|ma|min|mi|dim|aug|sus|add|alt|omit|dom|no|[mb#♯♭°ø+\-x]/gi;
+const QUALITY = /maj|ma(?!dd|ug|lt)|min|mi|dim|aug|sus|add|alt|omit|dom|no|[mb#♯♭°ø+\-x]/gi;
 
 const modulo = (value: number, divisor: number): number => ((value % divisor) + divisor) % divisor;
 
