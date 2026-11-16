@@ -42,6 +42,8 @@ export interface InstallJob {
 }
 
 export interface PackProblem {
+  /** The pack it is about, for the screen's list. */
+  name: string;
   message: string;
   problems: readonly string[];
 }
@@ -83,13 +85,13 @@ export interface SoundPackStore extends PackDirectory {
   /** A picked folder, as `installZip`. */
   installFolder(folder: PickedFolder, manifest?: PackManifest): Promise<boolean>;
   /** Stops the running install; it cleans up after itself. */
-  cancel(): void;
+  cancel: () => void;
   /** Releases the pack from the engine, removes its folder, and reinstates it if that fails. */
   remove(id: string): Promise<boolean>;
   /** Removes a damaged folder. */
   removeDamaged(folder: string): Promise<boolean>;
   rename(id: string, name: string): Promise<boolean>;
-  dismissProblem(id: string): void;
+  dismissProblem: (id: string) => void;
 }
 
 export interface SoundPackStoreOptions {
@@ -151,6 +153,7 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
   };
 
   const audio = () => options.audio?.();
+  const nameOf = (id: string) => store.getState().packs.find((pack) => pack.id === id)?.name ?? id;
 
   async function scan(): Promise<void> {
     if (!store.getState().job) await sweepWorkAreas(platform);
@@ -192,6 +195,7 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
   ): Promise<boolean> {
     if (store.getState().job) {
       problem(job.packId, {
+        name: job.name,
         message: 'Another pack is being installed. Wait for it or cancel it first.',
         problems: [],
       });
@@ -224,6 +228,7 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
     } catch (error) {
       if (!isAbort(error)) {
         problem(job.packId, {
+          name: job.name,
           message:
             error instanceof InstallError
               ? error.message
@@ -327,6 +332,7 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
       } catch (error) {
         await service?.reinstatePack(id);
         problem(id, {
+          name: nameOf(id),
           message: `The pack could not be removed: ${messageOf(error)}`,
           problems: [],
         });
@@ -342,6 +348,7 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
         await platform.remove(packFolder(folder));
       } catch (error) {
         problem(folder, {
+          name: folder,
           message: `The folder could not be removed: ${messageOf(error)}`,
           problems: [],
         });
@@ -365,6 +372,7 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
         );
       } catch (error) {
         problem(id, {
+          name: nameOf(id),
           message: `The pack could not be renamed: ${messageOf(error)}`,
           problems: [],
         });
