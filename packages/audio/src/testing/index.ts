@@ -6,6 +6,8 @@ export type { BitDepth } from '../sfz/test/encode';
 export { syntheticSfzPack } from './synthetic-pack';
 export type { SyntheticSfzPack, SyntheticSfzPackOptions } from './synthetic-pack';
 export {
+  GUITAR_EXTRA_TONES,
+  GUITAR_FILE_TONES,
   GUITAR_RELEASE_DECAY,
   GUITAR_ROOT_KEY,
   GUITAR_SELECTION,

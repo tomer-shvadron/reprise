@@ -52,10 +52,16 @@ describe('planInstruments', () => {
     expect(planInstruments(song)).toEqual({
       instruments: ['gm:0:25', 'gm:drums:0', 'gm:0:4', 'gm:0:33'],
       tracks: [
-        { track: song.tracks[0]?.id, uses: [{ instrument: 'gm:0:25', keys: [40, 67] }] },
-        { track: song.tracks[1]?.id, uses: [{ instrument: 'gm:drums:0', keys: [36, 38, 42] }] },
-        { track: song.tracks[2]?.id, uses: [{ instrument: 'gm:0:4', keys: [60, 64] }] },
-        { track: song.tracks[3]?.id, uses: [{ instrument: 'gm:0:33', keys: [] }] },
+        {
+          track: song.tracks[0]?.id,
+          uses: [{ instrument: 'gm:0:25', keys: [40, 67], layers: [] }],
+        },
+        {
+          track: song.tracks[1]?.id,
+          uses: [{ instrument: 'gm:drums:0', keys: [36, 38, 42], layers: [] }],
+        },
+        { track: song.tracks[2]?.id, uses: [{ instrument: 'gm:0:4', keys: [60, 64], layers: [] }] },
+        { track: song.tracks[3]?.id, uses: [{ instrument: 'gm:0:33', keys: [], layers: [] }] },
       ],
     });
   });
@@ -73,8 +79,8 @@ describe('planInstruments', () => {
       .build();
 
     expect(planInstruments(song).tracks[0]?.uses).toEqual([
-      { instrument: 'gm:0:25', keys: [64] },
-      { instrument: 'gm:0:30', keys: [64, 65, 66] },
+      { instrument: 'gm:0:25', keys: [64], layers: [] },
+      { instrument: 'gm:0:30', keys: [64, 65, 66], layers: [] },
     ]);
   });
 
@@ -154,5 +160,101 @@ describe('planSamples', () => {
       'body',
       'loud-only',
     ]);
+  });
+});
+
+describe('planInstruments with a pack voicing', () => {
+  const voicing = {
+    palmMute: { layer: 'sw:25' },
+    staccato: { instrument: 'file-stacc' },
+  } as const;
+  const song = score()
+    .track('guitar')
+    .bar()
+    .beat('4', [note(1, 0), note(2, 0, { palmMute: true })])
+    .beat('4', [note(1, 3, { staccato: true })])
+    .beat('4', [note(1, 3, { dead: true })])
+    .rest('4')
+    .build();
+  const plan = planInstruments(song, {
+    instrumentOf: () => 'file-default',
+    voicingFor: () => voicing,
+  });
+
+  it('puts a note on the layer or the instrument of its set, and the rest on the default', () => {
+    expect(plan.tracks[0]?.uses).toEqual([
+      { instrument: 'file-default', keys: [64, 67], layers: [{ layer: 'sw:25', keys: [59] }] },
+      { instrument: 'file-stacc', keys: [67], layers: [] },
+    ]);
+    expect(plan.instruments).toEqual(['file-default', 'file-stacc']);
+  });
+
+  it('plans a pack instrument only when a note uses it', () => {
+    const quiet = planInstruments(
+      score()
+        .track('guitar')
+        .bar()
+        .beat('1', [note(1, 0)])
+        .build(),
+      { instrumentOf: () => 'file-default', voicingFor: () => voicing },
+    );
+    expect(quiet.instruments).toEqual(['file-default']);
+    expect(quiet.tracks[0]?.uses[0]?.layers).toEqual([]);
+  });
+
+  it('plans only the layers a note names', () => {
+    const regions = new RegionMap([
+      region({ keyLo: 64, keyHi: 64, rootKey: 64, sample: 'sustain' }),
+      region({ keyLo: 64, keyHi: 64, rootKey: 64, sample: 'mute', layer: 'sw:25' }),
+      region({ keyLo: 64, keyHi: 64, rootKey: 64, sample: 'harm', layer: 'sw:26' }),
+    ]);
+    const maps = (instrument: string) => (instrument === 'file-default' ? regions : undefined);
+    const only = (plain: boolean) =>
+      planSamples(
+        {
+          instruments: ['file-default'],
+          tracks: [
+            {
+              track: 't',
+              uses: [
+                {
+                  instrument: 'file-default',
+                  keys: plain ? [64] : [],
+                  layers: plain ? [] : [{ layer: 'sw:25', keys: [64] }],
+                },
+              ],
+            },
+          ],
+        },
+        maps,
+      );
+    expect(only(true)).toEqual(['sustain']);
+    expect(only(false)).toEqual(['mute']);
+  });
+
+  it('plans no layer or file for a dead note when the pack has no dead set', () => {
+    const dead = planInstruments(
+      score()
+        .track('guitar')
+        .bar()
+        .beat('1', [note(1, 0, { dead: true, palmMute: true })])
+        .build(),
+      { instrumentOf: () => 'file-default', voicingFor: () => voicing },
+    );
+    expect(dead.instruments).toEqual(['file-default']);
+    expect(dead.tracks[0]?.uses[0]?.layers).toEqual([]);
+  });
+
+  it('plans a tied note in the default layer, since it is never struck', () => {
+    const tied = planInstruments(
+      score()
+        .track('guitar')
+        .bar()
+        .beat('2', [note(1, 0)])
+        .beat('2', [note(1, 0, { tie: true, palmMute: true })])
+        .build(),
+      { instrumentOf: () => 'file-default', voicingFor: () => voicing },
+    );
+    expect(tied.tracks[0]?.uses[0]?.layers).toEqual([]);
   });
 });

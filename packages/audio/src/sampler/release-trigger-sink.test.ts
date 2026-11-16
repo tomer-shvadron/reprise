@@ -137,6 +137,18 @@ describe('the sampler sink and a hammer-on or pull-off chain', () => {
     expect(requests(plain, next).map((r) => r.releaseTrigger)).toEqual([true]);
   });
 
+  it('keeps the chain when the next note has a grace note on another string', () => {
+    const withGrace = score()
+      .track('guitar')
+      .bar()
+      .beat('4', [hammered], { grace: [{ duration: 16, before: false, notes: [note(2, 3)] }] })
+      .build().tracks[0]?.bars[0]?.voices[0].beats[0];
+    if (!withGrace) throw new Error('a beat');
+    const next = { note: hammered, when: 1, beat: withGrace };
+    // The grace note is struck on string 2, so string 1 is still held when the hammer-on comes.
+    expect(requests(plain, next).map((r) => r.releaseTrigger)).toEqual([false]);
+  });
+
   it('compares the hammer-on with the let-ring end, when the note rings on', () => {
     const ringing = note(1, 5, { letRing: true });
     // The ring is released at the bar end (2.5 s here), not at the note's own end.

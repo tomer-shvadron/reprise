@@ -274,6 +274,15 @@ export class RegionMap {
     }
   }
 
+  /**
+   * Whether the layer a note plays has `trigger=legato` regions, with the same layer fallback as
+   * `resolveAll`: a pack whose legato regions sit in another keyswitch layer gives a hammer-on
+   * here nothing to start.
+   */
+  hasLegatoRegionsIn(layer?: string): boolean {
+    return this.#set(layer)?.all.some((region) => region.trigger === 'legato') ?? false;
+  }
+
   get layers(): string[] {
     return [...this.#layers.keys()].filter((layer) => layer !== undefined);
   }
