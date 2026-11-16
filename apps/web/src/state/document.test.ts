@@ -15,7 +15,6 @@ import { fakePlatform } from '@/test/services';
 import {
   contentKey,
   createDocumentStore,
-  GP_FILES,
   REPRISE_FILES,
   SCORE_FILES,
   visibleTrackIds,
@@ -224,10 +223,10 @@ describe('the document store', () => {
     expect(state.revision).toBeGreaterThan(before.revision);
   });
 
-  it('settles a pending save prompt on newDocument, and a stale Save As never sets file', async () => {
-    const { store, saveFile } = setup();
-    await store.getState().openBytes('song.gp5', GP5);
-    const saving = store.getState().saveAs();
+  it('settles a pending save prompt on newDocument, and a stale Save never sets file', async () => {
+    const { store, writeHandle } = setup({ gpDropped: [dynamicsDropped] });
+    await store.getState().openBytes('song.gp', GP, { handle: { kind: 'file' } });
+    const saving = store.getState().save();
     await vi.waitFor(() => {
       expect(store.getState().savePrompt).toBeDefined();
     });
@@ -236,7 +235,7 @@ describe('the document store', () => {
     await saving;
 
     expect(store.getState().savePrompt).toBeUndefined();
-    expect(saveFile).not.toHaveBeenCalled();
+    expect(writeHandle).not.toHaveBeenCalled();
     expect(store.getState().file).toBeUndefined();
     expect(store.getState().saving).toBe(false);
   });
@@ -339,7 +338,7 @@ describe('the document store', () => {
     const { store } = setup();
     await store.getState().openBytes('song.gp5', GP5);
     store.getState().apply(editOf(store, 5));
-    await answering(store, store.getState().saveAs(), 'reprise');
+    await store.getState().saveAs();
     expect(store.getState().dirty).toBe(false);
 
     store.getState().undo();
@@ -354,7 +353,7 @@ describe('the document store', () => {
       'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
     );
     const handle = { kind: 'file' };
-    const { store } = setup({ saveFile: () => Promise.resolve('/music/song.gp') });
+    const { store } = setup();
     const opened = new TextEncoder().encode('{}');
     await store.getState().openBytes('song.reprise', opened, { handle });
     const key = await contentKey(opened);
@@ -365,29 +364,25 @@ describe('the document store', () => {
     const saved = await contentKey(REPRISE_BYTES);
     expect(store.getState().file).toMatchObject({ key, savedKeys: [saved] });
 
-    await answering(store, store.getState().saveAs(), 'gp');
+    await store.getState().saveAs();
     expect(store.getState().file).toMatchObject({
-      name: 'song.gp',
-      format: 'gp',
+      name: 'song.reprise',
+      format: 'reprise',
       key,
-      savedKeys: [saved, await contentKey(GP_BYTES)],
+      savedKeys: [saved, saved],
     });
   });
 
-  it('sends Save on a gp5 to Save As, saying why, then saves in place to the chosen .reprise', async () => {
+  it('sends Save on a gp5 to Save As, which asks nothing and writes .reprise only, then saves in place', async () => {
     const { store, write, saveFile, writeHandle } = setup({ gpDropped: [dynamicsDropped] });
     await store.getState().openBytes('song.gp5', GP5, { handle: { kind: 'file' } });
     store.getState().apply(editOf(store, 5));
 
-    const prompt = await answering(store, store.getState().save(), 'reprise');
+    await store.getState().save();
 
-    expect(prompt).toEqual({
-      kind: 'save-as',
-      reason:
-        "Reprise can't write Guitar Pro 5 (.gp5) files, so this saves a copy as Reprise or as Guitar Pro 7–8.",
-      gpLosses: [dynamicsDropped],
-    });
+    expect(store.getState().savePrompt).toBeUndefined();
     expect(write).toHaveBeenCalledWith(store.getState().score, 'reprise');
+    expect(write).not.toHaveBeenCalledWith(expect.anything(), 'gp');
     expect(saveFile).toHaveBeenCalledWith('song.reprise', REPRISE_BYTES, REPRISE_FILES);
     expect(store.getState().file).toMatchObject({
       name: 'song.reprise',
@@ -404,39 +399,15 @@ describe('the document store', () => {
     expect(store.getState().dirty).toBe(false);
   });
 
-  it('saves a gp5 as Guitar Pro 7–8, then saves the new .gp in place without asking again', async () => {
-    const { store, saveFile, writeHandle } = setup({
-      read: () => Promise.resolve({ score: song(), warnings: [rseNotModelled] }),
-      saveFile: () => Promise.resolve('/music/song.gp'),
-    });
-    await store.getState().openBytes('song.gp5', GP5);
-    store.getState().apply(editOf(store, 5));
+  it('offers no .gp in Save As, even for a .gp file', async () => {
+    const { store, write, saveFile } = setup({ gpDropped: [dynamicsDropped] });
+    await store.getState().openBytes('song.gp', GP, { handle: { kind: 'file' } });
 
-    await answering(store, store.getState().saveAs(), 'gp');
+    await store.getState().saveAs();
 
-    expect(saveFile).toHaveBeenCalledWith('song.gp', GP_BYTES, GP_FILES);
-    expect(store.getState().file).toMatchObject({
-      name: 'song.gp',
-      format: 'gp',
-      handle: '/music/song.gp',
-    });
-    expect(store.getState().dirty).toBe(false);
-
-    // The new file never held what the gp5's read dropped, so overwriting it loses nothing.
-    store.getState().apply(editOf(store, 6));
-    await store.getState().save();
     expect(store.getState().savePrompt).toBeUndefined();
-    expect(writeHandle).toHaveBeenCalledWith('/music/song.gp', GP_BYTES);
-    expect(store.getState().dirty).toBe(false);
-  });
-
-  it('gives no reason in Save As for a format Reprise writes', async () => {
-    const { store } = setup({ saveFile: () => Promise.resolve(undefined) });
-    await store.getState().openBytes('song.reprise', new TextEncoder().encode('{}'));
-
-    const prompt = await answering(store, store.getState().saveAs(), 'reprise');
-
-    expect(prompt).toMatchObject({ kind: 'save-as', reason: undefined });
+    expect(write).not.toHaveBeenCalledWith(expect.anything(), 'gp');
+    expect(saveFile).toHaveBeenCalledWith('song.reprise', REPRISE_BYTES, REPRISE_FILES);
   });
 
   it('saves an opened .reprise file in place through its handle', async () => {
@@ -516,15 +487,13 @@ describe('the document store', () => {
     expect(store.getState().dirty).toBe(false);
   });
 
-  it('changes nothing when Save As is cancelled in the app or in the platform dialog', async () => {
+  it('changes nothing when Save As is cancelled in the platform dialog', async () => {
     const { store, saveFile } = setup({ saveFile: () => Promise.resolve(undefined) });
     await store.getState().openBytes('song.gp5', GP5);
     store.getState().apply(editOf(store, 5));
 
-    await answering(store, store.getState().saveAs(), 'cancel');
-    expect(saveFile).not.toHaveBeenCalled();
-    await answering(store, store.getState().saveAs(), 'gp');
-    expect(saveFile).toHaveBeenCalledWith('song.gp', GP_BYTES, GP_FILES);
+    await store.getState().saveAs();
+    expect(saveFile).toHaveBeenCalledWith('song.reprise', REPRISE_BYTES, REPRISE_FILES);
 
     expect(store.getState().file).toMatchObject({ name: 'song.gp5', format: 'gp5' });
     expect(store.getState().dirty).toBe(true);
@@ -536,7 +505,7 @@ describe('the document store', () => {
     vi.spyOn(console, 'error').mockImplementationOnce(() => undefined);
     await store.getState().openBytes('song.gp5', GP5);
 
-    await answering(store, store.getState().saveAs(), 'reprise');
+    await store.getState().saveAs();
 
     expect(store.getState().error).toEqual({
       action: 'save',
@@ -555,10 +524,6 @@ describe('the document store', () => {
     });
     await store.getState().openBytes('song.gp5', GP5);
     const saving = store.getState().saveAs();
-    await vi.waitFor(() => {
-      expect(store.getState().savePrompt).toBeDefined();
-    });
-    store.getState().answerSavePrompt('reprise');
     await vi.waitFor(() => {
       expect(saveFile).toHaveBeenCalledOnce();
     });
@@ -583,10 +548,6 @@ describe('the document store', () => {
     await store.getState().openBytes('first.gp5', GP5);
     store.getState().apply(editOf(store, 5));
     const saving = store.getState().saveAs();
-    await vi.waitFor(() => {
-      expect(store.getState().savePrompt).toBeDefined();
-    });
-    store.getState().answerSavePrompt('reprise');
     await vi.waitFor(() => {
       expect(saveFile).toHaveBeenCalledOnce();
     });
@@ -847,5 +808,297 @@ describe('document store song identity', () => {
     documents.getState().setSongId('song-4');
     documents.getState().close();
     expect(documents.getState().songId).toBeUndefined();
+  });
+});
+
+describe('document store save primitives', () => {
+  const saved = (name = 'a.reprise') => ({
+    saved: { name, format: 'reprise' as const, handle: `/m/${name}`, savedKey: 'k1' },
+  });
+
+  it('begins one save at a time, and only with a document open', async () => {
+    const { store } = setup();
+    expect(store.getState().beginSave()).toBeUndefined();
+    await store.getState().openBytes('song.gp5', GP5);
+
+    const mark = store.getState().beginSave();
+    expect(mark).toBeDefined();
+    expect(store.getState().saving).toBe(true);
+    expect(store.getState().beginSave()).toBeUndefined();
+
+    if (mark) expect(store.getState().finishSave(mark, { cancelled: true })).toBe(true);
+    expect(store.getState().saving).toBe(false);
+  });
+
+  it('keeps an edit made during the save dirty, and commits what was saved', async () => {
+    const { store } = setup();
+    await store.getState().openBytes('song.gp5', GP5);
+    store.getState().apply(editOf(store, 5));
+    const mark = store.getState().beginSave();
+    if (!mark) throw new Error('no mark');
+    expect(mark.score).toBe(store.getState().score);
+
+    store.getState().apply(editOf(store, 6));
+    expect(store.getState().finishSave(mark, saved())).toBe(true);
+
+    expect(store.getState().dirty).toBe(true);
+    expect(store.getState().file).toMatchObject({ name: 'a.reprise', handle: '/m/a.reprise' });
+    expect(store.getState().file?.savedKeys).toEqual(['k1']);
+
+    // Undoing the later edit reaches the saved point.
+    store.getState().undo();
+    expect(store.getState().dirty).toBe(false);
+  });
+
+  it('sets and clears songId only when the outcome names it', async () => {
+    const { store } = setup();
+    await store.getState().openBytes('song.gp5', GP5, { songId: 'song-1' });
+    let mark = store.getState().beginSave();
+    if (!mark) throw new Error('no mark');
+    store.getState().finishSave(mark, saved());
+    expect(store.getState().songId).toBe('song-1');
+
+    mark = store.getState().beginSave();
+    if (!mark) throw new Error('no mark');
+    store.getState().finishSave(mark, { ...saved(), songId: undefined });
+    expect(store.getState().songId).toBeUndefined();
+  });
+
+  it('commits nothing, but clears saving, when the document switched meanwhile', async () => {
+    const { store } = setup();
+    await store.getState().openBytes('first.gp5', GP5);
+    store.getState().apply(editOf(store, 5));
+    const mark = store.getState().beginSave();
+    if (!mark) throw new Error('no mark');
+
+    await store.getState().openBytes('second.gp5', GP5);
+    store.getState().apply(editOf(store, 6));
+
+    expect(store.getState().finishSave(mark, saved())).toBe(false);
+    expect(store.getState().file).toMatchObject({ name: 'second.gp5' });
+    expect(store.getState().dirty).toBe(true);
+    expect(store.getState().saving).toBe(false);
+  });
+
+  it('reports a failure and changes nothing on a cancel', async () => {
+    const { store } = setup();
+    vi.spyOn(console, 'error').mockImplementationOnce(() => undefined);
+    await store.getState().openBytes('song.gp5', GP5);
+    store.getState().apply(editOf(store, 5));
+
+    let mark = store.getState().beginSave();
+    if (!mark) throw new Error('no mark');
+    store.getState().finishSave(mark, { failed: new Error('disk full'), fileName: 'x.reprise' });
+    expect(store.getState().error).toEqual({
+      action: 'save',
+      fileName: 'x.reprise',
+      message: 'disk full',
+    });
+    expect(store.getState().dirty).toBe(true);
+
+    mark = store.getState().beginSave();
+    if (!mark) throw new Error('no mark');
+    store.getState().finishSave(mark, { cancelled: true });
+    expect(store.getState().dirty).toBe(true);
+    expect(store.getState().file).toMatchObject({ name: 'song.gp5' });
+  });
+});
+
+describe('document store save marks across history moves', () => {
+  const done = () => ({
+    saved: { name: 'a.reprise', format: 'reprise' as const, handle: '/m/a', savedKey: 'k' },
+  });
+  async function begun() {
+    const { store } = setup();
+    await store.getState().openBytes('song.gp5', GP5);
+    store.getState().apply(editOf(store, 5));
+    const mark = store.getState().beginSave();
+    if (!mark) throw new Error('no mark');
+    return { store, mark };
+  }
+
+  it('stays dirty after undo, then a different edit, during the save', async () => {
+    const { store, mark } = await begun();
+    store.getState().undo();
+    store.getState().apply(editOf(store, 7));
+    expect(store.getState().finishSave(mark, done())).toBe(true);
+    expect(store.getState().dirty).toBe(true);
+    expect(store.getState().file).toMatchObject({ name: 'a.reprise' });
+  });
+
+  it('stays dirty after an undo during the save', async () => {
+    const { store, mark } = await begun();
+    store.getState().undo();
+    store.getState().finishSave(mark, done());
+    expect(store.getState().dirty).toBe(true);
+  });
+
+  it('stays dirty after an undo and a redo past nothing, then a further redo', async () => {
+    const { store, mark } = await begun();
+    store.getState().undo();
+    store.getState().redo();
+    store.getState().undo();
+    store.getState().finishSave(mark, done());
+    expect(store.getState().dirty).toBe(true);
+    store.getState().redo();
+    expect(store.getState().dirty).toBe(false);
+  });
+
+  it('stays dirty after a redo during the save', async () => {
+    const { store } = setup();
+    await store.getState().openBytes('song.gp5', GP5);
+    store.getState().apply(editOf(store, 5));
+    store.getState().undo();
+    const mark = store.getState().beginSave();
+    if (!mark) throw new Error('no mark');
+    store.getState().redo();
+    store.getState().finishSave(mark, done());
+    expect(store.getState().dirty).toBe(true);
+  });
+
+  it('is clean when an edit is undone back to the mark during the save', async () => {
+    const { store, mark } = await begun();
+    store.getState().apply(editOf(store, 6));
+    store.getState().undo();
+    store.getState().finishSave(mark, done());
+    expect(store.getState().dirty).toBe(false);
+  });
+
+  it('makes a mark single-use', async () => {
+    const { store, mark } = await begun();
+    expect(store.getState().finishSave(mark, done())).toBe(true);
+    const file = store.getState().file;
+    store.getState().apply(editOf(store, 6));
+    expect(store.getState().finishSave(mark, done())).toBe(false);
+    expect(store.getState().file).toBe(file);
+    expect(store.getState().dirty).toBe(true);
+  });
+});
+
+describe('document store saver', () => {
+  it('routes save and saveAs through the installed saver, handing it the built-in', async () => {
+    const { store, saveFile } = setup();
+    await store.getState().openBytes('song.gp5', GP5);
+    store.getState().apply(editOf(store, 5));
+    const calls: string[] = [];
+    store.getState().setSaver({
+      save: async (builtin) => {
+        calls.push('save');
+        await builtin();
+      },
+      saveAs: (builtin) => {
+        calls.push('saveAs');
+        return builtin();
+      },
+    });
+
+    await store.getState().save();
+    await store.getState().saveAs();
+
+    expect(calls).toEqual(['save', 'saveAs']);
+    expect(saveFile).toHaveBeenCalledTimes(2);
+    expect(store.getState().dirty).toBe(false);
+  });
+
+  it('lets a saver replace the built-in, and goes back to it when removed', async () => {
+    const { store, saveFile } = setup();
+    await store.getState().openBytes('song.gp5', GP5);
+    store.getState().setSaver({
+      save: () => Promise.resolve(),
+      saveAs: () => Promise.resolve(),
+    });
+    await store.getState().save();
+    expect(saveFile).not.toHaveBeenCalled();
+
+    store.getState().setSaver(undefined);
+    await store.getState().save();
+    expect(saveFile).toHaveBeenCalledOnce();
+  });
+});
+
+describe('document store saver failures', () => {
+  it('reports a saver that throws or rejects while holding a mark, and frees saving', async () => {
+    const { store } = setup();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await store.getState().openBytes('song.gp5', GP5);
+    store.getState().setSaver({
+      save: () => {
+        store.getState().beginSave();
+        return Promise.reject(new Error('boom'));
+      },
+      saveAs: () => {
+        store.getState().beginSave();
+        throw new Error('bang');
+      },
+    });
+
+    await store.getState().save();
+    expect(store.getState().error).toMatchObject({ action: 'save', message: 'boom' });
+    expect(store.getState().saving).toBe(false);
+
+    await store.getState().saveAs();
+    expect(store.getState().error).toMatchObject({ message: 'bang' });
+    expect(store.getState().saving).toBe(false);
+    expect(store.getState().beginSave()).toBeDefined();
+  });
+});
+
+describe('document store opening as modified', () => {
+  it('stays modified after openBytes with modified, until a save', async () => {
+    const { store } = setup();
+    await store.getState().openBytes('song.gp5', GP5, { modified: true });
+    expect(store.getState().dirty).toBe(true);
+
+    await store.getState().save();
+    expect(store.getState().dirty).toBe(false);
+  });
+
+  it('stays modified after newDocument with modified, and undo cannot clear it', async () => {
+    const { store } = setup();
+    store.getState().newDocument(song('Draft'), { modified: true });
+    expect(store.getState().dirty).toBe(true);
+
+    store.getState().apply(editOf(store, 5));
+    store.getState().undo();
+    expect(store.getState().dirty).toBe(true);
+
+    await store.getState().save();
+    expect(store.getState().dirty).toBe(false);
+  });
+});
+
+describe('document store library handles', () => {
+  it('detaches from the library song on Save As', async () => {
+    const { store } = setup();
+    await store.getState().openBytes('song.reprise', new TextEncoder().encode('{}'), {
+      songId: 'song-1',
+    });
+    await store.getState().saveAs();
+    expect(store.getState().songId).toBeUndefined();
+  });
+
+  it('sends Save on a library/ string handle with no songId to Save As', async () => {
+    const { store, saveFile, writeHandle } = setup();
+    await store.getState().openBytes('song.reprise', new TextEncoder().encode('{}'), {
+      handle: 'library/songs/gone.reprise',
+    });
+
+    await store.getState().save();
+
+    expect(writeHandle).not.toHaveBeenCalled();
+    expect(saveFile).toHaveBeenCalledOnce();
+  });
+
+  it('still follows a library/ handle when the document has a songId', async () => {
+    const { store, saveFile, writeHandle } = setup();
+    await store.getState().openBytes('song.reprise', new TextEncoder().encode('{}'), {
+      handle: 'library/songs/a.reprise',
+      songId: 'song-1',
+    });
+
+    await store.getState().save();
+
+    expect(saveFile).not.toHaveBeenCalled();
+    expect(writeHandle).toHaveBeenCalledWith('library/songs/a.reprise', REPRISE_BYTES);
   });
 });

@@ -257,12 +257,7 @@ describe('open without import and the banner', () => {
     expect(screen.queryByText('Not in your library')).not.toBeInTheDocument();
     expect(library.store.getState().unimportedId).toBeUndefined();
 
-    const saving = services.document.getState().saveAs();
-    await waitFor(() => {
-      expect(services.document.getState().savePrompt).toBeDefined();
-    });
-    services.document.getState().answerSavePrompt('reprise');
-    await act(() => saving);
+    await act(() => services.document.getState().saveAs());
     expect(services.document.getState().file?.handle).toBe('/home/Untitled.reprise');
     expect(screen.queryByText('Not in your library')).not.toBeInTheDocument();
   });
