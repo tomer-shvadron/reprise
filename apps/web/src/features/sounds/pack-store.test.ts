@@ -305,6 +305,21 @@ describe('the pack store: remove and rename', () => {
     expect(audio.reinstatePack).not.toHaveBeenCalled();
   });
 
+  it('clears what an update left in the trash, so the sweep cannot bring a removed pack back', async () => {
+    const t = testPlatform();
+    const store = createSoundPackStore({ platform: t.platform });
+    const manifest = syntheticManifest();
+    await store.installZip(zipFileOf('a.zip', await zipOf(packContents())), manifest);
+    await t.platform.writeFile(
+      `data/sounds/.trash/${manifest.id}-0a1b2c3d/pack.json`,
+      new TextEncoder().encode('old'),
+    );
+    expect(await store.remove(manifest.id)).toBe(true);
+    await store.scan();
+    expect(store.getState().packs).toEqual([]);
+    expect(packPaths(t.storage)).toEqual([]);
+  });
+
   it('reinstates the pack and keeps it listed when the folder cannot be removed', async () => {
     const t = testPlatform();
     const audio = fakeAudio();

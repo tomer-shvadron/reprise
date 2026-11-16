@@ -11,6 +11,7 @@ import {
   filesFromZip,
   InstallError,
   installPack,
+  clearTrashOf,
   sweepWorkAreas,
   type IncomingFile,
   type InstallPhase,
@@ -355,6 +356,7 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
         });
         return false;
       }
+      await clearTrashOf(platform, id);
       sources.delete(id);
       setPacks(store.getState().packs.filter((pack) => pack.id !== id));
       return true;
