@@ -1,5 +1,6 @@
 import { EFFECT_STAGES, type EffectStage } from '@reprise/audio';
-import { useState } from 'react';
+import type { Id, Track } from '@reprise/model';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { useAppServices } from '@/app/services-context';
@@ -9,18 +10,41 @@ import { TrackEffectsPicker } from './track-effects-picker';
 
 /**
  * The effects chain, one row per track of the open score: the preset picker and a toggle for each
- * stage. Stage bypass is for trying a preset apart, so it is session state in the engine, cleared
- * when the song unloads, and it stays out of the mixer (v1 scope).
+ * stage. Stage bypass is for trying a preset apart, so it is session state in the engine and it
+ * stays out of the mixer (v1 scope). The demo restores what it bypassed when it closes or the
+ * document changes, so its toggles never disagree with the engine.
  */
 export function EffectsDemo() {
-  const { document, audio } = useAppServices();
+  const { document } = useAppServices();
   const tracks = useStore(document, (state) => state.score?.tracks);
-  const [bypassed, setBypassed] = useState<ReadonlySet<string>>(new Set());
+  const documentId = useStore(document, (state) => state.id);
   if (!tracks) return <p className="text-muted-foreground text-sm">Open a file to try effects.</p>;
+  return <DemoRows key={documentId} tracks={tracks} />;
+}
 
-  const toggle = (trackId: string, stage: EffectStage, on: boolean) => {
-    audio.debug().engine.setStageBypass(trackId, stage, on);
+interface Bypass {
+  trackId: Id;
+  stage: EffectStage;
+}
+
+function DemoRows({ tracks }: { tracks: readonly Track[] }) {
+  const { audio } = useAppServices();
+  const [bypassed, setBypassed] = useState<ReadonlySet<string>>(new Set());
+  const held = useRef(new Map<string, Bypass>());
+
+  useEffect(() => {
+    const mine = held.current;
+    return () => {
+      for (const { trackId, stage } of mine.values()) audio.setStageBypass(trackId, stage, false);
+      mine.clear();
+    };
+  }, [audio]);
+
+  const toggle = (trackId: Id, stage: EffectStage, on: boolean) => {
+    audio.setStageBypass(trackId, stage, on);
     const key = `${trackId}:${stage}`;
+    if (on) held.current.set(key, { trackId, stage });
+    else held.current.delete(key);
     setBypassed((previous) => {
       const next = new Set(previous);
       if (on) next.add(key);

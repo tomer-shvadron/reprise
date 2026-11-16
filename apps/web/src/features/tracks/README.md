@@ -2,7 +2,8 @@
 
 The track list in the left sidebar and the mixer in the right panel (WP-052, ADR-0024). It owns no
 store: every control writes the document, selection or playback store through the actions in
-`track-actions.ts`, which the commands in `commands.ts` call too.
+`track-actions.ts`, which the commands in `commands.ts` call too. The one exception is the Effects
+row, `TrackEffectsPicker` from `features/sounds`, which applies its own command.
 
 | Export                                                            | What it is                                                                                                                                                    |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -22,7 +23,7 @@ store: every control writes the document, selection or playback store through th
 | Mute, solo                    | `playback.mixer`, the audio service's overrides                                                   | no   | no       | the file's own flags, as read                                     |
 | Current track                 | `selection.currentTrack`                                                                          | no   | no       | no (library, WP-060)                                              |
 | Master volume                 | `settings.masterVolume` (WP-051)                                                                  | no   | no       | no (a preference)                                                 |
-| GM tier bypass                | `settings.gmTierBypass`, the master strip's "No effects on GM sounds" switch                      | no   | no       | no (a preference)                                                 |
+| GM tier bypass                | `settings.gmTierBypass`, the master strip's "No automatic effects on GM sounds" switch            | no   | no       | no (a preference)                                                 |
 
 ## Decisions
 

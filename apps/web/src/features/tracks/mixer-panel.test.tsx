@@ -37,7 +37,7 @@ describe('MixerPanel', () => {
     mirrorAudio(services);
     renderWithServices(<MixerPanel />, services);
     const user = userEvent.setup();
-    const bypass = screen.getByRole('switch', { name: 'No effects on GM sounds' });
+    const bypass = screen.getByRole('switch', { name: 'No automatic effects on GM sounds' });
     expect(bypass).toBeChecked();
     await user.click(bypass);
     expect(services.fakeAudio.setGmTierBypass).toHaveBeenLastCalledWith(false);

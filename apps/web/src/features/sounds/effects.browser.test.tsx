@@ -43,6 +43,7 @@ async function render(pick?: string): Promise<number> {
   if (pick) {
     const select = await screen.findByRole('combobox', { name: 'Effects of Lead' });
     fireEvent.change(select, { target: { value: pick } });
+    expect(p.services.document.getState().score?.tracks[0]?.sound).toEqual({ preset: pick });
   }
   const offline = p.prepare(2);
   p.services.audio.unlock();
@@ -57,9 +58,10 @@ describe('the effects preset, heard', () => {
   it('leaves a GM track bare by default and brightens it once a distortion preset is picked', async () => {
     const bare = await render();
     const picked = await render('distortion');
-    // Measured 0.084 bare and 0.182 picked; a bound on the ratio, not on either value.
+    // Measured 0.084 bare and 0.182 picked. Bare is bounded to show the GM default stays dry;
+    // picked is bounded by its ratio to bare, and applies because it was picked on the track, so
+    // the GM tier bypass (on by default) does not skip it.
     expect(bare).toBeLessThan(0.12);
-    // The preset was picked on the track, so the GM tier bypass (on by default) does not skip it.
     expect(picked).toBeGreaterThan(bare * 1.5);
   });
 });

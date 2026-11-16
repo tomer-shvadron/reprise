@@ -9,6 +9,7 @@ import {
   type ClickSettings,
   type LoadOptions,
   type PlaybackState,
+  type EffectStage,
   type PreviewNote,
   type PreviewOptions,
   type TempoMode,
@@ -92,6 +93,11 @@ export interface AudioService {
    * `settings.gmTierBypass`; on by default. A track's known `sound.preset` applies either way.
    */
   setGmTierBypass(on: boolean): void;
+  /**
+   * Bypasses one stage of a track's effects chain, or restores it, for the session: nothing is
+   * saved, and the engine clears it when the song unloads. For the Sounds screen's demo.
+   */
+  setStageBypass(trackId: Id, stage: EffectStage, bypassed: boolean): void;
   /** A user override over the track's channel, kept through every baseline reset. */
   setTrack(id: Id, params: TrackParams): void;
   /**
@@ -429,6 +435,10 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     setGmTierBypass(on) {
       engine.setGmTierBypass(on);
       setSettings({ gmTierBypass: on });
+    },
+
+    setStageBypass(trackId, stage, bypassed) {
+      engine.setStageBypass(trackId, stage, bypassed);
     },
 
     setTrack(id, params) {

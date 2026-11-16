@@ -41,13 +41,10 @@ export function TrackEffectsPicker({ trackId, label }: { trackId: Id; label?: st
   );
 }
 
-/**
- * The track's sound with `preset` set, or removed for automatic. `setTrackProperties` cannot clear
- * `sound`, so a sound left with nothing in it stays as `{}`, which means the same as none.
- */
-function soundWith(track: Track, preset: string | undefined): SoundOverride {
+/** The track's sound with `preset` set or removed; `null` removes `sound` once nothing is left. */
+function soundWith(track: Track, preset: string | undefined): SoundOverride | null {
   const next = { ...track.sound };
   if (preset === undefined) delete next.preset;
   else next.preset = preset;
-  return next;
+  return Object.keys(next).length === 0 ? null : next;
 }

@@ -5,8 +5,7 @@ import { useAppServices } from '@/app/services-context';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 
-const BYPASS_NOTE =
-  'Leaves tracks on the General MIDI sounds without effects unless a track has its own preset.';
+const BYPASS_NOTE = 'A track’s own effects preset still applies.';
 
 const percentText = (value: number) => `${String(Math.round(value))}%`;
 
@@ -38,22 +37,24 @@ export function MasterStrip() {
           {percentText(percent)}
         </span>
       </div>
-      <div className="flex items-center gap-2">
-        <Switch
-          id={bypassId}
-          size="sm"
-          checked={gmTierBypass}
-          aria-describedby={noteId}
-          onCheckedChange={(on) => {
-            audio.setGmTierBypass(on);
-          }}
-        />
-        <label htmlFor={bypassId} className="text-xs">
-          No effects on GM sounds
-        </label>
-        <span id={noteId} className="sr-only">
+      <div className="flex flex-col gap-0.5">
+        <div className="flex items-center gap-2">
+          <Switch
+            id={bypassId}
+            size="sm"
+            checked={gmTierBypass}
+            aria-describedby={noteId}
+            onCheckedChange={(on) => {
+              audio.setGmTierBypass(on);
+            }}
+          />
+          <label htmlFor={bypassId} className="text-xs">
+            No automatic effects on GM sounds
+          </label>
+        </div>
+        <p id={noteId} className="text-muted-foreground text-xs">
           {BYPASS_NOTE}
-        </span>
+        </p>
       </div>
     </div>
   );

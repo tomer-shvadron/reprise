@@ -27,15 +27,18 @@ export function chosenPreset(track: Pick<Track, 'sound'>): EffectPresetId | unde
 }
 
 /**
- * What "Automatic" resolves to for the track: its family's preset, or nothing at all on the GM
- * tier while the GM tier bypass is on (a track with an HQ pack is on the HQ tier).
+ * What "Automatic" resolves to for the track: its family's preset, or nothing at all on GM sounds
+ * while the GM tier bypass is on.
+ *
+ * Every track is on the GM tier until WP-091 assigns packs. WP-091 must switch this to a `tierOf`
+ * shared with the engine (which reads the packs it was loaded with), not a rule of its own here.
  */
 export function automaticLabel(track: Track, gmTierBypass: boolean): string {
   const { preset } = resolveEffects(
     { kind: track.kind, program: track.program },
-    { tier: track.sound?.packId === undefined ? 'gm' : 'hq', gmTierBypass },
+    { tier: 'gm', gmTierBypass },
   );
   return preset === undefined
-    ? 'Automatic (off on the GM tier)'
+    ? 'Automatic (off on GM sounds)'
     : `Automatic (${presetLabel(presetFamilyOf(track))})`;
 }

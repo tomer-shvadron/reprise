@@ -29,15 +29,18 @@ folder holds the UI:
 
 - `TrackEffectsPicker` is a compact select: "Automatic (<family>)", the family presets, Fuzz and
   Off. Automatic shows what it resolves to, from the track's program and `settings.gmTierBypass`
-  through the audio package's `resolveEffects`: the family's preset, or "Automatic (off on the GM
-  tier)" while the GM tier bypass is on. A choice is one undoable `setTrackProperties` with
-  `sound: { ...sound, preset }`; Automatic drops `preset` (the command cannot clear `sound`, so it
-  stays as `{}`, which means the same as none). The engine applies a preset-only change at once,
+  through the audio package's `resolveEffects`: the family's preset, or "Automatic (off on GM
+  sounds)" while the GM tier bypass is on. A choice is one undoable `setTrackProperties` with
+  `sound: { ...sound, preset }`; Automatic drops `preset`, and `sound` itself once nothing is
+  left (`null` removes it), so the gp writer reports no `sound-override` loss for the track. The engine applies a preset-only change at once,
   with no rebuild, and an id it does not know plays, and shows, as Automatic. The mixer strip
   mounts it (`features/tracks`).
 - `EffectsDemo`, under the placeholder on the Sounds screen, lists each track with its picker and a
   toggle per stage (input, drive, tone, cabinet, modulation, delay, output, reverb) that calls the
-  engine's `setStageBypass` through `audio.debug().engine`. Stage bypass is session state: not
+  `audio.setStageBypass`. The demo restores what it bypassed when it closes or the document changes. Stage bypass is session state: not
   saved, cleared when the song unloads, and kept out of the mixer by the v1 scope
   ("per-track effects editing beyond preset choice" is out).
-- The GM tier bypass switch is in the mixer's master strip (`features/tracks`).
+- The GM tier bypass switch ("No automatic effects on GM sounds", with a note that a track's own
+  preset still applies) is in the mixer's master strip (`features/tracks`).
+- Every track counts as GM tier here until WP-091 assigns packs; WP-091 must switch the label to a
+  `tierOf` shared with the engine.

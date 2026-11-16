@@ -33,7 +33,7 @@ describe('TrackEffectsPicker', () => {
     const labels = within(select)
       .getAllByRole('option')
       .map((option) => option.textContent);
-    expect(labels[0]).toBe('Automatic (off on the GM tier)');
+    expect(labels[0]).toBe('Automatic (off on GM sounds)');
     expect(labels.slice(1)).toEqual([
       'Clean',
       'Overdrive',
@@ -74,13 +74,40 @@ describe('TrackEffectsPicker', () => {
     const { services, select, sound, user } = await setup();
     await user.selectOptions(select, 'clean');
     expect(sound()).toEqual({ preset: 'clean' });
-    await user.selectOptions(select, 'Automatic (off on the GM tier)');
-    expect(sound()).toEqual({});
+    await user.selectOptions(select, 'Automatic (off on GM sounds)');
+    expect(sound()).toBeUndefined();
     expect(select).toHaveValue('');
     act(() => {
       services.document.getState().undo();
     });
     expect(sound()).toEqual({ preset: 'clean' });
+  });
+
+  it('keeps the pack assignment when Automatic removes the preset', async () => {
+    const { services, select, sound, user } = await setup();
+    const id = services.document.getState().score?.tracks[0]?.id ?? '';
+    act(() => {
+      services.document
+        .getState()
+        .apply(
+          setTrackProperties(
+            { trackId: id },
+            { sound: { packId: 'pack000000a1', preset: 'clean' } },
+          ),
+        );
+    });
+    await user.selectOptions(select, '');
+    expect(sound()).toEqual({ packId: 'pack000000a1' });
+  });
+
+  it('writes no sound-override loss to gp for a track set back to Automatic', async () => {
+    const { services, select, user } = await setup();
+    await user.selectOptions(select, 'clean');
+    await user.selectOptions(select, '');
+    const song = services.document.getState().score;
+    if (!song) throw new Error('no score');
+    const { dropped } = await write(song, 'gp');
+    expect(dropped.filter((entry) => entry.code === 'sound-override')).toEqual([]);
   });
 
   it('shows an id the engine does not know as Automatic', async () => {
