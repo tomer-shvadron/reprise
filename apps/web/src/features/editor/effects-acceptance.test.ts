@@ -7,9 +7,9 @@ import {
   type PlanInput,
 } from '@reprise/audio';
 import { write } from '@reprise/formats';
-import { PAGE_SIZES, layout } from '@reprise/layout';
+import { PAGE_SIZES, layout, type Primitive } from '@reprise/layout';
 import { PPQ, beatTicks, type Id, type Score } from '@reprise/model';
-import { note, noteOf, score } from '@reprise/model/testing';
+import { beatOf, note, noteOf, score } from '@reprise/model/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createAppRegistry } from '@/app/app-registry';
@@ -45,6 +45,13 @@ function base(): Score {
   return built.build({ ids: 'sequential' });
 }
 
+/**
+ * What `planNote` makes of each note the audio timeline schedules. The `PlanInput` is built here
+ * by hand from the onset, as the sampler sink builds it from a `NoteEvent` (which passes `note`
+ * and `beat.effects` straight through), so a "sounds" check proves the articulation mapping of
+ * the effect the editor wrote, not the sink's own wiring (the audio package tests that). A tied
+ * link's length here is its beat's, where the sink uses the link's own; no row ties notes.
+ */
 function plansOf(built: Score): Map<Id, { plan: NotePlan; input: PlanInput }> {
   const timeline = createTimeline(built);
   const onsets = notesInRange(timeline, 0, timeline.endTick, {
@@ -75,15 +82,62 @@ function plansOf(built: Score): Map<Id, { plan: NotePlan; input: PlanInput }> {
   return out;
 }
 
-function drawn(built: Score): string {
-  const result = layout(built, {
+function drawn(built: Score): Primitive[] {
+  return layout(built, {
     mode: 'paged',
     width: PAGE_SIZES.a4.width,
     zoom: 1,
     tracks: 'all',
     notation: {},
+  }).primitives;
+}
+
+/** `kind:label@node` of each primitive, without its coordinates, which every mark shifts. */
+function signatures(primitives: readonly Primitive[]): string[] {
+  return primitives.map((primitive) => {
+    const label =
+      primitive.kind === 'text'
+        ? primitive.text
+        : primitive.kind === 'glyph'
+          ? primitive.glyph
+          : '';
+    return `${primitive.kind}:${label}@${primitive.node ?? ''}`;
   });
-  return JSON.stringify(result.primitives);
+}
+
+/**
+ * Checks that the effect added its own mark on the note or its neighbour: each entry of `marks`
+ * (`text:P.M.`, `glyph:ornamentTrill`, `path`, or alternatives joined by `|`) names a primitive
+ * of a node of the first two beats that the plain score did not have.
+ */
+function expectMarks(
+  before: readonly Primitive[],
+  after: readonly Primitive[],
+  nodes: ReadonlySet<string>,
+  marks: readonly string[],
+): void {
+  const remaining = signatures(before);
+  const added = signatures(after).filter((signature) => {
+    const at = remaining.indexOf(signature);
+    if (at < 0) return true;
+    remaining.splice(at, 1);
+    return false;
+  });
+  for (const mark of marks) {
+    const alternatives = mark.split('|');
+    const found = added.some((signature) => {
+      const [what = '', node = ''] = signature.split('@');
+      return (
+        nodes.has(node) &&
+        alternatives.some(
+          (alternative) =>
+            what === alternative ||
+            (!alternative.includes(':') && what.startsWith(`${alternative}:`)),
+        )
+      );
+    });
+    expect(found, `layout draws ${mark}; it added ${added.join(', ')}`).toBe(true);
+  }
 }
 
 type Sound = (
@@ -97,6 +151,8 @@ interface Row {
   how: { command: string } | { action: EffectAction };
   /** The note whose plan shows the effect: the note picked, or the one after it on its string. */
   on?: 'next';
+  /** The marks layout draws for it, found among the primitives of the first two beats. */
+  draws: readonly string[];
   sounds: Sound | { todo: string };
 }
 
@@ -117,6 +173,7 @@ const pitchAt =
 
 const bendRow = (shape: BendShape, amount: BendAmount, semitones: number): Row => ({
   name: `bend: ${amount} ${shape}`,
+  draws: ['text:full|text:½|text:¼', 'path'],
   how: { command: `editor.effect.bend.${amount}.${shape}` },
   sounds: (plan, input) => {
     const at = pitchAt(plan, input);
@@ -131,6 +188,7 @@ const bendRow = (shape: BendShape, amount: BendAmount, semitones: number): Row =
 
 const whammyRow = (shape: WhammyShape, amount: WhammyAmount, semitones: number): Row => ({
   name: `whammy: ${amount} ${shape}`,
+  draws: ['text:w/bar', 'path'],
   how: { command: `editor.effect.whammy.${amount}.${shape}` },
   sounds: (plan, input) => {
     const at = pitchAt(plan, input);
@@ -152,6 +210,7 @@ const slideRow = (
   command?: string,
 ): Row => ({
   name: `slide: ${name}`,
+  draws: slide === 'legato' ? ['text:sl.', 'path'] : ['path|line'],
   how: command ? { command } : { action: { kind: 'slide', slide } },
   sounds: (plan, input) => {
     if (slide === 'legato') {
@@ -169,7 +228,7 @@ const slideRow = (
 
 const velocity = (plan: NotePlan): number => plan.strikes[0]?.velocity ?? 0;
 
-const TAPPED_LATER = '#255';
+const SILENT_UNTIL = '#255';
 
 const ROWS: readonly Row[] = [
   bendRow('bend', 'full', 2),
@@ -186,6 +245,7 @@ const ROWS: readonly Row[] = [
   slideRow('out up', 'outUp'),
   {
     name: 'hammer-on and pull-off',
+    draws: ['text:H'],
     how: { command: 'editor.effect.hammerOn' },
     on: 'next',
     sounds: (plan, input, plain) => {
@@ -195,6 +255,7 @@ const ROWS: readonly Row[] = [
   },
   {
     name: 'vibrato',
+    draws: ['path'],
     how: { command: 'editor.effect.vibrato' },
     sounds: (plan, input) => {
       expect(reach(plan, input)).toBeCloseTo(0.25, 1);
@@ -202,6 +263,7 @@ const ROWS: readonly Row[] = [
   },
   {
     name: 'wide vibrato',
+    draws: ['path'],
     how: { command: 'editor.effect.wideVibrato' },
     sounds: (plan, input) => {
       expect(reach(plan, input)).toBeCloseTo(0.6, 1);
@@ -209,6 +271,7 @@ const ROWS: readonly Row[] = [
   },
   {
     name: 'whammy-bar vibrato',
+    draws: ['path'],
     how: { command: 'editor.effect.whammyVibrato' },
     sounds: (plan, input) => {
       expect(reach(plan, input)).toBeCloseTo(0.25, 1);
@@ -216,6 +279,7 @@ const ROWS: readonly Row[] = [
   },
   {
     name: 'wide whammy-bar vibrato',
+    draws: ['path'],
     how: { command: 'editor.effect.wideWhammyVibrato' },
     sounds: (plan, input) => {
       expect(reach(plan, input)).toBeCloseTo(0.6, 1);
@@ -226,6 +290,7 @@ const ROWS: readonly Row[] = [
   whammyRow('releaseUp', 'small', 1),
   {
     name: 'palm mute',
+    draws: ['text:P.M.'],
     how: { command: 'editor.effect.palmMute' },
     sounds: (plan) => {
       expect(plan.filter).toEqual({ type: 'lowpass', frequency: ARTICULATION.palmMute.cutoff });
@@ -233,6 +298,7 @@ const ROWS: readonly Row[] = [
   },
   {
     name: 'palm mute on the whole beat',
+    draws: ['text:P.M.'],
     how: { command: 'editor.effect.palmMuteBeat' },
     sounds: (plan) => {
       expect(plan.filter?.type).toBe('lowpass');
@@ -240,6 +306,7 @@ const ROWS: readonly Row[] = [
   },
   {
     name: 'let ring',
+    draws: ['text:let ring'],
     how: { command: 'editor.effect.letRing' },
     sounds: (plan, input) => {
       expect(plan.letRingUntil).toBe(input.barEnd);
@@ -247,6 +314,7 @@ const ROWS: readonly Row[] = [
   },
   {
     name: 'dead note',
+    draws: ['text:x'],
     how: { command: 'editor.effect.deadNote' },
     sounds: (plan) => {
       expect(plan.dead).toBe(true);
@@ -254,6 +322,7 @@ const ROWS: readonly Row[] = [
   },
   {
     name: 'ghost note',
+    draws: ['text:(7)'],
     how: { command: 'editor.effect.ghostNote' },
     sounds: (plan, input, plain) => {
       expect(velocity(plan)).toBeLessThan(velocity(plain.plan));
@@ -261,6 +330,7 @@ const ROWS: readonly Row[] = [
   },
   {
     name: 'accent',
+    draws: ['glyph:articAccentAbove'],
     how: { command: 'editor.effect.accent' },
     sounds: (plan, input, plain) => {
       expect(velocity(plan)).toBeGreaterThan(velocity(plain.plan));
@@ -268,6 +338,7 @@ const ROWS: readonly Row[] = [
   },
   {
     name: 'heavy accent',
+    draws: ['glyph:articMarcatoAbove'],
     how: { command: 'editor.effect.heavyAccent' },
     sounds: (plan, input, plain) => {
       expect(velocity(plan)).toBeGreaterThan(velocity(plain.plan));
@@ -275,6 +346,7 @@ const ROWS: readonly Row[] = [
   },
   {
     name: 'staccato',
+    draws: ['glyph:articStaccatoAbove'],
     how: { command: 'editor.effect.staccato' },
     sounds: (plan, input) => {
       const strike = plan.strikes[0];
@@ -286,6 +358,7 @@ const ROWS: readonly Row[] = [
   },
   {
     name: 'natural harmonic',
+    draws: ['text:N.H.'],
     how: { command: 'editor.effect.naturalHarmonic' },
     sounds: (plan, input, plain) => {
       expect(plan.filter?.type).toBe('highshelf');
@@ -296,6 +369,7 @@ const ROWS: readonly Row[] = [
   },
   ...(['artificial', 'tapped', 'pinch', 'semi', 'feedback'] as const).map((kind): Row => ({
     name: `${kind} harmonic`,
+    draws: ['text'],
     how: { action: { kind: 'harmonic', harmonic: { kind, value: 12 } } },
     sounds: (plan, input, plain) => {
       expect(plan.filter?.type).toBe('highshelf');
@@ -306,6 +380,7 @@ const ROWS: readonly Row[] = [
   })),
   {
     name: 'trill',
+    draws: ['glyph:ornamentTrill'],
     how: { action: { kind: 'trill', trill: { fret: 9, speed: 16 } } },
     sounds: (plan) => {
       expect(plan.strikes.length).toBeGreaterThan(1);
@@ -313,42 +388,69 @@ const ROWS: readonly Row[] = [
   },
   {
     name: 'tremolo picking',
+    draws: ['glyph:tremolo3'],
     how: { command: 'editor.effect.tremoloPicking' },
     sounds: (plan) => {
       expect(plan.strikes.length).toBeGreaterThan(1);
     },
   },
-  { name: 'tapping', how: { command: 'editor.effect.tapping' }, sounds: { todo: TAPPED_LATER } },
-  { name: 'slap', how: { command: 'editor.effect.slap' }, sounds: { todo: TAPPED_LATER } },
-  { name: 'pop', how: { command: 'editor.effect.pop' }, sounds: { todo: TAPPED_LATER } },
+  {
+    name: 'tapping',
+    draws: ['text:T'],
+    how: { command: 'editor.effect.tapping' },
+    sounds: { todo: SILENT_UNTIL },
+  },
+  {
+    name: 'slap',
+    draws: ['text:S'],
+    how: { command: 'editor.effect.slap' },
+    sounds: { todo: SILENT_UNTIL },
+  },
+  {
+    name: 'pop',
+    draws: ['text:P'],
+    how: { command: 'editor.effect.pop' },
+    sounds: { todo: SILENT_UNTIL },
+  },
   {
     name: 'pick stroke down',
+    draws: ['glyph:stringsDownBow'],
     how: { command: 'editor.effect.pickStrokeDown' },
-    sounds: { todo: TAPPED_LATER },
+    sounds: { todo: SILENT_UNTIL },
   },
   {
     name: 'pick stroke up',
+    draws: ['glyph:stringsUpBow'],
     how: { command: 'editor.effect.pickStrokeUp' },
-    sounds: { todo: TAPPED_LATER },
+    sounds: { todo: SILENT_UNTIL },
   },
   {
     name: 'brush down',
+    draws: ['path'],
     how: { command: 'editor.effect.brushDown' },
-    sounds: { todo: TAPPED_LATER },
+    sounds: { todo: SILENT_UNTIL },
   },
-  { name: 'brush up', how: { command: 'editor.effect.brushUp' }, sounds: { todo: TAPPED_LATER } },
+  {
+    name: 'brush up',
+    draws: ['path'],
+    how: { command: 'editor.effect.brushUp' },
+    sounds: { todo: SILENT_UNTIL },
+  },
   {
     name: 'arpeggio down',
+    draws: ['path'],
     how: { command: 'editor.effect.arpeggioDown' },
-    sounds: { todo: TAPPED_LATER },
+    sounds: { todo: SILENT_UNTIL },
   },
   {
     name: 'arpeggio up',
+    draws: ['path'],
     how: { command: 'editor.effect.arpeggioUp' },
-    sounds: { todo: TAPPED_LATER },
+    sounds: { todo: SILENT_UNTIL },
   },
   {
     name: 'fade in',
+    draws: ['glyph:guitarFadeIn'],
     how: { command: 'editor.effect.fadeIn' },
     sounds: (plan) => {
       expect(plan.gain[0]?.db).toBeLessThan(-20);
@@ -357,6 +459,7 @@ const ROWS: readonly Row[] = [
   },
   {
     name: 'fade out',
+    draws: ['glyph:guitarFadeOut'],
     how: { command: 'editor.effect.fadeOut' },
     sounds: (plan) => {
       expect(plan.gain[0]?.db).toBeCloseTo(0, 1);
@@ -365,6 +468,7 @@ const ROWS: readonly Row[] = [
   },
   {
     name: 'volume swell',
+    draws: ['glyph:guitarVolumeSwell'],
     how: { command: 'editor.effect.volumeSwell' },
     sounds: (plan) => {
       expect(plan.gain.length).toBeGreaterThanOrEqual(3);
@@ -420,8 +524,16 @@ describe('every effect applies, draws, sounds and comes off again', () => {
       const applied = current();
       expect(applied).not.toEqual(original);
 
-      // Draws: the layout differs from the plain note's.
-      expect(drawn(applied)).not.toBe(originalDrawing);
+      // Draws its own mark on the note or its neighbour.
+      const appliedDrawing = drawn(applied);
+      expect(appliedDrawing).not.toEqual(originalDrawing);
+      const nodes = new Set<string>([
+        ...[0, 1].flatMap((beat) => [
+          beatOf(original, 0, 0, beat).id,
+          noteOf(original, 0, 0, beat).id,
+        ]),
+      ]);
+      expectMarks(originalDrawing, appliedDrawing, nodes, row.draws);
 
       // Sounds.
       if (!('todo' in row.sounds)) {
@@ -435,7 +547,7 @@ describe('every effect applies, draws, sounds and comes off again', () => {
       // Removes: the same key again, and the score is as it was, in layout too.
       apply();
       expect(current()).toEqual(original);
-      expect(drawn(current())).toBe(originalDrawing);
+      expect(drawn(current())).toEqual(originalDrawing);
       // One undo step each.
       services.document.getState().undo();
       expect(current()).toEqual(applied);
