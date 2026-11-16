@@ -18,6 +18,8 @@ export type EditorDialog =
   | { kind: 'effectPicker'; picker: EffectPicker }
   /** The grace-note dialog, preset to before the beat or on it. */
   | { kind: 'grace'; before: boolean }
+  /** The Transpose dialog; it works on what is selected when it applies. */
+  | { kind: 'transpose' }
   | { kind: 'masterBar'; ids: Id[]; focus?: MasterBarSection };
 
 export interface DialogsState {
