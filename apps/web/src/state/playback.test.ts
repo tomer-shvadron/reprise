@@ -1,4 +1,4 @@
-import { GM_BUDGET_BYTES } from '@reprise/audio';
+import { GM_BUDGET_BYTES, HQ_BUDGET_BYTES } from '@reprise/audio';
 import { describe, expect, it } from 'vitest';
 
 import { createPlaybackStore, selectCanPlay, selectRunning } from './playback';
@@ -9,7 +9,13 @@ describe('the playback store', () => {
     expect(state.transport).toBe('stopped');
     expect(state.output.status).toBe('locked');
     expect(state.sounds.status).toBe('idle');
-    expect(state.memory).toEqual({ decodedBytes: 0, budgetBytes: GM_BUDGET_BYTES, residents: [] });
+    expect(state.memory).toEqual({
+      decodedBytes: 0,
+      budgetBytes: GM_BUDGET_BYTES,
+      residents: [],
+      unused: [],
+      shortfall: false,
+    });
     expect(state.settings).toEqual({
       tempo: { mode: 'percent', value: 100 },
       loop: undefined,
@@ -17,6 +23,7 @@ describe('the playback store', () => {
       metronome: { on: false, volume: 0.7 },
       masterVolume: 1,
       gmTierBypass: true,
+      memoryBudgetBytes: HQ_BUDGET_BYTES,
     });
     expect(state.mixer).toEqual({});
     expect(state.instrumentLoads).toEqual({});

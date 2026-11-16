@@ -30,18 +30,23 @@ export function installTransport(deps: TransportDeps): () => void {
   audio.setMetronome(stored.metronome.on, stored.metronome.volume);
   audio.setMasterVolume(stored.masterVolume);
   audio.setGmTierBypass(stored.gmTierBypass);
+  audio.setMemoryBudget(stored.memoryBudgetBytes);
 
   const unsubscribePlayback = playback.subscribe(({ settings }, { settings: before }) => {
     if (
       settings.countIn === before.countIn &&
       settings.metronome === before.metronome &&
       settings.masterVolume === before.masterVolume &&
-      settings.gmTierBypass === before.gmTierBypass
+      settings.gmTierBypass === before.gmTierBypass &&
+      settings.memoryBudgetBytes === before.memoryBudgetBytes
     ) {
       return;
     }
-    const { countIn, metronome, masterVolume, gmTierBypass } = settings;
-    writeTransportPreferences({ countIn, metronome, masterVolume, gmTierBypass }, storage);
+    const { countIn, metronome, masterVolume, gmTierBypass, memoryBudgetBytes } = settings;
+    writeTransportPreferences(
+      { countIn, metronome, masterVolume, gmTierBypass, memoryBudgetBytes },
+      storage,
+    );
   });
 
   const unsubscribeSounds = playback.subscribe((state, previous) => {

@@ -63,6 +63,8 @@ describe('ManagedSampleSource accounting', () => {
       decodedBytes: total,
       budgetBytes: source.budgetBytes,
       residents: ['gm:0:25', 'gm:0:33'],
+      unused: ['gm:0:25', 'gm:0:33'],
+      shortfall: false,
     });
   });
 
@@ -135,6 +137,94 @@ describe('ManagedSampleSource accounting', () => {
     await expect(source.getBuffer('a#0')).rejects.toThrow('no instrument');
     expect(source.memory()).toMatchObject({ decodedBytes: 0, residents: [] });
     expect(source.counters.fetches).toBe(0);
+  });
+});
+
+describe('ManagedSampleSource unused residents and shortfall', () => {
+  it('reports the residents the song does not plan, and evictUnused frees only those', async () => {
+    const source = new ManagedSampleSource(small(), factory, { budgetBytes: 100 * ZONE });
+    await source.getBuffer('a#0');
+    await source.getBuffer('b#0');
+    expect(source.memory().unused).toEqual(['a', 'b']);
+    expect(source.evictUnused()).toBe(2);
+    expect(source.memory()).toMatchObject({ residents: [], unused: [], decodedBytes: 0 });
+    expect(source.evictUnused()).toBe(0);
+  });
+
+  it('keeps the planned instruments, and flags a shortfall when the budget evicts one', async () => {
+    const source = new ManagedSampleSource(small(), factory, { budgetBytes: 100 * ZONE });
+    source.switchSong(songA);
+    await source.getBuffer('gm:0:25#0');
+    await source.getBuffer('stray#0');
+    expect(source.memory()).toMatchObject({ unused: ['stray'], shortfall: false });
+    expect(source.evictUnused()).toBe(1);
+    expect(source.memory().residents).toEqual(['gm:0:25']);
+    source.budgetBytes = 1;
+    expect(source.memory().shortfall).toBe(true);
+    // An edit that keeps the instrument leaves it evicted; a song without it starts clear.
+    source.switchSong(songA);
+    expect(source.memory().shortfall).toBe(true);
+    source.switchSong(
+      score()
+        .track('piano', { program: 0 })
+        .bar()
+        .beat('1', [midi(60)])
+        .build(),
+    );
+    expect(source.memory().shortfall).toBe(false);
+  });
+
+  it('clears the shortfall when a raised budget restores the evicted instruments', async () => {
+    const provider = small();
+    const source = new ManagedSampleSource(provider, factory, { budgetBytes: 100 * ZONE });
+    await source.load(songA, provider.regionMap, { warm: false });
+    await source.settled();
+    source.budgetBytes = 1;
+    expect(source.memory().shortfall).toBe(true);
+    source.budgetBytes = 100 * ZONE;
+    source.warm(provider.regionMap);
+    await source.settled();
+    expect(source.memory()).toMatchObject({ shortfall: false, unused: [] });
+    expect(source.memory().residents.length).toBeGreaterThan(0);
+  });
+
+  it('stays short until every evicted sample of the instrument is back', async () => {
+    const source = new ManagedSampleSource(small(), factory, { budgetBytes: 100 * ZONE });
+    source.switchSong(songA);
+    await source.getBuffer('gm:0:25#0');
+    await source.getBuffer('gm:0:25#1');
+    source.budgetBytes = 1;
+    expect(source.memory().shortfall).toBe(true);
+    source.budgetBytes = 100 * ZONE;
+    await source.getBuffer('gm:0:25#0');
+    expect(source.memory().shortfall).toBe(true);
+    await source.getBuffer('gm:0:25#1');
+    expect(source.memory().shortfall).toBe(false);
+  });
+
+  it('does not count a sample the song never plays toward the shortfall', async () => {
+    const provider = small();
+    const source = new ManagedSampleSource(provider, factory, { budgetBytes: 100 * ZONE });
+    await source.load(songA, provider.regionMap, { warm: false });
+    // Only the pinned guitar holds this one, and no key of the song reaches it.
+    await source.getBuffer('gm:0:25#0');
+    source.budgetBytes = 1;
+    source.budgetBytes = 100 * ZONE;
+    source.warm(provider.regionMap);
+    await source.settled();
+    expect(source.memory().shortfall).toBe(false);
+  });
+
+  it('warms only the plan of the last song switch', async () => {
+    const provider = small();
+    const source = new ManagedSampleSource(provider, factory, { budgetBytes: 100 * ZONE });
+    source.switchSong(songA);
+    await source.load(songB, provider.regionMap, { warm: false });
+    source.budgetBytes = 1;
+    source.budgetBytes = 100 * ZONE;
+    source.warm(provider.regionMap);
+    await source.settled();
+    expect(source.memory().residents).toEqual(['gm:0:0', 'gm:0:25']);
   });
 });
 
@@ -309,7 +399,13 @@ describe('ManagedSampleSource budget and events', () => {
     expect(source.budgetBytes).toBe(10 * ZONE);
 
     source.budgetBytes = ZONE;
-    expect(source.memory()).toEqual({ decodedBytes: ZONE, budgetBytes: ZONE, residents: ['c'] });
+    expect(source.memory()).toEqual({
+      decodedBytes: ZONE,
+      budgetBytes: ZONE,
+      residents: ['c'],
+      unused: ['c'],
+      shortfall: false,
+    });
     expect(() => {
       source.budgetBytes = -1;
     }).toThrow(RangeError);
@@ -336,6 +432,8 @@ describe('ManagedSampleSource budget and events', () => {
       decodedBytes: 2 * ZONE,
       budgetBytes: 2 * ZONE,
       residents: ['a'],
+      unused: ['a'],
+      shortfall: false,
     });
 
     unsubscribe();

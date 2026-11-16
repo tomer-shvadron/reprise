@@ -33,7 +33,7 @@ describe('SoundStatus', () => {
     expect(services.fakeAudio.retry).toHaveBeenCalledOnce();
   });
 
-  it('counts the song’s instruments in the memory tooltip, not the bank’s preset aliases', async () => {
+  it('shows used and budget in the status text, and the resident and unused counts in the tooltip', async () => {
     const { services } = renderWithServices(<SoundStatus />);
     const user = userEvent.setup();
     act(() => {
@@ -42,15 +42,16 @@ describe('SoundStatus', () => {
           decodedBytes: 0.63 * 1024 * 1024,
           budgetBytes: 80 * 1024 * 1024,
           residents: ['gm:0:25', 'gm:0:93', 'gm:12:27', 'gm:8:107', 'gm:8:25'],
+          unused: ['gm:0:93', 'gm:8:107'],
+          shortfall: false,
         },
-        instruments: 1,
       });
     });
 
-    expect(status()).toHaveTextContent('0.6 MB');
+    expect(status()).toHaveTextContent('0.6 / 80 MB');
     await user.hover(status());
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      '0.6 of 80 MB decoded · 1 instrument',
+      '0.6 of 80 MB decoded · 5 instruments loaded (2 unused)',
     );
   });
 });
