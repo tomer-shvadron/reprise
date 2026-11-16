@@ -79,7 +79,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
         notation: content.notation,
       }),
   });
-  const sounds = createSoundPackStore({ platform });
+  const sounds = createSoundPackStore({ platform, audio: () => audio });
   const audio = (
     options.audio ?? ((store, packs) => createAudioService({ playback: store, packs }))
   )(playback, sounds);
