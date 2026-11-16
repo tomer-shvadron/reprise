@@ -88,6 +88,11 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
 
   useEffect(() => installLibrary(services), [services]);
 
+  // The installed sound packs, before any song names one; a failed scan leaves the list empty.
+  useEffect(() => {
+    services.sounds.scan().catch(() => undefined);
+  }, [services]);
+
   // `● name — Reprise` while modified; on desktop the window follows the page title.
   useEffect(() => installWindowTitle(services.document, services.platform), [services]);
 
