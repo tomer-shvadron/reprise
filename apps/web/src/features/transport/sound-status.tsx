@@ -42,7 +42,7 @@ export function soundStatus(state: PlaybackStoreState): SoundStatusLine | undefi
 /** The sound bank's and the song's load state, the decoded memory, and Retry after an error. */
 export function SoundStatus() {
   const { playback, audio } = useAppServices();
-  const { text, retry, memory, instruments } = useStore(
+  const { text, retry, memory } = useStore(
     playback,
     useShallow((state) => {
       const status = soundStatus(state);
@@ -50,7 +50,6 @@ export function SoundStatus() {
         text: status?.text,
         retry: status?.retry ?? false,
         memory: state.memory,
-        instruments: state.instruments,
       };
     }),
   );
@@ -66,12 +65,15 @@ export function SoundStatus() {
             data-sound-status
             className="text-muted-foreground min-w-0 truncate text-xs"
           >
-            {text ?? (memory.decodedBytes > 0 && `${megabytes(memory.decodedBytes)} MB`)}
+            {text ??
+              (memory.decodedBytes > 0 &&
+                `${megabytes(memory.decodedBytes)} / ${megabytes(memory.budgetBytes)} MB`)}
           </span>
         </TooltipTrigger>
         <TooltipContent>
           {megabytes(memory.decodedBytes)} of {megabytes(memory.budgetBytes)} MB decoded ·{' '}
-          {instruments} {instruments === 1 ? 'instrument' : 'instruments'}
+          {memory.residents.length} {memory.residents.length === 1 ? 'instrument' : 'instruments'}{' '}
+          loaded ({memory.unused.length} unused)
         </TooltipContent>
       </Tooltip>
       {retry && (

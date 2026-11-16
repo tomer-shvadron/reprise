@@ -137,7 +137,13 @@ describe('createAudioEngine', () => {
         run();
       },
     });
-    expect(bare.memory()).toEqual({ decodedBytes: 0, budgetBytes: GM_BUDGET_BYTES, residents: [] });
+    expect(bare.memory()).toEqual({
+      decodedBytes: 0,
+      budgetBytes: GM_BUDGET_BYTES,
+      residents: [],
+      unused: [],
+      shortfall: false,
+    });
     bare.dispose();
 
     const { engine } = await setup();
@@ -156,6 +162,8 @@ describe('createAudioEngine', () => {
       decodedBytes: 0,
       budgetBytes: GM_BUDGET_BYTES,
       residents: [],
+      unused: [],
+      shortfall: false,
     });
     engine.dispose();
   });
