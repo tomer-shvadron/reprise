@@ -97,9 +97,14 @@ export interface PathPrimitive extends PrimitiveBase {
   thickness: number;
 }
 
+/** The row a word primitive sits in: a chord name, beat text, or lyric line `n` (0 to 4, as `lyric:0`). */
+export type WordLane = 'chord' | 'text' | `lyric:${number}`;
+
 /** UI-font text; (x, y) is the baseline point `anchor` refers to. */
 export interface TextPrimitive extends PrimitiveBase {
   kind: 'text';
+  /** Set on chord names, beat text and syllables, so an editor finds a word's row without guessing from y. */
+  lane?: WordLane;
   text: string;
   size: number;
   anchor: 'start' | 'middle' | 'end';
@@ -139,6 +144,21 @@ export interface StaffPlacement {
   /** y of the top and bottom staff lines. */
   top: number;
   bottom: number;
+  /** Where this staff's words go, present on the staff that draws them (the tab, else the only staff), empty rows included. */
+  words?: WordBaselines;
+}
+
+/** Baselines, in layout space, of the word rows beside a staff; they hold even where the row is empty. */
+export interface WordBaselines {
+  /** Font size of a word in px. */
+  size: number;
+  /** The chord row's baseline: where a chord name goes now, or would go if the bar had one. */
+  chord: number;
+  /** The beat text row's baseline, likewise. */
+  text: number;
+  /** The baseline of lyric line 0; line n sits `n * lyricRow` lower. */
+  lyrics: number;
+  lyricRow: number;
 }
 
 export interface System {
