@@ -84,8 +84,6 @@ test('A song built from the UI saves with its structure and plays in order, one 
   const saved = async (before: number) => {
     await page.locator('body').focus();
     await page.keyboard.press('ControlOrMeta+s');
-    const dialog = page.getByRole('dialog', { name: 'Save as' });
-    if (before === 0) await dialog.getByRole('button', { name: 'Reprise', exact: true }).click();
     await app.waitForWrite('Untitled.reprise', before);
     return (await read(await app.readStored('Untitled.reprise'), 'reprise')).score.masterBars;
   };
