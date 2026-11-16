@@ -67,6 +67,11 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Show current track as tab | Track | Global | — | — |
 | Show current track as standard notation | Track | Global | — | — |
 | Show current track as tab and standard notation | Track | Global | — | — |
+| Track properties… | Track | Global | F6 | F6 |
+| Add track… | Track | Global | ⌥⌘N | Ctrl+Shift+Insert |
+| Remove track… | Track | Global | — | — |
+| Move track up | Track | Global | — | — |
+| Move track down | Track | Global | — | — |
 | Show library | Library | Global | — | — |
 | Import files to library… | Library | Global | — | — |
 | Import folder to library… | Library | Global | — | — |
