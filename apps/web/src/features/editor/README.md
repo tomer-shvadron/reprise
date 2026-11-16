@@ -57,6 +57,17 @@ What it holds, after WP-056 (the mode toggle), WP-080 (hit-testing and the selec
 - **New song** (`new-song.ts`): `startNewSong` opens `newDocument(createEmptyScore())` and turns edit mode on, after `UnsavedChangesDialog` (Save, Don't save, Cancel) when the document is modified. The dialog takes `action`, `onContinue` and `onCancel`, so Open and Close (WP-061) reuse it.
 - Refusals read through the shared `describeRefusal` (`refusal.ts`).
 
+## Effects (WP-082)
+
+Effect keys are Guitar Pro 8's, bound in the `editing` context by `effect-commands.ts` (the table is in `docs/reference/keyboard-shortcuts.md`). Every one goes through `runEffect`, which flushes a pending digit, resolves the target, and applies the plan as one undo step through `commitEdit` with the cursor left alone.
+
+- `effects.ts`: `planEffect(input, action, mode)` is pure. `EffectAction` names an effect with its whole value (a bend preset is one action). `mode` is `toggle` (Guitar Pro's rule: remove when every target has exactly that value, else set on those that lack it), `set` (a picker's choice) or `remove` (a picker's Remove, whatever the value). Only the nodes that change are written; when none do the plan is `{ nothing: true }`. The exclusive groups (shift and legato slides, accent and heavy, slight and wide vibrato, tapping, slap and pop, the fades, brush and arpeggio) are kept by the planner, never by the model. A node that cannot take an effect (a drum note for a fretted effect, a shift slide with nothing to slide to, a prebend on a tied note) is marked `unavailable`: setting skips it and says so in the plan's `notice` (shown on the status line), refusing only when no node can, and removing never skips, so an effect already there always comes off.
+- `effectCommand(label, edits)` is the one place an effect becomes a model command, so a change to the model's batch commands touches one function.
+- `effect-targets.ts`: the notes and beats an effect reaches, from `editTarget`. A note effect on a beat target reaches every note of the beat (D7); a beat effect reaches the beats of the notes picked; rests and empty beats drop out.
+- `next-on-string.ts`: the next note on a string within a bar reach. H sets `hammerPull` on the target within the tie reach (D2), a shift or legato slide needs one in this bar or the next. A tied note is held, not struck, so it counts as nothing to connect to. A grace note slides or hammers into the main note of its beat on its string, as layout draws it.
+- `effect-state.ts`: `effectState` is `on`, `off`, `mixed` or `unavailable`, for a button's `aria-pressed` (the panel arrives in WP-082 PR B).
+- `bend-presets.ts` and `whammy-presets.ts`: the curves, each one gpif curve so a gp export keeps it. A prebend on a tied note is refused, since gpif reads the curve of a tied note as a hold or a release.
+
 ## What it can rely on
 
 - `editing` (`state/editing.ts`): the edit-mode flag, `editing`, `setEditing` and `toggle`. It is off
