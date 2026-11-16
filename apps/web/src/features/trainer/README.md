@@ -93,3 +93,33 @@ together: starting one stops the other.
   it from anywhere. Nothing outside the panel shows it running yet (a shell follow-up).
 - Alt+B starts or stops it and shows the panel. `metronome.browser.test.ts` renders the click
   offline at 60, 120 and 200 BPM and measures the onsets.
+
+## Practice log (WP-073)
+
+`practice-log/`. Logs each song's practice into the library database's `practiceSessions` table
+(Dexie version 2) and shows it on a song page in the library.
+
+- **Capture** (`capture.ts`, `accrual.ts`), installed by the shell with `installPracticeLog(services,
+libraryOf(services).db.practiceSessions)`; the trainer never imports library internals. It runs
+  over the existing `practice` store and changes no state. A session starts on a document's first
+  play and counts only time `playing` (the count-in is left out). It ends on a document switch or
+  close, or after 10 minutes without playing; the check also runs when play starts, so a missed
+  timer changes nothing. Nothing runs on the position tick: the subscription compares `transport`,
+  the loop and the tempo by reference. Played time is added up at play and pause changes and every
+  30 s while playing (one accrual is capped at 60 s, so a sleeping laptop logs nothing extra).
+  Writes are debounced by 1 s, and `pagehide` or a hidden window flushes at once. No row is written
+  below 10 s of play or one completed speed-trainer step. A file open without import (no `songId`)
+  is not stored; importing it mid-session starts storing it.
+- **Row** (`row.ts`): a zod schema, owned here; the library's `schema.ts` imports only its type. A
+  loop is stored by bar id (the truth) with its bar numbers and BPM at write time for display while
+  the song is closed. A deleted song's rows stay in the table, hidden: nothing lists them.
+- **Song page** (`song-page.tsx`, `summary.ts`): total time, sessions newest first, loops with their
+  best tempos, and Resume. Resume restores the most recent session's last loop at that session's
+  last tempo (`resume.ts`), by bar id, so it still works after bars were inserted before the loop; a
+  loop whose bars are gone restores the tempo only and says so. The library's song list has a
+  "Practice log" button per row and its screen hosts the page.
+- **Privacy.** The log lives only in this machine's IndexedDB: no network call, no `localStorage`,
+  never in the `.reprise` file, a gp export or the draft. The tuner's microphone and the standalone
+  metronome are never observed: the capture imports nothing from `tuner/` or `metronome/`.
+- Not done: a weekly summary and streaks (they would want a `startedAt` index, a Dexie version 3),
+  export of the log, pruning or a clear-history button, and a Resume command.
