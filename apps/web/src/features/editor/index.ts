@@ -101,6 +101,34 @@ export {
 export { effectInput, openEffectPicker, openGraceDialog, pickerBlocker } from './effect-dialogs';
 export { pickerCommands, type PickerCommandId } from './picker-commands';
 export type { EffectPicker } from './dialogs';
+export { WordField } from './word-field';
+export { wordCommands, type WordCommandId } from './word-commands';
+export { closeWord, commitWord, openWord, stepWord } from './word-session';
+export { planWord, type WordEdit, type WordKind, type WordPlan } from './words';
+export { nextWordBeat, firstWordBeat } from './word-nav';
+export { chordNamesIn, suggestChords } from './chord-suggestions';
+export { wordFieldRect, type WordRect, type WordTarget } from './geometry';
 export { HistoryPanel } from './history-panel';
 export { historyLabel } from './history-labels';
 export { undoLanding } from './undo-landing';
+export {
+  applyTranspose,
+  moveToString,
+  nudgeNotes,
+  openTransposeDialog,
+  transposeCommands,
+  transposeInput,
+  type TransposeCommandId,
+} from './transpose-commands';
+export { TransposeDialog } from './transpose-dialog';
+export {
+  coversEveryTrack,
+  offersChordNames,
+  planTranspose,
+  type TransposeInput,
+  type TransposeOptions,
+  type TransposePlan,
+  type TransposeScope,
+} from './transpose';
+export { planShift, type StringDirection, type StringShiftPlan } from './string-shift';
+export { shiftDiagram, transposeChordName, transposeKey } from './chord-names';

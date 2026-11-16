@@ -70,7 +70,7 @@ const defaultClock: EntryClock = {
   },
 };
 
-const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'AltGraph', 'CapsLock']);
+export const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'AltGraph', 'CapsLock']);
 
 const sameSpot = (a: EditCursor, b: EditCursor) =>
   a.track === b.track &&

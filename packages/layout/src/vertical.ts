@@ -10,6 +10,7 @@ import {
   type LaneId,
   type LaneRequests,
 } from './staves/lanes';
+import { WORDS } from './staves/words';
 
 /**
  * The bands above a system's first staff, top to bottom, for what the master bars carry. Only a
@@ -42,6 +43,8 @@ export interface VerticalLayout {
     above: number;
     below: number;
     lanes: Partial<Record<LaneId, LaneBand>>;
+    /** Baselines of the word rows, from the system's top, on the staff that draws words; empty rows included. */
+    words?: { chord: number; text: number; lyrics: number };
   }[];
   /** One per visible track: the span from its first staff's top line to its last's bottom. */
   groups: { top: number; bottom: number }[];
@@ -80,19 +83,32 @@ export function verticalLayout(
     }
     const requested = lanes[i] ?? {};
     let outward = above;
+    // The tab draws words, and so does a standard or percussion staff that is its track's only one.
+    const draws = slot.type === 'tab' || slot.visible.staves.length === 1;
+    // Where a word row that no bar asks for yet would go: beyond the lanes before it, not moving the ones after.
+    let chordNear: number | undefined;
+    let textNear: number | undefined;
     const upward: [LaneId, number, number][] = [];
     for (const lane of LANES_ABOVE) {
       const height = requested[lane];
-      if (height === undefined) continue;
+      if (height === undefined) {
+        if (draws && lane === 'chord') chordNear = outward;
+        if (draws && lane === 'text') textNear = outward;
+        continue;
+      }
       upward.push([lane, outward, outward + height]);
       outward += height;
     }
     above = Math.max(slot.module.minRoom.above * space, outward);
     outward = below;
+    let lyricsNear: number | undefined;
     const downward: [LaneId, number, number][] = [];
     for (const lane of LANES_BELOW) {
       const height = requested[lane];
-      if (height === undefined) continue;
+      if (height === undefined) {
+        if (draws && lane === 'lyrics') lyricsNear = outward;
+        continue;
+      }
       downward.push([lane, outward, outward + height]);
       outward += height;
     }
@@ -106,7 +122,21 @@ export function verticalLayout(
     const bands: Partial<Record<LaneId, LaneBand>> = {};
     for (const [lane, near, far] of upward) bands[lane] = { top: top - far, bottom: top - near };
     for (const [lane, near, far] of downward) bands[lane] = { top: y + near, bottom: y + far };
-    staves.push({ top, bottom: y, above, below, lanes: bands });
+    let words: VerticalLayout['staves'][number]['words'];
+    if (draws) {
+      const lift = WORDS.lift * space;
+      const nearOf = (lane: 'chord' | 'text', empty: number | undefined) => {
+        const used = bands[lane];
+        return used ? top - used.bottom : (empty ?? 0);
+      };
+      const lyricsTop = bands.lyrics ? bands.lyrics.top : y + (lyricsNear ?? 0);
+      words = {
+        chord: top - nearOf('chord', chordNear) - lift,
+        text: top - nearOf('text', textNear) - lift,
+        lyrics: lyricsTop + WORDS.lyricRow * space - WORDS.descent * space,
+      };
+    }
+    staves.push({ top, bottom: y, above, below, lanes: bands, ...(words && { words }) });
     y += below;
     const group = groups[slot.group];
     if (group) group.bottom = y - below;

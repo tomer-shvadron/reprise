@@ -13,6 +13,7 @@ import {
   useState,
   useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
   type Ref,
   type UIEvent,
@@ -90,6 +91,8 @@ export interface ScoreViewProps {
   /** Display scale, the ui store's zoom; never re-lays out. */
   zoom: number;
   overlays?: ScoreOverlays;
+  /** Drawn inside the zoomed canvas after the overlays, in layout px × zoom: an inline editor. */
+  children?: ReactNode;
   onScorePointer?: (event: ScorePointerEvent) => void;
   /**
    * A hand scroll, told from input rather than `scroll` events, which following and zoom also
@@ -200,6 +203,7 @@ export function ScoreView({
   layout,
   zoom,
   overlays,
+  children,
   onScorePointer,
   onUserScroll,
   label = 'Score',
@@ -518,6 +522,8 @@ export function ScoreView({
   };
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    // A field inside the canvas keeps its keys: its arrows and Space are not scrolling.
+    if (event.target instanceof HTMLInputElement) return;
     const axis = KEY_AXES[event.key];
     if (!axis) return;
     const native = event.nativeEvent;
@@ -590,6 +596,7 @@ export function ScoreView({
             );
           })}
           <OverlayLayer overlays={overlays} zoom={zoom} layout={layout} range={range} />
+          {children}
           <PlayheadLayer bar={barBox} line={lineBox} />
         </div>
       </div>

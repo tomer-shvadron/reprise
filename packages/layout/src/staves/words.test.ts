@@ -213,3 +213,55 @@ describe('words on a percussion staff', () => {
     expect(one?.y ?? 0).toBeGreaterThan(staff?.bottom ?? Infinity);
   });
 });
+
+describe('word lanes on the primitives and the staff placements', () => {
+  const built = (words: boolean) => {
+    const track = score().track('guitar');
+    const bar = track.bar();
+    bar.beat(
+      '4',
+      [note(1, 0)],
+      words ? { chord: { name: 'C' }, text: 'Coda', lyrics: ['', 'two'] } : {},
+    );
+    bar.beat('4', [note(1, 0)]);
+    return track.build({ ids: 'sequential' });
+  };
+
+  it('tag a chord name, beat text and each lyric line with its row', () => {
+    const lanes = texts(laid(built(true), 'tab')).flatMap((p) => (p.lane === undefined ? [] : [p]));
+    expect(lanes.map((p) => [p.text, p.lane])).toEqual([
+      ['C', 'chord'],
+      ['Coda', 'text'],
+      ['two', 'lyric:1'],
+    ]);
+  });
+
+  for (const notation of ['tab', 'standard', 'both'] as const) {
+    it(`give the baselines of drawn words on the staff that draws them (${notation})`, () => {
+      const result = laid(built(true), notation);
+      const drawing = result.systems[0]?.staves.filter((s) => s.words);
+      expect(drawing).toHaveLength(1);
+      expect(drawing?.[0]?.type).toBe(notation === 'standard' ? 'standard' : 'tab');
+      const words = drawing?.[0]?.words;
+      const at = (lane: string) => texts(result).find((p) => p.lane === lane)?.y;
+      expect(words?.chord).toBe(at('chord'));
+      expect(words?.text).toBe(at('text'));
+      expect(words ? words.lyrics + words.lyricRow : undefined).toBe(at('lyric:1'));
+    });
+
+    it(`put an empty row where a word would go once the bar has one (${notation})`, () => {
+      const rows = (words: boolean) => {
+        const staff = laid(built(words), notation).systems[0]?.staves.find((s) => s.words);
+        if (!staff?.words) throw new Error('no words');
+        // Distances from the staff, since the words move the staff down the page.
+        return {
+          chord: staff.top - staff.words.chord,
+          lyrics: staff.words.lyrics - staff.bottom,
+        };
+      };
+      const [empty, full] = [rows(false), rows(true)];
+      expect(empty.chord).toBeCloseTo(full.chord, 1);
+      expect(empty.lyrics).toBeCloseTo(full.lyrics, 1);
+    });
+  }
+});

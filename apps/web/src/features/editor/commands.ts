@@ -7,7 +7,9 @@ import { pickerCommands, toggleHistoryPanel, type PickerCommandId } from './pick
 import { clipboardCommands, type ClipboardCommandId } from './clipboard-commands';
 import { entryCommands, type EntryCommandId } from './entry-commands';
 import { navigationCommands, type NavigationCommandId } from './navigation-commands';
+import { wordCommands, type WordCommandId } from './word-commands';
 import { trackEditCommands, type TrackEditCommandId } from './track-commands';
+import { transposeCommands, type TransposeCommandId } from './transpose-commands';
 
 export type EditorCommandId =
   | 'editor.toggleMode'
@@ -18,7 +20,9 @@ export type EditorCommandId =
   | TrackEditCommandId
   | EffectCommandId
   | PickerCommandId
-  | ClipboardCommandId;
+  | ClipboardCommandId
+  | TransposeCommandId
+  | WordCommandId;
 
 type EditorCommand = Command & { id: EditorCommandId };
 
@@ -53,5 +57,7 @@ export function editorCommands(
     ...effectCommands(services),
     ...pickerCommands(services),
     ...clipboardCommands(services),
+    ...transposeCommands(services),
+    ...wordCommands(services),
   ];
 }
