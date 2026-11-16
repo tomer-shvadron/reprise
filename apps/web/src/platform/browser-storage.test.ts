@@ -38,6 +38,38 @@ describe.each([
     expect(root.tree()).toEqual(['data/', 'library/', 'library/songs/', 'library/songs/rock/']);
   });
 
+  it('reads a range of a storage file, with whatever bytes exist past the end', async () => {
+    const { root, platform } = setup();
+    await root.put('data/sounds/pack.zip', new Uint8Array([0, 1, 2, 3, 4, 5]));
+
+    await expect(
+      platform.readFile('data/sounds/pack.zip', { offset: 2, length: 3 }),
+    ).resolves.toEqual(new Uint8Array([2, 3, 4]));
+    await expect(
+      platform.readFile('data/sounds/pack.zip', { offset: 4, length: 100 }),
+    ).resolves.toEqual(new Uint8Array([4, 5]));
+    await expect(
+      platform.readFile('data/sounds/pack.zip', { offset: 9, length: 2 }),
+    ).resolves.toEqual(new Uint8Array());
+    await expect(platform.readFile('data/sounds/pack.zip')).resolves.toHaveLength(6);
+  });
+
+  it.each([
+    [{ offset: -1, length: 1 }],
+    [{ offset: 0.5, length: 1 }],
+    [{ offset: 0, length: -1 }],
+    [{ offset: 0, length: 16 * 1024 * 1024 + 1 }],
+  ])('refuses the read range %j', async (range) => {
+    const { root, platform } = setup();
+    await root.put('data/a.bin', new Uint8Array([1]));
+
+    await expect(platform.readFile('data/a.bin', range)).rejects.toThrow(RangeError);
+  });
+
+  it('has no download', () => {
+    expect('download' in setup().platform).toBe(false);
+  });
+
   it('lists a directory by name, and nothing for one that does not exist', async () => {
     const { root, platform } = setup();
     await root.put('library/b.gp', text('b'));

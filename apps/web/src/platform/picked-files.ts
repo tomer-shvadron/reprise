@@ -4,6 +4,7 @@ import {
   type PickedFile,
   type PickedFolder,
 } from './bridge';
+import { readBlob } from './read-range';
 
 function pickerTypes(filters: readonly FileFilter[]): FilePickerAcceptType[] {
   return filters.map(({ name, extensions }) => ({
@@ -21,7 +22,7 @@ function pickedFile(file: File, relativePath: string): PickedFile {
     name: file.name,
     relativePath,
     size: file.size,
-    read: async () => new Uint8Array(await file.arrayBuffer()),
+    read: (range) => readBlob(file, range),
   };
 }
 

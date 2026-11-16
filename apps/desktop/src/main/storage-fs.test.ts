@@ -384,7 +384,64 @@ describe('storage file operations', () => {
     });
   });
 
+  describe('ranged reads', () => {
+    beforeEach(() => {
+      writeFileSync(join(roots.data, 'r.bin'), Uint8Array.from([0, 1, 2, 3, 4, 5, 6, 7]));
+    });
+
+    it('reads a slice from the offset', async () => {
+      await expect(readFileIn(roots, 'data/r.bin', { offset: 2, length: 3 })).resolves.toEqual(
+        Uint8Array.from([2, 3, 4]),
+      );
+    });
+
+    it('returns the bytes that exist for a range running past the end', async () => {
+      await expect(readFileIn(roots, 'data/r.bin', { offset: 6, length: 99 })).resolves.toEqual(
+        Uint8Array.from([6, 7]),
+      );
+    });
+
+    it('returns nothing for a range starting at or past the end, or of length zero', async () => {
+      await expect(readFileIn(roots, 'data/r.bin', { offset: 8, length: 4 })).resolves.toEqual(
+        new Uint8Array(),
+      );
+      await expect(readFileIn(roots, 'data/r.bin', { offset: 500, length: 4 })).resolves.toEqual(
+        new Uint8Array(),
+      );
+      await expect(readFileIn(roots, 'data/r.bin', { offset: 1, length: 0 })).resolves.toEqual(
+        new Uint8Array(),
+      );
+    });
+
+    it('still reads the whole file with no range', async () => {
+      await expect(readFileIn(roots, 'data/r.bin')).resolves.toHaveLength(8);
+    });
+  });
+
   describe('sweepTempFiles', () => {
+    it('removes old .part files of a crashed download, and keeps new ones', async () => {
+      const old = join(roots.data, 'sounds', '.pack.zip.0123456789ab.part');
+      const fresh = join(roots.data, 'sounds', '.other.zip.ba9876543210.part');
+      put(old);
+      put(fresh);
+      put(join(roots.data, 'sounds', 'pack.zip'));
+      const past = new Date(Date.now() - 10 * 60_000);
+      utimesSync(old, past, past);
+
+      await expect(sweepTempFiles(roots)).resolves.toBe(1);
+
+      expect(existsSync(old)).toBe(false);
+      expect(existsSync(fresh)).toBe(true);
+      expect(existsSync(join(roots.data, 'sounds', 'pack.zip'))).toBe(true);
+    });
+
+    it('hides a .part file from listings', async () => {
+      put(join(roots.data, 'a.bin'));
+      put(join(roots.data, '.a.bin.0123456789ab.part'));
+
+      await expect(listDirIn(roots, 'data')).resolves.toEqual([{ name: 'a.bin', kind: 'file' }]);
+    });
+
     it('removes old temp files under every root, and keeps new ones and real files', async () => {
       const old = join(roots.data, 'drafts', '.a.reprise.0123456789ab.tmp');
       const fresh = join(roots.library, 'songs', '.b.reprise.ba9876543210.tmp');

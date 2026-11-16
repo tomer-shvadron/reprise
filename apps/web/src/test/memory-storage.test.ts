@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createMemoryStorage } from './memory-storage';
-import { fakePlatform } from './services';
+import { fakeDownload, fakePlatform } from './services';
 
 const bytes = (...values: number[]) => new Uint8Array(values);
 
@@ -113,5 +113,87 @@ describe('the in-memory storage double', () => {
     await storage.calls.move('library/a.gp', 'library/A.gp');
 
     expect(storage.paths()).toEqual(['library/A.gp']);
+  });
+});
+
+describe('ranged reads and the scripted download in the platform double', () => {
+  it('reads a range, or the bytes that exist past the end', async () => {
+    const { calls } = createMemoryStorage();
+    await calls.writeFile('data/sounds/a.zip', bytes(0, 1, 2, 3));
+
+    await expect(calls.readFile('data/sounds/a.zip', { offset: 1, length: 2 })).resolves.toEqual(
+      bytes(1, 2),
+    );
+    await expect(calls.readFile('data/sounds/a.zip', { offset: 3, length: 9 })).resolves.toEqual(
+      bytes(3),
+    );
+    await expect(calls.readFile('data/sounds/a.zip', { offset: -1, length: 1 })).rejects.toThrow(
+      RangeError,
+    );
+  });
+
+  it('has no download unless a test gives it one', () => {
+    expect('download' in fakePlatform()).toBe(false);
+  });
+
+  it('downloads scripted bytes, reporting progress', async () => {
+    const storage = createMemoryStorage();
+    const progress: [number, number | undefined][] = [];
+    const download = fakeDownload(storage.calls, { bytes: bytes(1, 2, 3, 4), progress: [2, 4] });
+
+    await expect(
+      download({
+        url: 'https://example.com/a.zip',
+        to: 'data/sounds/a.zip',
+        sha256: 'a'.repeat(64),
+        maxBytes: 10,
+        onProgress: (loaded, total) => progress.push([loaded, total]),
+      }),
+    ).resolves.toEqual({ size: 4 });
+
+    expect(progress).toEqual([
+      [2, 4],
+      [4, 4],
+    ]);
+    expect(storage.bytes('data/sounds/a.zip')).toEqual(bytes(1, 2, 3, 4));
+  });
+
+  it('writes nothing when the script fails or the signal aborts', async () => {
+    const storage = createMemoryStorage();
+    const request = {
+      url: 'https://example.com/a.zip',
+      to: 'data/sounds/a.zip',
+      sha256: 'a'.repeat(64),
+      maxBytes: 10,
+    };
+
+    await expect(
+      fakeDownload(storage.calls, { bytes: bytes(1), fail: new Error('mismatch') })(request),
+    ).rejects.toThrow('mismatch');
+    await expect(
+      fakeDownload(storage.calls, { bytes: bytes(1) })({ ...request, signal: AbortSignal.abort() }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(fakeDownload(storage.calls)({ ...request, to: 'library/a.zip' })).rejects.toThrow(
+      /data\/sounds/,
+    );
+
+    expect(storage.paths()).toEqual([]);
+  });
+
+  it('refuses an http: URL and bytes over maxBytes', async () => {
+    const storage = createMemoryStorage();
+    const request = {
+      url: 'https://example.com/a.zip',
+      to: 'data/sounds/a.zip',
+      sha256: 'a'.repeat(64),
+      maxBytes: 2,
+    };
+    const download = fakeDownload(storage.calls, { bytes: bytes(1, 2, 3) });
+
+    await expect(download({ ...request, url: 'http://example.com/a.zip' })).rejects.toThrow(
+      /https/,
+    );
+    await expect(download(request)).rejects.toThrow(/maxBytes/);
+    expect(storage.paths()).toEqual([]);
   });
 });

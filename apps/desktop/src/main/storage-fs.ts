@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { cp, lstat, mkdir, open, readdir, readFile, rename, rm } from 'node:fs/promises';
 import { basename, dirname, join, sep } from 'node:path';
 
-import type { DirEntry, StorageRoot } from '@reprise/web';
+import type { DirEntry, ReadRange, StorageRoot } from '@reprise/web';
 
 import { parseStoragePath, StoragePathError } from './storage-path';
 
@@ -130,15 +130,55 @@ export async function removeIn(roots: StorageRoots, path: unknown): Promise<void
   await rm(await resolveSafe(roots, path, { allowRoot: false }), { recursive: true, force: true });
 }
 
-/** The bytes of a file under a root; never follows a symlink, and a root is not a file. */
-export async function readFileIn(roots: StorageRoots, path: unknown): Promise<Uint8Array> {
-  return readFile(await resolveSafe(roots, path, { allowRoot: false }));
+/**
+ * The absolute path of a file or folder below a root, symlink-checked; a root itself is refused.
+ * For callers that write there themselves (the download's `.part` file).
+ */
+export function resolveStoragePath(roots: StorageRoots, path: unknown): Promise<string> {
+  return resolveSafe(roots, path, { allowRoot: false });
 }
 
-/** `.name.<12 hex>.tmp`, the sibling a write goes through before it replaces its target. */
-const TEMP_NAME = /^\..+\.[0-9a-f]{12}\.tmp$/;
+/**
+ * `range`'s bytes of the file at `path`, read at that position: a range past the end returns the
+ * bytes that exist (none when it starts at or past the end), as the browser's `Blob.slice` does.
+ * The range is checked by the caller (`parseReadRange`).
+ */
+export async function readRangeOf(path: string, range: ReadRange): Promise<Uint8Array> {
+  const file = await open(path, 'r');
+  try {
+    const { size } = await file.stat();
+    const length = Math.max(0, Math.min(range.length, size - range.offset));
+    const bytes = new Uint8Array(length);
+    let filled = 0;
+    while (filled < length) {
+      const { bytesRead } = await file.read(bytes, filled, length - filled, range.offset + filled);
+      // The file shrank under us: return what is there rather than spin.
+      if (bytesRead === 0) return bytes.subarray(0, filled);
+      filled += bytesRead;
+    }
+    return bytes;
+  } finally {
+    await file.close();
+  }
+}
+
+/** The bytes of a file under a root; never follows a symlink, and a root is not a file. */
+export async function readFileIn(
+  roots: StorageRoots,
+  path: unknown,
+  range?: ReadRange,
+): Promise<Uint8Array> {
+  const resolved = await resolveSafe(roots, path, { allowRoot: false });
+  return range ? readRangeOf(resolved, range) : readFile(resolved);
+}
+
+/**
+ * `.name.<12 hex>.tmp`, the sibling a write goes through before it replaces its target, and
+ * `.name.<12 hex>.part`, the one a download streams into.
+ */
+const TEMP_NAME = /^\..+\.[0-9a-f]{12}\.(tmp|part)$/;
 /** Keeps the temp name inside the 255 characters a file name may have; a segment can be 255. */
-const TEMP_BASENAME_MAX = 200;
+export const TEMP_BASENAME_MAX = 200;
 
 /** The fs calls `writeFileIn` makes, so a test can make one of them fail. */
 export interface WriteOps {
@@ -151,7 +191,7 @@ export interface WriteOps {
   sleep?: (ms: number) => Promise<void>;
 }
 
-const realWriteOps: WriteOps = { open, rename, rm };
+export const realWriteOps: WriteOps = { open, rename, rm };
 
 /** About a second in all: what `graceful-fs` and `write-file-atomic` wait out too. */
 const RENAME_RETRY_DELAYS_MS = [10, 30, 60, 100, 200, 300, 300];
@@ -161,7 +201,7 @@ const RETRIED_ON_WINDOWS = new Set(['EPERM', 'EACCES', 'EBUSY']);
  * On Windows a rename can fail for a moment while a scanner, the indexer or a sync client holds
  * the just-closed temp file or the target without delete sharing.
  */
-async function renameWithRetry(ops: WriteOps, from: string, to: string): Promise<void> {
+export async function renameWithRetry(ops: WriteOps, from: string, to: string): Promise<void> {
   const platform = ops.platform ?? process.platform;
   const sleep = ops.sleep ?? ((ms: number) => new Promise<void>((done) => setTimeout(done, ms)));
   for (let attempt = 0; ; attempt += 1) {
@@ -218,7 +258,7 @@ export async function writeFileIn(
 }
 
 /**
- * Removes the temp files of writes a crash cut short, under every root, when they are older than
+ * Removes the temp and `.part` files of writes and downloads a crash cut short, under every root, when they are older than
  * `maxAgeMs` (a write in flight is newer). Never follows a symlink; unreadable folders are skipped.
  */
 export async function sweepTempFiles(

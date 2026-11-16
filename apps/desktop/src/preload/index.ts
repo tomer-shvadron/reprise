@@ -68,7 +68,7 @@ function onCloseRequest(listener: () => void): () => void {
 const bridge: RepriseBridge = {
   openFile: (filters) => invoke('file:open', filters),
   saveFile: (suggestedName, bytes, filters) => invoke('file:save', suggestedName, bytes, filters),
-  readFile: (path) => invoke('file:read', path),
+  readFile: (path, range) => (range ? invoke('file:read', path, range) : invoke('file:read', path)),
   writeFile: (path, bytes) => invoke('file:write', path, bytes),
   openFiles: (filters) => invoke('file:open-many', filters),
   openFolder: (filters) => invoke('folder:open', filters),
@@ -78,6 +78,10 @@ const bridge: RepriseBridge = {
   remove: (path) => invoke('storage:remove', path),
   setRecentSongs: (items) => invoke('menu:set-recent', items),
   setHistoryLabels: (labels) => invoke('menu:set-history', labels),
+  startDownload: (id, url, to, sha256, maxBytes) =>
+    invoke('download:start', id, url, to, sha256, maxBytes),
+  cancelDownload: (id) => invoke('download:cancel', id),
+  onDownloadProgress: (listener) => on('download:progress', listener),
   libraryDir: () => invoke('app:library-dir'),
   dataDir: () => invoke('app:data-dir'),
   print: (options) => (options ? invoke('app:print', options) : invoke('app:print')),

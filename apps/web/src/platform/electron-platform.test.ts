@@ -5,6 +5,13 @@ import { createElectronPlatform } from './electron-platform';
 
 function fakeBridge() {
   const writeFile = vi.fn<RepriseBridge['writeFile']>(() => Promise.resolve(undefined));
+  const startDownload = vi.fn<RepriseBridge['startDownload']>(() => Promise.resolve({ size: 4 }));
+  const cancelDownload = vi.fn<RepriseBridge['cancelDownload']>(() => Promise.resolve(undefined));
+  let listener: ((id: string, loaded: number, total?: number) => void) | undefined;
+  const off = vi.fn(() => {
+    listener = undefined;
+  });
+  const progress = (id: string, loaded: number, total?: number) => listener?.(id, loaded, total);
   const bridge: RepriseBridge = {
     openFile: vi.fn(() => Promise.resolve(undefined)),
     saveFile: vi.fn(() => Promise.resolve(undefined)),
@@ -25,9 +32,15 @@ function fakeBridge() {
     onOpenRecent: vi.fn(() => () => undefined),
     setDocumentEdited: vi.fn(() => Promise.resolve(undefined)),
     confirmClose: vi.fn(() => Promise.resolve(undefined)),
+    startDownload,
+    cancelDownload,
+    onDownloadProgress: vi.fn<RepriseBridge['onDownloadProgress']>((next) => {
+      listener = next;
+      return off;
+    }),
     onCloseRequest: vi.fn(() => () => undefined),
   };
-  return { bridge, writeFile };
+  return { bridge, writeFile, startDownload, cancelDownload, progress, off };
 }
 
 describe('the Electron platform', () => {
@@ -164,5 +177,100 @@ describe('the Electron platform’s file operations', () => {
     expect(bridge.setRecentSongs).toHaveBeenCalledWith([{ id: 's1', title: 'A' }]);
     expect(bridge.onOpenRecent).toHaveBeenCalledWith(listener);
     expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it('passes a read range to the bridge for a path and for a picked file', async () => {
+    const { bridge } = fakeBridge();
+    vi.mocked(bridge.openFiles).mockResolvedValue([
+      { name: 'a.zip', relativePath: 'a.zip', size: 9, path: '/Users/me/a.zip' },
+    ]);
+    const platform = createElectronPlatform(bridge);
+    const [picked] = await platform.openFiles([]);
+
+    await platform.readFile('data/sounds/a.zip', { offset: 1, length: 2 });
+    await picked?.read({ offset: 3, length: 4 });
+    await picked?.read();
+    await platform.readFile('data/a');
+
+    expect(vi.mocked(bridge.readFile).mock.calls).toEqual([
+      ['data/sounds/a.zip', { offset: 1, length: 2 }],
+      ['/Users/me/a.zip', { offset: 3, length: 4 }],
+      ['/Users/me/a.zip'],
+      ['data/a'],
+    ]);
+  });
+
+  describe('download', () => {
+    const request = {
+      url: 'https://example.com/a.zip',
+      to: 'data/sounds/a.zip',
+      sha256: 'a'.repeat(64),
+      maxBytes: 100,
+    };
+
+    it('starts it under a fresh id and forwards only its own progress', async () => {
+      const { bridge, startDownload, progress } = fakeBridge();
+      const seen: [number, number | undefined][] = [];
+      startDownload.mockImplementation((id) => {
+        progress('other', 1, 2);
+        progress(id, 2, 4);
+        return Promise.resolve({ size: 4 });
+      });
+
+      await expect(
+        createElectronPlatform(bridge).download?.({
+          ...request,
+          onProgress: (loaded, total) => seen.push([loaded, total]),
+        }),
+      ).resolves.toEqual({ size: 4 });
+
+      expect(seen).toEqual([[2, 4]]);
+      expect(startDownload.mock.calls[0]?.slice(1)).toEqual([
+        request.url,
+        request.to,
+        request.sha256,
+        100,
+      ]);
+    });
+
+    it('unsubscribes when it ends, by success or failure', async () => {
+      const { bridge, startDownload, off } = fakeBridge();
+      const platform = createElectronPlatform(bridge);
+      const onProgress = vi.fn();
+
+      await platform.download?.({ ...request, onProgress });
+      startDownload.mockRejectedValueOnce(new Error('mismatch'));
+      await expect(platform.download?.({ ...request, onProgress })).rejects.toThrow('mismatch');
+
+      expect(off).toHaveBeenCalledTimes(2);
+    });
+
+    it('cancels through the id when the signal aborts, and rejects with an AbortError', async () => {
+      const { bridge, startDownload, cancelDownload } = fakeBridge();
+      const controller = new AbortController();
+      startDownload.mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            controller.abort();
+            reject(new Error('The download was cancelled'));
+          }),
+      );
+
+      await expect(
+        createElectronPlatform(bridge).download?.({ ...request, signal: controller.signal }),
+      ).rejects.toMatchObject({ name: 'AbortError' });
+
+      expect(cancelDownload).toHaveBeenCalledWith(startDownload.mock.calls[0]?.[0]);
+    });
+
+    it('does not start with a signal that is already aborted', async () => {
+      const { bridge, startDownload } = fakeBridge();
+
+      await expect(
+        createElectronPlatform(bridge).download?.({ ...request, signal: AbortSignal.abort() }),
+      ).rejects.toMatchObject({ name: 'AbortError' });
+
+      expect(startDownload).not.toHaveBeenCalled();
+    });
   });
 });

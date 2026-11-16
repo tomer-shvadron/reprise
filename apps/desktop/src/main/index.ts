@@ -22,6 +22,8 @@ import { APP_INDEX_URL, APP_SCHEME, createAppProtocolHandler } from './app-proto
 import { isAppUrl } from './app-url';
 import { CloseGuard } from './close-guard';
 import { holdQuit, wireCloseGuard } from './close-wiring';
+import { createDownloadManager } from './download';
+import { electronGet } from './electron-http';
 import { readPath, writePath } from './file-io';
 import { registerInvokeHandlers, sendEvent } from './ipc';
 import { menuTemplate } from './menu';
@@ -100,6 +102,8 @@ function ownerWindow(event: IpcMainInvokeEvent): BrowserWindow {
   return window;
 }
 
+const downloads = createDownloadManager({ roots: storageRoots, get: electronGet });
+
 registerInvokeHandlers(
   {
     'file:open': async (event, filters) => {
@@ -119,7 +123,7 @@ registerInvokeHandlers(
       access.grant(result.filePath);
       return result.filePath;
     },
-    'file:read': (_event, path) => readPath(path, access, storageRoots),
+    'file:read': (_event, path, range) => readPath(path, access, storageRoots, range),
     'file:write': async (_event, path, bytes) => {
       await writePath(path, bytes, access, storageRoots);
       return undefined;
@@ -181,6 +185,44 @@ registerInvokeHandlers(
     'menu:set-history': (_event, labels) => {
       historyLabels = labels;
       applyMenu();
+      return Promise.resolve(undefined);
+    },
+    'download:start': async (event, id, url, to, sha256, maxBytes) => {
+      const contents = event.sender;
+      const owner = contents.id;
+      // The window closing or reloading ends its downloads: nobody is left to answer them.
+      const abandon = () => {
+        downloads.cancel(owner, id);
+      };
+      contents.once('destroyed', abandon);
+      contents.once('did-navigate', abandon);
+      try {
+        return await downloads.start({
+          owner,
+          id,
+          url,
+          to,
+          sha256,
+          maxBytes,
+          onProgress: (loaded, total) => {
+            if (!contents.isDestroyed()) {
+              sendEvent(
+                contents,
+                'download:progress',
+                id,
+                loaded,
+                ...(total === undefined ? [] : [total]),
+              );
+            }
+          },
+        });
+      } finally {
+        contents.removeListener('destroyed', abandon);
+        contents.removeListener('did-navigate', abandon);
+      }
+    },
+    'download:cancel': (event, id) => {
+      downloads.cancel(event.sender.id, id);
       return Promise.resolve(undefined);
     },
     'app:library-dir': () => Promise.resolve(libraryDir),

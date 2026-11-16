@@ -23,6 +23,9 @@ function fakeBridge(): RepriseBridge {
     onOpenRecent: vi.fn(() => () => undefined),
     setDocumentEdited: vi.fn(() => Promise.resolve(undefined)),
     confirmClose: vi.fn(() => Promise.resolve(undefined)),
+    startDownload: vi.fn(() => Promise.resolve({ size: 0 })),
+    cancelDownload: vi.fn(() => Promise.resolve(undefined)),
+    onDownloadProgress: vi.fn(() => () => undefined),
     onCloseRequest: vi.fn(() => () => undefined),
   };
 }
