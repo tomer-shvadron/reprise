@@ -119,7 +119,7 @@ describe('the sampler sink fills select', () => {
       sink.noteOn(event(hammered, hammer, 0.5));
     };
     const voicing: Voicing = { sets: {}, legatoTrigger: true };
-    const withVoicing = await run(regions, { voicingOf: () => voicing }, play);
+    const withVoicing = await run(regions, { voicingFor: () => voicing }, play);
     expect(toneLevel(withVoicing, 440, 0.05, 0.3)).toBeGreaterThan(0.05);
     expect(toneLevel(withVoicing, 770, 0.55, 0.8)).toBeGreaterThan(0.05);
     expect(toneLevel(withVoicing, 440, 0.55, 0.8)).toBeLessThan(0.001);

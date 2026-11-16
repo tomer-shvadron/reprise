@@ -563,13 +563,13 @@ end of a legato chain (the chain's first voice carries the release) and the let-
 it sets it false on earlier strikes and on every grace note. A note with no
 release regions gets the plain voice handle as before, so GM playback is unchanged.
 
-`createSamplerSink(sampler, { deadNote?, instrumentOf?, voicingOf? })` is the scheduler's `InstrumentSink` over the sampler,
+`createSamplerSink(sampler, { deadNote?, instrumentOf?, voicingFor? })` is the scheduler's `InstrumentSink` over the sampler,
 with the articulation layer described under [Articulations](#articulations). Every strike also
 carries `NoteOnRequest.select`: `sequence` counts the notes struck so far per track, region map, layer
 and key (a stop, pause or seek starts it over, so a repeat from the same start rotates the same way),
 `random` is a hash of the note's id, its pass of the sequence and the strike's index (no
 `Math.random`, so an offline render repeats exactly), and `legato` is set on a hammer-on or
-pull-off when `voicingOf(track)` says the track's default map has `trigger=legato` regions. A track
+pull-off when `voicingFor(track)` says the track's default map has `trigger=legato` regions. A track
 with no voicing, every General MIDI track, plays as before. The counter is per key and layer, not
 per region as in sfizz (which advances one counter per region on every note-on in its key range,
 so a scale run inside one multi-key region rotates its takes; here each new key starts at take 1).
@@ -1178,7 +1178,7 @@ type `ArticulationSet`. They are the keys of `PackAssignment.entries`: `entries.
 file of the pack that plays the set, and a key outside the list is ignored. A pack can also
 declare a set as a labelled keyswitch layer of its default file, and `articulationSetOf(label)`
 maps an `sw_label` to a set (`Palm Mute` to `palmMute`, `Hammer-on` to `legato`, `Sustain` to
-`default`), or to `undefined`. The sink takes what a track's pack has from `voicingOf(track)`, a
+`default`), or to `undefined`. The sink takes what a track's pack has from `voicingFor(track)`, a
 `Voicing`: `sets`, `{ instrument?, layer? }` per set, and `legatoTrigger`. The contract is these
 types and hooks; the engine's table and the note-to-set mapping are WP-093's next PRs.
 `syntheticGuitarPack()` in `@reprise/audio/testing` is the reference guitar they are tested on: a

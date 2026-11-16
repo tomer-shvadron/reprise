@@ -25,7 +25,7 @@ export interface SamplerSinkOptions {
    * What the track's sample pack offers beyond its default instrument; `undefined`, or no
    * resolver, is a track with none (General MIDI), which plays as it always did.
    */
-  voicingOf?: (track: Track) => Voicing | undefined;
+  voicingFor?: (track: Track) => Voicing | undefined;
 }
 
 /** What one `NoteEvent` hands every strike it plays, its grace notes included. */
@@ -259,7 +259,7 @@ export function createSamplerSink(
       const secondsPerTick = event.durationTicks > 0 ? event.duration / event.durationTicks : 0;
       const { graces, delay } = placeGraces(event, secondsPerTick, sampler.context.currentTime);
       const pass: Pass = {
-        voicing: options.voicingOf?.(track),
+        voicing: options.voicingFor?.(track),
         sequenceIndex: event.sequenceIndex,
       };
       for (const grace of graces) play(track.id, grace, pass, false);
