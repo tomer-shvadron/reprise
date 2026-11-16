@@ -1,5 +1,5 @@
-import { expect, test } from './test/app';
-import { generated } from './test/scores';
+import { expect, test } from '../player/test/app';
+import { generated } from '../player/test/scores';
 
 // New song is reached from the palette here: browsers keep Ctrl+N and ⌘N for themselves.
 test('New song replaces a modified song, and tracks are added, moved and removed with undo', async ({
