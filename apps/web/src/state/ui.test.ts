@@ -129,5 +129,7 @@ describe('ui store screens and panel views', () => {
     store.getState().showPanelView('effects');
     expect(store.getState().rightPanelView).toBe('effects');
     expect(store.getState().panels.rightPanel).toBe(true);
+    store.getState().showPanelView('history');
+    expect(store.getState().rightPanelView).toBe('history');
   });
 });

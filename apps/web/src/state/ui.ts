@@ -27,9 +27,9 @@ export type ScreenId = 'player' | 'library' | 'sounds';
 
 /**
  * What the right panel shows; the mixer is the default and the trainer tools and the effects
- * palette (WP-082) take turns with it.
+ * palette (WP-082) and the history panel (WP-084) take turns with it.
  */
-export type PanelView = 'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'effects';
+export type PanelView = 'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'effects' | 'history';
 
 /** What the bottom region shows, one view at a time; the live fretboard (WP-074) is the first. */
 export type BottomPanelView = 'fretboard';
