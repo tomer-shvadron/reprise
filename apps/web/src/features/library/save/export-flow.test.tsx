@@ -103,6 +103,29 @@ describe('Export as Guitar Pro', () => {
     expect(saveFile).toHaveBeenCalledTimes(2);
   });
 
+  it('does not remember "Don’t warn again" when the picker is cancelled', async () => {
+    const { library, saveFile, inLibrary, run, user } = setup();
+    await inLibrary();
+    saveFile.mockResolvedValueOnce(undefined);
+    let done = Promise.resolve();
+    act(() => {
+      done = run();
+    });
+    await user.click(
+      await screen.findByRole('checkbox', { name: 'Don’t warn again for this song' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Export' }));
+    await done;
+    expect((await library.repo.all())[0]?.exportAcknowledged).toBeUndefined();
+    act(() => {
+      done = run();
+    });
+    // Asked again: nothing was exported, so nothing was accepted.
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    await done;
+  });
+
   it('asks again when a kind of loss is new', async () => {
     const { library, saveFile, inLibrary, run, user } = setup();
     await inLibrary();

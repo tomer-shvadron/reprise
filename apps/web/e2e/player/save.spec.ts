@@ -92,7 +92,7 @@ test('Save writes an imported .gp to its library copy and leaves the original al
   expect(await app.readStored('song.gp')).toEqual(original);
 });
 
-test('Save on a .gp5 opened without importing becomes Save As, and says why', async ({
+test('Save on a .gp5 opened without importing becomes Save As, and the notice goes once it wrote', async ({
   app,
   page,
 }) => {
@@ -103,11 +103,10 @@ test('Save on a .gp5 opened without importing becomes Save As, and says why', as
   const name = 'chords.reprise';
   const before = await app.writeCount(name);
   await page.keyboard.press('ControlOrMeta+s');
-  await expect(
-    page.getByText(/can't write Guitar Pro 5 files, so Save became Save As/),
-  ).toBeVisible();
 
   await app.waitForWrite(name, before);
+  // The notice that said why Save became Save As is gone: that Save As has written.
+  await expect(page.getByText(/so Save became Save As/)).toHaveCount(0);
   expect(await app.saves()).toEqual([
     {
       suggestedName: name,

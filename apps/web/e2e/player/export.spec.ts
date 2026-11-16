@@ -12,7 +12,9 @@ test('Export as Guitar Pro writes a .gp copy, remembers the warning, and leaves 
   await app.pick('export-full.reprise');
   await page.keyboard.press('ControlOrMeta+o');
   await app.waitReady();
-  // The import lands a moment after the file opens; the row is what carries the remembered choice.
+  // The import lands a moment after the file opens; the row (written after the files) is what
+  // carries the remembered choice, so the checkbox needs it, not only the native file.
+  await expect.poll(() => app.songRows()).toBe(1);
   await expect.poll(() => app.listStored('library/songs')).toHaveLength(1);
   const [native] = await app.listStored('library/songs');
   const nativePath = `library/songs/${native ?? ''}`;

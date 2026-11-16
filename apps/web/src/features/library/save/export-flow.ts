@@ -6,6 +6,7 @@ import type { Platform } from '@/platform/platform';
 
 import type { SongsRepository } from '../db/repository';
 import type { SongRow } from '../db/rows';
+import { safeName } from '../import/safe-name';
 
 /** What the export dialog shows while it waits for the user. */
 export interface ExportPrompt {
@@ -74,27 +75,31 @@ export function createExporter(deps: ExportFlowDeps): () => Promise<void> {
     if (!score || running) return;
     running = true;
     const base = score.meta.title.trim() || (file ? file.name.replace(/\.[^.]*$/, '') : '');
-    const name = `${base === '' ? 'Untitled' : base}.gp`;
+    const name = `${safeName(base === '' ? 'Untitled' : base)}.gp`;
     try {
       const { bytes, dropped } = await write(withViewNotation(score, view.notation), 'gp');
       const row = songId === undefined ? undefined : await repo.get(songId);
       const acknowledged = row?.exportAcknowledged ?? [];
+      let remember: { row: SongRow; codes: string[] } | undefined;
       if (dropped.length > 0 && !allAcknowledged(dropped, acknowledged)) {
         const answer = await ask({ fileName: name, dropped, canRemember: row !== undefined });
         if (answer.choice === 'cancel') return;
-        if (answer.remember && row) {
-          const next = [...new Set([...acknowledged, ...codesOf(dropped)])];
-          try {
-            if (await repo.update(row.id, { exportAcknowledged: next })) {
-              deps.onUpdated({ ...row, exportAcknowledged: next });
-            }
-          } catch (error) {
-            console.warn('Could not remember the export choice', error);
+        remember = answer.remember && row ? { row, codes: codesOf(dropped) } : undefined;
+      }
+      // A cancelled picker and a browser download both resolve with no path.
+      const path = await platform.saveFile(name, bytes, GP_FILES);
+      // "Don't warn again" is kept only once something was exported: a cancelled picker means the
+      // user has not yet accepted losing anything, so the next export asks again.
+      if (path !== undefined && remember) {
+        const next = [...new Set([...(remember.row.exportAcknowledged ?? []), ...remember.codes])];
+        try {
+          if (await repo.update(remember.row.id, { exportAcknowledged: next })) {
+            deps.onUpdated({ ...remember.row, exportAcknowledged: next });
           }
+        } catch (error) {
+          console.warn('Could not remember the export choice', error);
         }
       }
-      // A cancelled picker and a browser download look the same: nothing more to do.
-      await platform.saveFile(name, bytes, GP_FILES);
     } catch (error) {
       deps.notify(
         `Could not export ${name}: ${error instanceof Error ? error.message : String(error)}`,

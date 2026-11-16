@@ -1,5 +1,5 @@
 import { read, write } from '@reprise/formats';
-import { setTrackProperties, type Id } from '@reprise/model';
+import { newId, setTrackProperties, type Id } from '@reprise/model';
 import { score } from '@reprise/model/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -27,6 +27,7 @@ function setup(
   options: {
     files?: (files: LibraryFiles) => LibraryFiles;
     read?: AppServicesOptions['read'];
+    settled?: (id: Id) => Promise<boolean>;
   } = {},
 ) {
   const storage = createMemoryStorage();
@@ -43,6 +44,8 @@ function setup(
   const repo = createSongsRepository(db);
   const files = (options.files ?? ((f) => f))(createLibraryFiles(services.platform));
   const notices: string[] = [];
+  // Everything ever shown, for what a later Save As cleared again.
+  const notified: string[] = [];
   const settles = { count: 0 };
   const events = { added: [] as SongRow[], updated: [] as SongRow[], joined: [] as Id[] };
   const saver = createLibrarySaver({
@@ -53,11 +56,17 @@ function setup(
     onAdded: (row) => events.added.push(row),
     onUpdated: (row) => events.updated.push(row),
     onJoined: (id) => events.joined.push(id),
-    settled: () => {
+    settled: (id) => {
       settles.count += 1;
-      return Promise.resolve();
+      return options.settled?.(id) ?? Promise.resolve(true);
     },
-    notify: (message) => notices.push(message),
+    clearNotice: () => {
+      notices.length = 0;
+    },
+    notify: (message) => {
+      notices.push(message);
+      notified.push(message);
+    },
   });
   services.document.getState().setSaver(saver);
   const { document } = services;
@@ -94,6 +103,7 @@ function setup(
     writeHandle,
     saveFile,
     notices,
+    notified,
     events,
     edit,
     openSongRow,
@@ -189,7 +199,114 @@ describe('the library saver', () => {
     expect(writeHandle.mock.calls.map(([handle]) => handle)).toEqual(['/m/new.reprise']);
   });
 
-  it('ignores a second Save while the first is looking up its song', async () => {
+  it('writes nothing for a document replaced while Save waited for its import', async () => {
+    let landed: (value: boolean) => void = () => undefined;
+    const waiting = new Promise<boolean>((resolve) => {
+      landed = resolve;
+    });
+    const writeNative = vi.fn<LibraryFiles['writeNative']>(() => Promise.resolve());
+    const { document, repo, storage, writeHandle, edit, openSongRow } = setup({
+      settled: () => waiting,
+      files: (files) => ({ ...files, writeNative }),
+    });
+    const aId = newId();
+    // A: a file just opened, imported in the background (its row is not there yet).
+    const a = await write(song('A'), 'reprise');
+    await document.getState().openBytes('a.reprise', a.bytes, {
+      handle: '/m/a.reprise',
+      songId: aId,
+    });
+    edit('Edited A');
+    const saving = document.getState().save();
+    // The user opens library song B over A, choosing Don't save.
+    const b = await openSongRow(song('B'));
+    const bHandle = document.getState().file?.handle;
+    // A's import lands: its row and native now exist.
+    const rowA = rowOf({ id: aId, title: 'A' });
+    await repo.add(rowA);
+    await storage.calls.writeFile(rowA.nativePath, new Uint8Array([1, 2, 3]));
+    landed(true);
+    await saving;
+    expect(writeNative).not.toHaveBeenCalled();
+    expect(writeHandle).not.toHaveBeenCalled();
+    expect(storage.bytes(rowA.nativePath)).toEqual(new Uint8Array([1, 2, 3]));
+    expect((await repo.get(aId))?.title).toBe('A');
+    expect(document.getState().file?.handle).toBe(bHandle);
+    expect(document.getState().songId).toBe(b.id);
+    expect(document.getState().saving).toBe(false);
+  });
+
+  it('goes to Save As, with a notice, when the import takes too long', async () => {
+    const { document, writeHandle, saveFile, notices, edit } = setup({
+      settled: () => Promise.resolve(false),
+    });
+    const { bytes } = await write(song(), 'reprise');
+    await document.getState().openBytes('slow.reprise', bytes, {
+      handle: '/m/slow.reprise',
+      songId: 'slow',
+    });
+    edit('Lead');
+    await document.getState().save();
+    expect(writeHandle).not.toHaveBeenCalled();
+    expect(saveFile).toHaveBeenCalledOnce();
+    // The Save As wrote, so the notice that explained it is gone again.
+    expect(notices).toEqual([]);
+    expect(document.getState().file?.handle).toBe('/m/Copy.reprise');
+  });
+
+  it('does not hold Save As behind a Save whose import never settles', async () => {
+    const { document, saveFile, edit } = setup({
+      settled: () => new Promise<boolean>(() => undefined),
+    });
+    const { bytes } = await write(song(), 'reprise');
+    await document.getState().openBytes('stuck.reprise', bytes, {
+      handle: '/m/stuck.reprise',
+      songId: 'stuck',
+    });
+    edit('Lead');
+    void document.getState().save();
+    await document.getState().saveAs();
+    expect(saveFile).toHaveBeenCalledOnce();
+    expect(document.getState().dirty).toBe(false);
+  });
+
+  it('gives a second Save the outcome of the first, not an early return', async () => {
+    let landed: (value: boolean) => void = () => undefined;
+    const waiting = new Promise<boolean>((resolve) => {
+      landed = resolve;
+    });
+    const { document, edit } = setup({ settled: () => waiting });
+    const { bytes } = await write(song(), 'reprise');
+    await document
+      .getState()
+      .openBytes('x.reprise', bytes, { handle: '/m/x.reprise', songId: 'x' });
+    edit('Lead');
+    let second = false;
+    const first = document.getState().save();
+    const joined = document
+      .getState()
+      .save()
+      .then(() => {
+        second = true;
+      });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(second).toBe(false);
+    landed(true);
+    await Promise.all([first, joined]);
+    expect(second).toBe(true);
+    expect(document.getState().dirty).toBe(false);
+  });
+
+  it('keeps a title with a slash on the row and makes only the file name safe', async () => {
+    const { document, repo } = setup();
+    document.getState().newDocument(song('AC/DC'));
+    await document.getState().save();
+    const [row] = await repo.all();
+    expect(row).toMatchObject({ title: 'AC/DC', originalName: 'AC_DC.reprise' });
+    expect(document.getState().file?.name).toBe('AC_DC.reprise');
+  });
+
+  it('joins a second Save to the first while it looks up its song', async () => {
     const writeNative = vi.fn<LibraryFiles['writeNative']>(() => Promise.resolve());
     const { document, openSongRow, edit } = setup({
       files: (files) => ({ ...files, writeNative }),
@@ -201,20 +318,20 @@ describe('the library saver', () => {
   });
 
   it('sends a deleted song to Save As, with a notice, and does not follow its handle', async () => {
-    const { document, writeHandle, saveFile, notices, openSongRow, edit } = setup();
+    const { document, writeHandle, saveFile, notified, openSongRow, edit } = setup();
     const row = await openSongRow();
     document.getState().setSongId(undefined);
     edit('Lead');
     await document.getState().save();
     expect(writeHandle.mock.calls.map(([handle]) => handle)).not.toContain(row.nativePath);
     expect(saveFile).toHaveBeenCalledOnce();
-    expect(notices[0]).toMatch(/no longer in your library, so Save became Save As/);
+    expect(notified[0]).toMatch(/no longer in your library, so Save became Save As/);
     expect(document.getState().file?.handle).toBe('/m/Copy.reprise');
     expect(document.getState().songId).toBeUndefined();
   });
 
   it('sends a gp5 opened without importing to Save As and says why', async () => {
-    const { document, saveFile, notices, edit } = setup({
+    const { document, saveFile, notified, edit } = setup({
       read: () => Promise.resolve({ score: song(), warnings: [] }),
     });
     // The signature of a Guitar Pro 5 file is all `detect` looks at; the stub read supplies the score.
@@ -223,7 +340,7 @@ describe('the library saver', () => {
     edit('Lead');
     await document.getState().save();
     expect(saveFile).toHaveBeenCalledOnce();
-    expect(notices[0]).toMatch(/can't write Guitar Pro 5 files, so Save became Save As/);
+    expect(notified[0]).toMatch(/can't write Guitar Pro 5 files, so Save became Save As/);
     expect(document.getState().file?.name).toBe('Copy.reprise');
   });
 

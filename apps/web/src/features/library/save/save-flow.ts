@@ -9,6 +9,7 @@ import type { LibraryFiles } from '../files';
 import { summarize } from '../import/parse-import';
 import { newSongRow, stem } from '../import/song-row';
 import { LIBRARY_PREFIX } from '../paths';
+import { safeName } from '../import/safe-name';
 
 export interface SaveFlowDeps {
   document: DocumentStore;
@@ -21,8 +22,13 @@ export interface SaveFlowDeps {
   onUpdated(row: SongRow): void;
   /** The document now is this library song: start keeping its session. */
   onJoined(id: Id): void;
-  /** Resolves once the imports running now have finished, so a song being imported has its row. */
-  settled(): Promise<void>;
+  /**
+   * Resolves true once the import of this song (a file just opened) has finished, so it has its
+   * row, and false when that takes too long to wait for. True at once when none is running.
+   */
+  settled(songId: Id): Promise<boolean>;
+  /** Called when the document the notice was about is replaced, or a Save As has completed. */
+  clearNotice?(): void;
   /** Tells the user, without blocking, why Save did something other than they asked. */
   notify(message: string): void;
   write?: typeof writeScore;
@@ -34,6 +40,9 @@ const FORMAT_LABEL: Record<string, string> = {
   gp5: 'Guitar Pro 5',
   gpx: 'Guitar Pro 6',
 };
+
+/** A title as a file name: no folder separators or characters a file system refuses. */
+const fileSafe = (title: string): string => safeName(title);
 
 /** The file's handle is a library path: for a document with no `songId`, a deleted song's. */
 export function pointsIntoLibrary(file: DocumentFile | undefined): boolean {
@@ -107,8 +116,10 @@ export function createLibrarySaver(deps: SaveFlowDeps): Saver {
     if (!mark) return;
     const id = newId();
     const meta = summarize(mark.score);
+    // The row keeps the title as typed ("AC/DC"); only the file name is made safe, so the
+    // document, the row's `originalName` and the next open from the library all agree on it.
     const title = meta.title.trim() === '' ? 'Untitled' : meta.title.trim();
-    const name = `${title}.reprise`;
+    const name = `${fileSafe(title)}.reprise`;
     try {
       const { bytes } = await write(mark.score, 'reprise');
       const savedKey = await contentKey(bytes);
@@ -122,7 +133,7 @@ export function createLibrarySaver(deps: SaveFlowDeps): Saver {
         opened: true,
         hasOriginal: false,
       });
-      const added = { ...row, savedAt: row.importedAt };
+      const added = { ...row, title, savedAt: row.importedAt };
       await files.write(added, bytes, undefined);
       try {
         await repo.add(added);
@@ -143,40 +154,67 @@ export function createLibrarySaver(deps: SaveFlowDeps): Saver {
     }
   };
 
-  // The saver looks the song up before it begins a save, so `saving` is not yet set while it
-  // waits; this keeps a second Save during that wait from starting another.
-  let running = false;
-  const once = async (run: () => Promise<void>) => {
-    if (running) return;
-    running = true;
-    try {
-      await run();
-    } finally {
-      running = false;
-    }
+  // A Save waits on the song lookup and, for a just-opened file, on its import, so `saving` is not
+  // set for a while. A second Save in that time joins the first, so the unsaved dialog's Save
+  // waits for the real outcome instead of seeing a document still dirty and acting as Cancel.
+  let running: Promise<void> | undefined;
+  const joined = (builtin: () => Promise<void>): Promise<void> => {
+    if (running) return running;
+    const run = save(builtin).finally(() => {
+      running = undefined;
+    });
+    running = run;
+    return run;
   };
 
   const saver: Saver = {
-    save: (builtin) => once(() => save(builtin)),
-    saveAs: (builtin) => once(builtin),
+    save: joined,
+    // The built-in begins its own mark and has nothing to look up: it never waits behind a Save.
+    saveAs: async (builtin) => {
+      await builtin();
+      clearExplanation();
+    },
+  };
+
+  // The notice says why Save became Save As; once that Save As has written, it is stale.
+  const clearExplanation = () => {
+    if (!document.getState().dirty) deps.clearNotice?.();
   };
 
   async function save(builtin: () => Promise<void>): Promise<void> {
-    const { songId, file, score } = document.getState();
-    if (!score) return;
-    if (songId !== undefined) {
-      let row = await repo.get(songId);
+    const opened = document.getState();
+    if (!opened.score) return;
+    // The document Save was pressed on. Every await below can outlive it (a song opened over it
+    // from the library, Close), and the lookups and the built-in all act on whatever is open.
+    const documentId = opened.id;
+    const stale = () => document.getState().id !== documentId;
+    if (opened.songId !== undefined) {
+      let row = await repo.get(opened.songId);
+      if (stale()) return;
       // A file just opened is imported in the background: its row lands a moment after the
       // document opens, and Save must not take the file's own path in that gap.
-      if (!row && !pointsIntoLibrary(file)) {
-        await deps.settled();
-        row = await repo.get(songId);
+      let landed = true;
+      if (!row && !pointsIntoLibrary(opened.file)) {
+        landed = await deps.settled(opened.songId);
+        if (stale()) return;
+        row = await repo.get(opened.songId);
+        if (stale()) return;
       }
       if (row) {
         await saveToSong(row);
         return;
       }
+      if (!landed) {
+        // The import is not coming back soon enough: go on as if it had failed, through Save As.
+        const { file } = document.getState();
+        deps.notify(
+          `Adding “${file?.name ?? 'this song'}” to your library is taking too long, so Save became Save As.`,
+        );
+        await document.getState().saveAs();
+        return;
+      }
     }
+    const { file, songId } = document.getState();
     if (file === undefined) {
       await addToLibrary();
       return;
@@ -190,6 +228,7 @@ export function createLibrarySaver(deps: SaveFlowDeps): Saver {
     // follows a library handle, and with no song id it cannot think the handle is a song's.
     if (songId !== undefined) document.getState().setSongId(undefined);
     await builtin();
+    clearExplanation();
   }
   return saver;
 }

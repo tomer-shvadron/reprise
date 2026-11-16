@@ -92,9 +92,9 @@ describe('an edited score exported as gp opens in alphaTab', () => {
   it('with the tempo change, the volume and the notation the edits set', () => {
     expect(loaded.tempo).toBe(120);
     expect(loaded.masterBars[1]?.tempoAutomations.map(({ value }) => value)).toEqual([90]);
-    expect(lead?.playbackInfo.volume).toBe(
-      projectAlphaTab(loaded, ['fretted', 'fretted']).tracks[0]?.volume,
-    );
+    // The edit was 90 of 127; alphaTab keeps controller levels from 0 to 16.
+    expect(lead?.playbackInfo.volume).toBe(Math.round((90 / 127) * 16));
+    expect(bass?.playbackInfo.volume).not.toBe(lead?.playbackInfo.volume);
     expect([lead?.staves[0]?.showTablature, lead?.staves[0]?.showStandardNotation]).toEqual([
       true,
       false,

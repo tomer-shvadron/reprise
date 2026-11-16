@@ -308,8 +308,14 @@ describe('App', () => {
     expect(services.document.getState().file).toBeUndefined();
   });
 
-  it('says why Save became Save As', async () => {
-    const saveFile = vi.fn(() => Promise.resolve('/Users/me/Draft.reprise'));
+  it('says why Save became Save As, until that Save As has written', async () => {
+    let picked: (path: string) => void = () => undefined;
+    const saveFile = vi.fn(
+      () =>
+        new Promise<string | undefined>((resolve) => {
+          picked = resolve;
+        }),
+    );
     const { services, send } = renderApp(fakePlatform({ saveFile }));
     act(() => {
       // A handle into the library with no song: the song was deleted.
@@ -331,6 +337,11 @@ describe('App', () => {
       await screen.findByText(/no longer in your library, so Save became Save As/),
     ).toBeVisible();
     expect(saveFile).toHaveBeenCalledOnce();
+    await act(async () => {
+      picked('/Users/me/Draft.reprise');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(screen.queryByText(/so Save became Save As/)).toBeNull();
   });
 
   it('drops native menu commands while a modal is open', async () => {

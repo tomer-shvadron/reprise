@@ -306,6 +306,36 @@ export class App {
     return Uint8Array.from(bytes);
   }
 
+  /** How many songs the library database holds; the row lands after the song's files do. */
+  async songRows(): Promise<number> {
+    return this.page.evaluate(
+      () =>
+        new Promise<number>((resolve) => {
+          const open = indexedDB.open('reprise');
+          open.onerror = () => {
+            resolve(0);
+          };
+          open.onsuccess = () => {
+            const db = open.result;
+            if (!db.objectStoreNames.contains('songs')) {
+              db.close();
+              resolve(0);
+              return;
+            }
+            const count = db.transaction('songs').objectStore('songs').count();
+            count.onsuccess = () => {
+              db.close();
+              resolve(count.result);
+            };
+            count.onerror = () => {
+              db.close();
+              resolve(0);
+            };
+          };
+        }),
+    );
+  }
+
   /** The names in an origin-private folder (`library/songs`); empty when it does not exist yet. */
   async listStored(path: string): Promise<string[]> {
     return this.page.evaluate(async (folder) => {
