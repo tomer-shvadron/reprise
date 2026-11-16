@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import type { Region } from '../sampler/region-map';
+import { keyScaledTime, type Region } from '../sampler/region-map';
 import { Sf2ParseError, parseSf2, type Sf2File } from './parse';
 import { formatSampleRef, parseSampleRef } from './sample-ref';
 import { Sf2Soundfont } from './soundfont';
@@ -153,6 +153,12 @@ describe('Sf2Soundfont regions', () => {
     expect(high?.filter?.envelope).toMatchObject({ cents: -1200, delay: 0, sustain: 0.5 });
     expect(high?.filter?.envelope?.attack).toBeCloseTo(ms, 12);
     expect(high?.filter?.envelope?.decay).toBeCloseTo(ms * 0.5, 12);
+    // keynumToModEnvHold 50 and keynumToModEnvDecay -100 ride on the envelope, not on per-key
+    // regions: the zone is one region and the voice scales the values at key 60.
+    expect(high?.filter?.envelope?.holdPerKey).toBe(50);
+    expect(high?.filter?.envelope?.decayPerKey).toBe(-100);
+    expect(high?.filter?.envelope?.hold).toBeCloseTo(ms, 12);
+    expect(high?.keyHi).toBeGreaterThan(high?.keyLo ?? 127);
     // 60 cB of resonance over FluidSynth's Butterworth floor.
     expect(high?.filter?.q).toBeCloseTo(6 - 3.0103, 9);
     // Half of the 6 dB peak comes off the DC gain.
@@ -223,25 +229,29 @@ describe('Sf2Soundfont regions', () => {
     expect(font.preset(0, 25)?.report.unsupported['modEnvToPitch']).toBe(1);
   });
 
-  it('expands key-scaled hold and decay into one region per key, exactly', () => {
-    const regions = regionsOf(0, 25).filter((region) => region.keyLo >= 60 && region.keyHi <= 63);
-    expect(regions.map((region) => [region.keyLo, region.keyHi])).toEqual([
-      [60, 60],
-      [61, 61],
-      [62, 62],
-      [63, 63],
-    ]);
-    for (const region of regions) {
-      const key = region.keyLo;
-      expect(region.rootKey).toBe(key);
-      expect(region.tune).toBe(100 * (key - 60) + 5 - 7);
-      expect(region.envelope.hold).toBeCloseTo(2 ** ((-2400 + 100 * (60 - key)) / 1200), 12);
-      expect(region.envelope.decay).toBeCloseTo(
+  it('carries key-scaled hold and decay on one region, scaled per key at note-on, exactly', () => {
+    const regions = regionsOf(0, 25).filter((region) => region.keyLo <= 60 && region.keyHi >= 63);
+    expect(regions).toHaveLength(1);
+    const region = regions[0];
+    if (!region) throw new Error('No region');
+    // The zone is one region over its whole range, tuned from its root key like any other.
+    expect(region.keyHi).toBeGreaterThan(region.keyLo);
+    expect(region.rootKey).toBe(60);
+    expect(region.tune).toBe(5 - 7);
+    // Hold and decay are the values at key 60; the factors ride along in timecents per key.
+    expect(region.envelope.holdPerKey).toBe(100);
+    expect(region.envelope.decayPerKey).toBe(-50);
+    for (const key of [36, 60, 63, 84]) {
+      expect(keyScaledTime(region.envelope.hold, region.envelope.holdPerKey, key)).toBeCloseTo(
+        2 ** ((-2400 + 100 * (60 - key)) / 1200),
+        12,
+      );
+      expect(keyScaledTime(region.envelope.decay, region.envelope.decayPerKey, key)).toBeCloseTo(
         (2 ** ((1200 - 50 * (60 - key)) / 1200) * 30) / 100,
         12,
       );
     }
-    expect(font.preset(0, 25)?.report.keyExpanded).toBe(1);
+    expect(font.preset(0, 25)?.report.keyExpanded).toBe(0);
   });
 
   it('reports the generators the Region cannot carry instead of approximating them', () => {
