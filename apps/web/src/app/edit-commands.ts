@@ -36,6 +36,7 @@ export function editCommands(services: Pick<AppServices, 'document'>): EditComma
   return [
     {
       id: 'edit.undo',
+      searchTitle: 'Undo',
       get title() {
         return titled('Undo');
       },
@@ -44,6 +45,7 @@ export function editCommands(services: Pick<AppServices, 'document'>): EditComma
     },
     {
       id: 'edit.redo',
+      searchTitle: 'Redo',
       get title() {
         return titled('Redo');
       },
@@ -52,6 +54,7 @@ export function editCommands(services: Pick<AppServices, 'document'>): EditComma
     },
     {
       id: 'edit.redoAlternate',
+      searchTitle: 'Redo',
       get title() {
         return titled('Redo');
       },
