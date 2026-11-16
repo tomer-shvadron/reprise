@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { LossDialog } from '@/app/loss-dialog';
@@ -6,37 +7,52 @@ import { useAppServices } from '@/app/services-context';
 type Answer = 'save' | 'discard' | 'cancel';
 
 /**
- * Asks Save, Don't save or Cancel before something replaces the open document. Reusable by Open
- * and Close (WP-061): `action` completes "Save changes to “name” before …?", `onContinue` runs when
- * the way is clear and `onCancel` when it is not. Save continues only when the document is clean
- * afterwards, so a cancelled Save As or a failed write stops everything where it stood.
+ * Asks Save, Don't save or Cancel before something replaces the open document; start it with
+ * `whenSaved`. `action` completes "Save changes to “name” before …?", `onContinue` runs when the
+ * way is clear and `onCancel` when it is not, each at most once. Save continues only when the
+ * document is not modified afterwards, so a cancelled Save As or a failed write stops everything
+ * where it stood. While the save runs every button and Escape are off, so no answer can race it.
  */
 export function UnsavedChangesDialog({
   action,
   onContinue,
   onCancel,
+  onCloseAutoFocus,
 }: {
   action: string;
   onContinue: () => void;
   onCancel: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
   const { document } = useAppServices();
   const name = useStore(document, (state) => state.file?.name) ?? 'Untitled';
+  const [saving, setSaving] = useState(false);
+  const settled = useRef(false);
+
+  const finish = (proceed: boolean) => {
+    if (settled.current) return;
+    settled.current = true;
+    if (proceed) onContinue();
+    else onCancel();
+  };
 
   const choose = (answer: Answer) => {
-    if (answer === 'cancel') {
-      onCancel();
-    } else if (answer === 'discard') {
-      onContinue();
-    } else {
+    if (saving || settled.current) return;
+    if (answer === 'cancel') finish(false);
+    else if (answer === 'discard') finish(true);
+    else {
+      setSaving(true);
       void document
         .getState()
         .save()
-        .then(() => {
-          const { dirty, error } = document.getState();
-          if (dirty || error !== undefined) onCancel();
-          else onContinue();
-        });
+        .then(
+          () => {
+            finish(!document.getState().dirty);
+          },
+          () => {
+            finish(false);
+          },
+        );
     }
   };
 
@@ -51,7 +67,9 @@ export function UnsavedChangesDialog({
         { value: 'save', label: 'Save', primary: true },
       ]}
       cancel="cancel"
+      busy={saving}
       onChoose={choose}
+      {...(onCloseAutoFocus && { onCloseAutoFocus })}
     />
   );
 }

@@ -2,7 +2,7 @@ import { createEmptyScore } from '@reprise/model';
 
 import type { AppServices } from '@/app/services';
 
-import { dialogsOf } from './dialogs';
+import { whenSaved } from './when-saved';
 
 export type NewSongServices = Pick<AppServices, 'document' | 'ui' | 'editing'>;
 
@@ -16,17 +16,7 @@ export function createNewSong(services: NewSongServices): void {
 
 /** File > New Song: asks first when the open document has unsaved changes. */
 export function startNewSong(services: NewSongServices): void {
-  if (!services.document.getState().dirty) {
+  whenSaved(services, 'starting a new song', () => {
     createNewSong(services);
-    return;
-  }
-  dialogsOf(services)
-    .getState()
-    .open({
-      kind: 'unsaved',
-      action: 'starting a new song',
-      onContinue: () => {
-        createNewSong(services);
-      },
-    });
+  });
 }

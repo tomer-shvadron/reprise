@@ -8,6 +8,7 @@ import { createTestServices, fakePlatform } from '@/test/services';
 
 import { EditorDialogs } from './editor-dialogs';
 import { startNewSong } from './new-song';
+import { whenSaved } from './when-saved';
 import { bandScore } from './test/tracks';
 
 function setup(
@@ -144,5 +145,101 @@ describe('New song', () => {
     });
     expect(trackNames(services)?.[0]).toBe('Edited');
     expect(services.document.getState().dirty).toBe(true);
+  });
+
+  describe('while Save is in flight', () => {
+    async function saving() {
+      let release: (path: string | undefined) => void = () => undefined;
+      const env = setup(
+        () =>
+          new Promise<string | undefined>((resolve) => {
+            release = resolve;
+          }),
+      );
+      env.dirty();
+      env.start();
+      await env.user.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => {
+        expect(env.services.document.getState().savePrompt).toBeDefined();
+      });
+      act(() => {
+        env.services.document.getState().answerSavePrompt('reprise');
+      });
+      await waitFor(() => {
+        expect(env.services.document.getState().saving).toBe(true);
+        expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+      });
+      return { ...env, release };
+    }
+
+    it('disables every button and ignores Escape, so no answer can race the write', async () => {
+      const { services, user, release } = await saving();
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Don’t save' })).toBeDisabled();
+      await user.keyboard('{Escape}');
+      expect(screen.getByRole('dialog', { name: 'Unsaved changes' })).toBeInTheDocument();
+      expect(trackNames(services)?.[0]).toBe('Edited');
+      await act(async () => {
+        release('/m/Untitled.reprise');
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(trackNames(services)).toEqual(['Guitar']);
+      });
+    });
+
+    it('starts exactly one new song', async () => {
+      const { services, release } = await saving();
+      const changes: (string | undefined)[] = [];
+      services.document.subscribe((state, previous) => {
+        if (state.id !== previous.id) changes.push(state.id);
+      });
+      await act(async () => {
+        release('/m/Untitled.reprise');
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(trackNames(services)).toEqual(['Guitar']);
+      });
+      expect(changes).toHaveLength(1);
+    });
+  });
+
+  it('is not stopped by an error left over from an earlier failure', async () => {
+    const { services, dirty, start, user } = setup();
+    act(() => {
+      services.document.getState().failOpen('old.gp', 'could not open');
+    });
+    dirty();
+    start();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      expect(services.document.getState().savePrompt).toBeDefined();
+    });
+    act(() => {
+      services.document.getState().answerSavePrompt('reprise');
+    });
+    await waitFor(() => {
+      expect(trackNames(services)).toEqual(['Guitar']);
+    });
+  });
+});
+
+describe('whenSaved', () => {
+  it('continues at once on a clean document and asks on a dirty one, once', async () => {
+    const { services, dirty, user } = setup();
+    const onContinue = vi.fn();
+    act(() => {
+      whenSaved(services, 'closing', onContinue);
+    });
+    expect(onContinue).toHaveBeenCalledOnce();
+    dirty();
+    act(() => {
+      whenSaved(services, 'closing', onContinue);
+    });
+    expect(screen.getByRole('dialog')).toHaveTextContent('before closing?');
+    expect(onContinue).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole('button', { name: 'Don’t save' }));
+    expect(onContinue).toHaveBeenCalledTimes(2);
   });
 });
