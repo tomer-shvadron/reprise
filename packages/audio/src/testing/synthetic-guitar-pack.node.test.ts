@@ -7,6 +7,7 @@ import { RegionMap } from '../sampler/region-map';
 import {
   GUITAR_RELEASE_DECAY,
   GUITAR_ROOT_KEY,
+  GUITAR_SELECTION,
   GUITAR_TONES,
   syntheticGuitarPack,
 } from './synthetic-guitar-pack';
@@ -80,5 +81,29 @@ describe('syntheticGuitarPack', () => {
     ]);
     await expect(pack.files.read('missing.wav')).rejects.toThrow('No file missing.wav');
     expect(pack.reads.get('missing.wav')).toBe(1);
+  });
+
+  it('adds the velocity, round-robin and legato regions only when asked, outside the layers', async () => {
+    const plain = await load();
+    const pack = syntheticGuitarPack({ selection: true });
+    const { regions, report } = await loadSfz('default.sfz', pack.files.read.bind(pack.files), {
+      packId: 'guitar',
+    });
+    expect(isClean(report)).toBe(true);
+    expect(report.unsupported).toEqual({});
+    const map = new RegionMap(regions);
+    const { velocity, sequence, random, legato } = GUITAR_SELECTION;
+    expect(map.resolveAll(velocity.key, 10).map((r) => r.sample)).toHaveLength(1);
+    expect(map.candidates(sequence.key, 100).filter((r) => !r.trigger)).toHaveLength(3);
+    expect(map.candidates(random.key, 100).filter((r) => !r.trigger)).toHaveLength(3);
+    expect(map.resolveAll(legato.key, 100, undefined, { legato: true })[0]?.trigger).toBe('legato');
+    expect(map.resolveRelease(sequence.key, 100)).toHaveLength(1);
+    // Nothing a pack without them plays moves: the same regions at the layers' own keys.
+    const base = new RegionMap(plain.regions);
+    const sample = (m: RegionMap) =>
+      m.resolveAll(GUITAR_ROOT_KEY, 100, 'sw:25').map((r) => r.sample);
+    expect(sample(map)).toEqual(sample(base));
+    expect(plain.pack.entries).toEqual(pack.entries);
+    expect(pack.layers).toEqual(plain.pack.layers);
   });
 });
