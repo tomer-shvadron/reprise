@@ -1,4 +1,4 @@
-import { checkPack, checkSfzFile } from '@reprise/audio';
+import { articulationSetOf, checkPack, checkSfzFile } from '@reprise/audio';
 import type { PackSnapshot, SfzFileCheck } from '@reprise/audio';
 
 import type { PickedFile, PickedFolder, Platform } from '@/platform/platform';
@@ -265,7 +265,34 @@ const titleOf = (stem: string) =>
     .trim()
     .replace(/^./, (letter) => letter.toUpperCase());
 
-/** Instruments of a custom pack: one per `.sfz` at the root that passes (any that passes if none is at the root). */
+const fileStem = (path: string) => path.slice(path.lastIndexOf('/') + 1).replace(/\.sfz$/i, '');
+
+/**
+ * A stem split into an instrument's stem and the articulation set its tail names (`guitar_pm` is
+ * `guitar` plus `palmMute`; `guitar palm mute` too): the tail is one or two words after the last
+ * separators, the shortest tail that leaves a stem some file has. `undefined` when the tail names
+ * no set, or only the default one.
+ */
+function splitSetSuffix(
+  stem: string,
+  isBase: (base: string) => boolean,
+): { base: string; set: string } | undefined {
+  const separators = [...stem.matchAll(/[ _-]+/g)];
+  for (const separator of separators.slice(-2).reverse()) {
+    const base = stem.slice(0, separator.index);
+    const set = articulationSetOf(stem.slice(separator.index + separator[0].length));
+    if (set !== undefined && set !== 'default' && isBase(base)) return { base, set };
+  }
+  return undefined;
+}
+
+/**
+ * Instruments of a custom pack: one per `.sfz` at the root that passes (any that passes if none is
+ * at the root). A file named as another file's stem plus an articulation tail (`guitar.sfz`,
+ * `guitar_pm.sfz`, `guitar_harm.sfz`) is that instrument's file for the set, not an instrument of
+ * its own; a second file for a set already taken, and a tail whose base is not a passing file, stay
+ * instruments. A keyswitch library in one file needs no grouping: the engine reads its labels.
+ */
 function customInstruments(checks: readonly SfzFileCheck[]): {
   instruments: PackInstrument[];
   problems: string[];
@@ -275,12 +302,27 @@ function customInstruments(checks: readonly SfzFileCheck[]): {
   const instruments: PackInstrument[] = [];
   const keys = new Set<string>();
   const problems: string[] = [];
+  const passing: SfzFileCheck[] = [];
   for (const check of candidates) {
-    if (!passes(check)) {
-      problems.push(...summarizeCheck(check));
-      continue;
-    }
-    const file = check.path.slice(check.path.lastIndexOf('/') + 1).replace(/\.sfz$/i, '');
+    if (passes(check)) passing.push(check);
+    else problems.push(...summarizeCheck(check));
+  }
+  const bases = new Map(passing.map((check) => [fileStem(check.path).toLowerCase(), check.path]));
+  const setFiles = new Map<string, Record<string, string>>();
+  const grouped = new Set<string>();
+  // Path order, so which of two files claims a set does not depend on the archive's order.
+  for (const check of [...passing].sort((a, b) => a.path.localeCompare(b.path))) {
+    const split = splitSetSuffix(fileStem(check.path), (base) => bases.has(base.toLowerCase()));
+    const basePath = split && bases.get(split.base.toLowerCase());
+    if (!split || basePath === undefined || basePath === check.path) continue;
+    const taken = setFiles.get(basePath) ?? {};
+    if (Object.hasOwn(taken, split.set)) continue;
+    setFiles.set(basePath, { ...taken, [split.set]: check.path });
+    grouped.add(check.path);
+  }
+  for (const check of passing) {
+    if (grouped.has(check.path)) continue;
+    const file = fileStem(check.path);
     const base =
       file
         .toLowerCase()
@@ -292,7 +334,7 @@ function customInstruments(checks: readonly SfzFileCheck[]): {
     instruments.push({
       key,
       name: (titleOf(file) || 'Instrument').slice(0, 120),
-      entries: { default: check.path },
+      entries: { ...setFiles.get(check.path), default: check.path },
     });
   }
   return { instruments, problems };

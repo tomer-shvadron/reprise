@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { fakeDownload } from '@/test/services';
 
+import { curatedPack } from './curated-packs';
 import { createSoundPackStore } from './pack-store';
 import {
   folderOf,
@@ -54,6 +55,47 @@ describe('the pack store: scan', () => {
     ).toEqual(['Broken000001', 'NoManifest001', 'WrongFolder01']);
     expect(fresh.get(pack.id)?.instruments.map((i) => i.key)).toEqual(['alt', 'default']);
     expect(await platform.listDir('data/sounds/.staging')).toEqual([]);
+  });
+
+  it("gives an installed curated pack the list's instruments, and notes a listed file it lacks", async () => {
+    const { platform } = testPlatform();
+    const listed = curatedPack('oP2Y6UriacYx');
+    if (!listed) throw new Error('Growlybass is not in the curated list');
+    // The first install's copy: default entries only, and no staccato file in the index.
+    const write = (pack: object) =>
+      platform.writeFile(
+        `data/sounds/${listed.id}/pack.json`,
+        new TextEncoder().encode(JSON.stringify(pack)),
+      );
+    const defaults = listed.instruments.map((i) => ({
+      ...i,
+      entries: { default: i.entries['default'] ?? '' },
+    }));
+    const stored = (skip: string) => ({
+      ...listed,
+      instruments: defaults,
+      curated: true,
+      source: 'download',
+      installedAt: '2026-11-01T00:00:00.000Z',
+      files: [...new Set(defaults.map((i) => i.entries['default']))]
+        .filter((name) => name !== skip)
+        .map((name) => [name, 10]),
+    });
+
+    await write(stored(''));
+    const whole = createSoundPackStore({ platform });
+    await whole.scan();
+    expect(whole.get(listed.id)?.instruments.find((i) => i.key === 'dirty')?.entries).toEqual({
+      default: 'growlybass_dirty.sfz',
+      staccato: 'growlybass_vicious.sfz',
+    });
+    expect(whole.getState().problems).toEqual({});
+
+    await write(stored('growlybass_vicious.sfz'));
+    const lacking = createSoundPackStore({ platform });
+    await lacking.scan();
+    expect(lacking.get(listed.id)?.instruments.map((i) => i.key)).not.toContain('vicious');
+    expect(lacking.getState().problems[listed.id]?.problems).toContain('Dirty: staccato');
   });
 
   it('keeps the source object of an unchanged pack across scans', async () => {

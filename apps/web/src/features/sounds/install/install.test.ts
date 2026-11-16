@@ -110,6 +110,53 @@ describe('installPack: a custom pack', () => {
     });
   });
 
+  describe('groups files named as an instrument plus an articulation', () => {
+    const sfz = '<region> sample=samples/a.wav\n';
+    const install = async (names: string[]) => {
+      const { platform } = testPlatform();
+      const contents = packContents({
+        'default.sfz': null,
+        'alt.sfz': null,
+        ...Object.fromEntries(names.map((name) => [name, sfz])),
+      });
+      const pack = await installPack({
+        platform,
+        id: ID,
+        files: incomingOf(contents),
+        name: 'x',
+        source: 'zip',
+      });
+      return pack.instruments.map((i) => [i.key, i.entries]);
+    };
+
+    it('makes one instrument of guitar.sfz, guitar_pm.sfz and guitar harm.sfz', async () => {
+      expect(await install(['guitar.sfz', 'guitar_pm.sfz', 'guitar harm.sfz'])).toEqual([
+        [
+          'guitar',
+          { default: 'guitar.sfz', palmMute: 'guitar_pm.sfz', harmonic: 'guitar harm.sfz' },
+        ],
+      ]);
+    });
+
+    it('reads a two-word tail, and is case-blind about the stem', async () => {
+      expect(await install(['Bass.sfz', 'bass-palm-mute.sfz'])).toEqual([
+        ['bass', { default: 'Bass.sfz', palmMute: 'bass-palm-mute.sfz' }],
+      ]);
+    });
+
+    it('keeps a file whose base is absent, a default-set tail and a duplicate set as instruments', async () => {
+      const found = await install([
+        'lead.sfz',
+        'lead_pm.sfz',
+        'lead_palm.sfz',
+        'lead_open.sfz',
+        'solo_pm.sfz',
+      ]);
+      expect(found.map(([key]) => key)).toEqual(['lead', 'lead-open', 'lead-pm', 'solo-pm']);
+      expect(found[0]).toEqual(['lead', { default: 'lead.sfz', palmMute: 'lead_palm.sfz' }]);
+    });
+  });
+
   it.each([
     ['a sample file is missing', { 'samples/a.wav': null }],
     ['a sample has a bad header', { 'samples/a.wav': 'not a wav file at all, just text' }],

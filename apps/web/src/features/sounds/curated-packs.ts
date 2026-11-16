@@ -22,6 +22,9 @@ const emilyguitar = karoryfer(
  * download. Ids are fixed, not derived from anything: a song names a pack by id, so changing one
  * orphans every song that uses the pack.
  */
+/** Growlybass keeps its staccato samples in one file of their own, shared by every sound. */
+const STACCATO = 'growlybass_vicious.sfz';
+
 export const CURATED_PACKS: readonly PackManifest[] = [
   {
     schema: 1,
@@ -78,16 +81,36 @@ export const CURATED_PACKS: readonly PackManifest[] = [
     },
     sizeBytes: 190_765_319,
     instruments: [
-      { key: 'dirty', name: 'Dirty', entries: { default: 'growlybass_dirty.sfz' } },
-      { key: 'clean', name: 'Clean', entries: { default: 'growlybass_clean.sfz' } },
+      {
+        key: 'dirty',
+        name: 'Dirty',
+        entries: { default: 'growlybass_dirty.sfz', staccato: STACCATO },
+      },
+      {
+        key: 'clean',
+        name: 'Clean',
+        entries: { default: 'growlybass_clean.sfz', staccato: STACCATO },
+      },
       {
         key: 'vicious',
         name: 'Vicious (staccato)',
         entries: { default: 'growlybass_vicious.sfz' },
       },
-      { key: 'angry', name: 'Angry', entries: { default: 'growlybass_angry.sfz' } },
-      { key: 'excessive', name: 'Excessive', entries: { default: 'growlybass_excessive.sfz' } },
-      { key: 'shifty', name: 'Shifty', entries: { default: 'growlybass_shifty.sfz' } },
+      {
+        key: 'angry',
+        name: 'Angry',
+        entries: { default: 'growlybass_angry.sfz', staccato: STACCATO },
+      },
+      {
+        key: 'excessive',
+        name: 'Excessive',
+        entries: { default: 'growlybass_excessive.sfz', staccato: STACCATO },
+      },
+      {
+        key: 'shifty',
+        name: 'Shifty',
+        entries: { default: 'growlybass_shifty.sfz', staccato: STACCATO },
+      },
     ],
   },
   {
