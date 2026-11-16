@@ -59,14 +59,18 @@ export interface SaveMark {
 
 export type SaveOutcome =
   | {
-      saved: { name: string; format: Format; handle: FileHandle; savedKey: string };
+      saved: { name: string; format: SaveFormat; handle: FileHandle; savedKey: string };
       /** Present (even as undefined) sets or clears `songId`; absent leaves it. */
       songId?: Id | undefined;
     }
   | { failed: unknown; fileName: string }
   | { cancelled: true };
 
-/** Takes over Save and Save As (the library's rules); `builtin` is the store's own path. */
+/**
+ * Takes over Save and Save As (the library's rules); `builtin` is the store's own path. A saver
+ * must not call `builtin` while it holds a mark of its own (the built-in begins one), and must
+ * not call `store.save()` or `store.saveAs()` from inside itself.
+ */
 export interface Saver {
   save(builtin: () => Promise<void>): Promise<void>;
   saveAs(builtin: () => Promise<void>): Promise<void>;
@@ -281,13 +285,17 @@ export function readLosses(warnings: readonly Warning[]): Warning[] {
   );
 }
 
-/** A string handle under `library/` with no `songId` points at a deleted song: no handle at all. */
+/**
+ * `features/library/paths.ts` is the only place that makes `library/` paths (it cannot be
+ * imported here). A string handle under `library/` with no `songId` points at a deleted song, so
+ * the document has no handle at all.
+ */
 function hasUsableHandle(file: DocumentFile | undefined, songId: Id | undefined): boolean {
   if (file?.handle === undefined) return false;
   return !(
     typeof file.handle === 'string' &&
     songId === undefined &&
-    file.handle.replaceAll('\\', '/').startsWith('library/')
+    file.handle.startsWith('library/')
   );
 }
 
@@ -306,6 +314,10 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
   let originalHasMore = true;
   let resolvePrompt: ((answer: SaveAnswer) => void) | undefined;
   let saver: Saver | undefined;
+  // The save in flight, single-use: only its own mark can finish it.
+  let openMark: SaveMark | undefined;
+  // False once an edit follows an undo below the mark's depth: that history point is gone.
+  let markReachable = true;
 
   return create<DocumentState>()((set, get) => {
     const snapshot = (notation: Record<Id, Notation> = get().view.notation) => ({
@@ -351,24 +363,34 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       const { score, saving, view } = get();
       if (!score || saving) return undefined;
       set({ saving: true });
-      return {
+      markReachable = true;
+      openMark = {
         score: withViewNotation(score, view.notation),
         notation: view.notation,
         depth,
         token: documentToken,
       };
+      return openMark;
+    };
+
+    // Frees a mark a failing saver left open, so `saving` cannot stay stuck.
+    const releaseMark = () => {
+      openMark = undefined;
+      if (get().saving) set({ saving: false });
     };
 
     const finishSave = (mark: SaveMark, outcome: SaveOutcome): boolean => {
-      const same = mark.token === documentToken;
-      if (!same) {
+      if (mark !== openMark) return false;
+      openMark = undefined;
+      if (mark.token !== documentToken) {
         set({ saving: false });
         return false;
       }
       if ('saved' in outcome) {
         const { name, format, handle, savedKey } = outcome.saved;
         const { file } = get();
-        savedDepth = mark.depth;
+        // An edit after an undo below the mark made its depth unreachable: still modified.
+        savedDepth = markReachable ? mark.depth : -1;
         savedNotation = mark.notation;
         if (format === 'gp') originalHasMore = false;
         set({
@@ -391,6 +413,16 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
       return true;
     };
 
+    const viaSaver = async (run: () => Promise<void>) => {
+      try {
+        await run();
+      } catch (error) {
+        const { file } = get();
+        set({ error: errorOf('save', file?.name ?? 'Untitled', error) });
+        releaseMark();
+      }
+    };
+
     const builtinSaveAs = async () => {
       const mark = beginSave();
       if (!mark) return;
@@ -407,7 +439,11 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
           mark,
           path === undefined
             ? { cancelled: true }
-            : { saved: { name: lastSegment(path), format: 'reprise', handle: path, savedKey } },
+            : {
+                saved: { name: lastSegment(path), format: 'reprise', handle: path, savedKey },
+                // Save As detaches the document from its library song.
+                songId: undefined,
+              },
         );
       } catch (error) {
         finishSave(mark, { failed: error, fileName: target });
@@ -582,6 +618,7 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
         const applied = history.apply(score, command);
         if (applied.change.patches.length === 0) return applied.warnings;
         if (depth < savedDepth) savedDepth = -1;
+        if (openMark && depth < openMark.depth) markReachable = false;
         depth += 1;
         set((state) => ({
           score: applied.score,
@@ -599,12 +636,12 @@ export function createDocumentStore(deps: DocumentStoreDeps) {
         replay('redo');
       },
 
-      save() {
-        return saver ? saver.save(builtinSave) : builtinSave();
+      async save() {
+        await viaSaver(() => (saver ? saver.save(builtinSave) : builtinSave()));
       },
 
-      saveAs() {
-        return saver ? saver.saveAs(builtinSaveAs) : builtinSaveAs();
+      async saveAs() {
+        await viaSaver(() => (saver ? saver.saveAs(builtinSaveAs) : builtinSaveAs()));
       },
 
       beginSave,

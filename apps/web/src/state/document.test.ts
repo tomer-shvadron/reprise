@@ -904,6 +904,77 @@ describe('document store save primitives', () => {
   });
 });
 
+describe('document store save marks across history moves', () => {
+  const done = () => ({
+    saved: { name: 'a.reprise', format: 'reprise' as const, handle: '/m/a', savedKey: 'k' },
+  });
+  async function begun() {
+    const { store } = setup();
+    await store.getState().openBytes('song.gp5', GP5);
+    store.getState().apply(editOf(store, 5));
+    const mark = store.getState().beginSave();
+    if (!mark) throw new Error('no mark');
+    return { store, mark };
+  }
+
+  it('stays dirty after undo, then a different edit, during the save', async () => {
+    const { store, mark } = await begun();
+    store.getState().undo();
+    store.getState().apply(editOf(store, 7));
+    expect(store.getState().finishSave(mark, done())).toBe(true);
+    expect(store.getState().dirty).toBe(true);
+    expect(store.getState().file).toMatchObject({ name: 'a.reprise' });
+  });
+
+  it('stays dirty after an undo during the save', async () => {
+    const { store, mark } = await begun();
+    store.getState().undo();
+    store.getState().finishSave(mark, done());
+    expect(store.getState().dirty).toBe(true);
+  });
+
+  it('stays dirty after an undo and a redo past nothing, then a further redo', async () => {
+    const { store, mark } = await begun();
+    store.getState().undo();
+    store.getState().redo();
+    store.getState().undo();
+    store.getState().finishSave(mark, done());
+    expect(store.getState().dirty).toBe(true);
+    store.getState().redo();
+    expect(store.getState().dirty).toBe(false);
+  });
+
+  it('stays dirty after a redo during the save', async () => {
+    const { store } = setup();
+    await store.getState().openBytes('song.gp5', GP5);
+    store.getState().apply(editOf(store, 5));
+    store.getState().undo();
+    const mark = store.getState().beginSave();
+    if (!mark) throw new Error('no mark');
+    store.getState().redo();
+    store.getState().finishSave(mark, done());
+    expect(store.getState().dirty).toBe(true);
+  });
+
+  it('is clean when an edit is undone back to the mark during the save', async () => {
+    const { store, mark } = await begun();
+    store.getState().apply(editOf(store, 6));
+    store.getState().undo();
+    store.getState().finishSave(mark, done());
+    expect(store.getState().dirty).toBe(false);
+  });
+
+  it('makes a mark single-use', async () => {
+    const { store, mark } = await begun();
+    expect(store.getState().finishSave(mark, done())).toBe(true);
+    const file = store.getState().file;
+    store.getState().apply(editOf(store, 6));
+    expect(store.getState().finishSave(mark, done())).toBe(false);
+    expect(store.getState().file).toBe(file);
+    expect(store.getState().dirty).toBe(true);
+  });
+});
+
 describe('document store saver', () => {
   it('routes save and saveAs through the installed saver, handing it the built-in', async () => {
     const { store, saveFile } = setup();
@@ -945,6 +1016,33 @@ describe('document store saver', () => {
   });
 });
 
+describe('document store saver failures', () => {
+  it('reports a saver that throws or rejects while holding a mark, and frees saving', async () => {
+    const { store } = setup();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await store.getState().openBytes('song.gp5', GP5);
+    store.getState().setSaver({
+      save: () => {
+        store.getState().beginSave();
+        return Promise.reject(new Error('boom'));
+      },
+      saveAs: () => {
+        store.getState().beginSave();
+        throw new Error('bang');
+      },
+    });
+
+    await store.getState().save();
+    expect(store.getState().error).toMatchObject({ action: 'save', message: 'boom' });
+    expect(store.getState().saving).toBe(false);
+
+    await store.getState().saveAs();
+    expect(store.getState().error).toMatchObject({ message: 'bang' });
+    expect(store.getState().saving).toBe(false);
+    expect(store.getState().beginSave()).toBeDefined();
+  });
+});
+
 describe('document store opening as modified', () => {
   it('stays modified after openBytes with modified, until a save', async () => {
     const { store } = setup();
@@ -970,6 +1068,15 @@ describe('document store opening as modified', () => {
 });
 
 describe('document store library handles', () => {
+  it('detaches from the library song on Save As', async () => {
+    const { store } = setup();
+    await store.getState().openBytes('song.reprise', new TextEncoder().encode('{}'), {
+      songId: 'song-1',
+    });
+    await store.getState().saveAs();
+    expect(store.getState().songId).toBeUndefined();
+  });
+
   it('sends Save on a library/ string handle with no songId to Save As', async () => {
     const { store, saveFile, writeHandle } = setup();
     await store.getState().openBytes('song.reprise', new TextEncoder().encode('{}'), {
