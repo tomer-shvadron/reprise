@@ -122,3 +122,24 @@ export function overfullMessage(bar: number, room: number, needed: number): stri
   if (room < EPSILON) return `Bar ${String(bar)} is full: ${wanted} does not fit`;
   return `Bar ${String(bar)} has ${ticksLabel(room)} left: ${wanted} does not fit`;
 }
+
+/** Every plain and single-dotted value a rest can take, longest first. */
+const REST_VALUES: Rhythm[] = DURATIONS.flatMap((duration) =>
+  ([0, 1] as const).map((dots): Rhythm => ({ duration, dots, tuplet: undefined })),
+).sort((a, b) => rhythmTicks(b) - rhythmTicks(a));
+
+/**
+ * A length in ticks as rests, longest first (a greedy split into plain and dotted values);
+ * undefined when it cannot be written that way, a gap shorter than a 64th or a tuplet's remainder.
+ */
+export function restsFor(ticks: number): Rhythm[] | undefined {
+  const rests: Rhythm[] = [];
+  let left = ticks;
+  while (left > EPSILON) {
+    const next = REST_VALUES.find((rhythm) => rhythmTicks(rhythm) <= left + EPSILON);
+    if (!next) return undefined;
+    rests.push(next);
+    left -= rhythmTicks(next);
+  }
+  return rests;
+}
