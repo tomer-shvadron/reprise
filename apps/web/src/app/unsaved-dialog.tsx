@@ -81,18 +81,21 @@ export function UnsavedChangesHost() {
   const store = unsavedOf(services);
   const request = useStore(store, (state) => state.request);
   if (!request) return null;
-  const close = () => {
-    store.getState().close();
-  };
+  // An answer counts only for the request that asked: one cancelled by a newer request, whose
+  // Save was still running, must neither continue nor close the newer dialog.
+  const current = () => store.getState().request === request;
   return (
     <UnsavedChangesDialog
+      key={request.id}
       action={request.action}
       onContinue={() => {
-        close();
+        if (!current()) return;
+        store.getState().close();
         request.onContinue();
       }}
       onCancel={() => {
-        close();
+        if (!current()) return;
+        store.getState().close();
         request.onCancel?.();
       }}
     />

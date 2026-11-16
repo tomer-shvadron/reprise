@@ -73,6 +73,23 @@ describe('DropZone', () => {
     await importLanded(services);
   });
 
+  it('ignores a drop while a dialog is open', async () => {
+    const { services } = renderWithServices(
+      <>
+        <DropZone />
+        <div role="dialog" data-state="open" />
+      </>,
+    );
+    const file = await riff();
+    const drop = dragEvent('drop', [file]);
+    act(() => {
+      window.dispatchEvent(drop);
+    });
+    // Nothing replaced the document behind the dialog, and no question opened over it.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(services.document.getState().score).toBeUndefined();
+  });
+
   it('imports a single dropped file into the library after opening it', async () => {
     const { services } = renderWithServices(<DropZone />);
     const file = await riff();
