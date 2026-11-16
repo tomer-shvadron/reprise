@@ -2,6 +2,10 @@ import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
+import { mirrorAudio } from '@/test/mirror-audio';
+import { renderWithServices } from '@/test/render';
+import { createTestServices, memoryStorage } from '@/test/services';
+
 import { MixerPanel } from './mixer-panel';
 import { renderTracks, threeTracks } from './test/render-tracks';
 
@@ -25,6 +29,34 @@ describe('MixerPanel', () => {
     master.focus();
     await user.keyboard('{ArrowLeft}');
     expect(services.fakeAudio.setMasterVolume).toHaveBeenLastCalledWith(0.99);
+  });
+
+  it('toggles the GM tier bypass and keeps it as a preference', async () => {
+    const storage = memoryStorage();
+    const services = createTestServices({ storage: () => storage });
+    mirrorAudio(services);
+    renderWithServices(<MixerPanel />, services);
+    const user = userEvent.setup();
+    const bypass = screen.getByRole('switch', { name: 'No effects on GM sounds' });
+    expect(bypass).toBeChecked();
+    await user.click(bypass);
+    expect(services.fakeAudio.setGmTierBypass).toHaveBeenLastCalledWith(false);
+    expect(bypass).not.toBeChecked();
+    // The key is the transport preferences'; a reload reads it back.
+    expect(JSON.parse(storage.getItem('reprise.transport') ?? '{}')).toMatchObject({
+      gmTierBypass: false,
+    });
+    const reloaded = createTestServices({ storage: () => storage });
+    expect(reloaded.fakeAudio.setGmTierBypass).toHaveBeenCalledWith(false);
+  });
+
+  it('lists the effects preset beside the instrument of each track', async () => {
+    const { open, services, user } = setup();
+    await open();
+    const effects = within(strip('Lead')).getByRole('combobox', { name: 'Effects of Lead' });
+    expect(effects).toHaveValue('');
+    await user.selectOptions(effects, 'distortion');
+    expect(services.document.getState().score?.tracks[0]?.sound).toEqual({ preset: 'distortion' });
   });
 
   it('focuses the mixer when it opens', () => {
