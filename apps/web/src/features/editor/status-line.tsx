@@ -9,6 +9,7 @@ import { resolveCursor } from './cursor';
 import type { EntryStore } from './entry-store';
 import { toggleEffectsPanel } from './picker-commands';
 import { rhythmLabel } from './rhythm';
+import { wordLabel } from './word-session';
 
 export interface EditStatusLineProps {
   entry: EntryStore;
@@ -50,7 +51,7 @@ function EffectsButton({ ui }: { ui: UiStore }) {
  */
 export function EditStatusLine({ entry, editing, selection, document, ui }: EditStatusLineProps) {
   const isEditing = useStore(editing, (state) => state.editing);
-  const { rhythm, mode, pending, message, tone } = useStore(entry);
+  const { rhythm, mode, pending, message, tone, word } = useStore(entry);
   const cursor = useStore(selection, (state) => state.cursor);
   const score = useStore(document, (state) => state.score);
   if (!isEditing) return null;
@@ -73,6 +74,7 @@ export function EditStatusLine({ entry, editing, selection, document, ui }: Edit
       className="text-muted-foreground bg-background flex shrink-0 flex-wrap items-center gap-x-2 border-t px-4 py-1 text-xs tabular-nums"
     >
       <span>{parts.join(' · ')}</span>
+      {word && <span className="text-foreground font-medium">{wordLabel(word)}</span>}
       {pending && <span className="text-foreground font-medium">Fret {String(pending.fret)}…</span>}
       {/* Only the message is announced; the position line changes with every key. */}
       <span

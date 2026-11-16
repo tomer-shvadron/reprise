@@ -19,6 +19,8 @@ export type {
   Range,
   Rect,
   StaffPlacement,
+  WordBaselines,
+  WordLane,
   StaffType,
   System,
   TextPrimitive,
