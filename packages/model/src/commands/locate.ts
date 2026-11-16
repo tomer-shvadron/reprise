@@ -99,16 +99,17 @@ export interface NoteSlot extends NoteAt {
 export function indexBeats(score: Score, beatIds: readonly Id[], command: string): Map<Id, BeatAt> {
   const wanted = new Set(beatIds);
   const found = new Map<Id, BeatAt>();
-  if (wanted.size === 0) return found;
-  baseOf(score).tracks.forEach((track, t) => {
-    track.bars.forEach((bar, b) => {
-      bar.voices.forEach((voice, v) => {
-        voice.beats.forEach((beat, i) => {
+  // A walk that stops once the last wanted id is found: a selection near the start is cheap.
+  scan: for (const [t, track] of baseOf(score).tracks.entries()) {
+    for (const [b, bar] of track.bars.entries()) {
+      for (const [v, voice] of bar.voices.entries()) {
+        for (const [i, beat] of voice.beats.entries()) {
+          if (wanted.size === 0) break scan;
           if (wanted.delete(beat.id)) found.set(beat.id, { track: t, bar: b, voice: v, beat: i });
-        });
-      });
-    });
-  });
+        }
+      }
+    }
+  }
   const [missing] = wanted;
   if (missing !== undefined) throw new CommandError(command, 'not-found', `no beat ${missing}`);
   return found;
@@ -122,24 +123,24 @@ export function indexNotes(
 ): Map<Id, NoteSlot> {
   const wanted = new Set(noteIds);
   const found = new Map<Id, NoteSlot>();
-  if (wanted.size === 0) return found;
-  baseOf(score).tracks.forEach((track, t) => {
-    track.bars.forEach((bar, b) => {
-      bar.voices.forEach((voice, v) => {
-        voice.beats.forEach((beat, i) => {
-          const at = { track: t, bar: b, voice: v, beat: i };
-          beat.notes.forEach((note, n) => {
-            if (wanted.delete(note.id)) found.set(note.id, { ...at, note: n });
-          });
-          beat.grace?.forEach((grace, g) => {
-            grace.notes.forEach((note, n) => {
-              if (wanted.delete(note.id)) found.set(note.id, { ...at, grace: g, note: n });
-            });
-          });
-        });
-      });
-    });
-  });
+  scan: for (const [t, track] of baseOf(score).tracks.entries()) {
+    for (const [b, bar] of track.bars.entries()) {
+      for (const [v, voice] of bar.voices.entries()) {
+        for (const [i, beat] of voice.beats.entries()) {
+          if (wanted.size === 0) break scan;
+          const place = { track: t, bar: b, voice: v, beat: i };
+          for (const [n, note] of beat.notes.entries()) {
+            if (wanted.delete(note.id)) found.set(note.id, { ...place, note: n });
+          }
+          for (const [g, grace] of (beat.grace ?? []).entries()) {
+            for (const [n, note] of grace.notes.entries()) {
+              if (wanted.delete(note.id)) found.set(note.id, { ...place, grace: g, note: n });
+            }
+          }
+        }
+      }
+    }
+  }
   const [missing] = wanted;
   if (missing !== undefined) throw new CommandError(command, 'not-found', `no note ${missing}`);
   return found;

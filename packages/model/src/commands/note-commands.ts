@@ -17,6 +17,7 @@ import type { Changes } from './changes';
 import {
   assertFreshId,
   assertNotePlaced,
+  forTarget,
   maxFret,
   parseOrThrow,
   releaseTies,
@@ -24,7 +25,7 @@ import {
 } from './checks';
 import { CommandError } from './command-error';
 import { at, beatAt, findBeat, findBeats, findNotes, indexNotes } from './locate';
-import type { BeatAt } from './locate';
+import type { BeatAt, NoteSlot } from './locate';
 
 export type NoteInput = Pick<Note, 'string' | 'fret'> &
   Partial<Omit<Note, 'id' | 'string' | 'fret'>>;
@@ -114,13 +115,29 @@ export function setNoteEffect(target: { noteId: Id }, effects: Changes<NoteEffec
     run(draft) {
       const [found] = findNotes(draft, [target.noteId], name);
       if (!found) throw new CommandError(name, 'not-found', `no note ${target.noteId}`);
-      const track = at(draft.tracks, found.track, name);
-      const note = at(beatAt(draft, found, name).notes, found.note, name);
-      assignChanges(note, effects);
-      parseOrThrow(NoteSchema, note, name);
-      assertTie(track, found, note, name);
+      applyNoteChanges(draft, found, effects, name);
     },
   };
+}
+
+/** Applies one note's changes on the draft and checks them; shared by the single and batched commands. */
+function applyNoteChanges(
+  draft: Score,
+  slot: NoteSlot,
+  effects: Changes<NoteEffects>,
+  command: string,
+): void {
+  const beat = beatAt(draft, slot, command);
+  if (slot.grace === undefined) {
+    const note = at(beat.notes, slot.note, command);
+    assignChanges(note, effects);
+    parseOrThrow(NoteSchema, note, command);
+    assertTie(at(draft.tracks, slot.track, command), slot, note, command);
+  } else {
+    const note = at(at(beat.grace ?? [], slot.grace, command).notes, slot.note, command);
+    assignChanges(note, effects);
+    parseOrThrow(GraceNoteSchema, note, command);
+  }
 }
 
 export interface NoteEffectEdit {
@@ -153,17 +170,9 @@ export function setNoteEffects(edits: readonly NoteEffectEdit[]): Command {
       for (const { noteId, effects } of edits) {
         const slot = slots.get(noteId);
         if (!slot) throw new CommandError(name, 'not-found', `no note ${noteId}`);
-        const beat = beatAt(draft, slot, name);
-        if (slot.grace === undefined) {
-          const note = at(beat.notes, slot.note, name);
-          assignChanges(note, effects);
-          parseOrThrow(NoteSchema, note, name);
-          assertTie(at(draft.tracks, slot.track, name), slot, note, name);
-        } else {
-          const note = at(at(beat.grace ?? [], slot.grace, name).notes, slot.note, name);
-          assignChanges(note, effects);
-          parseOrThrow(GraceNoteSchema, note, name);
-        }
+        forTarget(`note ${noteId}`, name, () => {
+          applyNoteChanges(draft, slot, effects, name);
+        });
       }
     },
   };

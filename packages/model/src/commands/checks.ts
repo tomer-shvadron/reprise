@@ -128,10 +128,61 @@ export function assertNotePlaced(
   }
 }
 
+/**
+ * Runs one edit of a batch and names its target in a refusal, so a status line can say which of
+ * hundreds of edits failed: the message gains a `label: ` prefix, the code and violations stay.
+ */
+export function forTarget(label: string, command: string, edit: () => void): void {
+  try {
+    edit();
+  } catch (error) {
+    if (!(error instanceof CommandError)) throw error;
+    const own = `${error.command}: `;
+    const message = error.message.startsWith(own) ? error.message.slice(own.length) : error.message;
+    throw new CommandError(command, error.code, `${label}: ${message}`, error.violations);
+  }
+}
+
 export function assertFreshId(score: Score, id: Id, command: string): void {
   if (containsId(baseOf(score), id)) {
     throw new CommandError(command, 'duplicate-id', `id ${id} is already used`);
   }
+}
+
+/**
+ * `assertFreshId` for many ids at once: one walk builds the set of ids the score already uses,
+ * then every id is checked against it and against the others, so a batch costs one scan rather
+ * than one per id. Refuses with `duplicate-id`, as a chain of single commands would.
+ */
+export function assertFreshIds(score: Score, ids: readonly Id[], command: string): void {
+  if (ids.length === 0) return;
+  const used = idsOf(baseOf(score));
+  for (const id of ids) {
+    if (used.has(id)) {
+      throw new CommandError(command, 'duplicate-id', `id ${id} is already used`);
+    }
+    used.add(id);
+  }
+}
+
+function idsOf(score: Score): Set<Id> {
+  const ids = new Set<Id>([score.id]);
+  for (const masterBar of score.masterBars) ids.add(masterBar.id);
+  for (const track of score.tracks) {
+    ids.add(track.id);
+    for (const bar of track.bars) {
+      ids.add(bar.id);
+      for (const voice of bar.voices) {
+        ids.add(voice.id);
+        for (const beat of voice.beats) {
+          ids.add(beat.id);
+          for (const note of beat.notes) ids.add(note.id);
+          for (const grace of beat.grace ?? []) for (const note of grace.notes) ids.add(note.id);
+        }
+      }
+    }
+  }
+  return ids;
 }
 
 function containsId(score: Score, id: Id): boolean {

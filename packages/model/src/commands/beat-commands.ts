@@ -11,13 +11,15 @@ import { assignChanges } from './changes';
 import type { Changes } from './changes';
 import {
   assertFreshId,
+  assertFreshIds,
   assertNotePlaced,
   assertTrackValid,
+  forTarget,
   parseOrThrow,
   releaseTies,
 } from './checks';
 import { CommandError } from './command-error';
-import { at, beatAt, findBeat, findVoice, indexBeats } from './locate';
+import { at, baseOf, beatAt, findBeat, findVoice, indexBeats } from './locate';
 import type { BeatAt } from './locate';
 
 export type BeatInput = Partial<Omit<Beat, 'id'>>;
@@ -35,15 +37,12 @@ function graceNotes(grace: readonly GraceBeat[] | undefined): Note[] {
 
 /** Notes a command adds get the full placement check, ids included; the count-based check cannot see them as new. */
 function assertNewNotes(draft: Score, track: Track, notes: readonly Note[], command: string): void {
-  const ids = new Set<Id>();
-  for (const note of notes) {
-    if (ids.has(note.id)) {
-      throw new CommandError(command, 'duplicate-id', `id ${note.id} is used twice`);
-    }
-    ids.add(note.id);
-    assertFreshId(draft, note.id, command);
-    assertNotePlaced(track, note, command);
-  }
+  assertFreshIds(
+    draft,
+    notes.map((note) => note.id),
+    command,
+  );
+  for (const note of notes) assertNotePlaced(track, note, command);
 }
 
 /** Inserts a beat into a voice at `index`; by default a quarter rest, or a played beat when given notes. */
@@ -132,20 +131,17 @@ export function setBeatRest(target: { beatId: Id }, rest: boolean): Command {
   };
 }
 
-/** Applies one beat's changes on the draft; the caller validates the track afterwards. */
+/** The grace notes `changes` adds to the beat: those whose ids the beat does not already hold. */
+function addedGraceNotes(draft: Score, position: BeatAt, changes: BeatChanges, name: string) {
+  if (!changes.grace) return [];
+  const kept = new Set(graceNotes(beatAt(baseOf(draft), position, name).grace).map((n) => n.id));
+  return graceNotes(changes.grace).filter((note) => !kept.has(note.id));
+}
+
+/** Applies one beat's changes on the draft; the caller checks new ids and validates the track. */
 function applyBeatChanges(draft: Score, position: BeatAt, changes: BeatChanges, name: string) {
-  const track = at(draft.tracks, position.track, name);
   const beat = beatAt(draft, position, name);
   const { effects, ...properties } = changes;
-  if (properties.grace) {
-    const kept = new Set(graceNotes(beat.grace).map((note) => note.id));
-    assertNewNotes(
-      draft,
-      track,
-      graceNotes(properties.grace).filter((note) => !kept.has(note.id)),
-      name,
-    );
-  }
   if (effects) assignChanges(beat.effects, effects);
   assignChanges(beat, properties);
   parseOrThrow(BeatSchema, beat, name);
@@ -157,6 +153,12 @@ export function setBeatEffect(target: { beatId: Id }, changes: BeatChanges): Com
     name,
     run(draft) {
       const position = findBeat(draft, target.beatId, name);
+      assertNewNotes(
+        draft,
+        at(draft.tracks, position.track, name),
+        addedGraceNotes(draft, position, changes, name),
+        name,
+      );
       applyBeatChanges(draft, position, changes, name);
       assertTrackValid(draft, position.track, name);
     },
@@ -189,10 +191,28 @@ export function setBeatEffects(edits: readonly BeatEffectEdit[]): Command {
       }
       const positions = indexBeats(draft, [...seen], name);
       const tracks = new Set<number>();
-      for (const { beatId, changes } of edits) {
+      const added: { track: Track; note: Note }[] = [];
+      const located = edits.map(({ beatId, changes }) => {
         const position = positions.get(beatId);
         if (!position) throw new CommandError(name, 'not-found', `no beat ${beatId}`);
-        applyBeatChanges(draft, position, changes, name);
+        const track = at(draft.tracks, position.track, name);
+        for (const note of addedGraceNotes(draft, position, changes, name)) {
+          added.push({ track, note });
+        }
+        return { beatId, position, changes };
+      });
+      // One walk for every new id across all edits, so a grace array reused on two tracks is
+      // refused as the chain would, and the cost stays proportional to the notes added.
+      assertFreshIds(
+        draft,
+        added.map(({ note }) => note.id),
+        name,
+      );
+      for (const { track, note } of added) assertNotePlaced(track, note, name);
+      for (const { beatId, position, changes } of located) {
+        forTarget(`beat ${beatId}`, name, () => {
+          applyBeatChanges(draft, position, changes, name);
+        });
         tracks.add(position.track);
       }
       for (const track of tracks) assertTrackValid(draft, track, name);
