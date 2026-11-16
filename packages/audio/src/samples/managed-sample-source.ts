@@ -103,6 +103,15 @@ export class ManagedSampleSource implements SampleSource {
   readonly #listeners = new Set<(stats: MemoryReport) => void>();
   readonly #counters: MemoryCounters = { fetches: 0, evictions: 0, pinnedEvictions: 0 };
   #pinned = new Set<InstrumentId>();
+  /** Per planned instrument, the samples an eviction freed and nothing has decoded again. */
+  #missing = new Map<InstrumentId, Set<SampleRef>>();
+  /**
+   * The samples the plan's keys can reach, known once `load` or `warm` has the region maps. Only
+   * these count toward `shortfall`: the warm-up never brings back a sample the song does not play.
+   */
+  #planned: Set<SampleRef> | undefined;
+  /** The plan of the last `switchSong`: what `warm` restores. */
+  #plan: SongPlan | undefined;
   #budget: number;
   #bytes = 0;
   /** Estimated bytes of fetches in flight, reserved so a burst of loads cannot overshoot. */
@@ -165,6 +174,8 @@ export class ManagedSampleSource implements SampleSource {
       decodedBytes: this.#bytes,
       budgetBytes: this.#budget,
       residents: [...this.#residents].sort(),
+      unused: [...this.#residents].filter((instrument) => !this.#pinned.has(instrument)).sort(),
+      shortfall: this.#missing.size > 0,
     };
   }
 
@@ -182,11 +193,17 @@ export class ManagedSampleSource implements SampleSource {
     const plan = planInstruments(score, options);
     this.#generation += 1;
     this.#pinned = new Set(plan.instruments);
+    this.#plan = plan;
+    // An edit that keeps an instrument leaves it evicted; a song that drops it forgets it.
+    for (const instrument of [...this.#missing.keys()]) {
+      if (!this.#pinned.has(instrument)) this.#missing.delete(instrument);
+    }
     // A planned preset whose samples are resident under an alias takes them over, or evicting
     // the alias below would free the samples the new song needs.
     for (const instrument of this.#pinned) {
       if (this.#refsOf.has(instrument)) this.#touch(instrument);
     }
+    this.#planned = undefined;
     for (const instrument of [...this.#residents]) {
       if (!this.#pinned.has(instrument)) this.#evict(instrument);
     }
@@ -201,6 +218,44 @@ export class ManagedSampleSource implements SampleSource {
    */
   evict(instrument: InstrumentId): void {
     this.#evict(instrument);
+  }
+
+  /**
+   * Frees every resident the current song does not plan, or every resident when none is loaded,
+   * and returns how many it freed.
+   */
+  evictUnused(): number {
+    let count = 0;
+    for (const instrument of [...this.#residents]) {
+      if (this.#pinned.has(instrument)) continue;
+      this.#evict(instrument);
+      count += 1;
+    }
+    return count;
+  }
+
+  /**
+   * The background warm-up of `load`, run again over the plan of the last `switchSong`: a raised
+   * budget restores a song whose samples were evicted. It does nothing unless what is missing
+   * fits, and stops at the next song switch.
+   */
+  warm(regionMaps: RegionMaps): void {
+    if (!this.#plan) return;
+    const refs = planSamples(this.#plan, regionMaps);
+    this.#prune(refs);
+    this.#warm(refs, this.#generation);
+  }
+
+  /**
+   * Ends the song's claim on its instruments without freeing them: they become unused residents,
+   * and a warm-up still running for it stops.
+   */
+  unpin(): void {
+    this.#generation += 1;
+    this.#pinned = new Set();
+    this.#plan = undefined;
+    this.#missing.clear();
+    this.#changed();
   }
 
   /** Decodes every sample the plan's keys can reach; rejects if any of them fails to load. */
@@ -220,6 +275,7 @@ export class ManagedSampleSource implements SampleSource {
     const { bars = DEFAULT_PRELOAD_BARS, warm = true, ...planOptions } = options;
     const plan = this.switchSong(score, planOptions);
     const generation = this.#generation;
+    this.#prune(planSamples(plan, regionMaps));
     await this.preload(planInstruments(score, { ...planOptions, bars }), regionMaps);
     if (warm && generation === this.#generation) {
       this.#warm(planSamples(plan, regionMaps), generation);
@@ -258,6 +314,18 @@ export class ManagedSampleSource implements SampleSource {
       if (this.#warming === warming) this.#warming = undefined;
     });
     this.#warming = warming;
+  }
+
+  /** Narrows `shortfall` to samples the song plays, and says so when that clears it. */
+  #prune(refs: readonly SampleRef[]): void {
+    const planned = new Set(refs);
+    this.#planned = planned;
+    const before = this.#missing.size;
+    for (const [instrument, missing] of this.#missing) {
+      for (const ref of missing) if (!planned.has(ref)) missing.delete(ref);
+      if (missing.size === 0) this.#missing.delete(instrument);
+    }
+    if (this.#missing.size !== before) this.#changed();
   }
 
   /** A bad estimate must not reach `#reserved`: one `NaN` there would disable the budget. */
@@ -299,7 +367,14 @@ export class ManagedSampleSource implements SampleSource {
     }
     // With no planned owner every owner is resident, so the buffer always has one to free it.
     const planned = owners.filter((owner) => this.#pinned.has(owner));
-    for (const owner of planned.length > 0 ? planned : owners) this.#touch(owner);
+    for (const owner of planned.length > 0 ? planned : owners) {
+      this.#touch(owner);
+    }
+    for (const owner of owners) {
+      const refs = this.#missing.get(owner);
+      if (!refs?.delete(ref) || refs.size > 0) continue;
+      this.#missing.delete(owner);
+    }
     this.#recent = ref;
     this.#reclaim(owners);
     this.#changed();
@@ -341,6 +416,13 @@ export class ManagedSampleSource implements SampleSource {
       if (!entry || entry.owners.some((owner) => this.#residents.has(owner))) continue;
       this.#free(ref, entry);
       freed = true;
+      // Every planned owner lost the sample, not only the one being evicted.
+      for (const owner of entry.owners) {
+        if (!this.#pinned.has(owner) || (this.#planned && !this.#planned.has(ref))) continue;
+        const refs = this.#missing.get(owner) ?? new Set<SampleRef>();
+        refs.add(ref);
+        this.#missing.set(owner, refs);
+      }
     }
     if (freed) {
       this.#counters.evictions += 1;

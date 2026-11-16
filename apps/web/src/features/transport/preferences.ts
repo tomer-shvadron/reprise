@@ -1,3 +1,7 @@
+import { HQ_BUDGET_BYTES } from '@reprise/audio';
+
+import { MEMORY_BUDGET_RANGE } from '@/state/playback';
+
 // WP-060 moves this key into Dexie's `settings` table.
 export const TRANSPORT_STORAGE_KEY = 'reprise.transport';
 
@@ -7,6 +11,7 @@ export interface TransportPreferences {
   metronome: { on: boolean; volume: number };
   masterVolume: number;
   gmTierBypass: boolean;
+  memoryBudgetBytes: number;
 }
 
 export const DEFAULT_TRANSPORT_PREFERENCES: TransportPreferences = {
@@ -14,6 +19,7 @@ export const DEFAULT_TRANSPORT_PREFERENCES: TransportPreferences = {
   metronome: { on: false, volume: 0.7 },
   masterVolume: 1,
   gmTierBypass: true,
+  memoryBudgetBytes: HQ_BUDGET_BYTES,
 };
 
 const isLevel = (value: unknown): value is number =>
@@ -41,6 +47,7 @@ export function readTransportPreferences(
   const volume = field(metronome, 'volume');
   const masterVolume = field(stored, 'masterVolume');
   const gmTierBypass = field(stored, 'gmTierBypass');
+  const memoryBudgetBytes = field(stored, 'memoryBudgetBytes');
   return {
     countIn: typeof countIn === 'boolean' ? countIn : defaults.countIn,
     metronome: {
@@ -49,6 +56,13 @@ export function readTransportPreferences(
     },
     masterVolume: isLevel(masterVolume) ? masterVolume : defaults.masterVolume,
     gmTierBypass: typeof gmTierBypass === 'boolean' ? gmTierBypass : defaults.gmTierBypass,
+    memoryBudgetBytes:
+      typeof memoryBudgetBytes === 'number' &&
+      Number.isFinite(memoryBudgetBytes) &&
+      memoryBudgetBytes >= MEMORY_BUDGET_RANGE.min &&
+      memoryBudgetBytes <= MEMORY_BUDGET_RANGE.max
+        ? memoryBudgetBytes
+        : defaults.memoryBudgetBytes,
   };
 }
 

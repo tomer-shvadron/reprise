@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createPlaybackStore } from '@/state/playback';
 
-import { createAudioService } from './audio-service';
+import { MEMORY_BUDGET_RANGE, createAudioService } from './audio-service';
 
 const engine = vi.hoisted(() => ({
   previewNote: vi.fn<(...args: unknown[]) => void>(),
   unlock: vi.fn(),
   setGmTierBypass: vi.fn<(on: boolean) => void>(),
+  setMemoryBudget: vi.fn<(bytes: number) => void>(),
+  unloadUnused: vi.fn<() => number>(() => 3),
   setStageBypass: vi.fn<(...args: unknown[]) => void>(),
   load: vi.fn(() => Promise.resolve({ instruments: [] })),
 }));
@@ -21,7 +23,15 @@ vi.mock('@reprise/audio', async (importOriginal) => {
     createAudioEngine: () => ({
       ...engine,
       on: () => () => undefined,
-      memory: () => ({ decodedBytes: 0, budgetBytes: 0, residents: [] }),
+      memory: () => ({
+        decodedBytes: 0,
+        budgetBytes: 0,
+        residents: [],
+        unused: [],
+        shortfall: false,
+      }),
+      setMemoryBudget: engine.setMemoryBudget,
+      unloadUnused: engine.unloadUnused,
       setTempo: vi.fn(),
       setCountIn: vi.fn(),
       setMetronome: vi.fn(),
@@ -191,6 +201,29 @@ describe('AudioService.setGmTierBypass', () => {
     audio.setGmTierBypass(true);
     expect(engine.setGmTierBypass).toHaveBeenLastCalledWith(true);
     expect(playback.getState().settings.gmTierBypass).toBe(true);
+  });
+});
+
+describe('AudioService.setMemoryBudget', () => {
+  const MIB = 1024 * 1024;
+
+  it('seeds the engine from the store, mirrors a change, and rejects a value out of range', async () => {
+    const { audio, playback } = await open();
+    audio.setMemoryBudget(128 * MIB);
+    expect(engine.setMemoryBudget).toHaveBeenCalledWith(128 * MIB);
+    expect(playback.getState().settings.memoryBudgetBytes).toBe(128 * MIB);
+    for (const bad of [MEMORY_BUDGET_RANGE.min - 1, MEMORY_BUDGET_RANGE.max + 1, Number.NaN]) {
+      expect(() => {
+        audio.setMemoryBudget(bad);
+      }).toThrow(RangeError);
+    }
+    expect(playback.getState().settings.memoryBudgetBytes).toBe(128 * MIB);
+    expect(MEMORY_BUDGET_RANGE).toEqual({ min: 64 * MIB, max: 4096 * MIB });
+  });
+
+  it('unloadUnused returns the engine’s count', async () => {
+    const { audio } = await open();
+    expect(audio.unloadUnused()).toBe(3);
   });
 });
 
