@@ -14,7 +14,7 @@ No page hook is needed. Read the status line (`edit-status`), the History region
 
 ## Fixtures
 
-Songs typed in the app, the generated `song.reprise` and `song.gp`, and the committed fixtures only; never `local-tabs/`. Compare a round trip through gp on the fields the flow touched (see `chosenFields` in `round-trip.spec.ts`), not whole scores: a gp file normalises ids and defaults.
+Songs typed in the app, the generated `song.reprise` and `song.gp`, and the committed fixtures only; never `local-tabs/`. Compare round trips with `shapeOf` (musical content, effects included), which holds across gp for a typed riff, and name by hand what it does not see, such as the repeats (`chosenFields` in `round-trip.spec.ts`). If a comparison breaks, narrow it to the differing fields and write them down; never widen it to pass.
 
 ## Specs
 

@@ -23,9 +23,10 @@ function riff(): Riff {
 }
 
 /**
- * What the chain must keep: each note's place and the effects it was given, and the bar lines'
- * repeats. Not the whole score, which a gp file normalises (ids, defaults, the track's name):
- * the fields the WP-086 chain touches are compared and nothing else.
+ * The fields the chain's own steps set, named so the test can say what each step did: the effects
+ * on each note, and the bar lines' repeats, which `shapeOf` does not look at. `shapeOf` holds
+ * across gp for this riff (it already covers every note field), so it is the whole-score
+ * comparison; this adds the repeats and the readable expectations on S1.
  */
 function chosenFields(score: Score) {
   const [track] = score.tracks;
@@ -56,7 +57,6 @@ test('A song typed in the app takes effects, bars and a paste, survives undo and
   app,
   page,
 }) => {
-  test.setTimeout(90_000);
   const r = riff();
   const status = page.getByTestId('edit-status');
   const history = page.getByRole('region', { name: 'History' });
@@ -193,30 +193,24 @@ test('A song typed in the app takes effects, bars and a paste, survives undo and
   await expect(rows.nth(1)).toHaveAttribute('aria-current', 'step');
   await rows.last().click();
   await expect(rows.last()).toHaveAttribute('aria-current', 'step');
-  expect(chosenFields(await saveToLibrary())).toEqual(marked);
+  // Native to native: the whole score, effects included, is held to S1.
+  expect(shapeOf(await saveToLibrary())).toEqual(shapeOf(s1));
 
   // 9. Export as Guitar Pro. A dialog lists what a gp file cannot keep; none of it is ours.
   await page.locator('body').focus();
   await page.keyboard.press('ControlOrMeta+Shift+e');
   const exportDialog = page.getByRole('dialog', { name: /^Export .+\.gp\?$/ });
-  await expect
-    .poll(async () => (await app.saves()).length > 0 || (await exportDialog.isVisible()))
-    .toBe(true);
-  if (await exportDialog.isVisible()) {
-    const lost = await exportDialog
-      .getByRole('list', { name: 'What will be lost' })
-      .getByRole('listitem')
-      .allTextContents();
-    expect(lost.join('\n')).not.toMatch(/palm|hammer|vibrato|bend|accent|repeat/i);
-    await exportDialog.getByRole('button', { name: 'Export', exact: true }).click();
-  }
+  // This riff loses nothing in gp, so there is no loss dialog: the file is written straight away.
   await expect.poll(async () => (await app.saves()).length).toBe(1);
+  await expect(exportDialog).toHaveCount(0);
   const [save] = await app.saves();
   const name = save?.suggestedName ?? '';
   expect(name).toMatch(/\.gp$/);
   await expect.poll(() => app.writeCount(name)).toBeGreaterThan(0);
   const exported = (await read(await app.readStored(name), 'gp')).score;
-  expect(chosenFields(exported)).toEqual(marked);
+  expect(exported.tracks).toHaveLength(s1.tracks.length);
+  expect(shapeOf(exported)).toEqual(shapeOf(s1));
+  expect(chosenFields(exported).repeats).toEqual(marked.repeats);
 
   // 10. The export opened again: the same six bars, and the import (written to the library on
   // open) holds the same fields.
@@ -232,5 +226,7 @@ test('A song typed in the app takes effects, bars and a paste, survives undo and
   await expect.poll(() => app.songRows()).toBe(2);
   const reopened = (await read(await app.readStoredPath(`library/songs/${imported}`), 'reprise'))
     .score;
-  expect(chosenFields(reopened)).toEqual(marked);
+  expect(reopened.tracks).toHaveLength(s1.tracks.length);
+  expect(shapeOf(reopened)).toEqual(shapeOf(s1));
+  expect(chosenFields(reopened).repeats).toEqual(marked.repeats);
 });

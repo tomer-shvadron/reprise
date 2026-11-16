@@ -6,15 +6,12 @@ import { expect, type App } from '../../player/test/app';
 /**
  * Runs a palette command and returns once the keys reach the page, or the dialog the command
  * opened, again. Radix keeps the palette mounted through its close animation, with its input
- * focused, where the dispatcher leaves bare keys to the field: that input must be gone and
- * unfocused first.
+ * focused, where the dispatcher leaves bare keys to the field: that input must be gone first.
+ * Not `getByRole('combobox')`: the dialogs a command opens hold `<select>` comboboxes of their own.
  */
 export async function palette(app: App, text: string): Promise<void> {
   await app.palette(text);
   await expect(app.page.locator('[cmdk-input]')).toHaveCount(0);
-  await expect
-    .poll(() => app.page.evaluate(() => document.activeElement?.hasAttribute('cmdk-input')))
-    .toBe(false);
 }
 
 /**
