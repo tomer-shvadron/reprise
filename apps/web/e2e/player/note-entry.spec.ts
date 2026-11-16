@@ -19,8 +19,14 @@ test('A sixteen-bar riff is entered from the keyboard alone, one undo step per e
   const bars = r.bars;
   expect(bars).toHaveLength(16);
   const status = page.getByTestId('edit-status');
+  // The palette closes with its input focused, where editor shortcuts do not apply.
+  const palette = async (text: string) => {
+    await app.palette(text);
+    await expect(page.getByRole('combobox')).toBeHidden();
+    await page.locator('body').focus();
+  };
 
-  await app.palette('New song');
+  await palette('New song');
   await app.waitReady();
   await app.gesture();
   await page.keyboard.press('ControlOrMeta+e');
@@ -29,11 +35,8 @@ test('A sixteen-bar riff is entered from the keyboard alone, one undo step per e
   let heard = false;
   for (const step of r.steps) {
     if ('toggleInsert' in step) {
-      await app.palette('Toggle insert mode');
+      await palette('Toggle insert mode');
       await expect(status).toContainText(step.toggleInsert);
-      // The palette closes with its input focused, where editor shortcuts do not apply.
-      await expect(page.getByRole('combobox')).toBeHidden();
-      await page.locator('body').focus();
       continue;
     }
     await page.keyboard.press(step.press);
