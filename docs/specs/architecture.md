@@ -214,7 +214,7 @@ interface Track {
   program: number; bank: number; // GM program 0..127 and bank 0..16383; on drums, program is the GM2 kit
   channel: { volume; pan; chorus; reverb; phaser; tremolo: number; mute: boolean; solo: boolean };   // 0..127, pan 64 = centre
   display: { notation: 'tab' | 'standard' | 'both'; clef?: Clef; octaveShift: number };   // clef absent = treble, percussion on drums; octaveShift: written minus sounding, in octaves (1 fretted, 0 otherwise)
-  sound?: { packId?: Id; preset?: string };       // HQ tier assignment; absent = the GM tier plays `program`; preset is an effects-preset id, opaque to the model, valid without packId, unknown = automatic (#234)
+  sound?: { packId?: Id; preset?: string };       // the sound choice: optional HQ packId, optional effects preset; with no packId the GM tier plays `program`; preset is an effects-preset id, opaque to the model, valid without packId, unknown = automatic (#234)
   lyrics: { startBar: number; text: string }[];   // the raw Guitar Pro block, up to LYRIC_LINES (5); startBar is 0-based
   bars: Bar[];                   // one per master bar, same order
 }
@@ -531,7 +531,7 @@ interface AudioEngine {
   setSoundfont(font: Sf2Soundfont): void;                        // the GM bank, fetched by the app
   unload(options?: { evict?: boolean }): void;                   // ends the song
   setMasterVolume(volume: number): void;
-  setGmTierBypass(on: boolean): void;                            // default on: the GM tier skips its effects stages, an explicit sound.preset still applies (#234)
+  setGmTierBypass(on: boolean): void;                            // default on: only the automatic preset is skipped on GM-tier tracks, a known sound.preset still applies (#234)
   setStageBypass(trackId: Id, stage: EffectStage, bypassed: boolean): void;   // a session override like setTrack: not saved, kept through edits, cleared by unload (#234)
   previewTrack(id: Id, params: { volume?; pan? }): void;         // a slider being dragged, no override
   outputLatency(): number;
@@ -541,7 +541,7 @@ interface AudioEngine {
 
 The scheduler drives an `InstrumentSink` (`noteOn(NoteEvent)`, optional `mix(MixEvent)`, `allNotesOff(when)`, optional `dispose()`), which the sampler implements. The events' fields and timing rules are in `packages/audio/src/sink.ts`, explained in `packages/audio/README.md`, "The `InstrumentSink` contract".
 
-Changed by #234 (2026-11-16): `AudioEngine` gains `setGmTierBypass(on)` (default on) and `setStageBypass(trackId, stage, bypassed)`, and `@reprise/audio` exports the pure `resolveEffects`, `presetFamilyOf` and `EFFECT_PRESETS`. `Track.sound.preset` is an effects-preset id, opaque to the model, valid without `packId`; an unknown id means automatic. A `sound` change that touches only `preset` is timeline-neutral (ADR-0024). The web app's `AudioService` passes `setGmTierBypass` through and keeps it in `settings.gmTierBypass`, persisted with the transport preferences.
+Changed by #234 (2026-11-16): `AudioEngine` gains `setGmTierBypass(on)` (default on) and `setStageBypass(trackId, stage, bypassed)`, and `@reprise/audio` exports the pure `resolveEffects`, `presetFamilyOf`, `EFFECT_PRESETS` and `EFFECT_PRESET_IDS`, and the types `EffectPresetId`, `EffectStage`, `EffectFamily`, `ResolvedEffects` and `ResolveContext`. `Track.sound.preset` is an effects-preset id, opaque to the model, valid without `packId`; an unknown id means automatic. A `sound` change that touches only `preset` is timeline-neutral (ADR-0024). The web app's `AudioService` passes `setGmTierBypass` through and keeps it in `settings.gmTierBypass`, persisted with the transport preferences.
 
 Internals: a lookahead scheduler on the main thread (schedule ~200 ms ahead on a 25 ms timer), a voice pool with per-voice gain and detune automation, region maps produced by the SF2 and SFZ loaders, an LRU cache of decoded buffers under the memory budget, per-track channel strips with an effects chain, a master bus.
 

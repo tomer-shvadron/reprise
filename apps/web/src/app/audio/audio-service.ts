@@ -88,8 +88,8 @@ export interface AudioService {
    */
   setMasterVolume(volume: number): void;
   /**
-   * Whether the GM tier skips its effects stages, mirrored into `settings.gmTierBypass`; on by
-   * default. A track's own `sound.preset` applies either way.
+   * Whether the automatic preset is skipped on GM-tier tracks, mirrored into
+   * `settings.gmTierBypass`; on by default. A track's known `sound.preset` applies either way.
    */
   setGmTierBypass(on: boolean): void;
   /** A user override over the track's channel, kept through every baseline reset. */

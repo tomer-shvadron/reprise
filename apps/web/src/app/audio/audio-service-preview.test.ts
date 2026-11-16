@@ -46,8 +46,8 @@ async function open(
   defer: (run: () => void) => void = (run) => {
     run();
   },
+  playback = createPlaybackStore(),
 ) {
-  const playback = createPlaybackStore();
   const audio = createAudioService({
     playback,
     loadSoundfont: () => Promise.resolve(new Uint8Array(1)),
@@ -182,10 +182,12 @@ describe('AudioService.previewNote', () => {
 
 describe('AudioService.setGmTierBypass', () => {
   it('reaches the engine on creation, from the store, and on change', async () => {
-    const { audio, playback } = await open();
-    expect(engine.setGmTierBypass).toHaveBeenCalledWith(true);
-    audio.setGmTierBypass(false);
-    expect(engine.setGmTierBypass).toHaveBeenLastCalledWith(false);
-    expect(playback.getState().settings.gmTierBypass).toBe(false);
+    const seeded = createPlaybackStore();
+    seeded.setState({ settings: { ...seeded.getState().settings, gmTierBypass: false } });
+    const { audio, playback } = await open(undefined, seeded);
+    expect(engine.setGmTierBypass).toHaveBeenCalledWith(false);
+    audio.setGmTierBypass(true);
+    expect(engine.setGmTierBypass).toHaveBeenLastCalledWith(true);
+    expect(playback.getState().settings.gmTierBypass).toBe(true);
   });
 });

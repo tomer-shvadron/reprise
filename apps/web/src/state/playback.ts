@@ -28,7 +28,10 @@ export interface TransportSettings {
   metronome: { on: boolean; volume: number };
   /** The output level, 0 to 1, over notes and clicks alike; the mixer (WP-052) binds it too. */
   masterVolume: number;
-  /** The GM tier skips its effects stages; on by default, since the soundfont's samples are already processed. */
+  /**
+   * Only the automatic preset is skipped on GM-tier tracks; on by default, since the soundfont's
+   * samples are already processed. A track's known `sound.preset` applies either way.
+   */
   gmTierBypass: boolean;
 }
 
