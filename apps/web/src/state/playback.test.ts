@@ -1,4 +1,4 @@
-import { GM_BUDGET_BYTES } from '@reprise/audio';
+import { GM_BUDGET_BYTES, HQ_BUDGET_BYTES } from '@reprise/audio';
 import { describe, expect, it } from 'vitest';
 
 import { createPlaybackStore, selectCanPlay, selectRunning } from './playback';
@@ -23,6 +23,7 @@ describe('the playback store', () => {
       metronome: { on: false, volume: 0.7 },
       masterVolume: 1,
       gmTierBypass: true,
+      memoryBudgetBytes: HQ_BUDGET_BYTES,
     });
     expect(state.mixer).toEqual({});
     expect(state.instrumentLoads).toEqual({});

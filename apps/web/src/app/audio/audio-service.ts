@@ -63,6 +63,8 @@ export interface AudioServiceDebug {
 
 export type { PreviewNote, PreviewOptions };
 
+/** The "Memory for sounds" setting, in bytes: 64 MiB to 4 GiB. */
+export const MEMORY_BUDGET_RANGE = { min: 64 * 1024 * 1024, max: 4 * 1024 * 1024 * 1024 } as const;
 export const PREVIEW_VELOCITY_RANGE = { min: 1, max: 127 } as const;
 export const PREVIEW_SECONDS_RANGE = { min: 0.05, max: 5 } as const;
 const MAX_FRET = 127;
@@ -108,6 +110,14 @@ export interface AudioService {
    * `settings.gmTierBypass`; on by default. A track's known `sound.preset` applies either way.
    */
   setGmTierBypass(on: boolean): void;
+  /**
+   * "Memory for sounds": the HQ tier's budget, which also caps the GM tier's at 80 MiB, mirrored
+   * into `settings.memoryBudgetBytes` and `memory.budgetBytes`. Lowering it evicts at once and
+   * raising it decodes the open song again. Throws a `RangeError` outside `MEMORY_BUDGET_RANGE`.
+   */
+  setMemoryBudget(bytes: number): void;
+  /** Frees the instruments the open song does not use (`memory.unused`); returns how many. */
+  unloadUnused(): number;
   /**
    * Bypasses one stage of a track's effects chain, or restores it, for the session: nothing is
    * saved, and the engine clears it when the song unloads. For the Sounds screen's demo.
@@ -176,15 +186,15 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     defer = (run) => setTimeout(run, 0),
   } = options;
 
+  const initial = playback.getState().settings;
   const engine = createAudioEngine({
     context: createContext,
     budgetBytes,
-    ...(options.hqBudgetBytes !== undefined && { hqBudgetBytes: options.hqBudgetBytes }),
+    hqBudgetBytes: options.hqBudgetBytes ?? initial.memoryBudgetBytes,
     ...(options.scheduler && { scheduler: options.scheduler }),
     ...(options.frames && { frames: options.frames }),
     ...(options.startLatency !== undefined && { startLatency: options.startLatency }),
   });
-  const initial = playback.getState().settings;
   engine.setTempo(initial.tempo.mode, initial.tempo.value);
   engine.setCountIn(initial.countIn);
   engine.setMetronome(initial.metronome.on, initial.metronome.volume);
@@ -617,6 +627,26 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     setGmTierBypass(on) {
       engine.setGmTierBypass(on);
       setSettings({ gmTierBypass: on });
+    },
+
+    setMemoryBudget(bytes) {
+      if (
+        !Number.isFinite(bytes) ||
+        bytes < MEMORY_BUDGET_RANGE.min ||
+        bytes > MEMORY_BUDGET_RANGE.max
+      ) {
+        throw new RangeError(
+          `setMemoryBudget: ${String(bytes)} is outside ${String(MEMORY_BUDGET_RANGE.min)} to ${String(MEMORY_BUDGET_RANGE.max)} bytes`,
+        );
+      }
+      engine.setMemoryBudget(bytes);
+      setSettings({ memoryBudgetBytes: bytes });
+      // Without a sound bank the engine has no source to announce the new budget.
+      set({ memory: engine.memory() });
+    },
+
+    unloadUnused() {
+      return engine.unloadUnused();
     },
 
     setStageBypass(trackId, stage, bypassed) {

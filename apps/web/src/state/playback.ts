@@ -1,6 +1,7 @@
 import {
   DEFAULT_CLICK_SETTINGS,
   GM_BUDGET_BYTES,
+  HQ_BUDGET_BYTES,
   type ClickSettings,
   type LoopEvent,
   type MemoryReport,
@@ -33,6 +34,11 @@ export interface TransportSettings {
    * samples are already processed. A track's known `sound.preset` applies either way.
    */
   gmTierBypass: boolean;
+  /**
+   * "Memory for sounds" in bytes, the engine's memory setting: the HQ tier's budget, and a cap on
+   * the GM tier's. `MEMORY_BUDGET_RANGE` bounds it; the default is the HQ budget.
+   */
+  memoryBudgetBytes: number;
 }
 
 /** A mirror of the audio service: only the service writes it, through `setState`. */
@@ -113,6 +119,7 @@ export function initialPlaybackState(): PlaybackStoreState {
       metronome: { on: false, volume: 0.7 },
       masterVolume: 1,
       gmTierBypass: true,
+      memoryBudgetBytes: HQ_BUDGET_BYTES,
     },
     click: { running: false, settings: DEFAULT_CLICK_SETTINGS },
     mixer: {},
