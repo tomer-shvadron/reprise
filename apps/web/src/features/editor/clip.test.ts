@@ -123,7 +123,7 @@ describe('copyClip', () => {
 describe('planCut', () => {
   const built = clipboardScore();
 
-  it('removes the beats of a range as one undo step and leaves the bar unfilled', () => {
+  it('replaces the beats of a range with rests of the same length, as one undo step', () => {
     const plan = planCut(built, {
       ...none,
       range: beatsRange(built, { first: 0, bar: 0, from: 1, to: 2 }),
@@ -131,12 +131,37 @@ describe('planCut', () => {
     if ('refused' in plan) throw new Error(plan.refused);
     const history = createHistory();
     const after = history.apply(built, plan.command).score;
-    expect(after.tracks[0]?.bars[0]?.voices[0]?.beats.map(({ notes }) => notes[0]?.fret)).toEqual([
-      1, 4,
+    const beats = after.tracks[0]?.bars[0]?.voices[0]?.beats ?? [];
+    // Two quarters are one half rest, so the last beat still starts on beat 4.
+    expect(beats.map(({ rest, notes }) => (rest ? 'rest' : notes[0]?.fret))).toEqual([
+      1,
+      'rest',
+      4,
     ]);
+    expect(beats.map(({ duration }) => duration)).toEqual([4, 2, 4]);
     expect(history.steps).toHaveLength(1);
     expect(history.undoLabel).toBe('cutBeats');
     expect(after.masterBars).toHaveLength(built.masterBars.length);
+  });
+
+  it('puts a rest like each beat where it cuts a tuplet no plain rests can fill', () => {
+    const triplets = (() => {
+      const b = score().track('guitar');
+      b.bar()
+        .beat('8t', [note(1, 1)])
+        .beat('8t', [note(1, 2)])
+        .beat('8t', [note(1, 3)]);
+      return b.build({ ids: 'sequential' });
+    })();
+    const plan = planCut(triplets, {
+      ...none,
+      range: beatsRange(triplets, { first: 0, bar: 0, from: 1, to: 1 }),
+    });
+    if ('refused' in plan) throw new Error(plan.refused);
+    const after = createHistory().apply(triplets, plan.command).score;
+    const beats = after.tracks[0]?.bars[0]?.voices[0]?.beats ?? [];
+    expect(beats.map(({ rest }) => rest)).toEqual([false, true, false]);
+    expect(beats[1]?.tuplet).toEqual({ n: 3, of: 2 });
   });
 
   it('empties the bars of a bars range in its tracks and keeps the bars', () => {

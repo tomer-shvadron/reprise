@@ -126,14 +126,14 @@ describe('the clipboard events', () => {
     expect(clipboardOf(services).get()).toBeDefined();
   });
 
-  it('cut empties the beats as one step and puts them on the clipboard', async () => {
+  it('cut replaces the beats with rests as one step and puts them on the clipboard', async () => {
     const { services, score, frets } = await setup();
     services.selection.getState().setEdit({ range: selectFirstTwo(score()) });
     const steps = services.document.getState().revision;
     const { event, data } = fire('cut');
     expect(event.defaultPrevented).toBe(true);
     expect(parseClip(must(data.get('text/plain')))).toBeDefined();
-    expect(frets(0, 0)).toEqual([3, 4]);
+    expect(frets(0, 0)).toEqual([undefined, 3, 4]);
     expect(services.document.getState().revision).toBe(steps + 1);
     expect(services.document.getState().undoLabel).toBe('cutBeats');
     expect(services.selection.getState().range).toBeUndefined();
@@ -153,6 +153,36 @@ describe('the clipboard events', () => {
       message: 'Bar 3 has an eighth left: a half does not fit',
       tone: 'refusal',
     });
+  });
+
+  it('a refused copy or cut leaves the event, and so the system clipboard, alone', async () => {
+    const { services, goTo } = await setup();
+    goTo(0, 3, 0);
+    for (const type of ['copy', 'cut'] as const) {
+      const { event, clipboardData } = fire(type);
+      expect(event.defaultPrevented).toBe(false);
+      expect(clipboardData.setData).not.toHaveBeenCalled();
+    }
+    expect(services.entry.getState().tone).toBe('refusal');
+  });
+
+  it('after a palette fallback, a paste of the older system text takes the newer internal clip', async () => {
+    const { services, registry, goTo, frets } = await setup();
+    const { data } = fire('copy');
+    const old = must(data.get('text/plain'));
+    goTo(0, 0, 1);
+    Object.defineProperty(document, 'execCommand', { value: () => false, configurable: true });
+    act(() => {
+      void must(registry.get('editor.copy')).run();
+    });
+    goTo(0, 3, 0);
+    fire('paste', old);
+    expect(frets(0, 3)).toEqual([2]);
+    // Text from elsewhere is still the system clipboard's to give.
+    const other = serializeClip(must(clipboardOf(services).get()));
+    expect(other).not.toBe(old);
+    goTo(0, 3, 1);
+    fire('paste', old.replace('"fret":1', '"fret":1'));
   });
 
   it('is left to the browser with edit mode off, a text selection, a modal or a text field', async () => {
@@ -196,6 +226,7 @@ describe('the clipboard events', () => {
     const typed = fire('paste', serializeClip(must(clipboardOf(services).get())), input);
     expect(typed.event.defaultPrevented).toBe(false);
     expect(fire('copy', '', input).event.defaultPrevented).toBe(false);
+    expect(fire('cut', '', input).event.defaultPrevented).toBe(false);
     expect(score()).toBe(before);
   });
 

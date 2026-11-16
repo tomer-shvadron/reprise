@@ -56,6 +56,18 @@ const ids = (built: Score): Set<Id> => {
   return found;
 };
 
+/** One guitar track, one bar of eighths with these notes. */
+function guitarWith(
+  notes: ReturnType<typeof note>[][],
+  track: { capo?: number } = {},
+  spec: Parameters<ReturnType<typeof score>['beat']>[2] = {},
+): Score {
+  const b = score().track('guitar', track);
+  const bar = b.bar();
+  for (const chord of notes) bar.beat('8', chord, spec);
+  return b.build({ ids: 'sequential' });
+}
+
 const first = (built: Score) => beatsRange(built, { first: 0, bar: 0, from: 0, to: 1 });
 
 describe('paste of beats', () => {
@@ -192,9 +204,10 @@ describe('paste of beats', () => {
   });
 
   it('appends the bars it needs past the end, in the same step', () => {
+    // Bar 2's two quarters and bar 3's first two beats, from the start of a bar: 5 6 | 7 8.
     const wide = clipOf(built, {
       cursor: undefined,
-      range: beatsRange(built, { first: 0, bar: 0, lastBar: 1, from: 2, to: 1 }),
+      range: beatsRange(built, { first: 0, bar: 1, lastBar: 2, from: 0, to: 1 }),
     });
     const state = { cursor: cursorAt(built, 0, 4, 0), range: undefined };
     const history = createHistory();
@@ -202,10 +215,49 @@ describe('paste of beats', () => {
     const after = history.apply(built, plan.command).score;
     expect(after.masterBars).toHaveLength(6);
     // Bar 5 held three quarters: the two pasted beats overwrite the first two.
-    expect(frets(after, 0, 4)).toEqual(['3', '4', '0']);
-    expect(frets(after, 0, 5)).toEqual(['5', '6']);
+    expect(frets(after, 0, 4)).toEqual(['5', '6', '0']);
+    expect(frets(after, 0, 5)).toEqual(['7', '8']);
     expect(history.steps).toHaveLength(1);
     expect(history.undo()?.score).toEqual(built);
+  });
+
+  it('keeps a clip over a barline contiguous: it pastes only at the position it was copied from', () => {
+    // Beats 3 and 4 of bar 1 and beats 1 and 2 of bar 2: 3 4 | 5 6, started 1920 ticks into its bar.
+    const wide = clipOf(built, {
+      cursor: undefined,
+      range: beatsRange(built, { first: 0, bar: 0, lastBar: 1, from: 2, to: 1 }),
+    });
+    expect(refusal(built, wide, { cursor: cursorAt(built, 0, 4, 0), range: undefined })).toBe(
+      'Paste this at the same beat position it was copied from, or copy whole bars',
+    );
+    // Beat 3 of bar 2 is where it came from: 5 6 [3 4 | 5 6 9 10].
+    const after = run(
+      built,
+      planned(built, wide, { cursor: cursorAt(built, 0, 1, 2), range: undefined }),
+    );
+    expect(frets(after, 0, 1)).toEqual(['5', '6', '3', '4']);
+    expect(frets(after, 0, 2)).toEqual(['5', '6', '9', '10']);
+  });
+
+  it('leaves a track with nothing in the span as it is, and pastes the rest', () => {
+    // Bar 3 of the lead holds four beats; the rhythm track's bar 3 is empty.
+    const span = {
+      cursor: undefined,
+      range: beatsRange(built, { first: 0, last: 1, bar: 2, from: 0, to: 3 }),
+    };
+    const clip = clipOf(built, span);
+    expect(clip.tracks).toHaveLength(2);
+    const plan = planned(built, clip, { cursor: cursorAt(built, 0, 3, 0), range: undefined });
+    const after = run(built, plan);
+    expect(frets(after, 0, 3)).toEqual(['7', '8', '9', '10']);
+    expect(frets(after, 1, 3)).toEqual([]);
+    expect(plan.range).toMatchObject({ kind: 'beats', anchor: { track: built.tracks[0]?.id } });
+    // Every track empty is the only refusal, at copy.
+    const nothing = copyClip(built, {
+      cursor: undefined,
+      range: barsRange(built, { first: 0, last: 1, from: 3, to: 3 }),
+    });
+    expect(nothing).toHaveProperty('refused');
   });
 
   it('gives every beat and note an id nothing else has', () => {
@@ -240,14 +292,173 @@ describe('paste of beats', () => {
     expect(frets(after, 0, 0)).toEqual(['1', '2']);
   });
 
-  it('re-fingers a clip for a track with another string count and counts what it left out', () => {
+  it('re-fingers by pitch with the exact result and the full notice', () => {
     const high = clipOf(built, { cursor: cursorAt(built, 0, 0, 0), range: undefined });
-    const state = { cursor: cursorAt(built, 2, 3, 0), range: undefined };
-    const plan = planned(built, high, state);
-    // String 1 fret 1 is F4 (65): above the bass neck's top string (43) plus 24 frets (67)? It fits at 43 + 22.
-    expect(plan.notice).toMatch(/^Pasted 1 beat\. Re-fingered for 4 strings/);
-    const bass = run(built, plan).tracks[2]?.bars[3]?.voices[0]?.beats[0];
-    expect(bass?.notes[0]?.string).toBeGreaterThan(0);
+    const plan = planned(built, high, { cursor: cursorAt(built, 2, 3, 0), range: undefined });
+    // String 1 fret 1 is F4 (65): on the bass, string 1 (43) fret 22.
+    expect(plan.notice).toBe('Pasted 1 beat. Re-fingered for 4 strings');
+    expect(run(built, plan).tracks[2]?.bars[3]?.voices[0]?.beats[0]?.notes[0]).toMatchObject({
+      string: 1,
+      fret: 22,
+    });
+  });
+
+  it('leaves out a note the target cannot play and says how many, the beat becoming a rest', () => {
+    const source = guitarWith([[note(1, 12)]]);
+    const clip = clipOf(source, { cursor: cursorAt(source, 0, 0, 0), range: undefined });
+    const plan = planned(built, clip, { cursor: cursorAt(built, 2, 3, 0), range: undefined });
+    expect(plan.notice).toBe('Pasted 1 beat. Re-fingered for 4 strings; 1 note left out');
+    expect(run(built, plan).tracks[2]?.bars[3]?.voices[0]?.beats[0]).toMatchObject({
+      rest: true,
+      notes: [],
+    });
+  });
+
+  it('keeps the sounding pitch across capos, moves a trill, and says when one was dropped', () => {
+    const capo = guitarWith([[note(4, 0, { trill: { fret: 2, speed: 16 } })]], { capo: 2 });
+    const clip = clipOf(capo, { cursor: cursorAt(capo, 0, 0, 0), range: undefined });
+    const plan = planned(built, clip, { cursor: cursorAt(built, 2, 3, 0), range: undefined });
+    const pasted = run(built, plan).tracks[2]?.bars[3]?.voices[0]?.beats[0]?.notes[0];
+    // D3 with the capo on 2 sounds E3 (52); the bass plays it on string 1, fret 9, the trill two frets up.
+    expect(pasted).toMatchObject({ string: 1, fret: 9, trill: { fret: 11 } });
+    const long = guitarWith([[note(3, 0, { trill: { fret: 14, speed: 16 } })]]);
+    const dropped = planned(
+      built,
+      clipOf(long, { cursor: cursorAt(long, 0, 0, 0), range: undefined }),
+      {
+        cursor: cursorAt(built, 2, 3, 0),
+        range: undefined,
+      },
+    );
+    expect(dropped.notice).toBe('Pasted 1 beat. Re-fingered for 4 strings; 1 trill dropped');
+  });
+
+  it('names every neck it re-fingered', () => {
+    const wide = clipOf(built, {
+      cursor: undefined,
+      range: beatsRange(built, { first: 0, last: 1, bar: 0, from: 0, to: 0 }),
+    });
+    const seven = score().track('guitar', { tuning: [35, 40, 45, 50, 55, 59, 64] });
+    seven.bar();
+    seven.track('bass');
+    seven.bar();
+    const target = seven.build({ ids: 'sequential' });
+    const plan = planned(target, wide, { cursor: cursorAt(target, 0, 0, 0), range: undefined });
+    expect(plan.notice).toBe(
+      'Pasted 1 beat into 2 tracks. Re-fingered for 7 strings and 4 strings; 1 note left out',
+    );
+  });
+
+  it('skips a hidden track between the targets', () => {
+    const wide = clipOf(built, {
+      cursor: undefined,
+      range: beatsRange(built, { first: 0, last: 1, bar: 0, from: 0, to: 1 }),
+    });
+    const visible = [built.tracks[0], built.tracks[2], built.tracks[3]].flatMap((track) =>
+      track ? [track.id] : [],
+    );
+    const result = planPaste(
+      built,
+      wide,
+      { cursor: cursorAt(built, 0, 3, 0), range: undefined },
+      visible,
+      'overwrite',
+    );
+    if ('refused' in result) throw new Error(result.refused);
+    const after = run(built, result);
+    expect(frets(after, 0, 3)).toEqual(['1', '2']);
+    expect(frets(after, 1, 3)).toEqual([]);
+    // The second clip track went to the bass, the next visible one, and was re-fingered.
+    expect(after.tracks[2]?.bars[3]?.voices[0]?.beats).toHaveLength(2);
+  });
+
+  it('pastes pitched notes into a pitched track only', () => {
+    const keys = (() => {
+      const b = score().track('piano');
+      b.bar()
+        .beat('4', [note(0, 60)])
+        .beat('4', [note(0, 64)]);
+      b.track('piano');
+      b.bar();
+      b.track('drums');
+      b.bar();
+      return b.build({ ids: 'sequential' });
+    })();
+    const clip = clipOf(keys, { cursor: cursorAt(keys, 0, 0, 0), range: undefined });
+    expect(refusal(keys, clip, { cursor: cursorAt(keys, 2, 0, 0), range: undefined })).toBe(
+      'Notes from a pitched track paste only into a pitched track',
+    );
+    const after = run(
+      keys,
+      planned(keys, clip, { cursor: cursorAt(keys, 1, 0, 0), range: undefined }),
+    );
+    expect(after.tracks[1]?.bars[0]?.voices[0]?.beats[0]?.notes[0]).toMatchObject({
+      string: 0,
+      fret: 60,
+    });
+    expect(refusal(built, clip, { cursor: cursorAt(built, 0, 3, 0), range: undefined })).toBe(
+      'Notes from a pitched track paste only into a pitched track',
+    );
+  });
+});
+
+describe('paste at the edges of tuplets and grace notes', () => {
+  const triplets = (() => {
+    const b = score().track('guitar');
+    b.bar()
+      .beat('8t', [note(1, 1)])
+      .beat('8t', [note(1, 2)])
+      .beat('8t', [note(1, 3)])
+      .beat('4', [note(1, 4)])
+      .beat('2', [note(1, 5)]);
+    b.bar();
+    return b.build({ ids: 'sequential' });
+  })();
+
+  it('copies part of a triplet group and pastes it as it is', () => {
+    const clip = clipOf(triplets, {
+      cursor: undefined,
+      range: beatsRange(triplets, { first: 0, bar: 0, from: 1, to: 2 }),
+    });
+    const after = run(
+      triplets,
+      planned(triplets, clip, { cursor: cursorAt(triplets, 0, 1, 0), range: undefined }),
+    );
+    const beats = after.tracks[0]?.bars[1]?.voices[0]?.beats ?? [];
+    expect(beats.map(({ tuplet }) => tuplet)).toEqual([
+      { n: 3, of: 2 },
+      { n: 3, of: 2 },
+    ]);
+  });
+
+  it('refuses an overwrite that would split a triplet, saying so', () => {
+    const eighth = (() => {
+      const b = score().track('guitar');
+      b.bar().beat('8', [note(1, 9)]);
+      return b.build({ ids: 'sequential' });
+    })();
+    const clip = clipOf(eighth, { cursor: cursorAt(eighth, 0, 0, 0), range: undefined });
+    expect(refusal(triplets, clip, { cursor: cursorAt(triplets, 0, 0, 0), range: undefined })).toBe(
+      'Bar 1, voice 1 would split a tuplet or leave a gap no rest can fill',
+    );
+  });
+
+  it('gives the grace notes of a pasted beat ids of their own', () => {
+    const ornamented = guitarWith(
+      [[note(2, 3)]],
+      {},
+      { grace: [{ duration: 16, before: true, notes: [note(2, 1)] }] },
+    );
+    const clip = clipOf(ornamented, { cursor: cursorAt(ornamented, 0, 0, 0), range: undefined });
+    const target = clipboardScore();
+    const after = run(
+      target,
+      planned(target, clip, { cursor: cursorAt(target, 0, 3, 0), range: undefined }),
+    );
+    const pasted = after.tracks[0]?.bars[3]?.voices[0]?.beats[0];
+    const original = ornamented.tracks[0]?.bars[0]?.voices[0]?.beats[0];
+    expect(pasted?.grace?.[0]?.notes[0]?.fret).toBe(1);
+    expect(pasted?.grace?.[0]?.notes[0]?.id).not.toBe(original?.grace?.[0]?.notes[0]?.id);
   });
 });
 

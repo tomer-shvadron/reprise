@@ -1,11 +1,13 @@
 import {
   beatStartTicks,
   chain,
+  createBeat,
   replaceBeats,
   type Beat,
   type Command,
   type Id,
   type Score,
+  type Track,
 } from '@reprise/model';
 
 import type { SelectionState } from '@/state/selection';
@@ -19,6 +21,7 @@ import {
 } from './clipboard-format';
 import { resolveCursor } from './cursor';
 import { rangeBeats, rangeSpan, type RangeVoice } from './range';
+import { restBeats, ticksOf } from './rhythm';
 
 type CopyState = Pick<SelectionState, 'cursor' | 'range'>;
 
@@ -89,29 +92,36 @@ function clipTrack(
     kind: track.kind,
     tuning: [...track.tuning],
     fretCount: track.fretCount,
+    capo: track.capo,
     name: track.name,
     bars: clipBars,
   };
 }
 
+/** The range's parts grouped by track and bar, so building the clip reads each part once. */
+function groupParts(parts: readonly RangeVoice[]): Map<string, RangeVoice[]> {
+  const grouped = new Map<string, RangeVoice[]>();
+  for (const part of parts) {
+    const key = `${part.track}/${String(part.bar)}`;
+    grouped.set(key, [...(grouped.get(key) ?? []), part]);
+  }
+  return grouped;
+}
+
 /** The voices of `track`'s bar `bar` that hold beats in `parts`, with each one's start in ticks. */
 function voicesOf(
-  score: Score,
+  track: Track | undefined,
   parts: readonly RangeVoice[],
-  trackId: Id,
   bar: number,
   from: number,
 ): ClipVoice[] {
-  const track = score.tracks.find(({ id }) => id === trackId);
-  return parts
-    .filter((part) => part.track === trackId && part.bar === bar)
-    .map((part) => {
-      const voice = track?.bars[bar]?.voices[part.voice];
-      const first = part.beats[0];
-      const index = first && voice ? voice.beats.indexOf(first) : -1;
-      const onset = voice && index >= 0 ? beatStartTicks(voice, index) : 0;
-      return { voice: part.voice, offset: Math.max(0, onset - from), beats: [...part.beats] };
-    });
+  return parts.map((part) => {
+    const voice = track?.bars[bar]?.voices[part.voice];
+    const first = part.beats[0];
+    const index = first && voice ? voice.beats.indexOf(first) : -1;
+    const onset = voice && index >= 0 ? beatStartTicks(voice, index) : 0;
+    return { voice: part.voice, offset: Math.max(0, onset - from), beats: [...part.beats] };
+  });
 }
 
 /**
@@ -129,12 +139,13 @@ export function copyClip(
     const span = rangeSpan(score, range, visible);
     if (!span) return { refused: NOTHING };
     const last = Math.min(span.end.bar, score.masterBars.length - 1);
-    const parts = rangeBeats(score, range, visible);
+    const grouped = groupParts(rangeBeats(score, range, visible));
     const tracks = span.tracks.flatMap((trackId) => {
       const bars: { bar: number; voices: ClipVoice[] }[] = [];
+      const track = score.tracks.find(({ id }) => id === trackId);
       for (let bar = span.start.bar; bar <= last; bar++) {
         const from = bar === span.start.bar ? span.start.tick : 0;
-        const found = voicesOf(score, parts, trackId, bar, from);
+        const found = voicesOf(track, grouped.get(`${trackId}/${String(bar)}`) ?? [], bar, from);
         const voices =
           range.kind === 'bars'
             ? [0, 1, 2, 3].map(
@@ -152,7 +163,7 @@ export function copyClip(
     ) {
       return { refused: NOTHING };
     }
-    return { clip: finish(range.kind, tracks) };
+    return { clip: finish(range.kind, tracks, span.start.tick) };
   }
   const at = cursor && resolveCursor(score, cursor);
   const track = at && score.tracks[at.track];
@@ -166,10 +177,11 @@ export function copyClip(
 
 const voiceless = (voice: number): ClipVoice => ({ voice, offset: 0, beats: [] });
 
-function finish(kind: Clip['kind'], tracks: ClipTrack[]): Clip {
+function finish(kind: Clip['kind'], tracks: ClipTrack[], start = 0): Clip {
   return {
     version: CLIPBOARD_VERSION,
     kind,
+    start: kind === 'beats' ? start : 0,
     tracks: tracks.map((track) => {
       const bars = releaseOrphanTies(track.bars);
       return { ...track, bars: kind === 'beats' ? alignSingleVoice(bars) : bars };
@@ -177,9 +189,17 @@ function finish(kind: Clip['kind'], tracks: ClipTrack[]): Clip {
   };
 }
 
+/** A rest in place of each beat, same length: the fallback for a stretch no plain rests can fill (a tuplet). */
+const restsLike = (beats: readonly Beat[]): Beat[] =>
+  beats.map(({ duration, dots, tuplet }) =>
+    createBeat({ duration, dots, rest: true, ...(tuplet && { tuplet }) }),
+  );
+
 /**
  * The beats a cut takes out: a beats or bars range, else the beat under the cursor, as one
- * splice per (track, bar, voice). The bars stay, emptied or left unfilled.
+ * splice per (track, bar, voice). A bars cut empties the bars and keeps them. A beats cut puts
+ * rests of the same total length where the beats were, so what follows keeps its time against
+ * the other voices and tracks.
  */
 export function planCut(
   score: Score,
@@ -198,6 +218,7 @@ export function planCut(
       parts = [{ track: track.id, bar: at.bar, voice: at.voice, beats: [beat] }];
     }
   }
+  const kind = range?.kind ?? 'beats';
   const edits = parts.flatMap((part) => {
     const voice = score.tracks.find(({ id }) => id === part.track)?.bars[part.bar]?.voices[
       part.voice
@@ -205,11 +226,17 @@ export function planCut(
     const first = part.beats[0];
     const index = first && voice ? voice.beats.indexOf(first) : -1;
     return voice && index >= 0
-      ? [{ voiceId: voice.id, index, remove: part.beats.length, beats: [] as Beat[] }]
+      ? [
+          {
+            voiceId: voice.id,
+            index,
+            remove: part.beats.length,
+            beats: kind === 'bars' ? [] : (restBeats(ticksOf(part.beats)) ?? restsLike(part.beats)),
+          },
+        ]
       : [];
   });
   if (edits.length === 0) return { refused: NOTHING.replace('copy', 'cut') };
-  const kind = range?.kind ?? 'beats';
   return {
     command: chain(kind === 'bars' ? 'cutBars' : 'cutBeats', [replaceBeats(edits)]),
     kind,

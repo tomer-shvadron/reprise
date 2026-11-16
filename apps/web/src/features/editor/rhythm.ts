@@ -1,4 +1,12 @@
-import { PPQ, beatTicks, type Beat, type Dots, type Duration, type Tuplet } from '@reprise/model';
+import {
+  PPQ,
+  beatTicks,
+  createBeat,
+  type Beat,
+  type Dots,
+  type Duration,
+  type Tuplet,
+} from '@reprise/model';
 
 /** The length of a beat as the entry keys edit it: note value, dots and tuplet. */
 export interface Rhythm {
@@ -142,4 +150,15 @@ export function restsFor(ticks: number): Rhythm[] | undefined {
     left -= rhythmTicks(next);
   }
   return rests;
+}
+
+/** The total length of beats, in ticks. */
+export const ticksOf = (beats: readonly Pick<Beat, 'duration' | 'dots' | 'tuplet'>[]): number =>
+  beats.reduce((sum, beat) => sum + beatTicks(beat), 0);
+
+/** Rest beats, with fresh ids, that fill `ticks`; undefined when no run of plain and dotted rests does. */
+export function restBeats(ticks: number): Beat[] | undefined {
+  return restsFor(ticks)?.map(({ duration, dots, tuplet }) =>
+    createBeat({ duration, dots, rest: true, ...(tuplet && { tuplet }) }),
+  );
 }

@@ -32,6 +32,8 @@ export const ClipTrackSchema = z.object({
   kind: TrackKindSchema,
   tuning: z.array(z.int().min(0).max(127)),
   fretCount: z.int().min(0),
+  /** Frets count from the capo, as the model's `midiNote` does, so a re-fingering needs it. */
+  capo: z.int().min(0).default(0),
   name: z.string(),
   bars: z.array(ClipBarSchema),
 });
@@ -44,6 +46,11 @@ export type ClipTrack = z.infer<typeof ClipTrackSchema>;
 export const ClipSchema = z.object({
   version: z.literal(CLIPBOARD_VERSION),
   kind: z.enum(['beats', 'bars']),
+  /**
+   * Ticks into the first bar where a beats clip started. A clip over a barline pastes only at the
+   * same position in its bar, or its later bars would land around the target's own beats.
+   */
+  start: z.number().min(0).default(0),
   tracks: z.array(ClipTrackSchema).min(1),
 });
 export type Clip = z.infer<typeof ClipSchema>;
@@ -55,10 +62,18 @@ export function serializeClip(clip: Clip): string {
 
 /** The clip in `text`, or undefined when it is not one: foreign text, another version, bad JSON or too big. */
 export function parseClip(text: string): Clip | undefined {
-  if (text.length > MAX_CLIPBOARD_CHARS || !text.startsWith(`${HEADER}\n`)) return undefined;
+  // A clipboard that went through another app or Windows may have CRLF line ends.
+  const header = text.startsWith(`${HEADER}\r\n`) ? HEADER.length + 2 : HEADER.length + 1;
+  if (
+    text.length > MAX_CLIPBOARD_CHARS ||
+    !text.startsWith(HEADER) ||
+    !/^\r?\n/.test(text.slice(HEADER.length, HEADER.length + 2))
+  ) {
+    return undefined;
+  }
   let json: unknown;
   try {
-    json = JSON.parse(text.slice(HEADER.length + 1));
+    json = JSON.parse(text.slice(header));
   } catch {
     return undefined;
   }

@@ -41,6 +41,25 @@ describe('the clipboard text', () => {
     expect(parseClip(`${text}${' '.repeat(MAX_CLIPBOARD_CHARS)}`)).toBeUndefined();
   });
 
+  it('accepts CRLF after the header, and defaults a missing capo and start', () => {
+    const clip = sample();
+    const crlf = serializeClip(clip).replace('\n', '\r\n');
+    expect(parseClip(crlf)).toEqual(clip);
+    const bare = {
+      version: clip.version,
+      kind: clip.kind,
+      tracks: clip.tracks.map(({ kind, tuning, fretCount, name, bars }) => ({
+        kind,
+        tuning,
+        fretCount,
+        name,
+        bars,
+      })),
+    };
+    expect(parseClip(`Reprise clipboard 1\n${JSON.stringify(bare)}`)).toEqual(clip);
+    expect(parseClip(serializeClip(clip).replace('clipboard 1', 'clipboard 10'))).toBeUndefined();
+  });
+
   it('strips fields it does not know', () => {
     const clip = sample();
     expect(parseClip(`Reprise clipboard 1\n${JSON.stringify({ ...clip, extra: 1 })}`)).toEqual(

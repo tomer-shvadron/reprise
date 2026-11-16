@@ -2,7 +2,6 @@ import {
   barTicks,
   beatTicks,
   chain,
-  createBeat,
   insertBar,
   newId,
   replaceBeats,
@@ -22,7 +21,7 @@ import type { Landing } from './entry';
 import type { EntryMode } from './entry-store';
 import { rangeSpan } from './range';
 import { refinger } from './refinger';
-import { overfullMessage, restsFor } from './rhythm';
+import { overfullMessage, restBeats, ticksOf } from './rhythm';
 
 const EPSILON = 1e-6;
 
@@ -57,17 +56,6 @@ function fresh(beats: readonly Beat[]): Beat[] {
       grace: beat.grace.map((ornament) => ({ ...ornament, notes: ornament.notes.map(renew) })),
     }),
   }));
-}
-
-const ticksOf = (beats: readonly Beat[]): number =>
-  beats.reduce((sum, beat) => sum + beatTicks(beat), 0);
-
-/** Rests that fill `ticks`, or undefined when no run of plain and dotted rests does. */
-function restBeats(ticks: number): Beat[] | undefined {
-  const rhythms = restsFor(ticks);
-  return rhythms?.map(({ duration, dots, tuplet }) =>
-    createBeat({ duration, dots, rest: true, ...(tuplet && { tuplet }) }),
-  );
 }
 
 interface Placed {
@@ -141,6 +129,13 @@ export function planPaste(
   const anchor = anchorOf(score, state, visible);
   if (!anchor) return { refused: 'Put the cursor where the paste should go' };
 
+  const crossing = clip.tracks.some(({ bars }) => bars.length > 1);
+  if (clip.kind === 'beats' && crossing && Math.abs(anchor.tick - clip.start) > EPSILON) {
+    return {
+      refused: 'Paste this at the same beat position it was copied from, or copy whole bars',
+    };
+  }
+
   const shown = new Set(visible);
   const candidates = score.tracks.flatMap((track, index) =>
     index >= anchor.track && shown.has(track.id) ? [{ track, index }] : [],
@@ -153,7 +148,9 @@ export function planPaste(
   }
 
   let dropped = 0;
-  let refingered: Track | undefined;
+  let trillsDropped = 0;
+  let harmonicsMoved = 0;
+  const necks: string[] = [];
   const sources: ClipTrack[] = [];
   for (const [i, { track }] of targets.entries()) {
     const from = clip.tracks[i];
@@ -165,7 +162,10 @@ export function planPaste(
     if (track.kind === 'fretted' && from.tuning.length !== track.tuning.length) {
       const result = refinger(from, track);
       dropped += result.dropped;
-      refingered = track;
+      trillsDropped += result.trillsDropped;
+      harmonicsMoved += result.harmonicsMoved;
+      const neck = neckLabel(track);
+      if (!necks.includes(neck)) necks.push(neck);
       sources.push(result.track);
     } else {
       sources.push(from);
@@ -282,7 +282,7 @@ export function planPaste(
         const before = gap > 0 ? restBeats(gap) : [];
         const after = pad > 0 ? restBeats(pad) : [];
         if (!before || !after) {
-          return { refused: `${label}: that length cannot be written as rests` };
+          return { refused: `${label} would split a tuplet or leave a gap no rest can fill` };
         }
         const renewed = fresh(beats);
         splices.push({
@@ -347,16 +347,20 @@ export function planPaste(
     }
     if (firstBar) land = { bar: firstBar };
   } else {
-    const ofTrack = (index: number | undefined) => placed.filter(({ track }) => track === index);
-    const head = ofTrack(targets[0]?.index).sort((a, b) => a.bar - b.bar || a.from - b.from)[0];
-    const tail = ofTrack(targets.at(-1)?.index).sort((a, b) => b.bar - a.bar || b.to - a.to)[0];
+    // Tracks with nothing in the span have no beats placed; the span runs from the first to the last that do.
+    const head = [...placed].sort(
+      (a, b) => a.track - b.track || a.bar - b.bar || a.from - b.from,
+    )[0];
+    const tail = [...placed].sort((a, b) => b.track - a.track || b.bar - a.bar || b.to - a.to)[0];
     const headBar = head && barIds[head.bar];
     const tailBar = tail && barIds[tail.bar];
-    if (head && tail && firstTrack && lastTrack && headBar && tailBar) {
+    const headTrack = head && score.tracks[head.track];
+    const tailTrack = tail && score.tracks[tail.track];
+    if (head && tail && headTrack && tailTrack && headBar && tailBar) {
       range = {
         kind: 'beats',
-        anchor: { track: firstTrack.id, masterBar: headBar, beat: head.first },
-        focus: { track: lastTrack.id, masterBar: tailBar, beat: tail.last },
+        anchor: { track: headTrack.id, masterBar: headBar, beat: head.first },
+        focus: { track: tailTrack.id, masterBar: tailBar, beat: tail.last },
       };
       land = { beat: head.first };
     }
@@ -366,9 +370,18 @@ export function planPaste(
   const where = clip.tracks.length > 1 ? ` into ${plural(clip.tracks.length, 'track')}` : '';
   const what = clipSummary({ ...clip, tracks: clip.tracks.slice(0, 1) });
   const warning =
-    refingered === undefined
+    necks.length === 0
       ? ''
-      : `. Re-fingered for ${neckLabel(refingered)}${dropped > 0 ? `; ${plural(dropped, 'note')} left out` : ''}`;
+      : [
+          `. Re-fingered for ${necks.join(' and ')}`,
+          dropped > 0 ? `${plural(dropped, 'note')} left out` : '',
+          trillsDropped > 0 ? `${plural(trillsDropped, 'trill')} dropped` : '',
+          harmonicsMoved > 0
+            ? `${plural(harmonicsMoved, 'natural harmonic')} moved, check ${harmonicsMoved === 1 ? 'its' : 'their'} node`
+            : '',
+        ]
+          .filter(Boolean)
+          .join('; ');
   return {
     command: chain(clip.kind === 'bars' ? 'pasteBars' : 'pasteBeats', steps),
     land,

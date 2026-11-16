@@ -8,7 +8,7 @@ import {
   pasteInternal,
   type ClipboardServices,
 } from './clipboard-actions';
-import { parseClip, serializeClip } from './clipboard-format';
+import { parseClip, serializeClip, type Clip } from './clipboard-format';
 import type { PasteMode } from './paste';
 
 export interface ClipboardController {
@@ -76,20 +76,31 @@ export function installClipboard(
     return !modalBlocksCommand(`editor.${event.type}`);
   };
 
+  // The text this handler last put on the system clipboard, and whether a palette fallback has
+  // copied something newer since: then that text is stale, and a paste takes the internal clip.
+  let written: string | undefined;
+  let fallbackNewer = false;
+
+  /** Puts the clip on the system clipboard and takes the event; a refused copy leaves both alone. */
+  const publish = (event: ClipboardEvent, clip: Clip | undefined) => {
+    if (!clip) return;
+    const text = serializeClip(clip);
+    event.preventDefault();
+    event.clipboardData?.setData('text/plain', text);
+    written = text;
+    fallbackNewer = false;
+  };
+
   const onCopy = (event: ClipboardEvent) => {
     if (!stands(event) || (!armed() && hasTextSelection())) return;
     disarm();
-    event.preventDefault();
-    const clip = copySelection(services);
-    if (clip) event.clipboardData?.setData('text/plain', serializeClip(clip));
+    publish(event, copySelection(services));
   };
 
   const onCut = (event: ClipboardEvent) => {
     if (!stands(event) || (!armed() && hasTextSelection())) return;
     disarm();
-    event.preventDefault();
-    const clip = cutSelection(services);
-    if (clip) event.clipboardData?.setData('text/plain', serializeClip(clip));
+    publish(event, cutSelection(services));
   };
 
   const onPaste = (event: ClipboardEvent) => {
@@ -97,7 +108,9 @@ export function installClipboard(
     event.preventDefault();
     const text = event.clipboardData?.getData('text/plain') ?? '';
     const clip = parseClip(text);
-    if (clip) {
+    if (clip && fallbackNewer && text === written) {
+      pasteInternal(services);
+    } else if (clip) {
       pasteClip(services, clip, entry.getState().mode);
     } else if (text.trim() === '') {
       pasteInternal(services);
@@ -109,10 +122,12 @@ export function installClipboard(
   const raise = (command: 'copy' | 'cut', fallback: () => unknown) => {
     arm.on = true;
     exec(command);
-    // No event came (a browser that refuses, or no gesture): do it on the internal clipboard.
+    // No event came (a browser that refuses, or no gesture): do it on the internal clipboard,
+    // which is now newer than whatever the system clipboard holds.
     if (armed()) {
       disarm();
       fallback();
+      fallbackNewer = true;
     }
   };
 
