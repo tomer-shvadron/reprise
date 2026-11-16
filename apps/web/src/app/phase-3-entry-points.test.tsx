@@ -57,11 +57,13 @@ describe('phase 3 entry points', () => {
     expect(screen.getByRole('complementary', { name: 'Panel' })).toHaveTextContent('WP-071');
   });
 
-  it('trainer.fretboard opens the bottom region on its placeholder and toggles it closed', () => {
+  it('trainer.fretboard opens the bottom region on the fretboard and toggles it closed', () => {
     const { run } = renderApp();
     expect(screen.queryByRole('region', { name: 'Fretboard' })).not.toBeInTheDocument();
     run('trainer.fretboard');
-    expect(screen.getByRole('region', { name: 'Fretboard' })).toHaveTextContent('WP-074');
+    expect(screen.getByRole('region', { name: 'Fretboard' })).toHaveTextContent(
+      'No fretted track selected',
+    );
     expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
     run('trainer.fretboard');
     expect(screen.queryByRole('region', { name: 'Fretboard' })).not.toBeInTheDocument();
