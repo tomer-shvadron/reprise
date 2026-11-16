@@ -96,8 +96,12 @@ export function MemoryPanel({ onAnnounce }: { onAnnounce: (message: string) => v
         <Button
           variant="outline"
           size="sm"
-          disabled={nothingUnused}
+          // aria-disabled, not disabled: the button turns into "Nothing unused" right after it
+          // frees something, and a disabled button would drop keyboard focus to <body>.
+          aria-disabled={nothingUnused}
+          className="aria-disabled:cursor-default aria-disabled:opacity-50"
           onClick={() => {
+            if (nothingUnused) return;
             const freed = audio.unloadUnused();
             onAnnounce(`Freed ${String(freed)} ${freed === 1 ? 'instrument' : 'instruments'}`);
           }}
@@ -105,12 +109,21 @@ export function MemoryPanel({ onAnnounce }: { onAnnounce: (message: string) => v
           {nothingUnused ? 'Nothing unused' : 'Unload unused'}
         </Button>
       </div>
-      {memory.shortfall && (
-        <p className="text-sm" data-memory-shortfall>
-          This song needs more than the budget; some notes may start late. Choose a larger amount of
-          memory.
+      {memory.budgetBytes < budgetSetting && (
+        <p className="text-muted-foreground text-xs">
+          General MIDI songs use at most {megabytes(memory.budgetBytes)} MB, whatever this is set
+          to.
         </p>
       )}
+      {/* Always mounted: a live region that appears already filled is often not read. */}
+      <div role="status">
+        {memory.shortfall && (
+          <p className="text-sm" data-memory-shortfall>
+            This song needs more than the budget; some notes may start late. Choose a larger amount
+            of memory.
+          </p>
+        )}
+      </div>
       {count === 0 ? (
         <p className="text-muted-foreground text-sm">No sounds loaded</p>
       ) : (

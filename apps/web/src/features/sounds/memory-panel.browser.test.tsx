@@ -74,7 +74,7 @@ describe('the memory panel, over the real audio service', () => {
     ).toContain('Synthetic Pack: Default');
     expect(within(panel).queryByText(/needs more than the budget/)).toBeNull();
     const unload = within(panel).getByRole('button', { name: 'Nothing unused' });
-    expect(unload).toBeDisabled();
+    expect(unload).toHaveAttribute('aria-disabled', 'true');
     const reading = within(panel).getByText(/ MB of 300 MB$/).textContent;
 
     const select = within(panel).getByRole('combobox', { name: 'Memory for sounds' });
@@ -85,9 +85,18 @@ describe('the memory panel, over the real audio service', () => {
     await waitFor(() => {
       expect(within(panel).getByText(/needs more than the budget/)).toBeInTheDocument();
     });
-    expect(Number(meter.getAttribute('aria-valuenow'))).toBeLessThanOrEqual(64);
+    // The panel's own figure, not the meter's value, which is clamped to the budget.
+    const decodedMb = (text: string | null) => Number(/^([\d.]+) MB of/.exec(text ?? '')?.[1]);
+    await waitFor(() => {
+      expect(decodedMb(within(panel).getByText(/ MB of 64 MB$/).textContent)).toBeLessThanOrEqual(
+        64,
+      );
+    });
     expect(meter.getAttribute('aria-valuetext')).toMatch(/ MB of 64 MB$/);
-    expect(within(panel).getByRole('button', { name: 'Nothing unused' })).toBeDisabled();
+    expect(within(panel).getByRole('button', { name: 'Nothing unused' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
 
     fireEvent.change(select, { target: { value: '300' } });
     await p.services.audio.settled();
@@ -97,7 +106,10 @@ describe('the memory panel, over the real audio service', () => {
       expect(within(panel).queryByText(/needs more than the budget/)).toBeNull();
     });
     expect(within(panel).getByText(/ MB of 300 MB$/).textContent).toBe(reading);
-    expect(within(panel).getByRole('button', { name: 'Nothing unused' })).toBeDisabled();
+    expect(within(panel).getByRole('button', { name: 'Nothing unused' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
 
     p.services.dispose();
     cleanup();

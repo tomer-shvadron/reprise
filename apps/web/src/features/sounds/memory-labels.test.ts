@@ -38,11 +38,20 @@ describe('instrumentLabel', () => {
     if (!only) throw new Error('no instrument');
     const single = [
       installed({
-        instruments: [{ ...only, entries: { default: 'default.sfz', 'palm-mute': 'pm.sfz' } }],
+        instruments: [{ ...only, entries: { default: 'default.sfz', palmMute: 'pm.sfz' } }],
       }),
     ];
     expect(instrumentLabel('sfz:SynthPack001@1:default.sfz', single)).toBe('Synthetic Pack');
-    expect(instrumentLabel('sfz:SynthPack001@1:pm.sfz', single)).toBe('Synthetic Pack (set)');
+    expect(instrumentLabel('sfz:SynthPack001@1:pm.sfz', single)).toBe('Synthetic Pack (Palm mute)');
+  });
+
+  it('names an unknown set by its key', () => {
+    const [only] = installed().instruments;
+    if (!only) throw new Error('no instrument');
+    const odd = [
+      installed({ instruments: [{ ...only, entries: { default: 'd.sfz', odd: 'o.sfz' } }] }),
+    ];
+    expect(instrumentLabel('sfz:SynthPack001@1:o.sfz', odd)).toBe('Synthetic Pack (odd)');
   });
 
   it('falls back to the path, then to the pack id, then to the id itself', () => {

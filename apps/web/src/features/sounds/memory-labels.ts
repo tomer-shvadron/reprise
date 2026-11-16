@@ -1,4 +1,4 @@
-import { parsePackInstrumentId } from '@reprise/audio';
+import { ARTICULATION_SETS, parsePackInstrumentId } from '@reprise/audio';
 
 import { GM_DRUM_KITS, GM_PROGRAMS } from '@/lib/gm-programs';
 
@@ -27,6 +27,24 @@ export function instrumentLabel(id: string, packs: readonly InstalledPack[]): st
   return `${GENERAL_MIDI}: ${name}${bankNumber === 0 ? '' : ` (bank ${String(bankNumber)})`}`;
 }
 
+const SET_LABELS: Record<(typeof ARTICULATION_SETS)[number], string> = {
+  default: 'Default',
+  palmMute: 'Palm mute',
+  dead: 'Dead note',
+  harmonic: 'Harmonic',
+  artificialHarmonic: 'Artificial harmonic',
+  legato: 'Legato',
+  staccato: 'Staccato',
+  tap: 'Tap',
+  slap: 'Slap',
+  pop: 'Pop',
+};
+
+const setLabel = (key: string): string =>
+  (ARTICULATION_SETS as readonly string[]).includes(key)
+    ? SET_LABELS[key as (typeof ARTICULATION_SETS)[number]]
+    : key;
+
 function packLabel(id: string, packs: readonly InstalledPack[]): string {
   const parsed = parsePackInstrumentId(id);
   if (!parsed) return id;
@@ -36,7 +54,7 @@ function packLabel(id: string, packs: readonly InstalledPack[]): string {
     for (const [key, path] of Object.entries(instrument.entries)) {
       if (path !== parsed.path) continue;
       const base = pack.instruments.length === 1 ? pack.name : `${pack.name}: ${instrument.name}`;
-      return key === 'default' ? base : `${base} (set)`;
+      return key === 'default' ? base : `${base} (${setLabel(key)})`;
     }
   }
   return `${pack.name}: ${parsed.path}`;

@@ -82,7 +82,10 @@ describe('MemoryPanel', () => {
 
   it('disables Unload unused as "Nothing unused", and enables it with something to free', async () => {
     const { services, announce, user } = setup();
-    expect(screen.getByRole('button', { name: 'Nothing unused' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Nothing unused' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
     act(() => {
       services.playback.setState({ memory: { ...base(), unused: ['gm:0:25'] } });
     });
@@ -91,6 +94,38 @@ describe('MemoryPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Unload unused' }));
     expect(services.fakeAudio.unloadUnused).toHaveBeenCalledTimes(1);
     expect(announce).toHaveBeenCalledWith('Freed 1 instrument');
+  });
+
+  it('keeps keyboard focus on Unload unused after it frees something', async () => {
+    const { services, user } = setup({ unused: ['gm:0:25'] });
+    const button = screen.getByRole('button', { name: 'Unload unused' });
+    await user.tab();
+    await user.tab();
+    button.focus();
+    await user.keyboard('{Enter}');
+    act(() => {
+      services.playback.setState({ memory: { ...base(), unused: [] } });
+    });
+    const after = screen.getByRole('button', { name: 'Nothing unused' });
+    expect(after).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(services.fakeAudio.unloadUnused).toHaveBeenCalledTimes(1);
+  });
+
+  it('explains a budget below the setting, as on a General MIDI song', () => {
+    setup({ budgetBytes: 80 * MIB });
+    expect(screen.getByText(/General MIDI songs use at most 80 MB/)).toBeInTheDocument();
+  });
+
+  it('keeps the status region mounted around the shortfall note', () => {
+    const { services } = setup();
+    const region = screen.getByRole('status');
+    expect(region).toBeEmptyDOMElement();
+    act(() => {
+      services.playback.setState({ memory: { ...base(), shortfall: true } });
+    });
+    expect(screen.getByRole('status')).toBe(region);
+    expect(region).toHaveTextContent(/needs more than the budget/);
   });
 
   it('shows the shortfall note only while the shortfall lasts', () => {
