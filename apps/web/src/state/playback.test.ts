@@ -16,6 +16,7 @@ describe('the playback store', () => {
       countIn: false,
       metronome: { on: false, volume: 0.7 },
       masterVolume: 1,
+      gmTierBypass: true,
     });
     expect(state.mixer).toEqual({});
     expect(state.instrumentLoads).toEqual({});

@@ -40,6 +40,22 @@ describe('installTransport', () => {
     expect(reloaded.fakeAudio.setCountIn).toHaveBeenCalledWith(false);
   });
 
+  it('applies the stored GM tier bypass and persists a change', () => {
+    const storage = memoryStorage();
+    const first = createTestServices({ storage: () => storage });
+    expect(first.fakeAudio.setGmTierBypass).toHaveBeenCalledWith(true);
+
+    mirrorAudio(first);
+    first.audio.setGmTierBypass(false);
+    expect(first.playback.getState().settings.gmTierBypass).toBe(false);
+    expect(JSON.parse(storage.getItem(TRANSPORT_STORAGE_KEY) ?? '{}')).toMatchObject({
+      gmTierBypass: false,
+    });
+
+    const reloaded = createTestServices({ storage: () => storage });
+    expect(reloaded.fakeAudio.setGmTierBypass).toHaveBeenCalledWith(false);
+  });
+
   it('keys the speed by the bytes, so a same-named different song starts at 100%', async () => {
     const services = createTestServices();
     mirrorAudio(services);

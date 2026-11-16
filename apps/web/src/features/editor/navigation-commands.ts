@@ -3,6 +3,7 @@ import type { AppServices } from '@/app/services';
 import type { Shortcut } from '@/app/keyboard';
 import type { EditCursor } from '@/state/selection';
 
+import { entryController } from './entry-controller';
 import { move, movePage, moveString, type Step } from './navigation';
 import { extendRange, rangePatch, type ExtendStep } from './range';
 import { visibleTracks } from './visible';
@@ -30,7 +31,9 @@ export type NavigationCommandId =
   | 'editor.selectNextBar'
   | 'editor.clearSelection';
 
-type NavigationDeps = Pick<AppServices, 'editing' | 'document' | 'selection' | 'layout'>;
+/** `entry` is optional so the edit demo, which has no app services, still gets the cursor commands. */
+type NavigationDeps = Pick<AppServices, 'editing' | 'document' | 'selection' | 'layout'> &
+  Partial<Pick<AppServices, 'entry'>>;
 type NavigationCommand = Command & { id: NavigationCommandId };
 
 interface Context {
@@ -84,6 +87,15 @@ export function navigationCommands(deps: NavigationDeps): NavigationCommand[] {
 
   const step = (kind: Step) => go((c) => move(c.score, c.cursor, kind));
 
+  // → past the last stop of a full last bar appends a bar, as Guitar Pro does, as its own undo step.
+  const next = () => {
+    const controller = deps.entry && entryController(deps.entry);
+    controller?.flush();
+    const c = context();
+    if (c && controller && !move(c.score, c.cursor, 'next')) controller.appendBar();
+    else step('next')();
+  };
+
   const command = (
     id: NavigationCommandId,
     title: string,
@@ -98,7 +110,7 @@ export function navigationCommands(deps: NavigationDeps): NavigationCommand[] {
       { key: 'ArrowLeft' },
       step('previous'),
     ),
-    command('editor.nextBeat', 'Cursor to next beat', { key: 'ArrowRight' }, step('next')),
+    command('editor.nextBeat', 'Cursor to next beat', { key: 'ArrowRight' }, next),
     command(
       'editor.stringUp',
       'Cursor up a string',

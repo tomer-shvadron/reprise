@@ -27,6 +27,9 @@ export function mirrorAudio(services: AppServices & { fakeAudio: FakeAudioServic
   fakeAudio.setMasterVolume.mockImplementation((masterVolume) => {
     settings({ masterVolume });
   });
+  fakeAudio.setGmTierBypass.mockImplementation((gmTierBypass) => {
+    settings({ gmTierBypass });
+  });
   fakeAudio.seek.mockImplementation((tick) => {
     const { score } = document.getState();
     if (score) playback.setState({ position: positionEventAt(score, tick) });

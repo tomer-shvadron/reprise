@@ -1,5 +1,9 @@
 import {
   applyCommand,
+  chain,
+  insertBeat,
+  newId,
+  removeBeat,
   setBeatDuration,
   setNote,
   setNoteEffect,
@@ -318,6 +322,66 @@ test('Re-layout after a segment-break-moving edit, continuous', RELAYOUT_BENCH, 
   const { p50, note } = await rhythmBench(context, metric, 'moves');
   await checkBudget(context, metric, p50, { enforced: true, note });
 });
+
+/**
+ * One note-entry keystroke as the editor sends it: a composed `enterNote` (insert a beat of the
+ * rhythm, set its note) through `applyCommand`, then the cached continuous re-layout of the bar it
+ * touched. Each edit first takes the last beat out of a different bar, untimed, so the entry has
+ * room. No budget: the row reports where a keystroke's time goes, the model side (it validates
+ * one track per step) against layout.
+ */
+test(
+  'Note entry keystroke (apply + re-layout), continuous, long score',
+  RELAYOUT_BENCH,
+  async (context) => {
+    const metric = 'Note entry keystroke (apply + re-layout), continuous, long score';
+    const cache = new LayoutCache();
+    let score = longScore();
+    layout(score, continuous, cache);
+    let count = 0;
+    let pending: ReturnType<typeof chain> | undefined;
+    const timings: { apply: number; layout: number }[] = [];
+    const result = await context
+      .bench(
+        metric,
+        {
+          beforeEach() {
+            const track = count % 8;
+            const bar = 100 + count;
+            count += 1;
+            const voice = score.tracks[track]?.bars[bar]?.voices[0];
+            const last = voice?.beats.at(-1);
+            if (!voice || !last) throw new Error(`no beat to make room in bar ${String(bar)}`);
+            score = applyCommand(score, removeBeat({ beatId: last.id })).score;
+            const id = newId();
+            pending = chain('enterNote', [
+              insertBeat(
+                { voiceId: voice.id, index: voice.beats.length - 1, id },
+                { duration: last.duration, dots: last.dots },
+              ),
+              setNote({ beatId: id }, { string: 1, fret: 5 }),
+            ]);
+          },
+        },
+        () => {
+          if (!pending) return;
+          const began = now();
+          const applied = applyCommand(score, pending);
+          const applyDone = now();
+          score = applied.score;
+          layout(score, { ...continuous, dirtyBars: applied.change.touchedBars }, cache);
+          timings.push({ apply: applyDone - began, layout: now() - applyDone });
+        },
+      )
+      .run(RUN);
+    // tinybench calls the function once before any beforeEach, to see whether it is async.
+    const timed = timings.slice(-RUN.iterations);
+    await context.annotate(
+      `${metric}: apply p50 ${String(round(median(timed.map((t) => t.apply))))} ms, re-layout p50 ${String(round(median(timed.map((t) => t.layout))))} ms, max total ${String(round(result.latency.max))} ms`,
+    );
+    await recordMeasurement(context, metric, result.latency.p50);
+  },
+);
 
 /**
  * The first dynamic in a system adds a lane, and once a page overflows every later page starts a
