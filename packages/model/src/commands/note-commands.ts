@@ -5,6 +5,7 @@ import { createNote } from '../factories';
 import type { Command } from '../history';
 import { newId } from '../id';
 import type { Id } from '../id';
+import { GraceNoteSchema } from '../beat';
 import { NoteSchema } from '../note';
 import type { Note } from '../note';
 import { transpose } from '../pitch';
@@ -22,7 +23,7 @@ import {
   releaseTiesAfter,
 } from './checks';
 import { CommandError } from './command-error';
-import { at, beatAt, findBeat, findBeats, findNotes } from './locate';
+import { at, beatAt, findBeat, findBeats, findNotes, indexNotes } from './locate';
 import type { BeatAt } from './locate';
 
 export type NoteInput = Pick<Note, 'string' | 'fret'> &
@@ -118,6 +119,52 @@ export function setNoteEffect(target: { noteId: Id }, effects: Changes<NoteEffec
       assignChanges(note, effects);
       parseOrThrow(NoteSchema, note, name);
       assertTie(track, found, note, name);
+    },
+  };
+}
+
+export interface NoteEffectEdit {
+  noteId: Id;
+  effects: Changes<NoteEffects>;
+}
+
+/**
+ * `setNoteEffect` for many notes at once: one lookup pass, one draft, one validation, one history
+ * step, and atomic. Each edit carries its own changes, since a trill fret or a hammer target
+ * differs per note. Grace notes are reachable by id too, and are checked against the grace-note
+ * schema. An empty list or an id named twice is refused.
+ */
+export function setNoteEffects(edits: readonly NoteEffectEdit[]): Command {
+  const name = 'setNoteEffects';
+  return {
+    name,
+    run(draft) {
+      if (edits.length === 0) {
+        throw new CommandError(name, 'invalid-value', 'no note effect edits');
+      }
+      const seen = new Set<Id>();
+      for (const { noteId } of edits) {
+        if (seen.has(noteId)) {
+          throw new CommandError(name, 'invalid-value', `note ${noteId} is edited twice`);
+        }
+        seen.add(noteId);
+      }
+      const slots = indexNotes(draft, [...seen], name);
+      for (const { noteId, effects } of edits) {
+        const slot = slots.get(noteId);
+        if (!slot) throw new CommandError(name, 'not-found', `no note ${noteId}`);
+        const beat = beatAt(draft, slot, name);
+        if (slot.grace === undefined) {
+          const note = at(beat.notes, slot.note, name);
+          assignChanges(note, effects);
+          parseOrThrow(NoteSchema, note, name);
+          assertTie(at(draft.tracks, slot.track, name), slot, note, name);
+        } else {
+          const note = at(at(beat.grace ?? [], slot.grace, name).notes, slot.note, name);
+          assignChanges(note, effects);
+          parseOrThrow(GraceNoteSchema, note, name);
+        }
+      }
     },
   };
 }

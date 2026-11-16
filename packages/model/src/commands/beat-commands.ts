@@ -17,7 +17,8 @@ import {
   releaseTies,
 } from './checks';
 import { CommandError } from './command-error';
-import { at, beatAt, findBeat, findVoice } from './locate';
+import { at, beatAt, findBeat, findVoice, indexBeats } from './locate';
+import type { BeatAt } from './locate';
 
 export type BeatInput = Partial<Omit<Beat, 'id'>>;
 
@@ -131,28 +132,70 @@ export function setBeatRest(target: { beatId: Id }, rest: boolean): Command {
   };
 }
 
+/** Applies one beat's changes on the draft; the caller validates the track afterwards. */
+function applyBeatChanges(draft: Score, position: BeatAt, changes: BeatChanges, name: string) {
+  const track = at(draft.tracks, position.track, name);
+  const beat = beatAt(draft, position, name);
+  const { effects, ...properties } = changes;
+  if (properties.grace) {
+    const kept = new Set(graceNotes(beat.grace).map((note) => note.id));
+    assertNewNotes(
+      draft,
+      track,
+      graceNotes(properties.grace).filter((note) => !kept.has(note.id)),
+      name,
+    );
+  }
+  if (effects) assignChanges(beat.effects, effects);
+  assignChanges(beat, properties);
+  parseOrThrow(BeatSchema, beat, name);
+}
+
 export function setBeatEffect(target: { beatId: Id }, changes: BeatChanges): Command {
   const name = 'setBeatEffect';
   return {
     name,
     run(draft) {
       const position = findBeat(draft, target.beatId, name);
-      const track = at(draft.tracks, position.track, name);
-      const beat = beatAt(draft, position, name);
-      const { effects, ...properties } = changes;
-      if (properties.grace) {
-        const kept = new Set(graceNotes(beat.grace).map((note) => note.id));
-        assertNewNotes(
-          draft,
-          track,
-          graceNotes(properties.grace).filter((note) => !kept.has(note.id)),
-          name,
-        );
-      }
-      if (effects) assignChanges(beat.effects, effects);
-      assignChanges(beat, properties);
-      parseOrThrow(BeatSchema, beat, name);
+      applyBeatChanges(draft, position, changes, name);
       assertTrackValid(draft, position.track, name);
+    },
+  };
+}
+
+export interface BeatEffectEdit {
+  beatId: Id;
+  changes: BeatChanges;
+}
+
+/**
+ * `setBeatEffect` for many beats at once: one lookup pass, one draft, each touched track
+ * validated once, one history step, and atomic. An empty list or a beat named twice is refused.
+ */
+export function setBeatEffects(edits: readonly BeatEffectEdit[]): Command {
+  const name = 'setBeatEffects';
+  return {
+    name,
+    run(draft) {
+      if (edits.length === 0) {
+        throw new CommandError(name, 'invalid-value', 'no beat effect edits');
+      }
+      const seen = new Set<Id>();
+      for (const { beatId } of edits) {
+        if (seen.has(beatId)) {
+          throw new CommandError(name, 'invalid-value', `beat ${beatId} is edited twice`);
+        }
+        seen.add(beatId);
+      }
+      const positions = indexBeats(draft, [...seen], name);
+      const tracks = new Set<number>();
+      for (const { beatId, changes } of edits) {
+        const position = positions.get(beatId);
+        if (!position) throw new CommandError(name, 'not-found', `no beat ${beatId}`);
+        applyBeatChanges(draft, position, changes, name);
+        tracks.add(position.track);
+      }
+      for (const track of tracks) assertTrackValid(draft, track, name);
     },
   };
 }

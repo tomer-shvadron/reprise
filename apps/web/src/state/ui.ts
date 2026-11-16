@@ -25,8 +25,11 @@ export const ZOOM = { min: 0.5, max: 3, default: 1 } as const;
  */
 export type ScreenId = 'player' | 'library' | 'sounds';
 
-/** What the right panel shows; the mixer is the default and the trainer tools take turns with it. */
-export type PanelView = 'mixer' | 'speedTrainer' | 'tuner' | 'metronome';
+/**
+ * What the right panel shows; the mixer is the default and the trainer tools and the effects
+ * palette (WP-082) take turns with it.
+ */
+export type PanelView = 'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'effects';
 
 /** What the bottom region shows, one view at a time; the live fretboard (WP-074) is the first. */
 export type BottomPanelView = 'fretboard';

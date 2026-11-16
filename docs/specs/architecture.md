@@ -391,7 +391,8 @@ setNoteEffect({ noteId }, Changes<NoteEffects>);            transposeSelection(s
 shiftStrings(selection, 'higher' | 'lower');
 insertBeat({ voiceId, index, id? }, beat?: BeatInput);      removeBeat({ beatId });
 setBeatDuration({ beatId }, Changes<BeatRhythm>);           setBeatRest({ beatId }, rest: boolean);
-setBeatEffect({ beatId }, BeatChanges);
+setBeatEffect({ beatId }, BeatChanges);                     setNoteEffects(edits: { noteId, effects: Changes<NoteEffects> }[]);
+setBeatEffects(edits: { beatId, changes: BeatChanges }[]);
 insertBar({ index, id? }, masterBar?: MasterBarInput);      removeBar({ masterBarId });
 setMasterBar({ masterBarId }, MasterBarChanges);            setMasterBars(edits: { masterBarId, changes: MasterBarChanges }[]);
 chain(name: string, steps: (Command | ((score: Score) => Command))[]);
@@ -546,6 +547,8 @@ interface AudioEngine {
 The scheduler drives an `InstrumentSink` (`noteOn(NoteEvent)`, optional `mix(MixEvent)`, `allNotesOff(when)`, optional `dispose()`), which the sampler implements. The events' fields and timing rules are in `packages/audio/src/sink.ts`, explained in `packages/audio/README.md`, "The `InstrumentSink` contract".
 
 Changed by #234 (2026-11-16): `AudioEngine` gains `setGmTierBypass(on)` (default on) and `setStageBypass(trackId, stage, bypassed)`, and `@reprise/audio` exports the pure `resolveEffects`, `presetFamilyOf`, `EFFECT_PRESETS` and `EFFECT_PRESET_IDS`, and the types `EffectPresetId`, `EffectStage`, `EffectFamily`, `ResolvedEffects` and `ResolveContext`. `Track.sound.preset` is an effects-preset id, opaque to the model, valid without `packId`; an unknown id means automatic. A `sound` change that touches only `preset` is timeline-neutral (ADR-0024). The web app's `AudioService` passes `setGmTierBypass` through and keeps it in `settings.gmTierBypass`, persisted with the transport preferences.
+
+Changed by #254 (2026-11-16): `@reprise/model` gains `setNoteEffects(edits)` and `setBeatEffects(edits)`, with the types `NoteEffectEdit` (`{ noteId, effects: Changes<NoteEffects> }`) and `BeatEffectEdit` (`{ beatId, changes: BeatChanges }`), the batched forms of `setNoteEffect` and `setBeatEffect`. Each does one id-index pass and applies every edit on one draft, so a range edit costs the notes touched rather than a score scan per note (a 400-note `setNoteEffects` on `largeScore(8, 300)` measures about 5 ms, against 0.75 to 0.95 s for a `chain` of single commands); the result is validated once (each touched track once for beats) and is one history step, atomic, with `touchedBars` the union of the edited bars. An empty list or an id named twice is refused as `invalid-value`, an unknown id as `not-found`. `setNoteEffects` also reaches grace notes by id, checked against `GraceNoteSchema`. In `apps/web`, `PanelView` gains `'effects'`; the right panel shows a WP-082 placeholder for it until WP-082 PR B.
 
 Internals: a lookahead scheduler on the main thread (schedule ~200 ms ahead on a 25 ms timer), a voice pool with per-voice gain and detune automation, region maps produced by the SF2 and SFZ loaders, an LRU cache of decoded buffers under the memory budget, per-track channel strips with an effects chain, a master bus.
 

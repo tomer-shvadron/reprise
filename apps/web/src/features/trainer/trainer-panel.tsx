@@ -13,6 +13,8 @@ const STUBS: Record<
   { title: string; workPackage: string }
 > = {
   tuner: { title: 'Tuner', workPackage: 'WP-071' },
+  // The effects palette is not a trainer tool; it parks here until WP-082 PR B gives it a home.
+  effects: { title: 'Effects', workPackage: 'WP-082' },
 };
 
 /**
