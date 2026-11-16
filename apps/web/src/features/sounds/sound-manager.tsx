@@ -14,6 +14,7 @@ import {
 } from './drop';
 import { EffectsDemo } from './effects-demo';
 import { FAMILY_LABELS, PACK_FAMILIES, type InstalledPack, type PackManifest } from './manifest';
+import { MemoryPanel } from './memory-panel';
 import type { ZipFile } from './pack-store';
 import {
   AvailableRow,
@@ -31,7 +32,7 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
  * The Sounds screen: installed packs, the curated list (download or choose a zip), a custom
  * install from a folder or zip, remove, and what went wrong. A zip or folder dropped anywhere
  * on it installs as a custom pack; one dropped on a curated row (installed or not) installs that
- * pack. WP-094 fills the slot at the top with the memory readout; the effects demo stays below.
+ * pack. The memory panel is at the top and the effects demo stays below.
  */
 export function SoundManager() {
   const { sounds, platform, document } = useAppServices();
@@ -214,8 +215,7 @@ export function SoundManager() {
           </Button>
         </div>
       </div>
-      {/* WP-094: the memory readout (resident and budget bytes) goes here. */}
-      <div data-slot="memory-readout" />
+      <MemoryPanel onAnnounce={setAnnouncement} />
       {/* Mounted empty and filled later: a live region that appears filled is often not read. */}
       <div role="status" aria-live="polite" className="sr-only">
         {announcement}
