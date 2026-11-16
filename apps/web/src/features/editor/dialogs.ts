@@ -1,11 +1,16 @@
 import type { Id } from '@reprise/model';
 import { create } from 'zustand';
 
+/** A section of the master-bar dialog, for the commands that open it focused there. */
+export type MasterBarSection = 'time' | 'key' | 'tempo' | 'repeats' | 'directions' | 'section';
+
 /** The dialog the editor has open; one at a time, as Radix dialogs are modal. */
 export type EditorDialog =
   | { kind: 'track'; mode: 'add' }
   | { kind: 'track'; mode: 'edit'; trackId: Id }
-  | { kind: 'removeTrack'; trackId: Id };
+  | { kind: 'removeTrack'; trackId: Id }
+  /** The master-bar dialog; `ids` are the target's bars, fixed when it opens, and `focus` the section to start in. */
+  | { kind: 'masterBar'; ids: Id[]; focus?: MasterBarSection };
 
 export interface DialogsState {
   dialog: EditorDialog | undefined;

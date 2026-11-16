@@ -6,6 +6,8 @@ import type { AppServices } from './services';
 export interface UnsavedRequest {
   action: string;
   onContinue: () => void;
+  /** Runs when the user cancels, so a caller waiting on the answer is not left hanging. */
+  onCancel?: (() => void) | undefined;
 }
 
 export interface UnsavedState {
@@ -51,10 +53,11 @@ export function whenSaved(
   services: Pick<AppServices, 'document'>,
   action: string,
   onContinue: () => void,
+  onCancel?: () => void,
 ): void {
   if (!services.document.getState().dirty) {
     onContinue();
     return;
   }
-  unsavedOf(services).getState().open({ action, onContinue });
+  unsavedOf(services).getState().open({ action, onContinue, onCancel });
 }

@@ -31,7 +31,7 @@ export function RecentSongs() {
               variant="link"
               size="sm"
               onClick={() => {
-                library.requestOpenSong(row.id);
+                void library.requestOpenSong(row.id);
               }}
             >
               {row.title}

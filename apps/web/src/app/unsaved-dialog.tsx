@@ -91,7 +91,10 @@ export function UnsavedChangesHost() {
         close();
         request.onContinue();
       }}
-      onCancel={close}
+      onCancel={() => {
+        close();
+        request.onCancel?.();
+      }}
     />
   );
 }

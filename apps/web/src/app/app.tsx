@@ -7,12 +7,13 @@ import { AddTrackButton, EditorDialogs, TrackRowMenu } from '@/features/editor';
 import {
   ExportDialog,
   installLibrary,
+  libraryOf,
   LibraryScreen,
   RecentSongs,
   UnimportedBanner,
 } from '@/features/library';
 import { SoundManager } from '@/features/sounds';
-import { TrainerPanel } from '@/features/trainer';
+import { installPracticeLog, TrainerPanel } from '@/features/trainer';
 import { PrintDialog, PrintRoot } from '@/features/score';
 import { MixerPanel, TrackSidebar } from '@/features/tracks';
 import { TransportBar } from '@/features/transport';
@@ -72,6 +73,11 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   );
 
   useEffect(() => installLibrary(services), [services]);
+
+  useEffect(
+    () => installPracticeLog(services, libraryOf(services).db.practiceSessions),
+    [services],
+  );
 
   useEffect(
     () =>

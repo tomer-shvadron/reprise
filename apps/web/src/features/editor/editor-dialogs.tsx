@@ -4,6 +4,7 @@ import { LossDialog } from '@/app/loss-dialog';
 import { useAppServices } from '@/app/services-context';
 
 import { dialogsOf } from './dialogs';
+import { MasterBarDialog } from './master-bar-dialog';
 import { removeTrackNow } from './track-edit';
 import { TrackDialog } from './track-dialog';
 
@@ -41,6 +42,16 @@ export function EditorDialogs() {
         <TrackDialog
           key={dialog.mode === 'edit' ? dialog.trackId : 'add'}
           target={dialog.mode === 'edit' ? dialog.trackId : undefined}
+          onClose={close}
+          onCloseAutoFocus={onCloseAutoFocus}
+        />
+      );
+    case 'masterBar':
+      return (
+        <MasterBarDialog
+          key={dialog.ids.join()}
+          ids={dialog.ids}
+          focus={dialog.focus}
           onClose={close}
           onCloseAutoFocus={onCloseAutoFocus}
         />

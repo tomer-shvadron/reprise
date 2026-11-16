@@ -60,8 +60,11 @@ export interface Library {
   setSort(sort: SortKey): void;
   /** Opens the song in the player with its track session restored, never marking it modified. */
   openSong(id: Id): Promise<void>;
-  /** `openSong` after the unsaved-changes question, for every entry the user starts. */
-  requestOpenSong(id: Id): void;
+  /**
+   * `openSong` after the unsaved-changes question, for every entry the user starts. Resolves when
+   * the song is open, or when the user cancels the question.
+   */
+  requestOpenSong(id: Id): Promise<void>;
   /** The library's Save and Save As, which `installLibrary` gives the document store. */
   saver: Saver;
   /** File > Export as Guitar Pro: writes a `.gp` copy; never a save. */
@@ -373,11 +376,17 @@ export function createLibrary(
     dismissNotice() {
       store.setState({ notice: undefined });
     },
-    requestOpenSong(id) {
-      whenSaved(services, 'opening another song', () => {
-        void library.openSong(id);
-      });
-    },
+    requestOpenSong: (id) =>
+      new Promise<void>((resolve) => {
+        whenSaved(
+          services,
+          'opening another song',
+          () => {
+            void library.openSong(id).finally(resolve);
+          },
+          resolve,
+        );
+      }),
     async load() {
       const tracker = { added: new Set<Id>(), removed: new Set<Id>() };
       loads.add(tracker);

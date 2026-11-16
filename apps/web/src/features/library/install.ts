@@ -26,7 +26,7 @@ export function installLibrary(services: AppServices): () => void {
   };
   const unsubscribe = library.store.subscribe(push);
   const unlisten = platform.onOpenRecent?.((id) => {
-    library.requestOpenSong(id);
+    void library.requestOpenSong(id);
   });
   // Save and Save As follow the library's rules from here on: a song saves to its own file.
   services.document.getState().setSaver(library.saver);

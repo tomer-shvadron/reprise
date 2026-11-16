@@ -208,6 +208,10 @@ export class App {
     ] as const);
   }
 
+  barsUntilStopped() {
+    return this.page.evaluate(() => window.__e2e.barsUntilStopped());
+  }
+
   watchFollow(untilBar: string): Promise<FollowWatch> {
     return this.page.evaluate((bar) => window.__e2e.watchFollow(bar), untilBar);
   }

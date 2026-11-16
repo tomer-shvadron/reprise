@@ -12,6 +12,7 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 - While a modal dialog is open (a dialog, an alert dialog, the command palette), no shortcut and no native menu command runs, except Cmd or Ctrl+K when the palette is the only modal (it closes the palette but opens none over another dialog), and a focused text field's own undo and redo. Escape stays with the dialog. This holds wherever focus is, including on the page behind the dialog. The rules live in the dispatcher's doc comment, `apps/web/src/app/shortcut-dispatcher.ts`.
 - Undo and redo in a focused text field undo the field's typing, not the score.
 - In edit mode a digit that can start a two-digit fret on the track's neck (1 and 2 on 24 frets) waits 500 ms for a second digit; any other key, a click or moving the cursor commits it at once, and Escape cancels it. Digits never move the cursor, so more digits on the same beat make a chord (with ↑ and ↓ between them); → moves on, and appends a bar past the end of a full last bar.
+- The library's song list takes its own keys while it has focus: the arrows, Home, End, Page Up and Page Down move, Enter opens, Delete or Backspace deletes, and L opens the song's practice log. Escape closes the log page.
 - Space and Enter on a focused button or toggle activate that control; transport buttons do not take focus on click, so Space keeps playing after one.
 
 <!-- shortcuts:start -->
@@ -120,5 +121,16 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Edit voice 1 | Editor | Editing | ⌘1 | Ctrl+1 |
 | Edit voice 2 | Editor | Editing | ⌘2 | Ctrl+2 |
 | Toggle insert mode | Editor | Editing | — | — |
+| Insert bar before | Editor | Editing | ⌘+ or ⇧⌘+ or ⇧⌘= | Insert |
+| Insert bar after | Editor | Editing | — | — |
+| Delete bars | Editor | Editing | ⌘Backspace | Ctrl+Delete |
+| Toggle repeat start | Editor | Editing | [ | [ |
+| Toggle repeat end | Editor | Editing | ] | ] |
+| Bar properties… | Editor | Editing | ⌘T | Ctrl+T |
+| Key signature… | Editor | Editing | — | — |
+| Tempo change… | Editor | Editing | — | — |
+| Repeats and endings… | Editor | Editing | — | — |
+| Directions… | Editor | Editing | D | D |
+| Section… | Editor | Editing | — | — |
 | Show sound manager | Sounds | Global | — | — |
 <!-- shortcuts:end -->

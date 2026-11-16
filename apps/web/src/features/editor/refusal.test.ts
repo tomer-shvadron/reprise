@@ -1,4 +1,11 @@
-import { CommandError, applyCommand, insertBeat, setNote } from '@reprise/model';
+import {
+  CommandError,
+  applyCommand,
+  createEmptyScore,
+  insertBeat,
+  setMasterBar,
+  setNote,
+} from '@reprise/model';
 import { describe, expect, it } from 'vitest';
 
 import { describeRefusal } from './refusal';
@@ -15,6 +22,25 @@ describe('describeRefusal', () => {
     expect(describeRefusal(new CommandError('removeBar', 'last-bar', 'the last bar stays'))).toBe(
       'The last bar stays',
     );
+  });
+
+  it('words the bar-edit refusals', () => {
+    expect(describeRefusal(new CommandError('setMasterBars', 'voice-overfull', 'x'))).toMatch(
+      /smaller time signature/,
+    );
+    const score = createEmptyScore();
+    const refused = (() => {
+      try {
+        applyCommand(
+          score,
+          setMasterBar({ masterBarId: score.masterBars[0]?.id ?? '' }, { alternateEndings: [1] }),
+        );
+      } catch (error) {
+        return error;
+      }
+      throw new Error('not refused');
+    })();
+    expect(describeRefusal(refused)).toMatch(/alternate ending needs a repeat end/i);
   });
 
   it('leaves anything but a refusal to the caller', () => {
