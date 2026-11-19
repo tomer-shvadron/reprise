@@ -20,6 +20,7 @@
  *
  *   pnpm desktop:build && pnpm desktop:smoke [executable]
  */
+import type { ChildProcess } from 'node:child_process';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -30,6 +31,8 @@ import { _electron as electron, type ElectronApplication, type Page } from 'play
 import { loadBundle } from '../sounds/fetch-gm.ts';
 import {
   copyWithInspectEnabled,
+  describeExpected,
+  differingFuses,
   executableIn,
   fuseMismatches,
   readFuseWire,
@@ -48,13 +51,39 @@ let executable = argv[2] ?? '';
 
 /** Checks the shipped fuses, then makes the copy the smoke launches (see the header). */
 async function prepareApp(profileDir: string): Promise<void> {
-  if (executable !== '') return;
+  if (executable !== '') {
+    console.log(`skipped: fuse check and flipped copy, launching ${executable} as given`);
+    return;
+  }
+  const preload = await readFile(join(ROOT, 'apps/desktop/out/preload/index.cjs'), 'utf8');
+  const requires = [...preload.matchAll(/\brequire\(([^)]*)\)/g)].map((match) => match[1]);
+  check(
+    requires.length === 1 && requires[0] === '"electron"',
+    `the built preload requires only electron (${requires.join(', ')})`,
+  );
   const shipped = unpackedAppDir(RELEASE, process.platform, process.arch);
-  const problems = fuseMismatches(await readFuseWire(shipped));
-  check(problems.length === 0, `the shipped app has the expected fuses (${problems.join('; ')})`);
+  const wire = await readFuseWire(shipped);
+  const problems = fuseMismatches(wire);
+  if (problems.length > 0) throw new Error(`the shipped fuses are wrong: ${problems.join('; ')}`);
+  console.log(`ok: the shipped app has the expected fuses (${describeExpected()})`);
   const copy = await copyWithInspectEnabled(shipped, join(profileDir, 'app'));
+  const differing = differingFuses(wire, await readFuseWire(copy));
+  check(
+    differing.length === 1 && differing[0] === 'EnableNodeCliInspectArguments',
+    `the copy differs from the shipped app by EnableNodeCliInspectArguments alone (${differing.join(', ')})`,
+  );
   executable = executableIn(copy, process.platform);
   console.log(`ok: launching ${executable}, the shipped app with EnableNodeCliInspectArguments on`);
+}
+
+/** The exit code of a process, also when it has exited already; null when a signal ended it. */
+function exitCodeOf(child: ChildProcess): Promise<number | null> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(child.exitCode);
+  return new Promise((resolve) => {
+    child.once('exit', (code) => {
+      resolve(code);
+    });
+  });
 }
 
 async function gmBytes(): Promise<number> {
@@ -185,7 +214,8 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
     const sandboxed = await app.evaluate(async ({ BrowserWindow }) => {
       const window = new BrowserWindow({
         show: false,
-        webPreferences: { sandbox: false, nodeIntegration: true },
+        // No context isolation either: with it on, `require` never reaches the page's world, sandbox or not.
+        webPreferences: { sandbox: false, nodeIntegration: true, contextIsolation: false },
       });
       try {
         await window.loadURL('about:blank');
@@ -285,6 +315,9 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
 
     // Closing the window with unsaved changes asks first; Don't save closes and clears the draft.
     // The window, not the process: closing the last window does not quit the app on macOS.
+    // Attached before the window closes: on Windows closing the last window quits the app, and an
+    // 'exit' that already happened is not replayed.
+    const exit = exitCodeOf(relaunched.process());
     const closed = again.waitForEvent('close');
     await relaunched.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.close();
@@ -299,18 +332,21 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
       "Don't save closed the window and removed the draft",
     );
 
-    const code = new Promise<number | null>((resolve) =>
-      relaunched.process().once('exit', (exitCode) => {
-        resolve(exitCode);
-      }),
-    );
+    // macOS keeps the app alive with no window, so it is asked to quit; Windows is already quitting.
     await relaunched
       .evaluate(({ app }) => {
         app.quit();
       })
       .catch(() => undefined);
-    const exitCode = await code;
-    check(exitCode === 0, `app.quit() ends the process cleanly (exit code ${String(exitCode)})`);
+    const exitCode = await Promise.race([
+      exit,
+      new Promise<'timeout'>((resolve) =>
+        setTimeout(() => {
+          resolve('timeout');
+        }, TIMEOUT),
+      ),
+    ]);
+    check(exitCode === 0, `the app quits cleanly (exit code ${String(exitCode)})`);
   } finally {
     await closeQuietly(running);
   }

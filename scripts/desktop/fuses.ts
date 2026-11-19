@@ -61,6 +61,22 @@ export function fuseTarget(appDir: string, platform: string): string {
   return platform === 'darwin' ? join(appDir, 'Reprise.app') : executableIn(appDir, platform);
 }
 
+/** The expected fuses as `RunAsNode off, ..., OnlyLoadAppFromAsar on`, for the success line. */
+export function describeExpected(): string {
+  return EXPECTED_FUSES.map(([fuse, want]) => `${FuseV1Options[fuse]} ${want ? 'on' : 'off'}`).join(
+    ', ',
+  );
+}
+
+/** The fuses whose state differs between two wires, by name. */
+export function differingFuses(a: FuseWire, b: FuseWire): string[] {
+  const indexes = new Set([...Object.keys(a), ...Object.keys(b)].map(Number));
+  const states: Record<number, unknown>[] = [a, b];
+  return [...indexes]
+    .filter((index) => states[0]?.[index] !== states[1]?.[index])
+    .map((index) => FuseV1Options[index] ?? `fuse ${String(index)}`);
+}
+
 export async function readFuseWire(appDir: string): Promise<FuseWire> {
   return getCurrentFuseWire(fuseTarget(appDir, process.platform));
 }
@@ -69,7 +85,8 @@ export async function readFuseWire(appDir: string): Promise<FuseWire> {
  * Copies the unpacked app into `destination` and turns EnableNodeCliInspectArguments back on in
  * the copy, which Playwright's `_electron.launch` needs (it attaches with `--inspect=0`). The copy
  * has the same asar, the same other fuses and the same sandbox, so it differs from the shipped
- * app by that one fuse. Returns the copy's folder.
+ * app by that one fuse (the smoke asserts it). Electron 45's wire has a ninth fuse, index 8
+ * (WasmTrapHandlers), that 1.8.0 cannot name; differingFuses reports it by index if it differs. Returns the copy's folder.
  */
 export async function copyWithInspectEnabled(appDir: string, destination: string): Promise<string> {
   await cp(appDir, destination, { recursive: true, verbatimSymlinks: true });

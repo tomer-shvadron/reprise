@@ -1,7 +1,13 @@
-import { FuseV1Options } from '@electron/fuses';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { flipFuses, FuseV1Options, FuseVersion, getCurrentFuseWire } from '@electron/fuses';
 import { describe, expect, it } from 'vitest';
 
 import {
+  describeExpected,
+  differingFuses,
   EXPECTED_FUSES,
   FUSE_DISABLED,
   FUSE_ENABLED,
@@ -54,5 +60,42 @@ describe('app paths', () => {
     expect(executableIn('/a', 'darwin')).toBe('/a/Reprise.app/Contents/MacOS/Reprise');
     expect(fuseTarget('/a', 'darwin')).toBe('/a/Reprise.app');
     expect(fuseTarget('/a', 'win32')).toBe('/a/Reprise.exe');
+  });
+});
+
+describe('differingFuses', () => {
+  it('names the fuses that differ, and an unnamed one by index', () => {
+    const flipped = { ...shipped, [FuseV1Options.EnableNodeCliInspectArguments]: on, 8: on };
+    expect(differingFuses(shipped, flipped)).toEqual(['EnableNodeCliInspectArguments', 'fuse 8']);
+    expect(differingFuses(shipped, shipped)).toEqual([]);
+  });
+
+  it('describes what is expected', () => {
+    expect(describeExpected()).toBe(
+      'RunAsNode off, EnableNodeOptionsEnvironmentVariable off, EnableNodeCliInspectArguments off, OnlyLoadAppFromAsar on, GrantFileProtocolExtraPrivileges off',
+    );
+  });
+});
+
+describe('the state bytes', () => {
+  it('match what @electron/fuses writes and reads', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'reprise-fuses-'));
+    try {
+      // The sentinel, version 1, eight fuses, all '0'.
+      const binary = join(dir, 'fake');
+      await writeFile(
+        binary,
+        Buffer.from('dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX\x01\x0800000000', 'latin1'),
+      );
+      await flipFuses(binary, {
+        version: FuseVersion.V1,
+        [FuseV1Options.OnlyLoadAppFromAsar]: true,
+      });
+      const wire = await getCurrentFuseWire(binary);
+      expect(wire[FuseV1Options.OnlyLoadAppFromAsar]).toBe(FUSE_ENABLED);
+      expect(wire[FuseV1Options.RunAsNode]).toBe(FUSE_DISABLED);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

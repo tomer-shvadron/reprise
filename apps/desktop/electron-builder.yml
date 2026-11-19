@@ -18,6 +18,11 @@ electronFuses:
   enableNodeOptionsEnvironmentVariable: false
   enableNodeCliInspectArguments: false
   onlyLoadAppFromAsar: true
+  # electron-builder embeds the asar header hash on both platforms; this makes the app check it.
+  enableEmbeddedAsarIntegrityValidation: true
+  # Off on purpose: on macOS it keys off the Keychain under the app's signature, and an ad hoc
+  # signature changes every build, so each update would raise a Keychain prompt.
+  enableCookieEncryption: false
   grantFileProtocolExtraPrivileges: false
   resetAdHocDarwinSignature: true
 mac:
