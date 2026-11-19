@@ -518,7 +518,7 @@ function filter(
       decay: timecentsToSeconds(value(generators, Gen.decayModEnv)) * fall,
       sustain: 1 - fall,
       ...(holdPerKey !== 0 && { holdPerKey }),
-      ...(decayPerKey !== 0 && { decayPerKey }),
+      ...(decayPerKey !== 0 && { decayPerKey, decayScale: fall }),
     },
   };
 }
@@ -546,7 +546,10 @@ function envelope(generators: ReadonlyMap<number, number>): Envelope {
       (timecentsToSeconds(value(generators, Gen.releaseVolEnv)) * SAMPLER_FLOOR_DB) /
       SF2_FULL_SCALE_DB,
     ...(holdPerKey !== 0 && { holdPerKey }),
-    ...(decayPerKey !== 0 && { decayPerKey }),
+    ...(decayPerKey !== 0 && {
+      decayPerKey,
+      decayScale: Math.min(sustainDb, SAMPLER_FLOOR_DB) / SF2_FULL_SCALE_DB,
+    }),
   };
 }
 

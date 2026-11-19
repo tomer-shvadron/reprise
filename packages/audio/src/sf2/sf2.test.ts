@@ -1,6 +1,12 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { keyScaledTime, type Region } from '../sampler/region-map';
+import {
+  MAX_DECAY_TIMECENTS,
+  MAX_HOLD_TIMECENTS,
+  keyScaledTime,
+  type Region,
+} from '../sampler/region-map';
+import { Gen } from './generators';
 import { Sf2ParseError, parseSf2, type Sf2File } from './parse';
 import { formatSampleRef, parseSampleRef } from './sample-ref';
 import { Sf2Soundfont } from './soundfont';
@@ -242,16 +248,68 @@ describe('Sf2Soundfont regions', () => {
     expect(region.envelope.holdPerKey).toBe(100);
     expect(region.envelope.decayPerKey).toBe(-50);
     for (const key of [36, 60, 63, 84]) {
-      expect(keyScaledTime(region.envelope.hold, region.envelope.holdPerKey, key)).toBeCloseTo(
-        2 ** ((-2400 + 100 * (60 - key)) / 1200),
-        12,
-      );
-      expect(keyScaledTime(region.envelope.decay, region.envelope.decayPerKey, key)).toBeCloseTo(
-        (2 ** ((1200 - 50 * (60 - key)) / 1200) * 30) / 100,
-        12,
-      );
+      expect(
+        keyScaledTime(region.envelope.hold, region.envelope.holdPerKey, key, MAX_HOLD_TIMECENTS),
+      ).toBeCloseTo(2 ** ((-2400 + 100 * (60 - key)) / 1200), 12);
+      expect(
+        keyScaledTime(region.envelope.decay, region.envelope.decayPerKey, key, MAX_DECAY_TIMECENTS),
+      ).toBeCloseTo((2 ** ((1200 - 50 * (60 - key)) / 1200) * 30) / 100, 12);
     }
     expect(font.preset(0, 25)?.report.keyExpanded).toBe(0);
+  });
+
+  describe('FluidSynth caps the key-scaled decay sum before the resolver factors apply', () => {
+    // Every instrument zone gets the same generators, so any region shows the clamp.
+    const regionWith = (overrides: Record<number, number>): Region => {
+      const zone = <T extends { generators: ReadonlyMap<number, number> }>(z: T): T => ({
+        ...z,
+        generators: new Map([
+          ...z.generators,
+          ...Object.entries(overrides).map(([g, v]): [number, number] => [Number(g), v]),
+        ]),
+      });
+      const patched: Sf2File = {
+        ...file,
+        instruments: file.instruments.map((instrument) => ({
+          ...instrument,
+          zones: instrument.zones.map((z) => zone(z)),
+        })),
+      };
+      const [region] = new Sf2Soundfont(patched).preset(0, 25)?.regions ?? [];
+      if (!region) throw new Error('No region');
+      return region;
+    };
+
+    it('caps the volume decay at 8000 timecents times the sustain factor', () => {
+      // 6000 tc + 50 tc/key x 60 keys is 9000 tc; the sustain level of 30 dB makes the factor 0.3.
+      const { envelope } = regionWith({
+        [Gen.decayVolEnv]: 6000,
+        [Gen.keynumToVolEnvDecay]: 50,
+        [Gen.sustainVolEnv]: 300,
+      });
+      expect(
+        keyScaledTime(
+          envelope.decay,
+          envelope.decayPerKey,
+          0,
+          MAX_DECAY_TIMECENTS,
+          envelope.decayScale,
+        ),
+      ).toBeCloseTo(2 ** (8000 / 1200) * 0.3, 9);
+    });
+
+    it('caps the modulation decay at 8000 timecents times the fall fraction', () => {
+      const filter = regionWith({
+        [Gen.decayModEnv]: 6000,
+        [Gen.keynumToModEnvDecay]: 50,
+        [Gen.sustainModEnv]: 500,
+        [Gen.modEnvToFilterFc]: 1200,
+      }).filter?.envelope;
+      if (!filter) throw new Error('No filter envelope');
+      expect(
+        keyScaledTime(filter.decay, filter.decayPerKey, 0, MAX_DECAY_TIMECENTS, filter.decayScale),
+      ).toBeCloseTo(2 ** (8000 / 1200) * 0.5, 9);
+    });
   });
 
   it('reports the generators the Region cannot carry instead of approximating them', () => {
