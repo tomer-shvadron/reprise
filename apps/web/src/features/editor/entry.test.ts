@@ -1,4 +1,4 @@
-import { applyCommand, type Beat, type Score } from '@reprise/model';
+import { applyCommand, createHistory, type Beat, type Score } from '@reprise/model';
 import { describe, expect, it } from 'vitest';
 
 import type { EditCursor } from '@/state/selection';
@@ -11,6 +11,7 @@ import {
   type EntryInput,
   type EntryPlan,
 } from './entry';
+import { historyLabel } from './history-labels';
 import { QUARTER, type Rhythm } from './rhythm';
 import { entryScore, fullBarScore, mixedScore } from './test/entry-scores';
 import { editScore } from './test/scores';
@@ -249,6 +250,27 @@ describe('the duration keys', () => {
     );
     const next = after(score, planned);
     expect(beatsOf(next, 2).map((beat) => beat.duration)).toEqual([8, 8, 4, 4]);
+  });
+
+  it('over a range is one history step with one label, undone in one step', () => {
+    const score = entryScore();
+    const [a, b] = beatsOf(score, 2);
+    if (!a || !b) throw new Error('missing');
+    const planned = plan(
+      score,
+      cursorAt(score, 2, 0),
+      { kind: 'shorter' },
+      { state: { range: undefined, selection: { beatIds: [a.id, b.id] } } },
+    );
+    if (!('command' in planned)) throw new Error('no command');
+    const history = createHistory();
+    const applied = history.apply(score, planned.command);
+    expect(history.steps).toHaveLength(1);
+    expect(history.steps[0]?.patches.length).toBeGreaterThan(0);
+    expect(history.undoLabel && historyLabel(history.undoLabel)).toBe('Change duration');
+    expect(beatsOf(applied.score, 2).map((beat) => beat.duration)).toEqual([8, 8, 4, 4]);
+    expect(history.undo()?.score).toEqual(score);
+    expect(history.canUndo).toBe(false);
   });
 });
 

@@ -55,6 +55,7 @@ const RUNS = 20;
 type Edit =
   | { kind: 'note'; at: Where; string: number; fret: number }
   | { kind: 'tie'; at: Where; string: number }
+  | { kind: 'lyric'; at: Where; syllable: string }
   | { kind: 'dynamics'; at: Where; dynamics: Dynamics }
   | { kind: 'duration'; at: Where; duration: 1 | 2 | 4 | 8 | 16 }
   | { kind: 'insertBeat'; at: Where }
@@ -116,6 +117,11 @@ const edit: Arbitrary<Edit> = oneof(
     kind: constantFrom('masterBar' as const),
     bar: integer({ min: 0, max: 63 }),
     change: constantFrom<'time' | 'key' | 'repeat'>('time', 'key', 'repeat'),
+  }),
+  record({
+    kind: constantFrom('lyric' as const),
+    at: where,
+    syllable: constantFrom('la-', 'longer-', 'x', ''),
   }),
   record({ kind: constantFrom('chord' as const), at: where }),
   record({
@@ -291,6 +297,8 @@ function command(score: Score, step: Edit): Command | undefined {
       return setBeatDuration({ beatId: beat.id }, { duration: step.duration });
     case 'removeBeat':
       return removeBeat({ beatId: beat.id });
+    case 'lyric':
+      return setBeatEffect({ beatId: beat.id }, { lyrics: [step.syllable] });
     case 'chord':
       return setBeatEffect({ beatId: beat.id }, { chord: { name: 'Cmaj7(add9,#11)/G' } });
     case 'mark':
@@ -347,8 +355,23 @@ function sparseScore(): Score {
   return builder.build();
 }
 
+/**
+ * Hyphens that read the next bar: every bar of the first track ends on `la-` and the next opens
+ * on `la`. Changes `built` in place.
+ */
+function withHyphens(built: Score): Score {
+  for (const bar of built.tracks[0]?.bars ?? []) {
+    const beats = bar.voices[0].beats;
+    const first = beats[0];
+    const last = beats.at(-1);
+    if (first && !first.rest) first.lyrics = ['la'];
+    if (last && last !== first && !last.rest) last.lyrics = ['la-'];
+  }
+  return built;
+}
+
 const SCORES: Record<'large' | 'sparse', () => Score> = {
-  large: () => withNoteMarks(withEffects(largeScore(3, 32, { structure: true }))),
+  large: () => withHyphens(withNoteMarks(withEffects(largeScore(3, 32, { structure: true })))),
   sparse: sparseScore,
 };
 

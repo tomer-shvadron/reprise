@@ -1,14 +1,13 @@
 import { current, isDraft } from 'immer';
 import type { z } from 'zod';
 
-import type { Beat } from '../beat';
 import type { Id } from '../id';
 import type { MasterBar } from '../master-bar';
 import type { Note } from '../note';
 import type { Score } from '../score';
 import { TIE_REACH_BARS, hasTieOrigin } from '../ties';
 import type { Track } from '../track';
-import { validateMasterBars, validateScore } from '../validate';
+import { BAR_RULE_REACH, validateMasterBars, validateScore, validateTrackBars } from '../validate';
 import type { Violation } from '../validate';
 import { CommandError } from './command-error';
 import { baseOf } from './locate';
@@ -91,6 +90,41 @@ export function assertTrackValid(
   );
 }
 
+/**
+ * `assertTrackValid` for a beat edit that touched only `bars` of one track: validates those bars,
+ * plus the `BAR_RULE_REACH` bars after each (an edit can make or break a tie that far ahead),
+ * before and after. Every per-bar rule reads only its own bar, its master bar and the track's
+ * settings, except that the tie rules look back `BAR_RULE_REACH` bars, so the count of each rule
+ * over the other bars cannot change. It does not run `duplicate-id`, `bar-count` or `track-kind`:
+ * a command must send every id it writes through `assertFreshIds`, or refuse a repeat among them
+ * itself (grace lists do, in `setBeatEffect(s)`), and no beat edit moves the other two. Because
+ * only the checked bars are compared, a refusal names a violation among them and
+ * `CommandError.violations` lists only those, not ones the file carries elsewhere.
+ */
+export function assertBarsValid(
+  draft: Score,
+  trackIndex: number,
+  touchedBars: Iterable<number>,
+  command: string,
+): void {
+  const base = baseOf(draft);
+  const last = (base.tracks[trackIndex]?.bars.length ?? 0) - 1;
+  const bars = new Set<number>();
+  for (const bar of touchedBars) {
+    for (let b = bar; b <= Math.min(bar + BAR_RULE_REACH, last); b++) bars.add(b);
+  }
+  const sorted = [...bars].sort((a, b) => a - b);
+  const after = { ...base, masterBars: plainMasterBars(draft.masterBars) };
+  const draftTrack = draft.tracks[trackIndex];
+  after.tracks = base.tracks.slice();
+  if (draftTrack) after.tracks[trackIndex] = plainTrack(draftTrack);
+  assertNoNewViolations(
+    command,
+    validateTrackBars(base, trackIndex, sorted),
+    validateTrackBars(after, trackIndex, sorted),
+  );
+}
+
 /** Guitar Pro numbers frets up to the neck length whatever the capo; `transpose` and `fret-range` use the same bound. */
 export function maxFret(track: Track): number {
   return track.fretCount;
@@ -144,66 +178,48 @@ export function forTarget(label: string, command: string, edit: () => void): voi
 }
 
 export function assertFreshId(score: Score, id: Id, command: string): void {
-  if (containsId(baseOf(score), id)) {
-    throw new CommandError(command, 'duplicate-id', `id ${id} is already used`);
-  }
+  assertFreshIds(score, [id], command);
 }
 
 /**
- * `assertFreshId` for many ids at once: one walk builds the set of ids the score already uses,
- * then every id is checked against it and against the others, so a batch costs one scan rather
- * than one per id. Refuses with `duplicate-id`, as a chain of single commands would.
+ * Refuses with `duplicate-id` when `ids` repeat each other or an id the score already uses, as a
+ * chain of single commands would. One plain walk of the score tests each node against the small
+ * set of wanted ids, so a batch costs one scan and no set of every id in the score.
  */
 export function assertFreshIds(score: Score, ids: readonly Id[], command: string): void {
   if (ids.length === 0) return;
-  const used = idsOf(baseOf(score));
-  for (const id of ids) {
-    if (used.has(id)) {
-      throw new CommandError(command, 'duplicate-id', `id ${id} is already used`);
-    }
-    used.add(id);
-  }
-}
-
-function idsOf(score: Score): Set<Id> {
-  const ids = new Set<Id>([score.id]);
-  for (const masterBar of score.masterBars) ids.add(masterBar.id);
-  for (const track of score.tracks) {
-    ids.add(track.id);
+  const wanted = new Set(ids);
+  const used = new Set<Id>();
+  const base = baseOf(score);
+  const check = (id: Id): void => {
+    if (wanted.has(id)) used.add(id);
+  };
+  check(base.id);
+  for (const masterBar of base.masterBars) check(masterBar.id);
+  for (const track of base.tracks) {
+    check(track.id);
     for (const bar of track.bars) {
-      ids.add(bar.id);
+      check(bar.id);
       for (const voice of bar.voices) {
-        ids.add(voice.id);
+        check(voice.id);
         for (const beat of voice.beats) {
-          ids.add(beat.id);
-          for (const note of beat.notes) ids.add(note.id);
-          for (const grace of beat.grace ?? []) for (const note of grace.notes) ids.add(note.id);
+          check(beat.id);
+          for (const note of beat.notes) check(note.id);
+          if (beat.grace) {
+            for (const grace of beat.grace) for (const note of grace.notes) check(note.id);
+          }
         }
       }
     }
   }
-  return ids;
-}
-
-function containsId(score: Score, id: Id): boolean {
-  const inNotes = (notes: Note[]): boolean => notes.some((note) => note.id === id);
-  const inBeat = (beat: Beat): boolean =>
-    beat.id === id ||
-    inNotes(beat.notes) ||
-    (beat.grace?.some((grace) => inNotes(grace.notes)) ?? false);
-  return (
-    score.id === id ||
-    score.masterBars.some((masterBar) => masterBar.id === id) ||
-    score.tracks.some(
-      (track) =>
-        track.id === id ||
-        track.bars.some(
-          (bar) =>
-            bar.id === id ||
-            bar.voices.some((voice) => voice.id === id || voice.beats.some(inBeat)),
-        ),
-    )
-  );
+  // In order of `ids`, so the id a refusal names is the first one a chain would have refused.
+  const seen = new Set<Id>();
+  for (const id of ids) {
+    if (used.has(id) || seen.has(id)) {
+      throw new CommandError(command, 'duplicate-id', `id ${id} is already used`);
+    }
+    seen.add(id);
+  }
 }
 
 /**
