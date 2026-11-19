@@ -4,6 +4,15 @@
  * stubbed, plays it, and checks the GM bank came from the app's own scheme and that the
  * GrantFileProtocolExtraPrivileges fuse is off.
  *
+ * First it reads the fuses of the shipped app and fails if one is not as electron-builder's
+ * `electronFuses` block sets it. Playwright's `_electron.launch` attaches with `--inspect`, which
+ * the EnableNodeCliInspectArguments fuse refuses, so the app that is launched is a copy in the
+ * temporary profile with that one fuse turned back on (scripts/desktop/fuses.ts). It also checks
+ * that app.enableSandbox() holds (a window asking for nodeIntegration gets none) and that
+ * app.quit() ends the process with exit code 0. With REPRISE_EXPECTED_VERSION set (the release
+ * workflow does) it checks app.getVersion(); on Windows it also starts the tuner on Chromium's
+ * fake microphone.
+ *
  * Then it makes an edit, waits for the draft on disk, kills the app with SIGKILL, relaunches it on
  * the same profile, recovers the draft, checks the edit is there, and closes the window to check
  * the unsaved-changes prompt (Don't save closes it and removes the draft).
@@ -13,6 +22,7 @@
  *
  *   pnpm desktop:build && pnpm desktop:smoke [executable]
  */
+import { spawnSync, type ChildProcess } from 'node:child_process';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,7 +30,18 @@ import process, { argv } from 'node:process';
 
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright';
 
+// eslint-disable-next-line import-x/no-relative-packages -- csp.ts has no imports so plain Node loads it; the web package exports no tooling
+import { CONTENT_SECURITY_POLICY } from '../../apps/web/src/csp.ts';
 import { loadBundle } from '../sounds/fetch-gm.ts';
+import {
+  copyWithInspectEnabled,
+  describeExpected,
+  differingFuses,
+  executableIn,
+  fuseMismatches,
+  readFuseWire,
+  unpackedAppDir,
+} from './fuses.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const RELEASE = join(ROOT, 'apps/desktop/release');
@@ -29,13 +50,44 @@ const APP_URL = 'reprise://app/index.html';
 const TIMEOUT = 30_000;
 const BANK_URL = 'reprise://app/sounds/gm/GeneralUser-GS.sf2';
 
-function packagedExecutable(): string {
-  if (process.platform === 'darwin') {
-    const dir = process.arch === 'arm64' ? 'mac-arm64' : 'mac';
-    return join(RELEASE, dir, 'Reprise.app/Contents/MacOS/Reprise');
+/** What `launch` runs: the inspect-enabled copy, or the executable given on the command line. */
+let executable = argv[2] ?? '';
+
+/** Checks the shipped fuses, then makes the copy the smoke launches (see the header). */
+async function prepareApp(profileDir: string): Promise<void> {
+  if (executable !== '') {
+    console.log(`skipped: fuse check and flipped copy, launching ${executable} as given`);
+    return;
   }
-  if (process.platform === 'win32') return join(RELEASE, 'win-unpacked', 'Reprise.exe');
-  throw new Error(`pnpm desktop:build makes no unpacked app on ${process.platform}`);
+  const preload = await readFile(join(ROOT, 'apps/desktop/out/preload/index.cjs'), 'utf8');
+  const requires = [...preload.matchAll(/\brequire\(([^)]*)\)/g)].map((match) => match[1]);
+  check(
+    requires.length === 1 && requires[0] === '"electron"',
+    `the built preload requires only electron (${requires.join(', ')})`,
+  );
+  const shipped = unpackedAppDir(RELEASE, process.platform, process.arch);
+  const wire = await readFuseWire(shipped);
+  const problems = fuseMismatches(wire);
+  if (problems.length > 0) throw new Error(`the shipped fuses are wrong: ${problems.join('; ')}`);
+  console.log(`ok: the shipped app has the expected fuses (${describeExpected()})`);
+  const copy = await copyWithInspectEnabled(shipped, join(profileDir, 'app'));
+  const differing = differingFuses(wire, await readFuseWire(copy));
+  check(
+    differing.length === 1 && differing[0] === 'EnableNodeCliInspectArguments',
+    `the copy differs from the shipped app by EnableNodeCliInspectArguments alone (${differing.join(', ')})`,
+  );
+  executable = executableIn(copy, process.platform);
+  console.log(`ok: launching ${executable}, the shipped app with EnableNodeCliInspectArguments on`);
+}
+
+/** The exit code of a process, also when it has exited already; null when a signal ended it. */
+function exitCodeOf(child: ChildProcess): Promise<number | null> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(child.exitCode);
+  return new Promise((resolve) => {
+    child.once('exit', (code) => {
+      resolve(code);
+    });
+  });
 }
 
 async function gmBytes(): Promise<number> {
@@ -53,8 +105,10 @@ const RECOVERY = 'Reprise closed with unsaved changes';
 
 function launch(profileDir: string): Promise<ElectronApplication> {
   return electron.launch({
-    executablePath: argv[2] ?? packagedExecutable(),
+    executablePath: executable,
     timeout: TIMEOUT,
+    // Chromium's fake microphone, so the Windows tuner step needs no real device.
+    args: process.platform === 'win32' ? ['--use-fake-device-for-media-stream'] : [],
     env: { ...process.env, REPRISE_PROFILE_DIR: profileDir },
   });
 }
@@ -112,17 +166,49 @@ async function volumeSlider(page: Page) {
 
 /** The app may be dead already (killed on purpose), which makes `close` reject. */
 async function closeQuietly(running: { app?: ElectronApplication }): Promise<void> {
-  await running.app?.close().catch(() => undefined);
+  await Promise.race([
+    running.app?.close().catch(() => undefined),
+    new Promise((resolve) => setTimeout(resolve, 10_000)),
+  ]);
 }
 
 async function main(profileDir: string, running: { app?: ElectronApplication }): Promise<void> {
+  await prepareApp(profileDir);
   const app = await launch(profileDir);
   running.app = app;
   try {
     const page = await app.firstWindow();
     page.setDefaultTimeout(TIMEOUT);
     await page.waitForLoadState('load');
+    // The window is already loaded, so the collector goes in and the page reloads: every later
+    // document is then watched from its first script. A worker blocked by the policy is reported
+    // on the document that creates it, so a blocked worker load shows here; a violation raised
+    // inside a worker's own scope does not, and the e2e fixture's console watch is the net for it.
+    await page.addInitScript(() => {
+      const seen: string[] = [];
+      Reflect.set(globalThis, 'repriseSmokeViolations', seen);
+      // The event bubbles from the document to the window. The Node lib types have no DOM, so the
+      // listener is attached through Reflect.
+      const listen = (event: object): void => {
+        const field = (name: string): string => String(Reflect.get(event, name));
+        seen.push(
+          `${field('violatedDirective')} blocked ${field('blockedURI')} from ${field('sourceFile')}`,
+        );
+      };
+      const add: unknown = Reflect.get(globalThis, 'addEventListener');
+      if (typeof add === 'function') {
+        Reflect.apply(add, globalThis, ['securitypolicyviolation', listen]);
+      }
+    });
+    await page.reload();
+    await page.waitForLoadState('load');
     check(page.url() === APP_URL, `the renderer loads from ${APP_URL} (got ${page.url()})`);
+
+    const expectedVersion = process.env['REPRISE_EXPECTED_VERSION'];
+    if (expectedVersion !== undefined && expectedVersion !== '') {
+      const version = await app.evaluate(({ app }) => app.getVersion());
+      check(version === expectedVersion, `app.getVersion() is ${expectedVersion} (got ${version})`);
+    }
 
     const bank = await page.evaluate(async () => {
       const response = await fetch('./sounds/gm/GeneralUser-GS.sf2');
@@ -159,6 +245,25 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
     check(
       fileLoad.startsWith('ERR_FILE_NOT_FOUND'),
       `file:// is refused in the asar, so GrantFileProtocolExtraPrivileges is off (${fileLoad})`,
+    );
+
+    // enableSandbox() overrides a window's own webPreferences; without it `require` is a function.
+    const sandboxed = await app.evaluate(async ({ BrowserWindow }) => {
+      const window = new BrowserWindow({
+        show: false,
+        // No context isolation either: with it on, `require` never reaches the page's world, sandbox or not.
+        webPreferences: { sandbox: false, nodeIntegration: true, contextIsolation: false },
+      });
+      try {
+        await window.loadURL('about:blank');
+        return String(await window.webContents.executeJavaScript('typeof require'));
+      } finally {
+        window.destroy();
+      }
+    });
+    check(
+      sandboxed === 'undefined',
+      `app.enableSandbox() holds: nodeIntegration gets no require (typeof require is ${sandboxed})`,
     );
 
     await app.evaluate(({ session }) => {
@@ -201,8 +306,45 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
       `the app's loader fetches the bank over the scheme (${bankRequests.join(', ')})`,
     );
 
+    const policy = await page.evaluate(async () => {
+      const response = await fetch('./index.html');
+      return response.headers.get('content-security-policy');
+    });
+    check(
+      policy === CONTENT_SECURITY_POLICY,
+      `the scheme sends the shared policy (${String(policy)})`,
+    );
+
+    // The tuner on Windows, where main's permission handler grants the microphone without a
+    // system prompt: macOS would wait on the TCC prompt, as apps/web/e2e/player/tuner.spec.ts notes.
+    if (process.platform === 'win32') {
+      await page.getByRole('button', { name: 'Pause' }).click();
+      await page.keyboard.press('Control+k');
+      const input = page.locator('[cmdk-input]');
+      await input.fill('Show tuner');
+      await input.press('Enter');
+      const panel = page.getByRole('region', { name: 'Tuner' });
+      await panel.waitFor();
+      await panel.getByRole('button', { name: 'Start' }).click();
+      // The button reads Stop while the tuner listens and Try again after an error (tuner-panel.tsx),
+      // so waiting for either one says which way it went, however slow the runner is.
+      const outcome = await panel
+        .getByRole('button', { name: /^(Stop|Try again)$/ })
+        .first()
+        .innerText();
+      check(
+        outcome === 'Stop',
+        `the tuner listens on the fake microphone (button reads ${outcome})`,
+      );
+      check((await panel.getByRole('alert').count()) === 0, 'the tuner shows no microphone error');
+      // F8 swaps the right panel to the mixer, which stops the tuner and closes its context.
+      await page.keyboard.press('F8');
+      await panel.waitFor({ state: 'hidden' });
+      await page.getByRole('button', { name: 'Play' }).waitFor();
+    }
+
     // Autosave: an edit, the draft on disk, a kill, a relaunch on the same profile, a recovery.
-    await page.getByRole('button', { name: 'Pause' }).click();
+    if (process.platform !== 'win32') await page.getByRole('button', { name: 'Pause' }).click();
     const slider = await volumeSlider(page);
     const before = Number(await slider.getAttribute('aria-valuenow'));
     await slider.focus();
@@ -220,21 +362,68 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
     });
     check(true, `the draft ${sidecar} holds the edit`);
 
+    // After the open, play and edit steps: any script, style, font, worker or fetch the policy
+    // blocked is a violation, and the page's own listener has recorded it.
+    const violations = await page.evaluate((): string[] => {
+      const seen: unknown = Reflect.get(globalThis, 'repriseSmokeViolations');
+      return Array.isArray(seen) ? seen.map(String) : [];
+    });
+    check(violations.length === 0, `no CSP violation (${violations.join('; ') || 'none'})`);
+
     const exited = new Promise<void>((resolve) =>
       app.process().once('exit', () => {
         resolve();
       }),
     );
-    app.process().kill('SIGKILL');
-    await exited;
-    check(true, 'the app was killed with SIGKILL');
+    const pid = app.process().pid;
+    let how = 'SIGKILL';
+    if (process.platform === 'win32' && pid !== undefined) {
+      // Killing the main process alone leaves its Chromium children running on Windows, and they
+      // hold the profile's IndexedDB lock files: the relaunch's library database then fails to
+      // open ("Dexie: Workaround for Chrome UnknownError") and no draft is offered. So the whole
+      // tree goes, as a crash that takes the app down would.
+      const result = spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { encoding: 'utf8' });
+      if (result.status !== 0) {
+        throw new Error(
+          `taskkill failed (${String(result.status)}): ${result.stderr}${result.error ?? ''}`,
+        );
+      }
+      how = 'taskkill /T /F';
+    } else {
+      app.process().kill('SIGKILL');
+    }
+    await Promise.race([
+      exited,
+      new Promise((_, reject) =>
+        setTimeout(() => {
+          reject(new Error(`the app did not exit after ${how}`));
+        }, TIMEOUT),
+      ),
+    ]);
+    if (process.platform === 'win32') {
+      // Until no Reprise.exe is left, so the profile's locks are free (bounded, not a guess).
+      await waitFor('the killed app processes to be gone', () => {
+        const listed = spawnSync('tasklist', ['/FI', 'IMAGENAME eq Reprise.exe', '/NH'], {
+          encoding: 'utf8',
+        });
+        return Promise.resolve(!listed.stdout.includes('Reprise.exe'));
+      });
+    }
+    check(true, `the app was killed with ${how}`);
 
     const relaunched = await launch(profileDir);
     running.app = relaunched;
     const again = await relaunched.firstWindow();
     again.setDefaultTimeout(TIMEOUT);
     const dialog = again.getByRole('dialog', { name: RECOVERY });
-    await dialog.waitFor();
+    // The relaunch's own console, printed only when the offer never comes (see below).
+    const consoleLines: string[] = [];
+    again.on('console', (message) => consoleLines.push(`${message.type()}: ${message.text()}`));
+    await dialog.waitFor().catch(async (error: unknown) => {
+      console.error(`relaunch console:\n${consoleLines.join('\n')}`);
+      console.error(`drafts on disk: ${(await draftNames(profileDir)).join(', ')}`);
+      throw error;
+    });
     check(true, 'the relaunch offers the draft');
     await dialog.getByRole('button', { name: /^Recover / }).click();
     await again.locator('[data-system-id]').first().waitFor();
@@ -247,6 +436,9 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
 
     // Closing the window with unsaved changes asks first; Don't save closes and clears the draft.
     // The window, not the process: closing the last window does not quit the app on macOS.
+    // Attached before the window closes: on Windows closing the last window quits the app, and an
+    // 'exit' that already happened is not replayed.
+    const exit = exitCodeOf(relaunched.process());
     const closed = again.waitForEvent('close');
     await relaunched.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.close();
@@ -260,6 +452,22 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
       (await draftNames(profileDir)).length === 0,
       "Don't save closed the window and removed the draft",
     );
+
+    // macOS keeps the app alive with no window, so it is asked to quit; Windows is already quitting.
+    await relaunched
+      .evaluate(({ app }) => {
+        app.quit();
+      })
+      .catch(() => undefined);
+    const exitCode = await Promise.race([
+      exit,
+      new Promise<'timeout'>((resolve) =>
+        setTimeout(() => {
+          resolve('timeout');
+        }, TIMEOUT),
+      ),
+    ]);
+    check(exitCode === 0, `the app quits cleanly (exit code ${String(exitCode)})`);
   } finally {
     await closeQuietly(running);
   }
@@ -280,4 +488,7 @@ try {
       console.warn(`could not remove ${profileDir}: ${String(error)}`);
     },
   );
+  // A killed app's child processes can outlive it on Windows and keep this process's event loop
+  // alive, which would hang the job until its timeout.
+  process.exit(process.exitCode ?? 0);
 }

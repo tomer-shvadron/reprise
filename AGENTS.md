@@ -58,6 +58,8 @@ export GH_TOKEN="$(gh auth token --user tomer-shvadron)"
 
 Labels, milestones and the **Reprise** project board come from `scripts/github/bootstrap.sh` (idempotent, `DRY_RUN=1` to preview). `scripts/github/protect-main.sh` applies the merge settings and the branch protection on `main`, which requires the CI check named `ci`. The `e2e` job runs on every PR but is not required, by the owner's decision (2026-11-17). A third job, `bench-compare`, is not required yet: it becomes required once it has run on ten PRs with no false failure, and the PR that adds it to `protect-main.sh` cites those runs.
 
+The `release.yml` workflow's `package (mac-arm64)`, `package (mac-x64)` and `package (windows-x64)` checks run only on PRs that touch what the desktop build reads (the paths are in the workflow). They are not required by branch protection, and a skipped one is normal; by the lead's ruling a red one on a PR blocks the merge all the same, since it is the only run of the packaged app on Windows and Intel macOS.
+
 ## Layout and boundaries
 
 | Workspace          | Package            | What it is                                                              |
@@ -94,8 +96,8 @@ pnpm bench:compare <base-dir>  # the budgeted bench rows against another worktre
 pnpm dev                   # the web app on the Vite dev server
 pnpm build                 # production build of the web app
 pnpm desktop:dev           # the Electron app around the web core
-pnpm desktop:build         # fetches the GM sound bank first, then electron-vite build plus electron-builder installers
-pnpm desktop:smoke         # launches the packaged app, opens a fixture and plays it (after desktop:build, macOS and Windows)
+pnpm desktop:build         # fetches the GM sound bank first, then electron-vite build plus electron-builder installers for the host arch only; the release workflow passes --mac/--win and --arm64/--x64
+pnpm desktop:smoke         # launches the packaged app, opens a fixture, plays and edits it, recovers a killed session and expects a clean exit; REPRISE_EXPECTED_VERSION checks the version; the release workflow runs it on macOS arm64, macOS x64 and Windows (after desktop:build)
 pnpm fixtures:check        # re-describes fixtures/ with alphaTab, fails on a stale manifest
 pnpm check:files [paths]   # the real-file pass (fixtures/ and local-tabs/ by default); reports in .check-files/
 pnpm sounds:fetch          # downloads the GM soundfont, verified by SHA-256

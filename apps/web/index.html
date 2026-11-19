@@ -5,19 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
     <title>Reprise</title>
-    <script>
-      // Runs before first paint so a light-theme user never sees a dark frame; mirrors src/state/theme.ts.
-      (() => {
-        let theme;
-        try {
-          theme = localStorage.getItem('reprise.theme');
-        } catch {}
-        if (theme !== 'light' && theme !== 'dark') {
-          theme = window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-        }
-        document.documentElement.dataset.theme = theme;
-      })();
-    </script>
+    <script src="/theme-bootstrap.js"></script>
   </head>
   <body>
     <div id="root"></div>

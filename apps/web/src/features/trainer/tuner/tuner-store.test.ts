@@ -27,7 +27,7 @@ async function setup(options: { score?: boolean; deps?: Partial<TunerDeps> } = {
   const listen = async () => {
     state().start();
     await flush();
-    rig.tick(12);
+    rig.tick(16);
   };
   return { rig, services, tuner, detach, flush, state, listen };
 }
@@ -47,7 +47,7 @@ describe('the tuner store', () => {
     expect(rig.contexts).toHaveLength(1);
     await act(() => Promise.resolve());
     expect(state().status).toBe('listening');
-    rig.tick(12);
+    rig.tick(16);
     const reading = state().reading;
     expect(((reading?.midi ?? 0) - 45) * 100).toBeCloseTo(12, 0);
     expect(reading?.held).toBe(false);
