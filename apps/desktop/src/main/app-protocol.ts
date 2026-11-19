@@ -61,9 +61,14 @@ const ALLOW = 'GET, HEAD';
 /**
  * Serves the built renderer. A path outside `root` answers 404 like a missing one. HEAD gets
  * GET's headers and no body; any other method gets 405 with `Allow`. Range is ignored: nothing
- * in the renderer asks for one, so every GET gets the whole file.
+ * in the renderer asks for one, so every GET gets the whole file. Every 200 carries
+ * `contentSecurityPolicy` when given.
  */
-export function createAppProtocolHandler(root: string): (request: Request) => Promise<Response> {
+export function createAppProtocolHandler(
+  root: string,
+  options: { readonly contentSecurityPolicy?: string } = {},
+): (request: Request) => Promise<Response> {
+  const { contentSecurityPolicy } = options;
   const access = new PathAccess([root]);
   return async (request) => {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -90,6 +95,10 @@ export function createAppProtocolHandler(root: string): (request: Request) => Pr
         'Content-Type': contentTypeOf(path),
         'Content-Length': String(size),
         'X-Content-Type-Options': 'nosniff',
+        // On every 200, not only html: a worker loaded from a URL takes its policy from its own response.
+        ...(contentSecurityPolicy === undefined
+          ? {}
+          : { 'Content-Security-Policy': contentSecurityPolicy }),
       },
     });
   };

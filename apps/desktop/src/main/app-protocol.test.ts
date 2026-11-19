@@ -8,6 +8,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { contentTypeOf, createAppProtocolHandler, resolveAppPath } from './app-protocol';
 import { PathAccess } from './path-access';
 
+const POLICY = "default-src 'none'; script-src 'self'";
+
 describe('the app protocol', () => {
   let base: string;
   let root: string;
@@ -23,7 +25,7 @@ describe('the app protocol', () => {
     writeFileSync(join(root, 'sounds/gm/GeneralUser-GS.sf2'), 'RIFF');
     writeFileSync(join(base, 'secret.txt'), 'secret');
     symlinkSync(join(base, 'secret.txt'), join(root, 'link.txt'));
-    handle = createAppProtocolHandler(root);
+    handle = createAppProtocolHandler(root, { contentSecurityPolicy: POLICY });
   });
 
   afterAll(() => {
@@ -40,6 +42,27 @@ describe('the app protocol', () => {
       expect(response.headers.get('x-content-type-options')).toBe('nosniff');
       expect(await response.text()).toBe('<!doctype html><p>Reprise</p>');
     }
+  });
+
+  it('sends the policy on every 200, scripts and binaries included, and on HEAD', async () => {
+    for (const url of [
+      'reprise://app/index.html',
+      'reprise://app/assets/index-abc.js',
+      'reprise://app/sounds/gm/GeneralUser-GS.sf2',
+    ]) {
+      expect((await get(url)).headers.get('content-security-policy'), url).toBe(POLICY);
+    }
+    const head = await handle(new Request('reprise://app/index.html', { method: 'HEAD' }));
+    expect(head.headers.get('content-security-policy')).toBe(POLICY);
+  });
+
+  it('sends no policy on a 404, and none when none is configured', async () => {
+    expect(
+      (await get('reprise://app/missing.js')).headers.get('content-security-policy'),
+    ).toBeNull();
+    const bare = createAppProtocolHandler(root);
+    const response = await bare(new Request('reprise://app/index.html'));
+    expect(response.headers.get('content-security-policy')).toBeNull();
   });
 
   it('serves the bank and scripts with their length and type', async () => {

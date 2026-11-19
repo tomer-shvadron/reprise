@@ -398,7 +398,10 @@ async function start(): Promise<void> {
   void sweepTempFiles(storageRoots).catch((error: unknown) => {
     console.error('Could not sweep leftover temp files', error);
   });
-  protocol.handle(APP_SCHEME, createAppProtocolHandler(RENDERER_DIR));
+  protocol.handle(
+    APP_SCHEME,
+    createAppProtocolHandler(RENDERER_DIR, { contentSecurityPolicy: __REPRISE_CSP__ }),
+  );
   allowMicrophoneOnly();
   applyMenu();
   await createWindow();
