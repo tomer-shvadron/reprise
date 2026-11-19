@@ -171,6 +171,8 @@ export default defineConfig(
       '**/coverage/',
       '**/playwright-report/',
       '**/test-results/',
+      // Shipped verbatim, never bundled or typed: the theme bootstrap is a classic script.
+      'apps/web/public/',
       'docs/',
       'local-tabs/',
     ],

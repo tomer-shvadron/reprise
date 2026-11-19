@@ -1,3 +1,5 @@
+// Must stay first: it configures zod before any module builds a schema.
+import '@/zod-config';
 import { createRoot } from 'react-dom/client';
 
 import { initialTheme } from '@/state/theme';

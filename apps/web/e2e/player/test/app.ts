@@ -379,7 +379,23 @@ export class App {
   }
 }
 
+const policyViolations = new WeakMap<Page, string[]>();
+
+/**
+ * Chromium reports every Content-Security-Policy block as a console message, workers' and
+ * fetches' included, which a page-side listener would miss. `vite preview` sends the shipped
+ * policy, so any block is a real regression and the `app` fixture fails the test on one.
+ */
+function watchPolicyViolations(page: Page): void {
+  const seen: string[] = [];
+  policyViolations.set(page, seen);
+  page.on('console', (message) => {
+    if (/Content Security Policy|Refused to /i.test(message.text())) seen.push(message.text());
+  });
+}
+
 export async function installHooks(page: Page): Promise<void> {
+  watchPolicyViolations(page);
   await page.addInitScript(installPageHooks);
 }
 
@@ -417,6 +433,7 @@ export const test = base.extend<{ app: App }>({
     await installHooks(page);
     await page.goto('/');
     await provide(new App(page));
+    expect(policyViolations.get(page) ?? [], 'Content-Security-Policy violations').toEqual([]);
   },
 });
 

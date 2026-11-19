@@ -30,6 +30,8 @@ import process, { argv } from 'node:process';
 
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright';
 
+// eslint-disable-next-line import-x/no-relative-packages -- csp.ts has no imports so plain Node loads it; the web package exports no tooling
+import { CONTENT_SECURITY_POLICY } from '../../apps/web/src/csp.ts';
 import { loadBundle } from '../sounds/fetch-gm.ts';
 import {
   copyWithInspectEnabled,
@@ -178,6 +180,28 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
     const page = await app.firstWindow();
     page.setDefaultTimeout(TIMEOUT);
     await page.waitForLoadState('load');
+    // The window is already loaded, so the collector goes in and the page reloads: every later
+    // document is then watched from its first script. A worker blocked by the policy is reported
+    // on the document that creates it, so a blocked worker load shows here; a violation raised
+    // inside a worker's own scope does not, and the e2e fixture's console watch is the net for it.
+    await page.addInitScript(() => {
+      const seen: string[] = [];
+      Reflect.set(globalThis, 'repriseSmokeViolations', seen);
+      // The event bubbles from the document to the window. The Node lib types have no DOM, so the
+      // listener is attached through Reflect.
+      const listen = (event: object): void => {
+        const field = (name: string): string => String(Reflect.get(event, name));
+        seen.push(
+          `${field('violatedDirective')} blocked ${field('blockedURI')} from ${field('sourceFile')}`,
+        );
+      };
+      const add: unknown = Reflect.get(globalThis, 'addEventListener');
+      if (typeof add === 'function') {
+        Reflect.apply(add, globalThis, ['securitypolicyviolation', listen]);
+      }
+    });
+    await page.reload();
+    await page.waitForLoadState('load');
     check(page.url() === APP_URL, `the renderer loads from ${APP_URL} (got ${page.url()})`);
 
     const expectedVersion = process.env['REPRISE_EXPECTED_VERSION'];
@@ -282,6 +306,15 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
       `the app's loader fetches the bank over the scheme (${bankRequests.join(', ')})`,
     );
 
+    const policy = await page.evaluate(async () => {
+      const response = await fetch('./index.html');
+      return response.headers.get('content-security-policy');
+    });
+    check(
+      policy === CONTENT_SECURITY_POLICY,
+      `the scheme sends the shared policy (${String(policy)})`,
+    );
+
     // The tuner on Windows, where main's permission handler grants the microphone without a
     // system prompt: macOS would wait on the TCC prompt, as apps/web/e2e/player/tuner.spec.ts notes.
     if (process.platform === 'win32') {
@@ -322,6 +355,14 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
       return found !== undefined && (await draftVolume(profileDir, found)) === volume && found;
     });
     check(true, `the draft ${sidecar} holds the edit`);
+
+    // After the open, play and edit steps: any script, style, font, worker or fetch the policy
+    // blocked is a violation, and the page's own listener has recorded it.
+    const violations = await page.evaluate((): string[] => {
+      const seen: unknown = Reflect.get(globalThis, 'repriseSmokeViolations');
+      return Array.isArray(seen) ? seen.map(String) : [];
+    });
+    check(violations.length === 0, `no CSP violation (${violations.join('; ') || 'none'})`);
 
     const exited = new Promise<void>((resolve) =>
       app.process().once('exit', () => {
