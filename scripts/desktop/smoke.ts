@@ -4,6 +4,13 @@
  * stubbed, plays it, and checks the GM bank came from the app's own scheme and that the
  * GrantFileProtocolExtraPrivileges fuse is off.
  *
+ * First it reads the fuses of the shipped app and fails if one is not as electron-builder's
+ * `electronFuses` block sets it. Playwright's `_electron.launch` attaches with `--inspect`, which
+ * the EnableNodeCliInspectArguments fuse refuses, so the app that is launched is a copy in the
+ * temporary profile with that one fuse turned back on (scripts/desktop/fuses.ts). It also checks
+ * that app.enableSandbox() holds (a window asking for nodeIntegration gets none) and that
+ * app.quit() ends the process with exit code 0.
+ *
  * Then it makes an edit, waits for the draft on disk, kills the app with SIGKILL, relaunches it on
  * the same profile, recovers the draft, checks the edit is there, and closes the window to check
  * the unsaved-changes prompt (Don't save closes it and removes the draft).
@@ -13,6 +20,7 @@
  *
  *   pnpm desktop:build && pnpm desktop:smoke [executable]
  */
+import type { ChildProcess } from 'node:child_process';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,7 +28,18 @@ import process, { argv } from 'node:process';
 
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright';
 
+// eslint-disable-next-line import-x/no-relative-packages -- csp.ts has no imports so plain Node loads it; the web package exports no tooling
+import { CONTENT_SECURITY_POLICY } from '../../apps/web/src/csp.ts';
 import { loadBundle } from '../sounds/fetch-gm.ts';
+import {
+  copyWithInspectEnabled,
+  describeExpected,
+  differingFuses,
+  executableIn,
+  fuseMismatches,
+  readFuseWire,
+  unpackedAppDir,
+} from './fuses.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const RELEASE = join(ROOT, 'apps/desktop/release');
@@ -29,13 +48,44 @@ const APP_URL = 'reprise://app/index.html';
 const TIMEOUT = 30_000;
 const BANK_URL = 'reprise://app/sounds/gm/GeneralUser-GS.sf2';
 
-function packagedExecutable(): string {
-  if (process.platform === 'darwin') {
-    const dir = process.arch === 'arm64' ? 'mac-arm64' : 'mac';
-    return join(RELEASE, dir, 'Reprise.app/Contents/MacOS/Reprise');
+/** What `launch` runs: the inspect-enabled copy, or the executable given on the command line. */
+let executable = argv[2] ?? '';
+
+/** Checks the shipped fuses, then makes the copy the smoke launches (see the header). */
+async function prepareApp(profileDir: string): Promise<void> {
+  if (executable !== '') {
+    console.log(`skipped: fuse check and flipped copy, launching ${executable} as given`);
+    return;
   }
-  if (process.platform === 'win32') return join(RELEASE, 'win-unpacked', 'Reprise.exe');
-  throw new Error(`pnpm desktop:build makes no unpacked app on ${process.platform}`);
+  const preload = await readFile(join(ROOT, 'apps/desktop/out/preload/index.cjs'), 'utf8');
+  const requires = [...preload.matchAll(/\brequire\(([^)]*)\)/g)].map((match) => match[1]);
+  check(
+    requires.length === 1 && requires[0] === '"electron"',
+    `the built preload requires only electron (${requires.join(', ')})`,
+  );
+  const shipped = unpackedAppDir(RELEASE, process.platform, process.arch);
+  const wire = await readFuseWire(shipped);
+  const problems = fuseMismatches(wire);
+  if (problems.length > 0) throw new Error(`the shipped fuses are wrong: ${problems.join('; ')}`);
+  console.log(`ok: the shipped app has the expected fuses (${describeExpected()})`);
+  const copy = await copyWithInspectEnabled(shipped, join(profileDir, 'app'));
+  const differing = differingFuses(wire, await readFuseWire(copy));
+  check(
+    differing.length === 1 && differing[0] === 'EnableNodeCliInspectArguments',
+    `the copy differs from the shipped app by EnableNodeCliInspectArguments alone (${differing.join(', ')})`,
+  );
+  executable = executableIn(copy, process.platform);
+  console.log(`ok: launching ${executable}, the shipped app with EnableNodeCliInspectArguments on`);
+}
+
+/** The exit code of a process, also when it has exited already; null when a signal ended it. */
+function exitCodeOf(child: ChildProcess): Promise<number | null> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(child.exitCode);
+  return new Promise((resolve) => {
+    child.once('exit', (code) => {
+      resolve(code);
+    });
+  });
 }
 
 async function gmBytes(): Promise<number> {
@@ -53,7 +103,7 @@ const RECOVERY = 'Reprise closed with unsaved changes';
 
 function launch(profileDir: string): Promise<ElectronApplication> {
   return electron.launch({
-    executablePath: argv[2] ?? packagedExecutable(),
+    executablePath: executable,
     timeout: TIMEOUT,
     env: { ...process.env, REPRISE_PROFILE_DIR: profileDir },
   });
@@ -116,11 +166,34 @@ async function closeQuietly(running: { app?: ElectronApplication }): Promise<voi
 }
 
 async function main(profileDir: string, running: { app?: ElectronApplication }): Promise<void> {
+  await prepareApp(profileDir);
   const app = await launch(profileDir);
   running.app = app;
   try {
     const page = await app.firstWindow();
     page.setDefaultTimeout(TIMEOUT);
+    await page.waitForLoadState('load');
+    // The window is already loaded, so the collector goes in and the page reloads: every later
+    // document is then watched from its first script. A worker blocked by the policy is reported
+    // on the document that creates it, so a blocked worker load shows here; a violation raised
+    // inside a worker's own scope does not, and the e2e fixture's console watch is the net for it.
+    await page.addInitScript(() => {
+      const seen: string[] = [];
+      Reflect.set(globalThis, 'repriseSmokeViolations', seen);
+      // The event bubbles from the document to the window. The Node lib types have no DOM, so the
+      // listener is attached through Reflect.
+      const listen = (event: object): void => {
+        const field = (name: string): string => String(Reflect.get(event, name));
+        seen.push(
+          `${field('violatedDirective')} blocked ${field('blockedURI')} from ${field('sourceFile')}`,
+        );
+      };
+      const add: unknown = Reflect.get(globalThis, 'addEventListener');
+      if (typeof add === 'function') {
+        Reflect.apply(add, globalThis, ['securitypolicyviolation', listen]);
+      }
+    });
+    await page.reload();
     await page.waitForLoadState('load');
     check(page.url() === APP_URL, `the renderer loads from ${APP_URL} (got ${page.url()})`);
 
@@ -159,6 +232,25 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
     check(
       fileLoad.startsWith('ERR_FILE_NOT_FOUND'),
       `file:// is refused in the asar, so GrantFileProtocolExtraPrivileges is off (${fileLoad})`,
+    );
+
+    // enableSandbox() overrides a window's own webPreferences; without it `require` is a function.
+    const sandboxed = await app.evaluate(async ({ BrowserWindow }) => {
+      const window = new BrowserWindow({
+        show: false,
+        // No context isolation either: with it on, `require` never reaches the page's world, sandbox or not.
+        webPreferences: { sandbox: false, nodeIntegration: true, contextIsolation: false },
+      });
+      try {
+        await window.loadURL('about:blank');
+        return String(await window.webContents.executeJavaScript('typeof require'));
+      } finally {
+        window.destroy();
+      }
+    });
+    check(
+      sandboxed === 'undefined',
+      `app.enableSandbox() holds: nodeIntegration gets no require (typeof require is ${sandboxed})`,
     );
 
     await app.evaluate(({ session }) => {
@@ -201,6 +293,15 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
       `the app's loader fetches the bank over the scheme (${bankRequests.join(', ')})`,
     );
 
+    const policy = await page.evaluate(async () => {
+      const response = await fetch('./index.html');
+      return response.headers.get('content-security-policy');
+    });
+    check(
+      policy === CONTENT_SECURITY_POLICY,
+      `the scheme sends the shared policy (${String(policy)})`,
+    );
+
     // Autosave: an edit, the draft on disk, a kill, a relaunch on the same profile, a recovery.
     await page.getByRole('button', { name: 'Pause' }).click();
     const slider = await volumeSlider(page);
@@ -219,6 +320,14 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
       return found !== undefined && (await draftVolume(profileDir, found)) === volume && found;
     });
     check(true, `the draft ${sidecar} holds the edit`);
+
+    // After the open, play and edit steps: any script, style, font, worker or fetch the policy
+    // blocked is a violation, and the page's own listener has recorded it.
+    const violations = await page.evaluate((): string[] => {
+      const seen: unknown = Reflect.get(globalThis, 'repriseSmokeViolations');
+      return Array.isArray(seen) ? seen.map(String) : [];
+    });
+    check(violations.length === 0, `no CSP violation (${violations.join('; ') || 'none'})`);
 
     const exited = new Promise<void>((resolve) =>
       app.process().once('exit', () => {
@@ -247,6 +356,9 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
 
     // Closing the window with unsaved changes asks first; Don't save closes and clears the draft.
     // The window, not the process: closing the last window does not quit the app on macOS.
+    // Attached before the window closes: on Windows closing the last window quits the app, and an
+    // 'exit' that already happened is not replayed.
+    const exit = exitCodeOf(relaunched.process());
     const closed = again.waitForEvent('close');
     await relaunched.evaluate(({ BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0]?.close();
@@ -260,6 +372,22 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
       (await draftNames(profileDir)).length === 0,
       "Don't save closed the window and removed the draft",
     );
+
+    // macOS keeps the app alive with no window, so it is asked to quit; Windows is already quitting.
+    await relaunched
+      .evaluate(({ app }) => {
+        app.quit();
+      })
+      .catch(() => undefined);
+    const exitCode = await Promise.race([
+      exit,
+      new Promise<'timeout'>((resolve) =>
+        setTimeout(() => {
+          resolve('timeout');
+        }, TIMEOUT),
+      ),
+    ]);
+    check(exitCode === 0, `the app quits cleanly (exit code ${String(exitCode)})`);
   } finally {
     await closeQuietly(running);
   }

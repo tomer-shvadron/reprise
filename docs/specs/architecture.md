@@ -616,6 +616,7 @@ The browser implementation exists so `pnpm dev` works without Electron; the Elec
 - **Renderer process**: React, the document store, layout (main thread first, worker-ready), the audio scheduler.
 - **Audio thread**: Web Audio's native graph does all mixing. The main thread only schedules.
 - **Electron main**: file dialogs, file IO, menus, window state, printing, app paths, and serving the built renderer over `reprise://app`.
+- **Content-Security-Policy**: defined once in `apps/web/src/csp.ts`, with `script-src 'self'` and no `'unsafe-inline'` or `'unsafe-eval'`. Main sends it on every 200 response of `reprise://app` (electron-vite injects the string as `__REPRISE_CSP__`), and `vite preview` sends it, so the e2e suite runs under the shipped policy; `pnpm dev` has none. The theme bootstrap is the classic script `public/theme-bootstrap.js`, not an inline one, and zod is set jitless at the start of each entry point (`src/zod-config.ts`) so it never probes `new Function`; the non-JIT parse path costs about 60% more on a long score (about 114 ms to 182 ms in Node, measured in the PR 330 review) and the drop-to-paint row stayed within its budget. `worker-src` allows `blob:` for the audio ticker's worker.
 - **Threads we may add later**: a layout worker if layout time exceeds its budget; an AudioWorklet scheduler if main-thread jank ever causes gaps. Both are isolated by the contracts above.
 
 ## Memory model
