@@ -55,6 +55,26 @@ export function validateScore(score: Score): Violation[] {
   return violations;
 }
 
+/**
+ * The per-bar rules for the given bars of one track, paths from the score root. Not exported from
+ * the package: commands use it to validate only the bars an edit can have changed. It skips
+ * `duplicate-id`, `bar-count` and `track-kind`, which no beat edit can alter.
+ */
+export function validateTrackBars(
+  score: Score,
+  trackIndex: number,
+  bars: readonly number[],
+): Violation[] {
+  const track = score.tracks[trackIndex];
+  if (!track) return [];
+  const violations: Violation[] = [];
+  const report: Report = (rule, path, message) => {
+    violations.push({ rule, path, message });
+  };
+  for (const b of bars) checkBar(score, track, b, ['tracks', trackIndex], report);
+  return violations;
+}
+
 /** The master-bar rules alone, for edits that touch only the master bars. */
 export function validateMasterBars(masterBars: MasterBar[]): Violation[] {
   const violations: Violation[] = [];
@@ -162,24 +182,37 @@ function checkTrack(score: Score, track: Track, path: ViolationPath, report: Rep
   }
   checkTrackKind(track, path, report);
 
-  track.bars.forEach((bar, b) => {
-    const masterBar = score.masterBars[b];
-    bar.voices.forEach((voice, v) => {
-      const voicePath = [...path, 'bars', b, 'voices', v];
-      if (masterBar) checkVoiceLength(voice, masterBar, voicePath, report);
-      voice.beats.forEach((beat, i) => {
-        const beatPath = [...voicePath, 'beats', i];
-        checkRhythm(beat, beatPath, report);
-        if (beat.rest && beat.notes.length > 0) {
-          report('rest-with-notes', [...beatPath, 'notes'], 'a rest beat carries notes');
-        }
-        checkNotes(track, beat.notes, [...beatPath, 'notes'], report);
-        beat.grace?.forEach((grace, g) => {
-          checkNotes(track, grace.notes, [...beatPath, 'grace', g, 'notes'], report);
-        });
-        checkChordDiagram(track, beat, beatPath, report);
-        checkTies(track, beat, { bar: b, voice: v, beat: i }, beatPath, report);
+  track.bars.forEach((_, b) => {
+    checkBar(score, track, b, path, report);
+  });
+}
+
+/** The per-bar rules of one bar: its voices against its master bar, then notes, chords and ties. */
+function checkBar(
+  score: Score,
+  track: Track,
+  b: number,
+  path: ViolationPath,
+  report: Report,
+): void {
+  const bar = track.bars[b];
+  if (!bar) return;
+  const masterBar = score.masterBars[b];
+  bar.voices.forEach((voice, v) => {
+    const voicePath = [...path, 'bars', b, 'voices', v];
+    if (masterBar) checkVoiceLength(voice, masterBar, voicePath, report);
+    voice.beats.forEach((beat, i) => {
+      const beatPath = [...voicePath, 'beats', i];
+      checkRhythm(beat, beatPath, report);
+      if (beat.rest && beat.notes.length > 0) {
+        report('rest-with-notes', [...beatPath, 'notes'], 'a rest beat carries notes');
+      }
+      checkNotes(track, beat.notes, [...beatPath, 'notes'], report);
+      beat.grace?.forEach((grace, g) => {
+        checkNotes(track, grace.notes, [...beatPath, 'grace', g, 'notes'], report);
       });
+      checkChordDiagram(track, beat, beatPath, report);
+      checkTies(track, beat, { bar: b, voice: v, beat: i }, beatPath, report);
     });
   });
 }

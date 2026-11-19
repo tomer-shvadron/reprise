@@ -10,10 +10,9 @@ import type { Track } from '../track';
 import { assignChanges } from './changes';
 import type { Changes } from './changes';
 import {
-  assertFreshId,
+  assertBarsValid,
   assertFreshIds,
   assertNotePlaced,
-  assertTrackValid,
   forTarget,
   parseOrThrow,
   releaseTies,
@@ -68,8 +67,14 @@ export function insertBeat(
           `index ${String(target.index)} is outside 0 to ${String(voice.beats.length)}`,
         );
       }
-      if (target.id !== undefined) assertFreshId(draft, target.id, name);
-      assertNewNotes(draft, track, [...(beat.notes ?? []), ...graceNotes(beat.grace)], name);
+      // One walk for the beat's own id and every new note, then the placement of each note.
+      const notes = [...(beat.notes ?? []), ...graceNotes(beat.grace)];
+      assertFreshIds(
+        draft,
+        [...(target.id === undefined ? [] : [target.id]), ...notes.map((note) => note.id)],
+        name,
+      );
+      for (const note of notes) assertNotePlaced(track, note, name);
       const node = parseOrThrow(
         BeatSchema,
         {
@@ -80,7 +85,7 @@ export function insertBeat(
       );
       voice.beats.splice(target.index, 0, node);
       releaseTies(track, where.bar, where.voice, target.index + 1);
-      assertTrackValid(draft, where.track, name);
+      assertBarsValid(draft, where.track, [where.bar], name);
     },
   };
 }
@@ -109,7 +114,52 @@ export function setBeatDuration(target: { beatId: Id }, rhythm: Changes<BeatRhyt
       const beat = beatAt(draft, position, name);
       assignChanges(beat, rhythm);
       parseOrThrow(BeatSchema, beat, name);
-      assertTrackValid(draft, position.track, name);
+      assertBarsValid(draft, position.track, [position.bar], name);
+    },
+  };
+}
+
+export interface BeatDurationEdit {
+  beatId: Id;
+  rhythm: Changes<BeatRhythm>;
+}
+
+/**
+ * `setBeatDuration` for many beats at once, as `setBeatEffects` is to `setBeatEffect`: one
+ * lookup pass, each touched track's bars validated once, one history step, atomic. Only the end
+ * state is validated, so a batch that would overfill a voice midway but fits at the end is
+ * accepted. An empty list or a beat named twice is refused.
+ */
+export function setBeatDurations(edits: readonly BeatDurationEdit[]): Command {
+  const name = 'setBeatDurations';
+  return {
+    name,
+    run(draft) {
+      if (edits.length === 0) {
+        throw new CommandError(name, 'invalid-value', 'no beat duration edits');
+      }
+      const seen = new Set<Id>();
+      for (const { beatId } of edits) {
+        if (seen.has(beatId)) {
+          throw new CommandError(name, 'invalid-value', `beat ${beatId} is edited twice`);
+        }
+        seen.add(beatId);
+      }
+      const positions = indexBeats(draft, [...seen], name);
+      const touched = new Map<number, Set<number>>();
+      for (const { beatId, rhythm } of edits) {
+        const position = positions.get(beatId);
+        if (!position) throw new CommandError(name, 'not-found', `no beat ${beatId}`);
+        forTarget(`beat ${beatId}`, name, () => {
+          const beat = beatAt(draft, position, name);
+          assignChanges(beat, rhythm);
+          parseOrThrow(BeatSchema, beat, name);
+        });
+        const bars = touched.get(position.track) ?? new Set<number>();
+        bars.add(position.bar);
+        touched.set(position.track, bars);
+      }
+      for (const [track, bars] of touched) assertBarsValid(draft, track, bars, name);
     },
   };
 }
@@ -160,7 +210,7 @@ export function setBeatEffect(target: { beatId: Id }, changes: BeatChanges): Com
         name,
       );
       applyBeatChanges(draft, position, changes, name);
-      assertTrackValid(draft, position.track, name);
+      assertBarsValid(draft, position.track, [position.bar], name);
     },
   };
 }
@@ -190,7 +240,7 @@ export function setBeatEffects(edits: readonly BeatEffectEdit[]): Command {
         seen.add(beatId);
       }
       const positions = indexBeats(draft, [...seen], name);
-      const tracks = new Set<number>();
+      const tracks = new Map<number, Set<number>>();
       const added: { track: Track; note: Note }[] = [];
       const located = edits.map(({ beatId, changes }) => {
         const position = positions.get(beatId);
@@ -213,9 +263,11 @@ export function setBeatEffects(edits: readonly BeatEffectEdit[]): Command {
         forTarget(`beat ${beatId}`, name, () => {
           applyBeatChanges(draft, position, changes, name);
         });
-        tracks.add(position.track);
+        const bars = tracks.get(position.track) ?? new Set<number>();
+        bars.add(position.bar);
+        tracks.set(position.track, bars);
       }
-      for (const track of tracks) assertTrackValid(draft, track, name);
+      for (const [track, bars] of tracks) assertBarsValid(draft, track, bars, name);
     },
   };
 }
@@ -315,7 +367,7 @@ export function replaceBeats(edits: readonly BeatSpliceEdit[]): Command {
       for (const { track, notes } of added) {
         for (const note of notes) assertNotePlaced(track, note, name);
       }
-      const tracks = new Set<number>();
+      const tracks = new Map<number, Set<number>>();
       const spliced: { track: Track; bar: number; voice: number; index: number }[] = [];
       for (const [voiceId, list] of byVoice) {
         const where = positions.get(voiceId);
@@ -336,11 +388,13 @@ export function replaceBeats(edits: readonly BeatSpliceEdit[]): Command {
           voice: where.voice,
           index: at(list, 0, name).index,
         });
-        tracks.add(where.track);
+        const bars = tracks.get(where.track) ?? new Set<number>();
+        bars.add(where.bar);
+        tracks.set(where.track, bars);
       }
       // After every splice, so each release reads the end state whatever order the voices came in.
       for (const { track, bar, voice, index } of spliced) releaseTies(track, bar, voice, index);
-      for (const track of tracks) assertTrackValid(draft, track, name);
+      for (const [track, bars] of tracks) assertBarsValid(draft, track, bars, name);
     },
   };
 }

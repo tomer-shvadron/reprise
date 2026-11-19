@@ -232,6 +232,7 @@ export {
   removeTrack,
   replaceBeats,
   setBeatDuration,
+  setBeatDurations,
   setBeatEffect,
   setBeatEffects,
   setBeatRest,
@@ -246,6 +247,7 @@ export {
 } from './commands';
 export type {
   BeatChanges,
+  BeatDurationEdit,
   BeatEffectEdit,
   BeatInput,
   BeatRhythm,
