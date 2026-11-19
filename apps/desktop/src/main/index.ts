@@ -258,7 +258,7 @@ function sendOpenRecent(id: string): void {
 }
 
 function showAbout(): void {
-  const window = BrowserWindow.getFocusedWindow() ?? undefined;
+  const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
   const options: MessageBoxOptions = {
     type: 'info',
     title: 'About Reprise',

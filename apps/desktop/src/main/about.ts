@@ -1,4 +1,4 @@
-export const COPYRIGHT = 'Copyright © Tomer Shvadron';
+export const COPYRIGHT = 'Copyright © 2026 Tomer Shvadron';
 
 /** The macOS About panel's fields; `app.getVersion()` is the packaged package.json version. */
 export function aboutPanelOptions(version: string) {
