@@ -7,7 +7,7 @@ import type { Note } from '../note';
 import type { Score } from '../score';
 import { TIE_REACH_BARS, hasTieOrigin } from '../ties';
 import type { Track } from '../track';
-import { validateMasterBars, validateScore, validateTrackBars } from '../validate';
+import { BAR_RULE_REACH, validateMasterBars, validateScore, validateTrackBars } from '../validate';
 import type { Violation } from '../validate';
 import { CommandError } from './command-error';
 import { baseOf } from './locate';
@@ -92,10 +92,14 @@ export function assertTrackValid(
 
 /**
  * `assertTrackValid` for a beat edit that touched only `bars` of one track: validates those bars,
- * plus the `TIE_REACH_BARS` after each (an edit can make or break a tie that far ahead), before
- * and after. Every per-bar rule reads only its own bar, its master bar and the track's settings,
- * so the count of each rule over the other bars cannot change; `duplicate-id` is covered by the
- * fresh-id check, and `bar-count` and `track-kind` cannot move through a beat edit.
+ * plus the `BAR_RULE_REACH` bars after each (an edit can make or break a tie that far ahead),
+ * before and after. Every per-bar rule reads only its own bar, its master bar and the track's
+ * settings, except that the tie rules look back `BAR_RULE_REACH` bars, so the count of each rule
+ * over the other bars cannot change. It does not run `duplicate-id`, `bar-count` or `track-kind`:
+ * a command must send every id it writes through `assertFreshIds`, or refuse a repeat among them
+ * itself (grace lists do, in `setBeatEffect(s)`), and no beat edit moves the other two. Because
+ * only the checked bars are compared, a refusal names a violation among them and
+ * `CommandError.violations` lists only those, not ones the file carries elsewhere.
  */
 export function assertBarsValid(
   draft: Score,
@@ -107,7 +111,7 @@ export function assertBarsValid(
   const last = (base.tracks[trackIndex]?.bars.length ?? 0) - 1;
   const bars = new Set<number>();
   for (const bar of touchedBars) {
-    for (let b = bar; b <= Math.min(bar + TIE_REACH_BARS, last); b++) bars.add(b);
+    for (let b = bar; b <= Math.min(bar + BAR_RULE_REACH, last); b++) bars.add(b);
   }
   const sorted = [...bars].sort((a, b) => a - b);
   const after = { ...base, masterBars: plainMasterBars(draft.masterBars) };

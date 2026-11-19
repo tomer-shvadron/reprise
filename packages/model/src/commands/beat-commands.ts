@@ -181,9 +181,40 @@ export function setBeatRest(target: { beatId: Id }, rest: boolean): Command {
   };
 }
 
+/**
+ * Refuses a grace list that repeats an id, the kept ones included: the fresh-id check sees only
+ * the added notes, and the bar-windowed validation no longer runs `duplicate-id`. Reports as the
+ * whole-track check did: `invariant`, the rule, the path of the second use and where the first is.
+ */
+function assertGraceIdsDistinct(
+  position: BeatAt,
+  grace: readonly GraceBeat[],
+  command: string,
+): void {
+  const at = ['tracks', position.track, 'bars', position.bar, 'voices', position.voice];
+  const seen = new Map<string, (string | number)[]>();
+  grace.forEach((beat, g) => {
+    beat.notes.forEach((note, n) => {
+      const path = [...at, 'beats', position.beat, 'grace', g, 'notes', n];
+      const first = seen.get(note.id);
+      if (first) {
+        const message = `id ${note.id} is already used at ${first.join('.')}`;
+        throw new CommandError(
+          command,
+          'invariant',
+          `duplicate-id at ${[...path, 'id'].join('.')}: ${message}`,
+          [{ rule: 'duplicate-id', path: [...path, 'id'], message }],
+        );
+      }
+      seen.set(note.id, path);
+    });
+  });
+}
+
 /** The grace notes `changes` adds to the beat: those whose ids the beat does not already hold. */
 function addedGraceNotes(draft: Score, position: BeatAt, changes: BeatChanges, name: string) {
   if (!changes.grace) return [];
+  assertGraceIdsDistinct(position, changes.grace, name);
   const kept = new Set(graceNotes(beatAt(baseOf(draft), position, name).grace).map((n) => n.id));
   return graceNotes(changes.grace).filter((note) => !kept.has(note.id));
 }
