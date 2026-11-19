@@ -50,6 +50,6 @@ pnpm e2e            # the player flows: Playwright Test against the production b
 
 `pnpm --filter @reprise/web preview` serves the last build.
 
-`pnpm desktop:build` writes installers to `apps/desktop/release/`: on macOS a `.dmg` and a `.zip` for both arm64 and x64, on Windows an NSIS installer. The builds are unsigned, so the first time you open the macOS app, right-click it in Finder and choose **Open**, then confirm. After that it opens normally.
+`pnpm desktop:build` writes installers for the machine's own architecture to `apps/desktop/release/`: on macOS a `.dmg` and a `.zip`, on Windows an NSIS installer. Releases ([how](docs/reference/release.md)) carry arm64 and x64 for macOS and x64 for Windows. The builds are unsigned, so the first time you open the macOS app, right-click it in Finder and choose **Open**, then confirm; on macOS 15 and later use System Settings → Privacy & Security → **Open Anyway** instead. After that it opens normally.
 
 `pnpm install` also downloads the headless Chromium shell (about 100 MB) that the `audio` tests run in. `pnpm exec playwright install chromium` adds the full browser, needed only to watch those tests with `--browser.headless=false`, or the player flows with `pnpm e2e --headed` or `--ui`. `pnpm bootstrap` downloads the Electron binary up front; without it, the first `pnpm desktop:dev` or `pnpm desktop:build` does.

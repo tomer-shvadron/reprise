@@ -28,14 +28,18 @@ electronFuses:
 mac:
   category: public.app-category.music
   identity: null
+  # No arch lists: a local `pnpm desktop:build` packages the host arch only, and the release
+  # workflow names each arch with --arm64 / --x64 on its own runner. The name carries the arch
+  # because the default gives the x64 dmg none, which would leave the two dmgs ambiguous.
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
   target:
-    - target: dmg
-      arch: [arm64, x64]
-    - target: zip
-      arch: [arm64, x64]
+    - dmg
+    - zip
   extendInfo:
     NSMicrophoneUsageDescription: Reprise listens to your instrument for the tuner and practice tools.
 win:
   target:
-    - target: nsis
-      arch: [x64]
+    - nsis
+nsis:
+  # One-click, per-user and no admin stay at electron-builder's defaults.
+  artifactName: ${productName}-${version}-windows-${arch}-setup.${ext}

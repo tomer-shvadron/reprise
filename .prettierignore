@@ -4,6 +4,6 @@ coverage/
 local-tabs/
 docs/
 **/out/
-**/release/
+apps/desktop/release/
 apps/web/public/fonts/
 scripts/layout/data/

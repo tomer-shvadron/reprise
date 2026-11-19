@@ -9,7 +9,9 @@
  * the EnableNodeCliInspectArguments fuse refuses, so the app that is launched is a copy in the
  * temporary profile with that one fuse turned back on (scripts/desktop/fuses.ts). It also checks
  * that app.enableSandbox() holds (a window asking for nodeIntegration gets none) and that
- * app.quit() ends the process with exit code 0.
+ * app.quit() ends the process with exit code 0. With REPRISE_EXPECTED_VERSION set (the release
+ * workflow does) it checks app.getVersion(); on Windows it also starts the tuner on Chromium's
+ * fake microphone.
  *
  * Then it makes an edit, waits for the draft on disk, kills the app with SIGKILL, relaunches it on
  * the same profile, recovers the draft, checks the edit is there, and closes the window to check
@@ -20,7 +22,7 @@
  *
  *   pnpm desktop:build && pnpm desktop:smoke [executable]
  */
-import type { ChildProcess } from 'node:child_process';
+import { spawnSync, type ChildProcess } from 'node:child_process';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -105,6 +107,8 @@ function launch(profileDir: string): Promise<ElectronApplication> {
   return electron.launch({
     executablePath: executable,
     timeout: TIMEOUT,
+    // Chromium's fake microphone, so the Windows tuner step needs no real device.
+    args: process.platform === 'win32' ? ['--use-fake-device-for-media-stream'] : [],
     env: { ...process.env, REPRISE_PROFILE_DIR: profileDir },
   });
 }
@@ -162,7 +166,10 @@ async function volumeSlider(page: Page) {
 
 /** The app may be dead already (killed on purpose), which makes `close` reject. */
 async function closeQuietly(running: { app?: ElectronApplication }): Promise<void> {
-  await running.app?.close().catch(() => undefined);
+  await Promise.race([
+    running.app?.close().catch(() => undefined),
+    new Promise((resolve) => setTimeout(resolve, 10_000)),
+  ]);
 }
 
 async function main(profileDir: string, running: { app?: ElectronApplication }): Promise<void> {
@@ -196,6 +203,12 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
     await page.reload();
     await page.waitForLoadState('load');
     check(page.url() === APP_URL, `the renderer loads from ${APP_URL} (got ${page.url()})`);
+
+    const expectedVersion = process.env['REPRISE_EXPECTED_VERSION'];
+    if (expectedVersion !== undefined && expectedVersion !== '') {
+      const version = await app.evaluate(({ app }) => app.getVersion());
+      check(version === expectedVersion, `app.getVersion() is ${expectedVersion} (got ${version})`);
+    }
 
     const bank = await page.evaluate(async () => {
       const response = await fetch('./sounds/gm/GeneralUser-GS.sf2');
@@ -302,8 +315,36 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
       `the scheme sends the shared policy (${String(policy)})`,
     );
 
+    // The tuner on Windows, where main's permission handler grants the microphone without a
+    // system prompt: macOS would wait on the TCC prompt, as apps/web/e2e/player/tuner.spec.ts notes.
+    if (process.platform === 'win32') {
+      await page.getByRole('button', { name: 'Pause' }).click();
+      await page.keyboard.press('Control+k');
+      const input = page.locator('[cmdk-input]');
+      await input.fill('Show tuner');
+      await input.press('Enter');
+      const panel = page.getByRole('region', { name: 'Tuner' });
+      await panel.waitFor();
+      await panel.getByRole('button', { name: 'Start' }).click();
+      // The button reads Stop while the tuner listens and Try again after an error (tuner-panel.tsx),
+      // so waiting for either one says which way it went, however slow the runner is.
+      const outcome = await panel
+        .getByRole('button', { name: /^(Stop|Try again)$/ })
+        .first()
+        .innerText();
+      check(
+        outcome === 'Stop',
+        `the tuner listens on the fake microphone (button reads ${outcome})`,
+      );
+      check((await panel.getByRole('alert').count()) === 0, 'the tuner shows no microphone error');
+      // F8 swaps the right panel to the mixer, which stops the tuner and closes its context.
+      await page.keyboard.press('F8');
+      await panel.waitFor({ state: 'hidden' });
+      await page.getByRole('button', { name: 'Play' }).waitFor();
+    }
+
     // Autosave: an edit, the draft on disk, a kill, a relaunch on the same profile, a recovery.
-    await page.getByRole('button', { name: 'Pause' }).click();
+    if (process.platform !== 'win32') await page.getByRole('button', { name: 'Pause' }).click();
     const slider = await volumeSlider(page);
     const before = Number(await slider.getAttribute('aria-valuenow'));
     await slider.focus();
@@ -334,16 +375,55 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
         resolve();
       }),
     );
-    app.process().kill('SIGKILL');
-    await exited;
-    check(true, 'the app was killed with SIGKILL');
+    const pid = app.process().pid;
+    let how = 'SIGKILL';
+    if (process.platform === 'win32' && pid !== undefined) {
+      // Killing the main process alone leaves its Chromium children running on Windows, and they
+      // hold the profile's IndexedDB lock files: the relaunch's library database then fails to
+      // open ("Dexie: Workaround for Chrome UnknownError") and no draft is offered. So the whole
+      // tree goes, as a crash that takes the app down would.
+      const result = spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { encoding: 'utf8' });
+      if (result.status !== 0) {
+        throw new Error(
+          `taskkill failed (${String(result.status)}): ${result.stderr}${result.error ?? ''}`,
+        );
+      }
+      how = 'taskkill /T /F';
+    } else {
+      app.process().kill('SIGKILL');
+    }
+    await Promise.race([
+      exited,
+      new Promise((_, reject) =>
+        setTimeout(() => {
+          reject(new Error(`the app did not exit after ${how}`));
+        }, TIMEOUT),
+      ),
+    ]);
+    if (process.platform === 'win32') {
+      // Until no Reprise.exe is left, so the profile's locks are free (bounded, not a guess).
+      await waitFor('the killed app processes to be gone', () => {
+        const listed = spawnSync('tasklist', ['/FI', 'IMAGENAME eq Reprise.exe', '/NH'], {
+          encoding: 'utf8',
+        });
+        return Promise.resolve(!listed.stdout.includes('Reprise.exe'));
+      });
+    }
+    check(true, `the app was killed with ${how}`);
 
     const relaunched = await launch(profileDir);
     running.app = relaunched;
     const again = await relaunched.firstWindow();
     again.setDefaultTimeout(TIMEOUT);
     const dialog = again.getByRole('dialog', { name: RECOVERY });
-    await dialog.waitFor();
+    // The relaunch's own console, printed only when the offer never comes (see below).
+    const consoleLines: string[] = [];
+    again.on('console', (message) => consoleLines.push(`${message.type()}: ${message.text()}`));
+    await dialog.waitFor().catch(async (error: unknown) => {
+      console.error(`relaunch console:\n${consoleLines.join('\n')}`);
+      console.error(`drafts on disk: ${(await draftNames(profileDir)).join(', ')}`);
+      throw error;
+    });
     check(true, 'the relaunch offers the draft');
     await dialog.getByRole('button', { name: /^Recover / }).click();
     await again.locator('[data-system-id]').first().waitFor();
@@ -408,4 +488,7 @@ try {
       console.warn(`could not remove ${profileDir}: ${String(error)}`);
     },
   );
+  // A killed app's child processes can outlive it on Windows and keep this process's event loop
+  // alive, which would hang the job until its timeout.
+  process.exit(process.exitCode ?? 0);
 }
