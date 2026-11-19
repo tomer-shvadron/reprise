@@ -22,7 +22,8 @@ Phase 0  Foundation                    [S]
 Phase 1  Model core                    [S]
 Phase 2  Three lanes -> Player         [P:score] [P:audio] [P:formats]  then  [I] player checkpoint
 Phase 3  Four lanes -> Full feature    [P:formats] [P:app] [P:score] [P:audio]  then  [I] per checkpoint
-Phase 4  Release                       [S]
+Phase 5  Owner picks                   [P:app] [P:score] [P:audio] [P:formats]  (before the release candidate)
+Phase 4  Release                       [S]  (WP-100 and WP-103, then the rc, then WP-104, all after phase 5)
 ```
 
 | Phase | Plan file                          | Mode     | Exit condition                                                                                                           |
@@ -31,6 +32,7 @@ Phase 4  Release                       [S]
 | 1     | `phase-1-model-core.md`            | serial   | The contracts in `../specs/architecture.md` are implemented in `@reprise/model` with tests. Contracts are frozen.        |
 | 2     | `phase-2-lanes-to-player.md`       | parallel | **Player checkpoint**: open a downloaded gp5, read it, play it with correct repeats, loop, slow down, mix, print.         |
 | 3     | `phase-3-lanes-to-full-feature.md` | parallel | **Library, trainer, editor and HQ sound checkpoints**, each integrated as its lane finishes.                              |
+| 5     | `phase-5-owner-picks.md`           | parallel | The owner's 2026-11-20 layout and gap-analysis picks (#333 to #355), in three waves. Lands before the release candidate. |
 | 4     | `phase-4-release.md`               | serial   | v1 tagged, macOS and Windows installers on a GitHub Release, light theme audited, shortcut map complete.                  |
 
 ## Dependency graph
@@ -152,6 +154,8 @@ flowchart TB
   P3E --> P4
   P3H --> P4
 ```
+
+Per the owner on 2026-11-20, the phase 5 work packages ([plan](phase-5-owner-picks.md)) land before WP-100 and WP-103, the release candidate follows them, and WP-104 comes last.
 
 ## Checkpoints and their definition of done
 

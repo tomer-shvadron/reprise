@@ -1,6 +1,8 @@
 # Phase 4: Release `[S]`
 
-Serial, done by the lead. Exit condition: v1 tagged, macOS and Windows installers attached to a GitHub Release, the light theme audited, the shortcut map complete.
+Serial, done by the lead. **Order (owner, 2026-11-20):** phase 5 ([phase-5-owner-picks.md](phase-5-owner-picks.md)) lands first. WP-100 and WP-103 then run against the finished UI, then the release candidate is cut, then WP-104. WP-101 (#312) is the shortcut map the phase 5 layout builds on and runs in wave 1 of phase 5.
+
+Exit condition: v1 tagged, macOS and Windows installers attached to a GitHub Release, the light theme audited, the shortcut map complete.
 
 ---
 
@@ -74,7 +76,7 @@ Serial, done by the lead. Exit condition: v1 tagged, macOS and Windows installer
 
 **Deliverables**
 
-- `v1.0.0` tag; the root README updated with screenshots and install instructions; `docs/plans/roadmap.md` marked with what shipped and a pointer to a new `phase-5-after-v1.md` listing the deferred items from `scope-v1.md` as candidates.
+- `v1.0.0` tag; the root README updated with screenshots and install instructions; `docs/plans/roadmap.md` marked with what shipped and a pointer to a new `phase-6-after-v1.md` listing the deferred items from `scope-v1.md` as candidates.
 - The player checklist from WP-054 run one last time on the release build.
 
 **Acceptance criteria**
