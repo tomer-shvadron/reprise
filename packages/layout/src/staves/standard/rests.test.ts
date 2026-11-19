@@ -2,8 +2,20 @@ import { applyCommand, setBeatRest, type Clef, type Score } from '@reprise/model
 import { beatOf, midi, score, type ScoreBuilder } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
-import { LayoutCache, PAGE_SIZES, layout, type LayoutOptions } from '../../index';
-import { expectValid, restsOnHeads, stable, strayPrimitives } from '../../test/check-result';
+import {
+  LayoutCache,
+  PAGE_SIZES,
+  layout,
+  type LayoutOptions,
+  type LayoutResult,
+} from '../../index';
+import {
+  expectValid,
+  restsOnHeads,
+  restsOnRests,
+  stable,
+  strayPrimitives,
+} from '../../test/check-result';
 import type { StaffBar } from '../staff-module';
 import { positionY } from './chord';
 import { planBar, restBounds, type BarPlan, type BeatPlan } from './plan';
@@ -53,6 +65,11 @@ function laid(built: Score, options: Partial<LayoutOptions> = {}) {
   return result;
 }
 
+function expectClear(result: LayoutResult): void {
+  expect(restsOnHeads(result)).toEqual([]);
+  expect(restsOnRests(result)).toEqual([]);
+}
+
 const at = (p: BarPlan, voice: number, tick: number): BeatPlan => {
   const found = p.beats.find((beat) => beat.voice === voice && Math.abs(beat.tick - tick) < 1e-6);
   if (!found) throw new Error(`no beat at ${String(voice)}/${String(tick)}`);
@@ -86,7 +103,7 @@ describe('rests of two voices', () => {
         headSpan(at(p, 0, tick)).bottom + CLEAR,
       );
     }
-    expect(restsOnHeads(laid(built))).toEqual([]);
+    expectClear(laid(built));
   });
 
   it('keeps an upper voice rest clear of high lower voice heads', () => {
@@ -104,7 +121,7 @@ describe('rests of two voices', () => {
     const rest = at(p, 0, 0).rest;
     if (!rest) throw new Error('no rest');
     expect(restBounds(rest, SPACE).bottom).toBeLessThanOrEqual(headSpan(at(p, 1, 0)).top - CLEAR);
-    expect(restsOnHeads(laid(built))).toEqual([]);
+    expectClear(laid(built));
   });
 
   it('carries the dots of a moved rest with it', () => {
@@ -113,23 +130,20 @@ describe('rests of two voices', () => {
       .beat('2', [midi(64)])
       .beat('2', [midi(71), midi(72)])
       .voice(1)
-      .rest('32')
       .rest('4.')
+      .beat('8', [midi(52)])
       .beat('2', [midi(52)])
       .build({ ids: 'sequential' });
     const p = plan(built);
-    const dotted = p.beats.filter(({ rest, voice }) => rest && voice === 1);
-    expect(dotted).toHaveLength(2);
-    for (const { rest } of dotted) {
-      if (!rest) continue;
-      const row = rest.position % 2 === 0 ? rest.position + 1 : rest.position;
-      expect(rest.y).toBeCloseTo(positionY(rest.position, SPACE), 6);
-      expect(rest.dots.y).toBeCloseTo(positionY(row, SPACE), 6);
-    }
-    expect(restsOnHeads(laid(built))).toEqual([]);
+    const rest = at(p, 1, 0).rest;
+    if (!rest) throw new Error('no rest');
+    // A voice 2 rest defaults to the bottom line, under the E4 it must clear.
+    expect(rest.position).toBeLessThan(0);
+    expect(rest.dots.y).toBeCloseTo(positionY(rest.position + 1, SPACE), 6);
+    expectClear(laid(built));
   });
 
-  it('does not count a voice of rests only as a voice', () => {
+  it('hides a secondary voice that is one whole-bar rest beside a voice with notes', () => {
     const four = piano()
       .bar()
       .beat('4', [midi(74)])
@@ -141,11 +155,15 @@ describe('rests of two voices', () => {
       .build({ ids: 'sequential' });
     const p = plan(four);
     expect(p.multiVoice).toBe(false);
-    expect(p.layered).toBe(true);
+    expect(p.layered).toBe(false);
     expect(p.beats.flatMap(({ chord }) => (chord ? [chord.direction] : []))).toEqual(
       Array.from({ length: 4 }, () => 'down'),
     );
-    expect(restsOnHeads(laid(four))).toEqual([]);
+    const result = laid(four);
+    expect(result.primitives.filter((q) => q.kind === 'glyph' && q.glyph === 'restWhole')).toEqual(
+      [],
+    );
+    expectClear(result);
 
     const six = piano()
       .timeSignature(6, 8)
@@ -160,7 +178,73 @@ describe('rests of two voices', () => {
       .rest('2.')
       .build({ ids: 'sequential' });
     expect(plan(six).multiVoice).toBe(false);
-    expect(restsOnHeads(laid(six))).toEqual([]);
+    expectClear(laid(six));
+  });
+
+  it('never hides voice 0, and keeps a whole-bar rest beside rests that are drawn', () => {
+    const built = piano()
+      .bar()
+      .rest('1')
+      .voice(1)
+      .beat('1', [midi(60)])
+      .build({ ids: 'sequential' });
+    expect(plan(built).beats.some(({ hidden }) => hidden)).toBe(false);
+    expectClear(laid(built));
+  });
+
+  it('keeps a whole-bar rest from the other voice away from its rests', () => {
+    const built = piano()
+      .bar()
+      .beat('4', [midi(74)])
+      .rest('4')
+      .rest('4')
+      .beat('4', [midi(74)])
+      .voice(1)
+      .rest('1')
+      .build({ ids: 'sequential' });
+    expectClear(laid(built));
+  });
+
+  it('counts a voice of several rests as a voice: two-voice stems, rests displaced', () => {
+    const built = piano()
+      .bar()
+      .beat('4', [midi(74)])
+      .beat('4', [midi(74)])
+      .beat('4', [midi(74)])
+      .beat('4', [midi(74)])
+      .voice(1)
+      .rest('2')
+      .rest('2')
+      .build({ ids: 'sequential' });
+    const p = plan(built);
+    expect(p.multiVoice).toBe(true);
+    expect(p.beats.flatMap(({ chord }) => (chord ? [chord.direction] : []))).toEqual(
+      Array.from({ length: 4 }, () => 'up'),
+    );
+    const result = laid(built);
+    expectClear(result);
+    expect(
+      result.primitives.filter((q) => q.kind === 'glyph' && q.glyph === 'restHalf'),
+    ).toHaveLength(2);
+  });
+
+  it('draws ledger lines for a whole or half rest that leaves the staff', () => {
+    const built = piano()
+      .bar()
+      .beat('2', [midi(60)])
+      .beat('2', [midi(60)])
+      .voice(1)
+      .rest('2')
+      .rest('2')
+      .build({ ids: 'sequential' });
+    const p = plan(built);
+    const low = p.beats.filter(({ rest }) => rest && rest.position < 0);
+    expect(low.length).toBeGreaterThan(0);
+    const result = laid(built);
+    const ledgers = result.primitives.filter(
+      (q) => q.kind === 'line' && low.some(({ beat }) => beat.id === q.node),
+    );
+    expect(ledgers.length).toBeGreaterThanOrEqual(low.length);
   });
 
   it('draws two whole-bar rests as one', () => {
@@ -190,7 +274,7 @@ describe('rests of two voices', () => {
     const chord = at(p, 0, 0).chord;
     if (!rest || !chord) throw new Error('missing');
     expect(restBounds(rest, SPACE).bottom).toBeLessThanOrEqual(chord.top - CLEAR);
-    expect(restsOnHeads(laid(built))).toEqual([]);
+    expectClear(laid(built));
   });
 
   it.each(['standard', 'both'] as const)(
@@ -207,6 +291,7 @@ describe('rests of two voices', () => {
         .rest('8t')
         .beat('2', [midi(40)])
         .build({ ids: 'sequential' });
+      expect(plan(built).tuplets[0]?.above).toBe(false);
       for (const options of [{}, { mode: 'continuous', width: 640 } as const]) {
         const result = laid(built, options);
         expect(strayPrimitives(result, built)).toEqual([]);
@@ -228,9 +313,9 @@ describe('rests of two voices', () => {
     const p = plan(built, 0, true);
     const rest = at(p, 1, 0).rest;
     if (!rest) throw new Error('no rest');
-    const { top, bottom } = restBounds(rest, SPACE);
+    const { top } = restBounds(rest, SPACE);
     const hit = headSpan(at(p, 0, 0));
-    expect(top >= hit.bottom + CLEAR || bottom <= hit.top - CLEAR).toBe(true);
+    expect(top).toBeGreaterThanOrEqual(hit.bottom + CLEAR);
   });
 
   it('re-measures a bar whose second voice turns to rests, as a cold layout does', () => {
@@ -239,23 +324,15 @@ describe('rests of two voices', () => {
       .beat('2', [midi(64)])
       .beat('2', [midi(71)])
       .voice(1)
-      .beat('2', [midi(52)])
-      .beat('2', [midi(55)])
+      .beat('1', [midi(52)])
       .build({ ids: 'sequential' });
     const cache = new LayoutCache();
     layout(built, paged, cache);
-    let edited = built;
-    let touched: readonly string[] = [];
-    for (const beat of [0, 1]) {
-      const step = applyCommand(
-        edited,
-        setBeatRest({ beatId: beatOf(edited, 0, 0, beat, 1).id }, true),
-      );
-      edited = step.score;
-      touched = step.change.touchedBars;
-      const result = layout(edited, { ...paged, dirtyBars: touched }, cache);
-      expect(stable(result)).toBe(stable(layout(edited, paged)));
-    }
-    expect(plan(edited).multiVoice).toBe(false);
+    expect(plan(built).multiVoice).toBe(true);
+    // The voice becomes a hidden whole-bar rest, so the bar stops being two-voice.
+    const step = applyCommand(built, setBeatRest({ beatId: beatOf(built, 0, 0, 0, 1).id }, true));
+    const result = layout(step.score, { ...paged, dirtyBars: step.change.touchedBars }, cache);
+    expect(stable(result)).toBe(stable(layout(step.score, paged)));
+    expect(plan(step.score).multiVoice).toBe(false);
   });
 });

@@ -142,6 +142,20 @@ function voices(): Score {
  * Rest glyphs whose box overlaps a note head's by more than half a pixel. The layout package's
  * own helper is test-only and `@reprise/layout` has no testing export, so the guard keeps a copy.
  */
+function restsOnRests(result: LayoutResult): string[] {
+  const rests = result.primitives.filter((p) => p.kind === 'glyph' && p.glyph.startsWith('rest'));
+  return rests.flatMap((a, i) =>
+    rests.slice(i + 1).flatMap((b) => {
+      const x =
+        Math.min(a.bbox.x + a.bbox.width, b.bbox.x + b.bbox.width) - Math.max(a.bbox.x, b.bbox.x);
+      const y =
+        Math.min(a.bbox.y + a.bbox.height, b.bbox.y + b.bbox.height) - Math.max(a.bbox.y, b.bbox.y);
+      const same = Math.abs(a.bbox.x - b.bbox.x) < 0.01 && Math.abs(a.bbox.y - b.bbox.y) < 0.01;
+      return x > 0.5 && y > 0.5 && !same ? [`rests overlap at ${String(b.bbox.x)}`] : [];
+    }),
+  );
+}
+
 function restsOnHeads(result: LayoutResult): string[] {
   const heads = result.primitives.filter(
     (p) => p.kind === 'glyph' && p.glyph.startsWith('notehead'),
@@ -528,6 +542,7 @@ export const SCENES: readonly Scene[] = [
     notations: ['standard', 'both'],
     guard: (result) => {
       expect(restsOnHeads(result), 'no rest sits on a note head').toEqual([]);
+      expect(restsOnRests(result), 'no rest sits on another rest').toEqual([]);
       const flags = result.primitives.filter(
         (p) => p.kind === 'glyph' && p.glyph === 'flag8thDown',
       );

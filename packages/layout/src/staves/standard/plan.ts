@@ -2,6 +2,7 @@ import {
   PPQ,
   barTicks,
   beatTicks,
+  type Bar,
   type Beat,
   type Duration,
   type Finger,
@@ -114,6 +115,8 @@ export interface BeatPlan {
   tremolo?: TremoloPlan;
   /** The target heads of its bends, on a staff shown alone. */
   bend?: BendPlan;
+  /** A rest not drawn: a secondary voice's whole-bar rest beside a voice with notes. */
+  hidden?: true;
   /** A beamed chord's stem tip at the group's furthest beam, which the chord's own tip lacks. */
   stemReach?: number;
   /** The arpeggio or brush column's centre, from the beat's x. */
@@ -273,10 +276,27 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
           : undefined,
         lone,
       );
-  const multiVoice =
-    bar.voices.filter((voice) => voice.beats.some((beat) => !beat.rest && beat.notes.length > 0))
-      .length > 1;
-  const layered = bar.voices.filter((voice) => voice.beats.some(hasContent)).length > 1;
+  const hasNotes = (voice: Bar['voices'][number]): boolean =>
+    voice.beats.some((beat) => !beat.rest && beat.notes.length > 0);
+  const noteVoices = bar.voices.filter(hasNotes).length;
+  // Gould and Guitar Pro: a secondary voice that is only a whole-bar rest, beside a voice with
+  // notes, is not drawn and does not make the bar two-voice. Any other voice of rests only counts.
+  const hiddenVoices = new Set(
+    bar.voices.flatMap((voice, i) =>
+      i > 0 &&
+      noteVoices > 0 &&
+      !hasNotes(voice) &&
+      voice.beats.length === 1 &&
+      voice.beats[0]?.rest
+        ? [i]
+        : [],
+    ),
+  );
+  const counted = bar.voices.filter(
+    (voice, i) => !hiddenVoices.has(i) && voice.beats.some(hasContent),
+  ).length;
+  const multiVoice = noteVoices > 0 && counted > 1;
+  const layered = counted > 1;
   const middle = positionY(4, space);
   const time = input.masterBar.timeSignature;
 
@@ -440,6 +460,7 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
       if (beat.rest) {
         const rest = restPlan(beat, voice, multiVoice, alone, space);
         plan.rest = rest;
+        if (hiddenVoices.has(voice)) plan.hidden = true;
         plan.left = rest.left;
         plan.right = rest.dots.x + dotsWidth(beat.dots, space);
         ({ top: plan.top, bottom: plan.bottom } = restBounds(rest, space));
@@ -560,7 +581,8 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
       const n = first?.beat.tuplet?.n;
       if (!first || n === undefined) continue;
       const withNotes = members.find(({ chord }) => chord);
-      const above = (withNotes?.chord?.direction ?? 'up') === 'up';
+      const above =
+        (withNotes?.chord?.direction ?? (multiVoice ? voiceDirection(voice) : 'up')) === 'up';
       const group = first.group;
       const oneGroup =
         group !== undefined &&
@@ -740,6 +762,8 @@ function separateVoices(
 
 /** Clearance a moved rest keeps from another voice's notes, in spaces. */
 const REST_CLEARANCE = 0.25;
+/** Far more spaces than any bar needs; the loop ends sooner, since the notes are finite. */
+const MAX_REST_STEPS = 40;
 
 interface Span {
   top: number;
@@ -772,27 +796,35 @@ function clearRests(
   space: number,
 ): void {
   const middle = ticksPerBar / 2;
+  const inWindow = (tick: number): boolean =>
+    tick >= middle - PPQ / 2 - 1e-6 && tick < middle + PPQ / 2;
   for (const beat of beats) {
     const { rest } = beat;
-    if (!rest) continue;
+    if (!rest || beat.hidden) continue;
     const spans: Span[] = [];
-    for (const voice of voices) {
-      for (const other of voice) {
-        if (other.voice === beat.voice) continue;
-        const sameOnset = Math.abs(other.tick - beat.tick) < 1e-6;
-        if (other.chord) {
-          const near = rest.centred
-            ? other.tick < middle + PPQ / 2 && other.tick + beatTicks(other.beat) > middle - PPQ / 2
-            : sameOnset;
-          const span = near ? chordSpan(other, space) : undefined;
-          if (span) spans.push(span);
-        } else if (other.rest && sameOnset && !other.rest.centred === !rest.centred) {
-          const twin =
-            other.rest.glyph === rest.glyph &&
-            other.beat.dots === beat.beat.dots &&
-            other.rest.position === rest.position;
-          if (!twin) spans.push(restBounds(other.rest, space));
-        }
+    const others = beats.filter((other) => other.voice !== beat.voice && !other.hidden);
+    // A centred rest is drawn at the bar's middle, so only chords whose heads and stems are
+    // drawn about there count: the onsets in the window, or the only onset a narrow bar has.
+    const onsets = new Set(others.flatMap((other) => (other.chord ? [other.tick] : [])));
+    const nearMiddle = (tick: number): boolean => inWindow(tick) || onsets.size === 1;
+    for (const other of others) {
+      const sameOnset = Math.abs(other.tick - beat.tick) < 1e-6;
+      if (other.chord) {
+        const span = (rest.centred ? nearMiddle(other.tick) : sameOnset)
+          ? chordSpan(other, space)
+          : undefined;
+        if (span) spans.push(span);
+      } else if (other.rest) {
+        const meets = rest.centred
+          ? other.tick < middle + PPQ / 2 && other.tick + beatTicks(other.beat) > middle - PPQ / 2
+          : sameOnset && !other.rest.centred;
+        if (!meets) continue;
+        const twin =
+          other.rest.glyph === rest.glyph &&
+          other.beat.dots === beat.beat.dots &&
+          other.rest.position === rest.position &&
+          other.rest.centred === rest.centred;
+        if (!twin) spans.push(restBounds(other.rest, space));
       }
     }
     if (spans.length === 0) continue;
@@ -803,7 +835,7 @@ function clearRests(
       return spans.some((span) => bottom > span.top - gap && top < span.bottom + gap);
     };
     let position = rest.position;
-    for (let i = 0; i < 40 && hits(); i++) {
+    for (let i = 0; i < MAX_REST_STEPS && hits(); i++) {
       position += step;
       moveRest(rest, position, space);
     }

@@ -6,7 +6,14 @@ import type { Rect, StaffType } from '../../types';
 import { DYNAMICS_GLYPHS, dynamicsBaseline, shownDynamics } from '../dynamics';
 import { drawWords } from '../words';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
-import { headEdges, loneHeadRight, mainHeads, tieDirection, type ChordPlan } from './chord';
+import {
+  headEdges,
+  loneHeadRight,
+  mainHeads,
+  positionY,
+  tieDirection,
+  type ChordPlan,
+} from './chord';
 import {
   beamedTremoloY,
   drawArticulation,
@@ -18,7 +25,14 @@ import {
   type ConnectionContext,
 } from './effects';
 import { drawsWords, wordStart } from './words';
-import { GRACE_SCALE, noteMatches, restBounds, type BarPlan, type BeatPlan } from './plan';
+import {
+  GRACE_SCALE,
+  noteMatches,
+  restBounds,
+  type BarPlan,
+  type BeatPlan,
+  type RestPlan,
+} from './plan';
 import {
   beamLine,
   beamY,
@@ -122,6 +136,28 @@ function drawChord(
   return box;
 }
 
+/**
+ * A whole or half rest moved off the staff hangs from or sits on a line that is not there (Gould),
+ * so it gets ledger lines down to its own, a little wider than the glyph.
+ */
+function drawRestLedgers(context: Context, rest: RestPlan, x: number, node: Id): void {
+  if (rest.glyph !== 'restWhole' && rest.glyph !== 'restHalf') return;
+  const { sink, space, placement } = context;
+  const extension = engraving.legerLineExtension * space;
+  const thickness = engraving.legerLineThickness * space;
+  const rows: number[] = [];
+  for (let p = -2; p >= rest.position; p -= 2) rows.push(p);
+  for (let p = 10; p <= rest.position; p += 2) rows.push(p);
+  for (const p of rows) {
+    const y = placement.top + positionY(p, space);
+    sink.primitives.push(
+      line(x + rest.left - extension, y, x + rest.left + rest.width + extension, y, thickness, {
+        node,
+      }),
+    );
+  }
+}
+
 /** The x a beat is drawn at: its onset, or the bar's middle for a rest alone in its voice. */
 function beatX(context: Context, beat: BeatPlan): number {
   const { placement } = context;
@@ -197,9 +233,13 @@ export function renderBar(
     if (beat.rest) {
       const { rest } = beat;
       const drawn = glyph(rest.glyph, x + rest.left, top + rest.y, space, { node: id });
-      sink.primitives.push(drawn);
+      // A hidden rest keeps its box, so the beat stays selectable, but draws nothing.
+      if (!beat.hidden) {
+        sink.primitives.push(drawn);
+        drawRestLedgers(context, rest, x, id);
+      }
       box = drawn.bbox;
-      if (beat.beat.dots > 0)
+      if (beat.beat.dots > 0 && !beat.hidden)
         drawDots(sink, beat.beat.dots, x + rest.dots.x, [top + rest.dots.y], space, { node: id });
     }
     const { chord } = beat;
