@@ -451,6 +451,84 @@ describe('createAudioEngine', () => {
       engine.dispose();
     });
 
+    it('silences the track from a mid-run file-level mute, and brings it back when unmuted', async () => {
+      const song = quarters(4);
+      const id = trackOf(song);
+      const { engine, render } = await setup({ seconds: 2.4 });
+      await engine.load(song, GM);
+      engine.play();
+      const mute = (muted: boolean) => () => {
+        const next = applyCommand(
+          song,
+          setTrackProperties({ trackId: id }, { channel: { mute: muted } }),
+        ).score;
+        void engine.load(next, GM);
+      };
+      const buffer = await render([
+        { at: 0.8, run: mute(true) },
+        { at: 1.6, run: mute(false) },
+      ]);
+      const before = rms(buffer, 0.2, 0.7);
+      expect(before).toBeGreaterThan(1e-4);
+      // The gate's 5 ms glide ends well before this window, so nothing of the track remains.
+      expect(rms(buffer, 1.0, 1.55)).toBeLessThan(before / 1e4);
+      expect(rms(buffer, 1.8, 2.3)).toBeGreaterThan(before / 4);
+      engine.dispose();
+    });
+
+    it('mutes at once when one load changes a note and the mute together', async () => {
+      const song = quarters(4);
+      const id = trackOf(song);
+      const { engine, render } = await setup({ seconds: 1.6 });
+      await engine.load(song, GM);
+      engine.play();
+      const buffer = await render([
+        {
+          at: 0.8,
+          run: () => {
+            const edited = applyCommand(
+              song,
+              setNote({ beatId: beatOf(song, 0, 2, 0).id }, { string: 1, fret: 5 }),
+            ).score;
+            const next = applyCommand(
+              edited,
+              setTrackProperties({ trackId: id }, { channel: { mute: true } }),
+            ).score;
+            void engine.load(next, GM);
+          },
+        },
+      ]);
+      const before = rms(buffer, 0.2, 0.7);
+      expect(before).toBeGreaterThan(1e-4);
+      expect(rms(buffer, 1.0, 1.55)).toBeLessThan(before / 1e4);
+      engine.dispose();
+    });
+
+    it('lets a file-level solo on another track silence this one mid-run', async () => {
+      const base = quarters(4);
+      const other = createTrack('fretted');
+      const song = applyCommand(base, addTrack(other)).score;
+      const { engine, render } = await setup({ seconds: 1.6 });
+      await engine.load(song, GM);
+      engine.play();
+      const buffer = await render([
+        {
+          at: 0.8,
+          run: () => {
+            const next = applyCommand(
+              song,
+              setTrackProperties({ trackId: other.id }, { channel: { solo: true } }),
+            ).score;
+            void engine.load(next, GM);
+          },
+        },
+      ]);
+      const before = rms(buffer, 0.2, 0.7);
+      expect(before).toBeGreaterThan(1e-4);
+      expect(rms(buffer, 1.0, 1.55)).toBeLessThan(before / 1e4);
+      engine.dispose();
+    });
+
     it('switches the instrument at once and reports its decode', async () => {
       const song = quarters(1);
       const id = trackOf(song);

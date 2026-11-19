@@ -78,8 +78,8 @@ export interface RenderOptions {
   metronome?: boolean;
   /** The master bus gain, 0 to 1; 1 by default. */
   masterVolume?: number;
-  /** Calls into the engine at a context time, run at the first suspension after it. */
-  actions?: readonly { at: number; run: (engine: Transport) => void }[];
+  /** Calls into the transport at a context time, run at the first suspension after it. */
+  actions?: readonly { at: number; run: (transport: Transport) => void }[];
 }
 
 /** A note the sampler skipped because its sample was not decoded. */
@@ -241,7 +241,7 @@ export async function renderScore(score: Score, options: RenderOptions): Promise
       samplerSink.dispose?.();
     },
   };
-  const engine = createTransport({
+  const transport = createTransport({
     context,
     sink,
     metronome: new ClickSynth(context, sampler.master.input),
@@ -249,19 +249,19 @@ export async function renderScore(score: Score, options: RenderOptions): Promise
     frames: frames.ticker,
     startLatency: START,
   });
-  engine.load(score);
-  if (options.metronome) engine.setMetronome(true, 1);
-  engine.play();
+  transport.load(score);
+  if (options.metronome) transport.setMetronome(true, 1);
+  transport.play();
   const buffer = await drive(context, {
     tickers: [scheduler, frames],
     actions: (options.actions ?? []).map(({ at, run }) => ({
       at,
       run: () => {
-        run(engine);
+        run(transport);
       },
     })),
   });
-  engine.dispose();
+  transport.dispose();
   return {
     ...signalOf(buffer),
     buffer,
