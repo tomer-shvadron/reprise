@@ -1,6 +1,6 @@
 # Phase 4: Release `[S]`
 
-Serial, done by the lead. **Order (owner, 2026-11-20):** phase 5 ([phase-5-owner-picks.md](phase-5-owner-picks.md)) lands first. WP-100 and WP-103 then run against the finished UI, then the release candidate is cut, then WP-104. WP-101 (#312) is the shortcut map the phase 5 layout builds on and runs in wave 1 of phase 5.
+Serial, done by the lead. **Order (owner, 2026-11-20):** phase 5 ([phase-5-owner-picks.md](phase-5-owner-picks.md)) lands first, then WP-100 audits the finished UI, then the release candidate is cut, then WP-103 takes its final measurement on that candidate, then WP-104. WP-101 (#312) is the shortcut map the phase 5 layout builds on and runs in wave 1 of phase 5; it keeps its Release milestone and `phase:4` label. WP-102 is not affected.
 
 Exit condition: v1 tagged, macOS and Windows installers attached to a GitHub Release, the light theme audited, the shortcut map complete.
 
@@ -8,7 +8,7 @@ Exit condition: v1 tagged, macOS and Windows installers attached to a GitHub Rel
 
 ## WP-100: Light theme audit
 
-- **Size**: S · **Blocked by**: all phase 3 checkpoints
+- **Size**: S · **Blocked by**: the Phase 5 milestone ([phase-5-owner-picks.md](phase-5-owner-picks.md))
 - **Packages**: `apps/web`
 
 **Deliverables**
@@ -22,7 +22,7 @@ Exit condition: v1 tagged, macOS and Windows installers attached to a GitHub Rel
 
 ## WP-101: Command palette and shortcut map
 
-- **Size**: S · **Blocked by**: all phase 3 checkpoints
+- **Size**: S · **Blocked by**: all phase 3 checkpoints · runs in wave 1 of phase 5
 - **Packages**: `apps/web`, `docs/reference`
 
 **Deliverables**
@@ -58,7 +58,7 @@ Exit condition: v1 tagged, macOS and Windows installers attached to a GitHub Rel
 
 ## WP-103: Budgets final
 
-- **Size**: S · **Blocked by**: all phase 3 checkpoints
+- **Size**: S · **Blocked by**: the Phase 5 milestone ([phase-5-owner-picks.md](phase-5-owner-picks.md)), and the release candidate, which is cut after WP-100
 - **Packages**: tests
 
 **Deliverables**
@@ -67,7 +67,7 @@ Exit condition: v1 tagged, macOS and Windows installers attached to a GitHub Rel
 
 **Acceptance criteria**
 
-- Budgets pass on the release candidate.
+- Budgets pass on `main` at the end of phase 5, and the final measurement is taken on the release candidate.
 
 ## WP-104: v1 release
 

@@ -23,7 +23,7 @@ Phase 1  Model core                    [S]
 Phase 2  Three lanes -> Player         [P:score] [P:audio] [P:formats]  then  [I] player checkpoint
 Phase 3  Four lanes -> Full feature    [P:formats] [P:app] [P:score] [P:audio]  then  [I] per checkpoint
 Phase 5  Owner picks                   [P:app] [P:score] [P:audio] [P:formats]  (before the release candidate)
-Phase 4  Release                       [S]  (WP-100 and WP-103, then the rc, then WP-104, all after phase 5)
+Phase 4  Release                       [S]  (after phase 5: WP-100, the rc, WP-103 on the rc, WP-104)
 ```
 
 | Phase | Plan file                          | Mode     | Exit condition                                                                                                           |
@@ -32,7 +32,7 @@ Phase 4  Release                       [S]  (WP-100 and WP-103, then the rc, the
 | 1     | `phase-1-model-core.md`            | serial   | The contracts in `../specs/architecture.md` are implemented in `@reprise/model` with tests. Contracts are frozen.        |
 | 2     | `phase-2-lanes-to-player.md`       | parallel | **Player checkpoint**: open a downloaded gp5, read it, play it with correct repeats, loop, slow down, mix, print.         |
 | 3     | `phase-3-lanes-to-full-feature.md` | parallel | **Library, trainer, editor and HQ sound checkpoints**, each integrated as its lane finishes.                              |
-| 5     | `phase-5-owner-picks.md`           | parallel | The owner's 2026-11-20 layout and gap-analysis picks (#333 to #355), in three waves. Lands before the release candidate. |
+| 5     | `phase-5-owner-picks.md`           | parallel | The owner's 2026-11-20 layout and gap-analysis picks (#312, #333 to #355, #278), in three waves. Lands before the release candidate. |
 | 4     | `phase-4-release.md`               | serial   | v1 tagged, macOS and Windows installers on a GitHub Release, light theme audited, shortcut map complete.                  |
 
 ## Dependency graph
@@ -142,9 +142,14 @@ flowchart TB
   WP056 --> P3E
   WP056 --> P3H
 
+  subgraph P5["Phase 5 · Owner picks [P]"]
+    WP101[WP-101 command palette + shortcut map, wave 1]
+    P5W[the rest of phase-5-owner-picks.md, waves 1 to 3]
+  end
+
   subgraph P4["Phase 4 · Release [S]"]
     WP100[WP-100 light theme audit] --> WP104[WP-104 v1 release]
-    WP101[WP-101 command palette + shortcut map] --> WP104
+    WP101 --> WP104
     WP102[WP-102 windows build + release workflow] --> WP104
     WP103[WP-103 budgets final] --> WP104
   end
@@ -153,9 +158,15 @@ flowchart TB
   P3T --> P4
   P3E --> P4
   P3H --> P4
+  P3F --> P5
+  P3T --> P5
+  P3E --> P5
+  P3H --> P5
+  P5 --> WP100
+  WP100 --> WP103
 ```
 
-Per the owner on 2026-11-20, the phase 5 work packages ([plan](phase-5-owner-picks.md)) land before WP-100 and WP-103, the release candidate follows them, and WP-104 comes last.
+Per the owner on 2026-11-20, the phase 5 work packages ([plan](phase-5-owner-picks.md)) land before WP-100. The release candidate, which the graph cannot show, is cut after WP-100; WP-103 takes its final measurement on it, and WP-104 comes last.
 
 ## Checkpoints and their definition of done
 
