@@ -55,6 +55,7 @@ const RUNS = 20;
 type Edit =
   | { kind: 'note'; at: Where; string: number; fret: number }
   | { kind: 'tie'; at: Where; string: number }
+  | { kind: 'lyric'; at: Where; syllable: string }
   | { kind: 'dynamics'; at: Where; dynamics: Dynamics }
   | { kind: 'duration'; at: Where; duration: 1 | 2 | 4 | 8 | 16 }
   | { kind: 'insertBeat'; at: Where }
@@ -116,6 +117,11 @@ const edit: Arbitrary<Edit> = oneof(
     kind: constantFrom('masterBar' as const),
     bar: integer({ min: 0, max: 63 }),
     change: constantFrom<'time' | 'key' | 'repeat'>('time', 'key', 'repeat'),
+  }),
+  record({
+    kind: constantFrom('lyric' as const),
+    at: where,
+    syllable: constantFrom('la-', 'longer-', 'x', ''),
   }),
   record({ kind: constantFrom('chord' as const), at: where }),
   record({
@@ -291,6 +297,8 @@ function command(score: Score, step: Edit): Command | undefined {
       return setBeatDuration({ beatId: beat.id }, { duration: step.duration });
     case 'removeBeat':
       return removeBeat({ beatId: beat.id });
+    case 'lyric':
+      return setBeatEffect({ beatId: beat.id }, { lyrics: [step.syllable] });
     case 'chord':
       return setBeatEffect({ beatId: beat.id }, { chord: { name: 'Cmaj7(add9,#11)/G' } });
     case 'mark':

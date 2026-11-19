@@ -5,7 +5,8 @@ import { PAGE_SIZES, layout, type LayoutOptions, type LayoutResult } from '../in
 import { expectValid } from '../test/check-result';
 import { standardModule } from './standard';
 import type { StaffBar } from './staff-module';
-import { wordLanes, wordRows } from './words';
+import { textWidth } from '../metrics';
+import { WORDS, wordLanes, wordRows, wordsExtent } from './words';
 
 const paged: LayoutOptions = {
   mode: 'paged',
@@ -105,7 +106,7 @@ describe('words on a standard staff', () => {
     const chord = drawn.find((p) => p.text === 'Am7');
     expect(chord?.node).toBe(beatIds[0]);
     expect(chord?.y ?? Infinity).toBeLessThan(top);
-    const first = drawn.find((p) => p.text === 'Twin-');
+    const first = drawn.find((p) => p.text === 'Twin' && p.lane === 'lyric:0');
     const second = drawn.find((p) => p.text === 'Ein');
     expect(first?.node).toBe(beatIds[0]);
     expect(first?.anchor).toBe('middle');
@@ -114,9 +115,9 @@ describe('words on a standard staff', () => {
     expect(first?.x).toBe(second?.x);
     // Every syllable of one lyric line sits on one baseline.
     const line = (text: string) => drawn.filter((p) => p.text === text).map((p) => p.y);
-    expect(
-      new Set([...line('Twin-'), ...line('kle'), ...line('twin-'), ...line('lit-')]).size,
-    ).toBe(1);
+    expect(new Set([...line('Twin'), ...line('kle'), ...line('twin'), ...line('lit')]).size).toBe(
+      1,
+    );
     expect(drawn.find((p) => p.text === 'riff')?.node).toBe(beatIds[1]);
   });
 
@@ -180,9 +181,9 @@ describe('words on a standard staff', () => {
   it('carries the beat as the node of every word, as the tab does', () => {
     const result = laid(built(), 'standard');
     const nodes = new Set(result.anchors.filter((a) => a.kind === 'beat').map((a) => a.id));
-    const spoken = ['Am7', 'D', 'riff', 'Twin-', 'Ein', 'kle', 'twin-', 'lit-'];
+    const spoken = ['Am7', 'D', 'riff', 'Twin', 'Ein', 'kle', 'twin', 'lit', '-'];
     const drawn = texts(result).filter((p) => spoken.includes(p.text));
-    expect(drawn).toHaveLength(9);
+    expect(drawn).toHaveLength(12);
     for (const p of drawn) expect(nodes.has(p.node ?? '')).toBe(true);
   });
 });
@@ -264,4 +265,213 @@ describe('word lanes on the primitives and the staff placements', () => {
       expect(empty.lyrics).toBeCloseTo(full.lyrics, 1);
     });
   }
+});
+
+const SPACE = 10;
+
+function beatWith(lyrics: string[]) {
+  const built = score()
+    .track('guitar')
+    .bar()
+    .beat('4', [note(1, 0)], { lyrics })
+    .build({ ids: 'sequential' });
+  const beat = built.tracks[0]?.bars[0]?.voices[0]?.beats[0];
+  if (!beat) throw new Error('no beat');
+  return beat;
+}
+
+describe('wordsExtent of syllables', () => {
+  it('reserves nothing for an empty syllable', () => {
+    expect(wordsExtent(beatWith(['']), 0, SPACE)).toEqual({ left: 0, right: 0 });
+    expect(wordsExtent(beatWith(['', 'la']), 0, SPACE)).toEqual(
+      wordsExtent(beatWith(['la']), 0, SPACE),
+    );
+  });
+
+  it('measures a hyphenated syllable without its hyphen and reserves the hyphen after it', () => {
+    const size = WORDS.size * SPACE;
+    const gap = WORDS.gap * SPACE;
+    const { left, right } = wordsExtent(beatWith(['lo-']), 0, SPACE);
+    expect(left).toBeCloseTo(textWidth('lo', size) / 2 + gap, 5);
+    expect(right).toBeCloseTo(left + textWidth('-', size) + gap, 5);
+  });
+});
+
+describe.each(['tab', 'standard'] as const)('words on a %s staff, placement', (notation) => {
+  const dashes = (result: LayoutResult) =>
+    texts(result).filter((p) => p.text === '-' && p.lane === undefined);
+  const lane = (result: LayoutResult, text: string) =>
+    texts(result).find((p) => p.text === text && p.lane !== undefined);
+  const barAnchors = (result: LayoutResult) =>
+    result.anchors.filter((a) => a.kind === 'bar' && a.track !== undefined);
+  const beatAnchors = (result: LayoutResult) =>
+    result.anchors.filter((a) => a.kind === 'beat').map((a) => a.bbox.x + a.bbox.width / 2);
+
+  it('keeps a whole-bar rest name out of the next bar and starts it at the onset', () => {
+    const built = score()
+      .track('guitar')
+      .bar()
+      .rest('1', { chord: { name: 'N.C. long chord name here' } })
+      .bar()
+      .beat('4', [note(1, 0)], { chord: { name: 'Am' } })
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)])
+      .build({ ids: 'sequential' });
+    const result = laid(built, notation);
+    const name = texts(result).find((p) => p.text === 'N.C. long chord name here');
+    const am = texts(result).find((p) => p.text === 'Am');
+    if (!name || !am) throw new Error('words missing');
+    const size = name.size;
+    expect(name.x + textWidth(name.text, size)).toBeLessThan(am.x);
+    const [bar] = barAnchors(result);
+    const rest = result.anchors.find((a) => a.kind === 'beat');
+    if (!bar || !rest) throw new Error('no bar');
+    // The name starts left of the centred rest, which keeps the middle of the bar's content.
+    expect(name.x).toBeLessThan(rest.bbox.x);
+    const centre = rest.bbox.x + rest.bbox.width / 2;
+    expect(centre).toBeGreaterThan(bar.bbox.x + bar.bbox.width * 0.4);
+    expect(centre).toBeLessThan(bar.bbox.x + bar.bbox.width * 0.9);
+  });
+
+  it('centres the syllable of a whole-bar rest on its onset, not on the bar', () => {
+    const built = score()
+      .track('guitar')
+      .bar()
+      .rest('1', { lyrics: ['la'] })
+      .build({ ids: 'sequential' });
+    const result = laid(built, notation);
+    const sung = lane(result, 'la');
+    const rest = result.anchors.find((a) => a.kind === 'beat');
+    if (!sung || !rest) throw new Error('missing');
+    expect(sung.x).toBeLessThan(rest.bbox.x + rest.bbox.width / 2 - 1);
+  });
+
+  it('spaces a bar the same whether its other beats carry empty syllables or none', () => {
+    const make = (empty: boolean) => {
+      const b = score()
+        .track('guitar')
+        .bar()
+        .beat('64', [note(1, 0)], { lyrics: ['la'] });
+      for (let i = 0; i < 31; i++) {
+        b.beat('64', [note(1, 0)], empty ? { lyrics: [''] } : {});
+      }
+      return b.build({ ids: 'sequential' });
+    };
+    expect(beatAnchors(laid(make(true), notation))).toEqual(
+      beatAnchors(laid(make(false), notation)),
+    );
+  });
+
+  it('draws a hyphen centred between two syllables, with the beat as node and no lane', () => {
+    const built = score()
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 0)], { lyrics: ['lo-'] })
+      .beat('4', [note(1, 0)], { lyrics: ['ve'] })
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)])
+      .build({ ids: 'sequential' });
+    const result = laid(built, notation);
+    const lo = lane(result, 'lo');
+    const ve = lane(result, 've');
+    const [dash, ...more] = dashes(result);
+    if (!lo || !ve || !dash) throw new Error('missing');
+    expect(more).toHaveLength(0);
+    expect(lane(result, 'lo-')).toBeUndefined();
+    expect(dash.node).toBe(lo.node);
+    expect(dash.y).toBe(lo.y);
+    const size = lo.size;
+    const loRight = lo.x + textWidth('lo', size) / 2;
+    const veLeft = ve.x - textWidth('ve', size) / 2;
+    expect(Math.abs(dash.x - (loRight + veLeft) / 2)).toBeLessThan(0.5);
+    expect(veLeft - loRight).toBeGreaterThanOrEqual(
+      textWidth('-', size) + 2 * WORDS.gap * (size / WORDS.size) - 1e-6,
+    );
+  });
+
+  it('spans a melisma and a bar line within a system', () => {
+    const built = score()
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)], { lyrics: ['Twin-'] })
+      .bar()
+      .beat('4', [note(1, 0)], { lyrics: ['kle'] })
+      .beat('4', [note(1, 0)], { lyrics: ['lit-'] })
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)], { lyrics: [''] })
+      .bar()
+      .beat('4', [note(1, 0)], { lyrics: ['tle'] })
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)])
+      .build({ ids: 'sequential' });
+    const result = laid(built, notation);
+    expect(result.systems).toHaveLength(1);
+    const size = lane(result, 'Twin')?.size ?? 0;
+    const edge = (text: string, side: 1 | -1) => {
+      const p = lane(result, text);
+      if (!p) throw new Error(text);
+      return p.x + (side * textWidth(text, size)) / 2;
+    };
+    const across = dashes(result).find((d) => d.node === lane(result, 'Twin')?.node);
+    if (!across) throw new Error('no hyphen');
+    expect(across.x).toBeGreaterThan(edge('Twin', 1));
+    expect(across.x).toBeLessThan(edge('kle', -1));
+    expect(Math.abs(across.x - (edge('Twin', 1) + edge('kle', -1)) / 2)).toBeLessThan(0.5);
+    const held = dashes(result).find((d) => d.node === lane(result, 'lit')?.node);
+    if (!held) throw new Error('no melisma hyphen');
+    expect(Math.abs(held.x - (edge('lit', 1) + edge('tle', -1)) / 2)).toBeLessThan(0.5);
+  });
+
+  it('puts the hyphen right after the syllable at a system end, inside the bar', () => {
+    const b = score().track('guitar');
+    for (let i = 0; i < 12; i++) {
+      b.bar()
+        .beat('4', [note(1, 0)], { lyrics: [i === 0 ? 'a' : 'Twin-'] })
+        .beat('4', [note(1, 0)])
+        .beat('4', [note(1, 0)])
+        .beat('4', [note(1, 0)]);
+    }
+    const result = laid(b.build({ ids: 'sequential' }), notation);
+    expect(result.systems.length).toBeGreaterThan(1);
+    const firstBars = barAnchors(result).filter((a) => a.system === 0);
+    const lastBar = firstBars.at(-1);
+    if (!lastBar) throw new Error('no bar');
+    const content = lastBar.bbox.x + lastBar.bbox.width;
+    const ends = texts(result).filter(
+      (p) => p.text === 'Twin' && p.x < content && p.x > lastBar.bbox.x,
+    );
+    // The last bar of a system carries 'Twin-' on its first beat, with its hyphen right after it.
+    const twin = ends.at(-1);
+    const dash = dashes(result).find((d) => d.node === twin?.node);
+    if (!twin || !dash) throw new Error('missing');
+    const size = twin.size;
+    const space = size / WORDS.size;
+    expect(dash.x).toBeCloseTo(
+      twin.x + textWidth('Twin', size) / 2 + WORDS.gap * space + textWidth('-', size) / 2,
+      1,
+    );
+    expect(dash.x + textWidth('-', size) / 2).toBeLessThanOrEqual(content + 1e-6);
+  });
+
+  it('draws a lone hyphen syllable as it is, and hyphenates each line on its own', () => {
+    const built = score()
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 0)], { lyrics: ['-'] })
+      .beat('4', [note(1, 0)], { lyrics: ['Twin-', 'Ein-'] })
+      .beat('4', [note(1, 0)], { lyrics: ['kle', 'sam'] })
+      .beat('4', [note(1, 0)])
+      .build({ ids: 'sequential' });
+    const result = laid(built, notation);
+    const lone = texts(result).filter((p) => p.text === '-' && p.lane === 'lyric:0');
+    expect(lone).toHaveLength(1);
+    expect(dashes(result)).toHaveLength(2);
+    const ys = new Set(dashes(result).map((d) => d.y));
+    expect(ys.size).toBe(2);
+  });
 });

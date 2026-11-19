@@ -4,7 +4,7 @@ import { engraving } from '../../metrics';
 import { glyph, glyphWidth, line, rect, union, type LayoutSink } from '../../primitives';
 import type { Rect, StaffType } from '../../types';
 import { DYNAMICS_GLYPHS, dynamicsBaseline, shownDynamics } from '../dynamics';
-import { drawWords } from '../words';
+import { drawWords, syllableLookup } from '../words';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
 import { headEdges, loneHeadRight, mainHeads, tieDirection, type ChordPlan } from './chord';
 import {
@@ -127,6 +127,14 @@ function beatX(context: Context, beat: BeatPlan): number {
   const { placement } = context;
   if (beat.rest?.centred) return placement.x + placement.width / 2;
   return placement.onsetX(beat.tick) + (beat.shift ?? 0);
+}
+
+/**
+ * Where a beat's words are drawn: its onset even for a rest alone in its voice, which is the x
+ * `measure` reserved their room from (the rest glyph itself is centred in the bar).
+ */
+function wordX(context: Context, beat: BeatPlan): number {
+  return context.placement.onsetX(beat.tick) + (beat.shift ?? 0);
 }
 
 function drawGraces(context: Context, beat: BeatPlan, x: number): void {
@@ -360,10 +368,27 @@ export function renderBar(
   // The system's last bar cuts its words at its content end; elsewhere they keep their measured room.
   const limit = placement.next ? Infinity : placement.x + placement.width;
   const words = drawsWords(input);
+  const nextSyllable = syllableLookup(
+    () =>
+      plan.voices.map((beats, voice) => ({
+        voice,
+        spots: beats.map((beat) => ({ beat: beat.beat, x: wordX(context, beat) })),
+      })),
+    input.track,
+    input.barIndex,
+    placement.next,
+    space,
+  );
   for (const beat of plan.beats) {
     const x = beatX(context, beat);
     if (words) {
-      drawWords(sink, placement.lanes, beat.beat, x, wordStart(beat), space, limit);
+      drawWords(sink, placement.lanes, beat.beat, {
+        x: wordX(context, beat),
+        start: wordStart(beat),
+        space,
+        limit,
+        nextSyllable,
+      });
     }
     const dynamics = shown.get(beat.beat.id);
     if (dynamics && lane) {

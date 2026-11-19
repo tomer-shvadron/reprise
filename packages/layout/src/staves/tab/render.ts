@@ -40,7 +40,7 @@ import {
 } from './analysis';
 import { lineY, type TabContext as Context } from './context';
 import { drawNoteEffects, drawStrokes, graceCentres } from './effects';
-import { drawWords as drawBeatWords } from '../words';
+import { drawWords as drawBeatWords, syllableLookup } from '../words';
 import { wordStart } from './measure';
 
 const sign = (direction: StemDirection): number => (direction === 'down' ? 1 : -1);
@@ -335,12 +335,30 @@ function drawWords(context: Context, xs: Map<TabBeat, number>): void {
   const shown = analysed.rhythm ? shownDynamics(input.track, input.barIndex) : undefined;
   // The system's last bar cuts its words at its content end; elsewhere they keep their measured room.
   const limit = placement.next ? Infinity : placement.x + placement.width;
+  const nextSyllable = syllableLookup(
+    () =>
+      analysed.voices.map((voice) => ({
+        voice: voice.index,
+        spots: voice.beats.map((beat) => ({ beat: beat.beat, x: placement.onsetX(beat.tick) })),
+      })),
+    input.track,
+    input.barIndex,
+    placement.next,
+    space,
+  );
 
   for (const beat of analysed.beats) {
     const x = xs.get(beat);
     if (x === undefined) continue;
     const node = beat.beat.id;
-    drawBeatWords(sink, lanes, beat.beat, x, wordStart(beat), space, limit);
+    drawBeatWords(sink, lanes, beat.beat, {
+      // A whole-bar rest's words start at its onset, where measure reserved their room.
+      x: placement.onsetX(beat.tick),
+      start: wordStart(beat),
+      space,
+      limit,
+      nextSyllable,
+    });
     const fingered = analysed.rhythm
       ? beat.labels.flatMap(({ note }) => {
           const label = fingering(note);
