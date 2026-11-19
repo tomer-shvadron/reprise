@@ -14,7 +14,7 @@ The `.zip` files hold the same Mac apps without the disk image. Not sure which M
 
 Open the `.dmg` and drag Reprise to Applications. The first launch is blocked as an app from an unidentified developer:
 
-- **macOS 15 (Sequoia) and later:** open Reprise once and dismiss the warning, then go to System Settings → Privacy & Security, scroll to the message about Reprise and choose **Open Anyway**. Confirm with your password. The right-click → Open route from older macOS versions no longer works here.
+- **macOS 15 (Sequoia) and later:** open Reprise once and choose **Done** in the warning (not Move to Trash), then go to System Settings → Privacy & Security, scroll to the message about Reprise and choose **Open Anyway**. Confirm with your password. **Open Anyway** is shown for about an hour after the blocked launch; if it is missing, open Reprise again first. The right-click → Open route from older macOS versions no longer works here.
 - **macOS 14 and earlier:** Control-click (right-click) Reprise in Finder, choose **Open**, then confirm.
 
 After that it opens normally. If macOS says Reprise "is damaged", the download is incomplete or does not match `SHA256SUMS.txt`: download it again.
@@ -25,7 +25,7 @@ Run the setup file. SmartScreen shows "Windows protected your PC": choose **More
 
 ### Microphone
 
-The tuner asks for the microphone the first time you start it. If you answered no, allow Reprise under System Settings → Privacy & Security → Microphone on macOS, or Settings → Privacy & security → Microphone on Windows.
+On macOS the tuner asks for the microphone the first time you start it. If you answered no, allow Reprise under System Settings → Privacy & Security → Microphone. Windows shows no prompt for desktop apps; if the tuner cannot hear you, check that **Let desktop apps access your microphone** is on under Settings → Privacy & security → Microphone.
 
 ### Checking a download
 

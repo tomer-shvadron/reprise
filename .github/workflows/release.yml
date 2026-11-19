@@ -10,13 +10,23 @@ on:
     paths:
       - .github/workflows/release.yml
       - .github/release/**
+      # Everything the desktop build reads: the renderer's entry and its config, the policy, the
+      # sound bank fetch, the scripts the jobs run, and the toolchain pins. A change to the web
+      # app's other source does not run this; docs/reference/release.md says to dispatch the
+      # workflow on the commit to tag.
       - apps/desktop/**
       - apps/web/index.html
-      - apps/web/public/theme-bootstrap.js
+      - apps/web/package.json
+      - apps/web/public/**
+      - apps/web/vite.config.ts
       - apps/web/src/csp.ts
       - scripts/desktop/**
       - scripts/release/**
+      - scripts/sounds/**
+      - package.json
       - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .nvmrc
   workflow_dispatch:
 
 concurrency:
@@ -28,8 +38,59 @@ permissions:
   contents: read
 
 jobs:
+  # Cheap checks on a tag first, so a bad tag costs seconds and not the macOS minutes.
+  gate:
+    name: gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # The whole history, for the is-ancestor check below.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      # A tag names the version; anything else gets a throwaway one so the packaging is the same.
+      - name: Version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            node scripts/release/version.ts "$GITHUB_REF_NAME"
+          else
+            echo "version=0.0.0-ci.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
+      # A tag on a branch commit would ship code main never saw.
+      - name: Tag is on main
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      # A re-run, or a second run on the same tag, would make a second draft or fail late: stop
+      # before the packaging. Recovery is in docs/reference/release.md.
+      - name: No release for this tag yet
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "::error::a release for $GITHUB_REF_NAME already exists. Delete the draft (gh release delete $GITHUB_REF_NAME, without --cleanup-tag) and re-run; see docs/reference/release.md"
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
   package:
     name: package (${{ matrix.name }})
+    needs: gate
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -64,16 +125,6 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
-      # A tag names the version; anything else gets a throwaway one so the packaging is the same.
-      - name: Version
-        id: version
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            node scripts/release/version.ts "$GITHUB_REF_NAME"
-          else
-            echo "version=0.0.0-ci.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Cache the GM soundfont
         uses: actions/cache@v6
         with:
@@ -87,19 +138,27 @@ jobs:
       - name: Build
         run: pnpm --filter @reprise/desktop build ${{ matrix.flags }} --publish never -c.extraMetadata.version="$VERSION"
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.gate.outputs.version }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
       # An invalid arm64 signature shows as "Reprise is damaged" in the browser, which is a
       # different failure from the expected unsigned warning.
       - name: Verify the macOS signature
         if: runner.os == 'macOS'
-        run: codesign --verify --deep --strict --verbose=2 apps/desktop/release/mac*/Reprise.app
+        run: |
+          app=(apps/desktop/release/mac*/Reprise.app)
+          codesign --verify --deep --strict --verbose=2 "${app[0]}"
+          # The smoke reads the version from the packaged package.json; this is the one the Finder
+          # and About show.
+          plist=$(plutil -extract CFBundleShortVersionString raw "${app[0]}/Contents/Info.plist")
+          test "$plist" = "$VERSION"
+        env:
+          VERSION: ${{ needs.gate.outputs.version }}
 
       - name: Smoke
         run: pnpm desktop:smoke
         env:
-          REPRISE_EXPECTED_VERSION: ${{ steps.version.outputs.version }}
+          REPRISE_EXPECTED_VERSION: ${{ needs.gate.outputs.version }}
 
       - name: Upload the installers
         uses: actions/upload-artifact@v7
@@ -114,31 +173,18 @@ jobs:
 
   release:
     name: release
-    needs: package
+    needs: [gate, package]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: write
     steps:
+      # Only for .github/release/install.md; gh gets its token from GH_TOKEN, so none is kept.
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # The whole history, for the is-ancestor check below.
-          fetch-depth: 0
-
-      - name: Set up Node
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: .nvmrc
-
-      # A tag on a branch commit would ship code main never saw.
-      - name: Tag is on main
-        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
-
-      - name: Version
-        id: version
-        run: node scripts/release/version.ts "$GITHUB_REF_NAME"
+          persist-credentials: false
 
       - name: Download the installers
         uses: actions/download-artifact@v8
@@ -168,10 +214,13 @@ jobs:
           sha256sum "${expected[@]}" > SHA256SUMS.txt
           cat SHA256SUMS.txt
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.gate.outputs.version }}
 
       # Always a draft: the owner publishes by hand. A pre-release version is also marked
-      # prerelease, so it never becomes "Latest". --notes-file text comes before the generated notes.
+      # prerelease, so it never becomes "Latest". --notes-file text comes before the generated
+      # notes. No --notes-start-tag: GitHub takes the previous tag from the latest published
+      # release, so until v1.0.0 is published every candidate lists the whole history, which is
+      # what a first release should show. After v1.0.0, pass the last published tag.
       - name: Create the draft release
         run: |
           flags=()
@@ -184,5 +233,5 @@ jobs:
             installers/*.dmg installers/*.zip installers/*.exe installers/SHA256SUMS.txt
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          VERSION: ${{ needs.gate.outputs.version }}
+          PRERELEASE: ${{ needs.gate.outputs.prerelease }}
