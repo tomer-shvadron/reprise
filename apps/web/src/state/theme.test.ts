@@ -1,7 +1,3 @@
-// The bootstrap runs under node:vm, so this one file needs the Node types the app project leaves out.
-/// <reference types="node" />
-import { runInNewContext } from 'node:vm';
-
 import { describe, expect, it } from 'vitest';
 
 import indexHtml from '../../index.html?raw';
@@ -30,7 +26,13 @@ function runBootstrap(environment: Environment): string | undefined {
   sandbox.window = environment.noMatchMedia
     ? {}
     : { matchMedia: () => ({ matches: environment.prefersLight === true }) };
-  runInNewContext(bootstrapSource, sandbox);
+  // The script touches only these three globals, so they go in as parameters; no Node types needed.
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval, @typescript-eslint/no-unsafe-call -- the script is a classic file, not a module: running it as a function body is the lightest way to give it fake globals
+  new Function('localStorage', 'window', 'document', bootstrapSource)(
+    sandbox.localStorage,
+    sandbox.window,
+    sandbox.document,
+  );
   return dataset.theme;
 }
 
@@ -49,7 +51,7 @@ describe('theme bootstrap', () => {
     expect(runBootstrap({ stored: null, prefersLight: false })).toBe('dark');
   });
 
-  it('survives storage that throws, and a missing matchMedia, by going dark', () => {
+  it('survives storage that throws, and a missing matchMedia', () => {
     expect(runBootstrap({ storageThrows: true, prefersLight: true })).toBe('light');
     expect(runBootstrap({ storageThrows: true, noMatchMedia: true })).toBe('dark');
   });
