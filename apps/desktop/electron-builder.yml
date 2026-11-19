@@ -7,9 +7,22 @@ files:
   - out/**
   - package.json
 npmRebuild: false
-# The renderer loads from reprise://app, so file:// needs no privileges; the other fuses are WP-102's.
+# Fuses are flipped here, not in an afterPack hook: electron-builder 26 applies this block itself
+# (through @electron/fuses) after packing and before signing, so a hook would only repeat it.
+# The renderer loads from reprise://app, so file:// needs no privileges and the app is only ever
+# loaded from its asar. The app is not a Node runtime: no ELECTRON_RUN_AS_NODE, NODE_OPTIONS or
+# --inspect. pnpm desktop:smoke checks the shipped bytes (scripts/desktop/fuses.ts).
 # Flipping a fuse breaks the ad-hoc signature, which identity null would otherwise leave invalid on arm64.
 electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  # electron-builder embeds the asar header hash on both platforms; this makes the app check it.
+  enableEmbeddedAsarIntegrityValidation: true
+  # Off on purpose: on macOS it keys off the Keychain under the app's signature, and an ad hoc
+  # signature changes every build, so each update would raise a Keychain prompt.
+  enableCookieEncryption: false
   grantFileProtocolExtraPrivileges: false
   resetAdHocDarwinSignature: true
 mac:
