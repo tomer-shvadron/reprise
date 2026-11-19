@@ -132,8 +132,9 @@ describe('the tracker', () => {
       }
       return out?.reading;
     };
-    // The lock is hidden for the settle frames, then each reading within 3 cents counts.
-    expect(push(2, settleFramesFor(43))?.inTune).toBe(false);
+    // The lock is hidden for the settle frames and the two that refill the median, then each
+    // reading within 3 cents counts.
+    expect(push(2, settleFramesFor(43) + 2)?.inTune).toBe(false);
     expect(push(2, 3)?.inTune).toBe(false);
     expect(push(2, 1)?.inTune).toBe(true);
     expect(push(4.5, 1)?.inTune).toBe(true);
@@ -164,9 +165,28 @@ describe('the tracker', () => {
     // A stalled main thread catches up with many ticks at once; the window has not moved, so
     // none of them is time past the cutoff change.
     for (let i = 0; i < settleFramesFor(43) + 5; i += 1) expect(pushAt(40)).toBeUndefined();
-    // Once the clock has run the window past the change, the reading shows.
+    // Once the clock has run the window past the change, three frames later the reading shows.
     const clear = 40 + settleFramesFor(43) * TRACKER.hopMs;
-    expect(pushAt(clear)?.held).toBe(false);
+    expect(pushAt(clear)).toBeUndefined();
+    expect(pushAt(clear + TRACKER.hopMs)).toBeUndefined();
+    expect(pushAt(clear + 2 * TRACKER.hopMs)?.held).toBe(false);
+  });
+
+  it('shows the first reading after a settle as the median of three frames, not one', () => {
+    const tracker = createTracker();
+    const at = (timeMs: number, cents: number) =>
+      tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity: 0.99 }, 0.1, timeMs).reading;
+    at(0, 7);
+    at(20, 7);
+    // The frame that ends the settle can still carry the tail of the cutoff ramp: 3 cents off.
+    // A median of one would show it; the reading waits for two more frames to outvote it.
+    const settled = 20 + (settleFramesFor(43) - 2) * TRACKER.hopMs;
+    for (let t = 40; t < settled; t += TRACKER.hopMs) expect(at(t, 7)).toBeUndefined();
+    expect(at(settled, 10)).toBeUndefined();
+    expect(at(settled + TRACKER.hopMs, 7)).toBeUndefined();
+    const first = at(settled + 2 * TRACKER.hopMs, 7);
+    expect(first?.held).toBe(false);
+    expect(Math.abs(((first?.midi ?? 0) - 45) * 100 - 7)).toBeLessThan(0.5);
   });
 
   describe('glitch gate', () => {

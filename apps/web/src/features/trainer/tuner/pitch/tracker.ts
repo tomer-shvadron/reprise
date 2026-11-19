@@ -69,6 +69,12 @@ export const TRACKER = {
    * reads tens of cents off at high clarity.
    */
   settleMarginMs: 40,
+  /**
+   * Frames the first reading after a settle is the median of. The window's last frame before the
+   * settle ends can still carry the tail of the cutoff ramp (2.4 cents off at clarity 0.90 on a
+   * starved CI runner, #318), and a median of one passes it straight through.
+   */
+  settledFrames: 3,
   hopMs: 20,
   /** Rejected frames in a row before the cutoff opens up again for the next note. */
   openAfterRejects: 5,
@@ -123,6 +129,8 @@ export function createTracker(options: TrackerOptions = {}) {
   let settleUntilMs = 0;
   // Frames since the cutoff closed in are in the history until the window has left the change.
   let dirty = false;
+  // The history was emptied when the settle ended; no reading until it holds `settledFrames`.
+  let refill = false;
   let settleFrames = options.settleFrames ?? settleFramesFor(43);
 
   /** Hops of settle time still to run at `timeMs`. */
@@ -141,6 +149,7 @@ export function createTracker(options: TrackerOptions = {}) {
     cutoffHz = TRACKER.searchCutoffHz;
     settleUntilMs = 0;
     dirty = false;
+    refill = false;
     glitches = 0;
     clean = 0;
   };
@@ -166,6 +175,7 @@ export function createTracker(options: TrackerOptions = {}) {
     const target = cutoffFor(hz);
     // Only a cutoff that closes in leaves sharp frames behind; one that opens does not.
     dirty = target < 0.85 * cutoffHz;
+    refill = false;
     settleUntilMs = dirty ? timeMs + settleFrames * TRACKER.hopMs : 0;
     cutoffHz = target;
   };
@@ -286,11 +296,14 @@ export function createTracker(options: TrackerOptions = {}) {
           // The frames from here on went through the new cutoff alone.
           history = [];
           dirty = false;
+          refill = true;
         }
         history.push(midi);
         if (history.length > TRACKER.median) history.shift();
         peakRms = Math.max(peakRms, rmsValue);
-        if (dirty) return { reading: lastReading && { ...lastReading, held: true }, cutoffHz };
+        if (refill && history.length >= TRACKER.settledFrames) refill = false;
+        if (dirty || refill)
+          return { reading: lastReading && { ...lastReading, held: true }, cutoffHz };
         return { reading: emit(median(history)), cutoffHz };
       }
 
