@@ -1,6 +1,7 @@
 import {
   applyCommand,
   beatTicks,
+  chain,
   createBeat,
   createHistory,
   createNote,
@@ -12,6 +13,8 @@ import {
   removeBeat,
   replaceBeats,
   setBeatDurations,
+  setMasterBar,
+  setTrackProperties,
   setNote,
   type Command,
   type Id,
@@ -102,7 +105,7 @@ function pickVoice(score: Score, next: () => number) {
 function randomCommand(score: Score, next: () => number): Command {
   const { track, voice } = pickVoice(score, next);
   const beat = voice.beats[Math.floor(next() * (voice.beats.length || 1))];
-  switch (Math.floor(next() * 9)) {
+  switch (Math.floor(next() * 11)) {
     case 0:
       return insertBeat(
         { voiceId: voice.id, index: voice.beats.length, id: newId() },
@@ -136,6 +139,13 @@ function randomCommand(score: Score, next: () => number): Command {
           beats: [createBeat({ duration: 8, notes: [createNote({ string: 1, fret: 1 })] })],
         },
       ]);
+    case 8:
+      return setMasterBar(
+        { masterBarId: score.masterBars[Math.floor(next() * score.masterBars.length)]?.id ?? '' },
+        { repeat: { start: next() < 0.5, endCount: 0 } },
+      );
+    case 9:
+      return setTrackProperties({ trackId: track.id }, { name: `t${String(next())}`, capo: 2 });
     default:
       return removeBeat({ beatId: voice.beats.at(-1)?.id ?? '' });
   }
@@ -169,6 +179,8 @@ describe('scoreIndex, derived from the previous score', () => {
           beats: [createBeat({ duration: 8 })],
         },
       ]),
+      setMasterBar({ masterBarId: score.masterBars[2]?.id ?? '' }, { tempo: { bpm: 77 } }),
+      setTrackProperties({ trackId: track.id }, { name: 'Renamed', capo: 3 }),
       insertBar({ index: 3 }),
       removeBar({ masterBarId: score.masterBars[7]?.id ?? '' }),
       moveTrack({ trackId: track.id }, 2),
@@ -205,10 +217,12 @@ describe('scoreIndex, derived from the previous score', () => {
     let score = largeScore(4, 40);
     expectMatches(score);
     const gone = new Set(idsOf(score));
-    // Each edit replaces a few beats with fresh ids, so the overlay grows past its limit.
-    for (let round = 0; round < 120; round += 1) {
+    let flattened = false;
+    let layered = false;
+    // Each round replaces one distinct bar with fresh ids, so the overlay grows past its limit.
+    for (let round = 0; round < 200; round += 1) {
       const track = score.tracks[round % 4];
-      const voice = track?.bars[round % 40]?.voices[0];
+      const voice = track?.bars[Math.floor(round / 4) % 40]?.voices[0];
       if (!voice) throw new Error('empty fixture');
       score = applyCommand(
         score,
@@ -223,8 +237,72 @@ describe('scoreIndex, derived from the previous score', () => {
           },
         ]),
       ).score;
-      if (round % 20 === 19) expectMatches(score, gone);
+      const plain = Object.getPrototypeOf(scoreIndex(score).beats) === Map.prototype;
+      if (plain && layered) flattened = true;
+      if (!plain) layered = true;
+      if (round % 25 === 24) expectMatches(score, gone);
     }
+    expect(layered).toBe(true);
+    expect(flattened).toBe(true);
+    expectMatches(score, gone);
+  }, 30_000);
+
+  it('moves a beat across bars inside one chain, in either bar order', () => {
+    const start = largeScore(2, 6);
+    const [barA, barB] = [start.tracks[0]?.bars[1], start.tracks[0]?.bars[4]];
+    const [a, b] = [barA?.voices[0], barB?.voices[0]];
+    const [beatA, beatB] = [a?.beats[0], b?.beats[0]];
+    if (!a || !b || !beatA || !beatB) throw new Error('empty fixture');
+    expectMatches(start);
+    // Earlier bar to later bar, then back: the first changed bar is the source, then the target.
+    const forward = applyCommand(
+      start,
+      chain('move', [
+        removeBeat({ beatId: beatA.id }),
+        removeBeat({ beatId: beatB.id }),
+        insertBeat({ voiceId: b.id, index: 0, id: beatA.id }, { duration: 8 }),
+        insertBeat({ voiceId: a.id, index: 0, id: beatB.id }, { duration: 8 }),
+      ]),
+    ).score;
+    expectMatches(forward);
+    expect(scoreIndex(forward).beats.get(beatA.id)?.masterBarIndex).toBe(4);
+    expect(scoreIndex(forward).beats.get(beatB.id)?.masterBarIndex).toBe(1);
+    const back = applyCommand(
+      forward,
+      chain('move', [
+        removeBeat({ beatId: beatB.id }),
+        removeBeat({ beatId: beatA.id }),
+        insertBeat({ voiceId: a.id, index: 0, id: beatA.id }, { duration: 8 }),
+        insertBeat({ voiceId: b.id, index: 0, id: beatB.id }, { duration: 8 }),
+      ]),
+    ).score;
+    expectMatches(back);
+    expect(scoreIndex(back).beats.get(beatA.id)?.masterBarIndex).toBe(1);
+  });
+
+  it('indexes another score with the same id and no shared objects as its own', () => {
+    const original = largeScore(2, 8);
+    expectMatches(original);
+    const copy = structuredClone(original);
+    const voice = copy.tracks[0]?.bars[3]?.voices[0];
+    if (!voice) throw new Error('empty fixture');
+    const reloaded = applyCommand(copy, removeBeat({ beatId: voice.beats[0]?.id ?? '' })).score;
+    expect(reloaded.id).toBe(original.id);
+    expectMatches(copy);
+    expectMatches(reloaded);
+    // The original's next edit derives from whichever score was indexed last: still correct.
+    const edited = applyCommand(
+      original,
+      setBeatDurations([
+        {
+          beatId: original.tracks[1]?.bars[2]?.voices[0]?.beats[0]?.id ?? '',
+          rhythm: { duration: 16, dots: 0, tuplet: null },
+        },
+      ]),
+    ).score;
+    expectMatches(edited, idsOf(reloaded));
+    expectMatches(original);
+    expectMatches(reloaded);
   });
 
   it('equals a cold rebuild after randomized edits, undo and redo', () => {
@@ -253,5 +331,5 @@ describe('scoreIndex, derived from the previous score', () => {
       // Guards against a generator whose commands are all refused.
       expect(applied).toBeGreaterThan(8);
     }
-  });
+  }, 30_000);
 });

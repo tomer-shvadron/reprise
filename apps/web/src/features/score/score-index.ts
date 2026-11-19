@@ -23,8 +23,10 @@ export interface ScoreIndex {
   noteString: ReadonlyMap<Id, number>;
 }
 
-/** Past this many overlay entries a derived index is flattened into fresh maps. */
+/** Past this many overlay entries a derived index is rebuilt cold into fresh maps. */
 const FLATTEN_AT = 4096;
+/** More changed bars than this (a reopened copy, a whole-score edit) is cheaper to rebuild cold. */
+const MAX_CHANGED_BARS = 64;
 
 const TOMBSTONE = Symbol('removed');
 
@@ -129,7 +131,14 @@ const notesOf = (beat: Beat): Note[] => [
   ...(beat.grace ?? []).flatMap((grace) => grace.notes),
 ];
 
-function fill(tables: Tables, bar: BarOf, trackIndex: number, masterBarIndex: number): void {
+/** Where `fill` writes: the overlay tables, or the plain maps of a cold build. */
+interface Sink {
+  beats: { set(id: Id, info: BeatInfo): unknown };
+  noteBeat: { set(id: Id, beatId: Id): unknown };
+  noteString: { set(id: Id, string: number): unknown };
+}
+
+function fill(tables: Sink, bar: BarOf, trackIndex: number, masterBarIndex: number): void {
   indexBar(bar, trackIndex, masterBarIndex, (beat, info) => {
     tables.beats.set(beat.id, info);
     for (const note of notesOf(beat)) {
@@ -151,21 +160,19 @@ function unfill(tables: Tables, bar: BarOf): void {
   }
 }
 
+/** Ids are unique (commands refuse a duplicate); a score an import left with duplicates gets a usable index that need not equal a cold build. */
 function buildIndex(score: Score): ScoreIndex {
   const barIndex = new Map(score.masterBars.map((bar, index) => [bar.id, index]));
-  const tables: Tables = { beats: new Map(), noteBeat: new Map(), noteString: new Map() };
+  const beats = new Map<Id, BeatInfo>();
+  const noteBeat = new Map<Id, Id>();
+  const noteString = new Map<Id, number>();
+  const tables = { beats, noteBeat, noteString };
   score.tracks.forEach((track, trackIndex) => {
     track.bars.forEach((bar, masterBarIndex) => {
       fill(tables, bar, trackIndex, masterBarIndex);
     });
   });
-  // No tombstones in a cold build, so these are plain maps.
-  return {
-    barIndex,
-    beats: tables.beats as Map<Id, BeatInfo>,
-    noteBeat: tables.noteBeat as Map<Id, Id>,
-    noteString: tables.noteString as Map<Id, number>,
-  };
+  return { barIndex, beats, noteBeat, noteString };
 }
 
 /**
@@ -199,6 +206,7 @@ function deriveIndex(prev: Score, previous: ScoreIndex, next: Score): ScoreIndex
   const barIndex = sameMasterBars
     ? previous.barIndex
     : new Map(next.masterBars.map((bar, index) => [bar.id, index]));
+  if (changed.length > MAX_CHANGED_BARS) return undefined;
   if (changed.length === 0) return { ...previous, barIndex };
 
   const parent = {
@@ -238,10 +246,14 @@ export function scoreIndex(score: Score): ScoreIndex {
   const cached = scoreIndexes.get(score);
   if (cached) return cached;
   const prev = lastIndexed.get(score.id)?.deref();
+  if (!prev) lastIndexed.delete(score.id);
   const previous = prev && scoreIndexes.get(prev);
   const index = (prev && previous && deriveIndex(prev, previous, score)) || buildIndex(score);
   scoreIndexes.set(score, index);
   lastIndexed.set(score.id, new WeakRef(score));
+  if (lastIndexed.size > 64) {
+    for (const [id, ref] of lastIndexed) if (!ref.deref()) lastIndexed.delete(id);
+  }
   return index;
 }
 
