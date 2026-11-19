@@ -9,7 +9,9 @@
  * the EnableNodeCliInspectArguments fuse refuses, so the app that is launched is a copy in the
  * temporary profile with that one fuse turned back on (scripts/desktop/fuses.ts). It also checks
  * that app.enableSandbox() holds (a window asking for nodeIntegration gets none) and that
- * app.quit() ends the process with exit code 0.
+ * app.quit() ends the process with exit code 0. With REPRISE_EXPECTED_VERSION set (the release
+ * workflow does) it checks app.getVersion(); on Windows it also starts the tuner on Chromium's
+ * fake microphone.
  *
  * Then it makes an edit, waits for the draft on disk, kills the app with SIGKILL, relaunches it on
  * the same profile, recovers the draft, checks the edit is there, and closes the window to check
@@ -103,6 +105,8 @@ function launch(profileDir: string): Promise<ElectronApplication> {
   return electron.launch({
     executablePath: executable,
     timeout: TIMEOUT,
+    // Chromium's fake microphone, so the Windows tuner step needs no real device.
+    args: process.platform === 'win32' ? ['--use-fake-device-for-media-stream'] : [],
     env: { ...process.env, REPRISE_PROFILE_DIR: profileDir },
   });
 }
@@ -172,6 +176,12 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
     page.setDefaultTimeout(TIMEOUT);
     await page.waitForLoadState('load');
     check(page.url() === APP_URL, `the renderer loads from ${APP_URL} (got ${page.url()})`);
+
+    const expectedVersion = process.env['REPRISE_EXPECTED_VERSION'];
+    if (expectedVersion !== undefined && expectedVersion !== '') {
+      const version = await app.evaluate(({ app }) => app.getVersion());
+      check(version === expectedVersion, `app.getVersion() is ${expectedVersion} (got ${version})`);
+    }
 
     const bank = await page.evaluate(async () => {
       const response = await fetch('./sounds/gm/GeneralUser-GS.sf2');
@@ -269,8 +279,30 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
       `the app's loader fetches the bank over the scheme (${bankRequests.join(', ')})`,
     );
 
+    // The tuner on Windows, where main's permission handler grants the microphone without a
+    // system prompt: macOS would wait on the TCC prompt, as apps/web/e2e/player/tuner.spec.ts notes.
+    if (process.platform === 'win32') {
+      await page.getByRole('button', { name: 'Pause' }).click();
+      await page.keyboard.press('Control+k');
+      const input = page.locator('[cmdk-input]');
+      await input.fill('Show tuner');
+      await input.press('Enter');
+      const panel = page.getByRole('region', { name: 'Tuner' });
+      await panel.waitFor();
+      await panel.getByRole('button', { name: 'Start' }).click();
+      await page.waitForTimeout(2000);
+      check(
+        (await panel.getByRole('alert').count()) === 0,
+        'the tuner starts on the fake microphone with no error',
+      );
+      // F8 swaps the right panel to the mixer, which stops the tuner and closes its context.
+      await page.keyboard.press('F8');
+      await panel.waitFor({ state: 'hidden' });
+      await page.getByRole('button', { name: 'Play' }).waitFor();
+    }
+
     // Autosave: an edit, the draft on disk, a kill, a relaunch on the same profile, a recovery.
-    await page.getByRole('button', { name: 'Pause' }).click();
+    if (process.platform !== 'win32') await page.getByRole('button', { name: 'Pause' }).click();
     const slider = await volumeSlider(page);
     const before = Number(await slider.getAttribute('aria-valuenow'));
     await slider.focus();

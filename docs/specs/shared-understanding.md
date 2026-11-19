@@ -96,7 +96,7 @@ These were routine calls, open to revisiting:
 - Keyboard shortcuts mirror Guitar Pro's where they exist.
 - GeneralUser GS as the bundled GM soundfont.
 - Initial decoded-audio budget of 300 MB, tunable in settings.
-- Electron builds unsigned; first launch on macOS needs right-click Open.
+- Electron builds unsigned; first launch on macOS needs right-click Open, or on macOS 15 and later System Settings → Privacy & Security → Open Anyway (docs/reference/release.md).
 - Repo commits use the same git identity as the other personal repos.
 - No license file yet; the public repo is therefore all-rights-reserved until one is chosen.
 
