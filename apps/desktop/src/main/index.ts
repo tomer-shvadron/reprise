@@ -56,6 +56,10 @@ const RENDERER_DIR = fileURLToPath(new URL('../renderer/', import.meta.url));
 const RENDERER_URL = app.isPackaged ? undefined : process.env['ELECTRON_RENDERER_URL'];
 const APP_URL = RENDERER_URL ?? APP_INDEX_URL;
 
+// Before ready (it throws after), so it stays above every await in this module. It sandboxes every
+// renderer whatever its webPreferences say, so nodeIntegration cannot come back by accident.
+app.enableSandbox();
+
 // Before ready, so it stays above every await in this module.
 protocol.registerSchemesAsPrivileged([
   { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
