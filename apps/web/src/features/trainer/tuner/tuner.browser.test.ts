@@ -58,33 +58,59 @@ const worstDifference = (a: Float32Array, b: Float64Array) => {
 };
 
 describe('the tuner on real Web Audio', () => {
-  it('reads a harmonic A2 +7 cents within 2 cents on every reading after the first', async () => {
-    const mic = await fakeMicrophone(A2_PLUS_7);
-    const services = createTestServices({
-      platform: fakePlatform({ microphone: () => Promise.resolve(mic.stream) }),
-    });
-    const tuner = createTuner(services, { storage: () => memoryStorage() });
-    // Every live reading counts, from the first: the cutoff ramps on the real filter when the
-    // note locks, and frames read through the ramp are tens of cents off at high clarity unless
-    // the tracker holds the lock back until they have passed.
-    const errors: number[] = [];
-    const stop = tuner.subscribe((state, previous) => {
-      const { reading } = state;
-      if (!reading || reading.held || reading === previous.reading) return;
-      errors.push(Math.abs((reading.midi - 45) * 100 - 7));
-    });
-    const detach = tuner.getState().attach();
-    try {
-      tuner.getState().start();
-      await expect.poll(() => tuner.getState().status, { timeout: 10_000 }).toBe('listening');
-      await expect.poll(() => errors.length, { timeout: 15_000 }).toBeGreaterThanOrEqual(30);
-      expect(Math.max(...errors)).toBeLessThan(2);
-    } finally {
-      stop();
-      detach();
-      mic.close();
-    }
-  });
+  it(
+    'reads a harmonic A2 +7 cents within 2 cents on every reading after the first',
+    { repeats: 20 },
+    async () => {
+      const trace: unknown[] = [];
+      (globalThis as unknown as { __tick?: (v: unknown) => void }).__tick = (v) => trace.push(v);
+      const mic = await fakeMicrophone(A2_PLUS_7);
+      const services = createTestServices({
+        platform: fakePlatform({ microphone: () => Promise.resolve(mic.stream) }),
+      });
+      const tuner = createTuner(services, { storage: () => memoryStorage() });
+      // Every live reading counts, from the first: the cutoff ramps on the real filter when the
+      // note locks, and frames read through the ramp are tens of cents off at high clarity unless
+      // the tracker holds the lock back until they have passed.
+      const errors: number[] = [];
+      const stop = tuner.subscribe((state, previous) => {
+        const { reading } = state;
+        if (!reading || reading.held || reading === previous.reading) return;
+        errors.push(Math.abs((reading.midi - 45) * 100 - 7));
+      });
+      const detach = tuner.getState().attach();
+      try {
+        tuner.getState().start();
+        await expect.poll(() => tuner.getState().status, { timeout: 10_000 }).toBe('listening');
+        await expect.poll(() => errors.length, { timeout: 15_000 }).toBeGreaterThanOrEqual(30);
+        const worst = Math.max(...errors);
+        if (worst >= 2) {
+          const at = errors.indexOf(worst);
+          const rows = trace as { reading?: { midi: number; held: boolean } }[];
+          let seen = -1;
+          let bad = -1;
+          rows.forEach((row, i) => {
+            if (row.reading && !row.reading.held) {
+              seen += 1;
+              if (seen === at) bad = i;
+            }
+          });
+          console.log('DIAG bad reading at tick', bad, 'of', rows.length, 'emitted index', at);
+          for (let i = Math.max(0, bad - 12); i < Math.min(rows.length, bad + 6); i += 1) {
+            const r = rows[i] as { reading?: { midi: number; held: boolean } };
+            const cents = r.reading ? (r.reading.midi - 45) * 100 - 7 : undefined;
+            console.log('DIAG', i, i === bad ? '<<<' : '', JSON.stringify({ ...r, cents }));
+          }
+        }
+        expect(worst).toBeLessThan(2);
+      } finally {
+        (globalThis as unknown as { __tick?: unknown }).__tick = undefined;
+        stop();
+        detach();
+        mic.close();
+      }
+    },
+  );
 
   it('the real two-biquad chain matches the emulation, with Q in dB', async () => {
     const noise = whiteNoise(48000, 5, 0.3);
