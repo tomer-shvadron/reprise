@@ -15,12 +15,14 @@ export {
   removeBeat,
   replaceBeats,
   setBeatDuration,
+  setBeatDurations,
   setBeatEffect,
   setBeatEffects,
   setBeatRest,
 } from './beat-commands';
 export type {
   BeatChanges,
+  BeatDurationEdit,
   BeatEffectEdit,
   BeatInput,
   BeatRhythm,

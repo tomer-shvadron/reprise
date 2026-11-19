@@ -1,10 +1,12 @@
 import {
   applyCommand,
   chain,
+  createNote,
   insertBeat,
   newId,
   removeBeat,
   setBeatDuration,
+  setBeatDurations,
   setNote,
   setNoteEffect,
   type Dynamics,
@@ -324,17 +326,73 @@ test('Re-layout after a segment-break-moving edit, continuous', RELAYOUT_BENCH, 
 });
 
 /**
- * One note-entry keystroke as the editor sends it: a composed `enterNote` (insert a beat of the
- * rhythm, set its note) through `applyCommand`, then the cached continuous re-layout of the bar it
- * touched. Each edit first takes the last beat out of a different bar, untimed, so the entry has
- * room. No budget: the row reports where a keystroke's time goes, the model side (it validates
- * one track per step) against layout.
+ * One note-entry keystroke as the editor sends it (`entry.ts`): a composed `enterNote` holding one
+ * `insertBeat` that carries the beat's own id and its note, through `applyCommand`, then the
+ * cached continuous re-layout of the bar it touched. Each edit first takes the last beat out of a
+ * different bar, untimed, so the entry has room. The apply side is the model's validation, which
+ * looks only at the bars an edit touched (#240); the annotation splits it from layout.
+ */
+test('Note entry keystroke (apply + re-layout), continuous', RELAYOUT_BENCH, async (context) => {
+  const metric = 'Note entry keystroke (apply + re-layout), continuous';
+  const cache = new LayoutCache();
+  let score = longScore();
+  layout(score, continuous, cache);
+  let count = 0;
+  let pending: ReturnType<typeof chain> | undefined;
+  const timings: { apply: number; layout: number }[] = [];
+  const result = await context
+    .bench(
+      metric,
+      {
+        beforeEach() {
+          const track = count % 8;
+          const bar = 100 + count;
+          count += 1;
+          const voice = score.tracks[track]?.bars[bar]?.voices[0];
+          const last = voice?.beats.at(-1);
+          if (!voice || !last) throw new Error(`no beat to make room in bar ${String(bar)}`);
+          score = applyCommand(score, removeBeat({ beatId: last.id })).score;
+          pending = chain('enterNote', [
+            insertBeat(
+              { voiceId: voice.id, index: voice.beats.length - 1, id: newId() },
+              {
+                duration: last.duration,
+                dots: last.dots,
+                notes: [createNote({ string: 1, fret: 5 })],
+              },
+            ),
+          ]);
+        },
+      },
+      () => {
+        if (!pending) return;
+        const began = now();
+        const applied = applyCommand(score, pending);
+        const applyDone = now();
+        score = applied.score;
+        layout(score, { ...continuous, dirtyBars: applied.change.touchedBars }, cache);
+        timings.push({ apply: applyDone - began, layout: now() - applyDone });
+      },
+    )
+    .run(RUN);
+  // tinybench calls the function once before any beforeEach, to see whether it is async.
+  const timed = timings.slice(-RUN.iterations);
+  await context.annotate(
+    `${metric}: apply p50 ${String(round(median(timed.map((t) => t.apply))))} ms, re-layout p50 ${String(round(median(timed.map((t) => t.layout))))} ms, max total ${String(round(result.latency.max))} ms`,
+  );
+  await checkBudget(context, metric, result.latency.p50, { enforced: true });
+});
+
+/**
+ * A rhythm key over a two-bar range, as the editor sends it: every eighth of two bars of one
+ * track halved through one `setRhythm` chain, then the cached continuous re-layout of the bars it
+ * touched. Each edit takes two bars further along, on the next track, so none is edited twice.
  */
 test(
-  'Note entry keystroke (apply + re-layout), continuous, long score',
+  'Rhythm key over a two-bar range (apply + re-layout), continuous',
   RELAYOUT_BENCH,
   async (context) => {
-    const metric = 'Note entry keystroke (apply + re-layout), continuous, long score';
+    const metric = 'Rhythm key over a two-bar range (apply + re-layout), continuous';
     const cache = new LayoutCache();
     let score = longScore();
     layout(score, continuous, cache);
@@ -346,20 +404,13 @@ test(
         metric,
         {
           beforeEach() {
-            const track = count % 8;
-            const bar = 100 + count;
+            const track = score.tracks[count % 8];
+            const bars = [100 + 2 * count, 101 + 2 * count];
             count += 1;
-            const voice = score.tracks[track]?.bars[bar]?.voices[0];
-            const last = voice?.beats.at(-1);
-            if (!voice || !last) throw new Error(`no beat to make room in bar ${String(bar)}`);
-            score = applyCommand(score, removeBeat({ beatId: last.id })).score;
-            const id = newId();
-            pending = chain('enterNote', [
-              insertBeat(
-                { voiceId: voice.id, index: voice.beats.length - 1, id },
-                { duration: last.duration, dots: last.dots },
-              ),
-              setNote({ beatId: id }, { string: 1, fret: 5 }),
+            const beats = bars.flatMap((b) => track?.bars[b]?.voices[0]?.beats ?? []);
+            if (beats.length === 0) throw new Error('no beats in the range');
+            pending = chain('setRhythm', [
+              setBeatDurations(beats.map(({ id }) => ({ beatId: id, rhythm: { duration: 16 } }))),
             ]);
           },
         },
@@ -374,12 +425,11 @@ test(
         },
       )
       .run(RUN);
-    // tinybench calls the function once before any beforeEach, to see whether it is async.
     const timed = timings.slice(-RUN.iterations);
     await context.annotate(
       `${metric}: apply p50 ${String(round(median(timed.map((t) => t.apply))))} ms, re-layout p50 ${String(round(median(timed.map((t) => t.layout))))} ms, max total ${String(round(result.latency.max))} ms`,
     );
-    await recordMeasurement(context, metric, result.latency.p50);
+    await checkBudget(context, metric, result.latency.p50, { enforced: true });
   },
 );
 
