@@ -9,6 +9,11 @@ export interface TunerInput {
   sampleRate: number;
   /** Fills `into` (its length is the frame size) with the latest filtered samples. */
   read(into: Float32Array<ArrayBuffer>): void;
+  /**
+   * The audio clock in ms. The cutoff change and the window both live on it, so it is the time
+   * the tracker must settle on: a starved audio thread renders slower than the wall clock.
+   */
+  clockMs(): number;
   setFrameSize(size: number): void;
   setCutoff(hz: number): void;
   /** Calls `listener` when the device goes away or its permission is revoked. */
@@ -99,6 +104,7 @@ export async function openCapture(
     read: (into) => {
       analyser.getFloatTimeDomainData(into);
     },
+    clockMs: () => context.currentTime * 1000,
     setFrameSize: (size) => {
       analyser.fftSize = size;
     },

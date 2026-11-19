@@ -12,7 +12,7 @@ export interface Reading {
 export interface TrackerOptions {
   /** A4 in Hz; 440 by default. */
   referenceHz?: number;
-  /** Accepted frames hidden after a lock closes the cutoff in; see `settleFramesFor`. */
+  /** Settle time after a lock closes the cutoff in, in 20 ms hops of the pushed clock; see `settleFramesFor`. */
   settleFrames?: number;
 }
 
@@ -47,6 +47,19 @@ export const TRACKER = {
   inTuneCents: 3,
   outOfTuneCents: 5,
   inTuneReadings: 5,
+  /**
+   * A click or a dropped sample in the input leaves a few frames a handful of cents off with the
+   * clarity dipped below what this note had; the last reading is shown again for them, rather
+   * than the new ones. The dip is against the note's own running clarity, so a weak note whose
+   * clarity is steady is never suspect. A real change of pitch keeps its clarity, or outlasts
+   * `glitchFrames`, and `cleanFrames` clean frames in a row are needed to start the count over,
+   * so one clean frame inside a glide cannot restart the freeze.
+   */
+  glitchClarityDip: 0.05,
+  clarityAverage: 0.15,
+  cleanFrames: 3,
+  glitchCents: 2,
+  glitchFrames: 8,
   searchCutoffHz: 1500,
   lockedCutoffFactor: 2.5,
   minCutoffHz: 80,
@@ -101,11 +114,20 @@ export function createTracker(options: TrackerOptions = {}) {
   let streak = 0;
   let inTune = false;
   let rejects = 0;
+  let glitches = 0;
+  let clean = 0;
+  // Running clarity of the frames the lock has taken; the glitch gate measures a dip against it.
+  let clarityAvg = 0;
   let cutoffHz: number = TRACKER.searchCutoffHz;
-  let settling = 0;
+  // The time (ms) the window is clear of the cutoff change; 0 when none is pending.
+  let settleUntilMs = 0;
   // Frames since the cutoff closed in are in the history until the window has left the change.
   let dirty = false;
   let settleFrames = options.settleFrames ?? settleFramesFor(43);
+
+  /** Hops of settle time still to run at `timeMs`. */
+  const settlingAt = (timeMs: number) =>
+    Math.max(0, Math.ceil((settleUntilMs - timeMs) / TRACKER.hopMs));
 
   const unlock = () => {
     locked = false;
@@ -117,12 +139,20 @@ export function createTracker(options: TrackerOptions = {}) {
     streak = 0;
     inTune = false;
     cutoffHz = TRACKER.searchCutoffHz;
-    settling = 0;
+    settleUntilMs = 0;
     dirty = false;
+    glitches = 0;
+    clean = 0;
   };
 
   /** Starts a lock on `midi`'s note, hidden until the new cutoff has had its effect. */
-  const begin = (frames: number[], rmsValue: number, hz: number) => {
+  const begin = (
+    frames: number[],
+    rmsValue: number,
+    hz: number,
+    clarity: number,
+    timeMs: number,
+  ) => {
     history = frames;
     peakRms = rmsValue;
     away = [];
@@ -130,10 +160,13 @@ export function createTracker(options: TrackerOptions = {}) {
     streak = 0;
     inTune = false;
     lastReading = undefined;
+    glitches = 0;
+    clean = 0;
+    clarityAvg = clarity;
     const target = cutoffFor(hz);
     // Only a cutoff that closes in leaves sharp frames behind; one that opens does not.
-    settling = target < 0.85 * cutoffHz ? settleFrames : 0;
-    dirty = settling > 0;
+    dirty = target < 0.85 * cutoffHz;
+    settleUntilMs = dirty ? timeMs + settleFrames * TRACKER.hopMs : 0;
     cutoffHz = target;
   };
 
@@ -163,9 +196,18 @@ export function createTracker(options: TrackerOptions = {}) {
       settleFrames = frames;
     },
 
-    push(detection: PitchDetection | undefined, rmsValue: number, timeMs: number): TrackerStep {
-      // Time, not accepted frames, is what moves the window past the change.
-      if (settling > 0) settling -= 1;
+    /**
+     * `timeMs` is the audio clock, which the settle runs on. `wallMs` times the hold, so a
+     * context that stops rendering still lets it expire; it is `timeMs` when not given.
+     */
+    push(
+      detection: PitchDetection | undefined,
+      rmsValue: number,
+      timeMs: number,
+      wallMs: number = timeMs,
+    ): TrackerStep {
+      // The clock, not the count of pushes, is what moves the window past the change: ticks that
+      // arrive late or in a burst read the same window and must not count as elapsed time.
       const midi = detection ? midiOf(detection.hz) : undefined;
       const centre = locked ? median(history) : undefined;
       const near =
@@ -187,7 +229,7 @@ export function createTracker(options: TrackerOptions = {}) {
         rejects += 1;
         if (rejects >= TRACKER.openAfterRejects) cutoffHz = TRACKER.searchCutoffHz;
         if (locked) {
-          if (timeMs - lastAcceptedMs > TRACKER.holdMs) {
+          if (wallMs - lastAcceptedMs > TRACKER.holdMs) {
             unlock();
             return { reading: undefined, cutoffHz };
           }
@@ -197,12 +239,32 @@ export function createTracker(options: TrackerOptions = {}) {
       }
 
       rejects = 0;
-      lastAcceptedMs = timeMs;
+      lastAcceptedMs = wallMs;
+
+      const suspect =
+        locked &&
+        near &&
+        !dirty &&
+        detection.clarity < clarityAvg - TRACKER.glitchClarityDip &&
+        centsBetween(midi, centre) > TRACKER.glitchCents;
+      if (suspect && glitches < TRACKER.glitchFrames) {
+        glitches += 1;
+        clean = 0;
+        // The same reading, not a held one: the display freezes without dimming.
+        return { reading: lastReading, cutoffHz };
+      }
+      if (!suspect) {
+        clean += 1;
+        if (clean >= TRACKER.cleanFrames) glitches = 0;
+      } else {
+        clean = 0;
+      }
+      if (locked) clarityAvg += TRACKER.clarityAverage * (detection.clarity - clarityAvg);
 
       if (!locked) {
         if (pending !== undefined && centsBetween(pending, midi) <= TRACKER.lockWithinCents) {
           locked = true;
-          begin([pending, midi], rmsValue, detection.hz);
+          begin([pending, midi], rmsValue, detection.hz, detection.clarity, timeMs);
           return { reading: dirty ? undefined : emit(median(history)), cutoffHz };
         }
         pending = midi;
@@ -215,12 +277,12 @@ export function createTracker(options: TrackerOptions = {}) {
         // it again is the same step a fresh lock hides, so the frames taken through the old
         // cutoff are dropped and the reading waits, held, until the window is clear.
         if (!dirty && cutoffFor(detection.hz) < 0.85 * cutoffHz) {
-          settling = settleFrames;
+          settleUntilMs = timeMs + settleFrames * TRACKER.hopMs;
           dirty = true;
           cutoffHz = cutoffFor(detection.hz);
           history = [];
         }
-        if (dirty && settling <= 2) {
+        if (dirty && settlingAt(timeMs) <= 2) {
           // The frames from here on went through the new cutoff alone.
           history = [];
           dirty = false;
@@ -240,7 +302,7 @@ export function createTracker(options: TrackerOptions = {}) {
           ? [midi]
           : [...away, midi];
       if (away.length >= TRACKER.moveFrames) {
-        begin(away, rmsValue, detection.hz);
+        begin(away, rmsValue, detection.hz, detection.clarity, timeMs);
         return { reading: dirty ? undefined : emit(median(history)), cutoffHz };
       }
       return { reading: lastReading, cutoffHz };

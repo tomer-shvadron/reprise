@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { midiFromHz } from '../notes';
 import { lowpassChain, pluck, sine, simulate, type SimulatedFrame } from '../test-signals';
-import { createTracker, settleFramesFor, TRACKER } from './tracker';
+import { createTracker, settleFramesFor, TRACKER, type Reading } from './tracker';
 
 const NOTES: [string, number][] = [
   ['B0', 30.87],
@@ -119,11 +119,16 @@ describe('the tracker', () => {
 
   it('is in tune from 3 cents and stays so until 5', () => {
     const tracker = createTracker();
+    let clock = 0;
     const push = (cents: number, n: number, rms = 0.1) => {
       // Reported frames only: the lock is hidden for a few frames while the cutoff closes in.
       let out;
       for (let i = 0; i < n; i += 1) {
-        out = tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity: 0.99 }, rms, 0);
+        out = tracker.push(
+          { hz: 110 * 2 ** (cents / 1200), clarity: 0.99 },
+          rms,
+          (clock += TRACKER.hopMs),
+        );
       }
       return out?.reading;
     };
@@ -150,9 +155,118 @@ describe('the tracker', () => {
     expect(first).toBeLessThanOrEqual(4);
   });
 
+  it('keeps a new lock hidden through a burst of ticks that read the same window', () => {
+    const tracker = createTracker();
+    const pushAt = (timeMs: number) =>
+      tracker.push({ hz: 110, clarity: 0.99 }, 0.1, timeMs).reading;
+    pushAt(0);
+    pushAt(20);
+    // A stalled main thread catches up with many ticks at once; the window has not moved, so
+    // none of them is time past the cutoff change.
+    for (let i = 0; i < settleFramesFor(43) + 5; i += 1) expect(pushAt(40)).toBeUndefined();
+    // Once the clock has run the window past the change, the reading shows.
+    const clear = 40 + settleFramesFor(43) * TRACKER.hopMs;
+    expect(pushAt(clear)?.held).toBe(false);
+  });
+
+  describe('glitch gate', () => {
+    const rig = () => {
+      const tracker = createTracker();
+      let clock = 0;
+      let previous: Reading | undefined;
+      const at = (cents: number, clarity: number) => {
+        const reading = tracker.push(
+          { hz: 110 * 2 ** (cents / 1200), clarity },
+          0.1,
+          (clock += TRACKER.hopMs),
+        ).reading;
+        const frozen = reading !== undefined && reading === previous;
+        previous = reading;
+        return { reading, frozen };
+      };
+      return at;
+    };
+    const lockAt = (at: ReturnType<typeof rig>, cents: number) => {
+      for (let i = 0; i < settleFramesFor(43) + 8; i += 1) at(cents, 1);
+    };
+
+    it('freezes the reading, not dims it, for the frames a click left off', () => {
+      const at = rig();
+      lockAt(at, 7);
+      // The frames a dropped sample left in the real-Web-Audio run: 10 to 13 cents, clarity ~0.89.
+      for (const cents of [10.4, 12.6, 12.5, 11]) {
+        const { reading, frozen } = at(cents, 0.89);
+        expect(frozen).toBe(true);
+        expect(reading?.held).toBe(false);
+        expect(reading?.midi).toBeCloseTo(45.07, 3);
+      }
+      expect(at(7, 1).frozen).toBe(false);
+    });
+
+    it('takes a clean change of pitch over at once', () => {
+      const at = rig();
+      lockAt(at, 7);
+      for (let i = 0; i < 10; i += 1) at(20, 0.99);
+      expect(((at(20, 0.99).reading?.midi ?? 0) - 45) * 100).toBeCloseTo(20, 0);
+    });
+
+    it('releases a drift at exactly glitchFrames', () => {
+      const at = rig();
+      lockAt(at, 0);
+      for (let i = 0; i < TRACKER.glitchFrames; i += 1) expect(at(30, 0.85).frozen).toBe(true);
+      const next = at(30, 0.85);
+      expect(next.frozen).toBe(false);
+      expect(next.reading?.held).toBe(false);
+    });
+
+    it('does not restart the count after a single clean frame', () => {
+      const at = rig();
+      lockAt(at, 0);
+      for (let i = 0; i < 4; i += 1) expect(at(30, 0.85).frozen).toBe(true);
+      // One clean frame is not enough to count as the glitch being over.
+      at(0, 1);
+      for (let i = 0; i < TRACKER.glitchFrames - 4; i += 1) expect(at(30, 0.85).frozen).toBe(true);
+      expect(at(30, 0.85).frozen).toBe(false);
+    });
+
+    it('restarts the count after cleanFrames clean frames in a row', () => {
+      const at = rig();
+      lockAt(at, 0);
+      for (let i = 0; i < 4; i += 1) at(30, 0.85);
+      for (let i = 0; i < TRACKER.cleanFrames; i += 1) at(0, 1);
+      for (let i = 0; i < TRACKER.glitchFrames; i += 1) expect(at(30, 0.85).frozen).toBe(true);
+    });
+
+    it('never freezes or holds a weak note whose clarity is low but steady', () => {
+      let seed = 7;
+      const noise = () => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 2 ** 32 - 0.5;
+      };
+      // The note starts weak: its running clarity is the weak clarity, so nothing dips.
+      const tracker = createTracker();
+      let clock = 0;
+      let previous: Reading | undefined;
+      for (let i = 0; i < 120; i += 1) {
+        const reading = tracker.push(
+          { hz: 110 * 2 ** ((5 * noise()) / 1200), clarity: 0.91 + 0.02 * noise() },
+          0.1,
+          (clock += TRACKER.hopMs),
+        ).reading;
+        if (i >= settleFramesFor(43) + 3) {
+          expect(reading?.held).toBe(false);
+          expect(reading).not.toBe(previous);
+        }
+        previous = reading;
+      }
+    });
+  });
+
   it('ignores a single frame an octave off', () => {
     const tracker = createTracker();
-    const at = (hz: number) => tracker.push({ hz, clarity: 0.95 }, 0.1, 0).reading;
+    let clock = 0;
+    const at = (hz: number) =>
+      tracker.push({ hz, clarity: 0.95 }, 0.1, (clock += TRACKER.hopMs)).reading;
     for (let i = 0; i < settleFramesFor(43) + 3; i += 1) at(110);
     expect(at(220)?.hz).toBeCloseTo(110, 3);
     expect(at(110)?.hz).toBeCloseTo(110, 3);
@@ -190,11 +304,11 @@ describe('the tracker', () => {
     const at = (cents: number, rms = 0.1, timeMs = 0) =>
       tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity: 0.99 }, rms, timeMs);
     const settle = settleFramesFor(43);
-    for (let i = 0; i < settle + 8; i += 1) at(0);
+    for (let i = 0; i < settle + 8; i += 1) at(0, 0.1, i * 20);
     // The string dies away: the cutoff opens, the last reading is held.
     let step;
     for (let i = 0; i < TRACKER.openAfterRejects + 2; i += 1) {
-      step = tracker.push(undefined, 0, 100 + i * 20);
+      step = tracker.push(undefined, 0, 400 + i * 20);
     }
     expect(step?.cutoffHz).toBe(TRACKER.searchCutoffHz);
     expect(step?.reading?.held).toBe(true);
@@ -202,12 +316,12 @@ describe('the tracker', () => {
     // cutoff has its effect. None of the sharp ones may reach a live reading.
     const live: number[] = [];
     for (let i = 0; i < settle + 6; i += 1) {
-      const result = at(i < settle - 2 ? 16 : 0, 0.1, 300 + i * 20);
+      const result = at(i < settle - 2 ? 16 : 0, 0.1, 600 + i * 20);
       if (result.reading && !result.reading.held) live.push((result.reading.midi - 45) * 100);
     }
     expect(live.length).toBeGreaterThan(3);
     for (const cents of live) expect(Math.abs(cents)).toBeLessThan(3);
-    expect(Math.abs(at(0, 0.1, 900).cutoffHz - 275)).toBeLessThan(1);
+    expect(Math.abs(at(0, 0.1, 1200).cutoffHz - 275)).toBeLessThan(1);
   });
 
   it('keeps every reading within 3 cents when a string is plucked again inside the hold', () => {
