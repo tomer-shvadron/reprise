@@ -169,6 +169,28 @@ describe('the tracker', () => {
     expect(pushAt(clear)?.held).toBe(false);
   });
 
+  it('shows no live reading for a few frames a click left off with their clarity dipped', () => {
+    const tracker = createTracker();
+    let clock = 0;
+    const at = (cents: number, clarity: number) =>
+      tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity }, 0.1, (clock += TRACKER.hopMs))
+        .reading;
+    for (let i = 0; i < settleFramesFor(43) + 8; i += 1) at(7, 1);
+    // The frames a dropped sample left in the real-Web-Audio run: 10 to 13 cents, clarity ~0.89.
+    for (const cents of [10.4, 12.6, 12.5, 11]) {
+      const reading = at(cents, 0.89);
+      expect(reading?.held).toBe(true);
+      expect(reading?.midi).toBeCloseTo(45.07, 3);
+    }
+    expect(at(7, 1)?.held).toBe(false);
+    // A clean frame that really is elsewhere is a change of pitch, not a glitch.
+    for (let i = 0; i < 10; i += 1) at(20, 0.99);
+    expect(((at(20, 0.99)?.midi ?? 0) - 45) * 100).toBeCloseTo(20, 0);
+    // So is a drift that stays: after `glitchFrames` the low clarity no longer hides it.
+    for (let i = 0; i < TRACKER.glitchFrames + 6; i += 1) at(30, 0.89);
+    expect(at(30, 0.89)?.held).toBe(false);
+  });
+
   it('ignores a single frame an octave off', () => {
     const tracker = createTracker();
     let clock = 0;

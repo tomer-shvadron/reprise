@@ -47,6 +47,14 @@ export const TRACKER = {
   inTuneCents: 3,
   outOfTuneCents: 5,
   inTuneReadings: 5,
+  /**
+   * A click or a dropped sample in the input leaves a few frames a handful of cents off with the
+   * clarity dipped below what a clean sustained note has; they are skipped, as a held reading,
+   * rather than shown. A real change of pitch keeps its clarity, or outlasts `glitchFrames`.
+   */
+  glitchClarity: 0.93,
+  glitchCents: 2,
+  glitchFrames: 8,
   searchCutoffHz: 1500,
   lockedCutoffFactor: 2.5,
   minCutoffHz: 80,
@@ -101,6 +109,7 @@ export function createTracker(options: TrackerOptions = {}) {
   let streak = 0;
   let inTune = false;
   let rejects = 0;
+  let glitches = 0;
   let cutoffHz: number = TRACKER.searchCutoffHz;
   // The time (ms) the window is clear of the cutoff change; 0 when none is pending.
   let settleUntilMs = 0;
@@ -124,6 +133,7 @@ export function createTracker(options: TrackerOptions = {}) {
     cutoffHz = TRACKER.searchCutoffHz;
     settleUntilMs = 0;
     dirty = false;
+    glitches = 0;
   };
 
   /** Starts a lock on `midi`'s note, hidden until the new cutoff has had its effect. */
@@ -212,6 +222,18 @@ export function createTracker(options: TrackerOptions = {}) {
 
       rejects = 0;
       lastAcceptedMs = wallMs;
+
+      const suspect =
+        locked &&
+        near &&
+        !dirty &&
+        detection.clarity < TRACKER.glitchClarity &&
+        centsBetween(midi, centre) > TRACKER.glitchCents;
+      if (suspect && glitches < TRACKER.glitchFrames) {
+        glitches += 1;
+        return { reading: lastReading && { ...lastReading, held: true }, cutoffHz };
+      }
+      if (!suspect) glitches = 0;
 
       if (!locked) {
         if (pending !== undefined && centsBetween(pending, midi) <= TRACKER.lockWithinCents) {
