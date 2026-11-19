@@ -203,15 +203,18 @@ export function drawWords(sink: LayoutSink, lanes: LaneBands, beat: Beat, at: Wo
     if (syllable === '' || !lanes.lyrics) continue;
     const y = lanes.lyrics.top + (line + 1) * WORDS.lyricRow * space - WORDS.descent * space;
     const word = sungSyllable(syllable);
-    const sung = fitText(word.sung, size, 2 * (limit - x));
+    // A hyphenated syllable is cut with its ellipsis before its hyphen is ever dropped, so a
+    // squeezed last bar never shows `Twin` for `Twin-`.
+    const dash = textWidth('-', size);
+    const reserved = word.hyphen ? WORDS.gap * space + dash : 0;
+    const sung = fitText(word.sung, size, 2 * (limit - x - reserved));
     if (sung === '') continue;
     sink.primitives.push(
       // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- the lane type is a template over number
       text(sung, x, y, size, { anchor: 'middle', node, lane: `lyric:${line}` }),
     );
-    if (!word.hyphen || sung !== word.sung) continue;
+    if (!word.hyphen) continue;
     const right = x + textWidth(sung, size) / 2;
-    const dash = textWidth('-', size);
     const successor = at.nextSyllable?.(beat, line);
     // With no successor in the system the hyphen goes right after the syllable, as at a line end.
     const hx =

@@ -126,7 +126,7 @@ function drawChord(
 function beatX(context: Context, beat: BeatPlan): number {
   const { placement } = context;
   if (beat.rest?.centred) return placement.x + placement.width / 2;
-  return placement.onsetX(beat.tick) + (beat.shift ?? 0);
+  return wordX(context, beat);
 }
 
 /**

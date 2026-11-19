@@ -474,4 +474,39 @@ describe.each(['tab', 'standard'] as const)('words on a %s staff, placement', (n
     const ys = new Set(dashes(result).map((d) => d.y));
     expect(ys.size).toBe(2);
   });
+
+  it('cuts a hyphenated syllable with an ellipsis before it drops its hyphen, in a squeezed bar', () => {
+    const built = score()
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(1, 0)], { lyrics: ['Wonderful-'] })
+      .build({ ids: 'sequential' });
+    const track = built.tracks[0];
+    let cut = false;
+    const bars: number[] = [];
+    for (const width of [150, 200, 240, 280, 340]) {
+      const result = layout(built, {
+        ...paged,
+        width,
+        notation: track ? { [track.id]: notation } : {},
+      });
+      const [bar] = barAnchors(result);
+      const sung = texts(result).find((p) => p.lane === 'lyric:0');
+      if (!bar || !sung) continue;
+      const content = bar.bbox.x + bar.bbox.width;
+      const dash = dashes(result)[0];
+      bars.push(sung.text === 'Wonderful' ? 1 : 0);
+      // Whatever the width, the syllable is cut before the hyphen goes: a drawn syllable that is
+      // not cut has its hyphen, and nothing passes the content end.
+      expect(dash).toBeDefined();
+      cut ||= sung.text.endsWith('…');
+      if (dash) expect(dash.x + textWidth('-', dash.size) / 2).toBeLessThanOrEqual(content + 1e-6);
+      expect(sung.x + textWidth(sung.text, sung.size) / 2).toBeLessThanOrEqual(content + 1e-6);
+    }
+    expect(bars.length).toBeGreaterThan(0);
+    expect(cut).toBe(true);
+  });
 });
