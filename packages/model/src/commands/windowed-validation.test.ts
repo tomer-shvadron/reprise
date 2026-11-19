@@ -1,5 +1,5 @@
 import { produce } from 'immer';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createBeat, createNote } from '../factories';
 import { applyCommand, createHistory } from '../history';
@@ -16,12 +16,27 @@ import {
   setBeatDuration,
   setBeatDurations,
   setBeatEffect,
+  setBeatEffects,
   setBeatRest,
 } from './beat-commands';
 import { assertBarsValid, assertFreshIds } from './checks';
 import { CommandError } from './command-error';
 import { setNote } from './note-commands';
 import { beatOf, buildScore, expectRefusal, noteOf, roundTrip } from './test-score';
+
+// The reference decision: with `whole` set, the commands' bar-windowed check runs the whole-track
+// one instead, so the same recipe can be judged both ways on the same input.
+const reference = vi.hoisted(() => ({ whole: false }));
+vi.mock('./checks', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./checks')>();
+  return {
+    ...original,
+    assertBarsValid: (...args: Parameters<typeof original.assertBarsValid>) => {
+      if (reference.whole) original.assertTrackValid(args[0], args[1], args[3]);
+      else original.assertBarsValid(...args);
+    },
+  };
+});
 
 const NOT_PER_BAR: ViolationRule[] = ['duplicate-id', 'bar-count', 'track-kind'];
 
@@ -130,23 +145,16 @@ describe('bar-windowed validation in beat commands', () => {
     roundTrip(source, setBeatDuration({ beatId: id }, { duration: 8 }));
   });
 
-  it('refuses a tie a bar edit breaks three bars ahead, and does not look further', () => {
+  it('refuses a tie a bar edit breaks three bars ahead, inside the window', () => {
     const source = heldAcrossBars();
-    const edit = (bar: number, fret: number): void => {
+    expect(() => {
       produce(source, (draft) => {
         const target = draft.tracks[0]?.bars[0]?.voices[0]?.beats[0]?.notes[0];
         if (!target) throw new Error('no note');
-        target.fret = fret;
-        assertBarsValid(draft, 0, [bar], 'probe');
+        target.fret = 7;
+        assertBarsValid(draft, 0, [0], 'probe');
       });
-    };
-    expect(() => {
-      edit(0, 7);
     }).toThrow(/tie-pitch at tracks\.0\.bars\.3/);
-    // Bar 4 is past the tie's reach from bar 0, so the window does not include bar 3 from there.
-    expect(() => {
-      edit(4, 7);
-    }).not.toThrow();
   });
 
   it('tolerates violations the file already carried, in the touched bar, the track and another track', () => {
@@ -237,6 +245,46 @@ describe('assertFreshIds', () => {
   });
 });
 
+describe('grace lists that repeat an id', () => {
+  const withGrace = (source: Score) => {
+    const beatId = beatOf(source, 0, 0, 0).id;
+    const g = createNote({ string: 2, fret: 4 });
+    const { score: kept } = applyCommand(
+      source,
+      setBeatEffect({ beatId }, { grace: [{ duration: 16, before: true, notes: [g] }] }),
+    );
+    const twice = [
+      { duration: 16 as const, before: true, notes: [g] },
+      { duration: 16 as const, before: true, notes: [{ ...g, string: 3 }] },
+    ];
+    const oneBeat = [{ duration: 16 as const, before: true, notes: [g, { ...g, string: 3 }] }];
+    return { kept, beatId, twice, oneBeat };
+  };
+
+  it('are refused by setBeatEffect and setBeatEffects, kept id or not, as the whole track was', () => {
+    const { kept, beatId, twice, oneBeat } = withGrace(buildScore());
+    for (const grace of [twice, oneBeat]) {
+      for (const command of [
+        setBeatEffect({ beatId }, { grace }),
+        setBeatEffects([{ beatId, changes: { grace } }]),
+      ]) {
+        expectRefusal(kept, command, 'invariant');
+        expect(() => applyCommand(kept, command)).toThrow(/duplicate-id at tracks\.0\.bars\.0/);
+      }
+    }
+    // A new id repeated is refused too.
+    const fresh = createNote({ string: 2, fret: 4 });
+    expectRefusal(
+      kept,
+      setBeatEffect(
+        { beatId },
+        { grace: [{ duration: 16, before: true, notes: [fresh, { ...fresh, string: 3 }] }] },
+      ),
+      'invariant',
+    );
+  });
+});
+
 describe('setBeatDurations', () => {
   it('halves a range in one history step and names the touched bars', () => {
     const source = buildScore();
@@ -268,16 +316,26 @@ describe('setBeatDurations', () => {
     expect(batched.change.touchedBars).toEqual(chained.change.touchedBars);
   });
 
-  it('touches the union of the bars across tracks', () => {
+  it('touches the union of the bars across two tracks, validating each', () => {
     const source = buildScore();
     const { change } = applyCommand(
       source,
       setBeatDurations([
-        { beatId: beatOf(source, 0, 0, 0).id, rhythm: { duration: 8 } },
         { beatId: beatOf(source, 0, 2, 0).id, rhythm: { duration: 8 } },
+        { beatId: beatOf(source, 1, 0, 0).id, rhythm: { duration: 8 } },
       ]),
     );
     expect(change.touchedBars).toEqual([source.masterBars[0]?.id, source.masterBars[2]?.id]);
+    // An overfill on the second track refuses the whole batch, though the first track's edit is fine.
+    const full = largeScore(2, 3);
+    expectRefusal(
+      full,
+      setBeatDurations([
+        { beatId: beatOf(full, 0, 1, 0).id, rhythm: { duration: 16 } },
+        { beatId: beatOf(full, 1, 1, 0).id, rhythm: { duration: 1 } },
+      ]),
+      'invariant',
+    );
   });
 
   it('accepts a batch that fits only in its end state, as the end state is what is validated', () => {
@@ -346,15 +404,34 @@ function ruleCounts(source: Score): Map<ViolationRule, number> {
   return counts;
 }
 
+type Outcome = { ok: true; score: Score } | { ok: false; code: string };
+
+function outcomeOf(source: Score, command: Command, whole: boolean): Outcome {
+  reference.whole = whole;
+  try {
+    return { ok: true, score: createHistory().apply(source, command).score };
+  } catch (error) {
+    if (!(error instanceof CommandError)) throw error;
+    return { ok: false, code: error.code };
+  } finally {
+    reference.whole = false;
+  }
+}
+
 describe('windowed validation agrees with full validation', () => {
   it.each([11, 12, 13, 14])(
-    'seed %i: no applied beat command raises the count of any rule over the whole score',
+    'seed %i: each beat command is accepted or refused as the whole-track check would, and never raises a rule',
+    { timeout: 60_000 },
     (seed) => {
       const next = random(seed);
       const int = (max: number): number => Math.floor(next() * max);
+      const pick = <T>(items: readonly T[]): T => {
+        const item = items[int(items.length)];
+        if (item === undefined) throw new Error('empty pick');
+        return item;
+      };
       let current = seed % 2 === 0 ? seededViolations() : heldAcrossBars();
-      const history = createHistory();
-      let refused = 0;
+      const codes = new Map<string, number>();
       let applied = 0;
       for (let step = 0; step < 250; step++) {
         const located = current.tracks.flatMap((track, t) =>
@@ -364,81 +441,99 @@ describe('windowed validation agrees with full validation', () => {
             ),
           ),
         );
-        const pickBeat = () => located[int(located.length)];
-        const voices = current.tracks.flatMap((track) =>
-          track.bars.flatMap((bar) => bar.voices.map((voice) => ({ track, voice }))),
+        const voices = current.tracks.flatMap((track, t) =>
+          track.bars.flatMap((bar) => bar.voices.map((voice) => ({ track, t, voice }))),
         );
-        const target = pickBeat();
-        const v = voices[int(voices.length)];
-        if (!target || !v) break;
+        const target = pick(located);
+        const v = pick(voices);
+        const notes = located.flatMap((l) => l.beat.notes);
+        const graces = located.flatMap((l) => l.beat.grace?.flatMap((g) => g.notes) ?? []);
+        const fresh = () => createNote({ string: 1 + int(3), fret: int(8), tie: next() < 0.4 });
+        // An id from the score, now and then, so reuse reaches the fresh-id checks.
+        const idMaybeUsed = () =>
+          next() < 0.3 ? pick([...notes, ...located.map((l) => l.beat)]).id : undefined;
+        const graceList = () => {
+          const old = graces.length > 0 && next() < 0.6 ? [pick(graces)] : [];
+          const list = [...old, ...(next() < 0.7 ? [fresh()] : [])];
+          if (list.length > 0 && next() < 0.3) list.push({ ...pick(list), string: 2 });
+          return list.length === 0 ? null : [{ duration: 16 as const, before: true, notes: list }];
+        };
+        const other = pick(voices.filter((o) => o.voice.id !== v.voice.id).concat(v));
+        const spliceOf = (
+          w: typeof v,
+        ): {
+          voiceId: string;
+          index: number;
+          remove: number;
+          beats: ReturnType<typeof createBeat>[];
+        } => {
+          const index = int(w.voice.beats.length + 1);
+          return {
+            voiceId: w.voice.id,
+            index,
+            remove: int(w.voice.beats.length - index + 1),
+            beats: [createBeat({ duration: 4, notes: [fresh()] })],
+          };
+        };
         const commands: Command[] = [
-          insertBeat(
-            { voiceId: v.voice.id, index: int(v.voice.beats.length + 1) },
-            {
-              duration: ([4, 8, 16, 2] as const)[int(4)] ?? 4,
-              notes: next() < 0.6 ? [createNote({ string: 1 + int(3), fret: int(8) })] : [],
-            },
-          ),
+          (() => {
+            const id = idMaybeUsed();
+            return insertBeat(
+              { voiceId: v.voice.id, index: int(v.voice.beats.length + 1), ...(id ? { id } : {}) },
+              {
+                duration: pick([4, 8, 16, 2] as const),
+                notes: next() < 0.6 ? [fresh()] : [],
+              },
+            );
+          })(),
           removeBeat({ beatId: target.beat.id }),
           setBeatRest({ beatId: target.beat.id }, next() < 0.5),
           setBeatDuration(
             { beatId: target.beat.id },
-            {
-              duration: ([2, 4, 8, 16] as const)[int(4)] ?? 4,
-              dots: ([0, 1] as const)[int(2)] ?? 0,
-            },
+            { duration: pick([2, 4, 8, 16] as const), dots: pick([0, 1] as const) },
           ),
           setBeatDurations(
             located
               .filter((l) => l.voice === target.voice)
-              .map((l) => ({ beatId: l.beat.id, rhythm: { duration: 8 as const } })),
+              .map((l) => ({ beatId: l.beat.id, rhythm: { duration: pick([8, 16, 2] as const) } })),
           ),
           setNote(
             { beatId: target.beat.id },
             { string: 1 + int(3), fret: int(8), tie: next() < 0.5 },
           ),
-          setBeatEffect(
-            { beatId: target.beat.id },
-            {
-              grace: [
-                {
-                  duration: 16,
-                  before: true,
-                  notes: [createNote({ string: 1 + int(3), fret: int(30) })],
-                },
-              ],
-            },
+          setBeatEffect({ beatId: target.beat.id }, { grace: graceList() }),
+          setBeatEffects(
+            [...new Set([target, pick(located), pick(located)].map((l) => l.beat.id))].map(
+              (beatId) => ({ beatId, changes: { grace: graceList() } }),
+            ),
           ),
-          replaceBeats([
-            {
-              voiceId: v.voice.id,
-              index: 0,
-              remove: int(v.voice.beats.length + 1),
-              beats: [
-                createBeat({ duration: 4, notes: [createNote({ string: 1, fret: int(8) })] }),
-              ],
-            },
-          ]),
+          replaceBeats(
+            other.voice.id === v.voice.id ? [spliceOf(v)] : [spliceOf(v), spliceOf(other)],
+          ),
         ];
-        const command = commands[int(commands.length)];
-        if (!command) break;
-        const before = ruleCounts(current);
-        try {
-          const result = history.apply(current, command);
-          for (const [rule, count] of ruleCounts(result.score)) {
-            expect(count, `${command.name} raised ${rule}`).toBeLessThanOrEqual(
-              before.get(rule) ?? 0,
-            );
-          }
-          current = result.score;
-          applied += 1;
-        } catch (error) {
-          if (!(error instanceof CommandError)) throw error;
-          refused += 1;
+        const command = pick(commands);
+        const windowed = outcomeOf(current, command, false);
+        const whole = outcomeOf(current, command, true);
+        expect(
+          windowed.ok,
+          `${command.name}: windowed ${JSON.stringify(windowed.ok ? 'ok' : windowed)} vs whole ${JSON.stringify(whole.ok ? 'ok' : whole)}`,
+        ).toBe(whole.ok);
+        if (!windowed.ok) {
+          expect(windowed.code).toBe(whole.ok ? '' : whole.code);
+          codes.set(windowed.code, (codes.get(windowed.code) ?? 0) + 1);
+          continue;
         }
+        const before = ruleCounts(current);
+        for (const [rule, count] of ruleCounts(windowed.score)) {
+          expect(count, `${command.name} raised ${rule}`).toBeLessThanOrEqual(
+            before.get(rule) ?? 0,
+          );
+        }
+        current = windowed.score;
+        applied += 1;
       }
       expect(applied).toBeGreaterThan(20);
-      expect(refused).toBeGreaterThan(0);
+      expect(codes.get('invariant') ?? 0).toBeGreaterThan(0);
     },
   );
 });
