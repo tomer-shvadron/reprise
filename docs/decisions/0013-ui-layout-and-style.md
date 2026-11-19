@@ -48,6 +48,9 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - Changed by #206 (2026-11-16): the layout gains a collapsible bottom region above the transport,
   one view at a time (the live fretboard first), with a resizable remembered height; see
   "Changed by #206" in `../specs/architecture.md`.
+- Changed by #333 (2026-11-20): a slim header band (S-TOP-1) above the score, with the library
+  breadcrumb, Play and Edit modes, a View menu and a command-palette search. The arrangement is
+  otherwise unchanged. See "Changed by #333" in `../specs/architecture.md`.
 
 ## Related
 
