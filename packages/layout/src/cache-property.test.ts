@@ -355,8 +355,23 @@ function sparseScore(): Score {
   return builder.build();
 }
 
+/**
+ * Hyphens that read the next bar: every bar of the first track ends on `la-` and the next opens
+ * on `la`. Changes `built` in place.
+ */
+function withHyphens(built: Score): Score {
+  for (const bar of built.tracks[0]?.bars ?? []) {
+    const beats = bar.voices[0].beats;
+    const first = beats[0];
+    const last = beats.at(-1);
+    if (first && !first.rest) first.lyrics = ['la'];
+    if (last && last !== first && !last.rest) last.lyrics = ['la-'];
+  }
+  return built;
+}
+
 const SCORES: Record<'large' | 'sparse', () => Score> = {
-  large: () => withNoteMarks(withEffects(largeScore(3, 32, { structure: true }))),
+  large: () => withHyphens(withNoteMarks(withEffects(largeScore(3, 32, { structure: true })))),
   sparse: sparseScore,
 };
 

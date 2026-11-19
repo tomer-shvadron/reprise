@@ -190,28 +190,35 @@ describe('LayoutCache', () => {
     );
   });
 
-  it("moves a hyphen that reaches into the next bar when only that bar's syllable changes", () => {
-    const builder = scoreBuilder().track('guitar');
-    for (let bar = 0; bar < 2; bar++) {
-      builder.bar();
-      for (let beat = 0; beat < 4; beat++) {
-        const lyrics = bar === 0 && beat === 3 ? ['Twin-'] : bar === 1 && beat === 0 ? ['kle'] : [];
-        builder.beat('4', [note(1, beat)], { lyrics });
+  it.each([
+    ['paged', paged],
+    ['continuous', continuous],
+  ])(
+    "moves a hyphen that reaches into the next bar when only that bar's syllable goes, %s",
+    (_, base) => {
+      const builder = scoreBuilder().track('guitar');
+      for (let bar = 0; bar < 2; bar++) {
+        builder.bar();
+        for (let beat = 0; beat < 4; beat++) {
+          const lyrics =
+            bar === 0 && beat === 3 ? ['Twin-'] : bar === 1 && beat === 0 ? ['kle'] : [];
+          builder.beat('4', [note(1, beat)], { lyrics });
+        }
       }
-    }
-    const built = builder.build({ ids: 'sequential' });
-    const { cache, first } = warm(built);
-    const { score: edited, change } = applyCommand(
-      built,
-      setBeatEffect({ beatId: beatOf(built, 0, 1, 0).id }, { lyrics: [''] }),
-    );
-    expect(change.touchedBars).toEqual([built.masterBars[1]?.id]);
-    const result = layout(edited, { ...paged, dirtyBars: change.touchedBars }, cache);
-    expect(stable(result)).toBe(stable(layout(edited, paged)));
-    const hyphen = (r: LayoutResult) =>
-      r.primitives.find((p) => p.kind === 'text' && p.text === '-' && p.lane === undefined);
-    expect(hyphen(result)?.x).not.toBe(hyphen(first)?.x);
-  });
+      const built = builder.build({ ids: 'sequential' });
+      const { cache, first } = warm(built, base);
+      const { score: edited, change } = applyCommand(
+        built,
+        setBeatEffect({ beatId: beatOf(built, 0, 1, 0).id }, { lyrics: [''] }),
+      );
+      expect(change.touchedBars).toEqual([built.masterBars[1]?.id]);
+      const result = layout(edited, { ...base, dirtyBars: change.touchedBars }, cache);
+      expect(stable(result)).toBe(stable(layout(edited, base)));
+      const hyphen = (r: LayoutResult) =>
+        r.primitives.find((p) => p.kind === 'text' && p.text === '-' && p.lane === undefined);
+      expect(hyphen(result)?.x).not.toBe(hyphen(first)?.x);
+    },
+  );
 
   it.each([
     ['paged', paged],
