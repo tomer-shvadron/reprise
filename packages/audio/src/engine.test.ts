@@ -470,9 +470,37 @@ describe('createAudioEngine', () => {
       ]);
       const before = rms(buffer, 0.2, 0.7);
       expect(before).toBeGreaterThan(1e-4);
-      // A note's tail may ring a moment into the muted stretch; past it the track is silent.
-      expect(rms(buffer, 1.0, 1.55)).toBeLessThan(before / 100);
+      // The gate's 5 ms glide ends well before this window, so nothing of the track remains.
+      expect(rms(buffer, 1.0, 1.55)).toBeLessThan(before / 1e4);
       expect(rms(buffer, 1.8, 2.3)).toBeGreaterThan(before / 4);
+      engine.dispose();
+    });
+
+    it('mutes at once when one load changes a note and the mute together', async () => {
+      const song = quarters(4);
+      const id = trackOf(song);
+      const { engine, render } = await setup({ seconds: 1.6 });
+      await engine.load(song, GM);
+      engine.play();
+      const buffer = await render([
+        {
+          at: 0.8,
+          run: () => {
+            const edited = applyCommand(
+              song,
+              setNote({ beatId: beatOf(song, 0, 2, 0).id }, { string: 1, fret: 5 }),
+            ).score;
+            const next = applyCommand(
+              edited,
+              setTrackProperties({ trackId: id }, { channel: { mute: true } }),
+            ).score;
+            void engine.load(next, GM);
+          },
+        },
+      ]);
+      const before = rms(buffer, 0.2, 0.7);
+      expect(before).toBeGreaterThan(1e-4);
+      expect(rms(buffer, 1.0, 1.55)).toBeLessThan(before / 1e4);
       engine.dispose();
     });
 
@@ -497,7 +525,7 @@ describe('createAudioEngine', () => {
       ]);
       const before = rms(buffer, 0.2, 0.7);
       expect(before).toBeGreaterThan(1e-4);
-      expect(rms(buffer, 1.0, 1.55)).toBeLessThan(before / 100);
+      expect(rms(buffer, 1.0, 1.55)).toBeLessThan(before / 1e4);
       engine.dispose();
     });
 
