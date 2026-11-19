@@ -1,4 +1,4 @@
-import type { Beat } from '@reprise/model';
+import { beatTicks, type Beat, type Track } from '@reprise/model';
 
 import { fitText, textWidth } from '../metrics';
 import { text, type LayoutSink } from '../primitives';
@@ -72,26 +72,118 @@ export function wordsExtent(
   if (beat.chord) right = Math.max(right, start + textWidth(beat.chord.name, size) + gap);
   if (beat.text) right = Math.max(right, start + textWidth(beat.text, size) + gap);
   for (const syllable of beat.lyrics ?? []) {
-    const half = textWidth(syllable, size) / 2 + gap;
+    if (syllable === '') continue;
+    const { sung, hyphen } = sungSyllable(syllable);
+    const half = textWidth(sung, size) / 2 + gap;
     left = Math.max(left, half);
-    right = Math.max(right, half);
+    // A hyphen is drawn between this syllable and the next, so it asks for its own width and a gap.
+    right = Math.max(right, hyphen ? half + textWidth('-', size) + gap : half);
   }
   return { left, right };
 }
 
 /**
- * Draws a beat's chord name, beat text and syllables into the bar's word lanes. `limit` is the x
- * its words are cut at, as the system's last bar content ends there.
+ * A syllable as it is sung and whether a hyphen follows it. The hyphen is stored as a trailing
+ * `-` (D6 on #192) and drawn on its own, centred between this syllable and the next; a lone `-` is
+ * a syllable of its own.
  */
-export function drawWords(
-  sink: LayoutSink,
-  lanes: LaneBands,
-  beat: Beat,
-  x: number,
-  start: number,
+export function sungSyllable(syllable: string): { sung: string; hyphen: boolean } {
+  if (syllable.length > 1 && syllable.endsWith('-')) {
+    return { sung: syllable.slice(0, -1), hyphen: true };
+  }
+  return { sung: syllable, hyphen: false };
+}
+
+/** A beat of one voice and the x its syllables are centred on. */
+export interface WordSpot {
+  beat: Beat;
+  x: number;
+}
+
+/** What follows a syllable: the left edge of the next sung syllable on its line, if one is near. */
+export type NextSyllable = (beat: Beat, line: number) => number | undefined;
+
+/**
+ * Finds, for a beat and a lyric line, the left edge of the next non-empty syllable of that line in
+ * the same voice: later in the bar, else in the system's next bar (`next`). The next bar's beats
+ * are read lazily, only for a syllable that finds no successor in its own bar. The next bar's
+ * standard-staff `shift` is ignored so that bar is never planned here.
+ */
+export function syllableLookup(
+  voices: () => readonly { voice: number; spots: readonly WordSpot[] }[],
+  track: Track,
+  barIndex: number,
+  next: { onsetX(tick: number): number } | undefined,
   space: number,
-  limit: number,
-): void {
+): NextSyllable {
+  const size = WORDS.size * space;
+  // Built on the first hyphen, so a bar without one pays nothing.
+  let where: Map<Beat, { voice: number; spots: readonly WordSpot[]; at: number }> | undefined;
+  const locate = (beat: Beat) => {
+    if (!where) {
+      where = new Map();
+      for (const { voice, spots } of voices()) {
+        for (const [at, spot] of spots.entries()) where.set(spot.beat, { voice, spots, at });
+      }
+    }
+    return where.get(beat);
+  };
+  const later = new Map<number, readonly WordSpot[]>();
+  const following = (voice: number): readonly WordSpot[] => {
+    const known = later.get(voice);
+    if (known) return known;
+    const spots: WordSpot[] = [];
+    let tick = 0;
+    for (const beat of track.bars[barIndex + 1]?.voices[voice]?.beats ?? []) {
+      if (next) spots.push({ beat, x: next.onsetX(tick) });
+      tick += beatTicks(beat);
+    }
+    later.set(voice, spots);
+    return spots;
+  };
+  const sung = (spot: WordSpot, line: number): string | undefined => {
+    const syllable = spot.beat.lyrics?.[line];
+    return syllable === undefined || syllable === '' ? undefined : sungSyllable(syllable).sung;
+  };
+  const edge = (spot: WordSpot, line: number): number | undefined => {
+    const word = sung(spot, line);
+    return word === undefined ? undefined : spot.x - textWidth(word, size) / 2;
+  };
+  return (beat, line) => {
+    const found = locate(beat);
+    if (!found) return undefined;
+    for (const spot of found.spots.slice(found.at + 1)) {
+      const left = edge(spot, line);
+      if (left !== undefined) return left;
+    }
+    if (!next) return undefined;
+    for (const spot of following(found.voice)) {
+      const left = edge(spot, line);
+      if (left !== undefined) return left;
+    }
+    return undefined;
+  };
+}
+
+/** Where a beat's words are drawn and how far they may reach. */
+export interface WordsAt {
+  /** The x syllables are centred on. */
+  x: number;
+  /** Where a chord name or beat text starts, from `x`. */
+  start: number;
+  space: number;
+  /** The x words are cut at, as the system's last bar content ends there. */
+  limit: number;
+  nextSyllable?: NextSyllable;
+}
+
+/**
+ * Draws a beat's chord name, beat text and syllables into the bar's word lanes. A hyphenated
+ * syllable gets a hyphen of its own, with `node` but no `lane` so the word field still finds the
+ * syllable.
+ */
+export function drawWords(sink: LayoutSink, lanes: LaneBands, beat: Beat, at: WordsAt): void {
+  const { x, start, space, limit } = at;
   const size = WORDS.size * space;
   const node = beat.id;
   const left = x + start;
@@ -110,11 +202,24 @@ export function drawWords(
   for (const [line, syllable] of (lyrics ?? []).entries()) {
     if (syllable === '' || !lanes.lyrics) continue;
     const y = lanes.lyrics.top + (line + 1) * WORDS.lyricRow * space - WORDS.descent * space;
-    const sung = fitText(syllable, size, 2 * (limit - x));
-    if (sung !== '')
-      sink.primitives.push(
-        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- the lane type is a template over number
-        text(sung, x, y, size, { anchor: 'middle', node, lane: `lyric:${line}` }),
-      );
+    const word = sungSyllable(syllable);
+    // A hyphenated syllable is cut with its ellipsis before its hyphen is ever dropped, so a
+    // squeezed last bar never shows `Twin` for `Twin-`.
+    const dash = textWidth('-', size);
+    const reserved = word.hyphen ? WORDS.gap * space + dash : 0;
+    const sung = fitText(word.sung, size, 2 * (limit - x - reserved));
+    if (sung === '') continue;
+    sink.primitives.push(
+      // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- the lane type is a template over number
+      text(sung, x, y, size, { anchor: 'middle', node, lane: `lyric:${line}` }),
+    );
+    if (!word.hyphen) continue;
+    const right = x + textWidth(sung, size) / 2;
+    const successor = at.nextSyllable?.(beat, line);
+    // With no successor in the system the hyphen goes right after the syllable, as at a line end.
+    const hx =
+      successor === undefined ? right + WORDS.gap * space + dash / 2 : (right + successor) / 2;
+    if (hx + dash / 2 > limit) continue;
+    sink.primitives.push(text('-', hx, y, size, { anchor: 'middle', node }));
   }
 }

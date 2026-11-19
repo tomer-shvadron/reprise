@@ -59,7 +59,8 @@ test('A chord name, beat text and a lyric line are typed in the inline field, on
   await page.keyboard.press('Enter');
   await rowCount(typed + 7);
   for (let word = 3; word < 7; word += 1) await expect(rows.nth(typed + word)).toHaveText('Lyrics');
-  await expect(inScore('Hel-')).toHaveCount(1);
+  await expect(inScore('Hel')).toHaveCount(1);
+  await expect(inScore('-')).toHaveCount(1);
   await expect(inScore('lo')).toHaveCount(1);
   await expect(inScore('world')).toHaveCount(1);
   await expect(inScore('again')).toHaveCount(1);
