@@ -36,6 +36,7 @@ const LABELS: ReadonlyMap<string, string> = new Map(
     removeNote: 'Delete note',
     setNote: 'Edit note',
     setBeatDuration: 'Change duration',
+    setBeatDurations: 'Change duration',
     setBeatRest: 'Toggle rest',
     setNoteEffect: 'Change note effect',
     setNoteEffects: 'Change note effects',

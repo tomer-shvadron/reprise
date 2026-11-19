@@ -8,7 +8,7 @@ import {
   newId,
   removeBeat,
   removeNote,
-  setBeatDuration,
+  setBeatDurations,
   setBeatRest,
   setNote,
   setNoteEffect,
@@ -299,21 +299,17 @@ function planRhythm(
       return refuse(overfullMessage(bar + 1, room, needed));
     }
   }
-  // The model validates after each step, so the beats that shrink run first and pay for the ones
-  // that grow; the voice's total then never passes its final size.
-  changes.sort(
-    (a, b) => rhythmTicks(a.next) - beatTicks(a.beat) - (rhythmTicks(b.next) - beatTicks(b.beat)),
-  );
+  // One batched command: one history step, and the model checks only the end state, so no
+  // shrink-first ordering is needed.
   return {
-    command: chain(
-      'setRhythm',
-      changes.map(({ beat, next }) =>
-        setBeatDuration(
-          { beatId: beat.id },
-          { duration: next.duration, dots: next.dots, tuplet: next.tuplet ?? null },
-        ),
+    command: chain('setRhythm', [
+      setBeatDurations(
+        changes.map(({ beat, next }) => ({
+          beatId: beat.id,
+          rhythm: { duration: next.duration, dots: next.dots, tuplet: next.tuplet ?? null },
+        })),
       ),
-    ),
+    ]),
   };
 }
 
