@@ -1,6 +1,7 @@
 // The reference applies to the whole web program, not only this file: worker-only globals also
 // type-check in main-thread code. Accepted over a second tsconfig project for one 30-line file.
 /// <reference lib="webworker" />
+import '@/zod-config';
 import type { Score } from '@reprise/model';
 
 import { nativeOf, parseImport, type NativeOutcome, type ParseOutcome } from './parse-import';

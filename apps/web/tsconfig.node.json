@@ -9,6 +9,7 @@
   },
   "include": [
     "vite.config.ts",
+    "src/csp.ts",
     "vite.demo.config.ts",
     "vitest.visual.config.ts",
     "e2e/**/*.node.ts",

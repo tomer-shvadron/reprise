@@ -38,11 +38,12 @@ const PRETTIER_ONLY = 'json,md,yaml,yml,css,html';
 /** @param {readonly string[]} files */
 const conflicts = (files) => `node scripts/conflicts/check.ts ${args(files)}`;
 
+// --no-warn-ignored: apps/web/public/ is in ESLint's ignores, and a staged file there is not a failure.
 /** @type {import('lint-staged').Configuration} */
 export default {
   [`*.{${CODE}}`]: live(
     conflicts,
-    (files) => `eslint --fix --max-warnings 0 ${args(files)}`,
+    (files) => `eslint --fix --max-warnings 0 --no-warn-ignored ${args(files)}`,
     (files) => `prettier --write ${args(files)}`,
   ),
   [`*.{${PRETTIER_ONLY}}`]: live(conflicts, (files) => `prettier --write ${args(files)}`),
