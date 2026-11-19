@@ -7,7 +7,8 @@ import { createAudioService } from '@/app/audio/audio-service';
 import { createAppServices } from '@/app/services';
 import { fetchSyntheticSf2 } from '@/test/assets';
 import { drive, manualTicker } from '@/test/offline';
-import { fakePlatform, memoryStorage } from '@/test/services';
+import { createTestSettings } from '@/test/settings-backend';
+import { fakePlatform } from '@/test/services';
 
 import { createSpeedTrainer } from './speed-trainer-store';
 
@@ -40,7 +41,7 @@ async function render(step: 'trainer' | 'microtask') {
   });
   const services = createAppServices({
     platform: fakePlatform(),
-    storage: () => memoryStorage(),
+    settings: createTestSettings(),
     audio: (playback) =>
       createAudioService({
         playback,

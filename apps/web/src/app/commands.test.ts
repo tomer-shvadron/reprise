@@ -3,6 +3,7 @@ import { largeScore } from '@reprise/model/testing';
 import { fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { THEME_SETTING } from '@/state/app-settings';
 import { createTestServices } from '@/test/services';
 
 import { createAppRegistry } from './app-registry';
@@ -30,6 +31,23 @@ describe('view.toggleViewMode', () => {
     runCommand(command);
     expect(ui.getState().view.mode).toBe('paged');
     expect(rows()).toBeGreaterThan(1);
+  });
+});
+
+describe('view.toggleTheme', () => {
+  it('stores the opposite of the theme on screen, even from system', () => {
+    const services = createTestServices();
+    const { ui, settings } = services;
+    const command = createAppRegistry(services).get('view.toggleTheme');
+    if (!command) throw new Error('view.toggleTheme is not registered');
+    expect(settings.get(THEME_SETTING)).toBe('system');
+    expect(ui.getState().theme).toBe('dark');
+
+    runCommand(command);
+    expect(settings.get(THEME_SETTING)).toBe('light');
+    ui.getState().setTheme('light');
+    runCommand(command);
+    expect(settings.get(THEME_SETTING)).toBe('dark');
   });
 });
 

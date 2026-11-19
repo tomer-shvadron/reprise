@@ -14,6 +14,7 @@ import {
 import {
   DraftRecoveryDialog,
   ExportDialog,
+  createDexieSettingsBackend,
   installLibrary,
   libraryOf,
   LibraryScreen,
@@ -31,6 +32,7 @@ import type { PanelView } from '@/state/ui';
 
 import { AppFrame } from './app-frame';
 import { installCloseGuard } from './close-guard';
+import { installTheme } from './install-theme';
 import { CommandPalette } from './command-palette';
 import { createAppRegistry } from './app-registry';
 import { runCommand } from './command-registry';
@@ -91,6 +93,13 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
       }),
     [audio],
   );
+
+  // The persisted preferences, loaded from the library's database; attach is idempotent.
+  useEffect(() => {
+    void services.settings.attach(createDexieSettingsBackend(libraryOf(services).db.settings));
+  }, [services]);
+
+  useEffect(() => installTheme(services), [services]);
 
   useEffect(() => installLibrary(services), [services]);
 

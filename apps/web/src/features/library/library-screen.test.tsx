@@ -13,6 +13,7 @@ import { createTestServices, fakePlatform } from '@/test/services';
 import { createLibrary, provideLibrary, type Library } from './library';
 import { LibraryScreen } from './library-screen';
 import { openLibraryDb } from './db/schema';
+import { LIBRARY_SORT_SETTING } from './search';
 import { rowOf, uniqueDbName } from './test-support';
 
 const files = new Map<string, Uint8Array>();
@@ -97,9 +98,7 @@ describe('the library screen', () => {
         .getAllByRole('option')
         .map((option) => option.textContent);
     expect(order()[0]).toContain('Beta');
-    await waitFor(async () => {
-      expect(await library.repo.getSetting('library.sort')).toBe('artist');
-    });
+    expect(services.settings.get(LIBRARY_SORT_SETTING)).toBe('artist');
     const again = createLibrary(services, { db: openLibraryDb(dbName) });
     libraries.push(again);
     await again.load();

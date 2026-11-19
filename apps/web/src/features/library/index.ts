@@ -6,3 +6,4 @@ export { UnimportedBanner } from './unimported-banner';
 export { snapshotDrop } from './import/sources';
 export { ExportDialog } from './save/export-dialog';
 export { DraftRecoveryDialog } from './drafts/draft-recovery-dialog';
+export { createDexieSettingsBackend } from './db/settings-backend';

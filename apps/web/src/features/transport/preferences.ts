@@ -1,11 +1,20 @@
 import { HQ_BUDGET_BYTES } from '@reprise/audio';
 
+import {
+  COUNT_IN_SETTING,
+  GM_TIER_BYPASS_SETTING,
+  MASTER_VOLUME_SETTING,
+  MEMORY_BUDGET_SETTING,
+  METRONOME_ON_SETTING,
+  METRONOME_VOLUME_SETTING,
+} from '@/state/app-settings';
 import { MEMORY_BUDGET_RANGE } from '@/state/playback';
+import type { SettingsStore } from '@/state/settings';
 
-// WP-060 moves this key into Dexie's `settings` table.
+/** The old home of these preferences; now only read once, to move them into the settings table (#343). */
 export const TRANSPORT_STORAGE_KEY = 'reprise.transport';
 
-/** The transport settings that outlive a reload; tempo and loop are per song and are not kept. */
+/** The transport settings the old blob held; tempo and loop are per song and are not kept. */
 export interface TransportPreferences {
   countIn: boolean;
   metronome: { on: boolean; volume: number };
@@ -66,13 +75,35 @@ export function readTransportPreferences(
   };
 }
 
-export function writeTransportPreferences(
-  preferences: TransportPreferences,
+/**
+ * The one-time move of the old `reprise.transport` blob into the settings table: the five values
+ * become their own keys and the old key is removed. Does nothing when the blob is absent or a
+ * setting is already stored, so a user who has set anything since the move is never overwritten.
+ */
+export function importLegacyTransportPreferences(
+  settings: SettingsStore,
   storage: () => Storage = () => window.localStorage,
 ): void {
+  const handles = [
+    COUNT_IN_SETTING,
+    METRONOME_ON_SETTING,
+    METRONOME_VOLUME_SETTING,
+    MASTER_VOLUME_SETTING,
+    GM_TIER_BYPASS_SETTING,
+    MEMORY_BUDGET_SETTING,
+  ];
   try {
-    storage().setItem(TRANSPORT_STORAGE_KEY, JSON.stringify({ version: 1, ...preferences }));
+    if (storage().getItem(TRANSPORT_STORAGE_KEY) === null) return;
+    if (handles.some((handle) => settings.isStored(handle))) return;
+    const old = readTransportPreferences(storage);
+    settings.set(COUNT_IN_SETTING, old.countIn);
+    settings.set(METRONOME_ON_SETTING, old.metronome.on);
+    settings.set(METRONOME_VOLUME_SETTING, old.metronome.volume);
+    settings.set(MASTER_VOLUME_SETTING, old.masterVolume);
+    settings.set(GM_TIER_BYPASS_SETTING, old.gmTierBypass);
+    settings.set(MEMORY_BUDGET_SETTING, old.memoryBudgetBytes);
+    storage().removeItem(TRANSPORT_STORAGE_KEY);
   } catch {
-    // Storage can be disabled or full; the settings still apply for this session.
+    // Storage can be disabled; the defaults stand.
   }
 }

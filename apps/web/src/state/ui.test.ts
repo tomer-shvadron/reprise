@@ -6,23 +6,23 @@ import { THEME_STORAGE_KEY, initialTheme } from './theme';
 import { createUiStore } from './ui';
 
 describe('ui store theme', () => {
-  it('persists the theme and restores it in a new store', () => {
-    const first = createUiStore();
-    expect(first.getState().theme).toBe('dark');
-
-    first.getState().setTheme('light');
-
-    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('light');
+  it('starts from the stored choice, and setTheme changes only the screen', () => {
+    window.localStorage.setItem(THEME_STORAGE_KEY, 'light');
     expect(createUiStore().getState().theme).toBe('light');
+    window.localStorage.setItem(THEME_STORAGE_KEY, 'dark');
+
+    const store = createUiStore();
+    store.getState().setTheme('light');
+
+    expect(store.getState().theme).toBe('light');
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
   });
 
-  it('toggles between dark and light', () => {
-    const store = createUiStore('dark');
+  it('treats a stored system like nothing stored', () => {
+    stubMatchMedia(true);
+    window.localStorage.setItem(THEME_STORAGE_KEY, 'system');
 
-    store.getState().toggleTheme();
-    expect(store.getState().theme).toBe('light');
-    store.getState().toggleTheme();
-    expect(store.getState().theme).toBe('dark');
+    expect(initialTheme()).toBe('light');
   });
 
   it('starts from the system preference when nothing is stored', () => {
