@@ -14,6 +14,7 @@ import {
   systemPreferences,
   type FileFilter as DialogFilter,
   type IpcMainInvokeEvent,
+  type MessageBoxOptions,
 } from 'electron';
 
 import type { FileFilter, HistoryMenuLabels, MenuCommandId, RecentSong } from '@reprise/web';
@@ -27,6 +28,7 @@ import { electronGet } from './electron-http';
 import { readPath, writePath } from './file-io';
 import { registerInvokeHandlers, sendEvent } from './ipc';
 import { decideMediaPermission } from './media-permission';
+import { aboutDetail, aboutPanelOptions } from './about';
 import { menuTemplate } from './menu';
 import { openedFile } from './opened-file';
 import { PathAccess } from './path-access';
@@ -259,6 +261,18 @@ function sendOpenRecent(id: string): void {
   if (window) sendEvent(window.webContents, 'menu:open-recent', id);
 }
 
+function showAbout(): void {
+  const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  const options: MessageBoxOptions = {
+    type: 'info',
+    title: 'About Reprise',
+    message: 'Reprise',
+    detail: aboutDetail(app.getVersion(), process.versions),
+    buttons: ['OK'],
+  };
+  void (window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options));
+}
+
 function applyMenu(): void {
   Menu.setApplicationMenu(
     Menu.buildFromTemplate(
@@ -268,6 +282,7 @@ function applyMenu(): void {
         docsUrl: DOCS_URL,
         sendCommand: sendMenuCommand,
         openExternal: (url) => void shell.openExternal(url),
+        showAbout,
         recent: recentSongs,
         ...(historyLabels && { history: historyLabels }),
         openRecent: sendOpenRecent,
@@ -407,6 +422,7 @@ async function start(): Promise<void> {
     createAppProtocolHandler(RENDERER_DIR, { contentSecurityPolicy: __REPRISE_CSP__ }),
   );
   allowMicrophoneOnly();
+  app.setAboutPanelOptions(aboutPanelOptions(app.getVersion()));
   applyMenu();
   await createWindow();
 

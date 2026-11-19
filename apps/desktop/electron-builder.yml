@@ -3,6 +3,7 @@ appId: app.reprise.desktop
 productName: Reprise
 directories:
   output: release
+  buildResources: resources
 files:
   - out/**
   - package.json
@@ -26,6 +27,7 @@ electronFuses:
   grantFileProtocolExtraPrivileges: false
   resetAdHocDarwinSignature: true
 mac:
+  icon: resources/icon-mac.png
   category: public.app-category.music
   identity: null
   # No arch lists: a local `pnpm desktop:build` packages the host arch only, and the release
@@ -38,6 +40,7 @@ mac:
   extendInfo:
     NSMicrophoneUsageDescription: Reprise listens to your instrument for the tuner and practice tools.
 win:
+  icon: resources/icon.png
   target:
     - nsis
 nsis:

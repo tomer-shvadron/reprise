@@ -149,3 +149,21 @@ describe('the Edit menu history items', () => {
     ).toEqual(plain.filter((label) => label !== 'Undo' && label !== 'Redo'));
   });
 });
+
+describe('About Reprise', () => {
+  it('is in the Help menu on Windows and calls showAbout', () => {
+    const showAbout = vi.fn();
+    const { items } = template({ isMac: false, showAbout });
+    const matches = items.filter((item) => item.label === 'About Reprise');
+
+    expect(matches).toHaveLength(1);
+    press(matches[0]);
+    expect(showAbout).toHaveBeenCalledOnce();
+  });
+
+  it('is left to the application menu on macOS', () => {
+    const { items } = template({ isMac: true });
+
+    expect(items.some((item) => item.label === 'About Reprise')).toBe(false);
+  });
+});

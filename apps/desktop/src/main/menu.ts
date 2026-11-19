@@ -38,6 +38,8 @@ export interface MenuOptions {
   docsUrl: string;
   sendCommand: (id: MenuCommandId) => void;
   openExternal: (url: string) => void;
+  /** Shows the About box; macOS has its own entry in the application menu. */
+  showAbout?: () => void;
   /** The Open Recent entries, newest first; the list is empty until the renderer sends one. */
   recent?: readonly RecentSong[];
   openRecent?: (id: string) => void;
@@ -53,6 +55,7 @@ export function menuTemplate({
   docsUrl,
   sendCommand,
   openExternal,
+  showAbout = () => undefined,
   recent = [],
   openRecent = () => undefined,
   history,
@@ -142,6 +145,17 @@ export function menuTemplate({
             openExternal(docsUrl);
           },
         },
+        ...(isMac
+          ? []
+          : [
+              separator,
+              {
+                label: 'About Reprise',
+                click: () => {
+                  showAbout();
+                },
+              },
+            ]),
       ],
     },
   ];
