@@ -274,6 +274,25 @@ describe('the tuner store', () => {
     expect(state().autoString).toBeUndefined();
   });
 
+  it.each([20, 43, 85])(
+    'keeps a new lock hidden for the settle time on an audio clock that steps by %i ms',
+    async (step) => {
+      const { rig, state } = await setup();
+      rig.renderEvery(step);
+      state().start();
+      await act(() => Promise.resolve());
+      let ticks = 0;
+      while (!state().reading && ticks < 60) {
+        rig.tick(1);
+        ticks += 1;
+      }
+      // Seven ticks at a 20 ms render step: two to lock, then the settle time on the audio clock.
+      // Ticks inside one render callback add no audio time, so a coarser clock never shortens it
+      // (a tracker clock that added wall time per tick got there in five).
+      expect(ticks).toBeGreaterThanOrEqual(7);
+    },
+  );
+
   it('still clears the hold when the audio clock stands still, as a suspended context does', async () => {
     const { rig, state, listen } = await setup();
     await listen();

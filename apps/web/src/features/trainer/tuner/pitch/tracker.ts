@@ -168,7 +168,16 @@ export function createTracker(options: TrackerOptions = {}) {
       settleFrames = frames;
     },
 
-    push(detection: PitchDetection | undefined, rmsValue: number, timeMs: number): TrackerStep {
+    /**
+     * `timeMs` is the audio clock, which the settle runs on. `wallMs` times the hold, so a
+     * context that stops rendering still lets it expire; it is `timeMs` when not given.
+     */
+    push(
+      detection: PitchDetection | undefined,
+      rmsValue: number,
+      timeMs: number,
+      wallMs: number = timeMs,
+    ): TrackerStep {
       // The clock, not the count of pushes, is what moves the window past the change: ticks that
       // arrive late or in a burst read the same window and must not count as elapsed time.
       const midi = detection ? midiOf(detection.hz) : undefined;
@@ -192,7 +201,7 @@ export function createTracker(options: TrackerOptions = {}) {
         rejects += 1;
         if (rejects >= TRACKER.openAfterRejects) cutoffHz = TRACKER.searchCutoffHz;
         if (locked) {
-          if (timeMs - lastAcceptedMs > TRACKER.holdMs) {
+          if (wallMs - lastAcceptedMs > TRACKER.holdMs) {
             unlock();
             return { reading: undefined, cutoffHz };
           }
@@ -202,7 +211,7 @@ export function createTracker(options: TrackerOptions = {}) {
       }
 
       rejects = 0;
-      lastAcceptedMs = timeMs;
+      lastAcceptedMs = wallMs;
 
       if (!locked) {
         if (pending !== undefined && centsBetween(pending, midi) <= TRACKER.lockWithinCents) {

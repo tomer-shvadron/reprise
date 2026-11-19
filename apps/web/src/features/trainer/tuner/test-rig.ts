@@ -28,6 +28,8 @@ export interface Rig {
   storage: Storage;
   /** The pitch the fake capture hears, in Hz; undefined is silence. */
   hear: { hz: number | undefined; level: number; sampleRate: number };
+  /** Makes the audio clock advance in steps of `ms`, one per render callback. */
+  renderEvery(ms: number): void;
   /** Freezes the capture's audio clock, as a suspended context does. */
   stallAudio(): void;
   /** Runs `n` ticks of the 20 ms timer. */
@@ -99,6 +101,7 @@ export function createRig(): Rig {
   const intervals = new Set<() => void>();
   const timeouts = new Map<number, { run: () => void; at: number }>();
   let clock = 0;
+  let audioStepMs = 1;
   let audioStalled = false;
   let stalledAt = 0;
   let nextTimeout = 0;
@@ -123,7 +126,7 @@ export function createRig(): Rig {
         size,
         stream as unknown as FakeStream,
         context as unknown as Rig['contexts'][number],
-        () => (audioStalled ? stalledAt : clock),
+        () => (audioStalled ? stalledAt : Math.floor(clock / audioStepMs) * audioStepMs),
       );
       captures.push(capture);
       return Promise.resolve(capture);
@@ -159,6 +162,9 @@ export function createRig(): Rig {
     page,
     storage,
     hear,
+    renderEvery(ms) {
+      audioStepMs = ms;
+    },
     stallAudio() {
       audioStalled = true;
       stalledAt = clock;
