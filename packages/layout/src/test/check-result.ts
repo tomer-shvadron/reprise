@@ -399,3 +399,43 @@ export function strayPrimitives(
   }
   return stray;
 }
+
+/**
+ * Pairs of a rest glyph and a note head whose boxes overlap by more than half a pixel. Not part of
+ * `expectValid`: a squeezed bar can overlap legitimately.
+ */
+export function restsOnHeads(result: LayoutResult): [Primitive, Primitive][] {
+  const rests = result.primitives.filter((p) => p.kind === 'glyph' && p.glyph.startsWith('rest'));
+  const heads = result.primitives.filter(
+    (p) => p.kind === 'glyph' && p.glyph.startsWith('notehead'),
+  );
+  const found: [Primitive, Primitive][] = [];
+  for (const rest of rests) {
+    for (const head of heads) {
+      const a = rest.bbox;
+      const b = head.bbox;
+      const x = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+      const y = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+      if (x > 0.5 && y > 0.5) found.push([rest, head]);
+    }
+  }
+  return found;
+}
+
+/** Pairs of rest glyphs whose boxes overlap by more than half a pixel. */
+export function restsOnRests(result: LayoutResult): [Primitive, Primitive][] {
+  const rests = result.primitives.filter((p) => p.kind === 'glyph' && p.glyph.startsWith('rest'));
+  const found: [Primitive, Primitive][] = [];
+  for (const [i, a] of rests.entries()) {
+    for (const b of rests.slice(i + 1)) {
+      const x =
+        Math.min(a.bbox.x + a.bbox.width, b.bbox.x + b.bbox.width) - Math.max(a.bbox.x, b.bbox.x);
+      const y =
+        Math.min(a.bbox.y + a.bbox.height, b.bbox.y + b.bbox.height) - Math.max(a.bbox.y, b.bbox.y);
+      // Identical rests of two voices coincide on purpose.
+      const same = Math.abs(a.bbox.x - b.bbox.x) < 0.01 && Math.abs(a.bbox.y - b.bbox.y) < 0.01;
+      if (x > 0.5 && y > 0.5 && !same) found.push([a, b]);
+    }
+  }
+  return found;
+}

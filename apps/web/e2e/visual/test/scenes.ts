@@ -138,6 +138,85 @@ function voices(): Score {
     .build({ ids: 'sequential' });
 }
 
+/**
+ * Rest glyphs whose box overlaps a note head's by more than half a pixel. The layout package's
+ * own helper is test-only and `@reprise/layout` has no testing export, so the guard keeps a copy.
+ */
+function restsOnRests(result: LayoutResult): string[] {
+  const rests = result.primitives.filter((p) => p.kind === 'glyph' && p.glyph.startsWith('rest'));
+  return rests.flatMap((a, i) =>
+    rests.slice(i + 1).flatMap((b) => {
+      const x =
+        Math.min(a.bbox.x + a.bbox.width, b.bbox.x + b.bbox.width) - Math.max(a.bbox.x, b.bbox.x);
+      const y =
+        Math.min(a.bbox.y + a.bbox.height, b.bbox.y + b.bbox.height) - Math.max(a.bbox.y, b.bbox.y);
+      const same = Math.abs(a.bbox.x - b.bbox.x) < 0.01 && Math.abs(a.bbox.y - b.bbox.y) < 0.01;
+      return x > 0.5 && y > 0.5 && !same ? [`rests overlap at ${String(b.bbox.x)}`] : [];
+    }),
+  );
+}
+
+function restsOnHeads(result: LayoutResult): string[] {
+  const heads = result.primitives.filter(
+    (p) => p.kind === 'glyph' && p.glyph.startsWith('notehead'),
+  );
+  return result.primitives.flatMap((rest) => {
+    if (rest.kind !== 'glyph' || !rest.glyph.startsWith('rest')) return [];
+    return heads.flatMap((head) => {
+      const a = rest.bbox;
+      const b = head.bbox;
+      const x = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+      const y = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+      return x > 0.5 && y > 0.5 ? [`${rest.glyph} on a head at ${String(b.x)}`] : [];
+    });
+  });
+}
+
+function voiceRests(): Score {
+  return score()
+    .track('guitar')
+    .bar()
+    .rest('4')
+    .beat('4', [note(4, 2)])
+    .beat('4', [note(3, 2)])
+    .beat('4', [note(2, 0)])
+    .voice(1)
+    .beat('4', [note(5, 0)])
+    .rest('4')
+    .rest('4')
+    .rest('4')
+    .bar()
+    .rest('4')
+    .beat('4', [note(4, 0)])
+    .beat('2', [note(4, 2)])
+    .voice(1)
+    .beat('4', [note(1, 12), note(2, 13)])
+    .beat('4', [note(5, 0)])
+    .beat('2', [note(5, 2)])
+    .bar()
+    .beat('8', [note(1, 5)])
+    .rest('8')
+    .beat('8', [note(1, 5)])
+    .rest('8')
+    .beat('8', [note(1, 5)])
+    .rest('8')
+    .beat('8', [note(1, 5)])
+    .rest('8')
+    .voice(1)
+    .rest('1')
+    .bar()
+    .rest('1')
+    .voice(1)
+    .rest('1')
+    .bar()
+    .beat('2', [note(5, 3)])
+    .beat('2', [note(5, 3)])
+    .voice(1)
+    .rest('2')
+    .rest('2')
+    .build({ ids: 'sequential' });
+}
+
 function wordPlacement(): Score {
   const quarter = (fret: number, words = {}) => [fret, words] as const;
   const builder = score()
@@ -482,6 +561,21 @@ export const SCENES: readonly Scene[] = [
     covers: 'Voice direction on each staff; rests and dots moved by voice',
     source: { build: voices },
     notations: ALL,
+  },
+  {
+    id: 'voice-rests',
+    covers:
+      "Rests of two voices clear of each other's notes; a voice of rests only; two whole-bar rests coincide; half rests moved off the staff take ledger lines",
+    source: { build: voiceRests },
+    notations: ['standard', 'both'],
+    guard: (result) => {
+      expect(restsOnHeads(result), 'no rest sits on a note head').toEqual([]);
+      expect(restsOnRests(result), 'no rest sits on another rest').toEqual([]);
+      const flags = result.primitives.filter(
+        (p) => p.kind === 'glyph' && p.glyph === 'flag8thDown',
+      );
+      expect(flags.length, 'the rests-only bar stems its notes down by pitch').toBeGreaterThan(0);
+    },
   },
   {
     id: 'words',
