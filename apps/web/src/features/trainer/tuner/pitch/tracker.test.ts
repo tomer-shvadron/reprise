@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { midiFromHz } from '../notes';
 import { lowpassChain, pluck, sine, simulate, type SimulatedFrame } from '../test-signals';
-import { createTracker, settleFramesFor, TRACKER } from './tracker';
+import { createTracker, settleFramesFor, TRACKER, type Reading } from './tracker';
 
 const NOTES: [string, number][] = [
   ['B0', 30.87],
@@ -169,26 +169,97 @@ describe('the tracker', () => {
     expect(pushAt(clear)?.held).toBe(false);
   });
 
-  it('shows no live reading for a few frames a click left off with their clarity dipped', () => {
-    const tracker = createTracker();
-    let clock = 0;
-    const at = (cents: number, clarity: number) =>
-      tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity }, 0.1, (clock += TRACKER.hopMs))
-        .reading;
-    for (let i = 0; i < settleFramesFor(43) + 8; i += 1) at(7, 1);
-    // The frames a dropped sample left in the real-Web-Audio run: 10 to 13 cents, clarity ~0.89.
-    for (const cents of [10.4, 12.6, 12.5, 11]) {
-      const reading = at(cents, 0.89);
-      expect(reading?.held).toBe(true);
-      expect(reading?.midi).toBeCloseTo(45.07, 3);
-    }
-    expect(at(7, 1)?.held).toBe(false);
-    // A clean frame that really is elsewhere is a change of pitch, not a glitch.
-    for (let i = 0; i < 10; i += 1) at(20, 0.99);
-    expect(((at(20, 0.99)?.midi ?? 0) - 45) * 100).toBeCloseTo(20, 0);
-    // So is a drift that stays: after `glitchFrames` the low clarity no longer hides it.
-    for (let i = 0; i < TRACKER.glitchFrames + 6; i += 1) at(30, 0.89);
-    expect(at(30, 0.89)?.held).toBe(false);
+  describe('glitch gate', () => {
+    const rig = () => {
+      const tracker = createTracker();
+      let clock = 0;
+      let previous: Reading | undefined;
+      const at = (cents: number, clarity: number) => {
+        const reading = tracker.push(
+          { hz: 110 * 2 ** (cents / 1200), clarity },
+          0.1,
+          (clock += TRACKER.hopMs),
+        ).reading;
+        const frozen = reading !== undefined && reading === previous;
+        previous = reading;
+        return { reading, frozen };
+      };
+      return at;
+    };
+    const lockAt = (at: ReturnType<typeof rig>, cents: number) => {
+      for (let i = 0; i < settleFramesFor(43) + 8; i += 1) at(cents, 1);
+    };
+
+    it('freezes the reading, not dims it, for the frames a click left off', () => {
+      const at = rig();
+      lockAt(at, 7);
+      // The frames a dropped sample left in the real-Web-Audio run: 10 to 13 cents, clarity ~0.89.
+      for (const cents of [10.4, 12.6, 12.5, 11]) {
+        const { reading, frozen } = at(cents, 0.89);
+        expect(frozen).toBe(true);
+        expect(reading?.held).toBe(false);
+        expect(reading?.midi).toBeCloseTo(45.07, 3);
+      }
+      expect(at(7, 1).frozen).toBe(false);
+    });
+
+    it('takes a clean change of pitch over at once', () => {
+      const at = rig();
+      lockAt(at, 7);
+      for (let i = 0; i < 10; i += 1) at(20, 0.99);
+      expect(((at(20, 0.99).reading?.midi ?? 0) - 45) * 100).toBeCloseTo(20, 0);
+    });
+
+    it('releases a drift at exactly glitchFrames', () => {
+      const at = rig();
+      lockAt(at, 0);
+      for (let i = 0; i < TRACKER.glitchFrames; i += 1) expect(at(30, 0.85).frozen).toBe(true);
+      const next = at(30, 0.85);
+      expect(next.frozen).toBe(false);
+      expect(next.reading?.held).toBe(false);
+    });
+
+    it('does not restart the count after a single clean frame', () => {
+      const at = rig();
+      lockAt(at, 0);
+      for (let i = 0; i < 4; i += 1) expect(at(30, 0.85).frozen).toBe(true);
+      // One clean frame is not enough to count as the glitch being over.
+      at(0, 1);
+      for (let i = 0; i < TRACKER.glitchFrames - 4; i += 1) expect(at(30, 0.85).frozen).toBe(true);
+      expect(at(30, 0.85).frozen).toBe(false);
+    });
+
+    it('restarts the count after cleanFrames clean frames in a row', () => {
+      const at = rig();
+      lockAt(at, 0);
+      for (let i = 0; i < 4; i += 1) at(30, 0.85);
+      for (let i = 0; i < TRACKER.cleanFrames; i += 1) at(0, 1);
+      for (let i = 0; i < TRACKER.glitchFrames; i += 1) expect(at(30, 0.85).frozen).toBe(true);
+    });
+
+    it('never freezes or holds a weak note whose clarity is low but steady', () => {
+      let seed = 7;
+      const noise = () => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 2 ** 32 - 0.5;
+      };
+      // The note starts weak: its running clarity is the weak clarity, so nothing dips.
+      const tracker = createTracker();
+      let clock = 0;
+      let previous: Reading | undefined;
+      for (let i = 0; i < 120; i += 1) {
+        const reading = tracker.push(
+          { hz: 110 * 2 ** ((5 * noise()) / 1200), clarity: 0.91 + 0.02 * noise() },
+          0.1,
+          (clock += TRACKER.hopMs),
+        ).reading;
+        if (i >= settleFramesFor(43) + 3) {
+          expect(reading?.held).toBe(false);
+          expect(reading).not.toBe(previous);
+        }
+        previous = reading;
+      }
+    });
   });
 
   it('ignores a single frame an octave off', () => {

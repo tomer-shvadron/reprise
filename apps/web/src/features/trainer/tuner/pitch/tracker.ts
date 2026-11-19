@@ -49,10 +49,15 @@ export const TRACKER = {
   inTuneReadings: 5,
   /**
    * A click or a dropped sample in the input leaves a few frames a handful of cents off with the
-   * clarity dipped below what a clean sustained note has; they are skipped, as a held reading,
-   * rather than shown. A real change of pitch keeps its clarity, or outlasts `glitchFrames`.
+   * clarity dipped below what this note had; the last reading is shown again for them, rather
+   * than the new ones. The dip is against the note's own running clarity, so a weak note whose
+   * clarity is steady is never suspect. A real change of pitch keeps its clarity, or outlasts
+   * `glitchFrames`, and `cleanFrames` clean frames in a row are needed to start the count over,
+   * so one clean frame inside a glide cannot restart the freeze.
    */
-  glitchClarity: 0.93,
+  glitchClarityDip: 0.05,
+  clarityAverage: 0.15,
+  cleanFrames: 3,
   glitchCents: 2,
   glitchFrames: 8,
   searchCutoffHz: 1500,
@@ -110,6 +115,9 @@ export function createTracker(options: TrackerOptions = {}) {
   let inTune = false;
   let rejects = 0;
   let glitches = 0;
+  let clean = 0;
+  // Running clarity of the frames the lock has taken; the glitch gate measures a dip against it.
+  let clarityAvg = 0;
   let cutoffHz: number = TRACKER.searchCutoffHz;
   // The time (ms) the window is clear of the cutoff change; 0 when none is pending.
   let settleUntilMs = 0;
@@ -134,10 +142,17 @@ export function createTracker(options: TrackerOptions = {}) {
     settleUntilMs = 0;
     dirty = false;
     glitches = 0;
+    clean = 0;
   };
 
   /** Starts a lock on `midi`'s note, hidden until the new cutoff has had its effect. */
-  const begin = (frames: number[], rmsValue: number, hz: number, timeMs: number) => {
+  const begin = (
+    frames: number[],
+    rmsValue: number,
+    hz: number,
+    clarity: number,
+    timeMs: number,
+  ) => {
     history = frames;
     peakRms = rmsValue;
     away = [];
@@ -145,6 +160,9 @@ export function createTracker(options: TrackerOptions = {}) {
     streak = 0;
     inTune = false;
     lastReading = undefined;
+    glitches = 0;
+    clean = 0;
+    clarityAvg = clarity;
     const target = cutoffFor(hz);
     // Only a cutoff that closes in leaves sharp frames behind; one that opens does not.
     dirty = target < 0.85 * cutoffHz;
@@ -227,18 +245,26 @@ export function createTracker(options: TrackerOptions = {}) {
         locked &&
         near &&
         !dirty &&
-        detection.clarity < TRACKER.glitchClarity &&
+        detection.clarity < clarityAvg - TRACKER.glitchClarityDip &&
         centsBetween(midi, centre) > TRACKER.glitchCents;
       if (suspect && glitches < TRACKER.glitchFrames) {
         glitches += 1;
-        return { reading: lastReading && { ...lastReading, held: true }, cutoffHz };
+        clean = 0;
+        // The same reading, not a held one: the display freezes without dimming.
+        return { reading: lastReading, cutoffHz };
       }
-      if (!suspect) glitches = 0;
+      if (!suspect) {
+        clean += 1;
+        if (clean >= TRACKER.cleanFrames) glitches = 0;
+      } else {
+        clean = 0;
+      }
+      if (locked) clarityAvg += TRACKER.clarityAverage * (detection.clarity - clarityAvg);
 
       if (!locked) {
         if (pending !== undefined && centsBetween(pending, midi) <= TRACKER.lockWithinCents) {
           locked = true;
-          begin([pending, midi], rmsValue, detection.hz, timeMs);
+          begin([pending, midi], rmsValue, detection.hz, detection.clarity, timeMs);
           return { reading: dirty ? undefined : emit(median(history)), cutoffHz };
         }
         pending = midi;
@@ -276,7 +302,7 @@ export function createTracker(options: TrackerOptions = {}) {
           ? [midi]
           : [...away, midi];
       if (away.length >= TRACKER.moveFrames) {
-        begin(away, rmsValue, detection.hz, timeMs);
+        begin(away, rmsValue, detection.hz, detection.clarity, timeMs);
         return { reading: dirty ? undefined : emit(median(history)), cutoffHz };
       }
       return { reading: lastReading, cutoffHz };
