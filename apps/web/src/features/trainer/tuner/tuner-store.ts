@@ -187,18 +187,7 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
         minHz,
         maxHz: MAX_DETECT_HZ,
       });
-      const level = rms(frame);
-      const step = tracker.push(detection, level, capture.clockMs(), now());
-      (globalThis as unknown as { __tick?: (v: unknown) => void }).__tick?.({
-        clock: capture.clockMs(),
-        hz: detection?.hz,
-        clarity: detection?.clarity,
-        rms: level,
-        sampleRate: capture.sampleRate,
-        frame: frame.length,
-        reading: step.reading && { midi: step.reading.midi, held: step.reading.held },
-        trk: (globalThis as unknown as { __trk?: unknown }).__trk,
-      });
+      const step = tracker.push(detection, rms(frame), capture.clockMs(), now());
       if (step.cutoffHz !== cutoff) {
         cutoff = step.cutoffHz;
         capture.setCutoff(cutoff);

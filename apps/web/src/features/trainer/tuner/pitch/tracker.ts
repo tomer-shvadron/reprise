@@ -206,123 +206,108 @@ export function createTracker(options: TrackerOptions = {}) {
       timeMs: number,
       wallMs: number = timeMs,
     ): TrackerStep {
-      const step = pushInner(detection, rmsValue, timeMs, wallMs);
-      (globalThis as unknown as { __trk?: unknown }).__trk = {
-        clarityAvg,
-        glitches,
-        clean,
-        dirty,
-        locked,
-        cutoffHz,
-        settleLeft: settlingAt(timeMs),
-        rejects,
-      };
-      return step;
-    },
-  };
+      // The clock, not the count of pushes, is what moves the window past the change: ticks that
+      // arrive late or in a burst read the same window and must not count as elapsed time.
+      const midi = detection ? midiOf(detection.hz) : undefined;
+      const centre = locked ? median(history) : undefined;
+      const near =
+        midi !== undefined &&
+        centre !== undefined &&
+        centsBetween(midi, centre) <= TRACKER.awayCents;
+      const level =
+        rmsValue >= 10 ** (TRACKER.floorDb / 20) &&
+        (!locked || rmsValue >= peakRms * 10 ** (-TRACKER.tailDb / 20));
+      const clarityNeeded = locked && near ? TRACKER.lockedClarity : TRACKER.newClarity;
+      const accepted =
+        midi !== undefined &&
+        detection !== undefined &&
+        level &&
+        detection.clarity >= clarityNeeded;
 
-  function pushInner(
-    detection: PitchDetection | undefined,
-    rmsValue: number,
-    timeMs: number,
-    wallMs: number,
-  ): TrackerStep {
-    // The clock, not the count of pushes, is what moves the window past the change: ticks that
-    // arrive late or in a burst read the same window and must not count as elapsed time.
-    const midi = detection ? midiOf(detection.hz) : undefined;
-    const centre = locked ? median(history) : undefined;
-    const near =
-      midi !== undefined && centre !== undefined && centsBetween(midi, centre) <= TRACKER.awayCents;
-    const level =
-      rmsValue >= 10 ** (TRACKER.floorDb / 20) &&
-      (!locked || rmsValue >= peakRms * 10 ** (-TRACKER.tailDb / 20));
-    const clarityNeeded = locked && near ? TRACKER.lockedClarity : TRACKER.newClarity;
-    const accepted =
-      midi !== undefined && detection !== undefined && level && detection.clarity >= clarityNeeded;
-
-    if (!accepted) {
-      pending = undefined;
-      rejects += 1;
-      if (rejects >= TRACKER.openAfterRejects) cutoffHz = TRACKER.searchCutoffHz;
-      if (locked) {
-        if (wallMs - lastAcceptedMs > TRACKER.holdMs) {
-          unlock();
-          return { reading: undefined, cutoffHz };
+      if (!accepted) {
+        pending = undefined;
+        rejects += 1;
+        if (rejects >= TRACKER.openAfterRejects) cutoffHz = TRACKER.searchCutoffHz;
+        if (locked) {
+          if (wallMs - lastAcceptedMs > TRACKER.holdMs) {
+            unlock();
+            return { reading: undefined, cutoffHz };
+          }
+          return { reading: lastReading && { ...lastReading, held: true }, cutoffHz };
         }
-        return { reading: lastReading && { ...lastReading, held: true }, cutoffHz };
+        return { reading: undefined, cutoffHz };
       }
-      return { reading: undefined, cutoffHz };
-    }
 
-    rejects = 0;
-    lastAcceptedMs = wallMs;
+      rejects = 0;
+      lastAcceptedMs = wallMs;
 
-    const suspect =
-      locked &&
-      near &&
-      !dirty &&
-      detection.clarity < clarityAvg - TRACKER.glitchClarityDip &&
-      centsBetween(midi, centre) > TRACKER.glitchCents;
-    if (suspect && glitches < TRACKER.glitchFrames) {
-      glitches += 1;
-      clean = 0;
-      // The same reading, not a held one: the display freezes without dimming.
-      return { reading: lastReading, cutoffHz };
-    }
-    if (!suspect) {
-      clean += 1;
-      if (clean >= TRACKER.cleanFrames) glitches = 0;
-    } else {
-      clean = 0;
-    }
-    if (locked) clarityAvg += TRACKER.clarityAverage * (detection.clarity - clarityAvg);
+      const suspect =
+        locked &&
+        near &&
+        !dirty &&
+        detection.clarity < clarityAvg - TRACKER.glitchClarityDip &&
+        centsBetween(midi, centre) > TRACKER.glitchCents;
+      if (suspect && glitches < TRACKER.glitchFrames) {
+        glitches += 1;
+        clean = 0;
+        // The same reading, not a held one: the display freezes without dimming.
+        return { reading: lastReading, cutoffHz };
+      }
+      if (!suspect) {
+        clean += 1;
+        if (clean >= TRACKER.cleanFrames) glitches = 0;
+      } else {
+        clean = 0;
+      }
+      if (locked) clarityAvg += TRACKER.clarityAverage * (detection.clarity - clarityAvg);
 
-    if (!locked) {
-      if (pending !== undefined && centsBetween(pending, midi) <= TRACKER.lockWithinCents) {
-        locked = true;
-        begin([pending, midi], rmsValue, detection.hz, detection.clarity, timeMs);
+      if (!locked) {
+        if (pending !== undefined && centsBetween(pending, midi) <= TRACKER.lockWithinCents) {
+          locked = true;
+          begin([pending, midi], rmsValue, detection.hz, detection.clarity, timeMs);
+          return { reading: dirty ? undefined : emit(median(history)), cutoffHz };
+        }
+        pending = midi;
+        return { reading: undefined, cutoffHz };
+      }
+
+      if (near) {
+        away = [];
+        // A string plucked again inside the hold finds the cutoff opened by the silence; closing
+        // it again is the same step a fresh lock hides, so the frames taken through the old
+        // cutoff are dropped and the reading waits, held, until the window is clear.
+        if (!dirty && cutoffFor(detection.hz) < 0.85 * cutoffHz) {
+          settleUntilMs = timeMs + settleFrames * TRACKER.hopMs;
+          dirty = true;
+          cutoffHz = cutoffFor(detection.hz);
+          history = [];
+        }
+        if (dirty && settlingAt(timeMs) <= 2) {
+          // The frames from here on went through the new cutoff alone.
+          history = [];
+          dirty = false;
+        }
+        history.push(midi);
+        if (history.length > TRACKER.median) history.shift();
+        peakRms = Math.max(peakRms, rmsValue);
+        if (dirty) return { reading: lastReading && { ...lastReading, held: true }, cutoffHz };
+        return { reading: emit(median(history)), cutoffHz };
+      }
+
+      // Far from the lock: one stray frame (an octave error, a click) is ignored, and a note
+      // that persists takes the lock over.
+      const last = away.at(-1);
+      away =
+        last !== undefined && centsBetween(last, midi) > TRACKER.lockWithinCents
+          ? [midi]
+          : [...away, midi];
+      if (away.length >= TRACKER.moveFrames) {
+        begin(away, rmsValue, detection.hz, detection.clarity, timeMs);
         return { reading: dirty ? undefined : emit(median(history)), cutoffHz };
       }
-      pending = midi;
-      return { reading: undefined, cutoffHz };
-    }
-
-    if (near) {
-      away = [];
-      // A string plucked again inside the hold finds the cutoff opened by the silence; closing
-      // it again is the same step a fresh lock hides, so the frames taken through the old
-      // cutoff are dropped and the reading waits, held, until the window is clear.
-      if (!dirty && cutoffFor(detection.hz) < 0.85 * cutoffHz) {
-        settleUntilMs = timeMs + settleFrames * TRACKER.hopMs;
-        dirty = true;
-        cutoffHz = cutoffFor(detection.hz);
-        history = [];
-      }
-      if (dirty && settlingAt(timeMs) <= 2) {
-        // The frames from here on went through the new cutoff alone.
-        history = [];
-        dirty = false;
-      }
-      history.push(midi);
-      if (history.length > TRACKER.median) history.shift();
-      peakRms = Math.max(peakRms, rmsValue);
-      if (dirty) return { reading: lastReading && { ...lastReading, held: true }, cutoffHz };
-      return { reading: emit(median(history)), cutoffHz };
-    }
-
-    // Far from the lock: one stray frame (an octave error, a click) is ignored, and a note
-    // that persists takes the lock over.
-    const last = away.at(-1);
-    away =
-      last !== undefined && centsBetween(last, midi) > TRACKER.lockWithinCents
-        ? [midi]
-        : [...away, midi];
-    if (away.length >= TRACKER.moveFrames) {
-      begin(away, rmsValue, detection.hz, detection.clarity, timeMs);
-      return { reading: dirty ? undefined : emit(median(history)), cutoffHz };
-    }
-    return { reading: lastReading, cutoffHz };
-  }
+      return { reading: lastReading, cutoffHz };
+    },
+  };
 }
 
 export type Tracker = ReturnType<typeof createTracker>;
