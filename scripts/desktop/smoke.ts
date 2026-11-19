@@ -326,11 +326,17 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
       const panel = page.getByRole('region', { name: 'Tuner' });
       await panel.waitFor();
       await panel.getByRole('button', { name: 'Start' }).click();
-      await page.waitForTimeout(2000);
+      // The button reads Stop while the tuner listens and Try again after an error (tuner-panel.tsx),
+      // so waiting for either one says which way it went, however slow the runner is.
+      const outcome = await panel
+        .getByRole('button', { name: /^(Stop|Try again)$/ })
+        .first()
+        .innerText();
       check(
-        (await panel.getByRole('alert').count()) === 0,
-        'the tuner starts on the fake microphone with no error',
+        outcome === 'Stop',
+        `the tuner listens on the fake microphone (button reads ${outcome})`,
       );
+      check((await panel.getByRole('alert').count()) === 0, 'the tuner shows no microphone error');
       // F8 swaps the right panel to the mixer, which stops the tuner and closes its context.
       await page.keyboard.press('F8');
       await panel.waitFor({ state: 'hidden' });
@@ -370,18 +376,40 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
       }),
     );
     const pid = app.process().pid;
+    let how = 'SIGKILL';
     if (process.platform === 'win32' && pid !== undefined) {
       // Killing the main process alone leaves its Chromium children running on Windows, and they
       // hold the profile's IndexedDB lock files: the relaunch's library database then fails to
       // open ("Dexie: Workaround for Chrome UnknownError") and no draft is offered. So the whole
       // tree goes, as a crash that takes the app down would.
-      spawnSync('taskkill', ['/PID', String(pid), '/T', '/F']);
+      const result = spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { encoding: 'utf8' });
+      if (result.status !== 0) {
+        throw new Error(
+          `taskkill failed (${String(result.status)}): ${result.stderr}${result.error ?? ''}`,
+        );
+      }
+      how = 'taskkill /T /F';
     } else {
       app.process().kill('SIGKILL');
     }
-    await exited;
-    if (process.platform === 'win32') await new Promise((resolve) => setTimeout(resolve, 3000));
-    check(true, 'the app was killed with SIGKILL');
+    await Promise.race([
+      exited,
+      new Promise((_, reject) =>
+        setTimeout(() => {
+          reject(new Error(`the app did not exit after ${how}`));
+        }, TIMEOUT),
+      ),
+    ]);
+    if (process.platform === 'win32') {
+      // Until no Reprise.exe is left, so the profile's locks are free (bounded, not a guess).
+      await waitFor('the killed app processes to be gone', () => {
+        const listed = spawnSync('tasklist', ['/FI', 'IMAGENAME eq Reprise.exe', '/NH'], {
+          encoding: 'utf8',
+        });
+        return Promise.resolve(!listed.stdout.includes('Reprise.exe'));
+      });
+    }
+    check(true, `the app was killed with ${how}`);
 
     const relaunched = await launch(profileDir);
     running.app = relaunched;
