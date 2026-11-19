@@ -40,13 +40,14 @@ export interface TunerDeps {
     frameSize: number,
   ) => Promise<TunerInput>;
   storage?: () => Storage;
+  /** Wall clock in ms; times the tracker's hold, which must expire when the audio clock stops. */
+  now?: () => number;
   /** Where `devicechange` arrives; `navigator.mediaDevices` by default. */
   mediaDevices?: EventTarget | undefined;
   schedule?: {
     every(run: () => void, ms: number): () => void;
     after(run: () => void, ms: number): () => void;
   };
-  now?: () => number;
   /** The page's visibility, `document` by default. */
   page?: Pick<Document, 'addEventListener' | 'removeEventListener'> & {
     readonly visibilityState: DocumentVisibilityState;
@@ -94,7 +95,6 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
   const storage = deps.storage ?? (() => window.localStorage);
   const makeContext = deps.createContext ?? createCaptureContext;
   const open = deps.openCapture ?? openCapture;
-  const now = deps.now ?? (() => performance.now());
   const schedule = deps.schedule ?? {
     every(run, ms) {
       const id = setInterval(run, ms);
@@ -117,6 +117,7 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
         ? undefined
         : (navigator.mediaDevices as EventTarget | undefined);
 
+  const now = deps.now ?? (() => performance.now());
   const referenceHz = readReference(storage);
   const tracker = createTracker({ referenceHz });
 
@@ -186,7 +187,7 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
         minHz,
         maxHz: MAX_DETECT_HZ,
       });
-      const step = tracker.push(detection, rms(frame), now());
+      const step = tracker.push(detection, rms(frame), capture.clockMs(), now());
       if (step.cutoffHz !== cutoff) {
         cutoff = step.cutoffHz;
         capture.setCutoff(cutoff);
