@@ -41,6 +41,8 @@ export interface TunerDeps {
   ) => Promise<TunerInput>;
   storage?: () => Storage;
   /** Where `devicechange` arrives; `navigator.mediaDevices` by default. */
+  /** Wall clock in ms, used only while the audio clock stands still (a suspended context). */
+  now?: () => number;
   mediaDevices?: EventTarget | undefined;
   schedule?: {
     every(run: () => void, ms: number): () => void;
@@ -115,6 +117,7 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
         ? undefined
         : (navigator.mediaDevices as EventTarget | undefined);
 
+  const now = deps.now ?? (() => performance.now());
   const referenceHz = readReference(storage);
   const tracker = createTracker({ referenceHz });
 
@@ -133,6 +136,11 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
   // Bumped by every start and teardown, so a microphone request that returns late is dropped.
   let generation = 0;
   let trackKey = '';
+  // The audio clock freezes with a suspended or interrupted context, which would freeze the
+  // tracker's hold for good; wall time passed while it stood still is added on.
+  let audioLastMs = -1;
+  let wallLastMs = 0;
+  let stalledMs = 0;
 
   const store = create<TunerState>()((set, get) => {
     const targetsNow = () => {
@@ -160,6 +168,8 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
       context = undefined;
       tracker.reset();
       cutoff = MAX_DETECT_HZ;
+      audioLastMs = -1;
+      stalledMs = 0;
     };
 
     const fail = (error: TunerError) => {
@@ -184,7 +194,12 @@ export function createTuner(services: TunerServices, deps: TunerDeps = {}) {
         minHz,
         maxHz: MAX_DETECT_HZ,
       });
-      const step = tracker.push(detection, rms(frame), capture.clockMs());
+      const audioMs = capture.clockMs();
+      const wallMs = now();
+      if (audioMs <= audioLastMs) stalledMs += wallMs - wallLastMs;
+      audioLastMs = audioMs;
+      wallLastMs = wallMs;
+      const step = tracker.push(detection, rms(frame), audioMs + stalledMs);
       if (step.cutoffHz !== cutoff) {
         cutoff = step.cutoffHz;
         capture.setCutoff(cutoff);

@@ -133,8 +133,7 @@ describe('the tracker', () => {
       return out?.reading;
     };
     // The lock is hidden for the settle frames, then each reading within 3 cents counts.
-    // Past the settle time, three agreeing frames must follow before the first reading.
-    expect(push(2, settleFramesFor(43) + 2)?.inTune).toBe(false);
+    expect(push(2, settleFramesFor(43))?.inTune).toBe(false);
     expect(push(2, 3)?.inTune).toBe(false);
     expect(push(2, 1)?.inTune).toBe(true);
     expect(push(4.5, 1)?.inTune).toBe(true);
@@ -165,25 +164,9 @@ describe('the tracker', () => {
     // A stalled main thread catches up with many ticks at once; the window has not moved, so
     // none of them is time past the cutoff change.
     for (let i = 0; i < settleFramesFor(43) + 5; i += 1) expect(pushAt(40)).toBeUndefined();
-    // Once the clock has run the window past the change and three frames agree, the reading shows.
+    // Once the clock has run the window past the change, the reading shows.
     const clear = 40 + settleFramesFor(43) * TRACKER.hopMs;
-    expect(pushAt(clear)).toBeUndefined();
-    expect(pushAt(clear + 20)).toBeUndefined();
-    expect(pushAt(clear + 40)?.held).toBe(false);
-  });
-
-  it('keeps hiding a lock whose frames are still converging after the settle time', () => {
-    const tracker = createTracker();
-    let clock = 0;
-    const at = (cents: number) =>
-      tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity: 0.99 }, 0.1, (clock += TRACKER.hopMs))
-        .reading;
-    for (let i = 0; i < settleFramesFor(43) - 3; i += 1) expect(at(0)).toBeUndefined();
-    // A ramp that ran late on a starved audio thread: past the settle time, still off and moving.
-    for (const cents of [13, 9.4, 7.2]) expect(at(cents)).toBeUndefined();
-    expect(at(7.04)).toBeUndefined();
-    const settled = at(7);
-    expect(Math.abs((settled?.midi ?? 0) - 45) * 100 - 7).toBeLessThan(0.5);
+    expect(pushAt(clear)?.held).toBe(false);
   });
 
   it('ignores a single frame an octave off', () => {

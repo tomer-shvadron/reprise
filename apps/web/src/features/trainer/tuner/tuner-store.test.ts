@@ -274,6 +274,17 @@ describe('the tuner store', () => {
     expect(state().autoString).toBeUndefined();
   });
 
+  it('still clears the hold when the audio clock stands still, as a suspended context does', async () => {
+    const { rig, state, listen } = await setup();
+    await listen();
+    rig.hear.hz = undefined;
+    rig.stallAudio();
+    rig.tick(5);
+    expect(state().reading?.held).toBe(true);
+    rig.tick(80);
+    expect(state().reading).toBeUndefined();
+  });
+
   it('holds the reading when the signal stops, then clears it after 1.5 s', async () => {
     const { rig, state, listen } = await setup();
     await listen();
