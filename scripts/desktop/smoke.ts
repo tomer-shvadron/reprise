@@ -4,6 +4,13 @@
  * stubbed, plays it, and checks the GM bank came from the app's own scheme and that the
  * GrantFileProtocolExtraPrivileges fuse is off.
  *
+ * First it reads the fuses of the shipped app and fails if one is not as electron-builder's
+ * `electronFuses` block sets it. Playwright's `_electron.launch` attaches with `--inspect`, which
+ * the EnableNodeCliInspectArguments fuse refuses, so the app that is launched is a copy in the
+ * temporary profile with that one fuse turned back on (scripts/desktop/fuses.ts). It also checks
+ * that app.enableSandbox() holds (a window asking for nodeIntegration gets none) and that
+ * app.quit() ends the process with exit code 0.
+ *
  * Then it makes an edit, waits for the draft on disk, kills the app with SIGKILL, relaunches it on
  * the same profile, recovers the draft, checks the edit is there, and closes the window to check
  * the unsaved-changes prompt (Don't save closes it and removes the draft).
@@ -21,6 +28,13 @@ import process, { argv } from 'node:process';
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright';
 
 import { loadBundle } from '../sounds/fetch-gm.ts';
+import {
+  copyWithInspectEnabled,
+  executableIn,
+  fuseMismatches,
+  readFuseWire,
+  unpackedAppDir,
+} from './fuses.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const RELEASE = join(ROOT, 'apps/desktop/release');
@@ -29,13 +43,18 @@ const APP_URL = 'reprise://app/index.html';
 const TIMEOUT = 30_000;
 const BANK_URL = 'reprise://app/sounds/gm/GeneralUser-GS.sf2';
 
-function packagedExecutable(): string {
-  if (process.platform === 'darwin') {
-    const dir = process.arch === 'arm64' ? 'mac-arm64' : 'mac';
-    return join(RELEASE, dir, 'Reprise.app/Contents/MacOS/Reprise');
-  }
-  if (process.platform === 'win32') return join(RELEASE, 'win-unpacked', 'Reprise.exe');
-  throw new Error(`pnpm desktop:build makes no unpacked app on ${process.platform}`);
+/** What `launch` runs: the inspect-enabled copy, or the executable given on the command line. */
+let executable = argv[2] ?? '';
+
+/** Checks the shipped fuses, then makes the copy the smoke launches (see the header). */
+async function prepareApp(profileDir: string): Promise<void> {
+  if (executable !== '') return;
+  const shipped = unpackedAppDir(RELEASE, process.platform, process.arch);
+  const problems = fuseMismatches(await readFuseWire(shipped));
+  check(problems.length === 0, `the shipped app has the expected fuses (${problems.join('; ')})`);
+  const copy = await copyWithInspectEnabled(shipped, join(profileDir, 'app'));
+  executable = executableIn(copy, process.platform);
+  console.log(`ok: launching ${executable}, the shipped app with EnableNodeCliInspectArguments on`);
 }
 
 async function gmBytes(): Promise<number> {
@@ -53,7 +72,7 @@ const RECOVERY = 'Reprise closed with unsaved changes';
 
 function launch(profileDir: string): Promise<ElectronApplication> {
   return electron.launch({
-    executablePath: argv[2] ?? packagedExecutable(),
+    executablePath: executable,
     timeout: TIMEOUT,
     env: { ...process.env, REPRISE_PROFILE_DIR: profileDir },
   });
@@ -116,6 +135,7 @@ async function closeQuietly(running: { app?: ElectronApplication }): Promise<voi
 }
 
 async function main(profileDir: string, running: { app?: ElectronApplication }): Promise<void> {
+  await prepareApp(profileDir);
   const app = await launch(profileDir);
   running.app = app;
   try {
@@ -159,6 +179,24 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
     check(
       fileLoad.startsWith('ERR_FILE_NOT_FOUND'),
       `file:// is refused in the asar, so GrantFileProtocolExtraPrivileges is off (${fileLoad})`,
+    );
+
+    // enableSandbox() overrides a window's own webPreferences; without it `require` is a function.
+    const sandboxed = await app.evaluate(async ({ BrowserWindow }) => {
+      const window = new BrowserWindow({
+        show: false,
+        webPreferences: { sandbox: false, nodeIntegration: true },
+      });
+      try {
+        await window.loadURL('about:blank');
+        return String(await window.webContents.executeJavaScript('typeof require'));
+      } finally {
+        window.destroy();
+      }
+    });
+    check(
+      sandboxed === 'undefined',
+      `app.enableSandbox() holds: nodeIntegration gets no require (typeof require is ${sandboxed})`,
     );
 
     await app.evaluate(({ session }) => {
@@ -260,6 +298,19 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
       (await draftNames(profileDir)).length === 0,
       "Don't save closed the window and removed the draft",
     );
+
+    const code = new Promise<number | null>((resolve) =>
+      relaunched.process().once('exit', (exitCode) => {
+        resolve(exitCode);
+      }),
+    );
+    await relaunched
+      .evaluate(({ app }) => {
+        app.quit();
+      })
+      .catch(() => undefined);
+    const exitCode = await code;
+    check(exitCode === 0, `app.quit() ends the process cleanly (exit code ${String(exitCode)})`);
   } finally {
     await closeQuietly(running);
   }
