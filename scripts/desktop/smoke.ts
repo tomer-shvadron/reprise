@@ -174,7 +174,9 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
     page.setDefaultTimeout(TIMEOUT);
     await page.waitForLoadState('load');
     // The window is already loaded, so the collector goes in and the page reloads: every later
-    // document and worker is then watched from its first script.
+    // document is then watched from its first script. A worker blocked by the policy is reported
+    // on the document that creates it, so a blocked worker load shows here; a violation raised
+    // inside a worker's own scope does not, and the e2e fixture's console watch is the net for it.
     await page.addInitScript(() => {
       const seen: string[] = [];
       Reflect.set(globalThis, 'repriseSmokeViolations', seen);
