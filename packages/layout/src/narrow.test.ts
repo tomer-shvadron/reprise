@@ -164,9 +164,10 @@ describe('narrow pages', () => {
     });
   }
 
+  // 0.7 s alone, 4.4 s worst under three parallel `pnpm test` runs (#325): own timeout, 4x the worst rounded up to 30 s.
   it('fit the large score with effects and note marks', () => {
     expectFitsEverywhere(withNoteMarks(withEffects(largeScore(3, 32, { structure: true }))), true);
-  });
+  }, 30_000);
 
   for (const [name, build] of Object.entries(SCENES)) {
     it(`fit ${name}`, () => {
