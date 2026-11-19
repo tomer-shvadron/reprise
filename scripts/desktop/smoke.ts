@@ -164,7 +164,10 @@ async function volumeSlider(page: Page) {
 
 /** The app may be dead already (killed on purpose), which makes `close` reject. */
 async function closeQuietly(running: { app?: ElectronApplication }): Promise<void> {
-  await running.app?.close().catch(() => undefined);
+  await Promise.race([
+    running.app?.close().catch(() => undefined),
+    new Promise((resolve) => setTimeout(resolve, 10_000)),
+  ]);
 }
 
 async function main(profileDir: string, running: { app?: ElectronApplication }): Promise<void> {
@@ -334,7 +337,14 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
     const again = await relaunched.firstWindow();
     again.setDefaultTimeout(TIMEOUT);
     const dialog = again.getByRole('dialog', { name: RECOVERY });
-    await dialog.waitFor();
+    // The relaunch's own console, printed only when the offer never comes (see below).
+    const consoleLines: string[] = [];
+    again.on('console', (message) => consoleLines.push(`${message.type()}: ${message.text()}`));
+    await dialog.waitFor().catch(async (error: unknown) => {
+      console.error(`relaunch console:\n${consoleLines.join('\n')}`);
+      console.error(`drafts on disk: ${(await draftNames(profileDir)).join(', ')}`);
+      throw error;
+    });
     check(true, 'the relaunch offers the draft');
     await dialog.getByRole('button', { name: /^Recover / }).click();
     await again.locator('[data-system-id]').first().waitFor();
@@ -399,4 +409,7 @@ try {
       console.warn(`could not remove ${profileDir}: ${String(error)}`);
     },
   );
+  // A killed app's child processes can outlive it on Windows and keep this process's event loop
+  // alive, which would hang the job until its timeout.
+  process.exit(process.exitCode ?? 0);
 }
