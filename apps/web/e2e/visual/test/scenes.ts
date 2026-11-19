@@ -208,6 +208,12 @@ function voiceRests(): Score {
     .rest('1')
     .voice(1)
     .rest('1')
+    .bar()
+    .beat('2', [note(5, 3)])
+    .beat('2', [note(5, 3)])
+    .voice(1)
+    .rest('2')
+    .rest('2')
     .build({ ids: 'sequential' });
 }
 
@@ -559,7 +565,7 @@ export const SCENES: readonly Scene[] = [
   {
     id: 'voice-rests',
     covers:
-      "Rests of two voices clear of each other's notes; a voice of rests only; two whole-bar rests coincide",
+      "Rests of two voices clear of each other's notes; a voice of rests only; two whole-bar rests coincide; half rests moved off the staff take ledger lines",
     source: { build: voiceRests },
     notations: ['standard', 'both'],
     guard: (result) => {
