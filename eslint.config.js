@@ -165,7 +165,7 @@ export default defineConfig(
       '**/node_modules/',
       '**/dist/',
       '**/out/',
-      '**/release/',
+      'apps/desktop/release/',
       '**/.tsbuild/',
       '**/.vite/',
       '**/coverage/',

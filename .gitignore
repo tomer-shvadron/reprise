@@ -10,7 +10,7 @@ bun.lockb
 # build output
 dist/
 out/
-release/
+/apps/desktop/release/
 *.tsbuildinfo
 .tsbuild/
 .vite/
