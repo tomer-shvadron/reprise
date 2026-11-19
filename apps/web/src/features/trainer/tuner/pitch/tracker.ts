@@ -68,11 +68,13 @@ export const TRACKER = {
    * few milliseconds, and until the window has moved past it the frames hold a phase jump that
    * reads tens of cents off at high clarity.
    */
-  settleMarginMs: 40,
+  settleMarginMs: 60,
   /**
-   * Frames the first reading after a settle is the median of. The window's last frame before the
-   * settle ends can still carry the tail of the cutoff ramp (2.4 cents off at clarity 0.90 on a
-   * starved CI runner, #318), and a median of one passes it straight through.
+   * Frames the first reading after a settle is the median of, all taken at or after the settle
+   * deadline. CI's trace for #318 (48 kHz, 4096-sample window) showed the cutoff change still
+   * bending frames 80 ms after the lock, 40 ms past window plus the old 40 ms margin: 4.9 and 2.4
+   * cents off at clarity 0.88 and 0.90, first clean window at 171 ms after the lock. A median of
+   * one frame passed the 2.4 straight through.
    */
   settledFrames: 3,
   hopMs: 20,
@@ -129,8 +131,9 @@ export function createTracker(options: TrackerOptions = {}) {
   let settleUntilMs = 0;
   // Frames since the cutoff closed in are in the history until the window has left the change.
   let dirty = false;
-  // The history was emptied when the settle ended; no reading until it holds `settledFrames`.
-  let refill = false;
+  // After the dirty phase: 'waiting' for the settle deadline, 'filling' the history from it until
+  // it holds `settledFrames`; no reading shows meanwhile.
+  let refill: 'none' | 'waiting' | 'filling' = 'none';
   let settleFrames = options.settleFrames ?? settleFramesFor(43);
 
   /** Hops of settle time still to run at `timeMs`. */
@@ -149,7 +152,7 @@ export function createTracker(options: TrackerOptions = {}) {
     cutoffHz = TRACKER.searchCutoffHz;
     settleUntilMs = 0;
     dirty = false;
-    refill = false;
+    refill = 'none';
     glitches = 0;
     clean = 0;
   };
@@ -175,7 +178,7 @@ export function createTracker(options: TrackerOptions = {}) {
     const target = cutoffFor(hz);
     // Only a cutoff that closes in leaves sharp frames behind; one that opens does not.
     dirty = target < 0.85 * cutoffHz;
-    refill = false;
+    refill = 'none';
     settleUntilMs = dirty ? timeMs + settleFrames * TRACKER.hopMs : 0;
     cutoffHz = target;
   };
@@ -294,15 +297,23 @@ export function createTracker(options: TrackerOptions = {}) {
         }
         if (dirty && settlingAt(timeMs) <= 2) {
           // The frames from here on went through the new cutoff alone.
-          history = [];
           dirty = false;
-          refill = true;
+          refill = 'waiting';
+        }
+        // Frames before the deadline are not taken, however many ticks arrive: dense ticks would
+        // fill the median inside the disturbance, and long render quanta re-read one window. The
+        // history stays meanwhile, as the centre `near` is judged against.
+        if (refill === 'waiting') {
+          if (timeMs < settleUntilMs)
+            return { reading: lastReading && { ...lastReading, held: true }, cutoffHz };
+          history = [];
+          refill = 'filling';
         }
         history.push(midi);
         if (history.length > TRACKER.median) history.shift();
         peakRms = Math.max(peakRms, rmsValue);
-        if (refill && history.length >= TRACKER.settledFrames) refill = false;
-        if (dirty || refill)
+        if (refill === 'filling' && history.length >= TRACKER.settledFrames) refill = 'none';
+        if (dirty || refill !== 'none')
           return { reading: lastReading && { ...lastReading, held: true }, cutoffHz };
         return { reading: emit(median(history)), cutoffHz };
       }
