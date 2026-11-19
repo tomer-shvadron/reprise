@@ -244,7 +244,7 @@ Budgets are starting points. Changing one is a one-line PR to this table, with `
 Each work package in a phase plan maps to one issue:
 
 - Title: `WP-0NN: <title>`.
-- Labels: `area:<package>`, `type:<feature|chore|test|contract|bug>`, `phase:<0-4>`, and `lane:<score|audio|formats|app|lead>`.
+- Labels: `area:<package>`, `type:<feature|chore|test|contract|bug>`, `phase:<0-5>`, and `lane:<score|audio|formats|app|lead>`.
 - Milestone: the checkpoint it feeds.
 - Body: the work package verbatim, plus the briefing list (which specs, ADRs and reference notes to read), plus the lane rules.
 - Dependencies: "Blocked by #n" lines mirroring the graph above.
