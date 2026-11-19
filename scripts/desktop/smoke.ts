@@ -22,7 +22,7 @@
  *
  *   pnpm desktop:build && pnpm desktop:smoke [executable]
  */
-import type { ChildProcess } from 'node:child_process';
+import { spawnSync, type ChildProcess } from 'node:child_process';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -369,8 +369,17 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
         resolve();
       }),
     );
+    const pid = app.process().pid;
     app.process().kill('SIGKILL');
     await exited;
+    if (process.platform === 'win32' && pid !== undefined) {
+      // Killing the main process leaves its Chromium children running on Windows, and they hold
+      // the profile's IndexedDB lock files: the relaunch's library database then fails to open
+      // ("Dexie: Workaround for Chrome UnknownError") and no draft is offered. A crash that
+      // takes the whole tree down is the case this step stands for.
+      spawnSync('taskkill', ['/PID', String(pid), '/T', '/F']);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
     check(true, 'the app was killed with SIGKILL');
 
     const relaunched = await launch(profileDir);
