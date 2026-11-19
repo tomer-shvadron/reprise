@@ -80,6 +80,7 @@ shows what it claims; when one fails, change the scene, not the guard.
 | `voices`            | builder                   | tab, standard, both |
 | `voice-rests`       | builder                   | standard, both      |
 | `words`             | builder                   | tab, standard, both |
+| `word-placement`    | builder                   | tab, standard       |
 | `pitch-accidentals` | builder                   | standard, both      |
 | `tab-notes`         | builder                   | tab                 |
 | `furniture`         | builder                   | default             |

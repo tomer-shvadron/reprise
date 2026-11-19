@@ -211,6 +211,28 @@ function voiceRests(): Score {
     .build({ ids: 'sequential' });
 }
 
+function wordPlacement(): Score {
+  const quarter = (fret: number, words = {}) => [fret, words] as const;
+  const builder = score()
+    .track('guitar')
+    .bar()
+    .rest('1', { chord: { name: 'N.C. long chord name here' } })
+    .bar();
+  const bar2 = [
+    quarter(0, { chord: { name: 'Am' }, lyrics: ['Twin-'] }),
+    quarter(2, { lyrics: ['kle'] }),
+    quarter(3, {}),
+    quarter(5, { lyrics: ['twin-'] }),
+  ] as const;
+  for (const [fret, spec] of bar2) builder.beat('4', [note(1, fret)], spec);
+  builder.bar().beat('4', [note(1, 0)], { lyrics: ['kle'] });
+  builder
+    .beat('4', [note(1, 2)], { lyrics: ['lit-'] })
+    .beat('4', [note(1, 3)])
+    .beat('4', [note(1, 5)], { lyrics: ['tle'] });
+  return builder.build({ ids: 'sequential' });
+}
+
 function words(): Score {
   const dyn = (dynamics: 'pp' | 'f' | 'mf') => [note(1, 0, { dynamics })];
   return score()
@@ -554,6 +576,30 @@ export const SCENES: readonly Scene[] = [
     covers: 'Grace notes, chord names, text, lyrics, fingering and dynamics on each staff',
     source: { build: words },
     notations: ALL,
+  },
+  {
+    id: 'word-placement',
+    covers:
+      'A whole-bar rest name from its onset; hyphens centred between syllables, across a bar line and a melisma',
+    source: { build: wordPlacement },
+    notations: ['tab', 'standard'],
+    guard: (result) => {
+      const texts = result.primitives.flatMap((p) => (p.kind === 'text' ? [p] : []));
+      const find = (text: string, nth = 0) => {
+        const found = texts.filter((p) => p.text === text)[nth];
+        if (!found) throw new Error(`no text ${text}`);
+        return found;
+      };
+      const name = find('N.C. long chord name here');
+      expect(name.bbox.x + name.bbox.width, 'the name ends before bar 2').toBeLessThan(
+        find('Am').bbox.x,
+      );
+      const dashes = texts.filter((p) => p.text === '-' && p.lane === undefined);
+      const across = dashes.find((d) => d.node === find('twin').node);
+      expect(across, 'the cross-bar hyphen is drawn').toBeDefined();
+      expect(across?.x ?? 0).toBeGreaterThan(find('twin').x);
+      expect(across?.x ?? Infinity).toBeLessThan(find('kle', 1).x);
+    },
   },
   {
     id: 'pitch-accidentals',
