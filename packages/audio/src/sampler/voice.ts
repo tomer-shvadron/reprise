@@ -1,4 +1,9 @@
-import { evaluateModulators, keyScaledTime } from './region-map';
+import {
+  MAX_DECAY_TIMECENTS,
+  MAX_HOLD_TIMECENTS,
+  evaluateModulators,
+  keyScaledTime,
+} from './region-map';
 import type { ModulatorDeltas, Region, RegionMap } from './region-map';
 
 /** -80 dB: the floor exponential ramps aim at, since they cannot reach zero. */
@@ -86,12 +91,17 @@ function regionFilter(
     const top = start + Math.max(envelope.attack, MIN_ATTACK);
     node.frequency.setValueAtTime(hz(rest), start);
     node.frequency.exponentialRampToValueAtTime(hz(peak), top);
-    const holdEnd = top + keyScaledTime(envelope.hold, envelope.holdPerKey, key);
+    const holdEnd =
+      top + keyScaledTime(envelope.hold, envelope.holdPerKey, key, MAX_HOLD_TIMECENTS);
     node.frequency.setValueAtTime(hz(peak), holdEnd);
     if (envelope.sustain < 1) {
       node.frequency.exponentialRampToValueAtTime(
         hz(settled),
-        holdEnd + Math.max(keyScaledTime(envelope.decay, envelope.decayPerKey, key), MIN_ATTACK),
+        holdEnd +
+          Math.max(
+            keyScaledTime(envelope.decay, envelope.decayPerKey, key, MAX_DECAY_TIMECENTS),
+            MIN_ATTACK,
+          ),
       );
     }
   }
@@ -204,9 +214,9 @@ export class Voice {
     // A key outside the region's range (the map falls back to the nearest region) keeps the
     // edge key's timing, as the per-key regions this replaces did.
     const scaleKey = Math.min(Math.max(start.key, region.keyLo), region.keyHi);
-    this.#hold = keyScaledTime(envelope.hold, envelope.holdPerKey, scaleKey);
+    this.#hold = keyScaledTime(envelope.hold, envelope.holdPerKey, scaleKey, MAX_HOLD_TIMECENTS);
     this.#decay = Math.max(
-      keyScaledTime(envelope.decay, envelope.decayPerKey, scaleKey),
+      keyScaledTime(envelope.decay, envelope.decayPerKey, scaleKey, MAX_DECAY_TIMECENTS),
       MIN_ATTACK,
     );
     this.#sustain = Math.min(1, Math.max(0, envelope.sustain));

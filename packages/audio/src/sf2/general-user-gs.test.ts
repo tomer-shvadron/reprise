@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { RegionMap, keyScaledTime } from '../sampler/region-map';
+import {
+  MAX_DECAY_TIMECENTS,
+  MAX_HOLD_TIMECENTS,
+  RegionMap,
+  keyScaledTime,
+} from '../sampler/region-map';
 import type { Region, SampleRef } from '../sampler/region-map';
 import type { SampleSource } from '../sampler/sample-source';
 import { Sampler } from '../sampler/sampler';
@@ -252,8 +257,8 @@ describe.skipIf(!font)('GeneralUser GS', () => {
       if (!region || !envelope) throw new Error(`No ${pick} envelope at key ${String(key)}`);
       const at = Math.min(Math.max(key, region.keyLo), region.keyHi);
       return {
-        hold: keyScaledTime(envelope.hold, envelope.holdPerKey, at),
-        decay: keyScaledTime(envelope.decay, envelope.decayPerKey, at),
+        hold: keyScaledTime(envelope.hold, envelope.holdPerKey, at, MAX_HOLD_TIMECENTS),
+        decay: keyScaledTime(envelope.decay, envelope.decayPerKey, at, MAX_DECAY_TIMECENTS),
       };
     };
 

@@ -1,6 +1,11 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
-import { keyScaledTime, type Region } from '../sampler/region-map';
+import {
+  MAX_DECAY_TIMECENTS,
+  MAX_HOLD_TIMECENTS,
+  keyScaledTime,
+  type Region,
+} from '../sampler/region-map';
 import { Sf2ParseError, parseSf2, type Sf2File } from './parse';
 import { formatSampleRef, parseSampleRef } from './sample-ref';
 import { Sf2Soundfont } from './soundfont';
@@ -242,14 +247,12 @@ describe('Sf2Soundfont regions', () => {
     expect(region.envelope.holdPerKey).toBe(100);
     expect(region.envelope.decayPerKey).toBe(-50);
     for (const key of [36, 60, 63, 84]) {
-      expect(keyScaledTime(region.envelope.hold, region.envelope.holdPerKey, key)).toBeCloseTo(
-        2 ** ((-2400 + 100 * (60 - key)) / 1200),
-        12,
-      );
-      expect(keyScaledTime(region.envelope.decay, region.envelope.decayPerKey, key)).toBeCloseTo(
-        (2 ** ((1200 - 50 * (60 - key)) / 1200) * 30) / 100,
-        12,
-      );
+      expect(
+        keyScaledTime(region.envelope.hold, region.envelope.holdPerKey, key, MAX_HOLD_TIMECENTS),
+      ).toBeCloseTo(2 ** ((-2400 + 100 * (60 - key)) / 1200), 12);
+      expect(
+        keyScaledTime(region.envelope.decay, region.envelope.decayPerKey, key, MAX_DECAY_TIMECENTS),
+      ).toBeCloseTo((2 ** ((1200 - 50 * (60 - key)) / 1200) * 30) / 100, 12);
     }
     expect(font.preset(0, 25)?.report.keyExpanded).toBe(0);
   });

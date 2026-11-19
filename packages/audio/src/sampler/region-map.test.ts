@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { RegionMap } from './region-map';
+import { MAX_DECAY_TIMECENTS, MAX_HOLD_TIMECENTS, RegionMap, keyScaledTime } from './region-map';
 import { region } from './test/offline';
 
 const map = new RegionMap([
@@ -164,5 +164,29 @@ describe('RegionMap.resolveRelease', () => {
   it('keeps release regions out of resolveAll and includes both draws in candidates', () => {
     expect(names(tails.resolveAll(70, 100))).toEqual(['attack']);
     expect(names(tails.candidates(70, 100)).sort()).toEqual(['attack', 'tail-a', 'tail-b']);
+  });
+});
+
+describe('keyScaledTime', () => {
+  it('caps the key-scaled decay at 8000 timecents, as FluidSynth does', () => {
+    // 6000 tc at key 60 plus 50 tc per key over 60 keys is 9000 tc, about 181 s unclamped.
+    const decay = keyScaledTime(2 ** (6000 / 1200), 50, 0, MAX_DECAY_TIMECENTS);
+    expect(decay).toBeCloseTo(2 ** (8000 / 1200), 9);
+    expect(decay).toBeLessThan(102);
+  });
+
+  it('caps the key-scaled hold at 5000 timecents', () => {
+    expect(keyScaledTime(2 ** (4000 / 1200), 40, 0, MAX_HOLD_TIMECENTS)).toBeCloseTo(
+      2 ** (5000 / 1200),
+      9,
+    );
+  });
+
+  it('floors the sum at -12000 timecents and leaves an in-range sum alone', () => {
+    expect(keyScaledTime(2 ** (-11000 / 1200), 100, 120, MAX_DECAY_TIMECENTS)).toBeCloseTo(
+      2 ** (-12000 / 1200),
+      9,
+    );
+    expect(keyScaledTime(1, 50, 48, MAX_DECAY_TIMECENTS)).toBeCloseTo(2 ** (600 / 1200), 9);
   });
 });

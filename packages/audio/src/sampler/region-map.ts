@@ -19,12 +19,28 @@ export interface Envelope {
   decayPerKey?: number;
 }
 
+/** FluidSynth's ceilings for the key-scaled hold and decay sums, in timecents (about 2.4 s, 102 s). */
+export const MAX_HOLD_TIMECENTS = 5000;
+export const MAX_DECAY_TIMECENTS = 8000;
+const MIN_TIME_TIMECENTS = -12000;
+
 /**
  * `seconds` (the value at key 60) moved for `key` by `perKey` timecents per key below middle C:
  * 2 ** (timecents / 1200) is SF2's timecents-to-seconds, so adding timecents multiplies.
+ *
+ * The sum is clamped to `[-12000, maxTimecents]`, as FluidSynth does after adding the key scaling
+ * (it clamps each generator, then the scaled sum): without it a low key on an instrument with a
+ * large per-key factor decays for about 1,870 s where FluidSynth caps at about 102 s.
  */
-export function keyScaledTime(seconds: number, perKey: number | undefined, key: number): number {
-  return perKey ? seconds * 2 ** ((perKey * (60 - key)) / 1200) : seconds;
+export function keyScaledTime(
+  seconds: number,
+  perKey: number | undefined,
+  key: number,
+  maxTimecents: number,
+): number {
+  if (!perKey) return seconds;
+  const timecents = 1200 * Math.log2(seconds) + perKey * (60 - key);
+  return 2 ** (Math.min(Math.max(timecents, MIN_TIME_TIMECENTS), maxTimecents) / 1200);
 }
 
 /** A modulator's input: a note-on value, shaped by SF2 2.04's curve, polarity and direction (8.2). */
