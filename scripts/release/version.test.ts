@@ -1,3 +1,9 @@
+import { spawnSync } from 'node:child_process';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import process from 'node:process';
+
 import { describe, expect, it } from 'vitest';
 
 import { versionFromTag } from './version';
@@ -28,5 +34,30 @@ describe('versionFromTag', () => {
     '',
   ])('rejects %j', (tag) => {
     expect(() => versionFromTag(tag)).toThrow(/not a release tag/);
+  });
+});
+
+describe('the command line', () => {
+  const script = join(import.meta.dirname, 'version.ts');
+
+  it('appends the version and prerelease flag to $GITHUB_OUTPUT', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'reprise-version-'));
+    try {
+      const output = join(dir, 'output');
+      const run = spawnSync(process.execPath, [script, 'v1.0.0-rc.1'], {
+        env: { ...process.env, GITHUB_OUTPUT: output },
+        encoding: 'utf8',
+      });
+      expect(run.status).toBe(0);
+      expect(await readFile(output, 'utf8')).toBe('version=1.0.0-rc.1\nprerelease=true\n');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('exits 1 with a message on a tag that is not a release', () => {
+    const run = spawnSync(process.execPath, [script, 'vfoo'], { encoding: 'utf8' });
+    expect(run.status).toBe(1);
+    expect(run.stderr).toMatch(/not a release tag/);
   });
 });
