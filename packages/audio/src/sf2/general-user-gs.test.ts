@@ -241,7 +241,8 @@ describe.skipIf(!font)('GeneralUser GS', () => {
   // each key had its own region: a temporary checkout of origin/main at 507f7c94 resolved the
   // preset and read `resolveAll(key, 64)`'s hold and decay for the sample. The new resolver
   // keeps one region and scales at note-on (clamped to the region's range, as the old edge key's
-  // region answered a strike beyond it); a full 129-preset sweep matched to 1e-8 when this landed.
+  // region answered a strike beyond it); a full 129-preset sweep matched to 1e-8 when this landed, before the FluidSynth clamp: capped
+  // keys now deliberately differ from those regions.
   describe('key-scaled envelope times match the per-key regions they replaced', () => {
     const scaledAt = (
       program: number,
@@ -258,13 +259,27 @@ describe.skipIf(!font)('GeneralUser GS', () => {
       const at = Math.min(Math.max(key, region.keyLo), region.keyHi);
       return {
         hold: keyScaledTime(envelope.hold, envelope.holdPerKey, at, MAX_HOLD_TIMECENTS),
-        decay: keyScaledTime(envelope.decay, envelope.decayPerKey, at, MAX_DECAY_TIMECENTS),
+        decay: keyScaledTime(
+          envelope.decay,
+          envelope.decayPerKey,
+          at,
+          MAX_DECAY_TIMECENTS,
+          envelope.decayScale,
+        ),
       };
     };
 
     it.each([
-      // Zone 0..38: both factors 84, seconds at the range ends.
-      { program: 2, sample: 'gm/80/1489580-1499877', key: 0, hold: 5.530845339, decay: 441.031708 },
+      // Zone 0..38: both factors 84, seconds at the range ends. Key 0's decay is capped by
+      // FluidSynth's 8000 tc limit (101.6 s x this zone's 0.8 factor) where the per-key region
+      // it replaced ran 441 s.
+      {
+        program: 2,
+        sample: 'gm/80/1489580-1499877',
+        key: 0,
+        hold: 5.530845339,
+        decay: 81.27493386,
+      },
       {
         program: 2,
         sample: 'gm/80/1489580-1499877',

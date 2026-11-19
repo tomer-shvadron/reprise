@@ -99,7 +99,13 @@ function regionFilter(
         hz(settled),
         holdEnd +
           Math.max(
-            keyScaledTime(envelope.decay, envelope.decayPerKey, key, MAX_DECAY_TIMECENTS),
+            keyScaledTime(
+              envelope.decay,
+              envelope.decayPerKey,
+              key,
+              MAX_DECAY_TIMECENTS,
+              envelope.decayScale,
+            ),
             MIN_ATTACK,
           ),
       );
@@ -216,7 +222,13 @@ export class Voice {
     const scaleKey = Math.min(Math.max(start.key, region.keyLo), region.keyHi);
     this.#hold = keyScaledTime(envelope.hold, envelope.holdPerKey, scaleKey, MAX_HOLD_TIMECENTS);
     this.#decay = Math.max(
-      keyScaledTime(envelope.decay, envelope.decayPerKey, scaleKey, MAX_DECAY_TIMECENTS),
+      keyScaledTime(
+        envelope.decay,
+        envelope.decayPerKey,
+        scaleKey,
+        MAX_DECAY_TIMECENTS,
+        envelope.decayScale,
+      ),
       MIN_ATTACK,
     );
     this.#sustain = Math.min(1, Math.max(0, envelope.sustain));

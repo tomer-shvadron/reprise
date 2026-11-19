@@ -17,9 +17,15 @@ export interface Envelope {
    */
   holdPerKey?: number;
   decayPerKey?: number;
+  /**
+   * The factor the resolver already multiplied `decay` by (the fraction of SF2's full fall the
+   * sampler spends). Carried so `keyScaledTime` clamps the raw generator sum, not the scaled time.
+   * Absent is 1.
+   */
+  decayScale?: number;
 }
 
-/** FluidSynth's ceilings for the key-scaled hold and decay sums, in timecents (about 2.4 s, 102 s). */
+/** FluidSynth's ceilings for the key-scaled hold and decay sums, in timecents (about 18 s, 102 s). */
 export const MAX_HOLD_TIMECENTS = 5000;
 export const MAX_DECAY_TIMECENTS = 8000;
 const MIN_TIME_TIMECENTS = -12000;
@@ -30,17 +36,21 @@ const MIN_TIME_TIMECENTS = -12000;
  *
  * The sum is clamped to `[-12000, maxTimecents]`, as FluidSynth does after adding the key scaling
  * (it clamps each generator, then the scaled sum): without it a low key on an instrument with a
- * large per-key factor decays for about 1,870 s where FluidSynth caps at about 102 s.
+ * large per-key factor decays for about 1,870 s where FluidSynth caps at about 102 s. `scale` is
+ * the factor already applied to `seconds` (see `Envelope.decayScale`); it is divided out for the
+ * clamp, since the cap is on the SF2 timecent sum, and multiplied back after.
  */
 export function keyScaledTime(
   seconds: number,
   perKey: number | undefined,
   key: number,
   maxTimecents: number,
+  scale = 1,
 ): number {
-  if (!perKey) return seconds;
-  const timecents = 1200 * Math.log2(seconds) + perKey * (60 - key);
-  return 2 ** (Math.min(Math.max(timecents, MIN_TIME_TIMECENTS), maxTimecents) / 1200);
+  // No per-key factor: the value is the generator itself, which `clampGenerator` already bounded.
+  if (!perKey || scale <= 0) return seconds;
+  const timecents = 1200 * Math.log2(seconds / scale) + perKey * (60 - key);
+  return scale * 2 ** (Math.min(Math.max(timecents, MIN_TIME_TIMECENTS), maxTimecents) / 1200);
 }
 
 /** A modulator's input: a note-on value, shaped by SF2 2.04's curve, polarity and direction (8.2). */
@@ -181,6 +191,7 @@ export interface Region {
       /** `keynumToModEnvHold` and `keynumToModEnvDecay`, as on `Envelope`: `hold` and `decay` are at key 60. */
       holdPerKey?: number;
       decayPerKey?: number;
+      decayScale?: number;
     };
   };
   /**

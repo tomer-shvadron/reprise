@@ -189,4 +189,19 @@ describe('keyScaledTime', () => {
     );
     expect(keyScaledTime(1, 50, 48, MAX_DECAY_TIMECENTS)).toBeCloseTo(2 ** (600 / 1200), 9);
   });
+
+  it('clamps the unscaled sum when the stored time carries a factor', () => {
+    // 6000 tc + 50 tc/key at key 0 is 9000 tc; the stored time already has a 0.2 factor.
+    expect(keyScaledTime(2 ** (6000 / 1200) * 0.2, 50, 0, MAX_DECAY_TIMECENTS, 0.2)).toBeCloseTo(
+      2 ** (8000 / 1200) * 0.2,
+      9,
+    );
+  });
+
+  it('skips the clamp without a per-key factor', () => {
+    expect(keyScaledTime(2 ** (9000 / 1200), undefined, 0, MAX_DECAY_TIMECENTS)).toBeCloseTo(
+      2 ** (9000 / 1200),
+      9,
+    );
+  });
 });
