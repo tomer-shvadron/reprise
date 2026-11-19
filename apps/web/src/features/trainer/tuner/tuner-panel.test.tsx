@@ -38,7 +38,7 @@ async function setup(options: { song?: boolean } = {}) {
     await user.click(screen.getByRole('button', { name: 'Start' }));
     await flush();
     act(() => {
-      rig.tick(12);
+      rig.tick(16);
     });
   };
   return { ...result, services, rig, user, flush, listen };
@@ -121,7 +121,7 @@ describe('TunerPanel', () => {
     expect(field).toHaveValue('432');
     // The tracker starts over under a new reference; the same pitch is now 44 cents sharp.
     act(() => {
-      rig.tick(12);
+      rig.tick(16);
     });
     expect(screen.getByLabelText('A2')).toBeInTheDocument();
     expect(screen.getByTestId('tuner-cents')).toHaveTextContent('+44');

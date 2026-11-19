@@ -132,8 +132,9 @@ describe('the tracker', () => {
       }
       return out?.reading;
     };
-    // The lock is hidden for the settle frames, then each reading within 3 cents counts.
-    expect(push(2, settleFramesFor(43))?.inTune).toBe(false);
+    // The lock is hidden for the settle frames and the frames that refill the median, then each
+    // reading within 3 cents counts.
+    expect(push(2, settleFramesFor(43) + 4)?.inTune).toBe(false);
     expect(push(2, 3)?.inTune).toBe(false);
     expect(push(2, 1)?.inTune).toBe(true);
     expect(push(4.5, 1)?.inTune).toBe(true);
@@ -164,10 +165,33 @@ describe('the tracker', () => {
     // A stalled main thread catches up with many ticks at once; the window has not moved, so
     // none of them is time past the cutoff change.
     for (let i = 0; i < settleFramesFor(43) + 5; i += 1) expect(pushAt(40)).toBeUndefined();
-    // Once the clock has run the window past the change, the reading shows.
+    // Once the clock has run the window past the change, three frames later the reading shows.
     const clear = 40 + settleFramesFor(43) * TRACKER.hopMs;
-    expect(pushAt(clear)?.held).toBe(false);
+    expect(pushAt(clear)).toBeUndefined();
+    expect(pushAt(clear + TRACKER.hopMs)).toBeUndefined();
+    expect(pushAt(clear + 2 * TRACKER.hopMs)?.held).toBe(false);
   });
+
+  // The cutoff ramp keeps bending frames until the settle deadline, however often they are read
+  // (#318): 10 ms steps fill a median of three inside the disturbance, 40 ms ones re-read a window.
+  it.each([10, 20, 40])(
+    'shows nothing before the settle deadline and a clean median after it, ticks %i ms apart',
+    (step) => {
+      const tracker = createTracker();
+      const at = (timeMs: number, cents: number) =>
+        tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity: 0.99 }, 0.1, timeMs).reading;
+      at(0, 7);
+      at(20, 7);
+      const deadline = 20 + settleFramesFor(43) * TRACKER.hopMs;
+      for (let t = 20 + step; t < deadline; t += step) expect(at(t, 12)).toBeUndefined();
+      // The frames from the deadline on are clean; the first reading is their median.
+      expect(at(deadline, 7)).toBeUndefined();
+      expect(at(deadline + step, 7)).toBeUndefined();
+      const first = at(deadline + 2 * step, 7);
+      expect(first?.held).toBe(false);
+      expect(Math.abs(((first?.midi ?? 0) - 45) * 100 - 7)).toBeLessThan(0.5);
+    },
+  );
 
   describe('glitch gate', () => {
     const rig = () => {
@@ -267,7 +291,7 @@ describe('the tracker', () => {
     let clock = 0;
     const at = (hz: number) =>
       tracker.push({ hz, clarity: 0.95 }, 0.1, (clock += TRACKER.hopMs)).reading;
-    for (let i = 0; i < settleFramesFor(43) + 3; i += 1) at(110);
+    for (let i = 0; i < settleFramesFor(43) + 5; i += 1) at(110);
     expect(at(220)?.hz).toBeCloseTo(110, 3);
     expect(at(110)?.hz).toBeCloseTo(110, 3);
     at(220);
