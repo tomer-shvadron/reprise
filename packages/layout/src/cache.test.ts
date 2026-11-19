@@ -193,6 +193,36 @@ describe('LayoutCache', () => {
   it.each([
     ['paged', paged],
     ['continuous', continuous],
+  ])(
+    "moves a hyphen that reaches into the next bar when only that bar's syllable goes, %s",
+    (_, base) => {
+      const builder = scoreBuilder().track('guitar');
+      for (let bar = 0; bar < 2; bar++) {
+        builder.bar();
+        for (let beat = 0; beat < 4; beat++) {
+          const lyrics =
+            bar === 0 && beat === 3 ? ['Twin-'] : bar === 1 && beat === 0 ? ['kle'] : [];
+          builder.beat('4', [note(1, beat)], { lyrics });
+        }
+      }
+      const built = builder.build({ ids: 'sequential' });
+      const { cache, first } = warm(built, base);
+      const { score: edited, change } = applyCommand(
+        built,
+        setBeatEffect({ beatId: beatOf(built, 0, 1, 0).id }, { lyrics: [''] }),
+      );
+      expect(change.touchedBars).toEqual([built.masterBars[1]?.id]);
+      const result = layout(edited, { ...base, dirtyBars: change.touchedBars }, cache);
+      expect(stable(result)).toBe(stable(layout(edited, base)));
+      const hyphen = (r: LayoutResult) =>
+        r.primitives.find((p) => p.kind === 'text' && p.text === '-' && p.lane === undefined);
+      expect(hyphen(result)?.x).not.toBe(hyphen(first)?.x);
+    },
+  );
+
+  it.each([
+    ['paged', paged],
+    ['continuous', continuous],
   ])('rebuilds a system out of reach whose entering dynamic changed, %s', (_, base) => {
     // Voice 2 plays in bar 0 and bar 12 only, so its bar-0 dynamic decides whether bar 12 writes
     // one. Voice 1 opens with a dynamic, so the first system keeps its dynamics lane and height.

@@ -70,10 +70,11 @@ describe('lyrics entered across a verse', () => {
       const syllable = must(
         result.primitives.find(
           (p): p is TextPrimitive =>
-            p.kind === 'text' && p.node === beat.id && p.anchor === 'middle',
+            p.kind === 'text' && p.node === beat.id && p.lane === 'lyric:0',
         ),
       );
-      expect(syllable.text).toBe(verse[index]);
+      // The hyphen is stored on the syllable and drawn apart from it, centred toward the next one.
+      expect(syllable.text).toBe(verse[index]?.replace(/-$/, ''));
       const anchor = must(result.anchors.find((a) => a.kind === 'beat' && a.id === beat.id));
       const box = anchorBox(result, anchor);
       expect(syllable.x).toBeCloseTo(box.x + box.width / 2, 0);
