@@ -399,3 +399,25 @@ export function strayPrimitives(
   }
   return stray;
 }
+
+/**
+ * Pairs of a rest glyph and a note head whose boxes overlap by more than half a pixel. Not part of
+ * `expectValid`: a squeezed bar can overlap legitimately.
+ */
+export function restsOnHeads(result: LayoutResult): [Primitive, Primitive][] {
+  const rests = result.primitives.filter((p) => p.kind === 'glyph' && p.glyph.startsWith('rest'));
+  const heads = result.primitives.filter(
+    (p) => p.kind === 'glyph' && p.glyph.startsWith('notehead'),
+  );
+  const found: [Primitive, Primitive][] = [];
+  for (const rest of rests) {
+    for (const head of heads) {
+      const a = rest.bbox;
+      const b = head.bbox;
+      const x = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+      const y = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+      if (x > 0.5 && y > 0.5) found.push([rest, head]);
+    }
+  }
+  return found;
+}

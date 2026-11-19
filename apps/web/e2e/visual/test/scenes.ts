@@ -138,6 +138,65 @@ function voices(): Score {
     .build({ ids: 'sequential' });
 }
 
+/**
+ * Rest glyphs whose box overlaps a note head's by more than half a pixel. The layout package's
+ * own helper is test-only and `@reprise/layout` has no testing export, so the guard keeps a copy.
+ */
+function restsOnHeads(result: LayoutResult): string[] {
+  const heads = result.primitives.filter(
+    (p) => p.kind === 'glyph' && p.glyph.startsWith('notehead'),
+  );
+  return result.primitives.flatMap((rest) => {
+    if (rest.kind !== 'glyph' || !rest.glyph.startsWith('rest')) return [];
+    return heads.flatMap((head) => {
+      const a = rest.bbox;
+      const b = head.bbox;
+      const x = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+      const y = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+      return x > 0.5 && y > 0.5 ? [`${rest.glyph} on a head at ${String(b.x)}`] : [];
+    });
+  });
+}
+
+function voiceRests(): Score {
+  return score()
+    .track('guitar')
+    .bar()
+    .rest('4')
+    .beat('4', [note(4, 2)])
+    .beat('4', [note(3, 2)])
+    .beat('4', [note(2, 0)])
+    .voice(1)
+    .beat('4', [note(5, 0)])
+    .rest('4')
+    .rest('4')
+    .rest('4')
+    .bar()
+    .rest('4')
+    .beat('4', [note(4, 0)])
+    .beat('2', [note(4, 2)])
+    .voice(1)
+    .beat('4', [note(1, 12), note(2, 13)])
+    .beat('4', [note(5, 0)])
+    .beat('2', [note(5, 2)])
+    .bar()
+    .beat('8', [note(1, 5)])
+    .rest('8')
+    .beat('8', [note(1, 5)])
+    .rest('8')
+    .beat('8', [note(1, 5)])
+    .rest('8')
+    .beat('8', [note(1, 5)])
+    .rest('8')
+    .voice(1)
+    .rest('1')
+    .bar()
+    .rest('1')
+    .voice(1)
+    .rest('1')
+    .build({ ids: 'sequential' });
+}
+
 function words(): Score {
   const dyn = (dynamics: 'pp' | 'f' | 'mf') => [note(1, 0, { dynamics })];
   return score()
@@ -460,6 +519,20 @@ export const SCENES: readonly Scene[] = [
     covers: 'Voice direction on each staff; rests and dots moved by voice',
     source: { build: voices },
     notations: ALL,
+  },
+  {
+    id: 'voice-rests',
+    covers:
+      "Rests of two voices clear of each other's notes; a voice of rests only; two whole-bar rests coincide",
+    source: { build: voiceRests },
+    notations: ['standard', 'both'],
+    guard: (result) => {
+      expect(restsOnHeads(result), 'no rest sits on a note head').toEqual([]);
+      const flags = result.primitives.filter(
+        (p) => p.kind === 'glyph' && p.glyph === 'flag8thDown',
+      );
+      expect(flags.length, 'the rests-only bar stems its notes down by pitch').toBeGreaterThan(0);
+    },
   },
   {
     id: 'words',

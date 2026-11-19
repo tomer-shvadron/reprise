@@ -78,6 +78,7 @@ shows what it claims; when one fails, change the scene, not the guard.
 | `meters`            | builder                   | tab, standard       |
 | `tuplets-ties`      | builder, 400 px wide      | tab, standard, both |
 | `voices`            | builder                   | tab, standard, both |
+| `voice-rests`       | builder                   | standard, both      |
 | `words`             | builder                   | tab, standard, both |
 | `pitch-accidentals` | builder                   | standard, both      |
 | `tab-notes`         | builder                   | tab                 |

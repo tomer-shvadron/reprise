@@ -1,4 +1,12 @@
-import { beatTicks, type Beat, type Duration, type Finger, type Note } from '@reprise/model';
+import {
+  PPQ,
+  barTicks,
+  beatTicks,
+  type Beat,
+  type Duration,
+  type Finger,
+  type Note,
+} from '@reprise/model';
 
 import { glyphMetrics, type GlyphName } from '../../metrics';
 import { glyphWidth } from '../../primitives';
@@ -82,6 +90,8 @@ export interface RestPlan {
   width: number;
   /** Alone in its voice: centred in the bar rather than at its onset. */
   centred: boolean;
+  /** Staff position of the glyph's origin, 0 on the bottom line; `clearRests` moves it. */
+  position: number;
   dots: { x: number; y: number };
 }
 
@@ -104,6 +114,8 @@ export interface BeatPlan {
   tremolo?: TremoloPlan;
   /** The target heads of its bends, on a staff shown alone. */
   bend?: BendPlan;
+  /** A beamed chord's stem tip at the group's furthest beam, which the chord's own tip lacks. */
+  stemReach?: number;
   /** The arpeggio or brush column's centre, from the beat's x. */
   strokeX?: number;
   /** How far right of its onset the beat is drawn, clear of an earlier voice's chord there. */
@@ -134,7 +146,10 @@ export interface BarPlan {
   voices: BeatPlan[][];
   groups: GroupPlan[];
   tuplets: TupletPlan[];
+  /** More than one voice holds notes: stems, ties and articulations go by voice. */
   multiVoice: boolean;
+  /** More than one voice holds a note or a rest: rests keep clear of the other voices' notes. */
+  layered: boolean;
   /** Content bounds from the top line, before fingering, the beams at their furthest. */
   top: number;
   bottom: number;
@@ -210,8 +225,17 @@ function restPlan(
     left: -width / 2,
     width,
     centred: alone && beat.duration <= 1,
+    position,
     dots: { x: width / 2, y: positionY(dotRow, space) },
   };
+}
+
+/** Moves a rest to a staff position, with its dots. */
+function moveRest(rest: RestPlan, position: number, space: number): void {
+  const dotRow = position % 2 === 0 ? position + 1 : position;
+  rest.position = position;
+  rest.y = positionY(position, space);
+  rest.dots.y = positionY(dotRow, space);
 }
 
 export function restBounds(rest: RestPlan, space: number): { top: number; bottom: number } {
@@ -249,7 +273,10 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
           : undefined,
         lone,
       );
-  const multiVoice = bar.voices.filter((voice) => voice.beats.some(hasContent)).length > 1;
+  const multiVoice =
+    bar.voices.filter((voice) => voice.beats.some((beat) => !beat.rest && beat.notes.length > 0))
+      .length > 1;
+  const layered = bar.voices.filter((voice) => voice.beats.some(hasContent)).length > 1;
   const middle = positionY(4, space);
   const time = input.masterBar.timeSignature;
 
@@ -345,6 +372,8 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
   const voices: BeatPlan[][] = [];
   const groups: GroupPlan[] = [];
   const tuplets: TupletPlan[] = [];
+  // Their reach waits for `clearRests`, which can move a rest out of the room it was given.
+  const pending: TupletPlan[] = [];
 
   for (const [voice, { beats: voiceBeats }] of bar.voices.entries()) {
     const notes = voiceBeats.map((beat) => chordNotes(beat.notes));
@@ -491,6 +520,7 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
       const reach =
         direction === 'up' ? Math.min(line.start, line.end) : Math.max(line.start, line.end);
       for (const beat of groupBeats) {
+        beat.stemReach = reach;
         if (direction === 'up') beat.top = Math.min(beat.top, reach);
         else beat.bottom = Math.max(beat.bottom, reach);
       }
@@ -536,19 +566,23 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
         group !== undefined &&
         members.every((member) => member.group === group) &&
         groups[group]?.beats.length === members.length;
-      const top = Math.min(...members.map((member) => member.top)) - tupletReach(space);
-      const bottom = Math.max(...members.map((member) => member.bottom)) + tupletReach(space);
-      for (const member of members) {
-        if (above) member.top = top;
-        else member.bottom = bottom;
-      }
-      tuplets.push({ beats: members, n, above, bracket: !oneGroup });
+      pending.push({ beats: members, n, above, bracket: !oneGroup });
     }
 
     beats.push(...planned);
     voices.push(planned);
   }
   separateVoices(beats, voices, space);
+  if (layered) clearRests(beats, voices, barTicks(input.masterBar), space);
+  for (const tuplet of pending) {
+    const top = Math.min(...tuplet.beats.map((member) => member.top)) - tupletReach(space);
+    const bottom = Math.max(...tuplet.beats.map((member) => member.bottom)) + tupletReach(space);
+    for (const member of tuplet.beats) {
+      if (tuplet.above) member.top = top;
+      else member.bottom = bottom;
+    }
+    tuplets.push(tuplet);
+  }
 
   let top = 0;
   let bottom = positionY(0, space);
@@ -572,6 +606,7 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
     groups,
     tuplets,
     multiVoice,
+    layered,
     top,
     bottom,
     fingeringY,
@@ -700,6 +735,79 @@ function separateVoices(
         down.half = { side: 'left', at };
       }
     }
+  }
+}
+
+/** Clearance a moved rest keeps from another voice's notes, in spaces. */
+const REST_CLEARANCE = 0.25;
+
+interface Span {
+  top: number;
+  bottom: number;
+}
+
+/** What a chord fills vertically: its heads, and a stem or beam out to its tip. */
+function chordSpan(beat: BeatPlan, space: number): Span | undefined {
+  const { chord } = beat;
+  if (!chord || chord.heads.length === 0) return undefined;
+  let top = Math.min(...chord.heads.map(({ y }) => y)) - space / 2;
+  let bottom = Math.max(...chord.heads.map(({ y }) => y)) + space / 2;
+  if (chord.stem) {
+    if (chord.direction === 'up') top = Math.min(top, beat.stemReach ?? chord.top);
+    else bottom = Math.max(bottom, beat.stemReach ?? chord.bottom);
+  }
+  return { top, bottom };
+}
+
+/**
+ * Moves each voice's rest, a space at a time away from its own side, until it clears the other
+ * voices' notes sounding with it, so a lower voice's rest never sits on an upper voice's head. A
+ * rest alone in its bar is drawn at the middle and clears what sounds around it. Identical rests
+ * at one onset coincide and stay.
+ */
+function clearRests(
+  beats: readonly BeatPlan[],
+  voices: readonly (readonly BeatPlan[])[],
+  ticksPerBar: number,
+  space: number,
+): void {
+  const middle = ticksPerBar / 2;
+  for (const beat of beats) {
+    const { rest } = beat;
+    if (!rest) continue;
+    const spans: Span[] = [];
+    for (const voice of voices) {
+      for (const other of voice) {
+        if (other.voice === beat.voice) continue;
+        const sameOnset = Math.abs(other.tick - beat.tick) < 1e-6;
+        if (other.chord) {
+          const near = rest.centred
+            ? other.tick < middle + PPQ / 2 && other.tick + beatTicks(other.beat) > middle - PPQ / 2
+            : sameOnset;
+          const span = near ? chordSpan(other, space) : undefined;
+          if (span) spans.push(span);
+        } else if (other.rest && sameOnset && !other.rest.centred === !rest.centred) {
+          const twin =
+            other.rest.glyph === rest.glyph &&
+            other.beat.dots === beat.beat.dots &&
+            other.rest.position === rest.position;
+          if (!twin) spans.push(restBounds(other.rest, space));
+        }
+      }
+    }
+    if (spans.length === 0) continue;
+    const step = voiceDirection(beat.voice) === 'up' ? 2 : -2;
+    const gap = REST_CLEARANCE * space;
+    const hits = (): boolean => {
+      const { top, bottom } = restBounds(rest, space);
+      return spans.some((span) => bottom > span.top - gap && top < span.bottom + gap);
+    };
+    let position = rest.position;
+    for (let i = 0; i < 40 && hits(); i++) {
+      position += step;
+      moveRest(rest, position, space);
+    }
+    ({ top: beat.top, bottom: beat.bottom } = restBounds(rest, space));
   }
 }
 
