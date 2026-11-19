@@ -43,6 +43,7 @@ describe('App', () => {
   it('renders the frame regions and the empty state', () => {
     renderApp();
 
+    expect(screen.getByRole('banner')).toBeInTheDocument();
     expect(screen.getByRole('complementary', { name: 'Tracks' })).toBeInTheDocument();
     expect(screen.getByRole('main', { name: 'Score' })).toHaveTextContent('Open a file (⌘O)');
     expect(screen.getByRole('contentinfo', { name: 'Transport' })).toBeInTheDocument();

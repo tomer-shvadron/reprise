@@ -8,3 +8,4 @@ export {
   watchTrackSession,
   type TrackSession,
 } from './session';
+export { effectiveNotation, NO_TAB_REASON, NOTATION_NAMES, notationChoices } from './track-model';

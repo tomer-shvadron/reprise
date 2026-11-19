@@ -30,6 +30,7 @@ import { installHistoryMenu } from '@/state/history-menu';
 import type { PanelView } from '@/state/ui';
 
 import { AppFrame } from './app-frame';
+import { AppHeader } from './header/app-header';
 import { installCloseGuard } from './close-guard';
 import { CommandPalette } from './command-palette';
 import { createAppRegistry } from './app-registry';
@@ -149,6 +150,11 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
         <div className="h-full" inert={screen !== 'player'}>
           <AppFrame
             ui={ui}
+            header={
+              <CommandSourceContext value={source}>
+                <AppHeader />
+              </CommandSourceContext>
+            }
             score={<ScorePane hint={hint} />}
             banner={<UnimportedBanner />}
             transport={<TransportBar registry={registry} keyboard={keyboard} />}

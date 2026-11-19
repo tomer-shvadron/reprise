@@ -17,6 +17,8 @@ import { ResizeHandle } from './resize-handle';
 
 interface AppFrameProps {
   ui: UiStore;
+  /** The slim header band above everything else. */
+  header?: ReactNode;
   /** The score region's content: the painter, or its empty state. */
   score: ReactNode;
   /** The footer's playback controls. */
@@ -62,7 +64,16 @@ function PanelToggle({ ui, panel, label }: { ui: UiStore; panel: PanelId; label:
   );
 }
 
-export function AppFrame({ ui, score, transport, sidebar, panel, banner, bottom }: AppFrameProps) {
+export function AppFrame({
+  ui,
+  header,
+  score,
+  transport,
+  sidebar,
+  panel,
+  banner,
+  bottom,
+}: AppFrameProps) {
   const panels = useStore(ui, (state) => state.panels);
   const widths = useStore(ui, (state) => state.panelWidths);
   const zoom = useStore(ui, (state) => state.zoom);
@@ -94,6 +105,7 @@ export function AppFrame({ ui, score, transport, sidebar, panel, banner, bottom 
 
   return (
     <div className="flex h-full flex-col">
+      {header}
       {banner}
       <div className="flex min-h-40 flex-1">
         {panels.sidebar && (
