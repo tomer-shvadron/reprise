@@ -138,6 +138,38 @@ function voices(): Score {
     .build({ ids: 'sequential' });
 }
 
+function wordPlacement(): Score {
+  const quarter = (fret: number, words = {}) => [fret, words] as const;
+  const builder = score()
+    .track('guitar')
+    .bar()
+    .rest('1', { chord: { name: 'N.C. long chord name here' } })
+    .bar();
+  const bar2 = [
+    quarter(0, { chord: { name: 'Am' }, lyrics: ['Twin-'] }),
+    quarter(2, { lyrics: ['kle'] }),
+    quarter(3, {}),
+    quarter(5, { lyrics: ['twin-'] }),
+  ] as const;
+  for (const [fret, spec] of bar2) builder.beat('4', [note(1, fret)], spec);
+  builder.bar().beat('4', [note(1, 0)], { lyrics: ['kle'] });
+  builder
+    .beat('4', [note(1, 2)], { lyrics: ['lit-'] })
+    .beat('4', [note(1, 3)])
+    .beat('4', [note(1, 5)], { lyrics: ['tle'] });
+  // Empty syllables beside bare beats: both are spaced alike.
+  builder
+    .bar()
+    .beat('32', [note(1, 0)], { lyrics: ['la'] })
+    .beat('32', [note(1, 2)], { lyrics: [''] })
+    .beat('32', [note(1, 3)])
+    .beat('32', [note(1, 5)], { lyrics: [''] })
+    .beat('8', [note(1, 0)])
+    .beat('4', [note(1, 2)])
+    .beat('2', [note(1, 3)]);
+  return builder.build({ ids: 'sequential' });
+}
+
 function words(): Score {
   const dyn = (dynamics: 'pp' | 'f' | 'mf') => [note(1, 0, { dynamics })];
   return score()
@@ -466,6 +498,38 @@ export const SCENES: readonly Scene[] = [
     covers: 'Grace notes, chord names, text, lyrics, fingering and dynamics on each staff',
     source: { build: words },
     notations: ALL,
+  },
+  {
+    id: 'word-placement',
+    covers:
+      'A whole-bar rest name from its onset; hyphens centred between syllables, across a bar line and a melisma; empty syllables',
+    source: { build: wordPlacement },
+    notations: ['tab', 'standard'],
+    guard: (result) => {
+      const texts = result.primitives.flatMap((p) => (p.kind === 'text' ? [p] : []));
+      const find = (text: string, nth = 0) => {
+        const found = texts.filter((p) => p.text === text)[nth];
+        if (!found) throw new Error(`no text ${text}`);
+        return found;
+      };
+      const name = find('N.C. long chord name here');
+      expect(
+        name.x + name.size * name.text.length * 0.3,
+        'the name ends before bar 2',
+      ).toBeLessThan(find('Am').x);
+      const dashes = texts.filter((p) => p.text === '-' && p.lane === undefined);
+      const across = dashes.find((d) => d.node === find('twin').node);
+      expect(across, 'the cross-bar hyphen is drawn').toBeDefined();
+      expect(across?.x ?? 0).toBeGreaterThan(find('twin').x);
+      expect(across?.x ?? Infinity).toBeLessThan(find('kle', 1).x);
+      const la = find('la');
+      const xs = result.anchors
+        .filter((a) => a.kind === 'beat' && a.bbox.x >= la.x - 6)
+        .map((a) => a.bbox.x)
+        .slice(0, 4);
+      const [, one = 0, two = 0, three = 0] = xs;
+      expect(Math.abs(two - one - (three - two)), 'an empty syllable adds no room').toBeLessThan(2);
+    },
   },
   {
     id: 'pitch-accidentals',
