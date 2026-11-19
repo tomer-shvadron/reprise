@@ -410,7 +410,7 @@ export function renderTab(
       const x = xs[i];
       if (x === undefined) continue;
       positions.set(beat, x);
-      if (beat.beat.rest && analysed.rhythm) drawRest(context, beat, x);
+      if (beat.beat.rest && analysed.rhythm && !voice.hidden) drawRest(context, beat, x);
       for (const label of beat.labels) drawLabel(context, label, x, size, beat.voice);
       drawGraces(context, beat, x);
       const upper = beat.direction === 'up';

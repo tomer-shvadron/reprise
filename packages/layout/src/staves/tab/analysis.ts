@@ -1,4 +1,12 @@
-import { beatTicks, type Bar, type Beat, type Finger, type Note, type Voice } from '@reprise/model';
+import {
+  barTicks,
+  beatTicks,
+  type Bar,
+  type Beat,
+  type Finger,
+  type Note,
+  type Voice,
+} from '@reprise/model';
 
 import { glyphMetrics, textExtent, textWidth, type GlyphName } from '../../metrics';
 import type { TiedNotes } from '../../types';
@@ -24,6 +32,7 @@ import {
   suffixText,
   tremoloGlyph,
 } from '../effects';
+import { hiddenVoices } from '../hidden-voices';
 import type { StaffBar } from '../staff-module';
 
 /** Every size and distance of the tab staff, in staff spaces. */
@@ -121,6 +130,8 @@ export interface TabBeat {
 export interface TabVoice {
   index: number;
   direction: StemDirection;
+  /** A secondary voice that is one rest filling the bar, beside notes: measured, not drawn. */
+  hidden: boolean;
   beats: TabBeat[];
   beams: number[][];
   tuplets: TupletGroup[];
@@ -440,6 +451,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   const beats: TabBeat[] = [];
   const reserved: ReadonlySet<string> = rhythm ? reservedDynamics(bar) : new Set();
   let maxFingers = 0;
+  const hidden = hiddenVoices(bar, barTicks(input.masterBar));
   for (const [index, voice] of bar.voices.entries()) {
     if (!voicePresent(voice)) continue;
     const direction = voiceDirection(bar, index);
@@ -470,6 +482,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
     voices.push({
       index,
       direction,
+      hidden: hidden.has(index),
       beats: voiceBeats,
       beams,
       tuplets,

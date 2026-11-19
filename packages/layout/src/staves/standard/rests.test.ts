@@ -1,5 +1,5 @@
 import { applyCommand, setBeatRest, type Clef, type Score } from '@reprise/model';
-import { beatOf, midi, score, type ScoreBuilder } from '@reprise/model/testing';
+import { beatOf, midi, note, score, type ScoreBuilder } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -179,6 +179,44 @@ describe('rests of two voices', () => {
       .build({ ids: 'sequential' });
     expect(plan(six).multiVoice).toBe(false);
     expectClear(laid(six));
+  });
+
+  it('draws a lone short rest of a secondary voice, which does not fill the bar', () => {
+    const built = piano()
+      .bar()
+      .beat('4', [midi(74)])
+      .beat('4', [midi(74)])
+      .beat('4', [midi(74)])
+      .beat('4', [midi(74)])
+      .voice(1)
+      .rest('4')
+      .build({ ids: 'sequential' });
+    const p = plan(built);
+    expect(p.beats.some(({ hidden }) => hidden)).toBe(false);
+    expect(p.multiVoice).toBe(true);
+    const result = laid(built);
+    expect(
+      result.primitives.filter((q) => q.kind === 'glyph' && q.glyph === 'restQuarter'),
+    ).toHaveLength(1);
+    expectClear(result);
+  });
+
+  it('hides the whole-bar rest of a secondary voice on a tab-only staff too', () => {
+    const tab = (voiceOne: (b: ScoreBuilder) => ScoreBuilder): Score =>
+      voiceOne(
+        score()
+          .track('guitar', { display: { notation: 'tab', octaveShift: 0 } })
+          .bar()
+          .beat('4', [note(1, 3)])
+          .beat('4', [note(1, 3)])
+          .beat('4', [note(1, 3)])
+          .beat('4', [note(1, 3)])
+          .voice(1),
+      ).build({ ids: 'sequential' });
+    const rests = (built: Score): number =>
+      laid(built).primitives.filter((q) => q.kind === 'glyph' && q.glyph.startsWith('rest')).length;
+    expect(rests(tab((b) => b.rest('1')))).toBe(0);
+    expect(rests(tab((b) => b.rest('4')))).toBe(1);
   });
 
   it('never hides voice 0, and keeps a whole-bar rest beside rests that are drawn', () => {

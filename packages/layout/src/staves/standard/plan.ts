@@ -11,6 +11,7 @@ import {
 
 import { glyphMetrics, type GlyphName } from '../../metrics';
 import { glyphWidth } from '../../primitives';
+import { hiddenVoices } from '../hidden-voices';
 import type { StaffBar } from '../staff-module';
 import { bendSpan, type BendPlan, type TargetObstacle } from './bend-targets';
 import {
@@ -279,21 +280,11 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
   const hasNotes = (voice: Bar['voices'][number]): boolean =>
     voice.beats.some((beat) => !beat.rest && beat.notes.length > 0);
   const noteVoices = bar.voices.filter(hasNotes).length;
-  // Gould and Guitar Pro: a secondary voice that is only a whole-bar rest, beside a voice with
-  // notes, is not drawn and does not make the bar two-voice. Any other voice of rests only counts.
-  const hiddenVoices = new Set(
-    bar.voices.flatMap((voice, i) =>
-      i > 0 &&
-      noteVoices > 0 &&
-      !hasNotes(voice) &&
-      voice.beats.length === 1 &&
-      voice.beats[0]?.rest
-        ? [i]
-        : [],
-    ),
-  );
+  // A secondary voice that is one whole-bar rest beside a voice with notes is not drawn and does
+  // not make the bar two-voice; any other voice of rests only counts (see `hiddenVoices`).
+  const hiddenSet = hiddenVoices(bar, barTicks(input.masterBar));
   const counted = bar.voices.filter(
-    (voice, i) => !hiddenVoices.has(i) && voice.beats.some(hasContent),
+    (voice, i) => !hiddenSet.has(i) && voice.beats.some(hasContent),
   ).length;
   const multiVoice = noteVoices > 0 && counted > 1;
   const layered = counted > 1;
@@ -460,7 +451,7 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
       if (beat.rest) {
         const rest = restPlan(beat, voice, multiVoice, alone, space);
         plan.rest = rest;
-        if (hiddenVoices.has(voice)) plan.hidden = true;
+        if (hiddenSet.has(voice)) plan.hidden = true;
         plan.left = rest.left;
         plan.right = rest.dots.x + dotsWidth(beat.dots, space);
         ({ top: plan.top, bottom: plan.bottom } = restBounds(rest, space));
