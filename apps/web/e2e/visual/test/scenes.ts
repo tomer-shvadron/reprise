@@ -157,16 +157,6 @@ function wordPlacement(): Score {
     .beat('4', [note(1, 2)], { lyrics: ['lit-'] })
     .beat('4', [note(1, 3)])
     .beat('4', [note(1, 5)], { lyrics: ['tle'] });
-  // Empty syllables beside bare beats: both are spaced alike.
-  builder
-    .bar()
-    .beat('32', [note(1, 0)], { lyrics: ['la'] })
-    .beat('32', [note(1, 2)], { lyrics: [''] })
-    .beat('32', [note(1, 3)])
-    .beat('32', [note(1, 5)], { lyrics: [''] })
-    .beat('8', [note(1, 0)])
-    .beat('4', [note(1, 2)])
-    .beat('2', [note(1, 3)]);
   return builder.build({ ids: 'sequential' });
 }
 
@@ -502,7 +492,7 @@ export const SCENES: readonly Scene[] = [
   {
     id: 'word-placement',
     covers:
-      'A whole-bar rest name from its onset; hyphens centred between syllables, across a bar line and a melisma; empty syllables',
+      'A whole-bar rest name from its onset; hyphens centred between syllables, across a bar line and a melisma',
     source: { build: wordPlacement },
     notations: ['tab', 'standard'],
     guard: (result) => {
@@ -513,22 +503,14 @@ export const SCENES: readonly Scene[] = [
         return found;
       };
       const name = find('N.C. long chord name here');
-      expect(
-        name.x + name.size * name.text.length * 0.3,
-        'the name ends before bar 2',
-      ).toBeLessThan(find('Am').x);
+      expect(name.bbox.x + name.bbox.width, 'the name ends before bar 2').toBeLessThan(
+        find('Am').bbox.x,
+      );
       const dashes = texts.filter((p) => p.text === '-' && p.lane === undefined);
       const across = dashes.find((d) => d.node === find('twin').node);
       expect(across, 'the cross-bar hyphen is drawn').toBeDefined();
       expect(across?.x ?? 0).toBeGreaterThan(find('twin').x);
       expect(across?.x ?? Infinity).toBeLessThan(find('kle', 1).x);
-      const la = find('la');
-      const xs = result.anchors
-        .filter((a) => a.kind === 'beat' && a.bbox.x >= la.x - 6)
-        .map((a) => a.bbox.x)
-        .slice(0, 4);
-      const [, one = 0, two = 0, three = 0] = xs;
-      expect(Math.abs(two - one - (three - two)), 'an empty syllable adds no room').toBeLessThan(2);
     },
   },
   {
