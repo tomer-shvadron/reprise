@@ -58,6 +58,8 @@ export GH_TOKEN="$(gh auth token --user tomer-shvadron)"
 
 Labels, milestones and the **Reprise** project board come from `scripts/github/bootstrap.sh` (idempotent, `DRY_RUN=1` to preview). `scripts/github/protect-main.sh` applies the merge settings and the branch protection on `main`, which requires the CI check named `ci`. The `e2e` job runs on every PR but is not required, by the owner's decision (2026-11-17). A third job, `bench-compare`, is not required yet: it becomes required once it has run on ten PRs with no false failure, and the PR that adds it to `protect-main.sh` cites those runs.
 
+The `release.yml` workflow's `package (mac-arm64)`, `package (mac-x64)` and `package (windows-x64)` checks run only on PRs that touch what the desktop build reads (the paths are in the workflow). They are not required by branch protection, and a skipped one is normal; by the lead's ruling a red one on a PR blocks the merge all the same, since it is the only run of the packaged app on Windows and Intel macOS.
+
 ## Layout and boundaries
 
 | Workspace          | Package            | What it is                                                              |

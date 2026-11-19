@@ -4,7 +4,11 @@ Installers are built by [`.github/workflows/release.yml`](../../.github/workflow
 
 ## What the workflow does
 
-It runs on a `v*` tag, on `workflow_dispatch`, and on every PR that touches the desktop app, the release scripts, the workflow itself or the files the packaged renderer depends on (`apps/web/index.html`, `theme-bootstrap.js`, `csp.ts`, `pnpm-lock.yaml`). On a PR nothing is released; the run is the proof that the installers build and the packaged app works on every target.
+It runs on a `v*` tag, on `workflow_dispatch`, and on every PR that touches what the desktop build reads: the desktop app, the release scripts, the workflow itself, the renderer's entry and config (`apps/web/index.html`, `apps/web/vite.config.ts`, `apps/web/public/**`, `csp.ts`), `scripts/sounds/**`, `scripts/desktop/**`, the root `package.json`, the lockfile and `.nvmrc`. A PR that changes only the web app's other source or `packages/**` does not run it, so a green PR run says little about the commit you tag: step 1 of cutting a release runs it on that commit. On a PR nothing is released.
+
+The `package (...)` checks are path-filtered and not required: only `ci` gates a merge. A red `package` check on a desktop PR still blocks the lead's merge by decision ([AGENTS.md](../../AGENTS.md#github)).
+
+**`gate`**, first on every run: reads the version (a tag goes through `scripts/release/version.ts`, anything else gets `0.0.0-ci.<run>`) and on a tag fails if the tag's commit is not on `main` or if a release for the tag already exists, before any runner minutes are spent.
 
 **`package`**, one job per target, each building its own arch natively and smoking what it built:
 
@@ -18,16 +22,15 @@ Per job: install, resolve the version, build with `electron-builder` (`--publish
 
 **`release`**, only on a `v*` tag, with `contents: write` (every other job has `contents: read`):
 
-1. Fails unless the tag's commit is on `main`.
-2. Checks the downloaded files are exactly the five above for that version, and writes `SHA256SUMS.txt`.
-3. Creates a **draft** release with `install.md` first and then the generated notes. A version with a pre-release part (`v1.0.0-rc.1`) is also marked prerelease, so it never becomes "Latest".
+1. Checks the downloaded files are exactly the five above for that version, and writes `SHA256SUMS.txt`.
+2. Creates a **draft** release with `install.md` first and then the generated notes. A version with a pre-release part (`v1.0.0-rc.1`) is also marked prerelease, so it never becomes "Latest".
 
 The version comes from the tag through `scripts/release/version.ts`, which accepts `v<major>.<minor>.<patch>` with an optional `-<prerelease>` and nothing else, and reaches the app through `-c.extraMetadata.version`: the artifact names, `app.getVersion()`, About and the file versions follow it, and no file in the checkout changes. A local `pnpm desktop:build` stays `0.0.0` and packages the host arch only.
 
 ## Cutting a release
 
-1. Check `main` is green and the PR runs of `release.yml` passed on all three runners.
-2. Tag a commit on `main` and push the tag. Never move or reuse a tag.
+1. On the exact commit to be tagged, run the workflow by hand and wait for all three `package` jobs to be green: `gh workflow run release.yml --ref main`, then `gh run watch`. Check `git rev-parse origin/main` is that commit. The PR runs are path-filtered and may be weeks old.
+2. Tag that commit and push the tag. Never move or reuse a tag.
 
    ```sh
    git tag v1.0.0-rc.1 origin/main && git push origin v1.0.0-rc.1
@@ -35,7 +38,8 @@ The version comes from the tag through `scripts/release/version.ts`, which accep
 
 3. Wait for the run, then open the draft (`gh release view v1.0.0-rc.1`): five installers, `SHA256SUMS.txt`, the install notes and the generated notes.
 4. Try it (the owner's checklist below). If something is wrong, fix it on `main` and tag the next candidate (`rc.2`). A failed draft can be deleted with `gh release delete v1.0.0-rc.1 --cleanup-tag`.
-5. For the final version, tag `v1.0.0` the same way, then the owner publishes the draft by hand: `gh release edit v1.0.0 --draft=false --latest`.
+5. If the tag's run fails or is re-run after the draft exists, the `gate` job stops it ("a release for the tag already exists"). Delete the draft and re-run the failed run: `gh release delete v1.0.0-rc.1` (without `--cleanup-tag`, which would delete the tag the run needs), then "Re-run all jobs". A run that failed before the `release` job needs no deletion.
+6. For the final version, tag `v1.0.0` the same way, then the owner publishes the draft by hand: `gh release edit v1.0.0 --draft=false --latest`.
 
 ## Owner's checklist on a release candidate
 
