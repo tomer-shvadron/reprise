@@ -47,6 +47,14 @@ export const TRACKER = {
   inTuneCents: 3,
   outOfTuneCents: 5,
   inTuneReadings: 5,
+  /**
+   * Once the settle time is up, the frames that follow must agree this closely (cents) before the
+   * first reading is shown: a cutoff ramp that runs late on a starved audio thread leaves frames
+   * that are still tens of cents away and converging, and the clock cannot see that.
+   */
+  probeAgreeCents: 1.5,
+  /** Frames past the settle time after which the reading shows whether or not they agree, so noise cannot hide a note for good. */
+  probeGiveUp: 6,
   searchCutoffHz: 1500,
   lockedCutoffFactor: 2.5,
   minCutoffHz: 80,
@@ -102,9 +110,13 @@ export function createTracker(options: TrackerOptions = {}) {
   let inTune = false;
   let rejects = 0;
   let cutoffHz: number = TRACKER.searchCutoffHz;
-  let settling = 0;
+  // The time (ms) the window is clear of the cutoff change; 0 when none is pending.
+  let settleUntilMs = 0;
   // Frames since the cutoff closed in are in the history until the window has left the change.
   let dirty = false;
+  // The last frames past the settle time, waiting to agree before the lock is shown.
+  let probe: number[] = [];
+  let probed = 0;
   let settleFrames = options.settleFrames ?? settleFramesFor(43);
 
   const unlock = () => {
@@ -117,12 +129,14 @@ export function createTracker(options: TrackerOptions = {}) {
     streak = 0;
     inTune = false;
     cutoffHz = TRACKER.searchCutoffHz;
-    settling = 0;
+    settleUntilMs = 0;
     dirty = false;
+    probe = [];
+    probed = 0;
   };
 
   /** Starts a lock on `midi`'s note, hidden until the new cutoff has had its effect. */
-  const begin = (frames: number[], rmsValue: number, hz: number) => {
+  const begin = (frames: number[], rmsValue: number, hz: number, timeMs: number) => {
     history = frames;
     peakRms = rmsValue;
     away = [];
@@ -132,9 +146,11 @@ export function createTracker(options: TrackerOptions = {}) {
     lastReading = undefined;
     const target = cutoffFor(hz);
     // Only a cutoff that closes in leaves sharp frames behind; one that opens does not.
-    settling = target < 0.85 * cutoffHz ? settleFrames : 0;
-    dirty = settling > 0;
+    dirty = target < 0.85 * cutoffHz;
+    settleUntilMs = dirty ? timeMs + settleFrames * TRACKER.hopMs : 0;
     cutoffHz = target;
+    probe = [];
+    probed = 0;
   };
 
   const emit = (midi: number): Reading => {
@@ -164,8 +180,9 @@ export function createTracker(options: TrackerOptions = {}) {
     },
 
     push(detection: PitchDetection | undefined, rmsValue: number, timeMs: number): TrackerStep {
-      // Time, not accepted frames, is what moves the window past the change.
-      if (settling > 0) settling -= 1;
+      // The clock, not the count of pushes, is what moves the window past the change: ticks that
+      // arrive late or in a burst read the same window and must not count as elapsed time.
+      const settlingFor = () => Math.max(0, Math.ceil((settleUntilMs - timeMs) / TRACKER.hopMs));
       const midi = detection ? midiOf(detection.hz) : undefined;
       const centre = locked ? median(history) : undefined;
       const near =
@@ -202,7 +219,7 @@ export function createTracker(options: TrackerOptions = {}) {
       if (!locked) {
         if (pending !== undefined && centsBetween(pending, midi) <= TRACKER.lockWithinCents) {
           locked = true;
-          begin([pending, midi], rmsValue, detection.hz);
+          begin([pending, midi], rmsValue, detection.hz, timeMs);
           return { reading: dirty ? undefined : emit(median(history)), cutoffHz };
         }
         pending = midi;
@@ -215,18 +232,33 @@ export function createTracker(options: TrackerOptions = {}) {
         // it again is the same step a fresh lock hides, so the frames taken through the old
         // cutoff are dropped and the reading waits, held, until the window is clear.
         if (!dirty && cutoffFor(detection.hz) < 0.85 * cutoffHz) {
-          settling = settleFrames;
+          settleUntilMs = timeMs + settleFrames * TRACKER.hopMs;
           dirty = true;
           cutoffHz = cutoffFor(detection.hz);
           history = [];
+          probe = [];
+          probed = 0;
         }
-        if (dirty && settling <= 2) {
-          // The frames from here on went through the new cutoff alone.
-          history = [];
-          dirty = false;
+        let probing = false;
+        if (dirty && settlingFor() <= 2) {
+          // The frames from here on went through the new cutoff alone, once they agree.
+          probe.push(midi);
+          if (probe.length > 3) probe.shift();
+          probed += 1;
+          const flat =
+            probe.length === 3 &&
+            Math.max(...probe) - Math.min(...probe) <= TRACKER.probeAgreeCents / 100;
+          if (flat || probed >= TRACKER.probeGiveUp) {
+            history = probe;
+            probe = [];
+            dirty = false;
+            probing = true;
+          }
         }
-        history.push(midi);
-        if (history.length > TRACKER.median) history.shift();
+        if (!probing) {
+          history.push(midi);
+          if (history.length > TRACKER.median) history.shift();
+        }
         peakRms = Math.max(peakRms, rmsValue);
         if (dirty) return { reading: lastReading && { ...lastReading, held: true }, cutoffHz };
         return { reading: emit(median(history)), cutoffHz };
@@ -240,7 +272,7 @@ export function createTracker(options: TrackerOptions = {}) {
           ? [midi]
           : [...away, midi];
       if (away.length >= TRACKER.moveFrames) {
-        begin(away, rmsValue, detection.hz);
+        begin(away, rmsValue, detection.hz, timeMs);
         return { reading: dirty ? undefined : emit(median(history)), cutoffHz };
       }
       return { reading: lastReading, cutoffHz };

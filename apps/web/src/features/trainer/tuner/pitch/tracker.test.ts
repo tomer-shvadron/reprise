@@ -119,16 +119,22 @@ describe('the tracker', () => {
 
   it('is in tune from 3 cents and stays so until 5', () => {
     const tracker = createTracker();
+    let clock = 0;
     const push = (cents: number, n: number, rms = 0.1) => {
       // Reported frames only: the lock is hidden for a few frames while the cutoff closes in.
       let out;
       for (let i = 0; i < n; i += 1) {
-        out = tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity: 0.99 }, rms, 0);
+        out = tracker.push(
+          { hz: 110 * 2 ** (cents / 1200), clarity: 0.99 },
+          rms,
+          (clock += TRACKER.hopMs),
+        );
       }
       return out?.reading;
     };
     // The lock is hidden for the settle frames, then each reading within 3 cents counts.
-    expect(push(2, settleFramesFor(43))?.inTune).toBe(false);
+    // Past the settle time, three agreeing frames must follow before the first reading.
+    expect(push(2, settleFramesFor(43) + 2)?.inTune).toBe(false);
     expect(push(2, 3)?.inTune).toBe(false);
     expect(push(2, 1)?.inTune).toBe(true);
     expect(push(4.5, 1)?.inTune).toBe(true);
@@ -150,9 +156,41 @@ describe('the tracker', () => {
     expect(first).toBeLessThanOrEqual(4);
   });
 
+  it('keeps a new lock hidden through a burst of ticks that read the same window', () => {
+    const tracker = createTracker();
+    const pushAt = (timeMs: number) =>
+      tracker.push({ hz: 110, clarity: 0.99 }, 0.1, timeMs).reading;
+    pushAt(0);
+    pushAt(20);
+    // A stalled main thread catches up with many ticks at once; the window has not moved, so
+    // none of them is time past the cutoff change.
+    for (let i = 0; i < settleFramesFor(43) + 5; i += 1) expect(pushAt(40)).toBeUndefined();
+    // Once the clock has run the window past the change and three frames agree, the reading shows.
+    const clear = 40 + settleFramesFor(43) * TRACKER.hopMs;
+    expect(pushAt(clear)).toBeUndefined();
+    expect(pushAt(clear + 20)).toBeUndefined();
+    expect(pushAt(clear + 40)?.held).toBe(false);
+  });
+
+  it('keeps hiding a lock whose frames are still converging after the settle time', () => {
+    const tracker = createTracker();
+    let clock = 0;
+    const at = (cents: number) =>
+      tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity: 0.99 }, 0.1, (clock += TRACKER.hopMs))
+        .reading;
+    for (let i = 0; i < settleFramesFor(43) - 3; i += 1) expect(at(0)).toBeUndefined();
+    // A ramp that ran late on a starved audio thread: past the settle time, still off and moving.
+    for (const cents of [13, 9.4, 7.2]) expect(at(cents)).toBeUndefined();
+    expect(at(7.04)).toBeUndefined();
+    const settled = at(7);
+    expect(Math.abs((settled?.midi ?? 0) - 45) * 100 - 7).toBeLessThan(0.5);
+  });
+
   it('ignores a single frame an octave off', () => {
     const tracker = createTracker();
-    const at = (hz: number) => tracker.push({ hz, clarity: 0.95 }, 0.1, 0).reading;
+    let clock = 0;
+    const at = (hz: number) =>
+      tracker.push({ hz, clarity: 0.95 }, 0.1, (clock += TRACKER.hopMs)).reading;
     for (let i = 0; i < settleFramesFor(43) + 3; i += 1) at(110);
     expect(at(220)?.hz).toBeCloseTo(110, 3);
     expect(at(110)?.hz).toBeCloseTo(110, 3);
@@ -190,11 +228,11 @@ describe('the tracker', () => {
     const at = (cents: number, rms = 0.1, timeMs = 0) =>
       tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity: 0.99 }, rms, timeMs);
     const settle = settleFramesFor(43);
-    for (let i = 0; i < settle + 8; i += 1) at(0);
+    for (let i = 0; i < settle + 8; i += 1) at(0, 0.1, i * 20);
     // The string dies away: the cutoff opens, the last reading is held.
     let step;
     for (let i = 0; i < TRACKER.openAfterRejects + 2; i += 1) {
-      step = tracker.push(undefined, 0, 100 + i * 20);
+      step = tracker.push(undefined, 0, 400 + i * 20);
     }
     expect(step?.cutoffHz).toBe(TRACKER.searchCutoffHz);
     expect(step?.reading?.held).toBe(true);
@@ -202,12 +240,12 @@ describe('the tracker', () => {
     // cutoff has its effect. None of the sharp ones may reach a live reading.
     const live: number[] = [];
     for (let i = 0; i < settle + 6; i += 1) {
-      const result = at(i < settle - 2 ? 16 : 0, 0.1, 300 + i * 20);
+      const result = at(i < settle - 2 ? 16 : 0, 0.1, 600 + i * 20);
       if (result.reading && !result.reading.held) live.push((result.reading.midi - 45) * 100);
     }
     expect(live.length).toBeGreaterThan(3);
     for (const cents of live) expect(Math.abs(cents)).toBeLessThan(3);
-    expect(Math.abs(at(0, 0.1, 900).cutoffHz - 275)).toBeLessThan(1);
+    expect(Math.abs(at(0, 0.1, 1200).cutoffHz - 275)).toBeLessThan(1);
   });
 
   it('keeps every reading within 3 cents when a string is plucked again inside the hold', () => {

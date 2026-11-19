@@ -46,9 +46,14 @@ export class FakeCapture implements TunerInput {
     frameSize: number,
     private readonly stream: FakeStream,
     private readonly context: { close: Mock<() => Promise<void>> },
+    private readonly clock: () => number,
   ) {
     this.sampleRate = hear.sampleRate;
     this.frameSize = frameSize;
+  }
+
+  clockMs() {
+    return this.clock();
   }
 
   read(into: Float32Array<ArrayBuffer>) {
@@ -103,7 +108,8 @@ export function createRig(): Rig {
   });
   const deps: TunerDeps = {
     createContext: () => {
-      const context = { close: vi.fn(() => Promise.resolve()) };
+      // A missing sampleRate once made the settle time NaN, which silently disabled the settle.
+      const context = { sampleRate: hear.sampleRate, close: vi.fn(() => Promise.resolve()) };
       contexts.push(context);
       return context as unknown as AudioContext;
     },
@@ -113,6 +119,7 @@ export function createRig(): Rig {
         size,
         stream as unknown as FakeStream,
         context as unknown as Rig['contexts'][number],
+        () => clock,
       );
       captures.push(capture);
       return Promise.resolve(capture);
@@ -135,7 +142,6 @@ export function createRig(): Rig {
         };
       },
     },
-    now: () => clock,
     page,
   };
   return {
