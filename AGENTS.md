@@ -107,7 +107,7 @@ pnpm e2e                   # the player flows: Playwright Test against the produ
 pnpm test:visual           # painter screenshots; locally against your own references in e2e/visual/__local__/ (gitignored, made by the first run), on CI against the committed Linux baselines; pnpm visual:accept adopts a failed CI run's images
 ```
 
-The PR gate is `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check`; CI also runs `pnpm conflicts:check`, `pnpm bench`, `pnpm fixtures:check`, `pnpm check:files fixtures`, `pnpm build` and `pnpm test:visual`, `pnpm e2e` in its own `e2e` job, and `pnpm bench:compare` against `main` in its own `bench-compare` job ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
+The PR gate is `pnpm lint && pnpm typecheck && pnpm test && pnpm format:check`; CI also runs `pnpm conflicts:check`, `pnpm bench`, `pnpm fixtures:check`, `pnpm check:files fixtures`, `pnpm build` and `pnpm test:visual`, `pnpm e2e` in its own `e2e` job, and `pnpm bench:compare` against `main` in its own `bench-compare` job ([.github/workflows/ci.yml](.github/workflows/ci.yml)). The `ci` check is an aggregator over parallel jobs (`static`, `unit` as three groups of Vitest projects, `bench`, `files`, `build`) and fails unless every one succeeded; `e2e` likewise aggregates three Playwright shards that serve the `build` job's output. A new Vitest project goes in a `unit` group in `ci.yml`, or `scripts/ci/vitest-groups.test.ts` fails.
 
 ## Testing
 

@@ -1,0 +1,79 @@
+name: Set up the workspace
+description: Checkout-side setup shared by every CI job (pnpm, Node, dependencies, and optionally Chromium and the GM soundfont).
+
+inputs:
+  chromium:
+    description: "'none', 'shell' (the headless shell Vitest browser mode and the visual suite use) or 'full' (shell plus full Chromium, which the tuner's microphone e2e flow needs)."
+    default: none
+  soundfont:
+    description: "'true' to restore or fetch the GeneralUser GS soundfont."
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v6
+
+    - name: Set up Node
+      uses: actions/setup-node@v7
+      with:
+        node-version-file: .nvmrc
+        cache: pnpm
+
+    # Read from the lockfile rather than node_modules so the browser cache can be restored
+    # before `pnpm install`.
+    - name: Resolve Playwright version
+      id: playwright
+      if: ${{ inputs.chromium != 'none' }}
+      shell: bash
+      run: |
+        version=$(grep -m1 -oE '^  playwright@[0-9][^:]*' pnpm-lock.yaml | cut -d@ -f2)
+        test -n "$version"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Playwright browsers
+      if: ${{ inputs.chromium != 'none' }}
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/ms-playwright
+        # Two keys: the full install also holds the shell, but a cache saved with the shell alone
+        # would never be saved again with the full browser under a shared key.
+        key: playwright-${{ inputs.chromium == 'full' && 'chromium-' || '' }}${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+    # The root `postinstall` honours PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD (#382), so a job that asks for
+    # no browser downloads none, and one that asks for a browser installs it in the cached steps below.
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+      env:
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+    # No `--with-deps`: ubuntu-latest already carries the shell's libraries, and its apt font
+    # install from the Azure mirror has taken over 11 minutes.
+    - name: Install Chromium headless shell
+      if: ${{ inputs.chromium == 'shell' }}
+      shell: bash
+      # A composite step has no timeout-minutes; this keeps the five minutes the old jobs allowed.
+      run: timeout 300 pnpm exec playwright install chromium --only-shell
+
+    - name: Install Chromium (the headless shell, and full Chromium for the tuner's microphone)
+      if: ${{ inputs.chromium == 'full' }}
+      shell: bash
+      run: timeout 300 pnpm exec playwright install chromium
+
+    # About 32 MB from GitHub, cached on the pins, so the GeneralUser GS suite runs in CI too.
+    - name: Cache the GM soundfont
+      if: ${{ inputs.soundfont == 'true' }}
+      uses: actions/cache@v6
+      with:
+        # The fetched files only: restoring the directory would overwrite its committed README.
+        path: |
+          apps/web/public/sounds/gm/GeneralUser-GS.sf2
+          apps/web/public/sounds/gm/LICENSE.txt
+        key: gm-soundfont-${{ hashFiles('scripts/sounds/gm.json') }}
+
+    - name: Fetch the GM soundfont
+      if: ${{ inputs.soundfont == 'true' }}
+      shell: bash
+      run: pnpm sounds:fetch
