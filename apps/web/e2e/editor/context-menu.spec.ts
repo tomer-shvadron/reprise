@@ -26,7 +26,8 @@ test('"Edit here" on a note switches to edit mode with the cursor on that note',
   const menu = page.getByRole('menu', { name: /^Note, bar \d+$/ });
   await menu.getByRole('menuitem', { name: /^Edit here/ }).click();
   await expect(page.getByTestId('edit-status')).toBeVisible();
-  await expect(page.getByTestId('edit-status')).not.toContainText('Bar 1 · Beat 1');
+  // The fifth fret number of the song is on bar 1, beat 4 of the first track, on string 4.
+  await expect(page.getByTestId('edit-status')).toContainText('Bar 1 · Beat 4 · String 4');
 });
 
 test('in edit mode a right-click on a note offers Delete note, and the Bar level is a submenu', async ({
@@ -50,10 +51,13 @@ test('the Menu key opens the cursor’s menu in edit mode, and Escape gives focu
   page,
 }) => {
   await page.keyboard.press('ControlOrMeta+e');
+  await expect(page.getByTestId('edit-status')).toBeVisible();
   await app.score().focus();
   await page.keyboard.press('ContextMenu');
   const menu = page.getByRole('menu', { name: /^(Note|Beat|Bar)\b/ });
   await expect(menu).toHaveAttribute('data-context-menu-via', 'keyboard');
+  // Only edit mode has editing commands in the menu.
+  await expect(menu.locator('[data-command^="editor."]').first()).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
   await expect(app.score()).toBeFocused();

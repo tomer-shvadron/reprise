@@ -60,4 +60,52 @@ describe('the removal commands of the edit-mode menus', () => {
     services.menuTarget.getState().set({ kind: 'section', masterBar: second.id });
     expect(registry.get('editor.removeSection')?.enabled?.()).toBe(false);
   });
+
+  it('"Remove chord name" falls back to the cursor beat when no menu is open', () => {
+    const { services, built, registry, run } = setup();
+    const track = built.tracks[0];
+    const beat = track?.bars[1]?.voices[0]?.beats[0];
+    if (!track || !beat) throw new Error('short song');
+    services.menuTarget.getState().clear();
+    services.selection.getState().setEdit({
+      cursor: {
+        track: track.id,
+        masterBar: built.masterBars[1]?.id ?? '',
+        voice: 0,
+        beat: beat.id,
+        string: 1,
+        staff: 'tab',
+        at: { track: 0, bar: 1, beat: 0 },
+      },
+    });
+    expect(registry.get('editor.removeChordName')?.enabled?.()).toBe(true);
+    run('editor.removeChordName');
+    expect(
+      services.document.getState().score?.tracks[0]?.bars[1]?.voices[0]?.beats[0]?.chord,
+    ).toBeUndefined();
+  });
+
+  it('"Remove section" falls back to the cursor bar, and undoes as one setMasterBars step', () => {
+    const { services, built, registry, run } = setup();
+    const track = built.tracks[0];
+    const bar = built.masterBars[1];
+    const beat = track?.bars[1]?.voices[0]?.beats[0];
+    if (!track || !bar || !beat) throw new Error('short song');
+    services.menuTarget.getState().clear();
+    services.selection.getState().setEdit({
+      cursor: {
+        track: track.id,
+        masterBar: bar.id,
+        voice: 0,
+        beat: beat.id,
+        string: 1,
+        staff: 'tab',
+        at: { track: 0, bar: 1, beat: 0 },
+      },
+    });
+    expect(registry.get('editor.removeSection')?.enabled?.()).toBe(true);
+    run('editor.removeSection');
+    expect(services.document.getState().score?.masterBars[1]?.section).toBeUndefined();
+    expect(services.document.getState().undoLabel).toBe('setMasterBars');
+  });
 });

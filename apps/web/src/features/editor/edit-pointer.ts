@@ -21,9 +21,9 @@ type Before = Pick<
   'cursor' | 'range' | 'selection' | 'bars' | 'barsAnchor' | 'currentTrack'
 >;
 
-/** A press on a column's own area, above the staves where the bar number sits: it takes whole bars. */
 type Pointer = Pick<ScorePointerEvent, 'point' | 'anchor' | 'column'>;
 
+/** A press on a column's own area, above the staves where the bar number sits: it takes whole bars. */
 const onBarArea = (event: Pointer): boolean =>
   event.anchor?.kind === 'bar' && event.anchor.track === undefined;
 
@@ -31,7 +31,7 @@ const mod = (event: ScorePointerEvent): boolean => event.event.metaKey || event.
 
 /**
  * The editor's pointer handling: a click places the cursor (and picks the note under it), Shift
- * extends a beat range from the cursor, Cmd or Ctrl toggles a note in the picked set, and a drag
+ * extends a beat range from the cursor, Cmd (Ctrl on Windows and Linux; on macOS Ctrl+click opens the context menu) toggles a note in the picked set, and a drag
  * makes a range, previewed while it runs and restored if it is cancelled. A press on a column's
  * bar-number area takes whole bars. Returns the handler to call with each gesture; true when it
  * moved the cursor for good (a click or the end of a drag), so the caller can reveal and seek.

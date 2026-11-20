@@ -10,7 +10,7 @@ import type { BarRange, EditCursor } from '@/state/selection';
 
 import { markCursor } from './edit-here';
 import { caretBoxes, caretRect, rangeBoxes } from './geometry';
-import { barRangeOf, rangeBars, rangeBeats } from './range';
+import { barRangeOf, rangeBars, rangeBeats, rangeSpan } from './range';
 import { visibleTracks } from './visible';
 import { beatWithTrack } from './words';
 
@@ -110,7 +110,19 @@ function insideRange(score: Score, services: MenuServices, hit: ScoreHit): boole
     return rangeBeats(score, range, visible).some(({ beats }) => beats.some((b) => b.id === beat));
   }
   const bar = anchor?.masterBar ?? column?.id;
-  return bar !== undefined && rangeBars(score, range).includes(bar);
+  if (bar === undefined || !rangeBars(score, range).includes(bar)) return false;
+  // The bar-number area names no track. Empty staff space does: it is inside only on a track the
+  // range covers and, for a range of beats, where a beat of the range sits, as a click would say.
+  const track = anchor?.track;
+  if (track === undefined) return true;
+  const visible = visibleTracks(score, services.document.getState().view);
+  const at = index.barIndex.get(bar);
+  const span = rangeSpan(score, range, visible);
+  if (!span?.tracks.includes(track)) return false;
+  return (
+    range.kind === 'bars' ||
+    rangeBeats(score, range, visible).some((part) => part.track === track && part.bar === at)
+  );
 }
 
 /**

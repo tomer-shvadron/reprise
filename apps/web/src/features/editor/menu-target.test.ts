@@ -294,6 +294,26 @@ describe('scoreMenuRequest', () => {
     expect(open?.cursor).toBeUndefined();
   });
 
+  it('in edit mode, empty staff space on a track the range does not cover is outside it', async () => {
+    const { services, layout, score: loaded } = await setup();
+    const [bar] = loaded.masterBars;
+    const [guitar, bass] = loaded.tracks;
+    if (!bar || !guitar || !bass) throw new Error('short song');
+    const end = { track: guitar.id, masterBar: bar.id, beat: undefined };
+    services.selection.getState().setEdit({ range: { kind: 'bars', anchor: end, focus: end } });
+    const staffOf = (track: string) =>
+      layout.anchors.find((a) => a.kind === 'bar' && a.track === track && a.masterBar === bar.id);
+    const own = staffOf(guitar.id);
+    const other = staffOf(bass.id);
+    if (!own || !other) throw new Error('no staff anchors');
+    expect(scoreMenuRequest(hitOn(layout, own), services, 'edit')?.request.surface).toBe(
+      'score.range',
+    );
+    const outside = scoreMenuRequest(hitOn(layout, other), services, 'edit');
+    expect(outside?.request.surface).toBe('score.bar');
+    expect(outside?.place).toBeDefined();
+  });
+
   it('in edit mode, the paper outside every system has the paper menu', async () => {
     const { services, layout } = await setup();
     expect(scoreMenuRequest(hitAtPoint(layout, -50, -50), services, 'edit')?.request.surface).toBe(

@@ -1,3 +1,4 @@
+import { toggleLabel } from '@/app/context-menu/shell-menus';
 import type { MenuContext, MenuContribution, MenuItemSpec } from '@/app/context-menu/types';
 
 const hasScore = ({ services }: MenuContext) => services.document.getState().score !== undefined;
@@ -9,15 +10,6 @@ const clipboard: readonly MenuItemSpec[] = [
   { command: 'editor.copy', group: 'clipboard' },
   { command: 'editor.cut', group: 'clipboard' },
   { command: 'editor.paste', group: 'clipboard' },
-];
-
-const viewItems: readonly MenuItemSpec[] = [
-  { command: 'view.toggleViewMode', group: 'view', modes: edit },
-  { command: 'view.toggleMultitrack', group: 'view', modes: edit },
-  { command: 'view.zoomIn', group: 'view', modes: edit },
-  { command: 'view.zoomOut', group: 'view', modes: edit },
-  { command: 'view.zoomReset', group: 'view', modes: edit },
-  { command: 'view.followPlayback', group: 'view', modes: edit },
 ];
 
 /**
@@ -143,8 +135,12 @@ export const editorMenus: readonly MenuContribution[] = [
       },
       { command: 'editor.paste', group: 'clipboard' },
       { command: ['track.add', 'track.addWindows'], group: 'track', modes: edit },
-      ...viewItems,
-      { command: 'editor.showHistory', group: 'properties', modes: edit },
+      {
+        command: 'editor.showHistory',
+        group: 'properties',
+        modes: edit,
+        label: toggleLabel('history', 'history'),
+      },
     ],
   },
 ];

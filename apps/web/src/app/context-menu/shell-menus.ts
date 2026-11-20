@@ -19,7 +19,7 @@ const showsPanel = ({ services }: MenuContext, view: PanelView) => {
 };
 
 /** For a tab whose command toggles: "Hide history" while it shows, "Show history" otherwise. */
-const toggleLabel = (view: PanelView, noun: string) => (at: MenuContext) =>
+export const toggleLabel = (view: PanelView, noun: string) => (at: MenuContext) =>
   `${showsPanel(at, view) ? 'Hide' : 'Show'} ${noun}`;
 
 const collapseLabel = ({ services }: MenuContext) =>

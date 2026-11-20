@@ -133,6 +133,26 @@ describe('the score pane in edit mode', () => {
     expect(services.selection.getState().selection.noteIds).toEqual([]);
   });
 
+  it('on a Mac, Ctrl+click is a context click in edit mode: it moves and toggles nothing', async () => {
+    const mac = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Macintosh');
+    try {
+      const { services, score, result, canvas } = await setup();
+      act(() => {
+        services.editing.getState().setEditing(true);
+      });
+      const before = services.selection.getState();
+      const at = noteAt(result, score, 0, 1, 1);
+      fireEvent.pointerDown(canvas(), { ...at, ctrlKey: true });
+      fireEvent.pointerUp(canvas(), { ...at, ctrlKey: true });
+      const after = services.selection.getState();
+      expect(after.cursor).toEqual(before.cursor);
+      expect(after.selection).toEqual(before.selection);
+      expect(services.fakeAudio.seek).not.toHaveBeenCalled();
+    } finally {
+      mac.mockRestore();
+    }
+  });
+
   it('never turns off a loop: inside it seeks, outside it moves the cursor only', async () => {
     const { services, score, result, canvas } = await setup();
     const id = (i: number) => score.masterBars[i]?.id ?? '';
