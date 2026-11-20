@@ -1,4 +1,9 @@
 export { TransportBar } from './transport-bar';
+// The parts the practice capsule (the shell's) reuses, so its buttons are the transport's own.
+export { Announcer } from './announcer';
+export { PlaybackButtons } from './playback-buttons';
+export { PracticeToggles } from './practice-toggles';
+export { TempoControl } from './tempo-control';
 export { transportCommands, type TransportCommandId } from './commands';
 // Pure helpers other features may import; never the bar's stores or internals.
 export { bpmFor, clampPercent, parseBpm, percentForBpm, TEMPO_PERCENT } from './tempo';
@@ -16,3 +21,4 @@ export {
   type ScoreSection,
 } from './sections';
 export { describePosition } from './position-format';
+export { sectionRange, targetBars, targetPlace, type BarPlace } from './menu-target';

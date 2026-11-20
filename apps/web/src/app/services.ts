@@ -132,7 +132,14 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   });
 
   // The clipboard events of edit mode; after the editor, whose reconcile an edit's range follows.
-  const uninstallClipboard = installClipboard({ document, selection, editing, entry });
+  const uninstallClipboard = installClipboard({
+    document,
+    selection,
+    editing,
+    entry,
+    menuTarget,
+    transport,
+  });
 
   // After the document wiring above, so a switch reaches the audio service before the speed reset.
   const uninstallTransport = installTransport({

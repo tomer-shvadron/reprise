@@ -2,10 +2,10 @@ import { startNewSong } from '@/features/editor';
 import { libraryOf } from '@/features/library/library';
 import type { MenuCommandId } from '@/platform/bridge';
 import { THEME_SETTING } from '@/state/app-settings';
-import { ZOOM } from '@/state/ui';
+import { selectScoreZoom, ZOOM } from '@/state/ui';
 
 import type { Command } from './command-registry';
-import { openContextMenuOn } from './context-menu/open-on';
+import { openContextMenuOn, SCORE_SURFACE_SELECTOR } from './context-menu/open-on';
 import type { AppServices } from './services';
 import { whenSaved } from './when-saved';
 
@@ -31,8 +31,14 @@ type AppCommand = Command & { id: AppCommandId };
 
 export function appCommands(services: AppServices): AppCommand[] {
   const { ui, print, document, settings } = services;
+  // While practising the keys act on the practice zoom, the one on screen.
+  const setShownZoom = (zoom: number) => {
+    const state = ui.getState();
+    if (state.practiceMode.on) state.setPracticeZoom(zoom);
+    else state.setZoom(zoom);
+  };
   const zoomBy = (delta: number) => {
-    ui.getState().setZoom(Math.round((ui.getState().zoom + delta) * 10) / 10);
+    setShownZoom(Math.round((selectScoreZoom(ui.getState()) + delta) * 10) / 10);
   };
 
   // The focused element's menu; on the body, the score's, so the key still answers.
@@ -41,7 +47,7 @@ export function appCommands(services: AppServices): AppCommand[] {
     const target =
       active && active !== globalThis.document.body
         ? active
-        : globalThis.document.querySelector('[role="region"][aria-roledescription="score"]');
+        : globalThis.document.querySelector(SCORE_SURFACE_SELECTOR);
     if (target) openContextMenuOn(target);
   };
 
@@ -223,7 +229,7 @@ export function appCommands(services: AppServices): AppCommand[] {
       title: 'Actual size',
       shortcut: { key: '0', mod: true },
       run: () => {
-        ui.getState().setZoom(ZOOM.default);
+        setShownZoom(ZOOM.default);
       },
     },
     {

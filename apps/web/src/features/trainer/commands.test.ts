@@ -3,6 +3,7 @@ import { act } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { createAppRegistry } from '@/app/app-registry';
+import { runCommand } from '@/app/command-registry';
 import { installShortcutDispatcher } from '@/app/shortcut-dispatcher';
 import { mirrorAudio } from '@/test/mirror-audio';
 import { fourBars } from '@/test/position';
@@ -115,5 +116,114 @@ describe('trainer commands', () => {
     } finally {
       uninstall();
     }
+  });
+
+  describe('in the practice mode', () => {
+    it('start the trainer, the click and the tuner without opening a panel or leaving', async () => {
+      const { services, registry, loop, trainer } = await setup();
+      loop();
+      services.ui.getState().enterPracticeMode('play');
+      const run = (id: string) => {
+        const command = registry.get(id);
+        if (!command) throw new Error(`no command ${id}`);
+        runCommand(command);
+      };
+      run('trainer.speedTrainerToggle');
+      expect(trainer.getState().status).toBe('running');
+      run('trainer.metronomeToggle');
+      expect(services.fakeAudio.startClick).toHaveBeenCalled();
+      run('trainer.tunerToggle');
+      expect(services.ui.getState().practiceMode.on).toBe(true);
+      expect(services.ui.getState().panels.rightPanel).toBe(false);
+    });
+
+    it('still leave the mode and show the panel for the explicit Show commands', async () => {
+      const { services, registry } = await setup();
+      services.ui.getState().enterPracticeMode('play');
+      const show = registry.get('trainer.speedTrainer');
+      if (show) runCommand(show);
+      expect(services.ui.getState().practiceMode.on).toBe(false);
+      expect(services.ui.getState().rightPanelView).toBe('speedTrainer');
+    });
+  });
+
+  describe('on the menu target', () => {
+    it('loop the right-clicked bar, show the speed trainer and start it', async () => {
+      const { services, registry, trainer } = await setup();
+      const bar = services.document.getState().score?.masterBars[2];
+      if (!bar) throw new Error('no bar');
+      services.menuTarget.getState().set({ kind: 'bar', masterBar: bar.id, track: undefined });
+      expect(registry.get('trainer.speedTrainerOnSelection')?.enabled?.()).toBe(true);
+      await registry.get('trainer.speedTrainerOnSelection')?.run();
+      expect(services.playback.getState().settings.loop).toEqual({
+        startBar: bar.id,
+        endBar: bar.id,
+      });
+      expect(services.ui.getState().rightPanelView).toBe('speedTrainer');
+      expect(trainer.getState().status).toBe('running');
+      expect(trainer.getState().range).toEqual({ startBar: bar.id, endBar: bar.id });
+    });
+
+    it('start a run already going over the new bar', async () => {
+      const { services, registry, loop, trainer } = await setup();
+      loop();
+      trainer.getState().start();
+      const bar = services.document.getState().score?.masterBars[3];
+      if (!bar) throw new Error('no bar');
+      services.menuTarget.getState().set({ kind: 'bar', masterBar: bar.id, track: undefined });
+      await registry.get('trainer.speedTrainerOnSelection')?.run();
+      expect(trainer.getState().range).toEqual({ startBar: bar.id, endBar: bar.id });
+      expect(trainer.getState().status).toBe('running');
+    });
+
+    it('are disabled with no bar, and do nothing', async () => {
+      const { services, registry, trainer } = await setup();
+      const command = registry.get('trainer.speedTrainerOnSelection');
+      expect(command?.enabled?.()).toBe(false);
+      await command?.run();
+      expect(trainer.getState().status).toBe('idle');
+      expect(services.playback.getState().settings.loop).toBeUndefined();
+    });
+
+    it('show the fretboard of the right-clicked track, keeping a loop the beat lies outside', async () => {
+      const { services, registry, loop } = await setup();
+      loop();
+      const score = services.document.getState().score;
+      const beat = score?.tracks[0]?.bars[2]?.voices[0]?.beats[1];
+      const bar = score?.masterBars[2];
+      const first = score?.masterBars[0];
+      if (!beat || !bar || !first) throw new Error('no beat');
+      services.menuTarget
+        .getState()
+        .set({ kind: 'beat', beat: beat.id, track: 'other-track', masterBar: bar.id });
+      await registry.get('trainer.showFretboard')?.run();
+      expect(services.playback.getState().settings.loop).toEqual({
+        startBar: first.id,
+        endBar: first.id,
+      });
+      expect(services.selection.getState().currentTrack).toBe('other-track');
+      expect(services.ui.getState().bottomPanel).toEqual({ open: true, view: 'fretboard' });
+    });
+
+    it('show the fretboard, never hiding it, and move a stopped playhead to a beat', async () => {
+      const { services, registry } = await setup();
+      const score = services.document.getState().score;
+      const beat = score?.tracks[0]?.bars[2]?.voices[0]?.beats[1];
+      const bar = score?.masterBars[2];
+      if (!beat || !bar) throw new Error('no beat');
+      const show = registry.get('trainer.showFretboard');
+      services.menuTarget
+        .getState()
+        .set({ kind: 'beat', beat: beat.id, track: 'x', masterBar: bar.id });
+      await show?.run();
+      expect(services.ui.getState().bottomPanel).toEqual({ open: true, view: 'fretboard' });
+      expect(services.fakeAudio.seek).toHaveBeenLastCalledWith(2 * 3840 + 960);
+      await show?.run();
+      expect(services.ui.getState().bottomPanel).toEqual({ open: true, view: 'fretboard' });
+      services.fakeAudio.seek.mockClear();
+      services.menuTarget.getState().set({ kind: 'bar', masterBar: bar.id, track: undefined });
+      await show?.run();
+      expect(services.fakeAudio.seek).not.toHaveBeenCalled();
+    });
   });
 });

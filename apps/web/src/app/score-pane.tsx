@@ -19,16 +19,24 @@ import {
 import { orderedRange } from '@/features/transport/bar-range';
 import { playheadBar, seekToBar } from '@/features/transport';
 import {
+  adoptMenuTarget,
   cursorTick,
   createEditPointer,
+  scoreKeyboardRequest,
+  scoreMenuRequest,
   caretRect,
   useEditOverlays,
   WordField,
 } from '@/features/editor';
 import { FOLLOW_PLAYHEAD_SETTING } from '@/state/app-settings';
 import { selectRunning } from '@/state/playback';
+import { selectScoreZoom } from '@/state/ui';
 import type { BarRange } from '@/state/selection';
 
+import { PRACTICE_CAPSULE_CLEARANCE } from './practice-mode/clearance';
+import { useBodyContextMenuFallback } from './context-menu/body-fallback';
+import { useContextMenu, useStaticContextMenu } from './context-menu/use-context-menu';
+import { detectKeyboardPlatform } from './keyboard';
 import { startPlayhead, type PlayheadDriver } from './playhead-driver';
 import type { AppServices } from './services';
 import { useAppServices } from './services-context';
@@ -38,11 +46,17 @@ function EmptyPaper({ children }: { children: ReactNode }) {
   const { ui } = useAppServices();
   const { zoom, paper } = useStore(
     ui,
-    useShallow((state) => ({ zoom: state.zoom, paper: state.view.paper })),
+    useShallow((state) => ({ zoom: selectScoreZoom(state), paper: state.view.paper })),
   );
   const size = PAGE_SIZES[paper];
+  // The empty paper has a menu too: a way to open a song, before there is a score to act on.
+  const menu = useStaticContextMenu({
+    surface: 'score.paper',
+    target: { kind: 'paper' },
+    label: 'Score',
+  });
   return (
-    <div className="h-full overflow-auto">
+    <div className="h-full overflow-auto" data-score-surface="" {...menu}>
       <div className="w-max min-w-full p-8">
         <div
           className="bg-paper text-ink mx-auto p-12 shadow-md"
@@ -84,6 +98,7 @@ function FollowButton() {
   const { playback, ui } = useAppServices();
   const running = useStore(playback, selectRunning);
   const following = useStore(ui, (state) => state.follow.on);
+  const practising = useStore(ui, (state) => state.practiceMode.on);
   const followSetting = useSetting(FOLLOW_PLAYHEAD_SETTING);
   // With the setting off nothing follows, so while playing the button always offers a jump to the
   // playhead (one scroll); it is the only on-screen way back.
@@ -92,7 +107,9 @@ function FollowButton() {
     <Button
       variant="secondary"
       size="sm"
-      className="absolute right-4 bottom-4 shadow-md"
+      // The practice capsule floats at the bottom; the button sits above it.
+      className="absolute right-4 shadow-md"
+      style={{ bottom: practising ? PRACTICE_CAPSULE_CLEARANCE : 16 }}
       onClick={() => {
         ui.getState().requestFollow();
       }}
@@ -107,7 +124,8 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
   const services = useAppServices();
   const { document, playback, selection, ui } = services;
   const score = useStore(document, (state) => state.score);
-  const zoom = useStore(ui, (state) => state.zoom);
+  const zoom = useStore(ui, selectScoreZoom);
+  const practising = useStore(ui, (state) => state.practiceMode.on);
   const mode = useStore(ui, (state) => state.view.mode);
   const bars = useStore(selection, (state) => state.bars);
   const range = useStore(selection, (state) => state.range);
@@ -116,7 +134,14 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
   const edit = useEditOverlays();
   const loop = useStore(playback, (state) => state.settings.loop);
   const [preview, setPreview] = useState<BarRange>();
-  const [gestures] = useState(createGestureTracker);
+  // On a Mac a Ctrl+click is a context click: it opens the menu and neither seeks nor selects.
+  // Edit mode has no menu yet, so there it stays a Cmd-style click (it toggles a picked note).
+  const [gestures] = useState(() =>
+    createGestureTracker({
+      ctrlIsContextClick: () =>
+        detectKeyboardPlatform() === 'mac' && !services.editing.getState().editing,
+    }),
+  );
   const editPointer = useMemo(
     () => createEditPointer({ selection, document }),
     [selection, document],
@@ -192,6 +217,20 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
     }
   };
 
+  // Edit mode has no menu of its own yet, so it keeps the browser's.
+  const menuMode = editing ? 'edit' : 'play';
+  const menu = useContextMenu((via, event) => {
+    const view = handle.current;
+    if (!view) return undefined;
+    if (via === 'keyboard') {
+      return scoreKeyboardRequest(services, result, (rect) => view.clientRect(rect), menuMode);
+    }
+    const open = scoreMenuRequest(view.hitAt(event.clientX, event.clientY), services, menuMode);
+    // A right-click selects what it opened on, as a click would, but never seeks or moves a loop.
+    if (open?.adopt) adoptMenuTarget(services, open.adopt);
+    return open?.request;
+  });
+
   const onUserScroll = (axis: ScrollAxis) => {
     if (axis === 'both' || axis === (mode === 'paged' ? 'y' : 'x')) ui.getState().pauseFollow();
   };
@@ -203,9 +242,11 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
         ref={handle}
         layout={result}
         zoom={zoom}
+        bottomInset={practising ? PRACTICE_CAPSULE_CLEARANCE : 0}
         label={label}
         overlays={overlays}
         onScorePointer={onScorePointer}
+        onContextMenu={menu.onContextMenu}
         onUserScroll={onUserScroll}
         className="h-full focus-visible:-outline-offset-2"
       >
@@ -218,6 +259,7 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
 
 export function ScorePane({ hint }: { hint: ReactNode }) {
   const { document, layout } = useAppServices();
+  useBodyContextMenuFallback();
   const { result, error } = useStore(
     layout,
     useShallow((state) => ({ result: state.result, error: state.error })),

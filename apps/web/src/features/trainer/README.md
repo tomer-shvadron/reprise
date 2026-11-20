@@ -204,3 +204,7 @@ together: starting one stops the other.
   metronome are never observed: the capture imports nothing from `tuner/` or `metronome/`.
 - Not done: a weekly summary and streaks (they would want a `startedAt` index, a Dexie version 3),
   export of the log, pruning or a clear-history button, and a Resume command.
+- **In the practice mode (#341)** starting the speed trainer, the standalone metronome or the tuner
+  (⌥S, ⌥B, the capsule's chip) does not show their panel, because a panel would end the mode; the
+  capsule's `SpeedTrainerChip command="trainer.speedTrainerToggle"` shows the progress and the
+  trainer announces its own steps. The explicit "Show ..." commands still open the panel.

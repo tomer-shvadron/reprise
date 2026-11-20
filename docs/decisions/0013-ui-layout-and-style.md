@@ -63,6 +63,10 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - Changed by #340 (2026-11-20): the transport gains a speed-trainer chip after the loop and a tuner
   button after the click (S-PRAC-1); both open the panel's Practice tab. See "Changed by #340" in
   `../specs/architecture.md`.
+- Changed by #341 (2026-11-20): a practice mode (L4). F11, the header's Practice segment or Focus on
+  loop hides the header, the panels, the dock, the transport and the status bar; the score fills the
+  window under a strip of its sections, with one floating capsule of practice controls, and Escape
+  returns to the window as it was. See "Changed by #341" in `../specs/architecture.md`.
 - Changed by #338 (2026-11-20): the command palette takes go-to prefixes (`#` sections, `@` tracks,
   `/` songs, a number for a bar) and ⌘G opens it on a bar number. The arrangement is unchanged. See
   "Changed by #338" in `../specs/architecture.md`.
