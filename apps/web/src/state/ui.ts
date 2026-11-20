@@ -47,6 +47,9 @@ export interface UiFollow {
   request: number;
 }
 
+/** What the command palette searches: its commands, or one kind of thing the first character picks. */
+export type PaletteMode = 'commands' | 'sections' | 'tracks' | 'songs' | 'bar';
+
 export interface UiState {
   theme: Theme;
   view: UiView;
@@ -61,6 +64,10 @@ export interface UiState {
   bottomPanelHeight: number;
   zoom: number;
   paletteOpen: boolean;
+  /** The mode the palette was asked to open in; `undefined` is plain commands. */
+  paletteMode: PaletteMode | undefined;
+  /** Counts every `openPalette`, so a palette already open starts over in the new mode. */
+  paletteRequest: number;
   /** The shortcuts cheat sheet (WP-101). */
   shortcutsOpen: boolean;
   follow: UiFollow;
@@ -88,6 +95,8 @@ export interface UiState {
   persistBottomPanelHeight: () => void;
   setZoom: (zoom: number) => void;
   setPaletteOpen: (open: boolean) => void;
+  /** Opens the palette in `mode`, or restarts an open one there. */
+  openPalette: (mode?: PaletteMode) => void;
   setShortcutsOpen: (open: boolean) => void;
   setViewMode: (mode: UiView['mode']) => void;
   setPaper: (paper: UiView['paper']) => void;
@@ -124,6 +133,8 @@ export function createUiStore(theme: Theme = initialTheme()) {
     bottomPanelHeight: readStoredBottomPanelHeight(),
     zoom: ZOOM.default,
     paletteOpen: false,
+    paletteMode: undefined,
+    paletteRequest: 0,
     shortcutsOpen: false,
     follow: { on: true, request: 0 },
     setTheme: (next) => {
@@ -187,7 +198,14 @@ export function createUiStore(theme: Theme = initialTheme()) {
       set({ zoom: clamp(zoom, ZOOM.min, ZOOM.max) });
     },
     setPaletteOpen: (open) => {
-      set({ paletteOpen: open });
+      set(open ? { paletteOpen: true } : { paletteOpen: false, paletteMode: undefined });
+    },
+    openPalette: (mode) => {
+      set((state) => ({
+        paletteOpen: true,
+        paletteMode: mode,
+        paletteRequest: state.paletteRequest + 1,
+      }));
     },
     setShortcutsOpen: (open) => {
       set({ shortcutsOpen: open });

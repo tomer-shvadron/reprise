@@ -13,6 +13,10 @@ const ZOOM_STEP = 0.1;
 export type AppCommandId =
   | MenuCommandId
   | 'app.commandPalette'
+  | 'app.goToBar'
+  | 'app.goToSection'
+  | 'app.goToTrack'
+  | 'app.goToSong'
   | 'app.shortcuts'
   | 'app.shortcutsAlt'
   | 'file.close'
@@ -35,6 +39,38 @@ export function appCommands(services: AppServices): AppCommand[] {
       inPalette: false,
       run: () => {
         ui.getState().setPaletteOpen(!ui.getState().paletteOpen);
+      },
+    },
+    {
+      id: 'app.goToBar',
+      title: 'Go to bar…',
+      shortcut: { key: 'g', mod: true },
+      enabled: () => document.getState().score !== undefined,
+      run: () => {
+        ui.getState().openPalette('bar');
+      },
+    },
+    {
+      id: 'app.goToSection',
+      title: 'Go to section…',
+      enabled: () => document.getState().score !== undefined,
+      run: () => {
+        ui.getState().openPalette('sections');
+      },
+    },
+    {
+      id: 'app.goToTrack',
+      title: 'Go to track…',
+      enabled: () => document.getState().score !== undefined,
+      run: () => {
+        ui.getState().openPalette('tracks');
+      },
+    },
+    {
+      id: 'app.goToSong',
+      title: 'Open song from library…',
+      run: () => {
+        ui.getState().openPalette('songs');
       },
     },
     {

@@ -1,4 +1,4 @@
-export type PaletteMode = 'commands' | 'sections' | 'tracks' | 'songs' | 'bar';
+export type { PaletteMode } from '@/state/ui';
 
 /** One list item of a prefix mode. Providers rank; the palette body binds `run` and `alt`. */
 export interface PaletteRow {

@@ -24,6 +24,10 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 | Command | Category | Context | macOS | Windows |
 | ------- | -------- | ------- | ----- | ------- |
 | Show command palette | App | Global | ⌘K | Ctrl+K |
+| Go to bar… | App | Global | ⌘G | Ctrl+G |
+| Go to section… | App | Global | — | — |
+| Go to track… | App | Global | — | — |
+| Open song from library… | App | Global | — | — |
 | Show keyboard shortcuts | App | Global | ? or ⌘/ | ? or Ctrl+/ |
 | New song | File | Global | ⌘N | Ctrl+N |
 | Open file… | File | Global | ⌘O | Ctrl+O |

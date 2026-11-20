@@ -15,3 +15,4 @@ export {
   type RankedSection,
   type ScoreSection,
 } from './sections';
+export { describePosition } from './position-format';

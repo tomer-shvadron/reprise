@@ -221,7 +221,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             {screen === 'library' ? <LibraryScreen /> : <SoundManager />}
           </ScreenHost>
         )}
-        <CommandPalette registry={registry} ui={ui} keyboard={keyboard} />
+        <CommandPalette registry={registry} ui={ui} keyboard={keyboard} services={services} />
         <ShortcutSheet registry={registry} ui={ui} keyboard={keyboard} />
         <DropZone />
         <Notices />

@@ -39,6 +39,7 @@ const NAVIGATION_KEYS = new Set([
  */
 const TOGGLE_MARKER: Readonly<Record<string, string>> = {
   'app.commandPalette': 'data-command-palette',
+  'app.goToBar': 'data-command-palette',
   'app.shortcuts': 'data-shortcut-sheet',
   'app.shortcutsAlt': 'data-shortcut-sheet',
 };
