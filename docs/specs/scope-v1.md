@@ -1,6 +1,6 @@
 # Scope for v1
 
-The 80/20 cut of each product. "v1" is what ships at the release checkpoint. "Deferred" is agreed as wanted but not in v1. "Dropped" is agreed as out, so nobody re-litigates it by accident.
+The 80/20 cut of each product. "v1" is what ships at the release checkpoint, which the owner moved after phase 5 on 2026-11-20 (see [Phase 5 additions](#phase-5-additions)). "Deferred" is agreed as wanted but not in v1. "Dropped" is agreed as out, so nobody re-litigates it by accident.
 
 ## Player
 
@@ -24,8 +24,8 @@ The 80/20 cut of each product. "v1" is what ships at the release checkpoint. "De
 
 | v1                                                                                                                           | Deferred                                   | Dropped                                       |
 | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | --------------------------------------------- |
-| Speed trainer: pick a loop range, start tempo, step every N repetitions, target tempo                                         | Scale and arpeggio overlay on the fretboard | Rocksmith-style note detection and scoring    |
-| Tuner using the built-in mic, cents offset display, reference from the current track's tuning and capo                        | Chord library and chord lookup             |                                               |
+| Speed trainer: pick a loop range, start tempo, step every N repetitions, target tempo                                         |                                             | Rocksmith-style note detection and scoring    |
+| Tuner using the built-in mic, cents offset display, reference from the current track's tuning and capo                        |                                            |                                               |
 | Standalone metronome with BPM, time signature and downbeat accent, usable without a song open                                 | Practice goals and streaks                 |                                               |
 | Practice log per song: time spent, loops worked on, highest clean tempo per section, shown on the song's page in the library | Recording yourself alongside playback      |                                               |
 
@@ -62,3 +62,21 @@ The 80/20 cut of each product. "v1" is what ships at the release checkpoint. "De
 | Dark theme default, light theme                                    | Localization             |                         |
 | Command palette and full keyboard shortcut map                     |                          |                         |
 | Sound pack manager with downloads and license display              |                          |                         |
+
+## Phase 5 additions
+
+On 2026-11-20 the owner decided that the picks of the Phase 5 milestone ([plan](../plans/phase-5-owner-picks.md)) ship in v1, so the release candidate is cut after them. They move into v1 from Deferred, or are new:
+
+| Item                                                                                                           | Issue          |
+| -------------------------------------------------------------------------------------------------------------- | -------------- |
+| Layout: slim header with modes, collapsible side panel and bottom dock, split status bar                       | #333 to #336   |
+| Focus practice mode, speed-trainer chip and tuner button in the transport                                      | #340, #341     |
+| Context menus on every interactive surface, palette prefixes, selection pill                                   | #337 to #339   |
+| Library and Sounds as dialogs                                                                                  | #342           |
+| Settings dialog, configurable keyboard shortcuts, quick track switching                                        | #343 to #345   |
+| Default sounds and default notation per track kind                                                             | #346, #347     |
+| More instruments, and a roadmap for sampled sounds beyond GM                                                   | #348, #349     |
+| ASCII tab export, PNG and SVG export                                                                           | #350, #351     |
+| Chord library, chord diagrams drawn where the file has them                                                    | #352, #278     |
+| Song insights, with the scale and arpeggio overlay on the fretboard                                            | #353           |
+| Golpe, pick scrape and wah-wah marks                                                                           | #354, #355     |

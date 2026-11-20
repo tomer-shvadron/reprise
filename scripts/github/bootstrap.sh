@@ -39,6 +39,7 @@ LABELS=(
   "phase:2|C5DEF5|Roadmap phase 2"
   "phase:3|C5DEF5|Roadmap phase 3"
   "phase:4|C5DEF5|Roadmap phase 4"
+  "phase:5|C5DEF5|Roadmap phase 5"
   "lane:lead|000000|Serial or integration work done by the lead"
   "lane:score|E99695|Score lane: packages/layout, features/score, features/editor"
   "lane:audio|F9D0C4|Audio lane: packages/audio, features/sounds"
@@ -54,6 +55,7 @@ MILESTONES=(
   "Editor|A new song written from scratch with the keyboard only, every in-scope effect applied and heard, saved native and exported as gp, with undo across all of it."
   "HQ Sound|A downloaded SFZ pack plays with articulation layers through an effects preset; memory under budget with four HQ tracks; switching songs evicts."
   "Release|v1 tag, macOS and Windows installers on a GitHub Release, light theme audited, shortcut map complete."
+  "Phase 5|Every phase 5 issue closed, before the v1 release candidate."
 )
 
 # name|colour|description, in board order
