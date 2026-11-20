@@ -17,7 +17,7 @@ export function libraryCommands(services: AppServices): LibraryCommand[] {
   const { ui } = services;
   // Each run shows the library first: the progress and the summary are on its screen.
   const importing = (run: () => Promise<void>) => () => {
-    ui.getState().setScreen('library');
+    ui.getState().showSheet('library');
     return run();
   };
   return [
@@ -25,7 +25,7 @@ export function libraryCommands(services: AppServices): LibraryCommand[] {
       id: 'library.show',
       title: 'Show library',
       run: () => {
-        ui.getState().setScreen('library');
+        ui.getState().showSheet('library');
       },
     },
     {

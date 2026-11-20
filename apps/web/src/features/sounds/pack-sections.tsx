@@ -215,6 +215,7 @@ export function InstalledRow(props: InstalledRowProps) {
         {renaming ? (
           <form
             className="flex gap-2"
+            data-sheet-escape-local
             onSubmit={(event) => {
               event.preventDefault();
               if (draft.trim() === '') return;
@@ -223,7 +224,7 @@ export function InstalledRow(props: InstalledRowProps) {
             }}
             onKeyDown={(event) => {
               if (event.key !== 'Escape') return;
-              // Cancels the rename only; the screen behind closes on a second Escape.
+              // Cancels the rename only; the sheet behind closes on a second Escape.
               event.stopPropagation();
               closeRename();
             }}

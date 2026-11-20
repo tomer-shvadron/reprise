@@ -555,7 +555,7 @@ export function createLibrary(
         void repo.touch(id, opened.lastOpenedAt).catch((error: unknown) => {
           console.warn('Could not record the open time', error);
         });
-        ui.getState().setScreen('player');
+        ui.getState().closeSheet();
         // A draft the user put off at launch is answered before an edit can overwrite it.
         if (draft === undefined) recovery.reoffer(id);
       } catch (error) {
@@ -633,7 +633,7 @@ export function createLibrary(
     },
     showRecent() {
       store.setState({ sort: 'lastOpened', query: '' });
-      services.ui.getState().setScreen('library');
+      services.ui.getState().showSheet('library');
     },
     async dispose() {
       await Promise.allSettled([...pending]);

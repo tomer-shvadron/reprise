@@ -26,9 +26,29 @@ export interface SoundStatusLine {
 
 const line = (text: string, retry: boolean): SoundStatusLine => ({ text, stage: text, retry });
 
+/** A pack install in flight, which goes on while the Sounds sheet is closed. */
+export interface InstallProgress {
+  name: string;
+  done: number;
+  total: number | undefined;
+}
+
 /** What the sound status line says, and whether it offers Retry. */
-export function soundStatus(state: PlaybackStoreState): SoundStatusLine | undefined {
+export function soundStatus(
+  state: PlaybackStoreState,
+  install?: InstallProgress,
+): SoundStatusLine | undefined {
   if (state.output.status === 'error') return line('Audio output unavailable', true);
+  if (install) {
+    const stage = `Installing ${install.name}`;
+    return install.total
+      ? {
+          text: `${stage} ${String(Math.floor((Math.min(install.done, install.total) / install.total) * 100))}%`,
+          stage,
+          retry: false,
+        }
+      : { text: `${stage}…`, stage, retry: false };
+  }
   if (state.sounds.status === 'error') return line('Sounds unavailable', true);
   if (state.sounds.status === 'loading') {
     const { loaded, total } = state.sounds;
@@ -44,14 +64,15 @@ export function soundStatus(state: PlaybackStoreState): SoundStatusLine | undefi
 
 /**
  * The sound bank's and the song's load state, then the sound tier and the decoded memory, and
- * Retry after an error. A segment of the status bar: a click opens the Sounds screen.
+ * Retry after an error. A segment of the status bar: a click opens the Sounds sheet.
  */
 export function SoundStatus() {
-  const { playback, audio, document } = useAppServices();
+  const { playback, audio, document, sounds } = useAppServices();
+  const job = useStore(sounds.api, (state) => state.job);
   const { text, retry, memory, trackSounds } = useStore(
     playback,
     useShallow((state) => {
-      const status = soundStatus(state);
+      const status = soundStatus(state, job);
       return {
         text: status?.text,
         retry: status?.retry ?? false,

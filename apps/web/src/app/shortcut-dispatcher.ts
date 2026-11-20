@@ -34,13 +34,18 @@ const NAVIGATION_KEYS = new Set([
 ]);
 
 /**
- * The commands that close their own dialog, the one shortcut that dialog lets through: each maps
- * to the attribute marking its content, so a toggle passes only when its dialog is the sole modal.
+ * The commands an open modal lets through: each maps to the attribute marking the content of the
+ * modal it passes, and it passes only when every open modal carries that attribute. A dialog's own
+ * toggle (the palette, the cheat sheet) is the sole modal; the app sheets (the Library and
+ * Sounds, `data-app-sheet`) are browsing surfaces, not forms, so a drop onto them imports, and
+ * Space still plays and pauses (a text field keeps its own Space, see `leavesKeyToTarget`).
  */
-const TOGGLE_MARKER: Readonly<Record<string, string>> = {
+const PASSES_MODAL: Readonly<Record<string, string>> = {
   'app.commandPalette': 'data-command-palette',
   'app.shortcuts': 'data-shortcut-sheet',
   'app.shortcutsAlt': 'data-shortcut-sheet',
+  'app.drop': 'data-app-sheet',
+  'transport.playPause': 'data-app-sheet',
 };
 
 /**
@@ -66,14 +71,14 @@ function openModals(): Element[] {
 
 /**
  * Whether an open modal stops this command, for a shortcut and for the desktop menu alike (the
- * menu accelerator fires when the dispatcher lets a keydown through). Only a dialog's own
- * toggle passes, and only when that dialog is the sole modal, so Cmd+K closes the palette but opens
- * no second one over another dialog.
+ * menu accelerator fires when the dispatcher lets a keydown through). Only the commands in
+ * `PASSES_MODAL` pass, and only when every open modal is the kind they name, so Cmd+K closes the
+ * palette but opens no second one over another dialog.
  */
 export function modalBlocksCommand(id: string): boolean {
   const modals = openModals();
   if (modals.length === 0) return false;
-  const marker = TOGGLE_MARKER[id];
+  const marker = PASSES_MODAL[id];
   if (marker === undefined) return true;
   return modals.some((modal) => !modal.hasAttribute(marker));
 }

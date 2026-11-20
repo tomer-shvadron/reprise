@@ -27,13 +27,13 @@ function droppedHandle(event: DragEvent): Promise<FileSystemHandle | null> {
 /**
  * Drag and drop anywhere in the window. One file opens, and is imported into the library in the
  * background; Alt held opens it without importing. Several files, a folder, or any drop on the
- * library screen are imported as a batch.
+ * library sheet are imported as a batch.
  */
 export function DropZone() {
   const services = useAppServices();
   const { document, ui } = services;
-  const onLibrary = useStore(ui, (state) => state.screen === 'library');
-  const onSounds = useStore(ui, (state) => state.screen === 'sounds');
+  const onLibrary = useStore(ui, (state) => state.sheet === 'library');
+  const onSounds = useStore(ui, (state) => state.sheet === 'sounds');
   const [over, setOver] = useState(false);
 
   useEffect(() => {
@@ -54,13 +54,13 @@ export function DropZone() {
     };
     const onDrop = (event: DragEvent) => {
       if (!hasFiles(event)) return;
-      // Cancelled on every screen, or the browser navigates to the dropped file.
+      // Cancelled everywhere, or the browser navigates to the dropped file.
       event.preventDefault();
       depth = 0;
       setOver(false);
-      // The Sounds screen takes a dropped pack zip itself: the window opens and imports nothing.
-      if (ui.getState().screen === 'sounds') return;
-      // As for a shortcut or a menu command: a dialog is up, and a file dropped onto it must not
+      // The Sounds sheet takes a dropped pack zip itself: the window opens and imports nothing.
+      if (ui.getState().sheet === 'sounds') return;
+      // As for a shortcut or a menu command: a dialog is up (the Library and Sounds sheets let a drop through), and a file dropped onto it must not
       // replace the document behind it (it would also ask the unsaved question over the dialog).
       if (modalBlocksCommand('app.drop')) return;
       if (!event.dataTransfer) return;
@@ -71,9 +71,9 @@ export function DropZone() {
       if (
         snapshot.directories.length > 0 ||
         snapshot.files.length > 1 ||
-        ui.getState().screen === 'library'
+        ui.getState().sheet === 'library'
       ) {
-        ui.getState().setScreen('library');
+        ui.getState().showSheet('library');
         void library.importDrop(snapshot);
         return;
       }
@@ -125,7 +125,7 @@ export function DropZone() {
   return (
     <div
       aria-hidden
-      className="bg-background/70 pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-6"
+      className="bg-background/70 pointer-events-none fixed inset-0 z-[60] flex items-center justify-center p-6"
     >
       <div className="border-primary text-foreground flex h-full w-full items-center justify-center rounded-xl border-2 border-dashed text-lg font-medium">
         {onLibrary ? 'Drop to import' : 'Drop to open'}

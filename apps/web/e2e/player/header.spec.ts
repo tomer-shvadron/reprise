@@ -53,11 +53,11 @@ test('choosing from the View menu leaves focus with the page, so Space plays', a
   await expect(app.playButton).toHaveAccessibleName('Pause');
 });
 
-test('the crumb opens the library and Escape returns to the player', async ({ page }) => {
+test('the crumb opens the library and Escape closes it', async ({ page }) => {
   await page.getByRole('banner').getByRole('button', { name: 'Library' }).click();
-  await expect(page.getByRole('region', { name: 'Library' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Library' })).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('region', { name: 'Library' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Library' })).toHaveCount(0);
 });
 
 test('at the narrowest window the band keeps its height and every control fits', async ({

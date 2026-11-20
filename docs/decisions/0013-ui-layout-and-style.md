@@ -63,6 +63,7 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - Changed by #343 (2026-11-20): the theme is a setting with three values, System, Light and Dark, and
   System, which follows the operating system, is the default, so "dark theme by default" holds only
   where the system is dark. See "Changed by #343" in `../specs/architecture.md`.
+- Changed by #342 (2026-11-20): non-score views open as modal dialogs or sheets over the player, never as full-window screens; the Library and the Sounds manager are bottom sheets over a dimmed player. See "Changed by #342" in ../specs/architecture.md.
 
 ## Related
 

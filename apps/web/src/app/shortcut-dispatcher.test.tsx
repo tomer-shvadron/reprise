@@ -9,7 +9,11 @@ import { createTestServices } from '@/test/services';
 import { CommandPalette } from './command-palette';
 import { CommandRegistry } from './command-registry';
 import { formatShortcut, type KeyboardPlatform } from './keyboard';
-import { installShortcutDispatcher, menuCommandAllowed } from './shortcut-dispatcher';
+import {
+  installShortcutDispatcher,
+  menuCommandAllowed,
+  modalBlocksCommand,
+} from './shortcut-dispatcher';
 
 let uninstall: (() => void) | undefined;
 
@@ -471,6 +475,85 @@ describe('text fields and open dialogs', () => {
     );
     fireEvent.keyDown(document.body, { key: 'k', code: 'KeyK', metaKey: true });
     expect(run.palette).toHaveBeenCalledOnce();
+  });
+
+  describe('with an app sheet open', () => {
+    const sheet = <div role="dialog" data-state="open" data-app-sheet="library" />;
+
+    function setupSheet() {
+      const registry = new CommandRegistry();
+      const play = vi.fn();
+      const other = vi.fn();
+      registry.register({
+        id: 'transport.playPause',
+        title: 'Play',
+        shortcut: { key: ' ' },
+        run: play,
+      });
+      registry.register({
+        id: 'file.open',
+        title: 'Open',
+        shortcut: { key: 'o', mod: true },
+        run: other,
+      });
+      registry.register({
+        id: 'x.bare',
+        title: 'Bare',
+        shortcut: { key: 'j' },
+        run: other,
+      });
+      uninstall = installShortcutDispatcher(window, registry, 'mac');
+      return { play, other };
+    }
+
+    it('lets Space play and pause from outside a text field, and blocks every other shortcut', () => {
+      const { play, other } = setupSheet();
+      render(sheet);
+
+      fireEvent.keyDown(document.body, { key: ' ', code: 'Space' });
+      expect(play).toHaveBeenCalledOnce();
+      fireEvent.keyDown(document.body, { key: 'o', code: 'KeyO', metaKey: true });
+      fireEvent.keyDown(document.body, { key: 'j', code: 'KeyJ' });
+      expect(other).not.toHaveBeenCalled();
+    });
+
+    it('leaves Space to the search box', () => {
+      const { play } = setupSheet();
+      render(
+        <>
+          {sheet}
+          <input type="search" aria-label="Search songs" />
+        </>,
+      );
+      fireEvent.keyDown(screen.getByRole('searchbox'), { key: ' ', code: 'Space' });
+      expect(play).not.toHaveBeenCalled();
+    });
+
+    it('does not let Space through while another dialog is up over the sheet', () => {
+      const { play } = setupSheet();
+      render(
+        <>
+          {sheet}
+          <div role="alertdialog" data-state="open" />
+        </>,
+      );
+      fireEvent.keyDown(document.body, { key: ' ', code: 'Space' });
+      expect(play).not.toHaveBeenCalled();
+    });
+
+    it('lets a drop through only when every open modal is a sheet', () => {
+      const { unmount } = render(sheet);
+      expect(modalBlocksCommand('app.drop')).toBe(false);
+      expect(modalBlocksCommand('file.open')).toBe(true);
+      unmount();
+      render(
+        <>
+          {sheet}
+          <div role="alertdialog" data-state="open" />
+        </>,
+      );
+      expect(modalBlocksCommand('app.drop')).toBe(true);
+    });
   });
 
   it('is not blocked by a dialog that is closing', () => {
