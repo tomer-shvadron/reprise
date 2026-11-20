@@ -170,10 +170,11 @@ describe('App', () => {
     expect(services.fakeAudio.unlock).toHaveBeenCalledOnce();
   });
 
-  it('toggles the right panel from the transport', async () => {
+  it('opens the right panel from the rail', async () => {
     const { user } = renderApp();
 
-    await user.click(screen.getByRole('button', { name: 'Toggle mixer' }));
+    expect(screen.queryByRole('button', { name: 'Toggle mixer' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Mixer' }));
 
     expect(screen.getByRole('complementary', { name: 'Panel' })).toBeInTheDocument();
     expect(screen.getByRole('separator', { name: 'Resize panel' })).toHaveAttribute(

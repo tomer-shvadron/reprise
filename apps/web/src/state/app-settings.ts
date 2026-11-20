@@ -2,6 +2,7 @@ import { HQ_BUDGET_BYTES } from '@reprise/audio';
 import { z } from 'zod';
 
 import { defineSetting, type SettingDef } from './settings';
+import { PANEL_WIDTH } from './panel-width';
 import { MEMORY_BUDGET_RANGE } from './playback';
 
 /** The key the pre-paint script `public/theme-bootstrap.js` reads; keep the two in step. */
@@ -45,6 +46,17 @@ export const MEMORY_BUDGET_SETTING = defineSetting({
   schema: z.number().min(MEMORY_BUDGET_RANGE.min).max(MEMORY_BUDGET_RANGE.max),
   default: HQ_BUDGET_BYTES,
 });
+export const RIGHT_PANEL_OPEN_SETTING = defineSetting({
+  key: 'layout.rightPanelOpen',
+  schema: z.boolean(),
+  default: false,
+});
+/** The ui store clamps as well, so a row from an older range still shows. */
+export const RIGHT_PANEL_WIDTH_SETTING = defineSetting({
+  key: 'layout.rightPanelWidth',
+  schema: z.number().min(PANEL_WIDTH.rightPanel.min).max(PANEL_WIDTH.rightPanel.max),
+  default: PANEL_WIDTH.rightPanel.default,
+});
 
 /** Every handle the app shell defines; the relaunch test walks this list. */
 export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
@@ -55,4 +67,6 @@ export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
   MASTER_VOLUME_SETTING,
   GM_TIER_BYPASS_SETTING,
   MEMORY_BUDGET_SETTING,
+  RIGHT_PANEL_OPEN_SETTING,
+  RIGHT_PANEL_WIDTH_SETTING,
 ];

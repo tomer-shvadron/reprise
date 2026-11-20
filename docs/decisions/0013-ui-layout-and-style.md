@@ -51,6 +51,9 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - Changed by #333 (2026-11-20): a slim header band (S-TOP-1) above the score, with the library
   breadcrumb, Play and Edit modes, a View menu and a command-palette search. The arrangement is
   otherwise unchanged. See "Changed by #333" in `../specs/architecture.md`.
+- Changed by #334 (2026-11-20): the right panel is tabbed (Mixer, Practice, Effects, History) and
+  collapses to an icon rail that stays visible; its open state and width are remembered. See
+  "Changed by #334" in `../specs/architecture.md`.
 
 ## Related
 
