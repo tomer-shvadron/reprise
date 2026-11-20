@@ -18,8 +18,17 @@ export function TrackFlash() {
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
+    // Reopening a native file keeps its track ids but resets the current track, so an open is
+    // told by the document's id changing. The app's own document listener resets the selection
+    // before this one hears of the new id, so the selection tick sees the change first.
+    let openId = document.getState().id;
+    const unwatchDocument = document.subscribe(({ id }) => {
+      openId = id;
+    });
     const unsubscribe = selection.subscribe(({ currentTrack }, previous) => {
-      if (currentTrack === undefined || currentTrack === previous.currentTrack) return;
+      const reopened = document.getState().id !== openId;
+      openId = document.getState().id;
+      if (reopened || currentTrack === undefined || currentTrack === previous.currentTrack) return;
       const tracks = document.getState().score?.tracks ?? [];
       const index = tracks.findIndex((track) => track.id === currentTrack);
       const track = tracks[index];
@@ -32,6 +41,7 @@ export function TrackFlash() {
     });
     return () => {
       unsubscribe();
+      unwatchDocument();
       if (timer !== undefined) clearTimeout(timer);
     };
   }, [selection, document]);

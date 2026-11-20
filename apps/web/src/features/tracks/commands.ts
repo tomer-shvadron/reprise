@@ -1,6 +1,7 @@
 import type { Notation } from '@reprise/model';
 
 import type { Command } from '@/app/command-registry';
+import type { Shortcut } from '@/app/keyboard';
 import type { AppServices } from '@/app/services';
 
 import { toggleSidebarFocus } from './sidebar-focus';
@@ -28,6 +29,21 @@ const GO_IDS = {
   9: 'track.go9',
 } as const;
 type TrackNumber = keyof typeof GO_IDS;
+
+/**
+ * The keys this folder adds, in one place so a change of key is one line here plus
+ * `pnpm shortcuts:write`. Alt+digit rather than Cmd/Ctrl+digit, which are "Edit voice" while
+ * editing; F7 has no other job in Reprise.
+ */
+const KEYS = {
+  go: (number: TrackNumber): Shortcut => ({ key: String(number), alt: true }),
+  focusSidebar: { key: 'F7' } satisfies Shortcut,
+};
+
+/** The command that jumps to a track, for the sidebar's tooltips; only tracks 1 to 9 have one. */
+export function goCommandId(number: number): TrackCommandId | undefined {
+  return number in GO_IDS ? GO_IDS[number as TrackNumber] : undefined;
+}
 const TRACK_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const satisfies readonly TrackNumber[];
 
 export type TrackCommandId =
@@ -78,12 +94,12 @@ export function trackCommands(services: TrackServices & Pick<AppServices, 'ui'>)
         stepTrack(services, 1);
       },
     },
-    // Alt, not Cmd/Ctrl: Cmd/Ctrl+1 and +2 are "Edit voice 1" and "Edit voice 2" while editing, and
-    // a shortcut that changed meaning with the mode would be worse than a second modifier.
     ...TRACK_NUMBERS.map((number): TrackCommand => ({
       id: GO_IDS[number],
       title: `Go to track ${String(number)}`,
-      shortcut: { key: String(number), alt: true },
+      shortcut: KEYS.go(number),
+      // The palette has `@` for tracks by name or number; nine more rows would only crowd it.
+      inPalette: false,
       enabled: () => (document.getState().score?.tracks.length ?? 0) >= number,
       run: () => {
         goToTrackNumber(services, number);
@@ -92,7 +108,11 @@ export function trackCommands(services: TrackServices & Pick<AppServices, 'ui'>)
     {
       id: 'track.focusSidebar',
       title: 'Move focus between the tracks list and the score',
-      shortcut: { key: 'F7' },
+      shortcut: KEYS.focusSidebar,
+      // The palette's dialog traps focus and returns it to where it was on close, so moving focus
+      // from there cannot work.
+      inPalette: false,
+      enabled: () => document.getState().score !== undefined,
       run: () => {
         toggleSidebarFocus(services);
       },

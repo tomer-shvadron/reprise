@@ -1,13 +1,23 @@
 import { STANDARD_TUNING } from '@reprise/model';
 import { score } from '@reprise/model/testing';
-import { act, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Profiler } from 'react';
+import { useStore } from 'zustand';
 import { describe, expect, it, vi } from 'vitest';
+
+import type { CommandRegistry } from '@/app/command-registry';
+import { useAppServices } from '@/app/services-context';
 
 import { renderTracks, threeTracks } from './test/render-tracks';
 import { NO_TAB_REASON } from './track-model';
 import { TrackSidebar } from './track-sidebar';
+
+function Collapsible({ registry }: { registry: CommandRegistry }) {
+  const { ui } = useAppServices();
+  const open = useStore(ui, (state) => state.panels.sidebar);
+  return open ? <TrackSidebar registry={registry} keyboard="mac" /> : null;
+}
 
 function setup() {
   return {
@@ -261,7 +271,7 @@ describe('TrackSidebar keys', () => {
     await opened();
     const numbers = within(list())
       .getAllByRole('listitem')
-      .map((item) => item.querySelector('span[aria-hidden]:not([style])')?.textContent);
+      .map((item) => item.querySelector('[data-track-number]')?.textContent);
     expect(numbers).toEqual(['1', '2', '3']);
   });
 
@@ -292,6 +302,67 @@ describe('TrackSidebar keys', () => {
     expect(services.playback.getState().mixer[ids[1] ?? '']).toMatchObject({ solo: true });
     await user.keyboard('m');
     expect(services.playback.getState().mixer[ids[1] ?? '']).toMatchObject({ mute: false });
+  });
+
+  it('takes M and S by the physical key on another layout, and keeps them from the window', async () => {
+    const { ids, select, services } = await opened();
+    const leaked = vi.fn();
+    window.addEventListener('keydown', leaked);
+    act(() => {
+      select(ids[1] ?? '').focus();
+    });
+    fireEvent.keyDown(select(ids[1] ?? ''), { key: 'ד', code: 'KeyS' });
+    fireEvent.keyDown(select(ids[1] ?? ''), { key: 'צ', code: 'KeyM' });
+    window.removeEventListener('keydown', leaked);
+    expect(services.playback.getState().mixer[ids[1] ?? '']).toMatchObject({
+      solo: true,
+      mute: true,
+    });
+    expect(leaked).not.toHaveBeenCalled();
+  });
+
+  it('leaves M and S with a modifier, or on another control, alone', async () => {
+    const { ids, select, services } = await opened();
+    fireEvent.keyDown(select(ids[1] ?? ''), { key: 'm', metaKey: true });
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Mute Bass' }), { key: 'm' });
+    expect(services.playback.getState().mixer[ids[1] ?? '']).toBeUndefined();
+  });
+
+  it('keeps one name button in the Tab order, the current track’s', async () => {
+    const { ids, select, services } = await opened();
+    expect(ids.map((id) => select(id).tabIndex)).toEqual([0, -1, -1]);
+    act(() => {
+      services.selection.getState().setCurrentTrack(ids[2] ?? '');
+    });
+    expect(ids.map((id) => select(id).tabIndex)).toEqual([-1, -1, 0]);
+  });
+
+  it('tells a row its jump key to the screen reader', async () => {
+    const { ids, select } = await opened();
+    expect(select(ids[2] ?? '')).toHaveAttribute('aria-keyshortcuts', 'Alt+3');
+  });
+
+  it('opens a collapsed sidebar for the focus key and puts focus on the current row', async () => {
+    vi.useFakeTimers({ toFake: ['requestAnimationFrame'] });
+    try {
+      const made = renderTracks((registry) => <Collapsible registry={registry} />);
+      const ids = await made.open();
+      act(() => {
+        made.services.ui.getState().togglePanel('sidebar');
+      });
+      expect(screen.queryByRole('list', { name: 'Tracks' })).toBeNull();
+      act(() => {
+        void made.registry.get('track.focusSidebar')?.run();
+      });
+      // The rows render first; the frame the command waits for comes after.
+      act(() => {
+        vi.advanceTimersByTime(50);
+      });
+      expect(made.services.ui.getState().panels.sidebar).toBe(true);
+      expect(list().querySelector(`[data-track-select="${ids[0] ?? ''}"]`)).toHaveFocus();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('moves focus into the list on the current track and back to the score', async () => {

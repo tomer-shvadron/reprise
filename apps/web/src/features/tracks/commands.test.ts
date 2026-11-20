@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { createAppRegistry } from '@/app/app-registry';
 import { runCommand } from '@/app/command-registry';
 import { formatShortcut } from '@/app/keyboard';
+import { dispatchShortcut } from '@/app/shortcut-dispatcher';
 import { mirrorAudio } from '@/test/mirror-audio';
 import { createTestServices } from '@/test/services';
 
@@ -64,6 +65,71 @@ describe('track commands', () => {
     await run('track.next');
     await run('track.next');
     expect(services.selection.getState().currentTrack).toBe(ids[2]);
+  });
+
+  it('jump to a track by number, showing a hidden one, and ignore a number past the last', async () => {
+    const { services, ids, run } = await setup();
+    await run('track.go3');
+    expect(services.selection.getState().currentTrack).toBe(ids[2]);
+    await run('track.go2');
+    expect(services.selection.getState().currentTrack).toBe(ids[1]);
+    await run('track.go4');
+    expect(services.selection.getState().currentTrack).toBe(ids[1]);
+
+    services.document.getState().setVisibleTracks([ids[0] ?? '']);
+    await run('track.go3');
+    expect(services.document.getState().view.tracks).toContain(ids[2]);
+    expect(services.selection.getState().currentTrack).toBe(ids[2]);
+  });
+
+  it('make the shown track follow a jump in single-track view', async () => {
+    const { services, ids, run } = await setup();
+    await run('view.toggleMultitrack');
+    await run('track.go3');
+    expect(services.document.getState().view.only).toBe(ids[2]);
+  });
+
+  it('bind Alt+1 to Alt+9 and F7 without a conflict, off the palette, and hide jumps past the last track', async () => {
+    const { registry } = await setup();
+    expect(registry.get('track.go1')?.shortcut).toEqual({ key: '1', alt: true });
+    expect(formatShortcut({ key: '1', alt: true }, 'mac')).toBe('⌥1');
+    expect(formatShortcut({ key: '1', alt: true }, 'other')).toBe('Alt+1');
+    expect(registry.get('track.focusSidebar')?.shortcut).toEqual({ key: 'F7' });
+    expect(registry.conflicts()).toEqual([]);
+    const ids = registry.available().map((command) => command.id);
+    expect(ids).toContain('track.go3');
+    expect(ids).not.toContain('track.go4');
+    expect(registry.get('track.go1')?.inPalette).toBe(false);
+    expect(registry.get('track.focusSidebar')?.inPalette).toBe(false);
+  });
+
+  it('keep the focus key off while no score is open', async () => {
+    const { registry } = await setup(false);
+    expect(registry.available().map((command) => command.id)).not.toContain('track.focusSidebar');
+  });
+
+  it('jump from the keyboard, including the symbol Option types on a Mac, but not from a text field', async () => {
+    const { services, ids, registry } = await setup();
+    const key = (init: KeyboardEventInit, target?: HTMLElement) => {
+      const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+      Object.defineProperty(event, 'target', { value: target ?? document.body });
+      return event;
+    };
+    services.selection.getState().setCurrentTrack(ids[2] ?? '');
+    expect(dispatchShortcut(key({ key: '¡', code: 'Digit1', altKey: true }), registry, 'mac')).toBe(
+      true,
+    );
+    expect(services.selection.getState().currentTrack).toBe(ids[0]);
+    expect(
+      dispatchShortcut(key({ key: '2', code: 'Digit2', altKey: true }), registry, 'other'),
+    ).toBe(true);
+    expect(services.selection.getState().currentTrack).toBe(ids[1]);
+
+    const field = document.createElement('input');
+    expect(
+      dispatchShortcut(key({ key: '¡', code: 'Digit1', altKey: true }, field), registry, 'mac'),
+    ).toBe(false);
+    expect(services.selection.getState().currentTrack).toBe(ids[1]);
   });
 
   it('toggle multitrack view, mute and solo the current track, and clear them', async () => {

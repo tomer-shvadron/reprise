@@ -29,6 +29,7 @@ export function toggleSidebarFocus(services: Pick<AppServices, 'selection' | 'ui
   const { ui } = services;
   if (!ui.getState().panels.sidebar) {
     ui.getState().togglePanel('sidebar');
+    // The store update re-renders synchronously; the frame only waits for the rows to be in the DOM.
     requestAnimationFrame(focusRow);
     return;
   }

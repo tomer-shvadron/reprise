@@ -185,7 +185,10 @@ describe('tracks', () => {
     const services = await open();
     const [lead, rhythm] = must(services.document.getState().score).tracks;
     services.document.getState().setVisibleTracks([must(lead).id]);
+    const before = services.transport.getState().announcement;
     pickTrack(services, must(rhythm).id);
+    // The status bar's track flash is the one announcement of a track change.
+    expect(services.transport.getState().announcement).toBe(before);
     expect(services.document.getState().view.tracks).toBe('all');
     expect(services.selection.getState().currentTrack).toBe(must(rhythm).id);
   });

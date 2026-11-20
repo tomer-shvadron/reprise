@@ -1,17 +1,18 @@
 import { LayersIcon } from 'lucide-react';
 import type { Track } from '@reprise/model';
-import { useId, useMemo, type KeyboardEvent, type ReactNode } from 'react';
+import { use, useId, useMemo, type KeyboardEvent, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import type { CommandRegistry } from '@/app/command-registry';
-import type { KeyboardPlatform } from '@/app/keyboard';
+import { matchesShortcut, type KeyboardPlatform } from '@/app/keyboard';
 import { useAppServices } from '@/app/services-context';
-import { CommandSourceContext, useCommand } from '@/app/use-command';
+import { bindCommand, CommandSourceContext, useCommand } from '@/app/use-command';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { singleTrackOf } from '@/state/document';
 
 import { TRACK_LIST_ATTR, TRACK_SELECT_ATTR } from './sidebar-focus';
+import { goCommandId } from './commands';
 import { useTrackActions } from './track-actions';
 import { TrackRow } from './track-row';
 import { audibleTracks, effectiveMix, effectiveNotation, visibleSet } from './track-model';
@@ -53,11 +54,12 @@ function MultitrackToggle({ single, disabled }: { single: boolean; disabled: boo
 }
 
 /**
- * Keys for a row's name button, which holds the focus when the list is entered: the arrows move
+ * Keys for a row's name button, which holds the focus when the list is entered (it is the list's
+ * one tab stop among the names; each row's other controls stay in the tab order): the arrows move
  * between rows (Enter selects, as the button does anyway), M and S mute and solo that row. A key
  * on any other control of the row, a slider or a menu, stays with that control.
  */
-function listKeysHandler(actions: ReturnType<typeof useTrackActions>) {
+function listKeysHandler(actions: ReturnType<typeof useTrackActions>, keyboard: KeyboardPlatform) {
   return (event: KeyboardEvent<HTMLUListElement>) => {
     const { target } = event;
     if (!(target instanceof HTMLElement)) return;
@@ -71,6 +73,21 @@ function listKeysHandler(actions: ReturnType<typeof useTrackActions>) {
       event.preventDefault();
       to?.focus();
     };
+    // M and S go through the registry's matcher, so a Hebrew or Russian layout (the physical key)
+    // works and the key never falls through to a bare-letter command on the score.
+    const letter = (key: string) => matchesShortcut(event.nativeEvent, { key }, keyboard);
+    if (letter('m')) {
+      event.preventDefault();
+      event.stopPropagation();
+      actions.toggleMute(id);
+      return;
+    }
+    if (letter('s')) {
+      event.preventDefault();
+      event.stopPropagation();
+      actions.toggleSolo(id);
+      return;
+    }
     switch (event.key) {
       case 'ArrowDown':
         move(buttons[Math.min(at + 1, buttons.length - 1)]);
@@ -83,18 +100,6 @@ function listKeysHandler(actions: ReturnType<typeof useTrackActions>) {
         break;
       case 'End':
         move(buttons[buttons.length - 1]);
-        break;
-      case 'm':
-      case 'M':
-        event.preventDefault();
-        event.stopPropagation();
-        actions.toggleMute(id);
-        break;
-      case 's':
-      case 'S':
-        event.preventDefault();
-        event.stopPropagation();
-        actions.toggleSolo(id);
         break;
     }
   };
@@ -109,7 +114,9 @@ function TrackList({ headerActions, rowMenu }: TrackSidebarSlots) {
   const currentTrack = useStore(selection, (state) => state.currentTrack);
   const mixer = useStore(playback, (state) => state.mixer);
   const loads = useStore(playback, (state) => state.instrumentLoads);
-  const onKeyDown = listKeysHandler(actions);
+  const source = use(CommandSourceContext);
+  if (!source) throw new Error('TrackList needs a CommandSourceContext');
+  const onKeyDown = listKeysHandler(actions, source.keyboard);
   const headingId = useId();
   const tracks = score?.tracks;
   const audible = useMemo(() => tracks && audibleTracks(tracks, mixer), [tracks, mixer]);
@@ -144,6 +151,8 @@ function TrackList({ headerActions, rowMenu }: TrackSidebarSlots) {
           {tracks.map((track, index) => {
             const mix = effectiveMix(track, mixer[track.id]);
             const visible = shown.has(track.id);
+            const goId = goCommandId(index + 1);
+            const jump = goId && bindCommand(source, goId);
             return (
               <TrackRow
                 key={track.id}
@@ -158,6 +167,9 @@ function TrackList({ headerActions, rowMenu }: TrackSidebarSlots) {
                 notation={effectiveNotation(track, view.notation)}
                 single={single}
                 loading={loads[track.id] !== undefined}
+                jumpKeys={jump?.keys}
+                jumpAriaKeys={jump?.ariaKeys}
+                tabStop={track.id === (currentTrack ?? tracks[0]?.id)}
                 actions={actions}
                 rowMenu={rowMenu}
               />
