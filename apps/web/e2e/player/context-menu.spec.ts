@@ -16,6 +16,7 @@ test('the Menu key opens the focused control menu below it, and Escape gives foc
   await page.keyboard.press('ContextMenu');
   const menu = page.getByRole('menu', { name: 'Library' });
   await expect(menu).toBeVisible();
+  await expect(menu).toHaveAttribute('data-context-menu-via', 'keyboard');
   const shown = await menu.boundingBox();
   // Below the control's middle: the menu is still sliding in when it is measured.
   expect(shown?.y).toBeGreaterThan((anchor?.y ?? 0) + (anchor?.height ?? 0) / 2);
@@ -30,7 +31,8 @@ test('Shift+F10 opens the same menu', async ({ page }) => {
   const crumb = page.getByRole('banner').getByRole('button', { name: 'Library' });
   await crumb.focus();
   await page.keyboard.press('Shift+F10');
-  await expect(page.getByRole('menu', { name: 'Library' })).toBeVisible();
+  const menu = page.getByRole('menu', { name: 'Library' });
+  await expect(menu).toHaveAttribute('data-context-menu-via', 'keyboard');
   await page.keyboard.press('Escape');
   await expect(crumb).toBeFocused();
 });
@@ -43,6 +45,7 @@ test('a right-click opens the menu at the pointer, and choosing leaves focus so 
   await view.click({ button: 'right' });
   const menu = page.getByRole('menu', { name: 'View' });
   await expect(menu).toBeVisible();
+  await expect(menu).toHaveAttribute('data-context-menu-via', 'pointer');
   await menu.getByRole('menuitem', { name: /^Zoom in/ }).click();
   await expect(menu).toHaveCount(0);
   await page.keyboard.press('Space');

@@ -6,7 +6,7 @@ import { PANEL_TABS } from '../right-panel/panel-views';
 
 import { createAppMenus } from '../app-menus';
 import { createAppRegistry } from '../app-registry';
-import { resolveMenu, commandsIn } from './resolve-menu';
+import { commandsIn, resolveMenu, type ResolvedEntry } from './resolve-menu';
 import { MENU_SURFACES, type MenuMode, type MenuSurface } from './types';
 
 const services = createTestServices();
@@ -54,6 +54,18 @@ const TARGETS: Partial<Record<MenuSurface, readonly MenuTarget[]>> = {
 
 const MODES: readonly MenuMode[] = ['play', 'edit'];
 
+const enabledItems = (entries: readonly ResolvedEntry[]): number =>
+  entries.reduce(
+    (count, entry) =>
+      count +
+      (entry.kind === 'item'
+        ? Number(entry.enabled)
+        : entry.kind === 'submenu'
+          ? enabledItems(entry.entries)
+          : 0),
+    0,
+  );
+
 function resolveFor(surface: MenuSurface, target: MenuTarget, mode: MenuMode) {
   services.editing.getState().setEditing(mode === 'edit');
   return resolveMenu(menus, registry, surface, { services, target, mode }, 'mac');
@@ -80,15 +92,17 @@ describe('the context menus', () => {
     expect(missing).toEqual(NOT_YET);
   });
 
+  it('hold every contributed surface to the rules below, so a PR that adds one adds its targets', () => {
+    expect(Object.keys(TARGETS).sort()).toEqual([...menus.surfaces()].sort());
+  });
+
   it.each(Object.entries(TARGETS) as [MenuSurface, readonly MenuTarget[]][])(
     '%s resolves an enabled item for each target in each mode',
     (surface, targets) => {
       for (const target of targets) {
         for (const mode of MODES) {
-          const enabled = commandsIn(resolveFor(surface, target, mode));
-          expect(enabled.length, `${surface} ${JSON.stringify(target)} in ${mode}`).toBeGreaterThan(
-            0,
-          );
+          const enabled = enabledItems(resolveFor(surface, target, mode));
+          expect(enabled, `${surface} ${JSON.stringify(target)} in ${mode}`).toBeGreaterThan(0);
         }
       }
     },
