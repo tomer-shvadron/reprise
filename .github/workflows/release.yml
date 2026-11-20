@@ -10,7 +10,8 @@ on:
     tags: ['v*']
     # After a merge, the full matrix runs, mac-x64 included. A tag push ignores `paths`.
     branches: [main]
-    paths:
+    # One list for both triggers (an anchor), so the PR and post-merge runs never disagree on which paths count.
+    paths: &desktop-paths
       - .github/workflows/release.yml
       - .github/release/**
       # Everything the desktop build reads: the renderer's entry and its config, the policy, the
@@ -31,31 +32,14 @@ on:
       - pnpm-workspace.yaml
       - .nvmrc
   pull_request:
-    paths:
-      - .github/workflows/release.yml
-      - .github/release/**
-      # Everything the desktop build reads: the renderer's entry and its config, the policy, the
-      # sound bank fetch, the scripts the jobs run, and the toolchain pins. A change to the web
-      # app's other source does not run this; docs/reference/release.md says to dispatch the
-      # workflow on the commit to tag.
-      - apps/desktop/**
-      - apps/web/index.html
-      - apps/web/package.json
-      - apps/web/public/**
-      - apps/web/vite.config.ts
-      - apps/web/src/csp.ts
-      - scripts/desktop/**
-      - scripts/release/**
-      - scripts/sounds/**
-      - package.json
-      - pnpm-lock.yaml
-      - pnpm-workspace.yaml
-      - .nvmrc
+    paths: *desktop-paths
   workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
-  # Cancel superseded PR runs only; a tag's run is never cancelled.
+  # Cancel superseded PR runs only; a tag's run is never cancelled. Pushes to main share one group
+  # and are not cancelled while running, but a third merge cancels the run still waiting, which
+  # shows as a cancelled (grey) run on that commit: not a failure, the newest commit carries it.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:

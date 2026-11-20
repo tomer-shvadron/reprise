@@ -58,7 +58,7 @@ export GH_TOKEN="$(gh auth token --user tomer-shvadron)"
 
 Labels, milestones and the **Reprise** project board come from `scripts/github/bootstrap.sh` (idempotent, `DRY_RUN=1` to preview). `scripts/github/protect-main.sh` applies the merge settings and the branch protection on `main`, which requires the CI check named `ci`. The `e2e` job runs on every PR but is not required, by the owner's decision (2026-11-17). A third job, `bench-compare`, is not required yet: it becomes required once it has run on ten PRs with no false failure, and the PR that adds it to `protect-main.sh` cites those runs.
 
-The `release.yml` workflow's `package (mac-arm64)`, `package (mac-x64)` and `package (windows-x64)` checks run only on PRs that touch what the desktop build reads (the paths are in the workflow). On a pull request only mac-arm64 and windows-x64 run; `package (mac-x64)` runs after the merge, on pushes to `main` that touch the same paths, and on `v*` tags and manual `workflow_dispatch` runs, so a break on Intel macOS shows on `main` rather than on the PR. They are not required by branch protection, and a skipped one is normal; by the lead's ruling a red one on a PR blocks the merge all the same, since it is the only run of the packaged app on Windows and Apple silicon before the merge.
+The `release.yml` workflow's `package (mac-arm64)`, `package (mac-x64)` and `package (windows-x64)` checks run only when a change touches what the desktop build reads (the paths are in the workflow): on PRs, `mac-arm64` and `windows-x64`; on pushes to `main`, on `v*` tags and on manual `workflow_dispatch` runs, all three. `mac-x64`, the slowest, is therefore not checked before the merge: after merging a PR that ran the `package` checks, the lead looks at the `Release` run on `main`, and a red `package (mac-x64)` there is treated like a red PR check (an issue, fixed before anything else merges on desktop paths and before the next tag). A PR aimed at Intel macOS can run all three before merge with `gh workflow run release.yml --ref <branch>`. They are not required by branch protection, and a skipped one is normal; by the lead's ruling a red one on a PR blocks the merge all the same, since it is the only run of the packaged app on Windows and Apple silicon before the merge.
 
 ## Layout and boundaries
 
@@ -141,7 +141,7 @@ Running many heavy sub-agents at once (nine review agents in parallel) exhausted
 
 Cost rules for every sub-agent ([ADR-0026](docs/decisions/0026-cheaper-agent-workflow-sonnet-implements-opus-high-reviews.md)):
 
-- Run only the affected tests locally; leave the full suite, e2e, bench and visual runs to CI unless the task is about them (the pre-push hook already runs the related tests).
+- Run only the affected tests locally; leave the full suite, e2e, bench and visual runs to CI unless the task is about them (the pre-push hook already runs the related tests). A push can then take minutes (about 68 s for a one-file `packages/model` change, more for a widely imported file), past the 2-minute default of an agent's shell command: run `git push` with a longer timeout or in the background, and never retry it with `--no-verify`.
 - Send command output to a uniquely named log file and read the tail.
 - Reviewers read the diff, the plan comment and the spec sections the diff touches, not the whole repo.
 - At most three agents run at once.
