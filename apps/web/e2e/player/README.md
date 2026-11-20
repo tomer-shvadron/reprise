@@ -17,7 +17,7 @@ pnpm exec playwright show-report apps/web/playwright-report
 pnpm exec playwright show-trace path/to/trace.zip
 ```
 
-`pnpm test` and the pre-commit hook never run these files. On a failure the trace, the video and a screenshot of each failed test land in `apps/web/test-results/`; CI uploads them with the HTML report as the `e2e-results` artifact, which `show-trace` opens after download.
+`pnpm test` and the pre-commit hook never run these files. On a failure the trace, the video and a screenshot of each failed test land in `apps/web/test-results/`; CI runs the suite in three shards and uploads each shard's traces with its HTML report as the `e2e-results-1`, `e2e-results-2` or `e2e-results-3` artifact (the shard that ran the test; the job's log names its specs), which `show-trace` opens after download.
 
 ## The hooks
 
