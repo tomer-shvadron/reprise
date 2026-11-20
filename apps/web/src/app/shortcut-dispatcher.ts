@@ -99,14 +99,15 @@ const DELETE_KEYS = new Set(['Backspace', 'Delete']);
 function leavesKeyToTarget(event: KeyboardEvent): boolean {
   const { target } = event;
   if (isEditable(target)) return true;
-  // A menu types to its items (typeahead) and Radix leaves the key to bubble to the window: a
-  // printable bare key there is the menu's, not a command's.
+  // An open menu types to its items (typeahead) and Radix leaves the key to bubble to the window:
+  // a printable bare key there is the menu's, not a command's. A closing menu (still holding
+  // focus until the close-focus handler runs) has no typeahead, so the key stays a command's.
   const bare = !event.metaKey && !event.ctrlKey && !event.altKey;
   if (
     bare &&
     event.key.length === 1 &&
     target instanceof Element &&
-    target.closest('[role="menu"]')
+    target.closest('[role="menu"][data-state="open"]')
   ) {
     return true;
   }

@@ -167,7 +167,7 @@ describe('bare keys on focused controls', () => {
     toggle.remove();
   });
 
-  it('leaves a typed character to an open menu, but not a bare key with a modifier', () => {
+  it('leaves a typed character to an open menu, not to a closing one', () => {
     const { slower } = bare();
     const menu = document.createElement('div');
     menu.setAttribute('role', 'menu');
@@ -176,8 +176,14 @@ describe('bare keys on focused controls', () => {
     menu.append(item);
     document.body.append(menu);
 
+    menu.setAttribute('data-state', 'open');
     fireEvent.keyDown(item, { key: '[', code: 'BracketLeft' });
     expect(slower).not.toHaveBeenCalled();
+
+    // Closing: focus may still sit in it, but it no longer takes typeahead.
+    menu.setAttribute('data-state', 'closed');
+    fireEvent.keyDown(item, { key: '[', code: 'BracketLeft' });
+    expect(slower).toHaveBeenCalledOnce();
     menu.remove();
   });
 
