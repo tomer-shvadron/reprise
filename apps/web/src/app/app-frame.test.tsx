@@ -34,6 +34,21 @@ describe('the header slot', () => {
   });
 });
 
+describe('the status slot', () => {
+  it('is the last row, after the transport footer, which no longer holds the zoom readout', () => {
+    const ui = createUiStore('dark');
+    render(
+      <TooltipProvider>
+        <AppFrame ui={ui} score={<p>score</p>} transport={<p>controls</p>} status={<p>bar</p>} />
+      </TooltipProvider>,
+    );
+    const footer = screen.getByRole('contentinfo', { name: 'Transport' });
+    expect(footer.nextElementSibling).toBe(screen.getByText('bar'));
+    expect(screen.getByText('bar').nextElementSibling).toBeNull();
+    expect(footer).not.toHaveTextContent('%');
+  });
+});
+
 describe('the bottom dock', () => {
   it('is a collapsed tab strip until opened, then shows the view, and the chevron collapses it', () => {
     const ui = renderFrame();

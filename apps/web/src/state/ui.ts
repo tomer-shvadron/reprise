@@ -2,16 +2,14 @@ import type { LayoutOptions, PAGE_SIZES } from '@reprise/layout';
 import { create } from 'zustand';
 
 import { BOTTOM_PANEL_HEIGHT } from './bottom-panel-height';
+import { PANEL_WIDTH } from './panel-width';
 import { initialTheme, type Theme } from './theme';
 
 export { BOTTOM_PANEL_HEIGHT };
 
 export type PanelId = 'sidebar' | 'rightPanel';
 
-export const PANEL_WIDTH = {
-  sidebar: { default: 240, min: 180, max: 400 },
-  rightPanel: { default: 320, min: 240, max: 480 },
-} as const satisfies Record<PanelId, { default: number; min: number; max: number }>;
+export { PANEL_WIDTH };
 
 export const ZOOM = { min: 0.5, max: 3, default: 1 } as const;
 
@@ -57,6 +55,8 @@ export interface UiState {
   screen: ScreenId;
   rightPanelView: PanelView;
   panelWidths: Record<PanelId, number>;
+  /** The right panel is open because the stored state said so, not because the user opened it. */
+  panelRestored: boolean;
   /**
    * The bottom dock: above the transport, below the score. `open` is whether it shows its view or
    * is collapsed to its tab strip; `installBottomDock` keeps `open` and the height in settings.
@@ -76,6 +76,8 @@ export interface UiState {
   togglePanel: (panel: PanelId) => void;
   /** Closes the right panel when it shows the mixer; otherwise shows the mixer there, opening it. */
   toggleMixer: () => void;
+  /** Applies the stored open state of the right panel at launch, which takes no focus. */
+  restoreRightPanelOpen: (open: boolean) => void;
   setScreen: (screen: ScreenId) => void;
   /** Shows `view` in the right panel and opens the panel. */
   showPanelView: (view: PanelView) => void;
@@ -118,6 +120,7 @@ export function createUiStore(theme: Theme = initialTheme()) {
     view: { mode: 'paged', paper: 'a4' },
     panels: { sidebar: true, rightPanel: false },
     screen: 'player',
+    panelRestored: false,
     rightPanelView: 'mixer',
     panelWidths: {
       sidebar: PANEL_WIDTH.sidebar.default,
@@ -134,15 +137,21 @@ export function createUiStore(theme: Theme = initialTheme()) {
       set({ theme: next });
     },
     setPanelOpen: (panel, open) => {
-      set((state) => ({ panels: { ...state.panels, [panel]: open } }));
+      set((state) => ({ panels: { ...state.panels, [panel]: open }, panelRestored: false }));
     },
     togglePanel: (panel) => {
-      set((state) => ({ panels: { ...state.panels, [panel]: !state.panels[panel] } }));
+      set((state) => ({
+        panels: { ...state.panels, [panel]: !state.panels[panel] },
+        panelRestored: false,
+      }));
     },
     toggleMixer: () => {
       const { panels, rightPanelView } = get();
       if (panels.rightPanel && rightPanelView === 'mixer') get().setPanelOpen('rightPanel', false);
       else get().showPanelView('mixer');
+    },
+    restoreRightPanelOpen: (open) => {
+      set((state) => ({ panels: { ...state.panels, rightPanel: open }, panelRestored: open }));
     },
     setScreen: (screen) => {
       set({ screen });
@@ -151,6 +160,7 @@ export function createUiStore(theme: Theme = initialTheme()) {
       set((state) => ({
         rightPanelView: view,
         panels: { ...state.panels, rightPanel: true },
+        panelRestored: false,
       }));
     },
     setPanelWidth: (panel, width) => {

@@ -1,10 +1,13 @@
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 
+import { keepFocus } from '@/app/command-control';
 import { useAppServices } from '@/app/services-context';
+import { StatusSegment } from '@/app/status-bar/segment';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { PlaybackStoreState } from '@/state/playback';
+
+import { soundTierLabel } from './sound-tier';
 
 const MB = 1024 * 1024;
 
@@ -39,10 +42,13 @@ export function soundStatus(state: PlaybackStoreState): SoundStatusLine | undefi
   return undefined;
 }
 
-/** The sound bank's and the song's load state, the decoded memory, and Retry after an error. */
+/**
+ * The sound bank's and the song's load state, then the sound tier and the decoded memory, and
+ * Retry after an error. A segment of the status bar: a click opens the Sounds screen.
+ */
 export function SoundStatus() {
-  const { playback, audio } = useAppServices();
-  const { text, retry, memory } = useStore(
+  const { playback, audio, document } = useAppServices();
+  const { text, retry, memory, trackSounds } = useStore(
     playback,
     useShallow((state) => {
       const status = soundStatus(state);
@@ -50,36 +56,48 @@ export function SoundStatus() {
         text: status?.text,
         retry: status?.retry ?? false,
         memory: state.memory,
+        trackSounds: state.trackSounds,
       };
     }),
   );
+  const trackIds = useStore(
+    document,
+    useShallow((state) => state.score?.tracks.map((track) => track.id) ?? []),
+  );
+  const tier = soundTierLabel(trackIds, trackSounds);
+  // Nothing to say before the first sound loads, and an empty button would have no name.
+  const hidden = text === undefined && memory.decodedBytes === 0;
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-1">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {/* Not a live region: progress would be read out at every percent; the announcer
-              speaks each stage once. */}
-          <span
-            aria-live="off"
-            data-sound-status
-            className="text-muted-foreground min-w-0 truncate text-xs"
-          >
-            {text ??
-              (memory.decodedBytes > 0 &&
-                `${megabytes(memory.decodedBytes)} / ${megabytes(memory.budgetBytes)} MB`)}
+    <div className="flex min-w-0 items-center gap-0.5">
+      {!hidden && (
+        // Not a live region: progress would be read out at every percent; the announcer in the
+        // transport speaks each stage once. The `data-sound-status` text ends in `N MB`, which the
+        // desktop smoke test waits on.
+        <StatusSegment
+          command="sounds.show"
+          label={`Sounds: ${megabytes(memory.decodedBytes)} of ${megabytes(memory.budgetBytes)} MB decoded · ${String(memory.residents.length)} ${memory.residents.length === 1 ? 'instrument' : 'instruments'} loaded (${String(memory.unused.length)} unused)`}
+          aria-live="off"
+          data-sound-status
+          className="min-w-0 shrink"
+        >
+          {/* The button cannot shrink its own text; this span does, with an ellipsis. */}
+          <span className="min-w-0 truncate">
+            {text ?? (
+              <>
+                <span className="@max-[50rem]:hidden">{tier} · </span>
+                {megabytes(memory.decodedBytes)} MB
+              </>
+            )}
           </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          {megabytes(memory.decodedBytes)} of {megabytes(memory.budgetBytes)} MB decoded ·{' '}
-          {memory.residents.length} {memory.residents.length === 1 ? 'instrument' : 'instruments'}{' '}
-          loaded ({memory.unused.length} unused)
-        </TooltipContent>
-      </Tooltip>
+        </StatusSegment>
+      )}
       {retry && (
         <Button
           variant="link"
           size="xs"
+          className="text-2xs! h-5 px-1"
+          onMouseDown={keepFocus}
           onClick={() => {
             audio.retry();
           }}

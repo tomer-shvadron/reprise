@@ -30,6 +30,8 @@ const SAMPLES: Record<string, unknown> = {
   'sounds.memoryBudgetBytes': 256 * 1024 * 1024,
   'layout.bottomDockOpen': true,
   'layout.bottomDockHeight': 300,
+  'layout.rightPanelOpen': true,
+  'layout.rightPanelWidth': 400,
   'library.sort': 'artist',
 };
 

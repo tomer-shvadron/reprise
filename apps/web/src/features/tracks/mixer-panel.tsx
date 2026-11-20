@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef } from 'react';
 import { useStore } from 'zustand';
 
+import { focusPanelSection } from '@/app/right-panel';
 import { useAppServices } from '@/app/services-context';
 
 import { MasterStrip } from './master-strip';
@@ -10,7 +11,7 @@ import { audibleTracks, effectiveMix } from './track-model';
 
 /** The right panel's mixer: per-track instrument, volume, pan, mute and solo, and the master. */
 export function MixerPanel() {
-  const { document, selection, playback } = useAppServices();
+  const { document, selection, playback, ui } = useAppServices();
   const actions = useTrackActions();
   const tracks = useStore(document, (state) => state.score?.tracks);
   const currentTrack = useStore(selection, (state) => state.currentTrack);
@@ -22,8 +23,8 @@ export function MixerPanel() {
 
   // Opening the panel puts the next Tab on its first control.
   useEffect(() => {
-    section.current?.focus();
-  }, []);
+    focusPanelSection(section.current, ui);
+  }, [ui]);
 
   return (
     <section

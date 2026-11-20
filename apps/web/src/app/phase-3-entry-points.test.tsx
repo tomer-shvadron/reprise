@@ -194,11 +194,11 @@ describe('phase 3 entry points', () => {
       expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
     });
 
-    it('the footer button does the same, and opens the mixer from closed', async () => {
+    it('the rail Mixer button does the same, and opens the mixer from closed', async () => {
       const { services, run } = renderApp();
       const user = userEvent.setup();
       run('trainer.metronome');
-      const button = screen.getByRole('button', { name: 'Toggle mixer' });
+      const button = screen.getByRole('button', { name: 'Mixer' });
       expect(button).toHaveAttribute('aria-pressed', 'false');
       await user.click(button);
       expect(services.ui.getState().rightPanelView).toBe('mixer');

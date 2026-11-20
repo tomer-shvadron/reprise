@@ -25,7 +25,6 @@ import {
   cursorTick,
   createEditPointer,
   caretRect,
-  EditStatusLine,
   useEditOverlays,
   WordField,
 } from '@/features/editor';
@@ -234,32 +233,22 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
     if (axis === 'both' || axis === (mode === 'paged' ? 'y' : 'x')) ui.getState().pauseFollow();
   };
 
-  // The status line is a row of its own below the score, so it covers neither the scrollbar, the
-  // lowest staff nor the follow button, which stays over the score's own area.
+  // The edit status lives in the status bar, so entering edit mode adds no row under the score.
   return (
-    <div className="flex h-full flex-col">
-      <div className="relative min-h-0 flex-1">
-        <ScoreView
-          ref={handle}
-          layout={result}
-          zoom={zoom}
-          label={label}
-          overlays={overlays}
-          onScorePointer={onScorePointer}
-          onUserScroll={onUserScroll}
-          className="h-full focus-visible:-outline-offset-2"
-        >
-          <WordField />
-        </ScoreView>
-        <FollowButton />
-      </div>
-      <EditStatusLine
-        entry={services.entry}
-        editing={services.editing}
-        selection={selection}
-        document={document}
-        ui={services.ui}
-      />
+    <div className="relative h-full">
+      <ScoreView
+        ref={handle}
+        layout={result}
+        zoom={zoom}
+        label={label}
+        overlays={overlays}
+        onScorePointer={onScorePointer}
+        onUserScroll={onUserScroll}
+        className="h-full focus-visible:-outline-offset-2"
+      >
+        <WordField />
+      </ScoreView>
+      <FollowButton />
     </div>
   );
 }
