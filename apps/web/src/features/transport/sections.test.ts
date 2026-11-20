@@ -36,6 +36,13 @@ describe('sectionsOf', () => {
     ]);
   });
 
+  it('never gives an ordinal that another section already has as its name', () => {
+    const sections = sectionsOf(song({ 0: ['Chorus'], 2: ['Chorus'], 4: ['Chorus 2'] }));
+    const labels = sections.map((s) => s.label);
+    expect(labels).toEqual(['Chorus 1', 'Chorus 3', 'Chorus 2']);
+    expect(new Set(labels).size).toBe(3);
+  });
+
   it('names a blank marker by its letter, else its bar', () => {
     const sections = sectionsOf(song({ 0: ['', 'A'], 4: ['  '] }));
     expect(sections.map((s) => s.label)).toEqual(['Section A', 'Section at bar 5']);

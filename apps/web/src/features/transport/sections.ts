@@ -54,16 +54,21 @@ export function sectionsOf(score: Score): readonly ScoreSection[] {
   const totals = new Map<string, number>();
   for (const section of raw)
     totals.set(key(section.name), (totals.get(key(section.name)) ?? 0) + 1);
+  // A name that occurs once keeps its text, so an ordinal must never land on one: markers
+  // "Chorus", "Chorus", "Chorus 2" read "Chorus 1", "Chorus 3" and "Chorus 2".
+  const taken = new Set(raw.filter((s) => totals.get(key(s.name)) === 1).map((s) => key(s.name)));
   const seen = new Map<string, number>();
   const result = raw.map((section): ScoreSection => {
     const k = key(section.name);
     if ((totals.get(k) ?? 0) < 2) return { ...section, label: section.name };
-    const ordinal = (seen.get(k) ?? 0) + 1;
+    const pattern = (n: number) =>
+      /\d$/u.test(section.name) ? `${section.name} (${String(n)})` : `${section.name} ${String(n)}`;
+    let ordinal = seen.get(k) ?? 0;
+    do ordinal += 1;
+    while (taken.has(key(pattern(ordinal))));
     seen.set(k, ordinal);
-    const label = /\d$/u.test(section.name)
-      ? `${section.name} (${String(ordinal)})`
-      : `${section.name} ${String(ordinal)}`;
-    return { ...section, label };
+    taken.add(key(pattern(ordinal)));
+    return { ...section, label: pattern(ordinal) };
   });
   sections.set(score, result);
   return result;
