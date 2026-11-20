@@ -121,13 +121,14 @@ export function KeySlot(props: KeySlotProps) {
     return (
       <span className="flex items-center gap-2">
         {shortcut ? (
-          <kbd
-            aria-label={`${spoken(shortcut)}, ${fixed.toLowerCase()}`}
-            title={fixed}
-            className="text-muted-foreground font-mono text-xs"
-          >
-            {formatShortcut(shortcut, keyboard)}
-          </kbd>
+          <>
+            <kbd title={fixed} className="text-muted-foreground font-sans text-xs">
+              {formatShortcut(shortcut, keyboard)}
+            </kbd>
+            <span className="sr-only">
+              {spoken(shortcut)}, {fixed.toLowerCase()}
+            </span>
+          </>
         ) : null}
       </span>
     );
@@ -167,7 +168,7 @@ export function KeySlot(props: KeySlotProps) {
         className="hover:bg-muted focus-visible:ring-ring min-w-12 rounded-md border px-2 py-0.5 text-xs outline-none focus-visible:ring-2"
       >
         {shortcut ? (
-          <kbd className="font-mono">{formatShortcut(shortcut, keyboard)}</kbd>
+          <kbd className="font-sans">{formatShortcut(shortcut, keyboard)}</kbd>
         ) : (
           <span className="text-muted-foreground">Add key</span>
         )}
@@ -176,7 +177,7 @@ export function KeySlot(props: KeySlotProps) {
         <span className="text-muted-foreground text-xs">
           {fallback
             ? `(${formatShortcut(fallback, keyboard)} now runs ${displacedBy.title})`
-            : null}
+            : `(${displacedBy.title} holds this key)`}
         </span>
       )}
       {shortcut && (

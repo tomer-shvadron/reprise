@@ -193,6 +193,52 @@ describe('planChange', () => {
   });
 });
 
+describe('a key held in both contexts', () => {
+  const both = [
+    cmd('g.stop', { shortcut: { key: 'Enter' } }),
+    cmd('e.insertBeat', { shortcut: { key: 'Enter' }, context: 'editing' }),
+    cmd('e.previous', { shortcut: { key: 'F5' }, context: 'editing' }),
+  ];
+  const find = (id: string) => both.find((c) => c.id === id) as Command;
+
+  it('offers a swap with the holder in the same context, whatever the registration order', () => {
+    const plan = planChange(both, {}, 'other', find('e.previous'), { key: 'Enter' });
+    expect(plan.kind).toBe('conflict');
+    if (plan.kind !== 'conflict') return;
+    expect(plan.other.id).toBe('e.insertBeat');
+    expect(plan.overrides).toEqual({
+      'e.previous': { key: 'Enter' },
+      'e.insertBeat': { key: 'F5' },
+    });
+    expect(conflictsUnder(both, plan.overrides, 'other')).toEqual([]);
+  });
+
+  it('shadows the global command only when no same-context command holds the key', () => {
+    const plan = planChange(both, {}, 'other', find('e.insertBeat'), { key: 'F5' });
+    expect(plan.kind).toBe('conflict');
+    const lone = [both[0] as Command, both[2] as Command];
+    const shadow = planChange(lone, {}, 'other', lone[1] as Command, { key: 'Enter' });
+    expect(shadow.kind === 'ok' && shadow.shadow?.other.id).toBe('g.stop');
+  });
+});
+
+describe('fixed commands', () => {
+  it('claim their keys before the overrides', () => {
+    const { keys, displacedBy } = effectiveKeys(
+      COMMANDS,
+      { 'a.bare': { key: '3' }, 'e.insert': { key: '3' }, 'a.open': { key: 'c', mod: true } },
+      'mac',
+    );
+    expect(keys.get('e.fret')).toEqual({ key: '3' });
+    expect(keys.get('e.insert')).toBeUndefined();
+    expect(displacedBy.get('e.insert')).toBe('e.fret');
+    expect(keys.get('a.copy')).toEqual({ key: 'c', mod: true });
+    expect(keys.get('a.open')).toBeUndefined();
+    // Another context is not a clash.
+    expect(keys.get('a.bare')).toEqual({ key: '3', only: 'mac' });
+  });
+});
+
 describe('the app registry with overrides', () => {
   it('answers the overridden key, and does not throw at launch for stored colliding overrides', async () => {
     const services = createTestServices();

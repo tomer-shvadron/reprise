@@ -110,6 +110,11 @@ export function effectiveKeys(
   const displacedBy = new Map<string, string>();
   const claimed = new Map<string, string>();
   const overridden = new Set<string>();
+  // A key that cannot be changed is never given away, whatever a stored override says.
+  for (const command of commands) {
+    const own = isRebindable(command) ? undefined : shortcutOn(command.shortcut, platform);
+    if (own) claimed.set(slotOf(command, own), command.id);
+  }
   for (const command of commands) {
     const entry = overrides[command.id];
     if (entry === undefined || !isRebindable(command)) continue;
@@ -121,8 +126,10 @@ export function effectiveKeys(
     const shortcut = stamp(entry, platform);
     const slot = slotOf(command, shortcut);
     // Only corrupt data gets here, since the recorder never writes two commands one key.
-    if (claimed.has(slot)) {
+    const holder = claimed.get(slot);
+    if (holder !== undefined) {
       keys.set(command.id, undefined);
+      displacedBy.set(command.id, holder);
       continue;
     }
     claimed.set(slot, command.id);
@@ -130,6 +137,10 @@ export function effectiveKeys(
   }
   for (const command of commands) {
     if (overridden.has(command.id)) continue;
+    if (!isRebindable(command)) {
+      keys.set(command.id, command.shortcut);
+      continue;
+    }
     const own = shortcutOn(command.shortcut, platform);
     const owner = own && claimed.get(slotOf(command, own));
     if (owner !== undefined) {
@@ -228,11 +239,16 @@ export function planChange(
   if (!wanted) return { kind: 'ok', overrides: applied };
 
   const id = shortcutId(wanted);
-  const holder = commands.find((other) => {
+  const holds = (other: Command) => {
     if (other.id === command.id) return false;
     const theirs = shortcutOn(before.get(other.id), platform);
     return theirs !== undefined && shortcutId(theirs) === id;
-  });
+  };
+  // A holder in this command's own context is the real clash; one in the other context only
+  // shadows, so it is looked for second whatever the registration order.
+  const holder =
+    commands.find((other) => holds(other) && other.context === command.context) ??
+    commands.find(holds);
   if (!holder) return { kind: 'ok', overrides: applied };
   if (holder.context !== command.context) {
     // The editing binding wins while editing; the global one is untouched.

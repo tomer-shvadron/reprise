@@ -19,6 +19,15 @@ describe('menuKeyOf', () => {
     expect(menuKeyOf({ key: 'a', alt: true })).toEqual({ key: 'a', alt: true });
   });
 
+  it('gives null for a key with neither Cmd/Ctrl nor Alt, except an F-key', () => {
+    for (const key of ['s', ' ', 'Enter', 'ArrowLeft', '?']) {
+      expect(menuKeyOf({ key })).toBeNull();
+      expect(menuKeyOf({ key, shift: true })).toBeNull();
+    }
+    expect(menuKeyOf({ key: 'F9', shift: true })).toEqual({ key: 'F9', shift: true });
+    expect(menuKeyOf({ key: 'Enter', mod: true })).toEqual({ key: 'Enter', mod: true });
+  });
+
   it('gives null for no key, and for a key the accelerator grammar cannot express', () => {
     expect(menuKeyOf(undefined)).toBeNull();
     expect(menuKeyOf({ key: 'é', mod: true })).toBeNull();

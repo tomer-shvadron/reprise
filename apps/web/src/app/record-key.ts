@@ -80,6 +80,17 @@ function characterOf(
   return isShortcutKey(event.key) ? { key: event.key } : { reason: 'unsupported' };
 }
 
+// The first rule is main's ROLE_KEYS (apps/desktop/src/main/validate.ts), the keys its menu keeps
+// for its own roles on every platform: a menu item given one would silently show no key. A test
+// in the desktop package pins the two lists together.
+export const ROLE_KEY_RULES: readonly (readonly [string, boolean, boolean, boolean])[] = [
+  ['q', true, false, false],
+  ['w', true, false, false],
+  ['h', true, false, false],
+  ['h', true, false, true],
+  ['m', true, false, false],
+];
+
 function reservedFor(
   key: string,
   mod: boolean,
@@ -87,12 +98,12 @@ function reservedFor(
   alt: boolean,
   platform: KeyboardPlatform,
 ): boolean {
-  if (platform === 'mac') {
-    if (mod && !shift && !alt) return ['q', 'w', 'h', 'm', ' ', '`'].includes(key);
-    return mod && alt && !shift && key === 'h';
+  if (ROLE_KEY_RULES.some(([k, m, s, a]) => k === key && m === mod && s === shift && a === alt)) {
+    return true;
   }
+  if (platform === 'mac') return mod && !shift && !alt && (key === ' ' || key === '`');
   if (alt && !mod && !shift) return key === 'F4' || key === ' ';
-  if (mod && !alt && !shift) return key === 'w' || key === 'F4';
+  if (mod && !alt && !shift) return key === 'F4';
   return !mod && !alt && !shift && key === 'F10';
 }
 

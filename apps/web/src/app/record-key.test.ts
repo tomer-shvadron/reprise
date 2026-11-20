@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { KeyboardPlatform } from './keyboard';
-import { readKeyEvent, type KeyEventInfo, type KeyRead } from './record-key';
+import { readKeyEvent, ROLE_KEY_RULES, type KeyEventInfo, type KeyRead } from './record-key';
 
 const event = (init: Partial<KeyEventInfo> & { key: string }): KeyEventInfo => ({
   code: '',
@@ -21,6 +21,19 @@ const binding = (result: KeyRead) => {
   if (result.kind !== 'key') throw new Error(`expected a key, got ${result.kind}`);
   return result.binding;
 };
+
+// eslint-disable-next-line import-x/no-relative-packages, import-x/default -- the desktop source as text, to pin the two lists together
+import validate from '../../../desktop/src/main/validate.ts?raw';
+
+describe('the role keys', () => {
+  it("are the desktop menu's ROLE_KEYS, minus the clipboard keys the registry handles as native", () => {
+    const block = /const ROLE_KEYS[\s\S]*?\];/.exec(validate)?.[0] ?? '';
+    const rows = [...block.matchAll(/\['(\w)', (true|false), (true|false), (true|false)\]/g)]
+      .map((m) => [m[1], m[2] === 'true', m[3] === 'true', m[4] === 'true'])
+      .filter(([key]) => !['c', 'x', 'v'].includes(key as string));
+    expect(rows).toEqual(ROLE_KEY_RULES.map((rule) => [...rule]));
+  });
+});
 
 describe('readKeyEvent', () => {
   it('records letters lowercased, with Shift held', () => {
@@ -109,6 +122,12 @@ describe('readKeyEvent', () => {
       });
     }
     expect(reserved('h', { metaKey: true, altKey: true }, 'mac')).toMatchObject({
+      reason: 'reserved',
+    });
+    for (const key of ['q', 'h', 'm']) {
+      expect(reserved(key, { ctrlKey: true }, 'other')).toMatchObject({ reason: 'reserved' });
+    }
+    expect(reserved('h', { ctrlKey: true, altKey: true }, 'other')).toMatchObject({
       reason: 'reserved',
     });
     expect(reserved('F4', { altKey: true }, 'other')).toMatchObject({ reason: 'reserved' });

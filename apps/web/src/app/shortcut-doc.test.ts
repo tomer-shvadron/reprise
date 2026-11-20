@@ -31,9 +31,14 @@ describe('docs/reference/keyboard-shortcuts.md', () => {
     const services = createTestServices();
     const changed = createAppRegistry(services, 'mac');
     services.settings.set(SHORTCUT_OVERRIDES_SETTING, { 'view.toggleViewMode': { key: 'F5' } });
-    const [command] = changed.list();
-    expect(command && changed.shortcutOf(command)).toBeDefined();
+    const toggle = changed.get('view.toggleViewMode');
+    // The override is live ...
+    expect(toggle && changed.shortcutOf(toggle)).toEqual({ key: 'F5', only: 'mac' });
+    // ... and the table the doc test generates is the defaults, byte for byte.
     expect(shortcutTable(changed.list(), (c) => c.shortcut)).toBe(
+      shortcutTable(registry.list(), (c) => c.shortcut),
+    );
+    expect(shortcutTable(changed.list(), (c) => changed.shortcutOf(c))).not.toBe(
       shortcutTable(registry.list(), (c) => c.shortcut),
     );
   });

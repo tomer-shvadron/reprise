@@ -49,9 +49,12 @@ function Keyboard() {
   // The command whose key button takes focus once the row has re-rendered.
   const focusBack = useRef<string | undefined>(undefined);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
+  const filterInput = useRef<HTMLInputElement>(null);
   const statusId = useId();
 
-  const commands = registry.list();
+  // The registry's list is a new array per call; its version says when the set changed.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const commands = useMemo(() => registry.list(), [registry, registry.version]);
   const natives = useMemo(
     () =>
       commands.flatMap((command) => {
@@ -70,7 +73,8 @@ function Keyboard() {
   // After every render: the row has the new text by now, and the key button exists again.
   useLayoutEffect(() => {
     if (focusBack.current === undefined || recording !== undefined || pending !== undefined) return;
-    buttons.current.get(focusBack.current)?.focus();
+    // The row may have left a key filter; the filter box is the nearest sensible place then.
+    (buttons.current.get(focusBack.current) ?? filterInput.current)?.focus();
     focusBack.current = undefined;
   });
 
@@ -223,6 +227,7 @@ function Keyboard() {
         press a key, the system keeps it.
       </p>
       <Input
+        ref={filterInput}
         aria-label="Filter commands or keys"
         placeholder="Filter commands or keys…"
         value={filter}

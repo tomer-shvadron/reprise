@@ -129,6 +129,17 @@ describe('the Keyboard section', () => {
     expect(registry.conflicts()).toEqual([]);
   });
 
+  it('keeps focus in the dialog when the edited row leaves a key filter', async () => {
+    const { user } = await setup();
+    const filter = screen.getByRole('textbox', { name: 'Filter commands or keys' });
+    await user.type(filter, 'F4');
+    await user.click(keyButton(VIEW, 'F4'));
+    await user.keyboard('{F5}');
+    await waitFor(() => {
+      expect(filter).toHaveFocus();
+    });
+  });
+
   it('cancels on Escape without closing the dialog', async () => {
     const { services, user } = await setup();
     await user.click(keyButton(VIEW, 'F4'));
