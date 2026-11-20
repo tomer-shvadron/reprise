@@ -14,8 +14,8 @@ import {
 import {
   DraftRecoveryDialog,
   ExportDialog,
-  createDexieSettingsBackend,
   installLibrary,
+  installSettings,
   libraryOf,
   LibraryScreen,
   RecentSongs,
@@ -96,7 +96,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
 
   // The persisted preferences, loaded from the library's database; attach is idempotent.
   useEffect(() => {
-    void services.settings.attach(createDexieSettingsBackend(libraryOf(services).db.settings));
+    installSettings(services, libraryOf(services).db);
   }, [services]);
 
   useEffect(() => installTheme(services), [services]);

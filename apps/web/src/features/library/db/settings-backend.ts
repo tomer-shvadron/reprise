@@ -1,4 +1,4 @@
-import type { SettingsBackend } from '@/state/settings';
+import type { SettingsBackend, SettingsStore } from '@/state/settings';
 
 import type { RepriseDb } from './schema';
 
@@ -19,4 +19,12 @@ export function createDexieSettingsBackend(table: RepriseDb['settings']): Settin
       await table.delete(key);
     },
   };
+}
+
+/**
+ * Attaches the store to the library database's `settings` table. The app calls it once the
+ * library's database exists; the store ignores a second call, so StrictMode's double effect is safe.
+ */
+export function installSettings(services: { settings: SettingsStore }, db: RepriseDb): void {
+  void services.settings.attach(createDexieSettingsBackend(db.settings));
 }

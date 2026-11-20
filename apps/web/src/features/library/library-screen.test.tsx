@@ -14,6 +14,8 @@ import { createLibrary, provideLibrary, type Library } from './library';
 import { LibraryScreen } from './library-screen';
 import { openLibraryDb } from './db/schema';
 import { LIBRARY_SORT_SETTING } from './search';
+import { installSettings } from './db/settings-backend';
+import { createSettingsStore } from '@/state/settings';
 import { rowOf, uniqueDbName } from './test-support';
 
 const files = new Map<string, Uint8Array>();
@@ -30,7 +32,10 @@ async function nativeSong(title: string) {
 }
 
 function setup(dbName = uniqueDbName()) {
+  const db = openLibraryDb(dbName);
   const services = createTestServices({
+    // Over the real table, so the sort survives only if it was written there.
+    settings: createSettingsStore(),
     platform: fakePlatform({
       readFile: (path) => {
         const bytes = files.get(path);
@@ -39,7 +44,8 @@ function setup(dbName = uniqueDbName()) {
     }),
   });
   mirrorAudio(services);
-  const library = createLibrary(services, { db: openLibraryDb(dbName) });
+  const library = createLibrary(services, { db });
+  installSettings(services, db);
   libraries.push(library);
   provideLibrary(services, library);
   return { services, library, dbName };
@@ -99,8 +105,10 @@ describe('the library screen', () => {
         .map((option) => option.textContent);
     expect(order()[0]).toContain('Beta');
     expect(services.settings.get(LIBRARY_SORT_SETTING)).toBe('artist');
-    const again = createLibrary(services, { db: openLibraryDb(dbName) });
-    libraries.push(again);
+    expect(await services.settings.settled()).toBe(true);
+    // A relaunch: new services and a new store over the same database.
+    const reopened = setup(dbName);
+    const again = reopened.library;
     await again.load();
     expect(again.store.getState().sort).toBe('artist');
   });

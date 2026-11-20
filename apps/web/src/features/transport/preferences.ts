@@ -9,7 +9,16 @@ import {
   METRONOME_VOLUME_SETTING,
 } from '@/state/app-settings';
 import { MEMORY_BUDGET_RANGE } from '@/state/playback';
-import type { SettingsStore } from '@/state/settings';
+import type { SettingDef, SettingsStore } from '@/state/settings';
+
+const LEGACY_HANDLES = [
+  COUNT_IN_SETTING,
+  METRONOME_ON_SETTING,
+  METRONOME_VOLUME_SETTING,
+  MASTER_VOLUME_SETTING,
+  GM_TIER_BYPASS_SETTING,
+  MEMORY_BUDGET_SETTING,
+] as const;
 
 /** The old home of these preferences; now only read once, to move them into the settings table (#343). */
 export const TRANSPORT_STORAGE_KEY = 'reprise.transport';
@@ -76,34 +85,35 @@ export function readTransportPreferences(
 }
 
 /**
- * The one-time move of the old `reprise.transport` blob into the settings table: the five values
- * become their own keys and the old key is removed. Does nothing when the blob is absent or a
- * setting is already stored, so a user who has set anything since the move is never overwritten.
+ * The one-time move of the old `reprise.transport` blob into the settings table: the six values
+ * become their own keys and the old key is removed. Call it once the settings have hydrated.
+ *
+ * It never loses the blob: it does nothing unless the table loaded (a failed load hydrates with
+ * defaults, and the writes would fail too), nothing when any of the keys is already a loaded row
+ * (an earlier move happened), and it removes the blob only after every write was confirmed.
+ * A value set this session before hydration is the user's newer choice and is kept.
  */
-export function importLegacyTransportPreferences(
+export async function importLegacyTransportPreferences(
   settings: SettingsStore,
   storage: () => Storage = () => window.localStorage,
-): void {
-  const handles = [
-    COUNT_IN_SETTING,
-    METRONOME_ON_SETTING,
-    METRONOME_VOLUME_SETTING,
-    MASTER_VOLUME_SETTING,
-    GM_TIER_BYPASS_SETTING,
-    MEMORY_BUDGET_SETTING,
-  ];
+): Promise<void> {
+  const rows = settings.loadedRows();
+  if (!rows) return;
   try {
     if (storage().getItem(TRANSPORT_STORAGE_KEY) === null) return;
-    if (handles.some((handle) => settings.isStored(handle))) return;
+    if (LEGACY_HANDLES.some((handle) => rows.has(handle.key))) return;
     const old = readTransportPreferences(storage);
-    settings.set(COUNT_IN_SETTING, old.countIn);
-    settings.set(METRONOME_ON_SETTING, old.metronome.on);
-    settings.set(METRONOME_VOLUME_SETTING, old.metronome.volume);
-    settings.set(MASTER_VOLUME_SETTING, old.masterVolume);
-    settings.set(GM_TIER_BYPASS_SETTING, old.gmTierBypass);
-    settings.set(MEMORY_BUDGET_SETTING, old.memoryBudgetBytes);
-    storage().removeItem(TRANSPORT_STORAGE_KEY);
+    const keep = <T>(handle: SettingDef<T>, value: T) => {
+      if (!settings.isStored(handle)) settings.set(handle, value);
+    };
+    keep(COUNT_IN_SETTING, old.countIn);
+    keep(METRONOME_ON_SETTING, old.metronome.on);
+    keep(METRONOME_VOLUME_SETTING, old.metronome.volume);
+    keep(MASTER_VOLUME_SETTING, old.masterVolume);
+    keep(GM_TIER_BYPASS_SETTING, old.gmTierBypass);
+    keep(MEMORY_BUDGET_SETTING, old.memoryBudgetBytes);
+    if (await settings.settled()) storage().removeItem(TRANSPORT_STORAGE_KEY);
   } catch {
-    // Storage can be disabled; the defaults stand.
+    // Storage can be disabled; the defaults stand and the blob, if any, is tried again next time.
   }
 }

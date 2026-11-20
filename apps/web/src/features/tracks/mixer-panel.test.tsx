@@ -6,7 +6,7 @@ import { mirrorAudio } from '@/test/mirror-audio';
 import { renderWithServices } from '@/test/render';
 import { GM_TIER_BYPASS_SETTING } from '@/state/app-settings';
 import { createTestServices } from '@/test/services';
-import { createTestSettings } from '@/test/settings-backend';
+import { createMemorySettingsBackend, createTestSettings } from '@/test/settings-backend';
 
 import { MixerPanel } from './mixer-panel';
 import { renderTracks, threeTracks } from './test/render-tracks';
@@ -34,7 +34,8 @@ describe('MixerPanel', () => {
   });
 
   it('toggles the GM tier bypass and keeps it as a preference', async () => {
-    const settings = createTestSettings();
+    const backend = createMemorySettingsBackend();
+    const settings = createTestSettings(backend);
     const services = createTestServices({ settings });
     mirrorAudio(services);
     renderWithServices(<MixerPanel />, services);
@@ -46,6 +47,12 @@ describe('MixerPanel', () => {
     expect(bypass).not.toBeChecked();
     // The preference lives in the settings store, which a reload hydrates from the table.
     expect(settings.get(GM_TIER_BYPASS_SETTING)).toBe(false);
+    expect(await settings.settled()).toBe(true);
+    // A reload: new services over the same rows reach the audio service.
+    const reloadedSettings = createTestSettings(backend);
+    const reloaded = createTestServices({ settings: reloadedSettings });
+    await reloadedSettings.whenHydrated();
+    expect(reloaded.fakeAudio.setGmTierBypass).toHaveBeenLastCalledWith(false);
   });
 
   it('lists the effects preset beside the instrument of each track', async () => {

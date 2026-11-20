@@ -4,7 +4,12 @@ import { z } from 'zod';
 import { memoryStorage } from '@/test/memory-local-storage';
 import { createMemorySettingsBackend } from '@/test/settings-backend';
 
-import { defineSetting, createSettingsStore, type SettingsBackend } from './settings';
+import {
+  defineSetting,
+  createSettingsStore,
+  readEarlySetting,
+  type SettingsBackend,
+} from './settings';
 
 const FLAG = defineSetting({ key: 'test.flag', schema: z.boolean(), default: false });
 const LEVEL = defineSetting({ key: 'test.level', schema: z.number().min(0).max(1), default: 0.5 });
@@ -182,6 +187,45 @@ describe('settings store', () => {
     expect(warn).toHaveBeenCalled();
   });
 
+  it('exposes the loaded rows only after a successful load', async () => {
+    quiet();
+    const ok = make([[FLAG.key, true]]);
+    expect(ok.store.loadedRows()).toBeUndefined();
+    await ok.store.attach(ok.backend);
+    expect(ok.store.loadedRows()?.get(FLAG.key)).toBe(true);
+
+    const bad = make();
+    await bad.store.attach({ ...bad.backend, load: () => Promise.reject(new Error('no')) });
+    expect(bad.store.loadedRows()).toBeUndefined();
+  });
+
+  it('reports through settled whether every write succeeded', async () => {
+    quiet();
+    const good = make();
+    await good.store.attach(good.backend);
+    good.store.set(FLAG, true);
+    expect(await good.store.settled()).toBe(true);
+
+    const bad = make();
+    await bad.store.attach({ ...bad.backend, put: () => Promise.reject(new Error('x')) });
+    bad.store.set(FLAG, true);
+    expect(await bad.store.settled()).toBe(false);
+  });
+
+  it('warns once per key for the same invalid value', async () => {
+    const warn = quiet();
+    const other = defineSetting({ key: 'test.other', schema: z.number().max(1), default: 0 });
+    const { store, backend } = make([
+      [LEVEL.key, 7],
+      [other.key, 7],
+    ]);
+    await store.attach(backend);
+    store.get(LEVEL);
+    store.get(other);
+    store.get(LEVEL);
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
   it('loads once for a second attach', async () => {
     const { store, backend } = make();
     const load = vi.spyOn(backend, 'load');
@@ -227,5 +271,17 @@ describe('early settings', () => {
     expect(store.get(MODE)).toBe('system');
     store.set(MODE, 'light');
     expect(store.get(MODE)).toBe('light');
+  });
+});
+
+describe('readEarlySetting', () => {
+  it('reads the stored string, and gives the default for a missing or invalid one', () => {
+    const local = memoryStorage();
+    expect(readEarlySetting(MODE, () => local)).toBe('system');
+    local.setItem('test.mode', 'dark');
+    expect(readEarlySetting(MODE, () => local)).toBe('dark');
+    local.setItem('test.mode', 'sepia');
+    expect(readEarlySetting(MODE, () => local)).toBe('system');
+    expect(() => readEarlySetting(FLAG)).toThrow(/not early/);
   });
 });

@@ -48,8 +48,12 @@ export interface SettingsStore {
   set<T>(def: SettingDef<T>, value: T): void;
   /** Removes the rows, so the values return to their defaults. */
   reset(defs: readonly SettingKey[]): void;
-  /** Whether a value is stored for `def`, as opposed to the default showing through. */
+  /** Whether a value is held for `def`, loaded or set this session, as opposed to the default showing through. */
   isStored(def: SettingKey): boolean;
+  /** The rows the backend returned; undefined until a load succeeds, so also after a failed one. */
+  loadedRows(): ReadonlyMap<string, unknown> | undefined;
+  /** Resolves, once the writes now in flight have finished, to whether all of them succeeded. */
+  settled(): Promise<boolean>;
   /** Fires only when the parsed value changes, hydration included. */
   subscribe<T>(def: SettingDef<T>, listener: (value: T, previous: T) => void): () => void;
   hydrated(): boolean;
@@ -61,8 +65,25 @@ export interface SettingsStore {
 export interface SettingsStoreOptions {
   /** Where early settings live; `window.localStorage` by default. */
   local?: () => Storage;
-  /** Values present from the start, as if hydrated. */
-  initial?: ReadonlyMap<string, unknown>;
+}
+
+/**
+ * An early setting's value without a store, for what runs before one exists (the theme at
+ * startup). A missing, unreadable or invalid value gives the default, silently: the store warns.
+ */
+export function readEarlySetting<T>(
+  def: SettingDef<T>,
+  local: () => Storage = () => window.localStorage,
+): T {
+  if (!def.early) throw new Error(`The setting "${def.key}" is not early`);
+  try {
+    const raw = local().getItem(def.early.storageKey);
+    if (raw === null) return def.default;
+    const result = def.schema.safeParse(raw);
+    return result.success ? result.data : def.default;
+  } catch {
+    return def.default;
+  }
 }
 
 interface Subscription {
@@ -83,22 +104,24 @@ export function createSettingsStore(options: SettingsStoreOptions = {}): Setting
   const local = options.local ?? (() => window.localStorage);
   // Raw values by key: rows of the backend, early values read once, and what `set` stored.
   // A row with no handle is kept here and never deleted.
-  const values = new Map<string, unknown>(options.initial);
+  const values = new Map<string, unknown>();
   const earlyRead = new Set<string>();
   // What was set or reset before the backend loaded; it wins over the stored rows.
   const pending = new Map<string, Pending>();
   // The parse of a raw value, keyed by the raw's identity, so an object value keeps its reference.
   const parsed = new Map<string, { raw: unknown; value: unknown }>();
   const subscriptions = new Map<string, Set<Subscription>>();
-  const warned = new Set<unknown>();
+  // The invalid raw value last warned about, per key, so one bad row warns once.
+  const warned = new Map<string, unknown>();
+  const inflight = new Set<Promise<boolean>>();
+  let loaded: ReadonlyMap<string, unknown> | undefined;
   let backend: SettingsBackend | undefined;
   let attached: Promise<void> | undefined;
-  let isHydrated = options.initial !== undefined;
+  let isHydrated = false;
   let resolveHydrated: () => void = () => undefined;
   const hydration = new Promise<void>((resolve) => {
     resolveHydrated = resolve;
   });
-  if (isHydrated) resolveHydrated();
 
   const readEarly = (def: SettingKey) => {
     if (!def.early || earlyRead.has(def.key)) return;
@@ -121,8 +144,8 @@ export function createSettingsStore(options: SettingsStoreOptions = {}): Setting
     let value = def.default;
     if (result.success) {
       value = result.data;
-    } else if (!warned.has(raw)) {
-      warned.add(raw);
+    } else if (warned.get(def.key) !== raw) {
+      warned.set(def.key, raw);
       console.warn(`The stored value of setting "${def.key}" is invalid; using the default`);
     }
     // A structurally equal value keeps the earlier reference.
@@ -142,11 +165,6 @@ export function createSettingsStore(options: SettingsStoreOptions = {}): Setting
     }
   };
 
-  const warnWrite = (what: string) => (error: unknown) => {
-    // The value still applies for this session.
-    console.warn(`Could not ${what}`, error);
-  };
-
   const write = (key: string, change: Pending) => {
     if (!backend || !isHydrated) {
       pending.set(key, change);
@@ -154,7 +172,16 @@ export function createSettingsStore(options: SettingsStoreOptions = {}): Setting
     }
     // IndexedDB runs transactions over one store in creation order, so the last write wins.
     const done = change.kind === 'put' ? backend.put(key, change.value) : backend.remove(key);
-    done.catch(warnWrite(`save the setting "${key}"`));
+    const tracked = done.then(
+      () => true,
+      (error: unknown) => {
+        // The value still applies for this session.
+        console.warn(`Could not save the setting "${key}"`, error);
+        return false;
+      },
+    );
+    inflight.add(tracked);
+    void tracked.then(() => inflight.delete(tracked));
   };
 
   const writeEarly = (def: SettingKey, value: string | undefined) => {
@@ -197,6 +224,11 @@ export function createSettingsStore(options: SettingsStoreOptions = {}): Setting
       readEarly(def);
       return values.has(def.key);
     },
+    loadedRows: () => loaded,
+    async settled() {
+      const results = await Promise.all([...inflight]);
+      return results.every(Boolean);
+    },
     subscribe(def, listener) {
       const subscription: Subscription = {
         def,
@@ -217,11 +249,14 @@ export function createSettingsStore(options: SettingsStoreOptions = {}): Setting
       backend = next;
       attached = (async () => {
         let rows: ReadonlyMap<string, unknown> = new Map();
+        let failed = false;
         try {
           rows = await next.load();
         } catch (error) {
+          failed = true;
           console.warn('Could not read the settings; using the defaults', error);
         }
+        if (!failed) loaded = rows;
         const changed: string[] = [];
         for (const [key, value] of rows) {
           if (pending.has(key)) continue;

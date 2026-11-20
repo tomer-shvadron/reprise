@@ -86,7 +86,7 @@ export function installTransport(deps: TransportDeps): () => void {
   // Once the table has loaded, the old localStorage blob moves into it, once.
   let disposed = false;
   void settings.whenHydrated().then(() => {
-    if (!disposed) importLegacyTransportPreferences(settings, legacyStorage);
+    if (!disposed) void importLegacyTransportPreferences(settings, legacyStorage);
   });
 
   const unsubscribeSounds = playback.subscribe((state, previous) => {

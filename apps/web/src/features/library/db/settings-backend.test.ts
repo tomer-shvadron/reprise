@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { APP_SETTINGS, THEME_SETTING } from '@/state/app-settings';
 import { createSettingsStore, type SettingDef, type SettingsStore } from '@/state/settings';
@@ -40,12 +40,10 @@ function launch(name: string, local: Storage) {
   return { db, store, backend };
 }
 
+// Resolves once every write has been committed, so a closed database really holds the value.
 const settle = async (store: SettingsStore) => {
   await store.whenHydrated();
-  // The write-through of a `set` is a promise the store does not hand back.
-  await vi.waitFor(async () => {
-    await Promise.resolve();
-  });
+  expect(await store.settled()).toBe(true);
 };
 
 describe('the settings table across a relaunch', () => {

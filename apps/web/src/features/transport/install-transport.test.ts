@@ -129,46 +129,96 @@ describe('installTransport', () => {
     expect(services.playback.getState().settings.masterVolume).toBe(0.5);
   });
 
-  it('imports the old localStorage blob once, and removes it', async () => {
-    const legacy = memoryStorage();
-    legacy.setItem(
-      TRANSPORT_STORAGE_KEY,
-      JSON.stringify({
-        version: 1,
-        countIn: true,
-        metronome: { on: true, volume: 0.4 },
-        masterVolume: 0.5,
-      }),
-    );
-    const { backend, settings } = await storeWith();
-    const stop = installTransport({
-      ...transportDeps(),
-      settings,
-      legacyStorage: () => legacy,
-    });
+  const LEGACY = JSON.stringify({
+    version: 1,
+    countIn: true,
+    metronome: { on: true, volume: 0.4 },
+    masterVolume: 0.5,
+  });
+
+  /** Runs the transport over `settings` and lets its one-time import finish. */
+  async function importWith(
+    settings: ReturnType<typeof createTestSettings>,
+    legacy: Storage,
+  ): Promise<void> {
+    const stop = installTransport({ ...transportDeps(), settings, legacyStorage: () => legacy });
     await settings.whenHydrated();
+    await settings.settled();
+    // The import continues after `settled` resolves; two ticks let its removal run.
     await Promise.resolve();
+    await Promise.resolve();
+    stop();
+  }
+
+  it('imports the old localStorage blob once, and removes it after the writes', async () => {
+    const legacy = memoryStorage();
+    legacy.setItem(TRANSPORT_STORAGE_KEY, LEGACY);
+    const { backend, settings } = await storeWith();
+
+    await importWith(settings, legacy);
+
     expect(settings.get(COUNT_IN_SETTING)).toBe(true);
     expect(settings.get(METRONOME_VOLUME_SETTING)).toBe(0.4);
     expect(settings.get(MASTER_VOLUME_SETTING)).toBe(0.5);
     expect(backend.rows.get(MASTER_VOLUME_SETTING.key)).toBe(0.5);
     expect(legacy.getItem(TRANSPORT_STORAGE_KEY)).toBeNull();
-    stop();
+  });
+
+  it('keeps the blob when the table failed to load', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const legacy = memoryStorage();
+    legacy.setItem(TRANSPORT_STORAGE_KEY, LEGACY);
+    const settings = createSettingsStore({ local: () => memoryStorage() });
+    await settings.attach({
+      ...createMemorySettingsBackend(),
+      load: () => Promise.reject(new Error('VersionError')),
+    });
+
+    await importWith(settings, legacy);
+
+    expect(legacy.getItem(TRANSPORT_STORAGE_KEY)).toBe(LEGACY);
+    expect(settings.get(COUNT_IN_SETTING)).toBe(false);
+  });
+
+  it('keeps the blob when a write fails', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const legacy = memoryStorage();
+    legacy.setItem(TRANSPORT_STORAGE_KEY, LEGACY);
+    const settings = createSettingsStore({ local: () => memoryStorage() });
+    await settings.attach({
+      ...createMemorySettingsBackend(),
+      put: () => Promise.reject(new Error('quota')),
+    });
+
+    await importWith(settings, legacy);
+
+    expect(legacy.getItem(TRANSPORT_STORAGE_KEY)).toBe(LEGACY);
+  });
+
+  it('imports the rest and removes the blob when one value was set before hydration', async () => {
+    const legacy = memoryStorage();
+    legacy.setItem(TRANSPORT_STORAGE_KEY, LEGACY);
+    const backend = createMemorySettingsBackend();
+    const settings = createSettingsStore({ local: () => memoryStorage() });
+    settings.set(MASTER_VOLUME_SETTING, 0.9);
+    await settings.attach(backend);
+
+    await importWith(settings, legacy);
+
+    expect(settings.get(MASTER_VOLUME_SETTING)).toBe(0.9);
+    expect(settings.get(COUNT_IN_SETTING)).toBe(true);
+    expect(backend.rows.get(MASTER_VOLUME_SETTING.key)).toBe(0.9);
+    expect(legacy.getItem(TRANSPORT_STORAGE_KEY)).toBeNull();
   });
 
   it('leaves the old blob alone when the table already holds a preference', async () => {
     const legacy = memoryStorage();
     legacy.setItem(TRANSPORT_STORAGE_KEY, JSON.stringify({ version: 1, countIn: true }));
     const { settings } = await storeWith([[MASTER_VOLUME_SETTING.key, 0.5]]);
-    const stop = installTransport({
-      ...transportDeps(),
-      settings,
-      legacyStorage: () => legacy,
-    });
-    await settings.whenHydrated();
-    await Promise.resolve();
+
+    await importWith(settings, legacy);
+
     expect(settings.get(COUNT_IN_SETTING)).toBe(false);
-    stop();
   });
 
   it('keys the speed by the bytes, so a same-named different song starts at 100%', async () => {
