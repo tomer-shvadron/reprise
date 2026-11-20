@@ -13,7 +13,7 @@ export function describePrimitive(primitive: Primitive): string {
     case 'line':
       return `line ${at} -> ${n(primitive.x2)},${n(primitive.y2)} w ${n(primitive.thickness)}${role}${node}`;
     case 'path':
-      return `path ${primitive.fill ? 'filled' : 'stroked'} ${primitive.d}${role}${node}`;
+      return `path ${primitive.fill ? 'filled' : 'stroked'} ${primitive.d}${primitive.lane === undefined ? '' : ` {${primitive.lane}}`}${role}${node}`;
     case 'text':
       return `text "${primitive.text}" ${at} size ${n(primitive.size)} ${primitive.anchor}${primitive.italic ? ' italic' : ''}${primitive.lane === undefined ? '' : ` {${primitive.lane}}`}${role}${node}`;
   }
