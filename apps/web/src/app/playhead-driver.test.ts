@@ -2,6 +2,7 @@ import { write } from '@reprise/formats';
 import type { Score } from '@reprise/model';
 import { describe, expect, it, vi } from 'vitest';
 
+import { FOLLOW_PLAYHEAD_SETTING } from '@/state/app-settings';
 import { playheadAt, type FollowPolicy, type PlaybackCursor } from '@/features/score';
 import type { FrameScheduler } from '@/state/position-reader';
 import { timelineOf } from '@/state/timeline';
@@ -155,6 +156,43 @@ describe('the playhead driver', () => {
     driver.repaint();
     expect(view.setPlayhead).toHaveBeenLastCalledWith(undefined);
     driver.stop();
+  });
+});
+
+describe('the follow playhead setting', () => {
+  it('off, play, stop and a running playhead never scroll, but an explicit request does once', async () => {
+    const { services, view, fire, at, frame } = await setup();
+    services.settings.set(FOLLOW_PLAYHEAD_SETTING, false);
+
+    frame(0.1, 100);
+    frame(0.1, 300);
+    at(0, 'stopped');
+    fire();
+    await flush();
+    expect(view.followPlayhead).not.toHaveBeenCalled();
+
+    services.ui.getState().requestFollow();
+    await flush();
+    expect(view.followPlayhead).toHaveBeenCalledOnce();
+    expect(view.followPlayhead).toHaveBeenLastCalledWith(expect.objectContaining({ force: true }));
+  });
+
+  it('turning it on mid-run resumes following, and a seek request still scrolls while off', async () => {
+    const { services, view, fire, at, frame } = await setup();
+    services.settings.set(FOLLOW_PLAYHEAD_SETTING, false);
+    frame(0.1, 100);
+    expect(view.followPlayhead).not.toHaveBeenCalled();
+
+    services.settings.set(FOLLOW_PLAYHEAD_SETTING, true);
+    frame(0.1, 300);
+    expect(view.followPlayhead).toHaveBeenCalledOnce();
+
+    services.settings.set(FOLLOW_PLAYHEAD_SETTING, false);
+    services.ui.getState().requestFollow();
+    at(900, 'playing');
+    fire();
+    expect(view.followPlayhead).toHaveBeenCalledTimes(2);
+    expect(view.followPlayhead).toHaveBeenLastCalledWith(expect.objectContaining({ force: true }));
   });
 });
 

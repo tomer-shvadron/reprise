@@ -7,6 +7,7 @@ import {
   writeStoredBottomPanelHeight,
 } from './bottom-panel-storage';
 import { initialTheme, type Theme } from './theme';
+import { ZOOM } from './zoom';
 
 export { BOTTOM_PANEL_HEIGHT };
 
@@ -17,7 +18,7 @@ export const PANEL_WIDTH = {
   rightPanel: { default: 320, min: 240, max: 480 },
 } as const satisfies Record<PanelId, { default: number; min: number; max: number }>;
 
-export const ZOOM = { min: 0.5, max: 3, default: 1 } as const;
+export { ZOOM };
 
 /**
  * What fills the app besides the player. The library (WP-060) and the sound manager (WP-091) are
@@ -61,6 +62,8 @@ export interface UiState {
   bottomPanelHeight: number;
   zoom: number;
   paletteOpen: boolean;
+  /** The Settings dialog; `section` is the id `openSettings` asked for, absent for the last one shown. */
+  settings: { open: boolean; section: string | undefined };
   follow: UiFollow;
   /** The theme on screen; the choice is the `appearance.theme` setting, which `installTheme` applies here. */
   setTheme: (theme: Theme) => void;
@@ -84,6 +87,9 @@ export interface UiState {
   persistBottomPanelHeight: () => void;
   setZoom: (zoom: number) => void;
   setPaletteOpen: (open: boolean) => void;
+  /** Opens Settings at `section` (an id from `app/settings-sections.ts`); an unknown id shows the first. */
+  openSettings: (section?: string) => void;
+  closeSettings: () => void;
   setViewMode: (mode: UiView['mode']) => void;
   setPaper: (paper: UiView['paper']) => void;
   /** Turns following on and asks for one follow now. */
@@ -118,6 +124,7 @@ export function createUiStore(theme: Theme = initialTheme()) {
     bottomPanelHeight: readStoredBottomPanelHeight(),
     zoom: ZOOM.default,
     paletteOpen: false,
+    settings: { open: false, section: undefined },
     follow: { on: true, request: 0 },
     setTheme: (next) => {
       set({ theme: next });
@@ -174,6 +181,12 @@ export function createUiStore(theme: Theme = initialTheme()) {
     },
     setPaletteOpen: (open) => {
       set({ paletteOpen: open });
+    },
+    openSettings: (section) => {
+      set({ settings: { open: true, section } });
+    },
+    closeSettings: () => {
+      set((state) => ({ settings: { ...state.settings, open: false } }));
     },
     setViewMode: (mode) => {
       if (get().view.mode !== mode) set((state) => ({ view: { ...state.view, mode } }));

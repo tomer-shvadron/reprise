@@ -133,3 +133,19 @@ describe('ui store screens and panel views', () => {
     expect(store.getState().rightPanelView).toBe('history');
   });
 });
+
+describe('ui store settings dialog', () => {
+  it('opens at a section, keeps the last one on close, and opens at none by default', () => {
+    const store = createUiStore('dark');
+    expect(store.getState().settings).toEqual({ open: false, section: undefined });
+
+    store.getState().openSettings('playback');
+    expect(store.getState().settings).toEqual({ open: true, section: 'playback' });
+
+    store.getState().closeSettings();
+    expect(store.getState().settings.open).toBe(false);
+
+    store.getState().openSettings();
+    expect(store.getState().settings).toEqual({ open: true, section: undefined });
+  });
+});
