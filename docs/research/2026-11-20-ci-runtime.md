@@ -232,10 +232,10 @@ Estimated selection for one staged file (static reverse-import closure; CI test 
 | `apps/web/src/state/settings.ts`                    | 166 (150 web, 16 web-browser)           | similar to `ui.ts`    | same                                                 |
 | `apps/web/src/app/command-registry.ts`              | 135 (119 web, 16 web-browser)           | 133 s                 | `playhead.browser` 9, `player.browser` 8             |
 | a leaf panel (`metronome-panel.tsx`)                | 134 (118 web, 16 web-browser)           | 133 s                 | same: it is reached from the app shell               |
-| `apps/web/src/features/library/library-screen.tsx`  | web and 16 web-browser                  | 62 s                  | the browser files are 34 s of it                     |
-| `packages/formats/src/gpif/xml.ts`                  | 182 (141 web, 21 formats, 18 web-browser) | 178 s               | `draft-cost.browser` 10                              |
-| `packages/layout/src/layout.ts`                     | 215 (178 web, 19 layout, 17 web-browser) | 393 s                | `cache-property` 97, `layout.test` 42, `follow-long` 27 |
-| any `packages/model` file                           | 336 of 447 (audio excluded: 297)        | about 494 s           | `cache-property` 97, `tracker` 42, `layout.test` 42, `follow-long` 27 |
+| `apps/web/src/features/library/library-screen.tsx`  | not counted (web and 16 web-browser)    | 62 s                  | the browser files are 34 s of it                     |
+| `packages/formats/src/gpif/xml.ts`                  | 182 (141 web, 21 formats, 18 web-browser; the other 2 are in projects not itemised) | 178 s               | `draft-cost.browser` 10                              |
+| `packages/layout/src/layout.ts`                     | 215 (178 web, 19 layout, 17 web-browser; the other 1 is in a project not itemised, probably `layout-worker`) | 393 s                | `cache-property` 97, `layout.test` 42, `follow-long` 27 |
+| any `packages/model` file                           | 336 of 447 (audio excluded: 297; the other 39 are `audio` files the static closure found, though every `audio` test imports the model, so all 45 run under the hook's rule and the real count is nearer 342)        | about 494 s           | `cache-property` 97, `tracker` 42, `layout.test` 42, `follow-long` 27 |
 
 Two consequences. A model or layout commit is bounded below by `cache-property.test.ts` (one file runs in one worker), which no core count shortens. And because the app shell imports almost every feature, even a leaf component selects most of the web suite plus 16 Chromium files. CONTRIBUTING.md's measured "a one-file change in `packages/model` about five seconds" is far out of date.
 
@@ -293,19 +293,22 @@ Moving heavy tests to a scheduled job is not proposed: every slow file guards so
 
 **Safe quick wins the owner can approve as a batch** (no lost coverage, no weaker gate): C1, C2, E1, T1, R1. Together they bring the median wait for a mergeable PR from about 9 minutes (p90 11.5) to about 3 minutes, where the mac-x64 packaging job (median 4.4 minutes) becomes the longest wait on PRs that touch the desktop build, and they take the floor of a related-test run on model and layout changes (the pre-push hook, H3) from about 97 s of one file down to about 30 s.
 
-**Owner's picks** (each weakens the local gate or what PRs check, and changes a CONTRIBUTING.md rule): H1, H3, H2, R2.
+**Owner's picks** (each weakens the local gate or what PRs check, and changes a CONTRIBUTING.md rule): H1, H3, H2, R2. Taken on 2026-11-20: H3 and R2; H1 and H2 were not (see the Conclusion).
 
 ## Conclusion
 
-Recommended first implementation PRs, each with before and after wall time over several runs and the test counts that show coverage held:
+What the owner decided on 2026-11-20 (#379), and which work picks it up:
 
-1. **`chore(ci)`: parallel jobs behind a `ci` aggregator, unit tests in three project groups** (C1 and C2, size M). `ci.yml`, a scripts test that every Vitest project is in exactly one group, AGENTS.md (CI description) and the comment in `protect-main.sh`; the required check stays `ci`.
-2. **`chore(ci)`: shard e2e over three runners behind an `e2e` aggregator** (E1, size S). `ci.yml`, the player README.
-3. **`test`: split the long test files** (T1, size S): `cache-property`, `layout.test`, `attack-verification`, `tracker`, `follow-long`. Same test count per project.
-4. **`chore(repo)`: `postinstall` honours `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD`** (R1, size S).
-5. Once the owner picks among H1, H3 and H2: **`chore(repo)`: the hook** (size S), with CONTRIBUTING.md's rule and measured timings (H5) updated in the same PR.
+- **Safe batch, all taken**: C1, C2, E1, T1 and R1.
+- **Hook: H3.** `vitest related` moves from pre-commit to pre-push; the commit hook keeps the conflict check, ESLint, Prettier and `tsc -b`. H1 and H2 were not taken. H5 (refresh the hook timings in CONTRIBUTING.md) lands in the same PR as H3, with the CONTRIBUTING.md and AGENTS.md rule changes.
+- **R2: yes**, read as no `package (mac-x64)` on PR runs, with a `push: branches: [main]` trigger added to `release.yml` so mac-x64 still runs after a merge (it also runs on tags and dispatch). See the R2 row for the saving and the risk.
+- **Not taken, measured later**: V1 (`vmThreads` for `web`), B1 before `bench-compare` becomes required, and E2. L1 and H4 were not picked.
 
-Then, measured separately: V1 (`vmThreads` for `web`), B1 before `bench-compare` becomes required, and E2.
+The work is three PRs, each reporting before and after wall time over several runs against the baseline in the appendix, with the test counts that show coverage held:
+
+1. **`ci: run the ci and e2e checks as parallel jobs`** (#381, part 1): C1, C2 and E1. `ci.yml`, a scripts test that every Vitest project is in exactly one group, AGENTS.md and the comment in `protect-main.sh`, the player e2e README; the required check stays `ci`.
+2. **Part 2: hooks, `postinstall` and `release.yml`**: H3, H5, R1 and R2. In progress on branch `chore/379-hooks-release`; no PR is open yet. R1 must keep the headless shell for `bench-compare` (explicit `playwright install chromium --only-shell` step from a cache, or drop the skip variable there), because `effects.bench.ts` needs it.
+3. **Part 3: `test`: split the long test files** (T1): `cache-property`, `layout.test`, `attack-verification`, `tracker` (each pipeline case in its own file), `follow-long`; same test count per project.
 
 ## Appendix: the sample
 
