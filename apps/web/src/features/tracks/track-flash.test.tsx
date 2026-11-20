@@ -28,23 +28,28 @@ describe('TrackFlash', () => {
     expect(status).toBeEmptyDOMElement();
   });
 
-  it('stays quiet when the same native file is reopened under a new document', async () => {
-    const { services, open } = renderTracks(() => <TrackFlash />);
-    const song = threeTracks();
-    const ids = await open(song);
-    act(() => {
-      services.selection.getState().setCurrentTrack(ids[2] ?? '');
-    });
-    const status = screen.getByRole('status');
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1600));
-    });
-    expect(status).toBeEmptyDOMElement();
-    const { bytes } = await write(song, 'reprise');
-    await act(async () => {
-      await services.document.getState().openBytes('copy.reprise', bytes);
-      services.selection.getState().setCurrentTrack(ids[0] ?? '');
-    });
-    expect(status).toBeEmptyDOMElement();
-  });
+  // It waits 1.6 s on purpose, 1.7 s worst on CI (#384): own timeout, 4x the worst rounded up to 30 s.
+  it(
+    'stays quiet when the same native file is reopened under a new document',
+    { timeout: 30_000 },
+    async () => {
+      const { services, open } = renderTracks(() => <TrackFlash />);
+      const song = threeTracks();
+      const ids = await open(song);
+      act(() => {
+        services.selection.getState().setCurrentTrack(ids[2] ?? '');
+      });
+      const status = screen.getByRole('status');
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1600));
+      });
+      expect(status).toBeEmptyDOMElement();
+      const { bytes } = await write(song, 'reprise');
+      await act(async () => {
+        await services.document.getState().openBytes('copy.reprise', bytes);
+        services.selection.getState().setCurrentTrack(ids[0] ?? '');
+      });
+      expect(status).toBeEmptyDOMElement();
+    },
+  );
 });
