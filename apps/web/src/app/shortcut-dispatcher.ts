@@ -115,8 +115,9 @@ export function dispatchShortcut(
 ): boolean {
   if (event.defaultPrevented || event.isComposing) return false;
 
-  const matching = registry.available().filter(({ shortcut, native }) => {
-    if (!shortcut || native) return false;
+  const matching = registry.available().filter((candidate) => {
+    const shortcut = registry.shortcutOf(candidate);
+    if (!shortcut || candidate.native) return false;
     if (DELETE_KEYS.has(event.key) && isTextField(event.target)) return false;
     if (NAVIGATION_KEYS.has(event.key) && isEditable(event.target)) return false;
     if (!shortcut.mod && leavesKeyToTarget(event)) return false;

@@ -2,7 +2,7 @@
 
 Shortcuts follow Guitar Pro where Guitar Pro has one.
 
-The table below is checked against the command registry in `apps/web` by `apps/web/src/app/shortcut-doc.test.ts`, which fails on any difference and prints the table to paste in. WP-101 adds the script that writes it and the cheat sheet. Until then, edit it only by pasting the table that test prints.
+The table below is checked against the command registry in `apps/web` by `apps/web/src/app/shortcut-doc.test.ts`, which fails on any difference and prints the table to paste in. Never edit it by hand: run `pnpm shortcuts:write` to regenerate it from the registry. The same registry feeds the in-app cheat sheet, which `?` (Shift+/ on a US keyboard) or ⌘/ (Ctrl+/) opens and which filters by command, category or key, and the palette rows, tooltips and menu items, which print each command's key. The same test fails when two commands share a key in one context.
 
 - The Context column is Global, or Editing for a binding that works only in edit mode and wins over a Global binding of the same key.
 - Browsers reserve Ctrl+N and ⌘N (as they do Ctrl+T and Ctrl+W) and never pass them to the page in a normal tab, so in the web build New song is reached from the command palette; the desktop app gets the key from its File menu.
@@ -24,6 +24,7 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Command | Category | Context | macOS | Windows |
 | ------- | -------- | ------- | ----- | ------- |
 | Show command palette | App | Global | ⌘K | Ctrl+K |
+| Show keyboard shortcuts | App | Global | ⇧? or ⌘/ | Shift+? or Ctrl+/ |
 | New song | File | Global | ⌘N | Ctrl+N |
 | Open file… | File | Global | ⌘O | Ctrl+O |
 | Save | File | Global | ⌘S | Ctrl+S |
@@ -114,9 +115,9 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Extend selection to previous bar | Editor | Editing | ⇧⌘← | Ctrl+Shift+Left |
 | Extend selection to next bar | Editor | Editing | ⇧⌘→ | Ctrl+Shift+Right |
 | Clear selection | Editor | Editing | Escape | Escape |
-| Type fret digit | Editor | Editing | 0 or 1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 | 0 or 1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 |
+| Type fret digit | Editor | Editing | 0–9 | 0–9 |
 | Longer duration | Editor | Editing | - | - |
-| Shorter duration | Editor | Editing | = or ⇧+ or + | = or Shift++ or + |
+| Shorter duration | Editor | Editing | = or ⇧= or + | = or Shift+= or + |
 | Toggle dot | Editor | Editing | . | . |
 | Toggle double dot | Editor | Editing | ⌘. | Ctrl+. |
 | Toggle triplet | Editor | Editing | / | / |
@@ -128,7 +129,7 @@ The table below is checked against the command registry in `apps/web` by `apps/w
 | Edit voice 1 | Editor | Editing | ⌘1 | Ctrl+1 |
 | Edit voice 2 | Editor | Editing | ⌘2 | Ctrl+2 |
 | Toggle insert mode | Editor | Editing | — | — |
-| Insert bar before | Editor | Editing | ⌘+ or ⇧⌘+ or ⇧⌘= | Insert |
+| Insert bar before | Editor | Editing | ⌘+ or ⇧⌘= | Insert |
 | Insert bar after | Editor | Editing | — | — |
 | Delete bars | Editor | Editing | ⌘Backspace | Ctrl+Delete |
 | Toggle repeat start | Editor | Editing | [ | [ |

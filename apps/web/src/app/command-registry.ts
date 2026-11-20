@@ -42,10 +42,25 @@ export class CommandRegistry {
   readonly #commands = new Map<string, Command>();
   readonly #shortcuts = new Map<string, string>();
   readonly #isActive: (context: CommandContext) => boolean;
+  readonly #keys: (command: Command) => Shortcut | undefined;
 
-  /** `isActive` tells whether a context holds now; without it, none does. */
-  constructor(isActive: (context: CommandContext) => boolean = () => false) {
+  /**
+   * `isActive` tells whether a context holds now; without it, none does. `keys` is the one place
+   * that decides which key a command has: the default is the command's own `shortcut`, and a layer
+   * of user overrides wraps it here, so the dispatcher, palette, tooltips, cheat sheet and the
+   * generated reference all follow it.
+   */
+  constructor(
+    isActive: (context: CommandContext) => boolean = () => false,
+    keys: (command: Command) => Shortcut | undefined = (command) => command.shortcut,
+  ) {
     this.#isActive = isActive;
+    this.#keys = keys;
+  }
+
+  /** The key the command answers to now: every reader of a command's key goes through this. */
+  shortcutOf(command: Command): Shortcut | undefined {
+    return this.#keys(command);
   }
 
   isActive(context: CommandContext): boolean {
@@ -86,11 +101,13 @@ export class CommandRegistry {
 
   /** Whether an available command of an active context owns this command's shortcut instead. */
   isShadowed(command: Command): boolean {
-    if (command.context !== undefined || !command.shortcut) return false;
-    const id = shortcutId(command.shortcut);
-    return this.available().some(
-      (other) => other.context !== undefined && other.shortcut && shortcutId(other.shortcut) === id,
-    );
+    const own = this.shortcutOf(command);
+    if (command.context !== undefined || !own) return false;
+    const id = shortcutId(own);
+    return this.available().some((other) => {
+      const theirs = this.shortcutOf(other);
+      return other.context !== undefined && theirs !== undefined && shortcutId(theirs) === id;
+    });
   }
 
   get(id: string): Command | undefined {

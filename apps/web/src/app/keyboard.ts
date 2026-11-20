@@ -94,7 +94,8 @@ function keyName(key: string, platform: KeyboardPlatform): string {
 }
 
 export function formatShortcut(shortcut: Shortcut, platform: KeyboardPlatform): string {
-  const key = keyName(shortcut.key, platform);
+  // `+` is Shift+= on a US keyboard, so a shifted `+` prints as the key that is pressed.
+  const key = keyName(shortcut.shift && shortcut.key === '+' ? '=' : shortcut.key, platform);
   if (platform === 'mac') {
     return `${shortcut.alt ? '⌥' : ''}${shortcut.shift ? '⇧' : ''}${shortcut.mod ? '⌘' : ''}${key}`;
   }
