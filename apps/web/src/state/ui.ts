@@ -1,13 +1,10 @@
 import type { LayoutOptions, PAGE_SIZES } from '@reprise/layout';
 import { create } from 'zustand';
 
-import {
-  BOTTOM_PANEL_HEIGHT,
-  readStoredBottomPanelHeight,
-  writeStoredBottomPanelHeight,
-} from './bottom-panel-storage';
+import { BOTTOM_PANEL_HEIGHT } from './bottom-panel-height';
 import { PANEL_WIDTH } from './panel-width';
 import { initialTheme, type Theme } from './theme';
+import { ZOOM } from './zoom';
 
 export { BOTTOM_PANEL_HEIGHT };
 
@@ -15,7 +12,7 @@ export type PanelId = 'sidebar' | 'rightPanel';
 
 export { PANEL_WIDTH };
 
-export const ZOOM = { min: 0.5, max: 3, default: 1 } as const;
+export { ZOOM };
 
 /**
  * What fills the app besides the player. The library (WP-060) and the sound manager (WP-091) are
@@ -29,8 +26,13 @@ export type ScreenId = 'player' | 'library' | 'sounds';
  */
 export type PanelView = 'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'effects' | 'history';
 
-/** What the bottom region shows, one view at a time; the live fretboard (WP-074) is the first. */
-export type BottomPanelView = 'fretboard';
+/**
+ * The bottom dock's views in tab order, one shown at a time; the live fretboard (WP-074) is the
+ * first. A view that takes focus when it mounts (the Overview, a horizontal mixer) needs a
+ * "restored at launch" flag, as the right panel has, so a dock restored open never grabs focus.
+ */
+export const BOTTOM_PANEL_VIEWS = ['fretboard'] as const;
+export type BottomPanelView = (typeof BOTTOM_PANEL_VIEWS)[number];
 
 /** The region's accessible name and header, per view. */
 export const BOTTOM_PANEL_TITLES: Record<BottomPanelView, string> = { fretboard: 'Fretboard' };
@@ -45,6 +47,11 @@ export interface UiView {
 export interface UiFollow {
   on: boolean;
   request: number;
+  /**
+   * Why the last request was made: `explicit` for the Follow playback command, a seek, the button;
+   * `layout` for a resize of the score's viewport, which the follow-playhead setting can silence.
+   */
+  kind: 'explicit' | 'layout';
 }
 
 export interface UiState {
@@ -56,11 +63,18 @@ export interface UiState {
   panelWidths: Record<PanelId, number>;
   /** The right panel is open because the stored state said so, not because the user opened it. */
   panelRestored: boolean;
-  /** The bottom region (#206): above the transport, below the score. Only the height persists. */
+  /**
+   * The bottom dock: above the transport, below the score. `open` is whether it shows its view or
+   * is collapsed to its tab strip; `installBottomDock` keeps `open` and the height in settings.
+   */
   bottomPanel: { open: boolean; view: BottomPanelView };
   bottomPanelHeight: number;
+  /** The height last committed by `persistBottomPanelHeight`, which is what gets stored. */
+  bottomPanelHeightCommitted: number;
   zoom: number;
   paletteOpen: boolean;
+  /** The Settings dialog; `section` is the id `openSettings` asked for, absent for the last one shown. */
+  settings: { open: boolean; section: string | undefined };
   /** The shortcuts cheat sheet (WP-101). */
   shortcutsOpen: boolean;
   follow: UiFollow;
@@ -84,15 +98,18 @@ export interface UiState {
   setBottomPanelOpen: (open: boolean) => void;
   /** Clamped to `BOTTOM_PANEL_HEIGHT`; not stored until `persistBottomPanelHeight`. */
   setBottomPanelHeight: (height: number) => void;
-  /** Stores the height for the next session; call when a resize ends, not on every step. */
+  /** Commits the height for storing; call when a resize ends, not on every step. */
   persistBottomPanelHeight: () => void;
   setZoom: (zoom: number) => void;
   setPaletteOpen: (open: boolean) => void;
+  /** Opens Settings at `section` (an id from `app/settings-sections.ts`); an unknown id shows the first. */
+  openSettings: (section?: string) => void;
+  closeSettings: () => void;
   setShortcutsOpen: (open: boolean) => void;
   setViewMode: (mode: UiView['mode']) => void;
   setPaper: (paper: UiView['paper']) => void;
   /** Turns following on and asks for one follow now. */
-  requestFollow: () => void;
+  requestFollow: (kind?: UiFollow['kind']) => void;
   /** A hand scroll along the followed axis: the view stops following until a request. */
   pauseFollow: () => void;
 }
@@ -105,7 +122,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
  * stands (`requestFollow` itself turns following on).
  */
 function followAfterResize(get: () => UiState) {
-  if (get().follow.on) get().requestFollow();
+  if (get().follow.on) get().requestFollow('layout');
 }
 
 export function createUiStore(theme: Theme = initialTheme()) {
@@ -121,11 +138,13 @@ export function createUiStore(theme: Theme = initialTheme()) {
       rightPanel: PANEL_WIDTH.rightPanel.default,
     },
     bottomPanel: { open: false, view: 'fretboard' },
-    bottomPanelHeight: readStoredBottomPanelHeight(),
+    bottomPanelHeight: BOTTOM_PANEL_HEIGHT.default,
+    bottomPanelHeightCommitted: BOTTOM_PANEL_HEIGHT.default,
     zoom: ZOOM.default,
     paletteOpen: false,
+    settings: { open: false, section: undefined },
     shortcutsOpen: false,
-    follow: { on: true, request: 0 },
+    follow: { on: true, request: 0, kind: 'explicit' },
     setTheme: (next) => {
       set({ theme: next });
     },
@@ -181,13 +200,19 @@ export function createUiStore(theme: Theme = initialTheme()) {
       followAfterResize(get);
     },
     persistBottomPanelHeight: () => {
-      writeStoredBottomPanelHeight(get().bottomPanelHeight);
+      set({ bottomPanelHeightCommitted: get().bottomPanelHeight });
     },
     setZoom: (zoom) => {
       set({ zoom: clamp(zoom, ZOOM.min, ZOOM.max) });
     },
     setPaletteOpen: (open) => {
       set({ paletteOpen: open });
+    },
+    openSettings: (section) => {
+      set({ settings: { open: true, section } });
+    },
+    closeSettings: () => {
+      set((state) => ({ settings: { ...state.settings, open: false } }));
     },
     setShortcutsOpen: (open) => {
       set({ shortcutsOpen: open });
@@ -198,8 +223,8 @@ export function createUiStore(theme: Theme = initialTheme()) {
     setPaper: (paper) => {
       if (get().view.paper !== paper) set((state) => ({ view: { ...state.view, paper } }));
     },
-    requestFollow: () => {
-      set((state) => ({ follow: { on: true, request: state.follow.request + 1 } }));
+    requestFollow: (kind = 'explicit') => {
+      set((state) => ({ follow: { on: true, request: state.follow.request + 1, kind } }));
     },
     pauseFollow: () => {
       if (get().follow.on) set((state) => ({ follow: { ...state.follow, on: false } }));

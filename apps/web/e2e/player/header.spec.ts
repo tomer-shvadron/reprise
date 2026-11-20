@@ -9,16 +9,23 @@ test.beforeEach(async ({ app }) => {
   await app.openWithPicker(generated('song.gp'));
 });
 
-test('the score region loses exactly the header, the transport and the status bar', async ({
+test('the score region loses exactly the header, the dock strip, the transport and the status bar', async ({
   page,
 }) => {
   const viewport = page.viewportSize();
   expect(viewport).not.toBeNull();
   const score = await page.getByRole('main', { name: 'Score' }).boundingBox();
+  // The dock's strip is always there, collapsed; its height is the app's, so it is read, not fixed.
+  const dock = await page.getByRole('region', { name: 'Bottom panel' }).boundingBox();
+  expect(dock?.height).toBeGreaterThan(0);
   const banner = await page.getByRole('banner').boundingBox();
   expect(banner?.height).toBeCloseTo(HEADER_HEIGHT, 0);
   expect(score?.height).toBeCloseTo(
-    (viewport?.height ?? 0) - HEADER_HEIGHT - TRANSPORT_HEIGHT - STATUS_HEIGHT,
+    (viewport?.height ?? 0) -
+      HEADER_HEIGHT -
+      (dock?.height ?? 0) -
+      TRANSPORT_HEIGHT -
+      STATUS_HEIGHT,
     0,
   );
 });

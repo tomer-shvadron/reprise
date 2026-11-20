@@ -1,4 +1,5 @@
 import { act, fireEvent, screen } from '@testing-library/react';
+import { FOLLOW_PLAYHEAD_SETTING } from '@/state/app-settings';
 import { write } from '@reprise/formats';
 import type { Anchor, LayoutResult } from '@reprise/layout';
 import type { Score } from '@reprise/model';
@@ -177,7 +178,20 @@ describe('click to seek', () => {
     const button = screen.getByRole('button', { name: 'Follow playback' });
     const request = services.ui.getState().follow.request;
     fireEvent.click(button);
-    expect(services.ui.getState().follow).toEqual({ on: true, request: request + 1 });
+    expect(services.ui.getState().follow).toEqual({
+      on: true,
+      request: request + 1,
+      kind: 'explicit',
+    });
     expect(screen.queryByRole('button', { name: 'Follow playback' })).toBeNull();
+  });
+
+  it('offers Follow playback while playing with the setting off, since nothing follows', async () => {
+    const { services } = await setup();
+    act(() => {
+      services.settings.set(FOLLOW_PLAYHEAD_SETTING, false);
+      services.playback.setState({ transport: 'playing' });
+    });
+    expect(screen.getByRole('button', { name: 'Follow playback' })).toBeInTheDocument();
   });
 });

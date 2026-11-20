@@ -9,6 +9,7 @@ interface MenuCommand {
 }
 
 export const MENU_COMMANDS = {
+  'app.settings': { label: 'Settings…', accelerator: 'CmdOrCtrl+,' },
   'file.new': { label: 'New Song', accelerator: 'CmdOrCtrl+N' },
   'file.open': { label: 'Open…', accelerator: 'CmdOrCtrl+O' },
   'file.save': { label: 'Save', accelerator: 'CmdOrCtrl+S' },
@@ -92,7 +93,28 @@ export function menuTemplate({
   };
 
   return [
-    ...(isMac ? [{ role: 'appMenu' } as const] : []),
+    ...(isMac
+      ? [
+          {
+            // The role supplies the app name as the label; the given submenu replaces its items
+            // to add Settings… under About, where macOS apps keep Preferences.
+            role: 'appMenu',
+            submenu: [
+              { role: 'about' },
+              separator,
+              command('app.settings'),
+              separator,
+              { role: 'services' },
+              separator,
+              { role: 'hide' },
+              { role: 'hideOthers' },
+              { role: 'unhide' },
+              separator,
+              { role: 'quit' },
+            ],
+          } satisfies MenuItemConstructorOptions,
+        ]
+      : []),
     {
       label: 'File',
       submenu: [
@@ -105,8 +127,10 @@ export function menuTemplate({
         command('file.export'),
         separator,
         command('file.print'),
-        // macOS keeps Quit in the application menu.
-        ...(isMac ? [] : [separator, { role: 'quit' } as const]),
+        // macOS keeps Settings… and Quit in the application menu.
+        ...(isMac
+          ? []
+          : [separator, command('app.settings'), separator, { role: 'quit' } as const]),
       ],
     },
     {

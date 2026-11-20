@@ -118,13 +118,14 @@ export function drawSection(
     box(
       rect(x, baseline - ascent - pad, boxWidth, ascent + descent + pad * 2),
       engraving.textEnclosureThickness * space,
-      { node },
+      { node, lane: 'section' },
     ),
-    text(boxed, x + pad, baseline, size, { node }),
+    text(boxed, x + pad, baseline, size, { node, lane: 'section' }),
   );
   const nameX = x + boxWidth + space * 0.5;
   const name = section.letter === undefined ? '' : fitText(section.name, size, right - nameX);
-  if (name !== '') sink.primitives.push(text(name, nameX, baseline, size, { node }));
+  if (name !== '')
+    sink.primitives.push(text(name, nameX, baseline, size, { node, lane: 'section' }));
 }
 
 /** Draws the bar's tempo from `x`; only its label is cut, with an ellipsis, to end by `right`. */

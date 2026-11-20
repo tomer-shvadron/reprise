@@ -87,17 +87,17 @@ describe('the ui view', () => {
 describe('following the playhead', () => {
   it('is on by default, pauses, and comes back on with a new request', () => {
     const store = createUiStore('dark');
-    expect(store.getState().follow).toEqual({ on: true, request: 0 });
+    expect(store.getState().follow).toMatchObject({ on: true, request: 0 });
 
     store.getState().pauseFollow();
     const paused = store.getState().follow;
-    expect(paused).toEqual({ on: false, request: 0 });
+    expect(paused).toMatchObject({ on: false, request: 0 });
     store.getState().pauseFollow();
     expect(store.getState().follow).toBe(paused);
 
     store.getState().requestFollow();
     store.getState().requestFollow();
-    expect(store.getState().follow).toEqual({ on: true, request: 2 });
+    expect(store.getState().follow).toMatchObject({ on: true, request: 2 });
   });
 });
 
@@ -131,5 +131,41 @@ describe('ui store screens and panel views', () => {
     expect(store.getState().panels.rightPanel).toBe(true);
     store.getState().showPanelView('history');
     expect(store.getState().rightPanelView).toBe('history');
+  });
+});
+
+describe('ui store settings dialog', () => {
+  it('opens at a section, keeps the last one on close, and opens at none by default', () => {
+    const store = createUiStore('dark');
+    expect(store.getState().settings).toEqual({ open: false, section: undefined });
+
+    store.getState().openSettings('playback');
+    expect(store.getState().settings).toEqual({ open: true, section: 'playback' });
+
+    store.getState().closeSettings();
+    expect(store.getState().settings.open).toBe(false);
+
+    store.getState().openSettings();
+    expect(store.getState().settings).toEqual({ open: true, section: undefined });
+  });
+});
+
+describe('follow requests from the bottom dock', () => {
+  it('ask as layout for every open, close and resize, and as explicit otherwise', () => {
+    const store = createUiStore('dark');
+    const kind = () => store.getState().follow.kind;
+
+    store.getState().showBottomPanelView('fretboard');
+    expect(kind()).toBe('layout');
+    store.getState().requestFollow();
+    expect(kind()).toBe('explicit');
+    store.getState().setBottomPanelHeight(300);
+    expect(kind()).toBe('layout');
+    store.getState().requestFollow();
+    store.getState().setBottomPanelOpen(false);
+    expect(kind()).toBe('layout');
+    store.getState().requestFollow();
+    store.getState().toggleBottomPanelView('fretboard');
+    expect(kind()).toBe('layout');
   });
 });

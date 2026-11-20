@@ -1,3 +1,5 @@
+import type { Id } from '@reprise/model';
+
 import { round } from './primitives';
 import type { Anchor, AnchorKind, LayoutResult, Rect } from './types';
 
@@ -63,4 +65,34 @@ function shiftedBox(box: Rect, offsetX: number): Rect {
 /** An anchor's box in layout space; the stored box itself when its system has no offset. */
 export function anchorBox(result: LayoutResult, anchor: Anchor): Rect {
   return shiftedBox(anchor.bbox, result.systems[anchor.system]?.offsetX ?? 0);
+}
+
+/** What `markAt` finds under a point: a chord name's beat or a section marker's master bar. */
+export type Mark = { kind: 'chord'; beat: Id } | { kind: 'section'; masterBar: Id };
+
+/**
+ * The chord name or section marker under (x, y), in layout space, which `hitTest` does not report
+ * because neither has an anchor of its own. Only the systems containing the point are scanned, and
+ * a tempo mark, though keyed by the same master bar, is not a section.
+ */
+export function markAt(result: LayoutResult, x: number, y: number): Mark | undefined {
+  for (const system of result.systems) {
+    if (!contains(system.bbox, x, y)) continue;
+    const offsetX = system.offsetX ?? 0;
+    for (let i = system.primitives.start; i < system.primitives.end; i++) {
+      const primitive = result.primitives[i];
+      if (primitive?.node === undefined || !containsShifted(primitive.bbox, offsetX, x, y))
+        continue;
+      if (primitive.kind === 'text' && primitive.lane === 'chord') {
+        return { kind: 'chord', beat: primitive.node };
+      }
+      if (
+        (primitive.kind === 'text' || primitive.kind === 'path') &&
+        primitive.lane === 'section'
+      ) {
+        return { kind: 'section', masterBar: primitive.node };
+      }
+    }
+  }
+  return undefined;
 }

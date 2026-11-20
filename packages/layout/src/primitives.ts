@@ -112,7 +112,7 @@ export function line(
 export function box(
   area: Rect,
   thickness: number,
-  options: Common & { fill?: boolean } = {},
+  options: Common & { fill?: boolean; lane?: PathPrimitive['lane'] } = {},
 ): PathPrimitive {
   const { x, y, width, height } = rect(area.x, area.y, area.width, area.height);
   return {
@@ -123,6 +123,7 @@ export function box(
     fill: options.fill ?? false,
     thickness: round(thickness),
     bbox: rect(x, y, width, height),
+    ...(options.lane !== undefined && { lane: options.lane }),
     ...common(options),
   };
 }

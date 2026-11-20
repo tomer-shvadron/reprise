@@ -1,9 +1,11 @@
 import { HQ_BUDGET_BYTES } from '@reprise/audio';
 import { z } from 'zod';
 
+import { BOTTOM_PANEL_HEIGHT } from './bottom-panel-height';
 import { defineSetting, type SettingDef } from './settings';
 import { PANEL_WIDTH } from './panel-width';
 import { MEMORY_BUDGET_RANGE } from './playback';
+import { ZOOM } from './zoom';
 
 /** The key the pre-paint script `public/theme-bootstrap.js` reads; keep the two in step. */
 export const THEME_STORAGE_KEY = 'reprise.theme';
@@ -57,6 +59,33 @@ export const RIGHT_PANEL_WIDTH_SETTING = defineSetting({
   schema: z.number().min(PANEL_WIDTH.rightPanel.min).max(PANEL_WIDTH.rightPanel.max),
   default: PANEL_WIDTH.rightPanel.default,
 });
+export const BOTTOM_DOCK_OPEN_SETTING = defineSetting({
+  key: 'layout.bottomDockOpen',
+  schema: z.boolean(),
+  default: false,
+});
+/** A height outside the dock's range is clamped by the ui store, so the schema only needs a number. */
+export const BOTTOM_DOCK_HEIGHT_SETTING = defineSetting({
+  key: 'layout.bottomDockHeight',
+  schema: z.number().positive(),
+  default: BOTTOM_PANEL_HEIGHT.default,
+});
+
+export const FOLLOW_PLAYHEAD_SETTING = defineSetting({
+  key: 'playback.followPlayhead',
+  schema: z.boolean(),
+  default: true,
+});
+export const DEFAULT_VIEW_MODE_SETTING = defineSetting({
+  key: 'score.defaultViewMode',
+  schema: z.enum(['paged', 'continuous']),
+  default: 'paged',
+});
+export const DEFAULT_ZOOM_SETTING = defineSetting({
+  key: 'score.defaultZoom',
+  schema: z.number().min(ZOOM.min).max(ZOOM.max),
+  default: ZOOM.default,
+});
 
 /** Every handle the app shell defines; the relaunch test walks this list. */
 export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
@@ -67,6 +96,11 @@ export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
   MASTER_VOLUME_SETTING,
   GM_TIER_BYPASS_SETTING,
   MEMORY_BUDGET_SETTING,
+  FOLLOW_PLAYHEAD_SETTING,
+  DEFAULT_VIEW_MODE_SETTING,
+  DEFAULT_ZOOM_SETTING,
   RIGHT_PANEL_OPEN_SETTING,
   RIGHT_PANEL_WIDTH_SETTING,
+  BOTTOM_DOCK_OPEN_SETTING,
+  BOTTOM_DOCK_HEIGHT_SETTING,
 ];

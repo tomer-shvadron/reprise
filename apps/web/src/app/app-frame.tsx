@@ -1,12 +1,13 @@
-import { ChevronDownIcon, PanelLeftIcon } from 'lucide-react';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { PanelLeftIcon } from 'lucide-react';
+import { type ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { BOTTOM_PANEL_HEIGHT, BOTTOM_PANEL_TITLES, PANEL_WIDTH, type UiStore } from '@/state/ui';
+import { PANEL_WIDTH, type UiStore } from '@/state/ui';
 
+import { BottomDock } from './bottom-dock/bottom-dock';
 import { ResizeHandle } from './resize-handle';
 
 interface AppFrameProps {
@@ -32,7 +33,7 @@ interface AppFrameProps {
   rail?: ReactNode;
   /** A full-width strip above the panels, such as the library's "not in your library" banner. */
   banner?: ReactNode;
-  /** The bottom region's content (the live fretboard); the region shows while `ui.bottomPanel.open`. */
+  /** The bottom region's content (the live fretboard); the dock above the transport always shows its tab strip and the view while `ui.bottomPanel.open`. */
   bottom?: ReactNode;
 }
 
@@ -76,30 +77,6 @@ export function AppFrame({
   const panels = useStore(ui, (state) => state.panels);
   const widths = useStore(ui, (state) => state.panelWidths);
   const setPanelWidth = useStore(ui, (state) => state.setPanelWidth);
-  const bottomOpen = useStore(ui, (state) => state.bottomPanel.open);
-  const bottomHeight = useStore(ui, (state) => state.bottomPanelHeight);
-  const setBottomPanelHeight = useStore(ui, (state) => state.setBottomPanelHeight);
-  const setBottomPanelOpen = useStore(ui, (state) => state.setBottomPanelOpen);
-  const persistBottomPanelHeight = useStore(ui, (state) => state.persistBottomPanelHeight);
-  const bottomTitle = useStore(ui, (state) => BOTTOM_PANEL_TITLES[state.bottomPanel.view]);
-  const scoreRef = useRef<HTMLElement>(null);
-  const focusBefore = useRef<Element | null>(null);
-
-  useEffect(() => {
-    if (bottomOpen) focusBefore.current = document.activeElement;
-  }, [bottomOpen]);
-
-  // The collapse button unmounts with the region, so focus goes back to where it was before the
-  // region opened, or to the score when that element is gone.
-  const collapse = () => {
-    setBottomPanelOpen(false);
-    const before = focusBefore.current;
-    const target =
-      before instanceof HTMLElement && before.isConnected && before !== document.body
-        ? before
-        : (scoreRef.current?.querySelector<HTMLElement>('[tabindex="0"]') ?? scoreRef.current);
-    target?.focus();
-  };
 
   return (
     <div className="flex h-full flex-col">
@@ -133,7 +110,6 @@ export function AppFrame({
         )}
 
         <main
-          ref={scoreRef}
           tabIndex={-1}
           aria-label="Score"
           className="bg-muted dark:bg-muted/40 relative min-w-0 flex-1 overflow-hidden outline-none"
@@ -170,45 +146,7 @@ export function AppFrame({
         {rail}
       </div>
 
-      {bottomOpen && (
-        <>
-          <ResizeHandle
-            label="Resize bottom panel"
-            axis="y"
-            value={bottomHeight}
-            min={BOTTOM_PANEL_HEIGHT.min}
-            max={BOTTOM_PANEL_HEIGHT.max}
-            direction={-1}
-            onResize={setBottomPanelHeight}
-            onResizeEnd={persistBottomPanelHeight}
-          />
-          <section
-            aria-label={bottomTitle}
-            className="bg-sidebar text-sidebar-foreground flex min-h-0 flex-col border-t"
-            style={{ height: bottomHeight }}
-          >
-            <header className="flex shrink-0 items-center justify-between border-b px-3 py-0.5">
-              <h2 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-                {bottomTitle}
-              </h2>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Collapse bottom panel"
-                    onClick={collapse}
-                  >
-                    <ChevronDownIcon />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Collapse bottom panel</TooltipContent>
-              </Tooltip>
-            </header>
-            <div className="min-h-0 flex-1 overflow-auto">{bottom}</div>
-          </section>
-        </>
-      )}
+      <BottomDock ui={ui}>{bottom}</BottomDock>
 
       <footer
         aria-label="Transport"

@@ -60,6 +60,12 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - Changed by #337 (2026-11-20): every interactive surface gets a context menu from one host, the
   right-click and Shift+F10 route to the same menu, and what a menu lists depends on the mode.
   The arrangement is unchanged. See "Changed by #337" in `../specs/architecture.md`.
+- Changed by #335 (2026-11-20): the bottom region is a tabbed dock (S-BOT-1) that collapses to its
+  tab strip; its open state and height persist as settings. See "Changed by #335" in
+  `../specs/architecture.md`.
+- Changed by #343 (2026-11-20): the theme is a setting with three values, System, Light and Dark, and
+  System, which follows the operating system, is the default, so "dark theme by default" holds only
+  where the system is dark. See "Changed by #343" in `../specs/architecture.md`.
 
 ## Related
 

@@ -78,6 +78,7 @@ export const shellMenus: readonly MenuContribution[] = [
       { command: 'view.zoomReset', group: 'view', when: onHeader('view') },
       { command: 'app.commandPalette', group: 'view', when: onHeader('search', 'band') },
       { command: 'app.shortcuts', group: 'properties', when: onHeader('search', 'band') },
+      { command: 'app.settings', group: 'properties', when: onHeader('band') },
       { command: 'view.toggleTheme', group: 'properties', when: onHeader('band') },
     ],
   },
