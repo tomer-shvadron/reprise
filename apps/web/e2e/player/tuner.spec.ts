@@ -1,4 +1,5 @@
 import { expect, test } from './test/app';
+import { FAKE_AUDIO_OUTPUT } from './test/fake-audio-output';
 import { generated } from './test/scores';
 
 // Chromium's fake microphone plays a generated A2, 12 cents sharp, on a loop. The headless shell
@@ -13,6 +14,7 @@ test.use({
   channel: 'chromium',
   launchOptions: {
     args: [
+      FAKE_AUDIO_OUTPUT,
       '--use-fake-device-for-media-stream',
       `--use-file-for-fake-audio-capture=${generated('tuner-a2.wav')}`,
     ],

@@ -12,6 +12,10 @@ const AUDIO_NODE_BENCHES = '**/*.node.bench.ts';
 // Web code that needs real Web Audio runs in the browser; the rest of web stays in jsdom.
 const WEB_BROWSER_TESTS = 'src/**/*.browser.test.{ts,tsx}';
 
+// Chromium's timer-driven fake audio output. Real-time Web Audio then never touches the host's audio
+// daemon, which can stall (coreaudiod on macOS, so every AudioContext clock crawls) and hang the hook.
+const FAKE_AUDIO_OUTPUT = '--disable-audio-output';
+
 const webAlias = { '@': fileURLToPath(new URL('apps/web/src', import.meta.url)) };
 
 const { budgets, error: budgetsError } = loadBudgets(
@@ -63,7 +67,7 @@ export default defineConfig({
           globalSetup: ['../../scripts/fixtures/provide-scores.ts'],
           browser: {
             enabled: true,
-            provider: playwright(),
+            provider: playwright({ launchOptions: { args: [FAKE_AUDIO_OUTPUT] } }),
             headless: true,
             // The suite renders through OfflineAudioContext; there is nothing on screen to capture.
             screenshotFailures: false,
@@ -107,7 +111,9 @@ export default defineConfig({
             // The tuner's browser test runs real AudioContexts, which Chromium keeps suspended until the
             // page has seen a user gesture; there is nobody to click in a headless run.
             provider: playwright({
-              launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] },
+              launchOptions: {
+                args: ['--autoplay-policy=no-user-gesture-required', FAKE_AUDIO_OUTPUT],
+              },
             }),
             headless: true,
             screenshotFailures: false,
