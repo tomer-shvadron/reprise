@@ -41,9 +41,8 @@ runs:
         # would never be saved again with the full browser under a shared key.
         key: playwright-${{ inputs.chromium == 'full' && 'chromium-' || '' }}${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
-    # The browser download waits until the deterministic checks have passed. A job that asks for no
-    # browser still gets the headless shell from the root `postinstall` until that honours
-    # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD (#379, part 2).
+    # The root `postinstall` honours PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD (#382), so a job that asks for
+    # no browser downloads none, and one that asks for a browser installs it in the cached steps below.
     - name: Install dependencies
       shell: bash
       run: pnpm install --frozen-lockfile
