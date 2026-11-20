@@ -1,8 +1,14 @@
 import { ScoreSchema, parseNative, serializeNative, validateScore } from '@reprise/model';
 import { describe, expect, it } from 'vitest';
 
-import { readGp3To5 } from '../src/index';
-import { countNotes, featuresOf, fixtureBytes, manifestEntries } from './corpus';
+import { read, readGp3To5 } from '../src/index';
+import {
+  allManifestEntries,
+  countNotes,
+  featuresOf,
+  fixtureBytes,
+  manifestEntries,
+} from './corpus';
 
 const entries = manifestEntries(['gp3', 'gp4', 'gp5']);
 const APP = { name: 'reprise-tests', version: '0.0.0' };
@@ -182,4 +188,22 @@ describe('what the fixtures carry', () => {
       ]);
     },
   );
+});
+
+describe('implicitNotation', () => {
+  it.each(allManifestEntries())(
+    '$path lists its tracks only when its format states none',
+    async (entry) => {
+      const result = await read(fixtureBytes(entry.path));
+      const stated = entry.format === 'gp3' || entry.format === 'gp4' ? 'none' : 'all';
+      const expected = stated === 'none' ? result.score.tracks.map((track) => track.id) : [];
+      expect(result.implicitNotation ?? []).toEqual(expected);
+    },
+  );
+
+  it('never sets it for a native round trip', async () => {
+    const { score } = readGp3To5(fixtureBytes('gp3/notes.gp3'));
+    const bytes = serializeNative(score, APP);
+    expect((await read(bytes)).implicitNotation).toBeUndefined();
+  });
 });

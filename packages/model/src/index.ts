@@ -109,7 +109,9 @@ export {
   SoundOverrideSchema,
   TrackKindSchema,
   TrackSchema,
+  VOCAL_PROGRAMS,
   canShowTab,
+  isVocalTrack,
   shownNotation,
 } from './track';
 export type {

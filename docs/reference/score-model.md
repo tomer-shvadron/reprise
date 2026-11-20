@@ -41,7 +41,7 @@ The empty score (`createEmptyScore()`) is one fretted track in E standard, one 4
 | --------- | ------------------------------ | ------------------ | ------------------------------------------------------- | --------------------------------------------- |
 | `fretted` | 1 = highest-pitched string     | fret, 0 to `fretCount` | open-string MIDI notes, **lowest string first**, up to 10 | tab, treble clef, `octaveShift` 1             |
 | `drums`   | always 0                       | the GM percussion MIDI note | empty; `capo` and `fretCount` 0               | standard, percussion clef, `octaveShift` 0    |
-| `pitched` | always 0                       | the MIDI note      | usually empty; a GP3 to GP5 or gpif keyboard part keeps its tuning for export | standard, treble clef, `octaveShift` 0 |
+| `pitched` | always 0                       | the MIDI note      | usually empty; a GP3 to GP5 or gpif keyboard part keeps its tuning for export (a GP5 track whose file flags tablature is `fretted` instead) | standard, treble clef, `octaveShift` 0 |
 
 - **`Track.sound.instrument` is a key into the installed pack's instruments, opaque to the model.** Absent means the pack's first instrument, and it means nothing without `packId` (#267). The native format keeps it; the gp writer drops `sound` as a whole under the `sound-override` loss.
 - **`Track.sound.preset` is an effects-preset id, opaque to the model.** It is valid without `packId` (the track keeps its GM instrument and takes the preset's effects chain), and an id the audio engine does not know means automatic. The schema is unchanged (#234).

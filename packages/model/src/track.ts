@@ -71,7 +71,8 @@ export const TrackSchema = z.object({
    * GP5 keyboard track (program outside GM 24 to 39 and 104 to 107, not a drum track by its
    * percussion flag or MIDI channel 10) is read as `pitched` with its notes converted to MIDI
    * through this tuning, which it keeps, with `capo` and `fretCount`, so gp5 export can
-   * re-finger it.
+   * re-finger it, unless its file flags tablature (or it is a vocal track the file gives no
+   * notation), which keeps it `fretted`.
    */
   tuning: z.array(z.int().min(0).max(127)).max(MAX_STRINGS),
   capo: z.int().min(0),
@@ -96,6 +97,22 @@ export type Track = z.infer<typeof TrackSchema>;
  */
 export function canShowTab(track: Pick<Track, 'kind' | 'tuning'>): boolean {
   return track.kind === 'fretted' && track.tuning.length > 0;
+}
+
+/** General MIDI voice programs: choir aahs, voice oohs and synth voice. */
+export const VOCAL_PROGRAMS: readonly number[] = [52, 53, 54];
+
+const VOCAL_NAME = /\b(?:vocals?|vox|voices?|singer|choir)\b/i;
+
+/**
+ * Whether a track is a vocal part: a GM voice program, or a name containing the whole word
+ * vocal(s), vox, voice(s), singer or choir (English only). Many files put the melody on a piano
+ * or flute program and name it "Vocals", so the program alone would miss them. Never true for
+ * drums.
+ */
+export function isVocalTrack(track: Pick<Track, 'kind' | 'program' | 'name'>): boolean {
+  if (track.kind === 'drums') return false;
+  return VOCAL_PROGRAMS.includes(track.program) || VOCAL_NAME.test(track.name);
 }
 
 /**

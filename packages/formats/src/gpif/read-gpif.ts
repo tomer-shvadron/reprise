@@ -1,4 +1,4 @@
-import type { Score } from '@reprise/model';
+import type { Id, Score } from '@reprise/model';
 
 import { buildScore } from './build-score';
 import type { GpifDocument } from './document';
@@ -24,6 +24,8 @@ export interface GpifReadOptions {
 export interface GpifReadResult {
   score: Score;
   warnings: GpifWarning[];
+  /** Tracks with no `PartConfiguration` entry: every track when the part configuration is absent or unusable. */
+  implicitNotation: Id[];
 }
 
 /**
@@ -94,5 +96,8 @@ export function readGpifWith(
     }
   }
   const score = buildScore(collector, document, notation);
-  return { score, warnings: collector.warnings };
+  const implicitNotation = score.tracks
+    .filter((_, index) => notation?.[index] === undefined)
+    .map((track) => track.id);
+  return { score, warnings: collector.warnings, implicitNotation };
 }

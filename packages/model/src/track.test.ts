@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { STANDARD_TUNING } from './factories';
-import { NotationSchema, canShowTab, shownNotation, type Track } from './track';
+import {
+  NotationSchema,
+  VOCAL_PROGRAMS,
+  canShowTab,
+  isVocalTrack,
+  shownNotation,
+  type Track,
+} from './track';
 
 const fretted: Pick<Track, 'kind' | 'tuning'> = { kind: 'fretted', tuning: [...STANDARD_TUNING] };
 const strippedFretted: Pick<Track, 'kind' | 'tuning'> = { kind: 'fretted', tuning: [] };
@@ -35,5 +42,39 @@ describe('shownNotation', () => {
       expect(shownNotation(keptTuning, wanted)).toBe('standard');
       expect(shownNotation(pitched, wanted)).toBe('standard');
     }
+  });
+});
+
+describe('isVocalTrack', () => {
+  const of = (
+    program: number,
+    name: string,
+    kind: Track['kind'] = 'pitched',
+  ): Pick<Track, 'kind' | 'program' | 'name'> => ({ kind, program, name });
+
+  it('knows the GM voice programs', () => {
+    expect(VOCAL_PROGRAMS).toEqual([52, 53, 54]);
+    for (const program of [51, 52, 53, 54, 55]) {
+      expect(isVocalTrack(of(program, 'Track'))).toBe([52, 53, 54].includes(program));
+    }
+  });
+
+  it.each([
+    ['Vocals', true],
+    ['vocal', true],
+    ['Lead Vox', true],
+    ['Backing voices', true],
+    ['SINGER', true],
+    ['Choir', true],
+    ['Guitar', false],
+    ['Voiceover', false],
+    ['Invoice', false],
+  ])('judges the name %s', (name, expected) => {
+    expect(isVocalTrack(of(0, name))).toBe(expected);
+  });
+
+  it('is false on drums, even named Vocals or on a voice program', () => {
+    expect(isVocalTrack(of(0, 'Vocals', 'drums'))).toBe(false);
+    expect(isVocalTrack(of(53, 'Kit', 'drums'))).toBe(false);
   });
 });

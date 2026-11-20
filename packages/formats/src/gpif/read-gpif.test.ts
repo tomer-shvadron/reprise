@@ -31,7 +31,8 @@ const beatsOf = (score: Score, barIndex = 0, voiceIndex = 0, track = 0): Beat[] 
 
 const firstNote = (score: Score): Note | undefined => beatsOf(score)[0]?.notes[0];
 
-const codes = (result: GpifReadResult): string[] => result.warnings.map((warning) => warning.code);
+const codes = (result: Pick<GpifReadResult, 'warnings'> & Partial<GpifReadResult>): string[] =>
+  result.warnings.map((warning) => warning.code);
 
 const QUARTERS = [rhythm('0', 'Quarter')];
 
@@ -681,6 +682,66 @@ describe('tracks', () => {
     expect(pitched).toMatchObject({ kind: 'pitched', display: { notation: 'standard' } });
     // No `Midi` property here, so the pitch comes from the tuning: D3 (50) + 5.
     expect(pitched?.bars[0]?.voices[0].beats[0]?.notes[0]).toMatchObject({ string: 0, fret: 55 });
+  });
+
+  describe('a vocal track with no notation instruction', () => {
+    const noTranspose = (track: string): string =>
+      track.replace(/<Transpose>.*<\/Transpose>\n/, '');
+    const voice53 = noTranspose(guitarTrack('0', { program: 53 }));
+    const xml = (track: string): string =>
+      oneBar([beat('0', '0', '0')], [note('0', 2, 5)], QUARTERS, { tracks: [track] });
+    const standard = new Uint8Array([0, 0, 0, 1, 0, 0, 0, 0, 1, 1]);
+    const both = new Uint8Array([0, 0, 0, 1, 0, 0, 0, 0, 1, 3]);
+
+    it('stays fretted, unshifted and implicit with no part configuration', () => {
+      const { score, implicitNotation } = read(xml(voice53));
+      expect(score.tracks[0]).toMatchObject({
+        kind: 'fretted',
+        display: { notation: 'tab', octaveShift: 0 },
+      });
+      expect(implicitNotation).toEqual(score.tracks.map((track) => track.id));
+    });
+
+    it('is recognised by its name too', () => {
+      const named = noTranspose(guitarTrack('0', { program: 0 })).replace(
+        'Guitar 0',
+        'Lead Vocals',
+      );
+      const { score, implicitNotation } = read(xml(named));
+      expect(score.tracks[0]).toMatchObject({ kind: 'fretted', display: { octaveShift: 0 } });
+      expect(implicitNotation).toHaveLength(1);
+    });
+
+    it('follows a part configuration that says standard, and is then explicit', () => {
+      const { score, implicitNotation } = read(xml(voice53), standard);
+      expect(score.tracks[0]).toMatchObject({ kind: 'pitched', display: { notation: 'standard' } });
+      expect(implicitNotation).toEqual([]);
+    });
+
+    it('follows a part configuration that says both, and is then explicit', () => {
+      const { score, implicitNotation } = read(xml(voice53), both);
+      expect(score.tracks[0]).toMatchObject({ kind: 'fretted', display: { notation: 'both' } });
+      expect(implicitNotation).toEqual([]);
+    });
+
+    it('makes every track implicit when the part configuration has the wrong count', () => {
+      const twoEntries = new Uint8Array([0, 0, 0, 1, 0, 0, 0, 0, 2, 3, 3]);
+      const { score, implicitNotation, warnings } = read(xml(voice53), twoEntries);
+      expect(codes({ warnings })).toContain('invalid-value');
+      expect(implicitNotation).toEqual(score.tracks.map((track) => track.id));
+    });
+
+    it('stays pitched when it has no tuning', () => {
+      const bare = voice53.replace(/<Property name="Tuning">[\s\S]*?<\/Property>/, '');
+      const { score } = read(xml(bare));
+      expect(score.tracks[0]?.kind).toBe('pitched');
+    });
+
+    it('lists a keyboard track with no part configuration as implicit but pitched', () => {
+      const { score, implicitNotation } = read(xml(guitarTrack('0', { program: 0 })));
+      expect(score.tracks[0]?.kind).toBe('pitched');
+      expect(implicitNotation).toHaveLength(1);
+    });
   });
 
   it('keeps a GP6 drum note without an articulation and reports one outside GM', () => {

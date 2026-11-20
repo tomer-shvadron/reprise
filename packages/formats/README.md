@@ -155,10 +155,16 @@ The rules shared with every reader are in the score-model reference; these are t
 specifics and the places the file is ambiguous.
 
 - **Track kind**: drums when the percussion flag is set or the track plays on MIDI channel 10;
-  otherwise pitched when the program is outside the fretted families (GM 24 to 39, 104 to 107),
-  keeping the tuning, capo and fret count; otherwise fretted. This is the reference's rule for all
-  three versions, which store keyboards on strings the same way. Pitched notes become
-  `open string + capo + fret`; drum notes keep the fret byte, which is the GM percussion note.
+  otherwise fretted when the program is in the fretted families (GM 24 to 39, 104 to 107), or
+  when a GP5 track's staff flags ask for tablature (the file wins, as Guitar Pro 5 shows it), or
+  when the file states no notation (gp3, gp4, a GP5 track with neither flag) and the track is a
+  vocal one (`isVocalTrack`: GM 52 to 54, or a name with the whole word vocal(s), vox, voice(s),
+  singer or choir), so a tab default can show; otherwise pitched, keeping the tuning, capo and
+  fret count. A fretted track on a non-fretted program has `octaveShift` 0: its standard staff
+  stays at sounding pitch. Pitched notes become `open string + capo + fret`; drum notes keep the
+  fret byte, which is the GM percussion note. `GpReadResult.implicitNotation` lists the tracks
+  whose file states no notation: every gp3 and gp4 track, and a GP5 track with neither flag. The
+  `track-flags-dropped` info about tablature on a track without frets is now for drums only.
 - **Strings**: the file lists string 1 (highest) first and the beat's string mask uses bit 6 for
   string 1; `Track.tuning` is reversed to lowest first. A mask bit for a string the track lacks
   carries no note block (every reader of the format skips it unread) and is reported as
@@ -333,7 +339,7 @@ const fromXml = readGpif(xml, { partConfiguration }); // score.gpif from any con
 | `Note` `Tie`, `LetRing`, `AntiAccent`, `Accent`, `Vibrato`, `Trill`, `LeftFingering`, `RightFingering`, `InstrumentArticulation`                                                                         | `tie`, `letRing`, `ghost`, `staccato` and `accent`, `vibrato`, `trill`, fingers, drum sound                                                |
 | `Rhythm` `NoteValue` (`Long` to `256th`), `AugmentationDot`, `PrimaryTuplet`                                                                                                                             | `duration`, `dots`, `tuplet`; double and quadruple wholes become tied whole notes                                                          |
 
-**Track kind.** A drum kit is `drums`. Guitar Pro 7 gives every track a six-string tuning, a piano included, so the tuning cannot tell a keyboard from a guitar; a track whose program is outside the fretted GM families (24 to 39, 104 to 107) and whose part configuration shows no tablature is `pitched`, which is the rule the fixture manifest's oracle applies. Without part configuration bytes the program decides alone. A pitched track keeps the file's tuning and fret count, as the model allows, so a gp writer can finger it again; its notes take the `Midi` property, else `Octave`/`Tone`, else the staff's tuning plus capo plus fret (the capo is added on every pitched track, single-staff ones included, as alphaTab does). A track whose further staff has its own tuning or capo different from staff 1's is `pitched` whatever its program (see **Multiple staves**). A fretted track with even one note off its fretboard is `pitched`, whatever its program and part configuration. A note is off the fretboard when it sits on a fret below 0, sits past the track's fret count (24 unless the file says otherwise), or shares a string with another note of its beat. Guitar Pro 7 fingers every instrument on a six-string tuning, so an instrument without strings that shows tablature stores such notes. Read as fretted, they would be dropped or would overlap; read as pitched, every note keeps its `Midi` pitch. Only notes the model keeps count. One `off-fretboard` warning per track gives the counts.
+**Track kind.** A drum kit is `drums`. Guitar Pro 7 gives every track a six-string tuning, a piano included, so the tuning cannot tell a keyboard from a guitar; a track whose program is outside the fretted GM families (24 to 39, 104 to 107) and whose part configuration shows no tablature is `pitched`, which is the rule the fixture manifest's oracle applies. Without part configuration bytes the program decides alone, except that a vocal track (`isVocalTrack`) with no part configuration entry stays `fretted` with `octaveShift` 0 when it has a tuning, so a tab default can show. `GpifReadResult.implicitNotation` lists the tracks with no part configuration entry (every track when the bytes are absent or do not match the track count). A pitched track keeps the file's tuning and fret count, as the model allows, so a gp writer can finger it again; its notes take the `Midi` property, else `Octave`/`Tone`, else the staff's tuning plus capo plus fret (the capo is added on every pitched track, single-staff ones included, as alphaTab does). A track whose further staff has its own tuning or capo different from staff 1's is `pitched` whatever its program (see **Multiple staves**). A fretted track with even one note off its fretboard is `pitched`, whatever its program and part configuration. A note is off the fretboard when it sits on a fret below 0, sits past the track's fret count (24 unless the file says otherwise), or shares a string with another note of its beat. Guitar Pro 7 fingers every instrument on a six-string tuning, so an instrument without strings that shows tablature stores such notes. Read as fretted, they would be dropped or would overlap; read as pitched, every note keeps its `Midi` pitch. Only notes the model keeps count. One `off-fretboard` warning per track gives the counts.
 
 ### Fixtures
 

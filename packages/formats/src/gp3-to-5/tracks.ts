@@ -1,4 +1,4 @@
-import { MIDI_MAX, STANDARD_TUNING, createTrack } from '@reprise/model';
+import { MIDI_MAX, STANDARD_TUNING, createTrack, isVocalTrack } from '@reprise/model';
 import type { Clef, Notation, Track, TrackKind } from '@reprise/model';
 
 import { hasFlag } from '../binary/binary-reader';
@@ -11,6 +11,8 @@ export interface TrackInfo {
   /** Open strings as the file lists them, string 1 (the highest) first. */
   gpTuning: number[];
   offset: number;
+  /** The file states no notation for this track, so `display.notation` is the reader's default. */
+  implicitNotation: boolean;
 }
 
 /** MIDI channel 10, 0-based: General MIDI's percussion channel. */
@@ -74,7 +76,6 @@ export function readTrack(context: Context, header: Header, index: number): Trac
   }
   const drums = hasFlag(flags, 0x01) || channelIndex === PERCUSSION_CHANNEL;
   const program = channel?.program ?? 0;
-  const kind: TrackKind = drums ? 'drums' : isFrettedProgram(program) ? 'fretted' : 'pitched';
 
   let notation: Notation | undefined;
   let bank = 0;
@@ -104,6 +105,18 @@ export function readTrack(context: Context, header: Header, index: number): Trac
       reader.intByteString('int');
     }
   }
+
+  // The file wins: a track that asks for tab keeps its strings, as the gpif reader has it. With
+  // no instruction (gp3, gp4, or a gp5 with neither flag) a vocal track keeps them too, so a
+  // tab default can show.
+  const kind: TrackKind = drums
+    ? 'drums'
+    : isFrettedProgram(program) ||
+        notation === 'tab' ||
+        notation === 'both' ||
+        (notation === undefined && isVocalTrack({ kind: 'pitched', program, name }))
+      ? 'fretted'
+      : 'pitched';
 
   const tuning = sanitiseTuning(context, location, gpTuning, kind);
   const lowest = Math.min(...tuning);
@@ -140,6 +153,9 @@ export function readTrack(context: Context, header: Header, index: number): Trac
     };
   }
   track.display.clef = clef;
+  // A fretted track on a keyboard or voice program is written at sounding pitch, as the gpif
+  // reader reads the dulcimer, not an octave up like a guitar.
+  if (kind === 'fretted' && !isFrettedProgram(program)) track.display.octaveShift = 0;
 
   if (kind !== 'drums') {
     track.tuning = tuning;
@@ -149,10 +165,10 @@ export function readTrack(context: Context, header: Header, index: number): Trac
     else invalid(context, { ...location, offset: capoOffset }, 'capo', capo, 0);
   }
   if (kind === 'fretted' && notation) track.display.notation = notation;
-  if (kind !== 'fretted' && notation === 'tab') {
+  if (kind === 'drums' && notation === 'tab') {
     log.info('track-flags-dropped', 'tablature display on a track without frets', location);
   }
-  return { track, gpTuning, offset };
+  return { track, gpTuning, offset, implicitNotation: notation === undefined };
 }
 
 /** `Track.tuning` runs lowest string first; the file lists string 1, the highest, first. */

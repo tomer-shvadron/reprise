@@ -1,6 +1,7 @@
 import {
   MAX_STRINGS,
   createTrack,
+  isVocalTrack,
   newId,
   type Clef,
   type Dynamics,
@@ -114,7 +115,16 @@ export function planTrack(
   if (source.drums) kind = 'drums';
   else if (tuning.length === 0) kind = 'pitched';
   else if (differing > 0) kind = 'pitched';
-  else if (!isFrettedProgram(source.program) && notation?.tab !== true) kind = 'pitched';
+  else if (
+    !isFrettedProgram(source.program) &&
+    notation?.tab !== true &&
+    // No part configuration entry: a vocal track keeps its strings so a tab default can show.
+    !(
+      notation === undefined &&
+      isVocalTrack({ kind: 'pitched', program: source.program, name: source.name })
+    )
+  )
+    kind = 'pitched';
   return {
     source,
     kind,
@@ -162,6 +172,7 @@ export function createModelTrack(
   if (display) track.display.notation = display;
   if (clef) track.display.clef = clef;
   if (source.octaveShift !== undefined) track.display.octaveShift = source.octaveShift;
+  else if (kind === 'fretted' && !isFrettedProgram(source.program)) track.display.octaveShift = 0;
   track.lyrics = source.lyrics;
   return track;
 }
