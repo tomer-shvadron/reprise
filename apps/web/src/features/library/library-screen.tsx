@@ -52,9 +52,10 @@ export function LibraryScreen() {
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1 flex-col gap-3 p-4" inert={viewing !== undefined}>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 pr-10">
           <h1 className="text-lg font-semibold">Library</h1>
           <Input
+            data-sheet-initial-focus
             type="search"
             aria-label="Search songs"
             placeholder="Search title, artist or album"
@@ -127,8 +128,9 @@ export function LibraryScreen() {
         // active row for when the page closes.
         <div
           className="bg-background absolute inset-0 z-10 flex min-h-0 flex-col p-4"
+          data-sheet-escape-local
           onKeyDown={(event) => {
-            // Escape closes the page before it can close the screen, wherever focus is inside it.
+            // Escape closes the page before it can close the sheet, wherever focus is inside it.
             if (event.key !== 'Escape') return;
             event.stopPropagation();
             setViewing(undefined);

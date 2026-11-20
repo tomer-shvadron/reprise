@@ -224,9 +224,9 @@ describe('openSong', () => {
     const { services, a, library } = await setupLibrary();
     await library.openSong(a.id);
     const before = services.document.getState().id;
-    services.ui.getState().setScreen('library');
+    services.ui.getState().showSheet('library');
     openSong(services, a.id);
-    expect(services.ui.getState().screen).toBe('player');
+    expect(services.ui.getState().sheet).toBeUndefined();
     expect(services.document.getState().id).toBe(before);
   });
 

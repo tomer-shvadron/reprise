@@ -81,7 +81,7 @@ describe('SoundStatus segment', () => {
     expect(status()).toHaveTextContent('GM + HQ · 42 MB');
   });
 
-  it('opens the Sounds screen, and keeps focus where it was on mousedown', async () => {
+  it('opens the Sounds sheet, and keeps focus where it was on mousedown', async () => {
     const { services, registry } = renderHeader(<SoundStatus />);
     act(() => {
       services.playback.setState({ memory });
@@ -139,5 +139,35 @@ describe('soundStatus', () => {
       stage: 'Audio output unavailable',
       retry: true,
     });
+  });
+
+  it('reports a pack install, ranked after an output error and before the bank loading', () => {
+    const install = { name: 'Big Piano', phase: 'extracting', done: 21, total: 84 };
+    expect(soundStatus(stateWith({}), install)).toEqual({
+      text: 'Installing Big Piano · extracting 25%',
+      stage: 'Installing Big Piano',
+      retry: false,
+    });
+    expect(soundStatus(stateWith({}), { ...install, total: undefined })?.text).toBe(
+      'Installing Big Piano · extracting…',
+    );
+    const loading = { ...initialPlaybackState().sounds, status: 'loading' as const };
+    expect(soundStatus(stateWith({ sounds: loading }), install)?.stage).toBe(
+      'Installing Big Piano',
+    );
+    expect(
+      soundStatus(stateWith({ output: { status: 'error', error: 'no device' } }), install)?.text,
+    ).toBe('Audio output unavailable');
+  });
+
+  it('shows the install in the segment even with nothing decoded', () => {
+    const { services } = renderHeader(<SoundStatus />);
+    expect(document.querySelector('[data-sound-status]')).toBeNull();
+    act(() => {
+      services.sounds.api.setState({
+        job: { packId: 'p', name: 'Big Piano', phase: 'extracting', done: 1, total: 4 },
+      });
+    });
+    expect(status()).toHaveTextContent('Installing Big Piano · extracting 25%');
   });
 });

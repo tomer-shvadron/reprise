@@ -24,33 +24,30 @@ function renderApp() {
 }
 
 describe('phase 3 entry points', () => {
-  it('opens the library screen and returns to the player', async () => {
+  it('opens the library sheet and closes it again', async () => {
     const { run } = renderApp();
     run('library.show');
-    const region = screen.getByRole('region', { name: 'Library' });
-    expect(within(region).getByRole('searchbox', { name: 'Search songs' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Back to player' }));
-    expect(screen.queryByRole('region', { name: 'Library' })).not.toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Library' });
+    expect(within(dialog).getByRole('searchbox', { name: 'Search songs' })).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog', { name: 'Library' })).not.toBeInTheDocument();
   });
 
-  it('opens the library from the header crumb and returns to the player', async () => {
+  it('opens the library from the header crumb and closes it again', async () => {
     renderApp();
     await userEvent.click(
       within(screen.getByRole('banner')).getByRole('button', { name: 'Library' }),
     );
-    expect(screen.getByRole('region', { name: 'Library' })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Back to player' }));
-    expect(screen.queryByRole('region', { name: 'Library' })).not.toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Library' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog', { name: 'Library' })).not.toBeInTheDocument();
   });
 
-  it('opens the sound manager', () => {
+  it('opens the sound manager as a sheet with exactly one Sounds heading', () => {
     const { run } = renderApp();
     run('sounds.show');
-    expect(
-      within(screen.getByRole('region', { name: 'Sounds' })).getByRole('heading', {
-        name: 'Sounds',
-      }),
-    ).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'Sounds' });
+    expect(within(dialog).getAllByRole('heading', { name: 'Sounds' })).toHaveLength(1);
   });
 
   it('trainer.speedTrainer opens the right panel on the speed trainer', () => {
@@ -210,20 +207,44 @@ describe('phase 3 entry points', () => {
     });
   });
 
-  describe('a full-window screen', () => {
-    it('takes focus, makes the player inert, and gives focus back on Escape', async () => {
+  describe('a sheet', () => {
+    it('takes focus in the search box, hides the player, and gives focus back on Escape', async () => {
       const { run } = renderApp();
       const user = userEvent.setup();
       const toggle = screen.getByRole('button', { name: 'Toggle tracks' });
       toggle.focus();
       run('library.show');
-      const region = screen.getByRole('region', { name: 'Library' });
-      expect(region).toHaveFocus();
-      expect(screen.getByRole('main', { name: 'Score' }).closest('[inert]')).not.toBeNull();
+      const dialog = screen.getByRole('dialog', { name: 'Library' });
+      expect(within(dialog).getByRole('searchbox', { name: 'Search songs' })).toHaveFocus();
+      expect(screen.queryByRole('main', { name: 'Score' })).not.toBeInTheDocument();
       await user.keyboard('{Escape}');
-      expect(screen.queryByRole('region', { name: 'Library' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('dialog', { name: 'Library' })).not.toBeInTheDocument();
       expect(toggle).toHaveFocus();
-      expect(screen.getByRole('main', { name: 'Score' }).closest('[inert]')).toBeNull();
+      expect(screen.getByRole('main', { name: 'Score' })).toBeInTheDocument();
+    });
+
+    it('puts focus on the Sounds heading, not on a button', () => {
+      const { run } = renderApp();
+      run('sounds.show');
+      const dialog = screen.getByRole('dialog', { name: 'Sounds' });
+      expect(within(dialog).getByRole('heading', { name: 'Sounds' })).toHaveFocus();
+    });
+
+    it('still plays and pauses with Space, which no other shortcut does', async () => {
+      const { services, run } = renderApp();
+      const user = userEvent.setup();
+      const { bytes } = await write(score().title('Riff').build(), 'reprise');
+      await act(async () => {
+        await services.document.getState().openBytes('riff.reprise', bytes);
+      });
+      run('sounds.show');
+      const dialog = screen.getByRole('dialog', { name: 'Sounds' });
+      const before = services.fakeAudio.togglePlay.mock.calls.length;
+      within(dialog).getByRole('heading', { name: 'Sounds' }).focus();
+      await user.keyboard(' ');
+      expect(services.fakeAudio.togglePlay.mock.calls.length).toBe(before + 1);
+      await user.keyboard('{Meta>}k{/Meta}');
+      expect(services.ui.getState().paletteOpen).toBe(false);
     });
   });
 });

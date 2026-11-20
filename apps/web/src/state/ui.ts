@@ -15,10 +15,10 @@ export { PANEL_WIDTH };
 export { ZOOM };
 
 /**
- * What fills the app besides the player. The library (WP-060) and the sound manager (WP-091) are
- * full-window screens over the score; `player` is the score itself.
+ * The sheets that open over the player (#342): the library (WP-060) and the sound manager
+ * (WP-091). The player stays mounted behind them, dimmed.
  */
-export type ScreenId = 'player' | 'library' | 'sounds';
+export type SheetId = 'library' | 'sounds';
 
 /**
  * What the right panel shows; the mixer is the default and the trainer tools and the effects
@@ -61,7 +61,8 @@ export interface UiState {
   theme: Theme;
   view: UiView;
   panels: Record<PanelId, boolean>;
-  screen: ScreenId;
+  /** The sheet open over the player, if any; one at a time. */
+  sheet: SheetId | undefined;
   rightPanelView: PanelView;
   panelWidths: Record<PanelId, number>;
   /** The right panel is open because the stored state said so, not because the user opened it. */
@@ -93,7 +94,9 @@ export interface UiState {
   toggleMixer: () => void;
   /** Applies the stored open state of the right panel at launch, which takes no focus. */
   restoreRightPanelOpen: (open: boolean) => void;
-  setScreen: (screen: ScreenId) => void;
+  /** Opens `sheet`, swapping out the one that is open. */
+  showSheet: (sheet: SheetId) => void;
+  closeSheet: () => void;
   /** Shows `view` in the right panel and opens the panel. */
   showPanelView: (view: PanelView) => void;
   setPanelWidth: (panel: PanelId, width: number) => void;
@@ -139,7 +142,7 @@ export function createUiStore(theme: Theme = initialTheme()) {
     theme,
     view: { mode: 'paged', paper: 'a4' },
     panels: { sidebar: true, rightPanel: false },
-    screen: 'player',
+    sheet: undefined,
     panelRestored: false,
     rightPanelView: 'mixer',
     panelWidths: {
@@ -176,8 +179,11 @@ export function createUiStore(theme: Theme = initialTheme()) {
     restoreRightPanelOpen: (open) => {
       set((state) => ({ panels: { ...state.panels, rightPanel: open }, panelRestored: open }));
     },
-    setScreen: (screen) => {
-      set({ screen });
+    showSheet: (sheet) => {
+      if (get().sheet !== sheet) set({ sheet });
+    },
+    closeSheet: () => {
+      if (get().sheet !== undefined) set({ sheet: undefined });
     },
     showPanelView: (view) => {
       set((state) => ({

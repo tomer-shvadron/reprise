@@ -7,14 +7,14 @@ WP-060 landed in two PRs: the database, the library screen and opening a song, t
 flow (pickers, batch with progress and cancel, trash, recents, the open-without-import banner and the
 shell wiring, which is one separate integration commit).
 
-| Export                            | What it is                                                                                                        |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `LibraryScreen`                   | The song list with search, sort and open. The app shows it over the score while `ui.screen` is `'library'`.       |
-| `libraryOf(services)`             | The one `Library` of an app instance (database, store, session keeper), kept in a `WeakMap`.                      |
-| `libraryCommands` (`./commands`)  | `library.show`, `library.importFiles`, `library.importFolder`, `library.openWithoutImport`, `library.openRecent`. |
-| `installLibrary(services)`        | Loads the library and keeps the desktop File menu's Open Recent in step (`setRecentSongs`, `onOpenRecent`).       |
-| `RecentSongs`, `UnimportedBanner` | The empty state's recent list, and the "Not in your library" banner with its Import button.                       |
-| `snapshotDrop`                    | Takes a drop's files and folders synchronously, for the drop zone to hand to `importDrop`.                        |
+| Export                            | What it is                                                                                                             |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `LibraryScreen`                   | The song list with search, sort and open. The app shows it as a sheet over the player while `ui.sheet` is `'library'`. |
+| `libraryOf(services)`             | The one `Library` of an app instance (database, store, session keeper), kept in a `WeakMap`.                           |
+| `libraryCommands` (`./commands`)  | `library.show`, `library.importFiles`, `library.importFolder`, `library.openWithoutImport`, `library.openRecent`.      |
+| `installLibrary(services)`        | Loads the library and keeps the desktop File menu's Open Recent in step (`setRecentSongs`, `onOpenRecent`).            |
+| `RecentSongs`, `UnimportedBanner` | The empty state's recent list, and the "Not in your library" banner with its Import button.                            |
+| `snapshotDrop`                    | Takes a drop's files and folders synchronously, for the drop zone to hand to `importDrop`.                             |
 
 ## How it works
 
@@ -131,7 +131,7 @@ title, updatedAt }`, bytes first), 1 s after the last edit and at least every 10
 - `document.songId`: the song a document was opened from, passed as `songId` in the options of
   `openBytes(name, bytes, { handle?, songId? })` and set later with `setSongId` after importing a file opened without import. Cleared by
   `close`, `newDocument` and the next open.
-- `ui.screen` and `ui.setScreen`: the library is a full-window screen; leaving it sets `'player'`.
+- `ui.sheet`, `ui.showSheet` and `ui.closeSheet`: the library is a modal sheet over the player; leaving it closes the sheet.
 - `captureTrackSession`, `restoreTrackSession` and `watchTrackSession` from `features/tracks` for the
   per-song settings.
 - The practice session shape (`state/practice.ts`) for the `practiceSessions` table of WP-073.

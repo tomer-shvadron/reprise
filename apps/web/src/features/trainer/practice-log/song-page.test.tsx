@@ -71,14 +71,14 @@ describe('SongPracticePage', () => {
     const { services, open } = await renderPage([
       rowOf({ tempoHistory: [{ atPlayedMs: 0, tempo: { mode: 'percent', value: 85 } }] }),
     ]);
-    services.ui.getState().setScreen('library');
+    services.ui.getState().showSheet('library');
     open.mockImplementation(async () => {
       const { bytes } = await write(fourBars(), 'reprise');
       await services.document.getState().openBytes('song.reprise', bytes, { songId: SONG });
     });
     await userEvent.click(await screen.findByRole('button', { name: 'Resume at 85%' }));
     await waitFor(() => {
-      expect(services.ui.getState().screen).toBe('player');
+      expect(services.ui.getState().sheet).toBeUndefined();
     });
     expect(open).toHaveBeenCalledOnce();
     expect(services.playback.getState().settings.tempo).toEqual({ mode: 'percent', value: 85 });

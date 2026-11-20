@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { LossDialog } from './loss-dialog';
+import { useMenuFocusReturn } from './menu-focus-return';
 import { useAppServices } from './services-context';
 import { unsavedOf } from './when-saved';
 
@@ -18,11 +19,13 @@ export function UnsavedChangesDialog({
   action,
   onContinue,
   onCancel,
+  onOpenAutoFocus,
   onCloseAutoFocus,
 }: {
   action: string;
   onContinue: () => void;
   onCancel: () => void;
+  onOpenAutoFocus?: (event: Event) => void;
   onCloseAutoFocus?: (event: Event) => void;
 }) {
   const { document } = useAppServices();
@@ -70,6 +73,7 @@ export function UnsavedChangesDialog({
       cancel="cancel"
       busy={saving}
       onChoose={choose}
+      {...(onOpenAutoFocus && { onOpenAutoFocus })}
       {...(onCloseAutoFocus && { onCloseAutoFocus })}
     />
   );
@@ -80,6 +84,9 @@ export function UnsavedChangesHost() {
   const services = useAppServices();
   const store = unsavedOf(services);
   const request = useStore(store, (state) => state.request);
+  // Radix sends focus nowhere on close without a trigger, so the dialog gives it back to whatever
+  // had it (a list over a sheet, for one) when the answer was Cancel.
+  const focusReturn = useMenuFocusReturn();
   if (!request) return null;
   // An answer counts only for the request that asked: one cancelled by a newer request, whose
   // Save was still running, must neither continue nor close the newer dialog.
@@ -88,6 +95,8 @@ export function UnsavedChangesHost() {
     <UnsavedChangesDialog
       key={request.id}
       action={request.action}
+      onOpenAutoFocus={focusReturn.remember}
+      onCloseAutoFocus={focusReturn.onCloseAutoFocus}
       onContinue={() => {
         if (!current()) return;
         store.getState().close();
