@@ -16,3 +16,4 @@ export {
   type ScoreSection,
 } from './sections';
 export { describePosition } from './position-format';
+export { sectionRange, targetBars, targetPlace, type BarPlace } from './menu-target';

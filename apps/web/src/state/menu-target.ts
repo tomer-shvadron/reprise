@@ -15,7 +15,8 @@ export type MenuTarget =
   | { kind: 'note'; note: Id; beat: Id; track: Id; masterBar: Id }
   | { kind: 'beat'; beat: Id; track: Id; masterBar: Id }
   | { kind: 'bar'; masterBar: Id; track: Id | undefined }
-  | { kind: 'range' }
+  /** `bar` is the bar clicked inside the range, which "Play from here" starts at. */
+  | { kind: 'range'; bar?: Id }
   | { kind: 'chord'; beat: Id; track: Id; masterBar: Id }
   | { kind: 'section'; masterBar: Id }
   | { kind: 'paper' }

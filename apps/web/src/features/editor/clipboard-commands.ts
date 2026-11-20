@@ -1,11 +1,18 @@
 import type { Command } from '@/app/command-registry';
 import type { AppServices } from '@/app/services';
 
+import { targetBars } from '@/features/transport';
+
 import { clipboardController } from './clipboard-events';
 import { clipboardOf } from './clipboard-store';
 
 export type ClipboardCommandId =
-  'editor.copy' | 'editor.cut' | 'editor.paste' | 'editor.pasteInsert' | 'editor.pasteOverwrite';
+  | 'editor.copy'
+  | 'editor.cut'
+  | 'editor.paste'
+  | 'editor.pasteInsert'
+  | 'editor.pasteOverwrite'
+  | 'editor.copyBars';
 
 type ClipboardCommand = Command & { id: ClipboardCommandId };
 
@@ -16,7 +23,9 @@ type ClipboardCommand = Command & { id: ClipboardCommandId };
  * internal clipboard (Paste). The two explicit pastes have no key; ⌘V follows the insert or
  * overwrite mode of the status line.
  */
-export function clipboardCommands(services: Pick<AppServices, 'entry'>): ClipboardCommand[] {
+export function clipboardCommands(
+  services: Pick<AppServices, 'entry' | 'document' | 'selection' | 'menuTarget' | 'transport'>,
+): ClipboardCommand[] {
   const { entry } = services;
   const hasClip = () => clipboardOf(services).get() !== undefined;
   return [
@@ -67,6 +76,17 @@ export function clipboardCommands(services: Pick<AppServices, 'entry'>): Clipboa
       enabled: hasClip,
       run: () => {
         clipboardController(entry)?.paste('overwrite');
+      },
+    },
+    {
+      id: 'editor.copyBars',
+      title: 'Copy bars',
+      // No key: ⌘C stays the editing copy. This is the play-mode menu's way to the same clip.
+      inPalette: false,
+      enabled: () => targetBars(services) !== undefined,
+      run: () => {
+        // Through the controller, like Copy, so ⌘V in edit mode pastes it from the system clipboard too.
+        clipboardController(entry)?.copyBars();
       },
     },
   ];

@@ -15,7 +15,7 @@ import { playheadTick, seekTo } from './seek-commands';
  * Shared by a click in play mode and a click in edit mode, which seeks to its cursor.
  */
 export function seekToBar(
-  services: AppServices,
+  services: Pick<AppServices, 'audio' | 'playback' | 'transport' | 'heard' | 'ui'>,
   score: Score,
   target: { masterBarIndex: number; tick: number },
   keepLoop = false,
