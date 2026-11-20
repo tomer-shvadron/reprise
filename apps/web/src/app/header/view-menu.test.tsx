@@ -133,6 +133,17 @@ describe('ViewMenu', () => {
     );
   });
 
+  it('returns focus to the trigger after a keyboard open and Escape', async () => {
+    renderHeader(<ViewMenu />);
+    const user = userEvent.setup();
+    const trigger = screen.getByRole('button', { name: 'View options' });
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    await screen.findByRole('menu');
+    await user.keyboard('{Escape}');
+    expect(trigger).toHaveFocus();
+  });
+
   it('returns focus to the element that had it before a pointer open', async () => {
     renderHeader(
       <>

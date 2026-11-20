@@ -29,6 +29,17 @@ test('a click on a mode does not take focus, so Space still plays', async ({ app
   await expect(app.playButton).toHaveAccessibleName('Play');
 });
 
+test('choosing from the View menu leaves focus with the page, so Space plays', async ({
+  app,
+  page,
+}) => {
+  await page.getByRole('button', { name: 'View options' }).click();
+  await page.getByRole('menuitemradio', { name: /^Continuous view/ }).click();
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await page.keyboard.press('Space');
+  await expect(app.playButton).toHaveAccessibleName('Pause');
+});
+
 test('the crumb opens the library and Escape returns to the player', async ({ page }) => {
   await page.getByRole('banner').getByRole('button', { name: 'Library' }).click();
   await expect(page.getByRole('region', { name: 'Library' })).toBeVisible();

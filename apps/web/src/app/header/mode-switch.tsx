@@ -26,7 +26,6 @@ export function ModeSwitch() {
     <ToggleGroup
       type="single"
       size="sm"
-      spacing={0}
       aria-label="Mode"
       value={mode}
       className="bg-muted h-6 gap-0.5 p-0.5"
@@ -44,7 +43,7 @@ export function ModeSwitch() {
               aria-keyshortcuts={toggle.ariaKeys}
               disabled={value === 'edit' && !hasScore}
               onMouseDown={keepFocus}
-              className="text-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground h-5 min-w-0 rounded-md px-2.5 text-xs data-[state=on]:shadow-xs dark:data-[state=on]:shadow-none"
+              className="text-foreground hover:bg-background/60 hover:text-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground h-5 min-w-0 rounded-md px-2.5 text-xs data-[state=on]:shadow-xs dark:data-[state=on]:shadow-none"
             >
               {label}
             </ToggleGroupItem>

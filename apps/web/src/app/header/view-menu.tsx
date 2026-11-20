@@ -3,7 +3,7 @@ import { ChevronDownIcon, EyeIcon } from 'lucide-react';
 import { useId, useRef } from 'react';
 import { useStore } from 'zustand';
 
-import { keepFocus, tooltipText } from '@/app/command-control';
+import { keepFocus } from '@/app/command-control';
 import { useAppServices } from '@/app/services-context';
 import { useCommand, type RegisteredCommandId } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
@@ -99,24 +99,32 @@ export function ViewMenu() {
   // Where focus was when the menu opened: Radix would return it to the trigger, which then takes
   // the next Space, so only someone who tabbed to the trigger goes back to it.
   const returnTo = useRef<Element | null>(null);
+  // Recorded on the trigger before Radix's own handler opens the menu, so it never reads the
+  // menu's content. Only the trigger opens this menu.
+  const remember = () => {
+    returnTo.current = globalThis.document.activeElement;
+  };
 
   return (
-    <DropdownMenu
-      onOpenChange={(next) => {
-        if (next) returnTo.current = globalThis.document.activeElement;
-      }}
-    >
+    <DropdownMenu>
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="xs" aria-label="View options" onMouseDown={keepFocus}>
+            <Button
+              variant="ghost"
+              size="xs"
+              aria-label="View options"
+              onMouseDown={keepFocus}
+              onPointerDownCapture={remember}
+              onKeyDownCapture={remember}
+            >
               <EyeIcon aria-hidden="true" />
               <span className="hidden whitespace-nowrap md:inline">View</span>
               <ChevronDownIcon aria-hidden="true" className="hidden md:block" />
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent>{tooltipText('View options', undefined)}</TooltipContent>
+        <TooltipContent>View options</TooltipContent>
       </Tooltip>
       <DropdownMenuContent
         align="end"

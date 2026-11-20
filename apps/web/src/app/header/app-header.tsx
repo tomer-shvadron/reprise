@@ -10,7 +10,7 @@ import { ViewMenu } from './view-menu';
  */
 export function AppHeader() {
   return (
-    <header className="bg-background flex h-7 shrink-0 items-center gap-2 overflow-hidden border-b px-2">
+    <header className="bg-background flex h-7 shrink-0 items-center gap-2 border-b px-2">
       <div className="flex min-w-0 flex-1 basis-0 items-center">
         <LibraryCrumb />
       </div>
