@@ -10,12 +10,16 @@ import type { UiStore } from '@/state/ui';
 export function installBottomDock(deps: { settings: SettingsStore; ui: UiStore }): () => void {
   const { settings, ui } = deps;
 
+  // The guards skip the echo of our own writes, which would ask the score for a second follow.
   const applyOpen = () => {
-    ui.getState().setBottomPanelOpen(settings.get(BOTTOM_DOCK_OPEN_SETTING));
+    const open = settings.get(BOTTOM_DOCK_OPEN_SETTING);
+    if (ui.getState().bottomPanel.open !== open) ui.getState().setBottomPanelOpen(open);
   };
   const applyHeight = () => {
     const state = ui.getState();
-    state.setBottomPanelHeight(settings.get(BOTTOM_DOCK_HEIGHT_SETTING));
+    const height = settings.get(BOTTOM_DOCK_HEIGHT_SETTING);
+    if (state.bottomPanelHeight === height) return;
+    state.setBottomPanelHeight(height);
     // A restored height is already stored; committing it keeps the ui's two heights in step.
     state.persistBottomPanelHeight();
   };
@@ -28,6 +32,9 @@ export function installBottomDock(deps: { settings: SettingsStore; ui: UiStore }
     settings.subscribe(BOTTOM_DOCK_HEIGHT_SETTING, applyHeight),
   ];
 
+  // A change made before the load wins without a hydration check: each ui transition differs from
+  // the setting's last value (the default until the load), so it is written, and a written key is
+  // pending in the store, which the loaded rows do not overwrite.
   const stopWatching = ui.subscribe((state, previous) => {
     if (
       state.bottomPanel.open !== previous.bottomPanel.open &&

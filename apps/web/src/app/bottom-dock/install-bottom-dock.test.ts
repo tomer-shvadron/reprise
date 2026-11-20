@@ -63,4 +63,18 @@ describe('installBottomDock', () => {
     ui.getState().showBottomPanelView('fretboard');
     expect(settings.get(BOTTOM_DOCK_OPEN_SETTING)).toBe(false);
   });
+
+  it('does not ask for a second follow when its own write echoes back', async () => {
+    const settings = createTestSettings();
+    await settings.whenHydrated();
+    const ui = createUiStore('dark');
+    const stop = installBottomDock({ settings, ui });
+    const before = ui.getState().follow.request;
+    ui.getState().showBottomPanelView('fretboard');
+    ui.getState().setBottomPanelHeight(260);
+    ui.getState().persistBottomPanelHeight();
+    // One follow for opening and one for the resize; the echoes add none.
+    expect(ui.getState().follow.request).toBe(before + 2);
+    stop();
+  });
 });

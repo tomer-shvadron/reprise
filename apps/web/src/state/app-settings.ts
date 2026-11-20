@@ -1,6 +1,7 @@
 import { HQ_BUDGET_BYTES } from '@reprise/audio';
 import { z } from 'zod';
 
+import { BOTTOM_PANEL_HEIGHT } from './bottom-panel-height';
 import { defineSetting, type SettingDef } from './settings';
 import { MEMORY_BUDGET_RANGE } from './playback';
 
@@ -54,7 +55,7 @@ export const BOTTOM_DOCK_OPEN_SETTING = defineSetting({
 export const BOTTOM_DOCK_HEIGHT_SETTING = defineSetting({
   key: 'layout.bottomDockHeight',
   schema: z.number().positive(),
-  default: 200,
+  default: BOTTOM_PANEL_HEIGHT.default,
 });
 
 /** Every handle the app shell defines; the relaunch test walks this list. */

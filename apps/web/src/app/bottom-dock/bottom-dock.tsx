@@ -9,13 +9,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import {
   BOTTOM_PANEL_HEIGHT,
   BOTTOM_PANEL_TITLES,
+  BOTTOM_PANEL_VIEWS,
   type BottomPanelView,
   type UiStore,
 } from '@/state/ui';
 import { cn } from 'cn';
 
-/** The dock's views in tab order; a new view widens `BottomPanelView` and adds its title. */
-const VIEWS = Object.keys(BOTTOM_PANEL_TITLES) as BottomPanelView[];
+const VIEWS = BOTTOM_PANEL_VIEWS;
 
 const tabId = (view: string) => `bottom-dock-tab-${view}`;
 const PANEL_ID = 'bottom-dock-panel';
@@ -34,6 +34,7 @@ export function BottomDock({ ui, children }: { ui: UiStore; children?: ReactNode
   const persistHeight = useStore(ui, (state) => state.persistBottomPanelHeight);
   const showView = useStore(ui, (state) => state.showBottomPanelView);
   const setOpen = useStore(ui, (state) => state.setBottomPanelOpen);
+  const toggle = useRef<HTMLButtonElement>(null);
   const tabs = useRef(new Map<BottomPanelView, HTMLButtonElement>());
 
   const current = VIEWS.indexOf(view);
@@ -57,8 +58,22 @@ export function BottomDock({ ui, children }: { ui: UiStore; children?: ReactNode
     const target = next === undefined ? undefined : VIEWS[next];
     if (!target) return;
     event.preventDefault();
-    showView(target);
+    // With one view an arrow key lands on the same tab, and that must not open a collapsed dock.
+    if (next !== current) showView(target);
     tabs.current.get(target)?.focus();
+  };
+
+  // The view and the resize handle unmount on collapse; the chevron stays, so it takes the focus
+  // they had (a mouse click on it keeps focus where it was).
+  const collapse = () => {
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLElement &&
+      (active.closest('[role="tabpanel"]') || active.getAttribute('role') === 'separator')
+    ) {
+      toggle.current?.focus();
+    }
+    setOpen(false);
   };
 
   const toggleLabel = open ? 'Collapse bottom panel' : 'Expand bottom panel';
@@ -79,8 +94,12 @@ export function BottomDock({ ui, children }: { ui: UiStore; children?: ReactNode
         />
       )}
       <section
-        aria-label={open ? BOTTOM_PANEL_TITLES[view] : 'Bottom panel'}
-        className="bg-sidebar text-sidebar-foreground flex min-h-0 shrink-0 flex-col border-t"
+        aria-label="Bottom panel"
+        // Open, the dock gives way before the transport is clipped (#206); the strip never shrinks.
+        className={cn(
+          'bg-sidebar text-sidebar-foreground flex min-h-0 flex-col border-t',
+          !open && 'shrink-0',
+        )}
         style={open ? { height } : undefined}
       >
         <div className="flex shrink-0 items-center justify-between border-b px-1 pr-3">
@@ -114,7 +133,9 @@ export function BottomDock({ ui, children }: { ui: UiStore; children?: ReactNode
                   }}
                   className={cn(
                     'text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 -mb-px border-b-2 border-transparent px-2.5 py-1.5 text-xs font-medium outline-none focus-visible:ring-2',
-                    selected && 'border-primary text-foreground',
+                    // No underline while collapsed: nothing is showing.
+                    selected && 'text-foreground',
+                    selected && open && 'border-primary',
                   )}
                 >
                   {BOTTOM_PANEL_TITLES[id]}
@@ -125,13 +146,15 @@ export function BottomDock({ ui, children }: { ui: UiStore; children?: ReactNode
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
+                ref={toggle}
                 variant="ghost"
                 size="icon-sm"
                 aria-label={toggleLabel}
                 aria-expanded={open}
                 onMouseDown={keepFocus}
                 onClick={() => {
-                  setOpen(!open);
+                  if (open) collapse();
+                  else setOpen(true);
                 }}
               >
                 <ToggleIcon />

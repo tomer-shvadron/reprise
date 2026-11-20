@@ -46,7 +46,7 @@ describe('the bottom dock', () => {
 
     fireEvent.click(toggle);
     expect(ui.getState().bottomPanel.open).toBe(true);
-    expect(screen.getByRole('region', { name: 'Fretboard' })).toHaveTextContent('fret content');
+    expect(screen.getByRole('tabpanel', { name: 'Fretboard' })).toHaveTextContent('fret content');
     expect(screen.getByRole('button', { name: 'Collapse bottom panel' })).toHaveAttribute(
       'aria-expanded',
       'true',
@@ -81,29 +81,55 @@ describe('the bottom dock', () => {
     expect(panel).toHaveClass('overflow-auto');
   });
 
-  it('is reachable by keyboard: Tab lands on the selected tab, and Home and End keep it there with one view', () => {
-    renderFrame();
+  it('is reachable by keyboard: arrows, Home and End on the one tab keep it selected and the dock closed', () => {
+    const ui = renderFrame();
     const tab = screen.getByRole('tab', { name: 'Fretboard' });
     tab.focus();
-    fireEvent.keyDown(tab, { key: 'ArrowRight' });
-    fireEvent.keyDown(tab, { key: 'End' });
-    fireEvent.keyDown(tab, { key: 'Home' });
+    for (const key of ['ArrowRight', 'ArrowLeft', 'End', 'Home']) fireEvent.keyDown(tab, { key });
     expect(tab).toHaveFocus();
     expect(tab).toHaveAttribute('aria-selected', 'true');
+    expect(ui.getState().bottomPanel.open).toBe(false);
   });
 
-  it('gives the score row its floor and shrinks to the strip when collapsed', () => {
+  it('moves focus to the chevron when collapsing from inside the view or the resize handle', () => {
+    renderFrame();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand bottom panel' }));
+    const tabpanel = screen.getByRole('tabpanel');
+    const inner = document.createElement('button');
+    tabpanel.append(inner);
+    inner.focus();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse bottom panel' }));
+    expect(screen.getByRole('button', { name: 'Expand bottom panel' })).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand bottom panel' }));
+    screen.getByRole('separator', { name: 'Resize bottom panel' }).focus();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse bottom panel' }));
+    expect(screen.getByRole('button', { name: 'Expand bottom panel' })).toHaveFocus();
+  });
+
+  it('shows no selected underline while collapsed', () => {
+    const ui = renderFrame();
+    const tab = screen.getByRole('tab', { name: 'Fretboard' });
+    expect(tab).not.toHaveClass('border-primary');
+    act(() => {
+      ui.getState().showBottomPanelView('fretboard');
+    });
+    expect(tab).toHaveClass('border-primary');
+  });
+
+  it('gives way before the transport is clipped when open, and the strip never shrinks', () => {
     const ui = renderFrame();
     const region = screen.getByRole('region', { name: 'Bottom panel' });
     // Jsdom has no layout; the classes and style carry the contract.
+    expect(region).toHaveClass('shrink-0');
     expect(region.style.height).toBe('');
     expect(screen.getByRole('main', { name: 'Score' }).parentElement).toHaveClass('min-h-40');
     act(() => {
       ui.getState().showBottomPanelView('fretboard');
     });
-    expect(screen.getByRole('region', { name: 'Fretboard' })).toHaveStyle({
-      height: `${String(BOTTOM_PANEL_HEIGHT.default)}px`,
-    });
+    expect(region).not.toHaveClass('shrink-0');
+    expect(region).toHaveClass('min-h-0');
+    expect(region).toHaveStyle({ height: `${String(BOTTOM_PANEL_HEIGHT.default)}px` });
   });
 
   it('resizes by a vertical pointer drag, committing the height when it ends', () => {
