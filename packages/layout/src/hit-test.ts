@@ -67,7 +67,7 @@ export function anchorBox(result: LayoutResult, anchor: Anchor): Rect {
   return shiftedBox(anchor.bbox, result.systems[anchor.system]?.offsetX ?? 0);
 }
 
-/** What a right-click on a word primitive names: a chord name's beat or a section marker's master bar. */
+/** What `markAt` finds under a point: a chord name's beat or a section marker's master bar. */
 export type Mark = { kind: 'chord'; beat: Id } | { kind: 'section'; masterBar: Id };
 
 /**
