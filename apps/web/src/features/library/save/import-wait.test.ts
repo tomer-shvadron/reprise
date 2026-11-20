@@ -1,5 +1,5 @@
 import { setTrackProperties } from '@reprise/model';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createMemoryStorage } from '@/test/memory-storage';
 import { mirrorAudio } from '@/test/mirror-audio';
@@ -14,23 +14,36 @@ import { uniqueDbName } from '../test-support';
 const libraries: Library[] = [];
 afterEach(async () => {
   vi.useRealTimers();
-  for (const free of release.splice(0)) free();
+  letGo();
   await settleLibraryWrites();
   for (const library of libraries.splice(0)) library.db.close();
 });
 
 // A parser whose native write does not answer until the test ends, as a wedged worker would; the
-// shared teardown awaits every import, so it is let go then.
-const release: (() => void)[] = [];
+// shared teardown awaits every import, so it is let go then. The import reaches `native` some time
+// after the test body, so a call after the release answers at once, or the teardown would wait
+// on a write nobody lets go.
+let released = false;
+const waiting: (() => void)[] = [];
+const letGo = () => {
+  released = true;
+  for (const resolve of waiting.splice(0)) resolve();
+};
 const wedged = (): Parser => ({
   parse: () => new Promise(() => undefined),
   native: () =>
     new Promise((resolve) => {
-      release.push(() => {
+      const answer = () => {
         resolve({ ok: false, code: 'wedged', message: 'the worker never answered' });
-      });
+      };
+      if (released) answer();
+      else waiting.push(answer);
     }),
   dispose: () => undefined,
+});
+
+beforeEach(() => {
+  released = false;
 });
 
 describe('Save while the file just opened is still being imported', () => {
@@ -62,8 +75,18 @@ describe('Save while the file just opened is still being imported', () => {
           { name: 'Edited' },
         ),
       );
+    // The import is wedged in its native write: the first paint and the duplicate lookup are
+    // behind it, so the only timer left to fake is the wait's own.
+    await vi.waitFor(() => {
+      expect(waiting).toHaveLength(1);
+    });
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const saving = document.getState().save();
+    // Save reads the song's row (real IndexedDB) before it starts the wait; advancing before the
+    // wait's timer exists would leave it to run on real time, past the test's timeout.
+    await vi.waitFor(() => {
+      expect(vi.getTimerCount()).toBe(1);
+    });
     await vi.advanceTimersByTimeAsync(IMPORT_WAIT_MS + 10);
     await saving;
     expect(saveFile).toHaveBeenCalledOnce();

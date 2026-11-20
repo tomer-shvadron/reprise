@@ -17,7 +17,13 @@ import {
   type MessageBoxOptions,
 } from 'electron';
 
-import type { FileFilter, HistoryMenuLabels, MenuCommandId, RecentSong } from '@reprise/web';
+import type {
+  FileFilter,
+  HistoryMenuLabels,
+  MenuCommandId,
+  MenuKeys,
+  RecentSong,
+} from '@reprise/web';
 
 import { APP_INDEX_URL, APP_SCHEME, createAppProtocolHandler } from './app-protocol';
 import { isAppUrl } from './app-url';
@@ -88,6 +94,8 @@ const storageRoots: StorageRoots = { library: libraryDir, data: dataDir };
 let recentSongs: readonly RecentSong[] = [];
 // Undefined until the renderer reports: the Edit menu then keeps plain, enabled Undo and Redo.
 let historyLabels: HistoryMenuLabels | undefined;
+// App-wide preferences, so unlike the history labels they outlive the window.
+let menuKeys: MenuKeys | undefined;
 const closeGuards = new Map<BrowserWindow, CloseGuard>();
 
 const dialogFilters = (filters: readonly FileFilter[]): DialogFilter[] =>
@@ -194,6 +202,11 @@ registerInvokeHandlers(
       applyMenu();
       return Promise.resolve(undefined);
     },
+    'menu:set-keys': (_event, keys) => {
+      menuKeys = keys;
+      applyMenu();
+      return Promise.resolve(undefined);
+    },
     'download:start': async (event, id, url, to, sha256, maxBytes) => {
       const contents = event.sender;
       const owner = contents.id;
@@ -285,6 +298,7 @@ function applyMenu(): void {
         showAbout,
         recent: recentSongs,
         ...(historyLabels && { history: historyLabels }),
+        ...(menuKeys && { keys: menuKeys }),
         openRecent: sendOpenRecent,
       }),
     ),

@@ -170,6 +170,89 @@ describe('menu:set-history', () => {
   });
 });
 
+describe('menu:set-keys', () => {
+  it('takes a map of menu commands to a key or null', () => {
+    expect(parsers['menu:set-keys']([{}])).toEqual([{}]);
+    expect(
+      parsers['menu:set-keys']([
+        {
+          'file.save': { key: 's', mod: true, shift: false },
+          'view.toggleViewMode': { key: 'F4' },
+          'view.zoomIn': { key: '=', mod: true, alt: undefined },
+          'file.new': null,
+          'file.open': undefined,
+        },
+      ]),
+    ).toEqual([
+      {
+        'file.save': { key: 's', mod: true },
+        'view.toggleViewMode': { key: 'F4' },
+        'view.zoomIn': { key: '=', mod: true },
+        'file.new': null,
+      },
+    ]);
+  });
+
+  it('refuses an unknown command, a stray field and a wrong type', () => {
+    for (const bad of [
+      [],
+      [null],
+      [[]],
+      ['x'],
+      [{ 'file.nope': { key: 'a' } }],
+      [{ toString: null }],
+      [{ 'file.save': 's' }],
+      [{ 'file.save': {} }],
+      [{ 'file.save': { key: 's', extra: true } }],
+      [{ 'file.save': { key: 's', mod: 1 } }],
+      [{ 'file.save': { key: 1 } }],
+      [{}, {}],
+    ]) {
+      expect(() => parsers['menu:set-keys'](bad)).toThrow(PayloadError);
+    }
+  });
+
+  it('refuses a key the grammar cannot carry', () => {
+    for (const key of ['', 'ab', 'é', 'א', '\n', '\u0000', 'Tab', 'Escape', 'F25', 'Dead']) {
+      expect(() => parsers['menu:set-keys']([{ 'file.save': { key } }])).toThrow(PayloadError);
+    }
+    for (const key of ['a', ' ', '~', '!', 'F1', 'F24', 'ArrowLeft', 'PageDown', 'Enter']) {
+      expect(() => parsers['menu:set-keys']([{ 'file.save': { key } }])).not.toThrow();
+    }
+  });
+
+  it.each([
+    ['q', { mod: true }],
+    ['Q', { mod: true }],
+    ['w', { mod: true }],
+    ['h', { mod: true }],
+    ['h', { mod: true, alt: true }],
+    ['m', { mod: true }],
+    ['c', { mod: true }],
+    ['x', { mod: true }],
+    ['v', { mod: true }],
+  ])('leaves a command given %s with %j, a role key, without a key', (key, modifiers) => {
+    expect(parsers['menu:set-keys']([{ 'file.save': { key, ...modifiers } }])).toEqual([
+      { 'file.save': null },
+    ]);
+  });
+
+  it('keeps the rest of the map when one entry clashes with a role key', () => {
+    expect(
+      parsers['menu:set-keys']([
+        { 'file.save': { key: 'q', mod: true }, 'file.new': { key: 'n', mod: true } },
+      ]),
+    ).toEqual([{ 'file.save': null, 'file.new': { key: 'n', mod: true } }]);
+  });
+
+  it('still takes a nearby binding that is not a role key', () => {
+    expect(() =>
+      parsers['menu:set-keys']([{ 'file.save': { key: 'q', mod: true, shift: true } }]),
+    ).not.toThrow();
+    expect(() => parsers['menu:set-keys']([{ 'file.save': { key: 'q' } }])).not.toThrow();
+  });
+});
+
 describe('ranged reads and download payloads', () => {
   const hash = 'a'.repeat(64);
   const download = (overrides: Partial<Record<number, unknown>> = {}) => {

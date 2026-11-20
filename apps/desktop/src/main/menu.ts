@@ -1,32 +1,60 @@
 import type { MenuItemConstructorOptions } from 'electron';
 
-import type { HistoryMenuLabels, MenuCommandId, RecentSong } from '@reprise/web';
+import type { HistoryMenuLabels, MenuCommandId, MenuKey, MenuKeys, RecentSong } from '@reprise/web';
 
 interface MenuCommand {
   label: string;
-  /** Mirrors the renderer's shortcut for the same command, which the menu shows and owns. */
-  accelerator?: string;
 }
 
+/**
+ * The commands the menu offers, by label only: the renderer sends the keys (`menu:set-keys`),
+ * from the same registry that handles them, so the menu has no list of its own to keep in step.
+ */
 export const MENU_COMMANDS = {
-  'app.settings': { label: 'Settings…', accelerator: 'CmdOrCtrl+,' },
-  'file.new': { label: 'New Song', accelerator: 'CmdOrCtrl+N' },
-  'file.open': { label: 'Open…', accelerator: 'CmdOrCtrl+O' },
-  'file.save': { label: 'Save', accelerator: 'CmdOrCtrl+S' },
-  'file.saveAs': { label: 'Save As…', accelerator: 'CmdOrCtrl+Shift+S' },
-  'file.export': { label: 'Export as Guitar Pro…', accelerator: 'CmdOrCtrl+Shift+E' },
-  'file.print': { label: 'Print…', accelerator: 'CmdOrCtrl+P' },
+  'app.settings': { label: 'Settings…' },
+  'file.new': { label: 'New Song' },
+  'file.open': { label: 'Open…' },
+  'file.save': { label: 'Save' },
+  'file.saveAs': { label: 'Save As…' },
+  'file.export': { label: 'Export as Guitar Pro…' },
+  'file.print': { label: 'Print…' },
   // The renderer replays a focused text field's own undo, so these replace the native roles.
-  'edit.undo': { label: 'Undo', accelerator: 'CmdOrCtrl+Z' },
-  'edit.redo': { label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z' },
-  'view.zoomIn': { label: 'Zoom In', accelerator: 'CmdOrCtrl+=' },
-  'view.zoomOut': { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-' },
-  'view.zoomReset': { label: 'Actual Size', accelerator: 'CmdOrCtrl+0' },
-  'view.toggleTheme': { label: 'Toggle Theme', accelerator: 'CmdOrCtrl+Shift+L' },
+  'edit.undo': { label: 'Undo' },
+  'edit.redo': { label: 'Redo' },
+  'view.zoomIn': { label: 'Zoom In' },
+  'view.zoomOut': { label: 'Zoom Out' },
+  'view.zoomReset': { label: 'Actual Size' },
+  'view.toggleTheme': { label: 'Toggle Theme' },
   'view.toggleSidebar': { label: 'Toggle Tracks' },
-  'view.togglePanel': { label: 'Toggle Mixer', accelerator: 'F8' },
-  'view.toggleViewMode': { label: 'Toggle Page and Continuous View', accelerator: 'F4' },
+  'view.togglePanel': { label: 'Toggle Mixer' },
+  'view.toggleViewMode': { label: 'Toggle Page and Continuous View' },
 } satisfies Record<MenuCommandId, MenuCommand>;
+
+const ACCELERATOR_KEYS: Readonly<Record<string, string>> = {
+  ' ': 'Space',
+  '+': 'Plus',
+  ArrowUp: 'Up',
+  ArrowDown: 'Down',
+  ArrowLeft: 'Left',
+  ArrowRight: 'Right',
+  Enter: 'Return',
+};
+
+/**
+ * The Electron accelerator for a key. Shift is dropped for a punctuation character, which already
+ * implies it, as the renderer's own key labels do.
+ */
+export function acceleratorOf({ key, mod, shift, alt }: MenuKey): string {
+  const named = key.length > 1 || /^[a-z\d ]$/i.test(key);
+  return [
+    mod && 'CmdOrCtrl',
+    alt && 'Alt',
+    shift && named && 'Shift',
+    ACCELERATOR_KEYS[key] ?? (key.length === 1 ? key.toUpperCase() : key),
+  ]
+    .filter(Boolean)
+    .join('+');
+}
 
 /** "Undo <label>", or the bare name with no label; a lone & is a mnemonic in a Windows label. */
 export function historyItemLabel(name: string, label: string | undefined): string {
@@ -48,7 +76,12 @@ export interface MenuOptions {
    * The newest undo and redo step names; an absent one leaves the plain item. Never disables.
    */
   history?: HistoryMenuLabels;
+  /** The key of each command, from the renderer; an item has none until it sends them. */
+  keys?: MenuKeys;
 }
+
+const acceleratorProp = (key: MenuKey | null | undefined) =>
+  key ? { accelerator: acceleratorOf(key) } : {};
 
 export function menuTemplate({
   isMac,
@@ -60,9 +93,11 @@ export function menuTemplate({
   recent = [],
   openRecent = () => undefined,
   history,
+  keys = {},
 }: MenuOptions): MenuItemConstructorOptions[] {
   const command = (id: MenuCommandId): MenuItemConstructorOptions => ({
-    ...MENU_COMMANDS[id],
+    label: MENU_COMMANDS[id].label,
+    ...acceleratorProp(keys[id]),
     click: () => {
       sendCommand(id);
     },
