@@ -24,6 +24,11 @@ export function contextMenuVia(event: Event): 'pointer' | 'keyboard' {
   return 'pointer';
 }
 
+/** Whether this module raised the event itself, as the mac command and the pill's button do. */
+export function raisedByUs(event: Event): boolean {
+  return synthetic.has(event);
+}
+
 /**
  * Opens the context menu of the surface around `element`, as the Menu key would: a bubbling,
  * cancelable `contextmenu` event at the element's bottom-left corner, which the nearest surface
