@@ -90,6 +90,11 @@ export interface ScoreViewProps {
   layout: LayoutResult;
   /** Display scale, the ui store's zoom; never re-lays out. */
   zoom: number;
+  /**
+   * Px at the bottom that something floats over (the practice capsule): the follow window and the
+   * reveals stop short of it, and the last system can scroll clear of it.
+   */
+  bottomInset?: number;
   overlays?: ScoreOverlays;
   /** Drawn inside the zoomed canvas after the overlays, in layout px × zoom: an inline editor. */
   children?: ReactNode;
@@ -202,6 +207,7 @@ function paintPlayhead(
 export function ScoreView({
   layout,
   zoom,
+  bottomInset = 0,
   overlays,
   children,
   onScorePointer,
@@ -216,7 +222,11 @@ export function ScoreView({
     scroller.current = node;
     setElement(node);
   }, []);
-  const viewport = useClientSize(element);
+  const client = useClientSize(element);
+  const viewport = useMemo(
+    () => ({ width: client.width, height: Math.max(0, client.height - bottomInset) }),
+    [client, bottomInset],
+  );
   const [scrolledCentre, setCentre] = useState<Point>();
   /** The centre at the last scroll event; the state above lags it until the mounted set changes. */
   const liveCentre = useRef<Point | undefined>(undefined);
@@ -546,6 +556,7 @@ export function ScoreView({
         'score-view focus-visible:outline-ring relative overflow-auto focus-visible:outline-2 focus-visible:-outline-offset-2',
         className,
       )}
+      style={bottomInset > 0 ? { paddingBottom: bottomInset } : undefined}
       onScroll={onScroll}
       onWheel={onWheel}
       onPointerDown={onRegionPointerDown}

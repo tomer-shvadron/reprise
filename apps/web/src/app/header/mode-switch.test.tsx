@@ -17,9 +17,25 @@ describe('ModeSwitch', () => {
     expect(radio('Edit')).toBeDisabled();
   });
 
-  it('has no Practice segment until #341', () => {
+  it('has a Practice segment between Play and Edit, disabled with no score', () => {
     renderHeader(<ModeSwitch />);
-    expect(screen.queryByRole('radio', { name: 'Practice' })).toBeNull();
+    expect(screen.getAllByRole('radio').map((item) => item.textContent)).toEqual([
+      'Play',
+      'Practice',
+      'Edit',
+    ]);
+    expect(radio('Practice')).toBeDisabled();
+  });
+
+  it('enters practice mode from the Practice segment, with F11 as its key', async () => {
+    const { open, registry, services } = renderHeader(<ModeSwitch />);
+    await open();
+    expect(radio('Practice')).toHaveAttribute('aria-keyshortcuts', 'F11');
+    const run = spyOnCommand(registry, 'view.practiceMode');
+    await userEvent.click(radio('Practice'));
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(services.ui.getState().practiceMode.on).toBe(true);
+    expect(radio('Practice')).toBeChecked();
   });
 
   it('switches through editor.toggleMode and ignores a click on the checked segment', async () => {
@@ -64,7 +80,7 @@ describe('ModeSwitch', () => {
     const user = userEvent.setup();
     radio('Play').focus();
     await user.keyboard('{ArrowRight}');
-    expect(radio('Edit')).toHaveFocus();
+    expect(radio('Practice')).toHaveFocus();
     expect(next).not.toHaveBeenCalled();
     await user.keyboard(' ');
     expect(playPause).not.toHaveBeenCalled();

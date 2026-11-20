@@ -25,7 +25,17 @@ const TEXT_CLASS: Record<ChipText, string> = {
  * pass count. A click shows its settings in the panel. It reads the trainer's store and takes no
  * layout from where it is placed, so the practice-mode capsule can reuse it.
  */
-export function SpeedTrainerChip({ text = 'auto' }: { text?: ChipText }) {
+export function SpeedTrainerChip({
+  text = 'auto',
+  command = 'trainer.speedTrainer',
+}: {
+  text?: ChipText;
+  /**
+   * What a click runs: show the settings in the panel (the transport), or start, hold or resume
+   * (the practice capsule, where no panel exists).
+   */
+  command?: 'trainer.speedTrainer' | 'trainer.speedTrainerToggle';
+}) {
   const services = useAppServices();
   const { status, plan, stepIndex, reps, repsPerStep } = useStore(
     speedTrainerFor(services),
@@ -37,7 +47,7 @@ export function SpeedTrainerChip({ text = 'auto' }: { text?: ChipText }) {
       repsPerStep: state.config.repsPerStep,
     })),
   );
-  const show = useCommand('trainer.speedTrainer');
+  const show = useCommand(command);
   const percent = plan?.percents[stepIndex];
   const target = plan?.percents.at(-1) ?? 0;
   const live = status !== 'idle' && percent !== undefined;
@@ -67,7 +77,7 @@ export function SpeedTrainerChip({ text = 'auto' }: { text?: ChipText }) {
           size="sm"
           aria-label={`${visible} (${detail})`}
           aria-keyshortcuts={show.ariaKeys}
-          data-command="trainer.speedTrainer"
+          data-command={command}
           data-testid="speed-trainer-chip"
           data-status={status}
           onMouseDown={keepFocus}

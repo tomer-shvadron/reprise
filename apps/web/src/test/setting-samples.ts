@@ -35,5 +35,6 @@ export const SAMPLES: Record<string, unknown> = {
   'layout.bottomDockHeight': 300,
   'layout.rightPanelOpen': true,
   'layout.rightPanelWidth': 400,
+  'layout.practiceZoom': 2,
   'library.sort': 'artist',
 };

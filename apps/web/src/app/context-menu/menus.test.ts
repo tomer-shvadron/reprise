@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { write } from '@reprise/formats';
+import { largeScore } from '@reprise/model/testing';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import { createTestServices } from '@/test/services';
 import type { MenuTarget } from '@/state/menu-target';
@@ -21,14 +23,12 @@ const NOT_YET: readonly MenuSurface[] = [
   'score.note',
   'score.beat',
   'score.bar',
-  'score.range',
   'score.section',
   'score.chord',
   'score.paper',
   'track.row',
   'mixer.strip',
   'mixer.master',
-  'transport.loop',
   'transport.tempo',
   'transport.countIn',
   'transport.metronome',
@@ -46,6 +46,9 @@ const TARGETS: Partial<Record<MenuSurface, readonly MenuTarget[]>> = {
     element,
   })),
   'panel.tab': PANEL_TABS.map(({ view }) => ({ kind: 'panel', view })),
+  // "Focus on loop" needs bars to focus on: `beforeAll` opens a score and selects one.
+  'score.range': [{ kind: 'range' }],
+  'transport.loop': [{ kind: 'transport', control: 'loop' }],
   'panel.rail': [
     ...PANEL_TABS.map(({ view }): MenuTarget => ({ kind: 'panel', view })),
     { kind: 'panel', view: undefined },
@@ -72,6 +75,14 @@ function resolveFor(surface: MenuSurface, target: MenuTarget, mode: MenuMode) {
 }
 
 describe('the context menus', () => {
+  beforeAll(async () => {
+    await services.document
+      .getState()
+      .openBytes('song.reprise', (await write(largeScore(1, 4), 'reprise')).bytes);
+    const bar = services.document.getState().score?.masterBars[0];
+    if (bar) services.selection.getState().selectBars({ startBar: bar.id, endBar: bar.id });
+  });
+
   it('name only registered commands, and no editing command in play mode', () => {
     for (const surface of menus.surfaces()) {
       for (const item of menus.itemsOf(surface)) {

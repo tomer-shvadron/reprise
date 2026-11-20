@@ -11,6 +11,7 @@ import { seekCommands } from '@/features/transport/seek-commands';
 import { CommandRegistry } from './command-registry';
 import { appCommands } from './commands';
 import { editCommands } from './edit-commands';
+import { practiceCommands } from './practice-mode/commands';
 import type { AppServices } from './services';
 
 /** Every command the app registers, in the order the palette and the shortcut table list them. */
@@ -18,6 +19,7 @@ export function createAppRegistry(services: AppServices): CommandRegistry {
   const registry = new CommandRegistry(() => services.editing.getState().editing);
   for (const command of [
     ...appCommands(services),
+    ...practiceCommands(services),
     ...transportCommands(services),
     ...seekCommands(services),
     ...editCommands(services),

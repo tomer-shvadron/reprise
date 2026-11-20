@@ -3,6 +3,7 @@ import { act } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { createAppRegistry } from '@/app/app-registry';
+import { runCommand } from '@/app/command-registry';
 import { installShortcutDispatcher } from '@/app/shortcut-dispatcher';
 import { mirrorAudio } from '@/test/mirror-audio';
 import { fourBars } from '@/test/position';
@@ -115,5 +116,34 @@ describe('trainer commands', () => {
     } finally {
       uninstall();
     }
+  });
+
+  describe('in the practice mode', () => {
+    it('start the trainer, the click and the tuner without opening a panel or leaving', async () => {
+      const { services, registry, loop, trainer } = await setup();
+      loop();
+      services.ui.getState().enterPracticeMode('play');
+      const run = (id: string) => {
+        const command = registry.get(id);
+        if (!command) throw new Error(`no command ${id}`);
+        runCommand(command);
+      };
+      run('trainer.speedTrainerToggle');
+      expect(trainer.getState().status).toBe('running');
+      run('trainer.metronomeToggle');
+      expect(services.fakeAudio.startClick).toHaveBeenCalled();
+      run('trainer.tunerToggle');
+      expect(services.ui.getState().practiceMode.on).toBe(true);
+      expect(services.ui.getState().panels.rightPanel).toBe(false);
+    });
+
+    it('still leave the mode and show the panel for the explicit Show commands', async () => {
+      const { services, registry } = await setup();
+      services.ui.getState().enterPracticeMode('play');
+      const show = registry.get('trainer.speedTrainer');
+      if (show) runCommand(show);
+      expect(services.ui.getState().practiceMode.on).toBe(false);
+      expect(services.ui.getState().rightPanelView).toBe('speedTrainer');
+    });
   });
 });
