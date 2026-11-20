@@ -1,14 +1,10 @@
 import type { LayoutOptions, PAGE_SIZES } from '@reprise/layout';
 import { create } from 'zustand';
 
-import {
-  BOTTOM_PANEL_HEIGHT,
-  readStoredBottomPanelHeight,
-  writeStoredBottomPanelHeight,
-} from './bottom-panel-storage';
 import { initialTheme, type Theme } from './theme';
 
-export { BOTTOM_PANEL_HEIGHT };
+/** The bottom region's height in px; the `layout.bottomDockHeight` setting holds the choice. */
+export const BOTTOM_PANEL_HEIGHT = { default: 200, min: 120, max: 480 } as const;
 
 export type PanelId = 'sidebar' | 'rightPanel';
 
@@ -56,9 +52,14 @@ export interface UiState {
   screen: ScreenId;
   rightPanelView: PanelView;
   panelWidths: Record<PanelId, number>;
-  /** The bottom region (#206): above the transport, below the score. Only the height persists. */
+  /**
+   * The bottom dock: above the transport, below the score. `open` is whether it shows its view or
+   * is collapsed to its tab strip; `installBottomDock` keeps `open` and the height in settings.
+   */
   bottomPanel: { open: boolean; view: BottomPanelView };
   bottomPanelHeight: number;
+  /** The height last committed by `persistBottomPanelHeight`, which is what gets stored. */
+  bottomPanelHeightCommitted: number;
   zoom: number;
   paletteOpen: boolean;
   /** The shortcuts cheat sheet (WP-101). */
@@ -82,7 +83,7 @@ export interface UiState {
   setBottomPanelOpen: (open: boolean) => void;
   /** Clamped to `BOTTOM_PANEL_HEIGHT`; not stored until `persistBottomPanelHeight`. */
   setBottomPanelHeight: (height: number) => void;
-  /** Stores the height for the next session; call when a resize ends, not on every step. */
+  /** Commits the height for storing; call when a resize ends, not on every step. */
   persistBottomPanelHeight: () => void;
   setZoom: (zoom: number) => void;
   setPaletteOpen: (open: boolean) => void;
@@ -118,7 +119,8 @@ export function createUiStore(theme: Theme = initialTheme()) {
       rightPanel: PANEL_WIDTH.rightPanel.default,
     },
     bottomPanel: { open: false, view: 'fretboard' },
-    bottomPanelHeight: readStoredBottomPanelHeight(),
+    bottomPanelHeight: BOTTOM_PANEL_HEIGHT.default,
+    bottomPanelHeightCommitted: BOTTOM_PANEL_HEIGHT.default,
     zoom: ZOOM.default,
     paletteOpen: false,
     shortcutsOpen: false,
@@ -171,7 +173,7 @@ export function createUiStore(theme: Theme = initialTheme()) {
       followAfterResize(get);
     },
     persistBottomPanelHeight: () => {
-      writeStoredBottomPanelHeight(get().bottomPanelHeight);
+      set({ bottomPanelHeightCommitted: get().bottomPanelHeight });
     },
     setZoom: (zoom) => {
       set({ zoom: clamp(zoom, ZOOM.min, ZOOM.max) });

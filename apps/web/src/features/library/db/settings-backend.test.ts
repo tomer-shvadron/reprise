@@ -28,6 +28,8 @@ const SAMPLES: Record<string, unknown> = {
   'playback.masterVolume': 0.6,
   'playback.gmTierBypass': false,
   'sounds.memoryBudgetBytes': 256 * 1024 * 1024,
+  'layout.bottomDockOpen': true,
+  'layout.bottomDockHeight': 300,
   'library.sort': 'artist',
 };
 
