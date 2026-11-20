@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useStore } from 'zustand';
 
 import { keepFocus } from '@/app/command-control';
@@ -30,18 +30,21 @@ export function SectionStrip() {
   // A number, so the strip renders once per bar rather than per frame.
   const barIndex = useStore(playback, (state) => state.position?.position.masterBarIndex);
   const toggleLoop = useCommand('transport.toggleLoop');
-  const refs = useRef(new Map<ScoreSection, HTMLButtonElement>());
-  const all = score ? sectionsOf(score) : [];
+  const refs = useRef(new Map<number, HTMLButtonElement>());
+  // Memoized, so the sections are the same objects until the score changes.
+  const all = useMemo(() => (score ? sectionsOf(score) : []), [score]);
   const playing = barIndex === undefined ? undefined : sectionAt(all, barIndex);
 
+  // Keyed by the start bar, so the scroll runs when the playing section changes, not per render.
+  const playingStart = playing?.startIndex;
   useEffect(() => {
-    if (!playing) return;
-    refs.current.get(playing)?.scrollIntoView({
+    if (playingStart === undefined) return;
+    refs.current.get(playingStart)?.scrollIntoView({
       inline: 'nearest',
       block: 'nearest',
       behavior: prefersReducedMotion() ? 'instant' : 'smooth',
     });
-  }, [playing]);
+  }, [playingStart]);
 
   if (!score || all.length === 0) return null;
 
@@ -62,8 +65,8 @@ export function SectionStrip() {
                 <TooltipTrigger asChild>
                   <button
                     ref={(node) => {
-                      if (node) refs.current.set(section, node);
-                      else refs.current.delete(section);
+                      if (node) refs.current.set(section.startIndex, node);
+                      else refs.current.delete(section.startIndex);
                     }}
                     type="button"
                     aria-pressed={pressed}
