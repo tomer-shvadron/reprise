@@ -83,3 +83,21 @@ describe('the app registry and edit mode', () => {
     off();
   });
 });
+
+describe('app.settings', () => {
+  it('opens Settings from its shortcut and is listed in the palette', () => {
+    const services = createTestServices();
+    const registry = createAppRegistry(services);
+    const command = registry.get('app.settings');
+    if (!command) throw new Error('app.settings is not registered');
+    expect(command.title).toBe('Settings…');
+    expect(command.shortcut).toEqual({ key: ',', mod: true });
+    expect(command.inPalette).not.toBe(false);
+
+    const stop = installShortcutDispatcher(window, registry, 'mac');
+    fireEvent.keyDown(window, { key: ',', metaKey: true });
+    stop();
+
+    expect(services.ui.getState().settings.open).toBe(true);
+  });
+});

@@ -6,6 +6,9 @@ import { createMemorySettingsBackend } from '@/test/settings-backend';
 import {
   APP_SETTINGS,
   COUNT_IN_SETTING,
+  DEFAULT_VIEW_MODE_SETTING,
+  DEFAULT_ZOOM_SETTING,
+  FOLLOW_PLAYHEAD_SETTING,
   GM_TIER_BYPASS_SETTING,
   MASTER_VOLUME_SETTING,
   MEMORY_BUDGET_SETTING,
@@ -28,6 +31,9 @@ describe('the app settings', () => {
     expect(store.get(MASTER_VOLUME_SETTING)).toBe(1);
     expect(store.get(GM_TIER_BYPASS_SETTING)).toBe(true);
     expect(store.get(MEMORY_BUDGET_SETTING)).toBe(HQ_BUDGET_BYTES);
+    expect(store.get(FOLLOW_PLAYHEAD_SETTING)).toBe(true);
+    expect(store.get(DEFAULT_VIEW_MODE_SETTING)).toBe('paged');
+    expect(store.get(DEFAULT_ZOOM_SETTING)).toBe(1);
   });
 
   it('use unique keys', () => {

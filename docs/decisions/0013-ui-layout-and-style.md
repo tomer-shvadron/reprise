@@ -63,6 +63,9 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - Changed by #335 (2026-11-20): the bottom region is a tabbed dock (S-BOT-1) that collapses to its
   tab strip; its open state and height persist as settings. See "Changed by #335" in
   `../specs/architecture.md`.
+- Changed by #343 (2026-11-20): the theme is a setting with three values, System, Light and Dark, and
+  System, which follows the operating system, is the default, so "dark theme by default" holds only
+  where the system is dark. See "Changed by #343" in `../specs/architecture.md`.
 
 ## Related
 

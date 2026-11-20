@@ -95,6 +95,8 @@ export interface PathPrimitive extends PrimitiveBase {
   d: string;
   fill: boolean;
   thickness: number;
+  /** `section` on a section marker's enclosure box, so a right-click on its padding finds the marker. */
+  lane?: 'section';
 }
 
 /** The row a word primitive sits in: a chord name, beat text, or lyric line `n` (0 to 4, as `lyric:0`). */
@@ -103,8 +105,11 @@ export type WordLane = 'chord' | 'text' | `lyric:${number}`;
 /** UI-font text; (x, y) is the baseline point `anchor` refers to. */
 export interface TextPrimitive extends PrimitiveBase {
   kind: 'text';
-  /** Set on chord names, beat text and syllables, so an editor finds a word's row without guessing from y. */
-  lane?: WordLane;
+  /**
+   * Set on chord names, beat text and syllables, so an editor finds a word's row without guessing
+   * from y, and on a section marker's text, which tempo text (also keyed by the master bar) lacks.
+   */
+  lane?: WordLane | 'section';
   text: string;
   size: number;
   anchor: 'start' | 'middle' | 'end';
