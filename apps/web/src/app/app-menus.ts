@@ -6,6 +6,7 @@ import type { CommandRegistry } from './command-registry';
 import { createMenuRegistry, type MenuRegistry } from './context-menu/menu-registry';
 import { shellMenus } from './context-menu/shell-menus';
 import type { MenuContribution } from './context-menu/types';
+import { practiceMenus } from './practice-mode/menus';
 
 /**
  * Every menu contribution of the app, the way `app-registry.ts` lists the commands. A feature
@@ -17,6 +18,7 @@ export const appMenuContributions: readonly MenuContribution[] = [
   ...transportMenus,
   ...trainerMenus,
   ...editorMenus,
+  ...practiceMenus,
 ];
 
 /** The menus, checked against the registry: a bad item throws here, at startup. */

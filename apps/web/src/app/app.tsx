@@ -31,7 +31,7 @@ import {
 } from '@/features/trainer';
 import { PrintDialog, PrintRoot } from '@/features/score';
 import { MixerPanel, TrackSidebar } from '@/features/tracks';
-import { TransportBar } from '@/features/transport';
+import { Announcer, TransportBar } from '@/features/transport';
 import type { RepriseBridge } from '@/platform/bridge';
 import { installHistoryMenu } from '@/state/history-menu';
 import type { PanelView } from '@/state/ui';
@@ -43,6 +43,7 @@ import { installCloseGuard } from './close-guard';
 import { installBottomDock } from './bottom-dock/install-bottom-dock';
 import { installTheme } from './install-theme';
 import { installViewDefaults } from './install-view-defaults';
+import { installPracticeMode, PracticeCapsule, SectionStrip } from './practice-mode';
 import { installRightPanel, storeRightPanelWidth } from './right-panel/install-right-panel';
 import { CommandPalette } from './command-palette';
 import { ShortcutSheet } from './shortcut-sheet';
@@ -121,6 +122,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   useEffect(() => installTheme(services), [services]);
   useEffect(() => installBottomDock(services), [services]);
   useEffect(() => installRightPanel(services), [services]);
+  useEffect(() => installPracticeMode(services), [services]);
 
   useEffect(() => installViewDefaults(services), [services]);
 
@@ -236,6 +238,16 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
                 </PanelTabs>
               </CommandSourceContext>
             }
+            sectionStrip={
+              <CommandSourceContext value={source}>
+                <SectionStrip />
+              </CommandSourceContext>
+            }
+            capsule={
+              <CommandSourceContext value={source}>
+                <PracticeCapsule />
+              </CommandSourceContext>
+            }
             onRightPanelResizeEnd={() => {
               storeRightPanelWidth(services);
             }}
@@ -258,6 +270,8 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
         <ShortcutSheet registry={registry} ui={ui} keyboard={keyboard} />
         <DropZone />
         <Notices />
+        {/* Outside the frame: the footer is gone in practice mode, and a live region has to stay mounted. */}
+        <Announcer />
         <SavePromptDialog />
         <EditorDialogs />
         <UnsavedChangesHost />

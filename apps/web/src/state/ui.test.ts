@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { stubMatchMedia } from '@/test/match-media';
 
 import { THEME_STORAGE_KEY, initialTheme } from './theme';
-import { createUiStore } from './ui';
+import { createUiStore, PRACTICE_ZOOM_DEFAULT, selectScoreZoom, ZOOM } from './ui';
 
 describe('ui store theme', () => {
   it('starts from the stored choice, and setTheme changes only the screen', () => {
@@ -174,5 +174,132 @@ describe('follow requests from the bottom dock', () => {
     store.getState().requestFollow();
     store.getState().toggleBottomPanelView('fretboard');
     expect(kind()).toBe('layout');
+  });
+});
+
+describe('ui store practice mode', () => {
+  const layoutOf = (store: ReturnType<typeof createUiStore>) => {
+    const { panels, panelWidths, rightPanelView, bottomPanel, bottomPanelHeight } =
+      store.getState();
+    return structuredClone({ panels, panelWidths, rightPanelView, bottomPanel, bottomPanelHeight });
+  };
+
+  /** A store with a window arranged the way a user leaves one: the mixer and the fretboard open. */
+  function arranged() {
+    const store = createUiStore('dark');
+    store.getState().showPanelView('mixer');
+    store.getState().setPanelWidth('rightPanel', 400);
+    store.getState().showBottomPanelView('fretboard');
+    store.getState().setBottomPanelHeight(260);
+    return store;
+  }
+
+  it('starts off, and entering and leaving change none of the panel or dock state', () => {
+    const store = arranged();
+    expect(store.getState().practiceMode).toEqual({ on: false, returnTo: 'play' });
+    const before = layoutOf(store);
+
+    store.getState().enterPracticeMode('edit');
+    expect(store.getState().practiceMode).toEqual({ on: true, returnTo: 'edit' });
+    expect(layoutOf(store)).toEqual(before);
+
+    store.getState().leavePracticeMode();
+    expect(store.getState().practiceMode.on).toBe(false);
+    expect(layoutOf(store)).toEqual(before);
+  });
+
+  it.each([
+    [
+      'showPanelView',
+      (s: ReturnType<typeof createUiStore>) => {
+        s.getState().showPanelView('tuner');
+      },
+    ],
+    [
+      'showBottomPanelView',
+      (s: ReturnType<typeof createUiStore>) => {
+        s.getState().showBottomPanelView('fretboard');
+      },
+    ],
+    [
+      'setPanelOpen(true)',
+      (s: ReturnType<typeof createUiStore>) => {
+        s.getState().setPanelOpen('sidebar', true);
+      },
+    ],
+    [
+      'setBottomPanelOpen(true)',
+      (s: ReturnType<typeof createUiStore>) => {
+        s.getState().setBottomPanelOpen(true);
+      },
+    ],
+  ])('leaves the mode when %s shows something', (_name, act) => {
+    const store = arranged();
+    store.getState().enterPracticeMode('play');
+    act(store);
+    expect(store.getState().practiceMode.on).toBe(false);
+  });
+
+  it('keeps a toggle from closing what the user could not see', () => {
+    const store = arranged();
+    store.getState().enterPracticeMode('play');
+    store.getState().toggleMixer();
+    expect(store.getState().practiceMode.on).toBe(false);
+    expect(store.getState().panels.rightPanel).toBe(true);
+    expect(store.getState().rightPanelView).toBe('mixer');
+
+    store.getState().enterPracticeMode('play');
+    store.getState().toggleBottomPanelView('fretboard');
+    expect(store.getState().practiceMode.on).toBe(false);
+    expect(store.getState().bottomPanel.open).toBe(true);
+
+    store.getState().enterPracticeMode('play');
+    store.getState().togglePanel('sidebar');
+    expect(store.getState().practiceMode.on).toBe(false);
+    expect(store.getState().panels.sidebar).toBe(true);
+  });
+
+  it('opens what a toggle finds closed, and toggles as before outside the mode', () => {
+    const store = createUiStore('dark');
+    store.getState().enterPracticeMode('play');
+    store.getState().toggleMixer();
+    expect(store.getState().panels.rightPanel).toBe(true);
+    store.getState().toggleMixer();
+    expect(store.getState().panels.rightPanel).toBe(false);
+  });
+
+  it('does not leave for the settings load, a resize or a collapse', () => {
+    const store = arranged();
+    store.getState().enterPracticeMode('play');
+    store.getState().restoreRightPanelOpen(true);
+    store.getState().setPanelWidth('rightPanel', 300);
+    store.getState().setPanelOpen('rightPanel', false);
+    store.getState().setBottomPanelOpen(false);
+    expect(store.getState().practiceMode.on).toBe(true);
+  });
+
+  it('asks for a follow on entering and leaving only while following', () => {
+    const store = createUiStore('dark');
+    store.getState().enterPracticeMode('play');
+    expect(store.getState().follow.request).toBe(1);
+    store.getState().leavePracticeMode();
+    expect(store.getState().follow.request).toBe(2);
+
+    store.getState().pauseFollow();
+    store.getState().enterPracticeMode('play');
+    store.getState().leavePracticeMode();
+    expect(store.getState().follow.request).toBe(2);
+  });
+
+  it('reads its own zoom while on, clamped, and never touches the normal one', () => {
+    const store = createUiStore('dark');
+    expect(store.getState().practiceZoom).toBe(PRACTICE_ZOOM_DEFAULT);
+    store.getState().setZoom(0.8);
+    expect(selectScoreZoom(store.getState())).toBe(0.8);
+    store.getState().enterPracticeMode('play');
+    expect(selectScoreZoom(store.getState())).toBe(PRACTICE_ZOOM_DEFAULT);
+    store.getState().setPracticeZoom(10);
+    expect(store.getState().practiceZoom).toBe(ZOOM.max);
+    expect(store.getState().zoom).toBe(0.8);
   });
 });
