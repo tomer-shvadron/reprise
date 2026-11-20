@@ -1,6 +1,7 @@
 import { HQ_BUDGET_BYTES } from '@reprise/audio';
 import { z } from 'zod';
 
+import { BOTTOM_PANEL_HEIGHT } from './bottom-panel-height';
 import { defineSetting, type SettingDef } from './settings';
 import { PANEL_WIDTH } from './panel-width';
 import { MEMORY_BUDGET_RANGE } from './playback';
@@ -57,6 +58,17 @@ export const RIGHT_PANEL_WIDTH_SETTING = defineSetting({
   schema: z.number().min(PANEL_WIDTH.rightPanel.min).max(PANEL_WIDTH.rightPanel.max),
   default: PANEL_WIDTH.rightPanel.default,
 });
+export const BOTTOM_DOCK_OPEN_SETTING = defineSetting({
+  key: 'layout.bottomDockOpen',
+  schema: z.boolean(),
+  default: false,
+});
+/** A height outside the dock's range is clamped by the ui store, so the schema only needs a number. */
+export const BOTTOM_DOCK_HEIGHT_SETTING = defineSetting({
+  key: 'layout.bottomDockHeight',
+  schema: z.number().positive(),
+  default: BOTTOM_PANEL_HEIGHT.default,
+});
 
 /** Every handle the app shell defines; the relaunch test walks this list. */
 export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
@@ -69,4 +81,6 @@ export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
   MEMORY_BUDGET_SETTING,
   RIGHT_PANEL_OPEN_SETTING,
   RIGHT_PANEL_WIDTH_SETTING,
+  BOTTOM_DOCK_OPEN_SETTING,
+  BOTTOM_DOCK_HEIGHT_SETTING,
 ];

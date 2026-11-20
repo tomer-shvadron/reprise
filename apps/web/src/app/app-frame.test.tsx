@@ -1,11 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
-import {
-  BOTTOM_PANEL_HEIGHT_STORAGE_KEY,
-  readStoredBottomPanelHeight,
-} from '@/state/bottom-panel-storage';
 import { BOTTOM_PANEL_HEIGHT, createUiStore } from '@/state/ui';
 
 import { AppFrame } from './app-frame';
@@ -53,55 +49,105 @@ describe('the status slot', () => {
   });
 });
 
-describe('the bottom panel region', () => {
-  it('is absent until opened, then a labelled region with the view, and the collapse button closes it', () => {
+describe('the bottom dock', () => {
+  it('is a collapsed tab strip until opened, then shows the view, and the chevron collapses it', () => {
     const ui = renderFrame();
-    expect(screen.queryByRole('region', { name: 'Fretboard' })).not.toBeInTheDocument();
-    act(() => {
-      ui.getState().showBottomPanelView('fretboard');
-    });
-    expect(screen.getByRole('region', { name: 'Fretboard' })).toHaveTextContent('fret content');
+    const region = screen.getByRole('region', { name: 'Bottom panel' });
+    expect(region).toContainElement(screen.getByRole('tablist', { name: 'Bottom panel views' }));
+    expect(screen.queryByText('fret content')).not.toBeInTheDocument();
+    expect(screen.queryByRole('separator', { name: 'Resize bottom panel' })).toBeNull();
+    const toggle = screen.getByRole('button', { name: 'Expand bottom panel' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(toggle);
+    expect(ui.getState().bottomPanel.open).toBe(true);
+    expect(screen.getByRole('tabpanel', { name: 'Fretboard' })).toHaveTextContent('fret content');
+    expect(screen.getByRole('button', { name: 'Collapse bottom panel' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+
     fireEvent.click(screen.getByRole('button', { name: 'Collapse bottom panel' }));
-    expect(screen.queryByRole('region', { name: 'Fretboard' })).not.toBeInTheDocument();
+    expect(ui.getState().bottomPanel.open).toBe(false);
+    expect(screen.queryByText('fret content')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Fretboard' })).toBeInTheDocument();
+  });
+
+  it('keeps the collapse button, so focus stays on it', () => {
+    renderFrame();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand bottom panel' }));
+    const collapse = screen.getByRole('button', { name: 'Collapse bottom panel' });
+    collapse.focus();
+    fireEvent.click(collapse);
+    expect(screen.getByRole('button', { name: 'Expand bottom panel' })).toHaveFocus();
+  });
+
+  it('follows the tabs pattern: a roving tab stop, a linked panel, a tab that expands the dock', () => {
+    const ui = renderFrame();
+    const tab = screen.getByRole('tab', { name: 'Fretboard' });
+    expect(tab).toHaveAttribute('aria-selected', 'true');
+    expect(tab).toHaveAttribute('tabindex', '0');
+    expect(tab).not.toHaveAttribute('aria-controls');
+    fireEvent.click(tab);
+    expect(ui.getState().bottomPanel.open).toBe(true);
+    const panel = screen.getByRole('tabpanel', { name: 'Fretboard' });
+    expect(tab).toHaveAttribute('aria-controls', panel.id);
+    expect(panel).toHaveTextContent('fret content');
+    expect(panel).toHaveClass('overflow-auto');
+  });
+
+  it('is reachable by keyboard: arrows, Home and End on the one tab keep it selected and the dock closed', () => {
+    const ui = renderFrame();
+    const tab = screen.getByRole('tab', { name: 'Fretboard' });
+    tab.focus();
+    for (const key of ['ArrowRight', 'ArrowLeft', 'End', 'Home']) fireEvent.keyDown(tab, { key });
+    expect(tab).toHaveFocus();
+    expect(tab).toHaveAttribute('aria-selected', 'true');
     expect(ui.getState().bottomPanel.open).toBe(false);
   });
 
-  it('puts the header, the collapse button and a separately scrolling body in the region', () => {
+  it('moves focus to the chevron when collapsing from inside the view or the resize handle', () => {
+    renderFrame();
+    fireEvent.click(screen.getByRole('button', { name: 'Expand bottom panel' }));
+    const tabpanel = screen.getByRole('tabpanel');
+    const inner = document.createElement('button');
+    tabpanel.append(inner);
+    inner.focus();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse bottom panel' }));
+    expect(screen.getByRole('button', { name: 'Expand bottom panel' })).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand bottom panel' }));
+    screen.getByRole('separator', { name: 'Resize bottom panel' }).focus();
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse bottom panel' }));
+    expect(screen.getByRole('button', { name: 'Expand bottom panel' })).toHaveFocus();
+  });
+
+  it('shows no selected underline while collapsed', () => {
     const ui = renderFrame();
+    const tab = screen.getByRole('tab', { name: 'Fretboard' });
+    expect(tab).not.toHaveClass('border-primary');
     act(() => {
       ui.getState().showBottomPanelView('fretboard');
     });
-    const region = screen.getByRole('region', { name: 'Fretboard' });
+    expect(tab).toHaveClass('border-primary');
+  });
+
+  it('gives way before the transport is clipped when open, and the strip never shrinks', () => {
+    const ui = renderFrame();
+    const region = screen.getByRole('region', { name: 'Bottom panel' });
+    // Jsdom has no layout; the classes and style carry the contract.
+    expect(region).toHaveClass('shrink-0');
+    expect(region.style.height).toBe('');
+    expect(screen.getByRole('main', { name: 'Score' }).parentElement).toHaveClass('min-h-40');
+    act(() => {
+      ui.getState().showBottomPanelView('fretboard');
+    });
     expect(region).not.toHaveClass('shrink-0');
     expect(region).toHaveClass('min-h-0');
-    expect(screen.getByRole('heading', { name: 'Fretboard' })).toBeInTheDocument();
-    expect(screen.getByText('fret content').parentElement).toHaveClass('overflow-auto');
-    // Jsdom has no layout; the classes carry the contract: the score row has a floor and the
-    // region gives way before the transport does.
-    expect(screen.getByRole('main', { name: 'Score' }).parentElement).toHaveClass('min-h-40');
+    expect(region).toHaveStyle({ height: `${String(BOTTOM_PANEL_HEIGHT.default)}px` });
   });
 
-  it('returns focus to where it was before opening, else to the score', () => {
-    const ui = renderFrame();
-    const toggle = screen.getByRole('button', { name: 'Toggle tracks' });
-    toggle.focus();
-    act(() => {
-      ui.getState().showBottomPanelView('fretboard');
-    });
-    screen.getByRole('button', { name: 'Collapse bottom panel' }).focus();
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse bottom panel' }));
-    expect(toggle).toHaveFocus();
-
-    toggle.focus();
-    act(() => {
-      ui.getState().showBottomPanelView('fretboard');
-    });
-    toggle.remove();
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse bottom panel' }));
-    expect(screen.getByRole('main', { name: 'Score' })).toHaveFocus();
-  });
-
-  it('resizes by a vertical pointer drag, storing the height when it ends', () => {
+  it('resizes by a vertical pointer drag, committing the height when it ends', () => {
     const ui = renderFrame();
     act(() => {
       ui.getState().showBottomPanelView('fretboard');
@@ -111,11 +157,9 @@ describe('the bottom panel region', () => {
     fireEvent.pointerDown(handle, { clientY: 500, pointerId: 1 });
     fireEvent.pointerMove(handle, { clientY: 450, pointerId: 1 });
     expect(ui.getState().bottomPanelHeight).toBe(BOTTOM_PANEL_HEIGHT.default + 50);
-    expect(window.localStorage.getItem(BOTTOM_PANEL_HEIGHT_STORAGE_KEY)).toBeNull();
+    expect(ui.getState().bottomPanelHeightCommitted).toBe(BOTTOM_PANEL_HEIGHT.default);
     fireEvent.pointerUp(handle, { pointerId: 1 });
-    expect(window.localStorage.getItem(BOTTOM_PANEL_HEIGHT_STORAGE_KEY)).toBe(
-      String(BOTTOM_PANEL_HEIGHT.default + 50),
-    );
+    expect(ui.getState().bottomPanelHeightCommitted).toBe(BOTTOM_PANEL_HEIGHT.default + 50);
     fireEvent.pointerMove(handle, { clientY: 300, pointerId: 1 });
     expect(ui.getState().bottomPanelHeight).toBe(BOTTOM_PANEL_HEIGHT.default + 50);
   });
@@ -133,9 +177,6 @@ describe('the bottom panel region', () => {
     fireEvent.keyDown(handle, { key: 'ArrowDown' });
     fireEvent.keyDown(handle, { key: 'ArrowDown' });
     expect(ui.getState().bottomPanelHeight).toBe(BOTTOM_PANEL_HEIGHT.default - 16);
-    expect(screen.getByRole('region', { name: 'Fretboard' })).toHaveStyle({
-      height: `${String(BOTTOM_PANEL_HEIGHT.default - 16)}px`,
-    });
     for (let i = 0; i < 100; i++) fireEvent.keyDown(handle, { key: 'ArrowUp' });
     expect(ui.getState().bottomPanelHeight).toBe(BOTTOM_PANEL_HEIGHT.max);
     for (let i = 0; i < 100; i++) fireEvent.keyDown(handle, { key: 'ArrowDown' });
@@ -144,43 +185,6 @@ describe('the bottom panel region', () => {
 });
 
 describe('the bottom panel state', () => {
-  it('remembers the height in a new store', () => {
-    const first = createUiStore('dark');
-    first.getState().setBottomPanelHeight(300);
-    expect(window.localStorage.getItem(BOTTOM_PANEL_HEIGHT_STORAGE_KEY)).toBeNull();
-    first.getState().persistBottomPanelHeight();
-    expect(window.localStorage.getItem(BOTTOM_PANEL_HEIGHT_STORAGE_KEY)).toBe('300');
-    expect(createUiStore('dark').getState().bottomPanelHeight).toBe(300);
-  });
-
-  it('ignores a stored height out of bounds or not a number', () => {
-    window.localStorage.setItem(BOTTOM_PANEL_HEIGHT_STORAGE_KEY, '99999');
-    expect(createUiStore('dark').getState().bottomPanelHeight).toBe(BOTTOM_PANEL_HEIGHT.default);
-    window.localStorage.setItem(BOTTOM_PANEL_HEIGHT_STORAGE_KEY, 'tall');
-    expect(createUiStore('dark').getState().bottomPanelHeight).toBe(BOTTOM_PANEL_HEIGHT.default);
-  });
-
-  it('still works when storage throws', () => {
-    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new Error('denied');
-    });
-    try {
-      const ui = createUiStore('dark');
-      ui.getState().setBottomPanelHeight(250);
-      expect(ui.getState().bottomPanelHeight).toBe(250);
-    } finally {
-      spy.mockRestore();
-    }
-  });
-
-  it('falls back to the default when reading storage throws', () => {
-    expect(
-      readStoredBottomPanelHeight(() => {
-        throw new Error('denied');
-      }),
-    ).toBe(BOTTOM_PANEL_HEIGHT.default);
-  });
-
   it('asks for one follow when the region opens or resizes, only while following', () => {
     const ui = createUiStore('dark');
     const before = ui.getState().follow.request;
