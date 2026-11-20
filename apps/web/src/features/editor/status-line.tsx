@@ -13,7 +13,6 @@ import { useCommand, type RegisteredCommandId } from '@/app/use-command';
 import type { DocumentStore } from '@/state/document';
 import type { EditingStore } from '@/state/editing';
 import type { SelectionStore } from '@/state/selection';
-import type { UiStore } from '@/state/ui';
 
 import { resolveCursor } from './cursor';
 import type { EntryStore } from './entry-store';
@@ -25,26 +24,6 @@ export interface EditStatusLineProps {
   editing: EditingStore;
   selection: SelectionStore;
   document: DocumentStore;
-  /** With it, the line carries an Effects segment that toggles the right panel's effects view. */
-  ui?: UiStore;
-}
-
-/** Toggles the right panel's effects view; a click leaves focus on the score. */
-function EffectsSegment({ ui }: { ui: UiStore }) {
-  const shown = useStore(
-    ui,
-    (state) => state.panels.rightPanel && state.rightPanelView === 'effects',
-  );
-  return (
-    <StatusSegment
-      command="editor.toggleEffectsPanel"
-      label="Show or hide the effects panel"
-      aria-pressed={shown}
-      className="text-foreground aria-pressed:bg-muted"
-    >
-      Effects
-    </StatusSegment>
-  );
 }
 
 function VoiceItem({
@@ -78,7 +57,7 @@ const separator = (
  * the refusal is a live region, so it is announced and the position that changes with every key is
  * not. The text reads as before: `Overwrite · Voice 1 · Quarter · Bar 3 · Beat 2 · String 4`.
  */
-export function EditStatusLine({ entry, editing, selection, document, ui }: EditStatusLineProps) {
+export function EditStatusLine({ entry, editing, selection, document }: EditStatusLineProps) {
   const isEditing = useStore(editing, (state) => state.editing);
   const { rhythm, mode, pending, message, tone, word } = useStore(entry);
   const cursor = useStore(selection, (state) => state.cursor);
@@ -172,7 +151,6 @@ export function EditStatusLine({ entry, editing, selection, document, ui }: Edit
       >
         {message}
       </span>
-      {ui && <EffectsSegment ui={ui} />}
     </div>
   );
 }

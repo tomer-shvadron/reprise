@@ -34,7 +34,6 @@ export function StatusBar() {
           editing={services.editing}
           selection={services.selection}
           document={services.document}
-          ui={services.ui}
         />
         <NotationSegment />
         <ZoomSegment />

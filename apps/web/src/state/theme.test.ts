@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import indexHtml from '../../index.html?raw';
 import bootstrapSource from '../../public/theme-bootstrap.js?raw';
-import { THEME_STORAGE_KEY } from './theme';
+import { THEME_STORAGE_KEY, resolveTheme } from './theme';
 
 interface Environment {
   readonly stored?: string | null;
@@ -46,6 +46,11 @@ describe('theme bootstrap', () => {
     expect(runBootstrap({ stored: 'dark', prefersLight: true })).toBe('dark');
   });
 
+  it('follows the system for a stored system', () => {
+    expect(runBootstrap({ stored: 'system', prefersLight: true })).toBe('light');
+    expect(runBootstrap({ stored: 'system', prefersLight: false })).toBe('dark');
+  });
+
   it('falls back to the system preference for a missing or garbage value', () => {
     expect(runBootstrap({ stored: 'purple', prefersLight: true })).toBe('light');
     expect(runBootstrap({ stored: null, prefersLight: false })).toBe('dark');
@@ -77,5 +82,14 @@ describe('theme bootstrap in index.html', () => {
 
   it('starts dark, matching the stylesheet default until the script runs', () => {
     expect(indexHtml).toContain('<html lang="en" data-theme="dark">');
+  });
+});
+
+describe('resolveTheme', () => {
+  it('follows the system only for the system preference', () => {
+    expect(resolveTheme('system', true)).toBe('light');
+    expect(resolveTheme('system', false)).toBe('dark');
+    expect(resolveTheme('dark', true)).toBe('dark');
+    expect(resolveTheme('light', false)).toBe('light');
   });
 });

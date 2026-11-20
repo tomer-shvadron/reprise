@@ -1,6 +1,7 @@
 import { startNewSong } from '@/features/editor';
 import { libraryOf } from '@/features/library/library';
 import type { MenuCommandId } from '@/platform/bridge';
+import { THEME_SETTING } from '@/state/app-settings';
 import { ZOOM } from '@/state/ui';
 
 import type { Command } from './command-registry';
@@ -12,6 +13,8 @@ const ZOOM_STEP = 0.1;
 export type AppCommandId =
   | MenuCommandId
   | 'app.commandPalette'
+  | 'app.shortcuts'
+  | 'app.shortcutsAlt'
   | 'file.close'
   | 'file.showImportDetails'
   | 'view.followPlayback';
@@ -19,7 +22,7 @@ export type AppCommandId =
 type AppCommand = Command & { id: AppCommandId };
 
 export function appCommands(services: AppServices): AppCommand[] {
-  const { ui, print, document } = services;
+  const { ui, print, document, settings } = services;
   const zoomBy = (delta: number) => {
     ui.getState().setZoom(Math.round((ui.getState().zoom + delta) * 10) / 10);
   };
@@ -32,6 +35,26 @@ export function appCommands(services: AppServices): AppCommand[] {
       inPalette: false,
       run: () => {
         ui.getState().setPaletteOpen(!ui.getState().paletteOpen);
+      },
+    },
+    {
+      id: 'app.shortcuts',
+      title: 'Show keyboard shortcuts',
+      // `?` is Shift+/ on US and the key itself elsewhere; the dispatcher matches the typed
+      // character with Shift held, so a layout that prints `?` without Shift is #242's.
+      shortcut: { key: '?', shift: true },
+      run: () => {
+        ui.getState().setShortcutsOpen(!ui.getState().shortcutsOpen);
+      },
+    },
+    {
+      id: 'app.shortcutsAlt',
+      title: 'Show keyboard shortcuts',
+      // The same action as `?`, for when a text field holds the bare key.
+      shortcut: { key: '/', mod: true },
+      inPalette: false,
+      run: () => {
+        ui.getState().setShortcutsOpen(!ui.getState().shortcutsOpen);
       },
     },
     {
@@ -129,7 +152,7 @@ export function appCommands(services: AppServices): AppCommand[] {
       title: 'Toggle light and dark theme',
       shortcut: { key: 'l', mod: true, shift: true },
       run: () => {
-        ui.getState().toggleTheme();
+        settings.set(THEME_SETTING, ui.getState().theme === 'dark' ? 'light' : 'dark');
       },
     },
     {

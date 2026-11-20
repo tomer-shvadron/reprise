@@ -84,11 +84,4 @@ describe('the songs repository', () => {
     expect(warn).toHaveBeenCalled();
     expect(await repo.get('not-an-id')).toBeUndefined();
   });
-
-  it('stores settings by key', async () => {
-    expect(await repo.getSetting('library.sort')).toBeUndefined();
-    await repo.setSetting('library.sort', 'artist');
-    await repo.setSetting('library.sort', 'title');
-    expect(await repo.getSetting('library.sort')).toBe('title');
-  });
 });

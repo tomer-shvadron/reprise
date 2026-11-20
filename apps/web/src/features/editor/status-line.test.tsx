@@ -50,9 +50,7 @@ describe('EditStatusLine', () => {
     const status = screen.getByTestId('edit-status');
     expect(screen.getByRole('status').getAttribute('aria-live')).toBe('polite');
     expect(screen.getByRole('status').textContent).toBe('');
-    expect(status.textContent).toBe(
-      'Overwrite · Voice 1 · Quarter · Bar 3 · Beat 2 · String 4Effects',
-    );
+    expect(status.textContent).toBe('Overwrite · Voice 1 · Quarter · Bar 3 · Beat 2 · String 4');
     act(() => {
       entry.getState().setMode('insert');
       entry.getState().setRhythm({ duration: 8, dots: 1, tuplet: undefined });
@@ -105,25 +103,6 @@ describe('EditStatusLine', () => {
     expect(screen.getByTestId('edit-status').textContent).toContain(
       'Voice 2 · Quarter · Bar 1 · End of bar',
     );
-  });
-
-  it('has an Effects button that shows and hides the effects panel, when it has the ui', async () => {
-    const { services } = await setup();
-    act(() => {
-      services.editing.getState().setEditing(true);
-    });
-    const effects = screen.getByRole('button', { name: 'Effects' });
-    expect(effects).toHaveAttribute('aria-pressed', 'false');
-    act(() => {
-      effects.click();
-    });
-    expect(services.ui.getState()).toMatchObject({ rightPanelView: 'effects' });
-    expect(services.ui.getState().panels.rightPanel).toBe(true);
-    expect(effects).toHaveAttribute('aria-pressed', 'true');
-    act(() => {
-      effects.click();
-    });
-    expect(services.ui.getState().panels.rightPanel).toBe(false);
   });
 
   it('runs the mode, voice and duration commands from its segments', async () => {

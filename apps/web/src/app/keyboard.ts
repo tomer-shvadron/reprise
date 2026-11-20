@@ -94,11 +94,14 @@ function keyName(key: string, platform: KeyboardPlatform): string {
 }
 
 export function formatShortcut(shortcut: Shortcut, platform: KeyboardPlatform): string {
+  // A punctuation character already implies Shift where the layout needs it (`?`, `+`, `:`), and
+  // is what the user types, so its Shift is not printed.
+  const shift = shortcut.shift && (/^[a-z\d ]$/i.test(shortcut.key) || shortcut.key.length > 1);
   const key = keyName(shortcut.key, platform);
   if (platform === 'mac') {
-    return `${shortcut.alt ? '⌥' : ''}${shortcut.shift ? '⇧' : ''}${shortcut.mod ? '⌘' : ''}${key}`;
+    return `${shortcut.alt ? '⌥' : ''}${shift ? '⇧' : ''}${shortcut.mod ? '⌘' : ''}${key}`;
   }
-  return [shortcut.mod && 'Ctrl', shortcut.alt && 'Alt', shortcut.shift && 'Shift', key]
+  return [shortcut.mod && 'Ctrl', shortcut.alt && 'Alt', shift && 'Shift', key]
     .filter(Boolean)
     .join('+');
 }
@@ -113,6 +116,33 @@ export function ariaKeyShortcuts(shortcut: Shortcut, platform: KeyboardPlatform)
         : shortcut.key;
   const mod = platform === 'mac' ? 'Meta' : 'Control';
   return [shortcut.mod && mod, shortcut.alt && 'Alt', shortcut.shift && 'Shift', key]
+    .filter(Boolean)
+    .join('+');
+}
+
+const SPOKEN_KEYS: Readonly<Record<string, string>> = {
+  ' ': 'Space',
+  ArrowLeft: 'Left',
+  ArrowRight: 'Right',
+  ArrowUp: 'Up',
+  ArrowDown: 'Down',
+  '=': 'equals',
+  '+': 'plus',
+  '-': 'minus',
+  '/': 'slash',
+  '?': 'question mark',
+  '.': 'period',
+  ',': 'comma',
+  '[': 'left bracket',
+  ']': 'right bracket',
+};
+
+/** The shortcut spelled out for a screen reader and for the cheat sheet's filter: "Command+Shift+S". */
+export function spokenShortcut(shortcut: Shortcut, platform: KeyboardPlatform): string {
+  const key = SPOKEN_KEYS[shortcut.key] ?? keyName(shortcut.key, 'other');
+  const mod = platform === 'mac' ? 'Command' : 'Ctrl';
+  const alt = platform === 'mac' ? 'Option' : 'Alt';
+  return [shortcut.mod && mod, shortcut.alt && alt, shortcut.shift && 'Shift', key]
     .filter(Boolean)
     .join('+');
 }

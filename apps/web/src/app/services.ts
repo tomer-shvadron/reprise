@@ -20,6 +20,7 @@ import { createLayoutStore, type LayoutStore } from '@/state/layout';
 import { createPlaybackStore, type PlaybackStore } from '@/state/playback';
 import { createPracticeStore, type PracticeStore } from '@/state/practice';
 import { createSelectionStore, type SelectionStore } from '@/state/selection';
+import { createSettingsStore, type SettingsStore } from '@/state/settings';
 import { createUiStore, type UiStore } from '@/state/ui';
 
 import { createAudioService, type AudioService } from './audio/audio-service';
@@ -46,6 +47,8 @@ export interface AppServices {
   entry: EntryStore;
   /** The running practice session (WP-070, WP-073). */
   practice: PracticeStore;
+  /** The persisted preferences (#343); the app attaches the Dexie table once the library opens. */
+  settings: SettingsStore;
   dispose(): void;
 }
 
@@ -55,14 +58,15 @@ export interface AppServicesOptions {
   audio?: (playback: PlaybackStore, sounds: SoundPackStore) => AudioService;
   read?: DocumentStoreDeps['read'];
   write?: DocumentStoreDeps['write'];
-  /** Where the transport keeps its preferences; `localStorage` by default. */
-  storage?: () => Storage;
+  /** The preferences store; a fresh one, not yet attached to a backend, by default. */
+  settings?: SettingsStore;
 }
 
 /** Every store and the audio service, created once outside React and wired to each other. */
 export function createAppServices(options: AppServicesOptions): AppServices {
   const { platform } = options;
   const ui = options.ui ?? createUiStore();
+  const settings = options.settings ?? createSettingsStore();
   const document = createDocumentStore({
     platform,
     ...(options.read && { read: options.read }),
@@ -130,7 +134,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     document,
     selection,
     transport,
-    ...(options.storage && { storage: options.storage }),
+    settings,
   });
 
   return {
@@ -148,6 +152,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     editing,
     entry,
     practice,
+    settings,
     dispose() {
       uninstallClipboard();
       uninstallEntry();

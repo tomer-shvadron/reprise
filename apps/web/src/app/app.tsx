@@ -15,6 +15,7 @@ import {
   DraftRecoveryDialog,
   ExportDialog,
   installLibrary,
+  installSettings,
   libraryOf,
   LibraryScreen,
   RecentSongs,
@@ -32,12 +33,16 @@ import type { PanelView } from '@/state/ui';
 import { AppFrame } from './app-frame';
 import { AppHeader } from './header/app-header';
 import { installCloseGuard } from './close-guard';
+import { installTheme } from './install-theme';
+import { installRightPanel, storeRightPanelWidth } from './right-panel/install-right-panel';
 import { CommandPalette } from './command-palette';
+import { ShortcutSheet } from './shortcut-sheet';
 import { createAppRegistry } from './app-registry';
 import { runCommand } from './command-registry';
 import { DropZone } from './drop-zone';
 import { installFirstGesture } from './first-gesture';
 import { formatShortcut, type KeyboardPlatform } from './keyboard';
+import { PanelRail, PanelTabs } from './right-panel';
 import { Notices } from './notices';
 import { SavePromptDialog } from './save-prompt';
 import { ScorePane } from './score-pane';
@@ -94,6 +99,14 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
     [audio],
   );
 
+  // The persisted preferences, loaded from the library's database; attach is idempotent.
+  useEffect(() => {
+    installSettings(services, libraryOf(services).db);
+  }, [services]);
+
+  useEffect(() => installTheme(services), [services]);
+  useEffect(() => installRightPanel(services), [services]);
+
   useEffect(() => installLibrary(services), [services]);
 
   // The installed sound packs, before any song names one; a failed scan leaves the list empty.
@@ -132,8 +145,12 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
     [registry, onMenuCommand],
   );
 
-  const openShortcut = registry.get('file.open')?.shortcut;
-  const paletteShortcut = registry.get('app.commandPalette')?.shortcut;
+  const keyOf = (id: string) => {
+    const command = registry.get(id);
+    return command && registry.shortcutOf(command);
+  };
+  const openShortcut = keyOf('file.open');
+  const paletteShortcut = keyOf('app.commandPalette');
   const hint = (
     <>
       <p className="text-ink-muted">
@@ -179,7 +196,17 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             }
             panel={
               <CommandSourceContext value={source}>
-                <RightPanel view={rightPanelView} />
+                <PanelTabs>
+                  <RightPanel view={rightPanelView} />
+                </PanelTabs>
+              </CommandSourceContext>
+            }
+            onRightPanelResizeEnd={() => {
+              storeRightPanelWidth(services);
+            }}
+            rail={
+              <CommandSourceContext value={source}>
+                <PanelRail />
               </CommandSourceContext>
             }
           />
@@ -195,6 +222,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
           </ScreenHost>
         )}
         <CommandPalette registry={registry} ui={ui} keyboard={keyboard} />
+        <ShortcutSheet registry={registry} ui={ui} keyboard={keyboard} />
         <DropZone />
         <Notices />
         <SavePromptDialog />

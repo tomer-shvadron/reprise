@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { CommandRegistry, type Command } from './command-registry';
+import type { Shortcut } from './keyboard';
 import { dispatchShortcut } from './shortcut-dispatcher';
 
 const command = (overrides: Partial<Command> = {}): Command => ({
@@ -70,6 +71,27 @@ describe('CommandRegistry', () => {
     expect(() =>
       registry.register(command({ id: 'seek2', shortcut: { key: 'ArrowLeft' } })),
     ).toThrow('Shortcut "arrowleft" of "seek2" is already bound to "seek"');
+  });
+
+  it('finds two commands overridden onto one key, per context and platform', () => {
+    const keys: Record<string, Shortcut> = {};
+    const registry = new CommandRegistry(
+      () => false,
+      (c) => keys[c.id] ?? c.shortcut,
+    );
+    registry.register(command({ id: 'a', shortcut: { key: 'a', mod: true } }));
+    registry.register(command({ id: 'b', shortcut: { key: 'b', mod: true } }));
+    registry.register(command({ id: 'c', shortcut: { key: 'a', mod: true }, context: 'editing' }));
+    expect(registry.conflicts()).toEqual([]);
+    keys['b'] = { key: 'a', mod: true };
+    expect(registry.conflicts()).toEqual([
+      { key: 'mod+a', context: undefined, first: 'a', second: 'b' },
+    ]);
+    // The same key in another context, or on the other platform only, is no collision.
+    keys['b'] = { key: 'a', mod: true, only: 'mac' };
+    expect(registry.conflicts()).toHaveLength(1);
+    keys['a'] = { key: 'a', mod: true, only: 'other' };
+    expect(registry.conflicts()).toEqual([]);
   });
 
   it('reports whether a context is active', () => {

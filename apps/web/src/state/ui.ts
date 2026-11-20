@@ -6,16 +6,14 @@ import {
   readStoredBottomPanelHeight,
   writeStoredBottomPanelHeight,
 } from './bottom-panel-storage';
-import { initialTheme, writeStoredTheme, type Theme } from './theme';
+import { PANEL_WIDTH } from './panel-width';
+import { initialTheme, type Theme } from './theme';
 
 export { BOTTOM_PANEL_HEIGHT };
 
 export type PanelId = 'sidebar' | 'rightPanel';
 
-export const PANEL_WIDTH = {
-  sidebar: { default: 240, min: 180, max: 400 },
-  rightPanel: { default: 320, min: 240, max: 480 },
-} as const satisfies Record<PanelId, { default: number; min: number; max: number }>;
+export { PANEL_WIDTH };
 
 export const ZOOM = { min: 0.5, max: 3, default: 1 } as const;
 
@@ -56,18 +54,24 @@ export interface UiState {
   screen: ScreenId;
   rightPanelView: PanelView;
   panelWidths: Record<PanelId, number>;
+  /** The right panel is open because the stored state said so, not because the user opened it. */
+  panelRestored: boolean;
   /** The bottom region (#206): above the transport, below the score. Only the height persists. */
   bottomPanel: { open: boolean; view: BottomPanelView };
   bottomPanelHeight: number;
   zoom: number;
   paletteOpen: boolean;
+  /** The shortcuts cheat sheet (WP-101). */
+  shortcutsOpen: boolean;
   follow: UiFollow;
+  /** The theme on screen; the choice is the `appearance.theme` setting, which `installTheme` applies here. */
   setTheme: (theme: Theme) => void;
-  toggleTheme: () => void;
   setPanelOpen: (panel: PanelId, open: boolean) => void;
   togglePanel: (panel: PanelId) => void;
   /** Closes the right panel when it shows the mixer; otherwise shows the mixer there, opening it. */
   toggleMixer: () => void;
+  /** Applies the stored open state of the right panel at launch, which takes no focus. */
+  restoreRightPanelOpen: (open: boolean) => void;
   setScreen: (screen: ScreenId) => void;
   /** Shows `view` in the right panel and opens the panel. */
   showPanelView: (view: PanelView) => void;
@@ -84,6 +88,7 @@ export interface UiState {
   persistBottomPanelHeight: () => void;
   setZoom: (zoom: number) => void;
   setPaletteOpen: (open: boolean) => void;
+  setShortcutsOpen: (open: boolean) => void;
   setViewMode: (mode: UiView['mode']) => void;
   setPaper: (paper: UiView['paper']) => void;
   /** Turns following on and asks for one follow now. */
@@ -109,6 +114,7 @@ export function createUiStore(theme: Theme = initialTheme()) {
     view: { mode: 'paged', paper: 'a4' },
     panels: { sidebar: true, rightPanel: false },
     screen: 'player',
+    panelRestored: false,
     rightPanelView: 'mixer',
     panelWidths: {
       sidebar: PANEL_WIDTH.sidebar.default,
@@ -118,24 +124,27 @@ export function createUiStore(theme: Theme = initialTheme()) {
     bottomPanelHeight: readStoredBottomPanelHeight(),
     zoom: ZOOM.default,
     paletteOpen: false,
+    shortcutsOpen: false,
     follow: { on: true, request: 0 },
     setTheme: (next) => {
-      writeStoredTheme(next);
       set({ theme: next });
     },
-    toggleTheme: () => {
-      get().setTheme(get().theme === 'dark' ? 'light' : 'dark');
-    },
     setPanelOpen: (panel, open) => {
-      set((state) => ({ panels: { ...state.panels, [panel]: open } }));
+      set((state) => ({ panels: { ...state.panels, [panel]: open }, panelRestored: false }));
     },
     togglePanel: (panel) => {
-      set((state) => ({ panels: { ...state.panels, [panel]: !state.panels[panel] } }));
+      set((state) => ({
+        panels: { ...state.panels, [panel]: !state.panels[panel] },
+        panelRestored: false,
+      }));
     },
     toggleMixer: () => {
       const { panels, rightPanelView } = get();
       if (panels.rightPanel && rightPanelView === 'mixer') get().setPanelOpen('rightPanel', false);
       else get().showPanelView('mixer');
+    },
+    restoreRightPanelOpen: (open) => {
+      set((state) => ({ panels: { ...state.panels, rightPanel: open }, panelRestored: open }));
     },
     setScreen: (screen) => {
       set({ screen });
@@ -144,6 +153,7 @@ export function createUiStore(theme: Theme = initialTheme()) {
       set((state) => ({
         rightPanelView: view,
         panels: { ...state.panels, rightPanel: true },
+        panelRestored: false,
       }));
     },
     setPanelWidth: (panel, width) => {
@@ -178,6 +188,9 @@ export function createUiStore(theme: Theme = initialTheme()) {
     },
     setPaletteOpen: (open) => {
       set({ paletteOpen: open });
+    },
+    setShortcutsOpen: (open) => {
+      set({ shortcutsOpen: open });
     },
     setViewMode: (mode) => {
       if (get().view.mode !== mode) set((state) => ({ view: { ...state.view, mode } }));

@@ -25,10 +25,8 @@ import {
   type ExportPromptStore,
 } from './save/export-flow';
 import { createLibrarySaver } from './save/save-flow';
-import { entryOf, isSortKey, type LibraryEntry, type SortKey } from './search';
+import { entryOf, LIBRARY_SORT_SETTING, type LibraryEntry, type SortKey } from './search';
 import { startSessionKeeper, type SessionKeeper } from './session-keeper';
-
-const SORT_SETTING = 'library.sort';
 
 /** How long a Save waits for the import of the file just opened before it goes to Save As. */
 export const IMPORT_WAIT_MS = 5000;
@@ -136,7 +134,10 @@ export interface LibraryOptions {
 }
 
 export function createLibrary(
-  services: Pick<AppServices, 'document' | 'playback' | 'selection' | 'audio' | 'platform' | 'ui'>,
+  services: Pick<
+    AppServices,
+    'document' | 'playback' | 'selection' | 'audio' | 'platform' | 'ui' | 'settings'
+  >,
   options: LibraryOptions = {},
 ): Library {
   const db = options.db ?? openLibraryDb();
@@ -480,7 +481,8 @@ export function createLibrary(
       const tracker = { added: new Set<Id>(), removed: new Set<Id>() };
       loads.add(tracker);
       try {
-        const [rows, sort] = await Promise.all([repo.all(), repo.getSetting(SORT_SETTING)]);
+        // The sort is applied once, from the table, so it waits for the settings to load.
+        const [rows] = await Promise.all([repo.all(), services.settings.whenHydrated()]);
         const merged = new Map(rows.map((row) => [row.id, entryOf(row)]));
         for (const id of tracker.removed) merged.delete(id);
         for (const entry of store.getState().entries) {
@@ -490,7 +492,7 @@ export function createLibrary(
           entries: [...merged.values()],
           loaded: true,
           error: undefined,
-          ...(isSortKey(sort) && { sort }),
+          sort: services.settings.get(LIBRARY_SORT_SETTING),
         });
       } catch (error) {
         store.setState({
@@ -506,9 +508,7 @@ export function createLibrary(
     },
     setSort(sort) {
       store.setState({ sort });
-      void repo.setSetting(SORT_SETTING, sort).catch((error: unknown) => {
-        console.warn('Could not save the library sort', error);
-      });
+      services.settings.set(LIBRARY_SORT_SETTING, sort);
     },
     async openSong(id, { bytes: draft, modified = false } = {}) {
       const token = ++opening;
