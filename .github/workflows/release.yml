@@ -1,11 +1,35 @@
 # Packages the desktop app on macOS (arm64 and x64) and Windows, smoke-tests each installer's app
 # on the runner that built it, and on a v* tag turns the installers into a draft GitHub release.
+# A pull request packages mac-arm64 and windows-x64 only; mac-x64 runs on a push to main (same
+# paths), on a tag and on a manual dispatch, where the release needs all five installers.
 # docs/reference/release.md says how to cut one.
 name: Release
 
 on:
   push:
     tags: ['v*']
+    # After a merge, the full matrix runs, mac-x64 included. A tag push ignores `paths`.
+    branches: [main]
+    paths:
+      - .github/workflows/release.yml
+      - .github/release/**
+      # Everything the desktop build reads: the renderer's entry and its config, the policy, the
+      # sound bank fetch, the scripts the jobs run, and the toolchain pins. A change to the web
+      # app's other source does not run this; docs/reference/release.md says to dispatch the
+      # workflow on the commit to tag.
+      - apps/desktop/**
+      - apps/web/index.html
+      - apps/web/package.json
+      - apps/web/public/**
+      - apps/web/vite.config.ts
+      - apps/web/src/csp.ts
+      - scripts/desktop/**
+      - scripts/release/**
+      - scripts/sounds/**
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - .nvmrc
   pull_request:
     paths:
       - .github/workflows/release.yml
@@ -97,11 +121,10 @@ jobs:
       # One runner failing must not hide the other two's verdicts.
       fail-fast: false
       matrix:
-        include:
-          # Every arch is built natively, so the smoke runs on what it built.
-          - { name: mac-arm64, runner: macos-15, flags: '--mac --arm64' }
-          - { name: mac-x64, runner: macos-15-intel, flags: '--mac --x64' }
-          - { name: windows-x64, runner: windows-2025, flags: '--win --x64' }
+        # Every arch is built natively, so the smoke runs on what it built. mac-x64 is the slowest
+        # job and rarely breaks where arm64 passes, so a pull request leaves it out; a push to main, a
+        # tag and a dispatch keep it, because the release needs its installers.
+        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"name":"mac-arm64","runner":"macos-15","flags":"--mac --arm64"},{"name":"windows-x64","runner":"windows-2025","flags":"--win --x64"}]' || '[{"name":"mac-arm64","runner":"macos-15","flags":"--mac --arm64"},{"name":"mac-x64","runner":"macos-15-intel","flags":"--mac --x64"},{"name":"windows-x64","runner":"windows-2025","flags":"--win --x64"}]') }}
     defaults:
       run:
         shell: bash

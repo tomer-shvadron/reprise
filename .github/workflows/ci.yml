@@ -252,9 +252,9 @@ jobs:
 
       - name: Install dependencies
         if: steps.gate.outputs.run == 'true'
+        # No PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: the root postinstall is this job's only Chromium
+        # install, and the audio bench runs in the browser. The install of main below finds it.
         run: pnpm install --frozen-lockfile
-        env:
-          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
       - name: Install main
         if: steps.gate.outputs.run == 'true'
