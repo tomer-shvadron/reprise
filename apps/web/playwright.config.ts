@@ -1,5 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
+import { FAKE_AUDIO_OUTPUT } from './e2e/player/test/fake-audio-output.ts';
+
 const ci = process.env['CI'] !== undefined;
 // Not Vite's 4173, so a preview left running is never mistaken for this build.
 // `E2E_PORT` moves it when another run holds 4319.
@@ -26,6 +28,7 @@ export default defineConfig({
     // The speed slider shows only from Tailwind's `lg` breakpoint.
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
+    launchOptions: { args: [FAKE_AUDIO_OUTPUT] },
     trace: 'retain-on-failure',
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
