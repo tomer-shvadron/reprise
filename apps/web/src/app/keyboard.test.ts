@@ -20,6 +20,17 @@ describe('keyboard', () => {
     );
   });
 
+  it('matches mod+, as Cmd+comma on macOS and Ctrl+comma elsewhere', () => {
+    const shortcut = { key: ',', mod: true };
+    const event = (init: Partial<KeyboardEvent>) => key({ key: ',', code: 'Comma', ...init });
+    expect(matchesShortcut(event({ metaKey: true }), shortcut, 'mac')).toBe(true);
+    expect(matchesShortcut(event({ ctrlKey: true }), shortcut, 'mac')).toBe(false);
+    expect(matchesShortcut(event({ ctrlKey: true }), shortcut, 'other')).toBe(true);
+    expect(matchesShortcut(event({}), shortcut, 'other')).toBe(false);
+    expect(formatShortcut(shortcut, 'mac')).toBe('⌘,');
+    expect(formatShortcut(shortcut, 'other')).toBe('Ctrl+,');
+  });
+
   it('names Space, Enter and function keys', () => {
     expect(formatShortcut({ key: ' ' }, 'mac')).toBe('Space');
     expect(formatShortcut({ key: ' ', shift: true }, 'mac')).toBe('⇧Space');

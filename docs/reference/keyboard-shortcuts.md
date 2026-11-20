@@ -25,6 +25,7 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 | ------- | -------- | ------- | ----- | ------- |
 | Show command palette | App | Global | ⌘K | Ctrl+K |
 | Show keyboard shortcuts | App | Global | ? or ⌘/ | ? or Ctrl+/ |
+| Settings… | App | Global | ⌘, | Ctrl+, |
 | New song | File | Global | ⌘N | Ctrl+N |
 | Open file… | File | Global | ⌘O | Ctrl+O |
 | Save | File | Global | ⌘S | Ctrl+S |

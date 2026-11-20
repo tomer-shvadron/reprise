@@ -52,6 +52,7 @@ apps/web/src/
     trainer/      speed trainer, tuner, standalone metronome, practice log, fretboard (app lane)
     editor/       note entry, palettes, dialogs, clipboard, undo UI                 (score lane)
     sounds/       sound pack manager                                               (audio lane)
+    settings/     Settings dialog, its rows and first sections                     (app lane)
 ```
 
 A lane owns its feature folder the same way it owns its package. Each folder's README states its owner lane and the work packages that fill it:
@@ -62,6 +63,7 @@ A lane owns its feature folder the same way it owns its package. Each folder's R
 | `features/trainer`  | app (Trainer)            | WP-070, WP-071, WP-072, WP-073, WP-074       | `TrainerPanel`, `trainer.speedTrainer`, `.tuner`, `.metronome`, `.fretboard` |
 | `features/editor`   | score (Editor)           | WP-080 to WP-086                             | `editor.toggleMode`                                                |
 | `features/sounds`   | audio (HQ sound)         | WP-091, WP-094                               | `SoundManager`, `sounds.show`                                      |
+| `features/settings` | app                      | #343, #344, #346, #347                       | `SettingsDialog`, `app.settings`                                   |
 
 The shell wires them, not the lanes (roadmap lane rule 5): `ui.screen` (`'player' | 'library' | 'sounds'`) shows the library and the sound manager over the score, and `ui.rightPanelView` (`'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'effects' | 'history'`) picks the right panel's content and `ui.bottomPanel` (`{ open, view: 'fretboard' }`) the bottom region's. Each feature's commands are registered in `app/app-registry.ts` from its `commands.ts`, so the palette lists them. A lane replaces its stub in its own folder; the wiring in `app.tsx` is already there. A feature may import another feature's pure exports through that feature's `index.ts` (the speed trainer reads `TEMPO_PERCENT`, `bpmFor` and `loopBarNumbers` from `features/transport`), never its internals or its stores.
 
@@ -636,3 +638,5 @@ The browser implementation exists so `pnpm dev` works without Electron; the Elec
 - Source filenames kebab-case. Tests colocated as `*.test.ts`. Comments explain why, not what.
 - Every `eslint-disable` carries a justification after `--`.
 - Public API of each package is its `index.ts`; nothing else is imported across packages. The exceptions are `@reprise/model/testing`, the model's test builders, and `@reprise/audio/testing`, the audio engine's diagnostics, which only test files may import.
+
+Changed by #343, the Settings dialog (2026-11-20): `features/settings` holds the dialog shell, the row controls (`SettingRow`, `SwitchSetting`, `ChoiceSetting`, `SliderSetting`, each bound to a handle and writing through `services.settings`) and the first sections (Appearance, Score, Playback and practice). A section is `{ id, title, settings, Component }`, where `settings` lists the handles "Restore defaults" resets, a key belonging to one section only; `app/settings-sections.ts` exports the ordered array and `app.tsx` calls `checkSections` on it and mounts `<SettingsDialog sections={SETTINGS_SECTIONS} />`. A later feature adds one entry and its own section component, and touches neither the store nor the dialog. `ui.settings` (`{ open, section }`) with `openSettings(section?)` and `closeSettings()` lets another feature's command open a given section; an unknown or absent id shows the first. Changes apply at once, with no OK or Cancel. The new handles are `playback.followPlayhead` (default on; off, the playhead driver never scrolls on its own, though the Follow playback command and the seeks still scroll once), `score.defaultViewMode` and `score.defaultZoom`; `app/install-view-defaults.ts` applies the last two to `ui` when the settings load and on each change in the dialog, and F4 or the zoom commands change only the current view, never the setting. `app.settings` ("Settings…", ⌘, or Ctrl+,) opens the dialog, and `MenuCommandId` gains it: the macOS application menu lists it under About, and the Windows File menu before Quit. `ZOOM` moved to `state/zoom.ts` so a setting can name its range without importing the ui store.

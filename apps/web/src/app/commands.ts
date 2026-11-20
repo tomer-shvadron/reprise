@@ -58,6 +58,16 @@ export function appCommands(services: AppServices): AppCommand[] {
       },
     },
     {
+      id: 'app.settings',
+      title: 'Settings…',
+      // The comma key is the platform convention on macOS and the one Windows apps borrowed; it
+      // matches the typed character, so a layout without a comma there needs #242's remapping.
+      shortcut: { key: ',', mod: true },
+      run: () => {
+        ui.getState().openSettings();
+      },
+    },
+    {
       id: 'file.new',
       title: 'New song',
       shortcut: { key: 'n', mod: true },
