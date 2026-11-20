@@ -42,7 +42,7 @@ export const GM_TIER_BYPASS_SETTING = defineSetting({
 });
 export const MEMORY_BUDGET_SETTING = defineSetting({
   key: 'sounds.memoryBudgetBytes',
-  schema: z.number().int().min(MEMORY_BUDGET_RANGE.min).max(MEMORY_BUDGET_RANGE.max),
+  schema: z.number().min(MEMORY_BUDGET_RANGE.min).max(MEMORY_BUDGET_RANGE.max),
   default: HQ_BUDGET_BYTES,
 });
 

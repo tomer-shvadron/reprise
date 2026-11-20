@@ -1,5 +1,5 @@
 import { THEME_SETTING, THEME_STORAGE_KEY } from './app-settings';
-import { createSettingsStore } from './settings';
+import { readEarlySetting } from './settings';
 
 export { THEME_STORAGE_KEY };
 
@@ -23,5 +23,5 @@ export function resolveTheme(preference: ThemePreference, prefersLight: boolean)
 
 /** The theme at startup, read the way `public/theme-bootstrap.js` reads it, before any hydration. */
 export function initialTheme(): Theme {
-  return resolveTheme(createSettingsStore().get(THEME_SETTING), systemTheme() === 'light');
+  return resolveTheme(readEarlySetting(THEME_SETTING), systemTheme() === 'light');
 }

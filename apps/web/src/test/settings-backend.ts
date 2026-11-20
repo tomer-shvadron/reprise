@@ -21,7 +21,11 @@ export function createMemorySettingsBackend(
   };
 }
 
-/** A store over a memory backend and a private `Storage` for early settings, already loading. */
+/**
+ * A store over a memory backend and a private `Storage` for early settings. It is attached but
+ * not hydrated when returned (the load resolves a microtask later, so it cannot be otherwise
+ * synchronously): `await settings.whenHydrated()` before reading a seeded row.
+ */
 export function createTestSettings(
   backend: SettingsBackend = createMemorySettingsBackend(),
   local: Storage = memoryStorage(),
