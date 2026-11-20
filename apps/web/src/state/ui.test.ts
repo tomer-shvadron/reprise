@@ -149,3 +149,23 @@ describe('ui store settings dialog', () => {
     expect(store.getState().settings).toEqual({ open: true, section: undefined });
   });
 });
+
+describe('follow requests from the bottom dock', () => {
+  it('ask as layout for every open, close and resize, and as explicit otherwise', () => {
+    const store = createUiStore('dark');
+    const kind = () => store.getState().follow.kind;
+
+    store.getState().showBottomPanelView('fretboard');
+    expect(kind()).toBe('layout');
+    store.getState().requestFollow();
+    expect(kind()).toBe('explicit');
+    store.getState().setBottomPanelHeight(300);
+    expect(kind()).toBe('layout');
+    store.getState().requestFollow();
+    store.getState().setBottomPanelOpen(false);
+    expect(kind()).toBe('layout');
+    store.getState().requestFollow();
+    store.getState().toggleBottomPanelView('fretboard');
+    expect(kind()).toBe('layout');
+  });
+});
