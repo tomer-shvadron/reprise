@@ -60,8 +60,9 @@ export function DropZone() {
       setOver(false);
       // The Sounds sheet takes a dropped pack zip itself: the window opens and imports nothing.
       if (ui.getState().sheet === 'sounds') return;
-      // As for a shortcut or a menu command: a dialog is up (the Library and Sounds sheets let a drop through), and a file dropped onto it must not
-      // replace the document behind it (it would also ask the unsaved question over the dialog).
+      // As for a shortcut or a menu command: a modal other than the Library sheet is up, and a file
+      // dropped onto it must not replace the document behind it (it would also ask the unsaved
+      // question over the dialog).
       if (modalBlocksCommand('app.drop')) return;
       if (!event.dataTransfer) return;
       // Before the first await: a DataTransfer is emptied once this handler returns.

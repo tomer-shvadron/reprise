@@ -135,6 +135,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     selection,
     transport,
     settings,
+    installJob: sounds.api,
   });
 
   return {

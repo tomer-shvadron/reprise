@@ -142,14 +142,14 @@ describe('soundStatus', () => {
   });
 
   it('reports a pack install, ranked after an output error and before the bank loading', () => {
-    const install = { name: 'Big Piano', done: 21, total: 84 };
+    const install = { name: 'Big Piano', phase: 'extracting', done: 21, total: 84 };
     expect(soundStatus(stateWith({}), install)).toEqual({
-      text: 'Installing Big Piano 25%',
+      text: 'Installing Big Piano · extracting 25%',
       stage: 'Installing Big Piano',
       retry: false,
     });
     expect(soundStatus(stateWith({}), { ...install, total: undefined })?.text).toBe(
-      'Installing Big Piano…',
+      'Installing Big Piano · extracting…',
     );
     const loading = { ...initialPlaybackState().sounds, status: 'loading' as const };
     expect(soundStatus(stateWith({ sounds: loading }), install)?.stage).toBe(
@@ -168,6 +168,6 @@ describe('soundStatus', () => {
         job: { packId: 'p', name: 'Big Piano', phase: 'extracting', done: 1, total: 4 },
       });
     });
-    expect(status()).toHaveTextContent('Installing Big Piano 25%');
+    expect(status()).toHaveTextContent('Installing Big Piano · extracting 25%');
   });
 });

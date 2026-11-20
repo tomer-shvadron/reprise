@@ -8,6 +8,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
+import { useMenuFocusReturn } from '@/app/menu-focus-return';
+
 import type { SongRow } from './db/rows';
 
 interface DeleteDialogProps {
@@ -17,6 +19,8 @@ interface DeleteDialogProps {
 }
 
 export function DeleteDialog({ song, onConfirm, onCancel }: DeleteDialogProps) {
+  // Radix sends focus nowhere on close without a trigger; the list that had it gets it back.
+  const focusReturn = useMenuFocusReturn();
   return (
     <Dialog
       open={song !== undefined}
@@ -26,7 +30,9 @@ export function DeleteDialog({ song, onConfirm, onCancel }: DeleteDialogProps) {
     >
       <DialogContent
         showCloseButton={false}
-        // Escape closes this dialog only, not the library screen behind it.
+        onOpenAutoFocus={focusReturn.remember}
+        onCloseAutoFocus={focusReturn.onCloseAutoFocus}
+        // Escape closes this dialog only, not the library sheet behind it.
         onKeyDown={(event) => {
           event.stopPropagation();
         }}

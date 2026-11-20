@@ -29,6 +29,7 @@ const line = (text: string, retry: boolean): SoundStatusLine => ({ text, stage: 
 /** A pack install in flight, which goes on while the Sounds sheet is closed. */
 export interface InstallProgress {
   name: string;
+  phase: string;
   done: number;
   total: number | undefined;
 }
@@ -40,14 +41,17 @@ export function soundStatus(
 ): SoundStatusLine | undefined {
   if (state.output.status === 'error') return line('Audio output unavailable', true);
   if (install) {
+    // `done` and `total` count the current phase, so the phase is named: a second climb from 0%
+    // under the same name would read as a restart.
     const stage = `Installing ${install.name}`;
+    const phase = `${stage} · ${install.phase}`;
     return install.total
       ? {
-          text: `${stage} ${String(Math.floor((Math.min(install.done, install.total) / install.total) * 100))}%`,
+          text: `${phase} ${String(Math.floor((Math.min(install.done, install.total) / install.total) * 100))}%`,
           stage,
           retry: false,
         }
-      : { text: `${stage}…`, stage, retry: false };
+      : { text: `${phase}…`, stage, retry: false };
   }
   if (state.sounds.status === 'error') return line('Sounds unavailable', true);
   if (state.sounds.status === 'loading') {

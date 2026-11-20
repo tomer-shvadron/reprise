@@ -8,7 +8,7 @@ Today it holds only the entry points the lead stubbed in WP-056:
 | Export                          | What it is                                                                                              |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `SoundManager`                  | The Sounds sheet (WP-091): packs, curated list, installs, remove. Shown while `ui.sheet` is `'sounds'`. |
-| `soundsCommands` (`./commands`) | `sounds.show` ("Show sound manager"), which sets the screen.                                            |
+| `soundsCommands` (`./commands`) | `sounds.show` ("Show sound manager"), which opens the sheet.                                            |
 | `instrumentLabel`               | `(instrumentId, packs)`: the name of a resident instrument, see "Memory" below.                         |
 | `TrackEffectsPicker`            | `({ trackId, label? })`: a select of the track's effects preset (WP-092), see below.                    |
 | `TrackSoundPicker`              | `({ trackId, label?, generalMidi? })`: a select of the track's sound pack (WP-091), see below.          |

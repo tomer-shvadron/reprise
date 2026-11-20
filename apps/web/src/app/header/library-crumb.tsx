@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 /**
- * "Library › Song title". The crumb only runs `library.show` and never reads the screen, so it
+ * "Library › Song title". The crumb only runs `library.show` and never reads the sheet, so it
  * stays as it is when the library becomes a sheet.
  */
 export function LibraryCrumb() {

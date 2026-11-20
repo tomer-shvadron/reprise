@@ -108,10 +108,17 @@ describe('ui store sheets and panel views', () => {
     expect(state.rightPanelView).toBe('mixer');
   });
 
-  it('switches screens', () => {
+  it('opens one sheet at a time, swaps it, and ignores a repeat', () => {
     const store = createUiStore('dark');
     store.getState().showSheet('library');
     expect(store.getState().sheet).toBe('library');
+    const seen = vi.fn();
+    const stop = store.subscribe(seen);
+    store.getState().showSheet('library');
+    expect(seen).not.toHaveBeenCalled();
+    stop();
+    store.getState().showSheet('sounds');
+    expect(store.getState().sheet).toBe('sounds');
     store.getState().closeSheet();
     expect(store.getState().sheet).toBeUndefined();
   });

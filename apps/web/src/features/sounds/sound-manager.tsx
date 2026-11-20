@@ -189,7 +189,7 @@ export function SoundManager() {
     >
       <div className="flex items-center gap-3 pr-10">
         <h1
-          className="text-lg font-semibold"
+          className="text-lg font-semibold outline-none"
           tabIndex={-1}
           data-focus="screen-heading"
           data-sheet-initial-focus

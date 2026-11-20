@@ -4,6 +4,7 @@ import { useStore } from 'zustand';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import type { SheetId } from '@/state/ui';
 
+import { useMenuFocusReturn } from './menu-focus-return';
 import { useAppServices } from './services-context';
 
 /**
@@ -31,18 +32,21 @@ interface AppSheetProps {
  * height.
  */
 export function AppSheet({ id, title, width, children }: AppSheetProps) {
-  const { ui, document } = useAppServices();
+  const { ui } = useAppServices();
   const open = useStore(ui, (state) => state.sheet === id);
-  const opener = useRef<{ element: Element | null; documentId: string | undefined }>({
-    element: null,
-    documentId: undefined,
-  });
+  const focusReturn = useMenuFocusReturn();
+  // Set when the user dismissed the sheet (Escape, the X or an outside click all arrive through
+  // `onOpenChange`); a close the store made (a song opened, a resume, a new song) leaves it unset.
+  const dismissed = useRef(false);
 
   return (
     <Sheet
       open={open}
       onOpenChange={(next) => {
-        if (!next) ui.getState().closeSheet();
+        if (!next) {
+          dismissed.current = true;
+          ui.getState().closeSheet();
+        }
       }}
     >
       <SheetContent
@@ -52,28 +56,18 @@ export function AppSheet({ id, title, width, children }: AppSheetProps) {
         className={`top-[max(2.5rem,calc(100dvh-60rem))] ${WIDTH[width]}`}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
-          opener.current = {
-            element: globalThis.document.activeElement,
-            documentId: document.getState().id,
-          };
+          dismissed.current = false;
+          focusReturn.remember();
           const content = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
           const first = content?.querySelector<HTMLElement>('[data-sheet-initial-focus]');
           (first ?? content)?.focus();
         }}
         onCloseAutoFocus={(event) => {
-          // Radix has no trigger to return to; focus goes back to where it was, unless a song
-          // opened from the sheet: then the next Space must play it, not re-open the sheet.
-          event.preventDefault();
-          const { element, documentId } = opener.current;
-          opener.current = { element: null, documentId: undefined };
-          if (document.getState().id !== documentId) return;
-          if (
-            element instanceof HTMLElement &&
-            element.isConnected &&
-            element !== globalThis.document.body
-          ) {
-            element.focus();
-          }
+          // Radix has no trigger to return to. Focus goes back to where it was only when the user
+          // dismissed the sheet: after a song opened from it, the next Space must play that song,
+          // not activate the crumb that opened the Library.
+          if (dismissed.current) focusReturn.onCloseAutoFocus(event);
+          else event.preventDefault();
         }}
         onEscapeKeyDown={(event) => {
           // Radix listens for Escape in the capture phase, before a React handler can stop it;

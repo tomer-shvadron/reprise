@@ -209,7 +209,7 @@ describe('the Sounds sheet', () => {
     closed('Sounds');
     expect(services.sounds.api.getState().job).toBeDefined();
     const segment = document.querySelector('[data-sound-status]');
-    expect(segment).toHaveTextContent('Installing Big Piano 25%');
+    expect(segment).toHaveTextContent('Installing Big Piano · downloading 25%');
     await user.click(screen.getByRole('button', { name: /Installing Big Piano/ }));
     expect(within(sheet('Sounds')).getAllByText(/Big Piano/)[0]).toBeInTheDocument();
   });
