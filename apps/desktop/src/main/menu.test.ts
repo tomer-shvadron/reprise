@@ -65,8 +65,13 @@ describe('menuTemplate', () => {
     // Undo and redo are the renderer's commands, which leave a text field its own history.
     expect(roles(template().items)).not.toContain('undo');
     expect(roles(template().items)).not.toContain('redo');
-    expect(roles(template().items)).not.toContain('quit');
-    expect(roles(template({ isMac: false }).items)).toContain('quit');
+    // On macOS Quit is in the application menu, not in File.
+    const fileRoles = (items: MenuItemConstructorOptions[]) => {
+      const file = items.find((item) => item.label === 'File');
+      return Array.isArray(file?.submenu) ? file.submenu.map(({ role }) => role) : [];
+    };
+    expect(fileRoles(template().items)).not.toContain('quit');
+    expect(fileRoles(template({ isMac: false }).items)).toContain('quit');
     expect(roles(template({ isMac: false }).items)).not.toContain('appMenu');
   });
 
@@ -147,6 +152,48 @@ describe('the Edit menu history items', () => {
     expect(
       named.filter((label) => !label?.startsWith('Undo') && !label?.startsWith('Redo')),
     ).toEqual(plain.filter((label) => label !== 'Undo' && label !== 'Redo'));
+  });
+});
+
+describe('Settings…', () => {
+  const submenuOf = (
+    items: MenuItemConstructorOptions[],
+    pick: (item: MenuItemConstructorOptions) => boolean,
+  ) => {
+    const menu = items.find(pick);
+    return Array.isArray(menu?.submenu) ? menu.submenu : [];
+  };
+
+  it('sits under About in the macOS app menu, before Services, Hide and Quit', () => {
+    const { items } = template();
+    const app = submenuOf(items, (item) => item.role === 'appMenu');
+    const names = app.map((item) => item.role ?? item.label ?? item.type);
+
+    expect(names).toEqual([
+      'about',
+      'separator',
+      'Settings…',
+      'separator',
+      'services',
+      'separator',
+      'hide',
+      'hideOthers',
+      'unhide',
+      'separator',
+      'quit',
+    ]);
+    expect(app.find((item) => item.label === 'Settings…')?.accelerator).toBe('CmdOrCtrl+,');
+  });
+
+  it('is in the File menu before Quit off macOS, and sends app.settings', () => {
+    const { options, items } = template({ isMac: false });
+    const file = submenuOf(items, (item) => item.label === 'File');
+    const names = file.map((item) => item.role ?? item.label);
+
+    expect(names.indexOf('Settings…')).toBeGreaterThan(names.indexOf('Print…'));
+    expect(names.indexOf('Settings…')).toBeLessThan(names.indexOf('quit'));
+    press(file.find((item) => item.label === 'Settings…'));
+    expect(options.sendCommand).toHaveBeenCalledWith('app.settings');
   });
 });
 
