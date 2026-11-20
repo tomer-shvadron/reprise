@@ -16,7 +16,9 @@ export type EditHereServices = Pick<
   'document' | 'selection' | 'entry' | 'editing' | 'menuTarget'
 >;
 
-function trackIndex(score: Score, services: EditHereServices, wanted?: Id): number {
+type CursorServices = Pick<AppServices, 'document' | 'selection'>;
+
+function trackIndex(score: Score, services: CursorServices, wanted?: Id): number {
   const id = wanted ?? services.selection.getState().currentTrack ?? score.tracks[0]?.id;
   return Math.max(
     0,
@@ -24,13 +26,13 @@ function trackIndex(score: Score, services: EditHereServices, wanted?: Id): numb
   );
 }
 
-function stringsOf(services: EditHereServices, track: number, score: Score) {
+function stringsOf(services: CursorServices, track: number, score: Score) {
   const { view } = services.document.getState();
   return { staff: defaultStaff(score, track, wantedNotation(score, view, track)) };
 }
 
 /** The cursor a beat-level target stands for: the beat's stop, on the note's string when it is a note. */
-function beatCursor(services: EditHereServices, score: Score, target: MenuTarget) {
+function beatCursor(services: CursorServices, score: Score, target: MenuTarget) {
   if (target.kind !== 'note' && target.kind !== 'beat' && target.kind !== 'chord') return undefined;
   const index = scoreIndex(score);
   const beat = index.beats.get(target.beat);
@@ -45,7 +47,7 @@ function beatCursor(services: EditHereServices, score: Score, target: MenuTarget
 
 /** The cursor at a bar's first stop on a track, for a bar, a marker and a bar range. */
 function barCursor(
-  services: EditHereServices,
+  services: CursorServices,
   score: Score,
   bar: Id,
   track?: Id,
@@ -54,6 +56,19 @@ function barCursor(
   if (at === undefined) return undefined;
   const t = trackIndex(score, services, track);
   return firstStop(score, t, at, 0, { string: 1, ...stringsOf(services, t, score) });
+}
+
+/**
+ * The cursor a right-clicked mark or bar stands for, as "Edit here" puts it: on the chord name's
+ * beat, or on the first stop of the marker's bar. Other targets have none.
+ */
+export function markCursor(
+  services: CursorServices,
+  score: Score,
+  target: MenuTarget,
+): EditCursor | undefined {
+  if (target.kind === 'chord') return beatCursor(services, score, target);
+  return target.kind === 'section' ? barCursor(services, score, target.masterBar) : undefined;
 }
 
 /**

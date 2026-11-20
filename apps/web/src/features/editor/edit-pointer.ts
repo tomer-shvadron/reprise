@@ -21,15 +21,17 @@ type Before = Pick<
   'cursor' | 'range' | 'selection' | 'bars' | 'barsAnchor' | 'currentTrack'
 >;
 
+type Pointer = Pick<ScorePointerEvent, 'point' | 'anchor' | 'column'>;
+
 /** A press on a column's own area, above the staves where the bar number sits: it takes whole bars. */
-const onBarArea = (event: ScorePointerEvent): boolean =>
+const onBarArea = (event: Pointer): boolean =>
   event.anchor?.kind === 'bar' && event.anchor.track === undefined;
 
 const mod = (event: ScorePointerEvent): boolean => event.event.metaKey || event.event.ctrlKey;
 
 /**
  * The editor's pointer handling: a click places the cursor (and picks the note under it), Shift
- * extends a beat range from the cursor, Cmd or Ctrl toggles a note in the picked set, and a drag
+ * extends a beat range from the cursor, Cmd (Ctrl on Windows and Linux; on macOS Ctrl+click opens the context menu) toggles a note in the picked set, and a drag
  * makes a range, previewed while it runs and restored if it is cancelled. A press on a column's
  * bar-number area takes whole bars. Returns the handler to call with each gesture; true when it
  * moved the cursor for good (a click or the end of a drag), so the caller can reveal and seek.
@@ -48,7 +50,7 @@ export function createEditPointer(deps: EditPointerDeps) {
   };
 
   /** The cursor on the first stop of the bar a column names, in the current track and voice. */
-  const barCursor = (score: Score, event: ScorePointerEvent, origin: EditCursor | undefined) => {
+  const barCursor = (score: Score, event: Pointer, origin: EditCursor | undefined) => {
     const index = scoreIndex(score);
     const bar =
       event.anchor?.masterBar === undefined
@@ -72,7 +74,29 @@ export function createEditPointer(deps: EditPointerDeps) {
     track: track ?? cursor.track,
   });
 
-  return (layout: LayoutResult, gesture: Gesture): boolean => {
+  /**
+   * What a plain click does, and so what a right-click adopts: the cursor goes where the point is
+   * and the note under it is picked; a point in a column's bar-number area takes the whole bar.
+   * It never seeks. True when the cursor moved.
+   */
+  const placeAt = (layout: LayoutResult, event: Pointer): boolean => {
+    const { score, view } = document.getState();
+    if (!score) return false;
+    const state = selection.getState();
+    if (onBarArea(event)) {
+      const cursor = barCursor(score, event, state.cursor);
+      if (!cursor) return false;
+      write(score, cursor, { kind: 'bars', anchor: wholeBar(cursor), focus: wholeBar(cursor) });
+      return true;
+    }
+    const hit = locate(layout, score, event, state.cursor, visibleTracks(score, view));
+    const cursor = hit && cursorFromHit(score, hit);
+    if (!hit || !cursor) return false;
+    write(score, cursor, undefined, hit.note === undefined ? {} : { noteIds: [hit.note] });
+    return true;
+  };
+
+  const handle = (layout: LayoutResult, gesture: Gesture): boolean => {
     const { score, view } = document.getState();
     if (!score) return false;
     const state = selection.getState();
@@ -87,27 +111,26 @@ export function createEditPointer(deps: EditPointerDeps) {
     if (gesture.kind === 'click') {
       const { event } = gesture;
       if (onBarArea(event)) {
+        if (!gesture.shift) return placeAt(layout, event);
         const cursor = barCursor(score, event, state.cursor);
         if (!cursor) return false;
-        const range = gesture.shift
-          ? extendRangeTo(state, endOf(cursor, 'bars'), 'bars')
-          : { kind: 'bars' as const, anchor: wholeBar(cursor), focus: wholeBar(cursor) };
-        write(score, cursor, range);
+        write(score, cursor, extendRangeTo(state, endOf(cursor, 'bars'), 'bars'));
         return true;
       }
+      if (!gesture.shift && !mod(event)) return placeAt(layout, event);
       const hit = locate(layout, score, event, state.cursor, visible);
       const cursor = hit && cursorFromHit(score, hit);
       if (!hit || !cursor) return false;
       if (gesture.shift) {
         write(score, cursor, extendBeatsTo(score, state, cursor));
-      } else if (mod(event) && hit.note !== undefined) {
+      } else if (hit.note !== undefined) {
         const noteIds = state.selection.noteIds ?? [];
         const toggled = noteIds.includes(hit.note)
           ? noteIds.filter((id) => id !== hit.note)
           : [...noteIds, hit.note];
         write(score, cursor, undefined, { noteIds: toggled });
       } else {
-        write(score, cursor, undefined, hit.note === undefined ? {} : { noteIds: [hit.note] });
+        write(score, cursor, undefined, {});
       }
       return true;
     }
@@ -149,4 +172,5 @@ export function createEditPointer(deps: EditPointerDeps) {
     write(score, to, rangeBetween(score, from, to));
     return done;
   };
+  return Object.assign(handle, { placeAt });
 }

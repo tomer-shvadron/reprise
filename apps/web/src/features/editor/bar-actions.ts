@@ -26,7 +26,10 @@ import { describeRefusal } from './refusal';
 import { rangePatch } from './range';
 import { newStructureWarnings } from './structure-warnings';
 
-export type BarServices = Pick<AppServices, 'document' | 'selection' | 'entry' | 'editing'>;
+export type BarServices = Pick<
+  AppServices,
+  'document' | 'selection' | 'entry' | 'editing' | 'menuTarget'
+>;
 
 /** The bars a command acts on now, or undefined outside edit mode, without a score or a cursor. */
 export function currentTarget(services: BarServices): BarTarget | undefined {
@@ -159,4 +162,25 @@ export function dialogTarget(services: Pick<BarServices, 'document'>, ids: reado
   if (!score || !target) return undefined;
   const form = formFromScore(score, target);
   return form && { score, target, form, title: targetTitle(score, target) };
+}
+
+/**
+ * The bar whose section marker "Remove section" acts on: the marker that was right-clicked, else
+ * the first bar of the target, and only when it carries one. Reads the menu target synchronously.
+ */
+export function sectionBar(services: BarServices): Id | undefined {
+  const { score } = services.document.getState();
+  if (!score || !services.editing.getState().editing) return undefined;
+  const target = services.menuTarget.getState().target;
+  const id = target?.kind === 'section' ? target.masterBar : currentTarget(services)?.first;
+  return score.masterBars.find((bar) => bar.id === id && bar.section)?.id;
+}
+
+/** Clears the section marker of `sectionBar`, as emptying the Section dialog's name does. */
+export function removeSection(services: BarServices): void {
+  const id = sectionBar(services);
+  if (id === undefined) return;
+  commitEdit(services, setMasterBars([{ masterBarId: id, changes: { section: null } }]), {
+    moveCursor: false,
+  });
 }

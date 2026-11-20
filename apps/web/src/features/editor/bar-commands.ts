@@ -5,6 +5,8 @@ import {
   deleteTargetBars,
   insertBarAt,
   openMasterBarDialog,
+  removeSection,
+  sectionBar,
   toggleRepeatEnd,
   toggleRepeatStart,
   type BarServices,
@@ -26,7 +28,8 @@ export type BarCommandId =
   | 'editor.tempoChange'
   | 'editor.repeatsAndEndings'
   | 'editor.directions'
-  | 'editor.section';
+  | 'editor.section'
+  | 'editor.removeSection';
 
 type BarCommand = Command & { id: BarCommandId };
 
@@ -115,5 +118,15 @@ export function barCommands(services: BarServices): BarCommand[] {
       repeat: false,
     }),
     command('editor.section', 'Section…', dialog('section')),
+    {
+      id: 'editor.removeSection',
+      title: 'Remove section',
+      context: 'editing',
+      inPalette: false,
+      enabled: () => sectionBar(services) !== undefined,
+      run: () => {
+        removeSection(services);
+      },
+    },
   ];
 }
