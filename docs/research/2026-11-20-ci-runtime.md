@@ -9,27 +9,27 @@ Two waits matter: the local pre-commit hook, whose `vitest related` pulls in mos
 
 ## What was tried
 
-- Job and step durations from the GitHub API for the 24 most recent successful `ci.yml` runs (2026-11-20 00:46 to 20:40 UTC, `main` pushes and PRs, all attempt 1), and for 12 `release.yml` PR runs.
-- Per-test durations parsed from five `ci` job logs (the `verbose` reporter prints every test with its time; a file's figure below is the sum of its tests, so it leaves out import, setup and environment time) and five `e2e` job logs (Playwright's `list` reporter).
+- Job and step durations from the GitHub API for 24 `ci.yml` runs: the latest 24 successful runs created before 20:33 UTC on 2026-11-20, which were created between 11:12:57 and 20:32:07 UTC (`main` pushes and PRs, all attempt 1). The API lists 44 successful runs created before that cut-off (00:15 to 20:32 UTC); the sample is the last 24 of them, and the earlier 20 are left out. Re-selecting them this way reproduces the baseline tables below (`ci` 549 / 683 / 804 s, `e2e` 326 / 360 / 372 s). Release workflow figures cover the 12 `release.yml` PR runs created on 2026-11-20 up to 20:40 UTC, of which one was cancelled (44713232804, a superseded push), leaving 11 timed runs. The run IDs are in the appendix.
+- Per-test durations parsed from five `ci` job logs (the `verbose` reporter prints every test with its time; a file's figure below is the sum of its tests, so it leaves out import, setup and environment time) and five `e2e` job logs (Playwright's `list` reporter). The IDs of those ten logs were not recorded when the research was done and cannot be recovered with certainty; see the appendix.
 - The pre-commit selection estimated statically: a reverse-import closure over `apps/`, `packages/` and `scripts/` (relative, `@/` and `@reprise/*` specifiers, `vi.mock` paths), joined with the CI per-file times. This approximates `vitest related`, which walks Vite's module graph; nothing heavy was run locally, because the machine was shared (load average 9 to 40 on a 14-core M4 Pro).
 - Runners: `ubuntu-24.04` (GitHub's standard Linux runner for public repositories: 4 vCPU, 16 GB), `macos-15` (arm64, 3 vCPU), `macos-15-intel` (4 vCPU), `windows-2025` (4 vCPU). Queue time before a job starts was 1 to 4 s in every run (median 2 s), so queueing is not a cost today.
 
 ## Findings
 
-### Baseline: jobs (24 `ci.yml` runs, 12 `release.yml` runs)
+### Baseline: jobs (24 `ci.yml` runs, 11 timed `release.yml` runs)
 
 | Job                      | Median | p90   | Worst | Runs        | Notes                                                                 |
 | ------------------------ | ------ | ----- | ----- | ----------- | --------------------------------------------------------------------- |
 | `ci` (required)          | 549 s  | 683 s | 804 s | 24          | every check, one after another                                        |
-| `e2e`                    | 326 s  | 360 s | 372 s | 24          | 62 tests in the morning, 81 by the evening: grows with every feature  |
+| `e2e`                    | 326 s  | 360 s | 372 s | 24          | 62 to 81 tests per run in this sample, by branch and time: grows with every feature |
 | `bench-compare`, gated off | ~30 s | 39 s | 39 s | 15          | no watched path changed                                              |
 | `bench-compare`, ran     | ~460 s | -     | 499 s | 2           | 10 alternating bench runs of ~44 s; not required yet                  |
-| `package (mac-x64)`      | 263 s  | 338 s | 363 s | 11          | the slowest packaging job                                             |
+| `package (mac-x64)`      | 263 s  | 338 s | 363 s | 11 (of 12) | the slowest packaging job                                             |
 | `package (windows-x64)`  | 169 s  | 182 s | 197 s | 11          |                                                                       |
 | `package (mac-arm64)`    | 161 s  | 168 s | 191 s | 11          |                                                                       |
 | `release.yml` wall       | 278 s  | 374 s | 386 s | 11          | `gate` (10 s) then the three packages in parallel                     |
 
-**Critical path to mergeable today**: `ci`, median 551 s (p90 687 s, worst 806 s) from the first job created to the last of `ci` and `e2e` finished. `e2e` always finishes first, 3 to 4 minutes earlier. On a desktop-touching PR the release workflow (median 278 s) also finishes inside `ci`.
+**Critical path to mergeable today**: `ci`, median 551 s (p90 687 s, worst 806 s) from the first job created to the last of `ci` and `e2e` finished. `e2e` usually finishes first, 2 to 4 minutes earlier (114 to 220 s in the runs spot-checked). On a desktop-touching PR the release workflow (median 278 s) also finishes inside `ci`.
 
 ### Baseline: steps of `ci` (24 runs)
 
@@ -47,13 +47,13 @@ Two waits matter: the local pre-commit hook, whose `vitest related` pulls in mos
 | Visual                                 | 16 s   | 21 s  | 24 s  | 3%              |
 | Uploads, post steps                    | 3 s    | 4 s   | 5 s   | 1%              |
 
-Steps of `e2e`: setup 27 s median (install 6 s, browsers cached), E2E 290 s median (p90 311 s, worst 336 s). The Vite build inside Playwright's `webServer` takes about 2 s.
+Steps of `e2e`: setup 27 s median (install 6 s, browsers cached), E2E 290 s median (p90 311 s, worst 336 s), over all 24 sample runs; the 62 to 81 tests in them are why this is lower than the 318 s of the 81-test run quoted below. The Vite build inside Playwright's `webServer` takes about 2 s.
 
 Setup costs about 28 s per job (40 s p90), and `pnpm install` from the cached store is 6 s. **A new parallel job costs about half a minute of wall time**, so splitting anything longer than about a minute pays.
 
 ### Where the time goes inside `pnpm test`
 
-Vitest's own summary over five runs: Duration 238 to 405 s on the same suite (the spread is the runner, not the code), split as tests 55%, setup files 16%, environment 14%, import 9%, transform 5%. The web project's jsdom is created once per file (215 to 233 times) and costs 27% of tracked time, 116 to 205 s of worker time per run.
+Vitest's own summary over five runs: Duration 238 to 405 s on the same suite (the spread is the runner, not the code), split as tests 55%, setup files 16%, environment 14%, import 9%, transform 5% (of the tracked time summed over every project, about 1 150 s if the ~636 s of tests is the 55%). Separately, Vitest's jsdom warning counts only the `web` project: its jsdom is created once per file (215 to 233 times) and costs 27% of the `web` project's own tracked time, 116 to 205 s of worker time per run. The two shares have different denominators and are not additive; the 14% environment figure is all projects, the 27% only `web`.
 
 Sum of test time per project (median of five runs, excluding import, setup and environment):
 
@@ -75,7 +75,7 @@ About 636 s of test time plus about 120 to 200 s of jsdom and the per-file setup
 
 ### Slowest test files per project (median and worst of five runs, seconds of test time)
 
-`layout` (the five largest are 75% of the project):
+`layout` (the five largest are 87% of the project):
 
 | File                                  | Median | Worst |
 | ------------------------------------- | ------ | ----- |
@@ -191,7 +191,7 @@ About 72 s inside the step: `layout.bench.ts` about 61 s (13 rows; the cold full
 
 ### e2e (Playwright, one worker by design)
 
-Per-test cost is the floor: 81 tests in 318 s, median about 3.4 s, and even trivial ones take 2 to 3 s (fresh context, `page.goto('/')`, app ready). Specs by median total (worst in brackets), from five runs:
+Per-test cost is the floor: 81 tests in about 318 s of test time (the log of run 44812232344, the one in-sample run with 81 tests, reports 5.5 minutes for the step; most in-sample runs had 62 to 77 tests), median about 3.4 s, and even trivial ones take 2 to 3 s (fresh context, `page.goto('/')`, app ready). Specs by median total (worst in brackets), from five runs:
 
 | Spec                         | Median | Worst | | Spec                        | Median | Worst |
 | ---------------------------- | ------ | ----- |-| --------------------------- | ------ | ----- |
@@ -306,3 +306,15 @@ Recommended first implementation PRs, each with before and after wall time over 
 5. Once the owner picks among H1, H3 and H2: **`chore(repo)`: the hook** (size S), with CONTRIBUTING.md's rule and measured timings (H5) updated in the same PR.
 
 Then, measured separately: V1 (`vmThreads` for `web`), B1 before `bench-compare` becomes required, and E2.
+
+## Appendix: the sample
+
+The 24 `ci.yml` runs (all `status=success`, attempt 1, created 2026-11-20 between 11:12:57 and 20:32:07 UTC; `gh api "repos/tomer-shvadron/reprise/actions/workflows/ci.yml/runs?created=2026-11-20&status=success&per_page=100"`, keep `created_at` before 20:33 UTC, take the last 24 by creation time):
+
+44725746285, 44727107952, 44727612270, 44728325021, 44732969494, 44737845768, 44739397307, 44741033960, 44741639837, 44742421376, 44742862245, 44743642522, 44744312197, 44744880371, 44745929285, 44748693524, 44748849031, 44750359971, 44750426441, 44750832275, 44804447882, 44808616453, 44810200331, 44812232344.
+
+The API returns 44 such runs; the 20 older ones (44644404315 to 44722181120 and 44725607492) are not in the sample. Rebuilding the tables from these 24 gives the medians, p90s and worsts in the job table. The `e2e` test count in them is 62 (five runs), 63, 68 (four), 69, 74 (three), 75 (eight), 77 and 81.
+
+The 12 `release.yml` PR runs: 44644853518, 44645145213, 44648589549, 44713232804 (cancelled, not timed), 44713294560, 44717138541, 44718795131, 44722181457, 44725746300, 44744880325, 44810199837, 44812575748.
+
+The ten job logs behind the per-test and per-file tables (five `ci`, five `e2e`) are not identified: their run IDs were not written down, and the run list cannot say which were opened. The per-file figures are medians and worsts over those five logs and move by the runner spread (a few seconds on the small files, 15 to 25% on the large ones). A PR that reports a before and after for one of these tests should take its own five-run baseline from the runs above, with the log of each run's `Test` and `E2E` steps, rather than rely on the tables in this note.
