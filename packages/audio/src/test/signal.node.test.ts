@@ -220,29 +220,34 @@ describe('spectralFlux and attackRatios', () => {
       return level * Math.exp(-decay * (time - start)) * sum;
     };
 
-  it('hears lowpassed chugs and their re-strikes between bright notes, as a palm-muted riff has', () => {
-    // Every 0.3 s a bright note decaying across hundreds of bins above 3 kHz, then two chugs
-    // below 900 Hz on the same pitch. The linear-bin flux read the first chug of each pair at
-    // 1.16 to 1.29, weak or missed and never heard: the bright note's fall hid the chug's few bins.
-    const hiss = noise(3);
-    const sounds: ((time: number) => number)[] = [];
-    const attacks: number[] = [];
-    for (let k = 0; k < 8; k += 1) {
-      sounds.push(
-        pluck(0.2 + 0.3 * k, 330, 10_000, 2, 0.6),
-        pluck(0.35 + 0.3 * k, 110, 880, 14, 0.06),
-        pluck(0.425 + 0.3 * k, 110, 880, 14, 0.06),
-      );
-      if (k > 0) attacks.push(0.35 + 0.3 * k, 0.425 + 0.3 * k);
-    }
-    const signal = synth(3, (time) => {
-      let sum = 0.001 * hiss();
-      for (const sound of sounds) sum += sound(time);
-      return sum;
-    });
-    const ratios = attackRatios(spectralFlux(signal), attacks);
-    for (const ratio of ratios) expect(ratio).toBeGreaterThanOrEqual(ATTACK_THRESHOLDS.heard);
-  });
+  // 1.5 s worst on CI (#384): own timeout, 4x the worst rounded up to 30 s.
+  it(
+    'hears lowpassed chugs and their re-strikes between bright notes, as a palm-muted riff has',
+    { timeout: 30_000 },
+    () => {
+      // Every 0.3 s a bright note decaying across hundreds of bins above 3 kHz, then two chugs
+      // below 900 Hz on the same pitch. The linear-bin flux read the first chug of each pair at
+      // 1.16 to 1.29, weak or missed and never heard: the bright note's fall hid the chug's few bins.
+      const hiss = noise(3);
+      const sounds: ((time: number) => number)[] = [];
+      const attacks: number[] = [];
+      for (let k = 0; k < 8; k += 1) {
+        sounds.push(
+          pluck(0.2 + 0.3 * k, 330, 10_000, 2, 0.6),
+          pluck(0.35 + 0.3 * k, 110, 880, 14, 0.06),
+          pluck(0.425 + 0.3 * k, 110, 880, 14, 0.06),
+        );
+        if (k > 0) attacks.push(0.35 + 0.3 * k, 0.425 + 0.3 * k);
+      }
+      const signal = synth(3, (time) => {
+        let sum = 0.001 * hiss();
+        for (const sound of sounds) sum += sound(time);
+        return sum;
+      });
+      const ratios = attackRatios(spectralFlux(signal), attacks);
+      for (const ratio of ratios) expect(ratio).toBeGreaterThanOrEqual(ATTACK_THRESHOLDS.heard);
+    },
+  );
 
   it('reads a decaying tone with a fake attack in its release as missed, by the floor', () => {
     const decaying = pluck(0.3, 330, 6000, 6, 0.4);

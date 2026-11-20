@@ -29,6 +29,7 @@ describe('layout', () => {
     30_000,
   );
 
+  // 5.9 s worst on CI for both on a4 (#384), 23.5 s at 4x: own timeout, rounded up to 60 s for headroom.
   it.each([
     ['tab', 'a4'],
     ['standard', 'a4'],
@@ -69,6 +70,6 @@ describe('layout', () => {
         }
       }
     },
-    30_000,
+    60_000,
   );
 });

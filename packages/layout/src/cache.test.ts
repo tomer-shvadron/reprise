@@ -457,7 +457,8 @@ describe('LayoutCache', () => {
       expect(kept(first, result, `${later.id}/1`)).toBe(true);
     });
 
-    it('inserts a bar in a split layout as a cold layout would', () => {
+    // 1.5 s worst on CI (#384): own timeout, 4x the worst rounded up to 30 s.
+    it('inserts a bar in a split layout as a cold layout would', { timeout: 30_000 }, () => {
       const { cache } = warm(split, tab);
       const { score: edited, change } = applyCommand(split, insertBar({ index: 12 }));
       const result = layout(edited, { ...tab, dirtyBars: change.touchedBars }, cache);

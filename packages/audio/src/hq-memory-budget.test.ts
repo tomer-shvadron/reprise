@@ -225,36 +225,41 @@ describe('HQ-tier memory budget', () => {
     }
   });
 
-  it('degrades under half its needs without throwing or exceeding the budget', async () => {
-    const { song, options } = longScore();
-    const full = await setup();
-    let needed: number;
-    try {
-      await full.load(song, options);
-      await full.settled();
-      needed = full.memory().decodedBytes;
-    } finally {
-      full.dispose();
-    }
-    const budget = Math.floor(needed / 2);
-    const engine = await setup(budget);
-    try {
-      const result = await engine.load(song, options);
-      await engine.settled();
-      const played = await playThrough(engine, song);
-      const { source } = debugAudioEngine(engine);
-      console.info(
-        `HQ budget ${mib(budget)} for ${mib(needed)}: peak ${mib(played.peak)}, ` +
-          `${String(played.misses)} misses, ${String(source?.counters.evictions)} evictions`,
-      );
-      expect(result.fallbacks).toEqual([]);
-      expect(engine.memory().budgetBytes).toBe(budget);
-      expect(engine.memory().decodedBytes).toBeLessThanOrEqual(budget);
-      expect(played.peak).toBeLessThanOrEqual(budget);
-      expect(played.misses).toBeGreaterThan(0);
-      expect(source?.counters.evictions).toBeGreaterThan(0);
-    } finally {
-      engine.dispose();
-    }
-  });
+  // 10.3 s worst on CI (#384): own timeout, 4x the worst rounded up to 60 s.
+  it(
+    'degrades under half its needs without throwing or exceeding the budget',
+    { timeout: 60_000 },
+    async () => {
+      const { song, options } = longScore();
+      const full = await setup();
+      let needed: number;
+      try {
+        await full.load(song, options);
+        await full.settled();
+        needed = full.memory().decodedBytes;
+      } finally {
+        full.dispose();
+      }
+      const budget = Math.floor(needed / 2);
+      const engine = await setup(budget);
+      try {
+        const result = await engine.load(song, options);
+        await engine.settled();
+        const played = await playThrough(engine, song);
+        const { source } = debugAudioEngine(engine);
+        console.info(
+          `HQ budget ${mib(budget)} for ${mib(needed)}: peak ${mib(played.peak)}, ` +
+            `${String(played.misses)} misses, ${String(source?.counters.evictions)} evictions`,
+        );
+        expect(result.fallbacks).toEqual([]);
+        expect(engine.memory().budgetBytes).toBe(budget);
+        expect(engine.memory().decodedBytes).toBeLessThanOrEqual(budget);
+        expect(played.peak).toBeLessThanOrEqual(budget);
+        expect(played.misses).toBeGreaterThan(0);
+        expect(source?.counters.evictions).toBeGreaterThan(0);
+      } finally {
+        engine.dispose();
+      }
+    },
+  );
 });

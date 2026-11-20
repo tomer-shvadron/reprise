@@ -11,6 +11,7 @@ describe('LayoutCache: random edits', () => {
     (notation, _label, mode, height) => {
       checkCachedEqualsCold(notation, mode, height);
     },
-    60_000,
+    // 16.2 s worst on CI (#384): own timeout, 4x the worst rounded up to 120 s.
+    120_000,
   );
 });
