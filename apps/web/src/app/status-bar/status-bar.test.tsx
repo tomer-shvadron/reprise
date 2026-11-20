@@ -7,14 +7,16 @@ import { renderHeader, spyOnCommand } from '@/app/header/test/render-header';
 import { StatusBar } from './status-bar';
 
 describe('StatusBar', () => {
-  it('is a named region with two named groups, and not a footer or a live region', () => {
+  it('is a named region with two named groups, and not a footer or a live region as a whole', () => {
     renderHeader(<StatusBar />);
     const bar = screen.getByRole('region', { name: 'Status' });
     expect(bar.tagName).toBe('SECTION');
     expect(within(bar).getByRole('group', { name: 'Song' })).toBeInTheDocument();
     expect(within(bar).getByRole('group', { name: 'Cursor and view' })).toBeInTheDocument();
     expect(screen.queryByRole('contentinfo')).toBeNull();
-    expect(screen.queryByRole('status')).toBeNull();
+    // Only the track flash, empty at rest, is a live region.
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
 
   it('shows only the zoom with no song: saved, library and notation are hidden', () => {
@@ -58,13 +60,13 @@ describe('StatusBar', () => {
     const { open, services } = renderHeader(<StatusBar />);
     await open();
     expect(screen.queryByTestId('edit-status')).toBeNull();
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getAllByRole('status')).toHaveLength(1);
     act(() => {
       services.editing.getState().setEditing(true);
     });
     expect(screen.getByTestId('edit-status')).toBeInTheDocument();
-    // The refusal is the bar's one live region.
-    expect(screen.getAllByRole('status')).toHaveLength(1);
+    // The refusal is the second live region, beside the track flash.
+    expect(screen.getAllByRole('status')).toHaveLength(2);
   });
 
   it('runs the zoom commands from the zoom menu, and the menu stays open', async () => {

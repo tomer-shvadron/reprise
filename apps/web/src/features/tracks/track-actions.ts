@@ -11,6 +11,7 @@ import {
   nextVisibility,
   notationChoices,
   stepTrackId,
+  visibleSet,
 } from './track-model';
 
 export type TrackServices = Pick<AppServices, 'document' | 'selection' | 'playback' | 'audio'>;
@@ -31,6 +32,16 @@ export function stepTrack(services: TrackServices, direction: -1 | 1): void {
   const tracks = services.document.getState().score?.tracks ?? [];
   const next = stepTrackId(tracks, services.selection.getState().currentTrack, direction);
   if (next !== undefined) selectTrack(services, next);
+}
+
+/** Jumps to the track numbered `number` (1-based, as the sidebar shows it), showing it if multitrack view hides it; nothing past the last. */
+export function goToTrackNumber(services: TrackServices, number: number): void {
+  const { score, view } = services.document.getState();
+  const track = score?.tracks[number - 1];
+  if (!score || !track) return;
+  if (!visibleSet(score.tracks, view.tracks).has(track.id))
+    setTrackVisible(services, track.id, true);
+  selectTrack(services, track.id);
 }
 
 function mixOf(services: TrackServices, id: Id) {
