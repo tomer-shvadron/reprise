@@ -5,7 +5,7 @@ import { THEME_SETTING } from '@/state/app-settings';
 import { ZOOM } from '@/state/ui';
 
 import type { Command } from './command-registry';
-import { openContextMenuOn } from './context-menu/open-on';
+import { openContextMenuOn, SCORE_SURFACE_SELECTOR } from './context-menu/open-on';
 import type { AppServices } from './services';
 import { whenSaved } from './when-saved';
 
@@ -41,7 +41,7 @@ export function appCommands(services: AppServices): AppCommand[] {
     const target =
       active && active !== globalThis.document.body
         ? active
-        : globalThis.document.querySelector('[role="region"][aria-roledescription="score"]');
+        : globalThis.document.querySelector(SCORE_SURFACE_SELECTOR);
     if (target) openContextMenuOn(target);
   };
 

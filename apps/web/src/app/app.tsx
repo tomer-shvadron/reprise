@@ -52,6 +52,7 @@ import { ContextMenuHost } from './context-menu/context-menu-host';
 import { runCommand } from './command-registry';
 import { DropZone } from './drop-zone';
 import { installFirstGesture } from './first-gesture';
+import { installMenuKeys } from './install-menu-keys';
 import { formatShortcut, type KeyboardPlatform } from './keyboard';
 import { PanelRail, PanelTabs } from './right-panel';
 import { Notices } from './notices';
@@ -145,6 +146,17 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   useEffect(
     () => installHistoryMenu(services.document, services.platform, historyLabel),
     [services],
+  );
+
+  useEffect(
+    () =>
+      installMenuKeys({
+        registry,
+        settings: services.settings,
+        platform: services.platform,
+        keyboard,
+      }),
+    [registry, services, keyboard],
   );
 
   useEffect(

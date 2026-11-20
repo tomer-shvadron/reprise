@@ -2,7 +2,7 @@
 
 Shortcuts follow Guitar Pro where Guitar Pro has one.
 
-The table below is generated from the command registry in `apps/web`: `apps/web/src/app/shortcut-doc.test.ts` fails on any difference, and `pnpm shortcuts:write` regenerates it, so never edit it by hand. The same registry feeds the in-app cheat sheet (`?` or ⌘/, Ctrl+/ on Windows, which filters by command, category or key), the palette rows and the tooltips, which print each command's key. The desktop menu's accelerators are a hand-kept copy in `apps/desktop/src/main/menu.ts`, not read from the registry. The same test fails when two commands share a key in one context.
+The table below is generated from the command registry in `apps/web`: `apps/web/src/app/shortcut-doc.test.ts` fails on any difference, and `pnpm shortcuts:write` regenerates it, so never edit it by hand. The same registry feeds the in-app cheat sheet (`?` or ⌘/, Ctrl+/ on Windows, which filters by command, category or key), the palette rows and the tooltips, which print each command's key. The desktop menu takes its accelerators from the same registry: the renderer sends them over `menu:set-keys` once the settings load, and `apps/desktop/src/main/menu.ts` keeps labels only, so the menu shows no keys for a moment at launch. The same test fails when two commands share a key in one context.
 
 - Palette prefixes (#338): the first character typed in the command palette picks what it searches, and it stays in the input, so Backspace takes it away. `>` or nothing is commands; `#` is the song's section markers; `@` is its tracks (a number picks the track with that number); `/` is the library's songs; a number alone is a bar. Enter goes to a section or bar, selects a track or opens a song; ⌘Enter (Ctrl+Enter on Windows) does the alternate: loops the section or bar, shows only that track, or, for a command or a song, the same as Enter. The footer names both keys for the selected row. ⌘G (Ctrl+G) opens the palette locked to bar mode, and Go to section…, Go to track… and Open song from library… reach the other modes without the prefix character.
 - The Context column is Global, or Editing for a binding that works only in edit mode and wins over a Global binding of the same key.
@@ -58,6 +58,9 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 | Stop | Transport | Global | ↩ | Enter |
 | Play from start | Transport | Global | ⇧Space | Shift+Space |
 | Toggle loop | Transport | Global | F9 | F9 |
+| Play from selection | Transport | Global | — | — |
+| Loop selection | Transport | Global | — | — |
+| Loop this section | Transport | Global | — | — |
 | Toggle count-in | Transport | Global | ⌥C | Alt+C |
 | Toggle metronome | Transport | Global | ⌥M | Alt+M |
 | Metronome volume… | Transport | Global | ⌥⇧M | Alt+Shift+M |
@@ -114,7 +117,10 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 | Show metronome | Trainer | Global | — | — |
 | Start or stop standalone metronome | Trainer | Global | ⌥B | Alt+B |
 | Toggle fretboard | Trainer | Global | — | — |
+| Speed trainer on selection | Trainer | Global | — | — |
+| Show fretboard | Trainer | Global | — | — |
 | Toggle edit mode | Editor | Global | ⌘E | Ctrl+E |
+| Edit here | Editor | Global | — | — |
 | Show history | Editor | Global | — | — |
 | Cursor to previous beat | Editor | Editing | ← | Left |
 | Cursor to next beat | Editor | Editing | → | Right |
@@ -224,6 +230,7 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 | Paste | Editor | Editing | ⌘V | Ctrl+V |
 | Paste as insert | Editor | Editing | — | — |
 | Paste over | Editor | Editing | — | — |
+| Copy bars | Editor | Global | — | — |
 | Transpose… | Editor | Editing | — | — |
 | Transpose up a semitone | Editor | Editing | ⌥⇧↑ | Alt+Shift+Up |
 | Transpose down a semitone | Editor | Editing | ⌥⇧↓ | Alt+Shift+Down |

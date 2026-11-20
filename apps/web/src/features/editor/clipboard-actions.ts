@@ -1,6 +1,7 @@
 import type { Id, Score } from '@reprise/model';
 
 import type { AppServices } from '@/app/services';
+import { targetBars } from '@/features/transport';
 
 import { clipSummary, copyClip, planCut } from './clip';
 import { clipboardOf } from './clipboard-store';
@@ -10,7 +11,10 @@ import { planPaste, type PasteMode } from './paste';
 import { rangePatch } from './range';
 import { visibleTracks } from './visible';
 
-export type ClipboardServices = Pick<AppServices, 'document' | 'selection' | 'entry' | 'editing'>;
+export type ClipboardServices = Pick<
+  AppServices,
+  'document' | 'selection' | 'entry' | 'editing' | 'menuTarget' | 'transport'
+>;
 
 /** The score and visible tracks an edit acts on now; undefined outside edit mode or without a score. */
 function context(services: ClipboardServices): { score: Score; visible: Id[] } | undefined {
@@ -91,4 +95,41 @@ export function pasteInternal(services: ClipboardServices, mode?: PasteMode): bo
     return false;
   }
   return pasteClip(services, clip, mode ?? services.entry.getState().mode);
+}
+
+/**
+ * Copies the target's bars (the right-clicked bar, else the selected bars) across the visible
+ * tracks onto the internal clipboard, in either mode, so a paste in edit mode lands them. Play
+ * mode has no status line, so the result is announced.
+ */
+export function copyBars(services: ClipboardServices): Clip | undefined {
+  const { score, view } = services.document.getState();
+  const bars = score && targetBars(services);
+  if (!score || !bars) return undefined;
+  const visible = visibleTracks(score, view);
+  const first = visible[0];
+  const last = visible.at(-1);
+  if (first === undefined || last === undefined) return undefined;
+  const result = copyClip(
+    score,
+    {
+      cursor: undefined,
+      range: {
+        kind: 'bars',
+        anchor: { track: first, masterBar: bars.startBar, beat: undefined },
+        focus: { track: last, masterBar: bars.endBar, beat: undefined },
+      },
+    },
+    visible,
+  );
+  const say = (text: string) => {
+    services.transport.getState().announce(text);
+  };
+  if ('refused' in result) {
+    say(result.refused);
+    return undefined;
+  }
+  clipboardOf(services).set(result.clip);
+  say(`Copied ${clipSummary(result.clip)}`);
+  return result.clip;
 }
