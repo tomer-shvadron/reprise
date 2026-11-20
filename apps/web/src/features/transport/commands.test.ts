@@ -1,10 +1,13 @@
 import { write } from '@reprise/formats';
 import { removeBar, type Score } from '@reprise/model';
+import { note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { createAppRegistry } from '@/app/app-registry';
 import { mirrorAudio } from '@/test/mirror-audio';
 import { fourBars, positionEventAt } from '@/test/position';
+
+import { sectionRange } from './menu-target';
 import { createTestServices } from '@/test/services';
 
 async function setup(song?: Score) {
@@ -25,8 +28,16 @@ describe('transport commands', () => {
   it('register with the app’s commands without a shortcut conflict, each with a shortcut', async () => {
     const { registry } = await setup();
     const transport = registry.list().filter((command) => command.id.startsWith('transport.'));
-    expect(transport).toHaveLength(22);
-    for (const command of transport) expect(command.shortcut, command.id).toBeDefined();
+    // The menu's own commands have no key.
+    const menuOnly = [
+      'transport.playFromSelection',
+      'transport.loopSelection',
+      'transport.loopSection',
+    ];
+    expect(transport).toHaveLength(22 + menuOnly.length);
+    for (const command of transport) {
+      if (!menuOnly.includes(command.id)) expect(command.shortcut, command.id).toBeDefined();
+    }
   });
 
   it('play, pause, stop and play from the start', async () => {
@@ -257,5 +268,96 @@ describe('transport commands', () => {
     services.ui.getState().pauseFollow();
     await run('view.followPlayback');
     expect(services.ui.getState().follow).toMatchObject({ on: true, request: 1 });
+  });
+
+  describe('on the menu target', () => {
+    async function targeted() {
+      const set = await setup(fourBars());
+      const score = set.services.document.getState().score;
+      if (!score) throw new Error('no score');
+      const bar = (index: number) => score.masterBars[index]?.id ?? '';
+      const beat = score.tracks[0]?.bars[2]?.voices[0]?.beats[1]?.id ?? '';
+      return { ...set, score, bar, beat };
+    }
+
+    it('play from the right-clicked beat or bar, which turns an outside loop off', async () => {
+      const { services, run, bar, beat } = await targeted();
+      const { fakeAudio, menuTarget } = services;
+      menuTarget.getState().set({ kind: 'beat', beat, track: 'x', masterBar: bar(2) });
+      await run('transport.playFromSelection');
+      expect(fakeAudio.seek).toHaveBeenLastCalledWith(2 * 3840 + 960);
+      expect(fakeAudio.play).toHaveBeenCalledOnce();
+
+      services.audio.setLoop({ startBar: bar(0), endBar: bar(0) });
+      menuTarget.getState().set({ kind: 'bar', masterBar: bar(3), track: undefined });
+      await run('transport.playFromSelection');
+      expect(fakeAudio.seek).toHaveBeenLastCalledWith(3 * 3840);
+      expect(services.playback.getState().settings.loop).toBeUndefined();
+    });
+
+    it('play a range from the bar clicked inside it', async () => {
+      const { services, run, bar } = await targeted();
+      services.selection.getState().selectBars({ startBar: bar(1), endBar: bar(3) });
+      services.menuTarget.getState().set({ kind: 'range', bar: bar(2) });
+      await run('transport.playFromSelection');
+      expect(services.fakeAudio.seek).toHaveBeenLastCalledWith(2 * 3840);
+    });
+
+    it('play from the first selected bar without a menu, and say so with nothing', async () => {
+      const { services, run, bar } = await targeted();
+      await run('transport.playFromSelection');
+      expect(services.fakeAudio.play).not.toHaveBeenCalled();
+      services.selection.getState().selectBars({ startBar: bar(1), endBar: bar(2) });
+      await run('transport.playFromSelection');
+      expect(services.fakeAudio.seek).toHaveBeenLastCalledWith(3840);
+    });
+
+    it('loop the right-clicked bar, replacing a loop, and leave the selection and playhead', async () => {
+      const { services, run, bar } = await targeted();
+      const loop = () => services.playback.getState().settings.loop;
+      services.audio.setLoop({ startBar: bar(0), endBar: bar(3) });
+      services.selection.getState().selectBars({ startBar: bar(0), endBar: bar(0) });
+      services.menuTarget.getState().set({ kind: 'bar', masterBar: bar(2), track: undefined });
+      await run('transport.loopSelection');
+      expect(loop()).toEqual({ startBar: bar(2), endBar: bar(2) });
+      expect(services.selection.getState().bars).toEqual({ startBar: bar(0), endBar: bar(0) });
+      expect(services.fakeAudio.seek).not.toHaveBeenCalled();
+
+      // The range target loops the selected bars, and a second run keeps the loop on.
+      services.selection.getState().selectBars({ startBar: bar(1), endBar: bar(2) });
+      services.menuTarget.getState().set({ kind: 'range' });
+      await run('transport.loopSelection');
+      await run('transport.loopSelection');
+      expect(loop()).toEqual({ startBar: bar(1), endBar: bar(2) });
+    });
+
+    it('is enabled only with a bar to loop, and loopSection only on a section', async () => {
+      const { registry, services, bar } = await targeted();
+      expect(registry.get('transport.loopSelection')?.enabled?.()).toBe(false);
+      services.selection.getState().selectBars({ startBar: bar(1), endBar: bar(1) });
+      expect(registry.get('transport.loopSelection')?.enabled?.()).toBe(true);
+      expect(registry.get('transport.loopSection')?.enabled?.()).toBe(false);
+    });
+
+    it('loop a section from its marker to the bar before the next', async () => {
+      const builder = score().track('guitar');
+      for (let i = 0; i < 6; i += 1) {
+        builder.bar();
+        if (i === 1) builder.section('Verse');
+        if (i === 4) builder.section('Chorus');
+        builder.beat('4', [note(1, 0)]);
+      }
+      const { services, run } = await setup(builder.build());
+      const bars = services.document.getState().score?.masterBars ?? [];
+      services.menuTarget.getState().set({ kind: 'section', masterBar: bars[1]?.id ?? '' });
+      await run('transport.loopSection');
+      expect(services.playback.getState().settings.loop).toEqual({
+        startBar: bars[1]?.id,
+        endBar: bars[3]?.id,
+      });
+      expect(
+        sectionRange(services.document.getState().score as Score, bars[0]?.id ?? ''),
+      ).toBeUndefined();
+    });
   });
 });

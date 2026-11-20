@@ -1,11 +1,13 @@
 import type { Command } from '@/app/command-registry';
 import type { AppServices } from '@/app/services';
-import { selectCanPlay } from '@/state/playback';
+import { selectCanPlay, selectRunning } from '@/state/playback';
 import { timelineOf, writtenBpmAt } from '@/state/timeline';
 
 import { applyLoop, wholeSong } from './loop';
+import { sectionRange, targetBars, targetPlace } from './menu-target';
 import { describePosition } from './position-format';
 import { playheadBar } from './seek-commands';
+import { seekToBar } from './seek-target';
 import { percentOf, stepPercent, TEMPO_PERCENT } from './tempo';
 
 export type TransportCommandId =
@@ -13,6 +15,9 @@ export type TransportCommandId =
   | 'transport.stop'
   | 'transport.playFromStart'
   | 'transport.toggleLoop'
+  | 'transport.playFromSelection'
+  | 'transport.loopSelection'
+  | 'transport.loopSection'
   | 'transport.toggleCountIn'
   | 'transport.toggleMetronome'
   | 'transport.metronomeVolume'
@@ -27,7 +32,7 @@ type TransportCommand = Command & { id: TransportCommandId };
 
 export type TransportServices = Pick<
   AppServices,
-  'audio' | 'playback' | 'document' | 'selection' | 'transport' | 'heard'
+  'audio' | 'playback' | 'document' | 'selection' | 'transport' | 'heard' | 'menuTarget' | 'ui'
 >;
 
 /** The current speed in percent, read from the store, never cached. */
@@ -46,6 +51,14 @@ export function transportCommands(services: TransportServices): TransportCommand
   };
   const stepBy = (direction: -1 | 1) => {
     if (hasScore()) setPercent(stepPercent(currentPercent(services), direction));
+  };
+
+  /** The section of the right-clicked marker, else the one holding the first selected bar. */
+  const sectionTarget = () => {
+    const { score } = document.getState();
+    const target = services.menuTarget.getState().target;
+    const bar = target?.kind === 'section' ? target.masterBar : targetBars(services)?.startBar;
+    return score && bar !== undefined ? sectionRange(score, bar) : undefined;
   };
 
   return [
@@ -101,6 +114,52 @@ export function transportCommands(services: TransportServices): TransportCommand
             ? { startBar: barsAnchor, endBar: barsAnchor }
             : undefined;
         const failed = applyLoop(services, score, bars ?? clicked ?? wholeSong(score));
+        if (failed) transport.getState().announce(failed);
+      },
+    },
+    {
+      id: 'transport.playFromSelection',
+      title: 'Play from selection',
+      // No key: it is the menu's "Play from here". A plain click already seeks, and Space plays.
+      repeat: false,
+      enabled: hasScore,
+      run: () => {
+        const { score } = document.getState();
+        const place = targetPlace(services);
+        if (!score || !place) {
+          if (score) transport.getState().announce('Select a bar to play from');
+          return;
+        }
+        // A seek outside an active loop turns the loop off, as a click does; a refused one says why.
+        if (!seekToBar(services, score, place)) return;
+        if (!selectRunning(playback.getState())) audio.play();
+      },
+    },
+    {
+      id: 'transport.loopSelection',
+      title: 'Loop selection',
+      repeat: false,
+      enabled: () => targetBars(services) !== undefined,
+      run: () => {
+        const { score } = document.getState();
+        const bars = targetBars(services);
+        if (!score || !bars) return;
+        // Replaces any loop: where `toggleLoop` would turn an active one off.
+        const failed = applyLoop(services, score, bars);
+        if (failed) transport.getState().announce(failed);
+      },
+    },
+    {
+      id: 'transport.loopSection',
+      title: 'Loop this section',
+      repeat: false,
+      inPalette: false,
+      enabled: () => sectionTarget() !== undefined,
+      run: () => {
+        const { score } = document.getState();
+        const bars = sectionTarget();
+        if (!score || !bars) return;
+        const failed = applyLoop(services, score, bars);
         if (failed) transport.getState().announce(failed);
       },
     },

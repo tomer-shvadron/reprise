@@ -1,4 +1,12 @@
-import { hitTest, type Anchor, type LayoutResult, type Rect, type System } from '@reprise/layout';
+import {
+  hitTest,
+  markAt,
+  type Anchor,
+  type Mark,
+  type LayoutResult,
+  type Rect,
+  type System,
+} from '@reprise/layout';
 import type { Id } from '@reprise/model';
 import {
   startTransition,
@@ -13,6 +21,7 @@ import {
   useState,
   useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
   type Ref,
@@ -63,7 +72,26 @@ export interface ScorePointerEvent {
   event: PointerEvent;
 }
 
+/** What lies under a point of the score, for a context menu. */
+export interface ScoreHit {
+  /** In layout px. */
+  point: Point;
+  /** What `hitTest` finds at the point. */
+  anchor: Anchor | undefined;
+  /** The master-bar column at or nearest the point, as on a pointer event. */
+  column: Anchor | undefined;
+  /** A chord name or a section marker at the point, which `hitTest` has no anchor for. */
+  mark: Mark | undefined;
+}
+
 export interface ScoreViewHandle {
+  /** What lies under a client point (a pointer's, from `clientX` and `clientY`). */
+  hitAt(clientX: number, clientY: number): ScoreHit;
+  /**
+   * `rect` (layout px) in client px, for a menu opened from the keyboard, moved into the view when
+   * it lies outside so the menu never opens off-screen.
+   */
+  clientRect(rect: Rect): DOMRect;
   /** Scrolls the least distance that shows `rect` (layout px) with `margin`; no-op when it shows. */
   revealRect(rect: Rect, options?: { margin?: number; behavior?: 'auto' | 'smooth' }): void;
   /** The visible window in layout px, from the live scroll position. */
@@ -99,6 +127,8 @@ export interface ScoreViewProps {
   /** Drawn inside the zoomed canvas after the overlays, in layout px × zoom: an inline editor. */
   children?: ReactNode;
   onScorePointer?: (event: ScorePointerEvent) => void;
+  /** A `contextmenu` event on the region: a right-click, the Menu key or Shift+F10 from a focused score. */
+  onContextMenu?: (event: ReactMouseEvent<HTMLDivElement>) => void;
   /**
    * A hand scroll, told from input rather than `scroll` events, which following and zoom also
    * fire: the wheel, a scrollbar press, touch, and a scrolling key no command took.
@@ -211,6 +241,7 @@ export function ScoreView({
   overlays,
   children,
   onScorePointer,
+  onContextMenu,
   onUserScroll,
   label = 'Score',
   className,
@@ -232,6 +263,7 @@ export function ScoreView({
   const liveCentre = useRef<Point | undefined>(undefined);
   const fontsReady = useScoreFonts();
   const descriptionId = useId();
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   const barBox = useRef<HTMLDivElement | null>(null);
   const lineBox = useRef<HTMLDivElement | null>(null);
   const playhead = useRef<PlaybackCursor | undefined>(undefined);
@@ -409,6 +441,30 @@ export function ScoreView({
       land(target);
     };
     return {
+      hitAt: (clientX, clientY) => {
+        const box = canvasRef.current?.getBoundingClientRect();
+        const point = toLayoutPoint(
+          { x: clientX, y: clientY },
+          { x: box?.left ?? 0, y: box?.top ?? 0 },
+          zoom,
+        );
+        return {
+          point,
+          anchor: hitTest(layout, point.x, point.y),
+          column: nearestColumn(layout, pageSystems(layout, point), point),
+          mark: markAt(layout, point.x, point.y),
+        };
+      },
+      clientRect: (rect) => {
+        const origin = canvasRef.current?.getBoundingClientRect();
+        const region = scroller.current?.getBoundingClientRect();
+        const x = (origin?.left ?? 0) + rect.x * zoom;
+        const y = (origin?.top ?? 0) + rect.y * zoom;
+        if (!region) return new DOMRect(x, y, rect.width * zoom, rect.height * zoom);
+        const left = Math.min(Math.max(x, region.left), region.right);
+        const top = Math.min(Math.max(y, region.top), region.bottom - rect.height * zoom);
+        return new DOMRect(left, top, rect.width * zoom, rect.height * zoom);
+      },
       setPlayhead: (cursor) => {
         playhead.current = cursor;
         paintPlayhead(barBox.current, lineBox.current, cursor, zoom);
@@ -561,6 +617,7 @@ export function ScoreView({
       onScroll={onScroll}
       onWheel={onWheel}
       onPointerDown={onRegionPointerDown}
+      onContextMenu={onContextMenu}
       onTouchMove={() => {
         handScroll('both');
       }}
@@ -571,6 +628,7 @@ export function ScoreView({
       </p>
       <div className="score-sizer" style={{ width: size.width, height: size.height }}>
         <div
+          ref={canvasRef}
           className="score-canvas"
           style={{
             left: offset.x,

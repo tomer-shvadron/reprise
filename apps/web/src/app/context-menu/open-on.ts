@@ -24,13 +24,18 @@ export function contextMenuVia(event: Event): 'pointer' | 'keyboard' {
   return 'pointer';
 }
 
+/** Whether this module raised the event itself, as the mac command and the pill's button do. */
+export function raisedByUs(event: Event): boolean {
+  return synthetic.has(event);
+}
+
 /**
  * Opens the context menu of the surface around `element`, as the Menu key would: a bubbling,
  * cancelable `contextmenu` event at the element's bottom-left corner, which the nearest surface
  * that handles it answers. Chromium raises none for Shift+F10 on macOS, and the selection
  * pill's menu button has no key at all, so both come through here.
  */
-export function openContextMenuOn(element: Element): void {
+export function openContextMenuOn(element: Element): boolean {
   const rect = element.getBoundingClientRect();
   const event = new MouseEvent('contextmenu', {
     bubbles: true,
@@ -39,5 +44,10 @@ export function openContextMenuOn(element: Element): void {
     clientY: rect.bottom,
   });
   synthetic.add(event);
-  element.dispatchEvent(event);
+  // False when a surface took it: a menu was opened.
+  return !element.dispatchEvent(event);
 }
+
+/** The score's surface: its region, or the empty paper before a score is open. */
+export const SCORE_SURFACE_SELECTOR =
+  '[role="region"][aria-roledescription="score"], [data-score-surface]';

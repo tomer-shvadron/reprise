@@ -35,6 +35,8 @@ export function createMenuRegistry(
   const bySurface = new Map<MenuSurface, MenuItem[]>();
   for (const { surface, items } of contributions) {
     if (!MENU_SURFACES.includes(surface)) throw new Error(`Unknown menu surface "${surface}"`);
+    // A surface with no items of its own still has a menu: a note's is its beat's and bar's.
+    if (!bySurface.has(surface)) bySurface.set(surface, []);
     for (const spec of items) {
       const { command, modes, ...rest } = spec;
       const commands = typeof command === 'string' ? [command] : [...command];

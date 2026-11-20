@@ -1,4 +1,4 @@
-import { expect, test } from './test/app';
+import { centre, expect, test } from './test/app';
 import { generated } from './test/scores';
 
 test.beforeEach(async ({ app }) => {
@@ -81,4 +81,44 @@ test('no editing command shows in a play-mode menu', async ({ page }) => {
   const menu = page.getByRole('menu', { name: 'Header' });
   await expect(menu.getByRole('menuitem', { name: /^Show command palette/ })).toBeVisible();
   await expect(menu.locator('[data-command^="editor."]')).toHaveCount(0);
+});
+
+test('a right-click on a bar loops it without seeking, and Space still plays', async ({
+  app,
+  page,
+}) => {
+  const box = await app.barBox(3);
+  const before = await app.field('time').textContent();
+  const at = await app.toViewport(centre(box));
+  await page.mouse.click(at.x, at.y, { button: 'right' });
+  const menu = page.getByRole('menu', { name: /bar 3$/i });
+  await expect(menu).toBeVisible();
+  await expect(menu).toHaveAttribute('data-context-menu-via', 'pointer');
+  await expect(menu.getByRole('menuitem', { name: /^Edit here/ })).toBeVisible();
+  await menu.getByRole('menuitem', { name: /^Loop this bar/ }).click();
+  await expect(page.getByRole('button', { name: /^Loop/ })).toHaveAttribute('aria-pressed', 'true');
+  // The playhead stayed where it was.
+  await expect(app.field('time')).toHaveText(before ?? '');
+  await page.keyboard.press('Space');
+  await expect(app.playButton).toHaveAccessibleName('Pause');
+});
+
+test('the Menu key opens the score menu from the focused score, and from the page itself', async ({
+  app,
+  page,
+}) => {
+  await app.score().focus();
+  await page.keyboard.press('ContextMenu');
+  const menu = page.getByRole('menu', { name: /^Bar 1$/ });
+  await expect(menu).toHaveAttribute('data-context-menu-via', 'keyboard');
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(app.score()).toBeFocused();
+
+  // With focus on the page itself nothing hears Chromium's event but the score's fallback.
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  });
+  await page.keyboard.press('ContextMenu');
+  await expect(page.getByRole('menu', { name: /^Bar 1$/ })).toBeVisible();
 });
