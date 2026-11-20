@@ -128,12 +128,12 @@ describe('EditStatusLine', () => {
     expect(screen.getByRole('menuitem', { name: /Dotted/ })).toBeInTheDocument();
   });
 
-  it('opens the command palette from the position, and does not move focus on mousedown', async () => {
+  it('opens the palette on a bar number from the position, and does not move focus on mousedown', async () => {
     const { services, registry } = await setup();
     act(() => {
       services.editing.getState().setEditing(true);
     });
-    const palette = spyOnCommand(registry, 'app.commandPalette');
+    const palette = spyOnCommand(registry, 'app.goToBar');
     const position = screen.getByRole('button', { name: 'Bar 3 · Beat 2 · String 4' });
     expect(fireEvent.mouseDown(position)).toBe(false);
     await userEvent.setup().click(position);
