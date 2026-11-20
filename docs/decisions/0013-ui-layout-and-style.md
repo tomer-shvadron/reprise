@@ -54,6 +54,9 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - Changed by #334 (2026-11-20): the right panel is tabbed (Mixer, Practice, Effects, History) and
   collapses to an icon rail that stays visible; its open state and width are remembered. See
   "Changed by #334" in `../specs/architecture.md`.
+- Changed by #336 (2026-11-20): the transport footer gains a status bar below it (S-STATUS-1): the
+  song's state on the left, the edit cursor and the view on the right. The arrangement is
+  otherwise unchanged. See "Changed by #336" in `../specs/architecture.md`.
 
 ## Related
 

@@ -46,6 +46,7 @@ import { PanelRail, PanelTabs } from './right-panel';
 import { Notices } from './notices';
 import { SavePromptDialog } from './save-prompt';
 import { ScorePane } from './score-pane';
+import { StatusBar } from './status-bar/status-bar';
 import { ScreenHost } from './screen-host';
 import type { AppServices } from './services';
 import { AppServicesProvider } from './services-context';
@@ -175,6 +176,11 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             score={<ScorePane hint={hint} />}
             banner={<UnimportedBanner />}
             transport={<TransportBar registry={registry} keyboard={keyboard} />}
+            status={
+              <CommandSourceContext value={source}>
+                <StatusBar />
+              </CommandSourceContext>
+            }
             sidebar={
               <TrackSidebar
                 registry={registry}

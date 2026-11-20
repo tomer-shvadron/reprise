@@ -17,6 +17,11 @@ interface AppFrameProps {
   score: ReactNode;
   /** The footer's playback controls. */
   transport?: ReactNode;
+  /**
+   * The window's last row, after the transport: the status bar. A mode that hides the chrome
+   * (practice) hides this slot with the header and the panels.
+   */
+  status?: ReactNode;
   /** The left sidebar's content: the track list. */
   sidebar?: ReactNode;
   /** The right panel's content: its tab strip and the active view. */
@@ -60,6 +65,7 @@ export function AppFrame({
   header,
   score,
   transport,
+  status,
   sidebar,
   panel,
   rail,
@@ -69,7 +75,6 @@ export function AppFrame({
 }: AppFrameProps) {
   const panels = useStore(ui, (state) => state.panels);
   const widths = useStore(ui, (state) => state.panelWidths);
-  const zoom = useStore(ui, (state) => state.zoom);
   const setPanelWidth = useStore(ui, (state) => state.setPanelWidth);
   const bottomOpen = useStore(ui, (state) => state.bottomPanel.open);
   const bottomHeight = useStore(ui, (state) => state.bottomPanelHeight);
@@ -212,10 +217,8 @@ export function AppFrame({
         <TracksToggle ui={ui} />
         <Separator orientation="vertical" className="h-6!" />
         {transport}
-        <span className="text-muted-foreground ml-auto text-xs tabular-nums">
-          {Math.round(zoom * 100)}%
-        </span>
       </footer>
+      {status}
     </div>
   );
 }
