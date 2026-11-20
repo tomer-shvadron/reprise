@@ -1,6 +1,7 @@
 import { SearchIcon } from 'lucide-react';
 
 import { keepFocus, tooltipText } from '@/app/command-control';
+import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -11,6 +12,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
  */
 export function PaletteSearch() {
   const palette = useCommand('app.commandPalette');
+  const menu = useStaticContextMenu({
+    surface: 'header',
+    target: { kind: 'header', element: 'search' },
+    label: 'Search',
+  });
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -18,6 +24,7 @@ export function PaletteSearch() {
           variant="outline"
           size="xs"
           aria-label="Search commands"
+          {...menu}
           aria-haspopup="dialog"
           aria-keyshortcuts={palette.ariaKeys}
           onMouseDown={keepFocus}

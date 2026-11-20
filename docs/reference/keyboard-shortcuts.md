@@ -15,6 +15,7 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 - Undo and redo in a focused text field undo the field's typing, not the score. The palette and the desktop Edit menu name the step: "Undo Insert bar", "Redo Paste"; Show history opens a panel listing every step, where a click or Enter jumps to that point.
 - In edit mode a digit that can start a two-digit fret on the track's neck (1 and 2 on 24 frets) waits 500 ms for a second digit; any other key, a click or moving the cursor commits it at once, and Escape cancels it. Digits never move the cursor, so more digits on the same beat make a chord (with ↑ and ↓ between them); → moves on, and appends a bar past the end of a full last bar.
 - The library's song list takes its own keys while it has focus: the arrows, Home, End, Page Up and Page Down move, Enter opens, Delete or Backspace deletes, and L opens the song's practice log. Escape closes the log page first, then the Library sheet.
+- Shift+F10 opens the context menu of the focused control, and so does the Menu key on a keyboard that has one: Windows and Linux raise the menu themselves, so the key is left to the browser there, and on macOS the app opens it. A right-click opens the same menu at the pointer. Escape closes it and returns focus to the control that had it.
 - Space and Enter on a focused button or toggle activate that control; transport and header buttons do not take focus on click, so Space keeps playing after one.
 - The effect keys are Guitar Pro 8's and work in edit mode only. Each toggles: when every note it acts on already has the effect it comes off all of them, otherwise it goes on the notes that lack it, as one undo step labelled with the effect. A note effect goes on the notes picked, or on every note of the beat the cursor or range is on; a beat effect (tapping, tremolo picking, fades, pick strokes, brush, arpeggio, whammy-bar vibrato) goes on the beat. H marks the note as the origin of a hammer-on or pull-off, so it sets the flag on the next note on that string. A refusal reads in the status bar.
 - The punctuation effect keys (`;` `:` `!` `"` `)` `$` `<` `>`) are bound in both spellings, shifted and unshifted, because US needs Shift for most of them and other layouts do not; the table lists the character once, as you type it. On French and Belgian AZERTY two of the unshifted spellings never fire, because `$` is the physical `]` key (repeat end) and `"` is the physical `3` key (the fret digit), and those commands come first. A physical-key fallback for non-Latin layouts is tracked under #242, and until it lands those keys are reachable through Shift on US and through the command palette everywhere. The effects that take a choice open a modal dialog, so no key reaches the score under it: B (bend), ⇧S (slide kinds), ⌥Y (harmonic kinds), ⌥V (whammy bar), and G or ⌥G (a grace note before the beat or on it). Arrows move over the choices, Enter or Space applies and closes, Escape cancels. Up and Down move by row, Left and Right in reading order. Focus goes back to where it was; after a click on the panel's button it stays with the score. N is Guitar Pro's trill key: it takes the trill off when every note has one, and otherwise opens the trill dialog (how many frets above each note to trill to, two by default, and the speed). The tremolo speed (8th, 16th, 32nd) and dynamics dialogs have no key, as Guitar Pro has none; the panel and the command palette open them. "Toggle effects panel" has no key; it is in the command palette, and the right panel shows every effect as a button with its state.
@@ -30,6 +31,7 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 | Go to track… | App | Global | — | — |
 | Open song from library… | App | Global | — | — |
 | Show keyboard shortcuts | App | Global | ? or ⌘/ | ? or Ctrl+/ |
+| Open context menu | App | Global | ⇧F10 | Shift+F10 |
 | Settings… | App | Global | ⌘, | Ctrl+, |
 | New song | File | Global | ⌘N | Ctrl+N |
 | Open file… | File | Global | ⌘O | Ctrl+O |
@@ -47,6 +49,7 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 | Toggle light and dark theme | View | Global | ⇧⌘L | Ctrl+Shift+L |
 | Toggle tracks | View | Global | — | — |
 | Toggle mixer | View | Global | F8 | F8 |
+| Toggle right panel | View | Global | — | — |
 | Toggle page and continuous view | View | Global | F4 | F4 |
 | Follow playback | View | Global | — | — |
 | Toggle multitrack view | View | Global | F3 | F3 |
