@@ -1,5 +1,6 @@
 import { AudioLinesIcon, GaugeIcon } from 'lucide-react';
 import { useStore } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 
 import { keepFocus, tooltipText } from '@/app/command-control';
 import { useAppServices } from '@/app/services-context';
@@ -7,6 +8,7 @@ import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
+import { rampProgress } from './speed-trainer/ramp';
 import { speedTrainerFor } from './speed-trainer/speed-trainer-for';
 
 /** When the chip shows its text: `auto` hides it below 1100 px, leaving the icon. */
@@ -18,8 +20,6 @@ const TEXT_CLASS: Record<ChipText, string> = {
   never: 'hidden',
 };
 
-const STATUS_WORD = { idle: 'off', running: 'running', held: 'held', done: 'done' } as const;
-
 /**
  * The speed trainer at a glance: off, or the step's tempo, a bar of progress to the target and the
  * pass count. A click shows its settings in the panel. It reads the trainer's store and takes no
@@ -27,25 +27,37 @@ const STATUS_WORD = { idle: 'off', running: 'running', held: 'held', done: 'done
  */
 export function SpeedTrainerChip({ text = 'auto' }: { text?: ChipText }) {
   const services = useAppServices();
-  const { status, plan, stepIndex, reps, config } = useStore(speedTrainerFor(services));
+  const { status, plan, stepIndex, reps, repsPerStep } = useStore(
+    speedTrainerFor(services),
+    useShallow((state) => ({
+      status: state.status,
+      plan: state.plan,
+      stepIndex: state.stepIndex,
+      reps: state.reps,
+      repsPerStep: state.config.repsPerStep,
+    })),
+  );
   const show = useCommand('trainer.speedTrainer');
-  const percents = plan?.percents ?? [];
-  const percent = percents[stepIndex];
-  const first = percents[0] ?? 0;
-  const target = percents.at(-1) ?? 0;
+  const percent = plan?.percents[stepIndex];
+  const target = plan?.percents.at(-1) ?? 0;
   const live = status !== 'idle' && percent !== undefined;
-  const fraction =
-    status === 'done' ? 1 : live && target > first ? (percent - first) / (target - first) : 0;
-  const pass = Math.min(reps + 1, config.repsPerStep);
-  const passes = `${String(pass)}/${String(config.repsPerStep)}`;
-  const word = STATUS_WORD[status];
+  const done = status === 'done';
+  const fraction = rampProgress(plan, stepIndex, status);
+  const pass = String(Math.min(reps + 1, repsPerStep));
+  const passes = `${pass}/${String(repsPerStep)}`;
+  const rounded = (value: number) => String(Math.round(value));
 
-  const summary = live
-    ? status === 'done'
-      ? `Done at ${String(Math.round(target))} percent`
-      : `${String(Math.round(percent))} percent of ${String(Math.round(target))}, pass ${String(pass)} of ${String(config.repsPerStep)}`
-    : '';
-  const label = `Speed trainer: ${word}${summary ? `, ${summary}` : ''}`;
+  // The visible words come first in the name, so a voice command that says them matches.
+  let visible = 'Trainer off';
+  let detail = 'speed trainer';
+  if (live) {
+    visible = done
+      ? 'Done'
+      : `${rounded(percent)}% · ${passes}${status === 'held' ? ' · held' : ''}`;
+    detail = done
+      ? `speed trainer reached ${rounded(target)} percent`
+      : `speed trainer ${status}, ${rounded(percent)} percent of ${rounded(target)}, pass ${pass} of ${String(repsPerStep)}`;
+  }
 
   return (
     <Tooltip>
@@ -53,7 +65,7 @@ export function SpeedTrainerChip({ text = 'auto' }: { text?: ChipText }) {
         <Button
           variant="ghost"
           size="sm"
-          aria-label={label}
+          aria-label={`${visible} (${detail})`}
           aria-keyshortcuts={show.ariaKeys}
           data-command="trainer.speedTrainer"
           data-testid="speed-trainer-chip"
@@ -63,16 +75,11 @@ export function SpeedTrainerChip({ text = 'auto' }: { text?: ChipText }) {
           className={live ? 'text-foreground' : 'text-muted-foreground'}
         >
           <GaugeIcon className={status === 'running' ? 'text-primary' : undefined} />
-          <span className={`${TEXT_CLASS[text]} text-xs tabular-nums`}>
-            {live ? (
-              <>
-                {status === 'done' ? 'Done' : `${String(Math.round(percent))}%`}
-                {status !== 'done' && ` · ${passes}`}
-                {status === 'held' && ' · held'}
-              </>
-            ) : (
-              'Trainer off'
-            )}
+          <span
+            data-testid="speed-trainer-chip-text"
+            className={`${TEXT_CLASS[text]} text-xs tabular-nums`}
+          >
+            {visible}
           </span>
           {live && (
             <span
@@ -80,6 +87,7 @@ export function SpeedTrainerChip({ text = 'auto' }: { text?: ChipText }) {
               className="bg-muted relative block h-1 w-8 overflow-hidden rounded-full"
             >
               <span
+                data-testid="speed-trainer-chip-bar"
                 className="bg-primary absolute inset-y-0 left-0 block rounded-full"
                 style={{ width: `${String(Math.round(fraction * 100))}%` }}
               />
