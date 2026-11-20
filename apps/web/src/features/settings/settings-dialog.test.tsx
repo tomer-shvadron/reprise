@@ -6,6 +6,7 @@ import { createAppRegistry } from '@/app/app-registry';
 import { installViewDefaults } from '@/app/install-view-defaults';
 import { SETTINGS_SECTIONS } from '@/app/settings-sections';
 import { AppServicesProvider } from '@/app/services-context';
+import { CommandSourceContext } from '@/app/use-command';
 import { installShortcutDispatcher } from '@/app/shortcut-dispatcher';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
@@ -30,13 +31,15 @@ afterEach(() => {
 async function setup() {
   const services = createTestServices();
   await services.settings.whenHydrated();
-  const registry = createAppRegistry(services);
+  const registry = createAppRegistry(services, 'mac');
   stop = installShortcutDispatcher(window, registry, 'mac');
   render(
     <AppServicesProvider services={services}>
       <TooltipProvider>
         <button type="button">Behind</button>
-        <SettingsDialog sections={SETTINGS_SECTIONS} />
+        <CommandSourceContext value={{ registry, keyboard: 'mac' }}>
+          <SettingsDialog sections={SETTINGS_SECTIONS} />
+        </CommandSourceContext>
       </TooltipProvider>
     </AppServicesProvider>,
   );
@@ -60,7 +63,7 @@ describe('the settings dialog', () => {
     });
 
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
-    expect(tabNames()).toEqual(['Appearance', 'Score', 'Playback and practice']);
+    expect(tabNames()).toEqual(['Appearance', 'Score', 'Playback and practice', 'Keyboard']);
     expect(services.ui.getState().settings.open).toBe(true);
   });
 
