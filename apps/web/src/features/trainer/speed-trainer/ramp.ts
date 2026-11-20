@@ -30,6 +30,25 @@ export interface RampPlan {
   percents: readonly number[];
 }
 
+/**
+ * How far a run is from its first step to its target, 0 to 1. Both ends count, so a descending
+ * plan (start above target) reads the same as an ascending one; a single-step plan is 0 until done.
+ */
+export function rampProgress(
+  plan: RampPlan | undefined,
+  stepIndex: number,
+  status: 'idle' | 'running' | 'held' | 'done',
+): number {
+  if (status === 'done') return 1;
+  const percent = plan?.percents[stepIndex];
+  const first = plan?.percents[0];
+  const last = plan?.percents.at(-1);
+  if (percent === undefined || first === undefined || last === undefined || last === first) {
+    return 0;
+  }
+  return Math.min(1, Math.max(0, (percent - first) / (last - first)));
+}
+
 /** Where a run stands: the step it plays, the clean passes it has made at that step. */
 export interface RampRun {
   stepIndex: number;

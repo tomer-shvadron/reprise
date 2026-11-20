@@ -1,4 +1,5 @@
 import { ChevronUpIcon, MetronomeIcon, RepeatIcon, TimerIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -8,7 +9,14 @@ import { TransportToggle } from './controls';
 import { LevelPopover } from './level-popover';
 import { loopBarNumbers } from './loop';
 
-export function PracticeToggles() {
+interface PracticeTogglesProps {
+  /** The speed-trainer chip, placed after the loop; the shell supplies it from the trainer. */
+  speedTrainer?: ReactNode;
+  /** The tuner button, placed after the click's controls. */
+  tuner?: ReactNode;
+}
+
+export function PracticeToggles({ speedTrainer, tuner }: PracticeTogglesProps) {
   const { playback, document, audio } = useAppServices();
   const { loop, countIn, metronome } = useStore(
     playback,
@@ -35,6 +43,7 @@ export function PracticeToggles() {
         <RepeatIcon />
         {range && <span className="text-xs tabular-nums">{range}</span>}
       </TransportToggle>
+      {speedTrainer}
       <TransportToggle command="transport.toggleCountIn" label="Count-in" pressed={countIn}>
         <TimerIcon />
       </TransportToggle>
@@ -53,6 +62,7 @@ export function PracticeToggles() {
       >
         <ChevronUpIcon />
       </LevelPopover>
+      {tuner}
     </div>
   );
 }

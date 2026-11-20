@@ -13,7 +13,15 @@ import {
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { bpmFor, loopBarNumbers, parseBpm, TEMPO_PERCENT } from '@/features/transport';
 
-import { convertConfig, displayValue, REPS, toPercent, type OnMiss, type RampUnit } from './ramp';
+import {
+  convertConfig,
+  displayValue,
+  rampProgress,
+  REPS,
+  toPercent,
+  type OnMiss,
+  type RampUnit,
+} from './ramp';
 import { speedTrainerFor } from './speed-trainer-for';
 import { referenceBpmFor } from './speed-trainer-store';
 
@@ -120,14 +128,7 @@ export function SpeedTrainerPanel() {
   const percent = plan?.percents[state.stepIndex];
   const next = plan?.percents[state.stepIndex + 1];
   const steps = plan?.percents.length ?? 0;
-  const first = plan?.percents[0] ?? 0;
-  const last = plan?.percents.at(-1) ?? 0;
-  const fraction =
-    percent === undefined || last === first
-      ? status === 'done'
-        ? 1
-        : 0
-      : (percent - first) / (last - first);
+  const fraction = rampProgress(plan, state.stepIndex, status);
   const describe = (value: number) =>
     `${String(Math.round(value))} % · ${String(bpmFor(value, referenceBpm))} BPM`;
 

@@ -5,6 +5,7 @@ import {
   DEFAULT_CONFIG,
   onPass,
   percentPlan,
+  rampProgress,
   startRun,
   type RampConfig,
 } from './ramp';
@@ -102,5 +103,31 @@ describe('convertConfig', () => {
     const back = convertConfig(convertConfig(original, 'bpm', 90), 'percent', 90);
     expect(back.step).toBeCloseTo(5, 9);
     expect(percentPlan(back, 90).percents).toEqual(percentPlan(original, 90).percents);
+  });
+});
+
+describe('rampProgress', () => {
+  it('runs from 0 to 1 over an ascending plan', () => {
+    const plan = { percents: [70, 80, 90, 100] };
+    expect(rampProgress(plan, 0, 'running')).toBe(0);
+    expect(rampProgress(plan, 1, 'running')).toBeCloseTo(1 / 3);
+    expect(rampProgress(plan, 3, 'running')).toBe(1);
+  });
+
+  it('runs from 0 to 1 over a descending plan', () => {
+    const plan = { percents: [100, 90, 80] };
+    expect(rampProgress(plan, 0, 'running')).toBe(0);
+    expect(rampProgress(plan, 1, 'held')).toBe(0.5);
+    expect(rampProgress(plan, 2, 'running')).toBe(1);
+  });
+
+  it('is 0 for a single step until the run is done', () => {
+    const plan = { percents: [80] };
+    expect(rampProgress(plan, 0, 'running')).toBe(0);
+    expect(rampProgress(plan, 0, 'done')).toBe(1);
+  });
+
+  it('is 0 without a plan', () => {
+    expect(rampProgress(undefined, 0, 'idle')).toBe(0);
   });
 });
