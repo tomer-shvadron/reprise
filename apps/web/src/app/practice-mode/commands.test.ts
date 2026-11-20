@@ -72,6 +72,14 @@ describe('the practice commands', () => {
     expect(ui.getState().zoom).toBe(1.1);
   });
 
+  it('shows the sidebar again when Shift+F6 is pressed in the mode', async () => {
+    const { get, services } = await setup();
+    services.ui.getState().enterPracticeMode('play');
+    runCommand(get('track.focusSidebar'));
+    expect(services.ui.getState().practiceMode.on).toBe(false);
+    expect(services.ui.getState().panels.sidebar).toBe(true);
+  });
+
   describe('Focus on loop', () => {
     it('is disabled with neither a selection nor a loop', async () => {
       const { get } = await setup();
