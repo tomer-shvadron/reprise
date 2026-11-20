@@ -41,28 +41,35 @@ The roadmap's rule 6, review before merge, is the review flow in [AGENTS.md](AGE
 
 ## Branches and commits
 
-- Run `pnpm bootstrap` first in every fresh clone or worktree: it installs dependencies and the pre-commit hook, the Chromium shell, the Electron binary and the GM soundfont, and is safe to re-run.
+- Run `pnpm bootstrap` first in every fresh clone or worktree: it installs dependencies and the git hooks, the Chromium shell, the Electron binary and the GM soundfont, and is safe to re-run.
 - One branch per work package, named `wp-0NN-short-slug` after the issue (`wp-005-repository-governance`), off `main`, in its own worktree.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): subject`, imperative and lowercase, for example `feat(formats): read gp5 voltas` or `chore(repo): add issue templates`. The scope is the package or area; leave it out for a change that is genuinely cross-cutting.
 - No samples, tabs, secrets or build output in git. Downloaded tabs for manual testing go in `local-tabs/`, which is ignored.
 - The owner has approved branch commits, pushes and PR creation for the whole project (ADR-0019): an agent working an issue commits on its own branch and opens its PR without asking. `main` changes only through reviewed, CI-green squash merges performed by the lead.
 
-## Pre-commit hook
+## Git hooks
 
-`pnpm install` installs a Husky pre-commit hook (the `prepare` script; the hook is `.husky/pre-commit`, its tasks are in `lint-staged.config.js`). While it runs, lint-staged (`--hide-all`) stashes unstaged changes and untracked files, so every check sees exactly what is being committed: a file you forgot to `git add` fails the commit, and unstaged work in progress cannot fail it. If a run is interrupted, everything, untracked files included, is in the `lint-staged automatic backup` stash. On every commit it runs:
+`pnpm install` installs two Husky hooks (the `prepare` script; the hooks are `.husky/pre-commit` and `.husky/pre-push`). The commit hook holds the fast per-file checks, so a commit costs seconds whatever it touches; the tests wait for the push, which runs them once per push and not once per commit.
+
+### Pre-commit
+
+The tasks are in `lint-staged.config.js`. While it runs, lint-staged (`--hide-all`) stashes unstaged changes and untracked files, so every check sees exactly what is being committed: a file you forgot to `git add` fails the commit, and unstaged work in progress cannot fail it. If a run is interrupted, everything, untracked files included, is in the `lint-staged automatic backup` stash. On every commit it runs:
 
 - `scripts/conflicts/check.ts` on every staged file, before ESLint or Prettier can rewrite it. It fails on git's conflict markers (seven `<`, `=`, `>` or `|` at the start of a line, then a space or the end of the line) in any text file, including the ones Prettier never formats (shell scripts, snapshots, dotfiles, everything under `docs/`). It also fails on the forms Prettier leaves once it has rewritten them, which `format:check` accepts: in Markdown, a marker inside a table row, a list item or a quote, an escaped `\=======`, a `>>>>>>>` respaced into seven nested quotes; in HTML, a marker indented or joined onto one line. A file that must hold such text goes in `ALLOWED` in that script, with its reason. `pnpm conflicts:check` runs the same check over every tracked file, as CI does. Because a setext underline of exactly seven `=` counts as a marker, Markdown headings use the ATX form (`#`). Fenced code is not exempt either, indented or not: write an example marker with six characters rather than allow-listing the file, since `ALLOWED` turns the check off for the whole file.
 - ESLint (`--fix --max-warnings 0`) and then Prettier on staged code, Prettier on staged JSON, Markdown, YAML, CSS and HTML. A problem the tool can fix is fixed and the fix is staged with the commit; anything else rejects the commit.
-- `vitest related --run` on the staged TypeScript: every test that imports those files, directly or through other modules, in every Vitest project except the browser-mode `audio` project, which joins only when a file under `packages/audio` is staged (every audio test imports the model, so a model-only commit would otherwise launch Chromium).
 - `tsc -b`, incremental, on every commit, including one that only deletes files.
 
-Bench files (`*.bench.ts`) never run here: `pnpm bench` runs them, and CI runs it after the tests.
+Measured on a one-line change in `packages/model`, the most widely imported package, on a warm 10-core Mac: the commit takes about 2.3 s (a four-file TypeScript commit about 3.5 s). The `vitest related` run that used to be part of it took about 68 s there (321 of 399 test files, about 450 s of CPU) and now happens at the push. If a commit takes much longer, something is wrong; say so on the issue rather than skipping the hook.
 
-Measured: a docs-only commit about one second, a one-file change in `packages/model` about five seconds (it rebuilds the downstream types and runs every test that imports the model), a one-file `packages/audio` change about three. If the hook takes much longer, something is wrong; say so on the issue rather than skipping it.
+### Pre-push
 
-The hook is per worktree: Husky writes its shim under `.husky/_/` (ignored), and git skips a missing hook without a word, so **run `pnpm install` in every new worktree before committing**. A git GUI that starts with a minimal `PATH` may not find `node`; put your Node install on the `PATH` in `~/.config/husky/init.sh`, which the hook sources.
+`.husky/pre-push` runs `scripts/hooks/pre-push.ts`: `vitest related --run` on every TypeScript file changed between the pushed commits and their merge-base with `origin/main`, so it tests what the branch changes however many commits carry it, and a branch that only merged `origin/main` tests nothing. It runs every test that imports those files, directly or through other modules, in every Vitest project except the browser-mode `audio` project, which joins only when a file under `packages/audio` changed (every audio test imports the model, so a model-only push would otherwise launch Chromium). A new branch with no upstream works the same way; a push that deletes a branch, or whose changes include no TypeScript, runs nothing and exits 0. With no `origin/main` to compare with (a clone that never fetched) it fails and says to fetch, rather than letting the push through untested. A push of a model change takes about 68 s on that Mac (a widely imported file such as the layout entry more), and CI runs the full suite regardless. An agent's shell command times out after two minutes by default: give `git push` a longer timeout or run it in the background, and do not retry with `--no-verify`.
 
-`git commit --no-verify` skips the hook (`HUSKY=0` skips it for a whole shell). Use it only when the hook itself is what is broken and the fix is the commit you are making, and say so in the PR. CI runs the full lint, typecheck, test, format and conflict-marker checks regardless, so skipping the hook only moves a failure from your machine to the PR, where it costs a review round trip.
+Bench files (`*.bench.ts`) never run in either hook: `pnpm bench` runs them, and CI runs it after the tests.
+
+The hooks are per worktree: Husky writes its shims under `.husky/_/` (ignored), and git skips a missing hook without a word, so **run `pnpm install` in every new worktree before the first commit or push**. A git GUI that starts with a minimal `PATH` may not find `node`; put your Node install on the `PATH` in `~/.config/husky/init.sh`, which the hooks source.
+
+`git commit --no-verify` skips the commit hook and `git push --no-verify` the push hook (`HUSKY=0` skips both for a whole shell). Use either only when the hook itself is what is broken and the fix is the commit or push you are making, and say so in the PR. CI runs the full lint, typecheck, test, format and conflict-marker checks regardless, so skipping a hook only moves a failure from your machine to the PR, where it costs a review round trip.
 
 ## Pull requests
 

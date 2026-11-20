@@ -40,7 +40,7 @@
     "desktop:print-pdfs": "node scripts/desktop/print-pdfs.ts",
     "preinstall": "node scripts/package-manager/only-pnpm.ts",
     "prepare": "husky",
-    "postinstall": "playwright install chromium --only-shell"
+    "postinstall": "node scripts/bootstrap/install-browser.ts"
   },
   "devDependencies": {
     "@coderline/alphatab": "1.8.4",
