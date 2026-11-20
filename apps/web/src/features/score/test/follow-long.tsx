@@ -12,7 +12,7 @@ import { longLayout, sharedLongScore } from './long-score';
 import { stubScroll } from './scroll-stub';
 import { stubViewport } from './viewport-stub';
 
-// Shared by follow-long.paged.test.tsx and follow-long.continuous.test.tsx, one file per mode so
+// Shared by follow-long-paged.test.tsx and follow-long-continuous.test.tsx, one file per mode so
 // Vitest runs them in parallel. Each file keeps its own vi.mock('./fonts'), which is per file.
 
 /** Registers the viewport and scroll stubs each follow-long file needs around its tests. */
@@ -37,7 +37,7 @@ export function stubFollowEnvironment(): void {
   });
 }
 
-export const song = sharedLongScore();
+const song = sharedLongScore();
 const { map } = timelineOf(song);
 export const trackAt = (index: number) => song.tracks[index]?.id ?? '';
 

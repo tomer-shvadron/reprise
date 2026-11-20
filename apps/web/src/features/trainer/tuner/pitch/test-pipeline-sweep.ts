@@ -3,7 +3,10 @@ import { expect } from 'vitest';
 import { midiFromHz } from '../notes';
 import { pluck, simulate, type SimulatedFrame } from '../test-signals';
 
-// The sweep behind the tuning-pipeline cases, which tracker-pipeline-*.test.ts run one per file.
+/**
+ * Test-only: the sweep behind the tuning-pipeline cases, which tracker-pipeline-*.test.ts run one
+ * per file. Nothing in the app imports this.
+ */
 
 const NOTES: [string, number][] = [
   ['B0', 30.87],

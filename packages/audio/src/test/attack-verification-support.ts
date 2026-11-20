@@ -78,11 +78,15 @@ function knockOut(song: Score, rendered: Rendered, clusters: readonly Cluster[])
   return copy;
 }
 
-/** One fixture's knockout case, named by its path. */
+/**
+ * One fixture's knockout case, named by its path. The fixtures are a drum kit and a file of
+ * effects, so dark and bright attacks; each has its own file to run in parallel. The timeout is
+ * 4 times the worst CI run (19 s), rounded up to 120 s.
+ */
 export function knockoutCase(path: string): void {
   it(
     `${path} passes untouched and fails with every 10th cluster knocked out`,
-    { timeout: 30_000 },
+    { timeout: 120_000 },
     async () => {
       const fixture = inject('scoreFixtures').find((candidate) => candidate.path === path);
       if (!fixture) throw new Error(`${path} is not in the corpus`);

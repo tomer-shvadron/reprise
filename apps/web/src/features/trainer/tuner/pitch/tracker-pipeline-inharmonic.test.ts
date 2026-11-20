@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 
-import { sweep } from './pipeline-sweep';
+import { sweep } from './test-pipeline-sweep';
 
 describe('the tuning pipeline on synthetic strings', () => {
   it(

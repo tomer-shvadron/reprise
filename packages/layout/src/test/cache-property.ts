@@ -1,5 +1,5 @@
 /**
- * Shared by the cache-property.<notation>.test.ts files, one per notation so Vitest runs them in
+ * Shared by the cache-property-<notation>.test.ts files, one per notation so Vitest runs them in
  * parallel: the property runs are the longest tests in the layout project.
  *
  * Random edit sequences against a warm cache: after every step the cached layout must equal a
@@ -444,16 +444,14 @@ function changeOptions(score: Score, options: LayoutOptions, change: OptionChang
   }
 }
 
-const MODES = [
+/** The (label, mode, split page height) cases each notation runs. */
+export const CACHE_PROPERTY_MODES = [
   ['paged', 'paged', undefined],
   ['continuous', 'continuous', undefined],
   ...SPLIT_PAGE_HEIGHTS.map(
     (height) => [`paged at ${String(height)} px high`, 'paged', height] as const,
   ),
 ] as const;
-
-/** The (label, mode, split page height) cases each notation runs. */
-export const CACHE_PROPERTY_MODES = MODES;
 
 /** Asserts, over random edit sequences, that the warm cache equals a cold layout after every step. */
 export function checkCachedEqualsCold(

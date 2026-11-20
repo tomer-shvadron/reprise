@@ -106,7 +106,7 @@ shared field is a `type:contract` issue for the lead.
   partials raise the autocorrelation (up to 15 cents sharp at a fixed 1.5 kHz). **Web Audio's
   lowpass `Q` is in dB**: a Butterworth section is `20·log10(1/√2)`, not 0.707, and
   `tuner.browser.test.ts` pins it against an `OfflineAudioContext` render.
-- **Tracker thresholds** (`TRACKER` in `pitch/tracker.ts`, set by `tracker.test.ts`). A frame
+- **Tracker thresholds** (`TRACKER` in `pitch/tracker.ts`, set by `tracker.test.ts` and `tracker-pipeline-*.test.ts`). A frame
   counts at −55 dBFS RMS or more, and while locked no more than 30 dB below the note's peak. A
   new note needs clarity 0.90, a lock continues to 0.80. Two accepted frames within 30 cents
   lock; three accepted frames more than 50 cents from the median move the lock, and a single
