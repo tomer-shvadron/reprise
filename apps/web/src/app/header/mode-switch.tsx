@@ -43,7 +43,7 @@ export function ModeSwitch() {
               aria-keyshortcuts={toggle.ariaKeys}
               disabled={value === 'edit' && !hasScore}
               onMouseDown={keepFocus}
-              className="text-foreground hover:bg-background/60 hover:text-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground h-5 min-w-0 rounded-md px-2.5 text-xs data-[state=on]:shadow-xs dark:data-[state=on]:shadow-none"
+              className="text-foreground hover:bg-background/60 hover:text-foreground aria-checked:bg-primary aria-checked:text-primary-foreground aria-checked:hover:bg-primary aria-checked:hover:text-primary-foreground h-5 min-w-0 rounded-md px-2.5 text-xs aria-checked:shadow-xs dark:aria-checked:shadow-none"
             >
               {label}
             </ToggleGroupItem>
