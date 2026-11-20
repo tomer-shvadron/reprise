@@ -25,6 +25,9 @@ export default defineConfig({
     // The speed slider shows only from Tailwind's `lg` breakpoint.
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
+    // Chromium's timer-driven fake audio output: realtime audio never touches the host's audio daemon,
+    // which can stall (coreaudiod on macOS) and freeze every AudioContext clock.
+    launchOptions: { args: ['--disable-audio-output'] },
     trace: 'retain-on-failure',
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
