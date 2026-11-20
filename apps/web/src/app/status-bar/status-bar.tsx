@@ -1,4 +1,5 @@
 import { EditStatusLine } from '@/features/editor';
+import { TrackFlash } from '@/features/tracks';
 import { SoundStatus } from '@/features/transport';
 
 import { useAppServices } from '@/app/services-context';
@@ -12,8 +13,8 @@ import { NotationSegment, ZoomSegment } from './view-status';
  * container width instead.
  *
  * Not a `<footer>`, which would be a second `contentinfo` landmark beside the transport; not a
- * toolbar, which would take the arrow keys; and not a live region, which would read the whole bar
- * at every cursor move. Its background is `bg-background`, never `bg-sidebar`: muted text on that
+ * toolbar, which would take the arrow keys; and not a live region as a whole, which would read the
+ * bar at every cursor move; only the track flash is one. Its background is `bg-background`, never `bg-sidebar`: muted text on that
  * is 4.53:1 in the light theme.
  */
 export function StatusBar() {
@@ -27,6 +28,7 @@ export function StatusBar() {
         <SavedSegment />
         <SoundStatus />
         <LibrarySegment />
+        <TrackFlash />
       </div>
       <div role="group" aria-label="Cursor and view" className="flex min-w-0 items-center gap-1">
         <EditStatusLine
