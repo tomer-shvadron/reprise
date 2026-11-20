@@ -12,7 +12,7 @@ import { joinKeys } from './shortcut-table';
 import type { KeyboardPlatform } from './keyboard';
 
 function setup(keyboard: KeyboardPlatform = 'other') {
-  const { ui } = createTestServices();
+  const { ui, settings } = createTestServices();
   const registry = new CommandRegistry(
     () => false,
     // An override layer wraps the default here: Play answers to F7 now.
@@ -37,7 +37,7 @@ function setup(keyboard: KeyboardPlatform = 'other') {
     run: () => undefined,
   });
   registry.register({ id: 'file.close', title: 'Close file', run: () => undefined });
-  render(<ShortcutSheet registry={registry} ui={ui} keyboard={keyboard} />);
+  render(<ShortcutSheet registry={registry} ui={ui} settings={settings} keyboard={keyboard} />);
   return ui;
 }
 
@@ -140,7 +140,12 @@ describe('the app’s ? and Ctrl+/ bindings', () => {
     render(
       <>
         <button type="button">before</button>
-        <ShortcutSheet registry={registry} ui={services.ui} keyboard="other" />
+        <ShortcutSheet
+          registry={registry}
+          ui={services.ui}
+          settings={services.settings}
+          keyboard="other"
+        />
       </>,
     );
     const button = screen.getByRole('button', { name: 'before' });

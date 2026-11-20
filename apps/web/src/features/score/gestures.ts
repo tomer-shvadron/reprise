@@ -53,7 +53,7 @@ export interface GestureOptions {
   /**
    * A primary press with Ctrl is a context click, which macOS raises as a `contextmenu` event: it
    * neither seeks nor selects. Set on the mac keyboard platform only, where Ctrl is not the
-   * command key. Read at each press, so it can follow the mode.
+   * command key. Read at each press.
    */
   ctrlIsContextClick?: () => boolean;
 }

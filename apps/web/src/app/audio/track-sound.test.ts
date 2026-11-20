@@ -3,7 +3,9 @@ import type { Track } from '@reprise/model';
 import { score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
-import { EMILYGUITAR_FIVE_VOICES } from '@/features/sounds';
+import { EMILYGUITAR_FIVE_VOICES, createDefaultSounds } from '@/features/sounds';
+import { createSettingsStore } from '@/state/settings';
+import { memoryStorage } from '@/test/memory-local-storage';
 import type { DefaultSounds, InstalledPackSource } from '@/state/sound-packs';
 
 import { resolveTrackSound } from './track-sound';
@@ -23,15 +25,11 @@ const other: InstalledPackSource = {
   instruments: [{ key: 'solo', name: 'Solo', entries: { default: 'default.sfz' } }],
 };
 
-const GUITAR_DEFAULT = { packId: PACK_ID, instrument: 'five-voices' };
-/** The defaults of a fresh profile: both guitar families, nothing else. */
-const freshDefaults: DefaultSounds = {
-  get: (track) =>
-    track.kind !== 'drums' && track.program >= 24 && track.program <= 31
-      ? GUITAR_DEFAULT
-      : undefined,
-  subscribe: () => () => undefined,
-};
+/** The defaults of a fresh profile, from the real settings and family rules. */
+const freshDefaults: DefaultSounds = createDefaultSounds(
+  createSettingsStore({ local: () => memoryStorage() }),
+);
+const never: DefaultSounds = { get: () => undefined, subscribe: () => () => undefined };
 
 function trackOf(
   kind: 'guitar' | 'bass' | 'piano' | 'drums',
@@ -79,7 +77,7 @@ describe('resolveTrackSound, the default sounds table', () => {
   it.each([
     ['bass', 33],
     ['piano', 0],
-    ['drums', 0],
+    ['drums', 25],
   ] as const)('leaves a %s track (program %i) on General MIDI either way', (kind, program) => {
     for (const directory of [withPack, withoutPack]) {
       const { assignment, sound } = resolveTrackSound(
@@ -112,6 +110,17 @@ describe('resolveTrackSound, the default sounds table', () => {
     expect(sound).toEqual({ tier: 'gm', packId: other.id, problem: 'missing' });
   });
 
+  it('keeps a named pack over a General MIDI flag beside it', () => {
+    const track = trackOf('guitar', 29, {
+      packId: other.id,
+      instrument: 'solo',
+      generalMidi: true,
+    });
+    const { assignment, sound } = resolveTrackSound(track, { get: () => other }, freshDefaults);
+    expect(assignment?.pack.id).toBe(other.id);
+    expect(sound).toEqual({ tier: 'gm', packId: other.id });
+  });
+
   it('plays GM for an explicit General MIDI choice', () => {
     const { assignment, sound } = resolveTrackSound(
       trackOf('guitar', 29, { generalMidi: true }),
@@ -133,10 +142,7 @@ describe('resolveTrackSound, the default sounds table', () => {
   });
 
   it('plays GM for a family set to General MIDI', () => {
-    const { assignment, sound } = resolveTrackSound(trackOf('guitar', 29), withPack, {
-      get: () => undefined,
-      subscribe: () => () => undefined,
-    });
+    const { assignment, sound } = resolveTrackSound(trackOf('guitar', 29), withPack, never);
     expect(assignment).toBeUndefined();
     expect(sound).toEqual({ tier: 'gm' });
   });

@@ -9,29 +9,28 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import type { SettingsStore } from '@/state/settings';
 import type { UiStore } from '@/state/ui';
 
 import type { CommandRegistry } from './command-registry';
 import type { KeyboardPlatform } from './keyboard';
-import { joinKeys, shortcutEntries } from './shortcut-table';
+import { useKeyOverrides } from './use-command';
+import { filterWords, joinKeys, searchText, shortcutEntries } from './shortcut-table';
 
 interface ShortcutSheetProps {
   registry: CommandRegistry;
   ui: UiStore;
+  settings: Pick<SettingsStore, 'get' | 'subscribe'>;
   keyboard: KeyboardPlatform;
 }
 
-/** Spelled-out names a user types for the symbols the Mac prints. */
-const ALIASES: readonly (readonly [string, string])[] = [
-  ['command', 'cmd command'],
-  ['option', 'option opt alt'],
-];
-
 /** The cheat sheet (S-KEY-1): every command that has a key here, filterable, from the registry. */
-export function ShortcutSheet({ registry, ui, keyboard }: ShortcutSheetProps) {
+export function ShortcutSheet({ registry, ui, settings, keyboard }: ShortcutSheetProps) {
   const open = useStore(ui, (state) => state.shortcutsOpen);
   const setOpen = useStore(ui, (state) => state.setShortcutsOpen);
   const [filter, setFilter] = useState('');
+  // Not read: a changed key re-renders the sheet and recomputes its rows.
+  const overrides = useKeyOverrides(settings);
   // The filter takes focus as Radix focuses the first tabbable element, after `onOpenAutoFocus`
   // has noted where focus was. The sheet has no trigger element for Radix to give focus back to, so it remembers its own.
   const opener = useRef<HTMLElement | null>(null);
@@ -52,20 +51,17 @@ export function ShortcutSheet({ registry, ui, keyboard }: ShortcutSheetProps) {
             ...entry,
             keys: joinKeys(keyboard === 'mac' ? entry.mac : entry.other),
             spoken,
-            haystack: ALIASES.reduce(
-              (text, [name, aliases]) => text.replaceAll(name, aliases),
-              `${entry.title} ${entry.category} ${entry.context} ${joinKeys(entry.mac)} ${joinKeys(entry.other)} ${spoken}`.toLowerCase(),
+            haystack: searchText(
+              `${entry.title} ${entry.category} ${entry.context} ${joinKeys(entry.mac)} ${joinKeys(entry.other)} ${spoken}`,
             ),
           };
         })
         .filter((entry) => entry.keys !== '—'),
-    [registry, keyboard],
+    // The overrides are read through the registry's keys; naming them re-computes on a change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [registry, keyboard, overrides],
   );
-  // Every word of the filter must appear: "cmd+s" or "shift p" narrow down, not just one phrase.
-  const words = filter
-    .toLowerCase()
-    .split(/[\s+]+/)
-    .filter(Boolean);
+  const words = filterWords(filter);
   const shown = entries.filter((entry) => words.every((word) => entry.haystack.includes(word)));
   const categories = [...new Set(shown.map((entry) => entry.category))];
 
@@ -86,7 +82,8 @@ export function ShortcutSheet({ registry, ui, keyboard }: ShortcutSheetProps) {
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogDescription>
-            Type to filter by command, category or key. Editing keys work in edit mode only.
+            Type to filter by command, category or key. Editing keys work in edit mode only. Change
+            a key in Settings, Keyboard.
           </DialogDescription>
         </DialogHeader>
         <Input

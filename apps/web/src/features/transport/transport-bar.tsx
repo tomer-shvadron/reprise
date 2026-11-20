@@ -1,8 +1,9 @@
-import { useMemo, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 import type { CommandRegistry } from '@/app/command-registry';
 import type { KeyboardPlatform } from '@/app/keyboard';
-import { CommandSourceContext } from '@/app/use-command';
+import { useAppServices } from '@/app/services-context';
+import { CommandSourceContext, useCommandSource } from '@/app/use-command';
 import { Separator } from '@/components/ui/separator';
 
 import { PlaybackButtons } from './playback-buttons';
@@ -25,7 +26,7 @@ const divider = <Separator orientation="vertical" className="h-6!" />;
  * Not `role="toolbar"`: that role takes the arrow keys for roving focus, and the sliders need them.
  */
 export function TransportBar({ registry, keyboard, speedTrainer, tuner }: TransportBarProps) {
-  const source = useMemo(() => ({ registry, keyboard }), [registry, keyboard]);
+  const source = useCommandSource(registry, keyboard, useAppServices().settings);
 
   return (
     <CommandSourceContext value={source}>

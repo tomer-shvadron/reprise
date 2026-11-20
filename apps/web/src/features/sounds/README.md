@@ -54,7 +54,7 @@ folder holds the UI:
   the installed set changes, never on install progress) and a zustand store (`api`, for `useStore`)
   with the actions of the pack manager, below. `InstalledPackSource` and `PackDirectory` are in
   `state/sound-packs.ts`.
-- `playback.trackSounds[trackId]` is `{ tier, packId?, problem?: 'missing' | 'failed', message? }`:
+- `playback.trackSounds[trackId]` is `{ tier, packId?, source?: 'default', problem?: 'missing' | 'failed', message? }`:
   `missing` is a pack (or instrument) the directory lacks, `failed` one the engine could not load.
   Both play GM.
 - `audio.releasePack(id)` reloads without the pack and resolves once the engine holds no reader for

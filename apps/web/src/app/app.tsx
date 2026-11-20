@@ -1,5 +1,5 @@
 import type { Track } from '@reprise/model';
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -54,6 +54,7 @@ import { runCommand } from './command-registry';
 import { DropZone } from './drop-zone';
 import { installFirstGesture } from './first-gesture';
 import { installMenuKeys } from './install-menu-keys';
+import { SHORTCUT_OVERRIDES_SETTING } from './keymap';
 import { formatShortcut, type KeyboardPlatform } from './keyboard';
 import { PanelRail, PanelTabs } from './right-panel';
 import { Notices } from './notices';
@@ -66,7 +67,7 @@ import { installShortcutDispatcher, menuCommandAllowed } from './shortcut-dispat
 import { SETTINGS_SECTIONS } from './settings-sections';
 import { UnsavedChangesHost } from './unsaved-dialog';
 import { installWindowTitle } from './window-title';
-import { CommandSourceContext } from './use-command';
+import { CommandSourceContext, useCommandSource } from './use-command';
 
 checkSections(SETTINGS_SECTIONS);
 
@@ -93,9 +94,9 @@ function RightPanel({ view }: { view: PanelView }) {
 
 export function App({ services, keyboard, onMenuCommand }: AppProps) {
   const { ui, audio } = services;
-  const [registry] = useState(() => createAppRegistry(services));
+  const [registry] = useState(() => createAppRegistry(services, keyboard));
   const [menus] = useState(() => createAppMenus(registry));
-  const source = useMemo(() => ({ registry, keyboard }), [registry, keyboard]);
+  const source = useCommandSource(registry, keyboard, services.settings);
   const theme = useStore(ui, (state) => state.theme);
   const rightPanelView = useStore(ui, (state) => state.rightPanelView);
   const bottomView = useStore(ui, (state) => state.bottomPanel.view);
@@ -157,6 +158,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
         settings: services.settings,
         platform: services.platform,
         keyboard,
+        subscribe: (listener) => services.settings.subscribe(SHORTCUT_OVERRIDES_SETTING, listener),
       }),
     [registry, services, keyboard],
   );
@@ -258,7 +260,9 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             }
           />
         </div>
-        <SettingsDialog sections={SETTINGS_SECTIONS} />
+        <CommandSourceContext value={source}>
+          <SettingsDialog sections={SETTINGS_SECTIONS} />
+        </CommandSourceContext>
         <AppSheet id="library" title="Library" width="wide">
           <LibraryScreen />
         </AppSheet>
@@ -267,7 +271,12 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
         </AppSheet>
         <CommandPalette registry={registry} ui={ui} keyboard={keyboard} services={services} />
         <ContextMenuHost registry={registry} menus={menus} keyboard={keyboard} />
-        <ShortcutSheet registry={registry} ui={ui} keyboard={keyboard} />
+        <ShortcutSheet
+          registry={registry}
+          ui={ui}
+          settings={services.settings}
+          keyboard={keyboard}
+        />
         <DropZone />
         <Notices />
         {/* Outside the frame: the footer is gone in practice mode, and a live region has to stay mounted. */}

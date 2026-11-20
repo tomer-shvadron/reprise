@@ -11,6 +11,7 @@ import {
   createDefaultSounds,
   soundFamilyOf,
 } from './default-sounds';
+import { curatedPack } from './curated-packs';
 import { PACK_FAMILIES } from './manifest';
 
 const fretted = (program: number) => ({ kind: 'fretted' as const, program });
@@ -69,6 +70,15 @@ describe('the family default settings', () => {
           : 'gm';
       expect(DEFAULT_SOUND_SETTINGS[family].default).toEqual(expected);
     }
+  });
+});
+
+describe('EMILYGUITAR_FIVE_VOICES', () => {
+  it('names a curated pack and one of its instruments', () => {
+    const pack = curatedPack(EMILYGUITAR_FIVE_VOICES.packId);
+    expect(pack?.instruments.map((instrument) => instrument.key)).toContain(
+      EMILYGUITAR_FIVE_VOICES.instrument,
+    );
   });
 });
 

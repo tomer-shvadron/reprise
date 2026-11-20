@@ -19,6 +19,7 @@ import {
 import { orderedRange } from '@/features/transport/bar-range';
 import { playheadBar, seekToBar } from '@/features/transport';
 import {
+  adoptEditMenuTarget,
   adoptMenuTarget,
   cursorTick,
   createEditPointer,
@@ -134,13 +135,10 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
   const edit = useEditOverlays();
   const loop = useStore(playback, (state) => state.settings.loop);
   const [preview, setPreview] = useState<BarRange>();
-  // On a Mac a Ctrl+click is a context click: it opens the menu and neither seeks nor selects.
-  // Edit mode has no menu yet, so there it stays a Cmd-style click (it toggles a picked note).
+  // On a Mac a Ctrl+click is a context click, in both modes: it opens the menu and neither seeks
+  // nor selects. There only Cmd toggles a picked note.
   const [gestures] = useState(() =>
-    createGestureTracker({
-      ctrlIsContextClick: () =>
-        detectKeyboardPlatform() === 'mac' && !services.editing.getState().editing,
-    }),
+    createGestureTracker({ ctrlIsContextClick: () => detectKeyboardPlatform() === 'mac' }),
   );
   const editPointer = useMemo(
     () => createEditPointer({ selection, document }),
@@ -217,7 +215,6 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
     }
   };
 
-  // Edit mode has no menu of its own yet, so it keeps the browser's.
   const menuMode = editing ? 'edit' : 'play';
   const menu = useContextMenu((via, event) => {
     const view = handle.current;
@@ -228,6 +225,7 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
     const open = scoreMenuRequest(view.hitAt(event.clientX, event.clientY), services, menuMode);
     // A right-click selects what it opened on, as a click would, but never seeks or moves a loop.
     if (open?.adopt) adoptMenuTarget(services, open.adopt);
+    if (open) adoptEditMenuTarget(services, open, (hit) => editPointer.placeAt(result, hit));
     return open?.request;
   });
 

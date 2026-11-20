@@ -6,6 +6,9 @@ The Settings dialog (⌘, or Ctrl+,, "Settings…" in the palette and the deskto
 - **The shell never changes for a new section.** `app/settings-sections.ts` lists them in order; `checkSections` throws on a repeated id or a key two sections reset.
 - **`openSettings(section?)`** (on the ui store) opens the dialog at a section id. An absent id shows the section shown last (the first, on the first open); an unknown id shows the first.
 
+- **Escape inside a section.** Radix closes the dialog on Escape in the capture phase. A control that handles Escape itself (the Keyboard section's key recorder and its swap prompt) carries `data-escape-local`, and the dialog's `onEscapeKeyDown` leaves it to that control, as `app-sheet.tsx` does with `data-sheet-escape-local`.
+- **Keyboard** (`sections/keyboard/`) needs a `CommandSourceContext` above the dialog, for the registry and the platform; `App` and the dialog test provide it.
+
 ## Adding a section
 
 1. Define the handles in your own folder with `defineSetting` from `@/state/settings`. Keys are dotted camelCase (`score.defaultZoom`), unique app-wide, and are the Dexie row key.

@@ -87,7 +87,9 @@ export function reportTrackLosses(track: Track, index: number, drops: DropCollec
       'Channel chorus, reverb, phaser and tremolo have no gp equivalent',
     );
   }
-  // A General MIDI choice alone loses nothing: Guitar Pro plays the program anyway.
+  // A General MIDI choice alone loses nothing in Guitar Pro, which plays the program anyway. It does
+  // not survive a round trip through Reprise: re-importing the export drops the flag and the track
+  // returns to its family default.
   if (
     track.sound &&
     (track.sound.packId !== undefined ||

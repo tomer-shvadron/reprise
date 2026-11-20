@@ -5,8 +5,8 @@ import { APP_SETTINGS } from '@/state/app-settings';
 import type { SettingDef } from '@/state/settings';
 
 /**
- * Every setting the app registers: the shell's, the library's and every Settings section's,
- * deduplicated by key. A section's handles join by being listed in `app/settings-sections.ts`, so
+ * Every setting the app registers: the shell's, the library's, the sounds feature's and every
+ * Settings section's, deduplicated by key. A section's handles join by being listed in `app/settings-sections.ts`, so
  * a new section gets the relaunch round trip and the restore-defaults check with no edit here.
  */
 export const REGISTERED: readonly SettingDef<unknown>[] = [
@@ -14,9 +14,10 @@ export const REGISTERED: readonly SettingDef<unknown>[] = [
     [
       ...APP_SETTINGS,
       LIBRARY_SORT_SETTING,
+      // Belongs to no section: only the download offer reads it.
+      OFFERED_PACKS_SETTING,
       // Until the Sounds section lists them (#346, part 2).
       ...Object.values(DEFAULT_SOUND_SETTINGS),
-      OFFERED_PACKS_SETTING,
       ...SETTINGS_SECTIONS.flatMap((s) => s.settings),
     ].map((def) => [def.key, def] as const),
   ).values(),
@@ -51,4 +52,5 @@ export const SAMPLES: Record<string, unknown> = {
   'sounds.default.orchestral': { packId: 'anOrchPack01' },
   'sounds.default.other': { packId: 'anOtherPack1' },
   'sounds.offeredPacks': ['qxmLveBRBWt8'],
+  'keyboard.shortcuts': { 'view.toggleViewMode': { key: 'F5' } },
 };
