@@ -51,6 +51,9 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - Changed by #333 (2026-11-20): a slim header band (S-TOP-1) above the score, with the library
   breadcrumb, Play and Edit modes, a View menu and a command-palette search. The arrangement is
   otherwise unchanged. See "Changed by #333" in `../specs/architecture.md`.
+- Changed by #335 (2026-11-20): the bottom region is a tabbed dock (S-BOT-1) that collapses to its
+  tab strip; its open state and height persist as settings. See "Changed by #335" in
+  `../specs/architecture.md`.
 
 ## Related
 
