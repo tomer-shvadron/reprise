@@ -78,6 +78,7 @@ const bridge: RepriseBridge = {
   remove: (path) => invoke('storage:remove', path),
   setRecentSongs: (items) => invoke('menu:set-recent', items),
   setHistoryLabels: (labels) => invoke('menu:set-history', labels),
+  setMenuKeys: (keys) => invoke('menu:set-keys', keys),
   startDownload: (id, url, to, sha256, maxBytes) =>
     invoke('download:start', id, url, to, sha256, maxBytes),
   cancelDownload: (id) => invoke('download:cancel', id),

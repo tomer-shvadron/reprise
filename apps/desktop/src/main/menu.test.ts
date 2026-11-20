@@ -1,7 +1,21 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 
-import { historyItemLabel, MENU_COMMANDS, menuTemplate, type MenuOptions } from './menu';
+import {
+  acceleratorOf,
+  historyItemLabel,
+  MENU_COMMANDS,
+  menuTemplate,
+  type MenuOptions,
+} from './menu';
+
+/** Keys as the renderer sends them (the app's defaults). */
+const KEYS: NonNullable<MenuOptions['keys']> = {
+  'app.settings': { key: ',', mod: true },
+  'file.new': { key: 'n', mod: true },
+  'edit.undo': { key: 'z', mod: true },
+  'edit.redo': { key: 'z', mod: true, shift: true },
+};
 
 function flatten(items: MenuItemConstructorOptions[]): MenuItemConstructorOptions[] {
   return items.flatMap((item) => [
@@ -23,6 +37,7 @@ function template(overrides: Partial<MenuOptions> = {}) {
     docsUrl: 'https://example.com/docs',
     sendCommand: vi.fn(),
     openExternal: vi.fn(),
+    keys: KEYS,
     ...overrides,
   };
   return { options, items: flatten(menuTemplate(options)) };
@@ -112,6 +127,48 @@ describe('menuTemplate', () => {
   });
 });
 
+describe('menu keys', () => {
+  it.each([
+    [{ key: 'n', mod: true }, 'CmdOrCtrl+N'],
+    [{ key: 'z', mod: true, shift: true }, 'CmdOrCtrl+Shift+Z'],
+    [{ key: 'F4' }, 'F4'],
+    [{ key: 'F9', shift: true, alt: true }, 'Alt+Shift+F9'],
+    [{ key: ',', mod: true }, 'CmdOrCtrl+,'],
+    [{ key: '=', mod: true }, 'CmdOrCtrl+='],
+    [{ key: '-', mod: true }, 'CmdOrCtrl+-'],
+    [{ key: '0', mod: true }, 'CmdOrCtrl+0'],
+    // Shift is implied by a punctuation character.
+    [{ key: '?', shift: true }, '?'],
+    [{ key: '+', mod: true, shift: true }, 'CmdOrCtrl+Plus'],
+    [{ key: ' ' }, 'Space'],
+    [{ key: 'ArrowLeft', mod: true }, 'CmdOrCtrl+Left'],
+    [{ key: 'ArrowUp' }, 'Up'],
+    [{ key: 'Enter', alt: true }, 'Alt+Return'],
+    [{ key: 'Home' }, 'Home'],
+  ])('turns %j into %s', (key, accelerator) => {
+    expect(acceleratorOf(key)).toBe(accelerator);
+  });
+
+  it('gives an item the key the renderer sent, and none to the rest', () => {
+    const { items } = template({ keys: { 'file.save': { key: 's', mod: true } } });
+
+    expect(items.find((item) => item.label === 'Save')?.accelerator).toBe('CmdOrCtrl+S');
+    expect(items.find((item) => item.label === 'New Song')?.accelerator).toBeUndefined();
+  });
+
+  it('shows no key at all before the renderer sends them', () => {
+    const { items } = template({ keys: {} });
+
+    expect(items.filter((item) => item.accelerator !== undefined)).toEqual([]);
+  });
+
+  it('shows no key for a command the renderer cleared', () => {
+    const { items } = template({ keys: { 'file.new': null } });
+
+    expect(items.find((item) => item.label === 'New Song')?.accelerator).toBeUndefined();
+  });
+});
+
 describe('the Edit menu history items', () => {
   const edit = (items: MenuItemConstructorOptions[]) => {
     const submenu = items.find((item) => item.label === 'Edit')?.submenu;
@@ -128,7 +185,7 @@ describe('the Edit menu history items', () => {
     const [undo, redo] = edit(template().items);
 
     expect(undo).toMatchObject({ label: 'Undo', accelerator: 'CmdOrCtrl+Z' });
-    expect(redo).toMatchObject({ label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z' });
+    expect(redo).toMatchObject({ label: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z' });
   });
 
   it('names the steps, shows the plain name for an empty stack, and never disables', () => {
@@ -136,7 +193,7 @@ describe('the Edit menu history items', () => {
     const [undo, redo] = edit(items);
 
     expect(undo).toMatchObject({ label: 'Undo setNote', accelerator: 'CmdOrCtrl+Z' });
-    expect(redo).toMatchObject({ label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z' });
+    expect(redo).toMatchObject({ label: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z' });
     expect(undo?.enabled).toBeUndefined();
     expect(redo?.enabled).toBeUndefined();
     press(undo);
