@@ -84,6 +84,14 @@ export function createElectronPlatform(bridge: RepriseBridge, win: Window = wind
         console.error('Could not update the Edit menu', error);
       });
     },
+    setMenuKeys: (keys) =>
+      bridge.setMenuKeys(keys).then(
+        () => true,
+        (error: unknown) => {
+          console.error('Could not update the menu keys', error);
+          return false;
+        },
+      ),
     onOpenRecent: (listener) => bridge.onOpenRecent(listener),
     // Best effort, like the menu: a failed report leaves main on its last known state.
     setDocumentEdited: (edited) => {

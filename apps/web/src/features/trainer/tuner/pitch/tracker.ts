@@ -30,7 +30,7 @@ export interface TrackerStep {
   cutoffHz: number;
 }
 
-/** Thresholds, settled by the pipeline tests in `tracker.test.ts`. */
+/** Thresholds, settled by the pipeline tests in `tracker.test.ts` and `tracker-pipeline-*.test.ts`. */
 export const TRACKER = {
   /** A frame quieter than this (dBFS, RMS) is silence. */
   floorDb: -55,

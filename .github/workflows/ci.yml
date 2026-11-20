@@ -303,17 +303,15 @@ jobs:
 
       - name: Install dependencies
         if: steps.gate.outputs.run == 'true'
+        # No PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: the root postinstall is this job's only Chromium
+        # install, and the audio bench runs in the browser. The install of main below also downloads, so a PR that bumps Playwright benches both sides.
         run: pnpm install --frozen-lockfile
-        env:
-          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
       - name: Install main
         if: steps.gate.outputs.run == 'true'
         run: |
           git worktree add --detach "$RUNNER_TEMP/main" HEAD^1
           pnpm --dir "$RUNNER_TEMP/main" install --frozen-lockfile
-        env:
-          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
       # Read live, not from the event payload, so adding the label and re-running this job is enough.
       - name: Accepted slowdown

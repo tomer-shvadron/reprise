@@ -5,7 +5,7 @@ import { BOTTOM_PANEL_HEIGHT } from './bottom-panel-height';
 import { defineSetting, type SettingDef } from './settings';
 import { PANEL_WIDTH } from './panel-width';
 import { MEMORY_BUDGET_RANGE } from './playback';
-import { ZOOM } from './zoom';
+import { PRACTICE_ZOOM_DEFAULT, ZOOM } from './zoom';
 
 /** The key the pre-paint script `public/theme-bootstrap.js` reads; keep the two in step. */
 export const THEME_STORAGE_KEY = 'reprise.theme';
@@ -86,6 +86,15 @@ export const DEFAULT_ZOOM_SETTING = defineSetting({
   schema: z.number().min(ZOOM.min).max(ZOOM.max),
   default: ZOOM.default,
 });
+/**
+ * The practice mode's zoom, remembered like the panel width: the distance from the screen is the
+ * one thing worth tuning there, and nothing else sets it. The normal zoom is not stored.
+ */
+export const PRACTICE_ZOOM_SETTING = defineSetting({
+  key: 'layout.practiceZoom',
+  schema: z.number().min(ZOOM.min).max(ZOOM.max),
+  default: PRACTICE_ZOOM_DEFAULT,
+});
 
 /** Every handle the app shell defines; the relaunch test walks this list. */
 export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
@@ -103,4 +112,5 @@ export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
   RIGHT_PANEL_WIDTH_SETTING,
   BOTTOM_DOCK_OPEN_SETTING,
   BOTTOM_DOCK_HEIGHT_SETTING,
+  PRACTICE_ZOOM_SETTING,
 ];

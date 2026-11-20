@@ -197,7 +197,8 @@ export function createSpeedTrainer(services: SpeedTrainerServices) {
       start() {
         const { score } = document.getState();
         const range = playback.getState().settings.loop;
-        ui.getState().showPanelView('speedTrainer');
+        // From the practice mode the capsule shows it, and a panel would end the mode.
+        if (!ui.getState().practiceMode.on) ui.getState().showPanelView('speedTrainer');
         if (!score || !range) {
           announce('Loop some bars first');
           return;

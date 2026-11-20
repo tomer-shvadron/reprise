@@ -205,3 +205,84 @@ describe('the bottom panel state', () => {
     expect(ui.getState().bottomPanel).toEqual({ open: false, view: 'fretboard' });
   });
 });
+
+describe('practice mode', () => {
+  function renderPractising() {
+    const ui = createUiStore('dark');
+    render(
+      <TooltipProvider>
+        <AppFrame
+          ui={ui}
+          header={<header>slim</header>}
+          banner={<p>strip</p>}
+          score={<p>score</p>}
+          transport={<p>controls</p>}
+          status={<p>bar</p>}
+          sidebar={<p>tracks</p>}
+          panel={<p>mixer</p>}
+          rail={<p>rail</p>}
+          bottom={<p>fret content</p>}
+          sectionStrip={<nav aria-label="Sections">sections</nav>}
+          capsule={<div role="region" aria-label="Practice controls" />}
+        />
+      </TooltipProvider>,
+    );
+    return ui;
+  }
+
+  it('hides every piece of chrome and shows the strip and the capsule', () => {
+    const ui = renderPractising();
+    act(() => {
+      ui.getState().showPanelView('mixer');
+      ui.getState().showBottomPanelView('fretboard');
+    });
+    expect(screen.getByRole('complementary', { name: 'Panel' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Sections' })).toBeNull();
+
+    act(() => {
+      ui.getState().enterPracticeMode('play');
+    });
+    for (const text of [
+      'slim',
+      'strip',
+      'tracks',
+      'mixer',
+      'rail',
+      'fret content',
+      'controls',
+      'bar',
+    ]) {
+      expect(screen.queryByText(text)).toBeNull();
+    }
+    expect(screen.queryByRole('region', { name: 'Bottom panel' })).toBeNull();
+    expect(screen.queryByRole('contentinfo')).toBeNull();
+    expect(screen.getByRole('navigation', { name: 'Sections' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Practice controls' })).toBeInTheDocument();
+    expect(screen.getByRole('main', { name: 'Score' })).toContainElement(
+      screen.getByRole('region', { name: 'Practice controls' }),
+    );
+  });
+
+  it('keeps the score region mounted, and brings the window back as it was', () => {
+    const ui = renderPractising();
+    act(() => {
+      ui.getState().showPanelView('mixer');
+    });
+    const main = screen.getByRole('main', { name: 'Score' });
+    const score = screen.getByText('score');
+    act(() => {
+      ui.getState().enterPracticeMode('play');
+    });
+    expect(screen.getByRole('main', { name: 'Score' })).toBe(main);
+    expect(screen.getByText('score')).toBe(score);
+
+    act(() => {
+      ui.getState().leavePracticeMode();
+    });
+    expect(screen.getByRole('main', { name: 'Score' })).toBe(main);
+    expect(screen.getByRole('complementary', { name: 'Panel' })).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: 'Tracks' })).toBeInTheDocument();
+    expect(screen.getByRole('contentinfo', { name: 'Transport' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Sections' })).toBeNull();
+  });
+});

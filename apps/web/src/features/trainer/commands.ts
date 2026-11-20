@@ -35,6 +35,11 @@ export function trainerCommands(
   const show = (view: 'speedTrainer' | 'tuner' | 'metronome') => () => {
     ui.getState().showPanelView(view);
   };
+  // Starting a tool from the practice mode shows no panel, which would end the mode: the capsule
+  // and the announcements carry the state. The explicit "Show ..." commands still open it.
+  const showUnlessPractising = (view: 'speedTrainer' | 'tuner' | 'metronome') => {
+    if (!ui.getState().practiceMode.on) ui.getState().showPanelView(view);
+  };
   return [
     { id: 'trainer.speedTrainer', title: 'Show speed trainer', run: show('speedTrainer') },
     {
@@ -43,7 +48,7 @@ export function trainerCommands(
       shortcut: { key: 's', alt: true },
       repeat: false,
       run: () => {
-        ui.getState().showPanelView('speedTrainer');
+        showUnlessPractising('speedTrainer');
         speedTrainer().toggle();
       },
     },
@@ -71,7 +76,7 @@ export function trainerCommands(
       title: 'Start or stop tuner',
       repeat: false,
       run: () => {
-        ui.getState().showPanelView('tuner');
+        showUnlessPractising('tuner');
         tunerFor(services).getState().toggle();
       },
     },
@@ -82,7 +87,7 @@ export function trainerCommands(
       shortcut: { key: 'b', alt: true },
       repeat: false,
       run: () => {
-        ui.getState().showPanelView('metronome');
+        showUnlessPractising('metronome');
         if (services.playback.getState().click.running) services.audio.stopClick();
         else services.audio.startClick();
       },

@@ -403,6 +403,23 @@ describe('ScoreView', () => {
     expect(range?.style.transform).toBe('translate(80px, 100px)');
   });
 
+  it('stops the window short of the bottom inset and pads the scroll content by it', () => {
+    const result = small();
+    const ref = createRef<ScoreViewHandle>();
+    render(<ScoreView layout={result} zoom={1} bottomInset={72} ref={ref} />);
+    stubScroll(region());
+    const handle = ref.current;
+    if (!handle) throw new Error('no handle');
+    expect(region().style.paddingBottom).toBe('72px');
+    expect(handle.viewport().height).toBe(VIEWPORT.height - 72);
+
+    // A reveal leaves the rect above the capsule, not under it.
+    act(() => {
+      handle.revealRect({ x: 100, y: 3000, width: 50, height: 40 }, { margin: 10 });
+    });
+    expect(handle.viewport().y + handle.viewport().height).toBeCloseTo(3050);
+  });
+
   it('reveals a rect by the least scroll and reports the live window', () => {
     const result = small();
     const ref = createRef<ScoreViewHandle>();

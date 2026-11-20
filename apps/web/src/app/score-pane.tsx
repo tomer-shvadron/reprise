@@ -30,8 +30,10 @@ import {
 } from '@/features/editor';
 import { FOLLOW_PLAYHEAD_SETTING } from '@/state/app-settings';
 import { selectRunning } from '@/state/playback';
+import { selectScoreZoom } from '@/state/ui';
 import type { BarRange } from '@/state/selection';
 
+import { PRACTICE_CAPSULE_CLEARANCE } from './practice-mode/clearance';
 import { useBodyContextMenuFallback } from './context-menu/body-fallback';
 import { useContextMenu, useStaticContextMenu } from './context-menu/use-context-menu';
 import { detectKeyboardPlatform } from './keyboard';
@@ -44,7 +46,7 @@ function EmptyPaper({ children }: { children: ReactNode }) {
   const { ui } = useAppServices();
   const { zoom, paper } = useStore(
     ui,
-    useShallow((state) => ({ zoom: state.zoom, paper: state.view.paper })),
+    useShallow((state) => ({ zoom: selectScoreZoom(state), paper: state.view.paper })),
   );
   const size = PAGE_SIZES[paper];
   // The empty paper has a menu too: a way to open a song, before there is a score to act on.
@@ -96,6 +98,7 @@ function FollowButton() {
   const { playback, ui } = useAppServices();
   const running = useStore(playback, selectRunning);
   const following = useStore(ui, (state) => state.follow.on);
+  const practising = useStore(ui, (state) => state.practiceMode.on);
   const followSetting = useSetting(FOLLOW_PLAYHEAD_SETTING);
   // With the setting off nothing follows, so while playing the button always offers a jump to the
   // playhead (one scroll); it is the only on-screen way back.
@@ -104,7 +107,9 @@ function FollowButton() {
     <Button
       variant="secondary"
       size="sm"
-      className="absolute right-4 bottom-4 shadow-md"
+      // The practice capsule floats at the bottom; the button sits above it.
+      className="absolute right-4 shadow-md"
+      style={{ bottom: practising ? PRACTICE_CAPSULE_CLEARANCE : 16 }}
       onClick={() => {
         ui.getState().requestFollow();
       }}
@@ -119,7 +124,8 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
   const services = useAppServices();
   const { document, playback, selection, ui } = services;
   const score = useStore(document, (state) => state.score);
-  const zoom = useStore(ui, (state) => state.zoom);
+  const zoom = useStore(ui, selectScoreZoom);
+  const practising = useStore(ui, (state) => state.practiceMode.on);
   const mode = useStore(ui, (state) => state.view.mode);
   const bars = useStore(selection, (state) => state.bars);
   const range = useStore(selection, (state) => state.range);
@@ -236,6 +242,7 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
         ref={handle}
         layout={result}
         zoom={zoom}
+        bottomInset={practising ? PRACTICE_CAPSULE_CLEARANCE : 0}
         label={label}
         overlays={overlays}
         onScorePointer={onScorePointer}

@@ -75,6 +75,7 @@ test('at the narrowest window the band keeps its height and every control fits',
   for (const control of [
     banner.getByRole('button', { name: 'Library' }),
     banner.getByRole('radio', { name: 'Play' }),
+    banner.getByRole('radio', { name: 'Practice' }),
     banner.getByRole('radio', { name: 'Edit' }),
     banner.getByRole('button', { name: 'View options' }),
     banner.getByRole('button', { name: 'Search commands' }),

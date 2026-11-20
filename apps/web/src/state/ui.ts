@@ -4,7 +4,7 @@ import { create } from 'zustand';
 import { BOTTOM_PANEL_HEIGHT } from './bottom-panel-height';
 import { PANEL_WIDTH } from './panel-width';
 import { initialTheme, type Theme } from './theme';
-import { ZOOM } from './zoom';
+import { PRACTICE_ZOOM_DEFAULT, ZOOM } from './zoom';
 
 export { BOTTOM_PANEL_HEIGHT };
 
@@ -12,7 +12,7 @@ export type PanelId = 'sidebar' | 'rightPanel';
 
 export { PANEL_WIDTH };
 
-export { ZOOM };
+export { PRACTICE_ZOOM_DEFAULT, ZOOM };
 
 /**
  * The sheets that open over the player (#342): the library (WP-060) and the sound manager
@@ -57,6 +57,15 @@ export interface UiFollow {
 /** What the command palette searches: its commands, or one kind of thing the first character picks. */
 export type PaletteMode = 'commands' | 'sections' | 'tracks' | 'songs' | 'bar';
 
+/**
+ * Practice mode (#341) hides the chrome and changes no stored layout: `on` is the whole mode, and
+ * `returnTo` is the mode Escape gives back.
+ */
+export interface PracticeModeState {
+  on: boolean;
+  returnTo: 'play' | 'edit';
+}
+
 export interface UiState {
   theme: Theme;
   view: UiView;
@@ -76,6 +85,9 @@ export interface UiState {
   /** The height last committed by `persistBottomPanelHeight`, which is what gets stored. */
   bottomPanelHeightCommitted: number;
   zoom: number;
+  /** The practice mode's own zoom, read in its place while the mode is on. */
+  practiceZoom: number;
+  practiceMode: PracticeModeState;
   paletteOpen: boolean;
   /** The mode the palette was asked to open in; `undefined` is plain commands. */
   paletteMode: PaletteMode | undefined;
@@ -111,6 +123,10 @@ export interface UiState {
   /** Commits the height for storing; call when a resize ends, not on every step. */
   persistBottomPanelHeight: () => void;
   setZoom: (zoom: number) => void;
+  setPracticeZoom: (zoom: number) => void;
+  /** Hides the chrome; `returnTo` is what leaving gives back. Nothing stored changes. */
+  enterPracticeMode: (returnTo: PracticeModeState['returnTo']) => void;
+  leavePracticeMode: () => void;
   setPaletteOpen: (open: boolean) => void;
   /** Opens the palette in `mode`, or restarts an open one there. */
   openPalette: (mode?: PaletteMode) => void;
@@ -137,6 +153,11 @@ function followAfterResize(get: () => UiState) {
   if (get().follow.on) get().requestFollow('layout');
 }
 
+/** The zoom the score shows: the practice mode's own while it is on. */
+export function selectScoreZoom(state: Pick<UiState, 'zoom' | 'practiceZoom' | 'practiceMode'>) {
+  return state.practiceMode.on ? state.practiceZoom : state.zoom;
+}
+
 export function createUiStore(theme: Theme = initialTheme()) {
   return create<UiState>()((set, get) => ({
     theme,
@@ -153,6 +174,8 @@ export function createUiStore(theme: Theme = initialTheme()) {
     bottomPanelHeight: BOTTOM_PANEL_HEIGHT.default,
     bottomPanelHeightCommitted: BOTTOM_PANEL_HEIGHT.default,
     zoom: ZOOM.default,
+    practiceZoom: PRACTICE_ZOOM_DEFAULT,
+    practiceMode: { on: false, returnTo: 'play' },
     paletteOpen: false,
     paletteMode: undefined,
     paletteRequest: 0,
@@ -163,15 +186,28 @@ export function createUiStore(theme: Theme = initialTheme()) {
       set({ theme: next });
     },
     setPanelOpen: (panel, open) => {
+      if (open) get().leavePracticeMode();
       set((state) => ({ panels: { ...state.panels, [panel]: open }, panelRestored: false }));
     },
     togglePanel: (panel) => {
+      // A toggle that finds the mode on shows what is not showing; it never closes what the user
+      // cannot see.
+      if (get().practiceMode.on) {
+        get().leavePracticeMode();
+        if (get().panels[panel]) return;
+      }
       set((state) => ({
         panels: { ...state.panels, [panel]: !state.panels[panel] },
         panelRestored: false,
       }));
     },
     toggleMixer: () => {
+      if (get().practiceMode.on) {
+        get().leavePracticeMode();
+        const { panels, rightPanelView } = get();
+        if (!(panels.rightPanel && rightPanelView === 'mixer')) get().showPanelView('mixer');
+        return;
+      }
       const { panels, rightPanelView } = get();
       if (panels.rightPanel && rightPanelView === 'mixer') get().setPanelOpen('rightPanel', false);
       else get().showPanelView('mixer');
@@ -186,6 +222,7 @@ export function createUiStore(theme: Theme = initialTheme()) {
       if (get().sheet !== undefined) set({ sheet: undefined });
     },
     showPanelView: (view) => {
+      get().leavePracticeMode();
       set((state) => ({
         rightPanelView: view,
         panels: { ...state.panels, rightPanel: true },
@@ -197,16 +234,22 @@ export function createUiStore(theme: Theme = initialTheme()) {
       set((state) => ({ panelWidths: { ...state.panelWidths, [panel]: clamp(width, min, max) } }));
     },
     showBottomPanelView: (view) => {
+      get().leavePracticeMode();
       set({ bottomPanel: { open: true, view } });
       followAfterResize(get);
     },
     toggleBottomPanelView: (view) => {
+      const wasPractising = get().practiceMode.on;
+      if (wasPractising) get().leavePracticeMode();
       const { open, view: shown } = get().bottomPanel;
       const showing: BottomPanelView | undefined = open ? shown : undefined;
+      // Practising hid the dock, so a toggle there shows what is not showing and closes nothing.
+      if (wasPractising && showing === view) return;
       if (showing === view) get().setBottomPanelOpen(false);
       else get().showBottomPanelView(view);
     },
     setBottomPanelOpen: (open) => {
+      if (open) get().leavePracticeMode();
       set((state) => ({ bottomPanel: { ...state.bottomPanel, open } }));
       followAfterResize(get);
     },
@@ -221,6 +264,19 @@ export function createUiStore(theme: Theme = initialTheme()) {
     },
     setZoom: (zoom) => {
       set({ zoom: clamp(zoom, ZOOM.min, ZOOM.max) });
+    },
+    setPracticeZoom: (zoom) => {
+      set({ practiceZoom: clamp(zoom, ZOOM.min, ZOOM.max) });
+    },
+    enterPracticeMode: (returnTo) => {
+      if (get().practiceMode.on) return;
+      set({ practiceMode: { on: true, returnTo } });
+      followAfterResize(get);
+    },
+    leavePracticeMode: () => {
+      if (!get().practiceMode.on) return;
+      set((state) => ({ practiceMode: { ...state.practiceMode, on: false } }));
+      followAfterResize(get);
     },
     setPaletteOpen: (open) => {
       set(open ? { paletteOpen: true } : { paletteOpen: false, paletteMode: undefined });

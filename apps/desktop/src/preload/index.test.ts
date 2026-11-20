@@ -34,4 +34,10 @@ describe('the preload script', () => {
       else expect(specifier).toBe('electron');
     }
   });
+
+  it('exposes setMenuKeys as a plain invoke of menu:set-keys, and nothing wider', () => {
+    expect(source).toContain("setMenuKeys: (keys) => invoke('menu:set-keys', keys),");
+    // One generic channel in, no raw ipcRenderer handed to the page.
+    expect(source).not.toMatch(/exposeInMainWorld\('[^']+',\s*ipcRenderer/);
+  });
 });
