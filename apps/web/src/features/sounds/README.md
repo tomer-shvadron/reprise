@@ -5,17 +5,17 @@
 
 Today it holds only the entry points the lead stubbed in WP-056:
 
-| Export                          | What it is                                                                                                |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `SoundManager`                  | The Sounds screen (WP-091): packs, curated list, installs, remove. Shown while `ui.screen` is `'sounds'`. |
-| `soundsCommands` (`./commands`) | `sounds.show` ("Show sound manager"), which sets the screen.                                              |
-| `instrumentLabel`               | `(instrumentId, packs)`: the name of a resident instrument, see "Memory" below.                           |
-| `TrackEffectsPicker`            | `({ trackId, label? })`: a select of the track's effects preset (WP-092), see below.                      |
-| `TrackSoundPicker`              | `({ trackId, label?, generalMidi? })`: a select of the track's sound pack (WP-091), see below.            |
+| Export                          | What it is                                                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `SoundManager`                  | The Sounds sheet (WP-091): packs, curated list, installs, remove. Shown while `ui.sheet` is `'sounds'`. |
+| `soundsCommands` (`./commands`) | `sounds.show` ("Show sound manager"), which opens the sheet.                                            |
+| `instrumentLabel`               | `(instrumentId, packs)`: the name of a resident instrument, see "Memory" below.                         |
+| `TrackEffectsPicker`            | `({ trackId, label? })`: a select of the track's effects preset (WP-092), see below.                    |
+| `TrackSoundPicker`              | `({ trackId, label?, generalMidi? })`: a select of the track's sound pack (WP-091), see below.          |
 
 ## What it can rely on
 
-- `ui.screen` and `ui.setScreen`: the sound manager is a full-window screen.
+- `ui.sheet`, `ui.showSheet` and `ui.closeSheet`: the sound manager is a modal sheet over the player.
 - `document.songId`: the library song a pack assignment attaches to (ADR-0012); WP-091 stores it per song.
 - `playback.memory` mirrors the engine's memory report; the memory panel reads it.
 - `platform().dataDir()` for `sounds/<id>/`.
@@ -59,7 +59,7 @@ folder holds the UI:
   Both play GM.
 - `audio.releasePack(id)` reloads without the pack and resolves once the engine holds no reader for
   it; call it before deleting the folder.
-- The drop zone ignores drops while `ui.screen` is `'sounds'`: the screen takes a dropped zip.
+- The drop zone ignores drops while `ui.sheet` is `'sounds'`: the sheet takes a dropped zip.
 
 ## Pack manager (WP-091, [ADR-0028](../../../../../docs/decisions/0028-sound-packs-stored-under-data-sounds-and-a-curated-list-of-confirmed-licences.md))
 

@@ -433,7 +433,7 @@ describe('recent songs', () => {
     const { services, library } = setup();
     library.showRecent();
     expect(library.store.getState().sort).toBe('lastOpened');
-    expect(services.ui.getState().screen).toBe('library');
+    expect(services.ui.getState().sheet).toBe('library');
   });
 });
 

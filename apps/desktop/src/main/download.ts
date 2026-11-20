@@ -20,7 +20,7 @@ import {
 
 const DOWNLOAD_DIR = 'data/sounds/';
 
-/** More would only compete for one connection; the Sounds screen runs one at a time. */
+/** More would only compete for one connection; the Sounds sheet runs one at a time. */
 export const MAX_ACTIVE_DOWNLOADS = 4;
 
 /**

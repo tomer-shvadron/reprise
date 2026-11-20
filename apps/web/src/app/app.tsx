@@ -23,7 +23,12 @@ import {
 } from '@/features/library';
 import { checkSections, SettingsDialog } from '@/features/settings';
 import { SoundManager } from '@/features/sounds';
-import { installPracticeLog, TrainerPanel } from '@/features/trainer';
+import {
+  installPracticeLog,
+  SpeedTrainerChip,
+  TrainerPanel,
+  TunerButton,
+} from '@/features/trainer';
 import { PrintDialog, PrintRoot } from '@/features/score';
 import { MixerPanel, TrackSidebar } from '@/features/tracks';
 import { TransportBar } from '@/features/transport';
@@ -32,6 +37,7 @@ import { installHistoryMenu } from '@/state/history-menu';
 import type { PanelView } from '@/state/ui';
 
 import { AppFrame } from './app-frame';
+import { AppSheet } from './app-sheet';
 import { AppHeader } from './header/app-header';
 import { installCloseGuard } from './close-guard';
 import { installBottomDock } from './bottom-dock/install-bottom-dock';
@@ -52,7 +58,6 @@ import { Notices } from './notices';
 import { SavePromptDialog } from './save-prompt';
 import { ScorePane } from './score-pane';
 import { StatusBar } from './status-bar/status-bar';
-import { ScreenHost } from './screen-host';
 import type { AppServices } from './services';
 import { AppServicesProvider } from './services-context';
 import { installShortcutDispatcher, menuCommandAllowed } from './shortcut-dispatcher';
@@ -90,7 +95,6 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   const [menus] = useState(() => createAppMenus(registry));
   const source = useMemo(() => ({ registry, keyboard }), [registry, keyboard]);
   const theme = useStore(ui, (state) => state.theme);
-  const screen = useStore(ui, (state) => state.screen);
   const rightPanelView = useStore(ui, (state) => state.rightPanelView);
   const bottomView = useStore(ui, (state) => state.bottomPanel.view);
 
@@ -177,7 +181,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   return (
     <AppServicesProvider services={services}>
       <TooltipProvider>
-        <div className="h-full" inert={screen !== 'player'}>
+        <div className="h-full">
           <AppFrame
             ui={ui}
             header={
@@ -187,7 +191,14 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             }
             score={<ScorePane hint={hint} />}
             banner={<UnimportedBanner />}
-            transport={<TransportBar registry={registry} keyboard={keyboard} />}
+            transport={
+              <TransportBar
+                registry={registry}
+                keyboard={keyboard}
+                speedTrainer={<SpeedTrainerChip />}
+                tuner={<TunerButton />}
+              />
+            }
             status={
               <CommandSourceContext value={source}>
                 <StatusBar />
@@ -223,17 +234,13 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             }
           />
         </div>
-        {screen !== 'player' && (
-          <ScreenHost
-            label={screen === 'library' ? 'Library' : 'Sounds'}
-            onClose={() => {
-              ui.getState().setScreen('player');
-            }}
-          >
-            {screen === 'library' ? <LibraryScreen /> : <SoundManager />}
-          </ScreenHost>
-        )}
         <SettingsDialog sections={SETTINGS_SECTIONS} />
+        <AppSheet id="library" title="Library" width="wide">
+          <LibraryScreen />
+        </AppSheet>
+        <AppSheet id="sounds" title="Sounds" width="medium">
+          <SoundManager />
+        </AppSheet>
         <CommandPalette registry={registry} ui={ui} keyboard={keyboard} services={services} />
         <ContextMenuHost registry={registry} menus={menus} keyboard={keyboard} />
         <ShortcutSheet registry={registry} ui={ui} keyboard={keyboard} />

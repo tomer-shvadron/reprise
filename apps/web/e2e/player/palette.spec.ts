@@ -50,6 +50,9 @@ test.describe('the library prefix', () => {
     await expect(page.getByRole('status').filter({ hasText: /^Imported 2/ })).toBeVisible({
       timeout: 30_000,
     });
+    // The import opens the Library sheet, and a palette needs no other dialog open.
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Library' })).toHaveCount(0);
   });
 
   test('/ opens a library song, and asks before leaving an unsaved one', async ({ app, page }) => {

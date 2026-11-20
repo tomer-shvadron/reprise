@@ -19,14 +19,16 @@ test('entering edit mode leaves the score exactly as tall as it was', async ({ p
   expect(bar?.height).toBeCloseTo(STATUS_HEIGHT, 0);
 });
 
-test('the library and sound segments open their screens', async ({ page }) => {
+test('the library and sound segments open their sheets', async ({ page }) => {
   const bar = page.getByRole('region', { name: 'Status' });
   await bar.getByRole('button', { name: /library/i }).click();
-  await expect(page.getByRole('region', { name: 'Library' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Library' })).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('region', { name: 'Library' })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Library' })).toHaveCount(0);
   await bar.locator('[data-sound-status]').click();
-  await expect(page.getByRole('region', { name: 'Sounds' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Sounds' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Sounds' })).toHaveCount(0);
 });
 
 test('zooming from the zoom segment keeps focus with the page, so Space plays', async ({

@@ -60,6 +60,9 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - Changed by #337 (2026-11-20): context menus come from one host (the header and the right panel
   first, the other surfaces in later parts): the right-click and Shift+F10 route to the same menu,
   and what a menu lists depends on the mode. The arrangement is unchanged. See "Changed by #337" in `../specs/architecture.md`.
+- Changed by #340 (2026-11-20): the transport gains a speed-trainer chip after the loop and a tuner
+  button after the click (S-PRAC-1); both open the panel's Practice tab. See "Changed by #340" in
+  `../specs/architecture.md`.
 - Changed by #338 (2026-11-20): the command palette takes go-to prefixes (`#` sections, `@` tracks,
   `/` songs, a number for a bar) and ⌘G opens it on a bar number. The arrangement is unchanged. See
   "Changed by #338" in `../specs/architecture.md`.
@@ -69,6 +72,9 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - Changed by #343 (2026-11-20): the theme is a setting with three values, System, Light and Dark, and
   System, which follows the operating system, is the default, so "dark theme by default" holds only
   where the system is dark. See "Changed by #343" in `../specs/architecture.md`.
+- Changed by #342 (2026-11-20): non-score views open as modal dialogs or sheets over the player,
+  never as full-window screens; the Library and the Sounds manager are bottom sheets over a dimmed
+  player. See "Changed by #342" in `../specs/architecture.md`.
 
 ## Related
 

@@ -205,7 +205,7 @@ export function createDraftRecovery(deps: DraftRecoveryDeps): DraftRecovery {
           return true;
         }
         document.getState().newDocument(score, { modified: true });
-        services.ui.getState().setScreen('player');
+        services.ui.getState().closeSheet();
       }
     } catch (error) {
       deps.notify(

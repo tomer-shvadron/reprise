@@ -33,7 +33,7 @@ const announced = (services: Awaited<ReturnType<typeof setup>>['services']) =>
 describe('resumePractice', () => {
   it('opens the song first, then sets the loop and tempo and shows the player', async () => {
     const { services, open, ids } = await setup();
-    services.ui.getState().setScreen('library');
+    services.ui.getState().showSheet('library');
     await resumePractice(
       services,
       SONG,
@@ -51,7 +51,7 @@ describe('resumePractice', () => {
     expect(services.playback.getState().settings.tempo).toEqual({ mode: 'percent', value: 85 });
     // The song has not loaded in this test, and seeking before the load does nothing.
     expect(services.fakeAudio.seek).not.toHaveBeenCalled();
-    expect(services.ui.getState().screen).toBe('player');
+    expect(services.ui.getState().sheet).toBeUndefined();
     expect(announced(services)).toContain('bars 2 to 3');
   });
 

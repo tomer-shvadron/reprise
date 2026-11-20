@@ -55,7 +55,7 @@ describe('the memory panel, over the real audio service', () => {
       target: { value: 'SynthPack001/default' },
     });
     await p.services.audio.settled();
-    p.services.ui.getState().setScreen('sounds');
+    p.services.ui.getState().showSheet('sounds');
     const panel = await screen.findByRole('region', { name: 'Memory' });
     const engine = () => p.services.audio.debug().engine;
 

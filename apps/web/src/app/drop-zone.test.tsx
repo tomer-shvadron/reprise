@@ -7,6 +7,9 @@ import { renderWithServices } from '@/test/render';
 
 import { libraryOf } from '@/features/library';
 
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+
+import { AppSheet } from './app-sheet';
 import { DropZone } from './drop-zone';
 
 function dragEvent(
@@ -47,9 +50,9 @@ async function importLanded(services: ReturnType<typeof renderWithServices>['ser
 }
 
 describe('DropZone', () => {
-  it('cancels the drop but opens and imports nothing while the Sounds screen shows', async () => {
+  it('cancels the drop but opens and imports nothing while the Sounds sheet shows', async () => {
     const { services } = renderWithServices(<DropZone />);
-    services.ui.getState().setScreen('sounds');
+    services.ui.getState().showSheet('sounds');
     const file = await riff();
 
     act(() => {
@@ -66,7 +69,7 @@ describe('DropZone', () => {
     expect(drop.defaultPrevented).toBe(true);
     expect(services.document.getState().score).toBeUndefined();
     expect(libraryOf(services).store.getState().entries).toHaveLength(0);
-    expect(services.ui.getState().screen).toBe('sounds');
+    expect(services.ui.getState().sheet).toBe('sounds');
   });
 
   it('shows the overlay while files are dragged over, and opens the dropped file', async () => {
@@ -137,14 +140,14 @@ describe('DropZone', () => {
     expect(await libraryOf(services).repo.all()).toEqual([]);
   });
 
-  it('imports several dropped files as a batch on the library screen', async () => {
+  it('imports several dropped files as a batch on the library sheet', async () => {
     const { services } = renderWithServices(<DropZone />);
     const one = await riff('One');
     const two = await riff('Two');
     act(() => {
       window.dispatchEvent(dragEvent('drop', [one, two]));
     });
-    expect(services.ui.getState().screen).toBe('library');
+    expect(services.ui.getState().sheet).toBe('library');
     const library = libraryOf(services);
     await waitFor(() => {
       expect(library.importer.store.getState()).toMatchObject({ phase: 'done', imported: 2 });
@@ -152,9 +155,9 @@ describe('DropZone', () => {
     expect(services.document.getState().score).toBeUndefined();
   });
 
-  it('imports a single dropped file as a batch while the library screen is up', async () => {
+  it('imports a single dropped file as a batch while the library sheet is up', async () => {
     const { services } = renderWithServices(<DropZone />);
-    services.ui.getState().setScreen('library');
+    services.ui.getState().showSheet('library');
     const file = await riff();
     act(() => {
       window.dispatchEvent(dragEvent('dragenter', [file]));
@@ -167,6 +170,62 @@ describe('DropZone', () => {
     await waitFor(() => {
       expect(library.importer.store.getState()).toMatchObject({ phase: 'done', imported: 1 });
     });
+    expect(services.document.getState().score).toBeUndefined();
+  });
+
+  it('imports a single file as a batch with the Library sheet itself mounted', async () => {
+    const { services } = renderWithServices(
+      <>
+        <DropZone />
+        <AppSheet id="library" title="Library" width="wide">
+          <p>list</p>
+        </AppSheet>
+      </>,
+    );
+    act(() => {
+      services.ui.getState().showSheet('library');
+    });
+    const file = await riff();
+    act(() => {
+      window.dispatchEvent(dragEvent('dragenter', [file]));
+    });
+    // Above the sheet's own z-50 portal.
+    expect(screen.getByText('Drop to import').parentElement).toHaveClass('z-[60]');
+    act(() => {
+      window.dispatchEvent(dragEvent('drop', [file]));
+    });
+    const library = libraryOf(services);
+    await waitFor(() => {
+      expect(library.importer.store.getState()).toMatchObject({ phase: 'done', imported: 1 });
+    });
+    expect(services.document.getState().score).toBeUndefined();
+    expect(services.ui.getState().sheet).toBe('library');
+  });
+
+  it('ignores a drop while a dialog is up over the Library sheet', async () => {
+    const { services } = renderWithServices(
+      <>
+        <DropZone />
+        <AppSheet id="library" title="Library" width="wide">
+          <p>list</p>
+        </AppSheet>
+        <Dialog open>
+          <DialogContent>
+            <DialogTitle>Delete</DialogTitle>
+          </DialogContent>
+        </Dialog>
+      </>,
+    );
+    act(() => {
+      services.ui.getState().showSheet('library');
+    });
+    const file = await riff();
+    const drop = dragEvent('drop', [file]);
+    act(() => {
+      window.dispatchEvent(drop);
+    });
+    expect(drop.defaultPrevented).toBe(true);
+    expect(libraryOf(services).importer.store.getState().phase).toBe('idle');
     expect(services.document.getState().score).toBeUndefined();
   });
 
