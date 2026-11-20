@@ -74,6 +74,84 @@ describe('installPracticeMode', () => {
     stop();
   });
 
+  it('gives focus back to the chrome control it left, and parks it on the score meanwhile', async () => {
+    const { services, deps, stop } = await setup();
+    const region = globalThis.document.createElement('main');
+    region.tabIndex = -1;
+    const control = globalThis.document.createElement('button');
+    globalThis.document.body.append(region, control);
+    const frames = async () => {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    };
+    control.focus();
+    enterPracticeMode(deps);
+    // What a browser does when the focused element turns inert.
+    control.blur();
+    await frames();
+    expect(globalThis.document.activeElement).toBe(region);
+
+    services.ui.getState().leavePracticeMode();
+    await frames();
+    await frames();
+    expect(globalThis.document.activeElement).toBe(control);
+    region.remove();
+    control.remove();
+    stop();
+  });
+
+  it('finds the remounted control by role and label, and falls back to the score', async () => {
+    const { services, deps, stop } = await setup();
+    const region = globalThis.document.createElement('main');
+    region.tabIndex = -1;
+    const slider = (label: string) => {
+      const element = globalThis.document.createElement('span');
+      element.setAttribute('role', 'slider');
+      element.setAttribute('aria-label', label);
+      element.tabIndex = 0;
+      return element;
+    };
+    const old = slider('Volume of Lead');
+    globalThis.document.body.append(region, old);
+    const frames = async () => {
+      for (let i = 0; i < 3; i += 1) await new Promise((resolve) => requestAnimationFrame(resolve));
+    };
+    old.focus();
+    enterPracticeMode(deps);
+    old.remove();
+    const remounted = slider('Volume of Lead');
+    globalThis.document.body.append(remounted);
+    // A panel taking focus on mount, as `focusPanelSection` does.
+    const section = globalThis.document.createElement('section');
+    section.tabIndex = -1;
+    globalThis.document.body.append(section);
+    services.ui.getState().leavePracticeMode();
+    section.focus();
+    await frames();
+    expect(globalThis.document.activeElement).toBe(remounted);
+
+    remounted.focus();
+    enterPracticeMode(deps);
+    remounted.remove();
+    services.ui.getState().leavePracticeMode();
+    await frames();
+    expect(globalThis.document.activeElement).toBe(region);
+    region.remove();
+    section.remove();
+    stop();
+  });
+
+  it('does not move focus to the score after an entry from the body', async () => {
+    const { deps, stop } = await setup();
+    const region = globalThis.document.createElement('main');
+    region.tabIndex = -1;
+    globalThis.document.body.append(region);
+    enterPracticeMode(deps);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(globalThis.document.activeElement).toBe(globalThis.document.body);
+    region.remove();
+    stop();
+  });
+
   it('returns to Play when it was entered from Play', async () => {
     const { services, deps, stop } = await setup();
     enterPracticeMode(deps);

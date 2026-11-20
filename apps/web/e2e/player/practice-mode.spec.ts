@@ -129,11 +129,65 @@ test('the capsule has a shadow in light and an outline in dark', async ({ page }
       const visible = layers.some(
         (layer) => layer !== 'none' && !layer.includes('rgba(0, 0, 0, 0)'),
       );
-      return { visible, border: Number.parseFloat(computed.borderTopWidth) };
+      return { visible, border: computed.borderTopColor };
     });
     expect(style.visible).toBe(shadow);
-    if (!shadow) expect(style.border).toBeGreaterThan(0);
+    // The capsule has a 1px transparent border in both themes, so the colour tells them apart.
+    if (shadow) expect(style.border).toBe('rgba(0, 0, 0, 0)');
+    else expect(style.border).not.toBe('rgba(0, 0, 0, 0)');
   }
+});
+
+test('a looped bar ends above the capsule, and the page is zoomed 1.5 times', async ({
+  app,
+  page,
+}) => {
+  const pageWidth = () =>
+    page
+      .locator('.score-page')
+      .first()
+      .evaluate((el) => el.clientWidth);
+  const normal = await pageWidth();
+  await radio(page, 'Practice').click();
+  await expect(capsule(page)).toBeVisible();
+  await expect.poll(pageWidth).toBeCloseTo(normal * 1.5, -1);
+
+  await page.keyboard.press('ControlOrMeta+End');
+  await app.settle();
+  const bar = await page.locator('[data-playhead] .score-bar-highlight').boundingBox();
+  const pill = await capsule(page).boundingBox();
+  expect(bar).not.toBeNull();
+  expect(pill).not.toBeNull();
+  expect((bar?.y ?? Infinity) + (bar?.height ?? 0)).toBeLessThanOrEqual(pill?.y ?? 0);
+});
+
+test('Escape returns focus to the control that had it, and the mixer does not take it', async ({
+  page,
+}) => {
+  await page.keyboard.press('F8');
+  const slider = page.getByRole('slider', { name: /^Volume of / }).first();
+  await slider.focus();
+  await page.keyboard.press('F11');
+  await expect(capsule(page)).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(capsule(page)).toHaveCount(0);
+  await expect(slider).toBeFocused();
+
+  const practice = radio(page, 'Practice');
+  await practice.focus();
+  await page.keyboard.press('Space');
+  await expect(capsule(page)).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(capsule(page)).toHaveCount(0);
+  await expect(practice).toBeFocused();
+});
+
+test('a click entry leaves focus on the body, with no frame around the window', async ({
+  page,
+}) => {
+  await radio(page, 'Practice').click();
+  await expect(capsule(page)).toBeVisible();
+  await expect(page.locator('body')).toBeFocused();
 });
 
 test('at 800 by 600 the capsule and the strip fit the window', async ({ page }) => {
