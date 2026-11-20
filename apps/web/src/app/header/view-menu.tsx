@@ -1,16 +1,16 @@
-import type { Notation } from '@reprise/model';
 import { ChevronDownIcon, EyeIcon } from 'lucide-react';
-import { useId, useRef } from 'react';
+import { useId } from 'react';
 import { useStore } from 'zustand';
 
 import { keepFocus } from '@/app/command-control';
+import { useMenuFocusReturn } from '@/app/menu-focus-return';
 import { useAppServices } from '@/app/services-context';
-import { useCommand, type RegisteredCommandId } from '@/app/use-command';
+import { NOTATIONS, NotationRadioItems, ZoomItems } from '@/app/view-items';
+import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -19,68 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-  effectiveNotation,
-  NO_TAB_REASON,
-  NOTATION_NAMES,
-  notationChoices,
-} from '@/features/tracks';
-import { ZOOM } from '@/state/ui';
-
-const NOTATION_COMMANDS: Record<Notation, RegisteredCommandId> = {
-  tab: 'track.notationTab',
-  standard: 'track.notationStandard',
-  both: 'track.notationBoth',
-};
-const NOTATIONS: readonly Notation[] = ['tab', 'standard', 'both'];
-
-function NotationItem({
-  notation,
-  disabled,
-  active,
-}: {
-  notation: Notation;
-  disabled: boolean;
-  active: boolean;
-}) {
-  const command = useCommand(NOTATION_COMMANDS[notation]);
-  return (
-    <DropdownMenuRadioItem
-      value={notation}
-      disabled={disabled}
-      onSelect={() => {
-        if (!active) command.run();
-      }}
-    >
-      {NOTATION_NAMES[notation]}
-    </DropdownMenuRadioItem>
-  );
-}
-
-function ZoomItem({
-  command,
-  label,
-  disabled,
-}: {
-  command: RegisteredCommandId;
-  label: string;
-  disabled?: boolean;
-}) {
-  const bound = useCommand(command);
-  return (
-    <DropdownMenuItem
-      disabled={disabled}
-      onSelect={(event) => {
-        // Zoom steps repeat, so the menu stays open.
-        event.preventDefault();
-        bound.run();
-      }}
-    >
-      {label}
-      {bound.keys && <DropdownMenuShortcut>{bound.keys}</DropdownMenuShortcut>}
-    </DropdownMenuItem>
-  );
-}
+import { effectiveNotation, NO_TAB_REASON, notationChoices } from '@/features/tracks';
 
 /** Layout, zoom and the current track's notation, each running its registered command. */
 export function ViewMenu() {
@@ -96,14 +35,7 @@ export function ViewMenu() {
   const notation = track ? effectiveNotation(track, notationByTrack) : undefined;
   const limited = track !== undefined && choices.length > 0 && choices.length < NOTATIONS.length;
   const reasonId = useId();
-  // Where focus was when the menu opened: Radix would return it to the trigger, which then takes
-  // the next Space, so only someone who tabbed to the trigger goes back to it.
-  const returnTo = useRef<Element | null>(null);
-  // Recorded on the trigger before Radix's own handler opens the menu, so it never reads the
-  // menu's content. Only the trigger opens this menu.
-  const remember = () => {
-    returnTo.current = globalThis.document.activeElement;
-  };
+  const focusReturn = useMenuFocusReturn();
 
   return (
     <DropdownMenu>
@@ -115,8 +47,8 @@ export function ViewMenu() {
               size="xs"
               aria-label="View options"
               onMouseDown={keepFocus}
-              onPointerDownCapture={remember}
-              onKeyDownCapture={remember}
+              onPointerDownCapture={focusReturn.remember}
+              onKeyDownCapture={focusReturn.remember}
             >
               <EyeIcon aria-hidden="true" />
               <span className="hidden whitespace-nowrap md:inline">View</span>
@@ -130,18 +62,7 @@ export function ViewMenu() {
         align="end"
         className="w-60"
         aria-describedby={limited ? reasonId : undefined}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          const target = returnTo.current;
-          returnTo.current = null;
-          if (
-            target instanceof HTMLElement &&
-            target.isConnected &&
-            target !== globalThis.document.body
-          ) {
-            target.focus();
-          }
-        }}
+        onCloseAutoFocus={focusReturn.onCloseAutoFocus}
       >
         <DropdownMenuLabel>Layout</DropdownMenuLabel>
         <DropdownMenuRadioGroup
@@ -165,21 +86,10 @@ export function ViewMenu() {
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuLabel>Zoom {Math.round(zoom * 100)}%</DropdownMenuLabel>
-        <ZoomItem command="view.zoomIn" label="Zoom in" disabled={zoom >= ZOOM.max} />
-        <ZoomItem command="view.zoomOut" label="Zoom out" disabled={zoom <= ZOOM.min} />
-        <ZoomItem command="view.zoomReset" label="Actual size" />
+        <ZoomItems zoom={zoom} />
         <DropdownMenuSeparator />
         <DropdownMenuLabel>{track ? `Notation · ${track.name}` : 'Notation'}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={notation ?? ''}>
-          {NOTATIONS.map((choice) => (
-            <NotationItem
-              key={choice}
-              notation={choice}
-              disabled={!choices.includes(choice)}
-              active={notation === choice}
-            />
-          ))}
-        </DropdownMenuRadioGroup>
+        <NotationRadioItems choices={choices} notation={notation} />
         {limited && (
           <p id={reasonId} className="text-muted-foreground max-w-56 px-1.5 py-1 text-xs">
             {NO_TAB_REASON}
