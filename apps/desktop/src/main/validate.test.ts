@@ -231,10 +231,18 @@ describe('menu:set-keys', () => {
     ['c', { mod: true }],
     ['x', { mod: true }],
     ['v', { mod: true }],
-  ])('refuses %s with %j, a key the menu keeps for its roles', (key, modifiers) => {
-    expect(() => parsers['menu:set-keys']([{ 'file.save': { key, ...modifiers } }])).toThrow(
-      PayloadError,
-    );
+  ])('leaves a command given %s with %j, a role key, without a key', (key, modifiers) => {
+    expect(parsers['menu:set-keys']([{ 'file.save': { key, ...modifiers } }])).toEqual([
+      { 'file.save': null },
+    ]);
+  });
+
+  it('keeps the rest of the map when one entry clashes with a role key', () => {
+    expect(
+      parsers['menu:set-keys']([
+        { 'file.save': { key: 'q', mod: true }, 'file.new': { key: 'n', mod: true } },
+      ]),
+    ).toEqual([{ 'file.save': null, 'file.new': { key: 'n', mod: true } }]);
   });
 
   it('still takes a nearby binding that is not a role key', () => {

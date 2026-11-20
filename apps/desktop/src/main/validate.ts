@@ -241,12 +241,18 @@ export function parseHistoryLabels(value: unknown): HistoryMenuLabels {
 }
 
 const KEY_FIELDS = new Set(['key', 'mod', 'shift', 'alt']);
+// Keep in step with NAMED_KEYS in apps/web/src/app/install-menu-keys.ts (the web list is the
+// stricter one: no Backspace, Delete or Insert).
 const NAMED_KEY =
   /^(F([1-9]|1\d|2[0-4])|Arrow(Up|Down|Left|Right)|Home|End|PageUp|PageDown|Enter|Backspace|Delete|Insert)$/;
 
 /**
  * Bindings the menu keeps for its own roles (quit, close, hide, minimize, copy, cut and paste):
- * a menu command must not take one, so a compromised page cannot give Save the quit key. Written
+ * a menu command must not take one, so a compromised page cannot give Save the quit key. The
+ * list is the same on every platform on purpose, though some roles exist only on macOS (hide,
+ * hide others) or have no key on Windows (quit): over-refusing is safe, and the renderer's key
+ * recorder must refuse the same keys. A command given one is left without a key, not refused,
+ * so one clash never costs the rest of the menu. Written
  * `[key, mod, shift, alt]` over the modifier-less spelling of the key.
  */
 const ROLE_KEYS: readonly (readonly [string, boolean, boolean, boolean])[] = [
@@ -288,7 +294,7 @@ function parseMenuKey(id: string, value: unknown): MenuKey | null {
       ([k, m, s, a]) => k === lower && m === flags.mod && s === flags.shift && a === flags.alt,
     )
   ) {
-    throw new PayloadError(`'${id}' cannot take a key the menu keeps for itself`);
+    return null;
   }
   return {
     key,
@@ -298,7 +304,10 @@ function parseMenuKey(id: string, value: unknown): MenuKey | null {
   };
 }
 
-/** `{ <menu command id>: key | null }`; an id the menu does not have, or a bad key, is refused. */
+/**
+ * `{ <menu command id>: key | null }`; an id the menu does not have, or a malformed key, refuses
+ * the map. A well-formed key that is a role key leaves that one item without a key.
+ */
 export function parseMenuKeys(value: unknown): MenuKeys {
   if (!isRecord(value)) throw new PayloadError('Expected the menu keys');
   const keys: MenuKeys = {};
