@@ -29,7 +29,7 @@ type Run = (p: ReturnType<typeof player>) => Promise<void>;
 async function render(before: Run = () => Promise.resolve()) {
   const p = player();
   await p.openScore(song());
-  p.services.ui.getState().showPanelView('mixer');
+  p.services.ui.getState().toggleMixer();
   await before(p);
   await p.services.audio.settled();
   const offline = p.prepare(2);
