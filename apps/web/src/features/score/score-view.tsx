@@ -595,6 +595,7 @@ export function ScoreView({
       role="region"
       aria-label={label}
       aria-roledescription="score"
+      data-score-view
       aria-busy={!fontsReady}
       aria-describedby={descriptionId}
       tabIndex={0}
