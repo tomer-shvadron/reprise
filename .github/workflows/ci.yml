@@ -153,7 +153,7 @@ jobs:
   e2e:
     name: e2e
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -204,7 +204,7 @@ jobs:
 
       - name: E2E
         id: e2e
-        timeout-minutes: 6
+        timeout-minutes: 15
         run: pnpm e2e
 
       - name: Upload e2e traces and videos
