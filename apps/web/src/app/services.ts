@@ -16,6 +16,7 @@ import { createEntryStore, type EntryStore } from '@/features/editor/entry-store
 import { installEditor } from '@/features/editor/install-editor';
 import { createEditingStore, type EditingStore } from '@/state/editing';
 import { createHeardRef, type HeardRef } from '@/state/heard';
+import { createMenuTargetStore, type MenuTargetStore } from '@/state/menu-target';
 import { createLayoutStore, type LayoutStore } from '@/state/layout';
 import { createPlaybackStore, type PlaybackStore } from '@/state/playback';
 import { createPracticeStore, type PracticeStore } from '@/state/practice';
@@ -23,6 +24,7 @@ import { createSelectionStore, type SelectionStore } from '@/state/selection';
 import { createSettingsStore, type SettingsStore } from '@/state/settings';
 import { createUiStore, type UiStore } from '@/state/ui';
 
+import { createContextMenuStore, type ContextMenuStore } from './context-menu/context-menu-store';
 import { createAudioService, type AudioService } from './audio/audio-service';
 
 export interface AppServices {
@@ -49,6 +51,10 @@ export interface AppServices {
   practice: PracticeStore;
   /** The persisted preferences (#343); the app attaches the Dexie table once the library opens. */
   settings: SettingsStore;
+  /** What the open context menu acts on (#337). */
+  menuTarget: MenuTargetStore;
+  /** The open context menu and where it sits; the host in `App` shows it. */
+  contextMenu: ContextMenuStore;
   dispose(): void;
 }
 
@@ -92,6 +98,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   const editing = createEditingStore();
   const practice = createPracticeStore();
   const entry = createEntryStore();
+  const menuTarget = createMenuTargetStore();
 
   const unsubscribe = document.subscribe((state, previous) => {
     if (state.id === previous.id && state.score === previous.score) return;
@@ -153,6 +160,8 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     entry,
     practice,
     settings,
+    menuTarget,
+    contextMenu: createContextMenuStore({ menuTarget }),
     dispose() {
       uninstallClipboard();
       uninstallEntry();

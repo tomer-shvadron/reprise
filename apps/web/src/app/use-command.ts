@@ -39,10 +39,8 @@ export interface BoundCommand {
   ariaKeys: string | undefined;
 }
 
-/** A registered command, so a click, the palette and the shortcut share one code path. */
-export function useCommand(id: RegisteredCommandId): BoundCommand {
-  const source = use(CommandSourceContext);
-  if (!source) throw new Error('useCommand needs a CommandSourceContext');
+/** A registered command's run, title and keys for a source; `useCommand` is this behind a hook. */
+export function bindCommand(source: CommandSource, id: RegisteredCommandId): BoundCommand {
   const command = source.registry.get(id);
   if (!command) throw new Error(`Command "${id}" is not registered`);
   const shortcut = shortcutOn(source.registry.shortcutOf(command), source.keyboard);
@@ -54,4 +52,11 @@ export function useCommand(id: RegisteredCommandId): BoundCommand {
     keys: shortcut && formatShortcut(shortcut, source.keyboard),
     ariaKeys: shortcut && ariaKeyShortcuts(shortcut, source.keyboard),
   };
+}
+
+/** A registered command, so a click, the palette and the shortcut share one code path. */
+export function useCommand(id: RegisteredCommandId): BoundCommand {
+  const source = use(CommandSourceContext);
+  if (!source) throw new Error('useCommand needs a CommandSourceContext');
+  return bindCommand(source, id);
 }

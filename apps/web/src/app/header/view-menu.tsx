@@ -3,6 +3,7 @@ import { useId } from 'react';
 import { useStore } from 'zustand';
 
 import { keepFocus } from '@/app/command-control';
+import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useMenuFocusReturn } from '@/app/menu-focus-return';
 import { useAppServices } from '@/app/services-context';
 import { NOTATIONS, NotationRadioItems, ZoomItems } from '@/app/view-items';
@@ -36,6 +37,11 @@ export function ViewMenu() {
   const limited = track !== undefined && choices.length > 0 && choices.length < NOTATIONS.length;
   const reasonId = useId();
   const focusReturn = useMenuFocusReturn();
+  const menu = useStaticContextMenu({
+    surface: 'header',
+    target: { kind: 'header', element: 'view' },
+    label: 'View',
+  });
 
   return (
     <DropdownMenu>
@@ -46,6 +52,7 @@ export function ViewMenu() {
               variant="ghost"
               size="xs"
               aria-label="View options"
+              {...menu}
               onMouseDown={keepFocus}
               onPointerDownCapture={focusReturn.remember}
               onKeyDownCapture={focusReturn.remember}

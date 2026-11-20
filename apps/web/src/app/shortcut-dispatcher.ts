@@ -21,6 +21,11 @@ const ACTIVATES_ON_SPACE = [
   ].map((role) => `[role="${role}"]`),
 ].join(', ');
 
+/** Whether Space presses this element, which is why a menu must not leave focus on one. */
+export function activatesOnSpace(element: Element): boolean {
+  return element.closest(ACTIVATES_ON_SPACE) !== null;
+}
+
 /** Keys that move a caret, so a text field keeps them whatever the modifiers. */
 const NAVIGATION_KEYS = new Set([
   'ArrowLeft',
@@ -95,7 +100,7 @@ function leavesKeyToTarget(event: KeyboardEvent): boolean {
   const { target } = event;
   if (isEditable(target)) return true;
   const activates = event.key === ' ' || event.key === 'Enter';
-  return activates && target instanceof Element && target.closest(ACTIVATES_ON_SPACE) !== null;
+  return activates && target instanceof Element && activatesOnSpace(target);
 }
 
 /**

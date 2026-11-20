@@ -1,13 +1,17 @@
 import { useRef, type KeyboardEvent, type ReactNode } from 'react';
 
 import { keepFocus, tooltipText } from '@/app/command-control';
+import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useCommand, type RegisteredCommandId } from '@/app/use-command';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { PanelView } from '@/state/ui';
 import { cn } from 'cn';
 
 export interface TabItem<Id extends string> {
   id: Id;
   label: string;
+  /** The view the tab shows, which its context menu is about. */
+  view: PanelView;
   command: RegisteredCommandId;
 }
 
@@ -38,11 +42,17 @@ function Tab({
   register: (node: HTMLButtonElement | null) => void;
 }) {
   const command = useCommand(item.command);
+  const menu = useStaticContextMenu({
+    surface: 'panel.tab',
+    target: { kind: 'panel', view: item.view },
+    label: `${item.label} tab`,
+  });
   const button = (
     <button
       ref={register}
       type="button"
       role="tab"
+      {...menu}
       id={tabId(idPrefix, item.id)}
       aria-selected={selected}
       // One shared panel, labelled by the selected tab, so only that tab controls it.
