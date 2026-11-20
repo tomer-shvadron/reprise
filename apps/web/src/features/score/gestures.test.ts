@@ -15,7 +15,7 @@ function pointer(
   type: ScorePointerEvent['type'],
   x: number,
   bar: string | undefined,
-  init: { button?: number; shiftKey?: boolean } = {},
+  init: { button?: number; shiftKey?: boolean; ctrlKey?: boolean } = {},
 ): ScorePointerEvent {
   const event = new PointerEvent('pointerdown', { clientX: x, clientY: 10, ...init });
   return {
@@ -28,6 +28,20 @@ function pointer(
 }
 
 describe('the gesture tracker', () => {
+  it('ignores a primary press with Ctrl only where Ctrl is the context click', () => {
+    const mac = createGestureTracker({ ctrlIsContextClick: true });
+    mac.handle(pointer('down', 10, 'a', { ctrlKey: true }));
+    expect(mac.handle(pointer('up', 10, 'a', { ctrlKey: true }))).toBeUndefined();
+    mac.handle(pointer('down', 10, 'a'));
+    expect(mac.handle(pointer('up', 10, 'a'))).toMatchObject({ kind: 'click' });
+
+    const other = createGestureTracker();
+    other.handle(pointer('down', 10, 'a', { ctrlKey: true }));
+    expect(other.handle(pointer('up', 10, 'a', { ctrlKey: true }))).toMatchObject({
+      kind: 'click',
+    });
+  });
+
   it('reads a press that moves under 4 px as a click, with Shift', () => {
     const tracker = createGestureTracker();
     const down = pointer('down', 10, 'a', { shiftKey: true });

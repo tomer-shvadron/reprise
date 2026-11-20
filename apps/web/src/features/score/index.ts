@@ -1,6 +1,7 @@
 export { ScoreView } from './score-view';
 export type {
   FollowPolicy,
+  ScoreHit,
   ScorePointerEvent,
   ScrollAxis,
   ScoreViewHandle,
@@ -11,7 +12,7 @@ export type { PointerTarget } from './playhead';
 export { masterBarIndexOf, scoreIndex } from './score-index';
 export type { BeatInfo, ScoreIndex } from './score-index';
 export { createGestureTracker } from './gestures';
-export type { DragMode, Gesture } from './gestures';
+export type { DragMode, Gesture, GestureOptions } from './gestures';
 export { ScorePage, ScorePages } from './score-page';
 export type { ScorePageProps, ScorePagesProps } from './score-page';
 export type { OverlayBox, ScoreOverlays } from './overlay-layer';

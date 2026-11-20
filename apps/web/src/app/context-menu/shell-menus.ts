@@ -58,7 +58,26 @@ const panelItems: readonly MenuItemSpec[] = [
   { command: 'view.toggleRightPanel', group: 'view', label: collapseLabel },
 ];
 
-/** The shell's own surfaces: the header and the right panel's tabs and rail. */
+const hasScore = ({ services }: MenuContext) => services.document.getState().score !== undefined;
+const noScore = (at: MenuContext) => !hasScore(at);
+const play = ['play'] as const;
+
+/** The empty paper's own items: the view with a score open, and a way to get one without. */
+const paperItems: readonly MenuItemSpec[] = [
+  { command: 'view.toggleViewMode', group: 'view', modes: play, when: hasScore },
+  { command: 'view.toggleMultitrack', group: 'view', modes: play, when: hasScore },
+  { command: 'view.zoomIn', group: 'view', modes: play, when: hasScore },
+  { command: 'view.zoomOut', group: 'view', modes: play, when: hasScore },
+  { command: 'view.zoomReset', group: 'view', modes: play, when: hasScore },
+  { command: 'view.followPlayback', group: 'view', modes: play, when: hasScore },
+  { command: 'file.print', group: 'export', modes: play, when: hasScore },
+  { command: 'file.new', group: 'edit', modes: play, when: noScore },
+  { command: 'file.open', group: 'edit', modes: play, when: noScore },
+  { command: 'library.importFiles', group: 'edit', modes: play, when: noScore },
+  { command: 'library.show', group: 'view', modes: play, when: noScore },
+];
+
+/** The shell's own surfaces: the header, the right panel's tabs and rail, and the score's empty paper. */
 export const shellMenus: readonly MenuContribution[] = [
   {
     surface: 'header',
@@ -84,4 +103,5 @@ export const shellMenus: readonly MenuContribution[] = [
   },
   { surface: 'panel.tab', items: panelItems },
   { surface: 'panel.rail', items: panelItems },
+  { surface: 'score.paper', items: paperItems },
 ];

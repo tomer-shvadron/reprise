@@ -132,3 +132,5 @@ export {
 } from './transpose';
 export { planShift, type StringDirection, type StringShiftPlan } from './string-shift';
 export { shiftDiagram, transposeChordName, transposeKey } from './chord-names';
+export { adoptMenuTarget, scoreKeyboardRequest, scoreMenuRequest } from './menu-target';
+export type { ScoreMenuOpen } from './menu-target';

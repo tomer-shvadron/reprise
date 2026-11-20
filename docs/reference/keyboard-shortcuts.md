@@ -57,6 +57,9 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 | Stop | Transport | Global | ↩ | Enter |
 | Play from start | Transport | Global | ⇧Space | Shift+Space |
 | Toggle loop | Transport | Global | F9 | F9 |
+| Play from selection | Transport | Global | — | — |
+| Loop selection | Transport | Global | — | — |
+| Loop this section | Transport | Global | — | — |
 | Toggle count-in | Transport | Global | ⌥C | Alt+C |
 | Toggle metronome | Transport | Global | ⌥M | Alt+M |
 | Metronome volume… | Transport | Global | ⌥⇧M | Alt+Shift+M |
@@ -103,7 +106,10 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 | Show metronome | Trainer | Global | — | — |
 | Start or stop standalone metronome | Trainer | Global | ⌥B | Alt+B |
 | Toggle fretboard | Trainer | Global | — | — |
+| Speed trainer on selection | Trainer | Global | — | — |
+| Show fretboard | Trainer | Global | — | — |
 | Toggle edit mode | Editor | Global | ⌘E | Ctrl+E |
+| Edit here | Editor | Global | — | — |
 | Show history | Editor | Global | — | — |
 | Cursor to previous beat | Editor | Editing | ← | Left |
 | Cursor to next beat | Editor | Editing | → | Right |
@@ -213,6 +219,7 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 | Paste | Editor | Editing | ⌘V | Ctrl+V |
 | Paste as insert | Editor | Editing | — | — |
 | Paste over | Editor | Editing | — | — |
+| Copy bars | Editor | Global | — | — |
 | Transpose… | Editor | Editing | — | — |
 | Transpose up a semitone | Editor | Editing | ⌥⇧↑ | Alt+Shift+Up |
 | Transpose down a semitone | Editor | Editing | ⌥⇧↓ | Alt+Shift+Down |

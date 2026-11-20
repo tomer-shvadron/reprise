@@ -1,6 +1,7 @@
 import type { Command } from '@/app/command-registry';
 import type { AppServices } from '@/app/services';
 
+import { editHere } from './edit-here';
 import { effectCommands, type EffectCommandId } from './effect-commands';
 import { barCommands, type BarCommandId } from './bar-commands';
 import { pickerCommands, toggleHistoryPanel, type PickerCommandId } from './picker-commands';
@@ -14,6 +15,7 @@ import { transposeCommands, type TransposeCommandId } from './transpose-commands
 export type EditorCommandId =
   | 'editor.toggleMode'
   | 'editor.showHistory'
+  | 'editor.editHere'
   | NavigationCommandId
   | EntryCommandId
   | BarCommandId
@@ -30,7 +32,16 @@ type EditorCommand = Command & { id: EditorCommandId };
 export function editorCommands(
   services: Pick<
     AppServices,
-    'editing' | 'document' | 'selection' | 'layout' | 'entry' | 'playback' | 'audio' | 'ui'
+    | 'editing'
+    | 'document'
+    | 'selection'
+    | 'layout'
+    | 'entry'
+    | 'playback'
+    | 'audio'
+    | 'ui'
+    | 'menuTarget'
+    | 'transport'
   >,
 ): EditorCommand[] {
   const { editing, document } = services;
@@ -41,6 +52,17 @@ export function editorCommands(
       shortcut: { key: 'e', mod: true },
       run: () => {
         if (document.getState().score) editing.getState().toggle();
+      },
+    },
+    {
+      id: 'editor.editHere',
+      title: 'Edit here',
+      // The menu's "Edit here" only; the palette has Toggle edit mode.
+      inPalette: false,
+      repeat: false,
+      enabled: () => document.getState().score !== undefined && !editing.getState().editing,
+      run: () => {
+        editHere(services);
       },
     },
     {

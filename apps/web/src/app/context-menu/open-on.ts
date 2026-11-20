@@ -41,3 +41,7 @@ export function openContextMenuOn(element: Element): void {
   synthetic.add(event);
   element.dispatchEvent(event);
 }
+
+/** The score's surface: its region, or the empty paper before a score is open. */
+export const SCORE_SURFACE_SELECTOR =
+  '[role="region"][aria-roledescription="score"], [data-score-surface]';
