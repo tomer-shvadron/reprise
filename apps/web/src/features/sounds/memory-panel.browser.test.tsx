@@ -43,7 +43,8 @@ const song = () => {
 const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 
 describe('the memory panel, over the real audio service', () => {
-  it('evicts and says so at 64 MB, and recovers at 300 MB', async () => {
+  // 6.1 s worst on CI (#384): own timeout, 4x the worst rounded up to 30 s.
+  it('evicts and says so at 64 MB, and recovers at 300 MB', { timeout: 30_000 }, async () => {
     const p = player();
     await p.openScore(song());
     p.services.ui.getState().toggleMixer();
