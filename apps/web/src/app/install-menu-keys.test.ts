@@ -62,10 +62,14 @@ describe('menuKeysOf', () => {
 });
 
 describe('installMenuKeys', () => {
+  const settle = async () => {
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  };
+
   const setup = () => {
     const services = createTestServices();
     const registry = createAppRegistry(services);
-    const setMenuKeys = vi.fn<(keys: MenuKeys) => void>();
+    const setMenuKeys = vi.fn<(keys: MenuKeys) => Promise<boolean>>(() => Promise.resolve(true));
     return { registry, setMenuKeys, settings: services.settings };
   };
 
@@ -96,7 +100,7 @@ describe('installMenuKeys', () => {
       },
     });
     await settings.whenHydrated();
-    await Promise.resolve();
+    await settle();
     notify();
     expect(setMenuKeys).toHaveBeenCalledTimes(1);
 
@@ -110,6 +114,32 @@ describe('installMenuKeys', () => {
 
     expect(setMenuKeys).toHaveBeenCalledTimes(2);
     expect(setMenuKeys.mock.calls[1]?.[0]['file.save']).toEqual({ key: 'F2' });
+  });
+
+  it('tries a refused push again on the next change, and stops once one is applied', async () => {
+    const { registry, setMenuKeys, settings } = setup();
+    setMenuKeys.mockResolvedValueOnce(false);
+    let notify: () => void = () => undefined;
+    installMenuKeys({
+      registry,
+      settings,
+      platform: { setMenuKeys },
+      keyboard: 'mac',
+      subscribe: (listener) => {
+        notify = listener;
+        return () => undefined;
+      },
+    });
+    await settings.whenHydrated();
+    await settle();
+    expect(setMenuKeys).toHaveBeenCalledTimes(1);
+
+    notify();
+    await settle();
+    expect(setMenuKeys).toHaveBeenCalledTimes(2);
+
+    notify();
+    expect(setMenuKeys).toHaveBeenCalledTimes(2);
   });
 
   it('does nothing on a platform without a menu, and stops after the undo', async () => {

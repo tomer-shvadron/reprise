@@ -6,6 +6,8 @@ import type { SettingsStore } from '@/state/settings';
 import type { CommandRegistry } from './command-registry';
 import { shortcutOn, type KeyboardPlatform, type Shortcut } from './keyboard';
 
+// Keep in step with NAMED_KEY in apps/desktop/src/main/validate.ts, which also takes Backspace,
+// Delete and Insert; this side is the stricter one, so those go as null until both lists grow.
 const NAMED_KEYS =
   /^(F([1-9]|1\d|2[0-4])|Arrow(Up|Down|Left|Right)|Home|End|PageUp|PageDown|Enter)$/;
 
@@ -59,8 +61,10 @@ export function installMenuKeys(deps: {
     const keys = menuKeysOf(registry, keyboard);
     const text = JSON.stringify(keys);
     if (text === last) return;
-    last = text;
-    setMenuKeys.call(platform, keys);
+    // Recorded only once main applied them, so a refused push is tried again on the next change.
+    void setMenuKeys.call(platform, keys).then((applied) => {
+      if (applied) last = text;
+    });
   };
   let stop: (() => void) | undefined;
   void settings.whenHydrated().then(() => {

@@ -71,18 +71,18 @@ describe('the Electron platform', () => {
     expect(bridge.setHistoryLabels).toHaveBeenCalledWith({ undo: 'setNote' });
   });
 
-  it('forwards the menu keys over the bridge, and swallows a rejection', async () => {
+  it('forwards the menu keys over the bridge, and answers false for a rejection', async () => {
     const { bridge } = fakeBridge();
     const platform = createElectronPlatform(bridge);
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    platform.setMenuKeys?.({ 'file.save': { key: 's', mod: true } });
+    await expect(platform.setMenuKeys?.({ 'file.save': { key: 's', mod: true } })).resolves.toBe(
+      true,
+    );
     expect(bridge.setMenuKeys).toHaveBeenCalledWith({ 'file.save': { key: 's', mod: true } });
 
     vi.mocked(bridge.setMenuKeys).mockRejectedValueOnce(new Error('gone'));
-    platform.setMenuKeys?.({});
-    await Promise.resolve();
-    await Promise.resolve();
+    await expect(platform.setMenuKeys?.({})).resolves.toBe(false);
 
     expect(error).toHaveBeenCalled();
     error.mockRestore();
