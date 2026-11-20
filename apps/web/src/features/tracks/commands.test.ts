@@ -89,12 +89,12 @@ describe('track commands', () => {
     expect(services.document.getState().view.only).toBe(ids[2]);
   });
 
-  it('bind Alt+1 to Alt+9 and F7 without a conflict, off the palette, and hide jumps past the last track', async () => {
+  it('bind Alt+1 to Alt+9 and Shift+F6 without a conflict, off the palette, and hide jumps past the last track', async () => {
     const { registry } = await setup();
     expect(registry.get('track.go1')?.shortcut).toEqual({ key: '1', alt: true });
     expect(formatShortcut({ key: '1', alt: true }, 'mac')).toBe('⌥1');
     expect(formatShortcut({ key: '1', alt: true }, 'other')).toBe('Alt+1');
-    expect(registry.get('track.focusSidebar')?.shortcut).toEqual({ key: 'F7' });
+    expect(registry.get('track.focusSidebar')?.shortcut).toEqual({ key: 'F6', shift: true });
     expect(registry.conflicts()).toEqual([]);
     const ids = registry.available().map((command) => command.id);
     expect(ids).toContain('track.go3');

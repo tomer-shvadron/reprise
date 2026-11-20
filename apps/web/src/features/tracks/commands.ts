@@ -33,11 +33,11 @@ type TrackNumber = keyof typeof GO_IDS;
 /**
  * The keys this folder adds, in one place so a change of key is one line here plus
  * `pnpm shortcuts:write`. Alt+digit rather than Cmd/Ctrl+digit, which are "Edit voice" while
- * editing; F7 has no other job in Reprise.
+ * editing; Shift+F6 sits beside F6, Track properties.
  */
 const KEYS = {
   go: (number: TrackNumber): Shortcut => ({ key: String(number), alt: true }),
-  focusSidebar: { key: 'F7' } satisfies Shortcut,
+  focusSidebar: { key: 'F6', shift: true } satisfies Shortcut,
 };
 
 /** The command that jumps to a track, for the sidebar's tooltips; only tracks 1 to 9 have one. */

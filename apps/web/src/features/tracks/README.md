@@ -5,13 +5,13 @@ store: every control writes the document, selection or playback store through th
 `track-actions.ts`, which the commands in `commands.ts` call too. The one exception is the Effects
 row, `TrackEffectsPicker` from `features/sounds`, which applies its own command.
 
-| Export                                                            | What it is                                                                                                                                                                                      |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TrackSidebar`                                                    | Each track's colour, name, instrument, visibility, mute, solo, notation and compact volume; the multitrack toggle.                                                                              |
-| `MixerPanel`                                                      | Per track: instrument, effects preset, volume, pan, mute and solo, with the load status of a new instrument; the master volume and the GM tier bypass switch.                                   |
-| `captureTrackSession`, `restoreTrackSession`, `watchTrackSession` | The per-song session the library keeps (WP-060): visibility, single-track view, mute and solo, current track; never notation.                                                                   |
-| `TrackFlash`                                                      | The status bar's track-name flash and its polite announcement, on every change of the current track within the open score.                                                                      |
-| `trackCommands` (`./commands`)                                    | Previous and next track (⌘↑ ⌘↓), go to track 1 to 9 (⌥1 to ⌥9), focus the tracks list or the score (F7), multitrack view (F3), mute, solo, clear, show all, and notation for the current track. |
+| Export                                                            | What it is                                                                                                                                                                                       |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `TrackSidebar`                                                    | Each track's colour, name, instrument, visibility, mute, solo, notation and compact volume; the multitrack toggle.                                                                               |
+| `MixerPanel`                                                      | Per track: instrument, effects preset, volume, pan, mute and solo, with the load status of a new instrument; the master volume and the GM tier bypass switch.                                    |
+| `captureTrackSession`, `restoreTrackSession`, `watchTrackSession` | The per-song session the library keeps (WP-060): visibility, single-track view, mute and solo, current track; never notation.                                                                    |
+| `TrackFlash`                                                      | The status bar's track-name flash and its polite announcement, on every change of the current track within the open score.                                                                       |
+| `trackCommands` (`./commands`)                                    | Previous and next track (⌘↑ ⌘↓), go to track 1 to 9 (⌥1 to ⌥9), focus the tracks list or the score (⇧F6), multitrack view (F3), mute, solo, clear, show all, and notation for the current track. |
 
 ## Where each value lives
 
@@ -31,7 +31,7 @@ row, `TrackEffectsPicker` from `features/sounds`, which applies its own command.
 - **The list keys are local, not registry commands.** With a track's name focused, the arrows, Home
   and End move, Enter selects, and M and S mute and solo it. The registry has no "list has focus"
   context, so these live in the sidebar's key handler (matched through `matchesShortcut`, so other
-  layouts work) and are described in the shortcuts reference. The global keys (Alt+digit, F7) are
+  layouts work) and are described in the shortcuts reference. The global keys (Alt+digit, Shift+F6) are
   registered, so overrides and the cheat sheet cover them. The key choices sit in `KEYS` in
   `commands.ts`.
 - **Names are the roving tab stop; the row's controls are not.** The current track's name button
