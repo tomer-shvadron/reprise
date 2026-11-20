@@ -38,29 +38,33 @@ function Tab({
   register: (node: HTMLButtonElement | null) => void;
 }) {
   const command = useCommand(item.command);
+  const button = (
+    <button
+      ref={register}
+      type="button"
+      role="tab"
+      id={tabId(idPrefix, item.id)}
+      aria-selected={selected}
+      // One shared panel, labelled by the selected tab, so only that tab controls it.
+      aria-controls={selected ? panelId(idPrefix) : undefined}
+      aria-keyshortcuts={command.ariaKeys}
+      // The roving tab stop: only the selected tab is in the Tab order, arrows move inside.
+      tabIndex={selected ? 0 : -1}
+      onMouseDown={keepFocus}
+      onClick={onSelect}
+      className={cn(
+        'text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 -mb-px border-b-2 border-transparent px-2.5 py-1.5 text-xs font-medium outline-none focus-visible:ring-2',
+        selected && 'border-primary text-foreground',
+      )}
+    >
+      {item.label}
+    </button>
+  );
+  // A tooltip that only repeats the label would pop up at every arrow stop; it shows for the key.
+  if (!command.keys) return button;
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          ref={register}
-          type="button"
-          role="tab"
-          id={tabId(idPrefix, item.id)}
-          aria-selected={selected}
-          aria-controls={panelId(idPrefix)}
-          aria-keyshortcuts={command.ariaKeys}
-          // The roving tab stop: only the selected tab is in the Tab order, arrows move inside.
-          tabIndex={selected ? 0 : -1}
-          onMouseDown={keepFocus}
-          onClick={onSelect}
-          className={cn(
-            'text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 -mb-px border-b-2 border-transparent px-2.5 py-1.5 text-xs font-medium outline-none focus-visible:ring-2',
-            selected && 'border-primary text-foreground',
-          )}
-        >
-          {item.label}
-        </button>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent>{tooltipText(item.label, command.keys)}</TooltipContent>
     </Tooltip>
   );

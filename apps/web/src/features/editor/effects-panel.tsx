@@ -253,8 +253,8 @@ export function EffectsPanel() {
 
   // Opening the panel puts the next Tab on its first control.
   useEffect(() => {
-    focusPanelSection(section.current);
-  }, []);
+    focusPanelSection(section.current, services.ui);
+  }, [services.ui]);
 
   const { known, blockers, empty } = useMemo(
     () => panelState(effectInput(services), isEditing),

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { createTestServices } from '@/test/services';
+import { createMemorySettingsBackend, createTestSettings } from '@/test/settings-backend';
 
 import { App } from '../app';
 
@@ -13,7 +14,7 @@ function renderApp() {
 }
 
 const tab = (name: string) => screen.getByRole('tab', { name });
-const rail = () => within(screen.getByRole('navigation', { name: 'Panel rail' }));
+const rail = () => within(screen.getByRole('group', { name: 'Panel rail' }));
 
 describe('the right panel rail', () => {
   it('stays visible while the panel is collapsed, and each icon opens its view', async () => {
@@ -34,10 +35,10 @@ describe('the right panel rail', () => {
     await userEvent.click(rail().getByRole('button', { name: 'Effects' }));
     expect(ui.getState().panels.rightPanel).toBe(false);
 
-    await userEvent.click(rail().getByRole('button', { name: 'Expand panel' }));
+    await userEvent.click(rail().getByRole('button', { name: 'Right panel', expanded: false }));
     expect(ui.getState().panels.rightPanel).toBe(true);
     expect(ui.getState().rightPanelView).toBe('effects');
-    await userEvent.click(rail().getByRole('button', { name: 'Collapse panel' }));
+    await userEvent.click(rail().getByRole('button', { name: 'Right panel', expanded: true }));
     expect(ui.getState().panels.rightPanel).toBe(false);
   });
 
@@ -112,5 +113,29 @@ describe('the right panel tabs', () => {
     });
     const panel = screen.getByRole('tabpanel', { name: 'Effects' });
     expect(tab('Effects')).toHaveAttribute('aria-controls', panel.id);
+    expect(tab('Mixer')).not.toHaveAttribute('aria-controls');
+  });
+});
+
+describe('a panel restored at launch', () => {
+  it('shows the stored panel without taking focus, and a panel the user opens takes it', async () => {
+    const settings = createTestSettings(
+      createMemorySettingsBackend([['layout.rightPanelOpen', true]]),
+    );
+    const services = createTestServices({ settings });
+    render(<App services={services} keyboard="mac" />);
+
+    const panel = await screen.findByRole('complementary', { name: 'Panel' });
+    expect(within(panel).getByRole('region', { name: 'Mixer' })).toBeInTheDocument();
+    expect(panel).not.toContainElement(document.activeElement as HTMLElement | null);
+
+    act(() => {
+      services.ui.getState().showPanelView('effects');
+    });
+    expect(
+      within(screen.getByRole('complementary', { name: 'Panel' })).getByRole('region', {
+        name: 'Effects',
+      }),
+    ).toHaveFocus();
   });
 });

@@ -2,19 +2,31 @@ import { RIGHT_PANEL_OPEN_SETTING, RIGHT_PANEL_WIDTH_SETTING } from '@/state/app
 import type { SettingsStore } from '@/state/settings';
 import type { UiStore } from '@/state/ui';
 
-/** A drag changes the width on every pointer move; one write follows once it settles. */
-const WIDTH_WRITE_DELAY_MS = 300;
+/**
+ * Writes the panel's width into its setting; the resize handle calls it when a drag or a key
+ * press ends. Before the settings load a value is set even when it equals the default, so it goes
+ * in as the user's change and wins over the stored row.
+ */
+export function storeRightPanelWidth(deps: { settings: SettingsStore; ui: UiStore }): void {
+  const { settings, ui } = deps;
+  const width = ui.getState().panelWidths.rightPanel;
+  if (!settings.hydrated() || width !== settings.get(RIGHT_PANEL_WIDTH_SETTING)) {
+    settings.set(RIGHT_PANEL_WIDTH_SETTING, width);
+  }
+}
 
 /**
  * Keeps the right panel's open state and width in step with their settings: the stored values
- * show once they load, and a change in the ui is written back (the width after a short pause, so
- * a resize is one write). Returns its cleanup, which flushes a pending width write.
+ * show once they load (the open state as a restored one, which takes no focus), and an open or
+ * collapse in the ui is written back at once. A change made before the load wins over the stored
+ * row. Returns its cleanup.
  */
 export function installRightPanel(deps: { settings: SettingsStore; ui: UiStore }): () => void {
   const { settings, ui } = deps;
 
   const applyOpen = () => {
-    ui.getState().setPanelOpen('rightPanel', settings.get(RIGHT_PANEL_OPEN_SETTING));
+    const open = settings.get(RIGHT_PANEL_OPEN_SETTING);
+    if (ui.getState().panels.rightPanel !== open) ui.getState().restoreRightPanelOpen(open);
   };
   const applyWidth = () => {
     ui.getState().setPanelWidth('rightPanel', settings.get(RIGHT_PANEL_WIDTH_SETTING));
@@ -28,31 +40,18 @@ export function installRightPanel(deps: { settings: SettingsStore; ui: UiStore }
     settings.subscribe(RIGHT_PANEL_WIDTH_SETTING, applyWidth),
   ];
 
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const writeWidth = () => {
-    timer = undefined;
-    const width = ui.getState().panelWidths.rightPanel;
-    if (width !== settings.get(RIGHT_PANEL_WIDTH_SETTING))
-      settings.set(RIGHT_PANEL_WIDTH_SETTING, width);
-  };
   const stopWatching = ui.subscribe((state, previous) => {
-    if (state.panels.rightPanel !== previous.panels.rightPanel) {
-      if (state.panels.rightPanel !== settings.get(RIGHT_PANEL_OPEN_SETTING)) {
-        settings.set(RIGHT_PANEL_OPEN_SETTING, state.panels.rightPanel);
-      }
-    }
-    if (state.panelWidths.rightPanel !== previous.panelWidths.rightPanel) {
-      clearTimeout(timer);
-      timer = setTimeout(writeWidth, WIDTH_WRITE_DELAY_MS);
+    const open = state.panels.rightPanel;
+    if (open === previous.panels.rightPanel) return;
+    // A restore echoes the stored value, so only the user's own change is written.
+    if (state.panelRestored) return;
+    if (!settings.hydrated() || open !== settings.get(RIGHT_PANEL_OPEN_SETTING)) {
+      settings.set(RIGHT_PANEL_OPEN_SETTING, open);
     }
   });
 
   return () => {
     stopWatching();
     for (const stop of unsubscribe) stop();
-    if (timer !== undefined) {
-      clearTimeout(timer);
-      writeWidth();
-    }
   };
 }

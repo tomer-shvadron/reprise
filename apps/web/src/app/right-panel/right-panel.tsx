@@ -145,11 +145,12 @@ export function PanelRail() {
   const { ui } = useAppServices();
   const open = useStore(ui, (state) => state.panels.rightPanel);
   const setPanelOpen = useStore(ui, (state) => state.setPanelOpen);
-  const label = open ? 'Collapse panel' : 'Expand panel';
+  const verb = open ? 'Collapse panel' : 'Expand panel';
   const Icon = open ? PanelRightCloseIcon : PanelRightOpenIcon;
 
   return (
-    <nav
+    <div
+      role="group"
       aria-label="Panel rail"
       className="bg-sidebar text-sidebar-foreground flex w-10 shrink-0 flex-col items-center gap-1 border-l py-1.5"
     >
@@ -161,7 +162,7 @@ export function PanelRail() {
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label={label}
+            aria-label="Right panel"
             aria-expanded={open}
             onMouseDown={keepFocus}
             onClick={() => {
@@ -172,8 +173,8 @@ export function PanelRail() {
             <Icon />
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="left">{label}</TooltipContent>
+        <TooltipContent side="left">{verb}</TooltipContent>
       </Tooltip>
-    </nav>
+    </div>
   );
 }

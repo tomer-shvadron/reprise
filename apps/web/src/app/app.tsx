@@ -34,7 +34,7 @@ import { AppFrame } from './app-frame';
 import { AppHeader } from './header/app-header';
 import { installCloseGuard } from './close-guard';
 import { installTheme } from './install-theme';
-import { installRightPanel } from './right-panel/install-right-panel';
+import { installRightPanel, storeRightPanelWidth } from './right-panel/install-right-panel';
 import { CommandPalette } from './command-palette';
 import { createAppRegistry } from './app-registry';
 import { runCommand } from './command-registry';
@@ -190,6 +190,9 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
                 </PanelTabs>
               </CommandSourceContext>
             }
+            onRightPanelResizeEnd={() => {
+              storeRightPanelWidth(services);
+            }}
             rail={
               <CommandSourceContext value={source}>
                 <PanelRail />
