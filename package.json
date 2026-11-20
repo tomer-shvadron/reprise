@@ -25,6 +25,7 @@
     "fixtures:describe": "node scripts/fixtures/describe.ts",
     "fixtures:check": "node scripts/fixtures/describe.ts --check",
     "check:files": "node scripts/check-files/run.ts",
+    "shortcuts:write": "vitest run -u --project web apps/web/src/app/shortcut-doc.test.ts",
     "bootstrap": "node scripts/bootstrap/run.ts",
     "sounds:fetch": "node scripts/sounds/fetch-gm.ts",
     "sfz:check": "node scripts/sounds/check-sfz.ts",

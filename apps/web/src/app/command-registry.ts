@@ -1,4 +1,14 @@
-import { shortcutId, type Shortcut } from './keyboard';
+import { shortcutId, shortcutOn, type KeyboardPlatform, type Shortcut } from './keyboard';
+
+const PLATFORMS: readonly KeyboardPlatform[] = ['mac', 'other'];
+
+export interface ShortcutConflict {
+  /** The shared binding, as `shortcutId` spells it. */
+  key: string;
+  context: CommandContext | undefined;
+  first: string;
+  second: string;
+}
 
 /** A situation a binding is limited to; a command without one is bound everywhere. */
 export const COMMAND_CONTEXTS = ['editing'] as const;
@@ -40,39 +50,73 @@ export interface Command {
 
 export class CommandRegistry {
   readonly #commands = new Map<string, Command>();
-  readonly #shortcuts = new Map<string, string>();
   readonly #isActive: (context: CommandContext) => boolean;
+  readonly #keys: (command: Command) => Shortcut | undefined;
 
-  /** `isActive` tells whether a context holds now; without it, none does. */
-  constructor(isActive: (context: CommandContext) => boolean = () => false) {
+  /**
+   * `isActive` tells whether a context holds now; without it, none does. `keys` is the one place
+   * that decides which key a command has: the default is the command's own `shortcut`, and a layer
+   * of user overrides wraps it here, so the dispatcher, palette, tooltips, cheat sheet and the
+   * generated reference all follow it.
+   */
+  constructor(
+    isActive: (context: CommandContext) => boolean = () => false,
+    keys: (command: Command) => Shortcut | undefined = (command) => command.shortcut,
+  ) {
     this.#isActive = isActive;
+    this.#keys = keys;
+  }
+
+  /** The key the command answers to now: every reader of a command's key goes through this. */
+  shortcutOf(command: Command): Shortcut | undefined {
+    return this.#keys(command);
   }
 
   isActive(context: CommandContext): boolean {
     return this.#isActive(context);
   }
 
+  /**
+   * Two commands bound to one key in one context on one platform, by the keys they answer to
+   * now. The single check behind `register`, the doc test and any override layer, which calls it
+   * to refuse or flag an override. It compares the bindings as declared: the physical-key
+   * fallback of non-Latin layouts is not visible here (#242).
+   */
+  conflicts(): ShortcutConflict[] {
+    const owners = new Map<string, string>();
+    const found: ShortcutConflict[] = [];
+    for (const command of this.#commands.values()) {
+      const shortcut = this.shortcutOf(command);
+      if (!shortcut) continue;
+      for (const platform of PLATFORMS) {
+        if (!shortcutOn(shortcut, platform)) continue;
+        const key = shortcutId(shortcut);
+        const binding = `${platform}:${command.context ?? ''}:${key}`;
+        const owner = owners.get(binding);
+        if (owner === undefined) owners.set(binding, command.id);
+        else if (!found.some((c) => c.first === owner && c.second === command.id)) {
+          found.push({ key, context: command.context, first: owner, second: command.id });
+        }
+      }
+    }
+    return found;
+  }
+
   register(command: Command): () => void {
     if (this.#commands.has(command.id)) {
       throw new Error(`Command "${command.id}" is already registered`);
     }
-    const base = command.shortcut && shortcutId(command.shortcut);
-    const binding = base === undefined ? undefined : `${command.context ?? ''}:${base}`;
-    if (base !== undefined && binding !== undefined) {
-      const owner = this.#shortcuts.get(binding);
-      if (owner !== undefined) {
-        const where = command.context ? ` in the ${command.context} context` : '';
-        throw new Error(
-          `Shortcut "${base}"${where} of "${command.id}" is already bound to "${owner}"`,
-        );
-      }
-      this.#shortcuts.set(binding, command.id);
-    }
     this.#commands.set(command.id, command);
-
+    const clash = this.conflicts().find((conflict) => conflict.second === command.id);
+    if (clash) {
+      this.#commands.delete(command.id);
+      const where = clash.context ? ` in the ${clash.context} context` : '';
+      throw new Error(
+        `Shortcut "${clash.key}"${where} of "${command.id}" is already bound to "${clash.first}"`,
+      );
+    }
     return () => {
       this.#commands.delete(command.id);
-      if (binding !== undefined) this.#shortcuts.delete(binding);
     };
   }
 
@@ -86,11 +130,13 @@ export class CommandRegistry {
 
   /** Whether an available command of an active context owns this command's shortcut instead. */
   isShadowed(command: Command): boolean {
-    if (command.context !== undefined || !command.shortcut) return false;
-    const id = shortcutId(command.shortcut);
-    return this.available().some(
-      (other) => other.context !== undefined && other.shortcut && shortcutId(other.shortcut) === id,
-    );
+    const own = this.shortcutOf(command);
+    if (command.context !== undefined || !own) return false;
+    const id = shortcutId(own);
+    return this.available().some((other) => {
+      const theirs = this.shortcutOf(other);
+      return other.context !== undefined && theirs !== undefined && shortcutId(theirs) === id;
+    });
   }
 
   get(id: string): Command | undefined {

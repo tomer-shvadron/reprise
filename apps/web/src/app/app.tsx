@@ -36,6 +36,7 @@ import { installCloseGuard } from './close-guard';
 import { installTheme } from './install-theme';
 import { installRightPanel, storeRightPanelWidth } from './right-panel/install-right-panel';
 import { CommandPalette } from './command-palette';
+import { ShortcutSheet } from './shortcut-sheet';
 import { createAppRegistry } from './app-registry';
 import { runCommand } from './command-registry';
 import { DropZone } from './drop-zone';
@@ -143,8 +144,12 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
     [registry, onMenuCommand],
   );
 
-  const openShortcut = registry.get('file.open')?.shortcut;
-  const paletteShortcut = registry.get('app.commandPalette')?.shortcut;
+  const keyOf = (id: string) => {
+    const command = registry.get(id);
+    return command && registry.shortcutOf(command);
+  };
+  const openShortcut = keyOf('file.open');
+  const paletteShortcut = keyOf('app.commandPalette');
   const hint = (
     <>
       <p className="text-ink-muted">
@@ -211,6 +216,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
           </ScreenHost>
         )}
         <CommandPalette registry={registry} ui={ui} keyboard={keyboard} />
+        <ShortcutSheet registry={registry} ui={ui} keyboard={keyboard} />
         <DropZone />
         <Notices />
         <SavePromptDialog />

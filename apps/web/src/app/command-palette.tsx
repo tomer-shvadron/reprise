@@ -48,7 +48,7 @@ export function CommandPalette({ registry, ui, keyboard }: CommandPaletteProps) 
             {commands.map((command) => {
               const shortcut = registry.isShadowed(command)
                 ? undefined
-                : shortcutOn(command.shortcut, keyboard);
+                : shortcutOn(registry.shortcutOf(command), keyboard);
               return (
                 <CommandItem
                   key={command.id}
