@@ -72,6 +72,48 @@ describe('goToBar', () => {
   });
 });
 
+describe('goToBar announcements', () => {
+  it('keeps the "not played" refusal instead of announcing the old position', async () => {
+    // Bar 4 follows the Fine, which the D.C. al Fine stops at, so no pass plays it.
+    const builder = score().track('guitar');
+    builder.bar().beat('1', [note(1, 0)]);
+    builder
+      .bar()
+      .target('fine')
+      .beat('1', [note(1, 1)]);
+    builder
+      .bar()
+      .jump('dcAlFine')
+      .beat('1', [note(1, 2)]);
+    builder.bar().beat('1', [note(1, 3)]);
+    const services = createTestServices();
+    mirrorAudio(services);
+    await services.document
+      .getState()
+      .openBytes('u.reprise', (await write(builder.build(), 'reprise')).bytes);
+    services.fakeAudio.seek.mockClear();
+    goToBar(services, 3);
+    expect(services.fakeAudio.seek).not.toHaveBeenCalled();
+    expect(services.transport.getState().announcement?.text).toBe('Bar 4 is not played');
+  });
+
+  it('announces the position after a seek', async () => {
+    const services = await open();
+    goToBar(services, 3);
+    expect(services.transport.getState().announcement?.text).toMatch(/^Bar 4/);
+  });
+
+  it('does not announce a playhead that edit mode left where it was outside a loop', async () => {
+    const services = await open();
+    services.editing.getState().setEditing(true);
+    loopBars(services, 0, 1, 'x');
+    const before = services.transport.getState().announcement;
+    goToBar(services, 5);
+    expect(services.fakeAudio.seek).toHaveBeenLastCalledWith(0);
+    expect(services.transport.getState().announcement).toBe(before);
+  });
+});
+
 describe('loopBars', () => {
   it('sets the selection and the loop, moves to the start and announces', async () => {
     const services = await open();
@@ -98,6 +140,43 @@ describe('loopBars', () => {
     loopBars(services, 4, 5, 'second');
     expect(services.playback.getState().settings.loop).toEqual(before);
     expect(services.transport.getState().announcement?.text).toMatch(/can’t be looped/);
+  });
+});
+
+describe('loopBars in edit mode', () => {
+  it('puts the caret on the first stop and keeps bars in step with a bars range', async () => {
+    const services = await open();
+    services.editing.getState().setEditing(true);
+    loopBars(services, 2, 3, 'Chorus 2');
+    const { masterBars } = must(services.document.getState().score);
+    const state = services.selection.getState();
+    expect(state.cursor?.at.bar).toBe(2);
+    expect(state.range?.kind).toBe('bars');
+    expect(state.bars).toEqual({
+      startBar: must(masterBars[2]).id,
+      endBar: must(masterBars[3]).id,
+    });
+    expect(state.barsAnchor).toBe(must(masterBars[2]).id);
+    expect(services.playback.getState().settings.loop).toEqual(state.bars);
+  });
+
+  it('leaves the selection alone and announces the refusal once', async () => {
+    const services = await open();
+    services.editing.getState().setEditing(true);
+    goToBar(services, 1);
+    const before = services.selection.getState();
+    const refused = must(services.document.getState().score?.masterBars[4]).id;
+    services.fakeAudio.setLoop.mockImplementation((loop) => {
+      if (loop?.startBar === refused) throw new RangeError('never in that order');
+    });
+    const announced: (string | undefined)[] = [];
+    services.transport.subscribe((state) => announced.push(state.announcement?.text));
+    loopBars(services, 4, 5, 'second');
+    const after = services.selection.getState();
+    expect(after.cursor).toBe(before.cursor);
+    expect(after.range).toBe(before.range);
+    expect(after.bars).toBe(before.bars);
+    expect(announced.filter((text) => text?.includes('can’t be looped'))).toHaveLength(1);
   });
 });
 

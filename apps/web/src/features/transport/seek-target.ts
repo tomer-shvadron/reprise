@@ -11,6 +11,7 @@ import { playheadTick, seekTo } from './seek-commands';
 /**
  * Seeks to a bar and tick: the pass in the playhead's run. A target outside an active loop turns
  * the loop off, or with `keepLoop` (a click in edit mode) is not seeked to and leaves the loop on.
+ * Returns whether it seeked, so a caller announces its own result only then and never over a refusal.
  * Shared by a click in play mode and a click in edit mode, which seeks to its cursor.
  */
 export function seekToBar(
@@ -18,7 +19,7 @@ export function seekToBar(
   score: Score,
   target: { masterBarIndex: number; tick: number },
   keepLoop = false,
-): void {
+): boolean {
   const { audio, playback, transport } = services;
   const timeline = timelineOf(score);
   const at = playheadTick(services);
@@ -28,7 +29,7 @@ export function seekToBar(
   if (loop && bars) {
     const number = target.masterBarIndex + 1;
     if (number < bars.start || number > bars.end) {
-      if (keepLoop) return;
+      if (keepLoop) return false;
       audio.setLoop(undefined);
     } else {
       try {
@@ -41,7 +42,8 @@ export function seekToBar(
   const tick = seekTick(timeline, target, at, inLoop);
   if (tick === undefined) {
     transport.getState().announce(`Bar ${String(target.masterBarIndex + 1)} is not played`);
-    return;
+    return false;
   }
   seekTo(services, tick);
+  return true;
 }

@@ -1,4 +1,4 @@
-import type { Id } from '@reprise/model';
+import type { Id, Score } from '@reprise/model';
 
 import { cursorAtTick, rangePatch } from '@/features/editor';
 import { libraryOf } from '@/features/library/library';
@@ -8,6 +8,26 @@ import { selectRunning } from '@/state/playback';
 import { timelineOf } from '@/state/timeline';
 
 import type { AppServices } from '../services';
+
+/** The edit cursor on the first stop of bar `index` in the current track, keeping its voice, string and staff. */
+function caretAt(services: AppServices, score: Score, index: number) {
+  const { selection } = services;
+  const { cursor, currentTrack } = selection.getState();
+  const at = Math.max(
+    0,
+    score.tracks.findIndex((track) => track.id === (currentTrack ?? cursor?.track)),
+  );
+  const track = score.tracks[at];
+  const next = cursorAtTick(
+    score,
+    at,
+    index,
+    0,
+    cursor?.voice ?? 0,
+    cursor && { string: cursor.string, staff: cursor.staff },
+  );
+  return next && track ? { cursor: next, track } : undefined;
+}
 
 /**
  * Goes to the start of bar `index` as a click on it would: in play mode the bar is selected and
@@ -20,35 +40,24 @@ export function goToBar(services: AppServices, index: number): void {
   const bar = score?.masterBars[index];
   if (!score || !bar) return;
   const running = selectRunning(playback.getState());
+  let seeked: boolean;
   if (editing.getState().editing) {
-    const { cursor, currentTrack } = selection.getState();
-    const at = Math.max(
-      0,
-      score.tracks.findIndex((track) => track.id === (currentTrack ?? cursor?.track)),
-    );
-    const next = cursorAtTick(
-      score,
-      at,
-      index,
-      0,
-      cursor?.voice ?? 0,
-      cursor && { string: cursor.string, staff: cursor.staff },
-    );
-    const track = score.tracks[at];
-    if (next && track) {
+    const placed = caretAt(services, score, index);
+    if (placed) {
       selection.getState().setEdit({
-        cursor: next,
-        currentTrack: track.id,
+        cursor: placed.cursor,
+        currentTrack: placed.track.id,
         selection: {},
         ...rangePatch(score, undefined),
       });
     }
-    if (!running) seekToBar(services, score, { masterBarIndex: index, tick: 0 }, true);
+    seeked = !running && seekToBar(services, score, { masterBarIndex: index, tick: 0 }, true);
   } else {
     selection.getState().selectBars(undefined, bar.id);
-    seekToBar(services, score, { masterBarIndex: index, tick: 0 });
+    seeked = seekToBar(services, score, { masterBarIndex: index, tick: 0 });
   }
-  if (!running) {
+  // Only after a seek: a refusal ("Bar 12 is not played") is already announced and must stand.
+  if (seeked && !running) {
     transport
       .getState()
       .announce(describePosition(timelineOf(score), playback.getState().position).sentence);
@@ -61,8 +70,10 @@ export function goToSection(services: AppServices, section: ScoreSection): void 
 
 /**
  * Loops bars `startIndex` to `endIndex` and moves to the start, leaving playback as it is: a
- * playing song keeps playing inside the loop and a stopped one stays stopped. The bars show as
- * selected, so a later selection change or F9 keeps working with the loop.
+ * playing song keeps playing inside the loop and a stopped one stays stopped. The loop is applied
+ * first, so a range the engine refuses changes nothing but the announcement. The bars then show as
+ * selected: in edit mode as a bars range with the caret on the first stop, as ↩ would leave it,
+ * which keeps `bars` mirroring `range`; in play mode as a bar selection.
  */
 export function loopBars(
   services: AppServices,
@@ -70,17 +81,28 @@ export function loopBars(
   endIndex: number,
   name: string,
 ): void {
-  const { document, selection, audio, playback, transport } = services;
+  const { document, selection, audio, playback, transport, editing } = services;
   const { score } = document.getState();
   const first = score?.masterBars[startIndex];
   const last = score?.masterBars[endIndex];
   if (!score || !first || !last) return;
   const range = { startBar: first.id, endBar: last.id };
-  selection.getState().selectBars(range);
   const refusal = applyLoop({ audio, playback }, score, range);
   if (refusal !== undefined) {
     transport.getState().announce(refusal);
     return;
+  }
+  const placed = editing.getState().editing ? caretAt(services, score, startIndex) : undefined;
+  if (placed) {
+    const end = (masterBar: string) => ({ track: placed.track.id, masterBar, beat: undefined });
+    selection.getState().setEdit({
+      cursor: placed.cursor,
+      currentTrack: placed.track.id,
+      selection: {},
+      ...rangePatch(score, { kind: 'bars', anchor: end(first.id), focus: end(last.id) }),
+    });
+  } else {
+    selection.getState().selectBars(range);
   }
   seekToBar(services, score, { masterBarIndex: startIndex, tick: 0 });
   const bars =
