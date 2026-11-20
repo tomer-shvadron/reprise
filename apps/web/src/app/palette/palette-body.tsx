@@ -36,10 +36,10 @@ const MODE_NAMES: Record<PaletteMode, string> = {
 };
 
 const PREFIXES: { char: string; word: string; label: string }[] = [
-  { char: '>', word: 'commands', label: 'Search commands, type >' },
-  { char: '#', word: 'sections', label: 'Search sections, type #' },
-  { char: '@', word: 'tracks', label: 'Search tracks, type @' },
-  { char: '/', word: 'songs', label: 'Search songs, type /' },
+  { char: '>', word: 'commands', label: 'search commands' },
+  { char: '#', word: 'sections', label: 'search sections' },
+  { char: '@', word: 'tracks', label: 'search tracks' },
+  { char: '/', word: 'songs', label: 'search songs' },
 ];
 
 const ALT_KEY = { key: 'Enter', mod: true } as const;
@@ -62,7 +62,7 @@ export function PaletteBody({ services, registry, keyboard, start, close }: Pale
   const [input, setInput] = useState(START_TEXT[start ?? 'commands']);
   const [locked, setLocked] = useState(start === 'bar');
   const [value, setValue] = useState('');
-  const [report, setReport] = useState<ModeReport>({ rows: [] });
+  const [report, setReport] = useState<ModeReport>({ mode: 'commands', rows: [] });
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { mode, text } = useMemo(
@@ -91,7 +91,7 @@ export function PaletteBody({ services, registry, keyboard, start, close }: Pale
 
   const insertPrefix = (char: string) => {
     setLocked(false);
-    setInput(char === '>' ? '>' : char);
+    setInput(char);
     inputRef.current?.focus();
   };
 
@@ -108,17 +108,17 @@ export function PaletteBody({ services, registry, keyboard, start, close }: Pale
     (selectedRow.alt ?? selectedRow).run();
   };
 
-  // The live region speaks when the mode or the empty message changes, not on every keystroke:
-  // the sentence is rebuilt only for a new key, during render, as React allows for derived state.
-  const statusKey = `${mode}|${empty ?? ''}`;
-  const [spoken, setSpoken] = useState({ key: '', text: '' });
-  if (spoken.key !== statusKey) {
-    setSpoken({
-      key: statusKey,
-      text:
-        empty ?? (mode === 'commands' ? '' : `${MODE_NAMES[mode]}, ${String(rows.length)} results`),
-    });
-  }
+  // The live region speaks once the new mode's own rows have arrived (the report carries its mode,
+  // so the previous mode's rows are never read as these), and again when the count changes.
+  const reported = mode === 'commands' || report.mode === mode;
+  const sentence = !reported
+    ? undefined
+    : (empty ??
+      (mode === 'commands'
+        ? ''
+        : `${MODE_NAMES[mode]}, ${String(rows.length)} ${rows.length === 1 ? 'result' : 'results'}`));
+  const [spoken, setSpoken] = useState('');
+  if (sentence !== undefined && sentence !== spoken) setSpoken(sentence);
 
   const altKeys = formatShortcut(ALT_KEY, keyboard);
   const enterKey = formatShortcut({ key: 'Enter' }, keyboard);
@@ -131,7 +131,7 @@ export function PaletteBody({ services, registry, keyboard, start, close }: Pale
             <button
               key={char}
               type="button"
-              aria-label={label}
+              aria-label={`${char} ${word}: ${label}`}
               className="hover:text-foreground focus-visible:ring-ring rounded outline-none focus-visible:ring-2"
               onMouseDown={(event) => {
                 event.preventDefault();
@@ -225,7 +225,7 @@ export function PaletteBody({ services, registry, keyboard, start, close }: Pale
         {hint}
       </div>
       <div role="status" aria-live="polite" className="sr-only">
-        {spoken.text}
+        {spoken}
       </div>
     </Command>
   );

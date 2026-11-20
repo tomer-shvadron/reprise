@@ -176,6 +176,29 @@ describe('palette prefixes', () => {
     expect(services.playback.getState().settings.loop).toBeUndefined();
   });
 
+  it('announces the new mode with its own count, and a changed count', async () => {
+    const { services, user } = await setupReal();
+    act(() => {
+      services.ui.getState().setPaletteOpen(true);
+    });
+    const input = await screen.findByPlaceholderText('Type a command…');
+    const status = () =>
+      screen
+        .getAllByRole('status')
+        .map((node) => node.textContent)
+        .join('');
+    await user.type(input, '#');
+    expect(status()).toBe('Sections, 4 results');
+    await user.type(input, 'ch');
+    expect(status()).toBe('Sections, 2 results');
+    await user.type(input, 'zz');
+    expect(status()).toBe('No section matches “chzz”.');
+    expect(document.querySelector('[cmdk-group-heading]')).toBeNull();
+    await user.clear(input);
+    await user.type(input, '#chorus 2');
+    expect(status()).toBe('Sections, 1 result');
+  });
+
   it('@ selects a track', async () => {
     const { services, user } = await setupReal();
     act(() => {
@@ -227,7 +250,7 @@ describe('palette prefixes', () => {
     const hint = must(document.getElementById('palette-hint') ?? undefined);
     expect(hint.textContent).toContain('sections');
     expect(hint.textContent).toContain('tracks');
-    expect(screen.getByRole('button', { name: 'Search sections, type #' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '# sections: search sections' })).toBeTruthy();
   });
 
   it('opens locked in bar mode, and Backspace on an empty input unlocks it', async () => {

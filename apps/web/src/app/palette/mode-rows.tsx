@@ -1,5 +1,5 @@
 import { defaultFilter } from 'cmdk';
-import { useEffect, useMemo } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { useStore } from 'zustand';
 
 import { CommandEmpty, CommandGroup, CommandItem, CommandShortcut } from '@/components/ui/command';
@@ -12,10 +12,12 @@ import { formatShortcut, shortcutOn, type KeyboardPlatform } from '../keyboard';
 import type { AppServices } from '../services';
 import { goToBar, goToSection, loopBars, openSong, pickTrack, showOnlyTrack } from './actions';
 import { barRow } from './bars';
-import type { PaletteRow } from './types';
+import type { PaletteMode, PaletteRow } from './types';
 
 /** What a prefix mode tells the palette body: the rows to act on, and a note for the footer. */
 export interface ModeReport {
+  /** The mode these rows were built for, so the body never reads the previous mode's rows as the new one's. */
+  mode: PaletteMode;
   rows: PaletteRow[];
   note?: string;
   /** The text shown when there are no rows, also announced. */
@@ -33,18 +35,23 @@ interface ModeProps {
 }
 
 /** Reports to the body while mounted, so the footer, ⌘↩ and the live region see these rows. */
-function useReport(report: ModeProps['report'], value: ModeReport): void {
+function useReport(
+  report: ModeProps['report'],
+  mode: PaletteMode,
+  value: Omit<ModeReport, 'mode'>,
+): void {
   const { rows, note, empty } = value;
   useEffect(() => {
     report({
+      mode,
       rows,
       ...(note === undefined ? {} : { note }),
       ...(empty === undefined ? {} : { empty }),
     });
     return () => {
-      report({ rows: [] });
+      report({ mode, rows: [] });
     };
-  }, [report, rows, note, empty]);
+  }, [report, mode, rows, note, empty]);
 }
 
 function Rows({
@@ -68,34 +75,36 @@ function Rows({
   return (
     <>
       {rows.length === 0 && empty !== undefined && <CommandEmpty>{empty}</CommandEmpty>}
-      <CommandGroup heading={heading}>
-        {rows.map((row) => (
-          <CommandItem
-            key={row.value}
-            value={row.value}
-            aria-label={row.spoken}
-            onSelect={() => {
-              close();
-              row.run();
-            }}
-          >
-            <span>{row.label}</span>
-            {row.detail !== undefined && (
-              <span className="text-muted-foreground group-data-selected/command-item:text-foreground text-xs">
-                {row.detail}
-              </span>
-            )}
-            {row.tag !== undefined && (
-              <span className="bg-muted text-foreground group-data-selected/command-item:bg-background rounded px-1.5 text-[10px]">
-                {row.tag}
-              </span>
-            )}
-            {row.alt && row.value === selected && (
-              <CommandShortcut>{`${altKeys} ${row.alt.label}`}</CommandShortcut>
-            )}
-          </CommandItem>
-        ))}
-      </CommandGroup>
+      {rows.length > 0 && (
+        <CommandGroup heading={heading}>
+          {rows.map((row) => (
+            <CommandItem
+              key={row.value}
+              value={row.value}
+              aria-label={row.spoken}
+              onSelect={() => {
+                close();
+                row.run();
+              }}
+            >
+              <span>{row.label}</span>
+              {row.detail !== undefined && (
+                <span className="text-muted-foreground group-data-selected/command-item:text-foreground text-xs">
+                  {row.detail}
+                </span>
+              )}
+              {row.tag !== undefined && (
+                <span className="bg-muted text-foreground group-data-selected/command-item:bg-background rounded px-1.5 text-[10px]">
+                  {row.tag}
+                </span>
+              )}
+              {row.alt && row.value === selected && (
+                <CommandShortcut>{`${altKeys} ${row.alt.label}`}</CommandShortcut>
+              )}
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      )}
       {children}
     </>
   );
@@ -148,7 +157,7 @@ export function SectionRows(props: ModeProps) {
       ...(built.length === 0 ? { empty: `No section matches “${text}”.` } : {}),
     };
   }, [score, text, playing, services]);
-  useReport(report, { rows, ...(empty === undefined ? {} : { empty }) });
+  useReport(report, 'sections', { rows, ...(empty === undefined ? {} : { empty }) });
   return <Rows heading="Sections" {...{ rows, empty, selected, keyboard, close }} />;
 }
 
@@ -184,7 +193,7 @@ export function TrackRows(props: ModeProps) {
       ...(built.length === 0 ? { empty: `No track matches “${text}”.` } : {}),
     };
   }, [score, view, current, text, services]);
-  useReport(report, { rows, ...(empty === undefined ? {} : { empty }) });
+  useReport(report, 'tracks', { rows, ...(empty === undefined ? {} : { empty }) });
   return <Rows heading="Tracks" {...{ rows, empty, selected, keyboard, close }} />;
 }
 
@@ -217,7 +226,7 @@ export function SongRows(props: ModeProps & { registry: CommandRegistry }) {
   const loaded = useStore(store, (state) => state.loaded);
   const error = useStore(store, (state) => state.error);
   const openId = useStore(services.document, (state) => state.songId);
-  const { rows, empty, note } = useMemo((): ModeReport => {
+  const { rows, empty, note } = useMemo((): Omit<ModeReport, 'mode'> => {
     if (!loaded) return { rows: [], empty: 'Loading the library…' };
     if (error !== undefined) return { rows: [], empty: error };
     const ranked = rankSongs(entries, text, openId);
@@ -247,7 +256,7 @@ export function SongRows(props: ModeProps & { registry: CommandRegistry }) {
         : `No song in your library matches “${text}”.`;
     return { rows: importRows(registry, close), empty: message };
   }, [loaded, error, entries, text, openId, services, registry, close]);
-  useReport(report, {
+  useReport(report, 'songs', {
     rows,
     ...(empty === undefined ? {} : { empty }),
     ...(note === undefined ? {} : { note }),
@@ -255,7 +264,9 @@ export function SongRows(props: ModeProps & { registry: CommandRegistry }) {
   return (
     <Rows heading="Library" {...{ rows, selected, keyboard, close }} empty={undefined}>
       {empty !== undefined && (
-        <p className="text-muted-foreground px-3 py-2 text-center text-sm">{empty}</p>
+        <p role="presentation" className="text-muted-foreground px-3 py-2 text-center text-sm">
+          {empty}
+        </p>
       )}
     </Rows>
   );
@@ -298,7 +309,7 @@ export function BarRows(props: ModeProps) {
       empty: undefined,
     };
   }, [score, text, services]);
-  useReport(report, { rows, ...(empty === undefined ? {} : { empty }) });
+  useReport(report, 'bar', { rows, ...(empty === undefined ? {} : { empty }) });
   return <Rows heading="Bar" {...{ rows, empty, selected, keyboard, close }} />;
 }
 
@@ -313,7 +324,7 @@ export function rank(value: string, search: string, keywords?: string[]): number
   return defaultFilter(value, search, keywords);
 }
 
-export function CommandRows({
+export const CommandRows = memo(function CommandRows({
   registry,
   keyboard,
   close,
@@ -349,4 +360,4 @@ export function CommandRows({
       </CommandGroup>
     </>
   );
-}
+});
