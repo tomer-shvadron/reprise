@@ -2,6 +2,7 @@ import { modalBlocksCommand } from '@/app/shortcut-dispatcher';
 import { isTextField } from '@/app/text-field';
 
 import {
+  copyBars,
   copySelection,
   cutSelection,
   pasteClip,
@@ -14,6 +15,8 @@ import type { PasteMode } from './paste';
 export interface ClipboardController {
   /** The palette's Copy and Cut: raise the browser's own event so the system clipboard is filled too. */
   copy(): void;
+  /** The play-mode menu's "Copy bar": the target's bars, on both clipboards like Copy. */
+  copyBars(): void;
   cut(): void;
   /** The palette's Paste: the internal clipboard only, a page cannot trigger a system paste. */
   paste(mode?: PasteMode): void;
@@ -63,15 +66,18 @@ export function installClipboard(
   const exec = options.exec ?? execDefault;
   const { entry } = services;
   // Set around a palette Copy or Cut; the handler that honours it, or the fallback, clears it.
-  const arm = { on: false };
+  const arm = { on: false, bars: false };
   const armed = (): boolean => arm.on;
   const disarm = (): void => {
     arm.on = false;
+    arm.bars = false;
   };
 
   const stands = (event: Event): boolean => {
-    if (event.defaultPrevented || !services.editing.getState().editing) return false;
+    if (event.defaultPrevented) return false;
+    // A palette or menu copy stands in play mode too: "Copy bar" is that copy.
     if (armed()) return true;
+    if (!services.editing.getState().editing) return false;
     if (isTextField(event.target) || isTextField(globalThis.document.activeElement)) return false;
     return !modalBlocksCommand(`editor.${event.type}`);
   };
@@ -93,8 +99,9 @@ export function installClipboard(
 
   const onCopy = (event: ClipboardEvent) => {
     if (!stands(event) || (!armed() && hasTextSelection())) return;
+    const bars = arm.bars;
     disarm();
-    publish(event, copySelection(services));
+    publish(event, bars ? copyBars(services) : copySelection(services));
   };
 
   const onCut = (event: ClipboardEvent) => {
@@ -134,6 +141,10 @@ export function installClipboard(
   controllers.set(entry, {
     copy: () => {
       raise('copy', () => copySelection(services));
+    },
+    copyBars: () => {
+      arm.bars = true;
+      raise('copy', () => copyBars(services));
     },
     cut: () => {
       raise('cut', () => cutSelection(services));

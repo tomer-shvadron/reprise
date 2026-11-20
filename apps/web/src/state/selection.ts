@@ -51,12 +51,20 @@ export interface SelectionState {
   bars: BarRange | undefined;
   /** The fixed end of the bar range, which Shift+click and extending move away from. */
   barsAnchor: Id | undefined;
+  /**
+   * Whether the bars just selected are also looped while a loop is on (the transport's
+   * subscription follows them). False for a selection that only marks what a menu acts on.
+   */
+  barsReloop: boolean;
   cursor: EditCursor | undefined;
   range: EditRange | undefined;
   setCurrentTrack(id: Id | undefined): void;
   select(selection: Selection): void;
-  /** `anchor` defaults to the range's start; a plain click passes no range and its bar. */
-  selectBars(range: BarRange | undefined, anchor?: Id): void;
+  /**
+   * `anchor` defaults to the range's start; a plain click passes no range and its bar.
+   * `reloop: false` marks the bars without moving an active loop to them.
+   */
+  selectBars(range: BarRange | undefined, anchor?: Id, options?: { reloop?: boolean }): void;
   /**
    * Sets the keys present in `patch` in one update; a key present as undefined clears it. The
    * editor keeps the invariants: cursor.track === currentTrack, and `bars`/`barsAnchor` mirror
@@ -79,6 +87,7 @@ export function createSelectionStore() {
     selection: {},
     bars: undefined,
     barsAnchor: undefined,
+    barsReloop: true,
     cursor: undefined,
     range: undefined,
     setCurrentTrack(id) {
@@ -87,11 +96,17 @@ export function createSelectionStore() {
     select(selection) {
       set({ selection });
     },
-    selectBars(range, anchor) {
-      set({ bars: range, barsAnchor: anchor ?? range?.startBar, range: undefined });
+    selectBars(range, anchor, options) {
+      set({
+        bars: range,
+        barsAnchor: anchor ?? range?.startBar,
+        barsReloop: options?.reloop ?? true,
+        range: undefined,
+      });
     },
     setEdit(patch) {
-      set(patch);
+      // Any other way of setting the bars follows an active loop, as a drag does.
+      set('bars' in patch ? { ...patch, barsReloop: true } : patch);
     },
     reset(currentTrack) {
       set({
@@ -99,6 +114,7 @@ export function createSelectionStore() {
         selection: {},
         bars: undefined,
         barsAnchor: undefined,
+        barsReloop: true,
         cursor: undefined,
         range: undefined,
       });
