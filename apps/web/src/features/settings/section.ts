@@ -1,13 +1,16 @@
 import type { ComponentType } from 'react';
 
-import type { SettingKey } from '@/state/settings';
+import type { SettingDef } from '@/state/settings';
 
 export interface SettingsSection {
   /** Stable and kebab-case; `openSettings('playback')` names it. */
   id: string;
   title: string;
-  /** What "Restore defaults" resets; a key may belong to one section only. */
-  settings: readonly SettingKey[];
+  /**
+   * What "Restore defaults" resets, and what the relaunch test round-trips; a key may belong to one
+   * section only.
+   */
+  settings: readonly SettingDef<unknown>[];
   Component: ComponentType;
 }
 

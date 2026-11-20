@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppRegistry } from '@/app/app-registry';
+import { installViewDefaults } from '@/app/install-view-defaults';
 import { SETTINGS_SECTIONS } from '@/app/settings-sections';
 import { AppServicesProvider } from '@/app/services-context';
 import { installShortcutDispatcher } from '@/app/shortcut-dispatcher';
@@ -16,6 +17,7 @@ import {
   THEME_SETTING,
 } from '@/state/app-settings';
 import { createTestServices } from '@/test/services';
+import { REGISTERED, SAMPLES } from '@/test/setting-samples';
 
 import { SettingsDialog } from './settings-dialog';
 
@@ -144,7 +146,7 @@ describe('the settings dialog', () => {
 
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(services.ui.getState().settings.open).toBe(false);
-    // Radix restores focus on the next task.
+    // The dialog restores focus in onCloseAutoFocus, which Radix fires on the next task.
     await waitFor(() => {
       expect(behind).toHaveFocus();
     });
@@ -166,9 +168,71 @@ describe('the settings dialog', () => {
       key: ',',
       metaKey: true,
     });
-    fireEvent.keyDown(within(dialog).getByRole('tab', { name: 'Appearance' }), { key: ' ' });
+    // A bare Space on a non-control: a tab would keep it for itself whether or not a dialog is open.
+    fireEvent.keyDown(within(dialog).getByRole('heading', { name: 'Appearance' }), { key: ' ' });
 
     expect(run).not.toHaveBeenCalled();
     expect(toggle).not.toHaveBeenCalled();
+
+    // The same Space plays once the dialog is gone, so the assertion above is the dialog's doing.
+    act(() => {
+      services.ui.getState().closeSettings();
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+    fireEvent.keyDown(document.body, { key: ' ' });
+    expect(toggle).toHaveBeenCalledOnce();
   });
+
+  // Over every registered section, so a later section that forgets a handle in its `settings`
+  // list (which Restore defaults would then leave alone) fails here with no test of its own.
+  describe.each(SETTINGS_SECTIONS.map((section) => [section.id, section] as const))(
+    'the %s section',
+    (_id, section) => {
+      const sampleOf = (key: string) => {
+        if (!(key in SAMPLES)) throw new Error(`add a sample for ${key}`);
+        return SAMPLES[key];
+      };
+
+      it('lists exactly the settings its controls show', async () => {
+        const { services } = await setup();
+        openSettings(services, section.id);
+        const panel = screen.getByRole('tabpanel');
+        const baseline = panel.innerHTML;
+        const shown: string[] = [];
+        for (const def of REGISTERED) {
+          act(() => {
+            services.settings.set(def, sampleOf(def.key));
+          });
+          if (panel.innerHTML !== baseline) shown.push(def.key);
+          act(() => {
+            services.settings.reset([def]);
+          });
+        }
+        expect(shown.sort()).toEqual(section.settings.map((def) => def.key).sort());
+      });
+
+      it('restores its own settings and the current view, and no other', async () => {
+        const { services } = await setup();
+        installViewDefaults(services);
+        for (const def of REGISTERED) services.settings.set(def, sampleOf(def.key));
+        openSettings(services, section.id);
+        const user = userEvent.setup();
+
+        await user.click(screen.getByRole('button', { name: 'Restore defaults' }));
+
+        const own = new Set(section.settings.map((def) => def.key));
+        for (const def of REGISTERED) {
+          expect(services.settings.get(def), def.key).toEqual(
+            own.has(def.key) ? def.default : sampleOf(def.key),
+          );
+        }
+        if (section.id === 'score') {
+          expect(services.ui.getState().view.mode).toBe('paged');
+          expect(services.ui.getState().zoom).toBe(1);
+        }
+      });
+    },
+  );
 });

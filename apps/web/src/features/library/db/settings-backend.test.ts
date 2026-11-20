@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { APP_SETTINGS, THEME_SETTING } from '@/state/app-settings';
-import { createSettingsStore, type SettingDef, type SettingsStore } from '@/state/settings';
+import { THEME_SETTING } from '@/state/app-settings';
+import { createSettingsStore, type SettingsStore } from '@/state/settings';
 import { memoryStorage } from '@/test/memory-local-storage';
+import { REGISTERED, SAMPLES } from '@/test/setting-samples';
 
 import { LIBRARY_SORT_SETTING } from '../search';
 import { uniqueDbName } from '../test-support';
@@ -14,27 +15,6 @@ const open: RepriseDb[] = [];
 afterEach(() => {
   for (const db of open.splice(0)) db.close();
 });
-
-/**
- * Every setting the app registers, with a value that is not its default. A new setting must add
- * its sample here, which is what makes "survives a relaunch" a property of each one.
- */
-const REGISTERED: readonly SettingDef<unknown>[] = [...APP_SETTINGS, LIBRARY_SORT_SETTING];
-const SAMPLES: Record<string, unknown> = {
-  'appearance.theme': 'light',
-  'playback.countIn': true,
-  'playback.metronomeOn': true,
-  'playback.metronomeVolume': 0.25,
-  'playback.masterVolume': 0.6,
-  'playback.gmTierBypass': false,
-  'sounds.memoryBudgetBytes': 256 * 1024 * 1024,
-  'playback.followPlayhead': false,
-  'score.defaultViewMode': 'continuous',
-  'score.defaultZoom': 1.5,
-  'layout.rightPanelOpen': true,
-  'layout.rightPanelWidth': 400,
-  'library.sort': 'artist',
-};
 
 /** One app run: a database, a store over its table, and the `localStorage` early settings use. */
 function launch(name: string, local: Storage) {

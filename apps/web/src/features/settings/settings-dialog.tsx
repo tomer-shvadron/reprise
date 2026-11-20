@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { useAppServices } from '@/app/services-context';
@@ -27,12 +27,9 @@ export function SettingsDialog({ sections }: { sections: readonly SettingsSectio
     if (open && requested !== undefined) setShown(requested);
   }
 
-  // Radix sends focus to the dialog's trigger on close, and this one has none, so the element
-  // that had focus when it opened is kept here. A layout effect runs before Radix moves focus in.
+  // Radix sends focus to the dialog's trigger on close, and this one has none, so the element that
+  // had focus is kept on open and given it back on close.
   const returnTo = useRef<Element | null>(null);
-  useLayoutEffect(() => {
-    if (open) returnTo.current = globalThis.document.activeElement;
-  }, [open]);
 
   const current = sections.find((section) => section.id === shown) ?? sections[0];
   if (!current) return null;
@@ -48,6 +45,10 @@ export function SettingsDialog({ sections }: { sections: readonly SettingsSectio
         showCloseButton
         className="h-[min(80vh,40rem)] gap-0 overflow-hidden p-0 sm:max-w-3xl"
         aria-describedby="settings-description"
+        onOpenAutoFocus={() => {
+          // Fires before Radix moves focus in, so this is still the opener.
+          returnTo.current = globalThis.document.activeElement;
+        }}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
           const target = returnTo.current;

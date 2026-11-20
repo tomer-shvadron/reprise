@@ -54,6 +54,9 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - Changed by #334 (2026-11-20): the right panel is tabbed (Mixer, Practice, Effects, History) and
   collapses to an icon rail that stays visible; its open state and width are remembered. See
   "Changed by #334" in `../specs/architecture.md`.
+- Changed by #343 (2026-11-20): the theme is a setting with three values, System, Light and Dark, and
+  System, which follows the operating system, is the default, so "dark theme by default" holds only
+  where the system is dark. See "Changed by #343" in `../specs/architecture.md`.
 
 ## Related
 
