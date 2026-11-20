@@ -5,11 +5,15 @@ import type {
   HistoryMenuLabels,
   InvokeArgs,
   InvokeChannel,
+  MenuCommandId,
+  MenuKey,
+  MenuKeys,
   PrintOptions,
   ReadRange,
   RecentSong,
 } from '@reprise/web';
 
+import { MENU_COMMANDS } from './menu';
 import { isStoragePath, parseStoragePath, StoragePathError } from './storage-path';
 
 /** The path as sent once it has passed the syntax check; main resolves it against a root. */
@@ -236,6 +240,76 @@ export function parseHistoryLabels(value: unknown): HistoryMenuLabels {
   return labels;
 }
 
+const KEY_FIELDS = new Set(['key', 'mod', 'shift', 'alt']);
+const NAMED_KEY =
+  /^(F([1-9]|1\d|2[0-4])|Arrow(Up|Down|Left|Right)|Home|End|PageUp|PageDown|Enter|Backspace|Delete|Insert)$/;
+
+/**
+ * Bindings the menu keeps for its own roles (quit, close, hide, minimize, copy, cut and paste):
+ * a menu command must not take one, so a compromised page cannot give Save the quit key. Written
+ * `[key, mod, shift, alt]` over the modifier-less spelling of the key.
+ */
+const ROLE_KEYS: readonly (readonly [string, boolean, boolean, boolean])[] = [
+  ['q', true, false, false],
+  ['w', true, false, false],
+  ['h', true, false, false],
+  ['h', true, false, true],
+  ['m', true, false, false],
+  ['c', true, false, false],
+  ['x', true, false, false],
+  ['v', true, false, false],
+];
+
+const isMenuCommandId = (id: string): id is MenuCommandId => Object.hasOwn(MENU_COMMANDS, id);
+
+function parseMenuKey(id: string, value: unknown): MenuKey | null {
+  if (value === null) return null;
+  if (!isRecord(value)) throw new PayloadError(`Expected a key or null for '${id}'`);
+  for (const field of Object.keys(value)) {
+    if (!KEY_FIELDS.has(field)) throw new PayloadError(`Unknown key field '${field}' for '${id}'`);
+  }
+  const { key } = value;
+  if (typeof key !== 'string' || !(/^[\x20-\x7e]$/.test(key) || NAMED_KEY.test(key))) {
+    throw new PayloadError(`Unsupported key for '${id}'`);
+  }
+  const flags: Record<'mod' | 'shift' | 'alt', boolean> = { mod: false, shift: false, alt: false };
+  for (const flag of ['mod', 'shift', 'alt'] as const) {
+    const raw = value[flag];
+    if (raw === undefined) continue;
+    if (typeof raw !== 'boolean')
+      throw new PayloadError(`Expected a boolean '${flag}' for '${id}'`);
+    flags[flag] = raw;
+  }
+  const lower = key.toLowerCase();
+  // Shift is part of the role key only where the role has it: the bare role keys are Cmd+Q and
+  // the like, and Shift+Cmd+Q is a different binding.
+  if (
+    ROLE_KEYS.some(
+      ([k, m, s, a]) => k === lower && m === flags.mod && s === flags.shift && a === flags.alt,
+    )
+  ) {
+    throw new PayloadError(`'${id}' cannot take a key the menu keeps for itself`);
+  }
+  return {
+    key,
+    ...(flags.mod && { mod: true }),
+    ...(flags.shift && { shift: true }),
+    ...(flags.alt && { alt: true }),
+  };
+}
+
+/** `{ <menu command id>: key | null }`; an id the menu does not have, or a bad key, is refused. */
+export function parseMenuKeys(value: unknown): MenuKeys {
+  if (!isRecord(value)) throw new PayloadError('Expected the menu keys');
+  const keys: MenuKeys = {};
+  for (const [id, raw] of Object.entries(value)) {
+    if (!isMenuCommandId(id)) throw new PayloadError(`Unknown menu command '${id}'`);
+    if (raw === undefined) continue;
+    keys[id] = parseMenuKey(id, raw);
+  }
+  return keys;
+}
+
 /** At most ten items; an id is opaque so an overlong one is refused, a title is cut. */
 export function parseRecentSongs(value: unknown): RecentSong[] {
   if (!Array.isArray(value)) throw new PayloadError('Expected a list of recent songs');
@@ -306,6 +380,10 @@ export const parsers: Parsers = {
   'menu:set-history': (args) => {
     arity(args, 1, 'menu:set-history');
     return [parseHistoryLabels(args[0])];
+  },
+  'menu:set-keys': (args) => {
+    arity(args, 1, 'menu:set-keys');
+    return [parseMenuKeys(args[0])];
   },
   'app:library-dir': (args) => {
     arity(args, 0, 'app:library-dir');

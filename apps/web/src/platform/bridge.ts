@@ -146,6 +146,7 @@ export interface InvokeChannels {
   'storage:remove': { args: [path: string]; result: undefined };
   'menu:set-recent': { args: [items: readonly RecentSong[]]; result: undefined };
   'menu:set-history': { args: [labels: HistoryMenuLabels]; result: undefined };
+  'menu:set-keys': { args: [keys: MenuKeys]; result: undefined };
   'app:library-dir': { args: []; result: string };
   'app:data-dir': { args: []; result: string };
   'app:print': { args: [options?: PrintOptions]; result: undefined };
@@ -174,23 +175,40 @@ export type InvokeArgs<C extends InvokeChannel> = InvokeChannels[C]['args'];
 export type InvokeResult<C extends InvokeChannel> = InvokeChannels[C]['result'];
 
 /** Commands the native menu can trigger; each id is a command in the renderer's registry. */
-export type MenuCommandId =
-  | 'app.settings'
-  | 'file.new'
-  | 'file.open'
-  | 'file.save'
-  | 'file.saveAs'
-  | 'file.export'
-  | 'file.print'
-  | 'edit.undo'
-  | 'edit.redo'
-  | 'view.zoomIn'
-  | 'view.zoomOut'
-  | 'view.zoomReset'
-  | 'view.toggleTheme'
-  | 'view.toggleSidebar'
-  | 'view.togglePanel'
-  | 'view.toggleViewMode';
+export const MENU_COMMAND_IDS = [
+  'app.settings',
+  'file.new',
+  'file.open',
+  'file.save',
+  'file.saveAs',
+  'file.export',
+  'file.print',
+  'edit.undo',
+  'edit.redo',
+  'view.zoomIn',
+  'view.zoomOut',
+  'view.zoomReset',
+  'view.toggleTheme',
+  'view.toggleSidebar',
+  'view.togglePanel',
+  'view.toggleViewMode',
+] as const;
+
+export type MenuCommandId = (typeof MENU_COMMAND_IDS)[number];
+
+/**
+ * A key for a menu item, as the renderer's registry has it (the `Shortcut` shape without `only`).
+ * `key` is one printable ASCII character or a name such as `F4`, `Enter`, `ArrowUp`.
+ */
+export interface MenuKey {
+  key: string;
+  mod?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+}
+
+/** The key of each menu command; `null` or absent leaves the item without one. */
+export type MenuKeys = Partial<Record<MenuCommandId, MenuKey | null>>;
 
 /** Main-to-renderer event channels and their payloads. */
 export interface EventChannels {
@@ -225,6 +243,7 @@ export interface RepriseBridge {
   setHistoryLabels: (
     ...args: InvokeArgs<'menu:set-history'>
   ) => Promise<InvokeResult<'menu:set-history'>>;
+  setMenuKeys: (...args: InvokeArgs<'menu:set-keys'>) => Promise<InvokeResult<'menu:set-keys'>>;
   libraryDir: () => Promise<InvokeResult<'app:library-dir'>>;
   dataDir: () => Promise<InvokeResult<'app:data-dir'>>;
   print: (...args: InvokeArgs<'app:print'>) => Promise<InvokeResult<'app:print'>>;

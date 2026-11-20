@@ -20,6 +20,7 @@ function fakeBridge(): RepriseBridge {
     print: vi.fn(() => Promise.resolve(undefined)),
     onMenuCommand: vi.fn(() => () => undefined),
     setHistoryLabels: vi.fn(() => Promise.resolve(undefined)),
+    setMenuKeys: vi.fn(() => Promise.resolve(undefined)),
     onOpenRecent: vi.fn(() => () => undefined),
     setDocumentEdited: vi.fn(() => Promise.resolve(undefined)),
     confirmClose: vi.fn(() => Promise.resolve(undefined)),

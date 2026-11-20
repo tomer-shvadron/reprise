@@ -4,6 +4,7 @@ import type {
   FileFilter,
   FileHandle,
   HistoryMenuLabels,
+  MenuKeys,
   OpenedFile,
   PickedFile,
   PickedFolder,
@@ -18,6 +19,8 @@ export type {
   FileFilter,
   FileHandle,
   HistoryMenuLabels,
+  MenuKey,
+  MenuKeys,
   OpenedFile,
   PickedFile,
   PickedFolder,
@@ -84,6 +87,11 @@ export interface Platform {
    * an absent entry disables the item. Best effort, like the recent list.
    */
   setHistoryLabels?(labels: HistoryMenuLabels): void;
+  /**
+   * Desktop only: the key of each native menu item, from the renderer's registry, so the menu
+   * shows (and, where the menu owns the key, fires) the keys the app uses. Best effort.
+   */
+  setMenuKeys?(keys: MenuKeys): void;
   /** Desktop only: a pick from Open Recent. Returns an unsubscribe function. */
   onOpenRecent?(listener: (id: string) => void): () => void;
   /**

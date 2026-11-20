@@ -29,6 +29,7 @@ function fakeBridge() {
     print: vi.fn(() => Promise.resolve(undefined)),
     onMenuCommand: vi.fn(() => () => undefined),
     setHistoryLabels: vi.fn(() => Promise.resolve(undefined)),
+    setMenuKeys: vi.fn(() => Promise.resolve(undefined)),
     onOpenRecent: vi.fn(() => () => undefined),
     setDocumentEdited: vi.fn(() => Promise.resolve(undefined)),
     confirmClose: vi.fn(() => Promise.resolve(undefined)),
@@ -68,6 +69,23 @@ describe('the Electron platform', () => {
     createElectronPlatform(bridge).setHistoryLabels?.({ undo: 'setNote' });
 
     expect(bridge.setHistoryLabels).toHaveBeenCalledWith({ undo: 'setNote' });
+  });
+
+  it('forwards the menu keys over the bridge, and swallows a rejection', async () => {
+    const { bridge } = fakeBridge();
+    const platform = createElectronPlatform(bridge);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    platform.setMenuKeys?.({ 'file.save': { key: 's', mod: true } });
+    expect(bridge.setMenuKeys).toHaveBeenCalledWith({ 'file.save': { key: 's', mod: true } });
+
+    vi.mocked(bridge.setMenuKeys).mockRejectedValueOnce(new Error('gone'));
+    platform.setMenuKeys?.({});
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
   });
 
   it('reports the edited state, and confirms a close, over the bridge', () => {
