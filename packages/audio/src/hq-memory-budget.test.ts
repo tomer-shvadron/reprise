@@ -48,6 +48,37 @@ function swagbassShaped() {
   };
 }
 
+/** One Five-voices-shaped file: 4.2 s of mono Float32 at 44.1 kHz. */
+const FIVE_VOICES_FILE_BYTES = Math.round(4.2 * RATE) * 4;
+/** Five voices: 36 keys by 6 velocity layers, 216 files (WAV bytes shared, paths distinct). */
+const FIVE_VOICES_KEYS = 36;
+const FIVE_VOICES_LAYERS = [1, 22, 43, 64, 85, 106] as const;
+
+/** A pack shaped like Karoryfer Emilyguitar's Five voices (#346), as one shared files object. */
+function fiveVoicesShaped() {
+  const wav = encodeWav([sine(220, RATE, 4.2)], RATE);
+  const lines: string[] = [];
+  for (let key = 40; key < 40 + FIVE_VOICES_KEYS; key++) {
+    FIVE_VOICES_LAYERS.forEach((lo, layer) => {
+      const next = FIVE_VOICES_LAYERS[layer + 1];
+      const hi = next === undefined ? 127 : next - 1;
+      lines.push(
+        `<region> sample=s/${String(key)}-${String(lo)}.wav lokey=${String(key)} hikey=${String(key)} lovel=${String(lo)} hivel=${String(hi)} pitch_keycenter=${String(key)}`,
+      );
+    });
+  }
+  const sfz = new TextEncoder().encode(lines.join('\n'));
+  return {
+    read: (path: string) =>
+      path === 'default.sfz'
+        ? Promise.resolve(sfz)
+        : path.startsWith('s/')
+          ? Promise.resolve(wav)
+          : Promise.reject(new Error(`No file ${path}`)),
+    size: (path: string) => (path.startsWith('s/') ? wav.length : undefined),
+  };
+}
+
 /** Every key of a 24-fret six-string guitar in standard tuning: MIDI 40 to 88. */
 const GUITAR_KEYS = 49;
 
@@ -262,4 +293,75 @@ describe('HQ-tier memory budget', () => {
       }
     },
   );
+
+  // The default sounds (#346): every guitar track shares one resident Five-voices instrument, so
+  // four of them cost one pack's worth, and a Swagbass-shaped bass fits beside it.
+  it('holds the default 300 MiB with four guitar tracks sharing one Five-voices pack and a bass pack', async () => {
+    const { song } = longScore();
+    const guitars = PACK_TRACKS.map((index) => song.tracks[index]?.id ?? '');
+    const bassTrack = song.tracks[1]?.id ?? '';
+    const fiveVoices = fiveVoicesShaped();
+    const options: LoadOptions = {
+      tier: 'hq',
+      packs: [
+        ...guitars.map((trackId) => ({
+          trackId,
+          pack: { id: 'fivevoices01', files: fiveVoices },
+          entries: { default: 'default.sfz' },
+        })),
+        {
+          trackId: bassTrack,
+          pack: { id: 'swagbass0001', files: swagbassShaped() },
+          entries: { default: 'default.sfz' },
+        },
+      ],
+    };
+    const engine = await setup();
+    try {
+      const result = await engine.load(song, options);
+      await engine.settled();
+      const { sampler, source } = debugAudioEngine(engine);
+      if (!sampler || !source) throw new Error('the engine is not live');
+      engine.unlock();
+      // Reach every key and velocity layer of the pack, and 49 keys of the bass at two layers.
+      const reach = async (trackId: string, keys: readonly number[], velocities: number[]) => {
+        const reached = new Set<string>();
+        const instrument = sampler.instrumentAt(trackId, 0);
+        for (const key of keys) {
+          for (const velocity of velocities) {
+            for (const region of instrument.regions.candidates(key, velocity)) {
+              reached.add(region.sample);
+              await source.getBuffer(region.sample);
+            }
+          }
+        }
+        return reached.size;
+      };
+      const fiveKeys = Array.from({ length: FIVE_VOICES_KEYS }, (_, i) => 40 + i);
+      const bassKeys = Array.from({ length: GUITAR_KEYS }, (_, i) => 40 + i);
+      const fiveFiles = await reach(guitars[0] ?? '', fiveKeys, [...FIVE_VOICES_LAYERS]);
+      const bassFiles = await reach(bassTrack, bassKeys, [30, 100]);
+      const report = engine.memory();
+      const residents = packInstrumentsOf(report.residents, 'fivevoices01');
+      console.info(
+        `HQ budget, four tracks sharing one Five-voices pack plus a bass pack: ${mib(report.decodedBytes)} ` +
+          `resident of ${mib(report.budgetBytes)}; ${String(fiveFiles)} Five-voices files, ` +
+          `${String(bassFiles)} bass files, ${String(residents.length)} resident Five-voices instrument`,
+      );
+
+      expect(result.fallbacks).toEqual([]);
+      expect(report.budgetBytes).toBe(HQ_BUDGET_BYTES);
+      // One resident instrument for the four guitar tracks, not four.
+      expect(residents).toEqual(['default.sfz']);
+      expect(fiveFiles).toBe(FIVE_VOICES_KEYS * FIVE_VOICES_LAYERS.length);
+      expect(report.decodedBytes).toBeGreaterThanOrEqual(
+        fiveFiles * FIVE_VOICES_FILE_BYTES + bassFiles * FILE_BYTES,
+      );
+      expect(report.decodedBytes).toBeLessThanOrEqual(HQ_BUDGET_BYTES);
+      expect(source.counters.evictions).toBe(0);
+      expect(source.counters.pinnedEvictions).toBe(0);
+    } finally {
+      engine.dispose();
+    }
+  });
 });

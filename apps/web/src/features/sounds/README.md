@@ -143,3 +143,14 @@ and `playback.settings.memoryBudgetBytes`:
   decoded, picks it for a bass track, chooses 64 MB (the panel shows at most 64 MB and the shortfall
   note, and `decodedBytes` agrees), then 300 MB again: after `settled()` the figure is back and the
   note is gone.
+
+## Default sounds
+
+A track that chose no sound plays its family's default (#346). `soundFamilyOf(track)` gives the family (drums by kind, then GM programs 0-23 keys, 24-25 acoustic guitar, 26-31 electric guitar, 32-39 bass, 40-79 orchestral, else other), and `DEFAULT_SOUND_SETTINGS` holds one handle per family, `sounds.default.<family>`: `'gm'`, or a pack and optional instrument. Both guitar families default to Karoryfer Emilyguitar "Five voices" (`EMILYGUITAR_FIVE_VOICES`), the rest to General MIDI.
+
+- `createDefaultSounds(settings)` is the `DefaultSounds` source the audio service reads (`state/sound-packs.ts`); it notifies on any handle, and the service reloads the song.
+- Precedence, in `app/audio/track-sound.ts` (`resolveTrackSound`): a pack the track names, an explicit `sound.generalMidi`, the family default, the track's GM program. The file's program only picks the family; it is never a choice.
+- A default applies at play time only. It is never written into the score, the `.reprise` file or a gp export.
+- A default whose pack is not installed (or lacks the instrument) plays GM with no warning: the track's `trackSounds` entry is `{ tier: 'gm', packId, problem: 'missing', source: 'default' }`, which the mixer's notice ignores and the download offer will read.
+- All guitar tracks share one resident instrument, so memory does not grow with the track count (`hq-memory-budget.test.ts`).
+- `sounds.offeredPacks` records which curated packs the one-time download offer has shown.

@@ -44,11 +44,15 @@ export type DisplaySettings = z.infer<typeof DisplaySettingsSchema>;
  * `preset` is an effects preset id, opaque to the model: it is valid without `packId` (the track
  * keeps its GM instrument and takes the preset's effects chain), and an id the audio engine does
  * not know means automatic. The engine owns the ids (#234).
+ * `generalMidi` is an explicit "play the GM program here" for a track whose instrument family has
+ * a default pack in the app's settings: without it, an absent `packId` means "the default". It is
+ * ignored when `packId` is set (#346).
  */
 export const SoundOverrideSchema = z.object({
   packId: IdSchema.exactOptional(),
   instrument: z.string().exactOptional(),
   preset: z.string().exactOptional(),
+  generalMidi: z.literal(true).exactOptional(),
 });
 export type SoundOverride = z.infer<typeof SoundOverrideSchema>;
 

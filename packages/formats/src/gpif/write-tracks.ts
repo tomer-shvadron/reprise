@@ -87,7 +87,13 @@ export function reportTrackLosses(track: Track, index: number, drops: DropCollec
       'Channel chorus, reverb, phaser and tremolo have no gp equivalent',
     );
   }
-  if (track.sound) {
+  // A General MIDI choice alone loses nothing: Guitar Pro plays the program anyway.
+  if (
+    track.sound &&
+    (track.sound.packId !== undefined ||
+      track.sound.instrument !== undefined ||
+      track.sound.preset !== undefined)
+  ) {
     drops.drop(
       'sound-override',
       [...path, 'sound'],

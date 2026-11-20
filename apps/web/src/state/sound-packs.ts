@@ -1,3 +1,4 @@
+import type { Track } from '@reprise/model';
 import type { SfzFiles } from '@reprise/audio';
 
 /** One instrument of an installed pack: a key a track names in `sound.instrument`. */
@@ -23,5 +24,15 @@ export interface InstalledPackSource {
 export interface PackDirectory {
   get(id: string): InstalledPackSource | undefined;
   /** Fires after the installed set changed; returns the unsubscribe. */
+  subscribe(listener: () => void): () => void;
+}
+
+/**
+ * The sound a family plays when a track chose nothing (#346), from the user's settings. It is
+ * applied at play time only and never saved into the song.
+ */
+export interface DefaultSounds {
+  /** The family default for a track that chose nothing, or undefined for General MIDI. */
+  get(track: Track): { packId: string; instrument?: string } | undefined;
   subscribe(listener: () => void): () => void;
 }

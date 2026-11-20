@@ -1,4 +1,5 @@
 import { SETTINGS_SECTIONS } from '@/app/settings-sections';
+import { DEFAULT_SOUND_SETTINGS, OFFERED_PACKS_SETTING } from '@/features/sounds';
 import { LIBRARY_SORT_SETTING } from '@/features/library/search';
 import { APP_SETTINGS } from '@/state/app-settings';
 import type { SettingDef } from '@/state/settings';
@@ -10,9 +11,14 @@ import type { SettingDef } from '@/state/settings';
  */
 export const REGISTERED: readonly SettingDef<unknown>[] = [
   ...new Map(
-    [...APP_SETTINGS, LIBRARY_SORT_SETTING, ...SETTINGS_SECTIONS.flatMap((s) => s.settings)].map(
-      (def) => [def.key, def] as const,
-    ),
+    [
+      ...APP_SETTINGS,
+      LIBRARY_SORT_SETTING,
+      // Until the Sounds section lists them (#346, part 2).
+      ...Object.values(DEFAULT_SOUND_SETTINGS),
+      OFFERED_PACKS_SETTING,
+      ...SETTINGS_SECTIONS.flatMap((s) => s.settings),
+    ].map((def) => [def.key, def] as const),
   ).values(),
 ];
 
@@ -37,4 +43,12 @@ export const SAMPLES: Record<string, unknown> = {
   'layout.rightPanelWidth': 400,
   'layout.practiceZoom': 2,
   'library.sort': 'artist',
+  'sounds.default.electricGuitar': 'gm',
+  'sounds.default.acousticGuitar': 'gm',
+  'sounds.default.bass': { packId: 'aBassPack001', instrument: 'fingered' },
+  'sounds.default.drums': { packId: 'aDrumPack001' },
+  'sounds.default.keys': { packId: 'aKeysPack001' },
+  'sounds.default.orchestral': { packId: 'anOrchPack01' },
+  'sounds.default.other': { packId: 'anOtherPack1' },
+  'sounds.offeredPacks': ['qxmLveBRBWt8'],
 };

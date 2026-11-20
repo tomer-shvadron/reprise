@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { STANDARD_TUNING } from './factories';
-import { NotationSchema, canShowTab, shownNotation, type Track } from './track';
+import {
+  NotationSchema,
+  SoundOverrideSchema,
+  canShowTab,
+  shownNotation,
+  type Track,
+} from './track';
 
 const fretted: Pick<Track, 'kind' | 'tuning'> = { kind: 'fretted', tuning: [...STANDARD_TUNING] };
 const strippedFretted: Pick<Track, 'kind' | 'tuning'> = { kind: 'fretted', tuning: [] };
@@ -35,5 +41,13 @@ describe('shownNotation', () => {
       expect(shownNotation(keptTuning, wanted)).toBe('standard');
       expect(shownNotation(pitched, wanted)).toBe('standard');
     }
+  });
+});
+
+describe('SoundOverrideSchema', () => {
+  it('accepts generalMidi only as true', () => {
+    expect(SoundOverrideSchema.safeParse({ generalMidi: true }).success).toBe(true);
+    expect(SoundOverrideSchema.safeParse({ generalMidi: false }).success).toBe(false);
+    expect(SoundOverrideSchema.safeParse({}).success).toBe(true);
   });
 });
