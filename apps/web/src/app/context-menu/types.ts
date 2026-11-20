@@ -92,6 +92,7 @@ export const SURFACE_PARENTS: Partial<Record<MenuSurface, readonly MenuSurface[]
   'score.chord': ['score.beat', 'score.bar'],
   'score.beat': ['score.bar'],
   'score.section': ['score.bar'],
+  'score.range': ['score.bar'],
 };
 
 /** The title of the submenu a parent level becomes in edit mode. */

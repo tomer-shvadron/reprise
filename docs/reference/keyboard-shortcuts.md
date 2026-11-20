@@ -170,6 +170,7 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 | Repeats and endings… | Editor | Editing | — | — |
 | Directions… | Editor | Editing | D | D |
 | Section… | Editor | Editing | — | — |
+| Remove section | Editor | Editing | — | — |
 | Toggle legato slide | Editor | Editing | S | S |
 | Toggle hammer-on or pull-off | Editor | Editing | H | H |
 | Toggle vibrato | Editor | Editing | V | V |
@@ -243,5 +244,6 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 | Chord name | Editor | Editing | A | A |
 | Beat text | Editor | Editing | T | T |
 | Lyrics | Editor | Editing | ⌥L | Alt+L |
+| Remove chord name | Editor | Editing | — | — |
 | Show sound manager | Sounds | Global | — | — |
 <!-- shortcuts:end -->

@@ -64,13 +64,13 @@ const play = ['play'] as const;
 
 /** The empty paper's own items: the view with a score open, and a way to get one without. */
 const paperItems: readonly MenuItemSpec[] = [
-  { command: 'view.toggleViewMode', group: 'view', modes: play, when: hasScore },
-  { command: 'view.toggleMultitrack', group: 'view', modes: play, when: hasScore },
-  { command: 'view.zoomIn', group: 'view', modes: play, when: hasScore },
-  { command: 'view.zoomOut', group: 'view', modes: play, when: hasScore },
-  { command: 'view.zoomReset', group: 'view', modes: play, when: hasScore },
-  { command: 'view.followPlayback', group: 'view', modes: play, when: hasScore },
-  { command: 'file.print', group: 'export', modes: play, when: hasScore },
+  { command: 'view.toggleViewMode', group: 'view', when: hasScore },
+  { command: 'view.toggleMultitrack', group: 'view', when: hasScore },
+  { command: 'view.zoomIn', group: 'view', when: hasScore },
+  { command: 'view.zoomOut', group: 'view', when: hasScore },
+  { command: 'view.zoomReset', group: 'view', when: hasScore },
+  { command: 'view.followPlayback', group: 'view', when: hasScore },
+  { command: 'file.print', group: 'export', when: hasScore },
   { command: 'file.new', group: 'edit', modes: play, when: noScore },
   { command: 'file.open', group: 'edit', modes: play, when: noScore },
   { command: 'library.importFiles', group: 'edit', modes: play, when: noScore },

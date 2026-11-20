@@ -7,7 +7,13 @@ import { nearestColumn, type ScoreHit } from '@/features/score';
 import { mirrorAudio } from '@/test/mirror-audio';
 import { createTestServices } from '@/test/services';
 
-import { adoptMenuTarget, scoreKeyboardRequest, scoreMenuRequest } from './menu-target';
+import { createEditPointer } from './edit-pointer';
+import {
+  adoptEditMenuTarget,
+  adoptMenuTarget,
+  scoreKeyboardRequest,
+  scoreMenuRequest,
+} from './menu-target';
 
 /** Two tracks over six bars; a section on bars 2 and 5, a chord name on the first beat of bar 2. */
 function song() {
@@ -233,11 +239,66 @@ describe('scoreMenuRequest', () => {
     expect(open?.request.surface).toBe('score.chord');
   });
 
-  it('keeps the browser’s menu in edit mode for now', async () => {
-    const { services, layout } = await setup();
-    const anchor = layout.anchors.find((a) => a.kind === 'note');
+  it('in edit mode, places the cursor on a note and opens the note menu', async () => {
+    const { services, layout, score: loaded } = await setup();
+    const anchor = layout.anchors.find(
+      (a) => a.kind === 'note' && a.masterBar === loaded.masterBars[2]?.id,
+    );
     if (!anchor) throw new Error('no note');
-    expect(scoreMenuRequest(hitOn(layout, anchor), services, 'edit')).toBeUndefined();
+    const open = scoreMenuRequest(hitOn(layout, anchor), services, 'edit');
+    if (!open) throw new Error('no menu');
+    expect(open.request.surface).toBe('score.note');
+    expect(open.adopt).toBeUndefined();
+    expect(open.place).toBeDefined();
+    const pointer = createEditPointer(services);
+    adoptEditMenuTarget(services, open, (hit) => pointer.placeAt(layout, hit));
+    expect(services.selection.getState().cursor?.masterBar).toBe(loaded.masterBars[2]?.id);
+    expect(services.fakeAudio.seek).not.toHaveBeenCalled();
+  });
+
+  it('in edit mode, a chord name puts the cursor on its beat and a section on its bar', async () => {
+    const { services, layout, score: loaded } = await setup();
+    const chord = layout.primitives.find((p) => p.kind === 'text' && p.lane === 'chord');
+    const section = layout.primitives.find(
+      (p) => p.kind === 'text' && p.lane === 'section' && p.node !== undefined,
+    );
+    if (!chord || !section) throw new Error('no marks');
+    const at = (p: typeof chord) =>
+      hitAtPoint(layout, p.bbox.x + p.bbox.width / 2, p.bbox.y + p.bbox.height / 2);
+    const chordOpen = scoreMenuRequest(at(chord), services, 'edit');
+    expect(chordOpen?.request.surface).toBe('score.chord');
+    expect(chordOpen?.cursor?.masterBar).toBe(loaded.masterBars[1]?.id);
+    const sectionOpen = scoreMenuRequest(at(section), services, 'edit');
+    expect(sectionOpen?.request.surface).toBe('score.section');
+    expect(sectionOpen?.cursor?.masterBar).toBe(loaded.masterBars[1]?.id);
+    if (sectionOpen) adoptEditMenuTarget(services, sectionOpen, () => undefined);
+    expect(services.selection.getState().cursor?.masterBar).toBe(loaded.masterBars[1]?.id);
+  });
+
+  it('in edit mode, a point inside the range opens the range menu and adopts nothing', async () => {
+    const { services, layout, score: loaded } = await setup();
+    const first = layout.anchors.find(
+      (a) => a.kind === 'note' && a.masterBar === loaded.masterBars[0]?.id,
+    );
+    if (!first) throw new Error('no note');
+    const pointer = createEditPointer(services);
+    pointer.placeAt(layout, hitOn(layout, first));
+    const [bar] = loaded.masterBars;
+    const track = loaded.tracks[0];
+    if (!bar || !track) throw new Error('short song');
+    const end = { track: track.id, masterBar: bar.id, beat: undefined };
+    services.selection.getState().setEdit({ range: { kind: 'bars', anchor: end, focus: end } });
+    const open = scoreMenuRequest(hitOn(layout, first), services, 'edit');
+    expect(open?.request).toMatchObject({ surface: 'score.range', label: 'Bar 1' });
+    expect(open?.place).toBeUndefined();
+    expect(open?.cursor).toBeUndefined();
+  });
+
+  it('in edit mode, the paper outside every system has the paper menu', async () => {
+    const { services, layout } = await setup();
+    expect(scoreMenuRequest(hitAtPoint(layout, -50, -50), services, 'edit')?.request.surface).toBe(
+      'score.paper',
+    );
   });
 
   it('adopts the bar and track without seeking', async () => {
@@ -297,6 +358,28 @@ describe('scoreKeyboardRequest', () => {
       target: { masterBar: third.id },
       label: 'Bar 3',
     });
-    expect(scoreKeyboardRequest(services, layout, rect, 'edit')).toBeUndefined();
+  });
+
+  it('in edit mode opens the cursor’s note, beat or bar at the caret, and the range when there is one', async () => {
+    const { services, layout, score: loaded } = await setup();
+    const note = layout.anchors.find(
+      (a) => a.kind === 'note' && a.masterBar === loaded.masterBars[1]?.id,
+    );
+    if (!note) throw new Error('no note');
+    expect(scoreKeyboardRequest(services, layout, rect, 'edit')?.surface).toBe('score.paper');
+    const pointer = createEditPointer(services);
+    pointer.placeAt(layout, hitOn(layout, note));
+    const request = scoreKeyboardRequest(services, layout, rect, 'edit');
+    expect(request).toMatchObject({ surface: 'score.note', label: 'Note, bar 2' });
+    expect(request?.anchor?.left).toBeGreaterThanOrEqual(1000);
+    const [bar] = loaded.masterBars;
+    const track = loaded.tracks[0];
+    if (!bar || !track) throw new Error('short song');
+    const end = { track: track.id, masterBar: bar.id, beat: undefined };
+    services.selection.getState().setEdit({ range: { kind: 'bars', anchor: end, focus: end } });
+    expect(scoreKeyboardRequest(services, layout, rect, 'edit')).toMatchObject({
+      surface: 'score.range',
+      label: 'Bar 1',
+    });
   });
 });

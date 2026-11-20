@@ -6,7 +6,13 @@ import type { AppServices } from '@/app/services';
 import { barColumns, scoreIndex, type ScoreHit } from '@/features/score';
 import { playheadBar } from '@/features/transport';
 import type { MenuTarget } from '@/state/menu-target';
-import type { BarRange } from '@/state/selection';
+import type { BarRange, EditCursor } from '@/state/selection';
+
+import { markCursor } from './edit-here';
+import { caretBoxes, caretRect, rangeBoxes } from './geometry';
+import { barRangeOf, rangeBars, rangeBeats } from './range';
+import { visibleTracks } from './visible';
+import { beatWithTrack } from './words';
 
 type MenuServices = Pick<AppServices, 'document' | 'selection' | 'playback' | 'heard'>;
 
@@ -17,7 +23,12 @@ type MenuServices = Pick<AppServices, 'document' | 'selection' | 'playback' | 'h
  */
 export interface ScoreMenuOpen {
   request: MenuRequest;
+  /** Play mode: the bar to select. */
   adopt?: { bars: BarRange; track: Id | undefined };
+  /** Edit mode: put the cursor where a plain click on this hit would, without its seek. */
+  place?: ScoreHit;
+  /** Edit mode: the cursor a chord name or a section marker stands for. */
+  cursor?: EditCursor;
 }
 
 const barNumber = (score: Score, id: Id): number =>
@@ -46,40 +57,84 @@ const paper = (): ScoreMenuOpen => ({
   request: { surface: 'score.paper', target: { kind: 'paper' }, label: 'Score' },
 });
 
-const adopted = (
-  surface: 'score.note' | 'score.beat' | 'score.bar' | 'score.chord' | 'score.section',
+type Surface = 'score.note' | 'score.beat' | 'score.bar' | 'score.chord' | 'score.section';
+
+/**
+ * A menu on a note, beat, bar, chord name or section marker, and what opening it adopts: in play
+ * mode the bar, in edit mode the cursor, put where a plain click on `hit` would put it, or on the
+ * mark's own beat or bar.
+ */
+function adopted(
+  at: {
+    services: MenuServices;
+    score: Score;
+    mode: MenuMode;
+    hit: ScoreHit;
+  },
+  surface: Surface,
   target: MenuTarget,
-  score: Score,
   masterBar: Id,
   track: Id | undefined,
   what: string,
-): ScoreMenuOpen => ({
-  request: { surface, target, label: `${what}, bar ${String(barNumber(score, masterBar))}` },
-  adopt: { bars: { startBar: masterBar, endBar: masterBar }, track },
-});
+): ScoreMenuOpen {
+  const { services, score, mode, hit } = at;
+  const request = {
+    surface,
+    target,
+    label: `${what}, bar ${String(barNumber(score, masterBar))}`,
+  };
+  if (mode === 'play') {
+    return { request, adopt: { bars: { startBar: masterBar, endBar: masterBar }, track } };
+  }
+  if (surface === 'score.chord' || surface === 'score.section') {
+    const cursor = markCursor(services, score, target);
+    return { request, ...(cursor && { cursor }) };
+  }
+  return { request, place: hit };
+}
+
+/** Whether the point is inside the edit range: its beat when it is on one, else its bar. */
+function insideRange(score: Score, services: MenuServices, hit: ScoreHit): boolean {
+  const { range } = services.selection.getState();
+  const { anchor, column } = hit;
+  if (!range) return false;
+  const index = scoreIndex(score);
+  const beat =
+    anchor?.kind === 'beat'
+      ? anchor.id
+      : anchor?.kind === 'note'
+        ? index.noteBeat.get(anchor.id)
+        : undefined;
+  if (beat !== undefined) {
+    const visible = visibleTracks(score, services.document.getState().view);
+    return rangeBeats(score, range, visible).some(({ beats }) => beats.some((b) => b.id === beat));
+  }
+  const bar = anchor?.masterBar ?? column?.id;
+  return bar !== undefined && rangeBars(score, range).includes(bar);
+}
 
 /**
  * What a right-click on the score opens. The first match wins: a chord name, a section marker,
- * the paper outside every system, the selected bars, then the note, the beat and the bar under
- * the point. Play mode only for now: edit mode keeps the browser's menu until its own lands.
+ * the paper outside every system, the selection, then the note, the beat and the bar under the
+ * point. The selection is the selected bars in play mode and the edit range in edit mode.
  */
 export function scoreMenuRequest(
   hit: ScoreHit,
   services: MenuServices,
   mode: MenuMode,
 ): ScoreMenuOpen | undefined {
-  if (mode !== 'play') return undefined;
   const { score } = services.document.getState();
   if (!score) return paper();
   const { anchor, column, mark } = hit;
+  const at = { services, score, mode, hit };
 
   if (mark?.kind === 'chord') {
     const facts = beatFacts(score, mark.beat);
     if (facts) {
       return adopted(
+        at,
         'score.chord',
         { kind: 'chord', beat: mark.beat, ...facts },
-        score,
         facts.masterBar,
         facts.track,
         'Chord name',
@@ -89,9 +144,9 @@ export function scoreMenuRequest(
   if (mark?.kind === 'section') {
     const name = score.masterBars.find((bar) => bar.id === mark.masterBar)?.section?.name;
     return adopted(
+      at,
       'score.section',
       { kind: 'section', masterBar: mark.masterBar },
-      score,
       mark.masterBar,
       undefined,
       name?.trim() ? `Section ${name.trim()}` : 'Section',
@@ -100,13 +155,24 @@ export function scoreMenuRequest(
   if (!anchor) return paper();
 
   const barId = anchor.masterBar ?? column?.id;
-  const selected = services.selection.getState().bars;
-  if (selected && barId !== undefined && within(score, selected, barId)) {
+  const { bars, range } = services.selection.getState();
+  if (mode === 'play') {
+    if (bars && barId !== undefined && within(score, bars, barId)) {
+      return {
+        request: {
+          surface: 'score.range',
+          target: { kind: 'range', bar: barId },
+          label: barsLabel(score, bars),
+        },
+      };
+    }
+  } else if (range && insideRange(score, services, hit)) {
+    const covered = barRangeOf(score, range);
     return {
       request: {
         surface: 'score.range',
-        target: { kind: 'range', bar: barId },
-        label: barsLabel(score, selected),
+        target: { kind: 'range', ...(barId !== undefined && { bar: barId }) },
+        label: covered ? barsLabel(score, covered) : 'Selection',
       },
     };
   }
@@ -122,18 +188,18 @@ export function scoreMenuRequest(
   if (beatId !== undefined && facts) {
     if (anchor.kind === 'note') {
       return adopted(
+        at,
         'score.note',
         { kind: 'note', note: anchor.id, beat: beatId, ...facts },
-        score,
         facts.masterBar,
         facts.track,
         'Note',
       );
     }
     return adopted(
+      at,
       'score.beat',
       { kind: 'beat', beat: beatId, ...facts },
-      score,
       facts.masterBar,
       facts.track,
       'Beat',
@@ -141,13 +207,66 @@ export function scoreMenuRequest(
   }
   if (barId === undefined) return paper();
   return adopted(
+    at,
     'score.bar',
     { kind: 'bar', masterBar: barId, track: anchor.track },
-    score,
     barId,
     anchor.track,
     'Bar',
   );
+}
+
+/** Edit mode: the range, else what the cursor is on (a note, a beat, an empty slot), at the caret. */
+function editKeyboardRequest(
+  services: MenuServices,
+  score: Score,
+  layout: LayoutResult,
+  clientRect: (rect: Rect) => DOMRect,
+): MenuRequest {
+  const { range, cursor } = services.selection.getState();
+  const anchorOf = (boxes: Parameters<typeof caretRect>[0]) => {
+    const rect = caretRect(boxes);
+    return rect && { anchor: clientRect(rect) };
+  };
+  if (range) {
+    const covered = barRangeOf(score, range);
+    return {
+      surface: 'score.range',
+      target: { kind: 'range' },
+      label: covered ? barsLabel(score, covered) : 'Selection',
+      ...anchorOf(
+        rangeBoxes(layout, score, range, visibleTracks(score, services.document.getState().view)),
+      ),
+    };
+  }
+  if (!cursor) return paper().request;
+  const where = anchorOf(caretBoxes(layout, score, cursor));
+  const facts = cursor.beat === undefined ? undefined : beatFacts(score, cursor.beat);
+  const found = cursor.beat === undefined ? undefined : beatWithTrack(score, cursor.beat);
+  const bar = barNumber(score, cursor.masterBar);
+  if (found && facts) {
+    const onNote = found.beat.notes.find((n) => n.string === cursor.string);
+    if (onNote) {
+      return {
+        surface: 'score.note',
+        target: { kind: 'note', note: onNote.id, beat: found.beat.id, ...facts },
+        label: `Note, bar ${String(bar)}`,
+        ...where,
+      };
+    }
+    return {
+      surface: 'score.beat',
+      target: { kind: 'beat', beat: found.beat.id, ...facts },
+      label: `Beat, bar ${String(bar)}`,
+      ...where,
+    };
+  }
+  return {
+    surface: 'score.bar',
+    target: { kind: 'bar', masterBar: cursor.masterBar, track: cursor.track },
+    label: `Bar ${String(bar)}`,
+    ...where,
+  };
 }
 
 /**
@@ -161,9 +280,9 @@ export function scoreKeyboardRequest(
   clientRect: (rect: Rect) => DOMRect,
   mode: MenuMode,
 ): MenuRequest | undefined {
-  if (mode !== 'play') return undefined;
   const { score } = services.document.getState();
   if (!score) return paper().request;
+  if (mode === 'edit') return editKeyboardRequest(services, score, layout, clientRect);
   const { bars, barsAnchor, currentTrack } = services.selection.getState();
   const box = (range: BarRange) => {
     const [first] = barColumns(layout, score, range);
@@ -201,4 +320,27 @@ export function adoptMenuTarget(
   const { selection } = services;
   selection.getState().selectBars(adopt.bars, adopt.bars.startBar, { reloop: false });
   if (adopt.track !== undefined) selection.getState().setCurrentTrack(adopt.track);
+}
+
+/**
+ * Edit mode: puts the cursor where the right-click was, as a plain click would, but never seeks.
+ * `placeAt` is the editor pointer's. A click inside the range, or on the paper, adopts nothing.
+ */
+export function adoptEditMenuTarget(
+  services: Pick<AppServices, 'selection'>,
+  open: Pick<ScoreMenuOpen, 'place' | 'cursor'>,
+  placeAt: (hit: ScoreHit) => unknown,
+): void {
+  if (open.place) {
+    placeAt(open.place);
+  } else if (open.cursor) {
+    services.selection.getState().setEdit({
+      cursor: open.cursor,
+      currentTrack: open.cursor.track,
+      selection: {},
+      range: undefined,
+      bars: undefined,
+      barsAnchor: undefined,
+    });
+  }
 }
