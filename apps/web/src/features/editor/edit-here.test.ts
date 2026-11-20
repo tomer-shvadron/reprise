@@ -1,10 +1,13 @@
 import { write } from '@reprise/formats';
 import { note, score } from '@reprise/model/testing';
-import { describe, expect, it } from 'vitest';
+import { act } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { createAppRegistry } from '@/app/app-registry';
 import { createTestServices } from '@/test/services';
 
+import { clipboardOf } from './clipboard-store';
+import { firstStop } from './cursor';
 import { dialogsOf } from './dialogs';
 
 function song() {
@@ -18,8 +21,18 @@ function song() {
   return builder.build({ ids: 'sequential' });
 }
 
+const disposers: (() => void)[] = [];
+
+afterEach(() => {
+  for (const dispose of disposers.splice(0)) dispose();
+});
+
 async function setup() {
   const services = createTestServices();
+  // Each services installs the clipboard events on the shared document; a stale one would answer.
+  disposers.push(() => {
+    services.dispose();
+  });
   await services.document
     .getState()
     .openBytes('here.reprise', (await write(song(), 'reprise')).bytes);
@@ -123,8 +136,24 @@ describe('editor.editHere', () => {
   });
 });
 
+function clipboardEvent(type: 'copy' | 'paste', text = '') {
+  const data = new Map<string, string>([['text/plain', text]]);
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', {
+    value: {
+      setData: (format: string, value: string) => data.set(format, value),
+      getData: (format: string) => data.get(format) ?? '',
+    },
+  });
+  return { event, data };
+}
+
 describe('editor.copyBars', () => {
-  it('copies the right-clicked bar, or the selected bars, in play mode, and a paste lands them', async () => {
+  afterEach(() => {
+    Reflect.deleteProperty(document, 'execCommand');
+  });
+
+  it('copies the right-clicked bar, or the selected bars, in play mode', async () => {
     const { services, loaded, run, place } = await setup();
     const [a, b, c] = loaded.masterBars;
     if (!a || !b || !c) throw new Error('short song');
@@ -134,9 +163,40 @@ describe('editor.copyBars', () => {
     services.menuTarget.getState().clear();
     services.selection.getState().selectBars({ startBar: a.id, endBar: c.id });
     void run('editor.copyBars');
-    const { clipboardOf } = await import('./clipboard-store');
-    const clip = clipboardOf(services).get();
-    expect(clip?.tracks[0]?.bars).toHaveLength(3);
+    expect(clipboardOf(services).get()?.tracks[0]?.bars).toHaveLength(3);
+  });
+
+  it('fills the system clipboard too, so ⌘V in edit mode pastes the bar over an older clip', async () => {
+    const { services, loaded, run, place } = await setup();
+    const bar = (index: number) => loaded.masterBars[index]?.id ?? '';
+    // A browser raises the copy event for execCommand, with the clipboard data attached.
+    let copied = '';
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: (command: string) => {
+        const made = clipboardEvent(command === 'copy' ? 'copy' : 'paste');
+        document.body.dispatchEvent(made.event);
+        copied = made.data.get('text/plain') ?? '';
+        return true;
+      },
+    });
+    services.menuTarget.getState().set({ kind: 'bar', masterBar: bar(1), track: place.track });
+    void run('editor.copyBars');
+    services.menuTarget.getState().clear();
+    expect(copied.startsWith('Reprise clipboard')).toBe(true);
+
+    services.editing.getState().setEditing(true);
+    const cursor = firstStop(loaded, 0, 3);
+    services.selection.getState().setEdit({ cursor, currentTrack: cursor?.track });
+    const before = loaded.tracks[0]?.bars[3]?.voices[0]?.beats[0]?.notes[0]?.fret;
+    const paste = clipboardEvent('paste', copied);
+    act(() => {
+      document.body.dispatchEvent(paste.event);
+    });
+    const after =
+      services.document.getState().score?.tracks[0]?.bars[3]?.voices[0]?.beats[0]?.notes[0]?.fret;
+    expect(before).toBe(3);
+    expect(after).toBe(1);
   });
 
   it('is enabled only with a bar to copy', async () => {

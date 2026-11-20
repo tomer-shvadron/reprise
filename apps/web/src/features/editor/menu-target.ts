@@ -4,7 +4,7 @@ import type { Id, Score } from '@reprise/model';
 import type { MenuMode, MenuRequest } from '@/app/context-menu/types';
 import type { AppServices } from '@/app/services';
 import { barColumns, scoreIndex, type ScoreHit } from '@/features/score';
-import { playheadBar } from '@/features/transport/seek-commands';
+import { playheadBar } from '@/features/transport';
 import type { MenuTarget } from '@/state/menu-target';
 import type { BarRange } from '@/state/selection';
 
@@ -105,7 +105,7 @@ export function scoreMenuRequest(
     return {
       request: {
         surface: 'score.range',
-        target: { kind: 'range' },
+        target: { kind: 'range', bar: barId },
         label: barsLabel(score, selected),
       },
     };
@@ -191,15 +191,14 @@ export function scoreKeyboardRequest(
 
 /**
  * Makes the right-clicked bar the selection, and its track the current one; never moves the
- * playhead. While a loop is on it does nothing: the selection drives an active loop (selecting
- * bars re-loops them), and a right-click leaves the loop alone. The menu still acts on its target.
+ * playhead or an active loop (the selection is marked without re-looping, so the bar the menu
+ * acts on is always drawn).
  */
 export function adoptMenuTarget(
-  services: Pick<AppServices, 'selection' | 'playback'>,
+  services: Pick<AppServices, 'selection'>,
   adopt: NonNullable<ScoreMenuOpen['adopt']>,
 ): void {
-  if (services.playback.getState().settings.loop) return;
   const { selection } = services;
-  selection.getState().selectBars(adopt.bars, adopt.bars.startBar);
+  selection.getState().selectBars(adopt.bars, adopt.bars.startBar, { reloop: false });
   if (adopt.track !== undefined) selection.getState().setCurrentTrack(adopt.track);
 }

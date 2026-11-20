@@ -1,7 +1,7 @@
 import type { Id, Score } from '@reprise/model';
 
 import type { AppServices } from '@/app/services';
-import { targetBars } from '@/features/transport/menu-target';
+import { targetBars } from '@/features/transport';
 
 import { clipSummary, copyClip, planCut } from './clip';
 import { clipboardOf } from './clipboard-store';
@@ -11,7 +11,10 @@ import { planPaste, type PasteMode } from './paste';
 import { rangePatch } from './range';
 import { visibleTracks } from './visible';
 
-export type ClipboardServices = Pick<AppServices, 'document' | 'selection' | 'entry' | 'editing'>;
+export type ClipboardServices = Pick<
+  AppServices,
+  'document' | 'selection' | 'entry' | 'editing' | 'menuTarget' | 'transport'
+>;
 
 /** The score and visible tracks an edit acts on now; undefined outside edit mode or without a score. */
 function context(services: ClipboardServices): { score: Score; visible: Id[] } | undefined {
@@ -99,9 +102,7 @@ export function pasteInternal(services: ClipboardServices, mode?: PasteMode): bo
  * tracks onto the internal clipboard, in either mode, so a paste in edit mode lands them. Play
  * mode has no status line, so the result is announced.
  */
-export function copyBars(
-  services: Pick<AppServices, 'document' | 'selection' | 'entry' | 'menuTarget' | 'transport'>,
-): Clip | undefined {
+export function copyBars(services: ClipboardServices): Clip | undefined {
   const { score, view } = services.document.getState();
   const bars = score && targetBars(services);
   if (!score || !bars) return undefined;

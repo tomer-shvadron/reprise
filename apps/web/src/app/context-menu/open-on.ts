@@ -35,7 +35,7 @@ export function raisedByUs(event: Event): boolean {
  * that handles it answers. Chromium raises none for Shift+F10 on macOS, and the selection
  * pill's menu button has no key at all, so both come through here.
  */
-export function openContextMenuOn(element: Element): void {
+export function openContextMenuOn(element: Element): boolean {
   const rect = element.getBoundingClientRect();
   const event = new MouseEvent('contextmenu', {
     bubbles: true,
@@ -44,7 +44,8 @@ export function openContextMenuOn(element: Element): void {
     clientY: rect.bottom,
   });
   synthetic.add(event);
-  element.dispatchEvent(event);
+  // False when a surface took it: a menu was opened.
+  return !element.dispatchEvent(event);
 }
 
 /** The score's surface: its region, or the empty paper before a score is open. */

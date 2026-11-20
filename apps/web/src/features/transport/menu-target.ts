@@ -1,7 +1,7 @@
 import type { Id, Score } from '@reprise/model';
 
 import type { AppServices } from '@/app/services';
-import { scoreIndex } from '@/features/score/score-index';
+import { scoreIndex } from '@/lib/score-index';
 import type { BarRange } from '@/state/selection';
 
 import { sectionsOf } from './sections';
@@ -61,7 +61,10 @@ export function targetPlace(services: TargetServices): BarPlace | undefined {
     const beat = index.beats.get(target.beat);
     if (beat) return { masterBarIndex: beat.masterBarIndex, tick: beat.tick };
   }
-  const bars = targetBars(services);
+  const bars =
+    target?.kind === 'range' && target.bar !== undefined
+      ? { startBar: target.bar, endBar: target.bar }
+      : targetBars(services);
   const bar = bars && index.barIndex.get(bars.startBar);
   if (bar !== undefined) return { masterBarIndex: bar, tick: 0 };
   const cursor = services.selection.getState().cursor;

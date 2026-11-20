@@ -30,7 +30,10 @@ export type TransportCommandId =
 
 type TransportCommand = Command & { id: TransportCommandId };
 
-export type TransportServices = AppServices;
+export type TransportServices = Pick<
+  AppServices,
+  'audio' | 'playback' | 'document' | 'selection' | 'transport' | 'heard' | 'menuTarget' | 'ui'
+>;
 
 /** The current speed in percent, read from the store, never cached. */
 export function currentPercent(services: Pick<TransportServices, 'playback' | 'document'>): number {

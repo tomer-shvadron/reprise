@@ -16,13 +16,6 @@ export type EditHereServices = Pick<
   'document' | 'selection' | 'entry' | 'editing' | 'menuTarget'
 >;
 
-/** What "Edit here" calls itself for a target, the menu's label. */
-export function editHereLabel(target: MenuTarget | undefined): string {
-  if (target?.kind === 'chord') return 'Edit chord name';
-  if (target?.kind === 'section') return 'Edit section';
-  return 'Edit here';
-}
-
 function trackIndex(score: Score, services: EditHereServices, wanted?: Id): number {
   const id = wanted ?? services.selection.getState().currentTrack ?? score.tracks[0]?.id;
   return Math.max(

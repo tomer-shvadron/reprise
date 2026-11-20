@@ -135,8 +135,9 @@ export function installTransport(deps: TransportDeps): () => void {
   });
 
   // A cleared selection keeps the loop, so a click that seeks cannot widen it to the whole song.
-  const unsubscribeSelection = selection.subscribe(({ bars }, { bars: before }) => {
-    if (!bars || bars === before || !playback.getState().settings.loop) return;
+  // A selection that only marks what a menu acts on (`barsReloop` false) leaves the loop as it is.
+  const unsubscribeSelection = selection.subscribe(({ bars, barsReloop }, { bars: before }) => {
+    if (!bars || bars === before || !barsReloop || !playback.getState().settings.loop) return;
     const failed = applyLoop({ audio, playback }, document.getState().score, bars);
     if (failed) transport.getState().announce(failed);
   });

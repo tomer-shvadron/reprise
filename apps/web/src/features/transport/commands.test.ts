@@ -295,6 +295,14 @@ describe('transport commands', () => {
       expect(services.playback.getState().settings.loop).toBeUndefined();
     });
 
+    it('play a range from the bar clicked inside it', async () => {
+      const { services, run, bar } = await targeted();
+      services.selection.getState().selectBars({ startBar: bar(1), endBar: bar(3) });
+      services.menuTarget.getState().set({ kind: 'range', bar: bar(2) });
+      await run('transport.playFromSelection');
+      expect(services.fakeAudio.seek).toHaveBeenLastCalledWith(2 * 3840);
+    });
+
     it('play from the first selected bar without a menu, and say so with nothing', async () => {
       const { services, run, bar } = await targeted();
       await run('transport.playFromSelection');

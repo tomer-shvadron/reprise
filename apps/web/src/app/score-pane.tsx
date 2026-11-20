@@ -129,8 +129,12 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
   const loop = useStore(playback, (state) => state.settings.loop);
   const [preview, setPreview] = useState<BarRange>();
   // On a Mac a Ctrl+click is a context click: it opens the menu and neither seeks nor selects.
+  // Edit mode has no menu yet, so there it stays a Cmd-style click (it toggles a picked note).
   const [gestures] = useState(() =>
-    createGestureTracker({ ctrlIsContextClick: detectKeyboardPlatform() === 'mac' }),
+    createGestureTracker({
+      ctrlIsContextClick: () =>
+        detectKeyboardPlatform() === 'mac' && !services.editing.getState().editing,
+    }),
   );
   const editPointer = useMemo(
     () => createEditPointer({ selection, document }),
@@ -216,7 +220,7 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
       return scoreKeyboardRequest(services, result, (rect) => view.clientRect(rect), menuMode);
     }
     const open = scoreMenuRequest(view.hitAt(event.clientX, event.clientY), services, menuMode);
-    // A right-click selects what it opened on, as a click would, but never seeks and, with a loop on, selects nothing.
+    // A right-click selects what it opened on, as a click would, but never seeks or moves a loop.
     if (open?.adopt) adoptMenuTarget(services, open.adopt);
     return open?.request;
   });

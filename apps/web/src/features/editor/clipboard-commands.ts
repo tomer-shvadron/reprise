@@ -1,9 +1,8 @@
 import type { Command } from '@/app/command-registry';
 import type { AppServices } from '@/app/services';
 
-import { targetBars } from '@/features/transport/menu-target';
+import { targetBars } from '@/features/transport';
 
-import { copyBars } from './clipboard-actions';
 import { clipboardController } from './clipboard-events';
 import { clipboardOf } from './clipboard-store';
 
@@ -86,7 +85,8 @@ export function clipboardCommands(
       inPalette: false,
       enabled: () => targetBars(services) !== undefined,
       run: () => {
-        copyBars(services);
+        // Through the controller, like Copy, so ⌘V in edit mode pastes it from the system clipboard too.
+        clipboardController(entry)?.copyBars();
       },
     },
   ];

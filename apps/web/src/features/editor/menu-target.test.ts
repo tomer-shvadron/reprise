@@ -145,7 +145,11 @@ describe('scoreMenuRequest', () => {
     if (!inside) throw new Error('no note');
     const open = scoreMenuRequest(hitOn(layout, inside), services, 'play');
     expect(open).toEqual({
-      request: { surface: 'score.range', target: { kind: 'range' }, label: 'Bars 1 to 2' },
+      request: {
+        surface: 'score.range',
+        target: { kind: 'range', bar: second.id },
+        label: 'Bars 1 to 2',
+      },
     });
     const outside = layout.anchors.find(
       (a) => a.kind === 'note' && a.masterBar !== first.id && a.masterBar !== second.id,
@@ -154,6 +158,79 @@ describe('scoreMenuRequest', () => {
     expect(scoreMenuRequest(hitOn(layout, outside), services, 'play')?.request.surface).toBe(
       'score.note',
     );
+  });
+
+  it('falls back to the column for a staff or system hit, and adopts the second track', async () => {
+    const { services, layout, score: loaded } = await setup();
+    const bass = loaded.tracks[1];
+    const staff = layout.anchors.find((a) => a.kind === 'staff' && a.track === bass?.id);
+    const system = layout.anchors.find((a) => a.kind === 'system');
+    const column = layout.anchors.find((a) => a.kind === 'bar' && a.track === undefined);
+    if (!staff || !system || !column) throw new Error('no anchors');
+    const onStaff = scoreMenuRequest(
+      { point: { x: 0, y: 0 }, anchor: staff, column, mark: undefined },
+      services,
+      'play',
+    );
+    expect(onStaff?.request).toMatchObject({
+      surface: 'score.bar',
+      target: { kind: 'bar', masterBar: staff.masterBar ?? column.id, track: bass?.id },
+    });
+    expect(onStaff?.adopt?.track).toBe(bass?.id);
+    const onSystem = scoreMenuRequest(
+      { point: { x: 0, y: 0 }, anchor: system, column, mark: undefined },
+      services,
+      'play',
+    );
+    expect(onSystem?.request.target).toMatchObject({ kind: 'bar', masterBar: column.id });
+    // Nothing names a bar at all: the paper.
+    const none = scoreMenuRequest(
+      { point: { x: 0, y: 0 }, anchor: system, column: undefined, mark: undefined },
+      services,
+      'play',
+    );
+    expect(none?.request.surface).toBe(
+      system.masterBar === undefined ? 'score.paper' : 'score.bar',
+    );
+  });
+
+  it('adopts the bass track on a bass note, in multitrack view', async () => {
+    const { services, layout, score: loaded } = await setup();
+    const bass = loaded.tracks[1];
+    const anchor = layout.anchors.find((a) => a.kind === 'note' && a.track === bass?.id);
+    if (!anchor) throw new Error('no bass note');
+    const open = scoreMenuRequest(hitOn(layout, anchor), services, 'play');
+    expect(open?.request.target).toMatchObject({ kind: 'note', track: bass?.id });
+    expect(open?.adopt?.track).toBe(bass?.id);
+  });
+
+  it('finds a chord name in continuous view, where the segments are shifted', async () => {
+    const { services, score: loaded } = await setup();
+    const { layout: lay } = await import('@reprise/layout');
+    const continuous = lay(loaded, {
+      mode: 'continuous',
+      width: 300,
+      zoom: 1,
+      tracks: 'all',
+      notation: {},
+    });
+    // A segment's primitives are in its own frame; its `offsetX` puts them on the page.
+    const system = continuous.systems.find((candidate) => (candidate.offsetX ?? 0) > 0);
+    if (!system) throw new Error('no shifted segment');
+    const chord = continuous.primitives
+      .slice(system.primitives.start, system.primitives.end)
+      .find((p) => p.kind === 'text' && p.lane === 'chord');
+    if (!chord) throw new Error('no chord in the shifted segment');
+    const open = scoreMenuRequest(
+      hitAtPoint(
+        continuous,
+        chord.bbox.x + chord.bbox.width / 2 + (system.offsetX ?? 0),
+        chord.bbox.y + chord.bbox.height / 2,
+      ),
+      services,
+      'play',
+    );
+    expect(open?.request.surface).toBe('score.chord');
   });
 
   it('keeps the browser’s menu in edit mode for now', async () => {
@@ -174,16 +251,21 @@ describe('scoreMenuRequest', () => {
     expect(services.fakeAudio.seek).not.toHaveBeenCalled();
   });
 
-  it('leaves an active loop and the selection alone', async () => {
+  it('selects the bar with an active loop on, and leaves the loop and playhead alone', async () => {
     const { services, score: loaded } = await setup();
     const [a, b, c] = loaded.masterBars;
-    if (!a || !b || !c) throw new Error('short song');
+    const bass = loaded.tracks[1];
+    if (!a || !b || !c || !bass) throw new Error('short song');
     services.audio.setLoop({ startBar: a.id, endBar: b.id });
     services.selection.getState().selectBars({ startBar: a.id, endBar: b.id });
-    adoptMenuTarget(services, { bars: { startBar: c.id, endBar: c.id }, track: undefined });
+    adoptMenuTarget(services, { bars: { startBar: c.id, endBar: c.id }, track: bass.id });
+    expect(services.selection.getState().bars).toEqual({ startBar: c.id, endBar: c.id });
+    expect(services.selection.getState().currentTrack).toBe(bass.id);
     expect(services.playback.getState().settings.loop).toEqual({ startBar: a.id, endBar: b.id });
-    expect(services.selection.getState().bars).toEqual({ startBar: a.id, endBar: b.id });
     expect(services.fakeAudio.seek).not.toHaveBeenCalled();
+    // A later selection by any other way follows the loop again, as a drag does.
+    services.selection.getState().selectBars({ startBar: b.id, endBar: c.id });
+    expect(services.playback.getState().settings.loop).toEqual({ startBar: b.id, endBar: c.id });
   });
 });
 

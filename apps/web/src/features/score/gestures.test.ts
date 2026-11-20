@@ -29,7 +29,7 @@ function pointer(
 
 describe('the gesture tracker', () => {
   it('ignores a primary press with Ctrl only where Ctrl is the context click', () => {
-    const mac = createGestureTracker({ ctrlIsContextClick: true });
+    const mac = createGestureTracker({ ctrlIsContextClick: () => true });
     mac.handle(pointer('down', 10, 'a', { ctrlKey: true }));
     expect(mac.handle(pointer('up', 10, 'a', { ctrlKey: true }))).toBeUndefined();
     mac.handle(pointer('down', 10, 'a'));

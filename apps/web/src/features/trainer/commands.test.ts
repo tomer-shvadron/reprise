@@ -155,6 +155,26 @@ describe('trainer commands', () => {
       expect(services.playback.getState().settings.loop).toBeUndefined();
     });
 
+    it('show the fretboard of the right-clicked track, keeping a loop the beat lies outside', async () => {
+      const { services, registry, loop } = await setup();
+      loop();
+      const score = services.document.getState().score;
+      const beat = score?.tracks[0]?.bars[2]?.voices[0]?.beats[1];
+      const bar = score?.masterBars[2];
+      const first = score?.masterBars[0];
+      if (!beat || !bar || !first) throw new Error('no beat');
+      services.menuTarget
+        .getState()
+        .set({ kind: 'beat', beat: beat.id, track: 'other-track', masterBar: bar.id });
+      await registry.get('trainer.showFretboard')?.run();
+      expect(services.playback.getState().settings.loop).toEqual({
+        startBar: first.id,
+        endBar: first.id,
+      });
+      expect(services.selection.getState().currentTrack).toBe('other-track');
+      expect(services.ui.getState().bottomPanel).toEqual({ open: true, view: 'fretboard' });
+    });
+
     it('show the fretboard, never hiding it, and move a stopped playhead to a beat', async () => {
       const { services, registry } = await setup();
       const score = services.document.getState().score;

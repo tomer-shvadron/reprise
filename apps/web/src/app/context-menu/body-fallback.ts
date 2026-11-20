@@ -19,9 +19,11 @@ export function useBodyContextMenuFallback(): void {
       if (contextMenuVia(event) !== 'keyboard') return;
       const surface = doc.querySelector(SCORE_SURFACE_SELECTOR);
       if (!surface) return;
+      // Only when the score answers does this event end here; else it goes on to what is under
+      // the corner (in edit mode, which has no score menu yet, that is the browser's).
+      if (!openContextMenuOn(surface)) return;
       event.preventDefault();
       event.stopPropagation();
-      openContextMenuOn(surface);
     };
     doc.addEventListener('contextmenu', onContextMenu, true);
     return () => {

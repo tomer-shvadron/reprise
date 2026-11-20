@@ -2,10 +2,9 @@ import type { Command } from '@/app/command-registry';
 import type { AppServices } from '@/app/services';
 import { selectRunning } from '@/state/playback';
 
-import { applyLoop } from '@/features/transport/loop';
-import { targetBars, targetPlace } from '@/features/transport/menu-target';
-import { seekToBar } from '@/features/transport/seek-target';
+import { applyLoop, seekToBar, targetBars, targetPlace } from '@/features/transport';
 
+import type { SpeedTrainerServices } from './speed-trainer/speed-trainer-store';
 import { tunerFor } from './tuner/tuner-for';
 import { speedTrainerFor } from './speed-trainer/speed-trainer-for';
 
@@ -24,7 +23,13 @@ export type TrainerCommandId =
 
 type TrainerCommand = Command & { id: TrainerCommandId };
 
-export function trainerCommands(services: AppServices): TrainerCommand[] {
+export function trainerCommands(
+  services: Pick<
+    AppServices,
+    'ui' | 'platform' | 'document' | 'selection' | 'menuTarget' | 'heard'
+  > &
+    SpeedTrainerServices,
+): TrainerCommand[] {
   const { ui } = services;
   const speedTrainer = () => speedTrainerFor(services).getState();
   const show = (view: 'speedTrainer' | 'tuner' | 'metronome') => () => {
@@ -125,8 +130,13 @@ export function trainerCommands(services: AppServices): TrainerCommand[] {
         const target = services.menuTarget.getState().target;
         const beat = target?.kind === 'note' || target?.kind === 'beat' || target?.kind === 'chord';
         const place = beat ? targetPlace(services) : undefined;
+        // The fretboard draws the current track, which a loop on keeps the right-click from adopting.
+        if (target && 'track' in target && target.track !== undefined) {
+          services.selection.getState().setCurrentTrack(target.track);
+        }
+        // `keepLoop`: showing a beat is not worth ending the loop the player is practising.
         if (score && place && !selectRunning(services.playback.getState())) {
-          seekToBar(services, score, place);
+          seekToBar(services, score, place, true);
         }
       },
     },

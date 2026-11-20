@@ -111,7 +111,11 @@ describe('the score’s context menus in play mode', () => {
       ]),
     );
     expect(services.fakeAudio.seek).not.toHaveBeenCalled();
-    // A loop is on, so the right-click selects nothing and the loop stays.
+    // The bar is selected and drawn, and the loop stays where it was.
+    expect(services.selection.getState().bars).toEqual({
+      startBar: bars[2]?.id,
+      endBar: bars[2]?.id,
+    });
     expect(services.playback.getState().settings.loop).toEqual({
       startBar: bars[0]?.id,
       endBar: bars[0]?.id,

@@ -53,9 +53,9 @@ export interface GestureOptions {
   /**
    * A primary press with Ctrl is a context click, which macOS raises as a `contextmenu` event: it
    * neither seeks nor selects. Set on the mac keyboard platform only, where Ctrl is not the
-   * command key.
+   * command key. Read at each press, so it can follow the mode.
    */
-  ctrlIsContextClick?: boolean;
+  ctrlIsContextClick?: () => boolean;
 }
 
 /** Turns the primary button's pointer events into clicks and drags over bar columns. */
@@ -69,7 +69,7 @@ export function createGestureTracker(options: GestureOptions = {}): {
       const { type, event: native } = event;
       if (type === 'down') {
         press =
-          native.button === 0 && !(options.ctrlIsContextClick && native.ctrlKey)
+          native.button === 0 && !(options.ctrlIsContextClick?.() && native.ctrlKey)
             ? {
                 event,
                 x: native.clientX,
