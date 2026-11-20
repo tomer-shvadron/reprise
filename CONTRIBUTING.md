@@ -7,7 +7,7 @@ Reprise is built issue by issue, mostly by agents, with every PR reviewed by an 
 Every unit of work is a GitHub issue first. Each work package in a phase plan under [`docs/plans/`](docs/plans/) becomes one issue, filed from the **Work package** template:
 
 - Title `WP-0NN: <title>`.
-- Labels `area:<package>`, `type:<feature|chore|test|contract|bug>`, `phase:<0-4>` and `lane:<score|audio|formats|app|lead>`.
+- Labels `area:<package>`, `type:<feature|chore|test|contract|bug>`, `phase:<0-5>` and `lane:<score|audio|formats|app|lead>`.
 - The milestone of the checkpoint it feeds, and the **Reprise** project board, starting in Backlog.
 - A body with the work package verbatim, the briefing list, "Blocked by #n" lines and the rules for the issue.
 
