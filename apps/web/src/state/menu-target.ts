@@ -36,7 +36,12 @@ export interface MenuTargetState {
   clear(): void;
 }
 
-/** What the open context menu acts on; set when the menu opens, cleared after its command ran or it closed. */
+/**
+ * What the open context menu acts on; set when the menu opens, cleared when the menu closes, with
+ * its command run first when one was chosen. The host clears it as soon as `run` returns, which
+ * is after the synchronous part of an async command only: such a command reads the target before
+ * its first `await`.
+ */
 export function createMenuTargetStore() {
   return create<MenuTargetState>()((set) => ({
     target: undefined,

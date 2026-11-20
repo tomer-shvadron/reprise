@@ -24,6 +24,9 @@ export function useContextMenu(resolve: ResolveMenuRequest): {
   return {
     onContextMenu: (event) => {
       if (event.defaultPrevented || isEditable(event.target)) return;
+      // React bubbles a portaled child's event through the React tree: a right-click inside an
+      // open dropdown under this surface is not a click on the surface.
+      if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return;
       const via = contextMenuVia(event.nativeEvent);
       const request = resolve(via, event);
       if (!request) return;

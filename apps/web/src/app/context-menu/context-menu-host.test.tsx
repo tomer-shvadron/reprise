@@ -13,9 +13,15 @@ import { AppServicesProvider } from '../services-context';
 import { CommandSourceContext } from '../use-command';
 import { ContextMenuHost } from './context-menu-host';
 import { openContextMenuOn } from './open-on';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useStaticContextMenu } from './use-context-menu';
 
-function Field() {
+function Field({ portal }: { portal: boolean }) {
   const menu = useStaticContextMenu({
     surface: 'header',
     target: { kind: 'header', element: 'band' },
@@ -24,11 +30,19 @@ function Field() {
   return (
     <div {...menu}>
       <input aria-label="Tempo" />
+      {portal && (
+        <DropdownMenu open modal={false}>
+          <DropdownMenuTrigger>Options</DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem>Portaled item</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   );
 }
 
-function setup(keyboard: 'mac' | 'other' = 'mac') {
+function setup(keyboard: 'mac' | 'other' = 'mac', portal = false) {
   const services = createTestServices();
   mirrorAudio(services);
   const registry = createAppRegistry(services);
@@ -38,7 +52,7 @@ function setup(keyboard: 'mac' | 'other' = 'mac') {
       <TooltipProvider>
         <CommandSourceContext value={{ registry, keyboard }}>
           <AppHeader />
-          <Field />
+          <Field portal={portal} />
           <ContextMenuHost registry={registry} menus={menus} keyboard={keyboard} />
         </CommandSourceContext>
       </TooltipProvider>
@@ -137,6 +151,32 @@ describe('the context menu host', () => {
     await waitFor(() => {
       expect(field).toHaveFocus();
     });
+  });
+
+  it('ignores a right-click inside portaled content under a surface', async () => {
+    setup('mac', true);
+    const item = await screen.findByRole('menuitem', { name: 'Portaled item' });
+    const allowed = fireEvent.contextMenu(item);
+    expect(allowed).toBe(true);
+    expect(document.querySelector('[data-context-menu]')).toBeNull();
+  });
+
+  it('says on the content whether the menu was opened by pointer or by keyboard', async () => {
+    setup();
+    fireEvent.contextMenu(crumb());
+    const menu = await screen.findByRole('menu', { name: 'Library' });
+    expect(menu).toHaveAttribute('data-context-menu-via', 'pointer');
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    });
+    act(() => {
+      openContextMenuOn(crumb());
+    });
+    expect(await screen.findByRole('menu', { name: 'Library' })).toHaveAttribute(
+      'data-context-menu-via',
+      'keyboard',
+    );
   });
 
   it('leaves the browser menu on a text field', () => {

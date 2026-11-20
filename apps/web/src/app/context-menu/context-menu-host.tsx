@@ -1,5 +1,6 @@
 import { useEffect, useRef, type PointerEvent, type ReactNode, type SyntheticEvent } from 'react';
 import { useStore } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 
 import {
   DropdownMenu,
@@ -108,15 +109,30 @@ function MenuEntries({
 export function ContextMenuHost({ registry, menus, keyboard }: HostProps) {
   const services = useAppServices();
   const { contextMenu, menuTarget, editing } = services;
-  const { open, request, point } = useStore(contextMenu);
+  // Not the whole store: it is written on every press in the window.
+  const { open, request, point, via } = useStore(
+    contextMenu,
+    useShallow((state) => ({
+      open: state.open,
+      request: state.request,
+      point: state.point,
+      via: state.via,
+    })),
+  );
   const mode = useStore(editing, (state) => (state.editing ? 'edit' : 'play'));
   const chosen = useRef<Command | undefined>(undefined);
   // Whether a press has begun inside the menu since it opened. The release of the right-click
   // that opened it lands on an item whenever the menu appears under the pointer (it slides in),
   // and Radix would select that item as if it had been pressed.
   const pressedInside = useRef(false);
+  // A native right-press, drag and release cannot choose an item: a deliberate v1 trade for a
+  // guard that needs no timer.
   useEffect(() => {
-    if (open) pressedInside.current = false;
+    if (!open) return;
+    pressedInside.current = false;
+    // A menu opened again before the last one finished closing keeps its content mounted, so
+    // no close-focus callback ran for the first: its choice must not run on the second's target.
+    chosen.current = undefined;
   }, [open]);
 
   // Before the browser moves focus on a press, so a right-click on a control that takes focus
@@ -191,6 +207,7 @@ export function ContextMenuHost({ registry, menus, keyboard }: HostProps) {
         // Radix names the menu after its trigger, which here is an empty anchor.
         aria-labelledby={undefined}
         data-context-menu={request?.surface}
+        data-context-menu-via={via}
         className="w-auto min-w-48"
         onCloseAutoFocus={onCloseAutoFocus}
         onPointerDownCapture={() => {
