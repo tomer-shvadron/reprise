@@ -110,6 +110,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up the workspace
+        id: setup
         uses: ./.github/actions/setup
         with:
           chromium: shell
@@ -138,10 +139,11 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
-      # Pixel baselines are CI's own (Linux); runs even when the real-file pass failed, so one run shows both.
+      # Pixel baselines are CI's own (Linux); runs even when the real-file pass failed, so one run
+      # shows both, but not after a failed setup.
       - name: Visual
         id: visual
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         timeout-minutes: 5
         run: pnpm test:visual
 
@@ -186,7 +188,8 @@ jobs:
         with:
           name: web-dist
           path: apps/web/dist/
-          retention-days: 1
+          # Long enough for "Re-run failed jobs" on a shard the next morning.
+          retention-days: 7
           if-no-files-found: error
 
   # The one required check (scripts/github/protect-main.sh). Runs even when a job it needs failed or

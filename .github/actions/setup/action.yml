@@ -41,8 +41,9 @@ runs:
         # would never be saved again with the full browser under a shared key.
         key: playwright-${{ inputs.chromium == 'full' && 'chromium-' || '' }}${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
-    # The browser download waits until the deterministic checks have passed, and a job that needs no
-    # browser never makes it.
+    # The browser download waits until the deterministic checks have passed. A job that asks for no
+    # browser still gets the headless shell from the root `postinstall` until that honours
+    # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD (#379, part 2).
     - name: Install dependencies
       shell: bash
       run: pnpm install --frozen-lockfile
@@ -54,12 +55,13 @@ runs:
     - name: Install Chromium headless shell
       if: ${{ inputs.chromium == 'shell' }}
       shell: bash
-      run: pnpm exec playwright install chromium --only-shell
+      # A composite step has no timeout-minutes; this keeps the five minutes the old jobs allowed.
+      run: timeout 300 pnpm exec playwright install chromium --only-shell
 
     - name: Install Chromium (the headless shell, and full Chromium for the tuner's microphone)
       if: ${{ inputs.chromium == 'full' }}
       shell: bash
-      run: pnpm exec playwright install chromium
+      run: timeout 300 pnpm exec playwright install chromium
 
     # About 32 MB from GitHub, cached on the pins, so the GeneralUser GS suite runs in CI too.
     - name: Cache the GM soundfont
