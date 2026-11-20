@@ -1,4 +1,3 @@
-import { loopRange, type TickRange } from '@reprise/audio';
 import { PAGE_SIZES, type LayoutResult } from '@reprise/layout';
 import type { Score } from '@reprise/model';
 import { LocateFixedIcon } from 'lucide-react';
@@ -18,9 +17,7 @@ import {
   type ScoreViewHandle,
 } from '@/features/score';
 import { orderedRange } from '@/features/transport/bar-range';
-import { loopBarNumbers } from '@/features/transport/loop';
-import { seekTick } from '@/features/transport/seek';
-import { playheadBar, playheadTick, seekTo } from '@/features/transport/seek-commands';
+import { playheadBar, seekToBar } from '@/features/transport';
 import {
   cursorTick,
   createEditPointer,
@@ -30,7 +27,6 @@ import {
 } from '@/features/editor';
 import { selectRunning } from '@/state/playback';
 import type { BarRange } from '@/state/selection';
-import { timelineOf } from '@/state/timeline';
 
 import { startPlayhead, type PlayheadDriver } from './playhead-driver';
 import type { AppServices } from './services';
@@ -79,45 +75,7 @@ function clickBar(
   }
   if (target.track !== undefined) selection.getState().setCurrentTrack(target.track);
   selection.getState().selectBars(undefined, target.masterBarId);
-  seekToTarget(services, score, target);
-}
-
-/**
- * Seeks to a bar and tick: the pass in the playhead's run. A target outside an active loop turns
- * the loop off, or with `keepLoop` (a click in edit mode) is not seeked to and leaves the loop on.
- * Shared by a click in play mode and a click in edit mode, which seeks to its cursor.
- */
-function seekToTarget(
-  services: AppServices,
-  score: Score,
-  target: { masterBarIndex: number; tick: number },
-  keepLoop = false,
-): void {
-  const { audio, playback, transport } = services;
-  const timeline = timelineOf(score);
-  const at = playheadTick(services);
-  const { loop } = playback.getState().settings;
-  let inLoop: TickRange | undefined;
-  const bars = loop && loopBarNumbers(score, loop);
-  if (loop && bars) {
-    const number = target.masterBarIndex + 1;
-    if (number < bars.start || number > bars.end) {
-      if (keepLoop) return;
-      audio.setLoop(undefined);
-    } else {
-      try {
-        inLoop = loopRange(timeline, loop, at);
-      } catch {
-        inLoop = undefined;
-      }
-    }
-  }
-  const tick = seekTick(timeline, target, at, inLoop);
-  if (tick === undefined) {
-    transport.getState().announce(`Bar ${String(target.masterBarIndex + 1)} is not played`);
-    return;
-  }
-  seekTo(services, tick);
+  seekToBar(services, score, target);
 }
 
 function FollowButton() {
@@ -209,7 +167,7 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
       if (placed && plain && moved) {
         const tick = cursorTick(score, moved);
         if (tick !== undefined && !selectRunning(playback.getState())) {
-          seekToTarget(services, score, { masterBarIndex: moved.at.bar, tick }, true);
+          seekToBar(services, score, { masterBarIndex: moved.at.bar, tick }, true);
         }
       }
       return;

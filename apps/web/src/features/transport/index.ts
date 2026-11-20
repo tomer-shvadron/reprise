@@ -4,3 +4,6 @@ export { transportCommands, type TransportCommandId } from './commands';
 export { bpmFor, clampPercent, parseBpm, percentForBpm, TEMPO_PERCENT } from './tempo';
 export { loopBarNumbers } from './loop';
 export { megabytes, SoundStatus } from './sound-status';
+export { seekToBar } from './seek-target';
+export { applyLoop } from './loop';
+export { playheadBar, seekTo } from './seek-commands';
