@@ -1,4 +1,7 @@
 /**
+ * Shared by the cache-property.<notation>.test.ts files, one per notation so Vitest runs them in
+ * parallel: the property runs are the longest tests in the layout project.
+ *
  * Random edit sequences against a warm cache: after every step the cached layout must equal a
  * cold one byte for byte, in every notation and both modes. Continuous segment breaks are stable
  * (#147), so "a cold one" starts from the same previous breaks as the cache does. Undo and redo go through the model's
@@ -30,7 +33,7 @@ import {
 import { largeScore, note, score as scoreBuilder } from '@reprise/model/testing';
 import { array, assert, constantFrom, integer, oneof, property, record } from 'fast-check';
 import type { Arbitrary } from 'fast-check';
-import { describe, expect, it } from 'vitest';
+import { expect } from 'vitest';
 
 import {
   DEFAULT_MARGINS,
@@ -39,11 +42,11 @@ import {
   layout,
   type LayoutOptions,
   type LayoutResult,
-} from './index';
-import { layoutWith } from './layout';
-import { resolveOptions } from './options';
-import { breakIds, expectInsidePages, expectValid, stable } from './test/check-result';
-import { withEffects, withNoteMarks } from './test/effects';
+} from '../index';
+import { layoutWith } from '../layout';
+import { resolveOptions } from '../options';
+import { breakIds, expectInsidePages, expectValid, stable } from './check-result';
+import { withEffects, withNoteMarks } from './effects';
 
 /** The keep rule's band in lines, written out so that changing `UNDERFLOW` or `OVERFLOW` fails here. */
 const MIN_LINES = 0.5;
@@ -441,113 +444,111 @@ function changeOptions(score: Score, options: LayoutOptions, change: OptionChang
   }
 }
 
-describe('LayoutCache: random edits', () => {
-  const modes = [
-    ['paged', 'paged', undefined],
-    ['continuous', 'continuous', undefined],
-    ...SPLIT_PAGE_HEIGHTS.map(
-      (height) => [`paged at ${String(height)} px high`, 'paged', height] as const,
+const MODES = [
+  ['paged', 'paged', undefined],
+  ['continuous', 'continuous', undefined],
+  ...SPLIT_PAGE_HEIGHTS.map(
+    (height) => [`paged at ${String(height)} px high`, 'paged', height] as const,
+  ),
+] as const;
+
+/** The (label, mode, split page height) cases each notation runs. */
+export const CACHE_PROPERTY_MODES = MODES;
+
+/** Asserts, over random edit sequences, that the warm cache equals a cold layout after every step. */
+export function checkCachedEqualsCold(
+  notation: Notation,
+  mode: LayoutOptions['mode'],
+  height: number | undefined,
+): void {
+  const split = height !== undefined;
+  assert(
+    property(
+      constantFrom<'large' | 'sparse'>('large', 'sparse'),
+      integer({ min: 0, max: 2 }),
+      integer({ min: 0, max: 4 }),
+      array(edit, { minLength: 1, maxLength: 8 }),
+      (which, subsetDie, widthDie, edits) => {
+        let score = SCORES[which]();
+        const width = widthAt(mode, widthDie);
+        let options = optionsFor(score, notation, mode, subsetDie === 0, width, height);
+        const cache = new LayoutCache();
+        const first = layout(score, options, cache);
+        let breaks: ReadonlySet<Id> = breakIds(score, first);
+        let systemKey = resolveOptions(score, options).systemKey;
+        if (split && which === 'large' && subsetDie !== 0 && width === PAGE_SIZES.a4.width) {
+          expect(first.systems.some(({ part }) => part !== undefined)).toBe(true);
+          if (height === 640 && notation === 'standard') {
+            expect(first.systems.some(({ part }) => part === undefined)).toBe(true);
+          }
+        }
+        const history = createHistory();
+        for (const step of edits) {
+          let touched: string[] = [];
+          let afresh = false;
+          if (step.kind === 'options') {
+            options = changeOptions(score, options, step.change);
+            // Another width, zoom, track set or notation lays the segments out afresh; an
+            // option change the layout does not key on (a subset that is every track) does not.
+            const key = resolveOptions(score, options).systemKey;
+            afresh = key !== systemKey;
+            systemKey = key;
+          } else if (step.kind === 'undo' || step.kind === 'redo') {
+            const replayed = step.kind === 'undo' ? history.undo() : history.redo();
+            if (!replayed) continue;
+            score = replayed.score;
+            touched = replayed.change.touchedBars;
+          } else {
+            const made = command(score, step);
+            if (!made) continue;
+            try {
+              const applied = history.apply(score, made);
+              score = applied.score;
+              touched = applied.change.touchedBars;
+            } catch (error) {
+              if (error instanceof CommandError) continue;
+              throw error;
+            }
+          }
+          const cached = layout(score, { ...options, dirtyBars: touched }, cache);
+          const cold = layoutWith(score, options, undefined, afresh ? undefined : breaks);
+          expect(stable(cached), JSON.stringify(step)).toBe(stable(cold));
+          breaks = breakIds(score, cached);
+          if (mode === 'continuous') {
+            // Every segment holds a bar, and they tile the score.
+            let end = 0;
+            cached.systems.forEach(({ bars, bbox }, i) => {
+              expect(bars.start, JSON.stringify(step)).toBe(end);
+              expect(bars.end).toBeGreaterThan(bars.start);
+              end = bars.end;
+              const lines = bbox.width / options.width;
+              // A segment of several bars is at most OVERFLOW lines wide (the first one's
+              // names and clefs count against its line, so this is loose there), and one
+              // that is neither first nor last, nor followed by a bar too wide to share it,
+              // is at least UNDERFLOW lines wide.
+              if (bars.end - bars.start > 1) expect(lines).toBeLessThanOrEqual(MAX_LINES + 0.03);
+              const next = cached.systems[i + 1];
+              // Greedy filling ends a segment where the next bar no longer fits, so a segment
+              // may be short when that bar is wide: its column plus this segment overflows
+              // the line (#244). Several bars at about half a line each do this at a narrow
+              // width.
+              const columnId = next && score.masterBars[next.bars.start]?.id;
+              const column = cached.anchors.find(
+                (a) => a.kind === 'bar' && a.track === undefined && a.masterBar === columnId,
+              );
+              const blocked =
+                column !== undefined && lines + column.bbox.width / options.width > 1 - 0.03;
+              if (i > 0 && next && !blocked) expect(lines).toBeGreaterThanOrEqual(MIN_LINES - 0.03);
+            });
+            expect(end).toBe(score.masterBars.length);
+          }
+          expectValid(cached);
+          if (!split) expectInsidePages(cached, DEFAULT_MARGINS[mode]);
+          // At the split heights only the bottom margin overflows by design (#85): a staff taller than the room.
+          else expectInsidePagesHorizontally(cached);
+        }
+      },
     ),
-  ] as const;
-  const cases = (['tab', 'standard', 'both'] as const).flatMap((notation) =>
-    modes.map(([label, mode, height]) => [notation, label, mode, height] as const),
+    { numRuns: RUNS },
   );
-  it.each(cases)(
-    'keeps cached equal to cold in %s notation, %s',
-    (notation, _label, mode, height) => {
-      const split = height !== undefined;
-      assert(
-        property(
-          constantFrom<'large' | 'sparse'>('large', 'sparse'),
-          integer({ min: 0, max: 2 }),
-          integer({ min: 0, max: 4 }),
-          array(edit, { minLength: 1, maxLength: 8 }),
-          (which, subsetDie, widthDie, edits) => {
-            let score = SCORES[which]();
-            const width = widthAt(mode, widthDie);
-            let options = optionsFor(score, notation, mode, subsetDie === 0, width, height);
-            const cache = new LayoutCache();
-            const first = layout(score, options, cache);
-            let breaks: ReadonlySet<Id> = breakIds(score, first);
-            let systemKey = resolveOptions(score, options).systemKey;
-            if (split && which === 'large' && subsetDie !== 0 && width === PAGE_SIZES.a4.width) {
-              expect(first.systems.some(({ part }) => part !== undefined)).toBe(true);
-              if (height === 640 && notation === 'standard') {
-                expect(first.systems.some(({ part }) => part === undefined)).toBe(true);
-              }
-            }
-            const history = createHistory();
-            for (const step of edits) {
-              let touched: string[] = [];
-              let afresh = false;
-              if (step.kind === 'options') {
-                options = changeOptions(score, options, step.change);
-                // Another width, zoom, track set or notation lays the segments out afresh; an
-                // option change the layout does not key on (a subset that is every track) does not.
-                const key = resolveOptions(score, options).systemKey;
-                afresh = key !== systemKey;
-                systemKey = key;
-              } else if (step.kind === 'undo' || step.kind === 'redo') {
-                const replayed = step.kind === 'undo' ? history.undo() : history.redo();
-                if (!replayed) continue;
-                score = replayed.score;
-                touched = replayed.change.touchedBars;
-              } else {
-                const made = command(score, step);
-                if (!made) continue;
-                try {
-                  const applied = history.apply(score, made);
-                  score = applied.score;
-                  touched = applied.change.touchedBars;
-                } catch (error) {
-                  if (error instanceof CommandError) continue;
-                  throw error;
-                }
-              }
-              const cached = layout(score, { ...options, dirtyBars: touched }, cache);
-              const cold = layoutWith(score, options, undefined, afresh ? undefined : breaks);
-              expect(stable(cached), JSON.stringify(step)).toBe(stable(cold));
-              breaks = breakIds(score, cached);
-              if (mode === 'continuous') {
-                // Every segment holds a bar, and they tile the score.
-                let end = 0;
-                cached.systems.forEach(({ bars, bbox }, i) => {
-                  expect(bars.start, JSON.stringify(step)).toBe(end);
-                  expect(bars.end).toBeGreaterThan(bars.start);
-                  end = bars.end;
-                  const lines = bbox.width / options.width;
-                  // A segment of several bars is at most OVERFLOW lines wide (the first one's
-                  // names and clefs count against its line, so this is loose there), and one
-                  // that is neither first nor last, nor followed by a bar too wide to share it,
-                  // is at least UNDERFLOW lines wide.
-                  if (bars.end - bars.start > 1)
-                    expect(lines).toBeLessThanOrEqual(MAX_LINES + 0.03);
-                  const next = cached.systems[i + 1];
-                  // Greedy filling ends a segment where the next bar no longer fits, so a segment
-                  // may be short when that bar is wide: its column plus this segment overflows
-                  // the line (#244). Several bars at about half a line each do this at a narrow
-                  // width.
-                  const columnId = next && score.masterBars[next.bars.start]?.id;
-                  const column = cached.anchors.find(
-                    (a) => a.kind === 'bar' && a.track === undefined && a.masterBar === columnId,
-                  );
-                  const blocked =
-                    column !== undefined && lines + column.bbox.width / options.width > 1 - 0.03;
-                  if (i > 0 && next && !blocked)
-                    expect(lines).toBeGreaterThanOrEqual(MIN_LINES - 0.03);
-                });
-                expect(end).toBe(score.masterBars.length);
-              }
-              expectValid(cached);
-              if (!split) expectInsidePages(cached, DEFAULT_MARGINS[mode]);
-              // At the split heights only the bottom margin overflows by design (#85): a staff taller than the room.
-              else expectInsidePagesHorizontally(cached);
-            }
-          },
-        ),
-        { numRuns: RUNS },
-      );
-    },
-    60_000,
-  );
-});
+}

@@ -1,50 +1,51 @@
 import { render, screen } from '@testing-library/react';
 import { positionAtSeconds } from '@reprise/model';
 import { createRef } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, vi } from 'vitest';
 
 import { timelineOf } from '@/state/timeline';
 import { stubMatchMedia } from '@/test/match-media';
 
-import { playheadAt, staffBand } from './playhead';
-import { ScoreView, type ScoreViewHandle } from './score-view';
-import { longLayout, sharedLongScore } from './test/long-score';
-import { stubScroll } from './test/scroll-stub';
-import { stubViewport } from './test/viewport-stub';
+import { playheadAt, staffBand } from '../playhead';
+import { ScoreView, type ScoreViewHandle } from '../score-view';
+import { longLayout, sharedLongScore } from './long-score';
+import { stubScroll } from './scroll-stub';
+import { stubViewport } from './viewport-stub';
 
-vi.mock('./fonts', () => ({
-  useScoreFonts: () => true,
-  loadScoreFonts: () => Promise.resolve(),
-}));
+// Shared by follow-long.paged.test.tsx and follow-long.continuous.test.tsx, one file per mode so
+// Vitest runs them in parallel. Each file keeps its own vi.mock('./fonts'), which is per file.
 
-const originalScrollTo = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo');
+/** Registers the viewport and scroll stubs each follow-long file needs around its tests. */
+export function stubFollowEnvironment(): void {
+  const originalScrollTo = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTo');
 
-beforeEach(() => {
-  stubViewport(1280, 800);
-  Element.prototype.scrollTo = function scrollTo(
-    this: Element,
-    options?: ScrollToOptions | number,
-  ) {
-    if (typeof options !== 'object') return;
-    if (options.left !== undefined) this.scrollLeft = options.left;
-    if (options.top !== undefined) this.scrollTop = options.top;
-  };
-});
+  beforeEach(() => {
+    stubViewport(1280, 800);
+    Element.prototype.scrollTo = function scrollTo(
+      this: Element,
+      options?: ScrollToOptions | number,
+    ) {
+      if (typeof options !== 'object') return;
+      if (options.left !== undefined) this.scrollLeft = options.left;
+      if (options.top !== undefined) this.scrollTop = options.top;
+    };
+  });
 
-afterEach(() => {
-  vi.restoreAllMocks();
-  if (originalScrollTo) Object.defineProperty(Element.prototype, 'scrollTo', originalScrollTo);
-});
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (originalScrollTo) Object.defineProperty(Element.prototype, 'scrollTo', originalScrollTo);
+  });
+}
 
-const song = sharedLongScore();
+export const song = sharedLongScore();
 const { map } = timelineOf(song);
-const trackAt = (index: number) => song.tracks[index]?.id ?? '';
+export const trackAt = (index: number) => song.tracks[index]?.id ?? '';
 
 /**
  * Plays the whole long score at 0.1 s steps following `track`, and returns the steps where the
  * playhead was hidden or not on the part of a split system that holds the track.
  */
-function play(
+export function play(
   mode: 'paged' | 'continuous',
   zoom: number,
   reducedMotion: boolean,
@@ -91,26 +92,3 @@ function play(
   unmount();
   return misses;
 }
-
-describe('following the long score', () => {
-  it('splits every A4 system, with tracks 1 to 5 in its first part and 6 to 8 in its second', () => {
-    const { systems } = longLayout({ mode: 'paged', paper: 'a4' });
-    const partOf = (track: number) =>
-      systems.find((system) => system.staves.some((staff) => staff.track === trackAt(track)))?.part;
-    expect(systems.every((system) => system.part !== undefined)).toBe(true);
-    expect([0, 4, 5, 7].map(partOf)).toEqual([0, 0, 1, 1]);
-  });
-
-  // Track 1 sits in the first part of each split A4 system, tracks 6 and 8 in the second.
-  for (const mode of ['paged', 'continuous'] as const) {
-    for (const zoom of [1, 2]) {
-      for (const index of mode === 'paged' ? [0, 5, 7] : [0, 7]) {
-        it(`keeps the playhead in view following track ${String(index + 1)}, ${mode} at zoom ${String(zoom)}`, () => {
-          const track = trackAt(index);
-          expect(play(mode, zoom, false, track)).toEqual([]);
-          expect(play(mode, zoom, true, track)).toEqual([]);
-        }, 60_000);
-      }
-    }
-  }
-});
