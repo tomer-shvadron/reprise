@@ -66,11 +66,24 @@ describe('isVocalTrack', () => {
     ['Backing voices', true],
     ['SINGER', true],
     ['Choir', true],
+    ['Singers', true],
+    ['Choirs', true],
+    ['Vocals2', true],
+    ['Vocal_1', true],
+    ['Lead_Vocals', true],
+    ['Vocalist', false],
     ['Guitar', false],
     ['Voiceover', false],
     ['Invoice', false],
   ])('judges the name %s', (name, expected) => {
     expect(isVocalTrack(of(0, name))).toBe(expected);
+  });
+
+  it('lets the name win over a guitar program, deliberately', () => {
+    // A melody named Vocals on a guitar sound is a common way to tab the vocal line; a Vox amp
+    // guitar is the accepted false positive.
+    expect(isVocalTrack(of(29, 'Vox Guitar'))).toBe(true);
+    expect(isVocalTrack(of(29, 'Lead Guitar'))).toBe(false);
   });
 
   it('is false on drums, even named Vocals or on a voice program', () => {

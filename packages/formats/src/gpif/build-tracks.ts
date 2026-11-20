@@ -43,7 +43,14 @@ export interface TrackPlan {
   /** Index of the first later staff whose own tuning or capo differs from the first's. */
   differingStaff?: number;
   /** Notes that did not fit a fretted track's fretboard, counted in note references. */
-  offFretboard?: { below: number; past: number; shared: number; fretCount: number };
+  offFretboard?: {
+    below: number;
+    past: number;
+    shared: number;
+    /** Pitched notes with no string, on a track whose program is not fretted. */
+    noString: number;
+    fretCount: number;
+  };
 }
 
 const DEFAULT_FRET_COUNT = 24;
@@ -69,11 +76,16 @@ function fretted(plan: TrackPlan, note: GpifNote): { fret?: number; stringPitch?
 export function fitFretboard(plan: TrackPlan, beats: Iterable<readonly GpifNote[]>): TrackPlan {
   if (plan.kind !== 'fretted') return plan;
   const fretCount = plan.staff.fretCount ?? DEFAULT_FRET_COUNT;
-  const counts = { below: 0, past: 0, shared: 0, fretCount };
+  const counts = { below: 0, past: 0, shared: 0, noString: 0, fretCount };
   for (const notes of beats) {
     const taken = new Set<number>();
     for (const note of notes) {
-      if (note.string === undefined) continue;
+      if (note.string === undefined) {
+        // A vocal track kept fretted for lack of a part configuration would drop this note.
+        const pitched = note.midi !== undefined || note.octave !== undefined;
+        if (pitched && !isFrettedProgram(plan.source.program)) counts.noString++;
+        continue;
+      }
       const { fret } = fretted(plan, note);
       if (fret !== undefined && fret < 0) counts.below++;
       else if (fret !== undefined && fret > fretCount) counts.past++;
@@ -81,7 +93,7 @@ export function fitFretboard(plan: TrackPlan, beats: Iterable<readonly GpifNote[
       taken.add(note.string);
     }
   }
-  if (counts.below + counts.past + counts.shared === 0) return plan;
+  if (counts.below + counts.past + counts.shared + counts.noString === 0) return plan;
   return { ...plan, kind: 'pitched', offFretboard: counts };
 }
 

@@ -192,11 +192,11 @@ describe('what the fixtures carry', () => {
 
 describe('implicitNotation', () => {
   it.each(allManifestEntries())(
-    '$path lists its tracks only when its format states none',
+    '$path lists its tracks only when its format states no notation',
     async (entry) => {
       const result = await read(fixtureBytes(entry.path));
-      const stated = entry.format === 'gp3' || entry.format === 'gp4' ? 'none' : 'all';
-      const expected = stated === 'none' ? result.score.tracks.map((track) => track.id) : [];
+      const statesNone = entry.format === 'gp3' || entry.format === 'gp4';
+      const expected = statesNone ? result.score.tracks.map((track) => track.id) : [];
       expect(result.implicitNotation ?? []).toEqual(expected);
     },
   );

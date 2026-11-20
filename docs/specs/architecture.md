@@ -254,7 +254,7 @@ interface Track {
   name: string; shortName: string; color: Color;
   kind: 'fretted' | 'drums' | 'pitched';
   tuning: number[];              // open-string MIDI notes 0..127, lowest string first, up to MAX_STRINGS (10); empty on drums.
-                                 // A GP5 keyboard track is read as pitched and keeps its tuning and fretCount for gp5 export
+                                 // A GP5 keyboard track is read as pitched (unless its file flags tablature) and keeps its tuning and fretCount for gp5 export
   capo: number;                  // >= 0; frets count from the capo
   fretCount: number;             // neck length, 24 by default; 0 on drums
   program: number; bank: number; // GM program 0..127 and bank 0..16383; on drums, program is the GM2 kit
@@ -529,7 +529,7 @@ Usage is in `../reference/score-model.md`.
 ```ts
 type Format = 'gp3' | 'gp4' | 'gp5' | 'gp' | 'gpx' | 'reprise';
 function detect(bytes: Uint8Array): Format | undefined;
-function read(bytes: Uint8Array, format?: Format): Promise<{ score: Score; warnings: Warning[] }>;
+function read(bytes: Uint8Array, format?: Format): Promise<{ score: Score; warnings: Warning[]; implicitNotation?: readonly Id[] }>;
 function write(score: Score, format: 'reprise' | 'gp', options?: { app?: AppInfo }): Promise<{ bytes: Uint8Array; dropped: Warning[] }>;
 ```
 

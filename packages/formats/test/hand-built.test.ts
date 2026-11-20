@@ -407,7 +407,10 @@ describe('a GP5 track asking for tab', () => {
       display: { notation, octaveShift: 0 },
     });
     expect(implicitNotation).toEqual([]);
-    // The hand-built track lacks the multi-track flag, which is the one remaining occurrence.
+    // The note stays on its string rather than becoming a MIDI pitch on string 0.
+    expect(noteOf(score, 0, 0, 0)).toMatchObject({ string: 1, fret: 0 });
+    // Warnings fold by code and keep the first message, so the count tells them apart: the
+    // hand-built track lacks the multi-track flag, the one occurrence left once the tablature one is gone.
     expect(warnings.find((warning) => warning.code === 'track-flags-dropped')?.count).toBe(1);
   });
 

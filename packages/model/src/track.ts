@@ -102,11 +102,15 @@ export function canShowTab(track: Pick<Track, 'kind' | 'tuning'>): boolean {
 /** General MIDI voice programs: choir aahs, voice oohs and synth voice. */
 export const VOCAL_PROGRAMS: readonly number[] = [52, 53, 54];
 
-const VOCAL_NAME = /\b(?:vocals?|vox|voices?|singer|choir)\b/i;
+// Letter lookarounds, not `\b`: digits and `_` are word characters there, and "Vocals2" or
+// "Lead_Vocals" are vocal tracks while "Voiceover", "Invoice" and "Vocalist" are not.
+const VOCAL_NAME = /(?<![a-z])(?:vocals?|vox|voices?|singers?|choirs?)(?![a-z])/i;
 
 /**
  * Whether a track is a vocal part: a GM voice program, or a name containing the whole word
- * vocal(s), vox, voice(s), singer or choir (English only). Many files put the melody on a piano
+ * vocal(s), vox, voice(s), singer(s) or choir(s), bounded by non-letters (English only). The
+ * name counts whatever the program, so "Vox Guitar" on a guitar program is vocal too: a melody
+ * named "Vocals" on a guitar sound is a common way to tab the vocal line. Many files put the melody on a piano
  * or flute program and name it "Vocals", so the program alone would miss them. Never true for
  * drums.
  */

@@ -85,6 +85,9 @@ export function readGpifWith(
   hooks.afterRead?.(document, collector);
   let notation: TrackNotation[] | undefined;
   if (options.partConfiguration) {
+    // alphaTab applies the leading entries by index when the count is off; we ignore them all
+    // (and so list every track as implicit), which means "the file wins" does not hold for a
+    // file whose part configuration does not match its tracks.
     notation = readPartConfiguration(options.partConfiguration);
     if (notation?.length !== document.trackOrder.length) {
       collector.warn(
