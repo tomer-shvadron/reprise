@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { write } from '@reprise/formats';
 import type { Notation, Score } from '@reprise/model';
-import { fullScore, largeScore } from '@reprise/model/testing';
+import { fullScore, largeScore, note, score } from '@reprise/model/testing';
 
 export const REPO = fileURLToPath(new URL('../../../../../', import.meta.url));
 export const GENERATED = fileURLToPath(new URL('../.generated/', import.meta.url));
@@ -65,6 +65,32 @@ function longScore(): Score {
       display: { ...track.display, notation: NOTATIONS[index % 3] ?? 'tab' },
     })),
   };
+}
+
+/** Two tracks of 24 bars with sections Intro, Verse, Chorus, Verse, Chorus, Outro, four bars each. */
+export const SECTIONS = {
+  file: 'sections.reprise',
+  bars: 24,
+  tracks: ['Lead', 'Rhythm'],
+  starts: { verse1: 5, chorus2: 17 },
+  chorus2Bars: '17–20',
+} as const;
+
+function sectionsScore(): Score {
+  const names = ['Intro', 'Verse', 'Chorus', 'Verse', 'Chorus', 'Outro'];
+  const builder = score().tempo(120);
+  for (const track of SECTIONS.tracks) {
+    builder.track('guitar', { name: track });
+    for (let bar = 0; bar < SECTIONS.bars; bar += 1) {
+      builder.bar();
+      const section = names[bar / 4];
+      if (track === SECTIONS.tracks[0] && bar % 4 === 0 && section !== undefined) {
+        builder.section(section);
+      }
+      for (let beat = 0; beat < 4; beat += 1) builder.beat('4', [note(1, (bar + beat) % 12)]);
+    }
+  }
+  return builder.build();
 }
 
 /** The A2 the tuner flow hears: a harmonic tone 12 cents above 110 Hz. */
@@ -134,6 +160,7 @@ export async function generateScores(): Promise<Record<string, Uint8Array>> {
     'song48.gp': (await write(largeScore(2, 48, { structure: true }), 'gp')).bytes,
     // Every kind of thing the model holds: the Guitar Pro writer drops some of them (WP-061).
     'export-full.reprise': (await write(fullScore(), 'reprise')).bytes,
+    [SECTIONS.file]: (await write(sectionsScore(), 'reprise')).bytes,
     'long-score.reprise': (await write(longScore(), 'reprise')).bytes,
     'tuner-a2.wav': tunerToneWav(),
   };
