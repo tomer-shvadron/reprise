@@ -5,6 +5,7 @@ import { THEME_SETTING } from '@/state/app-settings';
 import { ZOOM } from '@/state/ui';
 
 import type { Command } from './command-registry';
+import { openContextMenuOn } from './context-menu/open-on';
 import type { AppServices } from './services';
 import { whenSaved } from './when-saved';
 
@@ -21,7 +22,10 @@ export type AppCommandId =
   | 'app.shortcutsAlt'
   | 'file.close'
   | 'file.showImportDetails'
-  | 'view.followPlayback';
+  | 'view.followPlayback'
+  | 'view.toggleRightPanel'
+  | 'app.contextMenu'
+  | 'app.contextMenuWindows';
 
 type AppCommand = Command & { id: AppCommandId };
 
@@ -29,6 +33,16 @@ export function appCommands(services: AppServices): AppCommand[] {
   const { ui, print, document, settings } = services;
   const zoomBy = (delta: number) => {
     ui.getState().setZoom(Math.round((ui.getState().zoom + delta) * 10) / 10);
+  };
+
+  // The focused element's menu; on the body, the score's, so the key still answers.
+  const openFocusedMenu = () => {
+    const active = globalThis.document.activeElement;
+    const target =
+      active && active !== globalThis.document.body
+        ? active
+        : globalThis.document.querySelector('[role="region"][aria-roledescription="score"]');
+    if (target) openContextMenuOn(target);
   };
 
   return [
@@ -92,6 +106,25 @@ export function appCommands(services: AppServices): AppCommand[] {
       run: () => {
         ui.getState().setShortcutsOpen(!ui.getState().shortcutsOpen);
       },
+    },
+    {
+      id: 'app.contextMenu',
+      title: 'Open context menu',
+      // Chromium raises no `contextmenu` event for Shift+F10 on macOS, so the command opens it.
+      shortcut: { key: 'F10', shift: true, only: 'mac' },
+      // From the palette the focus is on its input, which keeps the browser's menu.
+      inPalette: false,
+      run: openFocusedMenu,
+    },
+    {
+      id: 'app.contextMenuWindows',
+      title: 'Open context menu',
+      // Elsewhere Chromium raises its own keyboard `contextmenu` event: the key is left alone, so
+      // the menu does not open twice.
+      shortcut: { key: 'F10', shift: true, only: 'other' },
+      native: true,
+      inPalette: false,
+      run: openFocusedMenu,
     },
     {
       id: 'app.settings',
@@ -215,6 +248,13 @@ export function appCommands(services: AppServices): AppCommand[] {
       shortcut: { key: 'F8' },
       run: () => {
         ui.getState().toggleMixer();
+      },
+    },
+    {
+      id: 'view.toggleRightPanel',
+      title: 'Toggle right panel',
+      run: () => {
+        ui.getState().togglePanel('rightPanel');
       },
     },
     {

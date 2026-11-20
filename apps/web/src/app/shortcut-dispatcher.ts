@@ -21,6 +21,11 @@ const ACTIVATES_ON_SPACE = [
   ].map((role) => `[role="${role}"]`),
 ].join(', ');
 
+/** Whether Space presses this element, which is why a menu must not leave focus on one. */
+export function activatesOnSpace(element: Element): boolean {
+  return element.closest(ACTIVATES_ON_SPACE) !== null;
+}
+
 /** Keys that move a caret, so a text field keeps them whatever the modifiers. */
 const NAVIGATION_KEYS = new Set([
   'ArrowLeft',
@@ -91,12 +96,24 @@ export function menuCommandAllowed(id: string): boolean {
 /** Keys that delete text, so a text field keeps them whatever the modifiers. */
 const DELETE_KEYS = new Set(['Backspace', 'Delete']);
 
-/** A bare key the focused element handles itself: text in a field, Space or Enter on a control. */
+/** A bare key the focused element handles itself: text in a field, Space or Enter on a control, a character typed to an open menu. */
 function leavesKeyToTarget(event: KeyboardEvent): boolean {
   const { target } = event;
   if (isEditable(target)) return true;
+  // An open menu types to its items (typeahead) and Radix leaves the key to bubble to the window:
+  // a printable bare key there is the menu's, not a command's. A closing menu (still holding
+  // focus until the close-focus handler runs) has no typeahead, so the key stays a command's.
+  const bare = !event.metaKey && !event.ctrlKey && !event.altKey;
+  if (
+    bare &&
+    event.key.length === 1 &&
+    target instanceof Element &&
+    target.closest('[role="menu"][data-state="open"]')
+  ) {
+    return true;
+  }
   const activates = event.key === ' ' || event.key === 'Enter';
-  return activates && target instanceof Element && target.closest(ACTIVATES_ON_SPACE) !== null;
+  return activates && target instanceof Element && activatesOnSpace(target);
 }
 
 /**

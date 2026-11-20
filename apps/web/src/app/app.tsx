@@ -40,7 +40,9 @@ import { installViewDefaults } from './install-view-defaults';
 import { installRightPanel, storeRightPanelWidth } from './right-panel/install-right-panel';
 import { CommandPalette } from './command-palette';
 import { ShortcutSheet } from './shortcut-sheet';
+import { createAppMenus } from './app-menus';
 import { createAppRegistry } from './app-registry';
+import { ContextMenuHost } from './context-menu/context-menu-host';
 import { runCommand } from './command-registry';
 import { DropZone } from './drop-zone';
 import { installFirstGesture } from './first-gesture';
@@ -85,6 +87,7 @@ function RightPanel({ view }: { view: PanelView }) {
 export function App({ services, keyboard, onMenuCommand }: AppProps) {
   const { ui, audio } = services;
   const [registry] = useState(() => createAppRegistry(services));
+  const [menus] = useState(() => createAppMenus(registry));
   const source = useMemo(() => ({ registry, keyboard }), [registry, keyboard]);
   const theme = useStore(ui, (state) => state.theme);
   const screen = useStore(ui, (state) => state.screen);
@@ -232,6 +235,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
         )}
         <SettingsDialog sections={SETTINGS_SECTIONS} />
         <CommandPalette registry={registry} ui={ui} keyboard={keyboard} services={services} />
+        <ContextMenuHost registry={registry} menus={menus} keyboard={keyboard} />
         <ShortcutSheet registry={registry} ui={ui} keyboard={keyboard} />
         <DropZone />
         <Notices />

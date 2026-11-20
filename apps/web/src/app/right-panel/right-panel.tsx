@@ -11,6 +11,7 @@ import type { ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import { keepFocus, tooltipText } from '@/app/command-control';
+import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useAppServices } from '@/app/services-context';
 import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
@@ -81,6 +82,7 @@ export function PanelTabs({ children }: { children: ReactNode }) {
               items={PRACTICE_VIEWS.map(({ view: id, label }) => ({
                 id,
                 label,
+                view: id,
                 command: SUB_TAB_COMMANDS[id],
               }))}
               selected={view}
@@ -112,6 +114,11 @@ function RailButton({ entry }: { entry: (typeof PANEL_TABS)[number] }) {
     (state) => state.panels.rightPanel && tabOfView(state.rightPanelView) === id,
   );
   const command = useCommand(entry.command);
+  const menu = useStaticContextMenu({
+    surface: 'panel.rail',
+    target: { kind: 'panel', view: entry.view },
+    label: `${entry.label} view`,
+  });
   const Icon = TAB_ICONS[id];
 
   return (
@@ -123,6 +130,7 @@ function RailButton({ entry }: { entry: (typeof PANEL_TABS)[number] }) {
           aria-label={entry.label}
           aria-pressed={active}
           aria-keyshortcuts={command.ariaKeys}
+          {...menu}
           onMouseDown={keepFocus}
           onClick={() => {
             const state = ui.getState();
@@ -145,6 +153,11 @@ export function PanelRail() {
   const { ui } = useAppServices();
   const open = useStore(ui, (state) => state.panels.rightPanel);
   const setPanelOpen = useStore(ui, (state) => state.setPanelOpen);
+  const foldMenu = useStaticContextMenu({
+    surface: 'panel.rail',
+    target: { kind: 'panel', view: undefined },
+    label: 'Right panel',
+  });
   const verb = open ? 'Collapse panel' : 'Expand panel';
   const Icon = open ? PanelRightCloseIcon : PanelRightOpenIcon;
 
@@ -164,6 +177,7 @@ export function PanelRail() {
             size="icon-sm"
             aria-label="Right panel"
             aria-expanded={open}
+            {...foldMenu}
             onMouseDown={keepFocus}
             onClick={() => {
               setPanelOpen('rightPanel', !open);
