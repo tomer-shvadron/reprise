@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 
 import type { CommandRegistry } from '@/app/command-registry';
 import type { KeyboardPlatform } from '@/app/keyboard';
@@ -15,6 +15,9 @@ import { MasterVolume } from './volume-control';
 interface TransportBarProps {
   registry: CommandRegistry;
   keyboard: KeyboardPlatform;
+  /** Slots the shell fills from the trainer, which this feature cannot import. */
+  speedTrainer?: ReactNode;
+  tuner?: ReactNode;
 }
 
 const divider = <Separator orientation="vertical" className="h-6!" />;
@@ -22,7 +25,7 @@ const divider = <Separator orientation="vertical" className="h-6!" />;
 /**
  * Not `role="toolbar"`: that role takes the arrow keys for roving focus, and the sliders need them.
  */
-export function TransportBar({ registry, keyboard }: TransportBarProps) {
+export function TransportBar({ registry, keyboard, speedTrainer, tuner }: TransportBarProps) {
   const source = useMemo(() => ({ registry, keyboard }), [registry, keyboard]);
 
   return (
@@ -40,7 +43,7 @@ export function TransportBar({ registry, keyboard }: TransportBarProps) {
           {divider}
           <TempoControl />
           {divider}
-          <PracticeToggles />
+          <PracticeToggles speedTrainer={speedTrainer} tuner={tuner} />
         </div>
         <MasterVolume />
         <Announcer />
