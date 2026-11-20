@@ -7,3 +7,11 @@ export { megabytes, SoundStatus } from './sound-status';
 export { seekToBar } from './seek-target';
 export { applyLoop } from './loop';
 export { playheadBar, seekTo } from './seek-commands';
+export {
+  rankSections,
+  sectionAt,
+  sectionBars,
+  sectionsOf,
+  type RankedSection,
+  type ScoreSection,
+} from './sections';
