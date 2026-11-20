@@ -76,6 +76,8 @@ export function appCommands(services: AppServices): AppCommand[] {
       title: 'Open context menu',
       // Chromium raises no `contextmenu` event for Shift+F10 on macOS, so the command opens it.
       shortcut: { key: 'F10', shift: true, only: 'mac' },
+      // From the palette the focus is on its input, which keeps the browser's menu.
+      inPalette: false,
       run: openFocusedMenu,
     },
     {

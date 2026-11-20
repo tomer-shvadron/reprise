@@ -16,6 +16,12 @@ describe('contextMenuVia', () => {
     );
   });
 
+  it('does not read a touch or pen long-press raised on release as a keyboard open', () => {
+    for (const pointerType of ['touch', 'pen']) {
+      expect(contextMenuVia(pointerEvent({ pointerType, button: 0, buttons: 0 }))).toBe('pointer');
+    }
+  });
+
   it('reads a right-click as a pointer open, on press (Linux, macOS) and on release (Windows)', () => {
     expect(contextMenuVia(pointerEvent({ pointerType: 'mouse', button: 2, buttons: 2 }))).toBe(
       'pointer',

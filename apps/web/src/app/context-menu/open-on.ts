@@ -16,7 +16,10 @@ export function contextMenuVia(event: Event): 'pointer' | 'keyboard' {
   if (synthetic.has(event)) return 'keyboard';
   if (typeof PointerEvent !== 'undefined' && event instanceof PointerEvent) {
     if (event.pointerType === '') return 'keyboard';
-    return event.button !== 2 && event.buttons === 0 ? 'keyboard' : 'pointer';
+    // Only a mouse: a touch or pen long-press raised on release also has no buttons down.
+    return event.pointerType === 'mouse' && event.button !== 2 && event.buttons === 0
+      ? 'keyboard'
+      : 'pointer';
   }
   return 'pointer';
 }
