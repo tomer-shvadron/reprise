@@ -340,20 +340,91 @@ describe('markAt', () => {
     expect(markAt(laid, -50, -50)).toBeUndefined();
   });
 
-  it('honours offsetX in continuous mode', () => {
-    const wide = layout(fullScore(), { ...paged, mode: 'continuous', width: 300 });
-    let checked = 0;
-    for (const system of wide.systems) {
-      const offsetX = system.offsetX ?? 0;
-      for (let i = system.primitives.start; i < system.primitives.end; i++) {
-        const p = wide.primitives[i];
-        if (p?.kind !== 'text' || p.lane !== 'chord' || p.node === undefined) continue;
-        const [x, y] = centreOf(p);
-        expect(markAt(wide, x + offsetX, y)).toEqual({ kind: 'chord', beat: p.node });
-        checked += 1;
+  /** Two tracks, a section and a tempo on every bar, chord names, beat text and a lyric. */
+  const marked = (() => {
+    const builder = score();
+    for (const instrument of ['guitar', 'bass'] as const) {
+      builder.track(instrument);
+      for (let bar = 0; bar < 24; bar++) {
+        builder.bar();
+        if (instrument === 'guitar') {
+          builder.section(`Part ${String(bar)}`, { letter: String.fromCharCode(65 + (bar % 26)) });
+          builder.tempo(100 + bar);
+        }
+        builder.beat('4', [note(1, 0)], {
+          chord: { name: `G${String(bar)}` },
+          text: 'riff',
+          lyrics: ['la'],
+        });
+        builder.beat('4', [note(1, 2)]);
       }
     }
-    expect(checked).toBeGreaterThan(0);
-    expect(wide.systems.some((s) => (s.offsetX ?? 0) > 0)).toBe(true);
+    return builder.build({ ids: 'sequential' });
+  })();
+
+  it('resolves marks on every track and in shifted continuous segments', () => {
+    for (const options of [paged, { ...paged, mode: 'continuous', width: 300 } as const]) {
+      const result = layout(marked, options);
+      let shifted = 0;
+      let chords = 0;
+      for (const system of result.systems) {
+        const offsetX = system.offsetX ?? 0;
+        for (let i = system.primitives.start; i < system.primitives.end; i++) {
+          const p = result.primitives[i];
+          if (p?.node === undefined) continue;
+          const [x, y] = centreOf(p);
+          const found = markAt(result, x + offsetX, y);
+          if (p.kind === 'text' && p.lane === 'chord') {
+            expect(found).toEqual({ kind: 'chord', beat: p.node });
+            chords += 1;
+            if (offsetX > 0) shifted += 1;
+          } else if ((p.kind === 'text' || p.kind === 'path') && p.lane === 'section') {
+            expect(found).toEqual({ kind: 'section', masterBar: p.node });
+            if (offsetX > 0) shifted += 1;
+          } else if (p.kind === 'text' && (p.lane === 'text' || p.lane?.startsWith('lyric'))) {
+            expect(found?.kind).not.toBe('chord');
+          }
+        }
+      }
+      if (options.mode === 'continuous') expect(shifted).toBeGreaterThan(0);
+      // Both tracks' chord names, 24 bars each.
+      expect(chords).toBe(48);
+    }
+  });
+
+  it('does not match an unshifted position of a mark in a shifted segment', () => {
+    const result = layout(marked, { ...paged, mode: 'continuous', width: 300 });
+    const system = result.systems.find((s) => (s.offsetX ?? 0) > 0);
+    if (!system) throw new Error('no shifted segment');
+    const name = result.primitives
+      .slice(system.primitives.start, system.primitives.end)
+      .find((p) => p.kind === 'text' && p.lane === 'chord');
+    if (!name) throw new Error('no chord name');
+    const [x, y] = centreOf(name);
+    expect(markAt(result, x + (system.offsetX ?? 0), y)).toMatchObject({ kind: 'chord' });
+    expect(markAt(result, x, y)?.kind === 'chord' && markAt(result, x, y)).not.toEqual(
+      markAt(result, x + (system.offsetX ?? 0), y),
+    );
+  });
+
+  it('returns undefined for a point inside a system that is on no mark', () => {
+    const note = laid.anchors.find((anchor) => anchor.kind === 'note');
+    if (!note) throw new Error('no note');
+    expect(markAt(laid, ...centre(note))).toBeUndefined();
+    const section = laid.primitives.find((p) => p.kind === 'path' && p.lane === 'section');
+    if (!section) throw new Error('no section');
+    // Just right of the box, in the same band, where only the bar's own furniture could be.
+    expect(
+      markAt(laid, section.bbox.x - 3, section.bbox.y + section.bbox.height / 2),
+    ).toBeUndefined();
+  });
+
+  it('returns undefined between two paged systems', () => {
+    const result = layout(marked, paged);
+    const [first, second] = result.systems;
+    if (!first || !second) throw new Error('needs two systems');
+    const gap = (first.bbox.y + first.bbox.height + second.bbox.y) / 2;
+    expect(gap).toBeGreaterThan(first.bbox.y + first.bbox.height);
+    expect(markAt(result, first.bbox.x + first.bbox.width / 2, gap)).toBeUndefined();
   });
 });
