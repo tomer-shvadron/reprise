@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { createAudioService } from '@/app/audio/audio-service';
 import { createAppServices } from '@/app/services';
 import { drive, manualTicker } from '@/test/offline';
-import { fakePlatform, memoryStorage } from '@/test/services';
+import { createTestSettings } from '@/test/settings-backend';
+import { fakePlatform } from '@/test/services';
 
 const SAMPLE_RATE = 44_100;
 const START = 0.1;
@@ -35,7 +36,7 @@ async function render(bpm: number, seconds: number) {
   });
   const services = createAppServices({
     platform: fakePlatform(),
-    storage: () => memoryStorage(),
+    settings: createTestSettings(),
     audio: (playback) =>
       createAudioService({
         playback,

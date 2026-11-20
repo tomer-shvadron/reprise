@@ -4,7 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { mirrorAudio } from '@/test/mirror-audio';
 import { renderWithServices } from '@/test/render';
-import { createTestServices, memoryStorage } from '@/test/services';
+import { GM_TIER_BYPASS_SETTING } from '@/state/app-settings';
+import { createTestServices } from '@/test/services';
+import { createMemorySettingsBackend, createTestSettings } from '@/test/settings-backend';
 
 import { MixerPanel } from './mixer-panel';
 import { renderTracks, threeTracks } from './test/render-tracks';
@@ -32,8 +34,9 @@ describe('MixerPanel', () => {
   });
 
   it('toggles the GM tier bypass and keeps it as a preference', async () => {
-    const storage = memoryStorage();
-    const services = createTestServices({ storage: () => storage });
+    const backend = createMemorySettingsBackend();
+    const settings = createTestSettings(backend);
+    const services = createTestServices({ settings });
     mirrorAudio(services);
     renderWithServices(<MixerPanel />, services);
     const user = userEvent.setup();
@@ -42,12 +45,14 @@ describe('MixerPanel', () => {
     await user.click(bypass);
     expect(services.fakeAudio.setGmTierBypass).toHaveBeenLastCalledWith(false);
     expect(bypass).not.toBeChecked();
-    // The key is the transport preferences'; a reload reads it back.
-    expect(JSON.parse(storage.getItem('reprise.transport') ?? '{}')).toMatchObject({
-      gmTierBypass: false,
-    });
-    const reloaded = createTestServices({ storage: () => storage });
-    expect(reloaded.fakeAudio.setGmTierBypass).toHaveBeenCalledWith(false);
+    // The preference lives in the settings store, which a reload hydrates from the table.
+    expect(settings.get(GM_TIER_BYPASS_SETTING)).toBe(false);
+    expect(await settings.settled()).toBe(true);
+    // A reload: new services over the same rows reach the audio service.
+    const reloadedSettings = createTestSettings(backend);
+    const reloaded = createTestServices({ settings: reloadedSettings });
+    await reloadedSettings.whenHydrated();
+    expect(reloaded.fakeAudio.setGmTierBypass).toHaveBeenLastCalledWith(false);
   });
 
   it('lists the effects preset beside the instrument of each track', async () => {

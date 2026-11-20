@@ -79,7 +79,7 @@ describe('the layout store', () => {
     spy.mockClear();
 
     ui.getState().setZoom(2);
-    ui.getState().toggleTheme();
+    ui.getState().setTheme('light');
     ui.getState().togglePanel('rightPanel');
     expect(spy).not.toHaveBeenCalled();
 

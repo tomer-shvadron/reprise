@@ -1,10 +1,19 @@
 import type { AudioService } from '@/app/audio/audio-service';
 import type { DocumentStore } from '@/state/document';
 import type { PlaybackStore, TempoSetting } from '@/state/playback';
+import {
+  COUNT_IN_SETTING,
+  GM_TIER_BYPASS_SETTING,
+  MASTER_VOLUME_SETTING,
+  MEMORY_BUDGET_SETTING,
+  METRONOME_ON_SETTING,
+  METRONOME_VOLUME_SETTING,
+} from '@/state/app-settings';
 import type { SelectionStore } from '@/state/selection';
+import type { SettingDef, SettingsStore } from '@/state/settings';
 
 import { applyLoop } from './loop';
-import { readTransportPreferences, writeTransportPreferences } from './preferences';
+import { importLegacyTransportPreferences } from './preferences';
 import { soundStatus } from './sound-status';
 import { TEMPO_PERCENT } from './tempo';
 import type { TransportUiStore } from './transport-ui';
@@ -15,38 +24,69 @@ export interface TransportDeps {
   document: DocumentStore;
   selection: SelectionStore;
   transport: TransportUiStore;
-  storage?: () => Storage;
+  settings: SettingsStore;
+  /** Where the pre-#343 preferences blob is looked for; `localStorage` by default. */
+  legacyStorage?: () => Storage;
 }
 
 /**
- * Wires the transport's rules that no control owns: the stored preferences in and out, the speed
+ * Wires the transport's rules that no control owns: the preferences between the settings store and the audio service, the speed
  * per song, and the loop following the selection and the score's edits. Returns its cleanup.
  */
 export function installTransport(deps: TransportDeps): () => void {
-  const { audio, playback, document, selection, transport, storage } = deps;
+  const { audio, playback, document, selection, transport, settings, legacyStorage } = deps;
 
-  const stored = readTransportPreferences(storage);
-  audio.setCountIn(stored.countIn);
-  audio.setMetronome(stored.metronome.on, stored.metronome.volume);
-  audio.setMasterVolume(stored.masterVolume);
-  audio.setGmTierBypass(stored.gmTierBypass);
-  audio.setMemoryBudget(stored.memoryBudgetBytes);
-
-  const unsubscribePlayback = playback.subscribe(({ settings }, { settings: before }) => {
-    if (
-      settings.countIn === before.countIn &&
-      settings.metronome === before.metronome &&
-      settings.masterVolume === before.masterVolume &&
-      settings.gmTierBypass === before.gmTierBypass &&
-      settings.memoryBudgetBytes === before.memoryBudgetBytes
-    ) {
-      return;
+  // The store holds what outlives a reload and `audio` what plays; each follows the other, and a
+  // side is touched only when it differs, so the two never loop. Playback changes are compared
+  // against their own previous state, not against the store: during hydration the store is ahead
+  // of `audio` for the keys not yet applied, and a whole-state comparison would write them back.
+  const now = () => playback.getState().settings;
+  const metronome = () => {
+    const on = settings.get(METRONOME_ON_SETTING);
+    const volume = settings.get(METRONOME_VOLUME_SETTING);
+    if (now().metronome.on !== on || now().metronome.volume !== volume) {
+      audio.setMetronome(on, volume);
     }
-    const { countIn, metronome, masterVolume, gmTierBypass, memoryBudgetBytes } = settings;
-    writeTransportPreferences(
-      { countIn, metronome, masterVolume, gmTierBypass, memoryBudgetBytes },
-      storage,
-    );
+  };
+  audio.setCountIn(settings.get(COUNT_IN_SETTING));
+  audio.setMetronome(settings.get(METRONOME_ON_SETTING), settings.get(METRONOME_VOLUME_SETTING));
+  audio.setMasterVolume(settings.get(MASTER_VOLUME_SETTING));
+  audio.setGmTierBypass(settings.get(GM_TIER_BYPASS_SETTING));
+  audio.setMemoryBudget(settings.get(MEMORY_BUDGET_SETTING));
+
+  const unsubscribeSettings = [
+    settings.subscribe(COUNT_IN_SETTING, (value) => {
+      if (now().countIn !== value) audio.setCountIn(value);
+    }),
+    settings.subscribe(METRONOME_ON_SETTING, metronome),
+    settings.subscribe(METRONOME_VOLUME_SETTING, metronome),
+    settings.subscribe(MASTER_VOLUME_SETTING, (value) => {
+      if (now().masterVolume !== value) audio.setMasterVolume(value);
+    }),
+    settings.subscribe(GM_TIER_BYPASS_SETTING, (value) => {
+      if (now().gmTierBypass !== value) audio.setGmTierBypass(value);
+    }),
+    settings.subscribe(MEMORY_BUDGET_SETTING, (value) => {
+      if (now().memoryBudgetBytes !== value) audio.setMemoryBudget(value);
+    }),
+  ];
+
+  const unsubscribePlayback = playback.subscribe(({ settings: current }, { settings: before }) => {
+    const put = <T>(def: SettingDef<T>, value: T, previous: T) => {
+      if (value !== previous && settings.get(def) !== value) settings.set(def, value);
+    };
+    put(COUNT_IN_SETTING, current.countIn, before.countIn);
+    put(METRONOME_ON_SETTING, current.metronome.on, before.metronome.on);
+    put(METRONOME_VOLUME_SETTING, current.metronome.volume, before.metronome.volume);
+    put(MASTER_VOLUME_SETTING, current.masterVolume, before.masterVolume);
+    put(GM_TIER_BYPASS_SETTING, current.gmTierBypass, before.gmTierBypass);
+    put(MEMORY_BUDGET_SETTING, current.memoryBudgetBytes, before.memoryBudgetBytes);
+  });
+
+  // Once the table has loaded, the old localStorage blob moves into it, once.
+  let disposed = false;
+  void settings.whenHydrated().then(() => {
+    if (!disposed) void importLegacyTransportPreferences(settings, legacyStorage);
   });
 
   const unsubscribeSounds = playback.subscribe((state, previous) => {
@@ -91,6 +131,8 @@ export function installTransport(deps: TransportDeps): () => void {
   });
 
   return () => {
+    disposed = true;
+    for (const unsubscribe of unsubscribeSettings) unsubscribe();
     unsubscribePlayback();
     unsubscribeSounds();
     unsubscribeDocument();
