@@ -2,9 +2,10 @@
 
 Shortcuts follow Guitar Pro where Guitar Pro has one.
 
-The table below is generated from the command registry in `apps/web`: `apps/web/src/app/shortcut-doc.test.ts` fails on any difference, and `pnpm shortcuts:write` regenerates it, so never edit it by hand. The same registry feeds the in-app cheat sheet (`?` or ⌘/, Ctrl+/ on Windows, which filters by command, category or key), the palette rows and the tooltips, which print each command's key. The desktop menu's accelerators are a hand-kept copy in `apps/desktop/src/main/menu.ts`, not read from the registry. The same test fails when two commands share a key in one context.
+The table below is generated from the command registry in `apps/web`: `apps/web/src/app/shortcut-doc.test.ts` fails on any difference, and `pnpm shortcuts:write` regenerates it, so never edit it by hand. The same registry feeds the in-app cheat sheet (`?` or ⌘/, Ctrl+/ on Windows, which filters by command, category or key), the palette rows and the tooltips, which print each command's key. The desktop menu takes its accelerators from the same registry: the renderer sends them over `menu:set-keys` once the settings load, and `apps/desktop/src/main/menu.ts` keeps labels only, so the menu shows no keys for a moment at launch. The same test fails when two commands share a key in one context.
 
 - Palette prefixes (#338): the first character typed in the command palette picks what it searches, and it stays in the input, so Backspace takes it away. `>` or nothing is commands; `#` is the song's section markers; `@` is its tracks (a number picks the track with that number); `/` is the library's songs; a number alone is a bar. Enter goes to a section or bar, selects a track or opens a song; ⌘Enter (Ctrl+Enter on Windows) does the alternate: loops the section or bar, shows only that track, or, for a command or a song, the same as Enter. The footer names both keys for the selected row. ⌘G (Ctrl+G) opens the palette locked to bar mode, and Go to section…, Go to track… and Open song from library… reach the other modes without the prefix character.
+- Practice mode (#341): F11 enters and leaves it and Escape leaves it, the pair Guitar Pro 8 uses for full screen. Escape goes to an open dialog, popover or field first, so a first press may only close that. Every other shortcut works inside the mode. On macOS, F11 is Show Desktop unless it is turned off in System Settings (Keyboard, Keyboard Shortcuts, Mission Control); the header's Practice segment and the command palette reach the mode without it. In the web build the page gets F11 first and the mode takes it, except while the browser itself is in full screen, when the browser keeps the key (not checked in a browser tab; the segment, the palette and Focus on loop do not depend on it). Starting the speed trainer, the click or the tuner (⌥S, ⌥B) from inside the mode opens no panel, which would end it.
 - The Context column is Global, or Editing for a binding that works only in edit mode and wins over a Global binding of the same key.
 - Browsers reserve Ctrl+N and ⌘N (as they do Ctrl+T and Ctrl+W) and never pass them to the page in a normal tab, so in the web build New song is reached from the command palette; the desktop app gets the key from its File menu.
 - A bare key (no Cmd or Ctrl) never fires while typing in a text field.
@@ -53,6 +54,9 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 | Toggle right panel | View | Global | — | — |
 | Toggle page and continuous view | View | Global | F4 | F4 |
 | Follow playback | View | Global | — | — |
+| Toggle practice mode | View | Global | F11 | F11 |
+| Leave practice mode | View | Global | Escape | Escape |
+| Focus on loop | View | Global | — | — |
 | Toggle multitrack view | View | Global | F3 | F3 |
 | Play or pause | Transport | Global | Space | Space |
 | Stop | Transport | Global | ↩ | Enter |

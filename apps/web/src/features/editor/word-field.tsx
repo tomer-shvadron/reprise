@@ -3,6 +3,7 @@ import { useStore } from 'zustand';
 
 import { useAppServices } from '@/app/services-context';
 import { scoreIndex } from '@/features/score';
+import { selectScoreZoom } from '@/state/ui';
 
 import { suggestChords } from './chord-suggestions';
 import { MODIFIER_KEYS } from './entry-controller';
@@ -40,7 +41,7 @@ export function WordField() {
   const isEditing = useStore(editing, (state) => state.editing);
   const score = useStore(document, (state) => state.score);
   const result = useStore(layout, (state) => state.result);
-  const zoom = useStore(ui, (state) => state.zoom);
+  const zoom = useStore(ui, selectScoreZoom);
   const input = useRef<HTMLInputElement>(null);
   // The highlighted suggestion, valid for the draft it was chosen on.
   const [picked, setPicked] = useState<{ where: string | undefined; index: number }>({

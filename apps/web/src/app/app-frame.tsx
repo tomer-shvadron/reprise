@@ -19,8 +19,8 @@ interface AppFrameProps {
   /** The footer's playback controls. */
   transport?: ReactNode;
   /**
-   * The window's last row, after the transport: the status bar. A mode that hides the chrome
-   * (practice) hides this slot with the header and the panels.
+   * The window's last row, after the transport: the status bar. Practice mode hides this slot
+   * with the header, the panels, the dock and the transport.
    */
   status?: ReactNode;
   /** The left sidebar's content: the track list. */
@@ -35,6 +35,10 @@ interface AppFrameProps {
   banner?: ReactNode;
   /** The bottom region's content (the live fretboard); the dock above the transport always shows its tab strip and the view while `ui.bottomPanel.open`. */
   bottom?: ReactNode;
+  /** Practice mode's row of sections above the score. */
+  sectionStrip?: ReactNode;
+  /** Practice mode's floating controls, drawn over the bottom of the score. */
+  capsule?: ReactNode;
 }
 
 function TracksToggle({ ui }: { ui: UiStore }) {
@@ -73,17 +77,21 @@ export function AppFrame({
   onRightPanelResizeEnd,
   banner,
   bottom,
+  sectionStrip,
+  capsule,
 }: AppFrameProps) {
+  const practising = useStore(ui, (state) => state.practiceMode.on);
   const panels = useStore(ui, (state) => state.panels);
   const widths = useStore(ui, (state) => state.panelWidths);
   const setPanelWidth = useStore(ui, (state) => state.setPanelWidth);
 
   return (
     <div className="flex h-full flex-col">
-      {header}
-      {banner}
+      {!practising && header}
+      {!practising && banner}
+      {practising && sectionStrip}
       <div className="flex min-h-40 flex-1">
-        {panels.sidebar && (
+        {!practising && panels.sidebar && (
           <>
             <aside
               aria-label="Tracks"
@@ -115,9 +123,10 @@ export function AppFrame({
           className="bg-muted dark:bg-muted/40 relative min-w-0 flex-1 overflow-hidden outline-none"
         >
           {score}
+          {practising && capsule}
         </main>
 
-        {panels.rightPanel && (
+        {!practising && panels.rightPanel && (
           <>
             <ResizeHandle
               label="Resize panel"
@@ -143,20 +152,24 @@ export function AppFrame({
             </aside>
           </>
         )}
-        {rail}
+        {!practising && rail}
       </div>
 
-      <BottomDock ui={ui}>{bottom}</BottomDock>
+      {!practising && (
+        <>
+          <BottomDock ui={ui}>{bottom}</BottomDock>
 
-      <footer
-        aria-label="Transport"
-        className="bg-background flex h-14 shrink-0 items-center gap-2 border-t px-3"
-      >
-        <TracksToggle ui={ui} />
-        <Separator orientation="vertical" className="h-6!" />
-        {transport}
-      </footer>
-      {status}
+          <footer
+            aria-label="Transport"
+            className="bg-background flex h-14 shrink-0 items-center gap-2 border-t px-3"
+          >
+            <TracksToggle ui={ui} />
+            <Separator orientation="vertical" className="h-6!" />
+            {transport}
+          </footer>
+          {status}
+        </>
+      )}
     </div>
   );
 }

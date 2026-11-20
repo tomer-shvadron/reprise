@@ -10,11 +10,13 @@ import type { TransportCommandId } from '@/features/transport/commands';
 import { runCommand, type CommandRegistry } from './command-registry';
 import type { AppCommandId } from './commands';
 import type { EditCommandId } from './edit-commands';
+import type { PracticeCommandId } from './practice-mode/commands';
 import { ariaKeyShortcuts, formatShortcut, shortcutOn, type KeyboardPlatform } from './keyboard';
 
 /** Every id `createAppRegistry` registers, so a mistyped id fails typecheck, not at render. */
 export type RegisteredCommandId =
   | AppCommandId
+  | PracticeCommandId
   | TransportCommandId
   | EditCommandId
   | TrackCommandId

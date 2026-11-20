@@ -5,7 +5,6 @@ import type { KeyboardPlatform } from '@/app/keyboard';
 import { CommandSourceContext } from '@/app/use-command';
 import { Separator } from '@/components/ui/separator';
 
-import { Announcer } from './announcer';
 import { PlaybackButtons } from './playback-buttons';
 import { PositionReadout } from './position-readout';
 import { PracticeToggles } from './practice-toggles';
@@ -46,7 +45,6 @@ export function TransportBar({ registry, keyboard, speedTrainer, tuner }: Transp
           <PracticeToggles speedTrainer={speedTrainer} tuner={tuner} />
         </div>
         <MasterVolume />
-        <Announcer />
       </div>
     </CommandSourceContext>
   );

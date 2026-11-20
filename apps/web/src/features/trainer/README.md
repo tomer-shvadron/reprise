@@ -106,7 +106,7 @@ shared field is a `type:contract` issue for the lead.
   partials raise the autocorrelation (up to 15 cents sharp at a fixed 1.5 kHz). **Web Audio's
   lowpass `Q` is in dB**: a Butterworth section is `20·log10(1/√2)`, not 0.707, and
   `tuner.browser.test.ts` pins it against an `OfflineAudioContext` render.
-- **Tracker thresholds** (`TRACKER` in `pitch/tracker.ts`, set by `tracker.test.ts`). A frame
+- **Tracker thresholds** (`TRACKER` in `pitch/tracker.ts`, set by `tracker.test.ts` and `tracker-pipeline-*.test.ts`). A frame
   counts at −55 dBFS RMS or more, and while locked no more than 30 dB below the note's peak. A
   new note needs clarity 0.90, a lock continues to 0.80. Two accepted frames within 30 cents
   lock; three accepted frames more than 50 cents from the median move the lock, and a single
@@ -204,3 +204,7 @@ together: starting one stops the other.
   metronome are never observed: the capture imports nothing from `tuner/` or `metronome/`.
 - Not done: a weekly summary and streaks (they would want a `startedAt` index, a Dexie version 3),
   export of the log, pruning or a clear-history button, and a Resume command.
+- **In the practice mode (#341)** starting the speed trainer, the standalone metronome or the tuner
+  (⌥S, ⌥B, the capsule's chip) does not show their panel, because a panel would end the mode; the
+  capsule's `SpeedTrainerChip command="trainer.speedTrainerToggle"` shows the progress and the
+  trainer announces its own steps. The explicit "Show ..." commands still open the panel.
