@@ -40,7 +40,8 @@ function NotationItem({
   );
 }
 
-export function ZoomItem({
+/** A command item that keeps its menu open, so a step (zoom, duration) can repeat. */
+export function StepItem({
   command,
   label,
   disabled,
@@ -54,7 +55,7 @@ export function ZoomItem({
     <DropdownMenuItem
       disabled={disabled}
       onSelect={(event) => {
-        // Zoom steps repeat, so the menu stays open.
+        // Steps repeat, so the menu stays open.
         event.preventDefault();
         bound.run();
       }}
@@ -91,9 +92,9 @@ export function NotationRadioItems({
 export function ZoomItems({ zoom }: { zoom: number }) {
   return (
     <>
-      <ZoomItem command="view.zoomIn" label="Zoom in" disabled={zoom >= ZOOM.max} />
-      <ZoomItem command="view.zoomOut" label="Zoom out" disabled={zoom <= ZOOM.min} />
-      <ZoomItem command="view.zoomReset" label="Actual size" />
+      <StepItem command="view.zoomIn" label="Zoom in" disabled={zoom >= ZOOM.max} />
+      <StepItem command="view.zoomOut" label="Zoom out" disabled={zoom <= ZOOM.min} />
+      <StepItem command="view.zoomReset" label="Actual size" />
     </>
   );
 }

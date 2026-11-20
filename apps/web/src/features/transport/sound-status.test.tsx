@@ -1,9 +1,9 @@
-import { act, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { initialPlaybackState, type PlaybackStoreState } from '@/state/playback';
-import { renderWithServices } from '@/test/render';
+import { renderHeader, spyOnCommand } from '@/app/header/test/render-header';
 
 import { megabytes, SoundStatus, soundStatus } from './sound-status';
 
@@ -19,7 +19,7 @@ function stateWith(partial: Partial<PlaybackStoreState>): PlaybackStoreState {
 
 describe('SoundStatus', () => {
   it('offers Retry when sounds are unavailable', async () => {
-    const { services } = renderWithServices(<SoundStatus />);
+    const { services } = renderHeader(<SoundStatus />);
     const user = userEvent.setup();
 
     act(() => {
@@ -33,8 +33,8 @@ describe('SoundStatus', () => {
     expect(services.fakeAudio.retry).toHaveBeenCalledOnce();
   });
 
-  it('shows used and budget in the status text, and the resident and unused counts in the tooltip', async () => {
-    const { services } = renderWithServices(<SoundStatus />);
+  it('shows the tier and the decoded memory, and the budget and counts in the tooltip', async () => {
+    const { services } = renderHeader(<SoundStatus />);
     const user = userEvent.setup();
     act(() => {
       services.playback.setState({
@@ -48,11 +48,60 @@ describe('SoundStatus', () => {
       });
     });
 
-    expect(status()).toHaveTextContent('0.6 / 80 MB');
+    expect(status()).toHaveTextContent('GM · 0.6 MB');
+    // The desktop smoke test waits on this ending.
+    expect(status().textContent).toMatch(/\d MB$/);
     await user.hover(status());
     expect(await screen.findByRole('tooltip')).toHaveTextContent(
-      '0.6 of 80 MB decoded · 5 instruments loaded (2 unused)',
+      'Sounds: 0.6 of 80 MB decoded · 5 instruments loaded (2 unused)',
     );
+  });
+});
+
+describe('SoundStatus segment', () => {
+  const memory = {
+    decodedBytes: 42 * 1024 * 1024,
+    budgetBytes: 300 * 1024 * 1024,
+    residents: [],
+    unused: [],
+    shortfall: false,
+  };
+
+  it("names a mixed tier over the song's tracks", async () => {
+    const { services, open } = renderHeader(<SoundStatus />);
+    await open();
+    const [first] = services.document.getState().score?.tracks ?? [];
+    if (!first) throw new Error('no track');
+    act(() => {
+      services.playback.setState({
+        memory,
+        trackSounds: { [first.id]: { tier: 'hq', packId: 'pack' } },
+      });
+    });
+    expect(status()).toHaveTextContent('GM + HQ · 42 MB');
+  });
+
+  it('opens the Sounds screen, and keeps focus where it was on mousedown', async () => {
+    const { services, registry } = renderHeader(<SoundStatus />);
+    act(() => {
+      services.playback.setState({ memory });
+    });
+    const show = spyOnCommand(registry, 'sounds.show');
+    const segment = screen.getByRole('button', { name: /42 MB/ });
+    expect(fireEvent.mouseDown(segment)).toBe(false);
+    await userEvent.setup().click(segment);
+    expect(show).toHaveBeenCalledOnce();
+  });
+
+  it('is absent before anything loaded, and shows the load text in place of the memory', () => {
+    const { services } = renderHeader(<SoundStatus />);
+    expect(screen.queryByRole('button')).toBeNull();
+    act(() => {
+      services.playback.setState({
+        sounds: { status: 'loading', loaded: 42, total: 100, error: undefined },
+      });
+    });
+    expect(status()).toHaveTextContent('Loading sounds… 42%');
   });
 });
 

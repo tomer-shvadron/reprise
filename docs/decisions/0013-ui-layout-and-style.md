@@ -51,6 +51,9 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - Changed by #333 (2026-11-20): a slim header band (S-TOP-1) above the score, with the library
   breadcrumb, Play and Edit modes, a View menu and a command-palette search. The arrangement is
   otherwise unchanged. See "Changed by #333" in `../specs/architecture.md`.
+- Changed by #336 (2026-11-20): the transport footer gains a status bar below it (S-STATUS-1): the
+  song's state on the left, the edit cursor and the view on the right. The arrangement is
+  otherwise unchanged. See "Changed by #336" in `../specs/architecture.md`.
 
 ## Related
 
