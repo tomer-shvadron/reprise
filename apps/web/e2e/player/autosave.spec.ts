@@ -61,7 +61,8 @@ test('a crashed page offers its draft back with the last edit, and Save clears i
   await dialog.getByRole('button', { name: /^Recover / }).click();
   await next.waitReady();
   await expect(again).toHaveTitle(/^● .* — Reprise$/);
-  await again.keyboard.press('F8');
+  // The panel was open before the crash, and a relaunch brings it back.
+  await expect(again.getByRole('complementary', { name: 'Panel' })).toBeVisible();
   await expect(next.strip(1).getByRole('slider', { name: 'Volume of Track 1' })).toHaveAttribute(
     'aria-valuenow',
     '90',

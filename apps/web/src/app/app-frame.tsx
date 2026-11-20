@@ -1,17 +1,11 @@
-import { ChevronDownIcon, PanelLeftIcon, PanelRightIcon } from 'lucide-react';
+import { ChevronDownIcon, PanelLeftIcon } from 'lucide-react';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-  BOTTOM_PANEL_HEIGHT,
-  BOTTOM_PANEL_TITLES,
-  PANEL_WIDTH,
-  type PanelId,
-  type UiStore,
-} from '@/state/ui';
+import { BOTTOM_PANEL_HEIGHT, BOTTOM_PANEL_TITLES, PANEL_WIDTH, type UiStore } from '@/state/ui';
 
 import { ResizeHandle } from './resize-handle';
 
@@ -25,23 +19,21 @@ interface AppFrameProps {
   transport?: ReactNode;
   /** The left sidebar's content: the track list. */
   sidebar?: ReactNode;
-  /** The right panel's content: the mixer. */
+  /** The right panel's content: its tab strip and the active view. */
   panel?: ReactNode;
+  /** Called when a resize of the right panel ends, the moment to store its width. */
+  onRightPanelResizeEnd?: () => void;
+  /** The icon rail on the right panel's edge; it stays when the panel is collapsed. */
+  rail?: ReactNode;
   /** A full-width strip above the panels, such as the library's "not in your library" banner. */
   banner?: ReactNode;
   /** The bottom region's content (the live fretboard); the region shows while `ui.bottomPanel.open`. */
   bottom?: ReactNode;
 }
 
-function PanelToggle({ ui, panel, label }: { ui: UiStore; panel: PanelId; label: string }) {
-  // The right panel is the mixer's toggle, so it is pressed only while it shows the mixer.
-  const open = useStore(
-    ui,
-    (state) => state.panels[panel] && (panel === 'sidebar' || state.rightPanelView === 'mixer'),
-  );
+function TracksToggle({ ui }: { ui: UiStore }) {
+  const open = useStore(ui, (state) => state.panels.sidebar);
   const togglePanel = useStore(ui, (state) => state.togglePanel);
-  const toggleMixer = useStore(ui, (state) => state.toggleMixer);
-  const Icon = panel === 'sidebar' ? PanelLeftIcon : PanelRightIcon;
 
   return (
     <Tooltip>
@@ -49,17 +41,16 @@ function PanelToggle({ ui, panel, label }: { ui: UiStore; panel: PanelId; label:
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label={label}
+          aria-label="Toggle tracks"
           aria-pressed={open}
           onClick={() => {
-            if (panel === 'sidebar') togglePanel(panel);
-            else toggleMixer();
+            togglePanel('sidebar');
           }}
         >
-          <Icon />
+          <PanelLeftIcon />
         </Button>
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      <TooltipContent>Toggle tracks</TooltipContent>
     </Tooltip>
   );
 }
@@ -71,6 +62,8 @@ export function AppFrame({
   transport,
   sidebar,
   panel,
+  rail,
+  onRightPanelResizeEnd,
   banner,
   bottom,
 }: AppFrameProps) {
@@ -154,6 +147,7 @@ export function AppFrame({
               onResize={(width) => {
                 setPanelWidth('rightPanel', width);
               }}
+              {...(onRightPanelResizeEnd && { onResizeEnd: onRightPanelResizeEnd })}
             />
             <aside
               aria-label="Panel"
@@ -168,6 +162,7 @@ export function AppFrame({
             </aside>
           </>
         )}
+        {rail}
       </div>
 
       {bottomOpen && (
@@ -214,14 +209,12 @@ export function AppFrame({
         aria-label="Transport"
         className="bg-background flex h-14 shrink-0 items-center gap-2 border-t px-3"
       >
-        <PanelToggle ui={ui} panel="sidebar" label="Toggle tracks" />
+        <TracksToggle ui={ui} />
         <Separator orientation="vertical" className="h-6!" />
         {transport}
         <span className="text-muted-foreground ml-auto text-xs tabular-nums">
           {Math.round(zoom * 100)}%
         </span>
-        <Separator orientation="vertical" className="h-6!" />
-        <PanelToggle ui={ui} panel="rightPanel" label="Toggle mixer" />
       </footer>
     </div>
   );

@@ -31,6 +31,8 @@ const SAMPLES: Record<string, unknown> = {
   'playback.followPlayhead': false,
   'score.defaultViewMode': 'continuous',
   'score.defaultZoom': 1.5,
+  'layout.rightPanelOpen': true,
+  'layout.rightPanelWidth': 400,
   'library.sort': 'artist',
 };
 

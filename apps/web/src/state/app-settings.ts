@@ -2,6 +2,7 @@ import { HQ_BUDGET_BYTES } from '@reprise/audio';
 import { z } from 'zod';
 
 import { defineSetting, type SettingDef } from './settings';
+import { PANEL_WIDTH } from './panel-width';
 import { MEMORY_BUDGET_RANGE } from './playback';
 import { ZOOM } from './zoom';
 
@@ -46,6 +47,17 @@ export const MEMORY_BUDGET_SETTING = defineSetting({
   schema: z.number().min(MEMORY_BUDGET_RANGE.min).max(MEMORY_BUDGET_RANGE.max),
   default: HQ_BUDGET_BYTES,
 });
+export const RIGHT_PANEL_OPEN_SETTING = defineSetting({
+  key: 'layout.rightPanelOpen',
+  schema: z.boolean(),
+  default: false,
+});
+/** The ui store clamps as well, so a row from an older range still shows. */
+export const RIGHT_PANEL_WIDTH_SETTING = defineSetting({
+  key: 'layout.rightPanelWidth',
+  schema: z.number().min(PANEL_WIDTH.rightPanel.min).max(PANEL_WIDTH.rightPanel.max),
+  default: PANEL_WIDTH.rightPanel.default,
+});
 
 export const FOLLOW_PLAYHEAD_SETTING = defineSetting({
   key: 'playback.followPlayhead',
@@ -75,4 +87,6 @@ export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
   FOLLOW_PLAYHEAD_SETTING,
   DEFAULT_VIEW_MODE_SETTING,
   DEFAULT_ZOOM_SETTING,
+  RIGHT_PANEL_OPEN_SETTING,
+  RIGHT_PANEL_WIDTH_SETTING,
 ];
