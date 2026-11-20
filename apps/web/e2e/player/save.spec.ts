@@ -55,7 +55,8 @@ test('Save writes a .gp file opened without importing in place, and it reopens a
   await page.keyboard.press('ControlOrMeta+o');
   await app.waitReady('song.gp');
   await expect(page.getByRole('button', { name: 'Notation for Track 1: Std' })).toBeVisible();
-  await page.keyboard.press('F8');
+  // The mixer was open before the reload, and a reload brings it back.
+  await expect(page.getByRole('complementary', { name: 'Panel' })).toBeVisible();
   await expect(app.strip(1).getByRole('slider', { name: 'Volume of Track 1' })).toHaveAttribute(
     'aria-valuenow',
     '90',
