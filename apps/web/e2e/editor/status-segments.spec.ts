@@ -18,5 +18,6 @@ test('the status bar switches the entry mode and the voice, and focus stays with
   await expect(status).toContainText('Voice 2');
   // The click left focus on the page, so the next digit goes to the score.
   await page.keyboard.press('5');
-  await expect(status).toContainText('Bar 1');
+  // A new song's cursor is at the end of bar 1; only an entered note moves it off that slot.
+  await expect(status).not.toContainText('End of bar');
 });

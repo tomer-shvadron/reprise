@@ -42,38 +42,69 @@ test('zooming from the zoom segment keeps focus with the page, so Space plays', 
   await expect(app.playButton).toHaveAccessibleName('Pause');
 });
 
-test('at the narrowest window the bar keeps its height and the long edit state fits', async ({
+test('at the narrowest window the groups never overlap and nothing leaves the bar', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 800, height: 600 });
   await page.getByRole('radiogroup', { name: 'Mode' }).getByRole('radio', { name: 'Edit' }).click();
-  // The longest duration label the bar can show.
+  const bar = page.getByRole('region', { name: 'Status' });
+  const edit = page.getByTestId('edit-status');
+  // A dotted triplet is a long duration label, and inserting it into a full bar is refused with a
+  // long message: the widest state the bar reaches.
+  await edit.getByRole('button', { name: 'Overwrite' }).click();
   await page.keyboard.press('.');
   await page.keyboard.press('/');
-  const bar = page.getByRole('region', { name: 'Status' });
-  await expect(bar).toBeVisible();
-  const fit = await bar.evaluate((element) => ({
-    height: element.getBoundingClientRect().height,
-    overflows: element.scrollWidth > element.clientWidth,
-  }));
-  expect(fit.height).toBeCloseTo(STATUS_HEIGHT, 0);
-  expect(fit.overflows).toBe(false);
+  await page.keyboard.press('5');
+  await expect(edit.getByRole('status')).not.toHaveText('');
+  {
+    const fit = await bar.evaluate((element) => {
+      const reach = (group: Element | null) => {
+        const rects = [...(group?.querySelectorAll('button, [role="status"]') ?? [])]
+          .map((node) => node.getBoundingClientRect())
+          .filter((rect) => rect.width > 0); // a shed segment is display:none, with an empty rect
+        return {
+          left: Math.min(...rects.map((rect) => rect.left)),
+          right: Math.max(...rects.map((rect) => rect.right)),
+        };
+      };
+      const song = reach(element.querySelector('[aria-label="Song"]'));
+      const cursor = reach(element.querySelector('[aria-label="Cursor and view"]'));
+      const box = element.getBoundingClientRect();
+      return {
+        height: box.height,
+        songRight: song.right,
+        cursorLeft: cursor.left,
+        cursorRight: cursor.right,
+        barRight: box.right,
+        barLeft: box.left,
+        songLeft: song.left,
+      };
+    });
+    expect(fit.height).toBeCloseTo(STATUS_HEIGHT, 0);
+    expect(fit.songRight).toBeLessThanOrEqual(fit.cursorLeft);
+    expect(fit.songLeft).toBeGreaterThanOrEqual(fit.barLeft);
+    expect(fit.cursorRight).toBeLessThanOrEqual(fit.barRight);
+  }
   for (const name of [/^(Saved|Unsaved)$/, /^(Insert|Overwrite)$/, /^Voice \d$/, /^\d+%$/]) {
-    const box = await bar.getByRole('button', { name }).first().boundingBox();
-    expect(box).not.toBeNull();
-    expect((box?.x ?? -1) >= 0 && (box?.x ?? 0) + (box?.width ?? 0) <= 800).toBe(true);
+    await expect(bar.getByRole('button', { name }).first()).toBeVisible();
   }
 });
 
 for (const theme of ['dark', 'light'] as const) {
-  test(`every segment is at least 4.5:1 on the bar in the ${theme} theme`, async ({ page }) => {
-    await page.evaluate((next) => {
-      document.documentElement.dataset['theme'] = next;
-    }, theme);
+  test(`every segment is at least 4.5:1 on the bar in the ${theme} theme`, async ({
+    app,
+    page,
+  }) => {
+    const html = page.locator('html');
+    if ((await html.getAttribute('data-theme')) !== theme) await app.palette('Toggle theme');
+    await expect(html).toHaveAttribute('data-theme', theme);
     await page
       .getByRole('radiogroup', { name: 'Mode' })
       .getByRole('radio', { name: 'Edit' })
       .click();
+    await expect(page.getByTestId('edit-status')).toBeVisible();
+    // `transition-all` is in flight after the flip; a half-faded colour is not what the theme shows.
+    await page.waitForFunction(() => document.getAnimations().length === 0);
     const bar = page.getByRole('region', { name: 'Status' });
     const colours = await bar.evaluate((element) => {
       const background = getComputedStyle(element).backgroundColor;
