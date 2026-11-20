@@ -11,7 +11,7 @@ export function MasterVolume() {
   const Icon = volume === 0 ? VolumeXIcon : volume < 0.5 ? Volume1Icon : Volume2Icon;
 
   return (
-    <div role="group" aria-label="Output" className="flex items-center">
+    <div role="group" aria-label="Output" className="ml-auto flex items-center">
       <LevelPopover
         popover="master"
         command="transport.masterVolume"

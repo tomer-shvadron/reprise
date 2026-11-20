@@ -1,20 +1,28 @@
 import { write } from '@reprise/formats';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
-import { createTestServices } from '@/test/services';
+import { renderHeader, spyOnCommand } from '@/app/header/test/render-header';
+import { useAppServices } from '@/app/services-context';
 
 import { cursorAtPosition } from './cursor';
-import { createEntryStore } from './entry-store';
 import { EditStatusLine } from './status-line';
 import { entryScore } from './test/entry-scores';
 
+function Line() {
+  const services = useAppServices();
+  return <EditStatusLine {...services} />;
+}
+
 async function setup() {
-  const services = createTestServices();
-  const entry = createEntryStore();
-  await services.document
-    .getState()
-    .openBytes('entry.reprise', (await write(entryScore(), 'reprise')).bytes);
+  const { services, registry } = renderHeader(<Line />);
+  const entry = services.entry;
+  await act(async () => {
+    await services.document
+      .getState()
+      .openBytes('entry.reprise', (await write(entryScore(), 'reprise')).bytes);
+  });
   const score = services.document.getState().score;
   if (!score) throw new Error('not open');
   const cursor = cursorAtPosition(
@@ -22,9 +30,10 @@ async function setup() {
     { track: 0, bar: 2, voice: 0, stop: 1 },
     { string: 4, staff: 'tab' },
   );
-  services.selection.getState().setEdit({ cursor, currentTrack: cursor?.track });
-  render(<EditStatusLine {...services} entry={entry} />);
-  return { services, entry };
+  act(() => {
+    services.selection.getState().setEdit({ cursor, currentTrack: cursor?.track });
+  });
+  return { services, entry, registry };
 }
 
 describe('EditStatusLine', () => {
@@ -41,9 +50,7 @@ describe('EditStatusLine', () => {
     const status = screen.getByTestId('edit-status');
     expect(screen.getByRole('status').getAttribute('aria-live')).toBe('polite');
     expect(screen.getByRole('status').textContent).toBe('');
-    expect(status.textContent).toBe(
-      'Overwrite · Voice 1 · Quarter · Bar 3 · Beat 2 · String 4Effects',
-    );
+    expect(status.textContent).toBe('Overwrite · Voice 1 · Quarter · Bar 3 · Beat 2 · String 4');
     act(() => {
       entry.getState().setMode('insert');
       entry.getState().setRhythm({ duration: 8, dots: 1, tuplet: undefined });
@@ -98,22 +105,38 @@ describe('EditStatusLine', () => {
     );
   });
 
-  it('has an Effects button that shows and hides the effects panel, when it has the ui', async () => {
-    const { services } = await setup();
+  it('runs the mode, voice and duration commands from its segments', async () => {
+    const { services, registry } = await setup();
     act(() => {
       services.editing.getState().setEditing(true);
     });
-    const effects = screen.getByRole('button', { name: 'Effects' });
-    expect(effects).toHaveAttribute('aria-pressed', 'false');
+    const user = userEvent.setup();
+    const toggle = spyOnCommand(registry, 'editor.toggleInsertMode');
+    await user.click(screen.getByRole('button', { name: 'Overwrite' }));
+    expect(toggle).toHaveBeenCalledOnce();
+
+    const voice2 = spyOnCommand(registry, 'editor.editVoice2');
+    await user.click(screen.getByRole('button', { name: 'Voice 1' }));
+    await user.click(await screen.findByRole('menuitemradio', { name: /Voice 2/ }));
+    expect(voice2).toHaveBeenCalledOnce();
+
+    const dot = spyOnCommand(registry, 'editor.toggleDot');
+    await user.click(screen.getByRole('button', { name: 'Quarter' }));
+    await user.click(await screen.findByRole('menuitem', { name: /Dotted/ }));
+    expect(dot).toHaveBeenCalledOnce();
+    // A step keeps the menu open, so it can repeat.
+    expect(screen.getByRole('menuitem', { name: /Dotted/ })).toBeInTheDocument();
+  });
+
+  it('opens the command palette from the position, and does not move focus on mousedown', async () => {
+    const { services, registry } = await setup();
     act(() => {
-      effects.click();
+      services.editing.getState().setEditing(true);
     });
-    expect(services.ui.getState()).toMatchObject({ rightPanelView: 'effects' });
-    expect(services.ui.getState().panels.rightPanel).toBe(true);
-    expect(effects).toHaveAttribute('aria-pressed', 'true');
-    act(() => {
-      effects.click();
-    });
-    expect(services.ui.getState().panels.rightPanel).toBe(false);
+    const palette = spyOnCommand(registry, 'app.commandPalette');
+    const position = screen.getByRole('button', { name: 'Bar 3 · Beat 2 · String 4' });
+    expect(fireEvent.mouseDown(position)).toBe(false);
+    await userEvent.setup().click(position);
+    expect(palette).toHaveBeenCalledOnce();
   });
 });

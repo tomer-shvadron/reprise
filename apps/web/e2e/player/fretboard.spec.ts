@@ -30,7 +30,7 @@ test('the fretboard follows playback without frame gaps beyond the baseline', as
   // with it open. Only gaps after the readout starts moving are held to the budget.
   const baseline = await play();
   await app.palette('Toggle fretboard');
-  const board = page.getByRole('region', { name: 'Fretboard' });
+  const board = page.getByRole('tabpanel', { name: 'Fretboard' });
   await expect(board.getByRole('group', { name: /fretboard$/ })).toBeVisible();
   await expect(board.getByText(/6 strings, tuning E A D G B E/)).toBeVisible();
   const open = await play();

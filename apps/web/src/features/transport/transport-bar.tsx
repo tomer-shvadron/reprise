@@ -9,7 +9,6 @@ import { Announcer } from './announcer';
 import { PlaybackButtons } from './playback-buttons';
 import { PositionReadout } from './position-readout';
 import { PracticeToggles } from './practice-toggles';
-import { SoundStatus } from './sound-status';
 import { TempoControl } from './tempo-control';
 import { MasterVolume } from './volume-control';
 
@@ -43,7 +42,6 @@ export function TransportBar({ registry, keyboard }: TransportBarProps) {
           {divider}
           <PracticeToggles />
         </div>
-        <SoundStatus />
         <MasterVolume />
         <Announcer />
       </div>

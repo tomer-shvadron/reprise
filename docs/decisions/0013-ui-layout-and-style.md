@@ -54,6 +54,12 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - Changed by #334 (2026-11-20): the right panel is tabbed (Mixer, Practice, Effects, History) and
   collapses to an icon rail that stays visible; its open state and width are remembered. See
   "Changed by #334" in `../specs/architecture.md`.
+- Changed by #336 (2026-11-20): the transport footer gains a status bar below it (S-STATUS-1): the
+  song's state on the left, the edit cursor and the view on the right. The arrangement is
+  otherwise unchanged. See "Changed by #336" in `../specs/architecture.md`.
+- Changed by #335 (2026-11-20): the bottom region is a tabbed dock (S-BOT-1) that collapses to its
+  tab strip; its open state and height persist as settings. See "Changed by #335" in
+  `../specs/architecture.md`.
 - Changed by #343 (2026-11-20): the theme is a setting with three values, System, Light and Dark, and
   System, which follows the operating system, is the default, so "dark theme by default" holds only
   where the system is dark. See "Changed by #343" in `../specs/architecture.md`.

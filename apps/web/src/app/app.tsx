@@ -34,6 +34,7 @@ import type { PanelView } from '@/state/ui';
 import { AppFrame } from './app-frame';
 import { AppHeader } from './header/app-header';
 import { installCloseGuard } from './close-guard';
+import { installBottomDock } from './bottom-dock/install-bottom-dock';
 import { installTheme } from './install-theme';
 import { installViewDefaults } from './install-view-defaults';
 import { installRightPanel, storeRightPanelWidth } from './right-panel/install-right-panel';
@@ -48,6 +49,7 @@ import { PanelRail, PanelTabs } from './right-panel';
 import { Notices } from './notices';
 import { SavePromptDialog } from './save-prompt';
 import { ScorePane } from './score-pane';
+import { StatusBar } from './status-bar/status-bar';
 import { ScreenHost } from './screen-host';
 import type { AppServices } from './services';
 import { AppServicesProvider } from './services-context';
@@ -109,6 +111,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   }, [services]);
 
   useEffect(() => installTheme(services), [services]);
+  useEffect(() => installBottomDock(services), [services]);
   useEffect(() => installRightPanel(services), [services]);
 
   useEffect(() => installViewDefaults(services), [services]);
@@ -182,6 +185,11 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             score={<ScorePane hint={hint} />}
             banner={<UnimportedBanner />}
             transport={<TransportBar registry={registry} keyboard={keyboard} />}
+            status={
+              <CommandSourceContext value={source}>
+                <StatusBar />
+              </CommandSourceContext>
+            }
             sidebar={
               <TrackSidebar
                 registry={registry}
