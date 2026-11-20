@@ -19,6 +19,25 @@ function renderFrame(ui = createUiStore('dark')) {
   return ui;
 }
 
+describe('the header slot', () => {
+  it('renders before the banner, above the score row, which keeps its floor', () => {
+    const ui = createUiStore('dark');
+    render(
+      <TooltipProvider>
+        <AppFrame
+          ui={ui}
+          header={<header>slim</header>}
+          banner={<p>strip</p>}
+          score={<p>score</p>}
+        />
+      </TooltipProvider>,
+    );
+    const header = screen.getByText('slim');
+    expect(header.nextElementSibling).toBe(screen.getByText('strip'));
+    expect(screen.getByRole('main', { name: 'Score' }).parentElement).toHaveClass('min-h-40');
+  });
+});
+
 describe('the bottom panel region', () => {
   it('is absent until opened, then a labelled region with the view, and the collapse button closes it', () => {
     const ui = renderFrame();

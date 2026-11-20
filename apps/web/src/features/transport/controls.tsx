@@ -1,20 +1,12 @@
-import type { ComponentProps, MouseEvent, ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 
+import { keepFocus, tooltipText } from '@/app/command-control';
 import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import type { TransportCommandId } from './commands';
-
-// A click must not take focus from the page, or the next Space would press the button again.
-const keepFocus = (event: MouseEvent) => {
-  event.preventDefault();
-};
-
-function tooltipText(label: string, keys: string | undefined): string {
-  return keys ? `${label} (${keys})` : label;
-}
 
 interface TransportButtonProps extends Omit<ComponentProps<typeof Button>, 'onClick'> {
   command: TransportCommandId;
