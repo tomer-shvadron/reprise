@@ -15,6 +15,7 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 - Undo and redo in a focused text field undo the field's typing, not the score. The palette and the desktop Edit menu name the step: "Undo Insert bar", "Redo Paste"; Show history opens a panel listing every step, where a click or Enter jumps to that point.
 - In edit mode a digit that can start a two-digit fret on the track's neck (1 and 2 on 24 frets) waits 500 ms for a second digit; any other key, a click or moving the cursor commits it at once, and Escape cancels it. Digits never move the cursor, so more digits on the same beat make a chord (with ↑ and ↓ between them); → moves on, and appends a bar past the end of a full last bar.
 - The library's song list takes its own keys while it has focus: the arrows, Home, End, Page Up and Page Down move, Enter opens, Delete or Backspace deletes, and L opens the song's practice log. Escape closes the log page.
+- The tracks list takes its own keys while a track's name has focus: Up, Down, Home and End move between tracks, Enter selects, and M and S mute and solo that track. F7 moves focus from the score to the current track in the list and back. Alt+1 to Alt+9 jump straight to a track by the number the list shows; Cmd/Ctrl+1 and Cmd/Ctrl+2 are the edit voices.
 - Shift+F10 opens the context menu of the focused control, and so does the Menu key on a keyboard that has one: Windows and Linux raise the menu themselves, so the key is left to the browser there, and on macOS the app opens it. A right-click opens the same menu at the pointer. Escape closes it and returns focus to the control that had it.
 - Space and Enter on a focused button or toggle activate that control; transport and header buttons do not take focus on click, so Space keeps playing after one.
 - The effect keys are Guitar Pro 8's and work in edit mode only. Each toggles: when every note it acts on already has the effect it comes off all of them, otherwise it goes on the notes that lack it, as one undo step labelled with the effect. A note effect goes on the notes picked, or on every note of the beat the cursor or range is on; a beat effect (tapping, tremolo picking, fades, pick strokes, brush, arpeggio, whammy-bar vibrato) goes on the beat. H marks the note as the origin of a hammer-on or pull-off, so it sets the flag on the next note on that string. A refusal reads in the status bar.
@@ -77,6 +78,16 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 | Extend selection to next bar | Transport | Global | ⇧⌘→ | Ctrl+Shift+Right |
 | Previous track | Track | Global | ⌘↑ | Ctrl+Up |
 | Next track | Track | Global | ⌘↓ | Ctrl+Down |
+| Go to track 1 | Track | Global | ⌥1 | Alt+1 |
+| Go to track 2 | Track | Global | ⌥2 | Alt+2 |
+| Go to track 3 | Track | Global | ⌥3 | Alt+3 |
+| Go to track 4 | Track | Global | ⌥4 | Alt+4 |
+| Go to track 5 | Track | Global | ⌥5 | Alt+5 |
+| Go to track 6 | Track | Global | ⌥6 | Alt+6 |
+| Go to track 7 | Track | Global | ⌥7 | Alt+7 |
+| Go to track 8 | Track | Global | ⌥8 | Alt+8 |
+| Go to track 9 | Track | Global | ⌥9 | Alt+9 |
+| Move focus between the tracks list and the score | Track | Global | F7 | F7 |
 | Mute or unmute current track | Track | Global | — | — |
 | Solo or unsolo current track | Track | Global | — | — |
 | Unmute and unsolo all tracks | Track | Global | — | — |

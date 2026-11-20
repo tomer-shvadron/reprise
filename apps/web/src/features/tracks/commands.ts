@@ -1,9 +1,12 @@
 import type { Notation } from '@reprise/model';
 
 import type { Command } from '@/app/command-registry';
+import type { AppServices } from '@/app/services';
 
+import { toggleSidebarFocus } from './sidebar-focus';
 import {
   clearMuteSolo,
+  goToTrackNumber,
   setTrackNotation,
   showAllTracks,
   stepTrack,
@@ -13,9 +16,25 @@ import {
   type TrackServices,
 } from './track-actions';
 
+const GO_IDS = {
+  1: 'track.go1',
+  2: 'track.go2',
+  3: 'track.go3',
+  4: 'track.go4',
+  5: 'track.go5',
+  6: 'track.go6',
+  7: 'track.go7',
+  8: 'track.go8',
+  9: 'track.go9',
+} as const;
+type TrackNumber = keyof typeof GO_IDS;
+const TRACK_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const satisfies readonly TrackNumber[];
+
 export type TrackCommandId =
   | 'track.previous'
   | 'track.next'
+  | (typeof GO_IDS)[TrackNumber]
+  | 'track.focusSidebar'
   | 'view.toggleMultitrack'
   | 'track.toggleMute'
   | 'track.toggleSolo'
@@ -27,7 +46,7 @@ export type TrackCommandId =
 
 type TrackCommand = Command & { id: TrackCommandId };
 
-export function trackCommands(services: TrackServices): TrackCommand[] {
+export function trackCommands(services: TrackServices & Pick<AppServices, 'ui'>): TrackCommand[] {
   const { document, selection } = services;
   const current = () => {
     const id = selection.getState().currentTrack;
@@ -57,6 +76,25 @@ export function trackCommands(services: TrackServices): TrackCommand[] {
       shortcut: { key: 'ArrowDown', mod: true },
       run: () => {
         stepTrack(services, 1);
+      },
+    },
+    // Alt, not Cmd/Ctrl: Cmd/Ctrl+1 and +2 are "Edit voice 1" and "Edit voice 2" while editing, and
+    // a shortcut that changed meaning with the mode would be worse than a second modifier.
+    ...TRACK_NUMBERS.map((number): TrackCommand => ({
+      id: GO_IDS[number],
+      title: `Go to track ${String(number)}`,
+      shortcut: { key: String(number), alt: true },
+      enabled: () => (document.getState().score?.tracks.length ?? 0) >= number,
+      run: () => {
+        goToTrackNumber(services, number);
+      },
+    })),
+    {
+      id: 'track.focusSidebar',
+      title: 'Move focus between the tracks list and the score',
+      shortcut: { key: 'F7' },
+      run: () => {
+        toggleSidebarFocus(services);
       },
     },
     {

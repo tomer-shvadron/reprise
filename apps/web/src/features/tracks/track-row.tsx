@@ -11,6 +11,7 @@ import {
   TrackVolume,
   VisibilityToggle,
 } from './track-controls';
+import { TRACK_SELECT_ATTR } from './sidebar-focus';
 import { trackLabel } from './track-model';
 
 interface TrackRowProps {
@@ -68,11 +69,19 @@ export const TrackRow = memo(function TrackRow({
         className="w-1 shrink-0 rounded-full"
         style={{ backgroundColor: track.color }}
       />
+      {/* The number the Alt+digit keys and the palette use; the name already says which track. */}
+      <span
+        aria-hidden
+        className="text-muted-foreground w-3 shrink-0 pt-0.5 text-right text-xs tabular-nums"
+      >
+        {index + 1}
+      </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center gap-1">
           <button
             type="button"
             aria-current={current ? 'true' : undefined}
+            {...{ [TRACK_SELECT_ATTR]: track.id }}
             className="min-w-0 flex-1 truncate text-left text-sm"
             onClick={() => {
               actions.selectTrack(track.id);

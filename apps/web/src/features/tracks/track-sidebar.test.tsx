@@ -244,3 +244,73 @@ describe('TrackSidebar', () => {
     expect(commits.mock.calls.length).toBe(before);
   });
 });
+
+describe('TrackSidebar keys', () => {
+  async function opened() {
+    const made = setup();
+    const ids = await made.open();
+    const select = (id: string) => {
+      const button = list().querySelector<HTMLElement>(`[data-track-select="${id}"]`);
+      if (!button) throw new Error(`no row ${id}`);
+      return button;
+    };
+    return { ...made, ids, select };
+  }
+
+  it('numbers each row', async () => {
+    await opened();
+    const numbers = within(list())
+      .getAllByRole('listitem')
+      .map((item) => item.querySelector('span[aria-hidden]:not([style])')?.textContent);
+    expect(numbers).toEqual(['1', '2', '3']);
+  });
+
+  it('moves focus with the arrows and selects with Enter', async () => {
+    const { user, ids, select, services } = await opened();
+    act(() => {
+      select(ids[0] ?? '').focus();
+    });
+    await user.keyboard('{ArrowDown}');
+    expect(select(ids[1] ?? '')).toHaveFocus();
+    await user.keyboard('{ArrowDown}{ArrowDown}');
+    expect(select(ids[2] ?? '')).toHaveFocus();
+    await user.keyboard('{ArrowUp}');
+    expect(select(ids[1] ?? '')).toHaveFocus();
+    expect(services.selection.getState().currentTrack).toBe(ids[0]);
+    await user.keyboard('{Enter}');
+    expect(services.selection.getState().currentTrack).toBe(ids[1]);
+  });
+
+  it('mutes and solos the focused row with M and S', async () => {
+    const { user, ids, select, services } = await opened();
+    act(() => {
+      select(ids[1] ?? '').focus();
+    });
+    await user.keyboard('m');
+    expect(services.playback.getState().mixer[ids[1] ?? '']).toMatchObject({ mute: true });
+    await user.keyboard('s');
+    expect(services.playback.getState().mixer[ids[1] ?? '']).toMatchObject({ solo: true });
+    await user.keyboard('m');
+    expect(services.playback.getState().mixer[ids[1] ?? '']).toMatchObject({ mute: false });
+  });
+
+  it('moves focus into the list on the current track and back to the score', async () => {
+    const { ids, select, services, registry } = await opened();
+    const score = document.createElement('div');
+    score.tabIndex = 0;
+    score.setAttribute('data-score-view', '');
+    document.body.append(score);
+    const command = registry.get('track.focusSidebar');
+    act(() => {
+      services.selection.getState().setCurrentTrack(ids[2] ?? '');
+      score.focus();
+      void command?.run();
+    });
+    expect(select(ids[2] ?? '')).toHaveFocus();
+    act(() => {
+      void command?.run();
+    });
+    expect(score).toHaveFocus();
+    score.remove();
+  });
+});

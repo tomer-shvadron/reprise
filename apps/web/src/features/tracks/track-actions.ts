@@ -33,6 +33,12 @@ export function stepTrack(services: TrackServices, direction: -1 | 1): void {
   if (next !== undefined) selectTrack(services, next);
 }
 
+/** Jumps to the track numbered `number` (1-based, as the sidebar shows it); nothing past the last. */
+export function goToTrackNumber(services: TrackServices, number: number): void {
+  const track = services.document.getState().score?.tracks[number - 1];
+  if (track) selectTrack(services, track.id);
+}
+
 function mixOf(services: TrackServices, id: Id) {
   const track = trackOf(services, id);
   return track && effectiveMix(track, services.playback.getState().mixer[id]);
