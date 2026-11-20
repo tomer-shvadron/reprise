@@ -2,6 +2,7 @@ import { useStore } from 'zustand';
 
 import { keepFocus, tooltipText } from '@/app/command-control';
 import { useAppServices } from '@/app/services-context';
+import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useCommand } from '@/app/use-command';
 import { documentNameOf } from '@/app/window-title';
 import { Button } from '@/components/ui/button';
@@ -16,9 +17,14 @@ export function LibraryCrumb() {
   const open = useStore(document, (state) => state.score !== undefined);
   const name = useStore(document, (state) => documentNameOf(state));
   const show = useCommand('library.show');
+  const menu = useStaticContextMenu({
+    surface: 'header',
+    target: { kind: 'header', element: 'crumb' },
+    label: 'Library',
+  });
 
   return (
-    <nav aria-label="Breadcrumb" className="min-w-0">
+    <nav aria-label="Breadcrumb" className="min-w-0" {...menu}>
       <ol className="flex min-w-0 items-center gap-1 text-xs">
         <li className="shrink-0">
           <Tooltip>
