@@ -37,10 +37,10 @@ exports[`master-bar markings > draws jumps as words at the bar end and targets a
 exports[`master-bar markings > draws section markers as a boxed letter and name 1`] = `
 [
   "path stroked M112.27 54.55h11.21v14.75h-11.21Z <mbar00000001>",
-  "text "A" @114.37,64.1 size 10.5 start <mbar00000001>",
-  "text "Intro" @126.99,64.1 size 10.5 start <mbar00000001>",
+  "text "A" @114.37,64.1 size 10.5 start {section} <mbar00000001>",
+  "text "Intro" @126.99,64.1 size 10.5 start {section} <mbar00000001>",
   "path stroked M178.63 54.55h32.42v14.75h-32.42Z <mbar00000002>",
-  "text "Verse" @180.73,64.1 size 10.5 start <mbar00000002>",
+  "text "Verse" @180.73,64.1 size 10.5 start {section} <mbar00000002>",
 ]
 `;
 

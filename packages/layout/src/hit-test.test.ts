@@ -1,5 +1,5 @@
 import type { Notation, Score } from '@reprise/model';
-import { largeScore, note, score } from '@reprise/model/testing';
+import { fullScore, largeScore, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -7,7 +7,9 @@ import {
   anchorBox,
   hitTest,
   layout,
+  markAt,
   type Anchor,
+  type Primitive,
   type LayoutOptions,
   type Rect,
 } from './index';
@@ -297,5 +299,61 @@ describe('every note is clickable', () => {
       ...modes[mode],
       notation: Object.fromEntries(many.tracks.map(({ id }) => [id, notation])),
     });
+  });
+});
+
+describe('markAt', () => {
+  const full = fullScore();
+  const laid = layout(full, paged);
+  const centreOf = (p: Primitive): [number, number] => [
+    p.bbox.x + p.bbox.width / 2,
+    p.bbox.y + p.bbox.height / 2,
+  ];
+
+  it('finds a chord name and the beat it belongs to', () => {
+    const name = laid.primitives.find((p) => p.kind === 'text' && p.lane === 'chord');
+    if (name?.node === undefined) throw new Error('no chord name');
+    expect(markAt(laid, ...centreOf(name))).toEqual({ kind: 'chord', beat: name.node });
+  });
+
+  it('finds a section by its text and by its enclosure box, not tempo text', () => {
+    const section = laid.primitives.filter(
+      (p) => p.node !== undefined && p.kind === 'text' && p.lane === 'section',
+    );
+    const box = laid.primitives.find((p) => p.kind === 'path' && p.lane === 'section');
+    const first = section[0];
+    if (!first?.node || !box) throw new Error('no section');
+    expect(markAt(laid, ...centreOf(first))).toEqual({ kind: 'section', masterBar: first.node });
+    expect(markAt(laid, box.bbox.x + 0.5, box.bbox.y + 0.5)).toEqual({
+      kind: 'section',
+      masterBar: first.node,
+    });
+    const tempo = laid.primitives.find(
+      (p) =>
+        p.kind === 'text' && p.lane === undefined && p.node === first.node && p.text === 'Moderato',
+    );
+    if (!tempo) throw new Error('no tempo text');
+    expect(markAt(laid, ...centreOf(tempo))).toBeUndefined();
+  });
+
+  it('finds nothing on the bare paper', () => {
+    expect(markAt(laid, -50, -50)).toBeUndefined();
+  });
+
+  it('honours offsetX in continuous mode', () => {
+    const wide = layout(fullScore(), { ...paged, mode: 'continuous', width: 300 });
+    let checked = 0;
+    for (const system of wide.systems) {
+      const offsetX = system.offsetX ?? 0;
+      for (let i = system.primitives.start; i < system.primitives.end; i++) {
+        const p = wide.primitives[i];
+        if (p?.kind !== 'text' || p.lane !== 'chord' || p.node === undefined) continue;
+        const [x, y] = centreOf(p);
+        expect(markAt(wide, x + offsetX, y)).toEqual({ kind: 'chord', beat: p.node });
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+    expect(wide.systems.some((s) => (s.offsetX ?? 0) > 0)).toBe(true);
   });
 });

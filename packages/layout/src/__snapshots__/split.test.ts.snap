@@ -76,7 +76,7 @@ exports[`a system taller than the page > describes a split two-track system 1`] 
     "text "2" @201.99,209.88 size 9.1 middle <note00000002>",
     "line @254.7,196.15 -> 254.7,248.65 w 1.12 <mbar00000001>",
     "path stroked M119.41 54.55h27.25v14.75h-27.25Z <mbar00000001>",
-    "text "Intro" @121.51,64.1 size 10.5 start <mbar00000001>",
+    "text "Intro" @121.51,64.1 size 10.5 start {section} <mbar00000001>",
     "glyph metNoteQuarterUp @119.41,90 size 22.4 <mbar00000001>",
     "text "= 120" @128.25,90 size 10.5 start <mbar00000001>",
     "glyph accidentalSharp @257.36,149.15 size 28 <note00000003>",

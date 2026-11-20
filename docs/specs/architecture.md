@@ -541,6 +541,7 @@ interface Anchor {
 }
 function layout(score: Score, options: LayoutOptions, cache?: LayoutCache): LayoutResult;
 function hitTest(result: LayoutResult, x: number, y: number): Anchor | undefined;
+function markAt(result: LayoutResult, x: number, y: number): { kind: 'chord'; beat: Id } | { kind: 'section'; masterBar: Id } | undefined; // the chord name or section marker under a point, in layout space; neither has an anchor
 function anchorBox(result: LayoutResult, anchor: Anchor): Rect; // an anchor's box in layout space
 ```
 
