@@ -1,6 +1,6 @@
 # Player flows
 
-End-to-end flows of the player, in Playwright Test against the production build (`pnpm build`, served by `vite preview` on port 4319) in the Chromium headless shell ([ADR-0025](../../../../docs/decisions/0025-end-to-end-on-the-web-build-in-chromium.md)). They cover everything above the `Platform` interface; the Electron adapter is covered by `apps/desktop`'s unit tests and `pnpm desktop:smoke`.
+End-to-end flows of the player, in Playwright Test against the production build (`pnpm build`, served by `vite preview` on port 4319, or on `E2E_PORT` when another run holds it; an invalid value falls back to 4319) in the Chromium headless shell ([ADR-0025](../../../../docs/decisions/0025-end-to-end-on-the-web-build-in-chromium.md)). They cover everything above the `Platform` interface; the Electron adapter is covered by `apps/desktop`'s unit tests and `pnpm desktop:smoke`.
 
 The editing flows live beside these in [`../editor/`](../editor/README.md), in the same suite and config.
 

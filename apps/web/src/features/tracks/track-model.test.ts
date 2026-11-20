@@ -9,7 +9,9 @@ import {
   nextVisibility,
   notationChoices,
   panText,
+  rankTracks,
   stepTrackId,
+  trackEntries,
   trackLabel,
   volumeText,
 } from './track-model';
@@ -105,5 +107,40 @@ describe('track model', () => {
   it('names a blank track by its position', () => {
     expect(trackLabel({ name: '  ' }, 2)).toBe('Track 3');
     expect(trackLabel({ name: 'Lead' }, 0)).toBe('Lead');
+  });
+});
+
+describe('trackEntries and rankTracks', () => {
+  const built = score()
+    .track('guitar', { name: 'Guitar' })
+    .bar()
+    .track('guitar', { name: '' })
+    .bar()
+    .track('bass', { name: 'Guitar' })
+    .bar()
+    .build();
+  const entries = trackEntries(
+    built,
+    [built.tracks[0]?.id ?? '', built.tracks[1]?.id ?? ''],
+    built.tracks[1]?.id,
+  );
+
+  it('numbers by score position and flags hidden and current', () => {
+    expect(entries.map((e) => [e.number, e.label, e.hidden, e.current])).toEqual([
+      [1, 'Guitar', false, false],
+      [2, 'Track 2', false, true],
+      [3, 'Guitar', true, false],
+    ]);
+  });
+
+  it('puts the numbered track first for digits and matches names otherwise', () => {
+    expect(rankTracks(entries, '3')[0]?.number).toBe(3);
+    expect(
+      rankTracks(entries, 'guit')
+        .map((e) => e.number)
+        .slice(0, 2),
+    ).toEqual([1, 3]);
+    expect(rankTracks(entries, '')).toHaveLength(3);
+    expect(rankTracks(entries, 'zzz')).toEqual([]);
   });
 });

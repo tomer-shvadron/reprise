@@ -226,7 +226,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
         <AppSheet id="sounds" title="Sounds" width="medium">
           <SoundManager />
         </AppSheet>
-        <CommandPalette registry={registry} ui={ui} keyboard={keyboard} />
+        <CommandPalette registry={registry} ui={ui} keyboard={keyboard} services={services} />
         <ShortcutSheet registry={registry} ui={ui} keyboard={keyboard} />
         <DropZone />
         <Notices />

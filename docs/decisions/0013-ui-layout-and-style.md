@@ -57,6 +57,9 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - Changed by #336 (2026-11-20): the transport footer gains a status bar below it (S-STATUS-1): the
   song's state on the left, the edit cursor and the view on the right. The arrangement is
   otherwise unchanged. See "Changed by #336" in `../specs/architecture.md`.
+- Changed by #338 (2026-11-20): the command palette takes go-to prefixes (`#` sections, `@` tracks,
+  `/` songs, a number for a bar) and ⌘G opens it on a bar number. The arrangement is unchanged. See
+  "Changed by #338" in `../specs/architecture.md`.
 - Changed by #335 (2026-11-20): the bottom region is a tabbed dock (S-BOT-1) that collapses to its
   tab strip; its open state and height persist as settings. See "Changed by #335" in
   `../specs/architecture.md`.

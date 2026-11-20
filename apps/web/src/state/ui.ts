@@ -54,6 +54,9 @@ export interface UiFollow {
   kind: 'explicit' | 'layout';
 }
 
+/** What the command palette searches: its commands, or one kind of thing the first character picks. */
+export type PaletteMode = 'commands' | 'sections' | 'tracks' | 'songs' | 'bar';
+
 export interface UiState {
   theme: Theme;
   view: UiView;
@@ -74,6 +77,10 @@ export interface UiState {
   bottomPanelHeightCommitted: number;
   zoom: number;
   paletteOpen: boolean;
+  /** The mode the palette was asked to open in; `undefined` is plain commands. */
+  paletteMode: PaletteMode | undefined;
+  /** Counts every `openPalette`, so a palette already open starts over in the new mode. */
+  paletteRequest: number;
   /** The Settings dialog; `section` is the id `openSettings` asked for, absent for the last one shown. */
   settings: { open: boolean; section: string | undefined };
   /** The shortcuts cheat sheet (WP-101). */
@@ -105,6 +112,8 @@ export interface UiState {
   persistBottomPanelHeight: () => void;
   setZoom: (zoom: number) => void;
   setPaletteOpen: (open: boolean) => void;
+  /** Opens the palette in `mode`, or restarts an open one there. */
+  openPalette: (mode?: PaletteMode) => void;
   /** Opens Settings at `section` (an id from `app/settings-sections.ts`); an unknown id shows the first. */
   openSettings: (section?: string) => void;
   closeSettings: () => void;
@@ -145,6 +154,8 @@ export function createUiStore(theme: Theme = initialTheme()) {
     bottomPanelHeightCommitted: BOTTOM_PANEL_HEIGHT.default,
     zoom: ZOOM.default,
     paletteOpen: false,
+    paletteMode: undefined,
+    paletteRequest: 0,
     settings: { open: false, section: undefined },
     shortcutsOpen: false,
     follow: { on: true, request: 0, kind: 'explicit' },
@@ -212,7 +223,14 @@ export function createUiStore(theme: Theme = initialTheme()) {
       set({ zoom: clamp(zoom, ZOOM.min, ZOOM.max) });
     },
     setPaletteOpen: (open) => {
-      set({ paletteOpen: open });
+      set(open ? { paletteOpen: true } : { paletteOpen: false, paletteMode: undefined });
+    },
+    openPalette: (mode) => {
+      set((state) => ({
+        paletteOpen: true,
+        paletteMode: mode,
+        paletteRequest: state.paletteRequest + 1,
+      }));
     },
     openSettings: (section) => {
       set({ settings: { open: true, section } });

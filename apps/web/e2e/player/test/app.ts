@@ -121,6 +121,18 @@ export class App {
     await expect(input).toHaveCount(0);
   }
 
+  /** Types `text` into the palette and runs the selected row's alternate action (Cmd+Enter). */
+  async paletteAlt(text: string): Promise<void> {
+    await expect(this.page.getByRole('dialog')).toHaveCount(0);
+    await this.page.keyboard.press('ControlOrMeta+k');
+    const input = this.page.locator('[cmdk-input]');
+    await input.fill(text);
+    // The rows are in place once the first one is selected.
+    await expect(this.page.locator('[cmdk-item][aria-selected="true"]')).toHaveCount(1);
+    await input.press('ControlOrMeta+Enter');
+    await expect(input).toHaveCount(0);
+  }
+
   /** Builds the dropped `File` in the page before returning, so a timed drop is only the event. */
   async prepareDrop(name: string): Promise<void> {
     await this.page.evaluate(

@@ -1,74 +1,41 @@
-import { defaultFilter } from 'cmdk';
+import { CommandDialog } from '@/components/ui/command';
 import { useStore } from 'zustand';
 
-import {
-  Command,
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandShortcut,
-} from '@/components/ui/command';
 import type { UiStore } from '@/state/ui';
 
-import { runCommand, type CommandRegistry } from './command-registry';
-import { formatShortcut, shortcutOn, type KeyboardPlatform } from './keyboard';
+import type { CommandRegistry } from './command-registry';
+import type { KeyboardPlatform } from './keyboard';
+import { PaletteBody } from './palette/palette-body';
+import type { AppServices } from './services';
 
 interface CommandPaletteProps {
   registry: CommandRegistry;
   ui: UiStore;
   keyboard: KeyboardPlatform;
+  services: AppServices;
 }
 
 /**
- * cmdk's fuzzy score, except that a title the search is the start of comes first: typing "Bar
- * properties" must reach that command before any looser match. The title is the item's first keyword.
+ * Everything that reads another store lives in `PaletteBody`, which Radix mounts only while the
+ * dialog is open. A new `paletteRequest` remounts it, so asking for another mode starts over.
  */
-function rank(value: string, search: string, keywords?: string[]): number {
-  const title = keywords?.[0]?.toLowerCase() ?? '';
-  const wanted = search.trim().toLowerCase();
-  if (wanted !== '' && title.startsWith(wanted)) return 2;
-  return defaultFilter(value, search, keywords);
-}
-
-export function CommandPalette({ registry, ui, keyboard }: CommandPaletteProps) {
+export function CommandPalette({ registry, ui, keyboard, services }: CommandPaletteProps) {
   const open = useStore(ui, (state) => state.paletteOpen);
+  const mode = useStore(ui, (state) => state.paletteMode);
+  const request = useStore(ui, (state) => state.paletteRequest);
   const setOpen = useStore(ui, (state) => state.setPaletteOpen);
-  const commands = registry.available().filter((command) => command.inPalette !== false);
-
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <Command filter={rank}>
-        <CommandInput placeholder="Type a command…" />
-        <CommandList>
-          <CommandEmpty>No matching command.</CommandEmpty>
-          <CommandGroup heading="Commands">
-            {commands.map((command) => {
-              const shortcut = registry.isShadowed(command)
-                ? undefined
-                : shortcutOn(registry.shortcutOf(command), keyboard);
-              return (
-                <CommandItem
-                  key={command.id}
-                  value={command.id}
-                  keywords={[command.searchTitle ?? command.title]}
-                  onSelect={() => {
-                    setOpen(false);
-                    runCommand(command);
-                  }}
-                >
-                  {command.title}
-                  {shortcut && (
-                    <CommandShortcut>{formatShortcut(shortcut, keyboard)}</CommandShortcut>
-                  )}
-                </CommandItem>
-              );
-            })}
-          </CommandGroup>
-        </CommandList>
-      </Command>
+      <PaletteBody
+        key={request}
+        services={services}
+        registry={registry}
+        keyboard={keyboard}
+        start={mode}
+        close={() => {
+          setOpen(false);
+        }}
+      />
     </CommandDialog>
   );
 }

@@ -115,11 +115,7 @@ export function EditStatusLine({ entry, editing, selection, document }: EditStat
     </StatusMenu>,
     ...(position
       ? [
-          <StatusSegment
-            key="position"
-            command="app.commandPalette"
-            label="Open the command palette"
-          >
+          <StatusSegment key="position" command="app.goToBar" label="Go to bar">
             {position}
           </StatusSegment>,
         ]

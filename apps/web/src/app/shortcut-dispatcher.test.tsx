@@ -567,7 +567,8 @@ describe('text fields and open dialogs', () => {
 
   it('blocks under the markup the real palette and a real Radix dialog render', async () => {
     const run = setupGuards();
-    const { ui } = createTestServices();
+    const services = createTestServices();
+    const { ui } = services;
     ui.getState().setPaletteOpen(true);
     const registry = new CommandRegistry();
     registry.register({
@@ -588,7 +589,9 @@ describe('text fields and open dialogs', () => {
       shortcut: { key: 'Backspace', mod: true },
       run: run.back,
     });
-    const { unmount } = render(<CommandPalette registry={registry} ui={ui} keyboard="mac" />);
+    const { unmount } = render(
+      <CommandPalette registry={registry} ui={ui} keyboard="mac" services={services} />,
+    );
     const input = await screen.findByPlaceholderText('Type a command…');
     expect(menuCommandAllowed('file.open')).toBeFalsy();
 
@@ -617,6 +620,29 @@ describe('text fields and open dialogs', () => {
     expect(menuCommandAllowed('edit.undo')).toBeFalsy();
     fireEvent.keyDown(document.body, { key: 'k', code: 'KeyK', metaKey: true });
     expect(run.palette).toHaveBeenCalledOnce();
+  });
+
+  it('lets Cmd+G through the open palette, which switches it to bar mode', async () => {
+    const services = createTestServices();
+    const { ui } = services;
+    const registry = new CommandRegistry();
+    const run = vi.fn(() => {
+      ui.getState().openPalette('bar');
+    });
+    registry.register({
+      id: 'app.goToBar',
+      title: 'Go to bar…',
+      shortcut: { key: 'g', mod: true },
+      run,
+    });
+    uninstall = installShortcutDispatcher(window, registry, 'mac');
+    ui.getState().setPaletteOpen(true);
+    render(<CommandPalette registry={registry} ui={ui} keyboard="mac" services={services} />);
+    const input = await screen.findByPlaceholderText('Type a command…');
+    fireEvent.keyDown(input, { key: 'g', code: 'KeyG', metaKey: true });
+    expect(run).toHaveBeenCalledOnce();
+    expect(await screen.findByPlaceholderText(/^Bar number/)).toBeTruthy();
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
   });
 
   it('treats an aria-modal alertdialog as modal and a popover as not', () => {

@@ -66,9 +66,11 @@ export interface Library {
   openSong(id: Id, options?: OpenSongOptions): Promise<void>;
   /**
    * `openSong` after the unsaved-changes question, for every entry the user starts. Resolves when
-   * the song is open, or when the user cancels the question.
+   * the song is open, or when the user cancels the question. `report: 'notice'` also shows a
+   * failed open as a notice, for an entry that is not on the library screen, which alone shows
+   * the store's error.
    */
-  requestOpenSong(id: Id): Promise<void>;
+  requestOpenSong(id: Id, options?: RequestOpenOptions): Promise<void>;
   /** The library's Save and Save As, which `installLibrary` gives the document store. */
   saver: Saver;
   /** File > Export as Guitar Pro: writes a `.gp` copy; never a save. */
@@ -103,6 +105,10 @@ export interface Library {
   /** Shows the library sorted by last opened, for the recent-songs command. */
   showRecent(): void;
   dispose(): Promise<void>;
+}
+
+export interface RequestOpenOptions {
+  report?: 'notice';
 }
 
 export interface OpenSongOptions {
@@ -466,13 +472,20 @@ export function createLibrary(
     dismissNotice() {
       store.setState({ notice: undefined });
     },
-    requestOpenSong: (id) =>
+    requestOpenSong: (id, { report } = {}) =>
       new Promise<void>((resolve) => {
         whenSaved(
           services,
           'opening another song',
           () => {
-            void library.openSong(id).finally(resolve);
+            if (report === 'notice') store.setState({ error: undefined });
+            void library
+              .openSong(id)
+              .then(() => {
+                const { error } = store.getState();
+                if (report === 'notice' && error !== undefined) notify(error, 'error');
+              })
+              .finally(resolve);
           },
           resolve,
         );
