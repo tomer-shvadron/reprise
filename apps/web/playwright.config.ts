@@ -9,6 +9,8 @@ const DEFAULT_PORT = 4319;
 const requested = Number.parseInt(process.env['E2E_PORT'] ?? '', 10);
 const PORT =
   Number.isInteger(requested) && requested > 0 && requested < 65536 ? requested : DEFAULT_PORT;
+// CI builds once and shards the suite over runners that all serve that build.
+const PREBUILT = process.env['E2E_PREBUILT'] === '1';
 const BASE = `http://127.0.0.1:${String(PORT)}`;
 
 export default defineConfig({
@@ -38,7 +40,7 @@ export default defineConfig({
   },
   webServer: {
     // 127.0.0.1 is a secure context, which origin-private storage needs.
-    command: `pnpm build && pnpm preview --port ${String(PORT)} --strictPort --host 127.0.0.1`,
+    command: `${PREBUILT ? '' : 'pnpm build && '}pnpm preview --port ${String(PORT)} --strictPort --host 127.0.0.1`,
     url: BASE,
     reuseExistingServer: false,
     timeout: 120_000,
