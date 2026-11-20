@@ -112,7 +112,7 @@ export function loopBars(
   transport.getState().announce(name === bars ? `Looping ${bars}` : `Looping ${name}, ${bars}`);
 }
 
-/** Selects the track, showing it first when the multitrack view hides it. */
+/** Selects the track, showing it first when the multitrack view hides it; the status bar's track flash announces it. */
 export function pickTrack(services: AppServices, id: Id): void {
   const { document, selection } = services;
   const { score, view } = document.getState();
@@ -123,7 +123,6 @@ export function pickTrack(services: AppServices, id: Id): void {
   if (!entry) return;
   if (entry.hidden) setTrackVisible(services, id, true);
   selectTrack(services, id);
-  services.transport.getState().announce(`Track ${String(entry.number)}, ${entry.label}`);
 }
 
 /** Single-track view of the track. */

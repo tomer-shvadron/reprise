@@ -1,6 +1,7 @@
 export { MixerPanel } from './mixer-panel';
 export { GM_DRUM_KITS, GM_FAMILIES, GM_PROGRAMS } from '@/lib/gm-programs';
 export { selectTrack, setTrackVisible } from './track-actions';
+export { TrackFlash } from './track-flash';
 export { TrackSidebar } from './track-sidebar';
 export {
   captureTrackSession,
