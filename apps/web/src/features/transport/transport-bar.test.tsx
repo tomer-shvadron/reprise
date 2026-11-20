@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppRegistry } from '@/app/app-registry';
 import { CommandRegistry } from '@/app/command-registry';
+import { mirrorAudio } from '@/test/mirror-audio';
 import { renderWithServices } from '@/test/render';
 import { fourBars, positionEventAt } from '@/test/position';
 import { createTestServices } from '@/test/services';
@@ -138,5 +139,29 @@ describe('TransportBar', () => {
     }
     expect(bar).toHaveTextContent('Bar 2/4');
     expect(onRender).toHaveBeenCalledTimes(renders);
+  });
+
+  it('places the speed-trainer slot after the loop and the tuner slot after the click controls', () => {
+    const services = createTestServices();
+    mirrorAudio(services);
+    const registry = createAppRegistry(services);
+    const { container } = renderWithServices(
+      <TransportBar
+        registry={registry}
+        keyboard="mac"
+        speedTrainer={<button type="button">chip</button>}
+        tuner={<button type="button">tuner</button>}
+      />,
+      services,
+    );
+    const names = [...container.querySelectorAll('[aria-label="Practice"] button')].map(
+      (button) => button.getAttribute('aria-label') ?? button.textContent,
+    );
+    const at = (name: string) => names.findIndex((label) => label.startsWith(name));
+    expect(at('Loop')).toBeGreaterThanOrEqual(0);
+    expect(at('chip')).toBe(at('Loop') + 1);
+    expect(at('Count-in')).toBe(at('chip') + 1);
+    expect(at('tuner')).toBe(names.length - 1);
+    expect(at('tuner')).toBeGreaterThan(at('Metronome volume'));
   });
 });

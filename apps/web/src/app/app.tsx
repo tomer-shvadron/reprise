@@ -23,7 +23,12 @@ import {
 } from '@/features/library';
 import { checkSections, SettingsDialog } from '@/features/settings';
 import { SoundManager } from '@/features/sounds';
-import { installPracticeLog, TrainerPanel } from '@/features/trainer';
+import {
+  installPracticeLog,
+  SpeedTrainerChip,
+  TrainerPanel,
+  TunerButton,
+} from '@/features/trainer';
 import { PrintDialog, PrintRoot } from '@/features/score';
 import { MixerPanel, TrackSidebar } from '@/features/tracks';
 import { TransportBar } from '@/features/transport';
@@ -186,7 +191,14 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             }
             score={<ScorePane hint={hint} />}
             banner={<UnimportedBanner />}
-            transport={<TransportBar registry={registry} keyboard={keyboard} />}
+            transport={
+              <TransportBar
+                registry={registry}
+                keyboard={keyboard}
+                speedTrainer={<SpeedTrainerChip />}
+                tuner={<TunerButton />}
+              />
+            }
             status={
               <CommandSourceContext value={source}>
                 <StatusBar />
