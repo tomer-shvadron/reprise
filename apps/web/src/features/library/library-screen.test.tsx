@@ -116,13 +116,13 @@ describe('the library screen', () => {
   it('opens the focused song on Enter and leaves the library screen', async () => {
     const { services, library } = setup();
     const row = await addSong(library, 'Alpha');
-    services.ui.getState().setScreen('library');
+    services.ui.getState().showSheet('library');
     renderWithServices(<LibraryScreen />, services);
     await screen.findByRole('option', { name: /Alpha/ });
     screen.getByRole('listbox').focus();
     await userEvent.keyboard('{Enter}');
     await waitFor(() => {
-      expect(services.ui.getState().screen).toBe('player');
+      expect(services.ui.getState().sheet).toBeUndefined();
     });
     expect(services.document.getState().songId).toBe(row.id);
     expect(services.document.getState().file?.name).toBe('song.reprise');

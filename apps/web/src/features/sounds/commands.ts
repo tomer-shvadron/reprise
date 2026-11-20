@@ -12,7 +12,7 @@ export function soundsCommands(services: Pick<AppServices, 'ui'>): SoundsCommand
       id: 'sounds.show',
       title: 'Show sound manager',
       run: () => {
-        ui.getState().setScreen('sounds');
+        ui.getState().showSheet('sounds');
       },
     },
   ];

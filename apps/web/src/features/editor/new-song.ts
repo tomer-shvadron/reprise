@@ -9,7 +9,7 @@ export type NewSongServices = Pick<AppServices, 'document' | 'ui' | 'editing'>;
 export function createNewSong(services: NewSongServices): void {
   const { document, ui, editing } = services;
   document.getState().newDocument(createEmptyScore());
-  ui.getState().setScreen('player');
+  ui.getState().closeSheet();
   editing.getState().setEditing(true);
 }
 

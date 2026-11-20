@@ -22,7 +22,7 @@ const wanted = (name: string) => {
 };
 
 /**
- * What a drop on the Sounds screen held, taken synchronously (a `DataTransfer` is emptied once the
+ * What a drop on the Sounds sheet held, taken synchronously (a `DataTransfer` is emptied once the
  * handler returns). Folders are kept as entries to walk later.
  */
 export interface PackDrop {

@@ -54,14 +54,14 @@ const trackNames = (services: ReturnType<typeof setup>['services']) =>
 describe('New song', () => {
   it('opens an empty song in edit mode with a cursor in bar 1, with no prompt on a clean document', () => {
     const { services, start } = setup();
-    services.ui.getState().setScreen('library');
+    services.ui.getState().showSheet('library');
     start();
     expect(screen.queryByRole('dialog')).toBeNull();
     const { score, file, songId, dirty, canUndo } = services.document.getState();
     expect(trackNames(services)).toEqual(['Guitar']);
     expect(score?.masterBars).toHaveLength(1);
     expect([file, songId, dirty, canUndo]).toEqual([undefined, undefined, false, false]);
-    expect(services.ui.getState().screen).toBe('player');
+    expect(services.ui.getState().sheet).toBeUndefined();
     expect(services.editing.getState().editing).toBe(true);
     expect(services.selection.getState().cursor?.at).toEqual({ track: 0, bar: 0, beat: 0 });
   });

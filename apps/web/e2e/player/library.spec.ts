@@ -41,6 +41,7 @@ async function queueEverything(app: App): Promise<void> {
 async function openLibrary(app: App): Promise<void> {
   await app.palette('Show library');
   await expect(songs(app.page).first()).toBeVisible();
+  await expect(app.page.getByRole('searchbox', { name: 'Search songs' })).toBeFocused();
 }
 
 async function openFromLibrary(app: App, title: string): Promise<void> {
@@ -49,7 +50,7 @@ async function openFromLibrary(app: App, title: string): Promise<void> {
   await search.fill(title);
   await expect(songs(page)).toHaveCount(1);
   await songs(page).first().dblclick();
-  await expect(page.getByRole('region', { name: 'Library', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Library', exact: true })).toHaveCount(0);
   await app.waitReady();
 }
 
@@ -63,12 +64,40 @@ test('imports fifty songs, finds one, plays it, restores its session, persists a
   await queueEverything(app);
   await app.palette('Import files to library');
 
+  // The import belongs to the library, not the sheet: closing the sheet does not cancel it.
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Library' })).toHaveCount(0);
+  await openLibrary(app);
+
   await expect(page.getByRole('status').filter({ hasText: /^Imported / })).toHaveText(
     new RegExp(`^Imported ${String(TOTAL)}(?!\\d)`),
     { timeout: 60_000 },
   );
   await expect(songs(page).first()).toHaveAttribute('aria-setsize', String(TOTAL));
   expect(manifestEntry('gp5/chords.gp5').bars).toBeGreaterThan(0);
+  await expect(page.getByRole('status').filter({ hasText: /^Imported / })).not.toContainText(
+    /cancelled/i,
+  );
+
+  // At 800x600 the sheet fits the window and the list stays windowed and scrollable.
+  await page.setViewportSize({ width: 800, height: 600 });
+  const sheet = page.getByRole('dialog', { name: 'Library' });
+  await expect
+    .poll(async () => {
+      const box = await sheet.boundingBox();
+      return (
+        box !== null &&
+        box.x >= 0 &&
+        box.y >= 0 &&
+        box.x + box.width <= 800 &&
+        box.y + box.height <= 600
+      );
+    })
+    .toBe(true);
+  const list = page.getByRole('listbox', { name: 'Songs' });
+  expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  expect(await songs(page).count()).toBeLessThan(TOTAL);
+  await page.setViewportSize({ width: 1440, height: 900 });
 
   // Search narrows the list; a double-click opens the song and it plays.
   await openFromLibrary(app, libraryTitle(7));
@@ -100,7 +129,7 @@ test('imports fifty songs, finds one, plays it, restores its session, persists a
   await expect(songs(page)).toHaveCount(1);
   await page.getByRole('listbox', { name: 'Songs' }).focus();
   await page.keyboard.press('Delete');
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('dialog', { name: /^Delete/ });
   await expect(dialog).toContainText(libraryTitle(9));
   await dialog.getByRole('button', { name: 'Delete' }).click();
   await expect(songs(page)).toHaveCount(0);
@@ -137,5 +166,19 @@ test('open without importing shows the banner, and Import adds the song', async 
   await banner.getByRole('button', { name: 'Import' }).click();
   await expect(banner).toHaveCount(0);
   await openLibrary(app);
+  await expect(songs(page)).toHaveCount(1);
+});
+
+test('a file dropped on the Library sheet is imported there and opens nothing', async ({
+  app,
+  page,
+}) => {
+  await app.palette('Show library');
+  await expect(page.getByRole('searchbox', { name: 'Search songs' })).toBeFocused();
+  await app.drop(generated('song.gp'));
+  await expect(page.getByRole('status').filter({ hasText: /^Imported / })).toHaveText(
+    /^Imported 1(?!\d)/,
+  );
+  await expect(page.getByRole('dialog', { name: 'Library' })).toBeVisible();
   await expect(songs(page)).toHaveCount(1);
 });
