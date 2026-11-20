@@ -2,7 +2,8 @@ import { defineConfig } from '@playwright/test';
 
 const ci = process.env['CI'] !== undefined;
 // Not Vite's 4173, so a preview left running is never mistaken for this build.
-const PORT = 4319;
+// `E2E_PORT` moves it when another run holds 4319.
+const PORT = Number(process.env['E2E_PORT'] ?? 4319);
 const BASE = `http://127.0.0.1:${String(PORT)}`;
 
 export default defineConfig({
