@@ -165,6 +165,8 @@ export function startPlayhead(options: {
 
   const unsubscribeUi = ui.subscribe(({ follow }, previous) => {
     if (follow.request === previous.follow.request) return;
+    // A resize asks to keep the playhead in view; with follow off the view never moves on its own.
+    if (follow.kind === 'layout' && !settings.get(FOLLOW_PLAYHEAD_SETTING)) return;
     requested = true;
     // A request no position change consumes, such as the button while stopped.
     queueMicrotask(() => {

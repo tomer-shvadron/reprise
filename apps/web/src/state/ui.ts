@@ -46,6 +46,11 @@ export interface UiView {
 export interface UiFollow {
   on: boolean;
   request: number;
+  /**
+   * Why the last request was made: `explicit` for the Follow playback command, a seek, the button;
+   * `layout` for a resize of the score's viewport, which the follow-playhead setting can silence.
+   */
+  kind: 'explicit' | 'layout';
 }
 
 export interface UiState {
@@ -98,7 +103,7 @@ export interface UiState {
   setViewMode: (mode: UiView['mode']) => void;
   setPaper: (paper: UiView['paper']) => void;
   /** Turns following on and asks for one follow now. */
-  requestFollow: () => void;
+  requestFollow: (kind?: UiFollow['kind']) => void;
   /** A hand scroll along the followed axis: the view stops following until a request. */
   pauseFollow: () => void;
 }
@@ -111,7 +116,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
  * stands (`requestFollow` itself turns following on).
  */
 function followAfterResize(get: () => UiState) {
-  if (get().follow.on) get().requestFollow();
+  if (get().follow.on) get().requestFollow('layout');
 }
 
 export function createUiStore(theme: Theme = initialTheme()) {
@@ -132,7 +137,7 @@ export function createUiStore(theme: Theme = initialTheme()) {
     paletteOpen: false,
     settings: { open: false, section: undefined },
     shortcutsOpen: false,
-    follow: { on: true, request: 0 },
+    follow: { on: true, request: 0, kind: 'explicit' },
     setTheme: (next) => {
       set({ theme: next });
     },
@@ -211,8 +216,8 @@ export function createUiStore(theme: Theme = initialTheme()) {
     setPaper: (paper) => {
       if (get().view.paper !== paper) set((state) => ({ view: { ...state.view, paper } }));
     },
-    requestFollow: () => {
-      set((state) => ({ follow: { on: true, request: state.follow.request + 1 } }));
+    requestFollow: (kind = 'explicit') => {
+      set((state) => ({ follow: { on: true, request: state.follow.request + 1, kind } }));
     },
     pauseFollow: () => {
       if (get().follow.on) set((state) => ({ follow: { ...state.follow, on: false } }));

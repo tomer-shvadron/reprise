@@ -175,7 +175,7 @@ describe('the bottom panel state', () => {
     ui.getState().pauseFollow();
     ui.getState().setBottomPanelHeight(320);
     ui.getState().setBottomPanelOpen(false);
-    expect(ui.getState().follow).toEqual({ on: false, request: before + 2 });
+    expect(ui.getState().follow).toMatchObject({ on: false, request: before + 2 });
   });
 
   it('toggleBottomPanelView opens, then closes, and collapsing keeps the view', () => {

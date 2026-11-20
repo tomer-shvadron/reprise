@@ -29,6 +29,7 @@ import {
   useEditOverlays,
   WordField,
 } from '@/features/editor';
+import { FOLLOW_PLAYHEAD_SETTING } from '@/state/app-settings';
 import { selectRunning } from '@/state/playback';
 import type { BarRange } from '@/state/selection';
 import { timelineOf } from '@/state/timeline';
@@ -36,6 +37,7 @@ import { timelineOf } from '@/state/timeline';
 import { startPlayhead, type PlayheadDriver } from './playhead-driver';
 import type { AppServices } from './services';
 import { useAppServices } from './services-context';
+import { useSetting } from './use-setting';
 
 function EmptyPaper({ children }: { children: ReactNode }) {
   const { ui } = useAppServices();
@@ -125,7 +127,10 @@ function FollowButton() {
   const { playback, ui } = useAppServices();
   const running = useStore(playback, selectRunning);
   const following = useStore(ui, (state) => state.follow.on);
-  if (!running || following) return null;
+  const followSetting = useSetting(FOLLOW_PLAYHEAD_SETTING);
+  // With the setting off nothing follows, so while playing the button always offers a jump to the
+  // playhead (one scroll); it is the only on-screen way back.
+  if (!running || (following && followSetting)) return null;
   return (
     <Button
       variant="secondary"

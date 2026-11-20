@@ -9,6 +9,7 @@ import { timelineOf } from '@/state/timeline';
 import { positionEventAt, repeatSong } from '@/test/position';
 import { createTestServices } from '@/test/services';
 
+import { createAppRegistry } from './app-registry';
 import { heardPosition, startPlayhead } from './playhead-driver';
 
 function manualFrames() {
@@ -177,8 +178,8 @@ describe('the follow playhead setting', () => {
     expect(view.followPlayhead).toHaveBeenLastCalledWith(expect.objectContaining({ force: true }));
   });
 
-  it('turning it on mid-run resumes following, and a seek request still scrolls while off', async () => {
-    const { services, view, fire, at, frame } = await setup();
+  it('turning it on mid-run resumes following', async () => {
+    const { services, view, frame } = await setup();
     services.settings.set(FOLLOW_PLAYHEAD_SETTING, false);
     frame(0.1, 100);
     expect(view.followPlayhead).not.toHaveBeenCalled();
@@ -186,13 +187,57 @@ describe('the follow playhead setting', () => {
     services.settings.set(FOLLOW_PLAYHEAD_SETTING, true);
     frame(0.1, 300);
     expect(view.followPlayhead).toHaveBeenCalledOnce();
+  });
 
+  it('a real seek still scrolls once while off', async () => {
+    const { services, view, at } = await setup();
     services.settings.set(FOLLOW_PLAYHEAD_SETTING, false);
-    services.ui.getState().requestFollow();
-    at(900, 'playing');
-    fire();
-    expect(view.followPlayhead).toHaveBeenCalledTimes(2);
+    at(100);
+
+    void createAppRegistry(services).get('transport.nextBar')?.run();
+    await flush();
+
+    expect(services.fakeAudio.seek).toHaveBeenCalled();
+    expect(view.followPlayhead).toHaveBeenCalledOnce();
     expect(view.followPlayhead).toHaveBeenLastCalledWith(expect.objectContaining({ force: true }));
+  });
+
+  it('a panel open, resize and close never scroll while off, stopped or running', async () => {
+    const { services, view, fire, at, frame } = await setup();
+    const { ui } = services;
+    services.settings.set(FOLLOW_PLAYHEAD_SETTING, false);
+    at(100);
+
+    ui.getState().setBottomPanelOpen(true);
+    ui.getState().setBottomPanelHeight(300);
+    await flush();
+    expect(view.followPlayhead).not.toHaveBeenCalled();
+
+    frame(0.1, 200);
+    ui.getState().setBottomPanelHeight(240);
+    ui.getState().setBottomPanelOpen(false);
+    fire();
+    expect(view.followPlayhead).not.toHaveBeenCalled();
+  });
+
+  it('a panel resize still follows while on', async () => {
+    const { services, view, at } = await setup();
+    at(100);
+    services.ui.getState().setBottomPanelOpen(true);
+    await flush();
+    expect(view.followPlayhead).toHaveBeenCalledOnce();
+  });
+
+  it('switching document never scrolls while off', async () => {
+    const { services, view } = await setup();
+    services.settings.set(FOLLOW_PLAYHEAD_SETTING, false);
+
+    await services.document
+      .getState()
+      .openBytes('other.reprise', (await write(repeatSong(), 'reprise')).bytes);
+    await flush();
+
+    expect(view.followPlayhead).not.toHaveBeenCalled();
   });
 });
 
