@@ -174,4 +174,13 @@ describe('the edit pointer', () => {
     expect(handle(layout, click(none))).toBe(false);
     expect(state().cursor).toBeUndefined();
   });
+
+  it('places the cursor like a plain click for a right-click, without a gesture', async () => {
+    const { score, layout, handle, state } = await setup();
+    const { x, y, note } = centreOfNote(layout, score, 1, 0, 2);
+    const { point, anchor, column } = eventAt(layout, x, y);
+    expect(handle.placeAt(layout, { point, anchor, column })).toBe(true);
+    expect(state().cursor).toMatchObject({ at: { track: 1, bar: 0, beat: 2 } });
+    expect(state().selection.noteIds).toEqual([note.id]);
+  });
 });

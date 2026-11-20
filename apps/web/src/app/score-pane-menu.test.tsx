@@ -162,8 +162,8 @@ describe('the score’s context menus in play mode', () => {
     expect(services.menuTarget.getState().target).toBeUndefined();
   });
 
-  it('lists no editing command, and edit mode keeps the browser’s menu', async () => {
-    const { services, registry, score: opened, result } = await setup();
+  it('lists no editing command in play mode', async () => {
+    const { registry, score: opened, result } = await setup();
     const bars = opened?.masterBars ?? [];
     if (!result) throw new Error('no layout');
     fireEvent.contextMenu(canvas(), centreOf(noteIn(result, bars[0]?.id ?? '', 0)));
@@ -171,17 +171,24 @@ describe('the score’s context menus in play mode', () => {
     for (const id of names(menu)) {
       expect(registry.get(id ?? '')?.context, id ?? '').toBeUndefined();
     }
-    await userEvent.keyboard('{Escape}');
-    await waitFor(() => {
-      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
-    });
+  });
+
+  it('in edit mode, puts the cursor on the right-clicked note and offers the editing items', async () => {
+    const { services, score: opened, result } = await setup();
+    const bars = opened?.masterBars ?? [];
+    if (!result) throw new Error('no layout');
     act(() => {
       services.editing.getState().setEditing(true);
     });
-    expect(fireEvent.contextMenu(canvas(), centreOf(noteIn(result, bars[0]?.id ?? '', 0)))).toBe(
-      true,
-    );
-    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    fireEvent.contextMenu(canvas(), centreOf(noteIn(result, bars[2]?.id ?? '', 1)));
+    const menu = await screen.findByRole('menu', { name: 'Note, bar 3' });
+    expect(names(menu)).toContain('editor.deleteNote');
+    expect(within(menu).getByRole('menuitem', { name: 'Bar' })).toBeInTheDocument();
+    expect(services.selection.getState().cursor).toMatchObject({
+      masterBar: bars[2]?.id,
+      at: { bar: 2, beat: 1 },
+    });
+    expect(services.fakeAudio.seek).not.toHaveBeenCalled();
   });
 
   it('opens the section and chord menus with their own "Edit" labels', async () => {
