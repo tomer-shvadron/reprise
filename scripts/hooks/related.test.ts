@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parsePushedRefs, vitestRelatedArgs } from './related.ts';
+import { notCheckedOut, parsePushedRefs, typescriptSources, vitestRelatedArgs } from './related.ts';
 
 const SHA = 'a'.repeat(40);
 const ZERO = '0'.repeat(40);
@@ -37,5 +37,24 @@ describe('vitestRelatedArgs', () => {
   it('dedupes and ignores non-TypeScript files', () => {
     const args = vitestRelatedArgs(['b.ts', 'a.tsx', 'b.ts', 'c.md']);
     expect(args?.slice(-2)).toEqual(['a.tsx', 'b.ts']);
+  });
+});
+
+describe('notCheckedOut', () => {
+  const head = { localRef: 'refs/heads/a', localSha: SHA };
+  const other = { localRef: 'refs/heads/b', localSha: 'b'.repeat(40) };
+
+  it('accepts a push of exactly HEAD', () => {
+    expect(notCheckedOut([head], SHA)).toEqual([]);
+  });
+
+  it('names every pushed ref that is not HEAD', () => {
+    expect(notCheckedOut([head, other], SHA)).toEqual([other]);
+  });
+});
+
+describe('typescriptSources', () => {
+  it('keeps only TypeScript, sorted and unique', () => {
+    expect(typescriptSources(['b.ts', 'a.md', 'a.tsx', 'b.ts'])).toEqual(['a.tsx', 'b.ts']);
   });
 });
