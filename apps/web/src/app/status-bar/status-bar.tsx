@@ -21,7 +21,7 @@ export function StatusBar() {
   return (
     <section
       aria-label="Status"
-      className="bg-background text-muted-foreground text-2xs @container flex h-6 shrink-0 items-center justify-between gap-3 overflow-hidden border-t px-2 tabular-nums"
+      className="bg-background text-muted-foreground text-2xs @container flex h-6 shrink-0 items-center justify-between gap-3 overflow-x-clip border-t px-2 tabular-nums"
     >
       <div role="group" aria-label="Song" className="flex min-w-0 shrink items-center gap-1">
         <SavedSegment />

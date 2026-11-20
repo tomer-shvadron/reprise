@@ -4,9 +4,10 @@ import { useShallow } from 'zustand/react/shallow';
 import { keepFocus } from '@/app/command-control';
 import { useAppServices } from '@/app/services-context';
 import { StatusSegment } from '@/app/status-bar/segment';
-import { soundTierLabel } from '@/app/status-bar/status-text';
 import { Button } from '@/components/ui/button';
 import type { PlaybackStoreState } from '@/state/playback';
+
+import { soundTierLabel } from './sound-tier';
 
 const MB = 1024 * 1024;
 
@@ -78,14 +79,17 @@ export function SoundStatus() {
           label={`Sounds: ${megabytes(memory.decodedBytes)} of ${megabytes(memory.budgetBytes)} MB decoded · ${String(memory.residents.length)} ${memory.residents.length === 1 ? 'instrument' : 'instruments'} loaded (${String(memory.unused.length)} unused)`}
           aria-live="off"
           data-sound-status
-          className="min-w-0 truncate"
+          className="min-w-0 shrink"
         >
-          {text ?? (
-            <>
-              <span className="@max-[50rem]:hidden">{tier} · </span>
-              {megabytes(memory.decodedBytes)} MB
-            </>
-          )}
+          {/* The button cannot shrink its own text; this span does, with an ellipsis. */}
+          <span className="min-w-0 truncate">
+            {text ?? (
+              <>
+                <span className="@max-[50rem]:hidden">{tier} · </span>
+                {megabytes(memory.decodedBytes)} MB
+              </>
+            )}
+          </span>
         </StatusSegment>
       )}
       {retry && (

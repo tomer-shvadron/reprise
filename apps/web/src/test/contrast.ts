@@ -35,8 +35,8 @@ export function luminance([r, g, b]: Rgb): number {
 
 /** The WCAG contrast ratio of two linear sRGB colours, 1 to 21. */
 export function contrastRatio(a: Rgb, b: Rgb): number {
-  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
-  return (light + 0.05) / (dark + 0.05);
+  const [la, lb] = [luminance(a), luminance(b)];
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
 /** The contrast of two `oklch(L C h)` colours. */
@@ -46,6 +46,8 @@ export function oklchContrast(foreground: string, background: string): number {
 
 const srgbToLinear = (channel: number) =>
   channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+
+const channel = (value: string | undefined, max: number) => srgbToLinear(Number(value) / max);
 
 const RGB = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*\)$/;
 const COLOR_SRGB = /^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\)$/;
@@ -60,11 +62,9 @@ export function cssColorToLinear(color: string): Rgb {
   const lab = OKLAB.exec(text);
   if (lab) return oklabToLinear(Number(lab[1]), Number(lab[2]), Number(lab[3]));
   const rgb = RGB.exec(text);
-  if (rgb) {
-    return [1, 2, 3].map((index) => srgbToLinear(Number(rgb[index]) / 255)) as unknown as Rgb;
-  }
+  if (rgb) return [channel(rgb[1], 255), channel(rgb[2], 255), channel(rgb[3], 255)];
   const srgb = COLOR_SRGB.exec(text);
-  if (srgb) return [1, 2, 3].map((index) => srgbToLinear(Number(srgb[index]))) as unknown as Rgb;
+  if (srgb) return [channel(srgb[1], 1), channel(srgb[2], 1), channel(srgb[3], 1)];
   throw new Error(`not an opaque oklch, oklab, rgb or color(srgb) colour: ${color}`);
 }
 
