@@ -33,6 +33,16 @@ describe('phase 3 entry points', () => {
     expect(screen.queryByRole('region', { name: 'Library' })).not.toBeInTheDocument();
   });
 
+  it('opens the library from the header crumb and returns to the player', async () => {
+    renderApp();
+    await userEvent.click(
+      within(screen.getByRole('banner')).getByRole('button', { name: 'Library' }),
+    );
+    expect(screen.getByRole('region', { name: 'Library' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Back to player' }));
+    expect(screen.queryByRole('region', { name: 'Library' })).not.toBeInTheDocument();
+  });
+
   it('opens the sound manager', () => {
     const { run } = renderApp();
     run('sounds.show');
