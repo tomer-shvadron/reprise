@@ -37,6 +37,27 @@ function report(row: ResolvedBudget, measured: number): void {
   );
 }
 
+// The rows are measured the same wherever the spec lands in a shard: one discarded open of the long
+// score first warms the preview server, the browser's disk cache and the renderer, as the ~70 specs
+// before it did in the single-job run.
+test.beforeAll(async ({ browser, baseURL }) => {
+  const context = await browser.newContext({
+    ...(baseURL !== undefined && { baseURL }),
+    viewport: { width: 1440, height: 900 },
+  });
+  try {
+    const page = await context.newPage();
+    await installHooks(page);
+    await page.goto('/');
+    const app = new App(page);
+    await app.gesture();
+    await app.drop(generated(LONG_SCORE), LONG_SCORE);
+    await app.waitReady(LONG_SCORE);
+  } finally {
+    await context.close();
+  }
+});
+
 test('Time from file drop to first paint', async ({ browser, baseURL }) => {
   const row = budget('Time from file drop to first paint');
   const times: number[] = [];
