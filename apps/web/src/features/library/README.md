@@ -140,3 +140,5 @@ The Dexie schema file lives here and is owned by this lane, so WP-073 adds its t
 there. Needing another field on a shared store is a `type:contract` issue for the lead, not an edit.
 
 `dexie` and, for the tests, `fake-indexeddb` are already dependencies of `apps/web` (ADR-0012), added by the lead.
+
+`rankSongs` (`song-search.ts`) ranks the library's rows for the command palette's `/` mode: title prefixes first, capped at 50 with the total, over `filterEntries` so accents fold as in the library's own search. `requestOpenSong(id, { report: 'notice' })` shows a failed open as a notice, for an entry that is not the library screen.

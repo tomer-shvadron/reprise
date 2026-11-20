@@ -4,7 +4,11 @@ import { FAKE_AUDIO_OUTPUT } from './e2e/player/test/fake-audio-output.ts';
 
 const ci = process.env['CI'] !== undefined;
 // Not Vite's 4173, so a preview left running is never mistaken for this build.
-const PORT = 4319;
+// `E2E_PORT` moves it when another run holds 4319.
+const DEFAULT_PORT = 4319;
+const requested = Number.parseInt(process.env['E2E_PORT'] ?? '', 10);
+const PORT =
+  Number.isInteger(requested) && requested > 0 && requested < 65536 ? requested : DEFAULT_PORT;
 const BASE = `http://127.0.0.1:${String(PORT)}`;
 
 export default defineConfig({

@@ -4,12 +4,13 @@ Shortcuts follow Guitar Pro where Guitar Pro has one.
 
 The table below is generated from the command registry in `apps/web`: `apps/web/src/app/shortcut-doc.test.ts` fails on any difference, and `pnpm shortcuts:write` regenerates it, so never edit it by hand. The same registry feeds the in-app cheat sheet (`?` or ⌘/, Ctrl+/ on Windows, which filters by command, category or key), the palette rows and the tooltips, which print each command's key. The desktop menu's accelerators are a hand-kept copy in `apps/desktop/src/main/menu.ts`, not read from the registry. The same test fails when two commands share a key in one context.
 
+- Palette prefixes (#338): the first character typed in the command palette picks what it searches, and it stays in the input, so Backspace takes it away. `>` or nothing is commands; `#` is the song's section markers; `@` is its tracks (a number picks the track with that number); `/` is the library's songs; a number alone is a bar. Enter goes to a section or bar, selects a track or opens a song; ⌘Enter (Ctrl+Enter on Windows) does the alternate: loops the section or bar, shows only that track, or, for a command or a song, the same as Enter. The footer names both keys for the selected row. ⌘G (Ctrl+G) opens the palette locked to bar mode, and Go to section…, Go to track… and Open song from library… reach the other modes without the prefix character.
 - The Context column is Global, or Editing for a binding that works only in edit mode and wins over a Global binding of the same key.
 - Browsers reserve Ctrl+N and ⌘N (as they do Ctrl+T and Ctrl+W) and never pass them to the page in a normal tab, so in the web build New song is reached from the command palette; the desktop app gets the key from its File menu.
 - A bare key (no Cmd or Ctrl) never fires while typing in a text field.
 - Arrows, Home and End stay with a text field or a control that uses them (a slider, a menu); elsewhere they move the playhead.
 - Backspace and Delete stay with a text field whatever the modifiers, so Cmd+Backspace in the palette's input deletes text and never runs an editor command.
-- While a modal dialog is open (a dialog, an alert dialog, the command palette), no shortcut and no native menu command runs, except a dialog's own toggle when that dialog is the only modal (Cmd or Ctrl+K closes the palette, `?` or Cmd or Ctrl+/ closes the cheat sheet, and neither opens over another dialog), and a focused text field's own undo and redo. Escape stays with the dialog. This holds wherever focus is, including on the page behind the dialog. The rules live in the dispatcher's doc comment, `apps/web/src/app/shortcut-dispatcher.ts`.
+- While a modal dialog is open (a dialog, an alert dialog, the command palette), no shortcut and no native menu command runs, except a dialog's own toggle when that dialog is the only modal (Cmd or Ctrl+K closes the palette, Cmd or Ctrl+G switches it to a bar number, `?` or Cmd or Ctrl+/ closes the cheat sheet, and neither opens over another dialog), and a focused text field's own undo and redo. Escape stays with the dialog. This holds wherever focus is, including on the page behind the dialog. The rules live in the dispatcher's doc comment, `apps/web/src/app/shortcut-dispatcher.ts`.
 - In edit mode, ⌘C, ⌘X and ⌘V (Ctrl on Windows) copy, cut and paste notes, beats or whole bars, through the browser's own clipboard events: the key is left to the browser, which is why Copy, Cut and Paste show their keys here but the dispatcher never runs them. Paste follows the status bar's insert or overwrite mode; Paste as insert and Paste over, in the palette, choose one. Text fields and dialogs keep their own copy, cut and paste, and so does selected text anywhere on the page.
 - Undo and redo in a focused text field undo the field's typing, not the score. The palette and the desktop Edit menu name the step: "Undo Insert bar", "Redo Paste"; Show history opens a panel listing every step, where a click or Enter jumps to that point.
 - In edit mode a digit that can start a two-digit fret on the track's neck (1 and 2 on 24 frets) waits 500 ms for a second digit; any other key, a click or moving the cursor commits it at once, and Escape cancels it. Digits never move the cursor, so more digits on the same beat make a chord (with ↑ and ↓ between them); → moves on, and appends a bar past the end of a full last bar.
@@ -25,6 +26,10 @@ The table below is generated from the command registry in `apps/web`: `apps/web/
 | Command | Category | Context | macOS | Windows |
 | ------- | -------- | ------- | ----- | ------- |
 | Show command palette | App | Global | ⌘K | Ctrl+K |
+| Go to bar… | App | Global | ⌘G | Ctrl+G |
+| Go to section… | App | Global | — | — |
+| Go to track… | App | Global | — | — |
+| Open song from library… | App | Global | — | — |
 | Show keyboard shortcuts | App | Global | ? or ⌘/ | ? or Ctrl+/ |
 | Open context menu | App | Global | ⇧F10 | Shift+F10 |
 | Settings… | App | Global | ⌘, | Ctrl+, |

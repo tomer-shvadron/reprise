@@ -234,7 +234,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
           </ScreenHost>
         )}
         <SettingsDialog sections={SETTINGS_SECTIONS} />
-        <CommandPalette registry={registry} ui={ui} keyboard={keyboard} />
+        <CommandPalette registry={registry} ui={ui} keyboard={keyboard} services={services} />
         <ContextMenuHost registry={registry} menus={menus} keyboard={keyboard} />
         <ShortcutSheet registry={registry} ui={ui} keyboard={keyboard} />
         <DropZone />

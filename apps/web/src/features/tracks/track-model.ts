@@ -1,5 +1,15 @@
 import { channelPanToStereo, type TrackParams } from '@reprise/audio';
-import { canShowTab, shownNotation, type Id, type Notation, type Track } from '@reprise/model';
+import {
+  canShowTab,
+  shownNotation,
+  type Id,
+  type Notation,
+  type Score,
+  type Track,
+} from '@reprise/model';
+import { defaultFilter } from 'cmdk';
+
+import { instrumentName } from '@/lib/gm-programs';
 
 export interface TrackMix {
   mute: boolean;
@@ -103,4 +113,50 @@ export function panText(pan: number): { short: string; spoken: string } {
 /** A blank name reads as its position. */
 export function trackLabel(track: Pick<Track, 'name'>, index: number): string {
   return track.name.trim() === '' ? `Track ${String(index + 1)}` : track.name;
+}
+
+export interface TrackEntry {
+  id: Id;
+  /** 1-based score index: the one numbering the sidebar, the palette and the number keys share. */
+  number: number;
+  label: string;
+  instrument: string;
+  hidden: boolean;
+  current: boolean;
+}
+
+export function trackEntries(
+  score: Score,
+  view: Id[] | 'all',
+  currentTrack: Id | undefined,
+): TrackEntry[] {
+  const shown = visibleSet(score.tracks, view);
+  return score.tracks.map((track, index) => ({
+    id: track.id,
+    number: index + 1,
+    label: trackLabel(track, index),
+    instrument: instrumentName(track),
+    hidden: !shown.has(track.id),
+    current: track.id === currentTrack,
+  }));
+}
+
+/**
+ * Tracks matching `query`: a number first when the query is only digits, then label prefixes,
+ * then cmdk's fuzzy score over the label and instrument. An empty query lists them in score order.
+ */
+export function rankTracks(entries: readonly TrackEntry[], query: string): TrackEntry[] {
+  const wanted = query.trim().toLowerCase();
+  if (wanted === '') return [...entries];
+  const digits = /^\d+$/u.test(wanted) ? Number(wanted) : undefined;
+  return entries
+    .map((entry, order) => {
+      let score = defaultFilter(entry.label, wanted, [entry.instrument]);
+      if (entry.label.toLowerCase().startsWith(wanted)) score = Math.max(score, 2);
+      if (digits !== undefined && entry.number === digits) score = 3;
+      return { entry, score, order };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.order - b.order)
+    .map((item) => item.entry);
 }

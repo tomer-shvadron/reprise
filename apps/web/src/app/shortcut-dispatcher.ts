@@ -44,6 +44,7 @@ const NAVIGATION_KEYS = new Set([
  */
 const TOGGLE_MARKER: Readonly<Record<string, string>> = {
   'app.commandPalette': 'data-command-palette',
+  'app.goToBar': 'data-command-palette',
   'app.shortcuts': 'data-shortcut-sheet',
   'app.shortcutsAlt': 'data-shortcut-sheet',
 };
@@ -121,7 +122,7 @@ function leavesKeyToTarget(event: KeyboardEvent): boolean {
  * What never runs a command (the one place these rules live; the keyboard-shortcuts reference
  * summarises them for users):
  * - Any shortcut while a modal dialog is open, except a dialog's own toggle (Cmd/Ctrl+K for the
- *   palette, ? or Cmd/Ctrl+/ for the cheat sheet) when that dialog is the only modal. Escape and the rest stay with the dialog. The desktop menu obeys the
+ *   palette, Cmd/Ctrl+G to switch the open palette to a bar number, ? or Cmd/Ctrl+/ for the cheat sheet) when that dialog is the only modal. Escape and the rest stay with the dialog. The desktop menu obeys the
  *   same rule through `menuCommandAllowed`.
  * - A key that was already handled (`defaultPrevented`) or is part of IME composition.
  * - A bare key (no Cmd or Ctrl) typed in a text field, and Space or Enter on a focused control.
