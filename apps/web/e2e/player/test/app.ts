@@ -193,8 +193,12 @@ export class App {
 
   /** A key press that is no shortcut: the user's first gesture, which builds the AudioContext. */
   async gesture(): Promise<void> {
-    await this.page.keyboard.press('x');
-    await expect.poll(() => this.contextState()).toBe('running');
+    // The app installs its first-gesture listener in an effect after `load`, so on a cold runner the
+    // first press can land before it. `x` is no shortcut, so pressing again until a context runs is harmless.
+    await expect(async () => {
+      await this.page.keyboard.press('x');
+      expect(await this.contextState()).toBe('running');
+    }).toPass({ timeout: 10_000 });
   }
 
   async contextState(): Promise<string> {
