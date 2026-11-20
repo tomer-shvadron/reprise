@@ -33,8 +33,15 @@ const NAVIGATION_KEYS = new Set([
   'PageDown',
 ]);
 
-/** The command that opens and closes the palette, the one shortcut an open dialog lets through. */
-const PALETTE_TOGGLE_ID = 'app.commandPalette';
+/**
+ * The commands that close their own dialog, the one shortcut that dialog lets through: each maps
+ * to the attribute marking its content, so a toggle passes only when its dialog is the sole modal.
+ */
+const TOGGLE_MARKER: Readonly<Record<string, string>> = {
+  'app.commandPalette': 'data-command-palette',
+  'app.shortcuts': 'data-shortcut-sheet',
+  'app.shortcutsAlt': 'data-shortcut-sheet',
+};
 
 /**
  * Radix sets `role` and `data-state` on its dialogs but not `aria-modal`, so both forms count.
@@ -59,15 +66,16 @@ function openModals(): Element[] {
 
 /**
  * Whether an open modal stops this command, for a shortcut and for the desktop menu alike (the
- * menu accelerator fires when the dispatcher lets a keydown through). Only the palette toggle
- * passes, and only when the palette is the sole modal, so Cmd+K closes it but opens no second one
- * over another dialog.
+ * menu accelerator fires when the dispatcher lets a keydown through). Only a dialog's own
+ * toggle passes, and only when that dialog is the sole modal, so Cmd+K closes the palette but opens
+ * no second one over another dialog.
  */
 export function modalBlocksCommand(id: string): boolean {
   const modals = openModals();
   if (modals.length === 0) return false;
-  if (id !== PALETTE_TOGGLE_ID) return true;
-  return modals.some((modal) => !modal.hasAttribute('data-command-palette'));
+  const marker = TOGGLE_MARKER[id];
+  if (marker === undefined) return true;
+  return modals.some((modal) => !modal.hasAttribute(marker));
 }
 
 /**
@@ -95,8 +103,8 @@ function leavesKeyToTarget(event: KeyboardEvent): boolean {
  *
  * What never runs a command (the one place these rules live; the keyboard-shortcuts reference
  * summarises them for users):
- * - Any shortcut while a modal dialog is open, except the palette toggle (Cmd/Ctrl+K) when the
- *   palette is the only modal. Escape and the rest stay with the dialog. The desktop menu obeys the
+ * - Any shortcut while a modal dialog is open, except a dialog's own toggle (Cmd/Ctrl+K for the
+ *   palette, ? or Cmd/Ctrl+/ for the cheat sheet) when that dialog is the only modal. Escape and the rest stay with the dialog. The desktop menu obeys the
  *   same rule through `menuCommandAllowed`.
  * - A key that was already handled (`defaultPrevented`) or is part of IME composition.
  * - A bare key (no Cmd or Ctrl) typed in a text field, and Space or Enter on a focused control.
@@ -115,8 +123,9 @@ export function dispatchShortcut(
 ): boolean {
   if (event.defaultPrevented || event.isComposing) return false;
 
-  const matching = registry.available().filter(({ shortcut, native }) => {
-    if (!shortcut || native) return false;
+  const matching = registry.available().filter((candidate) => {
+    const shortcut = registry.shortcutOf(candidate);
+    if (!shortcut || candidate.native) return false;
     if (DELETE_KEYS.has(event.key) && isTextField(event.target)) return false;
     if (NAVIGATION_KEYS.has(event.key) && isEditable(event.target)) return false;
     if (!shortcut.mod && leavesKeyToTarget(event)) return false;

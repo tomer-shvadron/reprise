@@ -45,7 +45,7 @@ export function useCommand(id: RegisteredCommandId): BoundCommand {
   if (!source) throw new Error('useCommand needs a CommandSourceContext');
   const command = source.registry.get(id);
   if (!command) throw new Error(`Command "${id}" is not registered`);
-  const shortcut = shortcutOn(command.shortcut, source.keyboard);
+  const shortcut = shortcutOn(source.registry.shortcutOf(command), source.keyboard);
   return {
     run: () => {
       runCommand(command);

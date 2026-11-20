@@ -64,6 +64,8 @@ export interface UiState {
   paletteOpen: boolean;
   /** The Settings dialog; `section` is the id `openSettings` asked for, absent for the last one shown. */
   settings: { open: boolean; section: string | undefined };
+  /** The shortcuts cheat sheet (WP-101). */
+  shortcutsOpen: boolean;
   follow: UiFollow;
   /** The theme on screen; the choice is the `appearance.theme` setting, which `installTheme` applies here. */
   setTheme: (theme: Theme) => void;
@@ -90,6 +92,7 @@ export interface UiState {
   /** Opens Settings at `section` (an id from `app/settings-sections.ts`); an unknown id shows the first. */
   openSettings: (section?: string) => void;
   closeSettings: () => void;
+  setShortcutsOpen: (open: boolean) => void;
   setViewMode: (mode: UiView['mode']) => void;
   setPaper: (paper: UiView['paper']) => void;
   /** Turns following on and asks for one follow now. */
@@ -125,6 +128,7 @@ export function createUiStore(theme: Theme = initialTheme()) {
     zoom: ZOOM.default,
     paletteOpen: false,
     settings: { open: false, section: undefined },
+    shortcutsOpen: false,
     follow: { on: true, request: 0 },
     setTheme: (next) => {
       set({ theme: next });
@@ -187,6 +191,9 @@ export function createUiStore(theme: Theme = initialTheme()) {
     },
     closeSettings: () => {
       set((state) => ({ settings: { ...state.settings, open: false } }));
+    },
+    setShortcutsOpen: (open) => {
+      set({ shortcutsOpen: open });
     },
     setViewMode: (mode) => {
       if (get().view.mode !== mode) set((state) => ({ view: { ...state.view, mode } }));
