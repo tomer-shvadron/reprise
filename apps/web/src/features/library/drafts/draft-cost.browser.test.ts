@@ -12,9 +12,10 @@ import { createParser } from '../import/parser';
 const SANITY_BOUND_MS = 500;
 
 describe('the draft write', () => {
+  // 10.7 s worst on CI (#384): own timeout, 4x the worst rounded up to 60 s.
   it(
     'costs the main thread little: the clone into the worker, not the serialization',
-    { timeout: 30_000 },
+    { timeout: 60_000 },
     async () => {
       const parser = createParser();
       try {

@@ -87,9 +87,10 @@ describe('stray primitives', () => {
     expect(strays(built)).toEqual([]);
   });
 
+  // 11.8 s worst on CI (#384): own timeout, 4x the worst rounded up to 60 s.
   it(
     'none in the long score with effects in standard and both notation',
-    { timeout: 30_000 },
+    { timeout: 60_000 },
     () => {
       const built = withEffects(largeScore(8, 300, { structure: true }));
       expect(strays(built, ['standard', 'both'], ['paged', 'continuous'])).toEqual([]);
@@ -109,6 +110,7 @@ describe('stray primitives', () => {
     },
   );
 
+  // 5.3 s worst on CI (#384, it timed out at the 5 s default): own timeout, 4x the worst rounded up to 30 s.
   it('none in random scores', () => {
     assert(
       property(integer({ min: 1, max: 0x7fffffff }), (seed) => {
@@ -116,5 +118,5 @@ describe('stray primitives', () => {
       }),
       { numRuns: RUNS },
     );
-  });
+  }, 30_000);
 });

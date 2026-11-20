@@ -75,28 +75,33 @@ afterEach(() => {
 });
 
 describe('the playhead', () => {
-  it('moves through its handle with no React commit and no system render', () => {
-    const result = paged();
-    const ref = createRef<ScoreViewHandle>();
-    const commits = vi.fn();
-    render(
-      <Profiler id="view" onRender={commits}>
-        <ScoreView ref={ref} layout={result} zoom={1} />
-      </Profiler>,
-    );
-    commits.mockClear();
-    vi.mocked(primitiveToSvg).mockClear();
-    const cursors = barCursors(result);
-    const transforms = new Set<string>();
-    for (let i = 0; i < 100; i++) {
-      const cursor = cursors[i % cursors.length];
-      ref.current?.setPlayhead(cursor && { ...cursor, x: cursor.x + (i % 7) });
-      transforms.add(line().style.transform);
-    }
-    expect(transforms.size).toBeGreaterThan(50);
-    expect(commits).not.toHaveBeenCalled();
-    expect(primitiveToSvg).not.toHaveBeenCalled();
-  });
+  // 2.0 s worst on CI (#384): own timeout, 4x the worst rounded up to 30 s.
+  it(
+    'moves through its handle with no React commit and no system render',
+    { timeout: 30_000 },
+    () => {
+      const result = paged();
+      const ref = createRef<ScoreViewHandle>();
+      const commits = vi.fn();
+      render(
+        <Profiler id="view" onRender={commits}>
+          <ScoreView ref={ref} layout={result} zoom={1} />
+        </Profiler>,
+      );
+      commits.mockClear();
+      vi.mocked(primitiveToSvg).mockClear();
+      const cursors = barCursors(result);
+      const transforms = new Set<string>();
+      for (let i = 0; i < 100; i++) {
+        const cursor = cursors[i % cursors.length];
+        ref.current?.setPlayhead(cursor && { ...cursor, x: cursor.x + (i % 7) });
+        transforms.add(line().style.transform);
+      }
+      expect(transforms.size).toBeGreaterThan(50);
+      expect(commits).not.toHaveBeenCalled();
+      expect(primitiveToSvg).not.toHaveBeenCalled();
+    },
+  );
 
   it('repaints at a new zoom', () => {
     const result = paged();
