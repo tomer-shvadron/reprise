@@ -61,6 +61,8 @@ export interface UiState {
   bottomPanelHeight: number;
   zoom: number;
   paletteOpen: boolean;
+  /** The shortcuts cheat sheet (WP-101). */
+  shortcutsOpen: boolean;
   follow: UiFollow;
   /** The theme on screen; the choice is the `appearance.theme` setting, which `installTheme` applies here. */
   setTheme: (theme: Theme) => void;
@@ -84,6 +86,7 @@ export interface UiState {
   persistBottomPanelHeight: () => void;
   setZoom: (zoom: number) => void;
   setPaletteOpen: (open: boolean) => void;
+  setShortcutsOpen: (open: boolean) => void;
   setViewMode: (mode: UiView['mode']) => void;
   setPaper: (paper: UiView['paper']) => void;
   /** Turns following on and asks for one follow now. */
@@ -118,6 +121,7 @@ export function createUiStore(theme: Theme = initialTheme()) {
     bottomPanelHeight: readStoredBottomPanelHeight(),
     zoom: ZOOM.default,
     paletteOpen: false,
+    shortcutsOpen: false,
     follow: { on: true, request: 0 },
     setTheme: (next) => {
       set({ theme: next });
@@ -174,6 +178,9 @@ export function createUiStore(theme: Theme = initialTheme()) {
     },
     setPaletteOpen: (open) => {
       set({ paletteOpen: open });
+    },
+    setShortcutsOpen: (open) => {
+      set({ shortcutsOpen: open });
     },
     setViewMode: (mode) => {
       if (get().view.mode !== mode) set((state) => ({ view: { ...state.view, mode } }));
