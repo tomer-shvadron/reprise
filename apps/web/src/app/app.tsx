@@ -33,6 +33,7 @@ import type { PanelView } from '@/state/ui';
 import { AppFrame } from './app-frame';
 import { AppHeader } from './header/app-header';
 import { installCloseGuard } from './close-guard';
+import { installBottomDock } from './bottom-dock/install-bottom-dock';
 import { installTheme } from './install-theme';
 import { installRightPanel, storeRightPanelWidth } from './right-panel/install-right-panel';
 import { CommandPalette } from './command-palette';
@@ -105,6 +106,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   }, [services]);
 
   useEffect(() => installTheme(services), [services]);
+  useEffect(() => installBottomDock(services), [services]);
   useEffect(() => installRightPanel(services), [services]);
 
   useEffect(() => installLibrary(services), [services]);
