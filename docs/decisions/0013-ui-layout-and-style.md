@@ -57,6 +57,9 @@ The owner's previous project already uses shadcn/ui components on Radix.
 - Changed by #336 (2026-11-20): the transport footer gains a status bar below it (S-STATUS-1): the
   song's state on the left, the edit cursor and the view on the right. The arrangement is
   otherwise unchanged. See "Changed by #336" in `../specs/architecture.md`.
+- Changed by #337 (2026-11-20): every interactive surface gets a context menu from one host, the
+  right-click and Shift+F10 route to the same menu, and what a menu lists depends on the mode.
+  The arrangement is unchanged. See "Changed by #337" in `../specs/architecture.md`.
 
 ## Related
 
