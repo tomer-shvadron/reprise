@@ -55,7 +55,7 @@ export function entryCommands(services: Pick<AppServices, 'entry'>): EntryComman
     title: string,
     shortcut: Shortcut | undefined,
     run: () => void,
-    extra: Partial<Pick<Command, 'inPalette' | 'repeat'>> = {},
+    extra: Partial<Pick<Command, 'inPalette' | 'repeat' | 'rebindable'>> = {},
   ): EntryCommand => ({
     id,
     title,
@@ -77,7 +77,7 @@ export function entryCommands(services: Pick<AppServices, 'entry'>): EntryComman
         () => {
           entryController(entry)?.fret(digit);
         },
-        { ...hidden, repeat: false },
+        { ...hidden, repeat: false, rebindable: false },
       ),
     ),
     command('editor.durationLonger', 'Longer duration', { key: '-' }, act({ kind: 'longer' })),

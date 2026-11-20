@@ -45,13 +45,43 @@ export interface Command {
   native?: true;
   /** False ignores auto-repeated keydowns, so holding Space does not toggle play on and off. */
   repeat?: false;
+  /** False keeps the key out of the user's hands (Settings > Keyboard): typed values, not shortcuts. */
+  rebindable?: false;
   run: () => void | Promise<void>;
+}
+
+/**
+ * Two commands bound to one key in one context on one platform, by the keys `shortcutOf` gives.
+ * Pure, so the registry, the doc test and the Keyboard section's preview share one algorithm.
+ */
+export function findConflicts(
+  commands: readonly Command[],
+  shortcutOf: (command: Command) => Shortcut | undefined,
+): ShortcutConflict[] {
+  const owners = new Map<string, string>();
+  const found: ShortcutConflict[] = [];
+  for (const command of commands) {
+    const shortcut = shortcutOf(command);
+    if (!shortcut) continue;
+    for (const platform of PLATFORMS) {
+      if (!shortcutOn(shortcut, platform)) continue;
+      const key = shortcutId(shortcut);
+      const binding = `${platform}:${command.context ?? ''}:${key}`;
+      const owner = owners.get(binding);
+      if (owner === undefined) owners.set(binding, command.id);
+      else if (!found.some((c) => c.first === owner && c.second === command.id)) {
+        found.push({ key, context: command.context, first: owner, second: command.id });
+      }
+    }
+  }
+  return found;
 }
 
 export class CommandRegistry {
   readonly #commands = new Map<string, Command>();
   readonly #isActive: (context: CommandContext) => boolean;
   readonly #keys: (command: Command) => Shortcut | undefined;
+  #version = 0;
 
   /**
    * `isActive` tells whether a context holds now; without it, none does. `keys` is the one place
@@ -65,6 +95,11 @@ export class CommandRegistry {
   ) {
     this.#isActive = isActive;
     this.#keys = keys;
+  }
+
+  /** Changes whenever a command is registered or unregistered, so a key resolver can cache against the set. */
+  get version(): number {
+    return this.#version;
   }
 
   /** The key the command answers to now: every reader of a command's key goes through this. */
@@ -83,23 +118,7 @@ export class CommandRegistry {
    * fallback of non-Latin layouts is not visible here (#242).
    */
   conflicts(): ShortcutConflict[] {
-    const owners = new Map<string, string>();
-    const found: ShortcutConflict[] = [];
-    for (const command of this.#commands.values()) {
-      const shortcut = this.shortcutOf(command);
-      if (!shortcut) continue;
-      for (const platform of PLATFORMS) {
-        if (!shortcutOn(shortcut, platform)) continue;
-        const key = shortcutId(shortcut);
-        const binding = `${platform}:${command.context ?? ''}:${key}`;
-        const owner = owners.get(binding);
-        if (owner === undefined) owners.set(binding, command.id);
-        else if (!found.some((c) => c.first === owner && c.second === command.id)) {
-          found.push({ key, context: command.context, first: owner, second: command.id });
-        }
-      }
-    }
-    return found;
+    return findConflicts(this.list(), (command) => this.shortcutOf(command));
   }
 
   register(command: Command): () => void {
@@ -107,9 +126,11 @@ export class CommandRegistry {
       throw new Error(`Command "${command.id}" is already registered`);
     }
     this.#commands.set(command.id, command);
+    this.#version += 1;
     const clash = this.conflicts().find((conflict) => conflict.second === command.id);
     if (clash) {
       this.#commands.delete(command.id);
+      this.#version += 1;
       const where = clash.context ? ` in the ${clash.context} context` : '';
       throw new Error(
         `Shortcut "${clash.key}"${where} of "${command.id}" is already bound to "${clash.first}"`,
@@ -117,6 +138,7 @@ export class CommandRegistry {
     }
     return () => {
       this.#commands.delete(command.id);
+      this.#version += 1;
     };
   }
 

@@ -14,12 +14,17 @@ const NAMED_KEYS =
 /**
  * The key as the menu can carry it: one printable ASCII character, or a name the accelerator
  * grammar has. Anything else (a non-ASCII character) gives `null`: the menu then shows no key for
- * that item, while the renderer still fires it.
+ * that item, while the renderer still fires it. A key with neither Cmd/Ctrl nor Alt goes the same
+ * way unless it is an F-key.
  */
 export function menuKeyOf(shortcut: Shortcut | undefined): MenuKey | null {
   if (!shortcut) return null;
   const { key } = shortcut;
   if (!/^[\x20-\x7e]$/.test(key) && !NAMED_KEYS.test(key)) return null;
+  // A modifier-less accelerator would fire the menu item while typing in a text field (Windows and
+  // Linux register menu accelerators with the window), so only an F-key goes to the menu; the
+  // renderer still runs every key itself.
+  if (!shortcut.mod && !shortcut.alt && !/^F\d+$/.test(key)) return null;
   return {
     key,
     ...(shortcut.mod && { mod: true }),
