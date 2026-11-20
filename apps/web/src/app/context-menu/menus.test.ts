@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import { fourBars } from '@/test/position';
 import { createTestServices } from '@/test/services';
@@ -24,7 +24,6 @@ const NOT_YET: readonly MenuSurface[] = [
   'track.row',
   'mixer.strip',
   'mixer.master',
-  'transport.loop',
   'transport.tempo',
   'transport.countIn',
   'transport.metronome',
@@ -56,6 +55,8 @@ const TARGETS: Partial<Record<MenuSurface, readonly MenuTarget[]>> = {
     element,
   })),
   'panel.tab': PANEL_TABS.map(({ view }) => ({ kind: 'panel', view })),
+  // "Focus on loop" needs bars to focus on: `beforeAll` selects one.
+  'transport.loop': [{ kind: 'transport', control: 'loop' }],
   'panel.rail': [
     ...PANEL_TABS.map(({ view }): MenuTarget => ({ kind: 'panel', view })),
     { kind: 'panel', view: undefined },
@@ -86,6 +87,10 @@ function resolveFor(surface: MenuSurface, target: MenuTarget, mode: MenuMode) {
 }
 
 describe('the context menus', () => {
+  beforeAll(() => {
+    services.selection.getState().selectBars({ startBar: bar.id, endBar: bar.id });
+  });
+
   it('name only registered commands, and no editing command in play mode', () => {
     for (const surface of menus.surfaces()) {
       for (const item of menus.itemsOf(surface)) {

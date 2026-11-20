@@ -52,6 +52,28 @@ describe('App', () => {
     expect(screen.queryByRole('complementary', { name: 'Panel' })).not.toBeInTheDocument();
   });
 
+  it('keeps its live region mounted through practice mode, where the footer is gone', async () => {
+    const { services } = renderApp();
+    await act(async () => {
+      await services.document
+        .getState()
+        .openBytes('riff.reprise', (await write(score().title('Riff').build(), 'reprise')).bytes);
+    });
+    const region = () => document.querySelector('[data-announcer]');
+    expect(region()).toBeInTheDocument();
+    act(() => {
+      services.ui.getState().enterPracticeMode('play');
+    });
+    expect(screen.queryByRole('contentinfo', { name: 'Transport' })).toBeNull();
+    expect(region()).toBeInTheDocument();
+    act(() => {
+      services.transport.getState().announce('Looping Chorus');
+    });
+    await waitFor(() => {
+      expect(region()).toHaveTextContent('Looping Chorus');
+    });
+  });
+
   it('lists recent songs in the empty state once one was opened', async () => {
     const bytes = await riffBytes();
     const { services } = renderApp(

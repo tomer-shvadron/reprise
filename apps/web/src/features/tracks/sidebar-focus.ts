@@ -27,9 +27,16 @@ export function toggleSidebarFocus(services: Pick<AppServices, 'selection' | 'ui
     focusSelector(`[${TRACK_SELECT_ATTR}]`);
   };
   const { ui } = services;
+  // The practice mode hides the sidebar without closing it: leaving the mode shows it as it was.
+  const practising = ui.getState().practiceMode.on;
+  if (practising) ui.getState().leavePracticeMode();
   if (!ui.getState().panels.sidebar) {
     ui.getState().togglePanel('sidebar');
     // The store update re-renders synchronously; the frame only waits for the rows to be in the DOM.
+    requestAnimationFrame(focusRow);
+    return;
+  }
+  if (practising) {
     requestAnimationFrame(focusRow);
     return;
   }

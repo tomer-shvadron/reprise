@@ -22,3 +22,8 @@ Every seek goes through `seekTo(services, tick)` (`seek-commands.ts`), which ask
 - **Arrows, Home and End stay with a text field** whatever the modifiers, and with a control that handles them (sliders, menus), which prevents them before the window's dispatcher sees them.
 
 `seekToBar` (`seek-target.ts`) is the one bar seek: it treats an active loop as a click on the bar does, and the command palette's go-to reuses it. `sectionsOf` and `rankSections` (`sections.ts`) give the score's sections with unique labels, for the palette's `#` mode and for a "Loop this section" item; `applyLoop`, `seekTo`, `playheadBar` and `describePosition` are exported for the same shell code.
+
+The `Announcer`, the app's one live region, is mounted by `App` and not by `TransportBar` (#341):
+the footer is not rendered in the practice mode, and a live region that is not mounted says
+nothing. The index also exports `PlaybackButtons`, `PracticeToggles` and `TempoControl`, which the
+shell's practice capsule places, so its buttons are the transport's own.
