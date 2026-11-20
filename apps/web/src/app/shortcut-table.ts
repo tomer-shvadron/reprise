@@ -1,5 +1,11 @@
 import type { Command } from './command-registry';
-import { formatShortcut, shortcutOn, type Shortcut, type KeyboardPlatform } from './keyboard';
+import {
+  formatShortcut,
+  shortcutOn,
+  spokenShortcut,
+  type Shortcut,
+  type KeyboardPlatform,
+} from './keyboard';
 
 const CATEGORIES: Record<string, string> = {
   app: 'App',
@@ -24,6 +30,8 @@ export interface ShortcutEntry {
   context: 'Global' | 'Editing';
   mac: string[];
   other: string[];
+  /** The same keys spelled out, per platform, for screen readers and the filter. */
+  spoken: Record<KeyboardPlatform, string[]>;
 }
 
 /**
@@ -43,11 +51,20 @@ export function shortcutEntries(
   for (const { command, category } of sorted) {
     const context = command.context === 'editing' ? 'Editing' : 'Global';
     const key = `${category}\n${context}\n${command.title}`;
-    const row = rows.get(key) ?? { title: command.title, category, context, mac: [], other: [] };
+    const row = rows.get(key) ?? {
+      title: command.title,
+      category,
+      context,
+      mac: [],
+      other: [],
+      spoken: { mac: [], other: [] },
+    };
     rows.set(key, row);
     const add = (keys: string[], platform: KeyboardPlatform) => {
       const shortcut = shortcutOn(shortcutOf(command), platform);
-      if (shortcut) keys.push(formatShortcut(shortcut, platform));
+      if (!shortcut) return;
+      keys.push(formatShortcut(shortcut, platform));
+      row.spoken[platform].push(spokenShortcut(shortcut, platform));
     };
     add(row.mac, 'mac');
     add(row.other, 'other');
