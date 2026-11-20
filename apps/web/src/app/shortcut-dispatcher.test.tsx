@@ -167,6 +167,20 @@ describe('bare keys on focused controls', () => {
     toggle.remove();
   });
 
+  it('leaves a typed character to an open menu, but not a bare key with a modifier', () => {
+    const { slower } = bare();
+    const menu = document.createElement('div');
+    menu.setAttribute('role', 'menu');
+    const item = document.createElement('div');
+    item.setAttribute('role', 'menuitem');
+    menu.append(item);
+    document.body.append(menu);
+
+    fireEvent.keyDown(item, { key: '[', code: 'BracketLeft' });
+    expect(slower).not.toHaveBeenCalled();
+    menu.remove();
+  });
+
   it('plays from the body and swallows a held Space without repeating it', () => {
     const { play, slower } = bare();
     const first = new KeyboardEvent('keydown', {

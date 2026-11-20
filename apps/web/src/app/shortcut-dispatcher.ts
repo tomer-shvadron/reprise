@@ -95,10 +95,21 @@ export function menuCommandAllowed(id: string): boolean {
 /** Keys that delete text, so a text field keeps them whatever the modifiers. */
 const DELETE_KEYS = new Set(['Backspace', 'Delete']);
 
-/** A bare key the focused element handles itself: text in a field, Space or Enter on a control. */
+/** A bare key the focused element handles itself: text in a field, Space or Enter on a control, a character typed to an open menu. */
 function leavesKeyToTarget(event: KeyboardEvent): boolean {
   const { target } = event;
   if (isEditable(target)) return true;
+  // A menu types to its items (typeahead) and Radix leaves the key to bubble to the window: a
+  // printable bare key there is the menu's, not a command's.
+  const bare = !event.metaKey && !event.ctrlKey && !event.altKey;
+  if (
+    bare &&
+    event.key.length === 1 &&
+    target instanceof Element &&
+    target.closest('[role="menu"]')
+  ) {
+    return true;
+  }
   const activates = event.key === ' ' || event.key === 'Enter';
   return activates && target instanceof Element && activatesOnSpace(target);
 }
