@@ -25,8 +25,10 @@ interface AppFrameProps {
   transport?: ReactNode;
   /** The left sidebar's content: the track list. */
   sidebar?: ReactNode;
-  /** The right panel's content: the mixer. */
+  /** The right panel's content: its tab strip and the active view. */
   panel?: ReactNode;
+  /** The icon rail on the right panel's edge; it stays when the panel is collapsed. */
+  rail?: ReactNode;
   /** A full-width strip above the panels, such as the library's "not in your library" banner. */
   banner?: ReactNode;
   /** The bottom region's content (the live fretboard); the region shows while `ui.bottomPanel.open`. */
@@ -71,6 +73,7 @@ export function AppFrame({
   transport,
   sidebar,
   panel,
+  rail,
   banner,
   bottom,
 }: AppFrameProps) {
@@ -168,6 +171,7 @@ export function AppFrame({
             </aside>
           </>
         )}
+        {rail}
       </div>
 
       {bottomOpen && (

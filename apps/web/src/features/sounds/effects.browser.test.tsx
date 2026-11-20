@@ -39,7 +39,7 @@ const song = () =>
 async function render(pick?: string): Promise<number> {
   const p = player();
   await p.openScore(song());
-  p.services.ui.getState().toggleMixer();
+  p.services.ui.getState().showPanelView('mixer');
   if (pick) {
     const select = await screen.findByRole('combobox', { name: 'Effects of Lead' });
     fireEvent.change(select, { target: { value: pick } });

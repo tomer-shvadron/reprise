@@ -45,6 +45,17 @@ export const MEMORY_BUDGET_SETTING = defineSetting({
   schema: z.number().min(MEMORY_BUDGET_RANGE.min).max(MEMORY_BUDGET_RANGE.max),
   default: HQ_BUDGET_BYTES,
 });
+export const RIGHT_PANEL_OPEN_SETTING = defineSetting({
+  key: 'layout.rightPanelOpen',
+  schema: z.boolean(),
+  default: false,
+});
+/** A width outside the panel's range is clamped by the ui store, so the schema only needs a number. */
+export const RIGHT_PANEL_WIDTH_SETTING = defineSetting({
+  key: 'layout.rightPanelWidth',
+  schema: z.number().positive(),
+  default: 320,
+});
 
 /** Every handle the app shell defines; the relaunch test walks this list. */
 export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
@@ -55,4 +66,6 @@ export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
   MASTER_VOLUME_SETTING,
   GM_TIER_BYPASS_SETTING,
   MEMORY_BUDGET_SETTING,
+  RIGHT_PANEL_OPEN_SETTING,
+  RIGHT_PANEL_WIDTH_SETTING,
 ];

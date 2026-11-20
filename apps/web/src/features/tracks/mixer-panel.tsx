@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef } from 'react';
 import { useStore } from 'zustand';
 
+import { focusPanelSection } from '@/app/right-panel';
 import { useAppServices } from '@/app/services-context';
 
 import { MasterStrip } from './master-strip';
@@ -22,7 +23,7 @@ export function MixerPanel() {
 
   // Opening the panel puts the next Tab on its first control.
   useEffect(() => {
-    section.current?.focus();
+    focusPanelSection(section.current);
   }, []);
 
   return (

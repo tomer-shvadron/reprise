@@ -34,12 +34,14 @@ import { AppFrame } from './app-frame';
 import { AppHeader } from './header/app-header';
 import { installCloseGuard } from './close-guard';
 import { installTheme } from './install-theme';
+import { installRightPanel } from './right-panel/install-right-panel';
 import { CommandPalette } from './command-palette';
 import { createAppRegistry } from './app-registry';
 import { runCommand } from './command-registry';
 import { DropZone } from './drop-zone';
 import { installFirstGesture } from './first-gesture';
 import { formatShortcut, type KeyboardPlatform } from './keyboard';
+import { PanelRail, PanelTabs } from './right-panel';
 import { Notices } from './notices';
 import { SavePromptDialog } from './save-prompt';
 import { ScorePane } from './score-pane';
@@ -101,6 +103,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   }, [services]);
 
   useEffect(() => installTheme(services), [services]);
+  useEffect(() => installRightPanel(services), [services]);
 
   useEffect(() => installLibrary(services), [services]);
 
@@ -182,7 +185,14 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             }
             panel={
               <CommandSourceContext value={source}>
-                <RightPanel view={rightPanelView} />
+                <PanelTabs>
+                  <RightPanel view={rightPanelView} />
+                </PanelTabs>
+              </CommandSourceContext>
+            }
+            rail={
+              <CommandSourceContext value={source}>
+                <PanelRail />
               </CommandSourceContext>
             }
           />

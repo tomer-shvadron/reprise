@@ -2,6 +2,7 @@ import { cn } from 'cn';
 import { useEffect, useId, useMemo, useRef, type MouseEvent } from 'react';
 import { useStore } from 'zustand';
 
+import { focusPanelSection } from '@/app/right-panel';
 import { useAppServices } from '@/app/services-context';
 import { useCommand, type RegisteredCommandId } from '@/app/use-command';
 import { toggleVariants } from '@/components/ui/toggle';
@@ -252,7 +253,7 @@ export function EffectsPanel() {
 
   // Opening the panel puts the next Tab on its first control.
   useEffect(() => {
-    section.current?.focus();
+    focusPanelSection(section.current);
   }, []);
 
   const { known, blockers, empty } = useMemo(
