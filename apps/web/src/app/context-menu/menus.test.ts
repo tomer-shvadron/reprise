@@ -65,10 +65,6 @@ const TARGETS: Partial<Record<MenuSurface, readonly MenuTarget[]>> = {
 
 const MODES: readonly MenuMode[] = ['play', 'edit'];
 
-/** The modes a surface has a menu in; the score's edit-mode menus are a later PR's. */
-const modesOf = (surface: MenuSurface): readonly MenuMode[] =>
-  surface.startsWith('score.') ? ['play'] : MODES;
-
 const enabledItems = (entries: readonly ResolvedEntry[]): number =>
   entries.reduce(
     (count, entry) =>
@@ -119,7 +115,7 @@ describe('the context menus', () => {
     '%s resolves an enabled item for each target in each mode',
     (surface, targets) => {
       for (const target of targets) {
-        for (const mode of modesOf(surface)) {
+        for (const mode of MODES) {
           const enabled = enabledItems(resolveFor(surface, target, mode));
           expect(enabled, `${surface} ${JSON.stringify(target)} in ${mode}`).toBeGreaterThan(0);
         }
