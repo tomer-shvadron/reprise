@@ -3,6 +3,7 @@ import { positionAtSeconds } from '@reprise/model';
 
 import { playheadAt, type FollowPolicy, type PlaybackCursor } from '@/features/score';
 import type { HeardPosition } from '@/state/heard';
+import { FOLLOW_PLAYHEAD_SETTING } from '@/state/app-settings';
 import { selectRunning, type TempoSetting } from '@/state/playback';
 import { animationFrames, startPositionReader, type FrameScheduler } from '@/state/position-reader';
 import { timelineOf } from '@/state/timeline';
@@ -88,7 +89,7 @@ export interface PlayheadDriver {
 export function startPlayhead(options: {
   services: Pick<
     AppServices,
-    'audio' | 'playback' | 'document' | 'layout' | 'ui' | 'selection' | 'heard'
+    'audio' | 'playback' | 'document' | 'layout' | 'ui' | 'selection' | 'heard' | 'settings'
   >;
   view: () => PlayheadView | null | undefined;
   frames?: FrameScheduler;
@@ -101,7 +102,7 @@ export function startPlayhead(options: {
     frames = animationFrames,
     now = () => performance.now() / 1000,
   } = options;
-  const { audio, playback, document, layout, ui, selection, heard: drawn } = services;
+  const { audio, playback, document, layout, ui, selection, heard: drawn, settings } = services;
   let last: PositionEvent | undefined;
   let run: Run | undefined;
   let requested = false;
@@ -131,7 +132,9 @@ export function startPlayhead(options: {
     drawn.current = heard;
     target.setPlayhead(cursor);
     if (!follow || !cursor || !ui.getState().follow.on) return;
-    if (!running && !requested) return;
+    // Off means the view never scrolls on its own; an explicit request (the Follow playback
+    // command, a seek) still scrolls once.
+    if (!requested && (!running || !settings.get(FOLLOW_PLAYHEAD_SETTING))) return;
     const force = requested;
     requested = false;
     target.followPlayhead({
@@ -162,6 +165,8 @@ export function startPlayhead(options: {
 
   const unsubscribeUi = ui.subscribe(({ follow }, previous) => {
     if (follow.request === previous.follow.request) return;
+    // A resize asks to keep the playhead in view; with follow off the view never moves on its own.
+    if (follow.kind === 'layout' && !settings.get(FOLLOW_PLAYHEAD_SETTING)) return;
     requested = true;
     // A request no position change consumes, such as the button while stopped.
     queueMicrotask(() => {
@@ -173,11 +178,14 @@ export function startPlayhead(options: {
     if (state.transport === previous.transport) return;
     const started = selectRunning(state) && !selectRunning(previous);
     const stopped = state.transport === 'stopped';
-    if (started || stopped) ui.getState().requestFollow();
+    if ((started || stopped) && settings.get(FOLLOW_PLAYHEAD_SETTING))
+      ui.getState().requestFollow();
   });
 
   const unsubscribeDocument = document.subscribe((state, previous) => {
-    if (state.id !== previous.id) ui.getState().requestFollow();
+    if (state.id !== previous.id && settings.get(FOLLOW_PLAYHEAD_SETTING)) {
+      ui.getState().requestFollow();
+    }
   });
 
   return {

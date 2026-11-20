@@ -256,6 +256,6 @@ describe('transport commands', () => {
     expect(services.selection.getState().bars).toBeUndefined();
     services.ui.getState().pauseFollow();
     await run('view.followPlayback');
-    expect(services.ui.getState().follow).toEqual({ on: true, request: 1 });
+    expect(services.ui.getState().follow).toMatchObject({ on: true, request: 1 });
   });
 });

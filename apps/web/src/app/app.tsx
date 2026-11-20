@@ -21,6 +21,7 @@ import {
   RecentSongs,
   UnimportedBanner,
 } from '@/features/library';
+import { checkSections, SettingsDialog } from '@/features/settings';
 import { SoundManager } from '@/features/sounds';
 import { installPracticeLog, TrainerPanel } from '@/features/trainer';
 import { PrintDialog, PrintRoot } from '@/features/score';
@@ -35,6 +36,7 @@ import { AppHeader } from './header/app-header';
 import { installCloseGuard } from './close-guard';
 import { installBottomDock } from './bottom-dock/install-bottom-dock';
 import { installTheme } from './install-theme';
+import { installViewDefaults } from './install-view-defaults';
 import { installRightPanel, storeRightPanelWidth } from './right-panel/install-right-panel';
 import { CommandPalette } from './command-palette';
 import { ShortcutSheet } from './shortcut-sheet';
@@ -52,9 +54,12 @@ import { ScreenHost } from './screen-host';
 import type { AppServices } from './services';
 import { AppServicesProvider } from './services-context';
 import { installShortcutDispatcher, menuCommandAllowed } from './shortcut-dispatcher';
+import { SETTINGS_SECTIONS } from './settings-sections';
 import { UnsavedChangesHost } from './unsaved-dialog';
 import { installWindowTitle } from './window-title';
 import { CommandSourceContext } from './use-command';
+
+checkSections(SETTINGS_SECTIONS);
 
 // Module-level so the sidebar's memoised rows see the same function every render.
 const addTrackButton = <AddTrackButton />;
@@ -108,6 +113,8 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   useEffect(() => installTheme(services), [services]);
   useEffect(() => installBottomDock(services), [services]);
   useEffect(() => installRightPanel(services), [services]);
+
+  useEffect(() => installViewDefaults(services), [services]);
 
   useEffect(() => installLibrary(services), [services]);
 
@@ -223,6 +230,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             {screen === 'library' ? <LibraryScreen /> : <SoundManager />}
           </ScreenHost>
         )}
+        <SettingsDialog sections={SETTINGS_SECTIONS} />
         <CommandPalette registry={registry} ui={ui} keyboard={keyboard} />
         <ShortcutSheet registry={registry} ui={ui} keyboard={keyboard} />
         <DropZone />
