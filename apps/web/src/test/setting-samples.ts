@@ -37,4 +37,5 @@ export const SAMPLES: Record<string, unknown> = {
   'layout.rightPanelWidth': 400,
   'layout.practiceZoom': 2,
   'library.sort': 'artist',
+  'keyboard.shortcuts': { 'view.toggleViewMode': { key: 'F5' } },
 };

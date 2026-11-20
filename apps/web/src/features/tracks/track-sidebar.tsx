@@ -6,7 +6,7 @@ import { useStore } from 'zustand';
 import type { CommandRegistry } from '@/app/command-registry';
 import { matchesShortcut, type KeyboardPlatform } from '@/app/keyboard';
 import { useAppServices } from '@/app/services-context';
-import { bindCommand, CommandSourceContext, useCommand } from '@/app/use-command';
+import { bindCommand, CommandSourceContext, useCommand, useCommandSource } from '@/app/use-command';
 import { Toggle } from '@/components/ui/toggle';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { singleTrackOf } from '@/state/document';
@@ -183,7 +183,7 @@ function TrackList({ headerActions, rowMenu }: TrackSidebarSlots) {
 
 /** The left sidebar: every track with its mute, solo, volume, notation and visibility. */
 export function TrackSidebar({ registry, keyboard, headerActions, rowMenu }: TrackSidebarProps) {
-  const source = useMemo(() => ({ registry, keyboard }), [registry, keyboard]);
+  const source = useCommandSource(registry, keyboard, useAppServices().settings);
   return (
     <CommandSourceContext value={source}>
       <TrackList headerActions={headerActions} rowMenu={rowMenu} />

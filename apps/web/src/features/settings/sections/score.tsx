@@ -19,7 +19,7 @@ function Score() {
       <SliderSetting
         def={DEFAULT_ZOOM_SETTING}
         label="Default zoom"
-        description="Actual size (⌘0 or Ctrl+0) stays 100%."
+        description="The Actual size command always goes back to 100%."
         min={ZOOM.min}
         max={ZOOM.max}
         step={0.1}

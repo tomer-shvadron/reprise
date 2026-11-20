@@ -1,4 +1,4 @@
-import { createContext, use } from 'react';
+import { createContext, use, useMemo, useSyncExternalStore } from 'react';
 
 import type { EditorCommandId } from '@/features/editor/commands';
 import type { LibraryCommandId } from '@/features/library/commands';
@@ -11,6 +11,9 @@ import { runCommand, type CommandRegistry } from './command-registry';
 import type { AppCommandId } from './commands';
 import type { EditCommandId } from './edit-commands';
 import type { PracticeCommandId } from './practice-mode/commands';
+import type { SettingsStore } from '@/state/settings';
+
+import { SHORTCUT_OVERRIDES_SETTING, type ShortcutOverrides } from './keymap';
 import { ariaKeyShortcuts, formatShortcut, shortcutOn, type KeyboardPlatform } from './keyboard';
 
 /** Every id `createAppRegistry` registers, so a mistyped id fails typecheck, not at render. */
@@ -28,6 +31,29 @@ export type RegisteredCommandId =
 export interface CommandSource {
   registry: CommandRegistry;
   keyboard: KeyboardPlatform;
+  /**
+   * The user's key overrides, which are what make a new source value when a key changes, so every
+   * `useCommand` consumer re-renders and its tooltip shows the new key.
+   */
+  keys?: ShortcutOverrides;
+}
+
+/** The user's key overrides, re-rendering on a change; takes the store because `App` sits outside the services provider. */
+export function useKeyOverrides(settings: Pick<SettingsStore, 'get' | 'subscribe'>) {
+  return useSyncExternalStore(
+    (notify) => settings.subscribe(SHORTCUT_OVERRIDES_SETTING, notify),
+    () => settings.get(SHORTCUT_OVERRIDES_SETTING),
+  );
+}
+
+/** A memoised `CommandSource` that follows the user's key overrides. */
+export function useCommandSource(
+  registry: CommandRegistry,
+  keyboard: KeyboardPlatform,
+  settings: Pick<SettingsStore, 'get' | 'subscribe'>,
+): CommandSource {
+  const keys = useKeyOverrides(settings);
+  return useMemo(() => ({ registry, keyboard, keys }), [registry, keyboard, keys]);
 }
 
 export const CommandSourceContext = createContext<CommandSource | undefined>(undefined);
