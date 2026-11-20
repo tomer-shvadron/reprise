@@ -12,7 +12,7 @@ describe('LibraryCrumb', () => {
     const run = spyOnCommand(registry, 'library.show');
     await userEvent.click(screen.getByRole('button', { name: 'Library' }));
     expect(run).toHaveBeenCalledOnce();
-    expect(services.ui.getState().screen).toBe('library');
+    expect(services.ui.getState().sheet).toBe('library');
   });
 
   it('does not take focus on a click', () => {

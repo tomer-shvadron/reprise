@@ -30,6 +30,7 @@ export function LossDialog<T extends string>({
   cancel,
   cancelLabel = 'Cancel',
   busy = false,
+  onOpenAutoFocus,
   onCloseAutoFocus,
   onChoose,
   children,
@@ -44,6 +45,8 @@ export function LossDialog<T extends string>({
   cancelLabel?: string;
   /** Disables every button and Escape, while what a choice started is still running. */
   busy?: boolean;
+  /** Fires before focus moves in, so the opener can be remembered. */
+  onOpenAutoFocus?: (event: Event) => void;
   /** Where focus goes when the dialog closes; the default is back to what had it. */
   onCloseAutoFocus?: (event: Event) => void;
   onChoose: (value: T) => void;
@@ -57,7 +60,11 @@ export function LossDialog<T extends string>({
         if (!next && !busy) onChoose(cancel);
       }}
     >
-      <DialogContent showCloseButton={false} {...(onCloseAutoFocus && { onCloseAutoFocus })}>
+      <DialogContent
+        showCloseButton={false}
+        {...(onOpenAutoFocus && { onOpenAutoFocus })}
+        {...(onCloseAutoFocus && { onCloseAutoFocus })}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>

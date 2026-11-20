@@ -139,7 +139,7 @@ export function showOnlyTrack(services: AppServices, id: Id): void {
  */
 export function openSong(services: AppServices, id: Id): void {
   if (services.document.getState().songId === id) {
-    services.ui.getState().setScreen('player');
+    services.ui.getState().closeSheet();
     return;
   }
   void libraryOf(services).requestOpenSong(id, { report: 'notice' });

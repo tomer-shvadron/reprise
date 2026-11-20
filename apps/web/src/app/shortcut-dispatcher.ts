@@ -39,14 +39,24 @@ const NAVIGATION_KEYS = new Set([
 ]);
 
 /**
- * The commands that close their own dialog, the one shortcut that dialog lets through: each maps
- * to the attribute marking its content, so a toggle passes only when its dialog is the sole modal.
+ * The commands an open modal lets through: each maps to the attribute marking the content of the
+ * modal it passes, and it passes only when every open modal carries that attribute. A dialog's own
+ * toggle (the palette, the cheat sheet) is the sole modal; the app sheets (the Library and
+ * Sounds, `data-app-sheet`) are browsing surfaces, not forms, so a drop onto them imports, and
+ * Space still plays and pauses (a text field keeps its own Space, see `leavesKeyToTarget`).
+ *
+ * `app.contextMenu` (#368, Shift+F10) is deliberately not here: its fallback with focus on the body
+ * is the score behind the sheet. The PR that puts the first context menu inside a sheet (#337's
+ * library rows) adds the entry together with a guard in `openFocusedMenu` for an open modal. The
+ * two PRs do not conflict textually, so nothing else would remind whoever lands second.
  */
-const TOGGLE_MARKER: Readonly<Record<string, string>> = {
+const PASSES_MODAL: Readonly<Record<string, string>> = {
   'app.commandPalette': 'data-command-palette',
   'app.goToBar': 'data-command-palette',
   'app.shortcuts': 'data-shortcut-sheet',
   'app.shortcutsAlt': 'data-shortcut-sheet',
+  'app.drop': 'data-app-sheet',
+  'transport.playPause': 'data-app-sheet',
 };
 
 /**
@@ -72,14 +82,14 @@ function openModals(): Element[] {
 
 /**
  * Whether an open modal stops this command, for a shortcut and for the desktop menu alike (the
- * menu accelerator fires when the dispatcher lets a keydown through). Only a dialog's own
- * toggle passes, and only when that dialog is the sole modal, so Cmd+K closes the palette but opens
- * no second one over another dialog.
+ * menu accelerator fires when the dispatcher lets a keydown through). Only the commands in
+ * `PASSES_MODAL` pass, and only when every open modal is the kind they name, so Cmd+K closes the
+ * palette but opens no second one over another dialog.
  */
 export function modalBlocksCommand(id: string): boolean {
   const modals = openModals();
   if (modals.length === 0) return false;
-  const marker = TOGGLE_MARKER[id];
+  const marker = PASSES_MODAL[id];
   if (marker === undefined) return true;
   return modals.some((modal) => !modal.hasAttribute(marker));
 }
@@ -122,8 +132,11 @@ function leavesKeyToTarget(event: KeyboardEvent): boolean {
  * What never runs a command (the one place these rules live; the keyboard-shortcuts reference
  * summarises them for users):
  * - Any shortcut while a modal dialog is open, except a dialog's own toggle (Cmd/Ctrl+K for the
- *   palette, Cmd/Ctrl+G to switch the open palette to a bar number, ? or Cmd/Ctrl+/ for the cheat sheet) when that dialog is the only modal. Escape and the rest stay with the dialog. The desktop menu obeys the
- *   same rule through `menuCommandAllowed`.
+ *   palette, Cmd/Ctrl+G to switch the open palette to a bar number, ? or Cmd/Ctrl+/ for the cheat
+ *   sheet) when that dialog is the only modal, and Space for play and pause (`transport.playPause`)
+ *   when every open modal is an app sheet (the Library or Sounds), outside a text field and off a
+ *   control that takes Space itself. Escape and the rest stay with the dialog. The desktop menu
+ *   obeys the same rule through `menuCommandAllowed`, so its Play/Pause also runs over a sheet.
  * - A key that was already handled (`defaultPrevented`) or is part of IME composition.
  * - A bare key (no Cmd or Ctrl) typed in a text field, and Space or Enter on a focused control.
  * - Arrows, Home, End and Page keys in a text field, select, range or checkbox, whatever the

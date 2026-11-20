@@ -343,7 +343,7 @@ describe('SoundManager: drops on rows', () => {
       services,
     );
     act(() => {
-      services.ui.getState().setScreen('sounds');
+      services.ui.getState().showSheet('sounds');
     });
     const file = new File([bytes.slice()], 'x.zip');
     const transfer = { types: ['Files'], items: [], files: [file] };
@@ -358,7 +358,7 @@ describe('SoundManager: drops on rows', () => {
       ).toBeInTheDocument();
     });
     act(() => {
-      services.ui.getState().setScreen('player');
+      services.ui.getState().closeSheet();
     });
     expect(screen.queryByText('Drop to open')).toBeNull();
   });

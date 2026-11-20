@@ -66,6 +66,6 @@ export async function resumePractice(
   // then starts at the loop's start, since the engine moves a start outside the loop to it. The
   // same load is why a loop the engine cannot play is only dropped there, not rejected above.
   if (seekTo !== undefined && playback.getState().song.status === 'ready') audio.seek(seekTo);
-  ui.getState().setScreen('player');
+  ui.getState().closeSheet();
   announce(['Resumed practice.', ...notes].join(' '));
 }

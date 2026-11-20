@@ -29,7 +29,7 @@ import { RemovePackDialog } from './remove-pack-dialog';
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /**
- * The Sounds screen: installed packs, the curated list (download or choose a zip), a custom
+ * The Sounds sheet: installed packs, the curated list (download or choose a zip), a custom
  * install from a folder or zip, remove, and what went wrong. A zip or folder dropped anywhere
  * on it installs as a custom pack; one dropped on a curated row (installed or not) installs that
  * pack. The memory panel is at the top and the effects demo stays below.
@@ -49,7 +49,7 @@ export function SoundManager() {
   const busy = job !== undefined;
 
   // Focus: what a click removed (a row, the progress block, a problem) leaves focus on <body>,
-  // where Escape no longer reaches the screen. Each action names the element that gets it next.
+  // where Escape no longer reaches the sheet. Each action names the element that gets it next.
   const focusTarget = useRef<string | undefined>(undefined);
   const applyFocus = () => {
     const key = focusTarget.current;
@@ -187,8 +187,13 @@ export function SoundManager() {
         onDrop(event.dataTransfer);
       }}
     >
-      <div className="flex items-center gap-3">
-        <h1 className="text-lg font-semibold" tabIndex={-1} data-focus="screen-heading">
+      <div className="flex items-center gap-3 pr-10">
+        <h1
+          className="text-lg font-semibold outline-none"
+          tabIndex={-1}
+          data-focus="screen-heading"
+          data-sheet-initial-focus
+        >
           Sounds
         </h1>
         <div className="ml-auto flex gap-2">
@@ -222,7 +227,7 @@ export function SoundManager() {
       </div>
       <p className="text-muted-foreground text-sm">
         Sound packs replace General MIDI on a track. Drop a pack&rsquo;s zip or folder anywhere on
-        this screen, or drop a zip on a pack below.
+        this sheet, or drop a zip on a pack below.
       </p>
       {job && (
         <InstallProgress

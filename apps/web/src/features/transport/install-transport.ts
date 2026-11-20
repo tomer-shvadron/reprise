@@ -25,6 +25,10 @@ export interface TransportDeps {
   selection: SelectionStore;
   transport: TransportUiStore;
   settings: SettingsStore;
+  /** The pack installs, so the start of one is announced while the Sounds sheet is closed. */
+  installJob?: {
+    subscribe(listener: (state: { job: { name: string } | undefined }) => void): () => void;
+  };
   /** Where the pre-#343 preferences blob is looked for; `localStorage` by default. */
   legacyStorage?: () => Storage;
 }
@@ -89,6 +93,13 @@ export function installTransport(deps: TransportDeps): () => void {
     if (!disposed) void importLegacyTransportPreferences(settings, legacyStorage);
   });
 
+  // Politely, once per install: the sheet's own announcer is unmounted while it is closed.
+  let installing: string | undefined;
+  const unsubscribeInstall = deps.installJob?.subscribe(({ job }) => {
+    if (job?.name === installing) return;
+    installing = job?.name;
+    if (installing !== undefined) transport.getState().announce(`Installing ${installing}`);
+  });
   const unsubscribeSounds = playback.subscribe((state, previous) => {
     const stage = soundStatus(state)?.stage;
     if (stage !== undefined && stage !== soundStatus(previous)?.stage) {
@@ -135,6 +146,7 @@ export function installTransport(deps: TransportDeps): () => void {
     for (const unsubscribe of unsubscribeSettings) unsubscribe();
     unsubscribePlayback();
     unsubscribeSounds();
+    unsubscribeInstall?.();
     unsubscribeDocument();
     unsubscribeSelection();
   };
