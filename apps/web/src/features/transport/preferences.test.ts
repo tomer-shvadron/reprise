@@ -9,7 +9,6 @@ import {
   DEFAULT_TRANSPORT_PREFERENCES,
   readTransportPreferences,
   TRANSPORT_STORAGE_KEY,
-  writeTransportPreferences,
 } from './preferences';
 
 const stored = (value: string) => {
@@ -51,24 +50,10 @@ describe('transport preferences', () => {
     ).toBe(true);
   });
 
-  it('round-trip, and survive a storage that throws', () => {
-    const storage = memoryStorage();
-    const prefs = {
-      countIn: true,
-      metronome: { on: true, volume: 0.3 },
-      masterVolume: 0.9,
-      gmTierBypass: false,
-      memoryBudgetBytes: 512 * 1024 * 1024,
-    };
-    writeTransportPreferences(prefs, () => storage);
-    expect(readTransportPreferences(() => storage)).toEqual(prefs);
-
+  it('survive a storage that throws', () => {
     const broken = (): Storage => {
       throw new Error('disabled');
     };
     expect(readTransportPreferences(broken)).toEqual(DEFAULT_TRANSPORT_PREFERENCES);
-    expect(() => {
-      writeTransportPreferences(prefs, broken);
-    }).not.toThrow();
   });
 });

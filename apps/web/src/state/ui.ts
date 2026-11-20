@@ -6,7 +6,7 @@ import {
   readStoredBottomPanelHeight,
   writeStoredBottomPanelHeight,
 } from './bottom-panel-storage';
-import { initialTheme, writeStoredTheme, type Theme } from './theme';
+import { initialTheme, type Theme } from './theme';
 
 export { BOTTOM_PANEL_HEIGHT };
 
@@ -64,8 +64,8 @@ export interface UiState {
   /** The shortcuts cheat sheet (WP-101). */
   shortcutsOpen: boolean;
   follow: UiFollow;
+  /** The theme on screen; the choice is the `appearance.theme` setting, which `installTheme` applies here. */
   setTheme: (theme: Theme) => void;
-  toggleTheme: () => void;
   setPanelOpen: (panel: PanelId, open: boolean) => void;
   togglePanel: (panel: PanelId) => void;
   /** Closes the right panel when it shows the mixer; otherwise shows the mixer there, opening it. */
@@ -124,11 +124,7 @@ export function createUiStore(theme: Theme = initialTheme()) {
     shortcutsOpen: false,
     follow: { on: true, request: 0 },
     setTheme: (next) => {
-      writeStoredTheme(next);
       set({ theme: next });
-    },
-    toggleTheme: () => {
-      get().setTheme(get().theme === 'dark' ? 'light' : 'dark');
     },
     setPanelOpen: (panel, open) => {
       set((state) => ({ panels: { ...state.panels, [panel]: open } }));

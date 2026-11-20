@@ -1,7 +1,18 @@
+import { z } from 'zod';
+
+import { defineSetting } from '@/state/settings';
+
 import type { SongRow } from './db/rows';
 
 export const SORTS = ['title', 'artist', 'lastOpened', 'imported'] as const;
 export type SortKey = (typeof SORTS)[number];
+
+/** The library's sort; the row key is the one the library has always used, so no data moves. */
+export const LIBRARY_SORT_SETTING = defineSetting({
+  key: 'library.sort',
+  schema: z.enum(SORTS),
+  default: 'title',
+});
 
 export function isSortKey(value: unknown): value is SortKey {
   return SORTS.some((key) => key === value);

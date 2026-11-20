@@ -1,6 +1,7 @@
 import { startNewSong } from '@/features/editor';
 import { libraryOf } from '@/features/library/library';
 import type { MenuCommandId } from '@/platform/bridge';
+import { THEME_SETTING } from '@/state/app-settings';
 import { ZOOM } from '@/state/ui';
 
 import type { Command } from './command-registry';
@@ -21,7 +22,7 @@ export type AppCommandId =
 type AppCommand = Command & { id: AppCommandId };
 
 export function appCommands(services: AppServices): AppCommand[] {
-  const { ui, print, document } = services;
+  const { ui, print, document, settings } = services;
   const zoomBy = (delta: number) => {
     ui.getState().setZoom(Math.round((ui.getState().zoom + delta) * 10) / 10);
   };
@@ -151,7 +152,7 @@ export function appCommands(services: AppServices): AppCommand[] {
       title: 'Toggle light and dark theme',
       shortcut: { key: 'l', mod: true, shift: true },
       run: () => {
-        ui.getState().toggleTheme();
+        settings.set(THEME_SETTING, ui.getState().theme === 'dark' ? 'light' : 'dark');
       },
     },
     {

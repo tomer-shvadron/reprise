@@ -1,32 +1,12 @@
+import { THEME_SETTING, THEME_STORAGE_KEY } from './app-settings';
+import { readEarlySetting } from './settings';
+
+export { THEME_STORAGE_KEY };
+
+/** What is on screen; the stored choice (`appearance.theme`) may also be `system`. */
 export type Theme = 'dark' | 'light';
 
-export const THEME_STORAGE_KEY = 'reprise.theme';
-
-function isTheme(value: unknown): value is Theme {
-  return value === 'dark' || value === 'light';
-}
-
-export function readStoredTheme(
-  storage: () => Storage = () => window.localStorage,
-): Theme | undefined {
-  try {
-    const value = storage().getItem(THEME_STORAGE_KEY);
-    return isTheme(value) ? value : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-export function writeStoredTheme(
-  theme: Theme,
-  storage: () => Storage = () => window.localStorage,
-): void {
-  try {
-    storage().setItem(THEME_STORAGE_KEY, theme);
-  } catch {
-    // Storage can be disabled or full; the theme still applies for this session.
-  }
-}
+export type ThemePreference = 'system' | Theme;
 
 export function systemTheme(): Theme {
   try {
@@ -36,6 +16,12 @@ export function systemTheme(): Theme {
   }
 }
 
+export function resolveTheme(preference: ThemePreference, prefersLight: boolean): Theme {
+  if (preference === 'system') return prefersLight ? 'light' : 'dark';
+  return preference;
+}
+
+/** The theme at startup, read the way `public/theme-bootstrap.js` reads it, before any hydration. */
 export function initialTheme(): Theme {
-  return readStoredTheme() ?? systemTheme();
+  return resolveTheme(readEarlySetting(THEME_SETTING), systemTheme() === 'light');
 }

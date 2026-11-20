@@ -42,6 +42,9 @@ Electron requires a native module rebuilt for Electron's Node version on every u
   checkpoint.
 - Export to Guitar Pro formats (ADR-0008) writes outside the library folder by default, so
   the library remains native files plus the original imports.
+- Changed by #343: the `settings` table is the home of every preference, through the settings
+  store (`state/settings.ts`), with one exception: the theme, which the pre-paint script reads
+  synchronously, stays in `localStorage['reprise.theme']`.
 
 ## Related
 

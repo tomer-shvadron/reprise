@@ -11,6 +11,7 @@ import { createUiStore } from '@/state/ui';
 import { fetchFixture, fetchSyntheticSf2 } from './assets';
 import { drive, manualTicker } from './offline';
 import { fakePlatform, memoryStorage } from './services';
+import { createTestSettings } from './settings-backend';
 
 const SAMPLE_RATE = 44_100;
 export const PLAYER_START = 0.1;
@@ -25,7 +26,7 @@ export function player(soundfont: () => Promise<Uint8Array> = fetchSyntheticSf2)
   // Each player its own storage, so one test's stored preferences never reach the next.
   const storage = memoryStorage();
   const services = createAppServices({
-    storage: () => storage,
+    settings: createTestSettings(undefined, storage),
     platform: fakePlatform({ openFile: () => Promise.resolve(next.file) }),
     ui: createUiStore('light'),
     audio: (playback, sounds) =>

@@ -25,8 +25,6 @@ export interface SongsRepository {
   touch(id: Id, openedAt: number): Promise<void>;
   /** Most recently opened first; never-opened songs are not listed. */
   recents(limit: number): Promise<SongRow[]>;
-  getSetting(key: string): Promise<unknown>;
-  setSetting(key: string, value: unknown): Promise<void>;
 }
 
 function valid(raw: unknown): SongRow | undefined {
@@ -68,12 +66,6 @@ export function createSongsRepository(db: RepriseDb): SongsRepository {
     async recents(limit) {
       const raw = await db.songs.orderBy('lastOpenedAt').reverse().limit(limit).toArray();
       return raw.flatMap((row) => valid(row) ?? []);
-    },
-    async getSetting(key) {
-      return (await db.settings.get(key))?.value;
-    },
-    async setSetting(key, value) {
-      await db.settings.put({ key, value });
     },
   };
 }

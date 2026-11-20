@@ -15,6 +15,7 @@ import {
   DraftRecoveryDialog,
   ExportDialog,
   installLibrary,
+  installSettings,
   libraryOf,
   LibraryScreen,
   RecentSongs,
@@ -32,6 +33,7 @@ import type { PanelView } from '@/state/ui';
 import { AppFrame } from './app-frame';
 import { AppHeader } from './header/app-header';
 import { installCloseGuard } from './close-guard';
+import { installTheme } from './install-theme';
 import { CommandPalette } from './command-palette';
 import { ShortcutSheet } from './shortcut-sheet';
 import { createAppRegistry } from './app-registry';
@@ -93,6 +95,13 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
       }),
     [audio],
   );
+
+  // The persisted preferences, loaded from the library's database; attach is idempotent.
+  useEffect(() => {
+    installSettings(services, libraryOf(services).db);
+  }, [services]);
+
+  useEffect(() => installTheme(services), [services]);
 
   useEffect(() => installLibrary(services), [services]);
 
