@@ -53,6 +53,7 @@ export function fullScore(): Score {
       tremoloPicking: 16,
       pickStroke: 'down',
       golpe: 'thumb',
+      wah: 'closed',
       fadeIn: true,
       arpeggio: { direction: 'up', duration: 16 },
       brush: { direction: 'down' },

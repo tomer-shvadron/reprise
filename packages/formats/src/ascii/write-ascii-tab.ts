@@ -67,7 +67,7 @@ function toWarning(dropped: AsciiDropCollector['dropped'][number]): Warning {
  * the text. A tied note is dashes; a trill is `7tr9`.
  *
  * Absent by the format's convention and not reported: rhythm and tuplets, dynamics, accents,
- * staccato, fingering, fades, volume swells, key signatures, clefs and mixer changes. What a
+ * staccato, fingering, fades, volume swells, golpes, pick scrapes, key signatures, clefs and mixer changes. What a
  * reader would expect and will not find is reported in `dropped` (see `AsciiDropCode`).
  *
  * Output is ASCII except the user's own text (titles, chord names, lyrics). Widths count code

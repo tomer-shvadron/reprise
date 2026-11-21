@@ -427,6 +427,9 @@ class BodyWriter {
       xml.cdata('FreeText', beat.text);
     }
     xml.empty('Rhythm', { ref: String(rhythm) });
+    // Guitar Pro 8 writes the golpe between `Rhythm` and `Notes` (fixtures/gp/golpe.gp).
+    if (effects.golpe !== undefined)
+      xml.text('Golpe', effects.golpe === 'thumb' ? 'Thumb' : 'Finger');
     if (noteIds.length > 0) xml.text('Notes', noteIds.join(' '));
 
     xml.open('Properties');

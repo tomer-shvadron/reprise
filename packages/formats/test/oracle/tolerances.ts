@@ -52,6 +52,9 @@ const isBeatField = (difference: Difference, field: string): boolean =>
 const isNoteField = (difference: Difference, field: string): boolean =>
   NOTE_FIELD.exec(difference.path)?.groups?.['field'] === field;
 
+const NOTE_PATH = /\.beats\[\d+\]\.notes\[(?<note>\d+)\]\.\w+$/;
+const SLIDE_OUTS: readonly string[] = ['shift', 'legato', 'outDown', 'outUp'];
+
 const NOTE_DENOMINATORS: readonly number[] = [4, 8, 16, 32, 64, 128];
 
 const stroke = (value: unknown): { direction: string; duration: number } | undefined => {
@@ -373,6 +376,24 @@ export const TOLERANCES: readonly Tolerance[] = [
         index > 0 ? beats[index - 1] : own.bars[bar - 1]?.voices[voice]?.beats.at(-1);
       const held = previous?.notes.map((note) => note.value) ?? [];
       return held.includes(d.ours) && held.includes(d.alphaTab);
+    },
+  },
+  {
+    id: 'pick-scrape-keeps-slide-out',
+    formats: GPIF_ONLY,
+    why: "A note can carry a pick slide (`Slide/Flags` 64 or 128) and a slide out (4, 8, 1 or 2) at once, and we keep both as `pickScrape` and `slide`. alphaTab 1.8.4's `GpifParser` reads the flags into the single `slideOutType`, so the pick slide replaces the slide out there and the slide out is lost. Accepted where both sides hold the same pick scrape on the note and the slides differ only by the slide-out kinds ours keeps.",
+    applies: (d) => {
+      const at = NOTE_PATH.exec(d.path)?.groups;
+      if (at === undefined || d.field !== 'slides') return false;
+      if (!Array.isArray(d.ours) || !Array.isArray(d.alphaTab) || d.beat === undefined)
+        return false;
+      const index = Number(at['note']);
+      const [mine, theirs] = [d.beat.ours.notes[index], d.beat.alphaTab.notes[index]];
+      if (mine?.pickScrape == null || mine.pickScrape !== theirs?.pickScrape) return false;
+      const rest = d.ours.filter((kind) => !SLIDE_OUTS.includes(String(kind)));
+      return (
+        d.ours.length > d.alphaTab.length && JSON.stringify(rest) === JSON.stringify(d.alphaTab)
+      );
     },
   },
   {

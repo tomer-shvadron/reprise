@@ -94,6 +94,48 @@ describe('notes', () => {
     });
   });
 
+  it.each([
+    [64, 'down', undefined],
+    [128, 'up', undefined],
+    [192, 'down', undefined],
+    [64 + 4, 'down', ['outDown']],
+    [8, undefined, ['outUp']],
+  ] as const)('reads slide flags %i as pick scrape %s and slide %j', (flags, scrape, slide) => {
+    const properties = property('Slide', `<Flags>${String(flags)}</Flags>`);
+    const { score, warnings } = read(
+      oneBar([beat('0', '0', '0')], [note('0', 2, 5, '', properties)], QUARTERS),
+    );
+    expect(firstNote(score)?.pickScrape).toBe(scrape);
+    expect(firstNote(score)?.slide).toEqual(slide);
+    expect(warnings).toEqual([]);
+  });
+
+  it.each([
+    ['Thumb', 'thumb'],
+    ['Finger', 'finger'],
+  ] as const)('reads a %s golpe, on a rest too', (text, golpe) => {
+    const element = `<Golpe>${text}</Golpe>`;
+    const { score, warnings } = read(
+      oneBar(
+        [beat('0', '0', '0', element), beat('1', '0', '', element)],
+        [note('0', 2, 5)],
+        QUARTERS,
+      ),
+    );
+    expect(beatsOf(score).map((b) => b.effects.golpe)).toEqual([golpe, golpe]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('reports an unknown golpe value', () => {
+    const { score, warnings } = read(
+      oneBar([beat('0', '0', '0', '<Golpe>Elbow</Golpe>')], [note('0', 2, 5)], QUARTERS),
+    );
+    expect(beatsOf(score)[0]?.effects.golpe).toBeUndefined();
+    expect(warnings).toContainEqual(
+      expect.objectContaining({ code: 'unknown-value', path: 'Beats/Beat[0]/Golpe' }),
+    );
+  });
+
   it('reads bends as point lists in model units', () => {
     const properties = [
       property('Bended', '<Enable />'),
