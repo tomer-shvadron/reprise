@@ -182,6 +182,8 @@ async function closeQuietly(running: { app?: ElectronApplication }): Promise<voi
  * process (#428). The web e2e grants the clipboard permission to Chromium itself, which hides
  * whether the desktop app grants it: this is the only check of that grant
  * (apps/desktop/src/main/permission.ts), and of a copy that runs after the menu has closed.
+ * It clears the real system clipboard and leaves a PNG of the score on it, which a local run of
+ * `pnpm desktop:smoke` will show.
  */
 async function checkClipboardCopies(app: ElectronApplication, page: Page): Promise<void> {
   const system = page.locator('[data-system-id]').first();
@@ -196,11 +198,20 @@ async function checkClipboardCopies(app: ElectronApplication, page: Page): Promi
     await page.mouse.click(box.x + 200, box.y + box.height / 2, { button: 'right' });
     await page.getByRole('menuitem', { name }).click();
   };
+  // A refused copy raises an error notice and leaves the clipboard empty: name its reason at once
+  // instead of timing out.
+  const failOnNotice = async (what: string): Promise<void> => {
+    const alerts = await page.getByRole('alert').allInnerTexts();
+    const text = alerts.map((alert) => alert.replace(/\s+/gu, ' ').trim()).find(Boolean);
+    if (text !== undefined) throw new Error(`${what} raised a notice: ${text}`);
+  };
   const ascii = async (name: RegExp, what: string): Promise<void> => {
     await choose(name);
     const text = await waitFor(`the ASCII tab on the system clipboard (${what})`, async () => {
       const read = await app.evaluate(({ clipboard }) => clipboard.readText());
-      return read === '' ? undefined : read;
+      if (read !== '') return read;
+      await failOnNotice(what);
+      return undefined;
     });
     check(
       /Tuning: /.test(text) && /^[eEBGDA]\|/mu.test(text),
@@ -219,7 +230,9 @@ async function checkClipboardCopies(app: ElectronApplication, page: Page): Promi
       const png = items.find((item) => item.types.includes('image/png'));
       return png ? (await png.getType('image/png')).size : 0;
     });
-    return size > 0 && size;
+    if (size > 0) return size;
+    await failOnNotice('Copy as image');
+    return false;
   });
   check(true, `Copy as image puts a ${String(bytes)}-byte PNG on the system clipboard`);
 }
@@ -395,9 +408,14 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
       await page.getByRole('button', { name: 'Play' }).waitFor();
     }
 
-    // Autosave: an edit, the draft on disk, a kill, a relaunch on the same profile, a recovery.
-    if (process.platform !== 'win32') await page.getByRole('button', { name: 'Pause' }).click();
+    if (process.platform !== 'win32') {
+      await page.getByRole('button', { name: 'Pause' }).click();
+      // Settled, so the clipboard step's one measurement of the system's box stays true.
+      await page.getByRole('button', { name: 'Play' }).waitFor();
+    }
     await checkClipboardCopies(app, page);
+
+    // Autosave: an edit, the draft on disk, a kill, a relaunch on the same profile, a recovery.
     const slider = await volumeSlider(page);
     const before = Number(await slider.getAttribute('aria-valuenow'));
     await slider.focus();
