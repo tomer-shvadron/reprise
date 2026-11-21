@@ -13,6 +13,10 @@
  * workflow does) it checks app.getVersion(); on Windows it also starts the tuner on Chromium's
  * fake microphone.
  *
+ * It also copies a bar as ASCII tab and as an image through the context menu and reads both back
+ * from the system clipboard (#428), which the web e2e cannot: Chromium's own grant hides the
+ * desktop app's.
+ *
  * Then it makes an edit, waits for the draft on disk, kills the app with SIGKILL, relaunches it on
  * the same profile, recovers the draft, checks the edit is there, and closes the window to check
  * the unsaved-changes prompt (Don't save closes it and removes the draft).
@@ -170,6 +174,67 @@ async function closeQuietly(running: { app?: ElectronApplication }): Promise<voi
     running.app?.close().catch(() => undefined),
     new Promise((resolve) => setTimeout(resolve, 10_000)),
   ]);
+}
+
+/**
+ * Copy as ASCII tab and Copy as image from the score's context menus (the bar's, then the menu of
+ * the bar selection the first copy leaves), read back from the system clipboard in the main
+ * process (#428). The web e2e grants the clipboard permission to Chromium itself, which hides
+ * whether the desktop app grants it: this is the only check of that grant
+ * (apps/desktop/src/main/permission.ts), and of a copy that runs after the menu has closed.
+ * It clears the real system clipboard and leaves a PNG of the score on it, which a local run of
+ * `pnpm desktop:smoke` will show.
+ */
+async function checkClipboardCopies(app: ElectronApplication, page: Page): Promise<void> {
+  const system = page.locator('[data-system-id]').first();
+  const box = await system.boundingBox();
+  if (!box) throw new Error('the first system has no box to right-click');
+  const choose = async (name: RegExp): Promise<void> => {
+    // The last menu is still closing, and a right-click then lands on it.
+    await page.getByRole('menu').waitFor({ state: 'hidden' });
+    await app.evaluate(({ clipboard }) => {
+      clipboard.clear();
+    });
+    await page.mouse.click(box.x + 200, box.y + box.height / 2, { button: 'right' });
+    await page.getByRole('menuitem', { name }).click();
+  };
+  // A refused copy raises an error notice and leaves the clipboard empty: name its reason at once
+  // instead of timing out.
+  const failOnNotice = async (what: string): Promise<void> => {
+    const alerts = await page.getByRole('alert').allInnerTexts();
+    const text = alerts.map((alert) => alert.replace(/\s+/gu, ' ').trim()).find(Boolean);
+    if (text !== undefined) throw new Error(`${what} raised a notice: ${text}`);
+  };
+  const ascii = async (name: RegExp, what: string): Promise<void> => {
+    await choose(name);
+    const text = await waitFor(`the ASCII tab on the system clipboard (${what})`, async () => {
+      const read = await app.evaluate(({ clipboard }) => clipboard.readText());
+      if (read !== '') return read;
+      await failOnNotice(what);
+      return undefined;
+    });
+    check(
+      /Tuning: /.test(text) && /^[eEBGDA]\|/mu.test(text),
+      `${what} puts the ASCII tab on the system clipboard`,
+    );
+  };
+
+  await ascii(/^Copy bar as ASCII tab$/, 'Copy bar as ASCII tab');
+  // That copy selected the bar, so the next right-click opens the selection's menu.
+  await ascii(/^Copy as ASCII tab$/, 'Copy as ASCII tab (selection menu)');
+  await choose(/^Copy as image$/);
+  // Electron's clipboard reads as ClipboardItems; an image arrives as an image/png blob.
+  const bytes = await waitFor('the image on the system clipboard', async () => {
+    const size = await app.evaluate(async ({ clipboard }) => {
+      const items = await clipboard.read();
+      const png = items.find((item) => item.types.includes('image/png'));
+      return png ? (await png.getType('image/png')).size : 0;
+    });
+    if (size > 0) return size;
+    await failOnNotice('Copy as image');
+    return false;
+  });
+  check(true, `Copy as image puts a ${String(bytes)}-byte PNG on the system clipboard`);
 }
 
 async function main(profileDir: string, running: { app?: ElectronApplication }): Promise<void> {
@@ -343,8 +408,14 @@ async function main(profileDir: string, running: { app?: ElectronApplication }):
       await page.getByRole('button', { name: 'Play' }).waitFor();
     }
 
+    if (process.platform !== 'win32') {
+      await page.getByRole('button', { name: 'Pause' }).click();
+      // Settled, so the clipboard step's one measurement of the system's box stays true.
+      await page.getByRole('button', { name: 'Play' }).waitFor();
+    }
+    await checkClipboardCopies(app, page);
+
     // Autosave: an edit, the draft on disk, a kill, a relaunch on the same profile, a recovery.
-    if (process.platform !== 'win32') await page.getByRole('button', { name: 'Pause' }).click();
     const slider = await volumeSlider(page);
     const before = Number(await slider.getAttribute('aria-valuenow'));
     await slider.focus();

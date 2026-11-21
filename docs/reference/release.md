@@ -18,7 +18,7 @@ The `package (...)` checks are path-filtered and not required: only `ci` gates a
 | `macos-15-intel` | `Reprise-<v>-mac-x64.dmg` and `.zip`                      |
 | `windows-2025`   | `Reprise-<v>-windows-x64-setup.exe` (NSIS, per-user)      |
 
-Per job: install, resolve the version, build with `electron-builder` (`--publish never`, no signing identity), on macOS `codesign --verify --deep --strict` on the app, then `pnpm desktop:smoke` with `REPRISE_EXPECTED_VERSION`. The smoke checks the shipped fuses, that the sandbox holds, that the version is the one built, then opens a fixture, plays it, edits, kills the app, recovers the draft, closes the window and expects exit code 0; on Windows it also starts the tuner on Chromium's fake microphone. The installers are uploaded as the artifact `installers-<target>` for 14 days, so a PR's installer can be tried before any tag exists.
+Per job: install, resolve the version, build with `electron-builder` (`--publish never`, no signing identity), on macOS `codesign --verify --deep --strict` on the app, then `pnpm desktop:smoke` with `REPRISE_EXPECTED_VERSION`. The smoke checks the shipped fuses, that the sandbox holds, that the version is the one built, then opens a fixture, plays it, copies a bar as ASCII tab and the selection as ASCII tab and as an image and reads them back from the system clipboard, edits, kills the app, recovers the draft, closes the window and expects exit code 0; on Windows it also starts the tuner on Chromium's fake microphone. The installers are uploaded as the artifact `installers-<target>` for 14 days, so a PR's installer can be tried before any tag exists.
 
 **`release`**, only on a `v*` tag, with `contents: write` (every other job has `contents: read`):
 
