@@ -68,6 +68,16 @@ describe('keyboard', () => {
     expect(ariaKeyShortcuts({ key: 'm', alt: true, shift: true }, 'mac')).toBe('Alt+Shift+M');
   });
 
+  it('writes valid WAI-ARIA tokens for punctuation', () => {
+    expect(ariaKeyShortcuts({ key: '+', mod: true }, 'mac')).toBe('Meta+Plus');
+    expect(ariaKeyShortcuts({ key: '+', shift: true }, 'other')).toBe('Plus');
+    expect(ariaKeyShortcuts({ key: '?', shift: true }, 'other')).toBe('Shift+/');
+    expect(ariaKeyShortcuts({ key: ':', shift: true }, 'other')).toBe('Shift+;');
+    expect(ariaKeyShortcuts({ key: '!', shift: true }, 'other')).toBe('Shift+1');
+    expect(ariaKeyShortcuts({ key: '[' }, 'other')).toBe('[');
+    expect(ariaKeyShortcuts({ key: '=' }, 'other')).toBe('=');
+  });
+
   it('names the arrows and passes them to aria as KeyboardEvent names', () => {
     expect(formatShortcut({ key: 'ArrowDown', mod: true }, 'mac')).toBe('⌘↓');
     expect(formatShortcut({ key: 'ArrowUp', mod: true }, 'other')).toBe('Ctrl+Up');

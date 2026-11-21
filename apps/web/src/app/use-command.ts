@@ -86,6 +86,8 @@ export const CommandSourceContext = createContext<CommandSource | undefined>(und
 export interface BoundCommand {
   run: () => void;
   title: string;
+  /** The platform the keys are spelled for. */
+  keyboard: KeyboardPlatform;
   /** The first binding as the platform prints it, e.g. `⌥C`. */
   keys: string | undefined;
   /** Every binding: this command's key and its aliases', minus keys an active context takes over. */
@@ -124,7 +126,12 @@ function indexOf(registry: CommandRegistry): GroupIndex {
   return index;
 }
 
-/** A global command's key while an active context's command holds the same key, as the dispatcher ranks them. */
+/**
+ * A global command's key while an active context's command holds the same key, as the dispatcher
+ * ranks them. Deliberately ignores `enabled`: nothing re-renders a tooltip when it flips, and the
+ * rule shown to the user is simply "taken over while editing". `CommandRegistry.isShadowed` is the
+ * palette's version, which also asks for `enabled` and does not filter by platform.
+ */
 function takenOver(source: CommandSource, command: Command, shortcut: Shortcut): boolean {
   if (command.context !== undefined) return false;
   const id = shortcutId(shortcut);
@@ -134,8 +141,7 @@ function takenOver(source: CommandSource, command: Command, shortcut: Shortcut):
       theirs !== undefined &&
       shortcutId(theirs) === id &&
       other.context !== undefined &&
-      source.registry.isActive(other.context) &&
-      other.enabled?.() !== false
+      source.registry.isActive(other.context)
     );
   });
 }
@@ -148,7 +154,12 @@ export function bindCommand(source: CommandSource, id: RegisteredCommandId): Bou
   const bindings: Shortcut[] = [];
   for (const member of group) {
     const shortcut = shortcutOn(source.registry.shortcutOf(member), source.keyboard);
-    if (shortcut && !takenOver(source, member, shortcut)) bindings.push(shortcut);
+    if (!shortcut || takenOver(source, member, shortcut)) continue;
+    // Aliases can print alike (Shift+: and :), and one cap row is enough.
+    const printed = formatShortcut(shortcut, source.keyboard);
+    if (!bindings.some((have) => formatShortcut(have, source.keyboard) === printed)) {
+      bindings.push(shortcut);
+    }
   }
   const { keyboard } = source;
   const first = bindings[0];
@@ -157,6 +168,7 @@ export function bindCommand(source: CommandSource, id: RegisteredCommandId): Bou
       runCommand(command);
     },
     title: command.title,
+    keyboard,
     keys: first && formatShortcut(first, keyboard),
     bindings,
     ariaKeys:

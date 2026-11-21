@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { createTestServices } from '@/test/services';
 
 import { createAppRegistry } from './app-registry';
-import type { KeyboardPlatform } from './keyboard';
+import { formatShortcut, type KeyboardPlatform } from './keyboard';
 import {
   bindCommand,
   CommandSourceContext,
@@ -33,6 +33,16 @@ describe('bindCommand', () => {
     expect(other.keys).toBe('Ctrl+Shift+Z');
     expect(other.ariaKeys).toBe('Control+Shift+Z Control+Y');
     expect(other.spoken).toBe('Ctrl+Shift+Z or Ctrl+Y');
+  });
+
+  it('prints a group of alike-printing aliases once', () => {
+    const accent = shown('mac', 'editor.effect.heavyAccent');
+    expect(accent.bindings).toHaveLength(1);
+    expect(accent.spoken).not.toContain(' or ');
+    const shorter = shown('other', 'editor.durationShorter');
+    const printed = shorter.bindings.map((b) => formatShortcut(b, 'other'));
+    expect(new Set(printed).size).toBe(printed.length);
+    expect(shorter.ariaKeys).not.toMatch(/\+\+|\?/);
   });
 
   it('resolves a Windows twin from the command it shadows', () => {

@@ -1,10 +1,10 @@
-import { cloneElement, use, type FocusEvent, type ReactElement, type ReactNode } from 'react';
+import { cloneElement, useId, type FocusEvent, type ReactElement, type ReactNode } from 'react';
 
 import { Kbd, KbdGroup } from '@/components/ui/kbd';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import { shortcutParts, type KeyboardPlatform, type Shortcut } from './keyboard';
-import { CommandSourceContext, useCommand, type RegisteredCommandId } from './use-command';
+import { useCommand, type RegisteredCommandId } from './use-command';
 
 interface ShortcutKeysProps {
   bindings: readonly Shortcut[];
@@ -62,8 +62,7 @@ export function CommandTooltip({
   children,
 }: CommandTooltipProps) {
   const bound = useCommand(command);
-  const source = use(CommandSourceContext);
-  const platform = source?.keyboard ?? 'other';
+  const reasonId = useId();
   if (bound.bindings.length === 0 && whenUnbound === 'none' && reason === undefined) {
     return children;
   }
@@ -79,7 +78,6 @@ export function CommandTooltip({
     : (event: FocusEvent) => {
         event.preventDefault();
       };
-  const reasonId = reason === undefined ? undefined : `${command}-reason`;
 
   const trigger =
     reason === undefined ? (
@@ -106,7 +104,7 @@ export function CommandTooltip({
       </TooltipTrigger>
       <TooltipContent aria-label={accessibleLabel} side={side}>
         {reason === undefined ? label : `${label}: ${reason}`}
-        {keyed && <ShortcutKeys bindings={bound.bindings} platform={platform} />}
+        {keyed && <ShortcutKeys bindings={bound.bindings} platform={bound.keyboard} />}
       </TooltipContent>
     </Tooltip>
   );

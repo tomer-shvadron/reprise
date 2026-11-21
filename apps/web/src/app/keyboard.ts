@@ -110,16 +110,40 @@ export function formatShortcut(shortcut: Shortcut, platform: KeyboardPlatform): 
   return shortcutParts(shortcut, platform).join(platform === 'mac' ? '' : '+');
 }
 
-/** The shortcut in `aria-keyshortcuts` syntax, which names keys as `KeyboardEvent.key` does. */
+// The key that types a shifted punctuation character on a US layout. WAI-ARIA 1.2 asks for the
+// key that makes the character ("Shift+/"), never the character itself ("?" or "Shift+?").
+const SHIFTED_BASE: Readonly<Record<string, string>> = {
+  '?': '/',
+  ':': ';',
+  '!': '1',
+  '"': "'",
+  ')': '0',
+  $: '4',
+  '<': ',',
+  '>': '.',
+};
+
+/**
+ * The shortcut in `aria-keyshortcuts` syntax, which names keys as `KeyboardEvent.key` does, with
+ * WAI-ARIA's own spellings: `Plus` for a plus sign, which `+` as a separator could not carry.
+ */
 export function ariaKeyShortcuts(shortcut: Shortcut, platform: KeyboardPlatform): string {
+  const punctuation = shortcut.key.length === 1 && !/^[a-z\d ]$/i.test(shortcut.key);
+  const based = punctuation ? SHIFTED_BASE[shortcut.key] : undefined;
   const key =
     shortcut.key === ' '
       ? 'Space'
-      : shortcut.key.length === 1
-        ? shortcut.key.toUpperCase()
-        : shortcut.key;
+      : shortcut.key === '+'
+        ? 'Plus'
+        : based !== undefined
+          ? based
+          : shortcut.key.length === 1
+            ? shortcut.key.toUpperCase()
+            : shortcut.key;
+  // Punctuation that has no mapped base key already implies its Shift, as in `shortcutParts`.
+  const shift = based !== undefined || !punctuation ? shortcut.shift : false;
   const mod = platform === 'mac' ? 'Meta' : 'Control';
-  return [shortcut.mod && mod, shortcut.alt && 'Alt', shortcut.shift && 'Shift', key]
+  return [shortcut.mod && mod, shortcut.alt && 'Alt', shift && 'Shift', key]
     .filter(Boolean)
     .join('+');
 }
