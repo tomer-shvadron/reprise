@@ -68,7 +68,7 @@ interface BarRows {
 // also makes a new track object, so the cache compares what the rows depend on, not identities.
 const cache = new WeakMap<Bar, BarRows>();
 
-/** How many bars `noteTableOf` extracted rather than reused; for the cache test. */
+/** How many bars `noteTableOf` extracted rather than reused. A test hook: `index.ts` does not export it. */
 export const extraction = { count: 0 };
 
 /** The track and time signature facts the rows are built from: a retune, a capo or a new meter changes them. */
@@ -96,16 +96,31 @@ function rowsOf(bar: Bar, track: Track, masterBar: MasterBar): BarRows {
       };
       for (const grace of beat.grace ?? []) {
         const graceTicks = (PPQ * 4) / grace.duration;
+        let any = false;
         for (const note of grace.notes) {
-          rows.push(row(track, note, voiceIndex, beats, onset, graceTicks, at(onset, true), true));
+          const made = row(
+            track,
+            note,
+            voiceIndex,
+            beats,
+            onset,
+            graceTicks,
+            at(onset, true),
+            true,
+          );
+          if (made) rows.push(made);
+          any ||= made !== undefined;
         }
-        if (grace.notes.length > 0) beats++;
+        if (any) beats++;
       }
       if (!beat.rest) {
+        let any = false;
         for (const note of beat.notes) {
-          rows.push(row(track, note, voiceIndex, beats, onset, length, at(onset, false), false));
+          const made = row(track, note, voiceIndex, beats, onset, length, at(onset, false), false);
+          if (made) rows.push(made);
+          any ||= made !== undefined;
         }
-        if (beat.notes.length > 0) beats++;
+        if (any) beats++;
       }
       onset += length;
     }
@@ -124,15 +139,22 @@ function row(
   duration: number,
   metric: number,
   grace: boolean,
-): Row {
+): Row | undefined {
   const flags =
     (note.tie ? NOTE_FLAG.tie : 0) |
     (note.dead ? NOTE_FLAG.dead : 0) |
     (note.ghost ? NOTE_FLAG.ghost : 0) |
     (grace ? NOTE_FLAG.grace : 0) |
     (note.harmonic ? NOTE_FLAG.harmonic : 0);
+  let pitch: number;
+  try {
+    pitch = Math.round(soundingPitch(track, note));
+  } catch {
+    return undefined; // a string the tuning lacks
+  }
+  if (pitch < 0 || pitch > 127) return undefined;
   return {
-    pitch: Math.round(soundingPitch(track, note)),
+    pitch,
     voice,
     beat,
     onset,
@@ -144,8 +166,8 @@ function row(
 
 /**
  * The notes of a score as a table. `passes` is how many times each master bar is played; it
- * defaults to the count the playback sequence gives. Notes with a pitch outside MIDI range or a
- * string the tuning lacks are skipped, since a bad file must not stop the analysis.
+ * defaults to the count the playback sequence gives. A note on a string the tuning lacks, or with
+ * a pitch outside MIDI range, is skipped on its own, since a bad file must not stop the analysis.
  */
 export function noteTableOf(score: Score, passes?: readonly number[]): NoteTable {
   const counts = passes ?? passesPerBar(score);
@@ -158,8 +180,7 @@ export function noteTableOf(score: Score, passes?: readonly number[]): NoteTable
     track.bars.forEach((bar, barIndex) => {
       const masterBar = score.masterBars[barIndex];
       if (!masterBar) return;
-      const built = safely(() => rowsOf(bar, track, masterBar));
-      if (!built) return;
+      const built = rowsOf(bar, track, masterBar);
       chunks.push({
         track: trackIndex,
         bar: barIndex,
@@ -188,7 +209,7 @@ export function noteTableOf(score: Score, passes?: readonly number[]): NoteTable
   let at = 0;
   for (const chunk of chunks) {
     for (const r of chunk.built.rows) {
-      table.pitch[at] = Math.max(0, Math.min(127, r.pitch));
+      table.pitch[at] = r.pitch;
       table.track[at] = chunk.track;
       table.bar[at] = chunk.bar;
       table.voice[at] = r.voice;
@@ -202,14 +223,6 @@ export function noteTableOf(score: Score, passes?: readonly number[]): NoteTable
     }
   }
   return table;
-}
-
-function safely<T>(run: () => T): T | undefined {
-  try {
-    return run();
-  } catch {
-    return undefined;
-  }
 }
 
 /** Plays per master bar from the playback sequence. */

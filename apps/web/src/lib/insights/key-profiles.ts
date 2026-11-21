@@ -10,8 +10,12 @@ export interface ProfileSet {
   minor: Profile;
 }
 
-// The numbers are typed from the papers' tables and music21's analysis/discrete.py (BSD-3), which
-// tabulates the same sets; the accuracy table in key-accuracy.test.ts is the check on a typo.
+// Sources of the numbers, each checked against the published table by the PR 1 review:
+// Krumhansl–Kessler is music21's analysis/discrete.py (BSD-3) and When-in-Rome's
+// key_profiles_literature.py; Temperley 1999 is Essentia's key.cpp and amads pitch/key/profiles.py;
+// Albrecht–Shanahan is When-in-Rome and justkeydding's keyprofile.cc. music21 tabulates only
+// Krumhansl–Kessler: its `temperley` entry is the Temperley–Kostka–Payne corpus profile, a different
+// set (0.748, 0.060, ...), and it has no Albrecht–Shanahan. Do not "check against music21" for those.
 export const PROFILE_SETS: readonly ProfileSet[] = [
   {
     id: 'krumhanslKessler',
@@ -33,7 +37,7 @@ export const PROFILE_SETS: readonly ProfileSet[] = [
     id: 'albrechtShanahan',
     name: 'Albrecht–Shanahan',
     citation:
-      'Albrecht & Shanahan (2013), "The use of large corpora to train a new type of key-finding algorithm", Music Perception 31(1); trained on a corpus of 982 pieces.',
+      'Albrecht & Shanahan (2013), "The use of large corpora to train a new type of key-finding algorithm", Music Perception 31(1), 59–67; trained on 490 pieces and tested on a reserve set of 492.',
     major: [0.238, 0.006, 0.111, 0.006, 0.137, 0.094, 0.016, 0.214, 0.009, 0.08, 0.008, 0.081],
     minor: [0.22, 0.006, 0.104, 0.123, 0.019, 0.103, 0.012, 0.214, 0.062, 0.022, 0.061, 0.052],
   },

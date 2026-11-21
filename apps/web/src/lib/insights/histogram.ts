@@ -14,7 +14,10 @@ export interface HistogramOptions {
   duration: boolean;
   /** Notes on strong beats count more. Temperley 2007. */
   metric: boolean;
-  /** The lowest note of each beat counts more. */
+  /**
+   * The lowest note of each chord counts more. "Chord" is one track's beat, so this is not the
+   * song's bass: a bass track's notes are each their own lowest and normalise away.
+   */
   bass: boolean;
   /** Multiply by how often playback passes the bar, so a repeated chorus counts as often as it is heard. */
   passes: boolean;
@@ -43,7 +46,7 @@ export const BASS_FACTOR = 1.5;
 export const GHOST_FACTOR = 0.5;
 
 /**
- * The lowest pitch of every beat, by beat index. A table keeps the notes of a beat adjacent, so
+ * The lowest pitch of every table beat (one track's chord), by beat index. A table keeps the notes of a beat adjacent, so
  * one pass over the rows finds it.
  */
 function lowestByBeat(table: NoteTable): Map<number, number> {
