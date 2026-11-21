@@ -59,6 +59,22 @@ describe('GmBank', () => {
       expect(resolve).toHaveBeenCalledWith(16, 25);
     });
 
+    it("plays the font's Mandolin preset when it has one", () => {
+      const base = font.resolve(0, 25);
+      if (!base) throw new Error('the synthetic font has program 25');
+      const original = font.resolve.bind(font);
+      vi.spyOn(font, 'resolve').mockImplementation((bankNumber, program) =>
+        bankNumber === 16 && program === 25
+          ? { ...base, id: 'gm:16:25' }
+          : original(bankNumber, program),
+      );
+      const gm = bank();
+      expect(gm.instrumentId(mandolin, 25)).toBe('gm:16:25');
+      expect(gm.instrument(mandolin, 25).regions).toBe(gm.regionMap('gm:16:25'));
+      // The same font still gives a plain guitar its own program 25.
+      expect(gm.instrumentId(guitar(0), 25)).toBe('gm:0:25');
+    });
+
     it('leaves a 12-string, a plain guitar, another program and a chosen bank alone', () => {
       const resolve = vi.spyOn(font, 'resolve');
       const gm = bank();
