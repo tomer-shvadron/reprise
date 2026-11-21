@@ -15,6 +15,12 @@
   --score-caret: color-mix(in oklch, var(--paper-accent) 35%, transparent);
 }
 
+.score-chord-strip {
+  /* The docked strip paints diagrams with the score's roles but is not inside a score view. */
+  --score-ink: var(--ink);
+  --score-muted: var(--ink-muted);
+}
+
 .score-sizer {
   position: relative;
 }
@@ -132,6 +138,18 @@
   background: var(--score-highlight);
 }
 
+.score-chord {
+  border-radius: 3px;
+  background: var(--score-range);
+  outline: 1px solid var(--score-accent);
+}
+
+.score-chord-now {
+  border: 2px solid var(--score-accent);
+  border-radius: 3px;
+  background: var(--score-caret);
+}
+
 .score-hover {
   border-radius: 2px;
   background: var(--score-hover);
@@ -187,6 +205,12 @@
   align-items: center;
   color: var(--score-ink);
   font-family: 'Geist Variable', sans-serif;
+}
+
+.score-print-strip {
+  position: absolute;
+  overflow: visible;
+  color: var(--score-ink);
 }
 
 .score-print-title,

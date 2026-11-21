@@ -17,6 +17,7 @@ export type { DragMode, Gesture, GestureOptions } from './gestures';
 export { ScorePage, ScorePages } from './score-page';
 export type { ScorePageProps, ScorePagesProps } from './score-page';
 export type { OverlayBox, ScoreOverlays } from './overlay-layer';
+export { chordBoxes } from './chord-boxes';
 export {
   anchorIndex,
   columnAnchor,

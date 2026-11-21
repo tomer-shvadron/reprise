@@ -3,7 +3,7 @@ import { fullScore, largeScore } from '@reprise/model/testing';
 import { fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { CHORD_DIAGRAMS_SETTING, THEME_SETTING } from '@/state/app-settings';
+import { CHORD_DIAGRAMS_SETTING, CHORD_STRIP_SETTING, THEME_SETTING } from '@/state/app-settings';
 import { createTestServices } from '@/test/services';
 
 import { createAppRegistry } from './app-registry';
@@ -60,6 +60,20 @@ describe('view.toggleChordDiagrams', () => {
     runCommand(command);
     expect(diagrams()).toBeGreaterThan(0);
     expect(changes).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('view.toggleChordStrip', () => {
+  it('flips the strip setting, off until turned on, with no default key', () => {
+    const services = createTestServices();
+    const command = createAppRegistry(services).get('view.toggleChordStrip');
+    if (!command) throw new Error('view.toggleChordStrip is not registered');
+    expect(command.shortcut).toBeUndefined();
+    expect(services.settings.get(CHORD_STRIP_SETTING)).toBe(false);
+    runCommand(command);
+    expect(services.settings.get(CHORD_STRIP_SETTING)).toBe(true);
+    runCommand(command);
+    expect(services.settings.get(CHORD_STRIP_SETTING)).toBe(false);
   });
 });
 

@@ -17,6 +17,10 @@ export interface ScoreOverlays {
   range?: readonly OverlayBox[];
   /** The active loop's bar columns. */
   loop?: readonly Anchor[];
+  /** The beats of the chord picked in the chord strip, one box per chord drawn. */
+  chords?: readonly OverlayBox[];
+  /** The one occurrence the strip's arrows are on, drawn stronger than the rest. */
+  chordNow?: readonly OverlayBox[];
   hover?: Anchor;
 }
 
@@ -41,7 +45,15 @@ export interface OverlayLayerProps {
  * highlight underneath would show as holes. A translucent tint on top colours both alike.
  */
 export function OverlayLayer({ overlays, zoom, layout, range }: OverlayLayerProps) {
-  const { selection = [], loop = [], hover, caret = [], range: editRange = [] } = overlays ?? {};
+  const {
+    selection = [],
+    loop = [],
+    hover,
+    caret = [],
+    range: editRange = [],
+    chords = [],
+    chordNow = [],
+  } = overlays ?? {};
   const boxes = (anchors: readonly Anchor[], className: string) =>
     anchors
       .filter((anchor) => anchor.system >= range.start && anchor.system < range.end)
@@ -67,6 +79,8 @@ export function OverlayLayer({ overlays, zoom, layout, range }: OverlayLayerProp
       {boxes(loop, 'score-loop')}
       {boxes(selection, 'score-selection')}
       {placed(editRange, 'score-range')}
+      {placed(chords, 'score-chord')}
+      {placed(chordNow, 'score-chord-now')}
       {placed(caret, 'score-caret')}
       {hover && <div className="score-hover" style={box(anchorBox(layout, hover), zoom)} />}
     </div>
