@@ -119,6 +119,7 @@ function projectBeat(beat: Beat, kind: TrackKind, program: number, first: boolea
       : null,
     pickStroke: effects.pickStroke ?? null,
     golpe: effects.golpe ?? null,
+    wah: effects.wah ?? null,
     fade: fadeOf(beat),
     tapping: effects.tapping ?? false,
     slapping: effects.slapping ?? false,

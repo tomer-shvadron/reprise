@@ -313,6 +313,45 @@ describe('rows around the strings', () => {
   });
 });
 
+describe('wah marks', () => {
+  it('writes + and o in a row above the strings, on a rest too, with a legend', () => {
+    const lines = linesOf(
+      guitar()
+        .bar()
+        .beat('4', [note(1, 1)], { effects: { wah: 'closed' } })
+        .beat('4', [note(1, 2)], { effects: { wah: 'open' } })
+        .rest('4', { effects: { wah: 'closed' } })
+        .beat('4', [note(1, 3)]),
+    );
+    const marks = lines.find((line) => /^\s+\+\s+o\s+\+\s*$/.test(line));
+    expect(marks).toBeDefined();
+    expect(lines.indexOf(marks ?? '')).toBe(lines.findIndex((line) => line.startsWith('e|')) - 1);
+    expect(lines.at(-1)).toContain('+ wah closed, o wah open');
+  });
+
+  it('puts a mark on the first character of a two-digit fret', () => {
+    const lines = linesOf(
+      guitar()
+        .bar()
+        .beat('4', [note(1, 12)], { effects: { wah: 'closed' } })
+        .beat('4', [note(1, 3)], { effects: { wah: 'open' } }),
+    );
+    const string = lines.find((line) => line.startsWith('e|')) ?? '';
+    const marks = lines[lines.indexOf(string) - 1] ?? '';
+    expect(marks.indexOf('+')).toBe(string.indexOf('12'));
+    expect(marks.indexOf('o')).toBe(string.indexOf('3'));
+  });
+
+  it('writes no row and no legend entry for a score without marks', () => {
+    const lines = linesOf(
+      guitar()
+        .bar()
+        .beat('4', [note(1, 1)]),
+    );
+    expect(lines.join('\n')).not.toContain('wah');
+  });
+});
+
 describe('bar lines and repeats', () => {
   const repeat = (strings: 4 | 6 | 7) =>
     scoreBuilder()

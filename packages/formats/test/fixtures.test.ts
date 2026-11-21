@@ -18,7 +18,7 @@ describe('gp3, gp4 and gp5 fixtures', () => {
     expect(entries.map((entry) => entry.format).sort()).toEqual([
       ...Array<string>(3).fill('gp3'),
       ...Array<string>(4).fill('gp4'),
-      ...Array<string>(9).fill('gp5'),
+      ...Array<string>(10).fill('gp5'),
     ]);
   });
 
@@ -167,6 +167,38 @@ describe('what the fixtures carry', () => {
       ]);
     },
   );
+
+  describe('wah marks (gp5 mix table)', () => {
+    const marks = (bytes: Uint8Array): (string | undefined)[] =>
+      readGp3To5(bytes).score.tracks[0]?.bars.flatMap((bar) =>
+        bar.voices[0].beats.map((beat) => beat.effects.wah),
+      ) ?? [];
+
+    it('reads 0 as open and 100 as closed, with no mark for -1 or -2', () => {
+      const { warnings } = readGp3To5(fixtureBytes('gp5/wah-wah.gp5'));
+      expect(marks(fixtureBytes('gp5/wah-wah.gp5'))).toEqual([
+        undefined,
+        'open',
+        'closed',
+        'open',
+        'closed',
+        undefined,
+      ]);
+      expect(warnings.some((warning) => warning.code === 'wah-dropped')).toBe(false);
+    });
+
+    it('reads a position between 1 and 99 as open, with one info', () => {
+      const bytes = fixtureBytes('gp5/wah-wah.gp5').slice();
+      // The wah byte of the first mix table, which holds 0 (open) in the original.
+      expect(bytes[1542]).toBe(0);
+      bytes[1542] = 42;
+      const { warnings } = readGp3To5(bytes);
+      expect(marks(bytes)[1]).toBe('open');
+      const infos = warnings.filter((warning) => warning.code === 'wah-dropped');
+      expect(infos).toHaveLength(1);
+      expect(infos[0]?.message).toContain('a wah pedal position of 42, read as open');
+    });
+  });
 
   it('reads the GP3 tremolo-bar dip the way GP4 writes it', () => {
     const gp3 = read('gp3/effects.gp3').tracks[0]?.bars[8]?.voices[0].beats[0];

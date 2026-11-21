@@ -59,6 +59,7 @@ function renderLine(
   const stars = new Set([Math.min(1, strings - 1), Math.max(0, strings - 2)]);
   const lines = labels.map((label) => label);
   const chords = new Row();
+  const wahs = new Row();
   const texts = new Row();
   const annotations = new Row();
   const effects = new Row();
@@ -110,6 +111,10 @@ function renderLine(
     gap += 1;
     for (const cell of layout.cells) {
       chords.put(column + offset, cell.chord);
+      if (cell.wah !== '') {
+        wahs.put(column + offset, cell.wah);
+        ctx.used.add(cell.wah);
+      }
       texts.put(column + offset, cell.text);
       lyrics.put(column + offset, cell.lyric);
       if (cell.effect === undefined || run?.label !== cell.effect) flush();
@@ -127,7 +132,7 @@ function renderLine(
   const last = bars.at(-1);
   bar(boundary(last?.close, undefined));
 
-  const rows = [annotations, texts, chords].filter((row) => !row.empty).map(String);
+  const rows = [annotations, texts, chords, wahs].filter((row) => !row.empty).map(String);
   const below = [effects, lyrics].filter((row) => !row.empty).map(String);
   return [...rows, ...lines.map((line) => line.trimEnd()), ...below];
 }

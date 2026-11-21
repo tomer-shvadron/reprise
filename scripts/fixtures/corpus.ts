@@ -24,6 +24,7 @@ export const FEATURES = [
   'palm-mute',
   'golpe',
   'pick-scrape',
+  'wah',
   'drums-track',
   'pitched-non-fretted-track',
   'time-signature-change',
