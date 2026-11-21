@@ -51,6 +51,13 @@ export type Whammy = z.infer<typeof WhammySchema>;
 export const GolpeSchema = z.enum(['thumb', 'finger']);
 export type Golpe = z.infer<typeof GolpeSchema>;
 
+/**
+ * A wah-wah pedal mark. There is no off value: a beat without `wah` has no mark, which is how
+ * gpif says it and how GP6 converted gp5's "off".
+ */
+export const WahSchema = z.enum(['open', 'closed']);
+export type Wah = z.infer<typeof WahSchema>;
+
 export const BeatEffectsSchema = z.object({
   /** Stroke speed as a note-value denominator. */
   tremoloPicking: z.literal([8, 16, 32]).exactOptional(),
@@ -63,6 +70,8 @@ export const BeatEffectsSchema = z.object({
   popping: z.boolean().exactOptional(),
   /** Beat-level, as gpif stores it; allowed on a rest, which a file may carry. */
   golpe: GolpeSchema.exactOptional(),
+  /** Beat-level, and allowed on a rest, as gpif and gp5 can store it there. */
+  wah: WahSchema.exactOptional(),
   arpeggio: StrokeSchema.exactOptional(),
   brush: StrokeSchema.exactOptional(),
   vibrato: VibratoSchema.exactOptional(),

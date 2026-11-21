@@ -33,6 +33,7 @@ Score ─ id, meta (title, artist, … , notices)
 - **Lyrics** exist twice. `Track.lyrics` is Guitar Pro's raw block (up to five lines of `{ startBar, text }`, `startBar` 0-based), kept for lossless import and export. `Beat.lyrics` is what layout draws: one syllable per line, index = line, `''` where a line has nothing on that beat.
 - **Mixer changes** (`Beat.mix`) are mid-song changes of program, volume, pan, chorus, reverb, phaser, tremolo and tempo, each with an optional transition `duration` in quarter notes; absent is immediate.
 - **Golpe and pick scrape** (#354) are optional and unversioned. `BeatEffects.golpe` (`'thumb' | 'finger'`) is a body hit, beat-level as gpif stores it and allowed on a rest. `Note.pickScrape` (`'down' | 'up'`) is a picking-hand scrape, kept apart from `slide` because every consumer of `slide` reads a fretting-hand slide; a note may carry both. The `set*Effect` commands set them, `null` removes.
+- **Wah** (#355) is optional and unversioned. `BeatEffects.wah` (`'open' | 'closed'`) is a wah-wah pedal mark, beat-level and allowed on a rest. There is no off value: a beat without it has no mark, as in gpif, whose `<Wah>` element is `Open` or `Closed`, and gp5's mix-table wah byte (0 open, 100 closed) maps onto it. `setBeatEffect(s)` sets it, `null` removes. Reading and writing files follow in #355, part 2.
 
 The empty score (`createEmptyScore()`) is one fretted track in E standard, one 4/4 bar at 120 BPM, and four empty voices. Factories (`createTrack(kind, options)`, `createMasterBar`, `createBar`, `createBeat`, `createNote`, `createVoice`, `createScoreMeta`) fill every required field with its default.
 
@@ -258,6 +259,6 @@ Readers drop these with a warning; each would be a contract change.
 - Song: RSE settings, page setup, master volume and reverb, hidden tempo marks, MIDI ports and channels.
 - Track: the banjo drone in gp files (modelled as `drone` since #348; the gp3 to gp5 banjo flag reads into it, unverified against Guitar Pro 8 files, and the gp writer and the gpif reader still drop it) and the gpif form of the 12-string and mandolin courses (the gp3 to gp5 12-string flag reads into `courses`; the gp writer reports `courses` as lost), tuning labels and flat display, partial capo, ottava lines and chromatic transposition (`octaveShift` covers whole octaves), multiple staves per track (collapsed onto one by ADR-0006; a track whose further staff has its own tuning or capo reads as pitched).
 - Bar: GP5 beam grouping, fermatas, free time, simile marks (readers copy the previous bar's beats instead), stem orientation overrides.
-- Beat: hairpins, legato slurs, slashed beats, timers, dead slap, rasgueado, wah, nested tuplets, note duration percentage.
+- Beat: hairpins, legato slurs, slashed beats, timers, dead slap, rasgueado, nested tuplets, note duration percentage.
 - Note: tenuto and staccatissimo, left-hand tapping, ornaments, the vibrato byte on GP5 bend points, the chord wizard's construction data.
 - Rhythm: double and quadruple whole notes.
