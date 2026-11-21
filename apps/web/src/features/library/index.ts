@@ -5,6 +5,7 @@ export { RecentSongs } from './recent-songs';
 export { UnimportedBanner } from './unimported-banner';
 export { snapshotDrop } from './import/sources';
 export { ExportDialog } from './save/export-dialog';
+export { AsciiExportDialog } from './save/ascii-export-dialog';
 export { DraftRecoveryDialog } from './drafts/draft-recovery-dialog';
 export { createDexieSettingsBackend, installSettings } from './db/settings-backend';
 export { rankSongs, SONG_LIMIT, type RankedSong, type RankedSongs } from './song-search';

@@ -1,0 +1,45 @@
+export interface PermissionDetails {
+  mediaTypes?: readonly string[] | undefined;
+  /** The page asking, as Electron reports it. */
+  requestingUrl?: string | undefined;
+  isMainFrame?: boolean | undefined;
+}
+
+export interface PermissionDeps {
+  platform: NodeJS.Platform;
+  /** Whether a URL is a page of the app itself. */
+  isAppUrl: (url: string) => boolean;
+  /** macOS's own prompt; resolves to whether the user allowed it. */
+  askForMicrophone: () => Promise<boolean>;
+}
+
+/**
+ * Whether the page may have the permission it asked for: a microphone request (never the camera),
+ * or writing the clipboard (`clipboard-sanitized-write`, which Copy as ASCII tab and Copy as image
+ * use; never reading it), and nothing else, only from the app's own top frame, not a subframe or
+ * a page that is not ours. On macOS the system asks (or reports its stored answer) first for the
+ * microphone.
+ */
+export async function decidePermission(
+  permission: string,
+  details: PermissionDetails,
+  { platform, askForMicrophone, isAppUrl }: PermissionDeps,
+): Promise<boolean> {
+  const fromApp =
+    details.isMainFrame === true &&
+    details.requestingUrl !== undefined &&
+    isAppUrl(details.requestingUrl);
+  // The browser's sanitised write: plain text and images the page itself chose to copy.
+  if (permission === 'clipboard-sanitized-write') return fromApp;
+  const types = details.mediaTypes ?? [];
+  const audioOnly =
+    permission === 'media' && types.length > 0 && types.every((type) => type === 'audio');
+  if (!audioOnly) return false;
+  if (!fromApp) return false;
+  if (platform !== 'darwin') return true;
+  try {
+    return await askForMicrophone();
+  } catch {
+    return false;
+  }
+}

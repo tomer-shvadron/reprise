@@ -1,5 +1,6 @@
 import { NOTATION_NAMES } from '@/features/tracks';
 import {
+  CHORD_DIAGRAMS_SETTING,
   DEFAULT_NOTATION_STRINGS_SETTING,
   DEFAULT_NOTATION_VOCALS_SETTING,
   DEFAULT_VIEW_MODE_SETTING,
@@ -8,7 +9,7 @@ import {
 import { ZOOM } from '@/state/ui';
 
 import type { SettingsSection } from '../section';
-import { ChoiceSetting, SliderSetting } from '../setting-rows';
+import { ChoiceSetting, SliderSetting, SwitchSetting } from '../setting-rows';
 
 const NOTATION_CHOICES = [
   { value: 'tab', label: 'Tab', ariaLabel: NOTATION_NAMES.tab },
@@ -35,6 +36,11 @@ function Score() {
         min={ZOOM.min}
         max={ZOOM.max}
         step={0.1}
+      />
+      <SwitchSetting
+        def={CHORD_DIAGRAMS_SETTING}
+        label="Chord diagrams"
+        description="Draw the chord grids a file carries above the staff. Printing follows it."
       />
       <ChoiceSetting
         def={DEFAULT_NOTATION_STRINGS_SETTING}
@@ -63,6 +69,7 @@ export const scoreSection: SettingsSection = {
   settings: [
     DEFAULT_VIEW_MODE_SETTING,
     DEFAULT_ZOOM_SETTING,
+    CHORD_DIAGRAMS_SETTING,
     DEFAULT_NOTATION_STRINGS_SETTING,
     DEFAULT_NOTATION_VOCALS_SETTING,
   ],

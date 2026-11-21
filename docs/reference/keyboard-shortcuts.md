@@ -57,8 +57,10 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Close file | File | Global | — | — |
 | Show import details | File | Global | — | — |
 | Print… | File | Global | ⌘P | Ctrl+P |
+| Export as ASCII tab… | File | Global | — | — |
 | Undo | Edit | Global | ⌘Z | Ctrl+Z |
 | Redo | Edit | Global | ⇧⌘Z | Ctrl+Shift+Z or Ctrl+Y |
+| Copy as ASCII tab | Edit | Global | — | — |
 | Zoom in | View | Global | ⌘= | Ctrl+= |
 | Zoom out | View | Global | ⌘- | Ctrl+- |
 | Actual size | View | Global | ⌘0 | Ctrl+0 |
@@ -67,6 +69,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Toggle mixer | View | Global | F8 | F8 |
 | Toggle right panel | View | Global | — | — |
 | Toggle page and continuous view | View | Global | F4 | F4 |
+| Toggle chord diagrams | View | Global | — | — |
 | Follow playback | View | Global | — | — |
 | Toggle practice mode | View | Global | F11 | F11 |
 | Leave practice mode | View | Global | Escape | Escape |
@@ -138,6 +141,8 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Start or stop tuner | Trainer | Global | — | — |
 | Show metronome | Trainer | Global | — | — |
 | Start or stop standalone metronome | Trainer | Global | ⌥B | Alt+B |
+| Show chord shapes | Trainer | Global | — | — |
+| Chord shapes… | Trainer | Global | — | — |
 | Toggle fretboard | Trainer | Global | — | — |
 | Speed trainer on selection | Trainer | Global | — | — |
 | Left-handed fretboard | Trainer | Global | — | — |
