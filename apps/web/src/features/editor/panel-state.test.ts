@@ -29,4 +29,15 @@ describe('panelState', () => {
     expect(known.size).toBe(0);
     expect(blockers.bend).toBe('Turn on edit mode first');
   });
+
+  it('reads only the controls asked for', () => {
+    const score = largeScore(1, 1);
+    const input = { score, state: { cursor: undefined, range: undefined, selection: {} } };
+    const { known, blockers } = panelState(input, true, {
+      toggles: ['vibrato'],
+      pickers: ['bend'],
+    });
+    expect([...known.keys()]).toEqual(['vibrato']);
+    expect(Object.keys(blockers)).toEqual(['bend']);
+  });
 });
