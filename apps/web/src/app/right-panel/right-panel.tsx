@@ -12,7 +12,7 @@ import type { ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import { keepFocus } from '@/app/command-control';
-import { CommandTooltip, HintTooltip } from '@/app/command-tooltip';
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useAppServices } from '@/app/services-context';
 import { Button } from '@/components/ui/button';
@@ -166,7 +166,7 @@ export function PanelRail() {
       {PANEL_TABS.map((item) => (
         <RailButton key={item.id} entry={item} />
       ))}
-      <HintTooltip label={verb} side="left">
+      <CommandTooltip command="view.toggleRightPanel" label={verb} side="left">
         <Button
           variant="ghost"
           size="icon-sm"
@@ -181,7 +181,7 @@ export function PanelRail() {
         >
           <Icon />
         </Button>
-      </HintTooltip>
+      </CommandTooltip>
     </div>
   );
 }

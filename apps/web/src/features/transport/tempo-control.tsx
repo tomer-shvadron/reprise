@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useStore } from 'zustand';
 
+import { CommandTooltip, HintTooltip, ShortcutKeys } from '@/app/command-tooltip';
 import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useAppServices } from '@/app/services-context';
-import { useCommand } from '@/app/use-command';
+import { useCommand, type BoundCommand } from '@/app/use-command';
 import {
   InputGroup,
   InputGroupAddon,
@@ -17,6 +18,26 @@ import { timelineOf, writtenBpmAt } from '@/state/timeline';
 import { TransportButton } from './controls';
 import { bpmFor, parseBpm, percentForBpm, percentOf, TEMPO_PERCENT } from './tempo';
 
+/** The slider's step keys in its tooltip, "Slower [, Faster ]", each only while it is bound. */
+function SpeedStepKeys({ slower, faster }: { slower: BoundCommand; faster: BoundCommand }) {
+  return (
+    <>
+      {slower.bindings.length > 0 && (
+        <span className="inline-flex items-center gap-1">
+          Slower
+          <ShortcutKeys bindings={slower.bindings} platform={slower.keyboard} />
+        </span>
+      )}
+      {faster.bindings.length > 0 && (
+        <span className="inline-flex items-center gap-1">
+          Faster
+          <ShortcutKeys bindings={faster.bindings} platform={faster.keyboard} />
+        </span>
+      )}
+    </>
+  );
+}
+
 /** The BPM field, the speed slider and the relative-speed button, linked through one percent. */
 export function TempoControl() {
   const services = useAppServices();
@@ -25,7 +46,6 @@ export function TempoControl() {
   const hasScore = useStore(document, (state) => state.score !== undefined);
   const remembered = useStore(transport, (state) => state.rememberedSpeed);
   const focus = useStore(transport, (state) => state.focus);
-  const setTempoCommand = useCommand('transport.setTempo');
   const slowDown = useCommand('transport.slowDown');
   const speedUp = useCommand('transport.speedUp');
   const menu = useStaticContextMenu({
@@ -138,53 +158,70 @@ export function TempoControl() {
   return (
     <div {...menu} role="group" aria-label="Tempo" className="flex items-center gap-2">
       <InputGroup className="h-7 w-auto" data-command="transport.setTempo">
-        <InputGroupInput
-          ref={input}
-          inputMode="numeric"
-          aria-label="Tempo in BPM"
-          aria-keyshortcuts={setTempoCommand.ariaKeys}
-          title={
-            setTempoCommand.keys
-              ? `Quarter notes per minute · ${setTempoCommand.title} (${setTempoCommand.keys})`
-              : 'Quarter notes per minute'
-          }
-          placeholder="–"
-          disabled={!hasScore}
-          className="w-10 text-right tabular-nums"
-          value={draft ?? (bpm === undefined ? '' : String(bpm))}
-          onFocus={(event) => {
-            returnFocus.current = event.relatedTarget;
-            setDraft(bpm === undefined ? '' : String(bpm));
-            event.currentTarget.select();
-          }}
-          onChange={(event) => {
-            setDraft(event.currentTarget.value);
-          }}
-          onBlur={commitDraft}
-          onKeyDown={onKeyDown}
-        />
+        {/* Hover only: a tooltip opening on focus would cover the number being typed. */}
+        <CommandTooltip
+          command="transport.setTempo"
+          label="Quarter notes per minute"
+          openOnFocus={false}
+        >
+          <InputGroupInput
+            ref={input}
+            inputMode="numeric"
+            aria-label="Tempo in BPM"
+            placeholder="–"
+            disabled={!hasScore}
+            className="w-10 text-right tabular-nums"
+            value={draft ?? (bpm === undefined ? '' : String(bpm))}
+            onFocus={(event) => {
+              returnFocus.current = event.relatedTarget;
+              setDraft(bpm === undefined ? '' : String(bpm));
+              event.currentTarget.select();
+            }}
+            onChange={(event) => {
+              setDraft(event.currentTarget.value);
+            }}
+            onBlur={commitDraft}
+            onKeyDown={onKeyDown}
+          />
+        </CommandTooltip>
         <InputGroupAddon align="inline-end">
           <InputGroupText className="text-xs">BPM</InputGroupText>
         </InputGroupAddon>
       </InputGroup>
-      <div
-        className="hidden w-20 items-center lg:flex"
-        data-commands="transport.slowDown transport.speedUp"
+      <HintTooltip
+        spoken={[
+          'Speed',
+          slowDown.spoken && `slower ${slowDown.spoken}`,
+          speedUp.spoken && `faster ${speedUp.spoken}`,
+        ]
+          .filter(Boolean)
+          .join(', ')}
+        label={
+          <>
+            Speed
+            <SpeedStepKeys slower={slowDown} faster={speedUp} />
+          </>
+        }
       >
-        <Slider
-          value={[percent]}
-          min={TEMPO_PERCENT.min}
-          max={TEMPO_PERCENT.max}
-          step={1}
-          disabled={!hasScore}
-          thumbLabel="Speed"
-          thumbKeys={stepKeys}
-          valueText={(value) => `${String(Math.round(value))}%`}
-          onValueChange={([value]) => {
-            if (value !== undefined) audio.setTempo('percent', value);
-          }}
-        />
-      </div>
+        <div
+          className="hidden w-20 items-center lg:flex"
+          data-commands="transport.slowDown transport.speedUp"
+        >
+          <Slider
+            value={[percent]}
+            min={TEMPO_PERCENT.min}
+            max={TEMPO_PERCENT.max}
+            step={1}
+            disabled={!hasScore}
+            thumbLabel="Speed"
+            thumbKeys={stepKeys}
+            valueText={(value) => `${String(Math.round(value))}%`}
+            onValueChange={([value]) => {
+              if (value !== undefined) audio.setTempo('percent', value);
+            }}
+          />
+        </div>
+      </HintTooltip>
       <TransportButton
         command="transport.toggleSpeed"
         label={speedLabel}

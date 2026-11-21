@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState, type KeyboardEvent } f
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useAppServices } from '@/app/services-context';
 import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
@@ -227,15 +228,11 @@ export function TunerPanel() {
       <h2 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">Tuner</h2>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          onClick={toggle.run}
-          disabled={error?.retry === false}
-          title={toggle.keys ? `${toggle.title} (${toggle.keys})` : toggle.title}
-          aria-keyshortcuts={toggle.ariaKeys}
-        >
-          {buttonLabel}
-        </Button>
+        <CommandTooltip command="trainer.tunerToggle" label={toggle.title} whenUnbound="none">
+          <Button size="sm" onClick={toggle.run} disabled={error?.retry === false}>
+            {buttonLabel}
+          </Button>
+        </CommandTooltip>
         {statusText && <p className="text-muted-foreground text-xs">{statusText}</p>}
       </div>
 

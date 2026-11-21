@@ -4,9 +4,10 @@ import { useStore } from 'zustand';
 
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { PANEL_WIDTH, type UiStore } from '@/state/ui';
 
+import { CommandTooltip } from './command-tooltip';
+import { useCommand } from './use-command';
 import { BottomDock } from './bottom-dock/bottom-dock';
 import { ResizeHandle } from './resize-handle';
 
@@ -45,25 +46,20 @@ interface AppFrameProps {
 
 function TracksToggle({ ui }: { ui: UiStore }) {
   const open = useStore(ui, (state) => state.panels.sidebar);
-  const togglePanel = useStore(ui, (state) => state.togglePanel);
+  const toggle = useCommand('view.toggleSidebar');
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Toggle tracks"
-          aria-pressed={open}
-          onClick={() => {
-            togglePanel('sidebar');
-          }}
-        >
-          <PanelLeftIcon />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>Toggle tracks</TooltipContent>
-    </Tooltip>
+    <CommandTooltip command="view.toggleSidebar" label="Toggle tracks">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Toggle tracks"
+        aria-pressed={open}
+        onClick={toggle.run}
+      >
+        <PanelLeftIcon />
+      </Button>
+    </CommandTooltip>
   );
 }
 
