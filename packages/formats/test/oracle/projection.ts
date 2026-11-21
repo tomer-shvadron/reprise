@@ -80,6 +80,7 @@ export interface BeatProjection {
   arpeggio: string | null;
   pickStroke: string | null;
   golpe: string | null;
+  wah: string | null;
   fade: string | null;
   tapping: boolean;
   slapping: boolean;

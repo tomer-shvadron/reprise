@@ -10,6 +10,7 @@ import type {
   MixerChange,
   Stroke,
   Tuplet,
+  Wah,
 } from '@reprise/model';
 
 import { CorruptFile, hasFlag } from '../binary/binary-reader';
@@ -108,8 +109,9 @@ function readBeat(context: Context, info: TrackInfo, location: NoteLocation): Be
   let noteWide: NoteWideEffects = {};
   if (hasFlag(flags, 0x08)) noteWide = readBeatEffects(context, beat, location);
   if (hasFlag(flags, 0x10)) {
-    const mix = readMixTable(context, location);
+    const { mix, wah } = readMixTable(context, location);
     if (Object.keys(mix).length > 0) beat.mix = mix;
+    if (wah) beat.effects.wah = wah;
   }
 
   const stringsOffset = reader.offset;
@@ -366,11 +368,15 @@ const CHANNEL_FIELDS: readonly ChannelField[] = [
  * A mixer change: each field is -1 when unchanged. The transition lengths follow the values,
  * one byte per field that changed, then GP4 adds a byte of "apply to every track" bits.
  */
-function readMixTable(context: Context, location: NoteLocation): MixerChange {
+function readMixTable(
+  context: Context,
+  location: NoteLocation,
+): { mix: MixerChange; wah: Wah | undefined } {
   const { reader, version, log } = context;
   const offset = reader.offset;
   const here = { ...location, offset };
   const mix: MixerChange = {};
+  let wah: Wah | undefined;
   const program = reader.signedByte();
   if (version >= 500) {
     log.info('rse-dropped', 'an RSE instrument change', here);
@@ -405,8 +411,16 @@ function readMixTable(context: Context, location: NoteLocation): MixerChange {
     });
   }
   if (version >= 500) {
-    const wah = reader.signedByte();
-    if (wah >= 0) log.info('wah-dropped', 'a wah pedal position', here);
+    // -1 is "no change" and -2 "wah off", neither a mark. 0 is the open pedal and 100 the closed
+    // one, as alphaTab reads them (alphaTab's wah-wah.gp5 and GP6's conversion of effects.gp5).
+    const pedal = reader.signedByte();
+    if (pedal >= 100) wah = 'closed';
+    else if (pedal >= 0) {
+      wah = 'open';
+      if (pedal > 0) {
+        log.info('wah-dropped', `a wah pedal position of ${String(pedal)}, read as open`, here);
+      }
+    }
   }
   if (version >= 510) {
     log.info('rse-dropped', 'RSE effect names', here);
@@ -429,5 +443,5 @@ function readMixTable(context: Context, location: NoteLocation): MixerChange {
   } else if (tempo === 0) {
     invalid(context, here, 'mixer tempo', tempo, 'unchanged');
   }
-  return mix;
+  return { mix, wah };
 }

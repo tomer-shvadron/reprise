@@ -46,6 +46,7 @@ E|-------------||-------------||---------------------||-------------|
   19                                   [Fingering]            [Stroke]
                        Text
                      C
+         o  o
 e|-------------|---|--------|---||---||---------------------||---------|-------|
 B|-P2-2--2--2--|-2-|-2-2----|-2-||---||-2-2-2-2-2-2-2-2-2-2-||-1-1-----|-------|
 G|-------------|---|--------|---||---||---------------------||-0-0-----|-------|
@@ -65,4 +66,4 @@ E|-----------||---------|---||---------|---------|-----|
 Legend: h hammer-on, p pull-off, / slide up, \ slide down, b bend, r release,
         ~ vibrato, x dead note, (n) ghost note, <n> natural harmonic,
         [n]PH pinch harmonic, [n] artificial harmonic, t tap, s slap, P pop,
-        tr trill, PM palm mute, LR let ring
+        tr trill, PM palm mute, LR let ring, o wah open
