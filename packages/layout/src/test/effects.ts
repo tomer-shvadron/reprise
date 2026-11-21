@@ -304,3 +304,39 @@ export function withNoteMarks(built: Score): Score {
   }
   return built;
 }
+
+/**
+ * Puts a chord with a diagram (an open C or an F barre, by bar) on the first beat of every bar of
+ * every fretted track. Changes `built` in place and returns it, so pass a fresh score.
+ */
+export function withChordDiagrams(built: Score): Score {
+  for (const track of built.tracks) {
+    const strings = track.tuning.length;
+    if (strings === 0) continue;
+    for (const [index, bar] of track.bars.entries()) {
+      const beat = bar.voices[0].beats[0];
+      if (!beat) continue;
+      beat.chord =
+        index % 2 === 0
+          ? {
+              name: 'C',
+              diagram: {
+                baseFret: 1,
+                frets: Array.from(
+                  { length: strings },
+                  (_, i) => [0, 1, 0, 2, 3, null, null][i] ?? 0,
+                ),
+              },
+            }
+          : {
+              name: 'F',
+              diagram: {
+                baseFret: 1,
+                frets: Array.from({ length: strings }, (_, i) => [1, 1, 2, 3, 3, 1, 1][i] ?? 1),
+                barres: [{ fret: 1, firstString: 1, lastString: strings }],
+              },
+            };
+    }
+  }
+  return built;
+}

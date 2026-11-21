@@ -16,6 +16,7 @@ export interface StaffSlot {
   geometry: StaffGeometry;
   /** The staff with its top line at y = 0, for measuring. */
   box: StaffBox;
+  chordDiagrams: boolean;
 }
 
 export function staffSlots(options: ResolvedOptions): StaffSlot[] {
@@ -27,6 +28,7 @@ export function staffSlots(options: ResolvedOptions): StaffSlot[] {
         visible,
         group,
         type,
+        chordDiagrams: options.chordDiagrams,
         module,
         geometry,
         box: {
@@ -63,5 +65,6 @@ export function staffBar(
     clef: context.clefs[slot.group] ?? 'treble',
     keySignature: context.masterBar.keySignature,
     space,
+    chordDiagrams: slot.chordDiagrams,
   };
 }

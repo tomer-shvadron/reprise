@@ -48,6 +48,7 @@ function staffBar(built: Score, barIndex: number, clef: Clef = 'treble'): StaffB
     barIndex,
     clef,
     keySignature: masterBar.keySignature,
+    chordDiagrams: true,
     space: SPACE,
   };
 }

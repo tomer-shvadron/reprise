@@ -93,7 +93,7 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
           onset.right = Math.max(onset.right, room);
         }
         if (drawsWords(input)) {
-          const words = wordsExtent(beat.beat, wordStart(beat), input.space);
+          const words = wordsExtent(beat.beat, wordStart(beat), input.space, input.chordDiagrams);
           onset.left = Math.max(onset.left, words.left - (beat.shift ?? 0));
           onset.right = Math.max(onset.right, (beat.shift ?? 0) + words.right);
         }
@@ -111,7 +111,7 @@ function notationModule(type: 'standard' | 'percussion', options: NotationOption
       const lanes: LaneRequests = { ...laneEffects(input, options.percussion)?.lanes };
       if (drawsWords(input)) {
         const beats = input.bar.voices.flatMap((voice) => voice.beats);
-        mergeLanes(lanes, wordLanes(wordRows(beats, input.space)));
+        mergeLanes(lanes, wordLanes(wordRows(beats, input.space, input.chordDiagrams)));
       }
       if (shownDynamics(input.track, input.barIndex).size > 0) {
         mergeLanes(lanes, { dynamics: LANE_HEIGHT.dynamics * input.space });

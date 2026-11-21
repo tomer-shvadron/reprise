@@ -428,6 +428,7 @@ export function renderBar(
         space,
         limit,
         nextSyllable,
+        diagrams: input.chordDiagrams,
       });
     }
     const dynamics = shown.get(beat.beat.id);
