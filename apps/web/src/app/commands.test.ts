@@ -1,9 +1,9 @@
 import { write } from '@reprise/formats';
-import { largeScore } from '@reprise/model/testing';
+import { fullScore, largeScore } from '@reprise/model/testing';
 import { fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { THEME_SETTING } from '@/state/app-settings';
+import { CHORD_DIAGRAMS_SETTING, THEME_SETTING } from '@/state/app-settings';
 import { createTestServices } from '@/test/services';
 
 import { createAppRegistry } from './app-registry';
@@ -31,6 +31,35 @@ describe('view.toggleViewMode', () => {
     runCommand(command);
     expect(ui.getState().view.mode).toBe('paged');
     expect(rows()).toBeGreaterThan(1);
+  });
+});
+
+describe('view.toggleChordDiagrams', () => {
+  it('flips the setting, and the layout follows with one re-layout per toggle', async () => {
+    const services = createTestServices();
+    const { layout, document, settings } = services;
+    const command = createAppRegistry(services).get('view.toggleChordDiagrams');
+    if (!command) throw new Error('view.toggleChordDiagrams is not registered');
+    expect(command.shortcut).toBeUndefined();
+    await document
+      .getState()
+      .openBytes('song.reprise', (await write(fullScore(), 'reprise')).bytes);
+    const diagrams = () =>
+      layout
+        .getState()
+        .result?.primitives.filter((p) => p.kind === 'path' && p.lane === 'chordDiagram').length;
+    const changes = vi.fn();
+    layout.subscribe(changes);
+    expect(diagrams()).toBeGreaterThan(0);
+
+    runCommand(command);
+    expect(settings.get(CHORD_DIAGRAMS_SETTING)).toBe(false);
+    expect(diagrams()).toBe(0);
+    expect(changes).toHaveBeenCalledTimes(1);
+
+    runCommand(command);
+    expect(diagrams()).toBeGreaterThan(0);
+    expect(changes).toHaveBeenCalledTimes(2);
   });
 });
 

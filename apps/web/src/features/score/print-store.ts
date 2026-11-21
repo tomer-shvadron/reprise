@@ -119,14 +119,10 @@ export function createPrintStore(deps: PrintStoreDeps) {
         let content: PrintContent;
         try {
           const { view, file } = document.getState();
-          content = layoutForPrint(
-            score,
-            dialog.settings,
-            view.notation,
-            file?.name,
-            deps.layout,
-            deps.chordDiagrams?.(),
-          );
+          content = layoutForPrint(score, dialog.settings, view.notation, file?.name, {
+            ...(deps.layout && { run: deps.layout }),
+            ...(deps.chordDiagrams && { chordDiagrams: deps.chordDiagrams() }),
+          });
         } catch (error) {
           console.error(error);
           set({

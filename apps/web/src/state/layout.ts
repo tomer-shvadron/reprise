@@ -28,7 +28,7 @@ export interface LayoutStoreDeps {
 
 /**
  * The layout of the open document, derived outside render. It re-runs only when the document,
- * its score, its view or the ui's view (mode, paper) changes; zoom, theme and panels never do.
+ * its score, its view, the ui's view (mode, paper) or a watched setting changes; zoom, theme and panels never do.
  * An edit hands its touched bars to the same cache, so only they re-flow.
  */
 export function createLayoutStore(deps: LayoutStoreDeps) {

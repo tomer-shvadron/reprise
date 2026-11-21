@@ -103,6 +103,10 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   });
   const selection = createSelectionStore();
   const playback = createPlaybackStore();
+  // The settings the layout depends on. `layoutSettings` reads them and the store re-lays out when
+  // any of `LAYOUT_SETTINGS` changes, so a new one is added to both.
+  const LAYOUT_SETTINGS = [CHORD_DIAGRAMS_SETTING];
+  const layoutSettings = () => ({ chordDiagrams: settings.get(CHORD_DIAGRAMS_SETTING) });
   const layout = createLayoutStore({
     document,
     ui,
@@ -110,9 +114,14 @@ export function createAppServices(options: AppServicesOptions): AppServices {
       viewLayoutOptions(view, {
         tracks: visibleTrackIds(content, document.getState().score),
         notation: content.notation,
-        chordDiagrams: settings.get(CHORD_DIAGRAMS_SETTING),
+        ...layoutSettings(),
       }),
-    watch: (rerun) => settings.subscribe(CHORD_DIAGRAMS_SETTING, rerun),
+    watch: (rerun) => {
+      const stops = LAYOUT_SETTINGS.map((def) => settings.subscribe(def, rerun));
+      return () => {
+        for (const stop of stops) stop();
+      };
+    },
   });
   const sounds = createSoundPackStore({ platform, audio: () => audio });
   const defaults = createDefaultSounds(settings);

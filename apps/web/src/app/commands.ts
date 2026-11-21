@@ -279,7 +279,7 @@ export function appCommands(services: AppServices): AppCommand[] {
     },
     {
       id: 'view.toggleChordDiagrams',
-      title: 'Show chord diagrams',
+      title: 'Toggle chord diagrams',
       run: () => {
         settings.set(CHORD_DIAGRAMS_SETTING, !settings.get(CHORD_DIAGRAMS_SETTING));
       },

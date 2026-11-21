@@ -1,7 +1,7 @@
 import { layout, type LayoutOptions, type LayoutResult } from '@reprise/layout';
 import type { Id, Notation, Score, ScoreMeta } from '@reprise/model';
 
-import { viewLayoutOptions, type PaperSize } from './view-options';
+import { viewLayoutOptions, type ContentOptions, type PaperSize } from './view-options';
 
 export interface PrintSettings {
   /** In score order, at least one. */
@@ -50,7 +50,7 @@ export function printLayoutOptions(
   settings: PrintSettings,
   notation: Record<Id, Notation>,
   headerHeight: number,
-  chordDiagrams?: boolean,
+  content: Pick<ContentOptions, 'chordDiagrams'> = {},
 ): LayoutOptions {
   return {
     ...viewLayoutOptions(
@@ -58,7 +58,7 @@ export function printLayoutOptions(
       {
         tracks: [...settings.tracks],
         notation,
-        ...(chordDiagrams !== undefined && { chordDiagrams }),
+        ...content,
       },
     ),
     ...(headerHeight > 0 && { headerHeight }),
@@ -80,15 +80,15 @@ export function layoutForPrint(
   settings: PrintSettings,
   notation: Record<Id, Notation>,
   fileName: string | undefined,
-  run: typeof layout = layout,
-  chordDiagrams?: boolean,
+  /** `run` is the layout function, for tests; the rest is what the screen's settings choose. */
+  {
+    run = layout,
+    ...content
+  }: { run?: typeof layout } & Pick<ContentOptions, 'chordDiagrams'> = {},
 ): PrintContent {
   const present = new Set(score.tracks.map(({ id }) => id));
   const kept = { ...settings, tracks: settings.tracks.filter((id) => present.has(id)) };
   const heading = settings.header ? printHeading(score.meta, fileName) : undefined;
-  const result = run(
-    score,
-    printLayoutOptions(kept, notation, heading?.height ?? 0, chordDiagrams),
-  );
+  const result = run(score, printLayoutOptions(kept, notation, heading?.height ?? 0, content));
   return { result, settings: kept, heading };
 }

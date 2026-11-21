@@ -37,6 +37,11 @@ function Score() {
         max={ZOOM.max}
         step={0.1}
       />
+      <SwitchSetting
+        def={CHORD_DIAGRAMS_SETTING}
+        label="Chord diagrams"
+        description="Draw the chord grids a file carries above the staff. Printing follows it."
+      />
       <ChoiceSetting
         def={DEFAULT_NOTATION_STRINGS_SETTING}
         label="Notation for string instruments"
@@ -48,11 +53,6 @@ function Score() {
         label="Notation for vocals"
         description="Vocal tracks, by their instrument or their name, when the file does not say."
         choices={NOTATION_CHOICES}
-      />
-      <SwitchSetting
-        def={CHORD_DIAGRAMS_SETTING}
-        label="Chord diagrams"
-        description="Draw the chord grids a file carries above the staff. Printing follows it."
       />
       <p className="text-muted-foreground py-3 text-xs last:border-b-0">
         Drums, keyboards and other instruments open in standard notation. A file that says how to
@@ -69,9 +69,9 @@ export const scoreSection: SettingsSection = {
   settings: [
     DEFAULT_VIEW_MODE_SETTING,
     DEFAULT_ZOOM_SETTING,
+    CHORD_DIAGRAMS_SETTING,
     DEFAULT_NOTATION_STRINGS_SETTING,
     DEFAULT_NOTATION_VOCALS_SETTING,
-    CHORD_DIAGRAMS_SETTING,
   ],
   Component: Score,
 };

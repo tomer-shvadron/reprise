@@ -153,6 +153,17 @@ describe('the print store', () => {
     expect(zoomed.result.pages[0]?.bbox).toEqual(atDefaults.result.pages[0]?.bbox);
   });
 
+  it('lays out with the chord diagram setting as it is when Print is pressed', async () => {
+    let diagrams = true;
+    const { store, run, renderJob } = await setup({ chordDiagrams: () => diagrams });
+    store.getState().open();
+    diagrams = false;
+    const printing = store.getState().print();
+    await renderJob();
+    await printing;
+    expect(run.mock.calls[0]?.[1].chordDiagrams).toBe(false);
+  });
+
   it('waits for the rendered signal of its own job, and prints once', async () => {
     const { store, print, renderJob } = await setup();
     store.getState().open();

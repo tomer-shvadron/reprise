@@ -104,6 +104,9 @@ export function ViewMenu() {
           }}
         >
           Chord diagrams
+          {toggleDiagrams.keys && (
+            <DropdownMenuShortcut className="mr-4">{toggleDiagrams.keys}</DropdownMenuShortcut>
+          )}
         </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel>Zoom {Math.round(zoom * 100)}%</DropdownMenuLabel>
