@@ -2,6 +2,7 @@ import type { Track } from '@reprise/model';
 import { cn } from 'cn';
 import { memo, useId } from 'react';
 
+import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { TrackEffectsPicker, TrackSoundPicker } from '@/features/sounds';
 import type { InstrumentLoad } from '@/state/playback';
 
@@ -42,9 +43,14 @@ export const MixerStrip = memo(function MixerStrip({
 }: MixerStripProps) {
   const label = trackLabel(track, index);
   const nameId = useId();
+  const menu = useStaticContextMenu({
+    surface: 'mixer.strip',
+    target: { kind: 'track', track: track.id },
+    label: `Track ${label}`,
+  });
 
   return (
-    <li>
+    <li {...menu}>
       <div
         role="group"
         aria-labelledby={nameId}

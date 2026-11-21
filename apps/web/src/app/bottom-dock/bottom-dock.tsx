@@ -3,6 +3,7 @@ import { useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import { keepFocus } from '@/app/command-control';
+import { useContextMenu } from '@/app/context-menu/use-context-menu';
 import { ResizeHandle } from '@/app/resize-handle';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -38,6 +39,19 @@ export function BottomDock({ ui, children }: { ui: UiStore; children?: ReactNode
   const tabs = useRef(new Map<BottomPanelView, HTMLButtonElement>());
 
   const current = VIEWS.indexOf(view);
+  // One handler for the strip: the tab under the pointer, else the one focused, names the menu.
+  const menu = useContextMenu((_via, event) => {
+    const tab = event.target instanceof Element ? event.target.closest('[role="tab"]') : null;
+    if (!tab) return undefined;
+    const id = VIEWS.find((candidate) => tabId(candidate) === tab.id);
+    return id === undefined
+      ? undefined
+      : {
+          surface: 'dock.tab',
+          target: { kind: 'dock', view: id },
+          label: `${BOTTOM_PANEL_TITLES[id]} tab`,
+        };
+  });
 
   const onKeyDown = (event: KeyboardEvent) => {
     const last = VIEWS.length - 1;
@@ -108,6 +122,7 @@ export function BottomDock({ ui, children }: { ui: UiStore; children?: ReactNode
             aria-label="Bottom panel views"
             aria-orientation="horizontal"
             onKeyDown={onKeyDown}
+            {...menu}
             className="flex"
           >
             {VIEWS.map((id, index) => {

@@ -5,8 +5,66 @@ const hasScore = ({ services }: MenuContext) => services.document.getState().sco
 /** Play mode only here: the edit-mode score menus are another set. */
 const play = ['play'] as const;
 
+const hasSelectedBars = ({ services }: MenuContext) =>
+  services.selection.getState().bars !== undefined;
+
+/** The transport bar's own controls: the loop, the tempo, the count-in and the metronome. */
+const barMenus: readonly MenuContribution[] = [
+  {
+    surface: 'transport.loop',
+    items: [
+      {
+        command: 'transport.toggleLoop',
+        group: 'play',
+        label: 'Loop',
+        when: hasScore,
+        checked: ({ services }) => services.playback.getState().settings.loop !== undefined,
+      },
+      {
+        command: 'transport.loopSelection',
+        group: 'practice',
+        label: 'Loop selected bars',
+        when: hasSelectedBars,
+      },
+    ],
+  },
+  {
+    surface: 'transport.tempo',
+    items: [
+      { command: 'transport.setTempo', group: 'play', when: hasScore },
+      { command: 'transport.slowDown', group: 'play', when: hasScore },
+      { command: 'transport.speedUp', group: 'play', when: hasScore },
+      { command: 'transport.toggleSpeed', group: 'play', when: hasScore },
+    ],
+  },
+  {
+    surface: 'transport.countIn',
+    items: [
+      {
+        command: 'transport.toggleCountIn',
+        group: 'play',
+        label: 'Count-in',
+        checked: ({ services }) => services.playback.getState().settings.countIn,
+      },
+    ],
+  },
+  {
+    surface: 'transport.metronome',
+    items: [
+      {
+        command: 'transport.toggleMetronome',
+        group: 'play',
+        label: 'Metronome',
+        checked: ({ services }) => services.playback.getState().settings.metronome.on,
+      },
+      { command: 'transport.metronomeVolume', group: 'play' },
+    ],
+  },
+];
+
 /** The transport's items on the score's menus; the surfaces nest, so a note's menu gets these too. */
 export const transportMenus: readonly MenuContribution[] = [
+  ...barMenus,
   {
     surface: 'score.beat',
     items: [
