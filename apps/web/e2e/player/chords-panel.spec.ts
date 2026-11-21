@@ -41,10 +41,13 @@ test('every tab stays reachable at the panel minimum width', async ({ app, page 
   await page.keyboard.press('End');
   const chords = list.getByRole('tab', { name: 'Chords' });
   await expect(chords).toBeFocused();
-  const [tabBox, listBox] = await Promise.all([chords.boundingBox(), list.boundingBox()]);
-  expect((tabBox?.x ?? 0) + (tabBox?.width ?? 0)).toBeLessThanOrEqual(
-    (listBox?.x ?? 0) + (listBox?.width ?? 0) + 1,
-  );
+  const right = async (node: typeof list) => {
+    const box = await node.boundingBox();
+    return (box?.x ?? 0) + (box?.width ?? 0);
+  };
+  // Fonts differ per platform, so the strip may scroll; the focused tab is brought inside it.
+  await expect.poll(async () => (await right(chords)) - (await right(list))).toBeLessThanOrEqual(1);
+  const listBox = await list.boundingBox();
   await list.getByRole('tab', { name: 'Mixer' }).click();
   const mixerBox = await list.getByRole('tab', { name: 'Mixer' }).boundingBox();
   expect(mixerBox?.x ?? -1).toBeGreaterThanOrEqual((listBox?.x ?? 0) - 1);
