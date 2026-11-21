@@ -30,6 +30,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 - In edit mode a digit that can start a two-digit fret on the track's neck (1 and 2 on 24 frets) waits 500 ms for a second digit; any other key, a click or moving the cursor commits it at once, and Escape cancels it. Digits never move the cursor, so more digits on the same beat make a chord (with ↑ and ↓ between them); → moves on, and appends a bar past the end of a full last bar.
 - The library's song list takes its own keys while it has focus: the arrows, Home, End, Page Up and Page Down move, Enter opens, Delete or Backspace deletes, and L opens the song's practice log. Escape closes the log page first, then the Library sheet.
 - The tracks list takes its own keys while a track's name has focus: Up, Down, Home and End move between tracks, Enter selects, and M and S mute and solo that track. Shift+F6 moves focus from the score to the current track in the list and back. Alt+1 to Alt+9 jump straight to a track by the number the list shows. Alt+1 to Alt+4 depart from Guitar Pro 8, where they are Move Voice; Reprise has no voice move yet, and one that arrives takes another key. Cmd/Ctrl+1 and Cmd/Ctrl+2 are the edit voices.
+- Alt+F10 (Option+F10 on a Mac) moves focus to the selection toolbar that floats over selected bars, when it is shown; Tab from the score reaches it too. Inside it the arrow keys, Home and End move between its buttons, and Escape gives focus back without clearing the selection.
 - Shift+F10 opens the context menu of the focused control, and so does the Menu key on a keyboard that has one: Windows and Linux raise the menu themselves, so the key is left to the browser there, and on macOS the app opens it. A right-click opens the same menu at the pointer. Escape closes it and returns focus to the control that had it.
 - Space and Enter on a focused button or toggle activate that control; transport and header buttons do not take focus on click, so Space keeps playing after one.
 - The effect keys are Guitar Pro 8's and work in edit mode only. Each toggles: when every note it acts on already has the effect it comes off all of them, otherwise it goes on the notes that lack it, as one undo step labelled with the effect. A note effect goes on the notes picked, or on every note of the beat the cursor or range is on; a beat effect (tapping, tremolo picking, fades, pick strokes, brush, arpeggio, whammy-bar vibrato) goes on the beat. H marks the note as the origin of a hammer-on or pull-off, so it sets the flag on the next note on that string. A refusal reads in the status bar.
@@ -71,6 +72,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Leave practice mode | View | Global | Escape | Escape |
 | Focus on loop | View | Global | — | — |
 | Toggle multitrack view | View | Global | F3 | F3 |
+| Focus the selection toolbar | View | Global | ⌥F10 | Alt+F10 |
 | Play or pause | Transport | Global | Space | Space |
 | Stop | Transport | Global | ↩ | Enter |
 | Play from start | Transport | Global | ⇧Space | Shift+Space |

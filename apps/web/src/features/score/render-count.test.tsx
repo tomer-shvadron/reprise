@@ -1,11 +1,12 @@
-import { render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
+import { createRef } from 'react';
 import { LayoutCache, layout, PAGE_SIZES, type LayoutOptions } from '@reprise/layout';
 import { applyCommand, setBeatDuration, setNote } from '@reprise/model';
 import { beatOf } from '@reprise/model/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { primitiveToSvg } from './primitive-svg';
-import { ScoreView } from './score-view';
+import { ScoreView, type ScoreViewHandle } from './score-view';
 import { smallScore } from './test/small-score';
 import { stubViewport } from './test/viewport-stub';
 
@@ -112,5 +113,49 @@ describe('re-rendering after an edit', () => {
     drawn.mockClear();
     rerender(<ScoreView layout={result} zoom={2} />);
     expect(drawn).not.toHaveBeenCalled();
+  });
+});
+
+describe('a child that follows the window', () => {
+  it('renders neither the child nor a system again for a scroll, which it hears of at the scroll end', () => {
+    const result = layout(smallScore(), paged);
+    const handle = createRef<ScoreViewHandle>();
+    let renders = 0;
+    const Child = () => {
+      renders += 1;
+      return null;
+    };
+    const { container } = render(
+      <ScoreView ref={handle} layout={result} zoom={1}>
+        <Child />
+      </ScoreView>,
+    );
+    const heard = vi.fn();
+    const off = handle.current?.subscribeViewport(heard);
+    const region = container.querySelector<HTMLElement>('[data-score-view]');
+    if (!region) throw new Error('no region');
+    const drawn = vi.mocked(primitiveToSvg);
+    drawn.mockClear();
+    renders = 0;
+    heard.mockClear();
+
+    // A few frames inside the mounted set: no render, no listener call.
+    for (const top of [4, 8, 12, 16]) {
+      region.scrollTop = top;
+      fireEvent.scroll(region);
+    }
+    expect(renders).toBe(0);
+    expect(drawn).not.toHaveBeenCalled();
+    expect(heard).not.toHaveBeenCalled();
+
+    act(() => {
+      region.dispatchEvent(new Event('scrollend'));
+    });
+    expect(heard).toHaveBeenCalledTimes(1);
+    off?.();
+    act(() => {
+      region.dispatchEvent(new Event('scrollend'));
+    });
+    expect(heard).toHaveBeenCalledTimes(1);
   });
 });
