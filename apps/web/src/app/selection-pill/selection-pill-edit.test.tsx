@@ -1,6 +1,7 @@
 import { write } from '@reprise/formats';
 import type { Anchor } from '@reprise/layout';
 import type { Score } from '@reprise/model';
+import { Profiler } from 'react';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,6 +11,7 @@ import { editScore } from '@/features/editor/test/scores';
 import { stubViewport } from '@/features/score/test/viewport-stub';
 import { mirrorAudio } from '@/test/mirror-audio';
 import { renderWithServices } from '@/test/render';
+import { positionEventAt } from '@/test/position';
 import { createTestServices } from '@/test/services';
 
 import { ScorePane } from '../score-pane';
@@ -19,11 +21,16 @@ vi.mock('@/features/score/fonts', () => ({
   loadScoreFonts: () => Promise.resolve(),
 }));
 
-async function setup() {
+async function setup(options: { onRender?: () => void } = {}) {
   stubViewport(1280, 800);
   const services = createTestServices();
   mirrorAudio(services);
-  renderWithServices(<ScorePane hint={null} />, services);
+  renderWithServices(
+    <Profiler id="pane" onRender={() => options.onRender?.()}>
+      <ScorePane hint={null} />
+    </Profiler>,
+    services,
+  );
   const built: Score = { ...editScore(), meta: { ...editScore().meta, title: 'Edit' } };
   await act(async () => {
     await services.document
@@ -123,17 +130,89 @@ describe('the selection pill in edit mode', () => {
     expect(button('Toggle triplet')).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('opens the bend dialog from B', async () => {
+  it('opens the bend dialog from B, which a keyboard open gives focus back to and a click does not', async () => {
     const { services, noteAt, click } = await setup();
     click(noteAt(1, 1));
     const bend = within(toolbar()).getByText('B').closest('button');
     if (!bend) throw new Error('no B');
     expect(bend).toHaveAttribute('aria-haspopup', 'dialog');
+    // `fireEvent.click` has detail 0, as Enter or Space on the focused button do.
     fireEvent.click(bend);
     expect(dialogsOf(services).getState().dialog).toMatchObject({
       kind: 'effectPicker',
       picker: 'bend',
     });
+    expect(dialogsOf(services).getState().returnFocus).toBe(bend);
+    act(() => {
+      dialogsOf(services).getState().close();
+    });
+    fireEvent.click(bend, { detail: 1 });
+    expect(dialogsOf(services).getState().returnFocus).toBeUndefined();
+  });
+
+  it('reads a mixed effect over a range where only some notes have it, drawn dashed', async () => {
+    const { noteAt, click } = await setup();
+    click(noteAt(0, 0));
+    const vibrato = () => within(toolbar()).getByText('V').closest('button');
+    const press = () => {
+      const found = vibrato();
+      if (!found) throw new Error('no V');
+      fireEvent.click(found);
+    };
+    press();
+    click(noteAt(0, 3, true));
+    expect(vibrato()).toHaveAttribute('aria-pressed', 'mixed');
+    expect(vibrato()?.className).toContain('aria-[pressed=mixed]:border-dashed');
+    press();
+    expect(vibrato()).toHaveAttribute('aria-pressed', 'true');
+    expect(vibrato()?.className).toContain('aria-pressed:bg-muted');
+  });
+
+  it('keeps the vertical arrows from moving the cursor, and focus out of the body when an item goes disabled', async () => {
+    const user = userEvent.setup();
+    const { services, noteAt, click } = await setup();
+    click(noteAt(1, 1));
+    const cursor = services.selection.getState().cursor;
+    if (!cursor) throw new Error('no cursor');
+    const vibrato = within(toolbar()).getByText('V').closest('button');
+    act(() => {
+      vibrato?.focus();
+    });
+    await user.keyboard('{ArrowDown}');
+    expect(services.selection.getState().cursor).toBe(cursor);
+    // The cursor lands on the end slot, where no effect applies: the focused V is disabled, focus stays in the toolbar.
+    act(() => {
+      services.selection
+        .getState()
+        .setEdit({ cursor: { ...cursor, beat: undefined }, selection: {} });
+    });
+    expect(vibrato).toBeDisabled();
+    expect(document.activeElement).not.toBe(vibrato);
+    expect(toolbar().contains(document.activeElement)).toBe(true);
+  });
+
+  it('does not render for playback ticks or scroll frames, shown or hidden', async () => {
+    const renders = vi.fn();
+    const { services, score: opened, canvas, noteAt, click } = await setup({ onRender: renders });
+    click(noteAt(1, 1));
+    expect(screen.queryByRole('toolbar')).not.toBeNull();
+    act(() => {
+      services.playback.setState({ transport: 'playing' });
+    });
+    renders.mockClear();
+    const region = canvas().closest<HTMLElement>('[data-score-view]');
+    for (let tick = 0; tick < 5; tick += 1) {
+      act(() => {
+        services.playback.setState({ position: positionEventAt(opened, tick * 100) });
+      });
+    }
+    for (const top of [4, 8, 12]) {
+      if (region) {
+        region.scrollTop = top;
+        fireEvent.scroll(region);
+      }
+    }
+    expect(renders).not.toHaveBeenCalled();
   });
 
   it('opens the duration menu with the status bar’s steps', async () => {

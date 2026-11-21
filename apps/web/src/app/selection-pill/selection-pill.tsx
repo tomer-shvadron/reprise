@@ -32,7 +32,12 @@ import { useMenuRegistry } from '../context-menu/menu-context';
 import type { MenuContext, MenuRequest } from '../context-menu/types';
 import { useContextMenu } from '../context-menu/use-context-menu';
 import { useAppServices } from '../services-context';
-import { bindCommand, useCommandSource, type CommandSource } from '../use-command';
+import {
+  bindCommand,
+  CommandSourceContext,
+  useCommandSource,
+  type CommandSource,
+} from '../use-command';
 import { PILL_BUTTON_SELECTOR } from './commands';
 import { DurationMenu } from './duration-menu';
 import { editAnchor, lineAbove, pillAnchor } from './pill-anchor';
@@ -55,6 +60,11 @@ const ICONS: Readonly<Record<string, ReactNode>> = {
 };
 
 const MORE_KEY = 'more';
+
+// A pressed toggle fills, a mixed one is dashed and half filled: the effects panel's look, since
+// the ghost button styles nothing for aria-pressed.
+const PRESSED_CLASS =
+  'rounded-full aria-pressed:bg-muted aria-[pressed=mixed]:border-dashed aria-[pressed=mixed]:border-border aria-[pressed=mixed]:bg-muted/50';
 
 // The pill is a sibling of the score's gesture surface inside the canvas: a press on it must
 // never reach the gesture tracker, which would seek, clear the selection or capture the pointer.
@@ -98,7 +108,7 @@ function PillButton({
           <Button
             variant="ghost"
             size="xs"
-            className="rounded-full"
+            className={PRESSED_CLASS}
             aria-label={label}
             aria-pressed={pressed}
             aria-haspopup={onPress ? 'dialog' : undefined}
@@ -121,7 +131,9 @@ function PillButton({
           )}
         </span>
       </TooltipTrigger>
-      <TooltipContent>{reason ?? tooltipText(label, bound.keys)}</TooltipContent>
+      <TooltipContent>
+        {reason === undefined ? tooltipText(label, bound.keys) : `${label}: ${reason}`}
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -155,7 +167,6 @@ export function SelectionPill({ view, layout, zoom, dragging, edit }: SelectionP
   const cursor = useStore(selection, (state) => state.cursor);
   const range = useStore(selection, (state) => state.range);
   const rhythm = useStore(entry, (state) => state.rhythm);
-  const effects = useEffectPanelState(EDIT_PILL_ONLY);
   const openBend = usePickerOpener('bend');
   const loop = useStore(playback, (state) => state.settings.loop);
   const running = useStore(playback, selectRunning);
@@ -189,6 +200,8 @@ export function SelectionPill({ view, layout, zoom, dragging, edit }: SelectionP
     return anchors.map((part) => ({ box: part.box, above: lineAbove(layout, part) }));
   }, [layout, score, bars, isEditing, edit, cursor?.track]);
   const hidden = !score || parts.length === 0 || running || dragging || foreignMenu || typing;
+  // Only the shown edit pill pays for the effect state: 4 toggles and the bend blocker.
+  const effects = useEffectPanelState(EDIT_PILL_ONLY, isEditing && !hidden);
 
   const mode = isEditing ? 'edit' : 'play';
   // What the keys' Menu key would open here: its label names the toolbar, its target feeds the items.
@@ -280,6 +293,21 @@ export function SelectionPill({ view, layout, zoom, dragging, edit }: SelectionP
     root.current?.closest<HTMLElement>('[data-score-view]')?.focus();
   }, [mode]);
 
+  // The focused item can become disabled under the user (the cursor moved to a string with nothing
+  // to hammer to): focus goes to the nearest enabled item, never to the body.
+  useLayoutEffect(() => {
+    const element = root.current;
+    if (!element || !focusInside.current || hidden) return;
+    const active = globalThis.document.activeElement;
+    const buttons = [...element.querySelectorAll<HTMLButtonElement>('button[data-pill-item]')];
+    const at = buttons.findIndex((button) => button === active);
+    if (at < 0 || !buttons[at]?.disabled) return;
+    const order = buttons
+      .map((_, index) => index)
+      .sort((a, b) => Math.abs(a - at) - Math.abs(b - at));
+    buttons[order.find((index) => buttons[index]?.disabled === false) ?? -1]?.focus();
+  });
+
   const at = useMemo(
     (): MenuContext => ({ services, target: base?.target ?? { kind: 'range' }, mode }),
     [services, base, mode],
@@ -351,6 +379,11 @@ export function SelectionPill({ view, layout, zoom, dragging, edit }: SelectionP
       }
       return;
     }
+    // The editor's own vertical arrows would move the cursor, and with it the toolbar's items.
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      return;
+    }
     const buttons = [...element.querySelectorAll<HTMLElement>(PILL_BUTTON_SELECTOR)];
     const from = buttons.findIndex((button) => button === event.target);
     if (from < 0) return;
@@ -390,6 +423,8 @@ export function SelectionPill({ view, layout, zoom, dragging, edit }: SelectionP
       onContextMenu={menu.onContextMenu}
       onKeyDown={onKeyDown}
       onFocus={(event) => {
+        // A portaled menu's focus bubbles here through React: it is not the toolbar's.
+        if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return;
         focusInside.current = true;
         const related = event.relatedTarget;
         // A closed menu's item is no place to go back to.
@@ -411,44 +446,46 @@ export function SelectionPill({ view, layout, zoom, dragging, edit }: SelectionP
         }
       }}
     >
-      {items.map((item) =>
-        item.spec.kind === 'duration' ? (
-          <DurationMenu
-            source={source}
-            key={item.spec.key}
-            itemKey={item.spec.key}
-            enabled={item.enabled}
-            tabStop={stopKey === item.spec.key}
-          />
-        ) : (
-          <PillButton
-            source={source}
-            key={item.spec.key}
-            spec={item.spec}
-            label={item.label}
-            enabled={item.enabled}
-            pressed={pressedFor(item)}
-            tabStop={stopKey === item.spec.key}
-            reason={item.enabled ? undefined : item.reason}
-            onPress={item.spec.kind === 'picker' ? openBend : undefined}
-          />
-        ),
-      )}
-      <span role="separator" aria-orientation="vertical" className="score-pill-separator" />
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        className="rounded-full"
-        aria-label="More actions"
-        aria-haspopup="menu"
-        aria-expanded={ownMenu && own?.via === 'more'}
-        data-pill-item={MORE_KEY}
-        tabIndex={stopKey === MORE_KEY ? 0 : -1}
-        onMouseDown={keepFocus}
-        onClick={openMenu}
-      >
-        <EllipsisIcon aria-hidden="true" />
-      </Button>
+      {/* The score is outside the app's command contexts: the Duration steps need the source. */}
+      <CommandSourceContext value={source}>
+        {items.map((item) =>
+          item.spec.kind === 'duration' ? (
+            <DurationMenu
+              key={item.spec.key}
+              itemKey={item.spec.key}
+              enabled={item.enabled}
+              tabStop={stopKey === item.spec.key}
+            />
+          ) : (
+            <PillButton
+              source={source}
+              key={item.spec.key}
+              spec={item.spec}
+              label={item.label}
+              enabled={item.enabled}
+              pressed={pressedFor(item)}
+              tabStop={stopKey === item.spec.key}
+              reason={item.enabled ? undefined : item.reason}
+              onPress={item.spec.kind === 'picker' ? openBend : undefined}
+            />
+          ),
+        )}
+        <span role="separator" aria-orientation="vertical" className="score-pill-separator" />
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="rounded-full"
+          aria-label="More actions"
+          aria-haspopup="menu"
+          aria-expanded={ownMenu && own?.via === 'more'}
+          data-pill-item={MORE_KEY}
+          tabIndex={stopKey === MORE_KEY ? 0 : -1}
+          onMouseDown={keepFocus}
+          onClick={openMenu}
+        >
+          <EllipsisIcon aria-hidden="true" />
+        </Button>
+      </CommandSourceContext>
     </div>
   );
 }

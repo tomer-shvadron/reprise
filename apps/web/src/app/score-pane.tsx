@@ -257,7 +257,7 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
           view={handle}
           layout={result}
           zoom={zoom}
-          dragging={preview !== undefined || areaDragging}
+          dragging={preview !== undefined || (editing && areaDragging)}
           edit={edit}
         />
       </ScoreView>

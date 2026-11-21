@@ -13,7 +13,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { keepFocus } from '../command-control';
 import { useMenuFocusReturn } from '../menu-focus-return';
 import { useAppServices } from '../services-context';
-import { CommandSourceContext, type CommandSource } from '../use-command';
 
 /**
  * The current entry duration, opening the status bar's duration steps (`DURATION_STEPS`, shared,
@@ -24,12 +23,10 @@ export function DurationMenu({
   itemKey,
   enabled,
   tabStop,
-  source,
 }: {
   itemKey: string;
   enabled: boolean;
   tabStop: boolean;
-  source: CommandSource;
 }) {
   const { entry } = useAppServices();
   const rhythm = useStore(entry, (state) => state.rhythm);
@@ -64,11 +61,8 @@ export function DurationMenu({
         className="w-48"
         onCloseAutoFocus={focusReturn.onCloseAutoFocus}
       >
-        {/* The score is outside the app's command contexts, so the steps get the source here. */}
-        <CommandSourceContext value={source}>
-          <DropdownMenuLabel>Duration</DropdownMenuLabel>
-          <DurationStepItems />
-        </CommandSourceContext>
+        <DropdownMenuLabel>Duration</DropdownMenuLabel>
+        <DurationStepItems />
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -442,6 +442,8 @@ describe('the selection pill over a bar range', () => {
       services.editing.setState({ editing: true });
     });
     expect(screen.queryByRole('button', { name: 'Loop these bars' })).toBeNull();
+    // And the edit items are there.
+    expect(within(toolbar()).getByRole('button', { name: /^Duration, / })).toBeInTheDocument();
   });
 
   it('does not pause following when Space presses one of its buttons', async () => {

@@ -153,6 +153,6 @@ describe('the edit pill', () => {
     ]);
     expect(() => {
       checkPillItems(bare, registry, [EDIT_PILL]);
-    }).toThrow(/durationShorter|toggleDot/);
+    }).toThrow(/"editor\.durationShorter"/);
   });
 });
