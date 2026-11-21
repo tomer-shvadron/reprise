@@ -1,15 +1,18 @@
 import { write } from '@reprise/formats';
 import { setBeatEffect } from '@reprise/model';
+import { score } from '@reprise/model/testing';
 import { act } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { createAppRegistry } from '@/app/app-registry';
 import { runCommand } from '@/app/command-registry';
 import { installShortcutDispatcher } from '@/app/shortcut-dispatcher';
+import { aMinorRiff } from '@/test/a-minor-riff';
 import { mirrorAudio } from '@/test/mirror-audio';
 import { fourBars } from '@/test/position';
 import { createTestServices } from '@/test/services';
 
+import { scaleOverlayFor } from './fretboard/scale-overlay';
 import { speedTrainerFor } from './speed-trainer/speed-trainer-for';
 import { tunerFor } from './tuner/tuner-for';
 
@@ -239,6 +242,45 @@ describe('trainer commands', () => {
     await flip?.run();
     expect(services.ui.getState().fretboardLeftHanded).toBe(false);
     window.localStorage.clear();
+  });
+
+  it("shows the song's scale on the fretboard and clears it again", async () => {
+    const services = createTestServices();
+    const registry = createAppRegistry(services);
+    const { bytes } = await write(aMinorRiff(), 'reprise');
+    await act(async () => {
+      await services.document.getState().openBytes('riff.reprise', bytes);
+    });
+    const store = scaleOverlayFor(services);
+    const clear = registry.get('trainer.fretboardClearScale');
+    expect(clear?.enabled?.()).toBe(false);
+    await registry.get('trainer.fretboardSongScale')?.run();
+    expect(store.getState().overlay).toMatchObject({
+      tonic: 9,
+      scaleId: 'minorPentatonic',
+      source: 'song',
+    });
+    expect(services.ui.getState().bottomPanel.open).toBe(true);
+    expect(clear?.enabled?.()).toBe(true);
+    await clear?.run();
+    expect(store.getState().overlay).toBeUndefined();
+    expect(registry.get('trainer.fretboardSongScale')?.shortcut).toBeUndefined();
+    expect(clear?.shortcut).toBeUndefined();
+  });
+
+  it('says so when no scale can be named for the song', async () => {
+    const services = createTestServices();
+    const registry = createAppRegistry(services);
+    const { bytes } = await write(
+      score().tempo(120).track('guitar').bar().beat('4', []).build(),
+      'reprise',
+    );
+    await act(async () => {
+      await services.document.getState().openBytes('empty.reprise', bytes);
+    });
+    await registry.get('trainer.fretboardSongScale')?.run();
+    expect(scaleOverlayFor(services).getState().overlay).toBeUndefined();
+    expect(services.transport.getState().announcement?.text).toBe('No scale found for this song');
   });
 
   it('the chord shapes command opens the Chords tab on the right-clicked chord', async () => {
