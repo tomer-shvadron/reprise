@@ -57,6 +57,7 @@ export {
   StrokeSchema,
   TempoMixChangeSchema,
   TupletSchema,
+  WahSchema,
   WhammyKindSchema,
   WhammySchema,
 } from './beat';
@@ -73,6 +74,7 @@ export type {
   StrokeDirection,
   TempoMixChange,
   Tuplet,
+  Wah,
   Whammy,
   WhammyKind,
 } from './beat';

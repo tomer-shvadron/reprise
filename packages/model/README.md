@@ -237,6 +237,9 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   is a picking-hand scrape along the string. It is not a `SlideKind`, since every consumer of
   `slide` reads a fretting-hand slide, and a note may carry both. Both are optional, with no
   `SCORE_VERSION` bump; `setBeatEffect(s)` and `setNoteEffect(s)` set them, `null` removes.
+- **Wah** (#355): `effects.wah` (`'open' | 'closed'`) is a wah-wah pedal mark, beat-level and
+  allowed on a rest. There is no off value: a beat without it has no mark. Optional, with no
+  `SCORE_VERSION` bump; `setBeatEffect(s)` sets it, `null` removes.
 - **Fingering**: `thumb`, `index`, `middle`, `ring`, `little` for both hands; the readers map
   Guitar Pro's T 1 2 3 4 and p i m a c onto it.
 - **`Note.accidental`** (new, optional) records an explicit spelling for standard notation, so
@@ -599,7 +602,7 @@ the lead for the phase-1 freeze and re-checked in WP-015.
 - Bar level: GP5 beam grouping, fermatas, free time, simile marks (the reader copies the
   previous bar's beats into the bar with fresh ids, or the bar would play silent), stem
   orientation overrides.
-- Beat level: hairpins, legato slurs, slashed beats, timers, dead slap, rasgueado, wah,
+- Beat level: hairpins, legato slurs, slashed beats, timers, dead slap, rasgueado,
   nested (secondary) tuplets, note duration percentage.
 - Note level: tenuto and staccatissimo, left-hand tapping, ornaments, the vibrato byte on each
   GP5 bend point, the chord wizard's construction data (root, type, extensions, omissions,
