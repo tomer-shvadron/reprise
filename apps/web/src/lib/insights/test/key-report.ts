@@ -8,56 +8,82 @@ export const KEYS_FILE = 'local-tabs/keys.json';
 const LETTERS: Readonly<Record<string, number>> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
 /**
- * `A minor`, `F# major`, `Bb`, `Am`, `C♯m`: a tonic and a mode, major when none is written.
- * Anything else is `undefined`, so a typo is reported instead of scored as a miss.
+ * `A minor`, `F# major`, `Bb`, `Am`, `C♯m`: a tonic and a mode, major when none is written; the
+ * words are any case, while `m` is minor and `M` major. Anything else is `undefined`, so a typo is
+ * reported instead of scored as a miss.
  */
 export function parseKeyName(
   text: string,
 ): { tonic: number; quality: 'major' | 'minor' } | undefined {
-  const match = /^\s*([A-Ga-g])\s*([#♯b♭]?)\s*(m|min|minor|M|maj|major)?\s*$/.exec(text);
+  const match = /^\s*([A-Ga-g])\s*([#♯b♭]?)\s*(m|M|min|minor|maj|major)?\s*$/i.exec(text);
   const letter = match?.[1];
   if (!match || letter === undefined) return undefined;
   const base = LETTERS[letter.toUpperCase()];
   if (base === undefined) return undefined;
   const accidental = match[2] === '#' || match[2] === '♯' ? 1 : match[2] === '' ? 0 : -1;
   const mode = match[3] ?? '';
-  // A bare lowercase letter or "m" is minor; "b" after a letter is a flat, so "Bb" is B flat.
-  const minor = mode === 'm' || mode === 'min' || mode === 'minor';
+  // `m` alone is minor and `M` alone major, so only the one-letter forms are case-sensitive.
+  const minor = mode === 'm' || /^min/i.test(mode);
   return { tonic: (((base + accidental) % 12) + 12) % 12, quality: minor ? 'minor' : 'major' };
 }
 
+type ListedKey = { tonic: number; quality: 'major' | 'minor' };
+
 export interface TrueKeys {
-  keys: Map<string, { tonic: number; quality: 'major' | 'minor' }>;
-  /** The entries that name no key, by their own label: never a file name. */
+  keys: Map<string, ListedKey>;
+  /** Labels in a recognised form (a hash prefix or a fixture path) whose key names no key. */
   invalid: string[];
+  /** Entries ignored without being named: the owner's text could be a file name. */
+  ignored: number;
+  /** The file could not be used at all; the message is fixed and quotes nothing from it. */
+  problem?: string;
 }
 
-/** `{ "<sha256 prefix, local-N or fixture path>": "A minor" }`. */
+export const HASH_LABEL = /^[0-9a-f]{6,64}$/i;
+const isFixtureLabel = (label: string): boolean => /^fixtures\/[\w./-]+$/.test(label);
+
+export const KEYS_PARSE_PROBLEM = `${KEYS_FILE} could not be parsed`;
+export const KEYS_SHAPE_PROBLEM = `${KEYS_FILE} is not an object of labels to key names`;
+
+/** `{ "<sha256 prefix or fixture path>": "A minor" }`. */
 export function parseTrueKeys(json: unknown): TrueKeys {
-  const result: TrueKeys = { keys: new Map(), invalid: [] };
+  const result: TrueKeys = { keys: new Map(), invalid: [], ignored: 0 };
   if (typeof json !== 'object' || json === null || Array.isArray(json)) {
-    result.invalid.push('the file is not an object of labels to key names');
+    result.problem = KEYS_SHAPE_PROBLEM;
     return result;
   }
   for (const [label, value] of Object.entries(json)) {
+    if (!HASH_LABEL.test(label) && !isFixtureLabel(label)) {
+      result.ignored++;
+      continue;
+    }
     const key = typeof value === 'string' ? parseKeyName(value) : undefined;
-    if (key) result.keys.set(label, key);
+    if (key) result.keys.set(HASH_LABEL.test(label) ? label.toLowerCase() : label, key);
     else result.invalid.push(label);
   }
   return result;
 }
 
-/** A listed key for a file by its fixture path, `local-N` or a hash prefix of at least 6 digits. */
+/** The text of the file; a syntax error is reported by a fixed message, never by the parser's. */
+export function parseTrueKeysText(text: string): TrueKeys {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { keys: new Map(), invalid: [], ignored: 0, problem: KEYS_PARSE_PROBLEM };
+  }
+  return parseTrueKeys(parsed);
+}
+
+/** The listed key of a file, by fixture path or by a hash prefix (or the full hash) of its bytes. */
 export function trueKeyOf(
   keys: TrueKeys['keys'],
   file: { file: string; hash?: string },
-): { tonic: number; quality: 'major' | 'minor' } | undefined {
-  const direct = keys.get(file.file);
-  if (direct) return direct;
+): ListedKey | undefined {
   const hash = file.hash;
-  if (hash === undefined) return undefined;
+  if (hash === undefined) return keys.get(file.file);
   for (const [label, key] of keys) {
-    if (/^[0-9a-f]{6,}$/i.test(label) && hash.startsWith(label.toLowerCase())) return key;
+    if (HASH_LABEL.test(label) && (hash.startsWith(label) || label.startsWith(hash))) return key;
   }
   return undefined;
 }
@@ -109,7 +135,7 @@ const percent = (value: number): string => `${String(Math.round(value * 100))}%`
 
 export function renderKeyReport(
   rows: readonly KeyReportRow[],
-  invalid: readonly string[] = [],
+  listed: TrueKeys = { keys: new Map(), invalid: [], ignored: 0 },
   keysFileFound = false,
 ): string {
   const lines = [
@@ -146,10 +172,24 @@ export function renderKeyReport(
         : `No \`${KEYS_FILE}\` found, so there is no accuracy figure (see the player checklist for its format).`,
     );
   }
-  if (invalid.length > 0) {
+  if (listed.problem !== undefined) lines.push('', `${listed.problem}.`);
+  if (listed.invalid.length > 0) {
     lines.push(
       '',
-      `Entries in \`${KEYS_FILE}\` that name no key: ${invalid.map((label) => `\`${label}\``).join(', ')}.`,
+      `Entries in \`${KEYS_FILE}\` that name no key: ${listed.invalid.map((label) => `\`${label}\``).join(', ')}.`,
+    );
+  }
+  if (listed.ignored > 0) {
+    lines.push(
+      '',
+      `${String(listed.ignored)} entr${listed.ignored === 1 ? 'y' : 'ies'} in \`${KEYS_FILE}\` ignored: a label must be a hash prefix of 6 or more digits or a fixture path.`,
+    );
+  }
+  const matched = rows.filter((row) => row.expected !== undefined).length;
+  if (listed.keys.size > matched) {
+    lines.push(
+      '',
+      `${String(listed.keys.size - matched)} listed key${listed.keys.size - matched === 1 ? '' : 's'} matched no file in this run.`,
     );
   }
   lines.push('');

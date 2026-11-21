@@ -12,8 +12,15 @@ import { describe, inject, it } from 'vitest';
 import { detectKey } from './key';
 import { keyName, scaleName } from './key-names';
 import { noteTableOf } from './note-table';
-import { KEYS_FILE, parseTrueKeys, renderKeyReport, trueKeyOf } from './test/key-report';
-import type { KeyReportRow } from './test/key-report';
+import {
+  KEYS_FILE,
+  KEYS_PARSE_PROBLEM,
+  parseTrueKeys,
+  parseTrueKeysText,
+  renderKeyReport,
+  trueKeyOf,
+} from './test/key-report';
+import type { KeyReportRow, TrueKeys } from './test/key-report';
 
 declare module 'vitest' {
   interface ProvidedContext {
@@ -28,9 +35,15 @@ describe('key detection on the real files', () => {
   it('writes .check-files/insights.md', async () => {
     const keysPath = join(ROOT, KEYS_FILE);
     const found = existsSync(keysPath);
-    const listed = found
-      ? parseTrueKeys(JSON.parse(readFileSync(keysPath, 'utf8')) as unknown)
-      : parseTrueKeys({});
+    // A bad file must not stop the report or put its text in the output.
+    const listed = ((): TrueKeys => {
+      if (!found) return parseTrueKeys({});
+      try {
+        return parseTrueKeysText(readFileSync(keysPath, 'utf8'));
+      } catch {
+        return { keys: new Map(), invalid: [], ignored: 0, problem: KEYS_PARSE_PROBLEM };
+      }
+    })();
     const rows: KeyReportRow[] = [];
     for (const file of inject('checkFiles')) {
       const label = file.hash === undefined ? file.file : `${file.file} (sha256 ${file.hash})`;
@@ -38,33 +51,39 @@ describe('key detection on the real files', () => {
         rows.push({ label, detected: 'unreadable' });
         continue;
       }
-      const { score } = await read(new Uint8Array(readFileSync(file.absolute)));
-      const fileKey = score.masterBars[0]?.keySignature;
-      const result = detectKey(noteTableOf(score), fileKey ? { fileKey } : {});
-      const expected = trueKeyOf(listed.keys, file);
-      const row: KeyReportRow = result.found
-        ? {
-            label,
-            detected: result.name,
-            tonic: result.tonic,
-            quality: result.quality,
-            confidence: result.confidence,
-            correlation: result.correlation,
-            runnerUp: keyName(result.runnerUp.tonic, result.runnerUp.quality),
-          }
-        : { label, detected: 'not enough notes' };
-      if (result.found && result.agreesWithFile !== undefined)
-        row.agreesWithFile = result.agreesWithFile;
-      if (result.found && result.scale)
-        row.scale = scaleName(result.tonic, result.scale.scale, fileKey);
-      if (expected) {
-        row.expected = expected;
-        row.expectedName = keyName(expected.tonic, expected.quality);
+      try {
+        const { score } = await read(new Uint8Array(readFileSync(file.absolute)));
+        const fileKey = score.masterBars[0]?.keySignature;
+        const result = detectKey(noteTableOf(score), fileKey ? { fileKey } : {});
+        const expected = trueKeyOf(listed.keys, file);
+        const row: KeyReportRow = result.found
+          ? {
+              label,
+              detected: result.name,
+              tonic: result.tonic,
+              quality: result.quality,
+              confidence: result.confidence,
+              correlation: result.correlation,
+              runnerUp: keyName(result.runnerUp.tonic, result.runnerUp.quality),
+            }
+          : { label, detected: 'not enough notes' };
+        if (result.found && result.agreesWithFile !== undefined)
+          row.agreesWithFile = result.agreesWithFile;
+        if (result.found && result.scale)
+          row.scale = scaleName(result.tonic, result.scale.scale, fileKey);
+        if (expected) {
+          row.expected = expected;
+          row.expectedName = keyName(expected.tonic, expected.quality);
+        }
+        rows.push(row);
+      } catch {
+        // No message: an error from a local tab's content could quote it.
+        rows.push({ label, detected: 'analysis failed' });
       }
-      rows.push(row);
     }
     const out = process.env['REPRISE_CHECK_OUT'] ?? join(ROOT, '.check-files');
     mkdirSync(out, { recursive: true });
-    writeFileSync(join(out, 'insights.md'), renderKeyReport(rows, listed.invalid, found));
+    writeFileSync(join(out, 'insights.md'), renderKeyReport(rows, listed, found));
+    console.info('Key report: .check-files/insights.md');
   });
 });
