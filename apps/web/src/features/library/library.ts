@@ -3,7 +3,9 @@ import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 import type { AppServices } from '@/app/services';
 import { whenSaved } from '@/app/when-saved';
-import { createImageExporter, type ImageExporter } from '@/features/score';
+// Not the score index: it would put the painter in the library's module graph, and the score
+// tests that mock the painter's modules then see them loaded first.
+import { createImageExporter, type ImageExporter } from '@/features/score/image/image-exporter';
 import { restoreTrackSession } from '@/features/tracks';
 import { CHORD_DIAGRAMS_SETTING } from '@/state/app-settings';
 import type { FileHandle } from '@/platform/platform';
