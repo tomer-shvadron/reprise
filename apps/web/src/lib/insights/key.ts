@@ -75,74 +75,100 @@ export function confidenceOf(best: number, runnerUp: number): Confidence {
   return 'low';
 }
 
-interface BassNote {
-  pc: number;
+/** One moment where a note starts, with the lowest pitch sounding then in any track. */
+interface Sonority {
   bar: number;
   onset: number;
-  metric: number;
+  pc: number;
+  /** Quarter notes until the next onset in the bar, times the bar's passes. */
   weight: number;
 }
 
-/** The lowest sounding note of every beat, in no particular order. */
-function bassNotes(table: NoteTable): BassNote[] {
-  const lowest = new Map<number, BassNote & { pitch: number }>();
+/**
+ * The bass line across all tracks: at each onset the lowest pitch sounding, held notes included,
+ * so a melody's fill over a held bass note never counts as the bass. Dead notes and grace notes
+ * start no sonority; a tied continuation is not an onset but still sounds.
+ */
+export function sonorities(table: NoteTable): Sonority[] {
+  const byBar = new Map<number, number[]>();
   for (let i = 0; i < table.length; i++) {
     if ((table.flags[i] ?? 0) & NOTE_FLAG.dead) continue;
-    const beat = table.beat[i] ?? 0;
-    const pitch = table.pitch[i] ?? 0;
-    const known = lowest.get(beat);
-    if (known && known.pitch <= pitch) continue;
-    lowest.set(beat, {
-      pitch,
-      pc: pitch % 12,
-      bar: table.bar[i] ?? 0,
-      onset: table.onset[i] ?? 0,
-      metric: table.metric[i] ?? 2,
-      weight: ((table.duration[i] ?? 0) / PPQ) * (table.passes[i] ?? 1),
+    const bar = table.bar[i] ?? 0;
+    const rows = byBar.get(bar);
+    if (rows) rows.push(i);
+    else byBar.set(bar, [i]);
+  }
+  const result: Sonority[] = [];
+  for (const [bar, rows] of [...byBar].sort((a, b) => a[0] - b[0])) {
+    const starts = [
+      ...new Set(
+        rows
+          .filter((i) => !((table.flags[i] ?? 0) & (NOTE_FLAG.tie | NOTE_FLAG.grace)))
+          .map((i) => table.onset[i] ?? 0),
+      ),
+    ].sort((a, b) => a - b);
+    const barEnd = Math.max(...rows.map((i) => (table.onset[i] ?? 0) + (table.duration[i] ?? 0)));
+    starts.forEach((onset, index) => {
+      let lowest = Number.POSITIVE_INFINITY;
+      for (const i of rows) {
+        if ((table.flags[i] ?? 0) & NOTE_FLAG.grace) continue;
+        const from = table.onset[i] ?? 0;
+        if (from <= onset + 1e-6 && onset < from + (table.duration[i] ?? 0) - 1e-6) {
+          lowest = Math.min(lowest, table.pitch[i] ?? 0);
+        }
+      }
+      if (!Number.isFinite(lowest)) return;
+      const first = rows.find((i) => (table.onset[i] ?? 0) === onset);
+      const passes = first === undefined ? 1 : (table.passes[first] ?? 1);
+      result.push({
+        bar,
+        onset,
+        pc: lowest % 12,
+        weight: (((starts[index + 1] ?? barEnd) - onset) / PPQ) * passes,
+      });
     });
   }
-  return [...lowest.values()];
+  return result;
 }
 
 /**
- * The pitch class the bass cues clearly favour: the last bass note (worth two), the first one, and
- * the bass note most often heard on a downbeat. `undefined` unless one candidate holds three of the four votes.
+ * The weights of the bass evidence, added to a key's correlation. They are set once, from the
+ * scale of the correlation: the right key and its closest rival (the relative or the parallel key)
+ * usually differ by 0.02 to 0.15 in correlation, so a bass that agrees on all three cues (total
+ * 0.32) can settle a close call or a modal vamp, while a key that correlates 0.3 or more below the
+ * leader never wins on the bass alone. The downbeat share carries most of it because it is a
+ * proportion of the whole piece; the first and the last note are single, fragile observations
+ * (fade-outs, loops cut short), so each is small and neither can decide anything alone.
  */
-export function tonicByCues(table: NoteTable): number | undefined {
-  const bass = bassNotes(table);
-  if (bass.length === 0) return undefined;
-  const byTime = [...bass].sort((a, b) => a.bar - b.bar || a.onset - b.onset);
-  const first = byTime[0];
-  const last = byTime[byTime.length - 1];
-  const downbeats = new Array<number>(12).fill(0);
-  for (const note of bass)
-    if (note.metric === 0) downbeats[note.pc] = (downbeats[note.pc] ?? 0) + note.weight;
-  const top = Math.max(...downbeats);
-  const heaviest = downbeats.flatMap((weight, pc) => (weight === top ? [pc] : []));
-  // A tie is no evidence: the lowest pitch class must not win it.
-  const most = heaviest.length === 1 ? heaviest[0] : undefined;
-  // The last note counts double: a piece ends where it is at home, while it may begin anywhere.
-  const cues: [number | undefined, number][] = [
-    [last?.pc, 2],
-    [first?.pc, 1],
-    [top > 0 ? most : undefined, 1],
-  ];
-  const votes = new Map<number, number>();
-  for (const [pc, weight] of cues)
-    if (pc !== undefined) votes.set(pc, (votes.get(pc) ?? 0) + weight);
-  const ranked = [...votes].sort((a, b) => b[1] - a[1]);
-  const [winner, runnerUp] = ranked;
-  // Clear means three of the four votes, so the last note alone never moves the tonic.
-  return winner && winner[1] >= 3 && winner[1] > (runnerUp?.[1] ?? 0) ? winner[0] : undefined;
+export const CUE_WEIGHTS = { downbeat: 0.2, last: 0.06, first: 0.06 } as const;
+
+export interface BassCues {
+  first: number | undefined;
+  last: number | undefined;
+  /** The share of downbeat bass weight on each pitch class; sums to 1, or all zero. */
+  downbeat: number[];
 }
 
-const MAJOR_DEGREES = [0, 2, 4, 5, 7, 9, 11];
+export function bassCues(table: NoteTable): BassCues {
+  const line = sonorities(table);
+  const downbeat = new Array<number>(12).fill(0);
+  for (const s of line) if (s.onset < 1e-6) downbeat[s.pc] = (downbeat[s.pc] ?? 0) + s.weight;
+  const total = downbeat.reduce((a, b) => a + b, 0);
+  return {
+    first: line[0]?.pc,
+    last: line[line.length - 1]?.pc,
+    downbeat: total > 0 ? downbeat.map((w) => w / total) : downbeat,
+  };
+}
 
-/** The pitch classes of the key's collection: its major scale, or its natural minor scale. */
-const collectionOf = (key: KeyEstimate): Set<number> =>
-  new Set(
-    MAJOR_DEGREES.map((degree) => (key.tonic + degree + (key.quality === 'minor' ? 3 : 0)) % 12),
+/** How much the bass favours `tonic` as the tonic, 0 to the sum of `CUE_WEIGHTS`. */
+export function cueEvidence(cues: BassCues, tonic: number): number {
+  return (
+    CUE_WEIGHTS.downbeat * (cues.downbeat[tonic] ?? 0) +
+    (cues.first === tonic ? CUE_WEIGHTS.first : 0) +
+    (cues.last === tonic ? CUE_WEIGHTS.last : 0)
   );
+}
 
 export type KeyResult =
   | { found: false; reason: 'not-enough-notes' }
@@ -152,11 +178,11 @@ export type KeyResult =
       /** `none` for a riff without a third: the tonic holds, the mode is not guessed. */
       quality: KeyQuality | 'none';
       confidence: Confidence;
-      /** The best correlation, before the tonic cues. */
+      /** The winner's correlation with its profile, without the bass evidence. */
       correlation: number;
       /** The next best reading, which the card names so the choice is honest. */
       runnerUp: KeyEstimate;
-      /** The tonic moved from the correlation's pick to another degree of the same collection. */
+      /** The bass evidence changed the winner from the correlation's own pick. */
       movedByCues: boolean;
       /** E.g. `A minor`. */
       name: string;
@@ -177,53 +203,56 @@ export interface DetectOptions {
   fileKey?: KeySignature;
 }
 
-/** How many notes the key can rest on: dead notes carry no evidence. */
-const sounding = (table: NoteTable): number => {
+/** How many notes the key can rest on: onsets only, so a tie, a grace note or a dead note adds none. */
+export const onsetCount = (table: NoteTable): number => {
   let count = 0;
-  for (let i = 0; i < table.length; i++) if (!((table.flags[i] ?? 0) & NOTE_FLAG.dead)) count++;
+  for (let i = 0; i < table.length; i++) {
+    if (!((table.flags[i] ?? 0) & (NOTE_FLAG.dead | NOTE_FLAG.tie | NOTE_FLAG.grace))) count++;
+  }
   return count;
 };
 
 export function detectKey(table: NoteTable, options: DetectOptions = {}): KeyResult {
-  if (sounding(table) < MIN_NOTES) return { found: false, reason: 'not-enough-notes' };
+  if (onsetCount(table) < MIN_NOTES) return { found: false, reason: 'not-enough-notes' };
   const histogram = pitchHistogram(table, options.factors);
   if (sumOf(histogram) <= 0) return { found: false, reason: 'not-enough-notes' };
   const profiles = profileSetOf(options.profiles ?? DEFAULT_PROFILE_SET);
-  const ranked = rankKeys(histogram, profiles);
-  const best = ranked[0];
-  const second = ranked[1];
+  const byCorrelation = rankKeys(histogram, profiles);
+  const cues = options.cues === false ? undefined : bassCues(table);
+  // The bass is evidence added to each key's score, never an override of the correlation.
+  const scored = byCorrelation
+    .map((key) => ({ key, score: key.correlation + (cues ? cueEvidence(cues, key.tonic) : 0) }))
+    .sort((a, b) => b.score - a.score);
+  const best = scored[0];
+  const second = scored[1];
   if (!best || !second) return { found: false, reason: 'not-enough-notes' };
 
-  let tonic = best.tonic;
-  let quality: KeyQuality | 'none' = best.quality;
-  let confidence = confidenceOf(best.correlation, second.correlation);
-  const cue = options.cues === false ? undefined : tonicByCues(table);
-  const movedByCues = cue !== undefined && cue !== tonic && collectionOf(best).has(cue);
-  if (movedByCues) {
-    tonic = cue;
-    // A tonic found from its cues is read from the collection, never surer than "medium".
-    if (confidence === 'high') confidence = 'medium';
-  }
-
+  const { tonic } = best.key;
+  let quality: KeyQuality | 'none' = best.key.quality;
   const total = sumOf(histogram);
   const minorThird = (histogram[(tonic + 3) % 12] ?? 0) / total;
   const majorThird = (histogram[(tonic + 4) % 12] ?? 0) / total;
   if (minorThird < NO_THIRD_SHARE && majorThird < NO_THIRD_SHARE) quality = 'none';
-  else if (movedByCues) quality = majorThird >= minorThird ? 'major' : 'minor';
+  // A profile can name a mode whose third the music hardly plays (a tonic found by its bass in a
+  // modal tune); the thirds the notes actually carry decide, when one is twice the other.
+  else if (quality === 'major' && minorThird > 2 * majorThird) quality = 'minor';
+  else if (quality === 'minor' && majorThird > 2 * minorThird) quality = 'major';
 
-  const signatureQuality = quality === 'minor' ? 'minor' : 'major';
-  const signature = keySignatureOf(tonic, signatureQuality, options.fileKey);
+  const signature = keySignatureOf(tonic, quality === 'minor' ? 'minor' : 'major', options.fileKey);
   const result: KeyResult = {
     found: true,
     tonic,
     quality,
-    confidence,
-    correlation: best.correlation,
-    runnerUp: movedByCues ? best : second,
-    movedByCues,
+    confidence: confidenceOf(
+      best.key.correlation,
+      best.key.correlation - (best.score - second.score),
+    ),
+    correlation: best.key.correlation,
+    runnerUp: second.key,
+    movedByCues: best.key !== byCorrelation[0],
     name: keyName(tonic, quality, options.fileKey),
     signature,
-    scale: fitScale(histogram, tonic),
+    scale: fitScale(histogram, tonic, quality),
     histogram,
   };
   if (options.fileKey) result.agreesWithFile = options.fileKey.fifths === signature.fifths;

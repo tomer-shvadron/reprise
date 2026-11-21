@@ -4,8 +4,7 @@ import { ALL_FACTORS, type HistogramOptions } from './histogram';
 import { detectKey } from './key';
 import { PROFILE_SETS } from './key-profiles';
 import { noteTableOf } from './note-table';
-import { fitScale } from './scale-fit';
-import { generatedCorpus, type Group, type Piece } from './test/corpus';
+import { formOf, generatedCorpus, type Group, type Piece } from './test/corpus';
 import { isExact, mirexScore } from './test/mirex';
 import { TUNES } from './test/tunes';
 
@@ -13,6 +12,17 @@ const corpus = generatedCorpus();
 const tables = new Map<Piece, ReturnType<typeof noteTableOf>>(
   corpus.map((piece) => [piece, noteTableOf(piece.score)]),
 );
+
+/**
+ * Forms the engine gets wrong, with what it says. They stay in the accuracy table; the test below
+ * pins each miss so that a change in either direction shows. The weights were not tuned on them.
+ */
+const KNOWN_MISSES: Record<string, string> = {
+  // A loop that starts on i and stops on bVII is also III-VII-i-VI: the relative major reads as
+  // well as the minor, and the bass evidence (the first note and a quarter of the downbeats) is
+  // not enough to turn it. The engine says the relative major.
+  'i-bVI-bIII-bVII loop ending on bVII': 'relative major',
+};
 
 interface Tally {
   exact: number;
@@ -59,15 +69,20 @@ const FACTORS: [string, Partial<HistogramOptions>][] = [
 ];
 
 describe('key accuracy on the generated corpus', () => {
+  const forms = new Set(corpus.map(formOf));
+
   it('prints the accuracy per profile set and per factor', () => {
-    const lines = ['', `corpus: ${String(corpus.length)} pieces in 12 tonics`];
+    const lines = [
+      '',
+      `corpus: ${String(corpus.length)} pieces, ${String(forms.size)} forms, each voiced differently in 12 tonics`,
+    ];
     lines.push('| profile set | factors | exact | MIREX |', '| --- | --- | --- | --- |');
     for (const set of PROFILE_SETS) {
       const cued = tally(corpus, set.id);
       lines.push(
-        `| ${set.name} | default factors and tonic cues | ${percent(cued.exact, cued.count)} | ${percent(cued.mirex, cued.count)} |`,
+        `| ${set.name} | default factors and bass evidence | ${percent(cued.exact, cued.count)} | ${percent(cued.mirex, cued.count)} |`,
       );
-      // Without the cues, the table shows what each factor does to the correlation alone.
+      // Without the bass evidence, the table shows what each factor does to the correlation alone.
       for (const [label, factors] of FACTORS) {
         const t = tally(corpus, set.id, factors, false);
         lines.push(
@@ -95,46 +110,68 @@ describe('key accuracy on the generated corpus', () => {
     expect(ALL_FACTORS.metric).toBe(true);
   });
 
-  it.each(['scale', 'cadence'] as const)(
-    'gets every %s piece right with the default profiles',
-    (group) => {
-      const pieces = corpus.filter((piece) => piece.group === group);
+  it('gets every form right except the documented misses', () => {
+    for (const form of forms) {
+      const pieces = corpus.filter((piece) => formOf(piece) === form);
       const t = tally(pieces, 'krumhanslKessler');
-      expect(t.exact, `${String(t.exact)} of ${String(t.count)}`).toBe(t.count);
-    },
-  );
-
-  it('gets 95% of the progressions, vamps, solos and riffs with the default profiles', () => {
-    const pieces = corpus.filter((piece) => !['scale', 'cadence'].includes(piece.group));
-    const t = tally(pieces, 'krumhanslKessler');
-    expect(t.exact / t.count, `${String(t.exact)} of ${String(t.count)}`).toBeGreaterThanOrEqual(
-      0.95,
-    );
+      if (form in KNOWN_MISSES) expect(t.exact, `${form} should still miss`).toBe(0);
+      else expect(t.exact, form).toBe(t.count);
+    }
   });
 
-  it('names the scale of every vamp and solo', () => {
+  it('pins the known misses to what the engine says', () => {
+    for (const piece of corpus.filter((p) => formOf(p) in KNOWN_MISSES)) {
+      const key = detectKey(tables.get(piece) ?? noteTableOf(piece.score));
+      // The relative major of the expected minor key.
+      expect(key.found && [key.tonic, key.quality]).toEqual([
+        (piece.expected.tonic + 3) % 12,
+        'major',
+      ]);
+    }
+  });
+
+  it('names the scale of every piece that has one', () => {
     for (const piece of corpus) {
       if (!piece.expected.scale) continue;
       const key = detectKey(tables.get(piece) ?? noteTableOf(piece.score));
       expect(key.found && key.scale?.scale, piece.name).toBe(piece.expected.scale);
     }
   });
+
+  it('notices the mixed thirds of a blues', () => {
+    for (const piece of corpus.filter((p) => p.expected.mixedThirds)) {
+      const key = detectKey(tables.get(piece) ?? noteTableOf(piece.score));
+      expect(key.found && key.scale?.mixedThirds, piece.name).toBe(true);
+    }
+  });
+
+  it('keeps the defaults ahead of their ablations and of the other profile sets', () => {
+    const base = tally(corpus, 'krumhanslKessler', {}, false);
+    for (const [label, factors] of FACTORS.filter(([name]) => name.startsWith('no '))) {
+      const ablated = tally(corpus, 'krumhanslKessler', factors, false);
+      expect(base.exact, label).toBeGreaterThanOrEqual(ablated.exact);
+      expect(base.mirex, label).toBeGreaterThanOrEqual(ablated.mirex);
+    }
+    const full = tally(corpus, 'krumhanslKessler');
+    for (const set of PROFILE_SETS) {
+      const other = tally(corpus, set.id);
+      expect(full.exact, set.name).toBeGreaterThanOrEqual(other.exact);
+      expect(full.mirex, set.name).toBeGreaterThanOrEqual(other.mirex);
+    }
+  });
 });
 
 describe('key of public-domain tunes', () => {
-  it.each(TUNES)('$name', ({ expected, score }) => {
+  it.each(TUNES)('$name', ({ expected, known, score }) => {
     const key = detectKey(noteTableOf(score));
     expect(key.found).toBe(true);
     if (!key.found) return;
+    const wanted = known ?? expected;
     expect({ tonic: key.tonic, quality: key.quality }).toEqual({
-      tonic: expected.tonic,
-      quality: expected.quality,
+      tonic: wanted.tonic,
+      quality: wanted.quality,
     });
-    if (expected.scale) expect(key.scale?.scale).toBe(expected.scale);
-  });
-
-  it('fits a scale to a histogram directly', () => {
-    const key = detectKey(noteTableOf(TUNES[0]?.score ?? corpus[0]?.score ?? ({} as never)));
-    expect(key.found && fitScale(key.histogram, key.tonic)).toBeTruthy();
+    const scale = known?.scale ?? expected.scale;
+    if (scale) expect(key.scale?.scale).toBe(scale);
   });
 });

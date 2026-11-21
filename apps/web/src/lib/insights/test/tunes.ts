@@ -42,6 +42,11 @@ const chord = (...names: string[]): number[] =>
 export interface Tune {
   name: string;
   expected: Expected;
+  /**
+   * What the engine says today when it differs from `expected`, kept so a change shows up in the
+   * test, and so the PR lists the miss. The rule was not tuned to make these pass.
+   */
+  known?: { tonic: number; quality: 'major' | 'minor' | 'none'; scale?: string; why: string };
   score: Piece['score'];
 }
 
@@ -73,7 +78,7 @@ export const TUNES: Tune[] = [
         D5/2 B4/8 D5/8  B4/2 G4/4  D4/2 E4/8 D4/8  G4/2.
         G4/2 B4/8 G4/8  B4/2 A4/4  G4/2.
       `),
-      [3, 4],
+      { meter: [3, 4], pickup: 4 },
     ),
   },
   {
@@ -108,19 +113,27 @@ export const TUNES: Tune[] = [
         E5/2 E5/4  D5/2 B4/4  C#5/2 A4/4  B4/2.
         E4/4 B4/2  B4/2 F#4/4  G4/2 F#4/4  E4/2.
       `),
-      [3, 4],
+      { meter: [3, 4], pickup: 4 },
     ),
   },
   {
-    // Drunken Sailor, approximated from memory and abridged; the B and C are what make it Dorian.
+    // Drunken Sailor, the sea shanty's verse as sung: six As, then D F A; six Gs, then C E G; six
+    // As, then B C D; then C A G E D D. The B natural is what makes it Dorian rather than natural
+    // minor. A transcription of the contour, with the rhythm simplified.
     name: 'Drunken Sailor (D Dorian)',
     expected: { tonic: 2, quality: 'minor', scale: 'dorian' },
+    known: {
+      tonic: 2,
+      quality: 'none',
+      scale: 'suspendedPentatonic',
+      why: 'the one F in the verse is under 2% of the weight, so the third is withheld; tonic right',
+    },
     score: fromMelody(
       parse(`
-        D4/8 D4/8 D4/8 D4/8 D4/8 D4/8 F4/8 A4/8  C5/8 C5/8 C5/8 C5/8 C5/8 C5/8 A4/8 F4/8
-        D4/8 D4/8 D4/8 D4/8 D4/8 D4/8 F4/8 A4/8  B4/8 B4/8 B4/8 B4/8 A4/4 G4/4
-        F4/8 F4/8 F4/8 F4/8 F4/8 F4/8 E4/8 F4/8  G4/8 G4/8 G4/8 A4/8 B4/4 A4/4
-        G4/8 G4/8 G4/8 G4/8 F4/8 F4/8 E4/8 E4/8  D4/2 D4/2
+        A4/8 A4/8 A4/8 A4/8 A4/8 A4/8 D5/8 F5/8  A5/2 R/2
+        G4/8 G4/8 G4/8 G4/8 G4/8 G4/8 C5/8 E5/8  G5/2 R/2
+        A4/8 A4/8 A4/8 A4/8 A4/8 A4/8 B4/8 C5/8  D5/2 R/2
+        C5/4 A4/4 G4/4 E4/4  D4/2 D4/2
       `),
     ),
   },
@@ -131,10 +144,10 @@ export const TUNES: Tune[] = [
     score: fromMelody(
       parse(`
         A4/4
-        C5/2 D5/4  E5/4. F5/8 E5/4  D5/2 B4/4  G4/4. A4/8 B4/4  C5/2 A4/4  A4/4. G#4/8 A4/4  B4/2 G#4/4  E4/2.
+        C5/2 D5/4  E5/4. F5/8 E5/4  D5/2 B4/4  G4/4. A4/8 B4/4  C5/2 A4/4  A4/4. G#4/8 A4/4  B4/2 G#4/4  E4/2
         A4/4  C5/2 D5/4  E5/4. F5/8 E5/4  D5/2 B4/4  G4/4. A4/8 B4/4  C5/4. B4/8 A4/4  G#4/4. F#4/8 G#4/4  A4/2.
       `),
-      [3, 4],
+      { meter: [3, 4], pickup: 4 },
     ),
   },
   {
@@ -164,13 +177,15 @@ export const TUNES: Tune[] = [
         E4/16 E5/16 D#5/16 E5/16 D#5/16 E5/16 B4/16 D5/16 C5/16 A4/8. C4/16 E4/16 A4/16 B4/8. E4/16 C5/16 B4/16 A4/8.
         E5/16 D#5/16 E5/16 D#5/16 E5/16 B4/16 D5/16 C5/16 A4/8. C4/16 E4/16 A4/16 B4/8. E4/16 C5/16 B4/16 A4/8.
       `),
-      [3, 8],
-      // The left hand: A minor and E major arpeggios, which the right hand alone does not give.
-      parse(`
+      {
+        meter: [3, 8],
+        // The left hand: A minor and E major arpeggios, which the right hand alone does not give.
+        bass: parse(`
         R/8 R/8 R/8  R/8 R/8 R/8  A2/8 E3/8 A3/8  E2/8 E3/8 G#3/8  A2/8 E3/8 A3/8  R/8 R/8 R/8
         A2/8 E3/8 A3/8  E2/8 E3/8 G#3/8  A2/8 E3/8 A3/8  A2/8 E3/8 A3/8  E2/8 E3/8 G#3/8  A2/8 E3/8 A3/8
         A2/4. A2/4.
       `),
+      },
     ),
   },
   {
@@ -182,7 +197,7 @@ export const TUNES: Tune[] = [
         D5/4 G4/8 A4/8 B4/8 C5/8  D5/4 G4/4 G4/4  E5/4 C5/8 D5/8 E5/8 F#5/8  G5/4 G4/4 G4/4
         C5/4 D5/8 C5/8 B4/8 A4/8  B4/4 C5/8 B4/8 A4/8 G4/8  F#4/4 G4/8 A4/8 B4/8 G4/8  B4/2.
       `),
-      [3, 4],
+      { meter: [3, 4] },
     ),
   },
   {

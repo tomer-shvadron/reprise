@@ -1,10 +1,21 @@
 import { midi, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
-import { CONFIDENCE, confidenceOf, detectKey, pearson, rankKeys, tonicByCues } from './key';
+import {
+  CONFIDENCE,
+  CUE_WEIGHTS,
+  bassCues,
+  confidenceOf,
+  cueEvidence,
+  detectKey,
+  onsetCount,
+  pearson,
+  rankKeys,
+  sonorities,
+} from './key';
 import { PROFILE_SETS, profileSetOf } from './key-profiles';
 import { noteTableOf } from './note-table';
-import { fromBars } from './test/corpus';
+import { fromBars, fromMelody } from './test/corpus';
 
 describe('pearson', () => {
   it('is 1 for a scaled copy, -1 for a mirror and 0 for no spread', () => {
@@ -109,15 +120,189 @@ describe('detectKey', () => {
     expect(key.found && key.quality).toBe('minor');
   });
 
-  it('leaves the tonic alone when the cues disagree', () => {
+  it('keeps the tonic when the quality has no third to show for it', () => {
+    // E Dorian in the bass, with only G natural played: the third is minor, so the key is minor.
+    const em = [40, 52, 55, 59];
+    const table = noteTableOf(fromBars([em, em, [45, 57, 60, 64], em].map((chord) => ({ chord }))));
+    expect(detectKey(table)).toMatchObject({ tonic: 4, quality: 'minor' });
+  });
+
+  describe('a melody over a held bass, in either track order', () => {
+    // C major: the bass holds C, F, G, C as whole notes while the melody opens on G and its last
+    // eighths are a C chord arpeggio ending on G. A per-track bass read G as the last bass note.
+    const melody = [
+      [67, '4'],
+      [65, '4'],
+      [64, '4'],
+      [62, '4'],
+      [64, '4'],
+      [64, '4'],
+      [64, '2'],
+      [62, '4'],
+      [62, '4'],
+      [64, '4'],
+      [62, '4'],
+      [60, '8'],
+      [64, '8'],
+      [67, '8'],
+      [72, '8'],
+      [67, '2'],
+    ] as const;
+    const bass = [
+      [36, '1'],
+      [41, '1'],
+      [43, '1'],
+      [36, '1'],
+    ] as const;
+
+    it.each([false, true])('names C major with the bass track first: %s', (bassFirst) => {
+      const table = noteTableOf(fromMelody(melody, { bass, bassFirst }));
+      expect(bassCues(table).last).toBe(0);
+      expect(detectKey(table)).toMatchObject({ tonic: 0, quality: 'major' });
+    });
+  });
+
+  it('does not let a fill over a held note count as the bass', () => {
     const table = noteTableOf(
-      fromBars([
-        { chord: [48, 60, 64, 67] },
-        { chord: [43, 55, 59, 62] },
-        { chord: [45, 57, 60, 64] },
-        { chord: [41, 53, 57, 60] },
-      ]),
+      fromMelody(
+        [
+          [72, '4'],
+          [67, '4'],
+          [64, '4'],
+          [60, '4'],
+        ],
+        {
+          bass: [[36, '1']],
+        },
+      ),
     );
-    expect(tonicByCues(table)).toBeUndefined();
+    expect(sonorities(table).map((s) => s.pc)).toEqual([0, 0, 0, 0]);
+  });
+});
+
+describe('the bass evidence', () => {
+  it('adds up to the sum of the weights for a bass that agrees on every cue', () => {
+    const cues = { first: 0, last: 0, downbeat: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] };
+    expect(cueEvidence(cues, 0)).toBeCloseTo(
+      CUE_WEIGHTS.downbeat + CUE_WEIGHTS.first + CUE_WEIGHTS.last,
+    );
+    expect(cueEvidence(cues, 5)).toBe(0);
+  });
+
+  it('is evidence, not an override: a last note alone does not move a clear key', () => {
+    // A clear C major that ends on a held G: the correlation stays with C.
+    const c = [36, 60, 64, 67];
+    const table = noteTableOf(
+      fromBars(
+        [
+          c,
+          [41, 65, 69, 72],
+          [43, 67, 71, 74],
+          c,
+          c,
+          [41, 65, 69, 72],
+          [43, 67, 71, 74],
+          [43, 67, 71, 74],
+        ].map((chord) => ({ chord })),
+      ),
+    );
+    expect(detectKey(table)).toMatchObject({ tonic: 0, quality: 'major' });
+  });
+
+  it('can settle a close call between a mode and its relative key', () => {
+    const am = [45, 57, 60, 64];
+    const g = [43, 55, 59, 62];
+    const table = noteTableOf(fromBars([am, g, am, g, am, g, am].map((chord) => ({ chord }))));
+    expect(detectKey(table)).toMatchObject({ tonic: 9 });
+    expect(detectKey(table, { cues: false }).found).toBe(true);
+  });
+
+  it('puts the bass at each onset, held notes included, across tracks', () => {
+    const table = noteTableOf(
+      fromMelody(
+        [
+          [72, '4'],
+          [67, '4'],
+        ],
+        { bass: [[36, '2']] },
+      ),
+    );
+    const line = sonorities(table);
+    expect(line.map((s) => [s.onset, s.pc])).toEqual([
+      [0, 0],
+      [960, 0],
+    ]);
+  });
+});
+
+const CHORD_TONES = [0, 4, 7, 12];
+
+describe('not enough notes', () => {
+  const notes = (count: number, duration: '4' | '16' = '4') => {
+    const b = score().track('piano');
+    b.bar();
+    for (let i = 0; i < count; i++) {
+      if (i > 0 && i % (duration === '4' ? 4 : 16) === 0) b.bar();
+      b.beat(duration, [midi(60 + (CHORD_TONES[i % 4] ?? 0))]);
+    }
+    return b.build();
+  };
+
+  it('needs 16 onsets', () => {
+    expect(detectKey(noteTableOf(notes(15))).found).toBe(false);
+    expect(detectKey(noteTableOf(notes(16))).found).toBe(true);
+  });
+
+  it('counts onsets, not the rows of a tie continuation', () => {
+    const built = score().track('piano');
+    for (let bar = 0; bar < 8; bar++) {
+      built.bar();
+      built.beat('1', [midi(60, { tie: bar > 0 })]);
+      if (bar % 2 === 0) continue;
+    }
+    const table = noteTableOf(built.build({ validate: false }));
+    expect(table.length).toBe(8);
+    expect(onsetCount(table)).toBe(1);
+    expect(detectKey(table).found).toBe(false);
+  });
+
+  it('finds nothing in a drums-only score', () => {
+    const built = score()
+      .track('drums')
+      .bar()
+      .beat('4', [midi(36)])
+      .build();
+    expect(detectKey(noteTableOf(built))).toEqual({ found: false, reason: 'not-enough-notes' });
+  });
+});
+
+describe('a riff with no third', () => {
+  const power = (root: number) => [root, root + 7, root + 12];
+  const riff = (roots: number[]) =>
+    noteTableOf(fromBars(roots.map((root) => ({ chord: power(root) }))));
+
+  it('is named by a scale without a third, or by none', () => {
+    const key = detectKey(riff([40, 38, 45, 40, 40, 38, 45, 40]));
+    expect(key).toMatchObject({ found: true, tonic: 4, quality: 'none' });
+    // E, B, D and A: the suspended pentatonic holds them all and no third.
+    expect(key.found && key.scale?.scale).toBe('suspendedPentatonic');
+  });
+
+  it('never reports E minor pentatonic for E5-A5-B5', () => {
+    const key = detectKey(riff([40, 40, 45, 45, 40, 40, 47, 45, 40]));
+    expect(key.found && key.quality).toBe('none');
+    expect(key.found && key.scale?.scale).not.toBe('minorPentatonic');
+  });
+
+  it('reports no scale when none without a third explains the notes', () => {
+    // Power chords on E, F, A sharp and F sharp: no scale without a third covers their notes.
+    const key = detectKey(riff([40, 41, 46, 42, 40, 41, 46, 42, 40]));
+    expect(key.found && key.quality).toBe('none');
+    expect(key.found && key.scale).toBeUndefined();
+  });
+
+  it('reads a flat third on a chord root as minor', () => {
+    const key = detectKey(riff([40, 43, 45, 40, 43, 45, 40]));
+    expect(key).toMatchObject({ found: true, tonic: 4, quality: 'minor' });
   });
 });
