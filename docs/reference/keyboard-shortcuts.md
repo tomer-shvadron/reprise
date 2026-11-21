@@ -149,6 +149,8 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Toggle fretboard | Trainer | Global | — | — |
 | Speed trainer on selection | Trainer | Global | — | — |
 | Left-handed fretboard | Trainer | Global | — | — |
+| Show the song's scale on the fretboard | Trainer | Global | — | — |
+| Hide the scale on the fretboard | Trainer | Global | — | — |
 | Show fretboard | Trainer | Global | — | — |
 | Toggle edit mode | Editor | Global | ⌘E | Ctrl+E |
 | Edit here | Editor | Global | — | — |
