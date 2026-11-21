@@ -67,7 +67,7 @@ describe('a local tab', () => {
     writeFileSync(tab, sentinelTab());
     const run = spawnSync(
       process.execPath,
-      ['scripts/check-files/run.ts', tab, '--only', 'formats'],
+      ['scripts/check-files/run.ts', tab, '--only', 'formats,insights'],
       {
         cwd: ROOT_DIR,
         encoding: 'utf8',
@@ -77,6 +77,7 @@ describe('a local tab', () => {
     const output = `${run.stdout}\n${run.stderr}`;
     expect(output).toContain('local-1 (sha256 ');
     expect(output).not.toContain(SENTINEL);
+    expect(readFileSync(join(out, 'insights.md'), 'utf8')).toContain('local-1 (sha256 ');
     const written = texts(out);
     expect(written.map((file) => file.path)).toEqual(
       expect.arrayContaining([expect.stringMatching(/^local[/\\]local-1\.md$/), 'summary.md']),
