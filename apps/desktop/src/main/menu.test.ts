@@ -65,11 +65,14 @@ describe('menuTemplate', () => {
 
     expect(labels.indexOf('Export')).toBe(labels.indexOf('Save As…') + 1);
     const inside = Array.isArray(exported?.submenu) ? exported.submenu : [];
-    expect(inside.map((item) => item.label)).toEqual(['Guitar Pro…', 'ASCII Tab…']);
+    expect(inside.map((item) => item.label)).toEqual(['Guitar Pro…', 'ASCII Tab…', 'Image…']);
     expect(inside[0]).toMatchObject({ accelerator: 'CmdOrCtrl+Shift+E' });
     expect(inside[1]).not.toHaveProperty('accelerator');
     press(inside[1]);
     expect(options.sendCommand).toHaveBeenLastCalledWith('file.exportAsciiTab');
+    expect(inside[2]).not.toHaveProperty('accelerator');
+    press(inside[2]);
+    expect(options.sendCommand).toHaveBeenLastCalledWith('file.exportImage');
   });
 
   it('puts New Song first in the File menu on CmdOrCtrl+N', () => {

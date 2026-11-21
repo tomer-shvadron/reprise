@@ -30,7 +30,7 @@ import {
   TrainerPanel,
   TunerButton,
 } from '@/features/trainer';
-import { PrintDialog, PrintRoot } from '@/features/score';
+import { ImageExportDialog, PrintDialog, PrintRoot } from '@/features/score';
 import { MixerPanel, TrackSidebar } from '@/features/tracks';
 import { Announcer, TransportBar } from '@/features/transport';
 import type { RepriseBridge } from '@/platform/bridge';
@@ -269,6 +269,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
           <UnsavedChangesHost />
           <ExportDialog />
           <AsciiExportDialog />
+          <ImageExportDialog exporter={libraryOf(services).imageExport} />
           <DraftRecoveryDialog />
           <PrintDialog store={services.print} />
           <PrintRoot store={services.print} />
