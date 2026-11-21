@@ -69,6 +69,38 @@ describe('createBeatIndex', () => {
   });
 });
 
+describe('a banjo drone string', () => {
+  const banjo = (capo = 0) =>
+    score()
+      .tempo(120)
+      .track('banjo', { capo })
+      .bar()
+      .beat('4', [note(5, 0)])
+      .beat('4', [note(5, 2)]);
+
+  it('starts the board line at the drone fret', () => {
+    expect(boardOf(banjo().build().tracks[0])?.drone).toEqual({ string: 5, fret: 5 });
+    expect(boardOf(score().track('guitar').bar().build().tracks[0])?.drone).toBeUndefined();
+  });
+
+  it('lights neck frets: stored 2 sits at fret 7, open at the first fret of the string', () => {
+    const built = banjo().build();
+    const index = createBeatIndex(must(built.tracks[0]), built.masterBars);
+    const masterBar = must(built.masterBars[0]);
+    const [open] = index.dotsAt(masterBar.id, 0);
+    const [fretted] = index.dotsAt(masterBar.id, 960);
+    expect([open?.fret, open?.absolute]).toEqual([0, 5]);
+    expect([fretted?.fret, fretted?.absolute]).toEqual([7, 7]);
+  });
+
+  it('counts a fretted drone note from the capo like any other string', () => {
+    const built = banjo(2).build();
+    const index = createBeatIndex(must(built.tracks[0]), built.masterBars);
+    const [fretted] = index.dotsAt(must(built.masterBars[0]).id, 960);
+    expect(fretted?.absolute).toBe(9);
+  });
+});
+
 describe('dots', () => {
   const dotsOf = (spec: Parameters<typeof note>[2], string = 1, fret = 0, capo = 0) => {
     const built = score()

@@ -438,6 +438,39 @@ describe.each(VERSIONS)('a 12-string flagged track in a v%s file', (version) => 
   });
 });
 
+describe.each(VERSIONS)('a banjo flagged track in a v%s file', (version) => {
+  const BANJO_STRINGS = [62, 59, 55, 50, 67];
+  const banjo = (track: { strings?: number[]; percussion?: boolean; flags?: number }) =>
+    read(
+      buildGpFile({
+        version,
+        tracks: [{ name: 'Banjo', ...track }],
+        bars: [[[[quarter(1, 0)]]]],
+      }),
+    );
+
+  // Unverified against Guitar Pro itself (#348): this pins the reader's reading of flag 0x04.
+  it('gives a five-string track the short fifth string from fret 5', () => {
+    const { score, warnings } = banjo({ flags: 0x04, strings: BANJO_STRINGS });
+    expect(score.tracks[0]?.drone).toEqual({ string: 5, fret: 5 });
+    const count = warnings.find((warning) => warning.code === 'track-flags-dropped')?.count;
+    expect(count).toBe(version >= '5' ? 1 : undefined);
+  });
+
+  it('leaves a plain track without one, and reports the flag where it cannot apply', () => {
+    expect(banjo({ strings: BANJO_STRINGS }).score.tracks[0]?.drone).toBeUndefined();
+    for (const track of [
+      { flags: 0x04, strings: [64, 59, 55, 50] },
+      { flags: 0x04, percussion: true },
+    ]) {
+      const { score, warnings } = banjo(track);
+      expect(score.tracks[0]?.drone).toBeUndefined();
+      const count = warnings.find((warning) => warning.code === 'track-flags-dropped')?.count;
+      expect(count, JSON.stringify(track)).toBe(version >= '5' ? 2 : 1);
+    }
+  });
+});
+
 describe('a GP5 track asking for tab', () => {
   const piano = (staffFlags: number, program = 0) =>
     read(

@@ -38,6 +38,17 @@ describe('note tokens', () => {
     ).toBe('e|-7--12-|');
   });
 
+  it('writes neck frets on a banjo drone string: stored 2 prints 7, open stays 0', () => {
+    const text = tab(
+      scoreBuilder()
+        .track('banjo')
+        .bar()
+        .beat('4', [note(5, 0)])
+        .beat('4', [note(5, 2)]),
+    ).text;
+    expect(text).toContain('G|-0-7-|');
+  });
+
   it('writes a tie as dashes', () => {
     const line = topLine(
       guitar()

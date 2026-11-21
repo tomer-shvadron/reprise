@@ -2,7 +2,9 @@ import {
   beatTicks,
   midiNote,
   soundingPitch,
+  writtenFret,
   type Bar,
+  type Drone,
   type Id,
   type MasterBar,
   type Note,
@@ -36,6 +38,8 @@ export interface BoardShape {
   strings: number;
   frets: number;
   capo: number;
+  /** A banjo's short string: it has no frets below `drone.fret`, so its line starts there. */
+  drone?: Drone;
 }
 
 const highestByBar = new WeakMap<Bar, number>();
@@ -67,6 +71,7 @@ export function boardOf(track: Track | undefined): BoardShape | undefined {
     strings: track.tuning.length,
     frets: Math.max(BOARD_FRETS, track.fretCount, track.capo + used),
     capo: track.capo,
+    ...(track.drone && { drone: track.drone }),
   };
 }
 
@@ -75,14 +80,28 @@ export function tuningNames(track: Pick<Track, 'tuning'>): string[] {
   return track.tuning.map(noteName);
 }
 
+/**
+ * Where a dot sits on the neck. The capo raises all five strings, so a fretted drone note counts
+ * from the capo like any other; an open drone sits at the string's first fret (or the capo, past it).
+ */
+function absoluteFret(track: Track, note: Note, written: number): number {
+  const { drone } = track;
+  if (drone && note.string === drone.string && written === 0) {
+    return Math.max(track.capo, drone.fret);
+  }
+  return track.capo + written;
+}
+
 function dotOf(track: Track, note: Note): Dot | undefined {
-  const { string, fret } = note;
+  const { string } = note;
+  // Written frets match the tab, so the drone string counts from the banjo's own nut.
+  const fret = writtenFret(track, note);
   if (string < 1 || string > track.tuning.length) return undefined;
   const pitch = note.harmonic ? soundingPitch(track, note) : midiNote(track, note);
   return {
     string,
     fret,
-    absolute: track.capo + fret,
+    absolute: absoluteFret(track, note, fret),
     capo: track.capo,
     name: note.dead ? 'x' : noteName(pitch),
     dead: note.dead,
@@ -159,7 +178,7 @@ export interface BeatIndex {
 const cache = new WeakMap<Bar, { key: string; dots: BarDots }>();
 
 export function createBeatIndex(track: Track, masterBars: readonly MasterBar[]): BeatIndex {
-  const key = `${track.tuning.join(',')}/${String(track.capo)}`;
+  const key = `${track.tuning.join(',')}/${String(track.capo)}/${String(track.drone?.string)}:${String(track.drone?.fret)}`;
   const barOf = new Map<Id, Bar>();
   masterBars.forEach((masterBar, index) => {
     const bar = track.bars[index];

@@ -117,6 +117,19 @@ describe('tab staff: strings and fret numbers', () => {
     ).toMatchSnapshot();
   });
 
+  it('prints neck frets on a banjo drone string: stored 0 stays 0, stored 2 reads 7', () => {
+    const result = laid(
+      score()
+        .track('banjo')
+        .bar()
+        .beat('4', [note(5, 0), note(1, 3)])
+        .beat('4', [note(5, 2)])
+        .beat('4', [note(5, 2, { tie: true })])
+        .build({ ids: 'sequential' }),
+    );
+    expect(texts(result)).toEqual(['3', '0', '7', '(7)']);
+  });
+
   it('writes dead notes as x, ghost notes and tied notes in parentheses', () => {
     const result = laid(
       guitar()

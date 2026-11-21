@@ -4,7 +4,8 @@ import { fingerShape } from './fingering';
 import { modulo, type PitchClass } from './names';
 import { parseChord, type ChordSpec } from './qualities';
 
-export type VoicingTrack = Pick<Track, 'tuning' | 'capo' | 'fretCount'>;
+export type VoicingTrack = Pick<Track, 'tuning' | 'capo' | 'fretCount'> &
+  Partial<Pick<Track, 'drone'>>;
 
 export interface VoicingOptions {
   /** Frets from the lowest to the highest fretted note, both counted; open strings do not count. Default 4. */
@@ -51,6 +52,7 @@ export function voicings(
     track.tuning,
     track.capo,
     track.fretCount,
+    track.drone?.string ?? null,
     maxSpan,
     minStrings,
     rootInBass,
@@ -114,6 +116,9 @@ function search(
       // A muted string is always an option; below the bass nothing sounds yet.
       frets[i] = null;
       visit(i + 1, bassSeen);
+      // A banjo's short string stays muted: how Guitar Pro numbers its diagram frets is not known
+      // (#348), and a shape needing it would not be the one a player reads off the neck.
+      if (stringCount - i === track.drone?.string) return;
       const choices: number[] = [];
       if (tones.has(modulo(pitch, 12))) choices.push(0);
       for (let fret = Math.max(window, 1); window > 0 && fret <= top; fret++) {
