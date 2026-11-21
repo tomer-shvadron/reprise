@@ -17,6 +17,11 @@ export interface ContextMenuState {
   invoker: Element | null;
   /** The element focused before the latest press, read before the browser moves focus. */
   pressedFrom: Element | null;
+  /**
+   * Whether a request would show any item; the host installs the real answer. A surface asks
+   * before it takes the event, so an empty menu never opens and the browser's menu stays.
+   */
+  hasItems: (request: MenuRequest) => boolean;
   show(request: MenuRequest, via: MenuVia, point: { x: number; y: number }): void;
   hide(): void;
   rememberPress(from: Element | null): void;
@@ -37,6 +42,7 @@ export function createContextMenuStore(deps: { menuTarget: MenuTargetStore }) {
     point: { x: 0, y: 0 },
     invoker: null,
     pressedFrom: null,
+    hasItems: () => true,
     show(request, via, point) {
       const active = globalThis.document.activeElement;
       const invoker = via === 'keyboard' ? active : (get().pressedFrom ?? active);

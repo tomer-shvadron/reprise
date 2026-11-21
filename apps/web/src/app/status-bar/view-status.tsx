@@ -28,6 +28,8 @@ export function NotationSegment() {
   return (
     <StatusMenu
       label={`Notation of ${track.name}`}
+      segment="notation"
+      menuLabel="Notation"
       className="@max-[54rem]:hidden"
       describedBy={limited ? reasonId : undefined}
       menu={
@@ -55,6 +57,8 @@ export function ZoomSegment() {
   return (
     <StatusMenu
       label="Zoom"
+      segment="zoom"
+      menuLabel="Zoom"
       menu={
         <>
           <DropdownMenuLabel>Zoom {percent}</DropdownMenuLabel>
