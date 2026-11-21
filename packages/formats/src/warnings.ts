@@ -1,5 +1,6 @@
 import type { ParseWarningCode, ViolationPath, ViolationRule } from '@reprise/model';
 
+import type { AsciiDropCode } from './ascii/dropped';
 import type { GpifDropCode } from './gpif/dropped';
 import type { GpifWarningCode } from './gpif/warnings';
 
@@ -38,10 +39,16 @@ export type ReaderWarningCode =
 
 /**
  * A reader code, or a `validateScore` rule the finished score breaks. `read` reports the gpif
- * and native codes under the same type, and `write` the gp writer's drop codes.
+ * and native codes under the same type, `write` the gp writer's drop codes and `writeAsciiTab`
+ * its own.
  */
 export type WarningCode =
-  ReaderWarningCode | GpifWarningCode | ParseWarningCode | ViolationRule | GpifDropCode;
+  | ReaderWarningCode
+  | GpifWarningCode
+  | ParseWarningCode
+  | ViolationRule
+  | GpifDropCode
+  | AsciiDropCode;
 
 /** Where in the file, and where in the parsed score, a warning applies; any part may be absent. */
 export interface WarningLocation {
