@@ -8,9 +8,11 @@ import { useMenuFocusReturn } from '@/app/menu-focus-return';
 import { useAppServices } from '@/app/services-context';
 import { NOTATIONS, NotationRadioItems, ZoomItems } from '@/app/view-items';
 import { useCommand } from '@/app/use-command';
+import { useSetting } from '@/app/use-setting';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
@@ -20,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { CHORD_DIAGRAMS_SETTING } from '@/state/app-settings';
 import { effectiveNotation, NO_TAB_REASON, notationChoices } from '@/features/tracks';
 
 /** Layout, zoom and the current track's notation, each running its registered command. */
@@ -31,6 +34,8 @@ export function ViewMenu() {
   const notationByTrack = useStore(document, (state) => state.view.notation);
   const currentId = useStore(selection, (state) => state.currentTrack);
   const toggleView = useCommand('view.toggleViewMode');
+  const toggleDiagrams = useCommand('view.toggleChordDiagrams');
+  const diagrams = useSetting(CHORD_DIAGRAMS_SETTING);
   const track = score?.tracks.find((candidate) => candidate.id === currentId);
   const choices = track ? notationChoices(track) : [];
   const notation = track ? effectiveNotation(track, notationByTrack) : undefined;
@@ -91,6 +96,15 @@ export function ViewMenu() {
             )}
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuCheckboxItem
+          checked={diagrams}
+          onCheckedChange={() => {
+            toggleDiagrams.run();
+          }}
+        >
+          Chord diagrams
+        </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />
         <DropdownMenuLabel>Zoom {Math.round(zoom * 100)}%</DropdownMenuLabel>
         <ZoomItems zoom={zoom} />

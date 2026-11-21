@@ -81,6 +81,7 @@ const paperItems: readonly MenuItemSpec[] = [
   { command: 'view.zoomOut', group: 'view', when: hasScore },
   { command: 'view.zoomReset', group: 'view', when: hasScore },
   { command: 'view.followPlayback', group: 'view', when: hasScore },
+  { command: 'view.toggleChordDiagrams', group: 'view', when: hasScore },
   { command: 'file.print', group: 'export', when: hasScore },
   { command: 'file.new', group: 'edit', modes: play, when: noScore },
   { command: 'file.open', group: 'edit', modes: play, when: noScore },

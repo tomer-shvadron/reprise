@@ -4,6 +4,7 @@ import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
+import { CHORD_DIAGRAMS_SETTING } from '@/state/app-settings';
 import { ZOOM } from '@/state/ui';
 
 import { renderHeader, spyOnCommand } from './test/render-header';
@@ -36,6 +37,18 @@ describe('ViewMenu', () => {
     await user.click(item(/^Continuous view/));
     expect(run).toHaveBeenCalledOnce();
     expect(services.ui.getState().view.mode).toBe('continuous');
+  });
+
+  it('toggles chord diagrams through its command, a checked item that follows the setting', async () => {
+    const { services } = renderHeader(<ViewMenu />);
+    const user = userEvent.setup();
+    await open(user);
+    const diagrams = () => screen.getByRole('menuitemcheckbox', { name: 'Chord diagrams' });
+    expect(diagrams()).toBeChecked();
+    await user.click(diagrams());
+    expect(services.settings.get(CHORD_DIAGRAMS_SETTING)).toBe(false);
+    await open(user);
+    expect(diagrams()).not.toBeChecked();
   });
 
   it('steps the zoom through its commands and stays open', async () => {

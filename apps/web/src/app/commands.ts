@@ -1,7 +1,7 @@
 import { startNewSong } from '@/features/editor';
 import { libraryOf } from '@/features/library/library';
 import type { MenuCommandId } from '@/platform/bridge';
-import { THEME_SETTING } from '@/state/app-settings';
+import { CHORD_DIAGRAMS_SETTING, THEME_SETTING } from '@/state/app-settings';
 import { selectScoreZoom, ZOOM } from '@/state/ui';
 
 import type { Command } from './command-registry';
@@ -24,6 +24,7 @@ export type AppCommandId =
   | 'file.close'
   | 'file.showImportDetails'
   | 'view.followPlayback'
+  | 'view.toggleChordDiagrams'
   | 'view.toggleRightPanel'
   | 'app.contextMenu'
   | 'app.contextMenuWindows';
@@ -274,6 +275,13 @@ export function appCommands(services: AppServices): AppCommand[] {
       run: () => {
         const { view, setViewMode } = ui.getState();
         setViewMode(view.mode === 'paged' ? 'continuous' : 'paged');
+      },
+    },
+    {
+      id: 'view.toggleChordDiagrams',
+      title: 'Show chord diagrams',
+      run: () => {
+        settings.set(CHORD_DIAGRAMS_SETTING, !settings.get(CHORD_DIAGRAMS_SETTING));
       },
     },
     {

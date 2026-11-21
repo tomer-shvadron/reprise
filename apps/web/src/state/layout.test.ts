@@ -94,6 +94,32 @@ describe('the layout store', () => {
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
+  it('re-lays out when a watched setting changes', async () => {
+    let flag = true;
+    let rerun: () => void = () => undefined;
+    const document = createDocumentStore({ platform: fakePlatform() });
+    const spy = vi.fn(layout);
+    createLayoutStore({
+      document,
+      ui: createUiStore('dark'),
+      options: (view, content) => ({
+        ...viewLayoutOptions(view, { ...content, tracks: 'all' }),
+        chordDiagrams: flag,
+      }),
+      layout: spy,
+      watch: (fn) => {
+        rerun = fn;
+        return () => undefined;
+      },
+    });
+    await document.getState().openBytes('a.reprise', await bytesOf('A'));
+    spy.mockClear();
+    flag = false;
+    rerun();
+    expect(spy).toHaveBeenCalledOnce();
+    expect(spy.mock.calls[0]?.[1].chordDiagrams).toBe(false);
+  });
+
   it('starts a new cache on a switch and clears the result on close', async () => {
     const { document, store, spy } = setup();
     await document.getState().openBytes('a.reprise', await bytesOf('A'));

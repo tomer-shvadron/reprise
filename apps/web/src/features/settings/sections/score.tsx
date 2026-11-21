@@ -1,5 +1,6 @@
 import { NOTATION_NAMES } from '@/features/tracks';
 import {
+  CHORD_DIAGRAMS_SETTING,
   DEFAULT_NOTATION_STRINGS_SETTING,
   DEFAULT_NOTATION_VOCALS_SETTING,
   DEFAULT_VIEW_MODE_SETTING,
@@ -8,7 +9,7 @@ import {
 import { ZOOM } from '@/state/ui';
 
 import type { SettingsSection } from '../section';
-import { ChoiceSetting, SliderSetting } from '../setting-rows';
+import { ChoiceSetting, SliderSetting, SwitchSetting } from '../setting-rows';
 
 const NOTATION_CHOICES = [
   { value: 'tab', label: 'Tab', ariaLabel: NOTATION_NAMES.tab },
@@ -48,6 +49,11 @@ function Score() {
         description="Vocal tracks, by their instrument or their name, when the file does not say."
         choices={NOTATION_CHOICES}
       />
+      <SwitchSetting
+        def={CHORD_DIAGRAMS_SETTING}
+        label="Chord diagrams"
+        description="Draw the chord grids a file carries above the staff. Printing follows it."
+      />
       <p className="text-muted-foreground py-3 text-xs last:border-b-0">
         Drums, keyboards and other instruments open in standard notation. A file that says how to
         show a track keeps it. The defaults apply to a file opened or imported for the first time; a
@@ -65,6 +71,7 @@ export const scoreSection: SettingsSection = {
     DEFAULT_ZOOM_SETTING,
     DEFAULT_NOTATION_STRINGS_SETTING,
     DEFAULT_NOTATION_VOCALS_SETTING,
+    CHORD_DIAGRAMS_SETTING,
   ],
   Component: Score,
 };

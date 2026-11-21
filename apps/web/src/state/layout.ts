@@ -22,6 +22,8 @@ export interface LayoutStoreDeps {
   ui: UiStore;
   options: (view: UiView, content: DocumentView) => LayoutOptions;
   layout?: typeof layoutScore;
+  /** Another input of `options` (a setting): subscribe to it, and a change re-lays out. */
+  watch?: (rerun: () => void) => () => void;
 }
 
 /**
@@ -30,7 +32,7 @@ export interface LayoutStoreDeps {
  * An edit hands its touched bars to the same cache, so only they re-flow.
  */
 export function createLayoutStore(deps: LayoutStoreDeps) {
-  const { document, ui, options, layout = layoutScore } = deps;
+  const { document, ui, options, layout = layoutScore, watch } = deps;
   const store = create<LayoutStoreState>()(() => ({
     documentId: undefined,
     result: undefined,
@@ -74,12 +76,16 @@ export function createLayoutStore(deps: LayoutStoreDeps) {
   const unsubscribeUi = ui.subscribe((state, previous) => {
     if (state.view !== previous.view) run();
   });
+  const unsubscribeWatch = watch?.(() => {
+    run();
+  });
   run();
 
   return Object.assign(store, {
     dispose() {
       unsubscribeDocument();
       unsubscribeUi();
+      unsubscribeWatch?.();
     },
   });
 }
