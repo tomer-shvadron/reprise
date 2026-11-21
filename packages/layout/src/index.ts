@@ -2,6 +2,11 @@ export { layout } from './layout';
 export { anchorBox, hitTest, markAt, type Mark } from './hit-test';
 export { LayoutCache } from './cache';
 export { DEFAULT_MARGINS, PAGE_SIZES, STAFF_SPACE } from './options';
+export {
+  chordDiagramPrimitives,
+  chordDiagramSize,
+  type ChordDiagramAt,
+} from './staves/chord-diagram';
 export { JUMP_LABELS } from './header';
 export type { GlyphName } from './metrics';
 export type {

@@ -15,6 +15,7 @@ export const LANES_ABOVE = [
   'beatVibrato',
   'trill',
   'whammy',
+  'chordDiagram',
   'chord',
   'fingering',
   'text',

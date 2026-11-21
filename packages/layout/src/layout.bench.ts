@@ -18,7 +18,7 @@ import { expect, test, type TestContext } from 'vitest';
 
 import { LayoutCache, PAGE_SIZES, anchorBox, hitTest, layout, type LayoutOptions } from './index';
 import { checkBudget, recordMeasurement } from './test/budget';
-import { withEffects, withNoteMarks } from './test/effects';
+import { withChordDiagrams, withEffects, withNoteMarks } from './test/effects';
 
 // tinybench: exactly 15 timed iterations after 3 untimed ones; #90's prototype found one too few.
 const RUN = { iterations: 15, time: 0, warmupIterations: 3, warmupTime: 0 };
@@ -145,6 +145,12 @@ coldTest(
 coldTest(
   'Full layout, cold, with note effects',
   () => ({ score: withEffects(longScore()), options }),
+  false,
+);
+
+coldTest(
+  'Full layout, cold, chord diagrams',
+  () => ({ score: withChordDiagrams(longScore()), options }),
   false,
 );
 
