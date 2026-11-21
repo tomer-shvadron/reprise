@@ -4,12 +4,53 @@ import type { Track } from './track';
 export const MIDI_MAX = 127;
 
 type PitchTrack = Pick<Track, 'kind' | 'tuning' | 'capo'>;
-type FretTrack = Pick<Track, 'kind' | 'tuning' | 'capo' | 'fretCount'>;
+type FretTrack = Pick<Track, 'kind' | 'tuning' | 'capo' | 'fretCount' | 'drone'>;
 
 /** The MIDI note of an open string, without the capo; `undefined` when the track has no such string. */
 export function openStringPitch(track: Pick<Track, 'tuning'>, string: number): number | undefined {
   if (!Number.isInteger(string) || string < 1) return undefined;
   return track.tuning[track.tuning.length - string];
+}
+
+/**
+ * The second string's offset in semitones for a doubled course, or `null` for a single string
+ * (also when the track has no courses or no such string).
+ */
+export function courseOffset(
+  track: Pick<Track, 'tuning' | 'courses'>,
+  string: number,
+): number | null {
+  if (!Number.isInteger(string) || string < 1) return null;
+  return track.courses?.[track.tuning.length - string] ?? null;
+}
+
+type DroneTrack = Pick<Track, 'drone'>;
+
+/**
+ * The fret as printed on the neck. The drone string stores frets from its own nut, so a stored
+ * fret above 0 reads `drone.fret` higher; open stays 0.
+ */
+export function writtenFret(track: DroneTrack, note: Pick<Note, 'string' | 'fret'>): number {
+  const { drone } = track;
+  return drone && note.string === drone.string && note.fret > 0
+    ? note.fret + drone.fret
+    : note.fret;
+}
+
+/**
+ * The inverse of `writtenFret`: the stored fret for a neck fret typed on `string`. `undefined`
+ * for the frets the drone string does not have (1 up to `drone.fret`).
+ */
+export function storedFret(track: DroneTrack, string: number, written: number): number | undefined {
+  const { drone } = track;
+  if (!drone || string !== drone.string || written === 0) return written;
+  return written <= drone.fret ? undefined : written - drone.fret;
+}
+
+/** The highest stored fret on `string`: the neck length, less the drone's start on that string. */
+export function maxStoredFret(track: Pick<Track, 'fretCount' | 'drone'>, string: number): number {
+  const { drone } = track;
+  return drone && string === drone.string ? track.fretCount - drone.fret : track.fretCount;
 }
 
 /**
@@ -61,7 +102,7 @@ function failureAt(track: FretTrack, string: number, fret: number): TransposeFai
   if (track.kind !== 'fretted') return fret < 0 || fret > MIDI_MAX ? 'outOfMidiRange' : undefined;
   if (fret < 0) return 'belowOpenString';
   // Guitar Pro numbers frets up to the neck length whatever the capo, and so do its files.
-  if (fret > track.fretCount) return 'aboveLastFret';
+  if (fret > maxStoredFret(track, string)) return 'aboveLastFret';
   return midiNote(track, { string, fret }) > MIDI_MAX ? 'outOfMidiRange' : undefined;
 }
 

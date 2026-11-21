@@ -103,7 +103,9 @@ export type {
 export {
   ChannelSettingsSchema,
   DisplaySettingsSchema,
+  DroneSchema,
   LyricLineSchema,
+  MAX_COURSE_OFFSET,
   MAX_STRINGS,
   NotationSchema,
   SoundOverrideSchema,
@@ -113,13 +115,16 @@ export {
   canShowTab,
   isVocalTrack,
   shownNotation,
+  stringInstrumentOf,
 } from './track';
 export type {
   ChannelSettings,
   DisplaySettings,
+  Drone,
   LyricLine,
   Notation,
   SoundOverride,
+  StringInstrument,
   Track,
   TrackKind,
 } from './track';
@@ -146,7 +151,16 @@ export type { TieLink, TiePosition } from './ties';
 export { validateScore } from './validate';
 export type { Violation, ViolationPath, ViolationRule } from './validate';
 
-export { MIDI_MAX, midiNote, openStringPitch, transpose } from './pitch';
+export {
+  MIDI_MAX,
+  courseOffset,
+  maxStoredFret,
+  midiNote,
+  openStringPitch,
+  storedFret,
+  transpose,
+  writtenFret,
+} from './pitch';
 export type { FretPosition, TransposeFailure, TransposeResult, TransposeWarning } from './pitch';
 export { soundingPitch } from './harmonics';
 

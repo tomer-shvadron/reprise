@@ -222,7 +222,12 @@ describe('fixtures', () => {
   it('fullScore is valid and sets every node type', () => {
     const built = fullScore();
     expect(validateScore(built)).toEqual([]);
-    expect(built.tracks.map((track) => track.kind)).toEqual(['fretted', 'drums', 'pitched']);
+    expect(built.tracks.map((track) => track.kind)).toEqual([
+      'fretted',
+      'drums',
+      'pitched',
+      'fretted',
+    ]);
   });
 
   it('largeScore has the documented size, plain or structured, and is valid', () => {

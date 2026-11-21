@@ -22,7 +22,7 @@ export type TrackProperties = Omit<TrackOptions, 'bars' | 'barCount'>;
 const TrackPropertiesSchema = TrackSchema.omit({ bars: true });
 
 // The properties the track's notes and kind are checked against; any other edit cannot break them.
-const NOTE_BEARING_KEYS = new Set(['tuning', 'capo', 'fretCount']);
+const NOTE_BEARING_KEYS = new Set(['tuning', 'capo', 'fretCount', 'courses', 'drone']);
 
 function assertIndex(index: number, count: number, command: string): void {
   if (!Number.isInteger(index) || index < 0 || index > count) {

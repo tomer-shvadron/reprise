@@ -37,7 +37,8 @@ import type {
 export type DurationSpec = `${Duration}` | `${Duration}.` | `${Duration}..` | `${Duration}t`;
 
 /** The instrument presets `track()` offers; each maps onto a `TrackKind` with its defaults. */
-export type Instrument = 'guitar' | 'bass' | 'drums' | 'piano';
+export type Instrument =
+  'guitar' | 'bass' | 'drums' | 'piano' | 'banjo' | 'mandolin' | 'twelveString';
 
 export type TrackSpec = Omit<TrackOptions, 'bars' | 'barCount'> & { id?: Id };
 
@@ -72,6 +73,33 @@ const INSTRUMENTS: Record<Instrument, { kind: TrackKind; defaults: TrackSpec }> 
       tuning: BASS_TUNING,
       program: 33,
       display: { notation: 'tab', clef: 'bass', octaveShift: 1 },
+    },
+  },
+  banjo: {
+    kind: 'fretted',
+    defaults: {
+      name: 'Banjo',
+      shortName: 'Bjo.',
+      tuning: [67, 50, 55, 59, 62],
+      program: 105,
+      drone: { string: 5, fret: 5 },
+    },
+  },
+  mandolin: {
+    kind: 'fretted',
+    defaults: {
+      name: 'Mandolin',
+      shortName: 'Mand.',
+      tuning: [55, 62, 69, 76],
+      courses: [0, 0, 0, 0],
+    },
+  },
+  twelveString: {
+    kind: 'fretted',
+    defaults: {
+      name: '12-string Guitar',
+      shortName: '12-str.',
+      courses: [12, 12, 12, 12, 0, 0],
     },
   },
   drums: { kind: 'drums', defaults: {} },

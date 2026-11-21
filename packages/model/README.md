@@ -31,11 +31,13 @@ validateScore(score); // cross-node invariants: [] when the score is sound
 | `duplicate-id`                    | Every id is unique across the score.                                                                                                                        |
 | `first-bar-tempo`                 | The first master bar carries a tempo mark.                                                                                                                  |
 | `bar-count`                       | Every track has one bar per master bar.                                                                                                                     |
-| `track-kind`                      | Fretted tracks have strings and frets; drum tracks have no tuning, capo or frets.                                                                           |
+| `courses-length`                  | `Track.courses` has the tuning's length.                                                                                                                    |
+| `drone-string`                    | `Track.drone` names a string of the tuning and a fret below `fretCount`.                                                                                    |
+| `track-kind`                      | Fretted tracks have strings and frets; drum tracks have no tuning, capo, frets, courses or drone.                                                           |
 | `voice-overfull`                  | A voice's beats sum to at most the bar length. Incomplete bars are allowed. An imported over-full voice is kept, reported as a warning, and played in full. |
 | `rest-with-notes`                 | A rest carries no notes.                                                                                                                                    |
 | `string-range`                    | Fretted notes use strings 1 to the string count; drum and pitched notes use string 0.                                                                       |
-| `fret-range`                      | Fretted notes sit on frets 0 to `track.fretCount`, whatever the capo, as Guitar Pro files hold them.                                                        |
+| `fret-range`                      | Fretted notes sit on frets 0 to `track.fretCount`, whatever the capo, as Guitar Pro files hold them; 0 to `fretCount - drone.fret` on the drone string.     |
 | `duplicate-string`                | No two notes of a fretted beat share a string.                                                                                                              |
 | `tie-target`                      | A tied note has an origin (`tieOriginOf`): the most recent note on its string (MIDI note on drum and pitched tracks) in its voice, at most three bars back. |
 | `tie-pitch`                       | A tied fretted note is on the same fret as the note it continues; off fretted tracks `tie-target` already matches by MIDI note.                             |
@@ -127,7 +129,7 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
 - **`Note.fret` on drum and pitched tracks is the MIDI note**, and `Note.string` is required
   and `0` there. Required-and-zero keeps fretted code paths free of `undefined` checks; the
   `string-range` rule enforces 1 to the string count on fretted tracks and 0 elsewhere, and
-  `fret-range` keeps a fretted note between 0 and `Track.fretCount`.
+  `fret-range` keeps a fretted note between 0 and `Track.fretCount` (`fretCount - drone.fret` on the drone string).
 - **Spelling follows Guitar Pro**: a note outside the key is spelled with a sharp in C major
   and the sharp keys and with a flat in the flat keys, the natural letter first, plus a minor
   key's raised sixth and seventh (see "Pitch, tuning and spelling"). The alternative, the
@@ -327,7 +329,7 @@ const undone = history.undo(); // { score, change } with the patches it replayed
 | `addTrack`, `removeTrack`, `moveTrack` | A new track gets one empty bar per master bar; a score keeps at least one track.                                                                                                                                          |
 
 Guitar Pro numbers frets up to the neck length whatever the capo, so the ceiling every command
-places a note under is `fretCount`, the bound `transpose` and the `fret-range` rule share.
+places a note under is `fretCount` (less `drone.fret` on the drone string, `maxStoredFret`), the bound `transpose` and the `fret-range` rule share.
 `transposeSelection` computes every note through `transpose`, so the two cannot disagree: a
 stored accidental survives an octave move, and a trill whose alternate fret falls off is dropped
 with a warning rather than refusing the edit. It keeps stay-on-string semantics and does not
@@ -375,9 +377,19 @@ capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro write
   `natural-harmonic-moved` when the moved note carries a natural harmonic: its `value` is a node
   on the string and is left for the editor to re-derive, while an artificial harmonic's `value`
   is an offset and travels with the note.
-- **`STANDARD_TUNINGS`** names fourteen tunings (guitar, 7-string, 4- and 5-string bass,
-  ukulele), each in `Track.tuning` order. The ukulele is re-entrant, so its array is in string
-  order, not pitch order. **`findTuningName(tuning)`** matches exactly, string count included.
+- **`STANDARD_TUNINGS`** names the presets (guitar in 6, 7 and 8 strings, bass in 4, 5 and 6,
+  ukulele, 12-string, 5-string and tenor banjo, mandolin), each in `Track.tuning` order. The
+  ukulele and the 5-string banjos are re-entrant, so their arrays are in string order, not pitch
+  order. A preset may carry `courses` and `drone`. **`findTuningName(tuning, { courses, drone })`**
+  matches exactly, string count, courses and drone included, so a 12-string's E standard is
+  "12-string standard".
+- **Courses and the drone (#348).** `Track.courses` is one offset per string in `tuning` order
+  (`null` single, 0 unison, 12 octave); `Track.drone` is `{ string, fret }`, a short string that
+  starts at a neck fret. Frets on the drone string are stored from its own nut, so `midiNote` is
+  unchanged. `writtenFret`, `storedFret`, `maxStoredFret` and `courseOffset` convert and bound
+  them, and `stringInstrumentOf(track)` derives `'twelveString' | 'mandolin' | 'banjo'`.
+  `validateScore` reports `courses-length` and `drone-string`; both fields are additive with no
+  version bump, and an older reader that strips them plays the same pitches.
 - **`spell(midi, key, accidental?)`** returns `{ letter, octave, alter, accidental? }`.
   `octave` is scientific (C4 = 60) and belongs to the letter, so B#3 is MIDI 60. Preference:
   a stored accidental that can spell the pitch, then the key's own notes, then a minor key's
