@@ -1,4 +1,4 @@
-import { scaleName, scaleOf, type SongInsights } from '@/lib/insights';
+import { scaleName, scaleOf, scalePitchClasses, type SongInsights } from '@/lib/insights';
 import { spellPitchClass } from '@/lib/chords';
 
 import { CommandTooltip } from '@/app/command-tooltip';
@@ -46,7 +46,12 @@ export function ScaleCard({ songKey }: { songKey: SongInsights['key'] }) {
           .
         </p>
       )}
-      <p className="sr-only">{scaleOf(fit.scale).degrees.join(' ')}</p>
+      <p className="text-muted-foreground text-xs">
+        Notes:{' '}
+        {scalePitchClasses(scaleOf(fit.scale), songKey.tonic)
+          .map((pitchClass) => spellPitchClass(pitchClass, songKey.signature, true))
+          .join(' ')}
+      </p>
       <CommandTooltip command="trainer.fretboardSongScale" label="Show on fretboard">
         <Button
           variant="outline"

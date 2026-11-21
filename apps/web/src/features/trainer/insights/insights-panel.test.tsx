@@ -2,7 +2,7 @@ import { write } from '@reprise/formats';
 import { score } from '@reprise/model/testing';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from '@/app/app';
 import { aMinorRiff } from '@/test/a-minor-riff';
@@ -10,6 +10,9 @@ import { createTestServices } from '@/test/services';
 import type { Score } from '@reprise/model';
 
 import { scaleOverlayFor } from '../fretboard/scale-overlay';
+
+import { insightsFor } from './insights-for';
+import { SLOW_AFTER_MS } from './insights-store';
 
 async function setup(song?: Score) {
   const services = createTestServices();
@@ -41,7 +44,13 @@ describe('the Insights view', () => {
     expect(within(panel()).getByRole('heading', { name: 'Scale' })).toBeInTheDocument();
     expect(within(panel()).getByText('A minor pentatonic')).toBeInTheDocument();
     expect(within(panel()).getByRole('heading', { name: 'Shape' })).toBeInTheDocument();
-    expect(within(panel()).getByText(/Likely|Possibly|Unclear/)).toBeInTheDocument();
+    expect(
+      within(panel()).getByText('Likely. Next best: C major (relative major)'),
+    ).toBeInTheDocument();
+    expect(within(panel()).getByText('Notes: A C D E G')).toBeInTheDocument();
+    expect(
+      within(panel()).getByRole('heading', { level: 2, name: 'Song insights' }),
+    ).toBeInTheDocument();
     const histogram = panel().querySelector('[data-pitch-histogram]');
     expect(histogram?.getAttribute('aria-label')).toMatch(/^Most used notes: A \d+%/);
   });
@@ -64,5 +73,44 @@ describe('the Insights view', () => {
       source: 'song',
     });
     expect(services.ui.getState().bottomPanel.open).toBe(true);
+  });
+});
+
+describe('the analysing status', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('is announced from outside the busy section, and only once the analysis is slow', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const services = createTestServices();
+    // A client that never answers keeps the analysis running.
+    insightsFor(services, {
+      client: { analyse: () => new Promise(() => undefined), dispose() {} },
+    });
+    render(<App services={services} keyboard="mac" />);
+    const { bytes } = await write(aMinorRiff(), 'reprise');
+    await act(async () => {
+      await services.document.getState().openBytes('song.reprise', bytes);
+    });
+    act(() => {
+      services.ui.getState().showPanelView('insights');
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+      await Promise.resolve();
+    });
+    const section = panel();
+    expect(section).toHaveAttribute('aria-busy', 'true');
+    // The status is not inside the busy section, or a screen reader may hold it back.
+    const status = document.querySelector<HTMLElement>('[data-insights-status]');
+    if (!status) throw new Error('no status');
+    expect(section.contains(status)).toBe(false);
+    expect(status).toHaveTextContent('');
+    await act(async () => {
+      vi.advanceTimersByTime(SLOW_AFTER_MS);
+      await Promise.resolve();
+    });
+    expect(status).toHaveTextContent('Analysing…');
   });
 });

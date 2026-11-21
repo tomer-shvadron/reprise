@@ -21,7 +21,7 @@ export function InsightsPanel() {
   const services = useAppServices();
   const store = insightsFor(services);
   const score = useStore(services.document, (state) => state.score);
-  const { status, insights, forScore, slow, error } = useStore(store);
+  const { status, insights, slow, error } = useStore(store);
 
   useEffect(() => {
     const { retain, release } = store.getState();
@@ -29,39 +29,39 @@ export function InsightsPanel() {
     return release;
   }, [store]);
 
-  const current = insights && forScore === score ? insights : undefined;
-  // While a newer result is being worked out, the last one stays up.
-  const shown = current ?? insights;
-
   return (
-    <section
-      aria-label="Song insights"
-      aria-busy={status === 'analysing'}
-      className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-    >
-      <p role="status" className="sr-only">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Outside the busy section: a live region inside `aria-busy` may be held back until it clears. */}
+      <p role="status" data-insights-status className="sr-only">
         {slow && status === 'analysing' ? 'Analysing…' : ''}
       </p>
-      {!score ? (
-        <Note>Open a song to see insights.</Note>
-      ) : shown ? (
-        <>
-          {score.tracks.every((track) => track.kind === 'drums') ? (
-            <Note>No pitched tracks to analyse.</Note>
-          ) : (
-            <>
-              <KeyCard songKey={shown.key} />
-              <ScaleCard songKey={shown.key} />
-              <KeyChangesCard changes={shown.keyChanges} />
-            </>
-          )}
-          <ShapeCard shape={shown.shape} />
-        </>
-      ) : status === 'error' ? (
-        <Note>{`The song could not be analysed${error ? `: ${error}` : '.'}`}</Note>
-      ) : (
-        <Note>{slow ? 'Analysing…' : ' '}</Note>
-      )}
-    </section>
+      <section
+        aria-label="Song insights"
+        aria-busy={status === 'analysing'}
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+      >
+        <h2 className="sr-only">Song insights</h2>
+        {!score ? (
+          <Note>Open a song to see insights.</Note>
+        ) : insights ? (
+          <>
+            {score.tracks.every((track) => track.kind === 'drums') ? (
+              <Note>No pitched tracks to analyse.</Note>
+            ) : (
+              <>
+                <KeyCard songKey={insights.key} />
+                <ScaleCard songKey={insights.key} />
+                <KeyChangesCard changes={insights.keyChanges} />
+              </>
+            )}
+            <ShapeCard shape={insights.shape} />
+          </>
+        ) : status === 'error' ? (
+          <Note>{`The song could not be analysed${error ? `: ${error}` : '.'}`}</Note>
+        ) : (
+          <Note>{slow ? 'Analysing…' : ' '}</Note>
+        )}
+      </section>
+    </div>
   );
 }
