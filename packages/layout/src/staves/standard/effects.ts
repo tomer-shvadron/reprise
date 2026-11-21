@@ -478,13 +478,15 @@ function slur(
 }
 
 /** A slide into or out of a note from nowhere. */
-function looseSlides(context: ConnectionContext, note: Note, spot: HeadSpot): void {
+function looseSlides(context: ConnectionContext, note: Note, spot: HeadSpot, nextX: number): void {
   const { space } = context;
   const before = spot.left - SLIDE.clear * space;
   const after = spot.right + SLIDE.clear * space;
   const length = SLIDE.length * space;
   const drop = SLIDE.drop * space;
   for (const kind of note.slide ?? []) {
+    // A scrape replaces a slide-out, as in Guitar Pro, which keeps one of them.
+    if (note.pickScrape && (kind === 'outDown' || kind === 'outUp')) continue;
     if (kind === 'intoFromBelow')
       slideLine(context, before - length, spot.y + drop, before, spot.y, note.id);
     if (kind === 'intoFromAbove')
@@ -495,7 +497,10 @@ function looseSlides(context: ConnectionContext, note: Note, spot: HeadSpot): vo
   }
   if (!note.pickScrape) return;
   const fall = (note.pickScrape === 'down' ? 1 : -1) * SCRAPE.drop * space;
-  const wave = diagonalWave(after, spot.y, after + length, spot.y + fall, WAVES.slight, space, {
+  // From the head to the next onset, as on the tab, with the same stop and shortest length.
+  const start = spot.right + SCRAPE.gap * space;
+  const end = Math.max(nextX - SCRAPE.stop * space, start + SCRAPE.min * space);
+  const wave = diagonalWave(start, spot.y, end, spot.y + fall, WAVES.slight, space, {
     node: note.id,
   });
   if (wave) context.sink.primitives.push(wave);
@@ -563,10 +568,12 @@ export function drawConnections(
     fretted && !placement.next && (here.shifts || connections(track.bars[barIndex + 1]).hammers);
   const tie = TIE_GAP * space;
   const contentEnd = placement.x + placement.width;
-  for (const beat of beats) {
+  for (const [i, beat] of beats.entries()) {
     const { chord } = beat;
     if (!chord) continue;
     const x = context.beatX(beat);
+    const following = beats[i + 1];
+    const nextX = following ? context.beatX(following) : contentEnd;
     const at: TiePosition = { bar: barIndex, voice, beat: beat.index };
     const letters = lettered(chord, plan.multiVoice);
     const lastGrace = beat.graces.at(-1);
@@ -578,7 +585,7 @@ export function drawConnections(
       const connects = grace !== undefined || note.hammerPull || slidesIn || leavesLine;
       if (!note.slide && !note.pickScrape && !connects) continue;
       const spot = spotOf(context, chord, head, x, beat.beat.dots);
-      looseSlides(context, note, spot);
+      looseSlides(context, note, spot, nextX);
       if (!fretted) continue;
       if (grace && lastGrace) {
         const origin = spotOf(context, lastGrace.chord, grace, x + lastGrace.offset, 0);

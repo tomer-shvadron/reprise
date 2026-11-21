@@ -36,8 +36,6 @@ import { lineY, type TabContext } from './context';
 
 /** Gaps and sizes of the on-string effects, in staff spaces. */
 const SLIDE = { gap: 0.15, rise: 0.3, length: 1.3, clear: 0.2, thickness: 0.12 };
-/** A pick scrape's wave: gap after the number, stop short of the next onset, shortest, drop. */
-const SCRAPE_WAVE = { gap: 0.2, stop: 0.6, min: 1.3 };
 const BEND = BEND_FRAME;
 const STROKE = { reach: 0.4 };
 
@@ -269,8 +267,8 @@ function drawScrape(context: TabContext, label: NoteLabel, x: number, next: numb
   const { note } = label;
   if (!note.pickScrape) return;
   const size = TAB.fretSize * space;
-  const start = x + rightEdge(label, size) + SCRAPE_WAVE.gap * space;
-  const end = Math.max(next - SCRAPE_WAVE.stop * space, start + SCRAPE_WAVE.min * space);
+  const start = x + rightEdge(label, size) + SCRAPE.gap * space;
+  const end = Math.max(next - SCRAPE.stop * space, start + SCRAPE.min * space);
   const y = lineY(context, note.string);
   const drop = (note.pickScrape === 'down' ? 1 : -1) * SCRAPE.drop * space;
   const wave = diagonalWave(start, y, end, y + drop, WAVES.slight, space, { node: note.id });
@@ -286,6 +284,8 @@ function drawLooseSlides(context: TabContext, label: NoteLabel, x: number): void
   const after = x + rightEdge(label, size) + SLIDE.clear * space;
   const length = SLIDE.length * space;
   for (const kind of note.slide ?? []) {
+    // A scrape replaces a slide-out, as in Guitar Pro, which keeps one of them.
+    if (note.pickScrape && (kind === 'outDown' || kind === 'outUp')) continue;
     if (kind === 'intoFromBelow')
       drawSlideLine(context, note, before - length, before, SLIDE.rise, -SLIDE.rise);
     if (kind === 'intoFromAbove')

@@ -21,7 +21,7 @@ const ITEM_SIDE = 0.2;
 const STACK_GAP = 0.25;
 const STACK_MARGIN = 0.4;
 const STROKE_MARGIN = 0.5;
-export const GOLPE_MARGIN = 0.5;
+const GOLPE_MARGIN = 0.5;
 /** How far a golpe glyph hangs under the top of the lane below the staff, in staff spaces. */
 export const GOLPE_HANG = 0.25;
 
@@ -380,9 +380,11 @@ export function analyseEffects(bar: Bar, space: number, options: EffectOptions):
       raise('pickStroke', glyphHeight(name) + STROKE_MARGIN);
       centred(tick, glyphSpan(name));
     }
-    const golpe = group.find(({ beat }) => beat.effects.golpe);
-    if (golpe) {
-      const lane = golpe.beat.effects.golpe === 'thumb' ? 'golpeThumb' : 'golpeFinger';
+    // Finger and thumb have lanes of their own, so each kind is looked for apart.
+    for (const kind of ['finger', 'thumb'] as const) {
+      const golpe = group.find(({ beat }) => beat.effects.golpe === kind);
+      if (!golpe) continue;
+      const lane = kind === 'thumb' ? 'golpeThumb' : 'golpeFinger';
       items.push({ lane, tick, beat: golpe.beat, glyphs: ['guitarGolpe'] });
       raise(lane, glyphHeight('guitarGolpe') + GOLPE_MARGIN);
       centred(tick, glyphSpan('guitarGolpe'));

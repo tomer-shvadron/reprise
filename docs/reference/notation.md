@@ -223,7 +223,7 @@ Everything above or below a staff that is not attached to a note head goes in a 
 | 2 | `dynamics` | tab 2.4, five-line 2.94 |
 | 3 | `lyrics` | 2.0 per line |
 
-The room around a staff is the larger of its floor (tab 2 above and 1 below, five-line 1.5 each) and the inner room plus the lanes. In a lane, effect text (1.0 spaces) has its baseline 0.35 above the lane's bottom, a glyph its bottom edge 0.25 above it, a wave its centre line in the middle; dynamics hang 0.5 below the lane's top on one baseline, and a thumb golpe's glyph hangs 0.25 below it; a lane holds the deepest glyph below that baseline, `mf` at 0.66.
+The room around a staff is the larger of its floor (tab 2 above and 1 below, five-line 1.5 each) and the inner room plus the lanes. In a lane, effect text (1.0 spaces) has its baseline 0.35 above the lane's bottom, a glyph its bottom edge 0.25 above it, a wave its centre line in the middle; dynamics hang 0.5 below the lane's top on one baseline, and a thumb golpe's glyph has its top 0.25 below the lane's top; a lane holds the deepest glyph below that baseline, `mf` at 0.66.
 
 ### Effects on the tab
 
@@ -242,8 +242,8 @@ The room around a staff is the larger of its floor (tab 2 above and 1 below, fiv
 | Whammy | `Beat.effects.whammy` | `w/bar` (0.9 text) at the run's first onset; per beat a polyline from its onset to the next onset less 0.3, 0.25 per quarter tone around a middle low enough that a label over the highest point clears `w/bar` (clamped at 4); labels (0.8 text) at the extreme point and at a non-zero final point that differs from it. |
 | Tapping, slapping, popping | `Beat.effects` | `T`, `S` or `P` centred on the beat in the tap lane; the first of the three that is set. |
 | Pick stroke | `Beat.effects.pickStroke` | `stringsDownBow` or `stringsUpBow`, centred. |
-| Golpe | `Beat.effects.golpe` | `guitarGolpe` centred on the beat, on a rest too: a finger golpe in the `golpeFinger` lane above the staff, a thumb golpe in the `golpeThumb` lane below it, as Guitar Pro draws them. The first voice with one at an onset wins. |
-| Pick scrape | `Note.pickScrape` | `P.S.` and a dashed line as palm mute, a run per direction (`down`, `up`; down wins in a beat holding both); and on each scraped note a slight-vibrato wave (λ 0.9, amplitude 0.22) from 0.2 right of its number to 0.6 before the next onset (at least 1.3 long), falling 1.0 for down and rising 1.0 for up, with 1.5 of room right of the number and the staff's floor extended by the wave's reach. |
+| Golpe | `Beat.effects.golpe` | `guitarGolpe` centred on the beat, on a rest too: a finger golpe in the `golpeFinger` lane above the staff, a thumb golpe in the `golpeThumb` lane below it, as Guitar Pro draws them. The first voice with a finger golpe and the first with a thumb golpe at an onset each draw theirs. |
+| Pick scrape | `Note.pickScrape` | `P.S.` and a dashed line as palm mute, a run per direction (`down`, `up`; down wins in a beat holding both); and on each scraped note a slight-vibrato wave (λ 0.9, amplitude 0.22) from 0.2 right of its number to 0.6 before the next onset (at least 1.3 long), falling 0.5 for down and rising 0.5 for up, with 1.5 of room right of the number and the staff's floor extended by the wave's reach. A note holding both a slide-out and a pick scrape draws the wave only, as Guitar Pro keeps one of them. |
 | Fade in, fade out, volume swell | `Beat.effects` | `guitarFadeIn`, `guitarFadeOut` or `guitarVolumeSwell`, centred. |
 | Staccato, accent, heavy accent | `Note.staccato`, `Note.accent` | Tab mode only: in the articulation lane, a union over the onset's notes, staccato nearest the staff and the accent (or marcato) above it. |
 | Tremolo picking | `Beat.effects.tremoloPicking` | Tab mode only: `tremolo1`, `2` or `3` (8, 16, 32) centred on the stem between 0.5 from the strings and the innermost beam or flag; a voice's stems lengthen together when the strokes and 1.0 of room do not fit. On a whole note, where the stem would be. |
@@ -277,7 +277,7 @@ Fermatas, hairpins, tenuto, staccatissimo and the other techniques the model doe
 | Bend, pre-bend, release, hold | `Note.bend` | Alone only: the tab's shapes, from right of the bent heads into the bend lane, and grace-size heads at the pitches the bend reaches | Not drawn |
 | Shift and legato slide | `Note.slide` on the origin | Fretted tracks: a line between the two heads at their heights; a legato slide adds a slur, labelled `sl.` when alone | Not drawn |
 | Slide into, slide out of | `Note.slide` | A 1.3 line into the head from below or above, or out of it down or up | Not drawn |
-| Pick scrape | `Note.pickScrape` | The tab's wave, 1.3 long from 0.2 right of the head, falling 1.0 for down and rising 1.0 for up, with 1.5 of room right of the chord and the staff's room extended by its reach; fretted and pitched tracks | Not drawn |
+| Pick scrape | `Note.pickScrape` | The tab's wave, from 0.2 right of the head to 0.6 before the next onset (at least 1.3 long), falling 0.5 for down and rising 0.5 for up, with 1.5 of room right of the chord and the staff's room extended by its reach; fretted and pitched tracks | Not drawn |
 | Hammer-on, pull-off | `Note.hammerPull` on the target | Fretted tracks: a slur between the heads, `H` or `P` when alone | Not drawn |
 | Arpeggio | `Beat.effects.arpeggio` | A vertical wave left of the chord with an arrowhead, in every mode | Not drawn |
 | Brush | `Beat.effects.brush` | Alone only: a line left of the chord with an arrowhead; in both mode the tab draws it | Not drawn |

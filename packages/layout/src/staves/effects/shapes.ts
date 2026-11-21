@@ -13,12 +13,17 @@ export const WAVES = {
 } as const;
 
 /**
- * A pick scrape's wave out of a note, in staff spaces: how far it falls or rises, and how far it
- * reaches off its line (the wave's own half-amplitude and half its stroke).
+ * A pick scrape's wave out of a note, in staff spaces: how far it falls or rises (half a number's
+ * height on the tab, a slide-out's drop on the standard staff), how far it reaches off its line
+ * (its amplitude and half its stroke), and where it starts, stops short of the next onset and its
+ * shortest length.
  */
 export const SCRAPE = {
-  drop: 1,
-  reach: 1 + WAVES.slight.amplitude + WAVES.slight.stroke / 2,
+  drop: 0.5,
+  reach: 0.5 + WAVES.slight.amplitude + WAVES.slight.stroke / 2,
+  gap: 0.2,
+  stop: 0.6,
+  min: 1.3,
 } as const;
 
 export const SAWTOOTH = {
