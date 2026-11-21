@@ -305,9 +305,13 @@ describe('watched paths', () => {
   it('lets a row watch only the paths it names, not its workspace', () => {
     const web = comparedRows([bench('Insights', 'apps/web/src/lib/insights/insights.bench.ts')]);
     const overridden = watchedPaths(web, workspaces, {
-      Insights: ['apps/web/src/lib/', 'packages/model/'],
+      Insights: ['apps/web/src/lib/', 'apps/web/src/test/', 'packages/model/'],
     });
-    expect(overridden.slice(0, 2)).toEqual(['apps/web/src/lib/', 'packages/model/']);
+    expect(overridden.slice(0, 3)).toEqual([
+      'apps/web/src/lib/',
+      'apps/web/src/test/',
+      'packages/model/',
+    ]);
     expect(touchesWatched(['apps/web/src/lib/insights/key.ts'], overridden)).toBe(true);
     expect(touchesWatched(['packages/model/src/note.ts'], overridden)).toBe(true);
     expect(touchesWatched(['apps/web/src/features/score/score.tsx'], overridden)).toBe(false);
@@ -326,7 +330,7 @@ describe('watched paths', () => {
     ]);
     for (const metric of Object.keys(WATCH_OVERRIDES)) expect(roadmap).toContain(`| ${metric}`);
     for (const paths of Object.values(WATCH_OVERRIDES)) {
-      expect(paths).toEqual(['apps/web/src/lib/', 'packages/model/']);
+      expect(paths).toEqual(['apps/web/src/lib/', 'apps/web/src/test/', 'packages/model/']);
     }
   });
 

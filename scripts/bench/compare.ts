@@ -266,8 +266,16 @@ export function markdownSummary(
  * A listed row watches only these paths instead, with the same trailing-`/` rule as `watchedPaths`.
  */
 export const WATCH_OVERRIDES: Readonly<Record<string, readonly string[]>> = {
-  'Song insights note table, long score, cold': ['apps/web/src/lib/', 'packages/model/'],
-  'Song insights analysis, long score': ['apps/web/src/lib/', 'packages/model/'],
+  'Song insights note table, long score, cold': [
+    'apps/web/src/lib/',
+    'apps/web/src/test/',
+    'packages/model/',
+  ],
+  'Song insights analysis, long score': [
+    'apps/web/src/lib/',
+    'apps/web/src/test/',
+    'packages/model/',
+  ],
 };
 
 /** Workspace directory to the directories of the workspace packages it depends on. */

@@ -8,6 +8,9 @@ import { songOutline } from './outline';
 
 // tinybench: exactly 15 timed iterations after 3 untimed ones, as in the layout benches.
 const RUN = { iterations: 15, time: 0, warmupIterations: 3, warmupTime: 0 };
+// The cold table is the noisiest row (the first iterations run before the JIT settles), so it takes
+// more warm-ups and a longer run; the median is what the budget reads.
+const COLD_RUN = { iterations: 31, time: 0, warmupIterations: 10, warmupTime: 0 };
 const BENCH = { timeout: 120_000, retry: 1 };
 
 /**
@@ -68,23 +71,31 @@ const longScore = (): Score => largeScore(8, 300, { structure: true });
 /** The tempo map playback builds once per score version; the app hands it to the outline. */
 const mapOf = (score: Score) => tempoMap(score, expandPlaybackSequence(score).sequence);
 
-// A cold table is one the cache has never seen: a fresh score, so no bar has rows yet. The main
-// thread pays this once per open, so it is one frame.
+/** The same score with every bar a new object, so no bar has cached rows: cold, without building 8 MB of score each time. */
+const withFreshBars = (score: Score): Score => ({
+  ...score,
+  tracks: score.tracks.map((track) => ({ ...track, bars: track.bars.map((bar) => ({ ...bar })) })),
+});
+
+// A cold table is one the cache has never seen: every bar is a new object. The main thread pays
+// this once per open, so it is one frame. Building a whole score for each iteration put garbage
+// collection into the timing (about 22% noise on CI), so the bars are copied instead.
 test('Song insights note table, long score, cold', BENCH, async (context) => {
-  let fresh = longScore();
+  const base = longScore();
+  let fresh = withFreshBars(base);
   const result = await context
     .bench(
       'Song insights note table, long score, cold',
       {
         beforeEach() {
-          fresh = longScore();
+          fresh = withFreshBars(base);
         },
       },
       () => {
         noteTableOf(fresh);
       },
     )
-    .run(RUN);
+    .run(COLD_RUN);
   await report(context, 'Song insights note table, long score, cold', result.latency.p50, true);
 });
 
@@ -93,6 +104,7 @@ test('Song insights note table, one bar changed', BENCH, async (context) => {
   const score = longScore();
   noteTableOf(score);
   let edited = score;
+  const extractedBefore = extraction.count;
   const result = await context
     .bench(
       'Song insights note table, one bar changed',
@@ -112,7 +124,10 @@ test('Song insights note table, one bar changed', BENCH, async (context) => {
       },
     )
     .run(RUN);
-  expect(extraction.count).toBeGreaterThan(0);
+  // One bar per iteration, warm-ups included: the table re-extracted the edited bar and nothing else.
+  const extracted = extraction.count - extractedBefore;
+  expect(extracted).toBeGreaterThanOrEqual(RUN.iterations);
+  expect(extracted).toBeLessThanOrEqual(RUN.iterations + RUN.warmupIterations);
   await report(context, 'Song insights note table, one bar changed', result.latency.p50, false);
 });
 

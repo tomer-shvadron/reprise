@@ -1,4 +1,4 @@
-import type { BeatEffects } from '@reprise/model';
+import type { Bend, BeatEffects } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
@@ -6,14 +6,24 @@ import { BANDS, MIN_RATED_NOTES, WEIGHTS, bandOf, difficultyOf } from './difficu
 import { noteTableOf } from './note-table';
 import { songOutline } from './outline';
 
+const WHOLE_TONE: Bend = {
+  kind: 'bend',
+  points: [
+    { position: 0, value: 0 },
+    { position: 60, value: 4 },
+  ],
+};
+
 interface Part {
   tempo?: number;
   bars?: number;
-  /** Beats per bar: 4 are quarters, 8 eighths. */
-  perBar?: 4 | 8;
+  /** Beats per bar: 4 are quarters, 8 eighths, 16 sixteenths. */
+  perBar?: 4 | 8 | 16;
   /** The frets struck on beat `i`, one per string from the first. */
   frets?: (i: number) => number[];
   effects?: BeatEffects;
+  /** Beats that carry a bend of a whole tone. */
+  bend?: (i: number) => boolean;
 }
 
 /** A guitar part that is easy on every factor until a field says otherwise. */
@@ -25,10 +35,13 @@ function rate(part: Part = {}) {
     builder.bar();
     for (let slot = 0; slot < perBar; slot++) {
       builder.beat(
-        perBar === 4 ? '4' : '8',
-        frets(i++).map((fret, string) => note(string + 1, fret)),
+        perBar === 4 ? '4' : perBar === 8 ? '8' : '16',
+        frets(i).map((fret, string) =>
+          note(string + 1, fret, part.bend?.(i) ? { bend: WHOLE_TONE } : {}),
+        ),
         effects ? { effects } : {},
       );
+      i++;
     }
   }
   const built = builder.build();
@@ -84,6 +97,42 @@ describe('difficultyOf', () => {
     const high = rate({ frets: () => [22] });
     expect(factor(high, 'fret')).toMatchObject({ value: 22, band: 5 });
     expect(high?.score).toBeGreaterThan(easy?.score ?? 0);
+  });
+
+  it('rates a fast single-note line in one box 4 on speed alone', () => {
+    // 16ths at 180 is 12 notes a second; nothing else about it is hard.
+    const sprint = rate({ tempo: 180, perBar: 16, frets: (i) => [5 + (i % 4)] });
+    expect(factor(sprint, 'speed')?.band).toBe(5);
+    expect(factor(sprint, 'stretch')?.band).toBe(1);
+    expect(factor(sprint, 'techniques')?.band).toBe(1);
+    expect(sprint?.rating).toBeGreaterThanOrEqual(4);
+  });
+
+  it('rates a fast, high, bend-heavy single-note solo 5', () => {
+    const solo = rate({
+      tempo: 170,
+      perBar: 16,
+      frets: (i) => [[12, 19, 14, 22][i % 4] ?? 12],
+      bend: (i) => i % 2 === 0,
+    });
+    expect(solo?.rating).toBe(5);
+  });
+
+  it('measures the stretch across consecutive notes, not only within a beat', () => {
+    // Alternating frets 1 and 7, one note a beat: 16ths share a quarter-note window, quarters do not.
+    const spread = rate({ tempo: 80, perBar: 16, frets: (i) => [[1, 7][i % 2] ?? 1] });
+    expect(factor(spread, 'stretch')?.value).toBe(6);
+    const slow = rate({ tempo: 80, perBar: 4, frets: (i) => [[1, 7][i % 2] ?? 1] });
+    expect(factor(slow, 'stretch')?.value).toBe(0);
+  });
+
+  it('keeps an open-chord strum at 1 or 2', () => {
+    const G = [3, 0, 0, 0, 2, 3];
+    const C = [0, 1, 0, 2, 3, 0];
+    const eighths = rate({ tempo: 120, perBar: 8, frets: (i) => (i % 8 < 4 ? G : C) });
+    const sixteenths = rate({ tempo: 100, perBar: 16, frets: (i) => (i % 16 < 8 ? G : C) });
+    expect(eighths?.rating).toBe(1);
+    expect(sixteenths?.rating).toBeLessThanOrEqual(2);
   });
 
   it('keeps the rating between 1 and 5 and rounds the weighted mean', () => {
