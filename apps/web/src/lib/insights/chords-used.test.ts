@@ -325,4 +325,20 @@ describe('chords by section', () => {
     expect(result.source).toBe('inferred');
     expect(result.chords.map(({ name }) => name).sort()).toEqual(['C', 'F', 'G']);
   });
+
+  it('does not credit the last chord of an intro with the whole unsectioned song', () => {
+    // Am F C G named over bars 0-3 of a 40-bar song with no sections: G holds 8 bars at most.
+    const bars: SongBar[] = [
+      ...loop(),
+      ...Array.from({ length: 36 }, (_, i): SongBar => ({
+        chord: [chord(A, true), F, Cc, G][i % 4] ?? Cc,
+      })),
+    ];
+    const result = used(bars);
+    expect(result.source).toBe('written');
+    const shares = Object.fromEntries(result.chords.map((c) => [c.name, c.share]));
+    expect(shares['G']).toBeCloseTo(8 / 11);
+    expect(shares['G']).toBeLessThan(0.8);
+    expect(shares['Am']).toBeCloseTo(1 / 11);
+  });
 });

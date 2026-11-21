@@ -7,6 +7,8 @@ import { sectionSpans } from './sections';
 
 /** The file counts as naming its chords from this many chord marks on; fewer and the notes are read too. */
 export const MIN_WRITTEN_CHORDS = 4;
+/** A written chord is credited with at most this many bars after its mark; the rest is no one's time. */
+export const MAX_HOLD_BARS = 8;
 /** A beat is a chord when one track sounds this many pitch classes at once. */
 export const MIN_CHORD_TONES = 3;
 export const MIN_LOOP = 2;
@@ -81,10 +83,10 @@ function writtenEvents(outline: SongOutline, span: Span): Event[] {
     const held = outline.chords.filter((mark) => mark.bar < span.fromBar).at(-1);
     if (held) marks.unshift({ ...held, bar: span.fromBar, onset: 0 });
   }
-  const end = tick(span.toBar + 1);
   return marks.map((mark, index) => {
     const next = marks[index + 1];
-    const until = next ? tick(next.bar, next.onset) : end;
+    const end = tick(Math.min(span.toBar + 1, mark.bar + MAX_HOLD_BARS));
+    const until = Math.min(next ? tick(next.bar, next.onset) : end, end);
     return {
       bar: mark.bar,
       onset: mark.onset,
