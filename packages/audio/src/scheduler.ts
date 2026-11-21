@@ -10,8 +10,16 @@
 import { PPQ, positionAtSeconds, secondsAtTick } from '@reprise/model';
 import type { MixerChange } from '@reprise/model';
 
-import { bpmAtTick, clicksInRange, countInTicks, mixesInRange, notesInRange } from './timeline';
+import {
+  bpmAtTick,
+  clicksInRange,
+  countInTicks,
+  hitsInRange,
+  mixesInRange,
+  notesInRange,
+} from './timeline';
 import type {
+  HitOnset,
   MixOnset,
   NextOnString,
   NoteOnset,
@@ -56,6 +64,12 @@ export interface ScheduledMix extends MixOnset {
   secondsPerTick: number;
 }
 
+/** A golpe beat timed on the context clock. */
+export interface ScheduledHit extends HitOnset {
+  /** `now` for a hit handed out slightly late, within the lateness tolerance. */
+  when: number;
+}
+
 export interface LoopCrossing {
   /** Loop wraps so far, from 1. */
   pass: number;
@@ -98,6 +112,8 @@ export interface Advanced {
    * it, settled.
    */
   mixes: ScheduledMix[];
+  /** Golpe beats, rests included; a run start does not replay the ones before it. */
+  hits: ScheduledHit[];
   clicks: ScheduledClick[];
   /** Anchors this call started, in time order; the cursor follows them. */
   anchors: Anchor[];
@@ -206,6 +222,7 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
   };
   const notes: ScheduledNote[] = [];
   const mixes: ScheduledMix[] = [];
+  const hits: ScheduledHit[] = [];
   const clicks: ScheduledClick[] = [];
   const anchors: Anchor[] = [];
   let next = run;
@@ -244,7 +261,7 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
       };
       anchors.push(wrapped);
       if (crossed)
-        return { run: next, notes, mixes, clicks, anchors, loop: { pass: loopPasses, when } };
+        return { run: next, notes, mixes, hits, clicks, anchors, loop: { pass: loopPasses, when } };
       continue;
     }
 
@@ -267,6 +284,10 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
     for (const mix of mixesInRange(timeline, next.cursorTick, target, range)) {
       const when = Math.max(timeAtTick(timeline, anchor, mix.tick), now);
       mixes.push({ ...mix, when, secondsPerTick: secondsPerTickAt(mix.tick) });
+    }
+    for (const hit of hitsInRange(timeline, next.cursorTick, target, range)) {
+      const when = fit(timeAtTick(timeline, anchor, hit.tick));
+      if (when !== undefined) hits.push({ ...hit, when });
     }
     for (const onset of notesInRange(timeline, next.cursorTick, target, range)) {
       const start = timeAtTick(timeline, anchor, onset.tick);
@@ -299,5 +320,5 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
     next = { ...next, cursorTick: target };
     if (target < limit) break;
   }
-  return { run: next, notes, mixes, clicks, anchors, loop: undefined };
+  return { run: next, notes, mixes, hits, clicks, anchors, loop: undefined };
 }

@@ -54,6 +54,66 @@ describe('noteVelocity', () => {
   });
 });
 
+describe('pick scrape', () => {
+  const scrape = (direction: 'down' | 'up', spec: Partial<PlanInput> = {}) =>
+    planNote(input(guitar, note(1, 7, { pickScrape: direction }), spec));
+
+  it('replaces the strike with one noise sweep: no doubling-pitch, bend or vibrato terms', () => {
+    const plan = planNote(
+      input(guitar, note(1, 7, { pickScrape: 'down', vibrato: 'wide' }), {
+        effects: { tremoloPicking: 16 },
+        links: [],
+      }),
+    );
+    expect(plan.scrape).toBe('down');
+    expect(plan.strikes).toHaveLength(1);
+    expect(plan.strikes[0]).toMatchObject({ key: ARTICULATION.pickScrape.key, detune: 0 });
+    expect(plan.filter).toMatchObject({
+      type: 'bandpass',
+      frequency: ARTICULATION.pickScrape.cutoff,
+    });
+    expect(plan.gain).toEqual([]);
+    expect(plan.letRingUntil).toBeUndefined();
+    expect(plan.legatoInto).toBeUndefined();
+  });
+
+  it('sweeps down for a down scrape and up for an up scrape, over the note', () => {
+    const down = scrape('down', { length: 0.8 });
+    const upward = scrape('up', { length: 0.8 });
+    expect(down.pitch?.(1)).toBeCloseTo(0, 9);
+    expect(down.pitch?.(1.4)).toBeCloseTo(-ARTICULATION.pickScrape.sweep / 2, 9);
+    expect(down.pitch?.(1.8)).toBeCloseTo(-ARTICULATION.pickScrape.sweep, 9);
+    expect(upward.pitch?.(1.4)).toBeCloseTo(ARTICULATION.pickScrape.sweep / 2, 9);
+    expect(upward.pitch?.(9)).toBeCloseTo(ARTICULATION.pickScrape.sweep, 9);
+  });
+
+  it('caps the length and keeps a short note short', () => {
+    expect(scrape('down', { length: 4 }).strikes[0]?.end).toBeCloseTo(
+      1 + ARTICULATION.pickScrape.maxLength,
+      9,
+    );
+    expect(scrape('down', { length: 0.3 }).strikes[0]?.end).toBeCloseTo(1.3, 9);
+  });
+
+  it('works on the origin of a tie chain, whose length already folds the ties in', () => {
+    const plan = planNote(
+      input(guitar, note(1, 7, { pickScrape: 'up' }), {
+        length: 1.5,
+        links: [link({}, 1.5)],
+      }),
+    );
+    expect(plan.strikes[0]?.end).toBeCloseTo(1 + ARTICULATION.pickScrape.maxLength, 9);
+    expect(plan.scrape).toBe('up');
+  });
+
+  it('leaves a dead note a dead note, and a drum track alone', () => {
+    expect(planNote(input(guitar, note(1, 7, { pickScrape: 'down', dead: true }))).scrape).toBe(
+      undefined,
+    );
+    expect(planNote(input(drums, midi(38, { pickScrape: 'down' }))).scrape).toBe(undefined);
+  });
+});
+
 describe('planNote', () => {
   it('gives a drum hit velocity and retriggers but no pitch, filter or length articulation', () => {
     const hit = midi(38, {

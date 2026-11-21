@@ -10,6 +10,7 @@ import {
 } from '@reprise/model';
 import type {
   Beat,
+  Golpe,
   Id,
   MixerChange,
   Note,
@@ -74,6 +75,20 @@ export interface MixOnset {
   track: Track;
   beat: Beat;
   mix: MixerChange;
+}
+
+/** A beat carrying a golpe, rest or not: the percussive hit is the beat's, not a note's. */
+export interface HitOnset {
+  tick: number;
+  sequenceIndex: number;
+  masterBarIndex: number;
+  passIndex: number;
+  trackIndex: number;
+  voiceIndex: number;
+  beatIndex: number;
+  track: Track;
+  beat: Beat;
+  golpe: Golpe;
 }
 
 export interface NextOnString {
@@ -367,6 +382,50 @@ export function mixesInRange(
     }
   }
   return mixes.sort((a, b) => a.tick - b.tick);
+}
+
+/**
+ * Every beat carrying `BeatEffects.golpe` whose tick is in `[from, to)`, from `runStartTick` up
+ * to `limitTick`: rests and tied-only beats too, which send no note. Like `mixesInRange`, but a
+ * hit is an event, so the scheduler never replays the ones before a run's start.
+ */
+export function hitsInRange(
+  timeline: Timeline,
+  from: number,
+  to: number,
+  options: { runStartTick: number; limitTick: number },
+): HitOnset[] {
+  const hits: HitOnset[] = [];
+  const low = Math.max(from, options.runStartTick);
+  const high = Math.min(to, options.limitTick);
+  for (const [sequenceIndex, pass] of passesOverlapping(timeline, low, high)) {
+    for (const [trackIndex, track] of timeline.score.tracks.entries()) {
+      const bar = track.bars[pass.masterBarIndex];
+      if (!bar) continue;
+      for (const [voiceIndex, voice] of bar.voices.entries()) {
+        let offset = 0;
+        for (const [beatIndex, beat] of voice.beats.entries()) {
+          const tick = pass.startTick + offset;
+          offset += beatTicks(beat);
+          const golpe = beat.effects.golpe;
+          if (!golpe || tick < low - EPSILON || tick >= high - EPSILON) continue;
+          hits.push({
+            tick,
+            sequenceIndex,
+            masterBarIndex: pass.masterBarIndex,
+            passIndex: pass.passIndex,
+            trackIndex,
+            voiceIndex,
+            beatIndex,
+            track,
+            beat,
+            golpe,
+          });
+        }
+      }
+    }
+  }
+  return hits.sort((a, b) => a.tick - b.tick);
 }
 
 function beatUnit(denominator: number): number {

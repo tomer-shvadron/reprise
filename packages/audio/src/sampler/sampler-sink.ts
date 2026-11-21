@@ -2,15 +2,18 @@ import { PPQ, beatTicks, courseOffset } from '@reprise/model';
 import type { ChannelMixChange, Id, Track } from '@reprise/model';
 
 import { DEAD_NOTE_KEY, deadNoteInstrument } from '../articulations/dead-note';
+import { GOLPE_KEY, golpeInstrument } from '../articulations/golpe';
 import { placeGraces } from '../articulations/grace';
 import { ARTICULATION } from '../articulations/parameters';
 import { planNote } from '../articulations/plan';
 import { availableSets, voicingOf } from '../articulations/sets';
 import type { ArticulationSet, NoteVoicing, SetVoicing, Voicing } from '../articulations/sets';
 import type { GainPoint, NotePlan, PlanInput, Strike } from '../articulations/plan';
+import { scrapeInstrument } from '../articulations/scrape';
 import { levelAt } from '../articulations/tie-chain';
+import { noteVelocity } from '../articulations/velocity';
 import type { FilterSettings } from './voice';
-import type { InstrumentSink, MixEvent, NoteEvent } from '../sink';
+import type { HitEvent, InstrumentSink, MixEvent, NoteEvent } from '../sink';
 import type { RegionMap, RegionSelection } from './region-map';
 import type { Instrument, Sampler, TrackParams, VoiceHandle } from './sampler';
 
@@ -161,6 +164,8 @@ export function createSamplerSink(
   options: SamplerSinkOptions = {},
 ): InstrumentSink {
   let deadNote = options.deadNote;
+  let scrape: Instrument | undefined;
+  let golpe: Instrument | undefined;
   const chains = new Map<string, Chain>();
   // Notes struck so far per track, region map, layer and key, for the round robins; a stop starts over.
   let counters = new WeakMap<RegionMap, Map<string, number>>();
@@ -204,7 +209,8 @@ export function createSamplerSink(
     set: SetVoicing | undefined,
   ): VoiceHandle | undefined {
     if (plan.dead) deadNote ??= deadNoteInstrument(sampler.context.sampleRate);
-    const burst = plan.dead && deadNote ? deadNote : undefined;
+    if (plan.scrape) scrape ??= scrapeInstrument(sampler.context.sampleRate);
+    const burst = plan.dead && deadNote ? deadNote : plan.scrape ? scrape : undefined;
     // The set's own file, else the default instrument (read at the strike, a program change moves it).
     const own = burst ?? set?.instrument;
     const instrument = own ?? sampler.instrumentAt(trackId, strike.when);
@@ -232,9 +238,11 @@ export function createSamplerSink(
       instrument.regions
         .resolveAll(key, strike.velocity, layer, selection)
         .some((region) => region.trigger === 'legato');
-    // A dead note is one noise burst and a ghost note one light stroke, not a strummed pair.
+    // A dead note or a scrape is one noise burst and a ghost note one light stroke, not a strummed pair.
     const course =
-      plan.dead || input.note.ghost ? null : courseOffset(input.track, input.note.string);
+      plan.dead || plan.scrape || input.note.ghost
+        ? null
+        : courseOffset(input.track, input.note.string);
     return sampler.noteOn(trackId, {
       key,
       ...(course !== null && { course }),
@@ -247,7 +255,10 @@ export function createSamplerSink(
       // alternation or a grace note, whose string is never let go, and not a note a hammer-on
       // or pull-off starts from, which stays on the string until the legato chain ends.
       releaseTrigger:
-        final && last && !handsOver(input, plan.letRingUntil ?? strike.end, pass.nextOnBeatGrace),
+        final &&
+        last &&
+        !plan.scrape &&
+        !handsOver(input, plan.letRingUntil ?? strike.end, pass.nextOnBeatGrace),
       ...(strike.offset !== undefined && !transition && { offset: strike.offset }),
       ...(own && { instrument: own }),
       ...(last && plan.letRingUntil !== undefined && { letRing: { until: plan.letRingUntil } }),
@@ -260,7 +271,11 @@ export function createSamplerSink(
     let carried: VoiceHandle | undefined;
     if (chain) {
       chains.delete(chainKey);
-      if (Math.abs(chain.at - input.when) <= CHAIN_TOLERANCE && !input.note.dead) {
+      if (
+        Math.abs(chain.at - input.when) <= CHAIN_TOLERANCE &&
+        !input.note.dead &&
+        !input.note.pickScrape
+      ) {
         carried = chain.voice;
       } else {
         chain.voice.release(chain.at);
@@ -328,6 +343,27 @@ export function createSamplerSink(
     if (instrument) sampler.setInstrument(track.id, instrument, when);
   }
 
+  /**
+   * A golpe: the synthesized body hit, through the beat's track so its strip, mute and solo
+   * apply. A beat with no notes (a rest) hits at the default velocity.
+   */
+  function hit(event: HitEvent): void {
+    golpe ??= golpeInstrument(sampler.context.sampleRate);
+    const { restVelocity, length } = ARTICULATION.golpe;
+    const velocity = event.beat.notes.reduce(
+      (loudest, note) => Math.max(loudest, noteVelocity(note)),
+      event.beat.notes.length > 0 ? 0 : restVelocity,
+    );
+    const voice = sampler.noteOn(event.track.id, {
+      key: GOLPE_KEY[event.golpe],
+      velocity,
+      when: event.when,
+      string: 0,
+      instrument: golpe,
+    });
+    voice?.release(event.when + length);
+  }
+
   return {
     noteOn(event: NoteEvent): void {
       const { track, beat, note } = event;
@@ -372,6 +408,7 @@ export function createSamplerSink(
       );
     },
     mix,
+    hit,
     allNotesOff(when: number): void {
       chains.clear();
       counters = new WeakMap();

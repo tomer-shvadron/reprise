@@ -1,4 +1,4 @@
-import type { Beat, MixerChange, Note, Track } from '@reprise/model';
+import type { Beat, Golpe, MixerChange, Note, Track } from '@reprise/model';
 
 /** One note the scheduler wants sounded, with everything a sampler needs to voice it. */
 export interface NoteEvent {
@@ -62,6 +62,25 @@ export interface MixEvent {
 }
 
 /**
+ * A beat's golpe (`BeatEffects.golpe`): a percussive hit on the guitar body, sent once per beat
+ * that carries one, rests and tied continuations included, which send no `NoteEvent`.
+ */
+export interface HitEvent {
+  track: Track;
+  trackIndex: number;
+  voiceIndex: number;
+  beat: Beat;
+  beatIndex: number;
+  golpe: Golpe;
+  /** `AudioContext` time of the beat; never earlier than `currentTime` when handed out. */
+  when: number;
+  playbackTick: number;
+  sequenceIndex: number;
+  masterBarIndex: number;
+  passIndex: number;
+}
+
+/**
  * What the scheduler drives. The sampler (WP-031) implements it with real samples; `ToneSink`
  * and `RecordingSink` are the stand-ins until then.
  *
@@ -78,6 +97,9 @@ export interface MixEvent {
  *   When a run starts (play, seek, a loop wrap) the changes before its start point are sent
  *   first, in order, at the run's start and with their transitions stripped, so the mixer
  *   state in effect there is restored; `track.channel` is the baseline they build on.
+ * - `hit` is called for every beat carrying a golpe, in the same window as the notes at its tick.
+ *   A hit is an event, not state: it is not replayed when a run starts partway through the beat.
+ *   `allNotesOff` cancels a hit like a note.
  * - `allNotesOff(when)` cancels every note sounding at `when` and every note already scheduled
  *   to start at or after it, by stopping their source nodes (`stop(when)` is valid before a
  *   node's start time), not only by muting them, and every mixer change scheduled after it (a
@@ -87,6 +109,7 @@ export interface MixEvent {
 export interface InstrumentSink {
   noteOn(event: NoteEvent): void;
   mix?(event: MixEvent): void;
+  hit?(event: HitEvent): void;
   allNotesOff(when: number): void;
   dispose?(): void;
 }

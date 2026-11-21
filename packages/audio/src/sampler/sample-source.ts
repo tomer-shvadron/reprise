@@ -12,8 +12,22 @@ export interface SampleSource {
 }
 
 export type SynthSample =
-  | { kind: 'sine'; frequency: number; duration: number; amplitude?: number }
-  | { kind: 'noise'; duration: number; seed?: number; amplitude?: number };
+  | {
+      kind: 'sine';
+      frequency: number;
+      duration: number;
+      amplitude?: number;
+      /** A linear glide to this frequency over the buffer; fixed pitch when absent. */
+      endFrequency?: number;
+    }
+  | {
+      kind: 'noise';
+      duration: number;
+      seed?: number;
+      amplitude?: number;
+      /** One-pole low-pass at this frequency; white noise when absent. */
+      cutoff?: number;
+    };
 
 export function midiToFrequency(key: number): number {
   return 440 * 2 ** ((key - 69) / 12);
@@ -36,11 +50,25 @@ function synthesize(spec: SynthSample, sampleRate: number): AudioBuffer {
   const data = buffer.getChannelData(0);
   const amplitude = spec.amplitude ?? 1;
   if (spec.kind === 'sine') {
-    const step = (2 * Math.PI * spec.frequency) / sampleRate;
-    for (let i = 0; i < length; i += 1) data[i] = amplitude * Math.sin(step * i);
+    const end = spec.endFrequency ?? spec.frequency;
+    let phase = 0;
+    for (let i = 0; i < length; i += 1) {
+      data[i] = amplitude * Math.sin(phase);
+      const frequency = spec.frequency + ((end - spec.frequency) * i) / length;
+      phase += (2 * Math.PI * frequency) / sampleRate;
+    }
   } else {
     const random = mulberry32(spec.seed ?? 1);
-    for (let i = 0; i < length; i += 1) data[i] = amplitude * (random() * 2 - 1);
+    // y += a (x - y), a = 1 - e^(-2 pi fc / fs); a low-passed white noise is far quieter, so it is
+    // scaled back up by the square root of its bandwidth share to stay audible at one amplitude.
+    const a =
+      spec.cutoff === undefined ? 1 : 1 - Math.exp((-2 * Math.PI * spec.cutoff) / sampleRate);
+    const gain = a === 1 ? 1 : Math.sqrt((2 - a) / a);
+    let y = 0;
+    for (let i = 0; i < length; i += 1) {
+      y += a * (random() * 2 - 1 - y);
+      data[i] = amplitude * Math.min(1, gain * y);
+    }
   }
   return buffer;
 }

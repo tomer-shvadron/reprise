@@ -469,6 +469,44 @@ describe('Transport (OfflineAudioContext)', () => {
     expect(mix?.calledAt).toBeLessThanOrEqual(mix?.when ?? 0);
   });
 
+  it('hands a golpe on a rest and on a note to the sink at its beat', async () => {
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .beat('2', [note(1, 0)], { effects: { golpe: 'finger' } })
+      .rest('2', { effects: { golpe: 'thumb' } })
+      .build();
+    const h = await harness(song, 2.5);
+    h.engine.play();
+    await h.render();
+
+    expect(h.sink.notes).toHaveLength(1);
+    expect(h.sink.hits.map((hit) => [hit.golpe, hit.beatIndex, hit.playbackTick])).toEqual([
+      ['finger', 0, 0],
+      ['thumb', 1, 2 * PPQ],
+    ]);
+    expect(h.sink.hits[1]?.when).toBeCloseTo(LATENCY + 1, 9);
+    expect(h.sink.hits[1]?.calledAt).toBeLessThanOrEqual(h.sink.hits[1]?.when ?? 0);
+  });
+
+  it('does not replay a golpe from before the start point', async () => {
+    const song = score()
+      .tempo(120)
+      .track('guitar')
+      .bar()
+      .rest('2', { effects: { golpe: 'thumb' } })
+      .rest('2')
+      .bar()
+      .rest('1', { effects: { golpe: 'finger' } })
+      .build();
+    const h = await harness(song, 3);
+    h.engine.play(4 * PPQ);
+    await h.render();
+
+    expect(h.sink.hits.map((hit) => hit.golpe)).toEqual(['finger']);
+  });
+
   it('starts from the middle with the mixer changes before it in effect', async () => {
     const song = score()
       .tempo(120)
