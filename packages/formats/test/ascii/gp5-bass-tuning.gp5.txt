@@ -1,0 +1,37 @@
+Bass Program - Standard Tuning | Tuning: E A D G B E | 120 bpm
+
+  1
+e|---|
+B|---|
+G|---|
+D|---|
+A|---|
+E|---|
+
+Bass 6 String | Tuning: B E A D G C | 120 bpm
+
+  1
+C|---|
+G|---|
+D|---|
+A|---|
+E|---|
+B|---|
+
+Bass 4 Strings | Tuning: E A D G | 120 bpm
+
+  1
+G|---|
+D|---|
+A|---|
+E|---|
+
+Lowest String Below B4 | Tuning: A# A D G B E | 120 bpm
+
+   1
+E |---|
+B |---|
+G |---|
+D |---|
+A |---|
+A#|---|

@@ -52,6 +52,28 @@ Notes for the formats lane. The authoritative descriptions of the Guitar Pro for
 - Everything is id-referenced; build maps first, then resolve.
 - `Bar > SimileMark` (`Simple`, `FirstOfDouble`, `SecondOfDouble`) is not in the model. The reader expands the previous bar's beats (for the double form, the two bars before it) into the bar with fresh ids and records a warning; export does not reproduce the mark, the expanded bars are written instead.
 
+## ASCII tab export
+
+`writeAsciiTab` in `packages/formats/src/ascii/` writes fretted tracks as plain text; there is no reader. Highest string first, label then `|`, one dash before the first beat of a bar, bars between `|` (`||` on a double bar, `||*` and `*||` on repeats, the `*` on the second and the second-to-last string), whole bars per line, a blank line between lines. Spacing within a bar is proportional to note length (the shortest beat counts as no less than a sixteenth and no more than a quarter), never narrower than the widest token plus a dash, so two-digit frets stay aligned.
+
+| Model | Written |
+| --- | --- |
+| fret | `7`, `12` |
+| `tie` | nothing: the dashes continue the note |
+| `dead`, `ghost` | `x`, `(7)` |
+| `hammerPull` | `h9` when the fret is the same or higher than the previous note on the string, else `p5` |
+| `slide` shift or legato | `7/` when the next note on the string is higher (or there is none), `7\` when lower |
+| `slide` into from below or above, out down or up | `/7`, `\7`, `7\`, `7/` |
+| `bend` | fret plus the point's quarter tones divided by two: `7b9`, `7b9r7`, `7pb9`, `7pb9b11`, `7pb9r7`, `7b7.5` for a quarter-tone target |
+| `vibrato` (note or beat) | `7~` |
+| natural harmonic | `<12>`, or `<2.7>` from `value` |
+| other harmonics | `[n]`, `n` = fret plus `value` |
+| tapping, slapping, popping | `t7`, `s7`, `P7` |
+| trill | `7tr9` |
+| palm mute, let ring | `PM---` and `LR---` runs below the strings; palm mute wins a clash |
+
+The legend after the last block lists only the symbols the text uses: `h`, `p`, `/`, `\`, `b`, `pb`, `r`, `~`, `x`, `(n)`, `<n>`, `[n]`, `t`, `s`, `P`, `tr`, `PM`, `LR` and `*`. Losses are reported in `dropped` (voices 2 to 4, grace notes, whammy, tremolo picking, strokes, lyric lines 2 to 5, a palm-mute and let-ring clash, a skipped track); the rest of what the format cannot show is listed in the architecture note "Changed by #350".
+
 ## `.reprise`
 
 - JSON object `{ format: 'reprise', version: 1, app: { name, version }, score }` where `score` validates against the model's Zod schema. Stable key order, two-space indentation, UTF-8. No compression.
