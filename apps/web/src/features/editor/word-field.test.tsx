@@ -1,5 +1,6 @@
 import { write } from '@reprise/formats';
 import { setBeatEffect, setTrackProperties, type Score } from '@reprise/model';
+import { note, score } from '@reprise/model/testing';
 import { act, cleanup, fireEvent, screen } from '@testing-library/react';
 import { useStore } from 'zustand';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -173,6 +174,28 @@ describe('the word field', () => {
     t.press('ArrowDown');
     t.press('Enter');
     expect(t.beat(1, 1).chord?.name).toBe('Am');
+  });
+
+  it('offers the names the beat spells first, marked, before the song names', async () => {
+    const t = await setup(
+      (() => {
+        const built = score().track('guitar');
+        built
+          .bar()
+          .beat('4', [note(5, 3), note(4, 2), note(3, 0), note(2, 1), note(1, 0)])
+          .beat('4', [note(1, 0)], { chord: { name: 'Am' } });
+        return built.build({ ids: 'sequential' });
+      })(),
+    );
+    t.goTo(0, 0);
+    t.press('a');
+    const options = screen.getAllByRole('option').map((o) => o.textContent);
+    expect(screen.getAllByRole('option')[0]?.getAttribute('aria-label')).toBe('C, from the notes');
+    expect(screen.getByRole('option', { name: 'C, from the notes' })).toBeDefined();
+    expect(options).toContain('Am');
+    t.press('ArrowDown');
+    t.press('Enter');
+    expect(t.beat(0, 0).chord?.name).toBe('C');
   });
 
   it('removes a chord and its diagram when the name is emptied, with a notice', async () => {
