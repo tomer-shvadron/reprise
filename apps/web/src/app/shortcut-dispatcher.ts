@@ -1,5 +1,7 @@
 import { contextRank, runCommand, type CommandRegistry } from './command-registry';
 import { matchesShortcut, type KeyboardPlatform } from './keyboard';
+import { isTooltipEscape, otherLayerOpen } from '@/components/ui/tooltip-escape';
+
 import { isEditable, isTextField } from './text-field';
 
 // Sliders are left out on purpose: Space plays while one has focus.
@@ -158,11 +160,16 @@ export function dispatchShortcut(
   platform: KeyboardPlatform,
   onError: (error: unknown) => void = console.error,
 ): boolean {
-  if (event.defaultPrevented || event.isComposing) return false;
+  if (event.isComposing) return false;
+  // A tooltip's Escape is prevented like any dismissal, but it must not stop the commands that
+  // opted in, unless a popover or menu is open under it, which still owes the Escape its close.
+  const tooltipEscape = event.defaultPrevented && isTooltipEscape(event) && !otherLayerOpen();
+  if (event.defaultPrevented && !tooltipEscape) return false;
 
   const matching = registry.available().filter((candidate) => {
     const shortcut = registry.shortcutOf(candidate);
     if (!shortcut || candidate.native) return false;
+    if (tooltipEscape && !candidate.afterTooltipEscape) return false;
     if (DELETE_KEYS.has(event.key) && isTextField(event.target)) return false;
     if (NAVIGATION_KEYS.has(event.key) && isEditable(event.target)) return false;
     if (!shortcut.mod && leavesKeyToTarget(event)) return false;

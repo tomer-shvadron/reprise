@@ -45,6 +45,11 @@ export interface Command {
   native?: true;
   /** False ignores auto-repeated keydowns, so holding Space does not toggle play on and off. */
   repeat?: false;
+  /**
+   * Runs on an Escape that only a tooltip took (see `tooltip-escape`): a tooltip is not something
+   * Escape should stop at. A popover, menu or dialog still takes the first Escape.
+   */
+  afterTooltipEscape?: true;
   /** False keeps the key out of the user's hands (Settings > Keyboard): typed values, not shortcuts. */
   rebindable?: false;
   run: () => void | Promise<void>;

@@ -44,6 +44,7 @@ export function practiceCommands(services: AppServices): PracticeCommand[] {
       title: 'Leave practice mode',
       shortcut: { key: 'Escape' },
       inPalette: false,
+      afterTooltipEscape: true,
       // Practice is never edit mode, so this Escape never competes with the editing one.
       enabled: () => ui.getState().practiceMode.on,
       run: () => {
