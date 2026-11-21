@@ -2,11 +2,11 @@ import { AudioLinesIcon, GaugeIcon } from 'lucide-react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 
-import { keepFocus, tooltipText } from '@/app/command-control';
+import { keepFocus } from '@/app/command-control';
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useAppServices } from '@/app/services-context';
 import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import { rampProgress } from './speed-trainer/ramp';
 import { speedTrainerFor } from './speed-trainer/speed-trainer-for';
@@ -70,43 +70,39 @@ export function SpeedTrainerChip({
   }
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label={`${visible} (${detail})`}
-          aria-keyshortcuts={show.ariaKeys}
-          data-command={command}
-          data-testid="speed-trainer-chip"
-          data-status={status}
-          onMouseDown={keepFocus}
-          onClick={show.run}
-          className={live ? 'text-foreground' : 'text-muted-foreground'}
+    <CommandTooltip command={command} label="Speed trainer">
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-label={`${visible} (${detail})`}
+        data-command={command}
+        data-testid="speed-trainer-chip"
+        data-status={status}
+        onMouseDown={keepFocus}
+        onClick={show.run}
+        className={live ? 'text-foreground' : 'text-muted-foreground'}
+      >
+        <GaugeIcon className={status === 'running' ? 'text-primary' : undefined} />
+        <span
+          data-testid="speed-trainer-chip-text"
+          className={`${TEXT_CLASS[text]} text-xs tabular-nums`}
         >
-          <GaugeIcon className={status === 'running' ? 'text-primary' : undefined} />
+          {visible}
+        </span>
+        {live && (
           <span
-            data-testid="speed-trainer-chip-text"
-            className={`${TEXT_CLASS[text]} text-xs tabular-nums`}
+            aria-hidden="true"
+            className="bg-muted relative block h-1 w-8 overflow-hidden rounded-full"
           >
-            {visible}
-          </span>
-          {live && (
             <span
-              aria-hidden="true"
-              className="bg-muted relative block h-1 w-8 overflow-hidden rounded-full"
-            >
-              <span
-                data-testid="speed-trainer-chip-bar"
-                className="bg-primary absolute inset-y-0 left-0 block rounded-full"
-                style={{ width: `${String(Math.round(fraction * 100))}%` }}
-              />
-            </span>
-          )}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{tooltipText('Speed trainer', show.keys)}</TooltipContent>
-    </Tooltip>
+              data-testid="speed-trainer-chip-bar"
+              className="bg-primary absolute inset-y-0 left-0 block rounded-full"
+              style={{ width: `${String(Math.round(fraction * 100))}%` }}
+            />
+          </span>
+        )}
+      </Button>
+    </CommandTooltip>
   );
 }
 
@@ -114,21 +110,17 @@ export function SpeedTrainerChip({
 export function TunerButton() {
   const show = useCommand('trainer.tuner');
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Tuner"
-          aria-keyshortcuts={show.ariaKeys}
-          data-command="trainer.tuner"
-          onMouseDown={keepFocus}
-          onClick={show.run}
-        >
-          <AudioLinesIcon />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{tooltipText('Tuner', show.keys)}</TooltipContent>
-    </Tooltip>
+    <CommandTooltip command="trainer.tuner" label="Tuner">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Tuner"
+        data-command="trainer.tuner"
+        onMouseDown={keepFocus}
+        onClick={show.run}
+      >
+        <AudioLinesIcon />
+      </Button>
+    </CommandTooltip>
   );
 }

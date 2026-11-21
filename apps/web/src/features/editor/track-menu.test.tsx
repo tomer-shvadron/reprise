@@ -100,7 +100,11 @@ describe('the track sidebar with the editor’s slots', () => {
   it('shows the add-track keys of the platform in the tooltip', async () => {
     const { user } = setup('other');
     await user.hover(screen.getByRole('button', { name: 'Add track' }));
-    expect(await screen.findAllByText(/Add track \(Ctrl\+Shift\+Insert\)/)).not.toHaveLength(0);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Add track, Ctrl+Shift+Insert');
+    expect(screen.getByRole('button', { name: 'Add track' })).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Control+Shift+Insert',
+    );
   });
 
   it('opens a row’s properties from its menu, by keyboard', async () => {

@@ -141,4 +141,72 @@ describe('CommandTooltip', () => {
     expect(within(tip).queryByText('S')).toBeNull();
     expect(tip).toHaveTextContent('Thing: Nothing to save');
   });
+
+  it('keeps the control mounted and focused while a reason comes and goes', () => {
+    const services = createTestServices();
+    function Wrapped() {
+      const [registry] = useState(() => createAppRegistry(services, 'mac'));
+      const source = useCommandSource(registry, 'mac', services.settings, services.editing);
+      const [reason, setReason] = useState<string | undefined>(undefined);
+      return (
+        <CommandSourceContext value={source}>
+          <CommandTooltip command="file.save" label="Thing" reason={reason}>
+            <button>Go</button>
+          </CommandTooltip>
+          <button
+            onClick={() => {
+              setReason((now) => (now === undefined ? 'Why not' : undefined));
+            }}
+          >
+            flip
+          </button>
+        </CommandSourceContext>
+      );
+    }
+    renderWithServices(<Wrapped />, services);
+    const go = screen.getByRole('button', { name: 'Go' });
+    act(() => {
+      go.focus();
+    });
+    // Flip through the handler without moving focus off the control.
+    const flip = screen.getByRole('button', { name: 'flip' });
+    act(() => {
+      flip.click();
+    });
+    expect(screen.getByRole('button', { name: 'Go' })).toBe(go);
+    expect(go).toHaveFocus();
+    act(() => {
+      flip.click();
+    });
+    expect(screen.getByRole('button', { name: 'Go' })).toBe(go);
+    expect(go).toHaveFocus();
+  });
+
+  it('shows no tooltip for a wrapped control that is unbound and asked for none', async () => {
+    const services = createTestServices();
+    function Wrapped() {
+      const [registry] = useState(() => createAppRegistry(services, 'mac'));
+      const source = useCommandSource(registry, 'mac', services.settings, services.editing);
+      return (
+        <CommandSourceContext value={source}>
+          <CommandTooltip
+            command="view.toggleSidebar"
+            label="Thing"
+            whenUnbound="none"
+            reason={undefined}
+          >
+            <button>Go</button>
+          </CommandTooltip>
+        </CommandSourceContext>
+      );
+    }
+    renderWithServices(<Wrapped />, services);
+    const user = userEvent.setup();
+    await user.tab();
+    await user.hover(screen.getByRole('button', { name: 'Go' }));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, TOOLTIP_DELAY_MS + 100));
+    });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
 });
