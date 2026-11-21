@@ -10,6 +10,8 @@
     "hammer-ons",
     "harmonics",
     "palm-mute",
+    "golpe",
+    "pick-scrape",
     "drums-track",
     "pitched-non-fretted-track",
     "time-signature-change",
@@ -214,12 +216,28 @@
       "notes": 94
     },
     {
+      "path": "gp/golpe.gp",
+      "format": "gp",
+      "features": ["golpe"],
+      "tracks": 1,
+      "bars": 3,
+      "notes": 24
+    },
+    {
       "path": "gp/multivoice-rhythm.gp",
       "format": "gp",
       "features": ["multiple-voices"],
       "tracks": 1,
       "bars": 7,
       "notes": 51
+    },
+    {
+      "path": "gp/pick-slide.gp",
+      "format": "gp",
+      "features": ["pick-scrape"],
+      "tracks": 1,
+      "bars": 6,
+      "notes": 17
     },
     {
       "path": "gp/sustain.gp",

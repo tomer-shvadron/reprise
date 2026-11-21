@@ -22,6 +22,8 @@ export const FEATURES = [
   'hammer-ons',
   'harmonics',
   'palm-mute',
+  'golpe',
+  'pick-scrape',
   'drums-track',
   'pitched-non-fretted-track',
   'time-signature-change',

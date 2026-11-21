@@ -73,7 +73,7 @@ Notes for the formats lane. The authoritative descriptions of the Guitar Pro for
 | trill | `7tr9` |
 | palm mute, let ring | `PM---` and `LR---` runs below the strings; palm mute wins a clash |
 
-The legend after the last block lists only the symbols the text uses: `h`, `p`, `/`, `\`, `b`, `pb`, `r`, `~`, `x`, `(n)`, `<n>`, `[n]`, `PH`, `t`, `s`, `P`, `tr`, `PM`, `LR` and `*`. Losses are reported in `dropped` (voices 2 to 4, grace notes, whammy, tremolo picking, strokes, lyric lines 2 to 5, a palm-mute and let-ring clash, a skipped track); the rest of what the format cannot show is listed in the architecture note "Changed by #350".
+The legend after the last block lists only the symbols the text uses: `h`, `p`, `/`, `\`, `b`, `pb`, `r`, `~`, `x`, `(n)`, `<n>`, `[n]`, `PH`, `t`, `s`, `P`, `tr`, `PM`, `LR` and `*`. Losses are reported in `dropped` (voices 2 to 4, grace notes, whammy, tremolo picking, strokes, lyric lines 2 to 5, a palm-mute and let-ring clash, a skipped track); the rest of what the format cannot show is listed in the architecture note "Changed by #350". Golpes and pick scrapes, like accents and fades, are left out by the format's convention and are not reported: there is no `dropped` code for them, on purpose (#354).
 
 ## `.reprise`
 
