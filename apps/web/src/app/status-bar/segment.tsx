@@ -2,7 +2,7 @@ import { cn } from 'cn';
 import type { ComponentProps, ReactNode } from 'react';
 
 import { keepFocus } from '@/app/command-control';
-import { CommandTooltip } from '@/app/command-tooltip';
+import { CommandTooltip, HintTooltip } from '@/app/command-tooltip';
 import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useMenuFocusReturn } from '@/app/menu-focus-return';
 import { useCommand, type RegisteredCommandId } from '@/app/use-command';
@@ -12,7 +12,6 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { StatusSegmentName } from '@/state/menu-target';
 
 // `text-2xs!` because the button's size variant sets `text-xs`; a hover or open segment turns
@@ -90,25 +89,22 @@ export function StatusMenu({
   });
   return (
     <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="xs"
-              className={cn(SEGMENT, className)}
-              onMouseDown={keepFocus}
-              onPointerDownCapture={focusReturn.remember}
-              onKeyDownCapture={focusReturn.remember}
-              {...contextMenu}
-              {...rest}
-            >
-              {children}
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
+      <HintTooltip label={label}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="xs"
+            className={cn(SEGMENT, className)}
+            onMouseDown={keepFocus}
+            onPointerDownCapture={focusReturn.remember}
+            onKeyDownCapture={focusReturn.remember}
+            {...contextMenu}
+            {...rest}
+          >
+            {children}
+          </Button>
+        </DropdownMenuTrigger>
+      </HintTooltip>
       <DropdownMenuContent
         side="top"
         align={align}

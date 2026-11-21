@@ -1,0 +1,207 @@
+import { act, cleanup, render } from '@testing-library/react';
+import { write } from '@reprise/formats';
+import { fullScore } from '@reprise/model/testing';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { stubViewport } from '@/features/score/test/viewport-stub';
+import type { PanelView } from '@/state/ui';
+import { createTestServices, fakePlatform } from '@/test/services';
+
+import { App } from './app';
+import type { CommandRegistry } from './command-registry';
+import { SHORTCUT_OVERRIDES_SETTING } from './keymap';
+import { bindingGroup } from './shortcut-table';
+import { bindCommand, type RegisteredCommandId } from './use-command';
+
+// The registry `App` builds, so a test can spy on every command's `run`.
+const built: { registry?: CommandRegistry | undefined } = {};
+vi.mock('./app-registry', async (original) => {
+  const actual = await original<typeof import('./app-registry')>();
+  return {
+    ...actual,
+    createAppRegistry: (...args: Parameters<typeof actual.createAppRegistry>) => {
+      const registry = actual.createAppRegistry(...args);
+      built.registry = registry;
+      return registry;
+    },
+  };
+});
+
+type Scenario = {
+  name: string;
+  editing: boolean;
+  practice?: boolean;
+  panel?: PanelView;
+  dock?: boolean;
+};
+
+// Each right-panel view and the dock once, in the modes that show different controls.
+const SCENARIOS: readonly Scenario[] = [
+  { name: 'play, mixer', editing: false, panel: 'mixer' },
+  { name: 'play, practice tools', editing: false, panel: 'speedTrainer', dock: true },
+  { name: 'play, tuner', editing: false, panel: 'tuner' },
+  { name: 'play, metronome', editing: false, panel: 'metronome' },
+  { name: 'play, history', editing: false, panel: 'history' },
+  { name: 'play, chords', editing: false, panel: 'chords' },
+  { name: 'edit, effects', editing: true, panel: 'effects', dock: true },
+  { name: 'practice mode', editing: false, practice: true },
+];
+
+/**
+ * Controls that run a command on a click yet show no key by design, each with its reason. A new
+ * entry needs a real reason: a control that runs a command shows the command's keys (#412).
+ */
+const ALLOWED: readonly { name: RegExp; reason: string }[] = [];
+
+const KEYS = 'abcdefghijklmnopqrstuvwxyz0123456789';
+
+/** Every rebindable command to a key of its own, so that a control with no key today still shows one. */
+function bindEverything(registry: CommandRegistry, ids: Iterable<string>) {
+  return Object.fromEntries(
+    [...ids]
+      .filter((id) => registry.get(id)?.rebindable !== false && !registry.get(id)?.native)
+      .map((id, at) => {
+        const flags = (at % 7) + 1;
+        return [
+          id,
+          {
+            key: KEYS.charAt(Math.floor(at / 7) % KEYS.length),
+            alt: Boolean(flags & 1),
+            shift: Boolean(flags & 2),
+            mod: Boolean(flags & 4),
+          },
+        ];
+      }),
+  );
+}
+
+async function mount(scenario: Scenario, bindAll = false) {
+  stubViewport(1280, 800);
+  const services = createTestServices({ platform: fakePlatform() });
+  render(<App services={services} keyboard="mac" onMenuCommand={() => () => undefined} />);
+  const { bytes } = await write(fullScore(), 'reprise');
+  await act(async () => {
+    await services.document.getState().openBytes('full.reprise', bytes);
+  });
+  act(() => {
+    services.playback.setState({ song: { status: 'ready', error: undefined } });
+    services.editing.getState().setEditing(scenario.editing);
+    const ui = services.ui.getState();
+    if (scenario.panel) ui.showPanelView(scenario.panel);
+    if (scenario.dock) ui.showBottomPanelView('fretboard');
+    if (scenario.practice) ui.enterPracticeMode('play');
+  });
+  const registry = built.registry;
+  if (!registry) throw new Error('App did not build a registry');
+  if (bindAll) {
+    act(() => {
+      services.settings.set(
+        SHORTCUT_OVERRIDES_SETTING,
+        bindEverything(
+          registry,
+          registry.list().map((command) => command.id),
+        ),
+      );
+    });
+  }
+  return { services, registry };
+}
+
+const inChrome = (element: Element) =>
+  element.closest('[role=menu],[role=dialog],[role=listbox],[role=tooltip]') === null;
+
+function clickable(): HTMLElement[] {
+  return [
+    ...document.querySelectorAll<HTMLElement>('button, [role=tab], [role=radio], [role=switch]'),
+  ].filter(
+    (element) =>
+      inChrome(element) &&
+      !(element as HTMLButtonElement).disabled &&
+      element.getAttribute('aria-disabled') !== 'true' &&
+      element.getAttribute('aria-haspopup') === null,
+  );
+}
+
+const label = (element: Element) =>
+  element.getAttribute('aria-label') ?? element.textContent.trim().slice(0, 40);
+
+afterEach(cleanup);
+beforeEach(() => {
+  built.registry = undefined;
+});
+
+describe('command tooltip coverage', () => {
+  for (const scenario of SCENARIOS) {
+    it(`every command control states the registry's keys (${scenario.name}), before and after a rebind`, async () => {
+      const { services, registry } = await mount(scenario);
+      const expected = (id: string) =>
+        bindCommand(
+          { registry, keyboard: 'mac', editing: scenario.editing },
+          id as RegisteredCommandId,
+        ).ariaKeys;
+      const check = () => {
+        const tagged = [...document.querySelectorAll<HTMLElement>('[data-command-tooltip]')];
+        expect(tagged.length).toBeGreaterThan(0);
+        for (const element of tagged) {
+          const id = element.dataset['commandTooltip'] ?? '';
+          const control = element.matches('button,[role=tab],[role=radio],[role=switch]')
+            ? element
+            : (element.querySelector('[aria-keyshortcuts],button') ?? element);
+          expect(control.getAttribute('aria-keyshortcuts') ?? undefined, id).toBe(expected(id));
+        }
+      };
+      check();
+      const rebound = new Set<string>();
+      for (const element of document.querySelectorAll<HTMLElement>('[data-command-tooltip]')) {
+        rebound.add(element.dataset['commandTooltip'] ?? '');
+      }
+      const overrides = bindEverything(registry, rebound);
+      act(() => {
+        services.settings.set(SHORTCUT_OVERRIDES_SETTING, overrides);
+      });
+      check();
+    }, 60_000);
+
+    it(`a control that runs a command carries its tooltip (${scenario.name})`, async () => {
+      await mount(scenario, true);
+      const names = clickable()
+        .filter((element) => element.closest('[data-command-tooltip]') === null)
+        .map(label);
+      cleanup();
+      const offenders: string[] = [];
+      for (const [at] of names.entries()) {
+        built.registry = undefined;
+        const { registry } = await mount(scenario, true);
+        const candidates = clickable().filter(
+          (element) => element.closest('[data-command-tooltip]') === null,
+        );
+        const target = candidates[at];
+        if (!target) continue;
+        const ran: string[] = [];
+        for (const command of registry.list()) {
+          command.run = () => {
+            ran.push(command.id);
+          };
+        }
+        const name = label(target);
+        act(() => {
+          target.click();
+        });
+        if (ran.length === 0) {
+          cleanup();
+          continue;
+        }
+        const allowed = ALLOWED.some((entry) => entry.name.test(name));
+        const groups = new Set(
+          ran.map((id) => {
+            const command = registry.get(id);
+            return command ? bindingGroup(command) : id;
+          }),
+        );
+        if (!allowed) offenders.push(`${name} ran ${[...groups].join(', ').replaceAll('\n', '/')}`);
+        cleanup();
+      }
+      expect(offenders, 'controls that run a command without CommandTooltip').toEqual([]);
+    }, 120_000);
+  }
+});

@@ -4,7 +4,7 @@ import { useStore } from 'zustand';
 import { keepFocus } from '@/app/command-control';
 import { loopBars } from '@/app/palette/actions';
 import { useAppServices } from '@/app/services-context';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { HintTooltip } from '@/app/command-tooltip';
 import { useCommand } from '@/app/use-command';
 import { sectionAt, sectionBars, sectionsOf, type ScoreSection } from '@/features/transport';
 import { cn } from 'cn';
@@ -61,37 +61,34 @@ export function SectionStrip() {
           const current = section === playing;
           return (
             <li key={section.startIndex} className="flex shrink-0">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    ref={(node) => {
-                      if (node) refs.current.set(section.startIndex, node);
-                      else refs.current.delete(section.startIndex);
-                    }}
-                    type="button"
-                    aria-pressed={pressed}
-                    aria-current={current ? 'true' : undefined}
-                    aria-label={`${section.label}, ${sectionBars(section)}`}
-                    data-section={section.label}
-                    onMouseDown={keepFocus}
-                    onClick={() => {
-                      if (pressed) {
-                        toggleLoop.run();
-                      } else {
-                        loopBars(services, section.startIndex, section.endIndex, section.label);
-                      }
-                    }}
-                    className={cn(
-                      'text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring my-1 rounded-md border-b-2 border-transparent px-2.5 text-sm font-medium whitespace-nowrap outline-none focus-visible:ring-2',
-                      'aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary',
-                      'aria-current:border-primary aria-pressed:aria-current:border-primary-foreground',
-                    )}
-                  >
-                    {section.label}
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>{sectionBars(section)}</TooltipContent>
-              </Tooltip>
+              <HintTooltip label={sectionBars(section)}>
+                <button
+                  ref={(node) => {
+                    if (node) refs.current.set(section.startIndex, node);
+                    else refs.current.delete(section.startIndex);
+                  }}
+                  type="button"
+                  aria-pressed={pressed}
+                  aria-current={current ? 'true' : undefined}
+                  aria-label={`${section.label}, ${sectionBars(section)}`}
+                  data-section={section.label}
+                  onMouseDown={keepFocus}
+                  onClick={() => {
+                    if (pressed) {
+                      toggleLoop.run();
+                    } else {
+                      loopBars(services, section.startIndex, section.endIndex, section.label);
+                    }
+                  }}
+                  className={cn(
+                    'text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring my-1 rounded-md border-b-2 border-transparent px-2.5 text-sm font-medium whitespace-nowrap outline-none focus-visible:ring-2',
+                    'aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary',
+                    'aria-current:border-primary aria-pressed:aria-current:border-primary-foreground',
+                  )}
+                >
+                  {section.label}
+                </button>
+              </HintTooltip>
             </li>
           );
         })}

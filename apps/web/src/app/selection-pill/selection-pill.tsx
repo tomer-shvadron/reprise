@@ -27,7 +27,7 @@ import type { ScoreOverlays, ScoreViewHandle } from '@/features/score';
 import { selectRunning } from '@/state/playback';
 
 import { keepFocus } from '../command-control';
-import { CommandTooltip } from '../command-tooltip';
+import { CommandTooltip, HintTooltip } from '../command-tooltip';
 import { useMenuRegistry } from '../context-menu/menu-context';
 import type { MenuContext, MenuRequest } from '../context-menu/types';
 import { useContextMenu } from '../context-menu/use-context-menu';
@@ -455,20 +455,22 @@ export function SelectionPill({ view, layout, zoom, dragging, edit }: SelectionP
           ),
         )}
         <span role="separator" aria-orientation="vertical" className="score-pill-separator" />
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="rounded-full"
-          aria-label="More actions"
-          aria-haspopup="menu"
-          aria-expanded={ownMenu && own?.via === 'more'}
-          data-pill-item={MORE_KEY}
-          tabIndex={stopKey === MORE_KEY ? 0 : -1}
-          onMouseDown={keepFocus}
-          onClick={openMenu}
-        >
-          <EllipsisIcon aria-hidden="true" />
-        </Button>
+        <HintTooltip label="More actions">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="rounded-full"
+            aria-label="More actions"
+            aria-haspopup="menu"
+            aria-expanded={ownMenu && own?.via === 'more'}
+            data-pill-item={MORE_KEY}
+            tabIndex={stopKey === MORE_KEY ? 0 : -1}
+            onMouseDown={keepFocus}
+            onClick={openMenu}
+          >
+            <EllipsisIcon aria-hidden="true" />
+          </Button>
+        </HintTooltip>
       </CommandSourceContext>
     </div>
   );

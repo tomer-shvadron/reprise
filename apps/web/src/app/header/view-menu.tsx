@@ -21,7 +21,7 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { HintTooltip } from '@/app/command-tooltip';
 import { CHORD_DIAGRAMS_SETTING } from '@/state/app-settings';
 import { effectiveNotation, NO_TAB_REASON, notationChoices } from '@/features/tracks';
 
@@ -50,26 +50,23 @@ export function ViewMenu() {
 
   return (
     <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="xs"
-              aria-label="View options"
-              {...menu}
-              onMouseDown={keepFocus}
-              onPointerDownCapture={focusReturn.remember}
-              onKeyDownCapture={focusReturn.remember}
-            >
-              <EyeIcon aria-hidden="true" />
-              <span className="hidden whitespace-nowrap md:inline">View</span>
-              <ChevronDownIcon aria-hidden="true" className="hidden md:block" />
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent>View options</TooltipContent>
-      </Tooltip>
+      <HintTooltip label="View options">
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="xs"
+            aria-label="View options"
+            {...menu}
+            onMouseDown={keepFocus}
+            onPointerDownCapture={focusReturn.remember}
+            onKeyDownCapture={focusReturn.remember}
+          >
+            <EyeIcon aria-hidden="true" />
+            <span className="hidden whitespace-nowrap md:inline">View</span>
+            <ChevronDownIcon aria-hidden="true" className="hidden md:block" />
+          </Button>
+        </DropdownMenuTrigger>
+      </HintTooltip>
       <DropdownMenuContent
         align="end"
         className="w-60"

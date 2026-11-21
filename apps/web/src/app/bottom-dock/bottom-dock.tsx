@@ -3,12 +3,11 @@ import { useRef, type KeyboardEvent, type ReactElement, type ReactNode } from 'r
 import { useStore } from 'zustand';
 
 import { keepFocus } from '@/app/command-control';
-import { CommandTooltip } from '@/app/command-tooltip';
+import { CommandTooltip, HintTooltip } from '@/app/command-tooltip';
 import { useContextMenu } from '@/app/context-menu/use-context-menu';
 import { ResizeHandle } from '@/app/resize-handle';
 import { useCommand, type RegisteredCommandId } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   BOTTOM_PANEL_HEIGHT,
   BOTTOM_PANEL_TITLES,
@@ -185,25 +184,22 @@ export function BottomDock({ ui, children }: { ui: UiStore; children?: ReactNode
               );
             })}
           </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                ref={toggle}
-                variant="ghost"
-                size="icon-sm"
-                aria-label={toggleLabel}
-                aria-expanded={open}
-                onMouseDown={keepFocus}
-                onClick={() => {
-                  if (open) collapse();
-                  else setOpen(true);
-                }}
-              >
-                <ToggleIcon />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{toggleLabel}</TooltipContent>
-          </Tooltip>
+          <HintTooltip label={toggleLabel}>
+            <Button
+              ref={toggle}
+              variant="ghost"
+              size="icon-sm"
+              aria-label={toggleLabel}
+              aria-expanded={open}
+              onMouseDown={keepFocus}
+              onClick={() => {
+                if (open) collapse();
+                else setOpen(true);
+              }}
+            >
+              <ToggleIcon />
+            </Button>
+          </HintTooltip>
         </div>
         {open && (
           <div

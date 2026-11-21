@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from 'react';
 
 import { useAppServices } from '@/app/services-context';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { HintTooltip } from '@/app/command-tooltip';
 import { startPositionReader } from '@/state/position-reader';
 import { timelineOf } from '@/state/timeline';
 
@@ -55,17 +55,12 @@ export function PositionReadout() {
         <span ref={beat} data-field="beat" className="inline-block min-w-[8ch] text-center" />
       </span>
       <span aria-hidden>·</span>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span>
-            <span className="sr-only">Time at the written tempo </span>
-            <span ref={time} data-field="time" className="inline-block min-w-[11ch]" />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          The song’s own clock, at the written tempo, whatever the speed
-        </TooltipContent>
-      </Tooltip>
+      <HintTooltip label="The song’s own clock, at the written tempo, whatever the speed">
+        <span>
+          <span className="sr-only">Time at the written tempo </span>
+          <span ref={time} data-field="time" className="inline-block min-w-[11ch]" />
+        </span>
+      </HintTooltip>
     </div>
   );
 }
