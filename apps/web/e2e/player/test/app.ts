@@ -440,8 +440,23 @@ export async function relaunch(page: Page): Promise<App> {
   return new App(next);
 }
 
-export const test = base.extend<{ app: App }>({
-  app: async ({ page }, provide) => {
+export const test = base.extend<{ app: App; dismissDefaultSoundOffer: boolean }>({
+  /**
+   * The one-time download offer for a guitar track's default pack (#346) shows on the first song
+   * with a guitar and sits over the bottom right; a spec that is not about it has it dismissed
+   * whenever it blocks an action. `default-sounds.spec.ts` turns this off.
+   */
+  dismissDefaultSoundOffer: [true, { option: true }],
+  app: async ({ page, dismissDefaultSoundOffer }, provide) => {
+    if (dismissDefaultSoundOffer) {
+      await page.addLocatorHandler(
+        page
+          .getByRole('status')
+          .filter({ hasText: 'Karoryfer Emilyguitar' })
+          .getByRole('button', { name: 'Not now' }),
+        (notNow) => notNow.click(),
+      );
+    }
     // A modified page asks before it unloads; a test that reloads one must not wait on the prompt.
     page.on('dialog', (dialog) => {
       void (dialog.type() === 'beforeunload' ? dialog.accept() : dialog.dismiss());

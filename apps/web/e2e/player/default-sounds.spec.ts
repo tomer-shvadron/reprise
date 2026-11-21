@@ -1,6 +1,8 @@
 import { expect, test } from './test/app';
 import { fixture } from './test/scores';
 
+test.use({ dismissDefaultSoundOffer: false });
+
 // The web build has no direct download and CI never installs Emilyguitar, so a guitar track
 // defaults to a pack that is missing: it plays General MIDI and offers the download once (#346).
 test('the missing default pack is offered once, and the mixer shows what plays', async ({
