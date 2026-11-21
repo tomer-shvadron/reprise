@@ -74,7 +74,7 @@ The roadmap's [lane rules](roadmap.md#lane-rules) apply to phase 5 as they stand
 Features from the gap analysis and the owner's requests. Where they add a panel view or a menu item, they build on #334 and #337.
 
 - **#278** Draw chord diagrams where the file has them. Score lane; runs first, since #352 waits on it.
-- **#348** Missing instruments: banjo, mandolin, 12-string, more percussion. L; an audit, then one PR per family. Done (parts 1 to 4: model, 12-string and mandolin, banjo, percussion entry point); the gp encoding of the 12-string, mandolin and banjo drone waits for Guitar Pro 8 files, in a follow-up.
+- **#348** Missing instruments: banjo, mandolin, 12-string, more percussion. L; an audit, then one PR per family. Done (parts 1 to 4: model, 12-string and mandolin, banjo, percussion entry point); the gp encoding of the 12-string, mandolin and banjo drone waits for Guitar Pro 8 files, in #430: the gpif encoding, the fixtures and player-checklist C7 and C8. The "opens from a fixture" acceptance for the banjo and mandolin rests on #430. The instruments the owner put later (bowed-string tab, shamisen, mandola, octave mandolin) and the GeneralUser ukulele variation are in #432.
 - **#349** Research: a roadmap for sampled sounds beyond GM. M, research only.
 - **#350** ASCII tab export (F013). S.
 - **#351** Export the score or a selection as PNG or SVG (F015). M.
