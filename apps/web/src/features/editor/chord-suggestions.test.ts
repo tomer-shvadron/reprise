@@ -112,8 +112,8 @@ describe('naming in context', () => {
     const harmonic = { harmonic: { kind: 'natural' as const } };
     built.bar().beat('4', [note(6, 5, harmonic), note(3, 0), note(2, 0)]);
     const done = built.build({ ids: 'sequential', validate: false });
-    // The harmonic sounds above the open G, so G is the bass; fretted it would be an A and never Em.
-    expect(chordNamesFromNotes(done, first(done))).toContain('Em');
+    // The harmonic sounds above the open G, so G is the bass; fretted it would be an A and never Em/G.
+    expect(chordNamesFromNotes(done, first(done))).toContain('Em/G');
   });
 
   it('skips a note on a string the tuning lacks instead of throwing', () => {
