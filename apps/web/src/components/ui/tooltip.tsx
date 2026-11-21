@@ -7,7 +7,9 @@ import { Tooltip as TooltipPrimitive } from 'radix-ui';
 import { markTooltipEscape } from './tooltip-escape';
 
 /**
- * Tooltips open after this long, so one does not appear under a click. Radix's skip delay (300 ms
+ * Tooltips open after this long, so one does not appear under a click. Only hover waits: Radix opens
+ * a tooltip at once on keyboard focus (and on focus returning after a popover or menu closes),
+ * which is right for keyboard users. Radix's skip delay (300 ms
  * by default) keeps moving between neighbouring tooltips quick.
  */
 export const TOOLTIP_DELAY_MS = 500;
@@ -46,7 +48,8 @@ function TooltipContent({
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         onEscapeKeyDown={(event) => {
-          markTooltipEscape(event);
+          // Radix calls this before it checks defaultPrevented: an earlier listener's Escape is not ours.
+          if (!event.defaultPrevented) markTooltipEscape(event);
           onEscapeKeyDown?.(event);
         }}
         className={cn(
