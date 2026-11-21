@@ -39,6 +39,18 @@ describe('viewLayoutOptions', () => {
     );
     expect(options).toMatchObject({ tracks: ['a'], notation: { a: 'both' }, tiedNotes: 'hidden' });
   });
+
+  it('passes chordDiagrams through, and leaves it out when unset', () => {
+    const view = { mode: 'paged', paper: 'a4' } as const;
+    expect(
+      viewLayoutOptions(view, { tracks: 'all', notation: {}, chordDiagrams: false }),
+    ).toMatchObject({
+      chordDiagrams: false,
+    });
+    expect(viewLayoutOptions(view, { tracks: 'all', notation: {} })).not.toHaveProperty(
+      'chordDiagrams',
+    );
+  });
 });
 
 describe('uniformNotation', () => {

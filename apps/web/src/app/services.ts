@@ -24,6 +24,7 @@ import { createPracticeStore, type PracticeStore } from '@/state/practice';
 import { createSelectionStore, type SelectionStore } from '@/state/selection';
 import { applyNotationDefaults } from '@/state/notation-defaults';
 import { notationDefaultsOf } from '@/state/notation-defaults-setting';
+import { CHORD_DIAGRAMS_SETTING } from '@/state/app-settings';
 import { createSettingsStore, type SettingsStore } from '@/state/settings';
 import type { DefaultSounds } from '@/state/sound-packs';
 import { createUiStore, type UiStore } from '@/state/ui';
@@ -102,6 +103,10 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   });
   const selection = createSelectionStore();
   const playback = createPlaybackStore();
+  // The settings the layout depends on. `layoutSettings` reads them and the store re-lays out when
+  // any of `LAYOUT_SETTINGS` changes, so a new one is added to both.
+  const LAYOUT_SETTINGS = [CHORD_DIAGRAMS_SETTING];
+  const layoutSettings = () => ({ chordDiagrams: settings.get(CHORD_DIAGRAMS_SETTING) });
   const layout = createLayoutStore({
     document,
     ui,
@@ -109,7 +114,14 @@ export function createAppServices(options: AppServicesOptions): AppServices {
       viewLayoutOptions(view, {
         tracks: visibleTrackIds(content, document.getState().score),
         notation: content.notation,
+        ...layoutSettings(),
       }),
+    watch: (rerun) => {
+      const stops = LAYOUT_SETTINGS.map((def) => settings.subscribe(def, rerun));
+      return () => {
+        for (const stop of stops) stop();
+      };
+    },
   });
   const sounds = createSoundPackStore({ platform, audio: () => audio });
   const defaults = createDefaultSounds(settings);
@@ -187,7 +199,12 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     sounds,
     transport,
     heard: createHeardRef(),
-    print: createPrintStore({ document, ui, platform }),
+    print: createPrintStore({
+      document,
+      ui,
+      platform,
+      chordDiagrams: () => settings.get(CHORD_DIAGRAMS_SETTING),
+    }),
     editing,
     entry,
     practice,

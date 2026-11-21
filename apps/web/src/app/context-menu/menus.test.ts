@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 
+import { CHORD_DIAGRAMS_SETTING } from '@/state/app-settings';
 import { fourBars } from '@/test/position';
 import { createTestServices } from '@/test/services';
 import type { MenuTarget } from '@/state/menu-target';
@@ -116,6 +117,17 @@ function resolveFor(surface: MenuSurface, target: MenuTarget, mode: MenuMode) {
 describe('the context menus', () => {
   beforeAll(() => {
     services.selection.getState().selectBars({ startBar: bar.id, endBar: bar.id });
+  });
+
+  it('checks the empty paper’s Chord diagrams item from the setting', () => {
+    const paperItem = () =>
+      resolveFor('score.paper', { kind: 'paper' }, 'play').find(
+        (entry) => entry.kind === 'item' && entry.label === 'Chord diagrams',
+      );
+    expect(paperItem()).toMatchObject({ checked: true });
+    services.settings.set(CHORD_DIAGRAMS_SETTING, false);
+    expect(paperItem()).toMatchObject({ checked: false });
+    services.settings.set(CHORD_DIAGRAMS_SETTING, true);
   });
 
   it('name only registered commands, and no editing command in play mode', () => {

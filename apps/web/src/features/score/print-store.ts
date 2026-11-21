@@ -16,6 +16,8 @@ export interface PrintStoreDeps {
   /** `loadScoreFonts` unless given. */
   fonts?: () => Promise<void>;
   layout?: typeof layoutScore;
+  /** Whether chord diagrams are drawn; read at print time, so it follows the screen. */
+  chordDiagrams?: () => boolean;
   /** Resolves after the next paint; tests pass `Promise.resolve`. */
   nextPaint?: () => Promise<void>;
 }
@@ -117,7 +119,10 @@ export function createPrintStore(deps: PrintStoreDeps) {
         let content: PrintContent;
         try {
           const { view, file } = document.getState();
-          content = layoutForPrint(score, dialog.settings, view.notation, file?.name, deps.layout);
+          content = layoutForPrint(score, dialog.settings, view.notation, file?.name, {
+            ...(deps.layout && { run: deps.layout }),
+            ...(deps.chordDiagrams && { chordDiagrams: deps.chordDiagrams() }),
+          });
         } catch (error) {
           console.error(error);
           set({
