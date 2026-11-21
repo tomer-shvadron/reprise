@@ -1,8 +1,10 @@
 import {
   TIE_REACH_BARS,
   chain,
+  maxStoredFret,
   setBeatEffects,
   setNoteEffects,
+  writtenFret,
   type Beat,
   type BeatChanges,
   type BeatEffects,
@@ -193,7 +195,13 @@ const ANY_TRACK_BEAT_FLAGS: ReadonlySet<BeatFlag> = new Set<BeatFlag>([
 
 /** The highest fret a trill can go to: the neck, or a MIDI note off a fretted track. */
 const trillTop = (ref: NoteRef): number =>
-  ref.track.kind === 'fretted' ? ref.track.fretCount : 127;
+  ref.track.kind === 'fretted' ? maxStoredFret(ref.track, ref.note.string) : 127;
+
+/** The fret as the tab shows it, for messages: a drone string stores its frets from its own nut. */
+const shownFret = (ref: NoteRef, stored: number): number =>
+  ref.track.kind === 'fretted'
+    ? writtenFret(ref.track, { string: ref.note.string, fret: stored })
+    : stored;
 
 /** A shift or legato slide, and a hammer-on, need a note to go to; the slide reaches one bar on. */
 const SLIDE_REACH_BARS = 1;
@@ -355,7 +363,7 @@ function noteSpec(action: EffectAction): NoteSpec | undefined {
         clear: () => ({ trill: null }),
         unavailable: (ref) =>
           ref.note.fret + interval > trillTop(ref)
-            ? `A trill to fret ${String(ref.note.fret + interval)} is off the neck`
+            ? `A trill to fret ${String(shownFret(ref, ref.note.fret + interval))} is off the neck`
             : undefined,
       };
     }

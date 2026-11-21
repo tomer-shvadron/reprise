@@ -6,6 +6,7 @@ import {
   tieChainOf,
   transpose,
   transposeSelection,
+  writtenFret,
   type Beat,
   type BeatEffectEdit,
   type Command,
@@ -215,7 +216,9 @@ function refusalText(
   const amount = plural(Math.abs(semitones), 'semitone', 'semitones');
   const direction = semitones < 0 ? 'down' : 'up';
   const subject =
-    track.kind === 'fretted' ? `fret ${String(note.fret)}` : pitchName(note.fret, key);
+    track.kind === 'fretted'
+      ? `fret ${String(writtenFret(track, note))}`
+      : pitchName(note.fret, key);
   let end: string;
   if (reason === 'belowOpenString') {
     end = track.capo > 0 ? 'falling below the capo' : 'falling below the open string';
