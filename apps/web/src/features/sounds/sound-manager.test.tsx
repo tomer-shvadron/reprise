@@ -493,6 +493,29 @@ describe('SoundManager: outdated and used packs', () => {
       '2 tracks of the open song use this pack',
     );
   });
+
+  it('counts a track that plays the pack as its family default', async () => {
+    const { services, user, openFiles } = setup();
+    const song = score().track('bass', { name: 'A' }).track('bass', { name: 'B' }).build();
+    const { bytes } = await write(song, 'reprise');
+    await act(async () => {
+      await services.document.getState().openBytes('song.reprise', bytes);
+    });
+    await installCurated(user, openFiles);
+    const [first, other] = services.document.getState().score?.tracks ?? [];
+    if (!first || !other) throw new Error('two tracks expected');
+    act(() => {
+      services.playback.setState({
+        trackSounds: {
+          [first.id]: { tier: 'hq', packId: SWAG.id, source: 'default' },
+          [other.id]: { tier: 'gm' },
+        },
+      });
+    });
+    expect(within(row(SWAG.name)).getByText(/Used by 1 track in this song/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: `Remove ${SWAG.name}` }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('1 track of the open song uses');
+  });
 });
 
 describe('SoundManager: keyboard, focus and announcements', () => {

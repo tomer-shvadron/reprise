@@ -3,11 +3,16 @@ import { useId } from 'react';
 import { useStore } from 'zustand';
 
 import { useAppServices } from '@/app/services-context';
+import { useSetting } from '@/app/use-setting';
 
 import { curatedPack } from './curated-packs';
+import { DEFAULT_SOUND_SETTINGS, soundFamilyOf } from './default-sounds';
 import type { InstalledPack, PackInstrument } from './manifest';
 
-const GENERAL_MIDI = '';
+/** No choice of its own: the family default from Settings plays (or the program, when that is GM). */
+const DEFAULT = '';
+/** An explicit General MIDI choice, stored as `sound.generalMidi`. */
+const GENERAL_MIDI = 'gm';
 /** A pack the track names that is not installed; it can never collide with `<12 chars>/<key>`. */
 const MISSING = 'missing';
 
@@ -50,12 +55,17 @@ function choicesOf(pack: InstalledPack, track: Track): Choice[] {
   }));
 }
 
-/** The track's sound with the pack set or removed; `null` removes `sound` once nothing is left. */
-function soundWith(track: Track, choice: Choice | undefined): SoundOverride | null {
+/**
+ * The track's sound with one choice set: a pack, `'gm'` (General MIDI, stored) or `'default'`
+ * (nothing stored). `null` removes `sound` once nothing is left, so the effects preset survives.
+ */
+function soundWith(track: Track, choice: Choice | 'gm' | 'default'): SoundOverride | null {
   const next = { ...track.sound };
   delete next.packId;
   delete next.instrument;
-  if (choice !== undefined) {
+  delete next.generalMidi;
+  if (choice === 'gm') next.generalMidi = true;
+  else if (choice !== 'default') {
     next.packId = choice.packId;
     if (choice.instrument !== undefined) next.instrument = choice.instrument;
   }
@@ -84,6 +94,7 @@ export function TrackSoundPicker({
   const packs = useStore(sounds.api, (state) => state.packs);
   const scanned = useStore(sounds.api, (state) => state.scanned);
   const status = useStore(playback, (state) => state.trackSounds[trackId]);
+  const defaultSound = useSetting(DEFAULT_SOUND_SETTINGS[track ? soundFamilyOf(track) : 'other']);
   const noticeId = useId();
   if (!track) return null;
   const name = label ?? (track.name || 'track');
@@ -98,7 +109,7 @@ export function TrackSoundPicker({
   const wanted = pack?.instruments.find((i) => i.key === instrument);
   const selectedKey =
     wanted?.key ?? (instrument === undefined ? pack?.instruments[0]?.key : undefined);
-  let value = GENERAL_MIDI;
+  let value = track.sound?.generalMidi === true ? GENERAL_MIDI : DEFAULT;
   let missing: string | undefined;
   if (packId !== undefined) {
     if (pack !== undefined && selectedKey !== undefined) {
@@ -120,6 +131,22 @@ export function TrackSoundPicker({
         ? `The sound pack could not be loaded: playing General MIDI${status.message ? ` (${status.message})` : ''}`
         : undefined;
 
+  const gmLabel = generalMidi === undefined ? 'General MIDI' : `General MIDI (${generalMidi})`;
+  // What the family default plays right now: an absent pack or instrument plays the program.
+  const defaultPack =
+    defaultSound === 'gm' ? undefined : packs.find((p) => p.id === defaultSound.packId);
+  const defaultInstrument = defaultPack?.instruments.find(
+    (i) =>
+      defaultSound !== 'gm' &&
+      (defaultSound.instrument === undefined || i.key === defaultSound.instrument),
+  );
+  const defaultLabel =
+    defaultPack === undefined || defaultInstrument === undefined
+      ? gmLabel
+      : defaultPack.instruments.length === 1
+        ? defaultPack.name
+        : `${defaultPack.name}: ${defaultInstrument.name}`;
+
   const options = (entries: readonly Choice[]) =>
     entries.map((choice) => (
       <option key={choice.value} value={choice.value}>
@@ -135,16 +162,21 @@ export function TrackSoundPicker({
         value={value}
         className="border-input bg-background h-7 w-full min-w-0 rounded-md border px-1 text-xs"
         onChange={(event) => {
-          const choice = choices.find((c) => c.value === event.target.value);
-          if (event.target.value !== GENERAL_MIDI && choice === undefined) return;
+          const picked = event.target.value;
+          const choice =
+            picked === DEFAULT
+              ? 'default'
+              : picked === GENERAL_MIDI
+                ? 'gm'
+                : choices.find((c) => c.value === picked);
+          if (choice === undefined) return;
           document
             .getState()
             .apply(setTrackProperties({ trackId }, { sound: soundWith(track, choice) }));
         }}
       >
-        <option value={GENERAL_MIDI}>
-          {generalMidi === undefined ? 'General MIDI' : `General MIDI (${generalMidi})`}
-        </option>
+        <option value={DEFAULT}>Default ({defaultLabel})</option>
+        <option value={GENERAL_MIDI}>{gmLabel}</option>
         {missing !== undefined && <option value={MISSING}>{missing} (not installed)</option>}
         {suggested.length > 0 && <optgroup label="Suggested">{options(suggested)}</optgroup>}
         {others.length > 0 && (
