@@ -53,6 +53,14 @@ export const SlideKindSchema = z.enum([
 ]);
 export type SlideKind = z.infer<typeof SlideKindSchema>;
 
+/**
+ * A pick scrape is the picking hand dragged along the string, a noise and not a pitch slide, so
+ * it is a field of its own: every consumer of `slide` reads a fretting-hand slide. Down falls,
+ * up rises. Guitar Pro stores it as bits 64 and 128 of the slide flags (read in part 2).
+ */
+export const PickScrapeSchema = z.enum(['down', 'up']);
+export type PickScrape = z.infer<typeof PickScrapeSchema>;
+
 export const HarmonicKindSchema = z.enum([
   'natural',
   'artificial',
@@ -95,6 +103,7 @@ export const NoteSchema = z.object({
   staccato: z.boolean(),
   bend: BendSchema.exactOptional(),
   slide: z.array(SlideKindSchema).exactOptional(),
+  pickScrape: PickScrapeSchema.exactOptional(),
   /** Hammered on or pulled off from the previous note on the string, not to the next. */
   hammerPull: z.boolean(),
   vibrato: VibratoSchema,

@@ -47,6 +47,10 @@ export const WhammySchema = z.object({
 });
 export type Whammy = z.infer<typeof WhammySchema>;
 
+/** A percussive hit on the guitar's body, by the thumb or by the fingers. */
+export const GolpeSchema = z.enum(['thumb', 'finger']);
+export type Golpe = z.infer<typeof GolpeSchema>;
+
 export const BeatEffectsSchema = z.object({
   /** Stroke speed as a note-value denominator. */
   tremoloPicking: z.literal([8, 16, 32]).exactOptional(),
@@ -57,6 +61,8 @@ export const BeatEffectsSchema = z.object({
   tapping: z.boolean().exactOptional(),
   slapping: z.boolean().exactOptional(),
   popping: z.boolean().exactOptional(),
+  /** Beat-level, as gpif stores it; allowed on a rest, which a file may carry. */
+  golpe: GolpeSchema.exactOptional(),
   arpeggio: StrokeSchema.exactOptional(),
   brush: StrokeSchema.exactOptional(),
   vibrato: VibratoSchema.exactOptional(),

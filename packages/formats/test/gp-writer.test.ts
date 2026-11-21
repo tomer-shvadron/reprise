@@ -167,6 +167,8 @@ describe('the gp writer round trip', () => {
     // PRs that teach the writer, instead of hiding a loss.
     delete guitar.courses;
     delete banjo?.drone;
+    // Golpe and pick scrape are read and written in #354, part 2.
+    delete beat.effects.golpe;
     delete beat.chord.diagram.barres;
     beat.mix = {
       ...(beat.mix?.program !== undefined && { program: beat.mix.program }),
@@ -175,6 +177,7 @@ describe('the gp writer round trip', () => {
     delete beat.effects.arpeggio;
     const [bent, other] = beat.notes;
     if (!bent?.trill || !other) throw new Error('fullScore changed shape');
+    delete bent.pickScrape;
     other.dynamics = bent.dynamics;
     bent.trill.speed = 16;
     expect(roundTripView(result.score)).toEqual(roundTripView(expected));

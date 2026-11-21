@@ -169,6 +169,21 @@ describe('serializeNative', () => {
     expect(decode(serializeNative(shuffled, APP))).toBe(decode(serializeNative(score, APP)));
   });
 
+  it('round-trips golpe and pick scrape, and a document without them still parses', () => {
+    const score = fullScore();
+    expect(parseNative(serializeNative(score, APP)).score).toEqual(score);
+    const text = decode(serializeNative(score, APP));
+    expect(text).toMatch(/"golpe": "thumb"/);
+    expect(text).toMatch(/"pickScrape": "down"/);
+    const stripped: unknown = JSON.parse(
+      text.replace(/"golpe": "thumb",?/, '').replace(/"pickScrape": "down",?/, ''),
+    );
+    expect(JSON.stringify(stripped)).not.toContain('golpe');
+    expect(JSON.stringify(stripped)).not.toContain('pickScrape');
+    const result = parseNative(bytesOf(stripped));
+    expect(result.warnings).toEqual([]);
+  });
+
   it('sorts keys inside the score and keeps array order', () => {
     const score = fullScore();
     const written: unknown = JSON.parse(decode(serializeNative(score, APP)));
