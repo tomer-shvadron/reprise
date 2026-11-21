@@ -57,6 +57,28 @@ function isPitchedNonFretted(track: alphaTab.model.Track): boolean {
   );
 }
 
+/**
+ * A pick slide is a scrape of the picking hand, not a slide of the fretting hand, and it hides
+ * only the slide out (alphaTab keeps one `slideOutType`); a slide in beside it still counts.
+ */
+export function slideFeatures(note: {
+  slideInType: alphaTab.model.SlideInType;
+  slideOutType: alphaTab.model.SlideOutType;
+}): ('slides' | 'pick-scrape')[] {
+  const pickSlide =
+    note.slideOutType === SlideOutType.PickSlideDown ||
+    note.slideOutType === SlideOutType.PickSlideUp;
+  const features: ('slides' | 'pick-scrape')[] = [];
+  if (pickSlide) features.push('pick-scrape');
+  if (
+    note.slideInType !== SlideInType.None ||
+    (!pickSlide && note.slideOutType !== SlideOutType.None)
+  ) {
+    features.push('slides');
+  }
+  return features;
+}
+
 export function describeScore(score: Score): Omit<FixtureEntry, 'path' | 'format'> {
   const found = new Set<Feature>();
   let notes = 0;
@@ -113,17 +135,7 @@ export function describeScore(score: Score): Omit<FixtureEntry, 'path' | 'format
             if (beat.golpe !== GolpeType.None) found.add('golpe');
             for (const note of beat.notes) {
               if (note.bendType !== BendType.None) found.add('bends');
-              // A pick slide is a scrape of the picking hand, not a slide of the fretting hand.
-              const pickSlide =
-                note.slideOutType === SlideOutType.PickSlideDown ||
-                note.slideOutType === SlideOutType.PickSlideUp;
-              if (pickSlide) found.add('pick-scrape');
-              else if (
-                note.slideInType !== SlideInType.None ||
-                note.slideOutType !== SlideOutType.None
-              ) {
-                found.add('slides');
-              }
+              for (const feature of slideFeatures(note)) found.add(feature);
               if (note.isHammerPullOrigin) found.add('hammer-ons');
               if (note.harmonicType !== HarmonicType.None) found.add('harmonics');
               if (note.isPalmMute) found.add('palm-mute');
