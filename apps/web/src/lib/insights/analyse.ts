@@ -63,13 +63,14 @@ export function analyse(table: NoteTable, outline: SongOutline): SongInsights {
       ...(fileKey ? { fileKeySignature: { ...fileKey } } : {}),
     };
   }
+  const names = outline.tracks.map((track) => track.name);
   return {
     key,
     keyChanges: keyChanges(table, outline, tonality, fileKey),
     sections: sectionInsights(table, outline, tonality),
     chords: chordsUsed(table, outline, spelling),
     shape: songShape(outline),
-    tracks: trackStats(table, outline, spelling, trackScales(table, tonality, fileKey)),
+    tracks: trackStats(table, outline, spelling, trackScales(table, tonality, names, fileKey)),
   };
 }
 
