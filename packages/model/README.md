@@ -33,11 +33,11 @@ validateScore(score); // cross-node invariants: [] when the score is sound
 | `bar-count`                       | Every track has one bar per master bar.                                                                                                                     |
 | `courses-length`                  | `Track.courses` has the tuning's length.                                                                                                                    |
 | `drone-string`                    | `Track.drone` names a string of the tuning and a fret below `fretCount`.                                                                                    |
-| `track-kind`                      | Fretted tracks have strings and frets; drum tracks have no tuning, capo or frets.                                                                           |
+| `track-kind`                      | Fretted tracks have strings and frets; drum tracks have no tuning, capo, frets, courses or drone.                                                           |
 | `voice-overfull`                  | A voice's beats sum to at most the bar length. Incomplete bars are allowed. An imported over-full voice is kept, reported as a warning, and played in full. |
 | `rest-with-notes`                 | A rest carries no notes.                                                                                                                                    |
 | `string-range`                    | Fretted notes use strings 1 to the string count; drum and pitched notes use string 0.                                                                       |
-| `fret-range`                      | Fretted notes sit on frets 0 to `track.fretCount`, whatever the capo, as Guitar Pro files hold them.                                                        |
+| `fret-range`                      | Fretted notes sit on frets 0 to `track.fretCount`, whatever the capo, as Guitar Pro files hold them; 0 to `fretCount - drone.fret` on the drone string.     |
 | `duplicate-string`                | No two notes of a fretted beat share a string.                                                                                                              |
 | `tie-target`                      | A tied note has an origin (`tieOriginOf`): the most recent note on its string (MIDI note on drum and pitched tracks) in its voice, at most three bars back. |
 | `tie-pitch`                       | A tied fretted note is on the same fret as the note it continues; off fretted tracks `tie-target` already matches by MIDI note.                             |
@@ -129,7 +129,7 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
 - **`Note.fret` on drum and pitched tracks is the MIDI note**, and `Note.string` is required
   and `0` there. Required-and-zero keeps fretted code paths free of `undefined` checks; the
   `string-range` rule enforces 1 to the string count on fretted tracks and 0 elsewhere, and
-  `fret-range` keeps a fretted note between 0 and `Track.fretCount`.
+  `fret-range` keeps a fretted note between 0 and `Track.fretCount` (`fretCount - drone.fret` on the drone string).
 - **Spelling follows Guitar Pro**: a note outside the key is spelled with a sharp in C major
   and the sharp keys and with a flat in the flat keys, the natural letter first, plus a minor
   key's raised sixth and seventh (see "Pitch, tuning and spelling"). The alternative, the
@@ -329,7 +329,7 @@ const undone = history.undo(); // { score, change } with the patches it replayed
 | `addTrack`, `removeTrack`, `moveTrack` | A new track gets one empty bar per master bar; a score keeps at least one track.                                                                                                                                          |
 
 Guitar Pro numbers frets up to the neck length whatever the capo, so the ceiling every command
-places a note under is `fretCount`, the bound `transpose` and the `fret-range` rule share.
+places a note under is `fretCount` (less `drone.fret` on the drone string, `maxStoredFret`), the bound `transpose` and the `fret-range` rule share.
 `transposeSelection` computes every note through `transpose`, so the two cannot disagree: a
 stored accidental survives an octave move, and a trill whose alternate fret falls off is dropped
 with a warning rather than refusing the edit. It keeps stay-on-string semantics and does not
