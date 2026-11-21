@@ -118,6 +118,8 @@ export default defineConfig({
           name: 'web-browser',
           root: 'apps/web',
           include: [WEB_BROWSER_TESTS],
+          // The web benches run in jsdom with the `web` project; this one has none.
+          benchmark: { include: [] },
           setupFiles: ['./src/test/browser-setup.ts'],
           browser: {
             enabled: true,
