@@ -89,7 +89,41 @@ describe('svgToPng in Chromium', () => {
     const view = new DataView(bytes.buffer, bytes.byteOffset);
     expect(String.fromCharCode(...bytes.subarray(37, 41))).toBe('pHYs');
     expect(view.getUint32(41)).toBe(7559);
+    // The spec allows one: a future encoder that writes its own would make two.
+    let chunks = 0;
+    for (let at = 8; at < bytes.length;) {
+      if (String.fromCharCode(...bytes.subarray(at + 4, at + 8)) === 'pHYs') chunks++;
+      at += 12 + view.getUint32(at);
+    }
+    expect(chunks).toBe(1);
   });
+
+  it.each([1, 2, 3] as const)(
+    'sizes a cropped bar range to round(crop x %i) with a transparent margin',
+    async (scale) => {
+      const built = oneBar();
+      const range = await renderImages(
+        requestFor(built, {
+          scale,
+          background: 'transparent',
+          scope: { kind: 'bars', start: 0, end: 1 },
+        }),
+        {},
+      );
+      const [image] = range.images;
+      expect(image).toBeDefined();
+      const bytes = image?.bytes ?? new Uint8Array(40);
+      expect(ihdr(bytes)).toEqual({
+        width: Math.round((image?.width ?? 0) * scale),
+        height: Math.round((image?.height ?? 0) * scale),
+      });
+      expect(image?.height).toBeLessThan(400);
+      const pixels = await decode(bytes);
+      // The 24 px margin is empty, and the mask meets the crop without painting a white patch.
+      expect(alphaAt(pixels, 3 * scale, 3 * scale)).toBe(0);
+      expect(inkPixels(pixels)).toBeGreaterThan(100);
+    },
+  );
 
   it('puts ink inside a known glyph box', async () => {
     const outlines = await loadOutlines();

@@ -158,4 +158,92 @@ describe('exportImages', () => {
     await renderImages(requestFor(built, { scope: { kind: 'bars', start: 1, end: 3 } }), deps);
     expect(JSON.stringify(built)).toBe(before);
   });
+
+  it('zips a several-page svg export, deflated, with the svgs back out', async () => {
+    const big = largeScore(2, 120);
+    let saved: Uint8Array | undefined;
+    let name = '';
+    await exportImages(requestFor(big, { tracks: [big.tracks[0]?.id ?? ''] }), {
+      ...deps,
+      platform: fakePlatform({
+        saveFile: (suggested, bytes) => {
+          name = suggested;
+          saved = bytes;
+          return Promise.resolve(undefined);
+        },
+      }),
+    });
+    expect(name).toBe('Untitled (svg).zip');
+    const entries = unzipSync(saved ?? new Uint8Array());
+    const names = Object.keys(entries);
+    expect(names.length).toBeGreaterThan(1);
+    expect(names[0]).toMatch(/^Untitled p0*1\.svg$/);
+    expect(new TextDecoder().decode(Object.values(entries)[0])).toMatch(/^<\?xml[\s\S]*<svg /);
+  });
+
+  it('pads a lone page to the layout page count and names it so', async () => {
+    const big = largeScore(8, 300);
+    const request = requestFor(big, {
+      scope: { kind: 'page', page: 7 },
+    });
+    const all = await renderImages({ ...request, scope: { kind: 'score' } }, deps);
+    const count = all.images.length;
+    expect(count).toBeGreaterThan(9);
+    const one = await renderImages(request, deps);
+    expect(one.fileName).toBe(`Untitled p${'7'.padStart(String(count).length, '0')}` + '.svg');
+    expect(one.images).toHaveLength(1);
+  });
+
+  it('numbers the pages of a bar range that spans several and crops each', async () => {
+    const big = largeScore(2, 120);
+    const rendered = await renderImages(
+      requestFor(big, {
+        format: 'png',
+        scale: 1,
+        scope: { kind: 'bars', start: 0, end: 120 },
+      }),
+      deps,
+    );
+    expect(rendered.images.length).toBeGreaterThan(1);
+    expect(rendered.fileName).toBe('Untitled bars 1-120 (png).zip');
+    expect(rendered.images[0]?.name).toMatch(/^Untitled bars 1-120 p0*1\.png$/);
+    // Every page but the last is full; the last is cropped to its content.
+    expect(rendered.images[0]?.height).toBeLessThanOrEqual(1123);
+    const last = rendered.images.at(-1);
+    expect(last?.height).toBeLessThan(rendered.images[0]?.height ?? 0);
+  });
+
+  it('names a range past the end by the bars it has', async () => {
+    const rendered = await renderImages(
+      requestFor(small(), { scope: { kind: 'bars', start: 2, end: 99 } }),
+      deps,
+    );
+    expect(rendered.fileName).toBe('Small song bars 3-4.svg');
+  });
+
+  it('keeps a transparent bar range cropped, with its mask', async () => {
+    const rendered = await renderImages(
+      requestFor(small(), {
+        background: 'transparent',
+        scope: { kind: 'bars', start: 0, end: 2 },
+      }),
+      deps,
+    );
+    const svg = new TextDecoder().decode(rendered.images[0]?.bytes);
+    expect(svg).toContain('<mask');
+    expect(svg).not.toMatch(/<rect width="[\d.]+" height="[\d.]+" fill="#ffffff"/);
+    expect(rendered.images[0]?.height).toBeLessThan(400);
+  });
+
+  it('yields to the UI without waiting for a frame', async () => {
+    // No yieldFrame given: the default must resolve with no animation frame (a hidden window has none).
+    const frames = vi.spyOn(globalThis, 'requestAnimationFrame');
+    const rendered = await renderImages(requestFor(small()), {
+      outlines: deps.outlines,
+      rasterise,
+    });
+    expect(rendered.images).toHaveLength(1);
+    expect(frames).not.toHaveBeenCalled();
+    frames.mockRestore();
+  });
 });
