@@ -1,5 +1,5 @@
 /**
- * `pnpm check:files [paths…] [--only formats,layout,audio]`: the real-file pass over every Guitar
+ * `pnpm check:files [paths…] [--only formats,layout,audio,insights]`: the real-file pass over every Guitar
  * Pro file under the paths (by default `fixtures/` and `local-tabs/`). Plain Node cannot import
  * the workspace packages, so this drives Vitest under `vitest.config.ts`; its reporter writes
  * `.check-files/` and the verdict this script turns into the exit code.
