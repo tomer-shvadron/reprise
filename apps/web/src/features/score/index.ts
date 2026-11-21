@@ -11,6 +11,7 @@ export { barColumns, nearestColumn, playheadAt, pointerTarget, staffBand } from 
 export type { PointerTarget } from './playhead';
 export { masterBarIndexOf, scoreIndex } from './score-index';
 export type { BeatInfo, ScoreIndex } from './score-index';
+export { renderPrimitive } from './primitive-shape';
 export { createGestureTracker } from './gestures';
 export type { DragMode, Gesture, GestureOptions } from './gestures';
 export { ScorePage, ScorePages } from './score-page';

@@ -6,6 +6,7 @@ import { applyLoop, seekToBar, targetBars, targetPlace } from '@/features/transp
 
 import type { SpeedTrainerServices } from './speed-trainer/speed-trainer-store';
 import { tunerFor } from './tuner/tuner-for';
+import { chordNameOfBeat } from './chords/chord-target';
 import { speedTrainerFor } from './speed-trainer/speed-trainer-for';
 
 export type TrainerCommandId =
@@ -18,6 +19,8 @@ export type TrainerCommandId =
   | 'trainer.metronome'
   | 'trainer.metronomeToggle'
   | 'trainer.fretboard'
+  | 'trainer.chords'
+  | 'trainer.chordShapesFor'
   | 'trainer.speedTrainerOnSelection'
   | 'trainer.showFretboard'
   | 'trainer.fretboardLeftHanded';
@@ -91,6 +94,29 @@ export function trainerCommands(
         showUnlessPractising('metronome');
         if (services.playback.getState().click.running) services.audio.stopClick();
         else services.audio.startClick();
+      },
+    },
+    {
+      id: 'trainer.chords',
+      title: 'Show chord shapes',
+      repeat: false,
+      run: () => {
+        // The cursor's chord, when it has one; otherwise the name the tab already holds.
+        const name = chordNameOfBeat(services, services.selection.getState().cursor?.beat);
+        if (name) ui.getState().setChordsName(name);
+        ui.getState().showPanelView('chords');
+      },
+    },
+    {
+      id: 'trainer.chordShapesFor',
+      title: 'Chord shapes…',
+      repeat: false,
+      run: () => {
+        // The right-clicked chord, read before the host clears the target.
+        const target = services.menuTarget.getState().target;
+        const name = chordNameOfBeat(services, target?.kind === 'chord' ? target.beat : undefined);
+        if (name) ui.getState().setChordsName(name);
+        ui.getState().showPanelView('chords');
       },
     },
     {

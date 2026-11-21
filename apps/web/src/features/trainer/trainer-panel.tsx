@@ -1,5 +1,6 @@
 import type { BottomPanelView, PanelView } from '@/state/ui';
 
+import { ChordsPanel } from './chords/chords-panel';
 import { Fretboard } from './fretboard/fretboard';
 import { MetronomePanel } from './metronome/metronome-panel';
 import { SpeedTrainerPanel } from './speed-trainer/speed-trainer-panel';
@@ -20,6 +21,8 @@ export function TrainerPanel({ view }: { view: TrainerView }) {
       return <TunerPanel />;
     case 'metronome':
       return <MetronomePanel />;
+    case 'chords':
+      return <ChordsPanel />;
     case 'fretboard':
       return <Fretboard />;
   }
