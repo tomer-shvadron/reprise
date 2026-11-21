@@ -217,6 +217,53 @@ export default defineConfig(
     settings: { react: { version: 'detect' } },
   },
   {
+    // Every tooltip and every `aria-keyshortcuts` goes through the shared component, so the keys a
+    // control shows come from the registry (#412). Not `no-restricted-syntax`: a flat-config entry
+    // replaces a rule's options, which would drop the workspace boundary bans for these files.
+    files: ['apps/web/src/**/*.tsx'],
+    ignores: [
+      ...TEST_FILES.map((glob) => `apps/web/src/${glob}`),
+      'apps/web/src/components/ui/**',
+      'apps/web/src/app/command-tooltip.tsx',
+    ],
+    rules: {
+      'react/forbid-elements': [
+        'error',
+        {
+          forbid: [
+            {
+              element: 'TooltipContent',
+              message:
+                'use CommandTooltip (a control that runs a command) or HintTooltip from app/command-tooltip (#412)',
+            },
+          ],
+        },
+      ],
+      'react/forbid-dom-props': [
+        'error',
+        {
+          forbid: [
+            {
+              propName: 'aria-keyshortcuts',
+              message: 'CommandTooltip sets aria-keyshortcuts so it matches the tooltip (#412)',
+            },
+          ],
+        },
+      ],
+      'react/forbid-component-props': [
+        'error',
+        {
+          forbid: [
+            {
+              propName: 'aria-keyshortcuts',
+              message: 'CommandTooltip sets aria-keyshortcuts so it matches the tooltip (#412)',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['apps/web/e2e/{player,editor}/**/*.ts'],
     languageOptions: { globals: globals.node },
     rules: {

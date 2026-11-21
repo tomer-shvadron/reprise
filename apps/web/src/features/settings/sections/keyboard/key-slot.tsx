@@ -14,7 +14,7 @@ import {
   type KeyEventInfo,
   type RefuseReason,
 } from '@/app/record-key';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { HintTooltip } from '@/app/command-tooltip';
 
 import type { Slot } from './rows';
 
@@ -181,29 +181,23 @@ export function KeySlot(props: KeySlotProps) {
         </span>
       )}
       {shortcut && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              className={iconButton}
-              aria-label={`Remove ${spoken(shortcut)} from ${command.title}${suffix}`}
-              onClick={onClear}
-            >
-              <X aria-hidden className="size-3.5" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Remove key</TooltipContent>
-        </Tooltip>
+        <HintTooltip label="Remove key">
+          <button
+            type="button"
+            className={iconButton}
+            aria-label={`Remove ${spoken(shortcut)} from ${command.title}${suffix}`}
+            onClick={onClear}
+          >
+            <X aria-hidden className="size-3.5" />
+          </button>
+        </HintTooltip>
       )}
       {(changed || displacedBy) && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button type="button" className={iconButton} aria-label={resetLabel} onClick={onReset}>
-              <RotateCcw aria-hidden className="size-3.5" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Reset to default</TooltipContent>
-        </Tooltip>
+        <HintTooltip label="Reset to default">
+          <button type="button" className={iconButton} aria-label={resetLabel} onClick={onReset}>
+            <RotateCcw aria-hidden className="size-3.5" />
+          </button>
+        </HintTooltip>
       )}
     </span>
   );

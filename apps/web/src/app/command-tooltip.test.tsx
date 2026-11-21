@@ -21,6 +21,7 @@ function Fixture({
   openOnFocus,
   disabled,
   reason,
+  active,
 }: {
   keyboard: KeyboardPlatform;
   services: ReturnType<typeof createTestServices>;
@@ -29,6 +30,7 @@ function Fixture({
   openOnFocus?: boolean;
   disabled?: boolean;
   reason?: string;
+  active?: boolean;
 }) {
   const [registry] = useState(() => createAppRegistry(services, keyboard));
   const source = useCommandSource(registry, keyboard, services.settings, services.editing);
@@ -40,6 +42,7 @@ function Fixture({
         {...(whenUnbound && { whenUnbound })}
         {...(openOnFocus !== undefined && { openOnFocus })}
         {...(reason && { reason })}
+        {...(active !== undefined && { active })}
       >
         <button disabled={disabled}>Go</button>
       </CommandTooltip>
@@ -76,6 +79,15 @@ describe('CommandTooltip', () => {
       'aria-keyshortcuts',
       'Control+Shift+Z Control+Y',
     );
+  });
+
+  it('shows the label alone, with no keys, while inactive', async () => {
+    render({ keyboard: 'mac', command: 'file.save', active: false });
+    await userEvent.setup().tab();
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Thing');
+    expect(document.querySelectorAll('[data-slot=kbd]')).toHaveLength(0);
+    expect(screen.getByRole('button')).not.toHaveAttribute('aria-keyshortcuts');
+    expect(document.querySelector('[data-command-tooltip]')).toBeNull();
   });
 
   it('opens on hover only after the delay', async () => {
