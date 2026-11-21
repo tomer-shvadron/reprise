@@ -162,7 +162,7 @@ export function SelectionPill({ view, layout, zoom, dragging, edit }: SelectionP
   const services = useAppServices();
   const { document, playback, selection, editing, entry, contextMenu, settings } = services;
   const { menus, registry, keyboard } = useMenuRegistry();
-  const source = useCommandSource(registry, keyboard, settings);
+  const source = useCommandSource(registry, keyboard, settings, editing);
   const score = useStore(document, (state) => state.score);
   const bars = useStore(selection, (state) => state.bars);
   const cursor = useStore(selection, (state) => state.cursor);

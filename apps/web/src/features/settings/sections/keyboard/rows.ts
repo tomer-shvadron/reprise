@@ -7,7 +7,13 @@ import {
   type KeyboardPlatform,
   type Shortcut,
 } from '@/app/keyboard';
-import { categoryOf, categoryRank, searchText, filterWords } from '@/app/shortcut-table';
+import {
+  bindingGroup,
+  categoryOf,
+  categoryRank,
+  searchText,
+  filterWords,
+} from '@/app/shortcut-table';
 
 /** One key of a command: what it answers to now, what it would be by default, and why it is not the default. */
 export interface Slot {
@@ -51,7 +57,7 @@ export function buildRows(
   for (const { command, category } of sorted) {
     if (command.shortcut?.only !== undefined && command.shortcut.only !== platform) continue;
     const context = command.context === 'editing' ? 'Editing' : 'Global';
-    const id = `${category}\n${context}\n${command.title}`;
+    const id = bindingGroup(command);
     const row = rows.get(id) ?? { id, title: command.title, category, context, slots: [] };
     rows.set(id, row);
     const owner = displacedBy.get(command.id);
