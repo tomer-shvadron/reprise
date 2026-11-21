@@ -2,6 +2,7 @@ import { cn } from 'cn';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import { useStore } from 'zustand';
 
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useAppServices } from '@/app/services-context';
 import { Button } from '@/components/ui/button';
 
@@ -87,30 +88,35 @@ export function HistoryPanel() {
         History
       </h2>
       <div className="flex gap-2 border-t px-3 py-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="min-w-0 flex-1 whitespace-normal"
-          disabled={undoLabel === undefined}
-          onMouseDown={keepFocus}
-          onClick={() => {
-            document.getState().undo();
-          }}
-        >
-          {undoLabel === undefined ? 'Undo' : `Undo ${historyLabel(undoLabel)}`}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="min-w-0 flex-1 whitespace-normal"
-          disabled={redoLabel === undefined}
-          onMouseDown={keepFocus}
-          onClick={() => {
-            document.getState().redo();
-          }}
-        >
-          {redoLabel === undefined ? 'Redo' : `Redo ${historyLabel(redoLabel)}`}
-        </Button>
+        {/* aria-disabled, not disabled: the buttons stay focusable and hoverable, so their keys show. The click calls the document directly: the command's run first undoes a focused text field's typing. */}
+        <CommandTooltip command="edit.undo" label="Undo" whenUnbound="none">
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-w-0 flex-1 whitespace-normal aria-disabled:cursor-default aria-disabled:opacity-50"
+            aria-disabled={undoLabel === undefined || undefined}
+            onMouseDown={keepFocus}
+            onClick={() => {
+              if (undoLabel !== undefined) document.getState().undo();
+            }}
+          >
+            {undoLabel === undefined ? 'Undo' : `Undo ${historyLabel(undoLabel)}`}
+          </Button>
+        </CommandTooltip>
+        <CommandTooltip command="edit.redo" label="Redo" whenUnbound="none">
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-w-0 flex-1 whitespace-normal aria-disabled:cursor-default aria-disabled:opacity-50"
+            aria-disabled={redoLabel === undefined || undefined}
+            onMouseDown={keepFocus}
+            onClick={() => {
+              if (redoLabel !== undefined) document.getState().redo();
+            }}
+          >
+            {redoLabel === undefined ? 'Redo' : `Redo ${historyLabel(redoLabel)}`}
+          </Button>
+        </CommandTooltip>
       </div>
       {!open ? (
         <p className="text-muted-foreground px-3 py-2 text-sm">Open a file to see its changes.</p>

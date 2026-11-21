@@ -36,12 +36,14 @@ import type { BarRange } from '@/state/selection';
 
 import { PRACTICE_CAPSULE_CLEARANCE } from './practice-mode/clearance';
 import { SelectionPill } from './selection-pill';
+import { CommandTooltip } from './command-tooltip';
 import { useBodyContextMenuFallback } from './context-menu/body-fallback';
 import { useContextMenu, useStaticContextMenu } from './context-menu/use-context-menu';
 import { detectKeyboardPlatform } from './keyboard';
 import { startPlayhead, type PlayheadDriver } from './playhead-driver';
 import type { AppServices } from './services';
 import { useAppServices } from './services-context';
+import { useCommand } from './use-command';
 import { useSetting } from './use-setting';
 
 function EmptyPaper({ children }: { children: ReactNode }) {
@@ -102,23 +104,24 @@ function FollowButton() {
   const following = useStore(ui, (state) => state.follow.on);
   const practising = useStore(ui, (state) => state.practiceMode.on);
   const followSetting = useSetting(FOLLOW_PLAYHEAD_SETTING);
+  const follow = useCommand('view.followPlayback');
   // With the setting off nothing follows, so while playing the button always offers a jump to the
   // playhead (one scroll); it is the only on-screen way back.
   if (!running || (following && followSetting)) return null;
   return (
-    <Button
-      variant="secondary"
-      size="sm"
-      // The practice capsule floats at the bottom; the button sits above it.
-      className="absolute right-4 shadow-md"
-      style={{ bottom: practising ? PRACTICE_CAPSULE_CLEARANCE : 16 }}
-      onClick={() => {
-        ui.getState().requestFollow();
-      }}
-    >
-      <LocateFixedIcon aria-hidden="true" />
-      Follow playback
-    </Button>
+    <CommandTooltip command="view.followPlayback" label="Follow playback" whenUnbound="none">
+      <Button
+        variant="secondary"
+        size="sm"
+        // The practice capsule floats at the bottom; the button sits above it.
+        className="absolute right-4 shadow-md"
+        style={{ bottom: practising ? PRACTICE_CAPSULE_CLEARANCE : 16 }}
+        onClick={follow.run}
+      >
+        <LocateFixedIcon aria-hidden="true" />
+        Follow playback
+      </Button>
+    </CommandTooltip>
   );
 }
 

@@ -140,7 +140,10 @@ describe('SpeedTrainerPanel', () => {
 
   it('marks a pass missed from the button', async () => {
     const { services, user } = await setup();
-    expect(screen.getByRole('button', { name: 'Missed pass' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Missed pass' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
     await user.click(screen.getByRole('button', { name: 'Start' }));
     await user.click(screen.getByRole('button', { name: 'Missed pass' }));
     expect(speedTrainerFor(services).getState().missed).toBe(true);
