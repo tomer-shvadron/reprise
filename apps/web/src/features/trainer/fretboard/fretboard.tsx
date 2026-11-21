@@ -28,6 +28,8 @@ import { ScalePicker } from './scale-picker';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const DOT_RADIUS = 10;
+/** A scale ring sits this far outside a lit dot, so a lit scale tone keeps its halo. */
+const RING_GAP = 1.5;
 
 /** The part that never changes during playback: strings, frets, markers and the capo. */
 function StaticBoard({
@@ -149,17 +151,9 @@ const ScaleLayer = memo(function ScaleLayer({
   geometry: Geometry;
   overlay: ScaleOverlay;
 }) {
-  const dots = useMemo(
-    () => scaleDots(board, tuning, overlay.tonic, overlay.scaleId),
-    [board, tuning, overlay.tonic, overlay.scaleId],
-  );
+  const dots = useMemo(() => scaleDots(board, tuning, overlay), [board, tuning, overlay]);
   return (
-    <g
-      data-fretboard-scale
-      role="img"
-      aria-label={scaleLabel(overlay.tonic, overlay.scaleId)}
-      className="text-primary"
-    >
+    <g data-fretboard-scale role="img" aria-label={scaleLabel(overlay)} className="text-primary">
       {dots.map((dot) => {
         const x = geometry.dotX(dot.absolute);
         const y = geometry.stringY(dot.string);
@@ -168,7 +162,7 @@ const ScaleLayer = memo(function ScaleLayer({
             <circle
               cx={x}
               cy={y}
-              r={DOT_RADIUS - 1}
+              r={DOT_RADIUS + RING_GAP}
               fill="currentColor"
               fillOpacity={dot.tonic ? 0.35 : 0.12}
               stroke="currentColor"
@@ -178,9 +172,9 @@ const ScaleLayer = memo(function ScaleLayer({
             />
             <text
               x={x}
-              y={y + 3}
+              y={y + 3.5}
               textAnchor="middle"
-              fontSize={8}
+              fontSize={10}
               fontWeight={dot.tonic ? 700 : 500}
               fill="var(--color-foreground, currentColor)"
               aria-hidden="true"
@@ -271,6 +265,7 @@ export function Fretboard() {
   const scales = scaleOverlayFor(services);
   const overlay = useStore(scales, (state) => state.overlay);
   const clearScale = useCommand('trainer.fretboardClearScale');
+  const scaleTrigger = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const target = layer.current;
@@ -353,14 +348,18 @@ export function Fretboard() {
                   variant="ghost"
                   size="icon-xs"
                   aria-label="Hide the scale"
-                  onClick={clearScale.run}
+                  onClick={() => {
+                    clearScale.run();
+                    // The chip is about to unmount with the focus on it.
+                    scaleTrigger.current?.focus();
+                  }}
                 >
                   <XIcon aria-hidden="true" />
                 </Button>
               </CommandTooltip>
             </span>
           )}
-          <ScalePicker store={scales} />
+          <ScalePicker store={scales} triggerRef={scaleTrigger} />
         </div>
         <label className="flex items-center gap-2">
           Left-handed

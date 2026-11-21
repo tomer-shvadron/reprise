@@ -2,13 +2,13 @@ import type { Score } from '@reprise/model';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 import type { AppServices } from '@/app/services';
-import { detectKey, noteTableOf, scaleName, type ScaleId } from '@/lib/insights';
+
+import { defaultTonicName, scaleTitle, type ScaleSpec } from './scale-dots';
+import { detectKey, noteTableOf, type ScaleId } from '@/lib/insights';
 
 export type ScaleOverlaySource = 'song' | 'section' | 'manual';
 
-export interface ScaleOverlay {
-  tonic: number;
-  scaleId: ScaleId;
+export interface ScaleOverlay extends ScaleSpec {
   /** `A minor pentatonic`, for the chip. */
   label: string;
   source: ScaleOverlaySource;
@@ -16,7 +16,8 @@ export interface ScaleOverlay {
 
 export interface ScaleOverlayState {
   overlay: ScaleOverlay | undefined;
-  show: (tonic: number, scaleId: ScaleId, source: ScaleOverlaySource) => void;
+  /** `tonicName` is the spelling to keep (`E♭`); left out, the scale's own key spells it. */
+  show: (tonic: number, scaleId: ScaleId, source: ScaleOverlaySource, tonicName?: string) => void;
   clear: () => void;
 }
 
@@ -28,15 +29,24 @@ const overlays = new WeakMap<object, ScaleOverlayStore>();
 /**
  * The scale the fretboard marks, one store per document store so the dock and the commands share
  * it. A song or section overlay describes one document and goes when another opens; a scale the
- * player picked stays. It is not persisted.
+ * player picked stays. It is not persisted. A song overlay is a snapshot of the score when it was
+ * taken and does not follow later edits; PR 5 of #353 (the insights worker and store) makes it do so.
  */
 export function scaleOverlayFor(services: ScaleOverlayServices): ScaleOverlayStore {
   let store = overlays.get(services.document);
   if (!store) {
     store = createStore<ScaleOverlayState>((set) => ({
       overlay: undefined,
-      show: (tonic, scaleId, source) => {
-        set({ overlay: { tonic, scaleId, label: scaleName(tonic, scaleId), source } });
+      show: (tonic, scaleId, source, tonicName = defaultTonicName(tonic, scaleId)) => {
+        set({
+          overlay: {
+            tonic,
+            tonicName,
+            scaleId,
+            label: scaleTitle({ tonicName, scaleId }),
+            source,
+          },
+        });
       },
       clear: () => {
         set({ overlay: undefined });

@@ -170,9 +170,9 @@ export function trainerCommands(
         const { score } = services.document.getState();
         if (!score) return;
         const found = songScaleOf(score);
-        // The analysis needs enough notes to call a key; say so rather than do nothing.
+        // No key (too few notes) or no scale that fits: say so rather than do nothing.
         if (!found) {
-          services.transport.getState().announce('No scale found: too few notes to tell the key');
+          services.transport.getState().announce('No scale found for this song');
           return;
         }
         ui.getState().showBottomPanelView('fretboard');

@@ -268,7 +268,7 @@ describe('trainer commands', () => {
     expect(clear?.shortcut).toBeUndefined();
   });
 
-  it('says so when the song has too few notes to name a scale', async () => {
+  it('says so when no scale can be named for the song', async () => {
     const services = createTestServices();
     const registry = createAppRegistry(services);
     const { bytes } = await write(
@@ -280,6 +280,7 @@ describe('trainer commands', () => {
     });
     await registry.get('trainer.fretboardSongScale')?.run();
     expect(scaleOverlayFor(services).getState().overlay).toBeUndefined();
+    expect(services.transport.getState().announcement?.text).toBe('No scale found for this song');
   });
 
   it('the chord shapes command opens the Chords tab on the right-clicked chord', async () => {
