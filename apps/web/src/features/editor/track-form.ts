@@ -141,7 +141,17 @@ export function percussionForm(form: TrackForm): TrackForm {
 
 /** Picking another kind starts again from its defaults, keeping a colour and a name the user typed. */
 export function changeKind(form: TrackForm, kind: TrackKind): TrackForm {
-  if (kind === form.kind && !form.percussion) return form;
+  if (kind === form.kind) {
+    if (!form.percussion) return form;
+    // Drums and Percussion share their kits, so only the default names swap back.
+    const drums = newTrackForm('drums');
+    return {
+      ...form,
+      percussion: false,
+      name: form.nameEdited ? form.name : drums.name,
+      shortName: form.nameEdited || form.shortNameEdited ? form.shortName : drums.shortName,
+    };
+  }
   const next = newTrackForm(kind);
   const base = newTrackForm(form.kind);
   let kept: TrackForm = { ...next, color: form.color === base.color ? next.color : form.color };

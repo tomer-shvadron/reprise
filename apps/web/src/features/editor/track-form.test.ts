@@ -14,6 +14,7 @@ import {
   noteLabel,
   presetNameOf,
   setName,
+  setProgram,
   setShortName,
   setString,
   setStringCount,
@@ -179,9 +180,12 @@ describe('add mode', () => {
     });
     expect(percussionForm(newTrackForm('drums')).name).toBe('Percussion');
     expect(percussionForm(setName(newTrackForm('fretted'), 'Congas')).name).toBe('Congas');
-    expect(changeKind(percussionForm(newTrackForm('drums')), 'drums')).toMatchObject({
+    const kit = setProgram(percussionForm(newTrackForm('drums')), 32);
+    expect(changeKind(kit, 'drums')).toMatchObject({
       name: 'Drums',
       percussion: false,
+      program: 32,
+      programEdited: true,
     });
   });
 

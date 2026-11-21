@@ -136,7 +136,7 @@ export function TrackDialog({
 
   const fretted = form.kind === 'fretted';
   const preset = presetNameOf(form);
-  const kind = KINDS.find((entry) => entry.kind === form.kind)?.label;
+  const kind = KINDS.find((entry) => entry.kind === form.kind && !entry.percussion)?.label;
 
   return (
     <Dialog
