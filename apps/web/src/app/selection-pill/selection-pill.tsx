@@ -18,6 +18,7 @@ import { useStore } from 'zustand';
 
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { claimEscape } from '@/components/ui/tooltip-escape';
 import {
   pressedOf,
   scoreKeyboardRequest,
@@ -371,6 +372,7 @@ export function SelectionPill({ view, layout, zoom, dragging, edit }: SelectionP
     if (event.key === 'Escape') {
       // Not the editor's Escape (clear the selection) or practice mode's (leave the mode).
       event.preventDefault();
+      claimEscape(event.nativeEvent);
       const back = returnTo.current;
       if (back?.isConnected && !element.contains(back) && back instanceof HTMLElement) {
         back.focus();

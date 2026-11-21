@@ -1,3 +1,5 @@
+import { isTooltipEscape } from '@/components/ui/tooltip-escape';
+
 import { contextRank, runCommand, type CommandRegistry } from './command-registry';
 import { matchesShortcut, type KeyboardPlatform } from './keyboard';
 import { isEditable, isTextField } from './text-field';
@@ -70,13 +72,29 @@ const OPEN_MODAL = [
   '[role="alertdialog"][aria-modal="true"]',
 ].join(', ');
 
+/** Radix wraps every popper layer (popover, menu, tooltip) in this element. */
+const POPPER_WRAPPER = '[data-radix-popper-content-wrapper]';
+
+/**
+ * Whether a popover or menu is open. Radix lets only the topmost layer take an Escape, so a
+ * tooltip opened over one would hide the key from it; the popover must still get its close.
+ * Tooltips are told apart by their `data-slot`.
+ */
+export function otherLayerOpen(): boolean {
+  return [...document.querySelectorAll(POPPER_WRAPPER)].some(
+    (wrapper) =>
+      wrapper.querySelector('[data-slot="tooltip-content"]') === null &&
+      wrapper.querySelector('[data-state="open"]') !== null,
+  );
+}
+
 /**
  * The modal dialogs open anywhere in the document, not only around the focused element: focus can
  * drift to the body behind a dialog, and a shortcut must not edit the score from there.
  */
 function openModals(): Element[] {
   return [...document.querySelectorAll(OPEN_MODAL)].filter(
-    (dialog) => dialog.closest('[data-radix-popper-content-wrapper]') === null,
+    (dialog) => dialog.closest(POPPER_WRAPPER) === null,
   );
 }
 
@@ -143,7 +161,12 @@ function leavesKeyToTarget(event: KeyboardEvent): boolean {
  *   control that takes Space itself, and Shift+F10 (`app.contextMenu`) when every open modal is
  *   an app sheet, for the row menus; with nothing focused it opens no menu while a modal is open. Escape and the rest stay with the dialog. The desktop menu
  *   obeys the same rule through `menuCommandAllowed`, so its Play/Pause also runs over a sheet.
- * - A key that was already handled (`defaultPrevented`) or is part of IME composition.
+ * - A key that was already handled (`defaultPrevented`) or is part of IME composition. One
+ *   exception: an Escape that only a tooltip took (it marks the event, see `tooltip-escape`) still
+ *   runs a command with `afterTooltipEscape` (Leave practice mode), unless a popover or menu is
+ *   open (`otherLayerOpen`); an open modal still blocks it. A handler that consumes Escape on a
+ *   control that is not a text field, outside a modal, must call `claimEscape` on the event, or a
+ *   tooltip open at the same time brings back the double action (the handler and the command).
  * - A bare key (no Cmd or Ctrl) typed in a text field, and Space or Enter on a focused control.
  * - Arrows, Home, End and Page keys in a text field, select, range or checkbox, whatever the
  *   modifiers.
@@ -158,11 +181,16 @@ export function dispatchShortcut(
   platform: KeyboardPlatform,
   onError: (error: unknown) => void = console.error,
 ): boolean {
-  if (event.defaultPrevented || event.isComposing) return false;
+  if (event.isComposing) return false;
+  // A tooltip's Escape is prevented like any dismissal, but it must not stop the commands that
+  // opted in, unless a popover or menu is open under it, which still owes the Escape its close.
+  const tooltipEscape = event.defaultPrevented && isTooltipEscape(event) && !otherLayerOpen();
+  if (event.defaultPrevented && !tooltipEscape) return false;
 
   const matching = registry.available().filter((candidate) => {
     const shortcut = registry.shortcutOf(candidate);
     if (!shortcut || candidate.native) return false;
+    if (tooltipEscape && !candidate.afterTooltipEscape) return false;
     if (DELETE_KEYS.has(event.key) && isTextField(event.target)) return false;
     if (NAVIGATION_KEYS.has(event.key) && isEditable(event.target)) return false;
     if (!shortcut.mod && leavesKeyToTarget(event)) return false;

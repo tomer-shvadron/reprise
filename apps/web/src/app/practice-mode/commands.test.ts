@@ -2,6 +2,7 @@ import { write } from '@reprise/formats';
 import { largeScore } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
+import { markTooltipEscape } from '@/components/ui/tooltip-escape';
 import { mirrorAudio } from '@/test/mirror-audio';
 import { createTestServices } from '@/test/services';
 
@@ -196,6 +197,41 @@ describe('the practice commands', () => {
       key({ key: 'Escape' });
       expect(services.ui.getState().practiceMode.on).toBe(false);
       stop();
+    });
+
+    it('Escape that only a tooltip took still leaves, but not one a popover is open under', async () => {
+      const { services, registry } = await setup();
+      const stop = installShortcutDispatcher(window, registry, 'mac');
+      const wrappers: HTMLElement[] = [];
+      try {
+        services.ui.getState().enterPracticeMode('play');
+        for (const inner of [
+          '<div data-slot="tooltip-content" data-state="delayed-open"></div>',
+          '<div role="dialog" data-state="open"></div>',
+        ]) {
+          const wrapper = document.createElement('div');
+          wrapper.setAttribute('data-radix-popper-content-wrapper', '');
+          wrapper.innerHTML = inner;
+          document.body.append(wrapper);
+          wrappers.push(wrapper);
+        }
+        const taken = () => {
+          const event = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+          markTooltipEscape(event);
+          event.preventDefault();
+          return event;
+        };
+        window.dispatchEvent(taken());
+        expect(services.ui.getState().practiceMode.on).toBe(true);
+        wrappers[1]?.remove();
+
+        // With the popover gone the tooltip alone took it, and the mode leaves.
+        window.dispatchEvent(taken());
+        expect(services.ui.getState().practiceMode.on).toBe(false);
+      } finally {
+        for (const wrapper of wrappers) wrapper.remove();
+        stop();
+      }
     });
   });
 });
