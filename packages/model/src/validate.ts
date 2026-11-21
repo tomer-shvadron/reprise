@@ -268,6 +268,12 @@ function checkTrackKind(track: Track, path: ViolationPath, report: Report): void
   if (track.fretCount !== 0) {
     report('track-kind', [...path, 'fretCount'], 'a drums track has no frets');
   }
+  if (track.courses) {
+    report('track-kind', [...path, 'courses'], 'a drums track has no courses');
+  }
+  if (track.drone) {
+    report('track-kind', [...path, 'drone'], 'a drums track has no drone string');
+  }
 }
 
 function checkVoiceLength(

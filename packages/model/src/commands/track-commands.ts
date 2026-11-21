@@ -46,13 +46,6 @@ export function setTrackProperties(target: { trackId: Id }, changes: TrackChange
       if (channel) Object.assign(track.channel, channel);
       if (display) assignChanges(track.display, display);
       parseOrThrow(TrackPropertiesSchema, track, name);
-      if (track.courses && track.courses.length !== track.tuning.length) {
-        throw new CommandError(
-          name,
-          'invalid-value',
-          `${String(track.courses.length)} courses for ${String(track.tuning.length)} strings`,
-        );
-      }
       if (Object.keys(properties).some((key) => NOTE_BEARING_KEYS.has(key))) {
         assertTrackValid(draft, index, name);
       }

@@ -126,9 +126,12 @@ export function assertBarsValid(
   );
 }
 
-/** Guitar Pro numbers frets up to the neck length whatever the capo; `transpose` and `fret-range` use the same bound. */
-export function maxFret(track: Track, string?: number): number {
-  return string === undefined ? track.fretCount : maxStoredFret(track, string);
+/**
+ * Guitar Pro numbers frets up to the neck length whatever the capo; `transpose` and `fret-range`
+ * use the same bound. The drone string stores frets from its own nut, so its ceiling is lower.
+ */
+export function maxFret(track: Track, string: number): number {
+  return maxStoredFret(track, string);
 }
 
 export function assertNotePlaced(
