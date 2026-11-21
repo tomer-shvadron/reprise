@@ -10,7 +10,9 @@ import {
   type LayoutOptions,
   type LayoutResult,
 } from '../../index';
+import { glyphMetrics } from '../../metrics';
 import type { LayoutSink } from '../../primitives';
+import { SCRAPE, analyseEffects } from '../effects';
 import { expectValid, overlappingAnchors } from '../../test/check-result';
 import { describeAnchor, describePrimitive } from '../../test/describe';
 import type { StaffBar } from '../staff-module';
@@ -743,5 +745,42 @@ describe('tab staff: anchors', () => {
 
   it('lays out the full score with every feature validly', () => {
     laid(fullScore());
+  });
+});
+
+describe('tab staff: golpe and pick scrape room (#354)', () => {
+  const bar = (effects: boolean, scrape?: 'up' | 'down') =>
+    firstBar(
+      guitar()
+        .bar()
+        .beat('8', [note(1, 5, scrape ? { pickScrape: scrape } : {})], {
+          effects: effects ? { golpe: 'finger' } : {},
+        })
+        .beat('8', [note(1, 5)])
+        .build({ ids: 'sequential' }),
+    );
+
+  it('reserves half a golpe glyph and 0.2 either side of its onset', () => {
+    const width = glyphMetrics('guitarGolpe').bbox;
+    const half = ((width.right - width.left) / 2 + 0.2) * STAFF_SPACE;
+    const input = bar(true);
+    const { reserved } = analyseEffects(input.bar, STAFF_SPACE, { articulations: false });
+    expect(reserved).toHaveLength(1);
+    expect(reserved[0]?.left).toBeCloseTo(half, 5);
+    expect(reserved[0]?.right).toBeCloseTo(half, 5);
+    expect(tabModule().measure(input).onsets[0]?.left).toBeGreaterThanOrEqual(half - 1e-6);
+  });
+
+  it('keeps the wave of an up scrape on the top string inside the room above', () => {
+    const plain = tabModule().measure(bar(false)).above;
+    const scraped = tabModule().measure(bar(false, 'up')).above;
+    expect(scraped).toBeCloseTo(SCRAPE.reach * STAFF_SPACE, 5);
+    expect(scraped).toBeGreaterThan(plain);
+  });
+
+  it('gives a note room right of its number for the wave', () => {
+    const [scraped] = tabModule().measure(bar(false, 'down')).onsets;
+    const [plain] = tabModule().measure(bar(false)).onsets;
+    expect(scraped?.right).toBeGreaterThan(plain?.right ?? Infinity);
   });
 });

@@ -30,6 +30,8 @@ import {
   texts,
 } from '../../test/effects';
 import { positionY } from './chord';
+import type { StaffBar } from '../staff-module';
+import { planBar } from './plan';
 
 const EPSILON = 0.05;
 
@@ -1447,5 +1449,47 @@ describe('golpe and pick scrape on the standard staff (#354)', () => {
     expect(named(result, 'guitarGolpe')).toEqual([]);
     expect(texts(result)).toEqual([]);
     expect(result.primitives.filter(wave)).toEqual([]);
+  });
+});
+
+describe('standard staff room for a pick scrape (#354)', () => {
+  // The first of two beats on a string is not its last note, so no tie's room hides the wave's.
+  const first = (string: number, fret: number, scrape?: 'up' | 'down') => {
+    const built = guitar('standard')
+      .bar()
+      .beat('4', [note(string, fret, scrape ? { pickScrape: scrape } : {})])
+      .beat('4', [note(string, fret)])
+      .build({ ids: 'sequential' });
+    const track = built.tracks[0];
+    const bar = track?.bars[0];
+    const masterBar = built.masterBars[0];
+    if (!track || !bar || !masterBar) throw new Error('fixture');
+    const input: StaffBar = {
+      score: built,
+      track,
+      trackIndex: 0,
+      staves: ['standard'],
+      bar,
+      masterBar,
+      barIndex: 0,
+      clef: 'treble',
+      keySignature: masterBar.keySignature,
+      chordDiagrams: true,
+      space: 7,
+    };
+    const [beat] = planBar(input, { percussion: false, courtesyAccidentals: true }).beats;
+    if (!beat) throw new Error('no beat');
+    return beat;
+  };
+
+  it('grows the room below for a down scrape on a low head, and above for an up one on a high head', () => {
+    expect(first(6, 0, 'down').bottom).toBeGreaterThan(first(6, 0).bottom);
+    expect(first(1, 20, 'up').top).toBeLessThan(first(1, 20).top);
+    // The other side is untouched.
+    expect(first(6, 0, 'down').top).toBe(first(6, 0).top);
+  });
+
+  it('reserves room right of the chord', () => {
+    expect(first(3, 5, 'down').right).toBeGreaterThan(first(3, 5).right);
   });
 });

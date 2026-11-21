@@ -1183,7 +1183,7 @@ describe('golpe and pick scrape (#354)', () => {
     expect(content(result)).toMatchSnapshot();
   });
 
-  it('draws a golpe on a rest, and the first voice at an onset wins', () => {
+  it('draws a golpe on a rest, and one per kind at an onset from the first voice that has it', () => {
     const built = guitar()
       .bar()
       .beat('4', [note(3, 5)], { effects: { golpe: 'thumb' } })
@@ -1200,8 +1200,9 @@ describe('golpe and pick scrape (#354)', () => {
     first.rest = true;
     first.notes = [];
     const result = laid(built);
-    // Onset 0 has the rest's and the other voice's thumb; onset 1 has finger and thumb.
-    expect(golpes(result)).toHaveLength(2);
+    // Onset 0 has the rest's and the other voice's thumb, drawn once; onset 1 has a finger and a
+    // thumb, in lanes of their own.
+    expect(golpes(result)).toHaveLength(3);
     expect(golpes(result)[0]?.node).toBe(beatOf(built, 0, 0, 0).id);
   });
 
@@ -1256,7 +1257,7 @@ describe('golpe and pick scrape (#354)', () => {
     expect(result.primitives.filter(dashed).length).toBeGreaterThanOrEqual(1);
   });
 
-  it('draws the effects on the tab alone in both mode, and not on a percussion staff', () => {
+  it('draws the effects once, on the tab, in both mode', () => {
     const effects = { effects: { golpe: 'finger' as const } };
     const both = guitar('both')
       .bar()
@@ -1266,5 +1267,91 @@ describe('golpe and pick scrape (#354)', () => {
     const result = laid(both);
     expect(golpes(result)).toHaveLength(1);
     expect(result.primitives.filter(isText('P.S.'))).toHaveLength(1);
+  });
+
+  it('keeps the lanes in order by band position', () => {
+    const built = guitar()
+      .bar()
+      .beat('4', [note(3, 5, { palmMute: true })], {
+        effects: { pickStroke: 'down', golpe: 'finger' },
+      })
+      .beat('4', [note(3, 12, { letRing: true, pickScrape: 'up', harmonic: { kind: 'natural' } })])
+      .beat('2', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const y = (p: Primitive | undefined) => p?.bbox.y ?? NaN;
+    const glyphOf = (name: string) =>
+      result.primitives.find((p) => p.kind === 'glyph' && p.glyph === name);
+    const text = (value: string) => result.primitives.find(isText(value));
+    // Nearest the staff has the greatest y: pickStroke, golpeFinger, palmMute above the staff...
+    expect(y(glyphOf('stringsDownBow'))).toBeGreaterThan(y(glyphOf('guitarGolpe')));
+    expect(y(glyphOf('guitarGolpe'))).toBeGreaterThan(y(text('P.M.')));
+    // ...and letRing, pickScrape, harmonic.
+    expect(y(text('let ring'))).toBeGreaterThan(y(text('P.S.')));
+    expect(y(text('P.S.'))).toBeGreaterThan(y(text('N.H.')));
+  });
+
+  it('repeats P.S. at the start of a line', () => {
+    const ps = { pickScrape: 'down' as const };
+    const built = guitar()
+      .bar()
+      .beat('2', [note(3, 5)])
+      .beat('2', [note(3, 5, ps)])
+      .bar()
+      .beat('2', [note(3, 5, ps)])
+      .beat('2', [note(3, 5, ps)])
+      .bar()
+      .beat('2', [note(3, 5, ps)])
+      .beat('2', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const result = laid(built, { width: 400 });
+    expect(result.systems.length).toBeGreaterThanOrEqual(2);
+    const inSystem = (index: number) => {
+      const system = result.systems[index];
+      return result.primitives.filter(
+        (p) =>
+          isText('P.S.')(p) &&
+          system !== undefined &&
+          p.bbox.y >= system.bbox.y &&
+          p.bbox.y <= system.bbox.y + system.bbox.height,
+      );
+    };
+    expect(inSystem(0)).toHaveLength(1);
+    expect(inSystem(1)).toHaveLength(1);
+  });
+
+  it('draws the wave alone for a note with both a slide-out and a scrape', () => {
+    const lines = (result: LayoutResult) => result.primitives.filter(slideLine);
+    const make = (notation: 'tab' | 'standard', extra: Partial<Note>) =>
+      laid(
+        guitar(notation)
+          .bar()
+          .beat('4', [note(3, 5, { slide: ['outDown'], ...extra })])
+          .beat('4', [note(3, 5)])
+          .build({ ids: 'sequential' }),
+      );
+    for (const notation of ['tab', 'standard'] as const) {
+      expect(lines(make(notation, {}))).toHaveLength(1);
+      const both = make(notation, { pickScrape: 'down' });
+      expect(lines(both)).toHaveLength(0);
+      expect(both.primitives.filter(wave)).toHaveLength(1);
+    }
+  });
+
+  it('keeps a down wave off a two-digit number on the next string at the next onset', () => {
+    const built = guitar()
+      .bar()
+      .beat('4', [note(3, 5, { pickScrape: 'down' })])
+      .beat('4', [note(4, 12)])
+      .beat('2', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const scrape = result.primitives.find(wave);
+    const next = result.primitives.find((p) => p.kind === 'text' && p.text === '12');
+    if (!scrape || !next) throw new Error('missing wave or number');
+    expect(intersects(scrape.bbox, next.bbox)).toBe(false);
+    expect(
+      intersects(scrape.bbox, knockout(result, beatOf(built, 0, 0, 1).notes[0]?.id ?? '')),
+    ).toBe(false);
   });
 });
