@@ -87,6 +87,12 @@ test('a section loops from the strip, and the loop survives leaving', async ({ p
   await expect(
     capsule(page).getByRole('button', { name: `Loop bars ${SECTIONS.chorus2Bars}` }),
   ).toHaveAttribute('aria-pressed', 'true');
+  // The strip's tooltips open on hover with no delay, and an open Radix tooltip takes the first
+  // Escape to close itself (the failing CI trace shows "Bars 17-20" fading out and the mode still
+  // on). Whether it is open when the key lands depends on how soon the pointer's open timer
+  // fires, so leave the strip and wait for no tooltip before pressing.
+  await page.mouse.move(720, 450);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(
     page

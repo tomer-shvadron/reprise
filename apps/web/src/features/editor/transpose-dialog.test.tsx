@@ -1,7 +1,7 @@
 import { score, note } from '@reprise/model/testing';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { openTransposeDialog } from './transpose-commands';
 import { setupEffects } from './test/effects';
@@ -156,12 +156,28 @@ describe('the Transpose dialog', () => {
   it('shows Transposing… and disables the buttons while it applies', async () => {
     const { services } = await setupEffects();
     const user = userEvent.setup();
-    act(() => {
-      openTransposeDialog(services);
+    // The dialog applies a frame after showing it working. Hold that frame so the working state
+    // lasts until the assertions have run, however slow the machine: user-event yields to the
+    // event loop after a click, and under load the frame and the apply can both land in it.
+    const frames: FrameRequestCallback[] = [];
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
     });
-    await user.click(screen.getByRole('button', { name: 'Apply' }));
-    expect(screen.getByRole('button', { name: 'Transposing…' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    try {
+      act(() => {
+        openTransposeDialog(services);
+      });
+      await user.click(screen.getByRole('button', { name: 'Apply' }));
+      expect(screen.getByRole('button', { name: 'Transposing…' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+      expect(screen.getByRole('dialog', { name: 'Transpose' })).toBeInTheDocument();
+      act(() => {
+        for (const frame of frames.splice(0)) frame(0);
+      });
+    } finally {
+      raf.mockRestore();
+    }
     await closed();
   });
 
