@@ -4,10 +4,18 @@
 import '@/zod-config';
 import type { Score } from '@reprise/model';
 
+import type { NotationDefaults } from '@/state/notation-defaults';
+
 import { nativeOf, parseImport, type NativeOutcome, type ParseOutcome } from './parse-import';
 
 export type ParseRequest =
-  | { kind: 'parse'; id: number; bytes: Uint8Array; fallbackTitle: string }
+  | {
+      kind: 'parse';
+      id: number;
+      bytes: Uint8Array;
+      fallbackTitle: string;
+      defaults?: NotationDefaults;
+    }
   /** A score the app already holds, written as native without reading anything again. */
   | { kind: 'native'; id: number; score: Score };
 
@@ -32,11 +40,13 @@ self.addEventListener('message', (event: MessageEvent<ParseRequest>) => {
   const request = event.data;
   const run =
     request.kind === 'parse'
-      ? parseImport(request.bytes, request.fallbackTitle).then((outcome): ParseResponse => ({
-          kind: 'parse',
-          id: request.id,
-          outcome,
-        }))
+      ? parseImport(request.bytes, request.fallbackTitle, request.defaults).then(
+          (outcome): ParseResponse => ({
+            kind: 'parse',
+            id: request.id,
+            outcome,
+          }),
+        )
       : nativeOf(request.score).then((outcome): ParseResponse => ({
           kind: 'native',
           id: request.id,
