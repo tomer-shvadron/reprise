@@ -76,6 +76,8 @@ export function EditStatusLine({ entry, editing, selection, document }: EditStat
     <StatusSegment
       key="mode"
       command="editor.toggleInsertMode"
+      segment="edit"
+      menuLabel="Edit state"
       label="Switch between insert and overwrite"
     >
       {mode === 'insert' ? 'Insert' : 'Overwrite'}
@@ -83,6 +85,8 @@ export function EditStatusLine({ entry, editing, selection, document }: EditStat
     <StatusMenu
       key="voice"
       label="Voice"
+      segment="edit"
+      menuLabel="Edit state"
       align="start"
       menu={
         <>
@@ -99,6 +103,8 @@ export function EditStatusLine({ entry, editing, selection, document }: EditStat
     <StatusMenu
       key="duration"
       label="Duration"
+      segment="edit"
+      menuLabel="Edit state"
       align="start"
       menu={
         <>
@@ -115,7 +121,13 @@ export function EditStatusLine({ entry, editing, selection, document }: EditStat
     </StatusMenu>,
     ...(position
       ? [
-          <StatusSegment key="position" command="app.goToBar" label="Go to bar">
+          <StatusSegment
+            key="position"
+            command="app.goToBar"
+            label="Go to bar"
+            segment="edit"
+            menuLabel="Edit state"
+          >
             {position}
           </StatusSegment>,
         ]

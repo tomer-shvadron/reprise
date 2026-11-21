@@ -1,3 +1,4 @@
+import { score } from '@reprise/model/testing';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -8,6 +9,7 @@ import { createTestServices } from '@/test/services';
 
 import { createAppMenus } from '../app-menus';
 import { createAppRegistry } from '../app-registry';
+import { StatusBar } from '../status-bar/status-bar';
 import { AppHeader } from '../header/app-header';
 import { AppServicesProvider } from '../services-context';
 import { CommandSourceContext } from '../use-command';
@@ -42,6 +44,16 @@ function Field({ portal }: { portal: boolean }) {
   );
 }
 
+/** A surface with an empty menu in play mode: the edit state's segment. */
+function EmptyInPlay() {
+  const menu = useStaticContextMenu({
+    surface: 'status.segment',
+    target: { kind: 'status', segment: 'edit' },
+    label: 'Edit state',
+  });
+  return <button {...menu}>Empty</button>;
+}
+
 function setup(keyboard: 'mac' | 'other' = 'mac', portal = false) {
   const services = createTestServices();
   mirrorAudio(services);
@@ -53,6 +65,7 @@ function setup(keyboard: 'mac' | 'other' = 'mac', portal = false) {
         <CommandSourceContext value={{ registry, keyboard }}>
           <AppHeader />
           <Field portal={portal} />
+          <EmptyInPlay />
           <ContextMenuHost registry={registry} menus={menus} keyboard={keyboard} />
         </CommandSourceContext>
       </TooltipProvider>
@@ -183,6 +196,36 @@ describe('the context menu host', () => {
     setup();
     const allowed = fireEvent.contextMenu(screen.getByRole('textbox', { name: 'Tempo' }));
     expect(allowed).toBe(true);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('lets the browser menu through on a surface whose menu is empty', () => {
+    setup();
+    const allowed = fireEvent.contextMenu(screen.getByRole('button', { name: 'Empty' }));
+    expect(allowed).toBe(true);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  it('opens no menu on the notation segment of a drum track, which has no notation to pick', async () => {
+    const services = createTestServices();
+    mirrorAudio(services);
+    const registry = createAppRegistry(services);
+    const menus = createAppMenus(registry);
+    const drums = score().track('drums', { name: 'Kit' }).build();
+    services.document.setState({ score: drums });
+    services.selection.setState({ currentTrack: drums.tracks[0]?.id });
+    render(
+      <AppServicesProvider services={services}>
+        <TooltipProvider>
+          <CommandSourceContext value={{ registry, keyboard: 'mac' }}>
+            <StatusBar />
+            <ContextMenuHost registry={registry} menus={menus} keyboard="mac" />
+          </CommandSourceContext>
+        </TooltipProvider>
+      </AppServicesProvider>,
+    );
+    const segment = await screen.findByRole('button', { name: /^Standard notation$/ });
+    expect(fireEvent.contextMenu(segment)).toBe(true);
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 

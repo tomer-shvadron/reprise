@@ -5,6 +5,8 @@ import { create, type StoreApi, type UseBoundStore } from 'zustand';
 import type { SongsRepository } from '../db/repository';
 import type { SongRow } from '../db/rows';
 import type { LibraryFiles } from '../files';
+import type { NotationDefaults } from '@/state/notation-defaults';
+
 import type { Parser } from './parser';
 import type { ImportSource } from './sources';
 import { newSongRow, stem } from './song-row';
@@ -55,6 +57,8 @@ export interface ImporterDeps {
   repo: SongsRepository;
   files: LibraryFiles;
   createParser: () => Parser;
+  /** The notation defaults a batch applies to tracks whose file chooses none, read for each file, so a change during a long batch counts. */
+  defaults?: () => NotationDefaults;
   now: () => number;
   /** Rows added since the last call, a few at a time. */
   onAdded: (rows: SongRow[]) => void;
@@ -124,7 +128,7 @@ export function createImporter(deps: ImporterDeps): Importer {
       let outcome;
       try {
         // A copy, because the worker takes the buffer and the original is written to the library.
-        outcome = await parser.parse(bytes.slice(), stem(source.name));
+        outcome = await parser.parse(bytes.slice(), stem(source.name), deps.defaults?.());
       } catch (error) {
         // A dead worker fails every later call; the next file gets a fresh one.
         parser.dispose();

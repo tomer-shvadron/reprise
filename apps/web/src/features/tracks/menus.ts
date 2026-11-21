@@ -1,5 +1,6 @@
 import type { Notation } from '@reprise/model';
 
+import { onStatus } from '@/app/context-menu/shell-menus';
 import type { MenuContext, MenuContribution, MenuItemSpec } from '@/app/context-menu/types';
 
 import { trackOfTarget } from './menu-target';
@@ -44,8 +45,7 @@ const muteSoloItems: readonly MenuItemSpec[] = [
 const propertiesItem: MenuItemSpec = { command: 'track.properties', group: 'properties' };
 const trackItems: readonly MenuItemSpec[] = [...muteSoloItems, propertiesItem];
 
-const rowItems: readonly MenuItemSpec[] = [
-  ...muteSoloItems,
+const notationItems: readonly MenuItemSpec[] = [
   { command: 'track.notationTab', group: 'view', label: 'Show as tab', ...notation('tab') },
   {
     command: 'track.notationStandard',
@@ -59,6 +59,11 @@ const rowItems: readonly MenuItemSpec[] = [
     label: 'Show as tab and standard notation',
     ...notation('both'),
   },
+];
+
+const rowItems: readonly MenuItemSpec[] = [
+  ...muteSoloItems,
+  ...notationItems,
   { command: 'view.toggleMultitrack', group: 'view' },
   { command: 'track.showAll', group: 'view' },
   propertiesItem,
@@ -67,6 +72,15 @@ const rowItems: readonly MenuItemSpec[] = [
 /** The track list, the mixer's strips and its master strip. Edit mode adds the track management in `editor/menus.ts`. */
 export const trackMenus: readonly MenuContribution[] = [
   { surface: 'track.row', items: rowItems },
+  {
+    surface: 'status.segment',
+    items: [
+      ...notationItems.map((item) => ({
+        ...item,
+        when: (at: MenuContext) => onStatus('notation')(at) && (item.when?.(at) ?? true),
+      })),
+    ],
+  },
   { surface: 'mixer.strip', items: trackItems },
   {
     surface: 'mixer.master',

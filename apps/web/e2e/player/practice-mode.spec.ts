@@ -12,6 +12,18 @@ const radio = (page: Page, name: string) => page.getByRole('radio', { name, exac
 const strip = (page: Page) => page.getByRole('navigation', { name: 'Sections' });
 const capsule = (page: Page) => page.getByRole('region', { name: 'Practice controls' });
 
+/**
+ * An open tooltip takes the first Escape by design (#341's Esc rules: a Radix dismissal calls
+ * `preventDefault`), and these tooltips open on hover with no delay. Leave whatever the pointer
+ * rests on and wait until no tooltip is mounted (`toBeHidden` would not do: a closing tooltip
+ * stays mounted, and registered for Escape, until its exit animation ends).
+ */
+async function clearTooltips(page: Page) {
+  const { width, height } = page.viewportSize() ?? { width: 1440, height: 900 };
+  await page.mouse.move(width / 2, height / 2);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+}
+
 /** What practice mode hides, as the window had it. */
 const CHROME = [
   (page: Page) => page.getByRole('banner'),
@@ -51,6 +63,7 @@ test('entering hides the chrome and Escape brings back the exact window', async 
   const main = await page.getByRole('main', { name: 'Score' }).boundingBox();
   expect(main?.width).toBeCloseTo(1440, 0);
 
+  await clearTooltips(page);
   await page.keyboard.press('Escape');
   await expect(radio(page, 'Play')).toBeChecked();
   const after = await boxes(page);
@@ -87,6 +100,9 @@ test('a section loops from the strip, and the loop survives leaving', async ({ p
   await expect(
     capsule(page).getByRole('button', { name: `Loop bars ${SECTIONS.chorus2Bars}` }),
   ).toHaveAttribute('aria-pressed', 'true');
+  // The failing CI trace (PR #390, e2e-results-2) shows "Bars 17-20" open after the click and
+  // closing on the Escape, with the mode still on. Nothing here depends on why it reopened.
+  await clearTooltips(page);
   await page.keyboard.press('Escape');
   await expect(
     page
@@ -105,9 +121,11 @@ test('F11 enters, the first Escape closes a popover, the second leaves, and Edit
   await capsule(page).getByRole('button', { name: 'Metronome volume' }).click();
   const popover = page.getByRole('slider', { name: /volume/i });
   await expect(popover).toBeVisible();
+  await clearTooltips(page);
   await page.keyboard.press('Escape');
   await expect(popover).toHaveCount(0);
   await expect(capsule(page)).toBeVisible();
+  await clearTooltips(page);
   await page.keyboard.press('Escape');
   await expect(capsule(page)).toHaveCount(0);
   await expect(radio(page, 'Edit')).toBeChecked();

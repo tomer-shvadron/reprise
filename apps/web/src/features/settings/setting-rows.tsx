@@ -69,6 +69,8 @@ export function SwitchSetting({
 export interface Choice<T extends string> {
   value: T;
   label: string;
+  /** The accessible name when the visible label is shorter than what it stands for. */
+  ariaLabel?: string;
 }
 
 /** One choice of a few, shown as a segmented group; a second click on the pressed one does nothing. */
@@ -104,6 +106,7 @@ export function ChoiceSetting<T extends string>({
           <ToggleGroupItem
             key={choice.value}
             value={choice.value}
+            {...(choice.ariaLabel && { 'aria-label': choice.ariaLabel })}
             className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground px-3"
           >
             {choice.label}

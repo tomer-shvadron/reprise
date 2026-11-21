@@ -1,11 +1,17 @@
 import type { Score } from '@reprise/model';
 
+import type { NotationDefaults } from '@/state/notation-defaults';
+
 import { nativeOf, parseImport, type NativeOutcome, type ParseOutcome } from './parse-import';
 import type { ParseRequest, ParseResponse } from './parse.worker';
 
 export interface Parser {
   /** Takes ownership of `bytes`: they are transferred to the worker. */
-  parse(bytes: Uint8Array, fallbackTitle?: string): Promise<ParseOutcome>;
+  parse(
+    bytes: Uint8Array,
+    fallbackTitle?: string,
+    defaults?: NotationDefaults,
+  ): Promise<ParseOutcome>;
   /** The score as native bytes. The score is copied to the worker, not moved. */
   native(score: Score): Promise<NativeOutcome>;
   dispose(): void;
@@ -18,7 +24,7 @@ interface Pending {
 
 function inlineParser(): Parser {
   return {
-    parse: (bytes, fallbackTitle) => parseImport(bytes, fallbackTitle),
+    parse: (bytes, fallbackTitle, defaults) => parseImport(bytes, fallbackTitle, defaults),
     native: (score) => nativeOf(score),
     dispose() {},
   };
@@ -71,9 +77,9 @@ export function createParser(): Parser {
   };
 
   return {
-    async parse(bytes, fallbackTitle = '') {
+    async parse(bytes, fallbackTitle = '', defaults) {
       const response = await send(
-        (id) => ({ kind: 'parse', id, bytes, fallbackTitle }),
+        (id) => ({ kind: 'parse', id, bytes, fallbackTitle, ...(defaults && { defaults }) }),
         [bytes.buffer],
       );
       if (response.kind !== 'parse')

@@ -11,6 +11,8 @@ import { installShortcutDispatcher } from '@/app/shortcut-dispatcher';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
   COUNT_IN_SETTING,
+  DEFAULT_NOTATION_STRINGS_SETTING,
+  DEFAULT_NOTATION_VOCALS_SETTING,
   DEFAULT_VIEW_MODE_SETTING,
   DEFAULT_ZOOM_SETTING,
   FOLLOW_PLAYHEAD_SETTING,
@@ -119,6 +121,12 @@ describe('the settings dialog', () => {
     await user.keyboard('{ArrowRight}');
     expect(settings.get(DEFAULT_ZOOM_SETTING)).toBeCloseTo(1.1, 5);
     expect(zoom).toHaveAttribute('aria-valuetext', '110%');
+    const strings = screen.getByRole('radiogroup', { name: 'Notation for string instruments' });
+    await user.click(within(strings).getByRole('radio', { name: 'Tab and standard notation' }));
+    expect(settings.get(DEFAULT_NOTATION_STRINGS_SETTING)).toBe('both');
+    const vocals = screen.getByRole('radiogroup', { name: 'Notation for vocals' });
+    await user.click(within(vocals).getByRole('radio', { name: 'Standard notation' }));
+    expect(settings.get(DEFAULT_NOTATION_VOCALS_SETTING)).toBe('standard');
 
     await user.click(screen.getByRole('tab', { name: 'Playback and practice' }));
     await user.click(screen.getByRole('switch', { name: 'Count-in' }));
@@ -128,6 +136,21 @@ describe('the settings dialog', () => {
     screen.getByRole('slider', { name: 'Metronome volume' }).focus();
     await user.keyboard('{ArrowLeft}');
     expect(settings.get(METRONOME_VOLUME_SETTING)).toBeCloseTo(0.65, 5);
+  });
+
+  it('restores the notation defaults with the Score section', async () => {
+    const { services } = await setup();
+    const { settings } = services;
+    settings.set(DEFAULT_NOTATION_STRINGS_SETTING, 'both');
+    settings.set(DEFAULT_NOTATION_VOCALS_SETTING, 'standard');
+    openSettings(services);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('tab', { name: 'Score' }));
+    await user.click(screen.getByRole('button', { name: 'Restore defaults' }));
+
+    expect(settings.get(DEFAULT_NOTATION_STRINGS_SETTING)).toBe('tab');
+    expect(settings.get(DEFAULT_NOTATION_VOCALS_SETTING)).toBe('tab');
   });
 
   it('restores the defaults of the section on screen only', async () => {
