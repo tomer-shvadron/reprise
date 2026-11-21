@@ -107,7 +107,7 @@ describe('TransportBar', () => {
       'Space',
     );
     await userEvent.setup().hover(countIn);
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('Count-in (Alt+K)');
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Count-in, Alt+K');
   });
 
   it('moves the readout without re-rendering React', async () => {
