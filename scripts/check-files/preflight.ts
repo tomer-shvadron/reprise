@@ -10,6 +10,8 @@ export const PROJECT_CHECKS: Readonly<Record<string, readonly CheckId[]>> = {
   formats: ['read', 'oracle', 'order', 'tempo'],
   layout: ['layout'],
   audio: ['audio'],
+  // A report, not a check: it has no status column, so it never fails a file.
+  insights: [],
 };
 
 export function checksFor(only: readonly string[]): CheckId[] {
@@ -52,9 +54,10 @@ export function projectsToRun(
   selected: readonly string[],
   skips: Partial<Record<CheckId, string>>,
 ): string[] {
-  return selected.filter((project) =>
-    (PROJECT_CHECKS[project] ?? []).some((check) => skips[check] === undefined),
-  );
+  return selected.filter((project) => {
+    const checks = PROJECT_CHECKS[project] ?? [];
+    return checks.length === 0 || checks.some((check) => skips[check] === undefined);
+  });
 }
 
 export function soundfontPresent(): boolean {

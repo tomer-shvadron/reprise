@@ -24,7 +24,7 @@ This is Part B in short; the sections below say what each row means.
 ```sh
 pnpm check:files                      # fixtures/ and local-tabs/
 pnpm check:files local-tabs           # only your tabs
-pnpm check:files local-tabs/song.gp5 --only audio   # one file, one project (formats, layout, audio)
+pnpm check:files local-tabs/song.gp5 --only audio   # one file, one project (formats, layout, audio, insights)
 ```
 
 Paths resolve against the directory you run it from. Folders are walked recursively for `.gp3`, `.gp4`, `.gp5`, `.gpx` and `.gp` files, in any case; an empty `local-tabs/`, or a missing one when you give no path, is reported and skipped, and the previous run's reports are cleared. A path you give that does not exist exits with code 2. The command exits 0 only when no check fails, crashes or leaves a known entry stale. CI runs `pnpm check:files fixtures` as the "Real-file pass" step and uploads `.check-files/` when it fails.
@@ -47,6 +47,7 @@ Reports go to `.check-files/` at the repository root, which is gitignored and wi
 - `drafts/NN-<check>-<code>.md`: one draft `type:bug` issue per group of unknown violations, also printed at the end of the run.
 - `listening/<fixture path>.md` and `listening/local/<hash>.md`: the sheet for Part B, created once and never overwritten; a local tab's is keyed by its hash, so it stays with the tab when the numbers shift.
 - `exports/`: our writer's `.gp` output for each file (`local-<n>.gp` for a local one), for C4.
+- `insights.md`: the key the song-insights engine detects per file (key, confidence, correlation, runner-up, best-fit scale, whether the file's own signature agrees), a local tab by its `local-<n> (sha256 …)` label only. It comes from the `insights` project (`pnpm check:files --only insights`), a report with no pass or fail. When `local-tabs/keys.json` exists it also lists the true key beside each detected one and ends with the exact count and the mean MIREX score (1 right, 0.5 a fifth away, 0.3 the relative key, 0.2 the parallel key). The file is yours and never committed (`local-tabs/*` is ignored): a JSON object from a label to a key name, where a label is the tab's hash from the report (any prefix of 6 or more digits), its `local-<n>` label for the current run, or a fixture path, and a key name is a tonic and optionally a mode, such as `"A minor"`, `"F# major"`, `"Bb"`, `"Cm"`. An entry that names no key is listed at the end of the report.
 
 The known list is `scripts/check-files/known.ts`: each entry names its open issue and the fixtures it must fire on. When a run covers one of those fixtures and the entry no longer fires there, the run fails as stale; the PR that fixes the issue deletes its entry.
 
