@@ -68,3 +68,26 @@ export function asciiScopeOf(
 export function hasFrettedTrack(score: Score, tracks: readonly Id[]): boolean {
   return score.tracks.some((track) => tracks.includes(track.id) && canShowTab(track));
 }
+
+/**
+ * What an image export or Copy as image covers. The bars are `asciiScopeOf`'s; the tracks are an
+ * edit range's (anchor to focus, visible ones), else, for a play-mode bar selection or a bar
+ * target, the tracks on screen: an image shows the system as it looks, not one track as ASCII tab
+ * does.
+ */
+export function imageScopeOf(
+  score: Score,
+  selection: Pick<SelectionState, 'range' | 'bars' | 'currentTrack'>,
+  target: MenuTarget | undefined,
+  view: DocumentView,
+): AsciiScope | undefined {
+  const scope = asciiScopeOf(score, selection, target, view);
+  if (!scope) return undefined;
+  const onBar = target !== undefined && target.kind !== 'range' && 'masterBar' in target;
+  if (!onBar && selection.range) return scope;
+  const shown = visibleTrackIds(view, score);
+  const tracks = score.tracks
+    .map(({ id }) => id)
+    .filter((id) => shown === 'all' || shown.includes(id));
+  return tracks.length === 0 ? undefined : { ...scope, tracks };
+}
