@@ -1,5 +1,5 @@
 import { cn } from 'cn';
-import { useEffect, useId, useMemo, useRef, type MouseEvent } from 'react';
+import { useEffect, useId, useRef, type MouseEvent } from 'react';
 import { useStore } from 'zustand';
 
 import { focusPanelSection } from '@/app/right-panel';
@@ -10,9 +10,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 
 import type { EffectPicker } from './dialogs';
 import type { EffectKeyName } from './effect-commands';
-import { effectInput, openEffectPicker, openGraceDialog } from './effect-dialogs';
-import type { EffectState } from './effect-state';
-import { panelState, type Known } from './panel-state';
+import type { Known, PanelState } from './panel-state';
+import { pressedOf, useEffectPanelState, usePickerOpener } from './use-effect-controls';
 
 /** A click must not take focus from the page: typing frets carries on after it. */
 const keepFocus = (event: MouseEvent) => {
@@ -80,9 +79,6 @@ const PICKER_COMMAND: Record<EffectPicker | 'grace', RegisteredCommandId> = {
   dynamics: 'editor.effect.dynamicsPicker',
   grace: 'editor.effect.grace',
 };
-
-const pressedOf = (state: EffectState): boolean | 'mixed' =>
-  state === 'on' ? true : state === 'mixed' ? 'mixed' : false;
 
 /**
  * The tooltip sits on a wrapper: a disabled button takes no pointer events, so it could never
@@ -163,14 +159,8 @@ function EffectOpener({
   disabled: boolean;
   blocked: string | undefined;
 }) {
-  const services = useAppServices();
   const bound = useCommand(PICKER_COMMAND[item.picker]);
-  const open = (event: MouseEvent<HTMLButtonElement>) => {
-    // A click has no detail 0; Enter and Space on the focused button do.
-    const from = event.detail === 0 ? event.currentTarget : undefined;
-    if (item.picker === 'grace') openGraceDialog(services, true, from);
-    else openEffectPicker(services, item.picker, from);
-  };
+  const open = usePickerOpener(item.picker);
   return (
     <Tip text={tipText(item.label.replace('…', ''), bound.keys)} reason={blocked}>
       {(describedBy) => (
@@ -202,7 +192,7 @@ function Group({
   items: readonly Item[];
   known: Map<EffectKeyName, Known>;
   disabled: boolean;
-  blockers: Record<EffectPicker | 'grace', string | undefined>;
+  blockers: PanelState['blockers'];
 }) {
   const headingId = useId();
   return (
@@ -242,11 +232,9 @@ function Group({
  */
 export function EffectsPanel() {
   const services = useAppServices();
-  const { document, selection, editing } = services;
+  const { document, editing } = services;
   const isEditing = useStore(editing, (state) => state.editing);
   const score = useStore(document, (state) => state.score);
-  const view = useStore(document, (state) => state.view);
-  const state = useStore(selection);
   const headingId = useId();
   const section = useRef<HTMLElement>(null);
   const editKey = useCommand('editor.toggleMode').keys;
@@ -256,11 +244,7 @@ export function EffectsPanel() {
     focusPanelSection(section.current, services.ui);
   }, [services.ui]);
 
-  const { known, blockers, empty } = useMemo(
-    () => panelState(effectInput(services), isEditing),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- the stores' state is the dependency
-    [services, isEditing, score, view, state],
-  );
+  const { known, blockers, empty } = useEffectPanelState();
 
   const disabled = !isEditing || !score;
   return (

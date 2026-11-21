@@ -41,6 +41,8 @@ export interface LayoutOptions {
   notation: Record<Id, Notation>;
   /** Tied notes on tab staves; `parentheses` unless given. */
   tiedNotes?: TiedNotes;
+  /** Draw a chord's grid under its name where the file has one; true unless given. */
+  chordDiagrams?: boolean;
   /** Page margins, unscaled; see `DEFAULT_MARGINS`. */
   margins?: Partial<Margins>;
   /**
@@ -95,8 +97,11 @@ export interface PathPrimitive extends PrimitiveBase {
   d: string;
   fill: boolean;
   thickness: number;
-  /** `section` on a section marker's enclosure box, so a right-click on its padding finds the marker. */
-  lane?: 'section';
+  /**
+   * `section` on a section marker's enclosure box, so a right-click on its padding finds the
+   * marker; `chordDiagram` on a chord diagram's grid, whose box is the whole diagram's.
+   */
+  lane?: 'section' | 'chordDiagram';
 }
 
 /** The row a word primitive sits in: a chord name, beat text, or lyric line `n` (0 to 4, as `lyric:0`). */

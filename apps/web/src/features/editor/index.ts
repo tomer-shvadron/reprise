@@ -140,3 +140,7 @@ export {
   scoreMenuRequest,
 } from './menu-target';
 export type { ScoreMenuOpen } from './menu-target';
+export { DURATION_STEPS, DurationStepItems } from './duration-steps';
+export { pressedOf, useEffectPanelState, usePickerOpener } from './use-effect-controls';
+export type { Known, PanelOnly, PanelState } from './panel-state';
+export type { EffectKeyName } from './effect-commands';

@@ -40,6 +40,8 @@ export interface StaffBar {
   readonly keySignature: KeySignature;
   /** One staff space in px at the current zoom. */
   readonly space: number;
+  /** Draw chord diagrams under chord names (`LayoutOptions.chordDiagrams`). */
+  readonly chordDiagrams: boolean;
 }
 
 /** Room a staff needs around one onset, in px from the onset's x. */

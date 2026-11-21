@@ -33,6 +33,11 @@ export { writeGpif } from './gpif/write-gpif';
 export type { GpifWriteResult } from './gpif/write-gpif';
 export type { GpifDropCode, GpifDropped } from './gpif/dropped';
 
+// ASCII tab: the model as forum-style text, one way (there is no reader).
+export { ASCII_TAB_WIDTH, writeAsciiTab } from './ascii/write-ascii-tab';
+export type { AsciiTabOptions, AsciiTabResult } from './ascii/write-ascii-tab';
+export type { AsciiDropCode } from './ascii/dropped';
+
 // The Formats contract: detection and the read and write dispatchers over every format.
 export { detect } from './detect';
 export { FormatError } from './errors';
