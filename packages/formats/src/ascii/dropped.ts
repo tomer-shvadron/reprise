@@ -18,7 +18,11 @@ export type AsciiDropCode =
   /** Lyric lines 2 to 5; line 1 is written below the tab. */
   | 'lyrics-lines'
   /** Palm mute and let ring on one beat; palm mute is written. */
-  | 'effect-clash';
+  | 'effect-clash'
+  /** A trill, slide into the note or hammer-on or pull-off on a tied note, which has no fret to hang it on. */
+  | 'tied-effects'
+  /** A tapped, semi or feedback harmonic, written as an artificial one. */
+  | 'harmonic-kind';
 
 const MESSAGES: Readonly<Record<AsciiDropCode, string>> = {
   'track-skipped': 'Tracks without strings (drums and pitched tracks) were left out.',
@@ -28,6 +32,8 @@ const MESSAGES: Readonly<Record<AsciiDropCode, string>> = {
   'tremolo-picking': 'Tremolo picking was left out.',
   stroke: 'Brush, arpeggio and pick strokes were left out.',
   'lyrics-lines': 'Lyric lines 2 to 5 were left out.',
+  'tied-effects': 'Trills, slides into the note and hammer-ons on tied notes were left out.',
+  'harmonic-kind': 'Tapped, semi and feedback harmonics are written as artificial harmonics.',
   'effect-clash': 'Palm mute and let ring on one beat: only palm mute is shown.',
 };
 

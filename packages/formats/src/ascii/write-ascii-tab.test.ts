@@ -233,7 +233,7 @@ describe('rows around the strings', () => {
       .beat('4', [note(1, 3, { letRing: true })])
       .beat('4', [note(1, 4, { palmMute: true, letRing: true })]);
     const { text, dropped } = tab(builder);
-    expect(text).toContain('\n   PM--- LR PM\n');
+    expect(text).toContain('\n   PM- LRPM\n');
     expect(dropped).toEqual([expect.objectContaining({ code: 'effect-clash', severity: 'info' })]);
   });
 
@@ -273,8 +273,9 @@ describe('rows around the strings', () => {
         })
         .beat('4', [note(1, 2)]),
     );
-    expect(lines[2]).toBe('   Cmaj7');
+    expect(lines[2]).toBe('  1');
     expect(lines[3]).toBe('   riff');
+    expect(lines[4]).toBe('   Cmaj7');
     expect(lines[5]).toBe('e|-1---------2-|');
     expect(lines.at(-1)).toBe('   long-word');
   });
@@ -363,7 +364,7 @@ describe('line breaking and ranges', () => {
   it('writes only the bars asked for, numbered as in the song, with time and tempo stated', () => {
     const lines = linesOf(long(4, 100), { bars: { start: 2, end: 4 } });
     expect(lines[0]).toContain('100 bpm');
-    expect(lines[2]).toBe('  3 4/4 100bpm');
+    expect(lines[2]).toBe('  3 4/4');
     expect(lines.filter((line) => /^e\|/.test(line))).toHaveLength(1);
   });
 
@@ -395,10 +396,10 @@ describe('string labels and the header', () => {
   });
 
   it('names drop D, E flat standard, a 7-string and a bass', () => {
-    expect(labels([38, 45, 50, 55, 59, 64])).toEqual(['E', 'B', 'G', 'D', 'A', 'D']);
+    expect(labels([38, 45, 50, 55, 59, 64])).toEqual(['e', 'B', 'G', 'D', 'A', 'D']);
     expect(labels([39, 44, 49, 54, 58, 63])).toEqual(['eb', 'Bb', 'Gb', 'Db', 'Ab', 'Eb']);
     expect(labels([35, 40, 45, 50, 55, 59, 64])).toEqual(['e', 'B', 'G', 'D', 'A', 'E', 'B']);
-    expect(labels([28, 33, 38, 43], 'bass')).toEqual(['G', 'D', 'A', 'E']);
+    expect(labels([28, 33, 38, 43], 'bass')).toEqual(['g', 'D', 'A', 'E']);
   });
 
   it('writes the title, artist, track name, tuning, capo and tempo', () => {
@@ -533,5 +534,140 @@ describe('what the text leaves out', () => {
         .beat('4', [note(1, 2, { vibrato: 'slight' })]),
     );
     expect(lines.at(-1)).toBe('Legend: ~ vibrato, x dead note');
+  });
+});
+
+describe('tied notes', () => {
+  const bend = (kind: 'bend' | 'hold' | 'release', values: number[]) => ({
+    kind,
+    points: values.map((value, i) => ({ position: i * 10, value })),
+  });
+
+  it('writes the release of a tied bend at its column', () => {
+    const line = topLine(
+      guitar()
+        .bar()
+        .beat('4', [note(1, 7, { bend: bend('bend', [0, 4]) })])
+        .beat('4', [note(1, 7, { tie: true, bend: bend('hold', [4, 4]) })])
+        .beat('4', [note(1, 7, { tie: true, bend: bend('release', [4, 0]) })])
+        .beat('4', [note(1, 5)]),
+    );
+    expect(line).toBe('e|-7b9-----r7--5---|');
+  });
+
+  it('writes vibrato and a slide out on a tied note', () => {
+    const vibrato = topLine(
+      guitar()
+        .bar()
+        .beat('2', [note(1, 7)])
+        .beat('2', [note(1, 7, { tie: true, vibrato: 'wide' })]),
+    );
+    const slide = topLine(
+      guitar()
+        .bar()
+        .beat('2', [note(1, 7)])
+        .beat('2', [note(1, 7, { tie: true, slide: ['outDown'] })]),
+    );
+    expect(vibrato).toContain('~');
+    expect(slide).toContain('\\');
+  });
+
+  it('reports what a tied note cannot show', () => {
+    const { dropped } = tab(
+      guitar()
+        .bar()
+        .beat('4', [note(1, 7)])
+        .beat('4', [note(1, 7, { tie: true, trill: { fret: 9, speed: 16 } })]),
+    );
+    expect(dropped.map((warning) => warning.code)).toEqual(['tied-effects']);
+  });
+});
+
+describe('effect runs', () => {
+  it('carries a palm-mute run across a bar line', () => {
+    const builder = guitar().bar();
+    for (let i = 0; i < 4; i++) builder.beat('4', [note(1, 0, { palmMute: true })]);
+    builder
+      .bar()
+      .beat('4', [note(1, 0, { palmMute: true })])
+      .beat('4', [note(1, 3)]);
+    const lines = linesOf(builder);
+    const row = lines.find((line) => line.trimStart().startsWith('PM'));
+    expect(row).toBe('   PM---------');
+    expect(lines.filter((line) => line.includes('PM'))).toHaveLength(2);
+  });
+
+  it('keeps quarters evenly spaced when one has an effect', () => {
+    const line = topLine(
+      guitar()
+        .bar()
+        .beat('4', [note(1, 0, { palmMute: true })])
+        .beat('4', [note(1, 0)])
+        .beat('4', [note(1, 0)]),
+    );
+    expect(line).toBe('e|-0-0-0-|');
+  });
+});
+
+describe('triplet feel, harmonics and names', () => {
+  it('writes triplet feel where it changes and states it at a range start', () => {
+    const builder = guitar()
+      .bar()
+      .beat('4', [note(1, 1)])
+      .bar()
+      .masterBar({ tripletFeel: 'eighth' })
+      .beat('4', [note(1, 2)])
+      .bar()
+      .masterBar({ tripletFeel: 'eighth' })
+      .beat('4', [note(1, 3)])
+      .bar()
+      .masterBar({ tripletFeel: 'none' })
+      .beat('4', [note(1, 4)]);
+    const text = tab(builder).text;
+    expect(text.match(/Triplet feel 8th/g)).toHaveLength(1);
+    expect(text).toContain('Straight feel');
+    expect(tab(builder, { bars: { start: 2, end: 3 } }).text).toContain('3 4/4 Triplet feel 8th');
+  });
+
+  it('writes a pinch harmonic apart and reports the kinds it folds', () => {
+    const line = topLine(
+      guitar()
+        .bar()
+        .beat('4', [note(1, 5, { harmonic: { kind: 'pinch', value: 7 } })])
+        .beat('4', [note(1, 5, { harmonic: { kind: 'tapped' } })]),
+    );
+    expect(line).toContain('[12]PH');
+    const { dropped } = tab(
+      guitar()
+        .bar()
+        .beat('4', [note(1, 5, { harmonic: { kind: 'semi' } })]),
+    );
+    expect(dropped.map((warning) => warning.code)).toEqual(['harmonic-kind']);
+  });
+
+  it('does not repeat a range start tempo that the header gives', () => {
+    const lines = linesOf(
+      scoreBuilder()
+        .tempo(100)
+        .track('guitar')
+        .bar()
+        .beat('4', [note(1, 1)])
+        .bar()
+        .beat('4', [note(1, 2)]),
+      { bars: { start: 1, end: 2 } },
+    );
+    expect(lines[0]).toContain('100 bpm');
+    expect(lines[2]).toBe('  2 4/4');
+  });
+
+  it('names an unnamed track in the refusal', () => {
+    const built = scoreBuilder()
+      .track('drums', { name: '' })
+      .bar()
+      .beat('4', [midi(38)])
+      .build({ validate: false });
+    expect(() => writeAsciiTab(built, { tracks: built.tracks.map((track) => track.id) })).toThrow(
+      /Track 1 has no strings/,
+    );
   });
 });

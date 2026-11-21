@@ -3,7 +3,7 @@ import { canShowTab, type Id, type Score, type Track } from '@reprise/model';
 import { FormatError } from '../errors';
 import type { Warning } from '../warnings';
 
-import { bpmText, tempoAt, type BlockContext } from './bars';
+import { bpmText, tempoMap, type BlockContext } from './bars';
 import { AsciiDropCollector } from './dropped';
 import { stringLabels } from './labels';
 import { legendLines, type LegendKey } from './legend';
@@ -27,12 +27,17 @@ export interface AsciiTabResult {
 
 export const ASCII_TAB_WIDTH = { min: 40, max: 400, default: 80 } as const;
 
-function blockHeader(score: Score, track: Track, index: number, start: number): string {
+function blockHeader(
+  tempos: readonly (number | undefined)[],
+  track: Track,
+  index: number,
+  start: number,
+): string {
   const parts = [singleLine(track.name) || `Track ${String(index + 1)}`];
   const { tuning } = stringLabels(track.tuning);
   parts.push(`Tuning: ${tuning.join(' ')}`);
   if (track.capo > 0) parts.push(`Capo ${String(track.capo)}`);
-  const bpm = tempoAt(score, start);
+  const bpm = tempos[start];
   if (bpm !== undefined) parts.push(`${bpmText(bpm)} bpm`);
   return parts.join(' | ');
 }
@@ -104,7 +109,7 @@ export function writeAsciiTab(score: Score, options: AsciiTabOptions): AsciiTabR
   if (written.length === 0 && firstWanted) {
     throw new FormatError(
       'unsupported-track',
-      `Track "${firstWanted.track.name}" has no strings: ASCII tab needs a fretted track`,
+      `${singleLine(firstWanted.track.name) || `Track ${String(firstWanted.index + 1)}`} has no strings: ASCII tab needs a fretted track`,
     );
   }
 
@@ -113,6 +118,7 @@ export function writeAsciiTab(score: Score, options: AsciiTabOptions): AsciiTabR
     drops.drop('track-skipped', { track: index });
   }
   const used = new Set<LegendKey>();
+  const tempos = tempoMap(score);
   const lines: string[] = [];
   const heading = [score.meta.title, score.meta.artist]
     .map(singleLine)
@@ -120,9 +126,9 @@ export function writeAsciiTab(score: Score, options: AsciiTabOptions): AsciiTabR
   if (heading.length > 0) lines.push(heading.join(' - '));
   written.forEach(({ track, index }, position) => {
     if (position > 0) lines.push('');
-    const ctx: BlockContext = { score, trackIndex: index, track, range, drops, used };
+    const ctx: BlockContext = { score, trackIndex: index, track, range, drops, used, tempos };
     lines.push(
-      blockHeader(score, track, index, range.start),
+      blockHeader(tempos, track, index, range.start),
       '',
       ...renderSystems(ctx, stringLabels(track.tuning).lines, width),
     );

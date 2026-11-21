@@ -6,6 +6,7 @@ import {
   type JumpKind,
   type MasterBar,
   type Score,
+  type TripletFeel,
   type Track,
 } from '@reprise/model';
 
@@ -47,6 +48,8 @@ export interface BlockContext {
   range: { start: number; end: number };
   drops: AsciiDropCollector;
   used: Set<LegendKey>;
+  /** `tempoMap(score)`: the tempo in force at each master bar. */
+  tempos: readonly (number | undefined)[];
 }
 
 export interface BeatCell {
@@ -76,13 +79,13 @@ export interface BarLayout {
   close: CloseKind;
 }
 
-/** The tempo in force at a master bar: the last mark at or before it. */
-export function tempoAt(score: Score, index: number): number | undefined {
+/** The tempo in force at each master bar: the last mark at or before it. */
+export function tempoMap(score: Score): (number | undefined)[] {
   let bpm: number | undefined;
-  for (const masterBar of score.masterBars.slice(0, index + 1)) {
+  return score.masterBars.map((masterBar) => {
     if (masterBar.tempo) bpm = masterBar.tempo.bpm;
-  }
-  return bpm;
+    return bpm;
+  });
 }
 
 export function bpmText(bpm: number): string {
@@ -93,7 +96,22 @@ function sameEndings(a: MasterBar | undefined, b: MasterBar): boolean {
   return a !== undefined && a.alternateEndings.join(',') === b.alternateEndings.join(',');
 }
 
-function barWords(score: Score, index: number, first: boolean): string {
+const FEEL_WORDS: Readonly<Record<TripletFeel, string>> = {
+  none: 'Straight feel',
+  eighth: 'Triplet feel 8th',
+  sixteenth: 'Triplet feel 16th',
+  dottedEighth: 'Dotted 8th feel',
+  dottedSixteenth: 'Dotted 16th feel',
+  scottishEighth: 'Scottish 8th feel',
+  scottishSixteenth: 'Scottish 16th feel',
+};
+
+function barWords(
+  score: Score,
+  tempos: readonly (number | undefined)[],
+  index: number,
+  first: boolean,
+): string {
   const masterBar = score.masterBars[index];
   if (!masterBar) return '';
   const previous = index > 0 ? score.masterBars[index - 1] : undefined;
@@ -113,10 +131,15 @@ function barWords(score: Score, index: number, first: boolean): string {
   // song has its tempo in the track's header line instead.
   const startsRange = first && index > 0;
   if (timeChanged || startsRange) words.push(`${String(numerator)}/${String(denominator)}`);
-  const bpm = tempoAt(score, index);
+  // The track's header line already gives the tempo the range starts at.
+  const bpm = tempos[index];
   const tempoChanged =
-    index > 0 && masterBar.tempo !== undefined && masterBar.tempo.bpm !== tempoAt(score, index - 1);
-  if (bpm !== undefined && (tempoChanged || startsRange)) words.push(`${bpmText(bpm)}bpm`);
+    !first && masterBar.tempo !== undefined && masterBar.tempo.bpm !== tempos[index - 1];
+  if (bpm !== undefined && tempoChanged) words.push(`${bpmText(bpm)}bpm`);
+  const feel = previous?.tripletFeel ?? 'none';
+  if (masterBar.tripletFeel !== feel || (first && masterBar.tripletFeel !== 'none')) {
+    words.push(FEEL_WORDS[masterBar.tripletFeel]);
+  }
   if (masterBar.alternateEndings.length > 0 && (first || !sameEndings(previous, masterBar))) {
     words.push(`${masterBar.alternateEndings.join(',')}.`);
   }
@@ -135,7 +158,10 @@ function rawCell(ctx: BlockContext, barIndex: number, beatIndex: number, beat: B
   if (!beat.rest) {
     for (const note of beat.notes) {
       const line = note.string - 1;
-      if (line >= 0 && line < tokens.length) tokens[line] = noteToken(track, at, note, beat, used);
+      if (line >= 0 && line < tokens.length)
+        tokens[line] = noteToken(track, at, note, beat, used, (code) => {
+          drops.drop(code, where);
+        });
     }
   }
   if (beat.grace && beat.grace.length > 0) drops.drop('grace-notes', where);
@@ -192,13 +218,7 @@ export function layoutBar(ctx: BlockContext, index: number): BarLayout {
   const slot = Math.max(2, widest + 1);
   const shortest = Math.max(PPQ / 4, Math.min(PPQ, ...raw.map((cell) => cell.ticks)));
   const cells = raw.map(({ ticks, ...cell }): BeatCell => {
-    // An effect label is two characters, and a run needs a gap after it.
-    const word = Math.max(
-      length(cell.chord),
-      length(cell.text),
-      length(cell.lyric),
-      cell.effect ? 2 : 0,
-    );
+    const word = Math.max(length(cell.chord), length(cell.text), length(cell.lyric));
     return { ...cell, width: Math.max(slot, Math.round((slot * ticks) / shortest), word + 1) };
   });
   const numerator = masterBar?.timeSignature.numerator ?? 4;
@@ -209,7 +229,7 @@ export function layoutBar(ctx: BlockContext, index: number): BarLayout {
     index,
     cells,
     width,
-    words: barWords(score, index, index === range.start),
+    words: barWords(score, ctx.tempos, index, index === range.start),
     repeatCount: endCount > 2 ? `x${String(endCount)}` : '',
     open: masterBar?.repeat.start ? 'start' : 'plain',
     close: endCount > 0 ? 'end' : masterBar?.doubleBar ? 'double' : 'plain',

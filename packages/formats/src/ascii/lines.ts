@@ -64,6 +64,17 @@ function renderLine(
   const effects = new Row();
   const lyrics = new Row();
   let column = length(labels[0] ?? '');
+  // A palm-mute or let-ring run goes on across bar lines; `gap` is the width of the bar line
+  // and leading dash passed since its last beat, added only if the next beat continues it.
+  let run: { label: 'PM' | 'LR'; start: number; width: number } | undefined;
+  let gap = 0;
+  const flush = (): void => {
+    if (!run) return;
+    const fill =
+      run.width > run.label.length ? `${'-'.repeat(run.width - run.label.length - 1)} ` : '';
+    effects.put(run.start, run.label + fill);
+    run = undefined;
+  };
 
   const bar = (text: string): void => {
     if (text.includes('*')) ctx.used.add('*');
@@ -76,7 +87,10 @@ function renderLine(
   bars.forEach((layout, position) => {
     const first = position === 0;
     const previous = bars[position - 1];
+    const before = column;
     bar(first ? boundary(undefined, layout.open) : boundary(previous?.close, layout.open));
+    gap += column - before;
+    if (layout.cells.length === 0) flush();
     const width = contentWidth(layout, first);
     const words = [first ? String(layout.index + 1) : '', layout.words]
       .filter((part) => part !== '')
@@ -93,33 +107,27 @@ function renderLine(
       lines[index] = line + body.padEnd(width, '-');
     });
     let offset = 1;
-    let run: { label: 'PM' | 'LR'; start: number; width: number } | undefined;
-    const flush = (): void => {
-      if (!run) return;
-      const fill =
-        run.width > run.label.length ? `${'-'.repeat(run.width - run.label.length - 1)} ` : '';
-      effects.put(column + run.start, run.label + fill);
-      run = undefined;
-    };
+    gap += 1;
     for (const cell of layout.cells) {
       chords.put(column + offset, cell.chord);
       texts.put(column + offset, cell.text);
       lyrics.put(column + offset, cell.lyric);
       if (cell.effect === undefined || run?.label !== cell.effect) flush();
       if (cell.effect !== undefined) {
-        if (run) run.width += cell.width;
-        else run = { label: cell.effect, start: offset, width: cell.width };
+        if (run) run.width += gap + cell.width;
+        else run = { label: cell.effect, start: column + offset, width: cell.width };
         ctx.used.add(cell.effect);
       }
+      gap = 0;
       offset += cell.width;
     }
-    flush();
     column += width;
   });
+  flush();
   const last = bars.at(-1);
   bar(boundary(last?.close, undefined));
 
-  const rows = [chords, texts, annotations].filter((row) => !row.empty).map(String);
+  const rows = [annotations, texts, chords].filter((row) => !row.empty).map(String);
   const below = [effects, lyrics].filter((row) => !row.empty).map(String);
   return [...rows, ...lines.map((line) => line.trimEnd()), ...below];
 }

@@ -8,6 +8,7 @@ import {
   type TiePosition,
 } from '@reprise/model';
 
+import type { AsciiDropCode } from './dropped';
 import type { LegendKey } from './legend';
 
 /** Whole numbers as they are, anything between frets with one decimal (`7.5`). */
@@ -106,7 +107,7 @@ function slideText(
   return { prefix, suffix };
 }
 
-function fretText(note: Note, used: Set<LegendKey>): string {
+function fretText(note: Note, used: Set<LegendKey>, report: Report): string {
   if (note.dead) {
     used.add('x');
     return 'x';
@@ -117,8 +118,15 @@ function fretText(note: Note, used: Set<LegendKey>): string {
     return `<${num(harmonic.value ?? note.fret)}>`;
   }
   if (harmonic) {
+    const value = num(note.fret + (harmonic.value ?? 0));
+    if (harmonic.kind === 'pinch') {
+      used.add('PH');
+      return `[${value}]PH`;
+    }
+    // Tapped, semi and feedback harmonics have no token of their own; they read as artificial.
+    if (harmonic.kind !== 'artificial') report('harmonic-kind');
     used.add('[]');
-    return `[${num(note.fret + (harmonic.value ?? 0))}]`;
+    return `[${value}]`;
   }
   if (note.ghost) {
     used.add('()');
@@ -127,9 +135,13 @@ function fretText(note: Note, used: Set<LegendKey>): string {
   return String(note.fret);
 }
 
+/** Tells the writer something about a note could not be written. */
+export type Report = (code: AsciiDropCode) => void;
+
 /**
  * One note as it is written on its string: the fret, with the technique's letters around it. A
- * tied note is nothing, so the dashes continue the note before it.
+ * tied note has no fret, so the dashes continue the note before it, but what it adds is written
+ * at its column: the release of a bend, vibrato, a slide out.
  */
 export function noteToken(
   track: Pick<Track, 'kind' | 'bars'>,
@@ -137,8 +149,18 @@ export function noteToken(
   note: Note,
   beat: Pick<Beat, 'effects'>,
   used: Set<LegendKey>,
+  report: Report,
 ): string {
-  if (note.tie) return '';
+  const { effects } = beat;
+  const vibrato =
+    note.vibrato !== 'none' || (effects.vibrato !== undefined && effects.vibrato !== 'none');
+  if (note.tie) {
+    const slide = slideText(track, at, note, used);
+    if (note.trill || slide.prefix !== '' || note.hammerPull) report('tied-effects');
+    const bend = note.bend && note.bend.kind !== 'hold' ? bendText(note.fret, note.bend, used) : '';
+    if (vibrato) used.add('~');
+    return bend + slide.suffix + (vibrato ? '~' : '');
+  }
   let prefix = '';
   if (note.hammerPull) {
     const origin = tieOriginOf(track, at, note);
@@ -147,7 +169,6 @@ export function noteToken(
     used.add(letter);
     prefix = letter;
   }
-  const { effects } = beat;
   if (effects.tapping) {
     prefix += 't';
     used.add('t');
@@ -159,14 +180,14 @@ export function noteToken(
     used.add('P');
   }
   const slide = slideText(track, at, note, used);
-  let text = prefix + slide.prefix + fretText(note, used);
+  let text = prefix + slide.prefix + fretText(note, used, report);
   if (note.bend) text += bendText(note.fret, note.bend, used);
   if (note.trill) {
     used.add('tr');
     text += `tr${String(note.trill.fret)}`;
   }
   text += slide.suffix;
-  if (note.vibrato !== 'none' || (effects.vibrato !== undefined && effects.vibrato !== 'none')) {
+  if (vibrato) {
     used.add('~');
     text += '~';
   }

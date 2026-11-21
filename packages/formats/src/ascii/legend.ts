@@ -11,6 +11,7 @@ export const LEGEND_ENTRIES = [
   ['x', 'x dead note'],
   ['()', '(n) ghost note'],
   ['<>', '<n> natural harmonic'],
+  ['PH', '[n]PH pinch harmonic'],
   ['[]', '[n] artificial harmonic'],
   ['t', 't tap'],
   ['s', 's slap'],

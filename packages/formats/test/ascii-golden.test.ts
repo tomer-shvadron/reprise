@@ -6,8 +6,13 @@ import { fixtureBytes } from './corpus';
 
 // The goldens in test/ascii/ are reviewed by eye; regenerate with `vitest -u` and read the diff.
 const GOLDENS: readonly { path: string; drops: readonly string[] }[] = [
-  { path: 'gp5/effects.gp5', drops: ['grace-notes', 'whammy', 'tremolo-picking', 'stroke'] },
-  { path: 'gp3/notes.gp3', drops: [] },
+  {
+    path: 'gp5/effects.gp5',
+    drops: ['grace-notes', 'harmonic-kind', 'whammy', 'tremolo-picking', 'stroke'],
+  },
+  { path: 'gp/track-volume.gp', drops: [] },
+  { path: 'gp5/directions.gp5', drops: [] },
+  { path: 'gp/beat-tempo-change.gp', drops: [] },
   { path: 'gp5/chords.gp5', drops: [] },
   { path: 'gp/multivoice-rhythm.gp', drops: ['other-voices'] },
   { path: 'gp5/repeat-close-alternate-endings.gp5', drops: [] },

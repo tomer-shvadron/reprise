@@ -59,7 +59,7 @@ Notes for the formats lane. The authoritative descriptions of the Guitar Pro for
 | Model | Written |
 | --- | --- |
 | fret | `7`, `12` |
-| `tie` | nothing: the dashes continue the note |
+| `tie` | no fret: the dashes continue the note, with its own tail at its column (`r7` release, `~`, `\\`, `/`) |
 | `dead`, `ghost` | `x`, `(7)` |
 | `hammerPull` | `h9` when the fret is the same or higher than the previous note on the string, else `p5` |
 | `slide` shift or legato | `7/` when the next note on the string is higher (or there is none), `7\` when lower |
@@ -67,12 +67,13 @@ Notes for the formats lane. The authoritative descriptions of the Guitar Pro for
 | `bend` | fret plus the point's quarter tones divided by two: `7b9`, `7b9r7`, `7pb9`, `7pb9b11`, `7pb9r7`, `7b7.5` for a quarter-tone target |
 | `vibrato` (note or beat) | `7~` |
 | natural harmonic | `<12>`, or `<2.7>` from `value` |
-| other harmonics | `[n]`, `n` = fret plus `value` |
+| pinch harmonic | `[n]PH`, `n` = fret plus `value` |
+| other harmonics | `[n]`, `n` = fret plus `value` (tapped, semi and feedback are reported) |
 | tapping, slapping, popping | `t7`, `s7`, `P7` |
 | trill | `7tr9` |
 | palm mute, let ring | `PM---` and `LR---` runs below the strings; palm mute wins a clash |
 
-The legend after the last block lists only the symbols the text uses: `h`, `p`, `/`, `\`, `b`, `pb`, `r`, `~`, `x`, `(n)`, `<n>`, `[n]`, `t`, `s`, `P`, `tr`, `PM`, `LR` and `*`. Losses are reported in `dropped` (voices 2 to 4, grace notes, whammy, tremolo picking, strokes, lyric lines 2 to 5, a palm-mute and let-ring clash, a skipped track); the rest of what the format cannot show is listed in the architecture note "Changed by #350".
+The legend after the last block lists only the symbols the text uses: `h`, `p`, `/`, `\`, `b`, `pb`, `r`, `~`, `x`, `(n)`, `<n>`, `[n]`, `PH`, `t`, `s`, `P`, `tr`, `PM`, `LR` and `*`. Losses are reported in `dropped` (voices 2 to 4, grace notes, whammy, tremolo picking, strokes, lyric lines 2 to 5, a palm-mute and let-ring clash, a skipped track); the rest of what the format cannot show is listed in the architecture note "Changed by #350".
 
 ## `.reprise`
 
