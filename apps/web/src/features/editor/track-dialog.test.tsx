@@ -145,6 +145,20 @@ describe('the track dialog, editing', () => {
 });
 
 describe('the track dialog, adding', () => {
+  it('adds a percussion track as a drums track under its own name', async () => {
+    const { services, run, user } = setup();
+    run('track.add');
+    await user.click(within(dialog()).getByRole('radio', { name: 'Percussion' }));
+    expect(within(dialog()).getByRole('radio', { name: 'Drums' })).not.toBeChecked();
+    expect(field('Name')).toHaveValue('Percussion');
+    expect(field('Short name')).toHaveValue('Perc.');
+    await user.click(within(dialog()).getByRole('radio', { name: 'Drums' }));
+    expect(field('Name')).toHaveValue('Drums');
+    await user.click(within(dialog()).getByRole('radio', { name: 'Percussion' }));
+    await user.click(screen.getByRole('button', { name: 'Add track' }));
+    expect(tracksOf(services).at(-1)).toMatchObject({ kind: 'drums', name: 'Percussion' });
+  });
+
   it('starts from the defaults and adds a bass at the end with the capo', async () => {
     const { services, run, user } = setup();
     run('track.add');

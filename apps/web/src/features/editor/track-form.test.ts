@@ -9,6 +9,7 @@ import {
   droppedStringsMessage,
   formFromTrack,
   newTrackForm,
+  percussionForm,
   newTrackProperties,
   noteLabel,
   presetNameOf,
@@ -167,6 +168,21 @@ describe('add mode', () => {
     });
     expect(changeKind(setShortName(named, 'K'), 'drums').shortName).toBe('K');
     expect(changeKind(newTrackForm('fretted'), 'drums').name).toBe('Drums');
+  });
+
+  it('turns the percussion choice into drums named Percussion, keeping a typed name', () => {
+    expect(percussionForm(newTrackForm('fretted'))).toMatchObject({
+      kind: 'drums',
+      name: 'Percussion',
+      shortName: 'Perc.',
+      percussion: true,
+    });
+    expect(percussionForm(newTrackForm('drums')).name).toBe('Percussion');
+    expect(percussionForm(setName(newTrackForm('fretted'), 'Congas')).name).toBe('Congas');
+    expect(changeKind(percussionForm(newTrackForm('drums')), 'drums')).toMatchObject({
+      name: 'Drums',
+      percussion: false,
+    });
   });
 
   it('keeps a chosen colour across a kind change', () => {

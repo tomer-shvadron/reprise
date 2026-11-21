@@ -75,6 +75,11 @@ export interface TrackForm {
   /** While false the short name follows the name. */
   shortNameEdited: boolean;
   programEdited: boolean;
+  /**
+   * The add dialog's "Percussion" choice: a drums track named for what it is. Guitar Pro has no
+   * separate percussion type, so the model sees an ordinary drum track.
+   */
+  percussion: boolean;
 }
 
 export interface TrackFormErrors {
@@ -106,6 +111,7 @@ export function formFromTrack(track: Track): TrackForm {
     nameEdited: true,
     shortNameEdited: track.shortName !== shortNameOf(track.name),
     programEdited: true,
+    percussion: false,
   };
 }
 
@@ -117,12 +123,25 @@ export function newTrackForm(kind: TrackKind): TrackForm {
     nameEdited: false,
     shortNameEdited: false,
     programEdited: false,
+    percussion: false,
+  };
+}
+
+/** The "Percussion" choice: the drums defaults under its own name, which a typed name still beats. */
+export function percussionForm(form: TrackForm): TrackForm {
+  if (form.percussion) return form;
+  const next = form.kind === 'drums' ? form : changeKind(form, 'drums');
+  return {
+    ...next,
+    name: next.nameEdited ? next.name : 'Percussion',
+    shortName: next.nameEdited || next.shortNameEdited ? next.shortName : 'Perc.',
+    percussion: true,
   };
 }
 
 /** Picking another kind starts again from its defaults, keeping a colour and a name the user typed. */
 export function changeKind(form: TrackForm, kind: TrackKind): TrackForm {
-  if (kind === form.kind) return form;
+  if (kind === form.kind && !form.percussion) return form;
   const next = newTrackForm(kind);
   const base = newTrackForm(form.kind);
   let kept: TrackForm = { ...next, color: form.color === base.color ? next.color : form.color };
