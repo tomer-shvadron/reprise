@@ -173,7 +173,7 @@ function locate(
     const x = xs[found.beat];
     return { note: found.note, ...(x !== undefined && { x }), edge: rightEdge(label, size) };
   }
-  const edge = rightEdge(labelOf(found.note, size, options), size);
+  const edge = rightEdge(labelOf(found.note, size, options, input.track), size);
   if (found.bar === input.barIndex - 1 && placement.previous) {
     const beats = voiceBeats(input.track, found.bar, voice.index);
     return { note: found.note, x: placement.previous.onsetX(tickOf(beats, found.beat)), edge };

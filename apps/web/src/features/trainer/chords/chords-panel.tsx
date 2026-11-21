@@ -5,6 +5,10 @@ import { useStore } from 'zustand';
 import { useAppServices } from '@/app/services-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { useCommand } from '@/app/use-command';
+import { useSetting } from '@/app/use-setting';
+import { CHORD_STRIP_SETTING } from '@/state/app-settings';
 import { chordNamesIn, commitEdit } from '@/features/editor';
 import { parseChord, voicings } from '@/lib/chords';
 
@@ -50,6 +54,8 @@ export function ChordsPanel() {
   const [focusAt, setFocusAt] = useState<At>();
   const cancel = useRef<() => void>(undefined);
   const cards = useRef<(HTMLButtonElement | null)[]>([]);
+  const toggleStrip = useCommand('view.toggleChordStrip');
+  const stripOn = useSetting(CHORD_STRIP_SETTING);
 
   const track: Track | undefined =
     score && (score.tracks.find((t) => t.id === currentTrack) ?? score.tracks[0]);
@@ -61,7 +67,7 @@ export function ChordsPanel() {
     () => (track && fretted && chord ? voicings(chord, track, { limit: MAX_SHAPES }) : []),
     // The track's tuning, capo and fret count decide the shapes, not its notes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [chord, fretted, track?.tuning, track?.capo, track?.fretCount],
+    [chord, fretted, track?.tuning, track?.capo, track?.fretCount, track?.drone],
   );
   const box = useMemo(() => boxOf(shapes.map((entry) => entry.diagram)), [shapes]);
   const songNames = useMemo(() => (score ? chordNamesIn(score).slice(0, SONG_NAMES) : []), [score]);
@@ -195,6 +201,18 @@ export function ChordsPanel() {
             ))}
           </div>
         )}
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <label htmlFor="chords-strip" className="text-sm">
+          Chord strip above the score
+        </label>
+        <Switch
+          id="chords-strip"
+          checked={stripOn}
+          onCheckedChange={() => {
+            toggleStrip.run();
+          }}
+        />
       </div>
       <p className="text-muted-foreground text-xs">
         {fretted ? trackLine(track) : 'Chord shapes need a fretted track'}

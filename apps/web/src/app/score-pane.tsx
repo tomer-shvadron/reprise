@@ -8,6 +8,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Button } from '@/components/ui/button';
 import {
   barColumns,
+  chordBoxes,
   createGestureTracker,
   pointerTarget,
   ScoreView,
@@ -29,11 +30,13 @@ import {
   useEditOverlays,
   WordField,
 } from '@/features/editor';
-import { FOLLOW_PLAYHEAD_SETTING } from '@/state/app-settings';
+import { chordList } from '@/lib/chords';
+import { CHORD_STRIP_SETTING, FOLLOW_PLAYHEAD_SETTING } from '@/state/app-settings';
 import { selectRunning } from '@/state/playback';
 import { selectScoreZoom } from '@/state/ui';
 import type { BarRange } from '@/state/selection';
 
+import { ChordStrip } from './chord-strip';
 import { PRACTICE_CAPSULE_CLEARANCE } from './practice-mode/clearance';
 import { SelectionPill } from './selection-pill';
 import { CommandTooltip } from './command-tooltip';
@@ -167,6 +170,26 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
     driver.current?.repaint();
   }, [result, zoom, mode]);
 
+  const stripOn = useSetting(CHORD_STRIP_SETTING);
+  const currentTrackId = useStore(selection, (state) => state.currentTrack);
+  const picked = useStore(ui, (state) => state.chordHighlight);
+  const pickedTrack = picked?.track;
+  const pickedKey = picked?.key;
+  const pickedAt = picked?.at ?? 0;
+  // The beats of the chord picked in the strip, boxed where this layout draws them.
+  const chordBeats = useMemo(() => {
+    // The strip shows the current track, so a pick on another one is not drawn.
+    if (!stripOn || !score || pickedTrack === undefined || pickedTrack !== currentTrackId) {
+      return undefined;
+    }
+    const track = score.tracks.find(({ id }) => id === pickedTrack);
+    return chordList(track).find((entry) => entry.key === pickedKey)?.beats;
+  }, [stripOn, score, pickedTrack, pickedKey, currentTrackId]);
+  const chordBoxesNow = useMemo(
+    () => (chordBeats ? chordBoxes(result, new Set(chordBeats)) : undefined),
+    [result, chordBeats],
+  );
+
   const overlays = useMemo((): ScoreOverlays => {
     if (!score) return {};
     // A range draws its own boxes, which also cover a bars range, so its columns are not drawn too.
@@ -177,8 +200,29 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
       ...(loop && { loop: barColumns(result, score, loop) }),
       ...(edit.caret && { caret: edit.caret }),
       ...(edit.range && !preview && { range: edit.range }),
+      ...(chordBeats &&
+        chordBoxesNow && {
+          chords: chordBeats.flatMap((beat) => chordBoxesNow.get(beat) ?? []),
+          chordNow:
+            chordBoxesNow.get(chordBeats[Math.min(pickedAt, chordBeats.length - 1)] ?? '') ?? [],
+        }),
     };
-  }, [result, score, preview, bars, range, loop, edit]);
+  }, [result, score, preview, bars, range, loop, edit, chordBeats, chordBoxesNow, pickedAt]);
+
+  // The strip's arrows scroll the score to the occurrence they are on, and never seek.
+  useEffect(() => {
+    if (!chordBeats || !chordBoxesNow) return;
+    const beat = chordBeats[Math.min(pickedAt, chordBeats.length - 1)];
+    const first = beat === undefined ? undefined : chordBoxesNow.get(beat)?.[0];
+    if (first) {
+      // Follow would pull the view back to the playhead on its next frame; a step is a scroll by
+      // hand, so it pauses follow as `onUserScroll` does, and "Follow playback" is the way back.
+      if (selectRunning(playback.getState())) ui.getState().pauseFollow();
+      handle.current?.revealRect(first.box, { behavior: 'smooth' });
+    }
+    // Keyed on the pick, not the boxes: a re-layout must not scroll the score back.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickedTrack, pickedKey, pickedAt]);
 
   // The caret scrolls into view after each cursor move, not after a range or layout change.
   useEffect(() => {
@@ -242,29 +286,32 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
 
   // The edit status lives in the status bar, so entering edit mode adds no row under the score.
   return (
-    <div className="relative h-full">
-      <ScoreView
-        ref={handle}
-        layout={result}
-        zoom={zoom}
-        bottomInset={practising ? PRACTICE_CAPSULE_CLEARANCE : 0}
-        label={label}
-        overlays={overlays}
-        onScorePointer={onScorePointer}
-        onContextMenu={menu.onContextMenu}
-        onUserScroll={onUserScroll}
-        className="h-full focus-visible:-outline-offset-2"
-      >
-        <WordField />
-        <SelectionPill
-          view={handle}
+    <div className="flex h-full flex-col">
+      {stripOn && <ChordStrip />}
+      <div className="relative min-h-0 flex-1">
+        <ScoreView
+          ref={handle}
           layout={result}
           zoom={zoom}
-          dragging={preview !== undefined || (editing && areaDragging)}
-          edit={edit}
-        />
-      </ScoreView>
-      <FollowButton />
+          bottomInset={practising ? PRACTICE_CAPSULE_CLEARANCE : 0}
+          label={label}
+          overlays={overlays}
+          onScorePointer={onScorePointer}
+          onContextMenu={menu.onContextMenu}
+          onUserScroll={onUserScroll}
+          className="h-full focus-visible:-outline-offset-2"
+        >
+          <WordField />
+          <SelectionPill
+            view={handle}
+            layout={result}
+            zoom={zoom}
+            dragging={preview !== undefined || (editing && areaDragging)}
+            edit={edit}
+          />
+        </ScoreView>
+        <FollowButton />
+      </div>
     </div>
   );
 }

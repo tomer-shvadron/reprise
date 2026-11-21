@@ -2,7 +2,9 @@ import {
   beatTicks,
   midiNote,
   soundingPitch,
+  writtenFret,
   type Bar,
+  type Drone,
   type Id,
   type MasterBar,
   type Note,
@@ -36,11 +38,13 @@ export interface BoardShape {
   strings: number;
   frets: number;
   capo: number;
+  /** A banjo's short string: it has no frets below `drone.fret`, so its line starts there. */
+  drone?: Drone;
 }
 
 const highestByBar = new WeakMap<Bar, number>();
 
-/** The highest written fret in a bar, cached per bar object so an edit rescans one bar. */
+/** The highest stored fret in a bar, cached per bar object so an edit rescans one bar. */
 function highestFretOf(bar: Bar): number {
   let highest = highestByBar.get(bar);
   if (highest === undefined) {
@@ -65,8 +69,10 @@ export function boardOf(track: Track | undefined): BoardShape | undefined {
   for (const bar of track.bars) used = Math.max(used, highestFretOf(bar));
   return {
     strings: track.tuning.length,
-    frets: Math.max(BOARD_FRETS, track.fretCount, track.capo + used),
+    // A drone note's dot sits `drone.fret` beyond its stored fret, so leave room for that.
+    frets: Math.max(BOARD_FRETS, track.fretCount, track.capo + used + (track.drone?.fret ?? 0)),
     capo: track.capo,
+    ...(track.drone && { drone: track.drone }),
   };
 }
 
@@ -75,14 +81,26 @@ export function tuningNames(track: Pick<Track, 'tuning'>): string[] {
   return track.tuning.map(noteName);
 }
 
+/**
+ * Where a dot sits on the neck. The capo raises all five strings, so a drone note, open or
+ * fretted, counts from the capo and the string's first fret: `capo + drone.fret + stored`.
+ */
+function absoluteFret(track: Track, note: Note, written: number): number {
+  const { drone } = track;
+  if (drone && note.string === drone.string) return track.capo + drone.fret + note.fret;
+  return track.capo + written;
+}
+
 function dotOf(track: Track, note: Note): Dot | undefined {
-  const { string, fret } = note;
+  const { string } = note;
+  // Written frets match the tab, so the drone string counts from the banjo's own nut.
+  const fret = writtenFret(track, note);
   if (string < 1 || string > track.tuning.length) return undefined;
   const pitch = note.harmonic ? soundingPitch(track, note) : midiNote(track, note);
   return {
     string,
     fret,
-    absolute: track.capo + fret,
+    absolute: absoluteFret(track, note, fret),
     capo: track.capo,
     name: note.dead ? 'x' : noteName(pitch),
     dead: note.dead,
@@ -159,7 +177,7 @@ export interface BeatIndex {
 const cache = new WeakMap<Bar, { key: string; dots: BarDots }>();
 
 export function createBeatIndex(track: Track, masterBars: readonly MasterBar[]): BeatIndex {
-  const key = `${track.tuning.join(',')}/${String(track.capo)}`;
+  const key = `${track.tuning.join(',')}/${String(track.capo)}/${String(track.drone?.string)}:${String(track.drone?.fret)}`;
   const barOf = new Map<Id, Bar>();
   masterBars.forEach((masterBar, index) => {
     const bar = track.bars[index];

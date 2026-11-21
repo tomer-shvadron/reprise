@@ -1,4 +1,4 @@
-import { BeatSchema, TimeSignatureSchema, TrackKindSchema } from '@reprise/model';
+import { BeatSchema, DroneSchema, TimeSignatureSchema, TrackKindSchema } from '@reprise/model';
 import { z } from 'zod';
 
 /** The version in the first line of the clipboard text and in the clip itself. */
@@ -34,6 +34,8 @@ export const ClipTrackSchema = z.object({
   fretCount: z.int().min(0),
   /** Frets count from the capo, as the model's `midiNote` does, so a re-fingering needs it. */
   capo: z.int().min(0).default(0),
+  /** A banjo's short string: frets on it are stored from its own nut, so a paste must know it. */
+  drone: DroneSchema.optional(),
   name: z.string(),
   bars: z.array(ClipBarSchema),
 });

@@ -191,7 +191,7 @@ describe('the track dialog, adding', () => {
     });
   });
 
-  it('adds a mandolin on four strings, and offers the tenor banjos but no 5-string banjo yet', async () => {
+  it('adds a mandolin on four strings, and offers the tenor banjos', async () => {
     const { services, run, user } = setup();
     run('track.add');
     await user.selectOptions(field('Strings'), '4');
@@ -208,14 +208,57 @@ describe('the track dialog, adding', () => {
       courses: [0, 0, 0, 0],
       program: 25,
     });
+  });
+
+  it('adds a 5-string banjo with its short string, which a checkbox turns off', async () => {
+    const { services, run, user } = setup();
+    run('track.add');
+    await user.selectOptions(field('Strings'), '5');
+    expect(
+      [...within(dialog()).getByLabelText('Tuning').querySelectorAll('optgroup')].map(
+        (group) => group.label,
+      ),
+    ).toContain('Banjo');
+    await user.selectOptions(field('Tuning'), 'Banjo Open G');
+    expect(field('Name')).toHaveValue('Banjo');
+    const drone = within(dialog()).getByLabelText('Short 5th string (drone) from fret 5');
+    expect(drone).toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Add track' }));
+    expect(tracksOf(services).at(-1)).toMatchObject({
+      name: 'Banjo',
+      program: 105,
+      drone: { string: 5, fret: 5 },
+    });
 
     run('track.add');
     await user.selectOptions(field('Strings'), '5');
-    // The 5-string banjo presets have a drone, which waits for part 3 of #348.
-    const names = [...within(dialog()).getByLabelText('Tuning').querySelectorAll('option')].map(
-      (option) => option.textContent,
-    );
-    expect(names.some((name) => name.startsWith('Banjo'))).toBe(false);
+    await user.selectOptions(field('Tuning'), 'Banjo Open G');
+    await user.click(within(dialog()).getByLabelText('Short 5th string (drone) from fret 5'));
+    await user.click(screen.getByRole('button', { name: 'Add track' }));
+    expect(tracksOf(services).at(-1)?.drone).toBeUndefined();
+  });
+
+  it('drops the drone with the fifth string count, and offers none on a 5-string bass', async () => {
+    const { services, run, user } = setup();
+    run('track.add');
+    await user.selectOptions(field('Strings'), '5');
+    await user.selectOptions(field('Tuning'), 'Banjo Open G');
+    await user.selectOptions(field('Strings'), '6');
+    await user.click(screen.getByRole('button', { name: 'Add track' }));
+    expect(tracksOf(services).at(-1)?.drone).toBeUndefined();
+
+    run('track.add');
+    await user.selectOptions(field('Strings'), '4');
+    await user.selectOptions(field('Tuning'), 'Bass standard');
+    await user.selectOptions(field('Strings'), '5');
+    expect(within(dialog()).queryByLabelText(/Short 5th string/)).toBeNull();
+  });
+
+  it('offers no drone checkbox off five strings', async () => {
+    const { run, user } = setup();
+    run('track.add');
+    await user.selectOptions(field('Strings'), '4');
+    expect(within(dialog()).queryByLabelText(/Short 5th string/)).toBeNull();
   });
 
   it('adds a drum track with no strings', async () => {

@@ -56,13 +56,9 @@ export function readTrack(context: Context, header: Header, index: number): Trac
 
   // GP5 marks a track shown in the multi-track view with 0x08; the others are GP3 to GP5 flags.
   const hidden = version >= 500 && !hasFlag(flags, 0x08);
-  // 0x02 is the 12-string flag, read below into `courses`; the rest are still dropped.
-  if (hidden || hasFlag(flags, 0x04) || hasFlag(flags, 0x80)) {
-    log.info(
-      'track-flags-dropped',
-      'banjo, tuning-display or hidden-from-multitrack flags',
-      location,
-    );
+  // 0x02 is the 12-string flag and 0x04 the banjo flag, both read below; the rest are dropped.
+  if (hidden || hasFlag(flags, 0x80)) {
+    log.info('track-flags-dropped', 'tuning-display or hidden-from-multitrack flags', location);
   }
   log.info(
     'midi-routing-dropped',
@@ -170,6 +166,13 @@ export function readTrack(context: Context, header: Header, index: number): Trac
   // 12-string layout: an octave string beside every course but the two highest, which are unison.
   if (kind === 'fretted' && hasFlag(flags, 0x02) && tuning.length > 2) {
     track.courses = tuning.map((_, index) => (index < tuning.length - 2 ? 12 : 0));
+  }
+  // Unverified like 0x02 (#348): the banjo flag marks a 5-string banjo's short string, which
+  // starts at fret 5. Frets are taken as stored from that string's nut, as the model keeps them.
+  if (kind === 'fretted' && hasFlag(flags, 0x04) && tuning.length === 5) {
+    track.drone = { string: 5, fret: 5 };
+  } else if (hasFlag(flags, 0x04)) {
+    log.info('track-flags-dropped', 'banjo flag on a track without exactly five strings', location);
   }
   if (hasFlag(flags, 0x02) && !track.courses) {
     log.info(

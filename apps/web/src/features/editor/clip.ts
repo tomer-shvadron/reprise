@@ -93,6 +93,7 @@ function clipTrack(
     tuning: [...track.tuning],
     fretCount: track.fretCount,
     capo: track.capo,
+    ...(track.drone && { drone: { ...track.drone } }),
     name: track.name,
     bars: clipBars,
   };

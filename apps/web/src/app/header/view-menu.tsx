@@ -22,7 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { HintTooltip } from '@/app/command-tooltip';
-import { CHORD_DIAGRAMS_SETTING } from '@/state/app-settings';
+import { CHORD_DIAGRAMS_SETTING, CHORD_STRIP_SETTING } from '@/state/app-settings';
 import { effectiveNotation, NO_TAB_REASON, notationChoices } from '@/features/tracks';
 
 /** Layout, zoom and the current track's notation, each running its registered command. */
@@ -36,6 +36,8 @@ export function ViewMenu() {
   const toggleView = useCommand('view.toggleViewMode');
   const toggleDiagrams = useCommand('view.toggleChordDiagrams');
   const diagrams = useSetting(CHORD_DIAGRAMS_SETTING);
+  const toggleStrip = useCommand('view.toggleChordStrip');
+  const strip = useSetting(CHORD_STRIP_SETTING);
   const track = score?.tracks.find((candidate) => candidate.id === currentId);
   const choices = track ? notationChoices(track) : [];
   const notation = track ? effectiveNotation(track, notationByTrack) : undefined;
@@ -103,6 +105,17 @@ export function ViewMenu() {
           Chord diagrams
           {toggleDiagrams.keys && (
             <DropdownMenuShortcut className="mr-4">{toggleDiagrams.keys}</DropdownMenuShortcut>
+          )}
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={strip}
+          onCheckedChange={() => {
+            toggleStrip.run();
+          }}
+        >
+          Chord strip
+          {toggleStrip.keys && (
+            <DropdownMenuShortcut className="mr-4">{toggleStrip.keys}</DropdownMenuShortcut>
           )}
         </DropdownMenuCheckboxItem>
         <DropdownMenuSeparator />

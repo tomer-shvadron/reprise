@@ -1,5 +1,6 @@
 import { write } from '@reprise/formats';
 import type { Score } from '@reprise/model';
+import { score as scoreBuilder } from '@reprise/model/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createTestServices } from '@/test/services';
@@ -455,5 +456,41 @@ describe('installEntry', () => {
     controller().fret(1);
     services.selection.getState().setEdit({ cursor: cursorAt(2, 3, 4) });
     expect(entry.getState().inserted).toBeUndefined();
+  });
+});
+
+describe('installEntry on a banjo drone string', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const banjo = () => {
+    const built = scoreBuilder().track('banjo');
+    built.bar();
+    return built.build({ ids: 'sequential' });
+  };
+
+  it('makes 1 then 2 the neck fret 12, stored as 7', async () => {
+    const { controller, goTo, beats } = await setup(banjo());
+    goTo(0, 0, 5);
+    controller().fret(1);
+    controller().fret(2);
+    expect(beats(0)[0]?.notes[0]).toMatchObject({ string: 5, fret: 7 });
+  });
+
+  it('refuses a lone 1 once it is flushed, and a 3 then a 4, with the reason', async () => {
+    const { controller, goTo, beats, entry } = await setup(banjo());
+    goTo(0, 0, 5);
+    controller().fret(1);
+    vi.advanceTimersByTime(TWO_DIGIT_MS);
+    expect(beats(0)).toHaveLength(0);
+    expect(entry.getState().message).toContain('0, or 6 and up');
+    controller().fret(3);
+    controller().fret(4);
+    vi.advanceTimersByTime(TWO_DIGIT_MS);
+    expect(beats(0)).toHaveLength(0);
   });
 });

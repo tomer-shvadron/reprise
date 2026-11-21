@@ -161,3 +161,28 @@ describe('planShift', () => {
     });
   });
 });
+
+describe('planShift onto a banjo drone string', () => {
+  const banjo = (fret: number): Score => {
+    const built = score().track('banjo');
+    built.bar().beat('4', [note(4, fret)]);
+    return built.build({ ids: 'sequential' });
+  };
+
+  it('never stores a fret below 0 on string 5, and says the refusal in neck frets', () => {
+    // String 4 is D3; moving it to the G4 drone string would need a negative fret.
+    const built = banjo(0);
+    const plan = planShift(input(built, { cursor: at(built, 0, 4) }), 'lower');
+    expect(plan).toEqual({ refused: expect.stringContaining('would be fret') as string });
+  });
+
+  it('moves a note up to the drone string with a stored fret from its own nut', () => {
+    // String 4 is D3 and the drone is G4, 17 semitones up, so fret 20 lands on stored fret 3.
+    const built = banjo(20);
+    const plan = planShift(input(built, { cursor: at(built, 0, 4) }), 'lower');
+    if (!('command' in plan)) throw new Error(JSON.stringify(plan));
+    const after = applyCommand(built, plan.command).score;
+    expect(noteOf(after, 0, 0, 0).string).toBe(5);
+    expect(noteOf(after, 0, 0, 0).fret).toBe(3);
+  });
+});

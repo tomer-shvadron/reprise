@@ -310,7 +310,7 @@ function drawTies(context: Context, voice: TabVoice, xs: readonly number[]): voi
         } else if (origin.bar === barIndex - 1 && placement.previous) {
           const beats = trackVoiceBeats(track, origin.bar, voice.index);
           const fromX = placement.previous.onsetX(tickOf(beats, origin.beat));
-          const edge = labelEdge(labelOf(origin.note, size, options), size);
+          const edge = labelEdge(labelOf(origin.note, size, options, track), size);
           drawTie(sink, fromX + edge, right, y, beat.direction, space, drawn);
         } else {
           drawTie(sink, placement.x, right, y, beat.direction, space, drawn);
