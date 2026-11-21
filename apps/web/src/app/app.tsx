@@ -1,5 +1,5 @@
 import type { Track } from '@reprise/model';
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -50,6 +50,7 @@ import { ShortcutSheet } from './shortcut-sheet';
 import { createAppMenus } from './app-menus';
 import { createAppRegistry } from './app-registry';
 import { ContextMenuHost } from './context-menu/context-menu-host';
+import { MenuRegistryContext } from './context-menu/menu-context';
 import { runCommand } from './command-registry';
 import { DropZone } from './drop-zone';
 import { installFirstGesture } from './first-gesture';
@@ -97,6 +98,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   const [registry] = useState(() => createAppRegistry(services, keyboard));
   const [menus] = useState(() => createAppMenus(registry));
   const source = useCommandSource(registry, keyboard, services.settings);
+  const menuRegistry = useMemo(() => ({ menus, registry, keyboard }), [menus, registry, keyboard]);
   const theme = useStore(ui, (state) => state.theme);
   const rightPanelView = useStore(ui, (state) => state.rightPanelView);
   const bottomView = useStore(ui, (state) => state.bottomPanel.view);
@@ -196,100 +198,102 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
 
   return (
     <AppServicesProvider services={services}>
-      <TooltipProvider>
-        <div className="h-full">
-          <AppFrame
+      <MenuRegistryContext value={menuRegistry}>
+        <TooltipProvider>
+          <div className="h-full">
+            <AppFrame
+              ui={ui}
+              header={
+                <CommandSourceContext value={source}>
+                  <AppHeader />
+                </CommandSourceContext>
+              }
+              score={<ScorePane hint={hint} />}
+              banner={<UnimportedBanner />}
+              scoreOverlay={<DefaultSoundOffer />}
+              transport={
+                <TransportBar
+                  registry={registry}
+                  keyboard={keyboard}
+                  speedTrainer={<SpeedTrainerChip />}
+                  tuner={<TunerButton />}
+                />
+              }
+              status={
+                <CommandSourceContext value={source}>
+                  <StatusBar />
+                </CommandSourceContext>
+              }
+              sidebar={
+                <TrackSidebar
+                  registry={registry}
+                  keyboard={keyboard}
+                  headerActions={addTrackButton}
+                  rowMenu={renderTrackRowMenu}
+                />
+              }
+              bottom={
+                <CommandSourceContext value={source}>
+                  <TrainerPanel view={bottomView} />
+                </CommandSourceContext>
+              }
+              panel={
+                <CommandSourceContext value={source}>
+                  <PanelTabs>
+                    <RightPanel view={rightPanelView} />
+                  </PanelTabs>
+                </CommandSourceContext>
+              }
+              sectionStrip={
+                <CommandSourceContext value={source}>
+                  <SectionStrip />
+                </CommandSourceContext>
+              }
+              capsule={
+                <CommandSourceContext value={source}>
+                  <PracticeCapsule />
+                </CommandSourceContext>
+              }
+              onRightPanelResizeEnd={() => {
+                storeRightPanelWidth(services);
+              }}
+              rail={
+                <CommandSourceContext value={source}>
+                  <PanelRail />
+                </CommandSourceContext>
+              }
+            />
+          </div>
+          <CommandSourceContext value={source}>
+            <SettingsDialog sections={SETTINGS_SECTIONS} />
+          </CommandSourceContext>
+          <AppSheet id="library" title="Library" width="wide">
+            <LibraryScreen />
+          </AppSheet>
+          <AppSheet id="sounds" title="Sounds" width="medium">
+            <SoundManager />
+          </AppSheet>
+          <CommandPalette registry={registry} ui={ui} keyboard={keyboard} services={services} />
+          <ContextMenuHost registry={registry} menus={menus} keyboard={keyboard} />
+          <ShortcutSheet
+            registry={registry}
             ui={ui}
-            header={
-              <CommandSourceContext value={source}>
-                <AppHeader />
-              </CommandSourceContext>
-            }
-            score={<ScorePane hint={hint} />}
-            banner={<UnimportedBanner />}
-            scoreOverlay={<DefaultSoundOffer />}
-            transport={
-              <TransportBar
-                registry={registry}
-                keyboard={keyboard}
-                speedTrainer={<SpeedTrainerChip />}
-                tuner={<TunerButton />}
-              />
-            }
-            status={
-              <CommandSourceContext value={source}>
-                <StatusBar />
-              </CommandSourceContext>
-            }
-            sidebar={
-              <TrackSidebar
-                registry={registry}
-                keyboard={keyboard}
-                headerActions={addTrackButton}
-                rowMenu={renderTrackRowMenu}
-              />
-            }
-            bottom={
-              <CommandSourceContext value={source}>
-                <TrainerPanel view={bottomView} />
-              </CommandSourceContext>
-            }
-            panel={
-              <CommandSourceContext value={source}>
-                <PanelTabs>
-                  <RightPanel view={rightPanelView} />
-                </PanelTabs>
-              </CommandSourceContext>
-            }
-            sectionStrip={
-              <CommandSourceContext value={source}>
-                <SectionStrip />
-              </CommandSourceContext>
-            }
-            capsule={
-              <CommandSourceContext value={source}>
-                <PracticeCapsule />
-              </CommandSourceContext>
-            }
-            onRightPanelResizeEnd={() => {
-              storeRightPanelWidth(services);
-            }}
-            rail={
-              <CommandSourceContext value={source}>
-                <PanelRail />
-              </CommandSourceContext>
-            }
+            settings={services.settings}
+            keyboard={keyboard}
           />
-        </div>
-        <CommandSourceContext value={source}>
-          <SettingsDialog sections={SETTINGS_SECTIONS} />
-        </CommandSourceContext>
-        <AppSheet id="library" title="Library" width="wide">
-          <LibraryScreen />
-        </AppSheet>
-        <AppSheet id="sounds" title="Sounds" width="medium">
-          <SoundManager />
-        </AppSheet>
-        <CommandPalette registry={registry} ui={ui} keyboard={keyboard} services={services} />
-        <ContextMenuHost registry={registry} menus={menus} keyboard={keyboard} />
-        <ShortcutSheet
-          registry={registry}
-          ui={ui}
-          settings={services.settings}
-          keyboard={keyboard}
-        />
-        <DropZone />
-        <Notices />
-        {/* Outside the frame: the footer is gone in practice mode, and a live region has to stay mounted. */}
-        <Announcer />
-        <SavePromptDialog />
-        <EditorDialogs />
-        <UnsavedChangesHost />
-        <ExportDialog />
-        <DraftRecoveryDialog />
-        <PrintDialog store={services.print} />
-        <PrintRoot store={services.print} />
-      </TooltipProvider>
+          <DropZone />
+          <Notices />
+          {/* Outside the frame: the footer is gone in practice mode, and a live region has to stay mounted. */}
+          <Announcer />
+          <SavePromptDialog />
+          <EditorDialogs />
+          <UnsavedChangesHost />
+          <ExportDialog />
+          <DraftRecoveryDialog />
+          <PrintDialog store={services.print} />
+          <PrintRoot store={services.print} />
+        </TooltipProvider>
+      </MenuRegistryContext>
     </AppServicesProvider>
   );
 }

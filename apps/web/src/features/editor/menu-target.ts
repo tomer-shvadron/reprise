@@ -34,7 +34,8 @@ export interface ScoreMenuOpen {
 const barNumber = (score: Score, id: Id): number =>
   score.masterBars.findIndex((bar) => bar.id === id) + 1;
 
-const barsLabel = (score: Score, bars: BarRange): string => {
+/** "Bar 3" or "Bars 12 to 16": the accessible name of what a bar selection is. */
+export const barsLabel = (score: Score, bars: BarRange): string => {
   const start = barNumber(score, bars.startBar);
   const end = barNumber(score, bars.endBar);
   return start === end ? `Bar ${String(start)}` : `Bars ${String(start)} to ${String(end)}`;

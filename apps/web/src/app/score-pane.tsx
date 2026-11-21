@@ -35,6 +35,7 @@ import { selectScoreZoom } from '@/state/ui';
 import type { BarRange } from '@/state/selection';
 
 import { PRACTICE_CAPSULE_CLEARANCE } from './practice-mode/clearance';
+import { SelectionPill } from './selection-pill';
 import { useBodyContextMenuFallback } from './context-menu/body-fallback';
 import { useContextMenu, useStaticContextMenu } from './context-menu/use-context-menu';
 import { detectKeyboardPlatform } from './keyboard';
@@ -249,6 +250,7 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
         className="h-full focus-visible:-outline-offset-2"
       >
         <WordField />
+        <SelectionPill view={handle} layout={result} zoom={zoom} dragging={preview !== undefined} />
       </ScoreView>
       <FollowButton />
     </div>

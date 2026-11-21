@@ -4,7 +4,7 @@ import { createTestServices } from '@/test/services';
 
 import { CommandRegistry, type Command } from '../command-registry';
 import { createMenuRegistry } from './menu-registry';
-import { resolveMenu, type ResolvedEntry } from './resolve-menu';
+import { resolveItems, resolveMenu, type ResolvedEntry } from './resolve-menu';
 import type { MenuContext, MenuContribution, MenuMode } from './types';
 
 const run = () => undefined;
@@ -173,5 +173,59 @@ describe('resolveMenu', () => {
         { Bar: ['Actual size'] },
       ]);
     });
+  });
+});
+
+describe('resolveItems', () => {
+  const items: MenuContribution[] = [
+    {
+      surface: 'score.bar',
+      items: [
+        { command: 'view.zoomReset', group: 'bar', label: 'Reset (bar)' },
+        { command: 'view.zoomOut', group: 'bar', when: () => false },
+      ],
+    },
+    {
+      surface: 'score.range',
+      items: [
+        { command: 'view.zoomReset', group: 'practice', label: 'Reset (range)' },
+        { command: 'track.toggleMute', group: 'practice', label: 'Mute these' },
+        { command: 'view.zoomIn', group: 'play', checked: () => true },
+      ],
+    },
+  ];
+  const resolveFlat = (ids: Parameters<typeof resolveItems>[5], mode: MenuMode = 'play') => {
+    editingNow = mode === 'edit';
+    const at: MenuContext = { services, target: { kind: 'paper' }, mode };
+    return resolveItems(menu(items), registry, 'score.range', at, 'mac', ids);
+  };
+
+  it('agrees with the menu: the same label, enabled state and checked state, flat across the parents', () => {
+    const flat = resolve(items, 'score.range', 'play').filter((entry) => entry.kind === 'item');
+    const resolved = resolveFlat(['view.zoomIn', 'view.zoomReset', 'track.toggleMute']);
+    for (const item of resolved) {
+      const same = flat.find((entry) => 'id' in entry && entry.id === item.id);
+      expect(same).toEqual(item);
+    }
+    expect(resolved.map((item) => item.label)).toEqual(['Zoom in', 'Reset (range)', 'Mute these']);
+    expect(resolved.map((item) => item.enabled)).toEqual([true, true, false]);
+    expect(resolved[0]?.checked).toBe(true);
+  });
+
+  it('returns the items in the order asked, leaves out what the menu does not offer', () => {
+    expect(
+      resolveFlat(['track.toggleMute', 'view.zoomOut', 'view.zoomIn']).map((i) => i.id),
+    ).toEqual(['track.toggleMute', 'view.zoomIn']);
+  });
+
+  it('applies the mode rule: an editing command is not offered in play mode', () => {
+    const rest: MenuContribution[] = [
+      { surface: 'score.range', items: [{ command: 'editor.rest', group: 'note' }] },
+    ];
+    editingNow = false;
+    const at: MenuContext = { services, target: { kind: 'paper' }, mode: 'play' };
+    expect(resolveItems(menu(rest), registry, 'score.range', at, 'mac', ['editor.rest'])).toEqual(
+      [],
+    );
   });
 });
