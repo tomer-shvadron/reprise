@@ -136,6 +136,8 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
   const edit = useEditOverlays();
   const loop = useStore(playback, (state) => state.settings.loop);
   const [preview, setPreview] = useState<BarRange>();
+  // An edit-mode drag over the score (a range being drawn) is unfinished.
+  const [areaDragging, setAreaDragging] = useState(false);
   // On a Mac a Ctrl+click is a context click, in both modes: it opens the menu and neither seeks
   // nor selects. There only Cmd toggles a picked note.
   const [gestures] = useState(() =>
@@ -187,6 +189,7 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
     const gesture = gestures.handle(event, editing ? 'area' : 'columns');
     if (!gesture || !score) return;
     if (editing) {
+      setAreaDragging(gesture.kind === 'area' && !gesture.done);
       const placed = editPointer(result, gesture);
       // Only a plain click also moves a stopped playhead to the cursor, so Play starts there; a
       // Shift or Cmd/Ctrl click, a drag and the keys leave it, and a click never ends a loop.
@@ -250,7 +253,13 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
         className="h-full focus-visible:-outline-offset-2"
       >
         <WordField />
-        <SelectionPill view={handle} layout={result} zoom={zoom} dragging={preview !== undefined} />
+        <SelectionPill
+          view={handle}
+          layout={result}
+          zoom={zoom}
+          dragging={preview !== undefined || areaDragging}
+          edit={edit}
+        />
       </ScoreView>
       <FollowButton />
     </div>

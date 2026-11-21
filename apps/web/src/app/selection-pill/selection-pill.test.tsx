@@ -353,7 +353,6 @@ describe('the selection pill over a bar range', () => {
     act(() => {
       services.editing.setState({ editing: true });
     });
-    expect(first?.hasAttribute('hidden')).toBe(true);
     act(() => {
       services.editing.setState({ editing: false });
     });
@@ -370,7 +369,7 @@ describe('the selection pill over a bar range', () => {
     });
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'e', ctrlKey: true });
     expect(services.editing.getState().editing).toBe(true);
-    expect(screen.queryByRole('toolbar')).toBeNull();
+    // Copy left with the mode: focus goes to the score, not the body.
     expect(document.activeElement).toBe(region());
     off();
   });
@@ -436,13 +435,13 @@ describe('the selection pill over a bar range', () => {
     expect(renders).not.toHaveBeenCalled();
   });
 
-  it('does not render in edit mode', async () => {
+  it('turns into the edit pill, with no play items, in edit mode', async () => {
     const { services, select } = await setup();
     select(1, 3);
     act(() => {
-      services.editing.getState().setEditing(true);
+      services.editing.setState({ editing: true });
     });
-    expect(screen.queryByRole('toolbar')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Loop these bars' })).toBeNull();
   });
 
   it('does not pause following when Space presses one of its buttons', async () => {
