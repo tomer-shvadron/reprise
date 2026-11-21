@@ -4,6 +4,7 @@ import { createPrintStore, viewLayoutOptions, type PrintStore } from '@/features
 import { installTransport } from '@/features/transport/install-transport';
 import { createTransportUi, type TransportUiStore } from '@/features/transport/transport-ui';
 import type { Platform } from '@/platform/platform';
+import { read as readScore } from '@reprise/formats';
 import {
   createDocumentStore,
   visibleTrackIds,
@@ -21,6 +22,8 @@ import { createLayoutStore, type LayoutStore } from '@/state/layout';
 import { createPlaybackStore, type PlaybackStore } from '@/state/playback';
 import { createPracticeStore, type PracticeStore } from '@/state/practice';
 import { createSelectionStore, type SelectionStore } from '@/state/selection';
+import { applyNotationDefaults } from '@/state/notation-defaults';
+import { notationDefaultsOf } from '@/state/notation-defaults-setting';
 import { createSettingsStore, type SettingsStore } from '@/state/settings';
 import type { DefaultSounds } from '@/state/sound-packs';
 import { createUiStore, type UiStore } from '@/state/ui';
@@ -78,9 +81,23 @@ export function createAppServices(options: AppServicesOptions): AppServices {
   const { platform } = options;
   const ui = options.ui ?? createUiStore();
   const settings = options.settings ?? createSettingsStore();
+  // The file's own notation wins; the default fills what it left out. It waits for the stored
+  // settings so a file opened at startup does not take the default over the user's choice.
+  const readFile = options.read ?? readScore;
+  const read: DocumentStoreDeps['read'] = async (bytes, readOptions) => {
+    const [result] = await Promise.all([readFile(bytes, readOptions), settings.whenHydrated()]);
+    return {
+      ...result,
+      score: applyNotationDefaults(
+        result.score,
+        result.implicitNotation,
+        notationDefaultsOf(settings),
+      ),
+    };
+  };
   const document = createDocumentStore({
     platform,
-    ...(options.read && { read: options.read }),
+    read,
     ...(options.write && { write: options.write }),
   });
   const selection = createSelectionStore();
