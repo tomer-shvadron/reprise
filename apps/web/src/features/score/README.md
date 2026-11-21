@@ -141,3 +141,5 @@ Play with following, 10 s from bar 1 on the long score, recorded the same way (C
 | paged      | 0.5  | 601    | 60.1     | 16.7 ms      | 0                    | 4 657            |
 | continuous | 1    | 601    | 60.1     | 16.7 ms      | 0                    | 5 361            |
 | continuous | 0.5  | 601    | 60.1     | 16.7 ms      | 0                    | 7 599            |
+
+Chord diagrams are on by default; the `score.chordDiagrams` setting (Settings, Score, and the View menu's Chord diagrams item, command `view.toggleChordDiagrams`) turns them off. The shell passes it as `ContentOptions.chordDiagrams` to the screen layout and to the print layout, so a print follows the screen.

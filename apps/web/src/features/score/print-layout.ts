@@ -50,11 +50,16 @@ export function printLayoutOptions(
   settings: PrintSettings,
   notation: Record<Id, Notation>,
   headerHeight: number,
+  chordDiagrams?: boolean,
 ): LayoutOptions {
   return {
     ...viewLayoutOptions(
       { mode: 'paged', paper: settings.paper },
-      { tracks: [...settings.tracks], notation },
+      {
+        tracks: [...settings.tracks],
+        notation,
+        ...(chordDiagrams !== undefined && { chordDiagrams }),
+      },
     ),
     ...(headerHeight > 0 && { headerHeight }),
   };
@@ -76,10 +81,14 @@ export function layoutForPrint(
   notation: Record<Id, Notation>,
   fileName: string | undefined,
   run: typeof layout = layout,
+  chordDiagrams?: boolean,
 ): PrintContent {
   const present = new Set(score.tracks.map(({ id }) => id));
   const kept = { ...settings, tracks: settings.tracks.filter((id) => present.has(id)) };
   const heading = settings.header ? printHeading(score.meta, fileName) : undefined;
-  const result = run(score, printLayoutOptions(kept, notation, heading?.height ?? 0));
+  const result = run(
+    score,
+    printLayoutOptions(kept, notation, heading?.height ?? 0, chordDiagrams),
+  );
   return { result, settings: kept, heading };
 }
