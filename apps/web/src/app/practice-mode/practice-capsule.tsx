@@ -1,10 +1,10 @@
 import { XIcon } from 'lucide-react';
 
-import { keepFocus, tooltipText } from '@/app/command-control';
+import { keepFocus } from '@/app/command-control';
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { SpeedTrainerChip } from '@/features/trainer';
 import { PlaybackButtons, PracticeToggles, TempoControl } from '@/features/transport';
 
@@ -30,22 +30,18 @@ export function PracticeCapsule() {
       {divider}
       <PracticeToggles speedTrainer={<SpeedTrainerChip command="trainer.speedTrainerToggle" />} />
       {divider}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Leave practice mode"
-            aria-keyshortcuts={leave.ariaKeys}
-            data-command="view.leavePracticeMode"
-            onMouseDown={keepFocus}
-            onClick={leave.run}
-          >
-            <XIcon />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{tooltipText('Leave practice mode', leave.keys)}</TooltipContent>
-      </Tooltip>
+      <CommandTooltip command="view.leavePracticeMode" label="Leave practice mode">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Leave practice mode"
+          data-command="view.leavePracticeMode"
+          onMouseDown={keepFocus}
+          onClick={leave.run}
+        >
+          <XIcon />
+        </Button>
+      </CommandTooltip>
     </div>
   );
 }

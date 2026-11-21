@@ -4,15 +4,14 @@ import { use, useId, useMemo, type KeyboardEvent, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import type { CommandRegistry } from '@/app/command-registry';
-import { matchesShortcut, type KeyboardPlatform } from '@/app/keyboard';
+import { matchesShortcut, type KeyboardPlatform, type Shortcut } from '@/app/keyboard';
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useAppServices } from '@/app/services-context';
-import { bindCommand, CommandSourceContext, useCommand, useCommandSource } from '@/app/use-command';
+import { CommandSourceContext, useCommand, useCommandSource } from '@/app/use-command';
 import { Toggle } from '@/components/ui/toggle';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { singleTrackOf } from '@/state/document';
 
-import { TRACK_LIST_ATTR, TRACK_SELECT_ATTR } from './sidebar-focus';
-import { goCommandId } from './commands';
+import { TRACK_LIST_ATTR, TRACK_LIST_KEYS, TRACK_SELECT_ATTR } from './sidebar-focus';
 import { useTrackActions } from './track-actions';
 import { TrackRow } from './track-row';
 import { audibleTracks, effectiveMix, effectiveNotation, visibleSet } from './track-model';
@@ -33,23 +32,17 @@ interface TrackSidebarProps extends TrackSidebarSlots {
 function MultitrackToggle({ single, disabled }: { single: boolean; disabled: boolean }) {
   const command = useCommand('view.toggleMultitrack');
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Toggle
-          size="sm"
-          aria-label="Multitrack view"
-          aria-keyshortcuts={command.ariaKeys}
-          pressed={!single}
-          disabled={disabled}
-          onPressedChange={command.run}
-        >
-          <LayersIcon />
-        </Toggle>
-      </TooltipTrigger>
-      <TooltipContent>
-        Multitrack view{command.keys !== undefined && ` (${command.keys})`}
-      </TooltipContent>
-    </Tooltip>
+    <CommandTooltip command="view.toggleMultitrack" label="Multitrack view">
+      <Toggle
+        size="sm"
+        aria-label="Multitrack view"
+        pressed={!single}
+        disabled={disabled}
+        onPressedChange={command.run}
+      >
+        <LayersIcon />
+      </Toggle>
+    </CommandTooltip>
   );
 }
 
@@ -75,14 +68,14 @@ function listKeysHandler(actions: ReturnType<typeof useTrackActions>, keyboard: 
     };
     // M and S go through the registry's matcher, so a Hebrew or Russian layout (the physical key)
     // works and the key never falls through to a bare-letter command on the score.
-    const letter = (key: string) => matchesShortcut(event.nativeEvent, { key }, keyboard);
-    if (letter('m')) {
+    const letter = (key: Shortcut) => matchesShortcut(event.nativeEvent, key, keyboard);
+    if (letter(TRACK_LIST_KEYS.mute)) {
       event.preventDefault();
       event.stopPropagation();
       actions.toggleMute(id);
       return;
     }
-    if (letter('s')) {
+    if (letter(TRACK_LIST_KEYS.solo)) {
       event.preventDefault();
       event.stopPropagation();
       actions.toggleSolo(id);
@@ -151,8 +144,6 @@ function TrackList({ headerActions, rowMenu }: TrackSidebarSlots) {
           {tracks.map((track, index) => {
             const mix = effectiveMix(track, mixer[track.id]);
             const visible = shown.has(track.id);
-            const goId = goCommandId(index + 1);
-            const jump = goId && bindCommand(source, goId);
             return (
               <TrackRow
                 key={track.id}
@@ -167,8 +158,6 @@ function TrackList({ headerActions, rowMenu }: TrackSidebarSlots) {
                 notation={effectiveNotation(track, view.notation)}
                 single={single}
                 loading={loads[track.id] !== undefined}
-                jumpKeys={jump?.keys}
-                jumpAriaKeys={jump?.ariaKeys}
                 tabStop={track.id === (currentTrack ?? tracks[0]?.id)}
                 actions={actions}
                 rowMenu={rowMenu}

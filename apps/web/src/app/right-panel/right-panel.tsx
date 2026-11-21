@@ -11,13 +11,11 @@ import {
 import type { ReactNode } from 'react';
 import { useStore } from 'zustand';
 
-import { keepFocus, tooltipText } from '@/app/command-control';
+import { keepFocus } from '@/app/command-control';
 import { CommandTooltip } from '@/app/command-tooltip';
 import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useAppServices } from '@/app/services-context';
-import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { PanelView } from '@/state/ui';
 
 import {
@@ -116,7 +114,6 @@ function RailButton({ entry }: { entry: (typeof PANEL_TABS)[number] }) {
     ui,
     (state) => state.panels.rightPanel && tabOfView(state.rightPanelView) === id,
   );
-  const command = useCommand(entry.command);
   const menu = useStaticContextMenu({
     surface: 'panel.rail',
     target: { kind: 'panel', view: entry.view },
@@ -125,29 +122,25 @@ function RailButton({ entry }: { entry: (typeof PANEL_TABS)[number] }) {
   const Icon = TAB_ICONS[id];
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={entry.label}
-          aria-pressed={active}
-          aria-keyshortcuts={command.ariaKeys}
-          {...menu}
-          onMouseDown={keepFocus}
-          onClick={() => {
-            const state = ui.getState();
-            // The active view's icon folds the panel away; any other shows its view.
-            if (active) state.setPanelOpen('rightPanel', false);
-            else state.showPanelView(entry.view);
-          }}
-          className={active ? 'bg-accent text-accent-foreground' : undefined}
-        >
-          <Icon />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="left">{tooltipText(entry.label, command.keys)}</TooltipContent>
-    </Tooltip>
+    <CommandTooltip command={entry.command} label={entry.label} side="left">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={entry.label}
+        aria-pressed={active}
+        {...menu}
+        onMouseDown={keepFocus}
+        onClick={() => {
+          const state = ui.getState();
+          // The active view's icon folds the panel away; any other shows its view.
+          if (active) state.setPanelOpen('rightPanel', false);
+          else state.showPanelView(entry.view);
+        }}
+        className={active ? 'bg-accent text-accent-foreground' : undefined}
+      >
+        <Icon />
+      </Button>
+    </CommandTooltip>
   );
 }
 

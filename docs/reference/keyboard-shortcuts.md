@@ -58,9 +58,11 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Show import details | File | Global | — | — |
 | Print… | File | Global | ⌘P | Ctrl+P |
 | Export as ASCII tab… | File | Global | — | — |
+| Export as image… | File | Global | — | — |
 | Undo | Edit | Global | ⌘Z | Ctrl+Z |
 | Redo | Edit | Global | ⇧⌘Z | Ctrl+Shift+Z or Ctrl+Y |
 | Copy as ASCII tab | Edit | Global | — | — |
+| Copy as image | Edit | Global | — | — |
 | Zoom in | View | Global | ⌘= | Ctrl+= |
 | Zoom out | View | Global | ⌘- | Ctrl+- |
 | Actual size | View | Global | ⌘0 | Ctrl+0 |
