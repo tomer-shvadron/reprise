@@ -48,14 +48,15 @@ describe('chord diagrams of the fixtures', () => {
     const beats = withDiagram(built);
     expect(beats.length).toBeGreaterThan(0);
     for (const notation of ['tab', 'standard', 'both'] as const satisfies readonly Notation[]) {
-      const result = layout(built, {
+      const options: LayoutOptions = {
         ...paged,
         notation: Object.fromEntries(built.tracks.map((track) => [track.id, notation])),
-      });
+      };
+      const result = layout(built, options);
+      const off = layout(built, { ...options, chordDiagrams: false });
       expectValid(result);
       const drawn = grids(result).map((grid) => grid.node);
       expect([...drawn].sort()).toEqual(beats.map((beat) => beat.id).sort());
-      const off = layout(built, { ...paged, chordDiagrams: false });
       expect(grids(off)).toHaveLength(0);
     }
   });
@@ -80,7 +81,10 @@ describe('chord diagrams in a layout', () => {
     const [grid] = grids(result);
     const name = result.primitives.find((p) => p.kind === 'text' && p.lane === 'chord');
     const tab = result.systems[0]?.staves.find((staff) => staff.type === 'tab');
-    if (!grid || !name || !tab) throw new Error('no diagram');
+    const standard = result.systems[0]?.staves.find((staff) => staff.type === 'standard');
+    if (!grid || !name || !tab || !standard) throw new Error('no diagram');
+    // In both mode the grid belongs to the tab: between the two staves, not above the top one.
+    expect(grid.bbox.y).toBeGreaterThanOrEqual(standard.bottom);
     expect(name.bbox.y + name.bbox.height).toBeLessThanOrEqual(grid.bbox.y + 0.5);
     expect(grid.bbox.y + grid.bbox.height).toBeLessThanOrEqual(tab.top);
     expect(grid.x).toBeGreaterThanOrEqual(0);

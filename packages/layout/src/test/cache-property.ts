@@ -48,6 +48,7 @@ import { layoutWith } from '../layout';
 import { resolveOptions } from '../options';
 import { breakIds, expectInsidePages, expectValid, stable } from './check-result';
 import { withEffects, withNoteMarks } from './effects';
+import { randomScore } from './random-score';
 
 /** The keep rule's band in lines, written out so that changing `UNDERFLOW` or `OVERFLOW` fails here. */
 const MIN_LINES = 0.5;
@@ -405,9 +406,23 @@ function withHyphens(built: Score): Score {
   return built;
 }
 
-const SCORES: Record<'large' | 'sparse', () => Score> = {
+/** The first random score, by seed, that is fretted and carries diagrams. */
+function diagramScore(): Score {
+  for (let seed = 1; ; seed += 1) {
+    const built = randomScore(seed, { diagrams: true });
+    const diagrams = built.tracks.some((track) =>
+      track.bars.some((bar) =>
+        bar.voices.some((voice) => voice.beats.some((beat) => beat.chord?.diagram)),
+      ),
+    );
+    if (diagrams) return built;
+  }
+}
+
+const SCORES: Record<'large' | 'sparse' | 'diagrams', () => Score> = {
   large: () => withHyphens(withNoteMarks(withEffects(largeScore(3, 32, { structure: true })))),
   sparse: sparseScore,
+  diagrams: diagramScore,
 };
 
 /**
@@ -496,7 +511,7 @@ export function checkCachedEqualsCold(
   const split = height !== undefined;
   assert(
     property(
-      constantFrom<'large' | 'sparse'>('large', 'sparse'),
+      constantFrom<'large' | 'sparse' | 'diagrams'>('large', 'sparse', 'diagrams'),
       integer({ min: 0, max: 2 }),
       integer({ min: 0, max: 4 }),
       array(edit, { minLength: 1, maxLength: 8 }),

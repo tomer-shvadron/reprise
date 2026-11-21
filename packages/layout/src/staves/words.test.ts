@@ -1,4 +1,4 @@
-import { score, midi, note } from '@reprise/model/testing';
+import { score, midi, note, beatOf } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { PAGE_SIZES, layout, type LayoutOptions, type LayoutResult } from '../index';
@@ -6,9 +6,8 @@ import { expectValid } from '../test/check-result';
 import { standardModule } from './standard';
 import type { StaffBar } from './staff-module';
 import { textWidth } from '../metrics';
-import type { Beat } from '@reprise/model';
 import type { LayoutSink } from '../primitives';
-import { chordDiagramSize } from './chord-diagram';
+import { chordDiagramCentre, chordDiagramSize } from './chord-diagram';
 import { WORDS, drawWords, wordLanes, wordRows, wordsExtent } from './words';
 
 const paged: LayoutOptions = {
@@ -516,10 +515,13 @@ describe.each(['tab', 'standard'] as const)('words on a %s staff, placement', (n
 });
 
 describe('drawWords with a chord diagram', () => {
-  const beat = {
-    id: 'beat-1',
-    chord: { name: 'C', diagram: { baseFret: 1, frets: [0, 1, 0, 2, 3, null] } },
-  } as unknown as Beat;
+  const diagram = { baseFret: 1, frets: [0, 1, 0, 2, 3, null] };
+  const built = score()
+    .track('guitar')
+    .bar()
+    .beat('4', [note(1, 0)], { chord: { name: 'C', diagram } })
+    .build({ ids: 'sequential' });
+  const beat = beatOf(built, 0, 0, 0);
   const lanes = { chordDiagram: { top: 20, bottom: 90 }, chord: { top: 0, bottom: 20 } };
   const drawn = (x: number, limit: number) => {
     const sink: LayoutSink = { primitives: [], anchors: [] };
@@ -538,6 +540,26 @@ describe('drawWords with a chord diagram', () => {
     const [grid] = drawn(100, 100 + width - 10);
     expect(grid?.bbox.x).toBeCloseTo(90, 1);
     expect(drawn(100, 100 + width / 2 - 1)).toHaveLength(0);
+  });
+
+  const chordName = (x: number, limit: number) => {
+    const sink: LayoutSink = { primitives: [], anchors: [] };
+    drawWords(sink, lanes, beat, { x, start: 0, space: 10, limit, diagrams: true });
+    return sink.primitives.flatMap((p) => (p.kind === 'text' && p.lane === 'chord' ? [p] : []))[0];
+  };
+
+  it('centres the name over the strings, and moves it with the grid at a system end', () => {
+    const name = chordName(100, Infinity);
+    const [grid] = drawn(100, Infinity);
+    const centre = (grid?.bbox.x ?? 0) + chordDiagramCentre(diagram, 10);
+    expect((name?.bbox.x ?? 0) + (name?.bbox.width ?? 0) / 2).toBeCloseTo(centre, 1);
+    const end = 100 + width - 10;
+    const [shifted] = drawn(100, end);
+    const moved = chordName(100, end);
+    expect((moved?.bbox.x ?? 0) + (moved?.bbox.width ?? 0) / 2).toBeCloseTo(
+      (shifted?.bbox.x ?? 0) + chordDiagramCentre(diagram, 10),
+      1,
+    );
   });
 
   it('draws nothing with diagrams off or without the lane', () => {

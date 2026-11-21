@@ -530,7 +530,7 @@ function atLeastTwoSystems(result: LayoutResult): void {
 
 /**
  * A 7-string track: a barre at base fret 7, muted and open strings, two diagrams on consecutive
- * eighths, and a diagram on the last beat of every bar, so one ends a system at the narrow width.
+ * eighths, and a diagram on the last beat of every bar, so each system ends on one.
  */
 function chordDiagramsBuilt(): Score {
   const strings = 7;
@@ -570,7 +570,7 @@ function chordDiagramsBuilt(): Score {
     .beat('8', [note(1, 0)], { chord: muted })
     .beat('4', [note(2, 3)])
     .beat('2', [note(3, 2)]);
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 2; i++) {
     builder
       .bar()
       .beat('4', [note(1, i)])
@@ -653,7 +653,7 @@ export const SCENES: readonly Scene[] = [
   {
     id: 'chord-diagrams-built',
     covers:
-      'A 7-string barre at base fret 7 with fingering, muted and open strings, diagrams on consecutive eighths and on the last beat of a system',
+      'A 7-string barre at base fret 7 with fingering, muted and open strings, diagrams on consecutive eighths and on the last beat of each system',
     source: { build: chordDiagramsBuilt },
     notations: ['tab'],
     width: 400,

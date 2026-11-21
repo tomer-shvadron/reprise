@@ -4,12 +4,12 @@ exports[`chordDiagramPrimitives > matches the snapshots of open C and the F barr
 [
   {
     "bbox": {
-      "height": 49,
+      "height": 59,
       "width": 48,
       "x": 100,
       "y": 50,
     },
-    "d": "M144 59L144 99M136 59L136 99M128 59L128 99M120 59L120 99M112 59L112 99M104 59L104 99M104 69L144 69M104 79L144 79M104 89L144 89M104 99L144 99",
+    "d": "M144 59L144 109M136 59L136 109M128 59L128 109M120 59L120 109M112 59L112 109M104 59L104 109M104 69L144 69M104 79L144 79M104 89L144 89M104 99L144 99M104 109L144 109",
     "fill": false,
     "kind": "path",
     "lane": "chordDiagram",
@@ -90,12 +90,12 @@ exports[`chordDiagramPrimitives > matches the snapshots of open C and the F barr
 [
   {
     "bbox": {
-      "height": 49,
+      "height": 59,
       "width": 48,
       "x": 100,
       "y": 50,
     },
-    "d": "M144 59L144 99M136 59L136 99M128 59L128 99M120 59L120 99M112 59L112 99M104 59L104 99M104 69L144 69M104 79L144 79M104 89L144 89M104 99L144 99",
+    "d": "M144 59L144 109M136 59L136 109M128 59L128 109M120 59L120 109M112 59L112 109M104 59L104 109M104 69L144 69M104 79L144 79M104 89L144 89M104 99L144 99M104 109L144 109",
     "fill": false,
     "kind": "path",
     "lane": "chordDiagram",

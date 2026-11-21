@@ -2,7 +2,7 @@ import { beatTicks, type Beat, type Track } from '@reprise/model';
 
 import { fitText, textWidth } from '../metrics';
 import { text, type LayoutSink } from '../primitives';
-import { chordDiagramPrimitives, chordDiagramSize } from './chord-diagram';
+import { chordDiagramCentre, chordDiagramPrimitives, chordDiagramSize } from './chord-diagram';
 import type { LaneBands, LaneRequests } from './lanes';
 
 /**
@@ -204,27 +204,38 @@ export function drawWords(sink: LayoutSink, lanes: LaneBands, beat: Beat, at: Wo
   const node = beat.id;
   const left = x + start;
   const { chord, lyrics } = beat;
-  if (chord && lanes.chord) {
-    const y = lanes.chord.bottom - WORDS.lift * space;
-    const name = fitText(chord.name, size, limit - left);
-    if (name !== '' || chord.name === '')
-      sink.primitives.push(text(name, left, y, size, { node, lane: 'chord' }));
-  }
+  // The system's last bar shifts a grid left to fit, at most half its width left of its beat;
+  // past that it is skipped, as a name is cut.
+  let gridX: number | undefined;
   if (at.diagrams && chord?.diagram && lanes.chordDiagram) {
     const { width } = chordDiagramSize(chord.diagram, space);
-    // The system's last bar shifts a grid left to fit, at most half its width left of its beat;
-    // past that it is skipped, as a name is cut.
-    const gridX = Math.min(left, limit - width);
-    if (gridX >= x - width / 2) {
-      sink.primitives.push(
-        ...chordDiagramPrimitives(chord.diagram, {
-          x: gridX,
-          y: lanes.chordDiagram.top,
-          space,
-          node,
-        }),
-      );
+    const shifted = Math.min(left, limit - width);
+    if (shifted >= x - width / 2) gridX = shifted;
+  }
+  if (chord && lanes.chord) {
+    const y = lanes.chord.bottom - WORDS.lift * space;
+    let nameLeft = left;
+    if (gridX !== undefined && chord.diagram) {
+      // Centred over the strings, as Guitar Pro does, when it fits inside the box; a longer name
+      // starts at the box's edge. Either way it moves with the grid.
+      const wide = textWidth(chord.name, size);
+      const centre = gridX + chordDiagramCentre(chord.diagram, space);
+      const room = gridX + chordDiagramSize(chord.diagram, space).width - centre;
+      nameLeft = wide / 2 <= room ? centre - wide / 2 : gridX;
     }
+    const name = fitText(chord.name, size, limit - nameLeft);
+    if (name !== '' || chord.name === '')
+      sink.primitives.push(text(name, nameLeft, y, size, { node, lane: 'chord' }));
+  }
+  if (gridX !== undefined && chord?.diagram && lanes.chordDiagram) {
+    sink.primitives.push(
+      ...chordDiagramPrimitives(chord.diagram, {
+        x: gridX,
+        y: lanes.chordDiagram.top,
+        space,
+        node,
+      }),
+    );
   }
   if (beat.text && lanes.text) {
     const y = lanes.text.bottom - WORDS.lift * space;

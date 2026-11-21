@@ -11,8 +11,10 @@ import type { PathPrimitive, Primitive, Rect, ThemeRole } from '../types';
 export const DIAGRAM = {
   stringGap: 0.8,
   fretGap: 1,
-  /** The fewest fret rows a grid shows; a wider span adds rows. */
-  minRows: 4,
+  /** The fewest fret rows a grid shows, as Guitar Pro shows in the score; a wider span adds rows. */
+  minRows: 5,
+  /** The most rows: a damaged diagram never stretches its system, and marks past it are dropped. */
+  maxRows: 6,
   /** The open and muted marks above the nut. */
   markRow: 0.9,
   /** The finger digits under the grid, drawn only when the diagram carries fingering. */
@@ -50,7 +52,7 @@ interface Grid {
 /**
  * Where the grid starts and how many rows it shows. It starts at `baseFret`, or at the lowest
  * fretted string when that is lower, so a damaged file never draws a dot off the grid; a diagram
- * that claims fret 1 yet reaches past the fourth fret starts at its lowest fretted string.
+ * that claims fret 1 yet reaches past the last row starts at its lowest fretted string.
  */
 function gridOf(diagram: ChordDiagram): Grid {
   const frets = diagram.frets.filter((fret): fret is number => fret !== null && fret > 0);
@@ -58,13 +60,13 @@ function gridOf(diagram: ChordDiagram): Grid {
   const lowest = frets.length > 0 ? Math.min(...frets) : diagram.baseFret;
   const highest = frets.length > 0 ? Math.max(...frets) : diagram.baseFret;
   const start =
-    diagram.baseFret === 1 && highest > DIAGRAM.minRows
+    diagram.baseFret === 1 && highest > DIAGRAM.maxRows
       ? lowest
       : Math.min(diagram.baseFret, lowest);
   return {
     strings: diagram.frets.length,
     start,
-    rows: Math.max(DIAGRAM.minRows, highest - start + 1),
+    rows: Math.min(DIAGRAM.maxRows, Math.max(DIAGRAM.minRows, highest - start + 1)),
     label: start > 1 ? `${String(start)}fr` : '',
     fingered: diagram.fingering?.some((finger) => finger !== null) ?? false,
   };
@@ -74,6 +76,17 @@ function labelWidth(grid: Grid, space: number): number {
   return grid.label === ''
     ? 0
     : textWidth(grid.label, DIAGRAM.textSize * space) + DIAGRAM.markRadius * space;
+}
+
+/**
+ * The x of the middle of the strings, from the box's left edge: where a chord name is centred, as
+ * Guitar Pro does, rather than over the base-fret label.
+ */
+export function chordDiagramCentre(diagram: ChordDiagram, space: number): number {
+  const grid = gridOf(diagram);
+  return (
+    labelWidth(grid, space) + (DIAGRAM.side + ((grid.strings - 1) * DIAGRAM.stringGap) / 2) * space
+  );
 }
 
 /** The size of a diagram's box in px: base-fret label, marks above, grid and finger row. */
@@ -149,7 +162,7 @@ class Shape {
  * The primitives of one diagram: a stroked path for the whole grid, which carries the diagram's
  * box and `lane: 'chordDiagram'` so a click anywhere on it finds the beat; the nut or the
  * base-fret label; one filled path for the dots, one for the barres, one stroked path each for
- * the open circles and the muted crosses; and a digit per fingered string. That is at most 12, as
+ * the open circles and the muted crosses; and a digit per fingered string. That is five plus one per fingered string, so 12 on seven strings, as
  * the painter mounts one SVG element per primitive.
  */
 export function chordDiagramPrimitives(diagram: ChordDiagram, at: ChordDiagramAt): Primitive[] {

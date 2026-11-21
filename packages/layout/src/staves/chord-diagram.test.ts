@@ -42,8 +42,8 @@ describe('chordDiagramPrimitives', () => {
       (paths(list)[0]?.thickness ?? 0) * (DIAGRAM.nut - 0.01),
     );
     expect(texts(list)).toEqual([]);
-    // Six strings and four fret lines below the nut.
-    expect(marks(paths(list)[0])).toBe(6 + 4);
+    // Six strings and five fret lines below the nut.
+    expect(marks(paths(list)[0])).toBe(6 + 5);
   });
 
   it('counts the open, muted and fretted marks of open C', () => {
@@ -94,13 +94,26 @@ describe('chordDiagramPrimitives', () => {
   it('starts at the lowest fretted string when baseFret 1 hides a high shape', () => {
     expect(texts(draw(diagram([7, 9, 9, 8, 7, 7])))).toEqual(['7fr']);
     expect(texts(draw(diagram([1, 2, 3, 4, 4, 1])))).toEqual([]);
+    expect(texts(draw(diagram([1, 2, 3, 6, 6, 1])))).toEqual([]);
   });
 
-  it('shows at least four fret rows and grows for a wider span', () => {
+  it('shows at least five fret rows, grows for a wider span and stops at six', () => {
     const short = chordDiagramSize(diagram([0, 1, 0, 2, 3, null]), SPACE);
-    const wide = chordDiagramSize(diagram([5, 6, 7, 8, 9, null], { baseFret: 5 }), SPACE);
+    const six = chordDiagramSize(diagram([5, 6, 7, 8, 10, null], { baseFret: 5 }), SPACE);
+    const damaged = chordDiagramSize(diagram([1, null, null, null, null, 15]), SPACE);
     expect(short.height).toBe((DIAGRAM.markRow + DIAGRAM.minRows * DIAGRAM.fretGap) * SPACE);
-    expect(wide.height).toBe((DIAGRAM.markRow + 5 * DIAGRAM.fretGap) * SPACE);
+    expect(six.height).toBe((DIAGRAM.markRow + 6 * DIAGRAM.fretGap) * SPACE);
+    expect(damaged.height).toBe((DIAGRAM.markRow + DIAGRAM.maxRows * DIAGRAM.fretGap) * SPACE);
+  });
+
+  it('drops the marks past the last row of a damaged diagram', () => {
+    const list = draw(diagram([1, null, null, null, null, 15]));
+    const fill = paths(list).find((p) => p.fill);
+    // Only the dot on fret 1 is inside the grid.
+    expect(marks(fill)).toBe(1);
+    const size = chordDiagramSize(diagram([1, null, null, null, null, 15]), SPACE);
+    for (const p of list)
+      expect(p.bbox.y + p.bbox.height).toBeLessThanOrEqual(at.y + size.height + 0.5);
   });
 
   it('draws finger digits only when the diagram has fingering', () => {
@@ -124,10 +137,10 @@ describe('chordDiagramPrimitives', () => {
     const four = chordDiagramSize(diagram([0, 2, 2, null]), SPACE).width;
     expect(seven - six).toBeCloseTo(DIAGRAM.stringGap * SPACE, 1);
     expect(six - four).toBeCloseTo(2 * DIAGRAM.stringGap * SPACE, 1);
-    expect(marks(draw(diagram([0, 2, 2, null]))[0] as PathPrimitive)).toBe(4 + 4);
+    expect(marks(draw(diagram([0, 2, 2, null]))[0] as PathPrimitive)).toBe(4 + 5);
   });
 
-  it('keeps a diagram under twelve primitives, even a fully dressed one', () => {
+  it('keeps a diagram to five primitives plus one per fingered string', () => {
     const full = diagram([1, 1, 2, 3, 3, 1, null], {
       barres: [
         { fret: 1, firstString: 1, lastString: 3 },
@@ -137,8 +150,9 @@ describe('chordDiagramPrimitives', () => {
       fingering: ['index', 'index', 'middle', 'ring', 'little', 'thumb', null],
       baseFret: 1,
     });
-    expect(draw(full).length).toBeLessThanOrEqual(12);
-    expect(draw(diagram(OPEN_C)).length).toBeLessThanOrEqual(12);
+    // Grid, nut, fill, open and muted strokes, then six digits.
+    expect(draw(full).length).toBeLessThanOrEqual(5 + 6);
+    expect(draw(diagram(OPEN_C)).length).toBeLessThanOrEqual(5);
   });
 
   it('returns nothing for a diagram without strings', () => {
