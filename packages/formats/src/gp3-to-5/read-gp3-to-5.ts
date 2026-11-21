@@ -6,7 +6,7 @@ import {
   newId,
   validateScore,
 } from '@reprise/model';
-import type { MasterBar, Score, Track } from '@reprise/model';
+import type { Id, MasterBar, Score, Track } from '@reprise/model';
 
 import { BinaryReader, CorruptFile, TruncatedFile } from '../binary/binary-reader';
 import { WarningLog } from '../warnings';
@@ -29,6 +29,8 @@ export interface GpReadResult {
   format: GpFormat;
   /** Major × 100 + minor, as in the header: 300, 400, 406, 500 or 510. */
   version: GpVersion;
+  /** Tracks whose file states no notation: every gp3 and gp4 track, and a gp5 track with neither flag. */
+  implicitNotation: Id[];
 }
 
 const DEFAULT_TEMPO = 120;
@@ -88,7 +90,10 @@ export function readGp3To5(bytes: Uint8Array): GpReadResult {
       location: { path: violation.path },
     });
   }
-  return { score, warnings, format: formatOf(version), version };
+  const implicitNotation = infos
+    .filter((info) => info.implicitNotation)
+    .map((info) => info.track.id);
+  return { score, warnings, format: formatOf(version), version, implicitNotation };
 }
 
 function readBar(context: Context, info: TrackInfo, barIndex: number, trackIndex: number): void {

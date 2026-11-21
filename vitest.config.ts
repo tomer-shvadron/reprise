@@ -101,6 +101,19 @@ export default defineConfig({
       },
       {
         resolve: { alias: webAlias },
+        // A cold cache (a fresh worktree) otherwise discovers react-dom/client mid-run, re-optimises and
+        // reloads the page, so modules load twice and suites fail ("failed to find current suite", a null
+        // useRef). Pre-bundling what the tests import keeps the first run as stable as the second (#389).
+        optimizeDeps: {
+          include: [
+            'react',
+            'react/jsx-runtime',
+            'react/jsx-dev-runtime',
+            'react-dom',
+            'react-dom/client',
+            'react-dom/test-utils',
+          ],
+        },
         test: {
           name: 'web-browser',
           root: 'apps/web',

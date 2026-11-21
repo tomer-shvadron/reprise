@@ -1,13 +1,13 @@
 import { debugAudioEngine, syntheticSfzPack } from '@reprise/audio/testing';
 import { applyCommand, newId, setTrackProperties, type Score } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createSoundPackStore } from '@/features/sounds';
 import { fakePlatform } from '@/test/services';
 import { fetchSyntheticSf2 } from '@/test/assets';
 import { createPlaybackStore } from '@/state/playback';
-import type { InstalledPackSource } from '@/state/sound-packs';
+import type { DefaultSounds, InstalledPackSource } from '@/state/sound-packs';
 
 import { createAudioService } from './audio-service';
 
@@ -247,5 +247,142 @@ describe('the audio service with sound packs', () => {
     await audio.settled();
     expect(playback.getState().trackSounds[track]).toEqual({ tier: 'hq', packId });
     audio.dispose();
+  });
+
+  describe('family defaults', () => {
+    /** A default source a test changes by hand. */
+    function defaultsOf(initial: { packId: string; instrument?: string } | undefined) {
+      let current = initial;
+      const listeners = new Set<() => void>();
+      const source: DefaultSounds = {
+        get: () => current,
+        subscribe: (listener) => {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+      };
+      return {
+        source,
+        set(next: typeof initial) {
+          current = next;
+          for (const listener of listeners) listener();
+        },
+      };
+    }
+
+    function setupDefaults(defaults: DefaultSounds) {
+      const playback = createPlaybackStore();
+      const sounds = createSoundPackStore({ platform: fakePlatform() });
+      const audio = createAudioService({
+        playback,
+        packs: sounds,
+        defaults,
+        loadSoundfont: () => synthetic,
+        createContext: () => {
+          throw new Error('these tests never unlock');
+        },
+        defer: (run) => {
+          run();
+        },
+      });
+      return { playback, sounds, audio };
+    }
+
+    it('plays an installed default HQ, marked as a default, without saving it in the song', async () => {
+      const packId = newId();
+      const { source } = defaultsOf({ packId, instrument: 'two' });
+      const { playback, sounds, audio } = setupDefaults(source);
+      sounds.setInstalled([installed(packId)]);
+      const { score: open, track } = song();
+      audio.setDocument({ id: newId(), score: open });
+      await audio.settled();
+      expect(playback.getState().trackSounds[track]).toEqual({
+        tier: 'hq',
+        packId,
+        source: 'default',
+      });
+      expect(open.tracks[0]?.sound).toBeUndefined();
+      audio.dispose();
+    });
+
+    it('plays GM silently while the default pack is not installed, then HQ once it is', async () => {
+      const packId = newId();
+      const { source } = defaultsOf({ packId });
+      const { playback, sounds, audio } = setupDefaults(source);
+      const { score: open, track } = song();
+      audio.setDocument({ id: newId(), score: open });
+      await audio.settled();
+      expect(playback.getState().trackSounds[track]).toEqual({
+        tier: 'gm',
+        packId,
+        problem: 'missing',
+        source: 'default',
+      });
+      sounds.setInstalled([installed(packId)]);
+      await audio.settled();
+      expect(playback.getState().trackSounds[track]?.tier).toBe('hq');
+      audio.dispose();
+    });
+
+    it('reloads once with the new assignment when a default changes', async () => {
+      const packId = newId();
+      const other = newId();
+      const defaults = defaultsOf(undefined);
+      const { playback, sounds, audio } = setupDefaults(defaults.source);
+      sounds.setInstalled([installed(packId), installed(other)]);
+      const { score: open, track } = song();
+      audio.setDocument({ id: newId(), score: open });
+      await audio.settled();
+      expect(playback.getState().trackSounds[track]).toEqual({ tier: 'gm' });
+      const load = vi.spyOn(audio.debug().engine, 'load');
+      defaults.set({ packId });
+      await audio.settled();
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(playback.getState().trackSounds[track]).toEqual({
+        tier: 'hq',
+        packId,
+        source: 'default',
+      });
+      defaults.set({ packId: other });
+      await audio.settled();
+      expect(load).toHaveBeenCalledTimes(2);
+      expect(playback.getState().trackSounds[track]).toMatchObject({ packId: other });
+      audio.dispose();
+    });
+
+    it('plays GM for an explicit General MIDI choice even with a default installed', async () => {
+      const packId = newId();
+      const { source } = defaultsOf({ packId });
+      const { playback, sounds, audio } = setupDefaults(source);
+      sounds.setInstalled([installed(packId)]);
+      const { score: open, track } = song();
+      const chosen = applyCommand(
+        open,
+        setTrackProperties({ trackId: track }, { sound: { generalMidi: true } }),
+      ).score;
+      audio.setDocument({ id: newId(), score: chosen });
+      await audio.settled();
+      expect(playback.getState().trackSounds[track]).toEqual({ tier: 'gm' });
+      audio.dispose();
+    });
+
+    it('keeps a pack the track names over the default and a General MIDI flag beside it', async () => {
+      const named = newId();
+      const { source } = defaultsOf({ packId: newId() });
+      const { playback, sounds, audio } = setupDefaults(source);
+      sounds.setInstalled([installed(named)]);
+      const { score: open, track } = song();
+      const chosen = applyCommand(
+        open,
+        setTrackProperties(
+          { trackId: track },
+          { sound: { packId: named, instrument: 'two', generalMidi: true } },
+        ),
+      ).score;
+      audio.setDocument({ id: newId(), score: chosen });
+      await audio.settled();
+      expect(playback.getState().trackSounds[track]).toEqual({ tier: 'hq', packId: named });
+      audio.dispose();
+    });
   });
 });
