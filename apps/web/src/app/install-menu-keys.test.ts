@@ -46,6 +46,7 @@ describe('menuKeysOf', () => {
     'file.saveAs': { key: 's', mod: true, shift: true },
     'file.export': { key: 'e', mod: true, shift: true },
     'file.exportAsciiTab': null,
+    'file.exportImage': null,
     'file.print': { key: 'p', mod: true },
     'edit.undo': { key: 'z', mod: true },
     'edit.redo': { key: 'z', mod: true, shift: true },

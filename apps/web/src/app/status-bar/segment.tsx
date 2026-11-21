@@ -1,7 +1,8 @@
 import { cn } from 'cn';
 import type { ComponentProps, ReactNode } from 'react';
 
-import { keepFocus, tooltipText } from '@/app/command-control';
+import { keepFocus } from '@/app/command-control';
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useMenuFocusReturn } from '@/app/menu-focus-return';
 import { useCommand, type RegisteredCommandId } from '@/app/use-command';
@@ -45,23 +46,19 @@ export function StatusSegment({
     label: menuLabel,
   });
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="xs"
-          className={cn(SEGMENT, className)}
-          aria-keyshortcuts={bound.ariaKeys}
-          onMouseDown={keepFocus}
-          onClick={bound.run}
-          {...menu}
-          {...rest}
-        >
-          {children}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{tooltipText(label, bound.keys)}</TooltipContent>
-    </Tooltip>
+    <CommandTooltip command={command} label={label}>
+      <Button
+        variant="ghost"
+        size="xs"
+        className={cn(SEGMENT, className)}
+        onMouseDown={keepFocus}
+        onClick={bound.run}
+        {...menu}
+        {...rest}
+      >
+        {children}
+      </Button>
+    </CommandTooltip>
   );
 }
 

@@ -64,6 +64,13 @@ describe('the soundfont preflight', () => {
     expect(projectsToRun(['audio'], {})).toEqual(['audio']);
   });
 
+  it('keeps a report project, which has no check to skip, and drops an unknown name', () => {
+    const skips = { audio: SOUNDFONT_NOTE };
+    expect(projectsToRun(['formats', 'insights', 'audio'], skips)).toEqual(['formats', 'insights']);
+    expect(projectsToRun(['insights'], {})).toEqual(['insights']);
+    expect(projectsToRun(['nope'], {})).toEqual([]);
+  });
+
   it('round-trips through the environment', () => {
     const { skips } = preflight(['audio'], { soundfont: false, ci: false });
     expect(skipsFromEnv({ [SKIPS_ENV]: JSON.stringify(skips) })).toEqual(skips);

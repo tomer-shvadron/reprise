@@ -3,7 +3,9 @@ import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 import type { AppServices } from '@/app/services';
 import { whenSaved } from '@/app/when-saved';
+import { createImageExporter, type ImageExporter } from '@/features/score';
 import { restoreTrackSession } from '@/features/tracks';
+import { CHORD_DIAGRAMS_SETTING } from '@/state/app-settings';
 import type { FileHandle } from '@/platform/platform';
 import { contentKey, SCORE_FILES, type Saver } from '@/state/document';
 import { notationDefaultsOf } from '@/state/notation-defaults-setting';
@@ -21,6 +23,8 @@ import { createDraftRecovery, type DraftRecovery } from './drafts/recovery';
 import { stem } from './import/song-row';
 import { fromPicked, resolveDrop, type DropSnapshot, type ImportSource } from './import/sources';
 import { createAsciiExporter, type AsciiExporter } from './save/ascii-export';
+import { imageScopeOf } from './save/ascii-scope';
+import { trackWrite } from './library-writes';
 import {
   createExporter,
   createExportPromptStore,
@@ -29,6 +33,8 @@ import {
 import { createLibrarySaver } from './save/save-flow';
 import { entryOf, LIBRARY_SORT_SETTING, type LibraryEntry, type SortKey } from './search';
 import { startSessionKeeper, type SessionKeeper } from './session-keeper';
+
+export { settleLibraryWrites } from './library-writes';
 
 /** How long a Save waits for the import of the file just opened before it goes to Save As. */
 export const IMPORT_WAIT_MS = 5000;
@@ -88,6 +94,8 @@ export interface Library {
   exportPrompt: ExportPromptStore;
   /** File > Export as ASCII tab and Copy as ASCII tab (#350); neither is a save. */
   asciiExport: AsciiExporter;
+  /** File > Export as image and Copy as image (#351); neither is a save. */
+  imageExport: ImageExporter;
   dismissNotice(): void;
   drafts: Drafts;
   /** The progress of the running or last batch import. */
@@ -263,6 +271,26 @@ export function createLibrary(
     notify,
   });
 
+  const imageExport = createImageExporter({
+    document: services.document,
+    ui: services.ui,
+    platform: services.platform,
+    // The same bars and tracks as Copy as ASCII tab: a menu's target first, then the selection.
+    selectionScope: (useTarget) => {
+      const { score, view } = services.document.getState();
+      return score
+        ? imageScopeOf(
+            score,
+            services.selection.getState(),
+            useTarget ? services.menuTarget.getState().target : undefined,
+            view,
+          )
+        : undefined;
+    },
+    chordDiagrams: () => services.settings.get(CHORD_DIAGRAMS_SETTING),
+    notify,
+  });
+
   const importer = createImporter({
     repo,
     files,
@@ -306,10 +334,9 @@ export function createLibrary(
   const pending = new Set<Promise<void>>();
   const track = (write: Promise<void>): Promise<void> => {
     pending.add(write);
-    allWrites.add(write);
+    trackWrite(write);
     const done = () => {
       pending.delete(write);
-      allWrites.delete(write);
     };
     write.then(done, done);
     return write;
@@ -492,6 +519,7 @@ export function createLibrary(
     exportGuitarPro,
     exportPrompt,
     asciiExport,
+    imageExport,
     dismissNotice() {
       store.setState({ notice: undefined });
     },
@@ -679,22 +707,6 @@ export function createLibrary(
     },
   };
   return library;
-}
-
-// Every library's background writes, for `settleLibraryWrites`.
-const allWrites = new Set<Promise<void>>();
-
-/**
- * Resolves once every import running now, in any library, has finished: `openAndImport`,
- * `importOpenDocument` and the batch imports. They write after the call that started them has
- * returned, so a test teardown that deletes the databases awaits this first, or a late write
- * lands in the next database opened under the same name. `Library.dispose()` awaits its own
- * library's share. Nothing calls `dispose()` when the window closes and no hook could await it
- * there, so a close mid-import can leave files in the library folder with no row; see the
- * library README.
- */
-export async function settleLibraryWrites(): Promise<void> {
-  await Promise.allSettled([...allWrites]);
 }
 
 /** After the next frame has painted; a hidden tab, which draws no frames, waits at most 200 ms. */

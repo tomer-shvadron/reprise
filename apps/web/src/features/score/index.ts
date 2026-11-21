@@ -44,3 +44,11 @@ export type {
 } from './print-store';
 export { layoutForPrint, printHeading, printLayoutOptions, PRINT_HEADING } from './print-layout';
 export type { PrintContent, PrintHeading, PrintSettings } from './print-layout';
+export { ImageExportDialog } from './image/image-export-dialog';
+export { createImageExporter, parsePage, COPY_SCALE } from './image/image-exporter';
+export type {
+  ImageDialog,
+  ImageExporter,
+  ImageExporterDeps,
+  ImageSelection,
+} from './image/image-exporter';
