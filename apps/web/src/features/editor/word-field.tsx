@@ -5,7 +5,7 @@ import { useAppServices } from '@/app/services-context';
 import { scoreIndex } from '@/features/score';
 import { selectScoreZoom } from '@/state/ui';
 
-import { suggestChords } from './chord-suggestions';
+import { suggestChordsFor } from './chord-suggestions';
 import { MODIFIER_KEYS } from './entry-controller';
 import { wordFieldRect } from './geometry';
 import {
@@ -95,12 +95,16 @@ export function WordField() {
   const hidden = dismissed === pickKey;
   const kind = word?.kind;
   const draft = word?.draft ?? '';
-  const suggestions = useMemo(
-    () => (score && kind === 'chord' ? suggestChords(score, draft).slice(0, 8) : []),
-    [score, kind, draft],
-  );
   const trackId = word?.trackId;
   const beatId = word?.beatId;
+  const { suggestions, fromNotes } = useMemo(() => {
+    if (!score || kind !== 'chord') return { suggestions: [], fromNotes: 0 };
+    const found = suggestChordsFor(score, draft, beatId);
+    return {
+      suggestions: found.names.slice(0, 8),
+      fromNotes: Math.min(found.fromNotes, 8),
+    };
+  }, [score, kind, draft, beatId]);
   const line = word?.line ?? 0;
   const rect = useMemo(() => {
     if (!result || !kind || !trackId || !beatId) return undefined;
@@ -244,7 +248,7 @@ export function WordField() {
         <ul
           id={LIST_ID}
           role="listbox"
-          aria-label="Chord names in this song"
+          aria-label="Chord names"
           className="bg-paper text-ink absolute left-0 mt-0.5 min-w-full rounded-sm border text-sm shadow-md"
         >
           {suggestions.map((name, index) => (
@@ -252,6 +256,7 @@ export function WordField() {
               key={name}
               id={`${LIST_ID}-${String(index)}`}
               role="option"
+              aria-label={index < fromNotes ? `${name}, from the notes` : undefined}
               aria-selected={index === active}
               className="aria-selected:bg-muted cursor-pointer px-2 py-0.5"
               // Keeps the field focused, so the click does not blur and commit first.
@@ -263,6 +268,11 @@ export function WordField() {
               }}
             >
               {name}
+              {index < fromNotes && (
+                <span aria-hidden="true" className="text-muted-foreground ml-2 text-xs">
+                  From the notes
+                </span>
+              )}
             </li>
           ))}
         </ul>

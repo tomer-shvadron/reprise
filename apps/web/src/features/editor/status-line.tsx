@@ -2,7 +2,6 @@ import { Fragment } from 'react';
 import { useStore } from 'zustand';
 
 import { StatusMenu, StatusSegment } from '@/app/status-bar/segment';
-import { StepItem } from '@/app/view-items';
 import {
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
@@ -15,6 +14,7 @@ import type { EditingStore } from '@/state/editing';
 import type { SelectionStore } from '@/state/selection';
 
 import { resolveCursor } from './cursor';
+import { DurationStepItems } from './duration-steps';
 import type { EntryStore } from './entry-store';
 import { rhythmLabel } from './rhythm';
 import { wordLabel } from './word-session';
@@ -109,11 +109,7 @@ export function EditStatusLine({ entry, editing, selection, document }: EditStat
       menu={
         <>
           <DropdownMenuLabel>Duration</DropdownMenuLabel>
-          <StepItem command="editor.durationLonger" label="Longer" />
-          <StepItem command="editor.durationShorter" label="Shorter" />
-          <StepItem command="editor.toggleDot" label="Dotted" />
-          <StepItem command="editor.toggleDoubleDot" label="Double dotted" />
-          <StepItem command="editor.toggleTriplet" label="Triplet" />
+          <DurationStepItems />
         </>
       }
     >

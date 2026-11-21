@@ -106,7 +106,7 @@ export { wordCommands, type WordCommandId } from './word-commands';
 export { closeWord, commitWord, openWord, stepWord } from './word-session';
 export { planWord, type WordEdit, type WordKind, type WordPlan } from './words';
 export { nextWordBeat, firstWordBeat } from './word-nav';
-export { chordNamesIn, suggestChords } from './chord-suggestions';
+export { chordNamesFromNotes, chordNamesIn, suggestChordsFor } from './chord-suggestions';
 export { wordFieldRect, type WordRect, type WordTarget } from './geometry';
 export { HistoryPanel } from './history-panel';
 export { historyLabel } from './history-labels';
@@ -140,3 +140,7 @@ export {
   scoreMenuRequest,
 } from './menu-target';
 export type { ScoreMenuOpen } from './menu-target';
+export { DURATION_STEPS, DurationStepItems } from './duration-steps';
+export { pressedOf, useEffectPanelState, usePickerOpener } from './use-effect-controls';
+export type { Known, PanelOnly, PanelState } from './panel-state';
+export type { EffectKeyName } from './effect-commands';
