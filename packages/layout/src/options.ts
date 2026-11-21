@@ -105,6 +105,7 @@ export function resolveOptions(score: Score, options: LayoutOptions): ResolvedOp
     track.tuning,
     track.capo,
     track.fretCount,
+    track.drone ?? null,
     track.display.clef ?? '',
     track.display.octaveShift,
   ]);

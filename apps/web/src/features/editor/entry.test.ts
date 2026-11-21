@@ -1,4 +1,5 @@
 import { applyCommand, createHistory, type Beat, type Score } from '@reprise/model';
+import { note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import type { EditCursor } from '@/state/selection';
@@ -54,6 +55,32 @@ const beatsOf = (score: Score, bar: number, voice = 0): Beat[] =>
   score.tracks[0]?.bars[bar]?.voices[voice]?.beats ?? [];
 
 const frets = (beat: Beat | undefined) => beat?.notes.map((n) => [n.string, n.fret]);
+
+describe('a fret typed on a banjo drone string', () => {
+  const banjoScore = (): Score => {
+    const built = score().track('banjo');
+    built.bar().beat('4', [note(5, 0)]);
+    return built.build({ ids: 'sequential' });
+  };
+
+  it('stores the neck fret from the string nut: 7 is stored as 2, 0 stays open', () => {
+    const banjo = banjoScore();
+    const seven = plan(banjo, cursorAt(banjo, 0, 1, 5), { kind: 'fret', fret: 7 });
+    expect(frets(beatsOf(after(banjo, seven), 0)[1])).toEqual([[5, 2]]);
+    if (!('command' in seven)) throw new Error('refused');
+    expect(seven.sound).toMatchObject({ string: 5, fret: 2 });
+    const open = plan(banjo, cursorAt(banjo, 0, 1, 5), { kind: 'fret', fret: 0 });
+    expect(frets(beatsOf(after(banjo, open), 0)[1])).toEqual([[5, 0]]);
+  });
+
+  it('refuses frets 1 to 5 with the reason, and leaves other strings alone', () => {
+    const banjo = banjoScore();
+    const refused = plan(banjo, cursorAt(banjo, 0, 1, 5), { kind: 'fret', fret: 3 });
+    expect(refused).toMatchObject({ refused: expect.stringContaining('0, or 6 and up') as string });
+    const other = plan(banjo, cursorAt(banjo, 0, 1, 1), { kind: 'fret', fret: 3 });
+    expect(frets(beatsOf(after(banjo, other), 0)[1])).toEqual([[1, 3]]);
+  });
+});
 
 describe('a fret digit', () => {
   it('at the end slot makes a beat of the current rhythm holding the note, and lands on it', () => {

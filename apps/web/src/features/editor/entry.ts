@@ -12,6 +12,7 @@ import {
   setBeatRest,
   setNote,
   setNoteEffect,
+  storedFret,
   tieOriginOf,
   type Beat,
   type BeatInput,
@@ -187,10 +188,18 @@ function insertion(
   };
 }
 
-function planFret(input: EntryInput, where: Where, fret: number): EntryPlan {
+/** Typed frets are the ones the tab shows; the model keeps the drone string's from its own nut. */
+function planFret(input: EntryInput, where: Where, written: number): EntryPlan {
   const refusal = guardFretted(where);
   if (refusal) return refusal;
   const { string } = input.cursor;
+  const fret = storedFret(where.track, string, written);
+  if (fret === undefined) {
+    const first = (where.track.drone?.fret ?? 0) + 1;
+    return refuse(
+      `String ${String(string)} has no frets 1 to ${String(first - 1)}: type 0, or ${String(first)} and up`,
+    );
+  }
   const note = { string, fret };
   const { beat } = where;
   const sound = beat && { track: where.track.id, beat: beat.id, string, fret };

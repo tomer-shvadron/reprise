@@ -136,3 +136,22 @@ describe('refinger', () => {
     expect(ornament).toMatchObject({ string: 1, fret: 14 });
   });
 });
+
+describe('refinger onto a banjo drone string', () => {
+  const BANJO = {
+    tuning: [67, 50, 55, 59, 62],
+    fretCount: 22,
+    capo: 0,
+    drone: { string: 5, fret: 5 },
+  };
+  const plain = { tuning: [67, 50, 55, 59, 62] };
+
+  it('never lands a note past the drone string, which is five frets shorter', () => {
+    const clip = clipOf([[note(5, 17)], [note(5, 18)]], plain);
+    const result = refinger(must(clip.tracks[0]), BANJO);
+    expect(result.track.drone).toEqual(BANJO.drone);
+    // Fret 17 is the last stored fret on the drone string; 18 sounds nowhere else on the banjo.
+    expect(frets(result.track)).toEqual([[[5, 17]], []]);
+    expect(result.dropped).toBe(1);
+  });
+});
