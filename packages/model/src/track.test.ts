@@ -4,7 +4,9 @@ import { STANDARD_TUNING } from './factories';
 import {
   NotationSchema,
   SoundOverrideSchema,
+  VOCAL_PROGRAMS,
   canShowTab,
+  isVocalTrack,
   shownNotation,
   type Track,
 } from './track';
@@ -49,5 +51,52 @@ describe('SoundOverrideSchema', () => {
     expect(SoundOverrideSchema.safeParse({ generalMidi: true }).success).toBe(true);
     expect(SoundOverrideSchema.safeParse({ generalMidi: false }).success).toBe(false);
     expect(SoundOverrideSchema.safeParse({}).success).toBe(true);
+  });
+});
+
+describe('isVocalTrack', () => {
+  const of = (
+    program: number,
+    name: string,
+    kind: Track['kind'] = 'pitched',
+  ): Pick<Track, 'kind' | 'program' | 'name'> => ({ kind, program, name });
+
+  it('knows the GM voice programs', () => {
+    expect(VOCAL_PROGRAMS).toEqual([52, 53, 54]);
+    for (const program of [51, 52, 53, 54, 55]) {
+      expect(isVocalTrack(of(program, 'Track'))).toBe([52, 53, 54].includes(program));
+    }
+  });
+
+  it.each([
+    ['Vocals', true],
+    ['vocal', true],
+    ['Lead Vox', true],
+    ['Backing voices', true],
+    ['SINGER', true],
+    ['Choir', true],
+    ['Singers', true],
+    ['Choirs', true],
+    ['Vocals2', true],
+    ['Vocal_1', true],
+    ['Lead_Vocals', true],
+    ['Vocalist', false],
+    ['Guitar', false],
+    ['Voiceover', false],
+    ['Invoice', false],
+  ])('judges the name %s', (name, expected) => {
+    expect(isVocalTrack(of(0, name))).toBe(expected);
+  });
+
+  it('lets the name win over a guitar program, deliberately', () => {
+    // A melody named Vocals on a guitar sound is a common way to tab the vocal line; a Vox amp
+    // guitar is the accepted false positive.
+    expect(isVocalTrack(of(29, 'Vox Guitar'))).toBe(true);
+    expect(isVocalTrack(of(29, 'Lead Guitar'))).toBe(false);
+  });
+
+  it('is false on drums, even named Vocals or on a voice program', () => {
+    expect(isVocalTrack(of(0, 'Vocals', 'drums'))).toBe(false);
+    expect(isVocalTrack(of(53, 'Kit', 'drums'))).toBe(false);
   });
 });

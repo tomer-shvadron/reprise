@@ -1,5 +1,5 @@
 import { NativeFormatError, parseNative } from '@reprise/model';
-import type { Score } from '@reprise/model';
+import type { Id, Score } from '@reprise/model';
 
 import { detect } from './detect';
 import { FormatError } from './errors';
@@ -18,6 +18,12 @@ import type { Warning } from './warnings';
 export interface ReadResult {
   score: Score;
   warnings: Warning[];
+  /**
+   * The tracks whose file states no notation, so their `display.notation` is the reader's
+   * default: every gp3 and gp4 track, a gp5 track with neither flag, a gpif track with no part
+   * configuration entry. Absent means none; `.reprise` never sets it.
+   */
+  implicitNotation?: readonly Id[];
 }
 
 /** Codes a reader gives bytes that are not its format at all, as opposed to a damaged file. */
@@ -39,16 +45,16 @@ function readerOf(format: Format): Reader {
 function dispatch(bytes: Uint8Array, format: Format): ReadResult {
   switch (readerOf(format)) {
     case 'binary': {
-      const { score, warnings } = readGp3To5(bytes);
-      return { score, warnings: warnings.map(withFoldedCount) };
+      const { score, warnings, implicitNotation } = readGp3To5(bytes);
+      return { score, warnings: warnings.map(withFoldedCount), implicitNotation };
     }
     case 'gp': {
-      const { score, warnings } = readGp(bytes);
-      return { score, warnings: warnings.map(fromGpifWarning) };
+      const { score, warnings, implicitNotation } = readGp(bytes);
+      return { score, warnings: warnings.map(fromGpifWarning), implicitNotation };
     }
     case 'gpx': {
-      const { score, warnings } = readGpx(bytes);
-      return { score, warnings: warnings.map(fromGpifWarning) };
+      const { score, warnings, implicitNotation } = readGpx(bytes);
+      return { score, warnings: warnings.map(fromGpifWarning), implicitNotation };
     }
     case 'reprise': {
       const { score, warnings } = parseNative(bytes);

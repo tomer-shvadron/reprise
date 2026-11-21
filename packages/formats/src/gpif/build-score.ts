@@ -188,6 +188,7 @@ function offFretboardMessage(plan: TrackPlan): string {
     found && found.below > 0 ? `${String(found.below)} below fret 0` : '',
     found && found.past > 0 ? `${String(found.past)} past fret ${String(found.fretCount)}` : '',
     found && found.shared > 0 ? `${String(found.shared)} sharing a string in their beat` : '',
+    found && found.noString > 0 ? `${String(found.noString)} without a string` : '',
   ].filter((part) => part !== '');
   return `The track's notes do not fit its fretboard (${parts.join(', ')}); read as pitched (standard notation), every note keeping its MIDI pitch`;
 }

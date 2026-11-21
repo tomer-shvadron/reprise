@@ -90,7 +90,7 @@ describe.each(VERSIONS)('a hand-built v%s file', (version) => {
       buildGpFile({
         version,
         programs: { 1: 0 },
-        tracks: [{ name: 'Piano', capo: 2 }],
+        tracks: [{ name: 'Piano', capo: 2, staffFlags: 0x02 }],
         bars: [
           [
             [
@@ -386,20 +386,100 @@ describe.each(['4.06', '5.10'] satisfies BuildVersion[])('lyrics in v%s', (versi
   });
 });
 
-describe('a GP5 keyboard track asking for tab', () => {
-  it('reads as standard notation, with an info that the tab flag was dropped', () => {
-    const { score, warnings } = read(
+describe('a GP5 track asking for tab', () => {
+  const piano = (staffFlags: number, program = 0) =>
+    read(
       buildGpFile({
         version: '5.10',
-        programs: { 1: 0 },
-        tracks: [{ name: 'Piano', staffFlags: 0x01 }],
+        programs: { 1: program },
+        tracks: [{ name: 'Piano', staffFlags }],
         bars: [[[[quarter(1, 0)]]]],
       }),
     );
+
+  it.each([
+    [0x01, 'tab'],
+    [0x03, 'both'],
+  ])('keeps its strings when the flags are %i, as the file asks', (flags, notation) => {
+    const { score, warnings, implicitNotation } = piano(flags);
+    expect(score.tracks[0]).toMatchObject({
+      kind: 'fretted',
+      display: { notation, octaveShift: 0 },
+    });
+    expect(implicitNotation).toEqual([]);
+    // The note stays on its string rather than becoming a MIDI pitch on string 0.
+    expect(noteOf(score, 0, 0, 0)).toMatchObject({ string: 1, fret: 0 });
+    // Warnings fold by code and keep the first message, so the count tells them apart: the
+    // hand-built track lacks the multi-track flag, the one occurrence left once the tablature one is gone.
+    expect(warnings.find((warning) => warning.code === 'track-flags-dropped')?.count).toBe(1);
+  });
+
+  it('stays pitched in standard when only the standard flag is set', () => {
+    const { score, implicitNotation } = piano(0x02);
     expect(score.tracks[0]).toMatchObject({ kind: 'pitched', display: { notation: 'standard' } });
-    expect(warnings).toContainEqual(
-      expect.objectContaining({ code: 'track-flags-dropped', severity: 'info' }),
+    expect(implicitNotation).toEqual([]);
+  });
+
+  it('keeps standard on a voice program when the file says standard', () => {
+    const { score, implicitNotation } = piano(0x02, 53);
+    expect(score.tracks[0]).toMatchObject({ kind: 'pitched', display: { notation: 'standard' } });
+    expect(implicitNotation).toEqual([]);
+  });
+
+  it('does not report a guitar with both flags as implicit', () => {
+    const { score, implicitNotation } = piano(0x03, 25);
+    expect(score.tracks[0]).toMatchObject({ kind: 'fretted', display: { notation: 'both' } });
+    expect(implicitNotation).toEqual([]);
+  });
+
+  it('still drops the tab flag on a drum track, with a second info', () => {
+    const { warnings } = read(
+      buildGpFile({
+        version: '5.10',
+        tracks: [{ name: 'Kit', percussion: true, staffFlags: 0x01 }],
+        bars: [[[[quarter(1, 0)]]]],
+      }),
     );
+    expect(warnings).toContainEqual(
+      expect.objectContaining({
+        code: 'track-flags-dropped',
+        count: 2,
+      }),
+    );
+  });
+});
+
+describe.each(VERSIONS)('a vocal track in a v%s file with no notation instruction', (version) => {
+  const vocals = [
+    { label: 'voice program', program: 53, name: 'Lead' },
+    { label: 'name', program: 0, name: 'Vocals' },
+  ];
+  it.each(vocals)('keeps its strings on a $label', ({ program, name }) => {
+    const { score, implicitNotation } = read(
+      buildGpFile({
+        version,
+        programs: { 1: program },
+        tracks: [{ name, staffFlags: 0 }],
+        bars: [[[[quarter(2, 5)]]]],
+      }),
+    );
+    const track = score.tracks[0];
+    expect(track).toMatchObject({ kind: 'fretted', display: { notation: 'tab', octaveShift: 0 } });
+    expect(noteOf(score, 0, 0, 0)).toMatchObject({ string: 2, fret: 5 });
+    expect(implicitNotation).toEqual(track ? [track.id] : []);
+  });
+
+  it('reports a keyboard track with no instruction as implicit and pitched', () => {
+    const { score, implicitNotation } = read(
+      buildGpFile({
+        version,
+        programs: { 1: 0 },
+        tracks: [{ name: 'Piano', staffFlags: 0 }],
+        bars: [[[[quarter(1, 0)]]]],
+      }),
+    );
+    expect(score.tracks[0]).toMatchObject({ kind: 'pitched' });
+    expect(implicitNotation).toHaveLength(score.tracks.length);
   });
 });
 

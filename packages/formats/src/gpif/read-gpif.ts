@@ -1,4 +1,4 @@
-import type { Score } from '@reprise/model';
+import type { Id, Score } from '@reprise/model';
 
 import { buildScore } from './build-score';
 import type { GpifDocument } from './document';
@@ -24,6 +24,8 @@ export interface GpifReadOptions {
 export interface GpifReadResult {
   score: Score;
   warnings: GpifWarning[];
+  /** Tracks with no `PartConfiguration` entry: every track when the part configuration is absent or unusable. */
+  implicitNotation: Id[];
 }
 
 /**
@@ -83,6 +85,9 @@ export function readGpifWith(
   hooks.afterRead?.(document, collector);
   let notation: TrackNotation[] | undefined;
   if (options.partConfiguration) {
+    // alphaTab applies the leading entries by index when the count is off; we ignore them all
+    // (and so list every track as implicit), which means "the file wins" does not hold for a
+    // file whose part configuration does not match its tracks.
     notation = readPartConfiguration(options.partConfiguration);
     if (notation?.length !== document.trackOrder.length) {
       collector.warn(
@@ -94,5 +99,8 @@ export function readGpifWith(
     }
   }
   const score = buildScore(collector, document, notation);
-  return { score, warnings: collector.warnings };
+  const implicitNotation = score.tracks
+    .filter((_, index) => notation?.[index] === undefined)
+    .map((track) => track.id);
+  return { score, warnings: collector.warnings, implicitNotation };
 }
