@@ -154,7 +154,7 @@ describe('the Transpose dialog', () => {
   });
 
   it('shows Transposing… and disables the buttons while it applies', async () => {
-    const { services } = await setupEffects();
+    const { services, beats } = await setupEffects();
     const user = userEvent.setup();
     // The dialog applies a frame after showing it working. Hold that frame so the working state
     // lasts until the assertions have run, however slow the machine: user-event yields to the
@@ -172,6 +172,9 @@ describe('the Transpose dialog', () => {
       expect(screen.getByRole('button', { name: 'Transposing…' })).toBeDisabled();
       expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
       expect(screen.getByRole('dialog', { name: 'Transpose' })).toBeInTheDocument();
+      // The held frame is what gates the apply, and it is the only one requested.
+      expect(frames).toHaveLength(1);
+      expect(beats()[0]?.notes[0]?.fret).toBe(5);
       act(() => {
         for (const frame of frames.splice(0)) frame(0);
       });
@@ -179,6 +182,7 @@ describe('the Transpose dialog', () => {
       raf.mockRestore();
     }
     await closed();
+    expect(beats()[0]?.notes[0]?.fret).toBe(6);
   });
 
   it('says what Selection holds, and counts a whole-song range as covering every track for the key', async () => {
