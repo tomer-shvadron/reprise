@@ -8,6 +8,7 @@ import type { SpeedTrainerServices } from './speed-trainer/speed-trainer-store';
 import { tunerFor } from './tuner/tuner-for';
 import { chordNameOfBeat } from './chords/chord-target';
 import { scaleOverlayFor, songScaleOf } from './fretboard/scale-overlay';
+import { insightsFor } from './insights/insights-for';
 import { speedTrainerFor } from './speed-trainer/speed-trainer-for';
 
 export type TrainerCommandId =
@@ -20,6 +21,7 @@ export type TrainerCommandId =
   | 'trainer.metronome'
   | 'trainer.metronomeToggle'
   | 'trainer.fretboard'
+  | 'trainer.insights'
   | 'trainer.chords'
   | 'trainer.chordShapesFor'
   | 'trainer.speedTrainerOnSelection'
@@ -39,7 +41,7 @@ export function trainerCommands(
 ): TrainerCommand[] {
   const { ui } = services;
   const speedTrainer = () => speedTrainerFor(services).getState();
-  const show = (view: 'speedTrainer' | 'tuner' | 'metronome') => () => {
+  const show = (view: 'speedTrainer' | 'tuner' | 'metronome' | 'insights') => () => {
     ui.getState().showPanelView(view);
   };
   // Starting a tool from the practice mode shows no panel, which would end the mode: the capsule
@@ -98,6 +100,12 @@ export function trainerCommands(
         if (services.playback.getState().click.running) services.audio.stopClick();
         else services.audio.startClick();
       },
+    },
+    {
+      id: 'trainer.insights',
+      title: 'Show song insights',
+      repeat: false,
+      run: show('insights'),
     },
     {
       id: 'trainer.chords',
@@ -166,10 +174,10 @@ export function trainerCommands(
       title: "Show the song's scale on the fretboard",
       repeat: false,
       enabled: () => services.document.getState().score !== undefined,
-      run: () => {
-        const { score } = services.document.getState();
-        if (!score) return;
-        const found = songScaleOf(score);
+      run: async () => {
+        // The analysis runs in a worker, so the answer may take a moment: wait for it here.
+        const insights = await insightsFor(services).getState().ensure();
+        const found = insights && songScaleOf(insights);
         // No key (too few notes) or no scale that fits: say so rather than do nothing.
         if (!found) {
           services.transport.getState().announce('No scale found for this song');

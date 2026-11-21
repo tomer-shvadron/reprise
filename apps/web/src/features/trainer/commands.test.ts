@@ -283,6 +283,13 @@ describe('trainer commands', () => {
     expect(services.transport.getState().announcement?.text).toBe('No scale found for this song');
   });
 
+  it('shows the song insights in the Song tab', async () => {
+    const { services, registry } = await setup();
+    await registry.get('trainer.insights')?.run();
+    expect(services.ui.getState().rightPanelView).toBe('insights');
+    expect(registry.get('trainer.insights')?.shortcut).toBeUndefined();
+  });
+
   it('the chord shapes command opens the Chords tab on the right-clicked chord', async () => {
     const { services, registry } = await setup();
     await registry.get('trainer.chords')?.run();

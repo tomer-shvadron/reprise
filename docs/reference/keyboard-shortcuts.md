@@ -144,6 +144,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Start or stop tuner | Trainer | Global | — | — |
 | Show metronome | Trainer | Global | — | — |
 | Start or stop standalone metronome | Trainer | Global | ⌥B | Alt+B |
+| Show song insights | Trainer | Global | — | — |
 | Show chord shapes | Trainer | Global | — | — |
 | Chord shapes… | Trainer | Global | — | — |
 | Toggle fretboard | Trainer | Global | — | — |

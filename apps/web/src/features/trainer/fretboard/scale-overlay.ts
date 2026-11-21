@@ -1,10 +1,12 @@
-import type { Score } from '@reprise/model';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 import type { AppServices } from '@/app/services';
 
+import type { ScaleId, SongInsights } from '@/lib/insights';
+
+import { insightsFor } from '../insights/insights-for';
+
 import { defaultTonicName, scaleTitle, type ScaleSpec } from './scale-dots';
-import { detectKey, noteTableOf, type ScaleId } from '@/lib/insights';
 
 export type ScaleOverlaySource = 'song' | 'section' | 'manual';
 
@@ -12,25 +14,36 @@ export interface ScaleOverlay extends ScaleSpec {
   /** `A minor pentatonic`, for the chip. */
   label: string;
   source: ScaleOverlaySource;
+  /**
+   * A song overlay whose song has no scale for now (an edit left too few notes): it stays on and
+   * draws nothing, so the scale comes back when a later result has one. `tonic` and `scaleId` are
+   * the last scale shown.
+   */
+  none?: true;
 }
 
 export interface ScaleOverlayState {
   overlay: ScaleOverlay | undefined;
   /** `tonicName` is the spelling to keep (`E♭`); left out, the scale's own key spells it. */
   show: (tonic: number, scaleId: ScaleId, source: ScaleOverlaySource, tonicName?: string) => void;
+  /** A song overlay with nothing to show for now. */
+  showNone: () => void;
   clear: () => void;
 }
 
 export type ScaleOverlayStore = StoreApi<ScaleOverlayState>;
 export type ScaleOverlayServices = Pick<AppServices, 'document'>;
 
+type Found = { tonic: number; scaleId: ScaleId };
+
 const overlays = new WeakMap<object, ScaleOverlayStore>();
 
 /**
  * The scale the fretboard marks, one store per document store so the dock and the commands share
  * it. A song or section overlay describes one document and goes when another opens; a scale the
- * player picked stays. It is not persisted. A song overlay is a snapshot of the score when it was
- * taken and does not follow later edits; PR 5 of #353 (the insights worker and store) makes it do so.
+ * player picked stays. It is not persisted. A song overlay retains the insights store and follows
+ * it, so it moves with the song's scale as the score is edited. While the song has no scale it stays
+ * on and draws nothing.
  */
 export function scaleOverlayFor(services: ScaleOverlayServices): ScaleOverlayStore {
   let store = overlays.get(services.document);
@@ -48,6 +61,13 @@ export function scaleOverlayFor(services: ScaleOverlayServices): ScaleOverlaySto
           },
         });
       },
+      showNone: () => {
+        set((state) =>
+          state.overlay && !state.overlay.none
+            ? { overlay: { ...state.overlay, source: 'song', none: true } }
+            : state,
+        );
+      },
       clear: () => {
         set({ overlay: undefined });
       },
@@ -58,18 +78,51 @@ export function scaleOverlayFor(services: ScaleOverlayServices): ScaleOverlaySto
       if (own.getState().overlay?.source !== 'manual') own.getState().clear();
     });
     overlays.set(services.document, store);
+    followSong(services, own);
   }
   return store;
 }
 
 /**
- * The scale of the whole song, from the key engine: `undefined` when there are too few notes to
+ * A song overlay keeps the insights store retained, so the analysis runs while it shows, and
+ * takes each new result's scale; a result with none keeps the overlay on, drawing nothing.
+ */
+function followSong(services: ScaleOverlayServices, overlays: ScaleOverlayStore) {
+  const insights = insightsFor(services);
+  let retained = false;
+  const apply = () => {
+    const { overlay } = overlays.getState();
+    if (overlay?.source !== 'song') return;
+    const { insights: result, forScore, status } = insights.getState();
+    if (status !== 'ready' || !result || forScore !== services.document.getState().score) return;
+    const found = songScaleOf(result);
+    if (!found) {
+      overlays.getState().showNone();
+      return;
+    }
+    if (overlay.none || found.tonic !== overlay.tonic || found.scaleId !== overlay.scaleId) {
+      overlays.getState().show(found.tonic, found.scaleId, 'song');
+    }
+  };
+  overlays.subscribe((state) => {
+    const wants = state.overlay?.source === 'song';
+    if (wants !== retained) {
+      retained = wants;
+      if (wants) insights.getState().retain();
+      else insights.getState().release();
+    }
+    // A result already in hand is what a song overlay shows, whoever set it.
+    if (wants) apply();
+  });
+  insights.subscribe(apply);
+}
+
+/**
+ * The scale of the whole song, from its insights: `undefined` when there are too few notes to
  * call a key or no scale fits. A key with a third and no better fit reads as its major or natural
  * minor.
  */
-export function songScaleOf(score: Score): { tonic: number; scaleId: ScaleId } | undefined {
-  const fileKey = score.masterBars[0]?.keySignature;
-  const key = detectKey(noteTableOf(score), fileKey ? { fileKey } : {});
+export function songScaleOf({ key }: SongInsights): Found | undefined {
   if (!key.found) return undefined;
   if (key.scale) return { tonic: key.tonic, scaleId: key.scale.scale };
   if (key.quality === 'none') return undefined;

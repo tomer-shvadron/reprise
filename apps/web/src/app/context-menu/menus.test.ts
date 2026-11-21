@@ -70,7 +70,10 @@ const TARGETS: Partial<Record<MenuSurface, readonly MenuTarget[]>> = {
     kind: 'header',
     element,
   })),
-  'panel.tab': PANEL_TABS.map(({ view }) => ({ kind: 'panel', view })),
+  'panel.tab': [
+    ...PANEL_TABS.map(({ view }): MenuTarget => ({ kind: 'panel', view })),
+    { kind: 'panel', view: 'chords' },
+  ],
   // "Focus on loop" needs bars to focus on: `beforeAll` selects one.
   'transport.loop': [{ kind: 'transport', control: 'loop' }],
   'transport.tempo': [{ kind: 'transport', control: 'tempo' }],
@@ -89,6 +92,7 @@ const TARGETS: Partial<Record<MenuSurface, readonly MenuTarget[]>> = {
   ],
   'panel.rail': [
     ...PANEL_TABS.map(({ view }): MenuTarget => ({ kind: 'panel', view })),
+    { kind: 'panel', view: 'chords' },
     { kind: 'panel', view: undefined },
   ],
 };
