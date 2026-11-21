@@ -538,6 +538,15 @@ describe('validateScore', () => {
       expect(rules(scoreOf([twelve, banjo()]))).toEqual([]);
     });
 
+    it('rejects courses or a drone on a drums track', () => {
+      const drums = createTrack('drums', {
+        courses: [],
+        drone: { string: 1, fret: 5 },
+        bars: [barWith()],
+      });
+      expect(rules(scoreOf([drums]))).toEqual(['track-kind', 'track-kind']);
+    });
+
     it('rejects courses of another length', () => {
       expect(
         rules(scoreOf([createTrack('fretted', { courses: [0, 0, 0, 0], bars: [barWith()] })])),
