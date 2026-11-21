@@ -251,6 +251,8 @@ describe('the selection pill over a bar range', () => {
     region().focus();
     await user.tab();
     expect(document.activeElement).toBe(button('Loop these bars'));
+    // Focus opens the tooltip; without claimEscape its Escape would also leave the mode.
+    expect(await screen.findByRole('tooltip')).toBeTruthy();
     await user.keyboard('{Escape}');
     expect(document.activeElement).toBe(region());
     expect(services.ui.getState().practiceMode.on).toBe(true);

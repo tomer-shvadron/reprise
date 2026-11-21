@@ -520,6 +520,55 @@ describe('validateScore', () => {
     });
   });
 
+  describe('courses and drone', () => {
+    const banjo = (bars: Bar[] = [barWith()], extra: Partial<Track> = {}): Track =>
+      createTrack('fretted', {
+        tuning: [67, 50, 55, 59, 62],
+        fretCount: 22,
+        drone: { string: 5, fret: 5 },
+        bars,
+        ...extra,
+      });
+
+    it('accepts courses of the tuning length and a drone that fits', () => {
+      const twelve = createTrack('fretted', {
+        courses: [12, 12, 12, 12, 0, null],
+        bars: [barWith()],
+      });
+      expect(rules(scoreOf([twelve, banjo()]))).toEqual([]);
+    });
+
+    it('rejects courses or a drone on a drums track', () => {
+      const drums = createTrack('drums', {
+        courses: [],
+        drone: { string: 1, fret: 5 },
+        bars: [barWith()],
+      });
+      expect(rules(scoreOf([drums]))).toEqual(['track-kind', 'track-kind']);
+    });
+
+    it('rejects courses of another length', () => {
+      expect(
+        rules(scoreOf([createTrack('fretted', { courses: [0, 0, 0, 0], bars: [barWith()] })])),
+      ).toEqual(['courses-length']);
+    });
+
+    it('rejects a drone outside the strings or at the neck end', () => {
+      expect(rules(scoreOf([banjo(undefined, { drone: { string: 6, fret: 5 } })]))).toEqual([
+        'drone-string',
+      ]);
+      expect(rules(scoreOf([banjo(undefined, { drone: { string: 5, fret: 22 } })]))).toEqual([
+        'drone-string',
+      ]);
+    });
+
+    it('limits the drone string to the frets left after its start', () => {
+      expect(rules(scoreOf([banjo([barWith(quarter(5, 17))])]))).toEqual([]);
+      expect(rules(scoreOf([banjo([barWith(quarter(5, 18))])]))).toEqual(['fret-range']);
+      expect(rules(scoreOf([banjo([barWith(quarter(4, 22))])]))).toEqual([]);
+    });
+  });
+
   describe('duplicate-id', () => {
     it('rejects an id used twice', () => {
       const beat = quarter();

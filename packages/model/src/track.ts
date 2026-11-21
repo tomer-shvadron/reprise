@@ -57,6 +57,21 @@ export const SoundOverrideSchema = z.object({
 });
 export type SoundOverride = z.infer<typeof SoundOverrideSchema>;
 
+/**
+ * A short string that starts partway up the neck, as on a 5-string banjo: `string` is 1-based
+ * (1 = highest) and `fret` is the neck fret it starts at (banjo: string 5, fret 5). Frets on that
+ * string are stored from its own nut, so `midiNote` is unchanged; `writtenFret` gives the neck
+ * fret (#348).
+ */
+export const DroneSchema = z.object({
+  string: z.int().min(1).max(MAX_STRINGS),
+  fret: z.int().min(1),
+});
+export type Drone = z.infer<typeof DroneSchema>;
+
+/** The widest course offset in semitones; a 12-string needs 12, this leaves room for others. */
+export const MAX_COURSE_OFFSET = 24;
+
 /** One lyric line as Guitar Pro stores it: a text block starting at a master bar. */
 export const LyricLineSchema = z.object({
   /** 0-based master-bar index; GP files store it 1-based. */
@@ -81,6 +96,21 @@ export const TrackSchema = z.object({
    */
   tuning: z.array(z.int().min(0).max(127)).max(MAX_STRINGS),
   capo: z.int().min(0),
+  /**
+   * Doubled courses (12-string guitar, mandolin), one entry per string in `tuning` order and
+   * length: the semitone offset of the course's second string from the first (0 unison, 12 an
+   * octave above, -12 an octave below), or `null` for a single string. Absent means every string
+   * is single. Notation shows the fundamental only; playback sounds both strings (#348).
+   */
+  courses: z
+    .array(z.int().min(-MAX_COURSE_OFFSET).max(MAX_COURSE_OFFSET).nullable())
+    .max(MAX_STRINGS)
+    .exactOptional(),
+  /**
+   * A short drone string, as on a 5-string banjo. Absent means no short string. Frets on that
+   * string are stored from its own nut; see `DroneSchema` (#348).
+   */
+  drone: DroneSchema.exactOptional(),
   /** Frets on the neck; 0 on drum tracks. */
   fretCount: z.int().min(0),
   /** GM program; on drum tracks the GM2 drum kit (0 standard), played on the percussion channel. */
@@ -130,4 +160,32 @@ export function isVocalTrack(track: Pick<Track, 'kind' | 'program' | 'name'>): b
  */
 export function shownNotation(track: Pick<Track, 'kind' | 'tuning'>, wanted: Notation): Notation {
   return track.kind === 'drums' || canShowTab(track) ? wanted : 'standard';
+}
+
+export type StringInstrument = 'twelveString' | 'mandolin' | 'banjo';
+
+/** General MIDI banjo. */
+const BANJO_PROGRAM = 105;
+
+/**
+ * What kind of string instrument a fretted track is, derived and never stored, so the sound
+ * family, the gp writer and the track dialog ask one place. `banjo`: a drone, or a fretted track
+ * on program 105. `twelveString`: any course an octave away. `mandolin`: four strings, every one a
+ * unison course. `undefined` for every other track (#348).
+ */
+export function stringInstrumentOf(
+  track: Pick<Track, 'kind' | 'program' | 'tuning' | 'courses' | 'drone'>,
+): StringInstrument | undefined {
+  if (track.kind !== 'fretted') return undefined;
+  if (track.drone !== undefined || track.program === BANJO_PROGRAM) return 'banjo';
+  const { courses } = track;
+  if (courses?.some((offset) => offset === 12 || offset === -12)) return 'twelveString';
+  if (
+    track.tuning.length === 4 &&
+    courses?.length === 4 &&
+    courses.every((offset) => offset === 0)
+  ) {
+    return 'mandolin';
+  }
+  return undefined;
 }

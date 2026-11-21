@@ -152,6 +152,7 @@ describe('the gp writer round trip', () => {
     const expected = structuredClone(source);
     const [first] = expected.masterBars;
     const [guitar] = expected.tracks;
+    const banjo = expected.tracks.at(-1);
     const beat = guitar?.bars[0]?.voices[0].beats[0];
     if (!first?.section || !guitar || !beat?.chord?.diagram || !beat.effects.arpeggio) {
       throw new Error('fullScore changed shape');
@@ -159,6 +160,11 @@ describe('the gp writer round trip', () => {
     delete first.section.color;
     guitar.channel.reverb = 0;
     delete guitar.sound;
+    // The writer encodes neither yet, and nothing can create them in the app until then. Part 2
+    // (#348) encodes `courses` or reports a `courses` drop, part 3 the drone; the deletes below go
+    // away in the PR that teaches the writer, instead of hiding a loss.
+    delete guitar.courses;
+    delete banjo?.drone;
     delete beat.chord.diagram.barres;
     beat.mix = {
       ...(beat.mix?.program !== undefined && { program: beat.mix.program }),

@@ -43,6 +43,9 @@ const INSTRUMENT_DEFAULTS: Record<
   guitar: { name: 'Guitar', shortName: 'Gtr.', program: 25 },
   bass: { name: 'Bass', shortName: 'Bs.', program: 33 },
   ukulele: { name: 'Ukulele', shortName: 'Uke.', program: 24 },
+  twelveString: { name: '12-string Guitar', shortName: '12-str.', program: 25 },
+  banjo: { name: 'Banjo', shortName: 'Bjo.', program: 105 },
+  mandolin: { name: 'Mandolin', shortName: 'Mand.', program: 25 },
 };
 
 /**

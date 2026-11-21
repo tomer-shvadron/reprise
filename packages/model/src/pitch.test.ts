@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import { createNote, createTrack } from './factories';
 import type { Note } from './note';
-import { midiNote, openStringPitch, transpose } from './pitch';
+import {
+  courseOffset,
+  maxStoredFret,
+  midiNote,
+  openStringPitch,
+  storedFret,
+  transpose,
+  writtenFret,
+} from './pitch';
 import type { TransposeResult } from './pitch';
 import { STANDARD_TUNINGS } from './tunings';
 
@@ -200,5 +208,51 @@ describe('transpose', () => {
 
   it('rejects fractional semitones', () => {
     expect(() => transpose(guitar(), createNote({ string: 1, fret: 0 }), 0.5)).toThrow(RangeError);
+  });
+});
+
+describe('the drone string and courses', () => {
+  const banjo = createTrack('fretted', {
+    tuning: [67, 50, 55, 59, 62],
+    fretCount: 22,
+    drone: { string: 5, fret: 5 },
+  });
+
+  it('leaves midiNote on the stored fret', () => {
+    expect(midiNote(banjo, createNote({ string: 5, fret: 2 }))).toBe(69);
+  });
+
+  it('writes a stored fret as a neck fret and back', () => {
+    for (const stored of [0, 1, 2, 17]) {
+      const written = writtenFret(banjo, createNote({ string: 5, fret: stored }));
+      expect(written).toBe(stored === 0 ? 0 : stored + 5);
+      expect(storedFret(banjo, 5, written)).toBe(stored);
+    }
+    expect(writtenFret(banjo, createNote({ string: 4, fret: 3 }))).toBe(3);
+    expect(storedFret(banjo, 4, 3)).toBe(3);
+  });
+
+  it('has no stored fret for neck frets 1 to 5 on the drone string', () => {
+    for (const written of [1, 2, 3, 4, 5]) expect(storedFret(banjo, 5, written)).toBeUndefined();
+    expect(storedFret(banjo, 5, 6)).toBe(1);
+  });
+
+  it('shortens the last fret of the drone string only', () => {
+    expect(maxStoredFret(banjo, 5)).toBe(17);
+    expect(maxStoredFret(banjo, 1)).toBe(22);
+  });
+
+  it('transposes the drone string within its own range', () => {
+    const result = transpose(banjo, createNote({ string: 5, fret: 17 }), 1);
+    expect(result.ok).toBe(false);
+  });
+
+  it('reads a course offset by string, null when single or absent', () => {
+    const twelve = createTrack('fretted', { courses: [12, 12, 12, 12, 0, null] });
+    expect(courseOffset(twelve, 6)).toBe(12);
+    expect(courseOffset(twelve, 2)).toBe(0);
+    expect(courseOffset(twelve, 1)).toBeNull();
+    expect(courseOffset(createTrack('fretted'), 1)).toBeNull();
+    expect(courseOffset(twelve, 7)).toBeNull();
   });
 });
