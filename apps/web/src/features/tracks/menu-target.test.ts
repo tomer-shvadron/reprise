@@ -6,6 +6,9 @@ import { runCommand } from '@/app/command-registry';
 import { mirrorAudio } from '@/test/mirror-audio';
 import { createTestServices } from '@/test/services';
 
+import { resolveMenu } from '@/app/context-menu/resolve-menu';
+import { createAppMenus } from '@/app/app-menus';
+
 import { targetTrackOf } from './menu-target';
 
 function setup() {
@@ -48,5 +51,27 @@ describe('targetTrackOf', () => {
     services.menuTarget.getState().clear();
     expect(services.playback.getState().mixer[second.id]?.solo).toBe(true);
     expect(services.playback.getState().mixer[first.id]?.solo).toBeUndefined();
+  });
+
+  it('ticks Mute for the right-clicked track, not the current one', () => {
+    const { services, score, registry } = setup();
+    const [first, second] = score.tracks;
+    if (!first || !second) throw new Error('the fixture needs two tracks');
+    services.selection.getState().setCurrentTrack(first.id);
+    services.audio.setTrack(second.id, { mute: true });
+    const menus = createAppMenus(registry);
+    const mute = (track: string) => {
+      const entries = resolveMenu(
+        menus,
+        registry,
+        'track.row',
+        { services, target: { kind: 'track', track }, mode: 'play' },
+        'mac',
+      );
+      const item = entries.find((entry) => entry.kind === 'item' && entry.label === 'Mute');
+      return item?.kind === 'item' ? item.checked : undefined;
+    };
+    expect(mute(first.id)).toBe(false);
+    expect(mute(second.id)).toBe(true);
   });
 });

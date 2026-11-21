@@ -5,13 +5,20 @@ const hasSelectedBars = ({ services }: MenuContext) =>
 
 const play = ['play'] as const;
 
+const leftHandedItem: MenuItemSpec = {
+  command: 'trainer.fretboardLeftHanded',
+  group: 'view',
+  checked: ({ services }) => services.ui.getState().fretboardLeftHanded,
+};
+
+const fretboardShown = ({ services }: MenuContext) => {
+  // The fretboard is the dock's only view.
+  return services.ui.getState().bottomPanel.open;
+};
+
 /** The fretboard's own switches; the dock's tab carries them too, since the board is not focusable. */
 const fretboardItems: readonly MenuItemSpec[] = [
-  {
-    command: 'trainer.fretboardLeftHanded',
-    group: 'view',
-    checked: ({ services }) => services.ui.getState().fretboardLeftHanded,
-  },
+  leftHandedItem,
   { command: 'trainer.fretboard', group: 'view', label: 'Hide fretboard' },
 ];
 
@@ -39,8 +46,19 @@ export const trainerMenus: readonly MenuContribution[] = [
   {
     surface: 'dock.tab',
     items: [
-      { command: 'trainer.fretboard', group: 'view', label: 'Close fretboard' },
-      fretboardItems[0] as MenuItemSpec,
+      // The strip shows collapsed too, where the toggle would open the board: that case says "Show".
+      {
+        command: 'trainer.fretboard',
+        group: 'view',
+        label: 'Close fretboard',
+        when: fretboardShown,
+      },
+      {
+        command: 'trainer.showFretboard',
+        group: 'view',
+        when: (at) => !fretboardShown(at),
+      },
+      leftHandedItem,
     ],
   },
   {

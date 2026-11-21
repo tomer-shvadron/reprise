@@ -77,18 +77,21 @@ export function PracticeToggles({ speedTrainer, tuner }: PracticeTogglesProps) {
       >
         <MetronomeIcon />
       </TransportToggle>
-      <LevelPopover
-        popover="metronome"
-        command="transport.metronomeVolume"
-        label="Metronome volume"
-        value={metronome.volume}
-        note="Also the count-in’s volume."
-        onChange={(volume) => {
-          audio.setMetronome(playback.getState().settings.metronome.on, volume);
-        }}
-      >
-        <ChevronUpIcon />
-      </LevelPopover>
+      {/* The chevron has no props to spread on, so a wrapper takes its right-click. */}
+      <span {...metronomeMenu} className="contents">
+        <LevelPopover
+          popover="metronome"
+          command="transport.metronomeVolume"
+          label="Metronome volume"
+          value={metronome.volume}
+          note="Also the count-in’s volume."
+          onChange={(volume) => {
+            audio.setMetronome(playback.getState().settings.metronome.on, volume);
+          }}
+        >
+          <ChevronUpIcon />
+        </LevelPopover>
+      </span>
       {tuner}
     </div>
   );

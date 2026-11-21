@@ -49,3 +49,19 @@ test('the fretboard tab menu flips the board for a left-handed player', async ({
   await menu.getByRole('menuitemcheckbox', { name: /^Left-handed fretboard/ }).click();
   await expect(board).toHaveAttribute('data-left-handed', 'true');
 });
+
+test('the Fretboard tab opens its menu from the keyboard, and Escape gives focus back', async ({
+  app,
+  page,
+}) => {
+  await app.palette('Toggle fretboard');
+  const tab = page.getByRole('tab', { name: 'Fretboard' });
+  await tab.focus();
+  await page.keyboard.press('Shift+F10');
+  const menu = page.getByRole('menu', { name: 'Fretboard tab' });
+  await expect(menu).toHaveAttribute('data-context-menu-via', 'keyboard');
+  await expect(menu.getByRole('menuitem', { name: /^Close fretboard/ })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await expect(tab).toBeFocused();
+});

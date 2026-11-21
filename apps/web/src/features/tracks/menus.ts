@@ -2,21 +2,21 @@ import type { Notation } from '@reprise/model';
 
 import type { MenuContext, MenuContribution, MenuItemSpec } from '@/app/context-menu/types';
 
-import { targetTrackOf } from './menu-target';
+import { trackOfTarget } from './menu-target';
 import { effectiveMix, effectiveNotation, notationChoices } from './track-model';
 
-const mixOf = ({ services }: MenuContext) => {
-  const track = targetTrackOf(services);
+const mixOf = ({ services, target }: MenuContext) => {
+  const track = trackOfTarget(services, target);
   return track && effectiveMix(track, services.playback.getState().mixer[track.id]);
 };
 
 const notation = (choice: Notation) => ({
-  when: ({ services }: MenuContext) => {
-    const track = targetTrackOf(services);
+  when: ({ services, target }: MenuContext) => {
+    const track = trackOfTarget(services, target);
     return track !== undefined && notationChoices(track).includes(choice);
   },
-  checked: ({ services }: MenuContext) => {
-    const track = targetTrackOf(services);
+  checked: ({ services, target }: MenuContext) => {
+    const track = trackOfTarget(services, target);
     return (
       track !== undefined &&
       effectiveNotation(track, services.document.getState().view.notation) === choice
@@ -25,7 +25,7 @@ const notation = (choice: Notation) => ({
 });
 
 /** What a track's row in the sidebar and its strip in the mixer share. */
-const trackItems: readonly MenuItemSpec[] = [
+const muteSoloItems: readonly MenuItemSpec[] = [
   {
     command: 'track.toggleMute',
     group: 'play',
@@ -39,11 +39,13 @@ const trackItems: readonly MenuItemSpec[] = [
     checked: (at) => mixOf(at)?.solo === true,
   },
   { command: 'track.clearMuteSolo', group: 'play' },
-  { command: 'track.properties', group: 'properties' },
 ];
 
+const propertiesItem: MenuItemSpec = { command: 'track.properties', group: 'properties' };
+const trackItems: readonly MenuItemSpec[] = [...muteSoloItems, propertiesItem];
+
 const rowItems: readonly MenuItemSpec[] = [
-  ...trackItems.slice(0, 3),
+  ...muteSoloItems,
   { command: 'track.notationTab', group: 'view', label: 'Show as tab', ...notation('tab') },
   {
     command: 'track.notationStandard',
@@ -59,7 +61,7 @@ const rowItems: readonly MenuItemSpec[] = [
   },
   { command: 'view.toggleMultitrack', group: 'view' },
   { command: 'track.showAll', group: 'view' },
-  { command: 'track.properties', group: 'properties' },
+  propertiesItem,
 ];
 
 /** The track list, the mixer's strips and its master strip. Edit mode adds the track management in `editor/menus.ts`. */
