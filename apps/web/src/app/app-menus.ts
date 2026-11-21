@@ -1,4 +1,6 @@
 import { editorMenus } from '@/features/editor/menus';
+import { libraryMenus } from '@/features/library/menus';
+import { soundsMenus } from '@/features/sounds/menus';
 import { trackMenus } from '@/features/tracks/menus';
 import { trainerMenus } from '@/features/trainer/menus';
 import { transportMenus } from '@/features/transport/menus';
@@ -22,6 +24,8 @@ export const appMenuContributions: readonly MenuContribution[] = [
   ...trainerMenus,
   ...editorMenus,
   ...practiceMenus,
+  ...libraryMenus,
+  ...soundsMenus,
 ];
 
 /**

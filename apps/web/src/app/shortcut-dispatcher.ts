@@ -45,10 +45,9 @@ const NAVIGATION_KEYS = new Set([
  * Sounds, `data-app-sheet`) are browsing surfaces, not forms, so a drop onto them imports, and
  * Space still plays and pauses (a text field keeps its own Space, see `leavesKeyToTarget`).
  *
- * `app.contextMenu` (#368, Shift+F10) is deliberately not here: its fallback with focus on the body
- * is the score behind the sheet. The PR that puts the first context menu inside a sheet (#337's
- * library rows) adds the entry together with a guard in `openFocusedMenu` for an open modal. The
- * two PRs do not conflict textually, so nothing else would remind whoever lands second.
+ * `app.contextMenu` (Shift+F10) passes for the library and sound rows. Its fallback with focus on
+ * the body would be the score behind the sheet, so `openFocusedMenu` and the body fallback do
+ * nothing while a modal is open.
  */
 const PASSES_MODAL: Readonly<Record<string, string>> = {
   'app.commandPalette': 'data-command-palette',
@@ -57,6 +56,7 @@ const PASSES_MODAL: Readonly<Record<string, string>> = {
   'app.shortcutsAlt': 'data-shortcut-sheet',
   'app.drop': 'data-app-sheet',
   'transport.playPause': 'data-app-sheet',
+  'app.contextMenu': 'data-app-sheet',
 };
 
 /**
@@ -78,6 +78,11 @@ function openModals(): Element[] {
   return [...document.querySelectorAll(OPEN_MODAL)].filter(
     (dialog) => dialog.closest('[data-radix-popper-content-wrapper]') === null,
   );
+}
+
+/** Whether a modal dialog is open anywhere, a sheet included. */
+export function modalOpen(): boolean {
+  return openModals().length > 0;
 }
 
 /**
@@ -135,7 +140,8 @@ function leavesKeyToTarget(event: KeyboardEvent): boolean {
  *   palette, Cmd/Ctrl+G to switch the open palette to a bar number, ? or Cmd/Ctrl+/ for the cheat
  *   sheet) when that dialog is the only modal, and Space for play and pause (`transport.playPause`)
  *   when every open modal is an app sheet (the Library or Sounds), outside a text field and off a
- *   control that takes Space itself. Escape and the rest stay with the dialog. The desktop menu
+ *   control that takes Space itself, and Shift+F10 (`app.contextMenu`) when every open modal is
+ *   an app sheet, for the row menus; with nothing focused it opens no menu while a modal is open. Escape and the rest stay with the dialog. The desktop menu
  *   obeys the same rule through `menuCommandAllowed`, so its Play/Pause also runs over a sheet.
  * - A key that was already handled (`defaultPrevented`) or is part of IME composition.
  * - A bare key (no Cmd or Ctrl) typed in a text field, and Space or Enter on a focused control.

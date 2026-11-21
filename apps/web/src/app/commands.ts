@@ -7,6 +7,7 @@ import { selectScoreZoom, ZOOM } from '@/state/ui';
 import type { Command } from './command-registry';
 import { openContextMenuOn, SCORE_SURFACE_SELECTOR } from './context-menu/open-on';
 import type { AppServices } from './services';
+import { modalOpen } from './shortcut-dispatcher';
 import { whenSaved } from './when-saved';
 
 const ZOOM_STEP = 0.1;
@@ -44,11 +45,14 @@ export function appCommands(services: AppServices): AppCommand[] {
   // The focused element's menu; on the body, the score's, so the key still answers.
   const openFocusedMenu = () => {
     const active = globalThis.document.activeElement;
-    const target =
-      active && active !== globalThis.document.body
-        ? active
-        : globalThis.document.querySelector(SCORE_SURFACE_SELECTOR);
-    if (target) openContextMenuOn(target);
+    if (active && active !== globalThis.document.body) {
+      openContextMenuOn(active);
+      return;
+    }
+    // The score is behind a sheet or a dialog while one is open: not a menu to open from there.
+    if (modalOpen()) return;
+    const score = globalThis.document.querySelector(SCORE_SURFACE_SELECTOR);
+    if (score) openContextMenuOn(score);
   };
 
   return [

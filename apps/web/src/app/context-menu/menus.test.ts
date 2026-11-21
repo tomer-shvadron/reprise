@@ -5,6 +5,9 @@ import { createTestServices } from '@/test/services';
 import type { MenuTarget } from '@/state/menu-target';
 import { PANEL_TABS } from '../right-panel/panel-views';
 
+import { CURATED_PACKS } from '@/features/sounds/curated-packs';
+import type { InstalledPack } from '@/features/sounds/manifest';
+
 import { createAppMenus } from '../app-menus';
 import { createAppRegistry } from '../app-registry';
 import { commandsIn, resolveMenu, type ResolvedEntry } from './resolve-menu';
@@ -17,10 +20,31 @@ const registry = createAppRegistry(services);
 const menus = createAppMenus(registry);
 
 /**
- * The surfaces nobody has contributed to yet, each of which a later PR of #337 removes from here
- * when it adds its items: the test below then holds the new surface to the same rules.
+ * The surfaces nobody has contributed to yet. Empty since #337 closed; a surface added to
+ * `MenuSurface` without items must be listed here, and the test below then holds it to the same
+ * rules once it has some.
  */
-const NOT_YET: readonly MenuSurface[] = ['library.song', 'sounds.pack'];
+const NOT_YET: readonly MenuSurface[] = [];
+
+// A custom pack to rename and remove; the curated list supplies the available rows.
+const custom: InstalledPack = {
+  schema: 1,
+  id: 'custompack01',
+  name: 'My pack',
+  family: 'other',
+  gmPrograms: [],
+  format: 'sfz',
+  version: '1',
+  directDownload: false,
+  instruments: [{ key: 'one', name: 'One', entries: { default: 'one.sfz' } }],
+  curated: false,
+  source: 'folder',
+  installedAt: '2026-01-01T00:00:00.000Z',
+  files: [],
+};
+services.sounds.api.setState({ packs: [custom], damaged: [{ folder: 'broken', reason: 'x' }] });
+const listed = CURATED_PACKS[0];
+if (!listed) throw new Error('the curated list is empty');
 
 const bar = song.masterBars[1];
 const beat = song.tracks[0]?.bars[1]?.voices[0]?.beats[1];
@@ -56,6 +80,12 @@ const TARGETS: Partial<Record<MenuSurface, readonly MenuTarget[]>> = {
   'mixer.master': [{ kind: 'mixerMaster' }],
   'dock.tab': [{ kind: 'dock', view: 'fretboard' }],
   fretboard: [{ kind: 'dock', view: 'fretboard' }],
+  'library.song': [{ kind: 'libraryEntry', id: 'song1' }],
+  'sounds.pack': [
+    { kind: 'soundPack', id: custom.id, state: 'installed' },
+    { kind: 'soundPack', id: listed.id, state: 'available' },
+    { kind: 'soundPack', id: 'broken', state: 'damaged' },
+  ],
   'panel.rail': [
     ...PANEL_TABS.map(({ view }): MenuTarget => ({ kind: 'panel', view })),
     { kind: 'panel', view: undefined },
@@ -78,6 +108,8 @@ const enabledItems = (entries: readonly ResolvedEntry[]): number =>
 
 function resolveFor(surface: MenuSurface, target: MenuTarget, mode: MenuMode) {
   services.editing.getState().setEditing(mode === 'edit');
+  // As the host does: the open menu's target is what the commands' `enabled` reads.
+  services.menuTarget.getState().set(target);
   return resolveMenu(menus, registry, surface, { services, target, mode }, 'mac');
 }
 

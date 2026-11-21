@@ -153,3 +153,9 @@ export const updateAvailable = (installed: { id: string; version: string }): boo
   const listed = curatedPack(installed.id);
   return listed !== undefined && listed.version !== installed.version;
 };
+
+/** The page a pack is downloaded from: the list's address first, then the installed copy's own. */
+export const packPageUrl = (
+  id: string,
+  installed: { sourceUrl?: string } | undefined,
+): string | undefined => curatedPack(id)?.sourceUrl ?? installed?.sourceUrl;

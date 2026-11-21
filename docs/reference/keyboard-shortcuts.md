@@ -24,7 +24,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 - A bare key (no Cmd or Ctrl) never fires while typing in a text field.
 - Arrows, Home and End stay with a text field or a control that uses them (a slider, a menu); elsewhere they move the playhead.
 - Backspace and Delete stay with a text field whatever the modifiers, so Cmd+Backspace in the palette's input deletes text and never runs an editor command.
-- While a modal dialog is open (a dialog, an alert dialog, the command palette), no shortcut and no native menu command runs, except Space for play and pause over the Library and Sounds sheets (not in a text field), and a dialog's own toggle when that dialog is the only modal (Cmd or Ctrl+K closes the palette, Cmd or Ctrl+G switches it to a bar number, `?` or Cmd or Ctrl+/ closes the cheat sheet, and neither opens over another dialog), and a focused text field's own undo and redo. Escape stays with the dialog. This holds wherever focus is, including on the page behind the dialog. The rules live in the dispatcher's doc comment, `apps/web/src/app/shortcut-dispatcher.ts`.
+- While a modal dialog is open (a dialog, an alert dialog, the command palette), no shortcut and no native menu command runs, except Space for play and pause over the Library and Sounds sheets (not in a text field), Shift+F10 over those sheets on macOS (it opens the menu of the focused row; on the page behind a sheet it opens nothing), and a dialog's own toggle when that dialog is the only modal (Cmd or Ctrl+K closes the palette, Cmd or Ctrl+G switches it to a bar number, `?` or Cmd or Ctrl+/ closes the cheat sheet, and neither opens over another dialog), and a focused text field's own undo and redo. Escape stays with the dialog. This holds wherever focus is, including on the page behind the dialog. The rules live in the dispatcher's doc comment, `apps/web/src/app/shortcut-dispatcher.ts`.
 - In edit mode, ⌘C, ⌘X and ⌘V (Ctrl on Windows) copy, cut and paste notes, beats or whole bars, through the browser's own clipboard events: the key is left to the browser, which is why Copy, Cut and Paste show their keys here but the dispatcher never runs them. Paste follows the status bar's insert or overwrite mode; Paste as insert and Paste over, in the palette, choose one. Text fields and dialogs keep their own copy, cut and paste, and so does selected text anywhere on the page.
 - Undo and redo in a focused text field undo the field's typing, not the score. The palette and the desktop Edit menu name the step: "Undo Insert bar", "Redo Paste"; Show history opens a panel listing every step, where a click or Enter jumps to that point.
 - In edit mode a digit that can start a two-digit fret on the track's neck (1 and 2 on 24 frets) waits 500 ms for a second digit; any other key, a click or moving the cursor commits it at once, and Escape cancels it. Digits never move the cursor, so more digits on the same beat make a chord (with ↑ and ↓ between them); → moves on, and appends a bar past the end of a full last bar.
@@ -127,6 +127,9 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Import folder to library… | Library | Global | — | — |
 | Open without importing… | Library | Global | — | — |
 | Open recent song… | Library | Global | — | — |
+| Open song | Library | Global | — | — |
+| Show practice log | Library | Global | — | — |
+| Delete from library… | Library | Global | — | — |
 | Show speed trainer | Trainer | Global | — | — |
 | Start, hold or resume speed trainer | Trainer | Global | ⌥S | Alt+S |
 | Mark speed trainer pass missed | Trainer | Global | ⌥X | Alt+X |
@@ -262,4 +265,9 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Lyrics | Editor | Editing | ⌥L | Alt+L |
 | Remove chord name | Editor | Editing | — | — |
 | Show sound manager | Sounds | Global | — | — |
+| Rename sound pack | Sounds | Global | — | — |
+| Update sound pack | Sounds | Global | — | — |
+| Open download page | Sounds | Global | — | — |
+| Remove sound pack | Sounds | Global | — | — |
+| Download sound pack | Sounds | Global | — | — |
 <!-- shortcuts:end -->

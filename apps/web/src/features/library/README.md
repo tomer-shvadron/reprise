@@ -58,7 +58,7 @@ shell wiring, which is one separate integration commit).
   follows the library's own `unimportedId`, the document id those bytes belong to, so a new song
   (`document.newDocument`), a new song saved with Save As and a song deleted from the library never
   show it. The held bytes are released, and `bannerError` cleared, whenever the document id changes.
-- **Delete** (`library.deleteSong`). The song's native and original folder move to
+- **Delete** (`Library.deleteSong(id)`; the row's Delete button, the Delete key and the row menu's "Delete from library…", the command `library.deleteSong`, only set `deleteId` in the store, which opens the confirm; so does `practiceLogId` for the practice log). The song's native and original folder move to
   `library/trash/<id>/` beside a `song.json` copy of the row; then the row goes. An open song becomes
   unimported (`songId` cleared); its document still carries the save handle it was opened with, which
   Save does not follow without a `songId`: the saver and the built-in `save()` both treat a `library/`
