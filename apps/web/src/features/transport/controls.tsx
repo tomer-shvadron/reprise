@@ -1,6 +1,6 @@
 import type { ComponentProps, ReactNode } from 'react';
 
-import { keepFocus, tooltipText } from '@/app/command-control';
+import { keepFocus } from '@/app/command-control';
 import { CommandTooltip } from '@/app/command-tooltip';
 import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
@@ -72,4 +72,4 @@ export function TransportToggle({
   );
 }
 
-export { keepFocus, tooltipText };
+export { keepFocus };

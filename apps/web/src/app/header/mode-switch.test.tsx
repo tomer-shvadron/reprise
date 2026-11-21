@@ -68,7 +68,7 @@ describe('ModeSwitch', () => {
     await open();
     expect(radio('Edit')).toHaveAttribute('aria-keyshortcuts', 'Meta+E');
     await userEvent.hover(radio('Edit'));
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('Edit mode (⌘E)');
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Edit mode, Command+E');
   });
 
   it('keeps its arrow keys and Space to itself', async () => {

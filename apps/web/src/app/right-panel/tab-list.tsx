@@ -1,9 +1,9 @@
 import { useRef, type KeyboardEvent, type ReactNode } from 'react';
 
-import { keepFocus, tooltipText } from '@/app/command-control';
+import { keepFocus } from '@/app/command-control';
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
-import { useCommand, type RegisteredCommandId } from '@/app/use-command';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { RegisteredCommandId } from '@/app/use-command';
 import type { PanelView } from '@/state/ui';
 import { cn } from 'cn';
 
@@ -41,7 +41,6 @@ function Tab({
   onSelect: () => void;
   register: (node: HTMLButtonElement | null) => void;
 }) {
-  const command = useCommand(item.command);
   const menu = useStaticContextMenu({
     surface: 'panel.tab',
     target: { kind: 'panel', view: item.view },
@@ -57,7 +56,6 @@ function Tab({
       aria-selected={selected}
       // One shared panel, labelled by the selected tab, so only that tab controls it.
       aria-controls={selected ? panelId(idPrefix) : undefined}
-      aria-keyshortcuts={command.ariaKeys}
       // The roving tab stop: only the selected tab is in the Tab order, arrows move inside.
       tabIndex={selected ? 0 : -1}
       onMouseDown={keepFocus}
@@ -71,12 +69,10 @@ function Tab({
     </button>
   );
   // A tooltip that only repeats the label would pop up at every arrow stop; it shows for the key.
-  if (!command.keys) return button;
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent>{tooltipText(item.label, command.keys)}</TooltipContent>
-    </Tooltip>
+    <CommandTooltip command={item.command} label={item.label} whenUnbound="none">
+      {button}
+    </CommandTooltip>
   );
 }
 

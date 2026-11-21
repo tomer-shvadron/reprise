@@ -25,6 +25,6 @@ describe('PaletteSearch', () => {
   it('shows the tooltip with the key', async () => {
     renderHeader(<PaletteSearch />);
     await userEvent.hover(screen.getByRole('button', { name: 'Search commands' }));
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('Search commands (⌘K)');
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Search commands, Command+K');
   });
 });
