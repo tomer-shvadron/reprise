@@ -260,6 +260,24 @@ export function markdownSummary(
   ].join('\n');
 }
 
+/**
+ * Per-metric overrides of what a row watches. By default a row watches its whole workspace and the
+ * workspaces it depends on, so a row in `apps/web` would bench every web PR (2 to 4 minutes each).
+ * A listed row watches only these paths instead, with the same trailing-`/` rule as `watchedPaths`.
+ */
+export const WATCH_OVERRIDES: Readonly<Record<string, readonly string[]>> = {
+  'Song insights note table, long score, cold': [
+    'apps/web/src/lib/',
+    'apps/web/src/test/',
+    'packages/model/',
+  ],
+  'Song insights analysis, long score': [
+    'apps/web/src/lib/',
+    'apps/web/src/test/',
+    'packages/model/',
+  ],
+};
+
 /** Workspace directory to the directories of the workspace packages it depends on. */
 export type Workspaces = ReadonlyMap<string, readonly string[]>;
 
@@ -275,17 +293,25 @@ export const FIXED_WATCHED = [
 ];
 
 /** Entries ending in `/` are prefixes, the rest exact paths. */
-export function watchedPaths(rows: readonly ResolvedBudget[], workspaces: Workspaces): string[] {
+export function watchedPaths(
+  rows: readonly ResolvedBudget[],
+  workspaces: Workspaces,
+  overrides: Readonly<Record<string, readonly string[]>> = WATCH_OVERRIDES,
+): string[] {
   const seen = new Set<string>();
+  const own = new Set<string>();
   const visit = (dir: string): void => {
     if (seen.has(dir)) return;
     seen.add(dir);
     for (const dependency of workspaces.get(dir) ?? []) visit(dependency);
   };
-  for (const { assertedBy } of rows) {
-    if (assertedBy.kind === 'bench') visit(assertedBy.path.split('/').slice(0, 2).join('/'));
+  for (const { assertedBy, metric } of rows) {
+    if (assertedBy.kind !== 'bench') continue;
+    const override = overrides[metric];
+    if (override) for (const path of override) own.add(path);
+    else visit(assertedBy.path.split('/').slice(0, 2).join('/'));
   }
-  return [...[...seen].map((dir) => `${dir}/`), ...FIXED_WATCHED];
+  return [...new Set([...[...seen].map((dir) => `${dir}/`), ...own]), ...FIXED_WATCHED];
 }
 
 export function touchesWatched(changed: readonly string[], watched: readonly string[]): boolean {
