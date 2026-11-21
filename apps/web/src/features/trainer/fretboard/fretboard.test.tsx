@@ -330,7 +330,7 @@ describe('Fretboard scale overlay', () => {
     await user.click(picker.getByRole('button', { name: 'A' }));
     await user.click(picker.getByRole('button', { name: 'minor pentatonic' }));
     act(() => {
-      scaleOverlayFor(services).getState().show(4, 'dorian', 'song');
+      scaleOverlayFor(services).getState().show(4, 'dorian', 'section');
     });
     expect(picker.getByRole('button', { name: 'E' }).getAttribute('aria-pressed')).toBe('true');
     expect(picker.getByRole('button', { name: 'Dorian' }).getAttribute('aria-pressed')).toBe(

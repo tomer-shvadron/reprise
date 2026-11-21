@@ -220,8 +220,21 @@ short string included; at most 250), and `fretboard.tsx` draws them as hollow ri
 notes, the tonic heavier. `fretboard/scale-overlay.ts` holds the chosen scale in a store per
 document store (`scaleOverlayFor`): a song or section overlay goes when another document opens, a
 manual pick stays, nothing persists. The header carries a chip with a clear button and the scale
-tool (`scale-picker.tsx`, a tonic and a scale from `SCALES`). `trainer.fretboardSongScale` runs the
-key engine on the open score (`songScaleOf`) and `trainer.fretboardClearScale` hides the overlay;
-neither has a default key. Tones are spelled by degree (A blues has E♭, D harmonic minor a C♯) and a
-picked tonic keeps its spelling. A song overlay is a snapshot of the score when the command ran; it
-does not follow edits until the insights worker lands (#353, PR 5).
+tool (`scale-picker.tsx`, a tonic and a scale from `SCALES`). `trainer.fretboardSongScale` asks the
+insights store for the song's scale (`songScaleOf`) and `trainer.fretboardClearScale` hides the
+overlay; neither has a default key. Tones are spelled by degree (A blues has E♭, D harmonic minor a C♯) and a
+picked tonic keeps its spelling. A song overlay retains the insights store while it shows and takes
+each new result's scale, so it follows edits (and clears when the song no longer has a scale).
+
+### Song insights (#353)
+
+`insights/` is the Song tab's Insights view. The analysis itself is the pure `lib/insights`; this
+folder is its app side. `insights-client.ts` extracts the note table on the main thread (cached per
+bar, so an edit re-extracts one bar) and transfers its buffers to `insights.worker.ts`, a module
+worker made on the first request; where there is no `Worker` (jsdom) it analyses inline. The score is
+never cloned, which would cost about 20 times the analysis. `insights-store.ts` (`insightsFor`)
+analyses only while retained (the panel is mounted or a song overlay shows), at once on a document
+open and 400 ms after the last edit, one request at a time with the latest winning, caching per
+score object and dropping an answer for a score that is no longer open. "Analysing…" is announced
+only after 300 ms. `insights-panel.tsx` shows the Key, Scale, Key changes and Shape cards (`cards/`);
+`trainer.insights` opens it. The right panel's Song tab holds Insights and Chords as sub-tabs.
