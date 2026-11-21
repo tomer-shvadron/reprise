@@ -165,6 +165,10 @@ specifics and the places the file is ambiguous.
   fret byte, which is the GM percussion note. `GpReadResult.implicitNotation` lists the tracks
   whose file states no notation: every gp3 and gp4 track, and a GP5 track with neither flag. The
   `track-flags-dropped` info about tablature on a track without frets is now for drums only.
+  The 12-string flag (0x02) on a fretted track sets `courses`: an octave course (12) on every
+  string but the two highest, which are unison (0), so six strings give `[12, 12, 12, 12, 0, 0]`.
+  The flag is no longer reported as dropped. This is unverified against a file saved by Guitar Pro
+  (#348): `fixtures/gp5/twelve-string.gp5` is `effects.gp5` with the flag set, not a Guitar Pro file.
 - **Strings**: the file lists string 1 (highest) first and the beat's string mask uses bit 6 for
   string 1; `Track.tuning` is reversed to lowest first. A mask bit for a string the track lacks
   carries no note block (every reader of the format skips it unread) and is reported as
@@ -277,7 +281,7 @@ the first location, and `count`.
 | `song-key-dropped`                | info     | The song-level key and octave (bar key signatures are kept).                                                                                                   |
 | `master-reverb-dropped`           | info     | GP5's master reverb.                                                                                                                                           |
 | `midi-routing-dropped`            | info     | MIDI port and channel numbers; the channel's settings are kept on the track.                                                                                   |
-| `track-flags-dropped`             | info     | 12-string, banjo, tuning display, hidden from the multitrack view, tablature on a drum track.                                                                  |
+| `track-flags-dropped`             | info     | banjo, tuning display, hidden from the multitrack view, tablature on a drum track.                                                                             |
 | `beam-grouping-dropped`           | info     | GP5's beam grouping per time signature.                                                                                                                        |
 | `beat-display-dropped`            | info     | GP5's beam breaks, stem directions and bracket display.                                                                                                        |
 | `ottava-dropped`                  | info     | GP5's ottava lines.                                                                                                                                            |
@@ -584,13 +588,14 @@ What a score can hold and gpif cannot. Practice data never reaches the writer; n
 | `volta-bracket`         | a bracket layout the reader cannot rebuild from first-bar marks (a final ending followed by unmarked bars and a repeat end)                                                                                                                                                                                                        |
 | `anacrusis`             | `anacrusis` on a bar other than the first                                                                                                                                                                                                                                                                                          |
 | `notation`              | a drum or keyboard track not on standard notation; a fretted track with a non-guitar program on standard notation only (it gets tablature, or it would read back as a keyboard); a keyboard track with a guitar program and a tuning (written without the tuning, or it reads back fretted; it reads back pitched with every note) |
+| `courses`               | `Track.courses` (a 12-string or mandolin): Guitar Pro 7 and 8's encoding of doubled courses is not known (#348), so the track is written as single strings and reads back plain                                                                                                                                                    |
 | `capo`                  | a capo on a drum or keyboard track: the notes are fingered without one, so `CapoFret` stays 0 or Guitar Pro would sound them a capo higher                                                                                                                                                                                         |
 | `tempo-ramp`            | a ramp cut short by the next change, ending past the score, between beats, or on a different mark; written as a step                                                                                                                                                                                                               |
 | `tempo-collision`       | two different tempo changes at one moment; playback's winner is written                                                                                                                                                                                                                                                            |
 | `notices`               | a lone empty notice, or one holding a line break                                                                                                                                                                                                                                                                                   |
 | `text-characters`       | characters XML cannot hold (C0 controls, lone surrogates), removed                                                                                                                                                                                                                                                                 |
 
-`fullScore()` drops exactly `section-color`, `channel-effect`, `sound-override`, `chord-barre`, `mixer-change`, `stroke`, `note-dynamics` and `trill-speed`; the gp and gpx fixtures and `largeScore()` drop nothing.
+`fullScore()` drops exactly `section-color`, `courses`, `channel-effect`, `sound-override`, `chord-barre`, `mixer-change`, `stroke`, `note-dynamics` and `trill-speed`; the gp and gpx fixtures and `largeScore()` drop nothing.
 
 ### The zip
 

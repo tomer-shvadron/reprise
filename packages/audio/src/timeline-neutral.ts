@@ -2,7 +2,7 @@ import type { Score } from '@reprise/model';
 
 /**
  * True when `next` differs from `previous` only in track properties the timeline never reads
- * (name, colour, display, channel, program, lyrics), so the edit can reach the sampler without
+ * (name, colour, display, channel, program, lyrics); `courses` is not, since the sink reads it per strike, so the edit can reach the sampler without
  * rebuilding the sequence. Identity is exact: Immer keeps every node an edit did not touch, and
  * undo and redo keep them too. `bank` is not neutral because the sink resolves a beat's program
  * change against the timeline's copy of the track. A `sound` change is neutral when only its
@@ -22,6 +22,7 @@ export function timelineNeutral(previous: Score, next: Score): boolean {
           old.bars === track.bars &&
           old.kind === track.kind &&
           old.tuning === track.tuning &&
+          old.courses === track.courses &&
           old.capo === track.capo &&
           old.bank === track.bank &&
           old.sound?.packId === track.sound?.packId &&

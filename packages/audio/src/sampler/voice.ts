@@ -131,6 +131,13 @@ export interface VoiceStart {
   instrument?: RegionMap;
   /** A release region's voice: it never steals a slot and is the first a later note steals. */
   tail?: boolean;
+  /**
+   * A fixed offset from the key's pitch, in cents, folded into the playback rate: the second
+   * string of a doubled course. It is not automation, so a bend's detune curve stacks on it.
+   */
+  tuneCents?: number;
+  /** A fixed level trim in dB, folded into the voice's base level, so gain automation keeps it. */
+  trimDb?: number;
 }
 
 export interface FilterSettings {
@@ -233,7 +240,8 @@ export class Voice {
     );
     this.#sustain = Math.min(1, Math.max(0, envelope.sustain));
     this.#releaseTime = Math.max(envelope.release, MIN_RELEASE);
-    this.#rate = 2 ** ((start.key - region.rootKey + region.tune / 100) / 12);
+    this.#rate =
+      2 ** ((start.key - region.rootKey + (region.tune + (start.tuneCents ?? 0)) / 100) / 12);
 
     const source = context.createBufferSource();
     source.buffer = buffer;
@@ -258,15 +266,18 @@ export class Voice {
     const deltas = region.modulators
       ? evaluateModulators(region.modulators, start.key, start.velocity)
       : undefined;
-    this.#baseLevel = deltas
-      ? dbToGain(
-          -Math.min(
-            MAX_ATTENUATION_DB,
-            Math.max(0, (region.attenuation ?? 0) + deltas.attenuationDb),
-          ),
-        )
-      : velocityGain(start.velocity) ** (region.velocityTrack ?? 1) *
-        dbToGain(-(region.attenuation ?? 0));
+    const trim = dbToGain(start.trimDb ?? 0);
+    this.#baseLevel =
+      trim *
+      (deltas
+        ? dbToGain(
+            -Math.min(
+              MAX_ATTENUATION_DB,
+              Math.max(0, (region.attenuation ?? 0) + deltas.attenuationDb),
+            ),
+          )
+        : velocityGain(start.velocity) ** (region.velocityTrack ?? 1) *
+          dbToGain(-(region.attenuation ?? 0)));
     this.#level.gain.setValueAtTime(this.#baseLevel, when);
     this.#gainEvents = [{ at: when, value: this.#baseLevel, ramp: false }];
 

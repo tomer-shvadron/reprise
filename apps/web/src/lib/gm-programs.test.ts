@@ -17,4 +17,27 @@ describe('GM names', () => {
     expect(instrumentName({ kind: 'drums', program: 5 })).toBe('Kit 5');
     expect(GM_DRUM_KITS.get(25)).toBe('TR-808 Kit');
   });
+
+  it('names a 12-string and a mandolin, which GM has no program for', () => {
+    const six = [40, 45, 50, 55, 59, 64];
+    expect(
+      instrumentName({
+        kind: 'fretted',
+        program: 25,
+        tuning: six,
+        courses: [12, 12, 12, 12, 0, 0],
+      }),
+    ).toBe('12-string Guitar');
+    expect(
+      instrumentName({
+        kind: 'fretted',
+        program: 25,
+        tuning: [55, 62, 69, 76],
+        courses: [0, 0, 0, 0],
+      }),
+    ).toBe('Mandolin');
+    expect(instrumentName({ kind: 'fretted', program: 25, tuning: six })).toBe(
+      'Acoustic Guitar (steel)',
+    );
+  });
 });

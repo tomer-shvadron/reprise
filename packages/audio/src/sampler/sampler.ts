@@ -1,4 +1,4 @@
-import { midiNote } from '@reprise/model';
+import { courseOffset, midiNote } from '@reprise/model';
 import type { Id, Note, Track } from '@reprise/model';
 
 import { realtimeDefer } from '../effects/bypass-slot';
@@ -17,6 +17,16 @@ export const DEFAULT_POLYPHONY = 64;
 /** About mf on the MIDI velocity curve. */
 export const DEFAULT_VELOCITY = 96;
 const PREVIEW_SECONDS = 0.6;
+
+/**
+ * The second string of a doubled course. The numbers are fixed, never random, so a render
+ * repeats; the small detune and the trim keep the pair from collapsing into one louder voice.
+ * An octave string sits under its partner, a unison one a touch flat of it.
+ */
+export const COURSE_PARTNER = {
+  octave: { tuneCents: 3, trimDb: -4 },
+  unison: { tuneCents: -3, trimDb: -3 },
+} as const;
 /** A preview waiting on a decode later than this is dropped. */
 const PREVIEW_LATE_SECONDS = 0.5;
 
@@ -25,7 +35,7 @@ export interface Instrument {
   source: SampleSource;
 }
 
-export type SamplerTrack = Pick<Track, 'id' | 'kind' | 'tuning' | 'capo' | 'channel'>;
+export type SamplerTrack = Pick<Track, 'id' | 'kind' | 'tuning' | 'capo' | 'channel' | 'courses'>;
 
 /** The `AudioEngine.setTrack` parameters, in the model's 0..127 channel units. */
 export interface TrackParams {
@@ -50,6 +60,13 @@ export interface NoteOnRequest {
   offset?: number;
   /** Ignore note-off: ring until the next note on the string, or `until` when given. */
   letRing?: boolean | { until: number };
+  /**
+   * The semitone offset of a doubled course's second string (0 unison, 12 octave above). The
+   * second voice starts with the first, in the same call, so it never chokes its partner; the
+   * next note on the string chokes both, and both follow every detune and gain call through the
+   * one handle. Absent plays a single string.
+   */
+  course?: number;
   /** Plays a region of this instrument instead of the track's, through the track's strip. */
   instrument?: Instrument;
   /** A preview voice: see `Sampler.previewNote`. */
@@ -113,6 +130,15 @@ export interface VoiceHandle {
   setGain(db: number, at: number): void;
   rampGain(db: number, at: number): void;
   setFilter(settings: FilterSettings, at: number): void;
+}
+
+type Partner = { tuneCents: number; trimDb: number };
+
+/** One region's sample as it starts: the partner string's carry their own key, detune and trim. */
+interface Layer extends Partial<Partner> {
+  region: Region;
+  buffer: AudioBuffer;
+  key: number;
 }
 
 interface TrackState {
@@ -363,25 +389,28 @@ export class Sampler {
     const id = state.track.id;
     if (request.velocity <= 0) return undefined;
     const { regions, source } = request.instrument ?? this.#instrumentAt(state, request.when);
-    const layers: { region: Region; buffer: AudioBuffer }[] = [];
-    const resolved = regions.resolveAll(
-      request.key,
-      request.velocity,
-      request.layer,
-      request.select,
-    );
-    for (const region of resolved) {
-      const buffer = source.peekBuffer(region.sample);
-      if (buffer) {
-        layers.push({ region, buffer });
-        continue;
+    const layers: Layer[] = [];
+    const gather = (key: number, partner: Partner | undefined): void => {
+      const resolved = regions.resolveAll(key, request.velocity, request.layer, request.select);
+      for (const region of resolved) {
+        const buffer = source.peekBuffer(region.sample);
+        if (buffer) {
+          layers.push({ region, buffer, key, ...partner });
+          continue;
+        }
+        this.#misses += 1;
+        this.#options.onMiss?.(id, region.sample);
+        // A failed load surfaces through `preload` or the memory manager, not mid-playback.
+        source.getBuffer(region.sample).catch(() => undefined);
       }
-      this.#misses += 1;
-      this.#options.onMiss?.(id, region.sample);
-      // A failed load surfaces through `preload` or the memory manager, not mid-playback.
-      source.getBuffer(region.sample).catch(() => undefined);
-    }
+    };
+    gather(request.key, undefined);
     if (layers.length === 0) return undefined;
+    // The partner is there only when the first string sounds, and its missing sample costs only itself.
+    const partnerKey = request.course === undefined ? undefined : request.key + request.course;
+    if (partnerKey !== undefined && partnerKey >= 0 && partnerKey <= 127) {
+      gather(partnerKey, request.course === 0 ? COURSE_PARTNER.unison : COURSE_PARTNER.octave);
+    }
 
     const string = request.string ?? 0;
     // SF2's exclusive class c is group = offBy = c; an SFZ group chokes only voices off_by it.
@@ -402,7 +431,7 @@ export class Sampler {
     }
 
     const voices: Voice[] = [];
-    for (const { region, buffer } of layers) {
+    for (const { region, buffer, key, tuneCents, trimDb } of layers) {
       this.pool.reserve(request.when);
       const voice = new Voice(
         this.context,
@@ -411,12 +440,14 @@ export class Sampler {
           track: id,
           region,
           buffer,
-          key: request.key,
+          key,
           velocity: request.velocity,
           when: request.when,
           string,
           preview: request.preview ?? false,
           instrument: regions,
+          ...(tuneCents !== undefined && { tuneCents }),
+          ...(trimDb !== undefined && { trimDb }),
           ...(request.offset !== undefined && { offset: request.offset }),
         },
         (ended) => {
@@ -570,6 +601,7 @@ export class Sampler {
     const seconds = options.seconds ?? this.#options.previewSeconds ?? PREVIEW_SECONDS;
     const key = 'pitch' in note ? note.pitch : midiNote(state.track, note);
     const string = 'pitch' in note ? 0 : note.string;
+    const course = 'pitch' in note ? null : courseOffset(state.track, string);
     const slot = string > 0 ? `string:${String(string)}` : `key:${String(key)}`;
     state.pendingPreviews.delete(slot);
     const requested = this.context.currentTime;
@@ -577,7 +609,7 @@ export class Sampler {
       const when = this.context.currentTime;
       const voice = this.#start(
         state,
-        { key, velocity, when, string, preview: true },
+        { key, velocity, when, string, preview: true, ...(course !== null && { course }) },
         state.strip.previewInput,
       );
       voice?.release(when + Math.max(0, seconds - (when - requested)));

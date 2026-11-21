@@ -1,4 +1,4 @@
-import type { Track } from '@reprise/model';
+import { stringInstrumentOf, type Track } from '@reprise/model';
 
 /** General MIDI 1 program names, by program number. */
 export const GM_PROGRAMS: readonly string[] = [
@@ -166,9 +166,16 @@ export const GM_DRUM_KITS: ReadonlyMap<number, string> = new Map([
 ]);
 
 /** The GM name of the track's instrument; names come from this table, not the sound bank. */
-export function instrumentName(track: Pick<Track, 'kind' | 'program'>): string {
+export function instrumentName(
+  track: Pick<Track, 'kind' | 'program'> & Partial<Pick<Track, 'tuning' | 'courses' | 'drone'>>,
+): string {
   if (track.kind === 'drums') {
     return GM_DRUM_KITS.get(track.program) ?? `Kit ${String(track.program)}`;
   }
+  // GM has no 12-string or mandolin, so both carry the steel guitar's program; the derived
+  // identity gives the sidebar and the mixer the name the player expects instead.
+  const instrument = stringInstrumentOf({ ...track, tuning: track.tuning ?? [] });
+  if (instrument === 'twelveString') return '12-string Guitar';
+  if (instrument === 'mandolin') return 'Mandolin';
   return GM_PROGRAMS[track.program] ?? `Program ${String(track.program)}`;
 }

@@ -1,10 +1,11 @@
-import { STANDARD_TUNING, createTrack, type Track } from '@reprise/model';
+import { STANDARD_TUNING, createTrack, stringInstrumentOf, type Track } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import {
   applyPreset,
   changeKind,
+  coursesSummary,
   droppedStringsMessage,
   formFromTrack,
   newTrackForm,
@@ -251,5 +252,97 @@ describe('noteLabel', () => {
     [12, 'C0'],
   ])('%i is %s', (midi, label) => {
     expect(noteLabel(midi)).toBe(label);
+  });
+});
+
+describe('doubled courses', () => {
+  const twelve = () => applyPreset(newTrackForm('fretted'), '12-string standard', true);
+
+  it('names a 12-string from its preset, not as E standard', () => {
+    const form = twelve();
+    expect(form).toMatchObject({
+      name: '12-string Guitar',
+      shortName: '12-str.',
+      program: 25,
+      strings: [64, 59, 55, 50, 45, 40],
+      courses: [0, 0, 12, 12, 12, 12],
+    });
+    expect(presetNameOf(form)).toBe('12-string standard');
+    // The same strings without the courses are the plain guitar's.
+    expect(presetNameOf({ ...form, courses: undefined })).toBe('E standard');
+  });
+
+  it('reads a 12-string track back to the same form and no changes', () => {
+    const track = createTrack('fretted', {
+      tuning: [40, 45, 50, 55, 59, 64],
+      courses: [12, 12, 12, 12, 0, 0],
+    });
+    const form = formFromTrack(track);
+    expect(form.courses).toEqual([0, 0, 12, 12, 12, 12]);
+    expect(presetNameOf(form)).toBe('12-string standard');
+    expect(trackChanges(track, form)).toEqual({});
+  });
+
+  it('sends the courses with a new 12-string and clears them on a plain preset', () => {
+    expect(newTrackProperties(twelve(), DEFAULTS)).toMatchObject({
+      tuning: [40, 45, 50, 55, 59, 64],
+      courses: [12, 12, 12, 12, 0, 0],
+    });
+    const track = createTrack('fretted', {
+      tuning: [40, 45, 50, 55, 59, 64],
+      courses: [12, 12, 12, 12, 0, 0],
+    });
+    const plain = applyPreset(formFromTrack(track), 'E standard', false);
+    expect(plain.courses).toBeUndefined();
+    expect(trackChanges(track, plain)).toEqual({ courses: null });
+  });
+
+  it('sets a mandolin from its preset: four unison courses, program 25', () => {
+    const form = applyPreset(newTrackForm('fretted'), 'Mandolin GDAE', true);
+    expect(form).toMatchObject({ name: 'Mandolin', shortName: 'Mand.', program: 25 });
+    expect(form.courses).toEqual([0, 0, 0, 0]);
+    const properties = newTrackProperties(form, DEFAULTS);
+    expect(
+      stringInstrumentOf({
+        kind: 'fretted',
+        program: 25,
+        ...properties,
+        tuning: [...form.strings].reverse(),
+      }),
+    ).toBe('mandolin');
+  });
+
+  it('carries a banjo preset with its drone, program and a banjo name', () => {
+    const form = applyPreset(newTrackForm('fretted'), 'Banjo Open G', true);
+    expect(form).toMatchObject({
+      name: 'Banjo',
+      shortName: 'Bjo.',
+      program: 105,
+      drone: { string: 5, fret: 5 },
+    });
+    expect(presetNameOf(form)).toBe('Banjo Open G');
+    expect(newTrackProperties(form, DEFAULTS).drone).toEqual({ string: 5, fret: 5 });
+    const tenor = applyPreset(newTrackForm('fretted'), 'Tenor banjo CGDA', true);
+    expect(tenor.drone).toBeUndefined();
+    expect(tenor.program).toBe(105);
+  });
+
+  it('keeps the courses the length of the strings: a new string joins the lowest course', () => {
+    const seven = setStringCount(twelve(), 7);
+    expect(seven.courses).toEqual([0, 0, 12, 12, 12, 12, 12]);
+    expect(setStringCount(seven, 5).courses).toEqual([0, 0, 12, 12, 12]);
+    const mandolin = applyPreset(newTrackForm('fretted'), 'Mandolin GDAE', true);
+    expect(setStringCount(mandolin, 5).courses).toEqual([0, 0, 0, 0, 0]);
+    expect(setStringCount(newTrackForm('fretted'), 7).courses).toBeUndefined();
+  });
+
+  it('summarises the courses for the dialog', () => {
+    expect(coursesSummary(twelve().courses)).toBe(
+      'Doubled courses: octave on strings 6 to 3, unison on strings 2 and 1',
+    );
+    expect(coursesSummary([0, 0, 0, 0])).toBe('Doubled courses: unison on strings 4 to 1');
+    expect(coursesSummary([null, 12])).toBe('Doubled courses: octave on strings 2');
+    expect(coursesSummary(undefined)).toBeUndefined();
+    expect(coursesSummary([null, null])).toBeUndefined();
   });
 });

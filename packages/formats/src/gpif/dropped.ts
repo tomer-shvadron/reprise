@@ -45,6 +45,11 @@ export type GpifDropCode =
   | 'notation'
   /** A capo on a drum or pitched track, which a reader resets. */
   | 'capo'
+  /**
+   * `Track.courses` (12-string, mandolin): Guitar Pro 7 and 8's encoding of doubled courses is
+   * not known yet (#348), so the writer leaves them out and the track reads back as a plain one.
+   */
+  | 'courses'
   /** A tempo ramp gpif's linear automations cannot express (overlapping or past the end). */
   | 'tempo-ramp'
   /** Two different tempo marks at one moment; the one playback uses is kept. */

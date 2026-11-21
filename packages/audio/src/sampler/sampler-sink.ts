@@ -1,4 +1,4 @@
-import { PPQ, beatTicks } from '@reprise/model';
+import { PPQ, beatTicks, courseOffset } from '@reprise/model';
 import type { ChannelMixChange, Id, Track } from '@reprise/model';
 
 import { DEAD_NOTE_KEY, deadNoteInstrument } from '../articulations/dead-note';
@@ -232,8 +232,12 @@ export function createSamplerSink(
       instrument.regions
         .resolveAll(key, strike.velocity, layer, selection)
         .some((region) => region.trigger === 'legato');
+    // A dead note is one noise burst and a ghost note one light stroke, not a strummed pair.
+    const course =
+      plan.dead || input.note.ghost ? null : courseOffset(input.track, input.note.string);
     return sampler.noteOn(trackId, {
       key,
+      ...(course !== null && { course }),
       velocity: strike.velocity,
       when: strike.when,
       string: input.note.string,

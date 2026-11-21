@@ -163,6 +163,63 @@ describe('the track dialog, adding', () => {
     expect(services.selection.getState().currentTrack).toBe(added?.id);
   });
 
+  it('offers the 12-string, mandolin and banjo presets in their own groups', () => {
+    const { run } = setup();
+    run('track.add');
+    const labels = [...within(dialog()).getByLabelText('Tuning').querySelectorAll('optgroup')].map(
+      (group) => group.label,
+    );
+    expect(labels).toEqual(['Guitar', 'Bass', '12-string']);
+  });
+
+  it('adds a 12-string with its courses, named for the preset, and says what is doubled', async () => {
+    const { services, run, user } = setup();
+    run('track.add');
+    await user.selectOptions(field('Strings'), '6');
+    await user.selectOptions(field('Tuning'), '12-string standard');
+    expect(field('Name')).toHaveValue('12-string Guitar');
+    expect(
+      within(dialog()).getByText(
+        'Doubled courses: octave on strings 6 to 3, unison on strings 2 and 1',
+      ),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add track' }));
+    expect(tracksOf(services).at(-1)).toMatchObject({
+      name: '12-string Guitar',
+      tuning: [40, 45, 50, 55, 59, 64],
+      courses: [12, 12, 12, 12, 0, 0],
+    });
+  });
+
+  it('adds a mandolin on four strings and a banjo with its drone', async () => {
+    const { services, run, user } = setup();
+    run('track.add');
+    await user.selectOptions(field('Strings'), '4');
+    expect(
+      [...within(dialog()).getByLabelText('Tuning').querySelectorAll('optgroup')].map(
+        (group) => group.label,
+      ),
+    ).toEqual(['Bass', 'Ukulele', 'Mandolin', 'Banjo']);
+    await user.selectOptions(field('Tuning'), 'Mandolin GDAE');
+    await user.click(screen.getByRole('button', { name: 'Add track' }));
+    expect(tracksOf(services).at(-1)).toMatchObject({
+      name: 'Mandolin',
+      tuning: [55, 62, 69, 76],
+      courses: [0, 0, 0, 0],
+      program: 25,
+    });
+
+    run('track.add');
+    await user.selectOptions(field('Strings'), '5');
+    await user.selectOptions(field('Tuning'), 'Banjo Open G');
+    await user.click(screen.getByRole('button', { name: 'Add track' }));
+    expect(tracksOf(services).at(-1)).toMatchObject({
+      tuning: [67, 50, 55, 59, 62],
+      drone: { string: 5, fret: 5 },
+      program: 105,
+    });
+  });
+
   it('adds a drum track with no strings', async () => {
     const { services, run, user } = setup();
     run('track.add');

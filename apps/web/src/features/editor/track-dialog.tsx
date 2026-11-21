@@ -20,6 +20,7 @@ import {
   TRACK_COLORS,
   applyPreset,
   changeKind,
+  coursesSummary,
   formFromTrack,
   hasErrors,
   newTrackForm,
@@ -49,6 +50,9 @@ const INSTRUMENTS = [
   ['guitar', 'Guitar'],
   ['bass', 'Bass'],
   ['ukulele', 'Ukulele'],
+  ['twelveString', '12-string'],
+  ['mandolin', 'Mandolin'],
+  ['banjo', 'Banjo'],
 ] as const;
 
 function Field({
@@ -375,6 +379,9 @@ export function TrackDialog({
                   </Field>
                 ))}
               </div>
+              {coursesSummary(form.courses) !== undefined && (
+                <p className="text-muted-foreground text-xs">{coursesSummary(form.courses)}</p>
+              )}
               {!adding && (
                 <p className="text-muted-foreground text-xs">
                   Changing the tuning keeps every fret, so the notes sound different.

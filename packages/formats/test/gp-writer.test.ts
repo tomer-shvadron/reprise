@@ -139,6 +139,7 @@ describe('the gp writer round trip', () => {
     const result = roundTrip(source);
     expect(result.dropped.map((entry) => [entry.code, entry.path])).toEqual([
       ['section-color', 'score.masterBars[0].section.color'],
+      ['courses', 'score.tracks[0].courses'],
       ['channel-effect', 'score.tracks[0].channel'],
       ['sound-override', 'score.tracks[0].sound'],
       ['chord-barre', 'score.tracks[0]'],
@@ -160,9 +161,9 @@ describe('the gp writer round trip', () => {
     delete first.section.color;
     guitar.channel.reverb = 0;
     delete guitar.sound;
-    // The writer encodes neither yet, and nothing can create them in the app until then. Part 2
-    // (#348) encodes `courses` or reports a `courses` drop, part 3 the drone; the deletes below go
-    // away in the PR that teaches the writer, instead of hiding a loss.
+    // The writer reports `courses` as a loss until Guitar Pro 8's reference files show how it
+    // stores a 12-string (#348, part 2); it does not encode the drone yet either (part 3), and the
+    // delete below goes away in the PR that teaches the writer, instead of hiding a loss.
     delete guitar.courses;
     delete banjo?.drone;
     delete beat.chord.diagram.barres;
@@ -195,6 +196,7 @@ describe('a gp3, gp4, gp5 or gpx score exported to gp', () => {
     'empty-beat',
     'bend-shape',
     'whammy-shape',
+    'courses',
   ];
 
   /** The source with those losses applied, as the writer's dropped list announces them. */
@@ -202,6 +204,7 @@ describe('a gp3, gp4, gp5 or gpx score exported to gp', () => {
     const expected = structuredClone(source);
     for (const masterBar of expected.masterBars) delete masterBar.section?.color;
     for (const track of expected.tracks) {
+      delete track.courses;
       for (const bar of track.bars) {
         for (const voice of bar.voices) {
           const empty = (beat: (typeof voice.beats)[number]) =>
@@ -221,6 +224,7 @@ describe('a gp3, gp4, gp5 or gpx score exported to gp', () => {
   function withoutCurves(score: Score): Score {
     const copy = structuredClone(score);
     for (const track of copy.tracks) {
+      delete track.courses;
       for (const bar of track.bars) {
         for (const voice of bar.voices) {
           for (const beat of voice.beats) {
@@ -431,6 +435,7 @@ describe('what the writer reports as dropped', () => {
           .build(),
     ],
     ['capo', () => score().track('piano', { capo: 2 }).bar().build({ validate: false })],
+    ['courses', () => score().track('twelveString').bar().build()],
     [
       'tempo-ramp',
       () =>

@@ -47,6 +47,14 @@ third-party transcriber (`fade-to-black.gp4`, `nightwish.gp5`, `canon.gp5`, `ser
 | `gp/timer.gp`                                  | [`guitarpro8/timer.gp`](https://github.com/CoderLine/alphaTab/blob/022a45c8e42370f9e12e68949d11eada370da83d/packages/alphatab/test-data/guitarpro8/timer.gp)                                                                 |
 | `gp/track-volume.gp`                           | [`guitarpro7/track-volume.gp`](https://github.com/CoderLine/alphaTab/blob/022a45c8e42370f9e12e68949d11eada370da83d/packages/alphatab/test-data/guitarpro7/track-volume.gp)                                                   |
 
+**Modified.** `gp5/twelve-string.gp5` is `gp5/effects.gp5` (source above) with one byte changed: the
+first track's flags byte, `0x08` to `0x0a`, which sets Guitar Pro 3 to 5's 12-string flag. The change
+is made by `scripts/fixtures/make-twelve-string.ts` (`node scripts/fixtures/make-twelve-string.ts
+--check` fails on a stale file), so the file is reproducible, and the MPL-2.0 permits the
+modification. Guitar Pro never saved this file: it proves only that Reprise reads the flag the way
+the format's documents describe it (#348), and an owner-made Guitar Pro 8 file replaces it when one
+arrives.
+
 Fixtures are data: nothing reads them except a parser. Adding one means fetching it from an open
 source, checking through alphaTab that its score metadata, track names and beat text or lyrics name
 no song, artist or transcriber (`strings` cannot see inside gpx and gp), adding its row here, and

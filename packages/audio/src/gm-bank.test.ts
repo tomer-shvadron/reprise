@@ -1,6 +1,6 @@
 import { createTrack } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { GmBank } from './gm-bank';
 import { GM_BUDGET_BYTES, ManagedSampleSource } from './samples/managed-sample-source';
@@ -40,6 +40,34 @@ describe('GmBank', () => {
     expect(gm.instrumentId(guitar(9), 25)).toBe('gm:0:25');
     expect(gm.instrumentId(drums, 5)).toBe('gm:drums:0');
     expect(gm.instrumentId(guitar(0), 40)).toBe('gm:0:0');
+  });
+
+  describe('the mandolin variation', () => {
+    const mandolin = createTrack('fretted', {
+      tuning: [55, 62, 69, 76],
+      courses: [0, 0, 0, 0],
+    });
+    const twelveString = createTrack('fretted', {
+      courses: [12, 12, 12, 12, 0, 0],
+    });
+    afterEach(() => vi.restoreAllMocks());
+
+    it("asks the font for GeneralUser's Mandolin bank 16, and falls back to program 25 without it", () => {
+      const resolve = vi.spyOn(font, 'resolve');
+      const gm = bank();
+      expect(gm.instrumentId(mandolin, 25)).toBe('gm:0:25');
+      expect(resolve).toHaveBeenCalledWith(16, 25);
+    });
+
+    it('leaves a 12-string, a plain guitar, another program and a chosen bank alone', () => {
+      const resolve = vi.spyOn(font, 'resolve');
+      const gm = bank();
+      gm.instrumentId(twelveString, 25);
+      gm.instrumentId(guitar(0), 25);
+      gm.instrumentId(mandolin, 40);
+      gm.instrumentId({ ...mandolin, bank: 8 }, 25);
+      expect(resolve.mock.calls.some(([bankNumber]) => bankNumber === 16)).toBe(false);
+    });
   });
 
   it('hands the sampler the region map the manager decodes for the same id', () => {
