@@ -212,3 +212,14 @@ together: starting one stops the other.
 ## Chords panel (#352)
 
 `chords/` is the right panel's Chords tab: a name field (with the song's own chord names as buttons), the current track's tuning and capo, and cards of generated shapes from `lib/chords`, painted by the layout's `chordDiagramPrimitives`. A card strums the shape (`strum.ts`, one `previewNote` per sounding string, 25 ms apart); in edit mode two buttons write the picked shape to the cursor's beat or to every beat of that name (`write-shape.ts`, one "Chord diagram" undo step each). `trainer.chords` and the score.chord item `trainer.chordShapesFor` open it. An empty tab seeds its name from the cursor's chord, the playhead's, then the song's first. A switch in the tab turns the chord strip (`score.chordStrip`, drawn by `app/chord-strip.tsx`, see the score README) on and off.
+
+### The scale overlay (#353)
+
+`fretboard/scale-dots.ts` lists every position that sounds a tone of a scale (the capo and a banjo's
+short string included; at most 250), and `fretboard.tsx` draws them as hollow rings under the lit
+notes, the tonic heavier. `fretboard/scale-overlay.ts` holds the chosen scale in a store per
+document store (`scaleOverlayFor`): a song or section overlay goes when another document opens, a
+manual pick stays, nothing persists. The header carries a chip with a clear button and the scale
+tool (`scale-picker.tsx`, a tonic and a scale from `SCALES`). `trainer.fretboardSongScale` runs the
+key engine on the open score (`songScaleOf`) and `trainer.fretboardClearScale` hides the overlay;
+neither has a default key.

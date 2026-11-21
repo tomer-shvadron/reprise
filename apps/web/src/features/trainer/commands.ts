@@ -7,6 +7,7 @@ import { applyLoop, seekToBar, targetBars, targetPlace } from '@/features/transp
 import type { SpeedTrainerServices } from './speed-trainer/speed-trainer-store';
 import { tunerFor } from './tuner/tuner-for';
 import { chordNameOfBeat } from './chords/chord-target';
+import { scaleOverlayFor, songScaleOf } from './fretboard/scale-overlay';
 import { speedTrainerFor } from './speed-trainer/speed-trainer-for';
 
 export type TrainerCommandId =
@@ -23,7 +24,9 @@ export type TrainerCommandId =
   | 'trainer.chordShapesFor'
   | 'trainer.speedTrainerOnSelection'
   | 'trainer.showFretboard'
-  | 'trainer.fretboardLeftHanded';
+  | 'trainer.fretboardLeftHanded'
+  | 'trainer.fretboardSongScale'
+  | 'trainer.fretboardClearScale';
 
 type TrainerCommand = Command & { id: TrainerCommandId };
 
@@ -156,6 +159,33 @@ export function trainerCommands(
       repeat: false,
       run: () => {
         ui.getState().setFretboardLeftHanded(!ui.getState().fretboardLeftHanded);
+      },
+    },
+    {
+      id: 'trainer.fretboardSongScale',
+      title: "Show the song's scale on the fretboard",
+      repeat: false,
+      enabled: () => services.document.getState().score !== undefined,
+      run: () => {
+        const { score } = services.document.getState();
+        if (!score) return;
+        const found = songScaleOf(score);
+        // The analysis needs enough notes to call a key; say so rather than do nothing.
+        if (!found) {
+          services.transport.getState().announce('No scale found: too few notes to tell the key');
+          return;
+        }
+        ui.getState().showBottomPanelView('fretboard');
+        scaleOverlayFor(services).getState().show(found.tonic, found.scaleId, 'song');
+      },
+    },
+    {
+      id: 'trainer.fretboardClearScale',
+      title: 'Hide the scale on the fretboard',
+      repeat: false,
+      enabled: () => scaleOverlayFor(services).getState().overlay !== undefined,
+      run: () => {
+        scaleOverlayFor(services).getState().clear();
       },
     },
     {

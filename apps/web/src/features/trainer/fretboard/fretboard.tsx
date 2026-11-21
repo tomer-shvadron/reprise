@@ -1,8 +1,12 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { XIcon } from 'lucide-react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { useStore } from 'zustand';
 
 import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useAppServices } from '@/app/services-context';
+import { useCommand } from '@/app/use-command';
+import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { selectRunning } from '@/state/playback';
 import { startPositionReader } from '@/state/position-reader';
@@ -18,6 +22,9 @@ import {
   type Dot,
 } from './fretboard-model';
 import { geometryOf, type Geometry } from './fretboard-geometry';
+import { scaleDots, scaleLabel } from './scale-dots';
+import { scaleOverlayFor, type ScaleOverlay } from './scale-overlay';
+import { ScalePicker } from './scale-picker';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const DOT_RADIUS = 10;
@@ -126,6 +133,67 @@ function StaticBoard({
   );
 }
 
+/**
+ * The scale's tones as hollow tinted rings under the lit notes, so a played note stays on top.
+ * The tonic has a heavier ring and a tint. Drawn once per board, geometry and scale, so a
+ * playback tick never touches it.
+ */
+const ScaleLayer = memo(function ScaleLayer({
+  board,
+  tuning,
+  geometry,
+  overlay,
+}: {
+  board: BoardShape;
+  tuning: readonly number[];
+  geometry: Geometry;
+  overlay: ScaleOverlay;
+}) {
+  const dots = useMemo(
+    () => scaleDots(board, tuning, overlay.tonic, overlay.scaleId),
+    [board, tuning, overlay.tonic, overlay.scaleId],
+  );
+  return (
+    <g
+      data-fretboard-scale
+      role="img"
+      aria-label={scaleLabel(overlay.tonic, overlay.scaleId)}
+      className="text-primary"
+    >
+      {dots.map((dot) => {
+        const x = geometry.dotX(dot.absolute);
+        const y = geometry.stringY(dot.string);
+        return (
+          <g key={`${String(dot.string)}.${String(dot.absolute)}`} data-scale-tone={dot.degree}>
+            <circle
+              cx={x}
+              cy={y}
+              r={DOT_RADIUS - 1}
+              fill="currentColor"
+              fillOpacity={dot.tonic ? 0.35 : 0.12}
+              stroke="currentColor"
+              strokeWidth={dot.tonic ? 2.5 : 1}
+              strokeOpacity={dot.tonic ? 1 : 0.7}
+              data-scale-tonic={dot.tonic ? '' : undefined}
+            />
+            <text
+              x={x}
+              y={y + 3}
+              textAnchor="middle"
+              fontSize={8}
+              fontWeight={dot.tonic ? 700 : 500}
+              fill="var(--color-foreground, currentColor)"
+              aria-hidden="true"
+            >
+              {dot.name}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
+});
+
 /** Replaces the lit dots' elements; the board and everything else is left alone. */
 function paintDots(layer: SVGGElement, dots: readonly Dot[], geometry: Geometry) {
   const doc = layer.ownerDocument;
@@ -191,9 +259,18 @@ export function Fretboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [board?.strings, board?.frets, board?.capo, leftHanded],
   );
+  // The shape is read through its parts, like the geometry, so an unrelated edit keeps the layer.
+  const stableBoard = useMemo(
+    () => board,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [board?.strings, board?.frets, board?.capo, board?.drone?.string, board?.drone?.fret],
+  );
   const tuning = track?.tuning;
   const names = useMemo(() => (tuning ? tuningNames({ tuning }) : []), [tuning]);
   const layer = useRef<SVGGElement>(null);
+  const scales = scaleOverlayFor(services);
+  const overlay = useStore(scales, (state) => state.overlay);
+  const clearScale = useCommand('trainer.fretboardClearScale');
 
   useEffect(() => {
     const target = layer.current;
@@ -264,6 +341,27 @@ export function Fretboard() {
           {board.strings} strings, tuning {names.join(' ')}
           {board.capo > 0 ? `, capo ${String(board.capo)}` : ''}
         </span>
+        <div className="flex items-center gap-2">
+          {overlay && (
+            <span
+              data-scale-chip
+              className="bg-muted text-foreground flex items-center gap-1 rounded-md py-0.5 pr-0.5 pl-2"
+            >
+              Scale: {overlay.label}
+              <CommandTooltip command="trainer.fretboardClearScale" label="Hide the scale">
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Hide the scale"
+                  onClick={clearScale.run}
+                >
+                  <XIcon aria-hidden="true" />
+                </Button>
+              </CommandTooltip>
+            </span>
+          )}
+          <ScalePicker store={scales} />
+        </div>
         <label className="flex items-center gap-2">
           Left-handed
           <Switch
@@ -285,6 +383,9 @@ export function Fretboard() {
         data-left-handed={leftHanded}
       >
         <StaticBoard board={board} geometry={geometry} names={names} />
+        {overlay && tuning && stableBoard && (
+          <ScaleLayer board={stableBoard} tuning={tuning} geometry={geometry} overlay={overlay} />
+        )}
         <g ref={layer} data-fretboard-notes />
       </svg>
     </div>
