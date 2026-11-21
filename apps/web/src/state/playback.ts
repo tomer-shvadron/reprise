@@ -79,11 +79,14 @@ export interface PlaybackStoreState {
  * How one track sounds: its tier, and why a pack it names is not playing. `tier` follows the
  * audio package's `tierOf`: `hq` only while a pack plays; a track naming a pack that is not
  * installed (`missing`) or whose pack failed to load (`failed`, with the engine's `message`) is
- * `gm` and plays the soundfont. `packId` is the pack the track names.
+ * `gm` and plays the soundfont. `packId` is the pack the track names, or, with `source: 'default'`,
+ * the pack its family default names (#346): then `missing` is not a problem to show, only what the
+ * download offer reads.
  */
 export interface TrackSound {
   tier: 'gm' | 'hq';
   packId?: string;
+  source?: 'default';
   problem?: 'missing' | 'failed';
   message?: string;
 }

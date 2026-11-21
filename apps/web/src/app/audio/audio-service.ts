@@ -28,7 +28,9 @@ import {
   type TrackSound,
 } from '@/state/playback';
 import type { BarRange } from '@/state/selection';
-import type { InstalledPackSource, PackDirectory } from '@/state/sound-packs';
+import type { DefaultSounds, InstalledPackSource, PackDirectory } from '@/state/sound-packs';
+
+import { resolveTrackSound } from './track-sound';
 
 import { loadGmSoundfont, SoundfontError, type SoundfontLoader } from './soundfont-loader';
 
@@ -48,6 +50,11 @@ export interface AudioServiceOptions {
    * assignment; the service reloads when the directory changes. None: every track is GM.
    */
   packs?: PackDirectory;
+  /**
+   * The family defaults of the user's settings (#346): the sound of a track that chose none. A
+   * change reloads the song like an installed-set change does. None: no default.
+   */
+  defaults?: DefaultSounds;
   /** Runs an edit's rebuild; a task later by default, out of the layout's task. */
   defer?: (run: () => void) => void;
 }
@@ -183,6 +190,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     createContext = () => new AudioContext({ latencyHint: 'interactive' }),
     budgetBytes = GM_BUDGET_BYTES,
     packs: directory,
+    defaults,
     defer = (run) => setTimeout(run, 0),
   } = options;
 
@@ -257,6 +265,13 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
           }),
         ]
       : []),
+    ...(defaults
+      ? [
+          defaults.subscribe(() => {
+            if (!disposed && doc && loaded) scheduleRebuild();
+          }),
+        ]
+      : []),
     engine.on('state', (state) => {
       transport = state;
       set({ transport: state });
@@ -302,42 +317,24 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     /** The assignments not already known to fail: the ones that make the song HQ. */
     const playing: PackAssignment[] = [];
     const sounds: Record<Id, TrackSound> = {};
+    const lookup = { get: installedPack };
     for (const track of score.tracks) {
-      const wanted = track.sound?.packId;
-      if (wanted === undefined) {
-        sounds[track.id] = { tier: 'gm' };
+      const { assignment, sound } = resolveTrackSound(track, lookup, defaults);
+      if (!assignment) {
+        sounds[track.id] = sound;
         continue;
       }
-      const pack = installedPack(wanted);
-      const instrument = track.sound?.instrument;
-      const chosen = pack?.instruments.find(
-        (entry) => instrument === undefined || entry.key === instrument,
-      );
-      if (!pack || !chosen) {
-        sounds[track.id] = { tier: 'gm', packId: wanted, problem: 'missing' };
-        continue;
-      }
-      const assignment: PackAssignment = {
-        trackId: track.id,
-        pack: { id: pack.id, files: pack.files },
-        entries: chosen.entries,
-      };
       assignments.push(assignment);
       const failed = failures.get(track.id);
       if (
-        failed?.packId === pack.id &&
-        failed.files === pack.files &&
-        failed.path === chosen.entries.default
+        failed?.packId === assignment.pack.id &&
+        failed.files === assignment.pack.files &&
+        failed.path === assignment.entries.default
       ) {
-        sounds[track.id] = {
-          tier: 'gm',
-          packId: wanted,
-          problem: 'failed',
-          message: failed.message,
-        };
+        sounds[track.id] = { ...sound, problem: 'failed', message: failed.message };
       } else {
         playing.push(assignment);
-        sounds[track.id] = { tier: 'gm', packId: wanted };
+        sounds[track.id] = sound;
       }
     }
     for (const track of score.tracks) {
@@ -363,6 +360,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
           b !== undefined &&
           a.tier === b.tier &&
           a.packId === b.packId &&
+          a.source === b.source &&
           a.problem === b.problem &&
           a.message === b.message
         );

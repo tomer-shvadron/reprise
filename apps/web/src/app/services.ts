@@ -1,4 +1,4 @@
-import { createSoundPackStore, type SoundPackStore } from '@/features/sounds';
+import { createDefaultSounds, createSoundPackStore, type SoundPackStore } from '@/features/sounds';
 import { createPrintStore, viewLayoutOptions, type PrintStore } from '@/features/score';
 // Not the feature's index: it re-exports the bar, whose services context imports this file.
 import { installTransport } from '@/features/transport/install-transport';
@@ -22,6 +22,7 @@ import { createPlaybackStore, type PlaybackStore } from '@/state/playback';
 import { createPracticeStore, type PracticeStore } from '@/state/practice';
 import { createSelectionStore, type SelectionStore } from '@/state/selection';
 import { createSettingsStore, type SettingsStore } from '@/state/settings';
+import type { DefaultSounds } from '@/state/sound-packs';
 import { createUiStore, type UiStore } from '@/state/ui';
 
 import { createContextMenuStore, type ContextMenuStore } from './context-menu/context-menu-store';
@@ -61,7 +62,11 @@ export interface AppServices {
 export interface AppServicesOptions {
   platform: Platform;
   ui?: UiStore;
-  audio?: (playback: PlaybackStore, sounds: SoundPackStore) => AudioService;
+  audio?: (
+    playback: PlaybackStore,
+    sounds: SoundPackStore,
+    defaults: DefaultSounds,
+  ) => AudioService;
   read?: DocumentStoreDeps['read'];
   write?: DocumentStoreDeps['write'];
   /** The preferences store; a fresh one, not yet attached to a backend, by default. */
@@ -90,9 +95,11 @@ export function createAppServices(options: AppServicesOptions): AppServices {
       }),
   });
   const sounds = createSoundPackStore({ platform, audio: () => audio });
+  const defaults = createDefaultSounds(settings);
   const audio = (
-    options.audio ?? ((store, packs) => createAudioService({ playback: store, packs }))
-  )(playback, sounds);
+    options.audio ??
+    ((store, packs, family) => createAudioService({ playback: store, packs, defaults: family }))
+  )(playback, sounds, defaults);
 
   const transport = createTransportUi();
   const editing = createEditingStore();
