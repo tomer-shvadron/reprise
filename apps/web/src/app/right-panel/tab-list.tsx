@@ -63,7 +63,7 @@ function Tab({
       onMouseDown={keepFocus}
       onClick={onSelect}
       className={cn(
-        'text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 -mb-px border-b-2 border-transparent px-1 py-1.5 text-xs font-medium outline-none focus-visible:ring-2',
+        'text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 -mb-px border-b-2 border-transparent px-[3px] py-1.5 text-xs font-medium outline-none focus-visible:ring-2',
         selected && 'border-primary text-foreground',
       )}
     >
