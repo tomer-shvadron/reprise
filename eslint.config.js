@@ -222,7 +222,7 @@ export default defineConfig(
     // replaces a rule's options, which would drop the workspace boundary bans for these files.
     files: ['apps/web/src/**/*.tsx'],
     ignores: [
-      'apps/web/src/**/*.test.tsx',
+      ...TEST_FILES.map((glob) => `apps/web/src/${glob}`),
       'apps/web/src/components/ui/**',
       'apps/web/src/app/command-tooltip.tsx',
     ],
