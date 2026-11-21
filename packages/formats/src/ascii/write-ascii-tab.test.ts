@@ -329,6 +329,19 @@ describe('wah marks', () => {
     expect(lines.at(-1)).toContain('+ wah closed, o wah open');
   });
 
+  it('puts a mark on the first character of a two-digit fret', () => {
+    const lines = linesOf(
+      guitar()
+        .bar()
+        .beat('4', [note(1, 12)], { effects: { wah: 'closed' } })
+        .beat('4', [note(1, 3)], { effects: { wah: 'open' } }),
+    );
+    const string = lines.find((line) => line.startsWith('e|')) ?? '';
+    const marks = lines[lines.indexOf(string) - 1] ?? '';
+    expect(marks.indexOf('+')).toBe(string.indexOf('12'));
+    expect(marks.indexOf('o')).toBe(string.indexOf('3'));
+  });
+
   it('writes no row and no legend entry for a score without marks', () => {
     const lines = linesOf(
       guitar()

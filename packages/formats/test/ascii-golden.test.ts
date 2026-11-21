@@ -10,6 +10,7 @@ const GOLDENS: readonly { path: string; drops: readonly string[] }[] = [
     path: 'gp5/effects.gp5',
     drops: ['grace-notes', 'harmonic-kind', 'whammy', 'tremolo-picking', 'stroke'],
   },
+  { path: 'gp5/wah-wah.gp5', drops: [] },
   { path: 'gp/track-volume.gp', drops: [] },
   { path: 'gp5/directions.gp5', drops: [] },
   { path: 'gp/beat-tempo-change.gp', drops: [] },

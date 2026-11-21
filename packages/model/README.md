@@ -240,7 +240,7 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
 - **Wah** (#355): `effects.wah` (`'open' | 'closed'`) is a wah-wah pedal mark, beat-level and
   allowed on a rest. There is no off value: a beat without it has no mark. Optional, with no
   `SCORE_VERSION` bump; `setBeatEffect(s)` sets it, `null` removes. gpif stores it as
-  `<Wah>Open|Closed</Wah>` and gp5 as the mix table's wah byte (0 open, 100 closed, 1 to 99 open
+  `<Wah>Open|Closed</Wah>` and gp5 as the mix table's wah byte (0 open, 100 and above closed, 1 to 99 open
   with an info, -1 and -2 no mark); gp3 and gp4 have none.
 - **Fingering**: `thumb`, `index`, `middle`, `ring`, `little` for both hands; the readers map
   Guitar Pro's T 1 2 3 4 and p i m a c onto it.

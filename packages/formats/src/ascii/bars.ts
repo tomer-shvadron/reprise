@@ -8,6 +8,7 @@ import {
   type Score,
   type TripletFeel,
   type Track,
+  type Wah,
 } from '@reprise/model';
 
 import type { AsciiDropCollector } from './dropped';
@@ -192,7 +193,7 @@ function rawCell(ctx: BlockContext, barIndex: number, beatIndex: number, beat: B
   };
 }
 
-function wahMark(wah: 'open' | 'closed' | undefined): BeatCell['wah'] {
+function wahMark(wah: Wah | undefined): BeatCell['wah'] {
   if (wah === 'closed') return '+';
   return wah === 'open' ? 'o' : '';
 }
