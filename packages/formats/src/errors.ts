@@ -10,6 +10,7 @@ export type FormatErrorCode =
   | 'format-mismatch'
   | 'too-large'
   | 'unknown-version'
+  | 'unsupported-track'
   | GpErrorCode
   | GpxErrorCode
   | GpifErrorCode
