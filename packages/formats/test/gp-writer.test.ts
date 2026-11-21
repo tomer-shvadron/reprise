@@ -117,6 +117,23 @@ describe('the gp writer round trip', () => {
     expect(instrument?.message).toBe('The HQ sound assignment is not in gp files');
   });
 
+  it('reports no loss for a General MIDI choice alone', () => {
+    const result = roundTrip(
+      score()
+        .track('guitar', { sound: { generalMidi: true } })
+        .bar()
+        .build(),
+    );
+    expect(result.dropped.find((entry) => entry.code === 'sound-override')).toBeUndefined();
+    const withPreset = roundTrip(
+      score()
+        .track('guitar', { sound: { generalMidi: true, preset: 'clean' } })
+        .bar()
+        .build(),
+    );
+    expect(withPreset.dropped.some((entry) => entry.code === 'sound-override')).toBe(true);
+  });
+
   it('drops exactly the known set from fullScore and keeps the rest', () => {
     const source = fullScore();
     const result = roundTrip(source);

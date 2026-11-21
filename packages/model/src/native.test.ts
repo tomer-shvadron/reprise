@@ -112,6 +112,16 @@ describe('the sound choice', () => {
     expect(parseNative(serializeNative(score, APP)).score.tracks[0]?.sound).toEqual(sound);
   });
 
+  it('keeps an explicit General MIDI choice through the native format', () => {
+    const score = fullScore();
+    const track = score.tracks[0];
+    if (!track) throw new Error('the fixture has no track');
+    const chosen = { ...score, tracks: [{ ...track, sound: { generalMidi: true as const } }] };
+    expect(parseNative(serializeNative(chosen, APP)).score.tracks[0]?.sound).toEqual({
+      generalMidi: true,
+    });
+  });
+
   it('rejects an instrument that is not a string', () => {
     const score = fullScore();
     const track = score.tracks[0];

@@ -38,17 +38,22 @@ export type DisplaySettings = z.infer<typeof DisplaySettingsSchema>;
 
 /**
  * The track's sound choice: an optional HQ `packId`, an optional `instrument` and an optional
- * effects `preset`. With no `packId` the GM tier plays `program`. `instrument` is a key into the
+ * effects `preset`. With no `packId` the track plays the app's family default for its instrument family, which is General MIDI (`program`) unless the user set a pack for the family or `generalMidi` is set. `instrument` is a key into the
  * pack's instruments, opaque to the model; absent means the pack's first (Black and Blue Basses
  * ships two basses, a drum pack several kits). It has no meaning without `packId` (#267).
  * `preset` is an effects preset id, opaque to the model: it is valid without `packId` (the track
- * keeps its GM instrument and takes the preset's effects chain), and an id the audio engine does
+ * keeps whatever instrument it would otherwise play, its family default or GM program, and takes the
+ * preset's effects chain), and an id the audio engine does
  * not know means automatic. The engine owns the ids (#234).
+ * `generalMidi` is an explicit "play the GM program here" for a track whose instrument family has
+ * a default pack in the app's settings: without it, an absent `packId` means "the default". It is
+ * ignored when `packId` is set (#346).
  */
 export const SoundOverrideSchema = z.object({
   packId: IdSchema.exactOptional(),
   instrument: z.string().exactOptional(),
   preset: z.string().exactOptional(),
+  generalMidi: z.literal(true).exactOptional(),
 });
 export type SoundOverride = z.infer<typeof SoundOverrideSchema>;
 
