@@ -9,15 +9,26 @@ import type { SongOutline } from './outline';
 import { rowsByBar, rowsInBars, subTable } from './rows';
 import { sectionSpans } from './sections';
 
-/** The cost of changing key between two windows, in correlation units (see `viterbi`). */
-export const CHANGE_PENALTY = 0.3;
+/**
+ * What a change of key costs per bar of window, in correlation units: the path pays this times
+ * `WINDOW_BARS` for each change. It is about the 0.1 that separates a clear key from its relative
+ * in `confidenceOf` (and a bit more), so noise between relative keys never pays for a change and
+ * a modulation, whose new key leads by 0.3 or more over 8 bars, does.
+ */
+export const CHANGE_PENALTY = 0.15;
 /** A change must hold for this many bars. */
 export const MIN_CHANGE_BARS = 8;
 /** And its key must correlate this much better than the main key over those bars. */
 export const MIN_GAIN = 0.1;
-/** Windows when the file has fewer than two sections. */
+/** Windows are this long, with a hop of `WINDOW_HOP`, where the file gives no shorter section. */
 export const WINDOW_BARS = 8;
 export const WINDOW_HOP = 4;
+/** A section longer than this is cut into windows too, so a modulation inside it shows. */
+export const LONG_SECTION_BARS = 16;
+/** A boundary is searched this far either side of where the path put it. */
+const REFINE_REACH = WINDOW_BARS;
+/** And judged on at most this many bars of each neighbour. */
+const REFINE_CONTEXT = 16;
 
 export interface KeyChange {
   /** First and last master bar, inclusive. */
@@ -37,31 +48,49 @@ interface Window {
   to: number;
 }
 
-function windowsOf(outline: SongOutline): Window[] {
-  const spans = sectionSpans(outline);
-  if (spans.length >= 2) return spans.map((span) => ({ from: span.fromBar, to: span.toBar }));
+/** 8-bar windows with a hop of 4 across `from` to `to`, the last one flush with the end. */
+function slide(from: number, to: number): Window[] {
   const windows: Window[] = [];
-  const bars = outline.bars.length;
-  for (let from = 0; from < bars; from += WINDOW_HOP) {
-    windows.push({ from, to: Math.min(bars - 1, from + WINDOW_BARS - 1) });
-    if (from + WINDOW_BARS >= bars) break;
+  for (let start = from; ; start += WINDOW_HOP) {
+    const end = Math.min(to, start + WINDOW_BARS - 1);
+    windows.push({ from: Math.min(start, Math.max(from, end - WINDOW_BARS + 1)), to: end });
+    if (end >= to) break;
   }
   return windows;
 }
 
 /**
- * The best path through the windows, one key each: a hidden Markov model over the 24 keys whose
- * emission is the window's correlation with the key and whose transition costs `CHANGE_PENALTY`
- * for any change of key (after Temperley 2007, ch. 4, simplified). The penalty is about twice the
- * 0.1 that separates a clear key from its relative in `confidenceOf`, so noise between the
- * relative keys never pays for a change and a modulation, whose new key leads by 0.3 or more,
- * does. A window with no notes correlates with nothing, so it keeps the key before it.
+ * The file's sections as windows when it has two or more (a section of up to 16 bars is one window,
+ * a longer one is slid across like an unsectioned file), otherwise the whole song slid across.
  */
-export function viterbi(emissions: readonly (readonly number[])[], penalty: number): number[] {
+function windowsOf(outline: SongOutline): Window[] {
+  const spans = sectionSpans(outline);
+  if (spans.length < 2) return slide(0, outline.bars.length - 1);
+  return spans.flatMap((span) =>
+    span.toBar - span.fromBar + 1 > LONG_SECTION_BARS
+      ? slide(span.fromBar, span.toBar)
+      : [{ from: span.fromBar, to: span.toBar }],
+  );
+}
+
+/**
+ * The best path of one key per step: a hidden Markov model over the 24 keys whose emission is the
+ * step's correlation with the key and whose transition costs `penalty` for any change of key (after
+ * Temperley 2007, ch. 4, simplified). With an `anchor` the path starts and ends in that key, so
+ * every excursion pays for leaving and for coming back, wherever it sits in the song: a chorus in
+ * the middle costs what a last chorus does. A step with no notes correlates with nothing, so it keeps
+ * the key before it.
+ */
+export function viterbi(
+  emissions: readonly (readonly number[])[],
+  penalty: number,
+  anchor?: number,
+): number[] {
   const n = emissions[0]?.length ?? 0;
   if (emissions.length === 0 || n === 0) return [];
+  const away = (k: number): number => (anchor === undefined || k === anchor ? 0 : penalty);
   const back: number[][] = [];
-  let score = [...(emissions[0] ?? [])];
+  let score = (emissions[0] ?? []).map((value, k) => value - away(k));
   for (let t = 1; t < emissions.length; t++) {
     const next = new Array<number>(n).fill(0);
     const from = new Array<number>(n).fill(0);
@@ -78,7 +107,8 @@ export function viterbi(emissions: readonly (readonly number[])[], penalty: numb
     score = next;
   }
   let state = 0;
-  for (let k = 1; k < n; k++) if ((score[k] ?? 0) > (score[state] ?? 0)) state = k;
+  const last = (k: number): number => (score[k] ?? 0) - away(k);
+  for (let k = 1; k < n; k++) if (last(k) > last(state)) state = k;
   const path = new Array<number>(emissions.length).fill(0);
   for (let t = emissions.length - 1; t >= 0; t--) {
     path[t] = state;
@@ -95,9 +125,14 @@ const INTERVALS = [
   'a major third',
   'a fourth',
   'a tritone',
+  'a fifth',
+  'a minor sixth',
+  'a major sixth',
+  'a minor seventh',
+  'a major seventh',
 ] as const;
 
-/** How `other` sits against `main`: the relative or parallel key, or the step between the tonics. */
+/** How `other` sits against `main`: the relative or parallel key, or the interval up to its tonic. */
 export function relationOf(
   main: { tonic: number; quality: KeyQuality },
   other: { tonic: number; quality: KeyQuality },
@@ -108,17 +143,24 @@ export function relationOf(
     if (main.quality === 'major' && up === 9) return 'relative minor';
     if (main.quality === 'minor' && up === 3) return 'relative major';
   }
-  const steps = up <= 6 ? up : 12 - up;
-  return `${up <= 6 ? 'up' : 'down'} ${INTERVALS[steps] ?? ''}`;
+  return `up ${INTERVALS[up] ?? ''}`;
 }
 
 /** Index into the 24 keys of `rankKeys`'s own order: the tonic, then major before minor. */
 const stateOf = (key: { tonic: number; quality: KeyQuality }): number =>
   key.tonic * 2 + (key.quality === 'minor' ? 1 : 0);
 
+interface Run {
+  from: number;
+  to: number;
+  state: number;
+}
+
 /**
  * Where the music moves to another key for at least `MIN_CHANGE_BARS`. `main` is the song's key;
- * a song with no key has no changes to report.
+ * a song with no key has no changes to report. Each bar takes the mean score of the windows that
+ * hold it, a path anchored in the main key gives the stretches, and each boundary is then put on
+ * the exact bar by trying the bars around it and keeping the split where the two keys fit best.
  */
 export function keyChanges(
   table: NoteTable,
@@ -126,69 +168,113 @@ export function keyChanges(
   main: { tonic: number; quality: KeyQuality | 'none' } | undefined,
   fileKey?: KeySignature,
 ): KeyChange[] {
-  if (!main || outline.bars.length < MIN_CHANGE_BARS) return [];
+  const bars = outline.bars.length;
+  if (!main || bars < MIN_CHANGE_BARS) return [];
   const mainKey = {
     tonic: main.tonic,
     quality: main.quality === 'minor' ? 'minor' : 'major',
   } as const;
+  const mainState = stateOf(mainKey);
   const profiles = profileSetOf(DEFAULT_PROFILE_SET);
-  const bars = rowsByBar(table, outline.bars.length);
-  const windows = windowsOf(outline);
+  const rowsOfBar = rowsByBar(table, bars);
   // The bass counts in a window as it does in the whole song (`detectKey`), or the main key, found
   // with it, would disagree with every window about the relative key.
-  const scoresOf = (rows: readonly number[]): Map<number, number> => {
-    const sub = subTable(table, rows);
-    const cues = bassCues(sub);
+  const scoresOf = (from: number, to: number, withCues = true): Map<number, number> => {
+    const sub = subTable(table, rowsInBars(rowsOfBar, from, to));
+    const cues = withCues ? bassCues(sub) : undefined;
     const scores = new Map<number, number>();
     for (const estimate of rankKeys(pitchHistogram(sub), profiles)) {
-      scores.set(stateOf(estimate), estimate.correlation + cueEvidence(cues, estimate.tonic));
+      scores.set(
+        stateOf(estimate),
+        estimate.correlation + (cues ? cueEvidence(cues, estimate.tonic) : 0),
+      );
     }
     return scores;
   };
-  const emissions = windows.map((window) => {
-    const scores = scoresOf(rowsInBars(bars, window.from, window.to));
-    return Array.from({ length: 24 }, (_, state) => scores.get(state) ?? 0);
-  });
-  const path = viterbi(emissions, CHANGE_PENALTY);
 
-  // Each bar takes the key of the window that holds it and is centred nearest to it (the earlier on a tie).
-  const barState = outline.bars.map((_, bar) => {
-    let best = 0;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    windows.forEach((window, index) => {
-      if (bar < window.from || bar > window.to) return;
-      const distance = Math.abs(bar - (window.from + window.to) / 2);
-      if (distance < bestDistance - 1e-9) {
-        best = index;
-        bestDistance = distance;
-      }
-    });
-    return path[best] ?? stateOf(mainKey);
-  });
-
-  const changes: KeyChange[] = [];
-  let from = 0;
-  for (let bar = 1; bar <= barState.length; bar++) {
-    if (bar < barState.length && barState[bar] === barState[from]) continue;
-    const state = barState[from] ?? 0;
-    const key = { tonic: state >> 1, quality: state & 1 ? 'minor' : 'major' } as const;
-    const length = bar - from;
-    if (state !== stateOf(mainKey) && length >= MIN_CHANGE_BARS) {
-      const scores = scoresOf(rowsInBars(bars, from, bar - 1));
-      const gain = (scores.get(state) ?? 0) - (scores.get(stateOf(mainKey)) ?? 0);
-      if (gain >= MIN_GAIN) {
-        changes.push({
-          fromBar: from,
-          toBar: bar - 1,
-          tonic: key.tonic,
-          quality: key.quality,
-          name: keyName(key.tonic, key.quality, fileKey),
-          relation: relationOf(mainKey, key),
-          gain,
-        });
+  const sums = Array.from({ length: bars }, () => new Array<number>(24).fill(0));
+  const holds = new Array<number>(bars).fill(0);
+  for (const window of windowsOf(outline)) {
+    const scores = scoresOf(window.from, window.to);
+    for (let bar = window.from; bar <= window.to; bar++) {
+      holds[bar] = (holds[bar] ?? 0) + 1;
+      const row = sums[bar];
+      for (let state = 0; state < 24; state++) {
+        if (row) row[state] = (row[state] ?? 0) + (scores.get(state) ?? 0);
       }
     }
-    from = bar;
+  }
+  const emissions = sums.map((row, bar) =>
+    row.map((value) => value / Math.max(1, holds[bar] ?? 1)),
+  );
+  const path = viterbi(emissions, CHANGE_PENALTY * WINDOW_BARS, mainState);
+
+  const runs: Run[] = [];
+  path.forEach((state, bar) => {
+    const last = runs[runs.length - 1];
+    if (last?.state === state) last.to = bar;
+    else runs.push({ from: bar, to: bar, state });
+  });
+  for (let i = 0; i + 1 < runs.length; i++) {
+    const a = runs[i];
+    const b = runs[i + 1];
+    if (!a || !b) continue;
+    const boundary = b.from;
+    let best = boundary;
+    let bestFit = Number.NEGATIVE_INFINITY;
+    const candidates: number[] = [];
+    for (
+      let s = Math.max(a.from + 1, boundary - REFINE_REACH);
+      s <= Math.min(b.to, boundary + REFINE_REACH);
+      s++
+    ) {
+      candidates.push(s);
+    }
+    candidates.sort((x, y) => Math.abs(x - boundary) - Math.abs(y - boundary));
+    // A change point: each bar votes for the key of the left run or the right by how much better
+    // that key fits the bar alone, and the split with the largest total of right votes after it
+    // and left votes before it wins. A split is judged by whole bars, so it does not grow with the
+    // length of either side and a side that borrows bars of the other key loses their votes.
+    const votes = new Map<number, number>();
+    const vote = (bar: number): number => {
+      let known = votes.get(bar);
+      if (known === undefined) {
+        const scores = scoresOf(bar, bar, false);
+        known = (scores.get(b.state) ?? 0) - (scores.get(a.state) ?? 0);
+        votes.set(bar, known);
+      }
+      return known;
+    };
+    for (const split of candidates) {
+      let fit = 0;
+      for (let bar = Math.max(a.from, split - REFINE_CONTEXT); bar < split; bar++) fit -= vote(bar);
+      for (let bar = split; bar <= Math.min(b.to, split + REFINE_CONTEXT - 1); bar++)
+        fit += vote(bar);
+      if (fit > bestFit + 1e-9) {
+        bestFit = fit;
+        best = split;
+      }
+    }
+    a.to = best - 1;
+    b.from = best;
+  }
+
+  const changes: KeyChange[] = [];
+  for (const run of runs) {
+    if (run.state === mainState || run.to - run.from + 1 < MIN_CHANGE_BARS) continue;
+    const scores = scoresOf(run.from, run.to);
+    const gain = (scores.get(run.state) ?? 0) - (scores.get(mainState) ?? 0);
+    if (gain < MIN_GAIN) continue;
+    const key = { tonic: run.state >> 1, quality: run.state & 1 ? 'minor' : 'major' } as const;
+    changes.push({
+      fromBar: run.from,
+      toBar: run.to,
+      tonic: key.tonic,
+      quality: key.quality,
+      name: keyName(key.tonic, key.quality, fileKey),
+      relation: relationOf(mainKey, key),
+      gain,
+    });
   }
   return changes;
 }
