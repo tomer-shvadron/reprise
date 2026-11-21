@@ -10,6 +10,7 @@ import {
 
 import type { AppServices } from '@/app/services';
 import { singleTrackOf } from '@/state/document';
+import { notationDefaultsOf } from '@/state/notation-defaults';
 import { selectTrack } from '@/features/tracks';
 
 import { dialogsOf } from './dialogs';
@@ -22,7 +23,10 @@ import {
   type TrackForm,
 } from './track-form';
 
-export type TrackEditServices = Pick<AppServices, 'document' | 'selection' | 'playback' | 'audio'>;
+export type TrackEditServices = Pick<
+  AppServices,
+  'document' | 'selection' | 'playback' | 'audio' | 'settings'
+>;
 
 export const LAST_TRACK_REASON = 'A score keeps at least one track';
 
@@ -93,7 +97,10 @@ export function applyTrackAdd(services: TrackEditServices, form: TrackForm): App
     document
       .getState()
       .apply(
-        addTrack({ kind: form.kind, index: score.tracks.length, id }, newTrackProperties(form)),
+        addTrack(
+          { kind: form.kind, index: score.tracks.length, id },
+          newTrackProperties(form, notationDefaultsOf(services.settings)),
+        ),
       );
   });
   if (!result.ok) return result;

@@ -1,9 +1,16 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { read, write } from '@reprise/formats';
 import { score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { parseImport } from './parse-import';
 import { createParser } from './parser';
+
+// The project root is the working directory of every Vitest run; jsdom tests have no file URLs.
+const fetchFixture = (path: string) =>
+  Promise.resolve(new Uint8Array(readFileSync(join(process.cwd(), 'fixtures', path))));
 
 const song = () => score().track('guitar').track('bass').build();
 
@@ -23,6 +30,22 @@ describe('parseImport', () => {
     // the same ones.
     const ids = async () => (await read(parsed.native)).score.tracks.map((track) => track.id);
     expect(await ids()).toEqual(await ids());
+  });
+
+  it('applies the notation defaults to a file that chooses none, and never to one that does', async () => {
+    const defaults = { strings: 'standard', vocals: 'standard' } as const;
+    const notations = async (path: string) => {
+      const outcome = await parseImport(await fetchFixture(path), '', defaults);
+      if (!outcome.ok) throw new Error(outcome.message);
+      return (await read(outcome.parsed.native)).score.tracks.map(
+        (track) => track.display.notation,
+      );
+    };
+    expect(new Set(await notations('gp4/notes.gp4'))).toEqual(new Set(['standard']));
+    const plain = await read(await fetchFixture('gp5/staves.gp5'));
+    expect(await notations('gp5/staves.gp5')).toEqual(
+      plain.score.tracks.map((track) => track.display.notation),
+    );
   });
 
   it('keeps the bytes of a reprise source as its native', async () => {
