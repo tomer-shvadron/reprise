@@ -1,8 +1,8 @@
-import { openStringPitch, type Beat, type Note, type Track } from '@reprise/model';
+import { maxStoredFret, openStringPitch, type Beat, type Note, type Track } from '@reprise/model';
 
 import type { ClipTrack } from './clipboard-format';
 
-type NeckTrack = Pick<Track, 'tuning' | 'fretCount' | 'capo'>;
+type NeckTrack = Pick<Track, 'tuning' | 'fretCount' | 'capo' | 'drone'>;
 
 export interface Refingered {
   track: ClipTrack;
@@ -35,7 +35,7 @@ function positions(target: NeckTrack, pitch: number, prefer: number | undefined)
     const open = openStringPitch(target, string);
     if (open === undefined) continue;
     const fret = pitch - open - target.capo;
-    if (fret >= 0 && fret <= target.fretCount) found.push({ string, fret });
+    if (fret >= 0 && fret <= maxStoredFret(target, string)) found.push({ string, fret });
   }
   const rank = (p: Position) => (p.string === prefer ? 0 : 1);
   return found.sort((a, b) => rank(a) - rank(b) || a.fret - b.fret);
@@ -74,7 +74,7 @@ function moved(note: Note, to: Position, target: NeckTrack, counts: Counts): Not
   const delta = to.fret - note.fret;
   if (trill) {
     const fret = trill.fret + delta;
-    if (fret >= 0 && fret <= target.fretCount) result.trill = { ...trill, fret };
+    if (fret >= 0 && fret <= maxStoredFret(target, to.string)) result.trill = { ...trill, fret };
     else counts.trillsDropped += 1;
   }
   if (delta !== 0 && note.harmonic?.kind === 'natural') counts.harmonicsMoved += 1;
@@ -146,7 +146,12 @@ function refingerBeat(
  */
 export function refinger(clip: ClipTrack, target: NeckTrack): Refingered {
   const counts: Counts = { dropped: 0, trillsDropped: 0, harmonicsMoved: 0 };
-  const source: NeckTrack = { tuning: clip.tuning, fretCount: clip.fretCount, capo: clip.capo };
+  const source: NeckTrack = {
+    tuning: clip.tuning,
+    fretCount: clip.fretCount,
+    capo: clip.capo,
+    ...(clip.drone && { drone: clip.drone }),
+  };
   // One tie map per voice, carried across its bars in order.
   const ties = new Map<number, Ties>();
   const bars = clip.bars.map((bar) => ({
@@ -160,13 +165,17 @@ export function refinger(clip: ClipTrack, target: NeckTrack): Refingered {
       };
     }),
   }));
+  // The clip's drone belongs to its own track; the result describes the target's.
+  const plain: ClipTrack = { ...clip };
+  delete plain.drone;
   return {
     ...counts,
     track: {
-      ...clip,
+      ...plain,
       tuning: [...target.tuning],
       fretCount: target.fretCount,
       capo: target.capo,
+      ...(target.drone && { drone: target.drone }),
       bars,
     },
   };

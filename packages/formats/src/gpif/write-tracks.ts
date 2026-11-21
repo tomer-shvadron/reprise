@@ -2,6 +2,7 @@ import {
   PERCUSSION_INSTRUMENTS,
   barTicks,
   beatStartTicks,
+  stringInstrumentOf,
   type Chord,
   type Finger,
   type MasterBar,
@@ -632,7 +633,7 @@ const DEFAULT_FRET_COUNT = 24;
 
 /** The `Instrument` Guitar Pro names a tuning with; the reader reads it silently. */
 function tuningInstrument(track: Track): string {
-  if (track.program === 105) return 'Banjo';
+  if (stringInstrumentOf(track) === 'banjo') return 'Banjo';
   if (track.program >= 32 && track.program <= 39) return 'Bass';
   return 'Guitar';
 }

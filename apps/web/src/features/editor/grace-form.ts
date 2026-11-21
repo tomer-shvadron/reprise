@@ -1,4 +1,12 @@
-import { createNote, type Beat, type GraceBeat, type Id, type Note } from '@reprise/model';
+import {
+  createNote,
+  storedFret,
+  writtenFret,
+  type Beat,
+  type GraceBeat,
+  type Id,
+  type Note,
+} from '@reprise/model';
 
 import { effectTarget, type EffectTarget, type NoteRef } from './effect-targets';
 import { effectCommand, type EffectEdits, type EffectInput, type EffectResult } from './effects';
@@ -10,7 +18,7 @@ export type GraceDuration = (typeof GRACE_DURATIONS)[number];
 export type GraceTransition = 'none' | 'slide' | 'hammer';
 
 export interface GraceForm {
-  /** Absolute fret of the grace note. */
+  /** Absolute fret of the grace note, as the tab shows it: a neck fret on a banjo's drone string. */
   fret: number;
   duration: GraceDuration;
   /** Before the beat's time position, or on it (stealing from the beat). */
@@ -56,7 +64,9 @@ export function defaultGraceForm(
 ): { form: GraceForm; existing: boolean } {
   const target = effectTarget(input);
   const groups = graceTargets(target);
-  const first = groups.find((group) => group.notes.length > 0)?.notes[0];
+  const firstIndex = groups.findIndex((group) => group.notes.length > 0);
+  const first = groups[firstIndex]?.notes[0];
+  const firstTrack = target.beats[firstIndex]?.track;
   const owner = target.beats.find((beat) => (beat.beat.grace?.length ?? 0) > 0);
   const existing = owner?.beat.grace?.[0];
   const graceNote = existing?.notes[0];
@@ -64,7 +74,7 @@ export function defaultGraceForm(
     return {
       existing: true,
       form: {
-        fret: graceNote.fret,
+        fret: owner.track.kind === 'fretted' ? writtenFret(owner.track, graceNote) : graceNote.fret,
         duration: existing.duration,
         before: existing.before,
         transition: graceNote.slide?.includes('shift')
@@ -76,10 +86,23 @@ export function defaultGraceForm(
       },
     };
   }
+  const approach = Math.max(
+    0,
+    (first && firstTrack?.kind === 'fretted'
+      ? writtenFret(firstTrack, first.note)
+      : (first?.note.fret ?? 2)) - 2,
+  );
+  // On a drone string the frets just under its first one do not exist, so the approach is open.
+  const fret =
+    first &&
+    firstTrack?.kind === 'fretted' &&
+    storedFret(firstTrack, first.note.string, approach) === undefined
+      ? 0
+      : approach;
   return {
     existing: false,
     form: {
-      fret: Math.max(0, (first?.note.fret ?? 2) - 2),
+      fret,
       duration: 32,
       before,
       transition: 'none',
@@ -137,6 +160,18 @@ export function planGrace(input: EffectInput, form: GraceForm | 'remove'): Effec
       ? { command: effectCommand('Remove grace note', { beats, notes }) }
       : { nothing: true };
   }
+  // The form's fret is the one the tab shows; the drone string stores its frets from its own nut.
+  for (const [index, beat] of target.beats.entries()) {
+    if (beat.track.kind !== 'fretted') continue;
+    for (const { note } of groups[index]?.notes ?? []) {
+      if (storedFret(beat.track, note.string, form.fret) === undefined) {
+        const first = (beat.track.drone?.fret ?? 0) + 1;
+        return {
+          refused: `String ${String(note.string)} has no frets 1 to ${String(first - 1)}: use 0, or ${String(first)} and up`,
+        };
+      }
+    }
+  }
   const beats: NonNullable<EffectEdits['beats']>[number][] = [];
   const notes: NonNullable<EffectEdits['notes']>[number][] = [];
   target.beats.forEach((beat, index) => {
@@ -145,7 +180,7 @@ export function planGrace(input: EffectInput, form: GraceForm | 'remove'): Effec
     const graceNotes: Note[] = refs.map(({ note }) =>
       createNote({
         string: note.string,
-        fret: form.fret,
+        fret: storedFret(beat.track, note.string, form.fret) ?? form.fret,
         dead: form.dead,
         ...(form.transition === 'slide' && { slide: ['shift' as const] }),
       }),

@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useState, type ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { createTestServices } from '@/test/services';
@@ -6,18 +7,89 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { BOTTOM_PANEL_HEIGHT, createUiStore } from '@/state/ui';
 
 import { AppFrame } from './app-frame';
-import { AppServicesProvider } from './services-context';
+import { createAppRegistry } from './app-registry';
+import { SHORTCUT_OVERRIDES_SETTING } from './keymap';
+import { CommandSourceProvider } from './command-source-provider';
+import { AppServicesProvider, useAppServices } from './services-context';
 
 function renderFrame(ui = createUiStore('dark')) {
+  // The registry's commands act on the services' store, which `App` shares with the frame.
   render(
-    <AppServicesProvider services={createTestServices()}>
+    <AppServicesProvider services={createTestServices({ ui })}>
       <TooltipProvider>
-        <AppFrame ui={ui} score={<p>score</p>} bottom={<p>fret content</p>} />
+        <WithCommands>
+          <AppFrame ui={ui} score={<p>score</p>} bottom={<p>fret content</p>} />
+        </WithCommands>
       </TooltipProvider>
     </AppServicesProvider>,
   );
   return ui;
 }
+
+/** The frame's own controls read their keys from a command source, as `App` provides one. */
+function WithCommands({ children }: { children: ReactNode }) {
+  const services = useAppServices();
+  // Held across renders: a new registry each time would rebuild the source and the alias index.
+  const [registry] = useState(() => createAppRegistry(services, 'other'));
+  return (
+    <CommandSourceProvider
+      registry={registry}
+      keyboard="other"
+      settings={services.settings}
+      editing={services.editing}
+    >
+      {children}
+    </CommandSourceProvider>
+  );
+}
+
+describe('the Toggle tracks button', () => {
+  it('has a label-only tooltip while no key is bound, and the key once one is', async () => {
+    const ui = createUiStore('dark');
+    const services = createTestServices({ ui });
+    render(
+      <AppServicesProvider services={services}>
+        <TooltipProvider>
+          <WithCommands>
+            <AppFrame ui={ui} score={<p>score</p>} />
+          </WithCommands>
+        </TooltipProvider>
+      </AppServicesProvider>,
+    );
+    const button = screen.getByRole('button', { name: 'Toggle tracks' });
+    act(() => {
+      button.focus();
+    });
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(/^Toggle tracks$/);
+    act(() => {
+      button.blur();
+    });
+    act(() => {
+      services.settings.set(SHORTCUT_OVERRIDES_SETTING, {
+        'view.toggleSidebar': { key: 'k', alt: true },
+      });
+    });
+    expect(button).toHaveAttribute('aria-keyshortcuts', 'Alt+K');
+  });
+
+  it('still toggles the tracks panel on a click', () => {
+    const ui = createUiStore('dark');
+    render(
+      <AppServicesProvider services={createTestServices({ ui })}>
+        <TooltipProvider>
+          <WithCommands>
+            <AppFrame ui={ui} score={<p>score</p>} />
+          </WithCommands>
+        </TooltipProvider>
+      </AppServicesProvider>,
+    );
+    const button = screen.getByRole('button', { name: 'Toggle tracks' });
+    const before = ui.getState().panels.sidebar;
+    fireEvent.click(button);
+    expect(ui.getState().panels.sidebar).toBe(!before);
+    expect(button).toHaveAttribute('aria-pressed', String(!before));
+  });
+});
 
 describe('the header slot', () => {
   it('renders before the banner, above the score row, which keeps its floor', () => {
@@ -25,12 +97,14 @@ describe('the header slot', () => {
     render(
       <AppServicesProvider services={createTestServices()}>
         <TooltipProvider>
-          <AppFrame
-            ui={ui}
-            header={<header>slim</header>}
-            banner={<p>strip</p>}
-            score={<p>score</p>}
-          />
+          <WithCommands>
+            <AppFrame
+              ui={ui}
+              header={<header>slim</header>}
+              banner={<p>strip</p>}
+              score={<p>score</p>}
+            />
+          </WithCommands>
         </TooltipProvider>
       </AppServicesProvider>,
     );
@@ -46,7 +120,14 @@ describe('the status slot', () => {
     render(
       <AppServicesProvider services={createTestServices()}>
         <TooltipProvider>
-          <AppFrame ui={ui} score={<p>score</p>} transport={<p>controls</p>} status={<p>bar</p>} />
+          <WithCommands>
+            <AppFrame
+              ui={ui}
+              score={<p>score</p>}
+              transport={<p>controls</p>}
+              status={<p>bar</p>}
+            />
+          </WithCommands>
         </TooltipProvider>
       </AppServicesProvider>,
     );
@@ -220,20 +301,22 @@ describe('practice mode', () => {
     render(
       <AppServicesProvider services={createTestServices()}>
         <TooltipProvider>
-          <AppFrame
-            ui={ui}
-            header={<header>slim</header>}
-            banner={<p>strip</p>}
-            score={<p>score</p>}
-            transport={<p>controls</p>}
-            status={<p>bar</p>}
-            sidebar={<p>tracks</p>}
-            panel={<p>mixer</p>}
-            rail={<p>rail</p>}
-            bottom={<p>fret content</p>}
-            sectionStrip={<nav aria-label="Sections">sections</nav>}
-            capsule={<div role="region" aria-label="Practice controls" />}
-          />
+          <WithCommands>
+            <AppFrame
+              ui={ui}
+              header={<header>slim</header>}
+              banner={<p>strip</p>}
+              score={<p>score</p>}
+              transport={<p>controls</p>}
+              status={<p>bar</p>}
+              sidebar={<p>tracks</p>}
+              panel={<p>mixer</p>}
+              rail={<p>rail</p>}
+              bottom={<p>fret content</p>}
+              sectionStrip={<nav aria-label="Sections">sections</nav>}
+              capsule={<div role="region" aria-label="Practice controls" />}
+            />
+          </WithCommands>
         </TooltipProvider>
       </AppServicesProvider>,
     );

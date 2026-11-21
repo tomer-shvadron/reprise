@@ -3,9 +3,9 @@ import type { ReactNode } from 'react';
 
 import { createAppMenus } from '@/app/app-menus';
 import { createAppRegistry } from '@/app/app-registry';
+import { CommandSourceProvider } from '@/app/command-source-provider';
 import { MenuRegistryContext } from '@/app/context-menu/menu-context';
 import { AppServicesProvider } from '@/app/services-context';
-import { CommandSourceContext } from '@/app/use-command';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 import { createTestServices } from './services';
@@ -21,9 +21,16 @@ export function renderWithServices(
   const result = render(
     <AppServicesProvider services={services}>
       <MenuRegistryContext value={menus}>
-        <CommandSourceContext value={{ registry, keyboard: 'other' }}>
-          <TooltipProvider>{ui}</TooltipProvider>
-        </CommandSourceContext>
+        <TooltipProvider>
+          <CommandSourceProvider
+            registry={registry}
+            keyboard="other"
+            settings={services.settings}
+            editing={services.editing}
+          >
+            {ui}
+          </CommandSourceProvider>
+        </TooltipProvider>
       </MenuRegistryContext>
     </AppServicesProvider>,
   );
