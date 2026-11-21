@@ -1,4 +1,4 @@
-import type { Beat, BeatEffects, Dynamics, Note, Score } from '@reprise/model';
+import type { Beat, BeatEffects, ChordDiagram, Dynamics, Note, Score } from '@reprise/model';
 import { midi, note, score, type DurationSpec } from '@reprise/model/testing';
 
 /** mulberry32: a seeded generator, so a failing seed rebuilds the same score. */
@@ -145,6 +145,11 @@ export function randomScore(seed: number): Score {
       ...(chance(0.04) && { text: 'txt' }),
       ...(!plain && chance(0.05) && { lyrics: ['la', chance(0.5) ? 'lo' : ''] }),
       ...(!plain && chance(0.03) && { chord: { name: pick(['Am', 'C#m7b5', 'G']) } }),
+      ...(!plain &&
+        fretted &&
+        chance(0.03) && {
+          chord: { name: pick(['Em', 'F', 'D7']), diagram: randomDiagram(strings, random) },
+        }),
     };
   };
   const beat = (duration: DurationSpec, spec: Partial<Beat> = {}, rest = chance(0.12)): void => {
@@ -234,4 +239,15 @@ export function randomScore(seed: number): Score {
     }
   }
   return builder.build();
+}
+
+/** A diagram for `strings` strings: muted, open and fretted ones, sometimes high on the neck. */
+function randomDiagram(strings: number, random: () => number): ChordDiagram {
+  const baseFret = 1 + Math.floor(random() * 8);
+  return {
+    baseFret,
+    frets: Array.from({ length: strings }, (_, i) =>
+      i % 5 === 4 ? null : i % 4 === 3 ? 0 : baseFret + (i % 3),
+    ),
+  };
 }

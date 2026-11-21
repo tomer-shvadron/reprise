@@ -67,7 +67,7 @@ export function anchorBox(result: LayoutResult, anchor: Anchor): Rect {
   return shiftedBox(anchor.bbox, result.systems[anchor.system]?.offsetX ?? 0);
 }
 
-/** What `markAt` finds under a point: a chord name's beat or a section marker's master bar. */
+/** What `markAt` finds under a point: a chord name's or diagram's beat or a section marker's master bar. */
 export type Mark = { kind: 'chord'; beat: Id } | { kind: 'section'; masterBar: Id };
 
 /**
@@ -83,7 +83,10 @@ export function markAt(result: LayoutResult, x: number, y: number): Mark | undef
       const primitive = result.primitives[i];
       if (primitive?.node === undefined || !containsShifted(primitive.bbox, offsetX, x, y))
         continue;
-      if (primitive.kind === 'text' && primitive.lane === 'chord') {
+      if (
+        (primitive.kind === 'text' && primitive.lane === 'chord') ||
+        (primitive.kind === 'path' && primitive.lane === 'chordDiagram')
+      ) {
         return { kind: 'chord', beat: primitive.node };
       }
       if (

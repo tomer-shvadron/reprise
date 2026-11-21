@@ -23,6 +23,7 @@ import {
   setNote,
   setNoteEffect,
   type Beat,
+  type ChordDiagram,
   type Command,
   type Id,
   type Dynamics,
@@ -66,7 +67,7 @@ type Edit =
   | { kind: 'insertBar'; bar: number }
   | { kind: 'removeBar'; bar: number }
   | { kind: 'masterBar'; bar: number; change: 'time' | 'key' | 'repeat' }
-  | { kind: 'chord'; at: Where }
+  | { kind: 'chord'; at: Where; diagram: 'none' | 'open' | 'barre' }
   | { kind: 'mark'; at: Where; mark: Mark }
   | { kind: 'unison'; at: Where; string: number }
   | { kind: 'voiceUnison'; at: Where; string: number }
@@ -75,7 +76,7 @@ type Edit =
   | { kind: 'redo' }
   | { kind: 'options'; change: OptionChange };
 
-type OptionChange = 'subset' | 'notation' | 'width' | 'zoom';
+type OptionChange = 'subset' | 'notation' | 'width' | 'zoom' | 'diagrams';
 
 /** A note effect the five-line staves draw at the notes, toggled on a beat's first note. */
 type Mark =
@@ -126,7 +127,11 @@ const edit: Arbitrary<Edit> = oneof(
     at: where,
     syllable: constantFrom('la-', 'longer-', 'x', ''),
   }),
-  record({ kind: constantFrom('chord' as const), at: where }),
+  record({
+    kind: constantFrom('chord' as const),
+    at: where,
+    diagram: constantFrom<'none' | 'open' | 'barre'>('none', 'open', 'barre'),
+  }),
   record({
     kind: constantFrom('mark' as const),
     at: where,
@@ -156,7 +161,7 @@ const edit: Arbitrary<Edit> = oneof(
   record({ kind: constantFrom('redo' as const) }),
   record({
     kind: constantFrom('options' as const),
-    change: constantFrom<OptionChange>('subset', 'notation', 'width', 'zoom'),
+    change: constantFrom<OptionChange>('subset', 'notation', 'width', 'zoom', 'diagrams'),
   }),
 );
 
@@ -303,12 +308,39 @@ function command(score: Score, step: Edit): Command | undefined {
     case 'lyric':
       return setBeatEffect({ beatId: beat.id }, { lyrics: [step.syllable] });
     case 'chord':
-      return setBeatEffect({ beatId: beat.id }, { chord: { name: 'Cmaj7(add9,#11)/G' } });
+      return setBeatEffect(
+        { beatId: beat.id },
+        { chord: { name: 'Cmaj7(add9,#11)/G', ...diagramFor(found.track, step.diagram) } },
+      );
     case 'mark':
       return markCommand(beat, step.mark);
     case 'unison':
       return unisonOn(found.track, beat, beat, step.string);
   }
+}
+
+/** A diagram to add, change or leave out of a chord, so the cache sees one come, change and go. */
+function diagramFor(
+  track: Track,
+  kind: 'none' | 'open' | 'barre',
+): { diagram: ChordDiagram } | undefined {
+  const strings = track.tuning.length;
+  if (kind === 'none') return undefined;
+  if (kind === 'open') {
+    return {
+      diagram: {
+        baseFret: 1,
+        frets: Array.from({ length: strings }, (_, i) => (i === 0 ? null : i % 3)),
+      },
+    };
+  }
+  return {
+    diagram: {
+      baseFret: 5,
+      frets: Array.from({ length: strings }, () => 5),
+      barres: [{ fret: 5, firstString: 1, lastString: strings }],
+    },
+  };
 }
 
 function markCommand(beat: Beat, mark: Mark): Command | undefined {
@@ -441,6 +473,8 @@ function changeOptions(score: Score, options: LayoutOptions, change: OptionChang
     }
     case 'zoom':
       return { ...options, zoom: options.zoom === 1 ? 1.25 : 1 };
+    case 'diagrams':
+      return { ...options, chordDiagrams: options.chordDiagrams === false };
   }
 }
 

@@ -6,7 +6,10 @@ import { expectValid } from '../test/check-result';
 import { standardModule } from './standard';
 import type { StaffBar } from './staff-module';
 import { textWidth } from '../metrics';
-import { WORDS, wordLanes, wordRows, wordsExtent } from './words';
+import type { Beat } from '@reprise/model';
+import type { LayoutSink } from '../primitives';
+import { chordDiagramSize } from './chord-diagram';
+import { WORDS, drawWords, wordLanes, wordRows, wordsExtent } from './words';
 
 const paged: LayoutOptions = {
   mode: 'paged',
@@ -41,12 +44,12 @@ describe('word lanes', () => {
     const beats = built.tracks.flatMap((t) =>
       t.bars.flatMap((b) => b.voices.flatMap((v) => v.beats)),
     );
-    const rows = wordRows(beats, 10);
+    const rows = wordRows(beats, 10, true);
     expect(rows.chord).toBe(0);
     expect(rows.text).toBeGreaterThan(0);
     expect(rows.lyrics).toBeCloseTo(3 * 2 * 10, 5);
     expect(wordLanes(rows)).toEqual({ text: rows.text, lyrics: rows.lyrics });
-    expect(wordLanes(wordRows([], 10))).toEqual({});
+    expect(wordLanes(wordRows([], 10, true))).toEqual({});
   });
 
   it('are requested by a standard staff shown alone, not under a tab', () => {
@@ -69,6 +72,7 @@ describe('word lanes', () => {
       barIndex: 0,
       clef: 'treble',
       keySignature: masterBar.keySignature,
+      chordDiagrams: true,
       space: 7,
     });
     const alone = standardModule().lanes(input(['standard']));
@@ -282,16 +286,16 @@ function beatWith(lyrics: string[]) {
 
 describe('wordsExtent of syllables', () => {
   it('reserves nothing for an empty syllable', () => {
-    expect(wordsExtent(beatWith(['']), 0, SPACE)).toEqual({ left: 0, right: 0 });
-    expect(wordsExtent(beatWith(['', 'la']), 0, SPACE)).toEqual(
-      wordsExtent(beatWith(['la']), 0, SPACE),
+    expect(wordsExtent(beatWith(['']), 0, SPACE, true)).toEqual({ left: 0, right: 0 });
+    expect(wordsExtent(beatWith(['', 'la']), 0, SPACE, true)).toEqual(
+      wordsExtent(beatWith(['la']), 0, SPACE, true),
     );
   });
 
   it('measures a hyphenated syllable without its hyphen and reserves the hyphen after it', () => {
     const size = WORDS.size * SPACE;
     const gap = WORDS.gap * SPACE;
-    const { left, right } = wordsExtent(beatWith(['lo-']), 0, SPACE);
+    const { left, right } = wordsExtent(beatWith(['lo-']), 0, SPACE, true);
     expect(left).toBeCloseTo(textWidth('lo', size) / 2 + gap, 5);
     expect(right).toBeCloseTo(left + textWidth('-', size) + gap, 5);
   });
@@ -508,5 +512,56 @@ describe.each(['tab', 'standard'] as const)('words on a %s staff, placement', (n
     }
     expect(bars.length).toBeGreaterThan(0);
     expect(cut).toBe(true);
+  });
+});
+
+describe('drawWords with a chord diagram', () => {
+  const beat = {
+    id: 'beat-1',
+    chord: { name: 'C', diagram: { baseFret: 1, frets: [0, 1, 0, 2, 3, null] } },
+  } as unknown as Beat;
+  const lanes = { chordDiagram: { top: 20, bottom: 90 }, chord: { top: 0, bottom: 20 } };
+  const drawn = (x: number, limit: number) => {
+    const sink: LayoutSink = { primitives: [], anchors: [] };
+    drawWords(sink, lanes, beat, { x, start: 0, space: 10, limit, diagrams: true });
+    return sink.primitives.filter((p) => p.kind === 'path' && p.lane === 'chordDiagram');
+  };
+  const width = chordDiagramSize({ baseFret: 1, frets: [0, 1, 0, 2, 3, null] }, 10).width;
+
+  it('draws the grid at the name, top-aligned in its lane', () => {
+    const [grid] = drawn(100, Infinity);
+    expect(grid?.bbox.x).toBe(100);
+    expect(grid?.bbox.y).toBe(20);
+  });
+
+  it('shifts left to fit the system end, never more than half its width from the beat', () => {
+    const [grid] = drawn(100, 100 + width - 10);
+    expect(grid?.bbox.x).toBeCloseTo(90, 1);
+    expect(drawn(100, 100 + width / 2 - 1)).toHaveLength(0);
+  });
+
+  it('draws nothing with diagrams off or without the lane', () => {
+    const sink: LayoutSink = { primitives: [], anchors: [] };
+    drawWords(sink, lanes, beat, { x: 100, start: 0, space: 10, limit: Infinity, diagrams: false });
+    expect(sink.primitives.some((p) => p.kind === 'path')).toBe(false);
+    const bare: LayoutSink = { primitives: [], anchors: [] };
+    drawWords(bare, { chord: lanes.chord }, beat, {
+      x: 100,
+      start: 0,
+      space: 10,
+      limit: Infinity,
+      diagrams: true,
+    });
+    expect(bare.primitives.some((p) => p.kind === 'path')).toBe(false);
+  });
+
+  it('asks for the lane and the room only when diagrams are on', () => {
+    expect(wordRows([beat], 10, true).chordDiagram).toBeGreaterThan(0);
+    expect(wordRows([beat], 10, false).chordDiagram).toBe(0);
+    expect(wordLanes(wordRows([beat], 10, false)).chordDiagram).toBeUndefined();
+    expect(wordsExtent(beat, 0, 10, true).right).toBeGreaterThan(
+      wordsExtent(beat, 0, 10, false).right,
+    );
+    expect(wordsExtent(beat, 0, 10, true).right).toBeCloseTo(width + WORDS.gap * 10, 1);
   });
 });

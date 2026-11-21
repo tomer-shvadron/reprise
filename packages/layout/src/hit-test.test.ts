@@ -316,6 +316,25 @@ describe('markAt', () => {
     expect(markAt(laid, ...centreOf(name))).toEqual({ kind: 'chord', beat: name.node });
   });
 
+  it('finds the beat of a chord diagram on its grid, a dot or its label', () => {
+    const grid = laid.primitives.find((p) => p.kind === 'path' && p.lane === 'chordDiagram');
+    if (grid?.node === undefined) throw new Error('no chord diagram');
+    const inside = (box: Rect) =>
+      box.x >= grid.bbox.x &&
+      box.y >= grid.bbox.y &&
+      box.x + box.width <= grid.bbox.x + grid.bbox.width &&
+      box.y + box.height <= grid.bbox.y + grid.bbox.height;
+    const same = laid.primitives.filter(
+      (p) => p.node === grid.node && p !== grid && inside(p.bbox),
+    );
+    expect(same.length).toBeGreaterThan(1);
+    expect(markAt(laid, ...centreOf(grid))).toEqual({ kind: 'chord', beat: grid.node });
+    for (const part of same.slice(0, 3)) {
+      expect(markAt(laid, ...centreOf(part))).toEqual({ kind: 'chord', beat: grid.node });
+    }
+    expect(markAt(laid, grid.bbox.x + grid.bbox.width + 2, grid.bbox.y + 3)).toBeUndefined();
+  });
+
   it('finds a section by its text and by its enclosure box, not tempo text', () => {
     const section = laid.primitives.filter(
       (p) => p.node !== undefined && p.kind === 'text' && p.lane === 'section',

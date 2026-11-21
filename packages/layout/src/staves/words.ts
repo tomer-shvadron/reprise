@@ -2,6 +2,7 @@ import { beatTicks, type Beat, type Track } from '@reprise/model';
 
 import { fitText, textWidth } from '../metrics';
 import { text, type LayoutSink } from '../primitives';
+import { chordDiagramPrimitives, chordDiagramSize } from './chord-diagram';
 import type { LaneBands, LaneRequests } from './lanes';
 
 /**
@@ -20,27 +21,35 @@ export const WORDS = {
   lift: 0.8,
   /** Room under a lyric row's baseline for descenders, in staff spaces. */
   descent: 0.6,
+  /** Room under a chord diagram, in staff spaces. */
+  diagramGap: 0.3,
 } as const;
 
 /** The heights, in px, of the word lanes a set of beats asks for; zero for a lane none uses. */
 export interface WordRows {
+  chordDiagram: number;
   chord: number;
   text: number;
   lyrics: number;
 }
 
-export function wordRows(beats: Iterable<Beat>, space: number): WordRows {
+export function wordRows(beats: Iterable<Beat>, space: number, diagrams: boolean): WordRows {
   let chord = false;
+  let diagram = 0;
   let said = false;
   let lines = 0;
   for (const beat of beats) {
     if (beat.chord) chord = true;
+    if (diagrams && beat.chord?.diagram) {
+      diagram = Math.max(diagram, chordDiagramSize(beat.chord.diagram, space).height);
+    }
     if (beat.text !== undefined && beat.text !== '') said = true;
     for (const [line, syllable] of (beat.lyrics ?? []).entries()) {
       if (syllable !== '') lines = Math.max(lines, line + 1);
     }
   }
   return {
+    chordDiagram: diagram > 0 ? diagram + WORDS.diagramGap * space : 0,
     chord: chord ? WORDS.chordRow * space : 0,
     text: said ? WORDS.textRow * space : 0,
     lyrics: lines * WORDS.lyricRow * space,
@@ -50,6 +59,7 @@ export function wordRows(beats: Iterable<Beat>, space: number): WordRows {
 /** The lane requests of `rows`, for the lanes the beats use. */
 export function wordLanes(rows: WordRows): LaneRequests {
   const lanes: LaneRequests = {};
+  if (rows.chordDiagram > 0) lanes.chordDiagram = rows.chordDiagram;
   if (rows.chord > 0) lanes.chord = rows.chord;
   if (rows.text > 0) lanes.text = rows.text;
   if (rows.lyrics > 0) lanes.lyrics = rows.lyrics;
@@ -64,12 +74,16 @@ export function wordsExtent(
   beat: Beat,
   start: number,
   space: number,
+  diagrams: boolean,
 ): { left: number; right: number } {
   const size = WORDS.size * space;
   const gap = WORDS.gap * space;
   let left = 0;
   let right = 0;
   if (beat.chord) right = Math.max(right, start + textWidth(beat.chord.name, size) + gap);
+  if (diagrams && beat.chord?.diagram) {
+    right = Math.max(right, start + chordDiagramSize(beat.chord.diagram, space).width + gap);
+  }
   if (beat.text) right = Math.max(right, start + textWidth(beat.text, size) + gap);
   for (const syllable of beat.lyrics ?? []) {
     if (syllable === '') continue;
@@ -175,10 +189,12 @@ export interface WordsAt {
   /** The x words are cut at, as the system's last bar content ends there. */
   limit: number;
   nextSyllable?: NextSyllable;
+  /** Draw a chord's grid under its name. */
+  diagrams: boolean;
 }
 
 /**
- * Draws a beat's chord name, beat text and syllables into the bar's word lanes. A hyphenated
+ * Draws a beat's chord name and diagram, beat text and syllables into the bar's word lanes. A hyphenated
  * syllable gets a hyphen of its own, with `node` but no `lane` so the word field still finds the
  * syllable.
  */
@@ -193,6 +209,22 @@ export function drawWords(sink: LayoutSink, lanes: LaneBands, beat: Beat, at: Wo
     const name = fitText(chord.name, size, limit - left);
     if (name !== '' || chord.name === '')
       sink.primitives.push(text(name, left, y, size, { node, lane: 'chord' }));
+  }
+  if (at.diagrams && chord?.diagram && lanes.chordDiagram) {
+    const { width } = chordDiagramSize(chord.diagram, space);
+    // The system's last bar shifts a grid left to fit, at most half its width left of its beat;
+    // past that it is skipped, as a name is cut.
+    const gridX = Math.min(left, limit - width);
+    if (gridX >= x - width / 2) {
+      sink.primitives.push(
+        ...chordDiagramPrimitives(chord.diagram, {
+          x: gridX,
+          y: lanes.chordDiagram.top,
+          space,
+          node,
+        }),
+      );
+    }
   }
   if (beat.text && lanes.text) {
     const y = lanes.text.bottom - WORDS.lift * space;

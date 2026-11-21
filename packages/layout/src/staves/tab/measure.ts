@@ -11,8 +11,8 @@ export function wordStart(beat: TabBeat): number {
   return -beat.half;
 }
 
-function wordsRight(beat: TabBeat, space: number): number {
-  let { right } = wordsExtent(beat.beat, wordStart(beat), space);
+function wordsRight(beat: TabBeat, space: number, diagrams: boolean): number {
+  let { right } = wordsExtent(beat.beat, wordStart(beat), space, diagrams);
   const dynamics = beatDynamics(beat.beat);
   if (dynamics && beat.dynamicsChange) {
     right = Math.max(
@@ -23,8 +23,8 @@ function wordsRight(beat: TabBeat, space: number): number {
   return right;
 }
 
-function wordsLeft(beat: TabBeat, space: number): number {
-  let { left } = wordsExtent(beat.beat, wordStart(beat), space);
+function wordsLeft(beat: TabBeat, space: number, diagrams: boolean): number {
+  let { left } = wordsExtent(beat.beat, wordStart(beat), space, diagrams);
   const dynamics = beatDynamics(beat.beat);
   if (dynamics && beat.dynamicsChange) {
     left = Math.max(
@@ -40,8 +40,8 @@ export function measureTab(input: StaffBar, options: TabOptions): StaffBarMeasur
   const analysed = analyseBar(input, options);
   const onsets: OnsetExtent[] = [];
   for (const beat of [...analysed.beats].sort((a, b) => a.tick - b.tick)) {
-    const left = Math.max(beat.left, wordsLeft(beat, space));
-    const right = Math.max(beat.right, wordsRight(beat, space));
+    const left = Math.max(beat.left, wordsLeft(beat, space, input.chordDiagrams));
+    const right = Math.max(beat.right, wordsRight(beat, space, input.chordDiagrams));
     const last = onsets.at(-1);
     if (last && beat.tick - last.tick < TICK_EPSILON) {
       last.left = Math.max(last.left, left);
