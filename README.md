@@ -41,9 +41,9 @@ pnpm format         # Prettier; format:check verifies without writing
 pnpm bench          # the roadmap's budgets, measured one file at a time
 pnpm dev            # the web app in the browser, Vite dev server with hot reload
 pnpm build          # production build of the web app into apps/web/dist
-pnpm desktop:dev    # the Electron app around the same web core, with hot reload
+pnpm desktop:dev    # the Electron app around the same web core; the renderer hot-reloads, main and preload restart the app
 pnpm desktop:build  # fetches the GM sound bank, electron-vite build, then electron-builder for the current platform
-pnpm desktop:smoke  # launches the packaged app, opens a fixture and plays it
+pnpm desktop:smoke  # launches the packaged app, opens a fixture, plays it and copies to the clipboard
 pnpm check:files    # the real-file pass over fixtures/ and local-tabs/ (docs/reference/player-checklist.md)
 pnpm e2e            # the player flows: Playwright Test against the production build (vite preview) in headless Chromium; needs pnpm sounds:fetch
 ```
