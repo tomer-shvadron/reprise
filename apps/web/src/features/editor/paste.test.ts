@@ -628,3 +628,40 @@ describe('paste at scale', () => {
     expect(elapsed).toBeLessThan(5_000);
   });
 });
+
+describe('paste between a banjo drone string and a plain 5-string track', () => {
+  const OPEN_G = [67, 50, 55, 59, 62];
+  // Track 0 is a plain 5-string guitar in the banjo's tuning; track 1 is the banjo.
+  const both = (guitarFret: number, banjoFret: number): Score => {
+    const b = score();
+    b.track('guitar', { tuning: OPEN_G });
+    b.bar().beat('4', [note(5, guitarFret)]);
+    b.track('banjo');
+    b.bar().beat('4', [note(5, banjoFret)]);
+    return b.build({ ids: 'sequential' });
+  };
+  const copyOf = (built: Score, track: number): Clip =>
+    clipOf(built, {
+      cursor: undefined,
+      range: beatsRange(built, { first: track, bar: 0, from: 0, to: 0 }),
+    });
+  const pasteAt = (built: Score, clip: Clip, track: number) =>
+    run(
+      built,
+      planned(built, clip, { cursor: cursorAt(built, track, 0, 0, 0, 5), range: undefined }),
+    );
+
+  it('refingers a guitar clip onto the banjo even with equal string counts, dropping a fret past its end', () => {
+    // Fret 20 sounds on the guitar's 5th string but the drone string has only 19 stored frets.
+    const built = both(20, 0);
+    const after = pasteAt(built, copyOf(built, 0), 1);
+    expect(frets(after, 1, 0)).toEqual(['rest']);
+    const fits = both(19, 0);
+    expect(frets(pasteAt(fits, copyOf(fits, 0), 1), 1, 0)).toEqual(['19']);
+  });
+
+  it('carries the banjo clip onto a plain 5-string track by pitch, keeping the stored fret', () => {
+    const built = both(0, 2);
+    expect(frets(pasteAt(built, copyOf(built, 1), 0), 0, 0)).toEqual(['2']);
+  });
+});

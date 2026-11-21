@@ -98,6 +98,18 @@ describe('a banjo drone string', () => {
     const index = createBeatIndex(must(built.tracks[0]), built.masterBars);
     const [fretted] = index.dotsAt(must(built.masterBars[0]).id, 960);
     expect(fretted?.absolute).toBe(9);
+    // The open drone note moves with the capo too, and a semitone stays one fret: 7 then 8.
+    const [open] = index.dotsAt(must(built.masterBars[0]).id, 0);
+    expect(open?.absolute).toBe(7);
+  });
+
+  it('keeps a drone dot on the board when it sits past fret 24', () => {
+    const built = score()
+      .track('banjo', { capo: 3 })
+      .bar()
+      .beat('4', [note(5, 17)])
+      .build();
+    expect(boardOf(built.tracks[0])?.frets).toBeGreaterThanOrEqual(3 + 5 + 17);
   });
 });
 

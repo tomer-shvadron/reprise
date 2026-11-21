@@ -44,7 +44,7 @@ export interface BoardShape {
 
 const highestByBar = new WeakMap<Bar, number>();
 
-/** The highest written fret in a bar, cached per bar object so an edit rescans one bar. */
+/** The highest stored fret in a bar, cached per bar object so an edit rescans one bar. */
 function highestFretOf(bar: Bar): number {
   let highest = highestByBar.get(bar);
   if (highest === undefined) {
@@ -69,7 +69,8 @@ export function boardOf(track: Track | undefined): BoardShape | undefined {
   for (const bar of track.bars) used = Math.max(used, highestFretOf(bar));
   return {
     strings: track.tuning.length,
-    frets: Math.max(BOARD_FRETS, track.fretCount, track.capo + used),
+    // A drone note's dot sits `drone.fret` beyond its stored fret, so leave room for that.
+    frets: Math.max(BOARD_FRETS, track.fretCount, track.capo + used + (track.drone?.fret ?? 0)),
     capo: track.capo,
     ...(track.drone && { drone: track.drone }),
   };
@@ -81,14 +82,12 @@ export function tuningNames(track: Pick<Track, 'tuning'>): string[] {
 }
 
 /**
- * Where a dot sits on the neck. The capo raises all five strings, so a fretted drone note counts
- * from the capo like any other; an open drone sits at the string's first fret (or the capo, past it).
+ * Where a dot sits on the neck. The capo raises all five strings, so a drone note, open or
+ * fretted, counts from the capo and the string's first fret: `capo + drone.fret + stored`.
  */
 function absoluteFret(track: Track, note: Note, written: number): number {
   const { drone } = track;
-  if (drone && note.string === drone.string && written === 0) {
-    return Math.max(track.capo, drone.fret);
-  }
+  if (drone && note.string === drone.string) return track.capo + drone.fret + note.fret;
   return track.capo + written;
 }
 
