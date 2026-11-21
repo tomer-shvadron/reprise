@@ -1,4 +1,4 @@
-import { waitFor } from '@testing-library/react';
+import { cleanup, waitFor } from '@testing-library/react';
 import { createTimeline, type PlaybackState } from '@reprise/audio';
 import { debugAudioEngine } from '@reprise/audio/testing';
 import { secondsAtTick, type Id } from '@reprise/model';
@@ -56,10 +56,37 @@ describe('the player', () => {
     p.services.dispose();
   });
 
+  it('plays the 12-string fixture with its courses doubled', async () => {
+    const plain = player();
+    await plain.open('gp5/effects.gp5');
+    const single = await playBarOne(plain);
+    plain.services.dispose();
+    cleanup();
+
+    const p = player();
+    await p.open('gp5/twelve-string.gp5');
+    expect(p.services.document.getState().score?.tracks[0]?.courses).toEqual([
+      12, 12, 12, 12, 0, 0,
+    ]);
+    const heard = await playBarOne(p);
+
+    // The same notes as effects.gp5 with a second string beside each: none missed, and the render
+    // differs from the single-string one by the partners (the count-in click is the same in both).
+    expect(heard.misses).toBe(0);
+    expect(heard.finite).toBe(true);
+    const [a, b] = [heard.buffer.getChannelData(0), single.buffer.getChannelData(0)];
+    const from = Math.round((START + 0.5) * heard.buffer.sampleRate);
+    const to = Math.min(a.length, b.length);
+    let squares = 0;
+    for (let i = from; i < to; i += 1) squares += ((a[i] ?? 0) - (b[i] ?? 0)) ** 2;
+    expect(Math.sqrt(squares / (to - from))).toBeGreaterThan(1e-4);
+    p.services.dispose();
+  });
+
   it('opens, paints and loads every fixture, with no audio context', async () => {
     const p = player();
     const paths = await fixturePaths();
-    expect(paths.length).toBeGreaterThanOrEqual(27);
+    expect(paths.length).toBeGreaterThanOrEqual(28);
     for (const path of paths) {
       await p.open(path);
       expect(p.services.layout.getState().result?.systems.length, path).toBeGreaterThanOrEqual(1);

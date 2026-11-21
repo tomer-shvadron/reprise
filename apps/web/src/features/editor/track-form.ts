@@ -4,6 +4,7 @@ import {
   createTrack,
   findTuningName,
   isVocalTrack,
+  type Drone,
   type Score,
   type Track,
   type TrackChanges,
@@ -59,6 +60,14 @@ export interface TrackForm {
   shortName: string;
   color: string;
   strings: number[];
+  /**
+   * The second string of each course, in `strings` order (string 1 first); `undefined` for a track
+   * of single strings. Not editable per string in v1: a preset sets it and the string count keeps
+   * it the length of `strings`.
+   */
+  courses: (number | null)[] | undefined;
+  /** The banjo's short string, carried from its preset or track; the dialog has no control for it yet. */
+  drone: Drone | undefined;
   capo: string;
   program: number;
   /** A name the user typed: a preset's default name never replaces it. */
@@ -90,6 +99,8 @@ export function formFromTrack(track: Track): TrackForm {
     shortName: track.shortName,
     color: track.color,
     strings: [...track.tuning].reverse(),
+    courses: track.courses ? [...track.courses].reverse() : undefined,
+    drone: track.drone,
     capo: String(track.capo),
     program: track.program,
     nameEdited: true,
@@ -144,11 +155,15 @@ export function setProgram(form: TrackForm, program: number): TrackForm {
   return { ...form, program, programEdited: true };
 }
 
-const modelOrder = (strings: readonly number[]) => [...strings].reverse();
+const modelOrder = <T>(list: readonly T[]): T[] => [...list].reverse();
 
 /** The tuning table's name for the form's strings, or undefined for a custom tuning. */
 export function presetNameOf(form: TrackForm): string | undefined {
-  return findTuningName(modelOrder(form.strings));
+  // The courses are part of the name: a 12-string's E standard is "12-string standard".
+  return findTuningName(modelOrder(form.strings), {
+    courses: form.courses && modelOrder(form.courses),
+    drone: form.drone,
+  });
 }
 
 /**
@@ -159,7 +174,12 @@ export function presetNameOf(form: TrackForm): string | undefined {
 export function applyPreset(form: TrackForm, name: string | undefined, adding: boolean): TrackForm {
   const preset = STANDARD_TUNINGS.find((tuning) => tuning.name === name);
   if (!preset) return form;
-  let next: TrackForm = { ...form, strings: modelOrder(preset.strings) };
+  let next: TrackForm = {
+    ...form,
+    strings: modelOrder(preset.strings),
+    courses: preset.courses ? modelOrder(preset.courses) : undefined,
+    drone: preset.drone,
+  };
   if (adding && form.kind === 'fretted') {
     const defaults = INSTRUMENT_DEFAULTS[preset.instrument];
     if (!form.nameEdited) next = { ...next, name: defaults.name };
@@ -179,13 +199,25 @@ export function applyPreset(form: TrackForm, name: string | undefined, adding: b
 export function setStringCount(form: TrackForm, count: number): TrackForm {
   const current = form.strings.length;
   if (count === current || count < 1 || count > MAX_STRINGS) return form;
-  if (count < current) return { ...form, strings: form.strings.slice(0, count) };
+  // The drone is a string of its own: with it gone the model would refuse the form (`drone-string`).
+  const drone = form.drone && form.drone.string <= count ? form.drone : undefined;
+  if (count < current) {
+    return {
+      ...form,
+      strings: form.strings.slice(0, count),
+      courses: form.courses?.slice(0, count),
+      drone,
+    };
+  }
   const strings = [...form.strings];
+  const courses = form.courses && [...form.courses];
   while (strings.length < count) {
     const lowest = strings.at(-1) ?? 40;
     strings.push(Math.max(0, lowest - NEW_STRING_INTERVAL));
+    // The new string joins the lowest course's layout: an octave course on a 12-string, a unison one on a mandolin.
+    courses?.push(courses.at(-1) ?? null);
   }
-  return { ...form, strings };
+  return { ...form, strings, courses, drone };
 }
 
 export function setString(form: TrackForm, string: number, note: number): TrackForm {
@@ -284,6 +316,40 @@ export function validateTrackForm(form: TrackForm, existing?: Track): TrackFormE
 
 export const hasErrors = (errors: TrackFormErrors): boolean => Object.keys(errors).length > 0;
 
+/** "6 to 3", "2 and 1", "1": the strings of one kind of course, highest number first. */
+function stringRange(strings: readonly number[]): string {
+  const sorted = [...strings].sort((a, b) => b - a);
+  const first = sorted[0] ?? 0;
+  const last = sorted.at(-1) ?? first;
+  if (sorted.length === 1) return String(first);
+  const run = first - last === sorted.length - 1;
+  if (run && sorted.length > 2) return `${String(first)} to ${String(last)}`;
+  return sorted.length === 2 ? `${String(first)} and ${String(last)}` : sorted.join(', ');
+}
+
+/**
+ * The read-only line of the track dialog for doubled courses, "Doubled courses: octave on strings
+ * 6 to 3, unison on strings 2 and 1"; `undefined` for single strings.
+ */
+export function coursesSummary(
+  courses: readonly (number | null)[] | undefined,
+): string | undefined {
+  if (!courses) return undefined;
+  const kinds: [number, string][] = [
+    [12, 'octave'],
+    [-12, 'octave below'],
+    [0, 'unison'],
+  ];
+  const parts = kinds.flatMap(([offset, label]) => {
+    const strings = courses.flatMap((value, index) => (value === offset ? [index + 1] : []));
+    return strings.length === 0 ? [] : [`${label} on strings ${stringRange(strings)}`];
+  });
+  return parts.length === 0 ? undefined : `Doubled courses: ${parts.join(', ')}`;
+}
+
+const coursesKey = (courses: readonly (number | null)[] | undefined): string | undefined =>
+  courses?.map((offset) => offset ?? 'single').join();
+
 /** Only what differs from the track, for one `setTrackProperties`; empty when nothing changed. */
 export function trackChanges(track: Track, form: TrackForm): TrackChanges {
   const changes: TrackChanges = {};
@@ -298,6 +364,12 @@ export function trackChanges(track: Track, form: TrackForm): TrackChanges {
   if (track.kind === 'fretted') {
     const tuning = modelOrder(form.strings);
     if (tuning.join() !== track.tuning.join()) changes.tuning = tuning;
+    // Tuning and courses go together: the model refuses courses of another length than the strings.
+    const courses = form.courses && modelOrder(form.courses);
+    if (coursesKey(courses) !== coursesKey(track.courses)) changes.courses = courses ?? null;
+    if (form.drone?.string !== track.drone?.string || form.drone?.fret !== track.drone?.fret) {
+      changes.drone = form.drone ?? null;
+    }
     const capo = Number(form.capo);
     if (capo !== track.capo) changes.capo = capo;
   }
@@ -314,6 +386,8 @@ export function newTrackProperties(form: TrackForm, defaults: NotationDefaults):
   };
   if (form.kind === 'fretted') {
     properties.tuning = modelOrder(form.strings);
+    if (form.courses) properties.courses = modelOrder(form.courses);
+    if (form.drone) properties.drone = form.drone;
     properties.capo = Number(form.capo);
     properties.display = {
       ...createTrack('fretted').display,

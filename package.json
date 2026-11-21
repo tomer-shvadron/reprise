@@ -23,7 +23,7 @@
     "format:check": "prettier --check .",
     "conflicts:check": "node scripts/conflicts/check.ts",
     "fixtures:describe": "node scripts/fixtures/describe.ts",
-    "fixtures:check": "node scripts/fixtures/describe.ts --check",
+    "fixtures:check": "node scripts/fixtures/describe.ts --check && node scripts/fixtures/make-twelve-string.ts --check",
     "check:files": "node scripts/check-files/run.ts",
     "shortcuts:write": "vitest run -u --project web apps/web/src/app/shortcut-doc.test.ts",
     "bootstrap": "node scripts/bootstrap/run.ts",

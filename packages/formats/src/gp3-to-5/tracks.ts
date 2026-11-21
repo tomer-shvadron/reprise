@@ -56,10 +56,11 @@ export function readTrack(context: Context, header: Header, index: number): Trac
 
   // GP5 marks a track shown in the multi-track view with 0x08; the others are GP3 to GP5 flags.
   const hidden = version >= 500 && !hasFlag(flags, 0x08);
-  if (hidden || hasFlag(flags, 0x02) || hasFlag(flags, 0x04) || hasFlag(flags, 0x80)) {
+  // 0x02 is the 12-string flag, read below into `courses`; the rest are still dropped.
+  if (hidden || hasFlag(flags, 0x04) || hasFlag(flags, 0x80)) {
     log.info(
       'track-flags-dropped',
-      '12-string, banjo, tuning-display or hidden-from-multitrack flags',
+      'banjo, tuning-display or hidden-from-multitrack flags',
       location,
     );
   }
@@ -163,6 +164,19 @@ export function readTrack(context: Context, header: Header, index: number): Trac
     else invalid(context, { ...location, offset: fretCountOffset }, 'fret count', fretCount, 24);
     if (capo >= 0 && capo <= MIDI_MAX) track.capo = capo;
     else invalid(context, { ...location, offset: capoOffset }, 'capo', capo, 0);
+  }
+  // Unverified against a file saved by Guitar Pro (#348): the flag's meaning is the format
+  // documents' (and TuxGuitar's), and Guitar Pro 8's reference files have not arrived. The usual
+  // 12-string layout: an octave string beside every course but the two highest, which are unison.
+  if (kind === 'fretted' && hasFlag(flags, 0x02) && tuning.length > 2) {
+    track.courses = tuning.map((_, index) => (index < tuning.length - 2 ? 12 : 0));
+  }
+  if (hasFlag(flags, 0x02) && !track.courses) {
+    log.info(
+      'track-flags-dropped',
+      '12-string flag on a track that is not fretted or has too few strings for courses',
+      location,
+    );
   }
   if (kind === 'fretted' && notation) track.display.notation = notation;
   if (kind === 'drums' && notation === 'tab') {

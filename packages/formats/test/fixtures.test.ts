@@ -18,7 +18,7 @@ describe('gp3, gp4 and gp5 fixtures', () => {
     expect(entries.map((entry) => entry.format).sort()).toEqual([
       ...Array<string>(3).fill('gp3'),
       ...Array<string>(4).fill('gp4'),
-      ...Array<string>(8).fill('gp5'),
+      ...Array<string>(9).fill('gp5'),
     ]);
   });
 
