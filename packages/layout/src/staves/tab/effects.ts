@@ -9,6 +9,9 @@ import {
   newBendDrawn,
   drawLetter,
   drawStroke,
+  diagonalWave,
+  SCRAPE,
+  WAVES,
   hammerLetter,
   nextOnString,
   shifts,
@@ -33,6 +36,8 @@ import { lineY, type TabContext } from './context';
 
 /** Gaps and sizes of the on-string effects, in staff spaces. */
 const SLIDE = { gap: 0.15, rise: 0.3, length: 1.3, clear: 0.2, thickness: 0.12 };
+/** A pick scrape's wave: gap after the number, stop short of the next onset, shortest, drop. */
+const SCRAPE_WAVE = { gap: 0.2, stop: 0.6, min: 1.3 };
 const BEND = BEND_FRAME;
 const STROKE = { reach: 0.4 };
 
@@ -258,6 +263,20 @@ function drawBends(context: TabContext, beat: TabBeat, x: number, next: number):
   }
 }
 
+/** The wave of a pick scrape: falling for down, rising for up, from just past the number. */
+function drawScrape(context: TabContext, label: NoteLabel, x: number, next: number): void {
+  const { sink, space } = context;
+  const { note } = label;
+  if (!note.pickScrape) return;
+  const size = TAB.fretSize * space;
+  const start = x + rightEdge(label, size) + SCRAPE_WAVE.gap * space;
+  const end = Math.max(next - SCRAPE_WAVE.stop * space, start + SCRAPE_WAVE.min * space);
+  const y = lineY(context, note.string);
+  const drop = (note.pickScrape === 'down' ? 1 : -1) * SCRAPE.drop * space;
+  const wave = diagonalWave(start, y, end, y + drop, WAVES.slight, space, { node: note.id });
+  if (wave) sink.primitives.push(wave);
+}
+
 /** Slides into and out of a note from nowhere. */
 function drawLooseSlides(context: TabContext, label: NoteLabel, x: number): void {
   const { space } = context;
@@ -308,6 +327,7 @@ export function drawNoteEffects(context: TabContext, voice: TabVoice, xs: readon
     for (const label of beat.labels) {
       const { note } = label;
       drawLooseSlides(context, label, x);
+      drawScrape(context, label, x, next);
       const grace = lastGrace?.labels.find((candidate) => candidate.note.string === note.string);
       if (grace && lastCentre !== undefined) {
         const origin = { note: grace.note, x: lastCentre, edge: rightEdge(grace, graceSize) };

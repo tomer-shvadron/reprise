@@ -1,5 +1,45 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`golpe and pick scrape (#354) > draws a finger golpe above the staff and a thumb golpe below it 1`] = `
+[
+  "path filled M141.64 106.8h7.88v8.1h-7.88Z (paper) <note00000001>",
+  "text "5" @145.58,114.08 size 9.1 middle <note00000001>",
+  "path filled M168.24 106.8h7.88v8.1h-7.88Z (paper) <note00000002>",
+  "text "5" @172.18,114.08 size 9.1 middle <note00000002>",
+  "path filled M194.84 106.8h7.88v8.1h-7.88Z (paper) <note00000003>",
+  "text "5" @198.78,114.08 size 9.1 middle <note00000003>",
+  "line @145.58,147.6 -> 145.58,170.35 w 0.84 <beat00000001>",
+  "line @172.18,147.6 -> 172.18,170.35 w 0.84 <beat00000002>",
+  "line @198.78,159.85 -> 198.78,170.35 w 0.84 <beat00000003>",
+  "glyph guitarGolpe @141.78,82.85 size 28 <beat00000001>",
+  "glyph guitarGolpe @168.38,198.54 size 28 <beat00000002>",
+]
+`;
+
+exports[`golpe and pick scrape (#354) > labels a pick scrape run P.S. with a dashed line and draws a wave per note 1`] = `
+[
+  "path filled M143.79 105.2h7.88v8.1h-7.88Z (paper) <note00000001>",
+  "text "5" @147.73,112.48 size 9.1 middle <note00000001>",
+  "path filled M170.39 105.2h7.88v8.1h-7.88Z (paper) <note00000002>",
+  "text "5" @174.33,112.48 size 9.1 middle <note00000002>",
+  "path filled M196.99 105.2h7.88v8.1h-7.88Z (paper) <note00000003>",
+  "text "5" @200.93,112.48 size 9.1 middle <note00000003>",
+  "path filled M223.59 105.2h7.88v8.1h-7.88Z (paper) <note00000004>",
+  "text "5" @227.53,112.48 size 9.1 middle <note00000004>",
+  "line @147.73,146 -> 147.73,168.75 w 0.84 <beat00000001>",
+  "line @174.33,146 -> 174.33,168.75 w 0.84 <beat00000002>",
+  "line @200.93,146 -> 200.93,168.75 w 0.84 <beat00000003>",
+  "line @227.53,146 -> 227.53,168.75 w 0.84 <beat00000004>",
+  "path stroked M153.07 109.25Q155.95 107.1 156.49 110.65Q157.02 114.2 159.9 112.05Q162.77 109.9 163.31 113.45Q163.85 117 166.72 114.85Q169.6 112.7 170.13 116.25 <note00000001>",
+  "path stroked M179.67 109.25Q182.55 107.1 183.09 110.65Q183.62 114.2 186.5 112.05Q189.37 109.9 189.91 113.45Q190.45 117 193.32 114.85Q196.2 112.7 196.73 116.25 <note00000002>",
+  "path stroked M206.27 109.25Q206.81 105.7 209.69 107.85Q212.56 110 213.1 106.45Q213.63 102.9 216.51 105.05Q219.38 107.2 219.92 103.65Q220.46 100.1 223.33 102.25 <note00000003>",
+  "text "P.S." @147.73,80.55 size 7 middle <beat00000001>",
+  "line @155.75,78.07 -> 174.33,78.07 w 1.12 <beat00000001>",
+  "line @174.33,75.27 -> 174.33,80.86 w 1.12 <beat00000001>",
+  "text "P.S." @200.93,80.55 size 7 middle <beat00000003>",
+]
+`;
+
 exports[`note effects on the tab: bends > draws every bend kind with its arrows and labels 1`] = `
 [
   "path filled M141.84 135.3h6.95v8.1h-6.95Z (paper) <note00000001>",

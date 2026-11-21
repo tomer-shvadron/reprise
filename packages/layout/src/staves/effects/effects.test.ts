@@ -1156,3 +1156,115 @@ describe('bend labels never overlap', () => {
     expect(stable(layout(built, paged, cache))).toBe(stable(layout(built, paged)));
   });
 });
+
+describe('golpe and pick scrape (#354)', () => {
+  const golpes = (result: LayoutResult) =>
+    result.primitives.filter((p) => p.kind === 'glyph' && p.glyph === 'guitarGolpe');
+  const staffBox = (result: LayoutResult) => {
+    const staff = result.systems[0]?.staves.find((s) => s.type === 'tab');
+    if (!staff) throw new Error('no tab staff');
+    return staff;
+  };
+
+  it('draws a finger golpe above the staff and a thumb golpe below it', () => {
+    const built = guitar()
+      .bar()
+      .beat('4', [note(3, 5)], { effects: { golpe: 'finger' } })
+      .beat('4', [note(3, 5)], { effects: { golpe: 'thumb' } })
+      .beat('2', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    const [finger, thumb] = golpes(result);
+    expect(finger?.node).toBe('beat00000001');
+    expect(thumb?.node).toBe('beat00000002');
+    const tab = staffBox(result);
+    expect(finger && finger.bbox.y + finger.bbox.height).toBeLessThan(tab.top);
+    expect(thumb && thumb.bbox.y).toBeGreaterThan(tab.bottom);
+    expect(content(result)).toMatchSnapshot();
+  });
+
+  it('draws a golpe on a rest, and the first voice at an onset wins', () => {
+    const built = guitar()
+      .bar()
+      .beat('4', [note(3, 5)], { effects: { golpe: 'thumb' } })
+      .beat('4', [note(3, 5)], { effects: { golpe: 'finger' } })
+      .beat('2', [note(3, 5)])
+      .voice(1)
+      .beat('4', [note(2, 3)], { effects: { golpe: 'thumb' } })
+      .beat('4', [note(2, 3)], { effects: { golpe: 'thumb' } })
+      .beat('2', [note(2, 3)])
+      .build({ ids: 'sequential' });
+    // Turn the first beat into a rest: its golpe stays, as a file may put one there.
+    const first = built.tracks[0]?.bars[0]?.voices[0]?.beats[0];
+    if (!first) throw new Error('no first beat');
+    first.rest = true;
+    first.notes = [];
+    const result = laid(built);
+    // Onset 0 has the rest's and the other voice's thumb; onset 1 has finger and thumb.
+    expect(golpes(result)).toHaveLength(2);
+    expect(golpes(result)[0]?.node).toBe(beatOf(built, 0, 0, 0).id);
+  });
+
+  it('keeps a bar with neither effect free of the new lanes', () => {
+    const plain = guitar()
+      .bar()
+      .beat('4', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    expect(golpes(laid(plain))).toEqual([]);
+    expect(laid(plain).primitives.filter(isText('P.S.'))).toEqual([]);
+  });
+
+  it('labels a pick scrape run P.S. with a dashed line and draws a wave per note', () => {
+    const down = { pickScrape: 'down' as const };
+    const up = { pickScrape: 'up' as const };
+    const built = guitar()
+      .bar()
+      .beat('4', [note(3, 5, down)])
+      .beat('4', [note(3, 5, down)])
+      .beat('4', [note(3, 5, up)])
+      .beat('4', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    // Down and up are different runs, each labelled.
+    expect(result.primitives.filter(isText('P.S.'))).toHaveLength(2);
+    expect(result.primitives.filter(dashed)).toHaveLength(1);
+    const waves = result.primitives.filter(strokedPaths).filter((p) => p.node?.startsWith('note'));
+    expect(waves).toHaveLength(3);
+    const [first, , third] = waves;
+    // The first and second notes fall (the wave ends lower than it starts), the third rises.
+    const slope = (p: Primitive | undefined): number => {
+      const nums = p?.kind === 'path' ? (p.d.match(/-?[\d.]+/g) ?? []).map(Number) : [];
+      return (nums.at(-1) ?? 0) - (nums[1] ?? 0);
+    };
+    expect(slope(first)).toBeGreaterThan(0);
+    expect(slope(third)).toBeLessThan(0);
+    expect(content(result)).toMatchSnapshot();
+  });
+
+  it('continues a pick scrape run over a bar line', () => {
+    const ps = { pickScrape: 'down' as const };
+    const built = guitar()
+      .bar()
+      .beat('2', [note(3, 5)])
+      .beat('2', [note(3, 5, ps)])
+      .bar()
+      .beat('2', [note(3, 5, ps)])
+      .beat('2', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    expect(result.primitives.filter(isText('P.S.'))).toHaveLength(1);
+    expect(result.primitives.filter(dashed).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('draws the effects on the tab alone in both mode, and not on a percussion staff', () => {
+    const effects = { effects: { golpe: 'finger' as const } };
+    const both = guitar('both')
+      .bar()
+      .beat('4', [note(3, 5, { pickScrape: 'down' })], effects)
+      .beat('4', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    const result = laid(both);
+    expect(golpes(result)).toHaveLength(1);
+    expect(result.primitives.filter(isText('P.S.'))).toHaveLength(1);
+  });
+});

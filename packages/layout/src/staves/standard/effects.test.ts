@@ -1408,3 +1408,44 @@ describe('bend target heads on a standard staff shown alone', () => {
     }
   });
 });
+
+describe('golpe and pick scrape on the standard staff (#354)', () => {
+  const wave = (p: Primitive): boolean =>
+    p.kind === 'path' && !p.fill && p.node?.startsWith('note') === true;
+
+  function scored(notation: 'standard' | 'both'): Score {
+    return guitar(notation)
+      .bar()
+      .beat('4', [note(3, 5, { pickScrape: 'down' })], { effects: { golpe: 'thumb' } })
+      .beat('4', [note(3, 5, { pickScrape: 'up' })], { effects: { golpe: 'finger' } })
+      .beat('2', [note(3, 5)])
+      .build({ ids: 'sequential' });
+  }
+
+  it('alone: draws the golpes and the P.S. lane, and a wave out of each scraped head', () => {
+    const result = laid(scored('standard'));
+    expect(named(result, 'guitarGolpe')).toHaveLength(2);
+    expect(result.primitives.filter(isText('P.S.'))).toHaveLength(2);
+    expect(result.primitives.filter(wave)).toHaveLength(2);
+  });
+
+  it('in both mode: the tab keeps the lanes and each staff draws its waves', () => {
+    const result = laid(scored('both'));
+    expect(named(result, 'guitarGolpe')).toHaveLength(2);
+    expect(result.primitives.filter(isText('P.S.'))).toHaveLength(2);
+    // One wave on the tab and one on the standard staff for each note.
+    expect(result.primitives.filter(wave)).toHaveLength(4);
+  });
+
+  it('draws nothing of either on a percussion staff', () => {
+    const built = drums()
+      .bar()
+      .beat('4', [midi(38, { pickScrape: 'down' })], { effects: { golpe: 'thumb' } })
+      .beat('4', [midi(38)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    expect(named(result, 'guitarGolpe')).toEqual([]);
+    expect(texts(result)).toEqual([]);
+    expect(result.primitives.filter(wave)).toEqual([]);
+  });
+});

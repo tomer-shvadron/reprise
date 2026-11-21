@@ -6,8 +6,10 @@ export const LANES_ABOVE = [
   'bend',
   'articulation',
   'pickStroke',
+  'golpeFinger',
   'palmMute',
   'letRing',
+  'pickScrape',
   'harmonic',
   'fade',
   'tap',
@@ -22,7 +24,7 @@ export const LANES_ABOVE = [
   'repeatCount',
 ] as const;
 
-export const LANES_BELOW = ['dynamics', 'lyrics'] as const;
+export const LANES_BELOW = ['golpeThumb', 'dynamics', 'lyrics'] as const;
 
 export type LaneAbove = (typeof LANES_ABOVE)[number];
 export type LaneBelow = (typeof LANES_BELOW)[number];

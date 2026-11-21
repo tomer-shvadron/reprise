@@ -21,10 +21,20 @@ const ITEM_SIDE = 0.2;
 const STACK_GAP = 0.25;
 const STACK_MARGIN = 0.4;
 const STROKE_MARGIN = 0.5;
+export const GOLPE_MARGIN = 0.5;
+/** How far a golpe glyph hangs under the top of the lane below the staff, in staff spaces. */
+export const GOLPE_HANG = 0.25;
 
 /** Lanes whose items join into runs across consecutive beats. */
 export type RunLane =
-  'palmMute' | 'letRing' | 'harmonic' | 'vibrato' | 'beatVibrato' | 'trill' | 'whammy';
+  | 'palmMute'
+  | 'letRing'
+  | 'pickScrape'
+  | 'harmonic'
+  | 'vibrato'
+  | 'beatVibrato'
+  | 'trill'
+  | 'whammy';
 
 /** Beats in a row carrying one effect, merged across voices on the onset grid. */
 export interface Run {
@@ -41,7 +51,8 @@ export interface Run {
 }
 
 /** Lanes that hold one item per onset. */
-export type ItemLane = 'articulation' | 'pickStroke' | 'fade' | 'tap';
+export type ItemLane =
+  'articulation' | 'pickStroke' | 'golpeFinger' | 'golpeThumb' | 'fade' | 'tap';
 
 export interface LaneItem {
   lane: ItemLane;
@@ -70,6 +81,13 @@ function runKey(lane: RunLane, beat: Beat): string | undefined {
       return notes.some((note) => note.palmMute) ? lane : undefined;
     case 'letRing':
       return notes.some((note) => note.letRing) ? lane : undefined;
+    case 'pickScrape':
+      // Down wins over up, as the formats reader does when both bits are set.
+      return notes.find((note) => note.pickScrape === 'down')
+        ? 'down'
+        : notes.find((note) => note.pickScrape === 'up')
+          ? 'up'
+          : undefined;
     case 'harmonic':
       return [...notes].sort((a, b) => a.string - b.string).find((note) => note.harmonic)?.harmonic
         ?.kind;
@@ -94,12 +112,19 @@ function hasRunEffect(beat: Beat): boolean {
   if ((beat.effects.vibrato ?? 'none') !== 'none' || beat.effects.whammy) return true;
   return beat.notes.some(
     (note) =>
-      note.palmMute || note.letRing || note.harmonic || note.trill || note.vibrato !== 'none',
+      note.palmMute ||
+      note.letRing ||
+      note.pickScrape ||
+      note.harmonic ||
+      note.trill ||
+      note.vibrato !== 'none',
   );
 }
 
 /** Whether anything at a beat goes into an item lane or the bend lane. */
 function hasItemEffect(beat: Beat): boolean {
+  // A golpe is the beat's own, so it draws on a rest too.
+  if (beat.effects.golpe) return true;
   if (beat.rest || beat.notes.length === 0) return false;
   const { effects } = beat;
   if (effects.pickStroke || effects.tapping || effects.slapping || effects.popping) return true;
@@ -112,6 +137,7 @@ function hasItemEffect(beat: Beat): boolean {
 const RUN_LANES: readonly RunLane[] = [
   'palmMute',
   'letRing',
+  'pickScrape',
   'harmonic',
   'vibrato',
   'beatVibrato',
@@ -188,6 +214,7 @@ export function barRuns(bar: Bar): BarRuns {
 const LABELS: Partial<Record<RunLane, string>> = {
   palmMute: 'P.M.',
   letRing: 'let ring',
+  pickScrape: 'P.S.',
   whammy: 'w/bar',
 };
 
@@ -352,6 +379,13 @@ export function analyseEffects(bar: Bar, space: number, options: EffectOptions):
       items.push({ lane: 'pickStroke', tick, beat: stroke.beat, glyphs: [name] });
       raise('pickStroke', glyphHeight(name) + STROKE_MARGIN);
       centred(tick, glyphSpan(name));
+    }
+    const golpe = group.find(({ beat }) => beat.effects.golpe);
+    if (golpe) {
+      const lane = golpe.beat.effects.golpe === 'thumb' ? 'golpeThumb' : 'golpeFinger';
+      items.push({ lane, tick, beat: golpe.beat, glyphs: ['guitarGolpe'] });
+      raise(lane, glyphHeight('guitarGolpe') + GOLPE_MARGIN);
+      centred(tick, glyphSpan('guitarGolpe'));
     }
     const faded = played.find(({ beat }) => fade(beat));
     const fadeGlyph = faded && fade(faded.beat);

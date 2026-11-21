@@ -20,6 +20,7 @@ import {
   drawBend,
   newBendDrawn,
   drawLetter,
+  diagonalWave,
   drawStroke,
   glyphHeight,
   hammerLetter,
@@ -29,6 +30,8 @@ import {
   tickOf,
   tremoloGlyph,
   voiceBeats,
+  SCRAPE,
+  WAVES,
 } from '../effects';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
 import { TARGET, type BendPlan } from './bend-targets';
@@ -490,6 +493,12 @@ function looseSlides(context: ConnectionContext, note: Note, spot: HeadSpot): vo
       slideLine(context, after, spot.y, after + length, spot.y + drop, note.id);
     if (kind === 'outUp') slideLine(context, after, spot.y, after + length, spot.y - drop, note.id);
   }
+  if (!note.pickScrape) return;
+  const fall = (note.pickScrape === 'down' ? 1 : -1) * SCRAPE.drop * space;
+  const wave = diagonalWave(after, spot.y, after + length, spot.y + fall, WAVES.slight, space, {
+    node: note.id,
+  });
+  if (wave) context.sink.primitives.push(wave);
 }
 
 /**
@@ -567,7 +576,7 @@ export function drawConnections(
         (other) => !other.sounding && other.note.string === note.string,
       );
       const connects = grace !== undefined || note.hammerPull || slidesIn || leavesLine;
-      if (!note.slide && !connects) continue;
+      if (!note.slide && !note.pickScrape && !connects) continue;
       const spot = spotOf(context, chord, head, x, beat.beat.dots);
       looseSlides(context, note, spot);
       if (!fretted) continue;
