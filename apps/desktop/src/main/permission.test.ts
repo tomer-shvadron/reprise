@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { decideMediaPermission } from './media-permission';
+import { decidePermission } from './permission';
 
 const APP = 'reprise://app/index.html';
 const ask = { mediaTypes: ['audio'], requestingUrl: APP, isMainFrame: true };
@@ -10,50 +10,48 @@ const deps = (platform: NodeJS.Platform, allowed = true) => ({
   askForMicrophone: vi.fn(() => Promise.resolve(allowed)),
 });
 
-describe('decideMediaPermission', () => {
+describe('decidePermission', () => {
   it('refuses anything but media', async () => {
     const d = deps('win32');
-    expect(await decideMediaPermission('geolocation', ask, d)).toBe(false);
+    expect(await decidePermission('geolocation', ask, d)).toBe(false);
   });
 
   it('refuses a request with no media types, or with video among them', async () => {
     const d = deps('win32');
-    expect(await decideMediaPermission('media', { requestingUrl: APP, isMainFrame: true }, d)).toBe(
+    expect(await decidePermission('media', { requestingUrl: APP, isMainFrame: true }, d)).toBe(
       false,
     );
-    expect(await decideMediaPermission('media', { ...ask, mediaTypes: [] }, d)).toBe(false);
-    expect(await decideMediaPermission('media', { ...ask, mediaTypes: ['video'] }, d)).toBe(false);
-    expect(
-      await decideMediaPermission('media', { ...ask, mediaTypes: ['audio', 'video'] }, d),
-    ).toBe(false);
+    expect(await decidePermission('media', { ...ask, mediaTypes: [] }, d)).toBe(false);
+    expect(await decidePermission('media', { ...ask, mediaTypes: ['video'] }, d)).toBe(false);
+    expect(await decidePermission('media', { ...ask, mediaTypes: ['audio', 'video'] }, d)).toBe(
+      false,
+    );
   });
 
   it('refuses a subframe and a page that is not the app, even for audio', async () => {
     const d = deps('win32');
-    expect(await decideMediaPermission('media', { ...ask, isMainFrame: false }, d)).toBe(false);
-    expect(await decideMediaPermission('media', ask, d)).toBe(true);
+    expect(await decidePermission('media', { ...ask, isMainFrame: false }, d)).toBe(false);
+    expect(await decidePermission('media', ask, d)).toBe(true);
     expect(
-      await decideMediaPermission('media', { ...ask, requestingUrl: 'https://example.com/' }, d),
+      await decidePermission('media', { ...ask, requestingUrl: 'https://example.com/' }, d),
     ).toBe(false);
-    expect(await decideMediaPermission('media', { ...ask, requestingUrl: undefined }, d)).toBe(
+    expect(await decidePermission('media', { ...ask, requestingUrl: undefined }, d)).toBe(false);
+    expect(await decidePermission('media', { mediaTypes: ['audio'], requestingUrl: APP }, d)).toBe(
       false,
     );
-    expect(
-      await decideMediaPermission('media', { mediaTypes: ['audio'], requestingUrl: APP }, d),
-    ).toBe(false);
   });
 
   it('allows audio on Windows and Linux without asking the system', async () => {
     for (const platform of ['win32', 'linux'] as const) {
       const d = deps(platform);
-      expect(await decideMediaPermission('media', ask, d)).toBe(true);
+      expect(await decidePermission('media', ask, d)).toBe(true);
       expect(d.askForMicrophone).not.toHaveBeenCalled();
     }
   });
 
   it('follows the system answer on macOS', async () => {
-    expect(await decideMediaPermission('media', ask, deps('darwin', true))).toBe(true);
-    expect(await decideMediaPermission('media', ask, deps('darwin', false))).toBe(false);
+    expect(await decidePermission('media', ask, deps('darwin', true))).toBe(true);
+    expect(await decidePermission('media', ask, deps('darwin', false))).toBe(false);
   });
 
   it('refuses on macOS when the system prompt fails', async () => {
@@ -62,7 +60,7 @@ describe('decideMediaPermission', () => {
       isAppUrl: () => true,
       askForMicrophone: () => Promise.reject(new Error()),
     };
-    expect(await decideMediaPermission('media', ask, d)).toBe(false);
+    expect(await decidePermission('media', ask, d)).toBe(false);
   });
 
   describe('clipboard-sanitized-write', () => {
@@ -71,7 +69,7 @@ describe('decideMediaPermission', () => {
     it("is granted to the app's own top frame, on every platform, without a system prompt", async () => {
       for (const platform of ['darwin', 'win32', 'linux'] as const) {
         const d = deps(platform);
-        expect(await decideMediaPermission('clipboard-sanitized-write', copy, d)).toBe(true);
+        expect(await decidePermission('clipboard-sanitized-write', copy, d)).toBe(true);
         expect(d.askForMicrophone).not.toHaveBeenCalled();
       }
     });
@@ -79,7 +77,7 @@ describe('decideMediaPermission', () => {
     it('is refused to a subframe, a page that is not the app and an unknown page', async () => {
       const d = deps('win32');
       const write = (details: typeof copy | { isMainFrame?: boolean; requestingUrl?: string }) =>
-        decideMediaPermission('clipboard-sanitized-write', details, d);
+        decidePermission('clipboard-sanitized-write', details, d);
       expect(await write({ ...copy, isMainFrame: false })).toBe(false);
       expect(await write({ requestingUrl: APP })).toBe(false);
       expect(await write({ ...copy, requestingUrl: 'https://example.com/' })).toBe(false);
@@ -99,7 +97,7 @@ describe('decideMediaPermission', () => {
         'openExternal',
         'unknown',
       ]) {
-        expect(await decideMediaPermission(permission, copy, d)).toBe(false);
+        expect(await decidePermission(permission, copy, d)).toBe(false);
       }
     });
   });

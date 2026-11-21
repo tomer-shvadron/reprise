@@ -1,11 +1,11 @@
-export interface MediaPermissionDetails {
+export interface PermissionDetails {
   mediaTypes?: readonly string[] | undefined;
   /** The page asking, as Electron reports it. */
   requestingUrl?: string | undefined;
   isMainFrame?: boolean | undefined;
 }
 
-export interface MediaPermissionDeps {
+export interface PermissionDeps {
   platform: NodeJS.Platform;
   /** Whether a URL is a page of the app itself. */
   isAppUrl: (url: string) => boolean;
@@ -20,10 +20,10 @@ export interface MediaPermissionDeps {
  * a page that is not ours. On macOS the system asks (or reports its stored answer) first for the
  * microphone.
  */
-export async function decideMediaPermission(
+export async function decidePermission(
   permission: string,
-  details: MediaPermissionDetails,
-  { platform, askForMicrophone, isAppUrl }: MediaPermissionDeps,
+  details: PermissionDetails,
+  { platform, askForMicrophone, isAppUrl }: PermissionDeps,
 ): Promise<boolean> {
   const fromApp =
     details.isMainFrame === true &&
