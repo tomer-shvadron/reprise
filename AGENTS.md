@@ -129,7 +129,7 @@ Vitest, one project per workspace, defined in [vitest.config.ts](vitest.config.t
 
 - Comments explain why, not what.
 - Source filenames are kebab-case (`unicorn/filename-case`).
-- A control that runs a registered command gets its tooltip and `aria-keyshortcuts` from `CommandTooltip` (`apps/web/src/app/command-tooltip.tsx`), and any other tooltip from `HintTooltip`; never `TooltipContent`, a hand-written key, or `aria-keyshortcuts` in app code (lint enforces it, #412).
+- In `apps/web`, a control that runs a registered command uses `CommandTooltip` (`app/command-tooltip.tsx`) and any other tooltip uses `HintTooltip`. Lint bans raw `TooltipContent` and a literal `aria-keyshortcuts` outside the shared components; the context menu and `Slider` are the documented exceptions (#412).
 - No `any`, no `as` casts without a structural reason; `noUncheckedIndexedAccess` is on.
 - Zod schemas are the source of the model's types: declare the schema and derive the type with `z.infer`.
 - Diagnostic identifiers (`rule`, `code`) are kebab-case; model enum values stay camelCase.
