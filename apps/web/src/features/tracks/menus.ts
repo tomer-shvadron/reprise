@@ -1,6 +1,5 @@
 import type { Notation } from '@reprise/model';
 
-import type { RegisteredCommandId } from '@/app/use-command';
 import { onStatus } from '@/app/context-menu/shell-menus';
 import type { MenuContext, MenuContribution, MenuItemSpec } from '@/app/context-menu/types';
 
@@ -46,8 +45,7 @@ const muteSoloItems: readonly MenuItemSpec[] = [
 const propertiesItem: MenuItemSpec = { command: 'track.properties', group: 'properties' };
 const trackItems: readonly MenuItemSpec[] = [...muteSoloItems, propertiesItem];
 
-const rowItems: readonly MenuItemSpec[] = [
-  ...muteSoloItems,
+const notationItems: readonly MenuItemSpec[] = [
   { command: 'track.notationTab', group: 'view', label: 'Show as tab', ...notation('tab') },
   {
     command: 'track.notationStandard',
@@ -61,22 +59,15 @@ const rowItems: readonly MenuItemSpec[] = [
     label: 'Show as tab and standard notation',
     ...notation('both'),
   },
+];
+
+const rowItems: readonly MenuItemSpec[] = [
+  ...muteSoloItems,
+  ...notationItems,
   { command: 'view.toggleMultitrack', group: 'view' },
   { command: 'track.showAll', group: 'view' },
   propertiesItem,
 ];
-
-const statusNotation = (
-  command: RegisteredCommandId,
-  choice: Notation,
-  label: string,
-): MenuItemSpec => ({
-  command,
-  group: 'view',
-  label,
-  ...notation(choice),
-  when: (at) => onStatus('notation')(at) && notation(choice).when(at),
-});
 
 /** The track list, the mixer's strips and its master strip. Edit mode adds the track management in `editor/menus.ts`. */
 export const trackMenus: readonly MenuContribution[] = [
@@ -84,9 +75,10 @@ export const trackMenus: readonly MenuContribution[] = [
   {
     surface: 'status.segment',
     items: [
-      statusNotation('track.notationTab', 'tab', 'Show as tab'),
-      statusNotation('track.notationStandard', 'standard', 'Show as standard notation'),
-      statusNotation('track.notationBoth', 'both', 'Show as tab and standard notation'),
+      ...notationItems.map((item) => ({
+        ...item,
+        when: (at: MenuContext) => onStatus('notation')(at) && (item.when?.(at) ?? true),
+      })),
     ],
   },
   { surface: 'mixer.strip', items: trackItems },

@@ -14,6 +14,11 @@ export const onStatus =
   ({ target }: MenuContext) =>
     target.kind === 'status' && segments.includes(target.segment);
 
+const onVoice =
+  (voice: number) =>
+  ({ services }: MenuContext) =>
+    (services.selection.getState().cursor?.voice ?? 0) === voice;
+
 const onPanel =
   (...views: PanelView[]) =>
   ({ target }: MenuContext) =>
@@ -116,9 +121,14 @@ export const shellMenus: readonly MenuContribution[] = [
       { command: 'sounds.show', group: 'view', when: onStatus('sound') },
       { command: 'library.show', group: 'view', when: onStatus('library') },
       // The edit state's items are editing commands, so the segment's menu is edit mode's alone.
-      { command: 'editor.toggleInsertMode', group: 'edit', when: onStatus('edit') },
-      { command: 'editor.editVoice1', group: 'edit', when: onStatus('edit') },
-      { command: 'editor.editVoice2', group: 'edit', when: onStatus('edit') },
+      {
+        command: 'editor.toggleInsertMode',
+        group: 'edit',
+        when: onStatus('edit'),
+        checked: ({ services }) => services.entry.getState().mode === 'insert',
+      },
+      { command: 'editor.editVoice1', group: 'edit', when: onStatus('edit'), checked: onVoice(0) },
+      { command: 'editor.editVoice2', group: 'edit', when: onStatus('edit'), checked: onVoice(1) },
       { command: 'editor.durationLonger', group: 'note', when: onStatus('edit') },
       { command: 'editor.durationShorter', group: 'note', when: onStatus('edit') },
       { command: 'editor.toggleDot', group: 'note', when: onStatus('edit') },

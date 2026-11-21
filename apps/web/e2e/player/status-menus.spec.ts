@@ -31,11 +31,11 @@ test('choosing a segment menu item with Space runs only that item, and focus ret
   await expect(menu).toHaveAttribute('data-context-menu-via', 'keyboard');
   await expect(menu.getByRole('menuitem', { name: /^Zoom in/ })).toBeFocused();
   await page.keyboard.press('Space');
-  await expect(menu).toHaveCount(0);
-  // One step, not two: the segment's own action never ran for the same press.
-  await expect(segment).not.toHaveText(`${String(before)}%`);
-  const after = Number.parseInt((await segment.textContent()) ?? '', 10);
-  expect(after).toBeGreaterThan(before);
+  // No menu at all: neither the context menu nor the segment's own dropdown the press could open.
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  // Exactly one zoom step (100% to 110%), so the segment's own action did not also run.
+  expect(before).toBe(100);
+  await expect(segment).toHaveText('110%');
   await page.keyboard.press('Shift+F10');
   await page.keyboard.press('Escape');
   await expect(segment).toBeFocused();

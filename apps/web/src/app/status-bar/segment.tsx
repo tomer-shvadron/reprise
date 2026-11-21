@@ -11,8 +11,8 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type { StatusSegmentName } from '@/state/menu-target';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { StatusSegmentName } from '@/state/menu-target';
 
 // `text-2xs!` because the button's size variant sets `text-xs`; a hover or open segment turns
 // `text-foreground`, since muted text on the hover fill is under 4.5:1 in the light theme.

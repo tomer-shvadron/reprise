@@ -115,9 +115,12 @@ describe('the context menus', () => {
     (surface, targets) => {
       for (const target of targets) {
         for (const mode of MODES) {
-          // The edit-state segment is only on screen, and only has items, while editing.
-          if (target.kind === 'status' && target.segment === 'edit' && mode === 'play') continue;
           const enabled = enabledItems(resolveFor(surface, target, mode));
+          // The edit-state segment is only on screen, and only has items, while editing.
+          if (target.kind === 'status' && target.segment === 'edit' && mode === 'play') {
+            expect(enabled, `${surface} ${JSON.stringify(target)} in play`).toBe(0);
+            continue;
+          }
           expect(enabled, `${surface} ${JSON.stringify(target)} in ${mode}`).toBeGreaterThan(0);
         }
       }

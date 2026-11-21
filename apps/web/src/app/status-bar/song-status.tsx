@@ -17,7 +17,7 @@ export function SavedSegment() {
   const text = savedLabel(state);
   if (text === undefined) return null;
   return (
-    <StatusSegment command="file.save" label="Save the song" segment="saved" menuLabel="Saved">
+    <StatusSegment command="file.save" label="Save the song" segment="saved" menuLabel={text}>
       {text}
     </StatusSegment>
   );
