@@ -424,5 +424,11 @@ describe('pick-scrape-keeps-slide-out', () => {
     if (!theirs) throw new Error('no alphaTab note');
     theirs.pickScrape = 'up';
     expect(tolerance('pick-scrape-keeps-slide-out').applies(changed, projections)).toBe(false);
+    // Without a scrape on either side the slide-out loss is a real difference.
+    theirs.pickScrape = null;
+    const mine = changed.beat.ours.notes[0];
+    if (!mine) throw new Error('no note of ours');
+    mine.pickScrape = null;
+    expect(tolerance('pick-scrape-keeps-slide-out').applies(changed, projections)).toBe(false);
   });
 });

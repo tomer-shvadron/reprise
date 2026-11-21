@@ -86,6 +86,39 @@ describe('the gp writer round trip', () => {
   });
 
   it.each([
+    [
+      'a finger golpe',
+      () =>
+        score()
+          .track('guitar')
+          .bar()
+          .beat('4', [note(2, 5)], { effects: { golpe: 'finger' } }),
+    ],
+    [
+      'a golpe on a rest',
+      () =>
+        score()
+          .track('guitar')
+          .bar()
+          .rest('4', { effects: { golpe: 'thumb' } })
+          .beat('4', [note(2, 5)]),
+    ],
+    [
+      'an up pick scrape beside a slide out (flags 132)',
+      () =>
+        score()
+          .track('guitar')
+          .bar()
+          .beat('4', [note(2, 5, { pickScrape: 'up', slide: ['outDown'] })]),
+    ],
+  ])('reads %s back unchanged', (_, build) => {
+    const source = build().build();
+    const result = roundTrip(source);
+    expect(result.dropped).toEqual([]);
+    expect(roundTripView(result.score)).toEqual(roundTripView(source));
+  });
+
+  it.each([
     ['plain', largeScore(4, 64)],
     ['structured', largeScore(4, 64, { structure: true })],
   ])(
