@@ -86,6 +86,39 @@ describe('the gp writer round trip', () => {
   });
 
   it.each([
+    [
+      'a finger golpe',
+      () =>
+        score()
+          .track('guitar')
+          .bar()
+          .beat('4', [note(2, 5)], { effects: { golpe: 'finger' } }),
+    ],
+    [
+      'a golpe on a rest',
+      () =>
+        score()
+          .track('guitar')
+          .bar()
+          .rest('4', { effects: { golpe: 'thumb' } })
+          .beat('4', [note(2, 5)]),
+    ],
+    [
+      'an up pick scrape beside a slide out (flags 132)',
+      () =>
+        score()
+          .track('guitar')
+          .bar()
+          .beat('4', [note(2, 5, { pickScrape: 'up', slide: ['outDown'] })]),
+    ],
+  ])('reads %s back unchanged', (_, build) => {
+    const source = build().build();
+    const result = roundTrip(source);
+    expect(result.dropped).toEqual([]);
+    expect(roundTripView(result.score)).toEqual(roundTripView(source));
+  });
+
+  it.each([
     ['plain', largeScore(4, 64)],
     ['structured', largeScore(4, 64, { structure: true })],
   ])(
@@ -175,10 +208,6 @@ describe('the gp writer round trip', () => {
     delete beat.effects.arpeggio;
     const [bent, other] = beat.notes;
     if (!bent?.trill || !other) throw new Error('fullScore changed shape');
-    // Golpe and pick scrape are lost without a report until #354, part 2 teaches the writer; part
-    // 5 (the editor) waits for part 2, so no user can make them first. Part 2 removes both deletes.
-    delete beat.effects.golpe;
-    delete bent.pickScrape;
     other.dynamics = bent.dynamics;
     bent.trill.speed = 16;
     expect(roundTripView(result.score)).toEqual(roundTripView(expected));
