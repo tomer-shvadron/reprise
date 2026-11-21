@@ -1,6 +1,6 @@
 import type { ChordDiagram, KeySignature } from '@reprise/model';
 
-import { modulo, parseChordName, spellPitchClass } from '../../lib/chords/names';
+import { modulo, parseChordName, spellPitchClass } from '@/lib/chords/names';
 
 /**
  * A chord name with its root and slash bass moved by `semitones` and spelled for `key`, the

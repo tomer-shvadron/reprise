@@ -1,6 +1,6 @@
-import type { KeySignature } from '@reprise/model';
+import { keyAlter, LETTERS, type KeySignature, type Letter } from '@reprise/model';
 
-import { modulo, spellPitchClass, type PitchClass } from './names';
+import { modulo, type PitchClass } from './names';
 import { QUALITIES } from './qualities';
 
 export interface ChordName {
@@ -39,9 +39,10 @@ export function nameChord(pitches: readonly number[], key: KeySignature): ChordN
       if (missing.some((i) => !quality.optional.includes(i))) return;
       // A quality with fewer than three tones cannot lose one.
       if (present.size < Math.min(3, quality.intervals.length)) return;
-      const slash = root === bass ? '' : `/${spellPitchClass(bass, key)}`;
+      const spelled = spellChord(root, [...intervals], key);
+      const slash = root === bass ? '' : `/${spelled.get(bass) ?? ''}`;
       const entry: ChordName = {
-        name: `${spellPitchClass(root, key)}${quality.suffix}${slash}`,
+        name: `${spelled.get(root) ?? ''}${quality.suffix}${slash}`,
         root,
         quality: quality.suffix,
         ...(root !== bass && { bass }),
@@ -61,4 +62,54 @@ export function nameChord(pitches: readonly number[], key: KeySignature): ChordN
     return 0;
   });
   return matches.map((match) => match.entry);
+}
+
+const NATURAL = [0, 2, 4, 5, 7, 9, 11];
+// Letters above the root for each interval: a third is two letters up, a fifth four.
+const DEGREE = [0, 1, 1, 2, 2, 3, 4, 4, 4, 5, 6, 6];
+
+interface Spelling {
+  names: Map<PitchClass, string>;
+  /** Accidentals the key does not already carry. */
+  cost: number;
+}
+
+/**
+ * The note names of a chord, each tone on the letter its degree calls for (the third on the root's
+ * letter plus two, and so on), so a B-flat chord is B-flat, D, F and never A-sharp, C double sharp.
+ * Both spellings of a black-key root are tried; the one with no double accidental and the fewest
+ * accidentals against the key wins, and a tie takes the key's side. Reading a name back by pitch
+ * class gives the root, the bass and every tone.
+ */
+function spellChord(
+  root: PitchClass,
+  intervals: readonly number[],
+  key: KeySignature,
+): Map<PitchClass, string> {
+  const candidates: Spelling[] = [];
+  LETTERS.forEach((letter, index) => {
+    const alter = ((root - (NATURAL[index] ?? 0) + 18) % 12) - 6;
+    if (Math.abs(alter) > 1) return;
+    const names = new Map<PitchClass, string>();
+    let cost = 0;
+    for (const interval of intervals) {
+      const pc = modulo(root + interval, 12);
+      const toneIndex = (index + (DEGREE[interval] ?? 0)) % 7;
+      const toneAlter = ((pc - (NATURAL[toneIndex] ?? 0) + 18) % 12) - 6;
+      // A double accidental is last resort: some spelling must always come out.
+      if (Math.abs(toneAlter) > 1) cost += 100;
+      const toneLetter: Letter = LETTERS[toneIndex] ?? 'C';
+      if (toneAlter !== keyAlter(key, toneLetter)) cost++;
+      const marks = toneAlter > 0 ? '#'.repeat(toneAlter) : 'b'.repeat(-toneAlter);
+      names.set(pc, `${toneLetter}${marks}`);
+    }
+    candidates.push({ names, cost });
+  });
+  const sharpSide = key.fifths >= 0;
+  const sharps = (spelling: Spelling): number =>
+    [...spelling.names.values()].filter((name) => name.includes('#')).length;
+  candidates.sort(
+    (a, b) => a.cost - b.cost || (sharpSide ? sharps(b) - sharps(a) : sharps(a) - sharps(b)),
+  );
+  return candidates[0]?.names ?? new Map<PitchClass, string>();
 }

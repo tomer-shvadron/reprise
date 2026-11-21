@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { parseChordName } from './names';
-import { parseChord, qualityOf } from './qualities';
+import { QUALITIES, parseChord, qualityOf } from './qualities';
 
 describe('parseChordName', () => {
   it('splits root, quality and slash bass', () => {
@@ -40,5 +40,15 @@ describe('qualityOf', () => {
     expect(qualityOf('alt')).toBeUndefined();
     expect(parseChord('Calt')).toBeUndefined();
     expect(parseChord('Am7/G')).toMatchObject({ root: 9, bass: 7 });
+  });
+});
+
+describe('the table of qualities', () => {
+  it.each(
+    QUALITIES.flatMap((quality) =>
+      [quality.suffix, ...quality.aliases].map((s) => [quality, s] as const),
+    ),
+  )('reaches %# through a chord name', (quality, suffix) => {
+    expect(parseChord(`C${suffix}`)?.quality).toBe(quality);
   });
 });

@@ -31,7 +31,24 @@ describe('nameChord', () => {
 
   it('spells for the key', () => {
     expect(names([46, 50, 53], { fifths: -2, minor: false })[0]).toBe('Bb');
-    expect(names([46, 50, 53], { fifths: 2, minor: false })[0]).toBe('A#');
+    expect(names([46, 50, 53], { fifths: 2, minor: false })[0]).toBe('Bb');
+    expect(names([54, 58, 61], { fifths: 3, minor: false })[0]).toBe('F#');
+  });
+
+  it('writes borrowed flat chords as flats in a sharp-free key', () => {
+    expect(names([46, 50, 53])[0]).toBe('Bb');
+    expect(names([51, 55, 58])[0]).toBe('Eb');
+    expect(names([56, 60, 63])[0]).toBe('Ab');
+    expect(names([49, 52, 56])[0]).toBe('C#m');
+    expect(names([54, 58, 61])[0]).toBe('F#');
+    expect(names([46, 48, 52, 55])).toContain('C7/Bb');
+  });
+
+  it('names C F Bb D as C11 and lets a 6 or an add9 lose its fifth', () => {
+    expect(names([48, 53, 58, 62])[0]).toBe('C11');
+    expect(names([48, 52, 57])[0]).toBe('C6');
+    expect(names([48, 52, 62])[0]).toBe('Cadd9');
+    expect(names([48, 53, 55, 58])[0]).toBe('C7sus4');
   });
 
   it('finds nothing for one pitch class or an unmatched cluster', () => {

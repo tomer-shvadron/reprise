@@ -34,7 +34,26 @@ describe('voicings in standard tuning', () => {
     ['Am', 'x02210'],
     ['Em', '022000'],
     ['Dm', 'xx0231'],
-  ])('puts the open shape of %s first', (name, expected) => {
+    ['A7', 'x02020'],
+    ['E7', '020100'],
+    ['B7', 'x21202'],
+    ['D7', 'xx0212'],
+    ['C7', 'x32310'],
+    ['G7', '320001'],
+    ['Am7', 'x02010'],
+    ['Em7', '020000'],
+    ['Dm7', 'xx0211'],
+    ['Fmaj7', 'xx3210'],
+    ['F#m', '244222'],
+    ['Bb', 'x13331'],
+    ['C#m', 'x46654'],
+    ['Cadd9', 'x32030'],
+    ['C6', 'x32210'],
+    ['E5', '022xxx'],
+    ['A5', 'x022xx'],
+    ['D/F#', '200232'],
+    ['C/E', '032010'],
+  ])('puts the book shape of %s first', (name, expected) => {
     expect(shapes(name, STANDARD)[0]).toBe(expected);
   });
 
@@ -53,8 +72,21 @@ describe('voicings in standard tuning', () => {
 
   it('puts the slash bass lowest', () => {
     const [best] = voicingsForName('D/F#', STANDARD);
-    expect(best && shape(best.diagram.frets)).toBe('200232');
     expect(best?.bass).toBe(6);
+  });
+
+  it('lets an 11 chord lose its third, which clashes, and a 6 or an add9 lose its fifth', () => {
+    expect(shapes('C11', STANDARD)).toContain('x3333x');
+    expect(shapes('Am6', STANDARD)[0]).toBe('x02212');
+    expect(shapes('Cm(add9)', STANDARD).length).toBeGreaterThan(0);
+  });
+
+  it('returns frozen shapes, so a caller cannot corrupt the next lookup', () => {
+    const [first] = voicingsForName('C', STANDARD);
+    expect(() => {
+      first?.diagram.frets.splice(0, 1, 99);
+    }).toThrow();
+    expect(shape(voicingsForName('C', STANDARD)[0]?.diagram.frets ?? [])).toBe('x32010');
   });
 
   it('finds Cmaj7 with the open shape first', () => {
@@ -74,8 +106,9 @@ describe('voicings in standard tuning', () => {
 
 describe('voicings in other tunings', () => {
   it('finds the drop D power chord and the full D', () => {
-    expect(shapes('D5', DROP_D)).toContain('000xxx');
+    expect(shapes('D5', DROP_D)[0]).toBe('000xxx');
     expect(shapes('D', DROP_D)).toContain('000232');
+    expect(shapes('E', DROP_D)[0]).toBe('222100');
   });
 
   it('names a capo shape by its sounding pitch: the C shape at capo 2 is D', () => {
@@ -103,6 +136,20 @@ describe('fingerShape', () => {
     });
   });
 
+  it('draws a small barre on adjacent strings that reach the highest sounding one', () => {
+    expect(fingerShape([1, 1, 2, 3, null, null])?.barres).toEqual([
+      { fret: 1, firstString: 1, lastString: 2 },
+    ]);
+    expect(fingerShape([null, 3, 3, 3, 3, null])?.barres).toEqual([
+      { fret: 3, firstString: 2, lastString: 5 },
+    ]);
+  });
+
+  it('keeps a finger per note on a D shape and an A shape', () => {
+    expect(fingerShape([2, 3, 2, 0, null, null])?.barres).toEqual([]);
+    expect(fingerShape([0, 2, 2, 2, 0, null])?.barres).toEqual([]);
+  });
+
   it('rejects a shape that needs a fifth finger and cannot be barred', () => {
     expect(fingerShape([1, 3, 5, 7, 9, 11])).toBeUndefined();
   });
@@ -119,7 +166,7 @@ describe('properties', () => {
     track: constantFrom(...TUNINGS),
   });
 
-  it('holds for every shape of any chord, tuning and capo', { timeout: 120_000 }, () => {
+  it('holds for every shape of any chord, tuning and capo', { timeout: 30_000 }, () => {
     assert(
       property(sample, integer({ min: 0, max: 5 }), ({ quality, root, track }, capo) => {
         const used = { ...track, capo };
@@ -138,6 +185,10 @@ describe('properties', () => {
             return [{ fret, pc: (open + capo + fret) % 12 }];
           });
           expect(sounding.length).toBeGreaterThanOrEqual(3);
+          // String 1 is first, so the bass is the last sounding entry.
+          expect(sounding[sounding.length - 1]?.pc).toBe(root);
+          const lowestFret = Math.min(...sounding.map((s) => s.fret).filter((fret) => fret > 0));
+          expect(diagram.baseFret === 1 || diagram.baseFret === lowestFret).toBe(true);
           expect(sounding.every(({ pc }) => tones.includes(pc))).toBe(true);
           expect(required.every((pc) => sounding.some((s) => s.pc === pc))).toBe(true);
           const fretted = sounding.map((s) => s.fret).filter((fret) => fret > 0);
@@ -157,12 +208,14 @@ describe('properties', () => {
     );
   });
 
-  it('names every shape back as the chord it was made for', { timeout: 120_000 }, () => {
+  it('names every shape back as the chord it was made for', { timeout: 30_000 }, () => {
     assert(
-      property(sample, ({ quality, root, track }) => {
-        for (const { diagram } of voicings({ root, quality }, track).slice(0, 12)) {
+      property(sample, integer({ min: 0, max: 5 }), ({ quality, root, track }, capo) => {
+        for (const { diagram } of voicings({ root, quality }, { ...track, capo }).slice(0, 12)) {
           const pitches = diagram.frets.flatMap((fret, index) =>
-            fret === null ? [] : [(track.tuning[track.tuning.length - 1 - index] ?? 0) + fret],
+            fret === null
+              ? []
+              : [(track.tuning[track.tuning.length - 1 - index] ?? 0) + capo + fret],
           );
           const names = nameChord(pitches, { fifths: 0, minor: false });
           expect(names.some((n) => n.root === root && n.quality === quality.suffix)).toBe(true);

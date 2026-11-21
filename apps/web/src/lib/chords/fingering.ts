@@ -21,10 +21,13 @@ interface Fretted {
 /**
  * The fingers and barres of a shape, or `undefined` when four fingers cannot play it.
  *
- * A barre goes at the lowest fretted fret, across the strings that sit there, only when two or
- * more strings share it, no string between them is open or muted, and the shape needs it: with
- * four or fewer fretted notes each gets a finger (a D shape has two notes on fret 2 and no
- * barre). The other notes take the remaining fingers by fret, then bass string first.
+ * A barre goes at the lowest fretted fret, in two cases. When more than four notes are fretted it
+ * is the only way, and it spans every string between the first and the last one on that fret
+ * (none of them open or muted). Otherwise a small barre is drawn when two or more strings next to
+ * each other share the lowest fret and the run reaches the highest sounding string, as in the
+ * small F `xx3211` or `x3333x`; a D shape (`xx0232`, a higher fret between its two fret-2 notes)
+ * or an A shape (open high string) keeps a finger per note. The other notes take the remaining
+ * fingers by fret, then bass string first.
  */
 export function fingerShape(frets: ShapeFrets): Fingering | undefined {
   const fretted: Fretted[] = [];
@@ -35,8 +38,9 @@ export function fingerShape(frets: ShapeFrets): Fingering | undefined {
   if (fretted.length === 0) return { fingering, barres: [] };
 
   const lowest = Math.min(...fretted.map((note) => note.fret));
-  const barre = fretted.length > FINGERS.length ? barreAt(frets, lowest) : undefined;
-  if (fretted.length > FINGERS.length && !barre) return undefined;
+  const needed = fretted.length > FINGERS.length;
+  const barre = needed ? barreAt(frets, lowest) : smallBarreAt(frets, lowest);
+  if (needed && !barre) return undefined;
 
   const covered = (note: Fretted): boolean =>
     barre !== undefined &&
@@ -53,6 +57,15 @@ export function fingerShape(frets: ShapeFrets): Fingering | undefined {
     fingering[note.at] = free[i] ?? null;
   });
   return { fingering, barres: barre ? [barre] : [] };
+}
+
+/** A run of adjacent strings at `fret` that starts on the highest sounding string. */
+function smallBarreAt(frets: ShapeFrets, fret: number): Barre | undefined {
+  const first = frets.findIndex((value) => value !== null);
+  if (first < 0 || frets[first] !== fret) return undefined;
+  let last = first;
+  while (frets[last + 1] === fret) last++;
+  return last > first ? { fret, firstString: first + 1, lastString: last + 1 } : undefined;
 }
 
 function barreAt(frets: ShapeFrets, fret: number): Barre | undefined {

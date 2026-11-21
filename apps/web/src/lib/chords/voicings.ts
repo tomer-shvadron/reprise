@@ -18,6 +18,7 @@ export interface VoicingOptions {
 
 export interface Voicing {
   /** Frets count from the capo and string 1 is the highest, as the model stores them. */
+  /** Frozen: the entries are shared by every caller. */
   diagram: ChordDiagram;
   /** The lowest fretted fret, 0 for a shape of open strings only. */
   position: number;
@@ -56,11 +57,12 @@ export function voicings(
   ]);
   let all = cache.get(key);
   if (!all) {
-    all = search(chord, track, maxSpan, minStrings, rootInBass);
+    all = search(chord, track, maxSpan, minStrings, rootInBass).map(freeze);
     if (cache.size > 200) cache.clear();
     cache.set(key, all);
   }
-  return options.limit === undefined ? all : all.slice(0, options.limit);
+  // The entries are shared and frozen; the list is the caller's own.
+  return all.slice(0, options.limit);
 }
 
 /** `voicings` for a chord written as text; `[]` when the name is not a chord the table knows. */
@@ -86,7 +88,8 @@ function search(
   const maxFret = Math.max(0, track.fretCount - track.capo);
   const bassPc = chord.bass ?? (rootInBass ? chord.root : undefined);
 
-  const tones = new Set(chord.quality.intervals.map((i) => modulo(chord.root + i, 12)));
+  const played = chord.quality.intervals.filter((i) => !chord.quality.avoid?.includes(i));
+  const tones = new Set(played.map((i) => modulo(chord.root + i, 12)));
   if (bassPc !== undefined) tones.add(bassPc);
   const required = new Set(
     chord.quality.intervals
@@ -157,21 +160,23 @@ function search(
       const missing =
         chord.quality.intervals.length -
         new Set(chord.quality.intervals.filter((i) => seen.has(modulo(chord.root + i, 12)))).size;
-      const topMutes = stringCount - 1 - last;
-      // Tier 0 is a chord of the first frets with open strings and mutes only on the bass side,
-      // tier 1 a movable shape (no open string), tier 2 open strings mixed with high frets.
+      const ordered = [...frets].reverse();
+      // Tier 0 is a chord of the first frets with open strings, mutes only at the edges and
+      // fingers that can reach; tier 1 a movable shape (no open string); tier 2 open strings
+      // mixed with high frets, or a stretch no hand makes.
       const tier = !hasOpen
         ? 1
-        : innerMutes === 0 && topMutes === 0 && highestFret <= OPEN_POSITION_LAST_FRET
+        : innerMutes === 0 && highestFret <= OPEN_POSITION_LAST_FRET && !stretches(ordered)
           ? 0
           : 2;
-      // A muted string costs as much as two frets of position: without that, a six-string barre
-      // at the seventh fret would beat the Bm shape at the second.
-      const reach = muted * 2 + position;
+      // A muted string costs as much as two frets of position (nothing for a power chord, which is
+      // two or three strings by nature) and every fret of span beyond two one more: without that, a six-string
+      // barre at the seventh fret would beat the Bm shape at the second.
+      const muteCost = chord.quality.intervals.length === 2 ? 0 : 2;
+      const reach = muted * muteCost + position + Math.max(0, span - 2);
       const score =
         tier * 1e10 + innerMutes * 1e9 + missing * 1e8 + reach * 1e6 + span * 1e3 + fingers;
 
-      const ordered = [...frets].reverse();
       const diagram: ChordDiagram = {
         baseFret: highestFret <= 4 ? 1 : Math.max(1, lowestFret),
         frets: ordered,
@@ -191,4 +196,36 @@ function search(
   return [...found.entries()]
     .sort((a, b) => a[1].score - b[1].score || (a[0] < b[0] ? -1 : 1))
     .map(([, voicing]) => voicing);
+}
+
+/**
+ * Two neighbouring notes on one fret more than two strings apart with a higher fret between them
+ * need a barre or a stretch no hand makes (`102210` for F major 7), so the shape is not an
+ * open-position one. `ordered` is string 1 first.
+ */
+function stretches(ordered: readonly (number | null)[]): boolean {
+  const last = new Map<number, number>();
+  for (let i = 0; i < ordered.length; i++) {
+    const fret = ordered[i];
+    if (fret === null || fret === undefined || fret === 0) continue;
+    const before = last.get(fret);
+    last.set(fret, i);
+    if (before === undefined || i - before <= 2) continue;
+    if (ordered.slice(before + 1, i).some((between) => between !== null && between > fret)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function freeze(voicing: Voicing): Voicing {
+  const { diagram } = voicing;
+  Object.freeze(diagram.frets);
+  if (diagram.barres) {
+    diagram.barres.forEach((barre) => Object.freeze(barre));
+    Object.freeze(diagram.barres);
+  }
+  if (diagram.fingering) Object.freeze(diagram.fingering);
+  Object.freeze(diagram);
+  return Object.freeze(voicing);
 }
