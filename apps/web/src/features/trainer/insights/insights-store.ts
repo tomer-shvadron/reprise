@@ -59,6 +59,8 @@ export function createInsights(services: InsightsServices, deps: InsightsDeps = 
   const waiters: Waiter[] = [];
   let retained = 0;
   let running = false;
+  /** The debounce fired while a request ran: the newest score is owed an analysis. */
+  let dirty = false;
   let debounce: ReturnType<typeof setTimeout> | undefined;
   let slowTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -70,7 +72,7 @@ export function createInsights(services: InsightsServices, deps: InsightsDeps = 
     slow: false,
     retain: () => {
       retained++;
-      if (retained === 1) schedule(0);
+      if (retained === 1) schedule('now');
     },
     release: () => {
       retained = Math.max(0, retained - 1);
@@ -78,6 +80,8 @@ export function createInsights(services: InsightsServices, deps: InsightsDeps = 
         // Nothing shows it: a pending re-analysis would be wasted.
         clearTimeout(debounce);
         debounce = undefined;
+        dirty = false;
+        idle();
       }
     },
     ensure: () => {
@@ -90,7 +94,7 @@ export function createInsights(services: InsightsServices, deps: InsightsDeps = 
       }
       return new Promise((resolve) => {
         waiters.push({ score, resolve });
-        schedule(0);
+        schedule('now');
       });
     },
   }));
@@ -112,7 +116,16 @@ export function createInsights(services: InsightsServices, deps: InsightsDeps = 
     }
   }
 
-  function schedule(delay: number) {
+  /** Nothing wants the result: the worker is not kept around (the next request makes a new one). */
+  function idle() {
+    if (!running && !wanted()) client?.dispose();
+  }
+
+  /**
+   * Analyse the open score: `'now'` is on this call, a number is after that many ms (0 is the next
+   * macrotask, which keeps a document open's extraction off the open's own frame).
+   */
+  function schedule(delay: number | 'now') {
     clearTimeout(debounce);
     debounce = undefined;
     if (!wanted()) return;
@@ -123,11 +136,13 @@ export function createInsights(services: InsightsServices, deps: InsightsDeps = 
       publish(score, cached);
       return;
     }
-    if (delay === 0) void run();
+    if (delay === 'now') void run();
     else
       debounce = setTimeout(() => {
         debounce = undefined;
-        void run();
+        // A request is in flight: it lands stale and then analyses what is open, with no new wait.
+        if (running) dirty = true;
+        else void run();
       }, delay);
   }
 
@@ -160,10 +175,15 @@ export function createInsights(services: InsightsServices, deps: InsightsDeps = 
     }
     settleWaiters(score, insights);
     if (stale) {
-      // Something newer is open: analyse that one if anything still wants it.
       store.setState({ slow: false });
-      schedule(0);
+      // A document switch owes the new one its analysis now; an edit already has its debounce
+      // pending (or it fired during the request, and `dirty` says so).
+      if (now.id !== id || dirty) {
+        dirty = false;
+        schedule('now');
+      }
     }
+    idle();
   }
 
   document.subscribe((state, previous) => {
@@ -178,12 +198,14 @@ export function createInsights(services: InsightsServices, deps: InsightsDeps = 
         slow: false,
       });
       for (const waiter of waiters.splice(0)) waiter.resolve(undefined);
+      dirty = false;
       schedule(0);
+      idle();
       return;
     }
     // An edit: the old result stays on screen until the next one lands.
     const { score } = state;
-    if (score && cache.has(score)) schedule(0);
+    if (score && cache.has(score)) schedule('now');
     else schedule(EDIT_DEBOUNCE_MS);
   });
 

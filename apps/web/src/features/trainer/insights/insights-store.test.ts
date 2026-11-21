@@ -10,6 +10,13 @@ import { createTestServices } from '@/test/services';
 import type { InsightsClient } from './insights-client';
 import { createInsights, EDIT_DEBOUNCE_MS, SLOW_AFTER_MS } from './insights-store';
 
+/** Advances the timers and lets the promises that were waiting run. */
+const tick = (ms = 0) =>
+  act(async () => {
+    vi.advanceTimersByTime(ms);
+    await Promise.resolve();
+  });
+
 interface Call {
   score: Score;
   resolve: (insights: SongInsights) => void;
@@ -19,14 +26,17 @@ interface Call {
 /** A client whose answers the test gives by hand, so the order of events is its own. */
 function manualClient() {
   const calls: Call[] = [];
+  const disposed = { count: 0 };
   const client: InsightsClient = {
     analyse: (scoreToAnalyse) =>
       new Promise((resolve, reject) => {
         calls.push({ score: scoreToAnalyse, resolve, reject });
       }),
-    dispose() {},
+    dispose() {
+      disposed.count++;
+    },
   };
-  return { client, calls };
+  return { client, calls, disposed };
 }
 
 async function open(services: ReturnType<typeof createTestServices>, name: string) {
@@ -49,6 +59,7 @@ describe('the insights store', () => {
     const { client, calls } = manualClient();
     const store = createInsights(services, { client });
     await open(services, 'a.reprise');
+    await tick();
     expect(calls).toHaveLength(0);
     expect(store.getState().status).toBe('idle');
     store.getState().retain();
@@ -56,12 +67,15 @@ describe('the insights store', () => {
     expect(store.getState().status).toBe('analysing');
   });
 
-  it('answers at once on a document open and caches per score', async () => {
+  it('analyses a document open on the next macrotask and caches per score', async () => {
     const services = createTestServices();
     const { client, calls } = manualClient();
     const store = createInsights(services, { client });
     store.getState().retain();
     await open(services, 'a.reprise');
+    // Not in the open's own task: extraction would share its frame.
+    expect(calls).toHaveLength(0);
+    await tick();
     expect(calls).toHaveLength(1);
     const insights = analyseScore(calls[0]?.score ?? aMinorRiff());
     await act(async () => {
@@ -81,6 +95,7 @@ describe('the insights store', () => {
     const store = createInsights(services, { client });
     store.getState().retain();
     await open(services, 'a.reprise');
+    await tick();
     const first = analyseScore(calls[0]?.score ?? aMinorRiff());
     await act(async () => {
       calls[0]?.resolve(first);
@@ -92,17 +107,12 @@ describe('the insights store', () => {
     });
     expect(calls).toHaveLength(1);
     expect(store.getState().insights).toBe(first);
-    await act(async () => {
-      vi.advanceTimersByTime(EDIT_DEBOUNCE_MS - 1);
-      await Promise.resolve();
-    });
+    await tick(EDIT_DEBOUNCE_MS - 1);
     expect(calls).toHaveLength(1);
-    await act(async () => {
-      vi.advanceTimersByTime(1);
-      await Promise.resolve();
-    });
+    await tick(1);
     expect(calls).toHaveLength(2);
-    // Another edit lands while that request runs: its answer is dropped and the latest is analysed.
+    // Another edit lands while that request runs; its answer is dropped, and the latest is
+    // analysed only after its own quiet moment.
     const newest = aMinorRiff();
     act(() => {
       services.document.setState({ score: newest });
@@ -113,11 +123,90 @@ describe('the insights store', () => {
     });
     expect(store.getState().forScore).not.toBe(edited);
     expect(store.getState().insights).toBe(first);
+    expect(calls).toHaveLength(2);
+    await tick(EDIT_DEBOUNCE_MS - 1);
+    expect(calls).toHaveLength(2);
+    await tick(1);
+    expect(calls).toHaveLength(3);
+    expect(calls[2]?.score).toBe(newest);
+  });
+
+  it('analyses at once when the quiet moment passed while a request was running', async () => {
+    const services = createTestServices();
+    const { client, calls } = manualClient();
+    const store = createInsights(services, { client });
+    store.getState().retain();
+    await open(services, 'a.reprise');
+    await tick();
+    const newest = aMinorRiff();
+    act(() => {
+      services.document.setState({ score: newest });
+    });
+    await tick(EDIT_DEBOUNCE_MS);
+    expect(calls).toHaveLength(1);
     await act(async () => {
-      vi.advanceTimersByTime(EDIT_DEBOUNCE_MS);
+      calls[0]?.resolve(analyseScore(calls[0].score));
       await Promise.resolve();
     });
-    expect(calls.at(-1)?.score).toBe(newest);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.score).toBe(newest);
+  });
+
+  it('does not analyse an edit when the store is released during the quiet moment', async () => {
+    const services = createTestServices();
+    const { client, calls } = manualClient();
+    const store = createInsights(services, { client });
+    store.getState().retain();
+    await open(services, 'a.reprise');
+    await tick();
+    await act(async () => {
+      calls[0]?.resolve(analyseScore(calls[0].score));
+      await Promise.resolve();
+    });
+    act(() => {
+      services.document.setState({ score: aMinorRiff() });
+    });
+    await tick(EDIT_DEBOUNCE_MS - 1);
+    store.getState().release();
+    await tick(EDIT_DEBOUNCE_MS * 2);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('ends the worker when nothing wants the insights, and when the document closes', async () => {
+    const services = createTestServices();
+    const { client, calls, disposed } = manualClient();
+    const store = createInsights(services, { client });
+    store.getState().retain();
+    await open(services, 'a.reprise');
+    await tick();
+    await act(async () => {
+      calls[0]?.resolve(analyseScore(calls[0].score));
+      await Promise.resolve();
+    });
+    expect(disposed.count).toBe(0);
+    store.getState().release();
+    expect(disposed.count).toBe(1);
+    // Nothing retains it: closing the document ends it again (a later request would make a new one).
+    act(() => {
+      services.document.getState().close();
+    });
+    expect(disposed.count).toBe(2);
+  });
+
+  it('keeps the worker while a request is running after the last release', async () => {
+    const services = createTestServices();
+    const { client, calls, disposed } = manualClient();
+    const store = createInsights(services, { client });
+    store.getState().retain();
+    await open(services, 'a.reprise');
+    await tick();
+    store.getState().release();
+    expect(disposed.count).toBe(0);
+    await act(async () => {
+      calls[0]?.resolve(analyseScore(calls[0].score));
+      await Promise.resolve();
+    });
+    expect(disposed.count).toBe(1);
   });
 
   it('resets on a document switch', async () => {
@@ -126,12 +215,15 @@ describe('the insights store', () => {
     const store = createInsights(services, { client });
     store.getState().retain();
     await open(services, 'a.reprise');
+    await tick();
     await act(async () => {
       calls[0]?.resolve(analyseScore(calls[0].score));
       await Promise.resolve();
     });
     expect(store.getState().status).toBe('ready');
     await open(services, 'b.reprise');
+    expect(store.getState()).toMatchObject({ status: 'idle', insights: undefined });
+    await tick();
     expect(store.getState()).toMatchObject({ status: 'analysing', insights: undefined });
   });
 
@@ -141,11 +233,9 @@ describe('the insights store', () => {
     const store = createInsights(services, { client });
     store.getState().retain();
     await open(services, 'a.reprise');
+    await tick();
     expect(store.getState().slow).toBe(false);
-    await act(async () => {
-      vi.advanceTimersByTime(SLOW_AFTER_MS);
-      await Promise.resolve();
-    });
+    await tick(SLOW_AFTER_MS);
     expect(store.getState().slow).toBe(true);
     await act(async () => {
       calls[0]?.reject(new Error('boom'));

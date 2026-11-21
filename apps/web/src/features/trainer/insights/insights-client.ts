@@ -18,6 +18,10 @@ export interface InsightsClient {
    * worker. The table's buffers are transferred, so the score itself is never cloned.
    */
   analyse(score: Score): Promise<SongInsights>;
+  /**
+   * Ends the worker and rejects what is pending; a later `analyse` makes a new worker. The store
+   * calls it when nothing wants the insights any more, so an idle session holds no worker.
+   */
   dispose(): void;
 }
 
