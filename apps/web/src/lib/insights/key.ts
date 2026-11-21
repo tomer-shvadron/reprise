@@ -8,8 +8,12 @@ import { fitScale, type ScaleFit } from './scale-fit';
 
 /** Fewer sounding notes than this is not enough to name a key. */
 export const MIN_NOTES = 16;
-/** Neither third carrying this share of the weight means a power-chord riff: no third. */
-export const NO_THIRD_SHARE = 0.02;
+/**
+ * No third means both thirds together weigh under this fraction of the tonic and fifth: a
+ * power-chord riff. A ratio, not an absolute share, so it does not depend on how much of the song
+ * was transcribed; a single flat third is enough to call a key minor.
+ */
+export const NO_THIRD_RATIO = 0.01;
 /** The profile set the accuracy table in `key-accuracy.test.ts` picked as the default. */
 export const DEFAULT_PROFILE_SET: ProfileSet['id'] = 'krumhanslKessler';
 
@@ -139,6 +143,10 @@ export function sonorities(table: NoteTable): Sonority[] {
  * leader never wins on the bass alone. The downbeat share carries most of it because it is a
  * proportion of the whole piece; the first and the last note are single, fragile observations
  * (fade-outs, loops cut short), so each is small and neither can decide anything alone.
+ *
+ * Stable range: scaling all three by ×0.75 to ×1.5 changes no answer on the corpus or the tunes
+ * (a test locks it). ×2 turns the pinned loop miss into a hit, ×3 breaks Minuet in G, so the
+ * weights sit on a plateau and not on an edge.
  */
 export const CUE_WEIGHTS = { downbeat: 0.2, last: 0.06, first: 0.06 } as const;
 
@@ -170,6 +178,30 @@ export function cueEvidence(cues: BassCues, tonic: number): number {
   );
 }
 
+/** The shares of the tonic's thirds, and of the tonic with its fifth, in the whole histogram. */
+export interface Thirds {
+  minor: number;
+  major: number;
+  frame: number;
+}
+
+/** Either third sounds, in proportion to the tonic and fifth. */
+export const thirdPlayed = (t: Thirds): boolean => t.minor + t.major >= NO_THIRD_RATIO * t.frame;
+
+/**
+ * The mode of a key from the thirds the notes play. A key with neither is `none`. A profile can
+ * name a mode whose third the music hardly plays (a tonic found by its bass in a modal tune), so
+ * when the opposite third weighs more than twice the profile's own, the played third decides: a
+ * lone flat third with no major third is minor. A blues, with both thirds within a factor of two,
+ * keeps the profile's mode.
+ */
+export function qualityFromThirds(profile: KeyQuality, t: Thirds): KeyQuality | 'none' {
+  if (!thirdPlayed(t)) return 'none';
+  if (profile === 'major' && t.minor > 2 * t.major) return 'minor';
+  if (profile === 'minor' && t.major > 2 * t.minor) return 'major';
+  return profile;
+}
+
 export type KeyResult =
   | { found: false; reason: 'not-enough-notes' }
   | {
@@ -199,6 +231,8 @@ export interface DetectOptions {
   factors?: Partial<HistogramOptions>;
   /** Turn the tonic cues off to see the correlation's own pick; the accuracy table uses it. Default on. */
   cues?: boolean;
+  /** Multiplies the bass evidence; for the test that shows the results are stable across a range. */
+  cueScale?: number;
   /** The key signature of the first master bar: evidence for spelling only, never a prior. */
   fileKey?: KeySignature;
 }
@@ -221,35 +255,51 @@ export function detectKey(table: NoteTable, options: DetectOptions = {}): KeyRes
   const cues = options.cues === false ? undefined : bassCues(table);
   // The bass is evidence added to each key's score, never an override of the correlation.
   const scored = byCorrelation
-    .map((key) => ({ key, score: key.correlation + (cues ? cueEvidence(cues, key.tonic) : 0) }))
+    .map((key) => ({
+      key,
+      score: key.correlation + (cues ? (options.cueScale ?? 1) * cueEvidence(cues, key.tonic) : 0),
+    }))
     .sort((a, b) => b.score - a.score);
   const best = scored[0];
   const second = scored[1];
   if (!best || !second) return { found: false, reason: 'not-enough-notes' };
 
-  const { tonic } = best.key;
-  let quality: KeyQuality | 'none' = best.key.quality;
   const total = sumOf(histogram);
-  const minorThird = (histogram[(tonic + 3) % 12] ?? 0) / total;
-  const majorThird = (histogram[(tonic + 4) % 12] ?? 0) / total;
-  if (minorThird < NO_THIRD_SHARE && majorThird < NO_THIRD_SHARE) quality = 'none';
-  // A profile can name a mode whose third the music hardly plays (a tonic found by its bass in a
-  // modal tune); the thirds the notes actually carry decide, when one is twice the other.
-  else if (quality === 'major' && minorThird > 2 * majorThird) quality = 'minor';
-  else if (quality === 'minor' && majorThird > 2 * minorThird) quality = 'major';
+  const thirdsOf = (tonic: number) => ({
+    minor: (histogram[(tonic + 3) % 12] ?? 0) / total,
+    major: (histogram[(tonic + 4) % 12] ?? 0) / total,
+    // What a third is measured against: the tonic and the fifth, the part of a chord that is always there.
+    frame: ((histogram[tonic] ?? 0) + (histogram[(tonic + 7) % 12] ?? 0)) / total,
+  });
+  const hasThird = (tonic: number): boolean => thirdPlayed(thirdsOf(tonic));
+  // A key whose third never sounds (a melody over a dominant pedal, or a tonic the bass moved to)
+  // is a weak reading when a key with a third correlates nearly as well (the bass evidence is left out of
+  // this comparison, since it is what may have misled): take that one. "Nearly" is
+  // twice the confidence scale's "clear" gap, 0.2: a pedal track normalises to a full vote for one
+  // pitch class, which can lift the pedal's key about that far above the key of the tune over it
+  // (a C major melody over a G pedal sits 0.19 behind G). A riff of fifths has no rival that near.
+  // This margin was chosen with that case in view; the corpus's riffs still read "none".
+  const rival = scored.find((entry) => hasThird(entry.key.tonic));
+  const pick =
+    !hasThird(best.key.tonic) &&
+    rival &&
+    best.key.correlation - rival.key.correlation < 2 * CONFIDENCE.highGap
+      ? rival.key
+      : best.key;
+  const pickScore = scored.find((entry) => entry.key === pick)?.score ?? best.score;
+  const other = scored.find((entry) => entry.key !== pick) ?? second;
+  const { tonic } = pick;
+  const quality = qualityFromThirds(pick.quality, thirdsOf(tonic));
 
   const signature = keySignatureOf(tonic, quality === 'minor' ? 'minor' : 'major', options.fileKey);
   const result: KeyResult = {
     found: true,
     tonic,
     quality,
-    confidence: confidenceOf(
-      best.key.correlation,
-      best.key.correlation - (best.score - second.score),
-    ),
-    correlation: best.key.correlation,
-    runnerUp: second.key,
-    movedByCues: best.key !== byCorrelation[0],
+    confidence: confidenceOf(pick.correlation, pick.correlation - (pickScore - other.score)),
+    correlation: pick.correlation,
+    runnerUp: other.key,
+    movedByCues: pick !== byCorrelation[0],
     name: keyName(tonic, quality, options.fileKey),
     signature,
     scale: fitScale(histogram, tonic, quality),

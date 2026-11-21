@@ -16,6 +16,8 @@ const tables = new Map<Piece, ReturnType<typeof noteTableOf>>(
 /**
  * Forms the engine gets wrong, with what it says. They stay in the accuracy table; the test below
  * pins each miss so that a change in either direction shows. The weights were not tuned on them.
+ * Leaving this one is a choice for v1, not a verdict that the engine is right: at "medium"
+ * confidence, with the minor key as the runner-up, the card shows both readings.
  */
 const KNOWN_MISSES: Record<string, string> = {
   // A loop that starts on i and stops on bVII is also III-VII-i-VI: the relative major reads as
@@ -127,6 +129,11 @@ describe('key accuracy on the generated corpus', () => {
         (piece.expected.tonic + 3) % 12,
         'major',
       ]);
+      expect(key.found && key.confidence).not.toBe('high');
+      expect(key.found && [key.runnerUp.tonic, key.runnerUp.quality]).toEqual([
+        piece.expected.tonic,
+        'minor',
+      ]);
     }
   });
 
@@ -158,6 +165,22 @@ describe('key accuracy on the generated corpus', () => {
       expect(full.exact, set.name).toBeGreaterThanOrEqual(other.exact);
       expect(full.mirex, set.name).toBeGreaterThanOrEqual(other.mirex);
     }
+  });
+});
+
+describe('the weight of the bass evidence', () => {
+  // The weights sit on a plateau: this range changes no answer on the corpus or the tunes.
+  const answers = (scale: number) =>
+    [
+      ...corpus.map((p) => tables.get(p) ?? noteTableOf(p.score)),
+      ...TUNES.map((t) => noteTableOf(t.score)),
+    ].map((table) => {
+      const key = detectKey(table, { cueScale: scale });
+      return key.found ? [key.tonic, key.quality] : undefined;
+    });
+
+  it.each([0.75, 1.25, 1.5])('gives the same answers at x%s', (scale) => {
+    expect(answers(scale)).toEqual(answers(1));
   });
 });
 

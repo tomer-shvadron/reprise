@@ -122,12 +122,6 @@ export const TUNES: Tune[] = [
     // minor. A transcription of the contour, with the rhythm simplified.
     name: 'Drunken Sailor (D Dorian)',
     expected: { tonic: 2, quality: 'minor', scale: 'dorian' },
-    known: {
-      tonic: 2,
-      quality: 'none',
-      scale: 'suspendedPentatonic',
-      why: 'the one F in the verse is under 2% of the weight, so the third is withheld; tonic right',
-    },
     score: fromMelody(
       parse(`
         A4/8 A4/8 A4/8 A4/8 A4/8 A4/8 D5/8 F5/8  A5/2 R/2

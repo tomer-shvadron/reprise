@@ -9,6 +9,8 @@ import {
   cueEvidence,
   detectKey,
   onsetCount,
+  qualityFromThirds,
+  thirdPlayed,
   pearson,
   rankKeys,
   sonorities,
@@ -294,15 +296,68 @@ describe('a riff with no third', () => {
     expect(key.found && key.scale?.scale).not.toBe('minorPentatonic');
   });
 
-  it('reports no scale when none without a third explains the notes', () => {
-    // Power chords on E, F, A sharp and F sharp: no scale without a third covers their notes.
-    const key = detectKey(riff([40, 41, 46, 42, 40, 41, 46, 42, 40]));
+  it('names a bare root-and-fifth riff by the smallest scale that holds it', () => {
+    const key = detectKey(riff([40, 47, 40, 47, 40, 47]));
     expect(key.found && key.quality).toBe('none');
-    expect(key.found && key.scale).toBeUndefined();
+    expect(key.found && key.scale?.scale).toBe('rootFourthFifth');
   });
 
   it('reads a flat third on a chord root as minor', () => {
     const key = detectKey(riff([40, 43, 45, 40, 43, 45, 40]));
     expect(key).toMatchObject({ found: true, tonic: 4, quality: 'minor' });
+  });
+});
+
+describe('the third', () => {
+  const frame = 0.4;
+  it('flips a major profile to minor when only the flat third sounds, and the reverse', () => {
+    expect(qualityFromThirds('major', { minor: 0.1, major: 0.02, frame })).toBe('minor');
+    expect(qualityFromThirds('minor', { minor: 0.02, major: 0.1, frame })).toBe('major');
+  });
+
+  it('keeps the profile when the thirds are within a factor of two, as in a blues', () => {
+    expect(qualityFromThirds('major', { minor: 0.07, major: 0.05, frame })).toBe('major');
+    expect(qualityFromThirds('minor', { minor: 0.05, major: 0.07, frame })).toBe('minor');
+  });
+
+  it('is none only when neither third sounds in proportion to the tonic and fifth', () => {
+    expect(qualityFromThirds('minor', { minor: 0, major: 0, frame })).toBe('none');
+    // A single flat third is enough, however little of the song there is.
+    expect(thirdPlayed({ minor: 0.02, major: 0, frame })).toBe(true);
+    expect(qualityFromThirds('major', { minor: 0.02, major: 0, frame })).toBe('minor');
+  });
+
+  it('does not call a melody over a dominant pedal "none"', () => {
+    // A C major tune over a held G, closing on C: G has no B in it, so G is no key.
+    const melody = [
+      [67, '4'],
+      [65, '4'],
+      [64, '4'],
+      [62, '4'],
+      [64, '4'],
+      [64, '4'],
+      [64, '2'],
+      [62, '4'],
+      [62, '4'],
+      [64, '4'],
+      [62, '4'],
+      [60, '8'],
+      [64, '8'],
+      [67, '8'],
+      [72, '8'],
+      [67, '2'],
+    ] as const;
+    const pedal = [
+      [43, '1'],
+      [43, '1'],
+      [43, '1'],
+      [43, '1'],
+      [43, '1'],
+      [43, '1'],
+      [43, '1'],
+      [36, '1'],
+    ] as const;
+    const key = detectKey(noteTableOf(fromMelody([...melody, ...melody], { bass: pedal })));
+    expect(key).toMatchObject({ found: true, tonic: 0, quality: 'major' });
   });
 });

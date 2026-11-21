@@ -399,12 +399,16 @@ function ornamented(tonic: number, minor: boolean, pattern: 'metric' | 'duration
   };
 }
 
-/** Every generated piece in all 12 tonics, minor and major where the form has both. */
+/**
+ * Every form in all 12 keys. The detector is transposition-invariant, so the 12 keys of a form
+ * stand or fall together: this is 25 forms times 12 keys, and the seeded variants (inversion,
+ * track order, rhythm) check that the surface does not matter, not that there are 300 independent cases.
+ */
 export function generatedCorpus(): Piece[] {
   const pieces: Piece[] = [];
   for (let tonic = 0; tonic < 12; tonic++) {
     const random = seeded(tonic * 7919 + 17);
-    // Each piece gets its own voicing, track order and rhythm, drawn once per tonic and piece.
+    // Each piece gets its own voicing, track order and rhythm, drawn once per key and piece.
     const make = (build: () => Piece): Piece => {
       variant = {
         melodyFirst: random() < 0.5,
