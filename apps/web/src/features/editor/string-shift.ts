@@ -1,4 +1,6 @@
 import {
+  maxStoredFret,
+  writtenFret,
   shiftStrings,
   tieChainOf,
   tieOriginOf,
@@ -143,14 +145,14 @@ export function planShift(input: StringShiftInput, direction: StringDirection): 
       }
       const interval = openPitch(track, note.string) - openPitch(track, string);
       const fret = note.fret + interval;
-      if (fret < 0 || fret > track.fretCount) {
+      if (fret < 0 || fret > maxStoredFret(track, string)) {
         return {
-          refused: `Fret ${String(note.fret)} on string ${String(note.string)} would be fret ${String(fret).replace('-', '−')} on string ${String(string)} ${where}`,
+          refused: `Fret ${String(writtenFret(track, note))} on string ${String(note.string)} would be fret ${String(writtenFret(track, { string, fret })).replace('-', '−')} on string ${String(string)} ${where}`,
         };
       }
       if (note.trill) {
         const trill = note.trill.fret + interval;
-        if (trill < 0 || trill > track.fretCount) {
+        if (trill < 0 || trill > maxStoredFret(track, string)) {
           return {
             refused: `The trill on string ${String(note.string)} would fall off the neck ${where}`,
           };

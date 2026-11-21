@@ -229,3 +229,21 @@ describe('properties', () => {
     assert(property(string(), (text) => void parseChord(text)));
   });
 });
+
+describe('voicings on a 5-string banjo', () => {
+  const BANJO: VoicingTrack = {
+    tuning: [67, 50, 55, 59, 62],
+    capo: 0,
+    fretCount: 22,
+    drone: { string: 5, fret: 5 },
+  };
+
+  it('mutes the short string in every shape, whose frets Guitar Pro may number from the neck', () => {
+    for (const name of ['G', 'C', 'Em', 'D7']) {
+      const found = voicingsForName(name, BANJO);
+      expect(found.length, name).toBeGreaterThan(0);
+      // Diagram frets run string 1 first, so the drone is the last entry.
+      for (const voicing of found) expect(voicing.diagram.frets.at(-1), name).toBeNull();
+    }
+  });
+});

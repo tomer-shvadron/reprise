@@ -5,7 +5,9 @@ import {
   type Beat,
   type Finger,
   type Note,
+  type Track,
   type Voice,
+  writtenFret,
 } from '@reprise/model';
 
 import { glyphMetrics, textExtent, textWidth, type GlyphName } from '../../metrics';
@@ -207,16 +209,32 @@ export function fingering(note: Note): string | undefined {
   return parts.length > 0 ? parts.join(' ') : undefined;
 }
 
-export function fretText(note: Note, options: TabOptions): string | undefined {
-  const value = note.dead ? 'x' : (naturalHarmonicText(note) ?? String(note.fret));
+/** The tab prints neck frets, so a note on a banjo's drone string reads `drone.fret` higher. */
+export function fretText(
+  note: Note,
+  options: TabOptions,
+  track: Pick<Track, 'drone'>,
+): string | undefined {
+  const value = note.dead
+    ? 'x'
+    : (naturalHarmonicText(note, track) ?? String(writtenFret(track, note)));
   if (note.tie && options.tiedNotes === 'hidden') return undefined;
   return note.ghost || note.tie ? `(${value})` : value;
 }
 
-export function labelOf(note: Note, size: number, options: TabOptions): NoteLabel {
-  const text = fretText(note, options);
-  const label: NoteLabel = { note, text, width: textWidth(text ?? String(note.fret), size) };
-  const suffix = text === undefined || note.dead ? undefined : suffixText(note);
+export function labelOf(
+  note: Note,
+  size: number,
+  options: TabOptions,
+  track: Pick<Track, 'drone'>,
+): NoteLabel {
+  const text = fretText(note, options, track);
+  const label: NoteLabel = {
+    note,
+    text,
+    width: textWidth(text ?? String(writtenFret(track, note)), size),
+  };
+  const suffix = text === undefined || note.dead ? undefined : suffixText(note, track);
   if (suffix) label.suffix = { text: suffix, width: textWidth(suffix, size * TAB.graceScale) };
   return label;
 }
@@ -278,14 +296,15 @@ function analyseBeat(
   space: number,
   options: TabOptions,
   rhythmShown: boolean,
+  track: Pick<Track, 'drone'>,
 ): TabBeat {
   const size = TAB.fretSize * space;
   const graceSize = size * TAB.graceScale;
   const labels = [...beat.notes]
     .sort((a, b) => a.string - b.string)
-    .map((note) => labelOf(note, size, options));
+    .map((note) => labelOf(note, size, options, track));
   const graces = (beat.grace ?? []).map((grace): GraceColumn => {
-    const graceLabels = grace.notes.map((note) => labelOf(note, graceSize, options));
+    const graceLabels = grace.notes.map((note) => labelOf(note, graceSize, options, track));
     return {
       duration: grace.duration,
       labels: graceLabels,
@@ -444,7 +463,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   const signature = input.masterBar.timeSignature;
   const rhythm = rhythmOnTab(input);
   const strings = input.track.tuning.length;
-  const key = `${String(space)} ${options.tiedNotes} ${String(signature.numerator)}/${String(signature.denominator)} ${rhythm ? 'rhythm' : 'numbers'} ${String(strings)} ${String(input.chordDiagrams)}`;
+  const key = `${String(space)} ${options.tiedNotes} ${String(signature.numerator)}/${String(signature.denominator)} ${rhythm ? 'rhythm' : 'numbers'} ${String(strings)} ${String(input.chordDiagrams)} ${String(input.track.drone?.string)}:${String(input.track.drone?.fret)}`;
   const cached = analyses.get(bar)?.get(key);
   if (cached) return cached;
 
@@ -459,7 +478,17 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
     const voiceBeats: TabBeat[] = [];
     let tick = 0;
     for (const [b, beat] of voice.beats.entries()) {
-      const analysed = analyseBeat(beat, index, b, tick, direction, space, options, rhythm);
+      const analysed = analyseBeat(
+        beat,
+        index,
+        b,
+        tick,
+        direction,
+        space,
+        options,
+        rhythm,
+        input.track,
+      );
       analysed.dynamicsChange = reserved.has(beat.id);
       voiceBeats.push(analysed);
       tick += analysed.event.ticks;

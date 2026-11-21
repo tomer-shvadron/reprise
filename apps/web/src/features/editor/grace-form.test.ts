@@ -1,5 +1,5 @@
 import { CommandError, createHistory } from '@reprise/model';
-import { beatOf, noteOf } from '@reprise/model/testing';
+import { beatOf, note, noteOf, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import { cursorAtPosition } from './cursor';
@@ -129,5 +129,47 @@ describe('the grace form', () => {
     const next = apply(both, planGrace(onlyFirst, { ...FORM, transition: 'hammer' }));
     expect(noteOf(next, 0, 0, 1, 0).hammerPull).toBe(true);
     expect(noteOf(next, 0, 0, 1, 1).hammerPull).toBe(false);
+  });
+});
+
+describe('the grace form on a banjo drone string', () => {
+  const banjo = (fret: number): Score =>
+    score()
+      .track('banjo')
+      .bar()
+      .beat('4', [note(5, fret)])
+      .build({ ids: 'sequential' });
+  const onDrone = (built: Score) => {
+    const cursor = cursorAtPosition(
+      built,
+      { track: 0, bar: 0, voice: 0, stop: 0 },
+      { string: 5, staff: 'tab' },
+    );
+    return { score: built, state: { cursor, range: undefined, selection: {} } };
+  };
+  const stored = (built: Score) => built.tracks[0]?.bars[0]?.voices[0]?.beats[0]?.grace?.[0]?.notes;
+
+  it('defaults to a neck fret two below the note, and to open when that fret does not exist', () => {
+    expect(defaultGraceForm(onDrone(banjo(4)), true).form.fret).toBe(7);
+    // Neck 7 less two is 5, which the drone string does not have.
+    expect(defaultGraceForm(onDrone(banjo(2)), true).form.fret).toBe(0);
+  });
+
+  it('stores the typed neck fret from the string nut, and refuses frets 1 to 5', () => {
+    const built = banjo(4);
+    const done = apply(built, planGrace(onDrone(built), { ...FORM, fret: 7 }));
+    expect(stored(done)?.map((n) => [n.string, n.fret])).toEqual([[5, 2]]);
+    expect(planGrace(onDrone(built), { ...FORM, fret: 3 })).toEqual({
+      refused: expect.stringContaining('0, or 6 and up') as string,
+    });
+  });
+
+  it('shows an existing grace note as the tab does', () => {
+    const built = banjo(4);
+    const done = apply(built, planGrace(onDrone(built), { ...FORM, fret: 8 }));
+    expect(defaultGraceForm(onDrone(done), true)).toMatchObject({
+      existing: true,
+      form: { fret: 8 },
+    });
   });
 });

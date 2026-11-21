@@ -1,6 +1,7 @@
 import {
   TIE_REACH_BARS,
   tieOriginOf,
+  writtenFret,
   type Beat,
   type Bend,
   type Note,
@@ -107,7 +108,14 @@ function slideText(
   return { prefix, suffix };
 }
 
-function fretText(note: Note, used: Set<LegendKey>, report: Report): string {
+/** The tab prints neck frets, so a banjo's drone string reads `drone.fret` higher than stored. */
+function fretText(
+  note: Note,
+  used: Set<LegendKey>,
+  report: Report,
+  track: Pick<Track, 'drone'>,
+): string {
+  const fret = writtenFret(track, note);
   if (note.dead) {
     used.add('x');
     return 'x';
@@ -115,10 +123,10 @@ function fretText(note: Note, used: Set<LegendKey>, report: Report): string {
   const { harmonic } = note;
   if (harmonic?.kind === 'natural') {
     used.add('<>');
-    return `<${num(harmonic.value ?? note.fret)}>`;
+    return `<${num(harmonic.value ?? fret)}>`;
   }
   if (harmonic) {
-    const value = num(note.fret + (harmonic.value ?? 0));
+    const value = num(fret + (harmonic.value ?? 0));
     if (harmonic.kind === 'pinch') {
       used.add('PH');
       return `[${value}]PH`;
@@ -130,9 +138,9 @@ function fretText(note: Note, used: Set<LegendKey>, report: Report): string {
   }
   if (note.ghost) {
     used.add('()');
-    return `(${String(note.fret)})`;
+    return `(${String(fret)})`;
   }
-  return String(note.fret);
+  return String(fret);
 }
 
 /** Tells the writer something about a note could not be written. */
@@ -144,7 +152,7 @@ export type Report = (code: AsciiDropCode) => void;
  * at its column: the release of a bend, vibrato, a slide out.
  */
 export function noteToken(
-  track: Pick<Track, 'kind' | 'bars'>,
+  track: Pick<Track, 'kind' | 'bars' | 'drone'>,
   at: TiePosition,
   note: Note,
   beat: Pick<Beat, 'effects'>,
@@ -157,7 +165,10 @@ export function noteToken(
   if (note.tie) {
     const slide = slideText(track, at, note, used);
     if (note.trill || slide.prefix !== '' || note.hammerPull) report('tied-effects');
-    const bend = note.bend && note.bend.kind !== 'hold' ? bendText(note.fret, note.bend, used) : '';
+    const bend =
+      note.bend && note.bend.kind !== 'hold'
+        ? bendText(writtenFret(track, note), note.bend, used)
+        : '';
     if (vibrato) used.add('~');
     return bend + slide.suffix + (vibrato ? '~' : '');
   }
@@ -180,11 +191,11 @@ export function noteToken(
     used.add('P');
   }
   const slide = slideText(track, at, note, used);
-  let text = prefix + slide.prefix + fretText(note, used, report);
-  if (note.bend) text += bendText(note.fret, note.bend, used);
+  let text = prefix + slide.prefix + fretText(note, used, report, track);
+  if (note.bend) text += bendText(writtenFret(track, note), note.bend, used);
   if (note.trill) {
     used.add('tr');
-    text += `tr${String(note.trill.fret)}`;
+    text += `tr${String(writtenFret(track, { string: note.string, fret: note.trill.fret }))}`;
   }
   text += slide.suffix;
   if (vibrato) {

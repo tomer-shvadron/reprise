@@ -199,8 +199,9 @@ export function applyPreset(form: TrackForm, name: string | undefined, adding: b
 export function setStringCount(form: TrackForm, count: number): TrackForm {
   const current = form.strings.length;
   if (count === current || count < 1 || count > MAX_STRINGS) return form;
-  // The drone is a string of its own: with it gone the model would refuse the form (`drone-string`).
-  const drone = form.drone && form.drone.string <= count ? form.drone : undefined;
+  // The short string belongs to the 5-string banjo: any other count clears it, as the dialog shows
+  // its checkbox on five strings only.
+  const drone = count === 5 ? form.drone : undefined;
   if (count < current) {
     return {
       ...form,

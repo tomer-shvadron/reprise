@@ -53,7 +53,7 @@ function StaticBoard({
       {strings.map((string) => (
         <line
           key={string}
-          x1={lineX(0)}
+          x1={lineX(board.drone?.string === string ? board.drone.fret : 0)}
           x2={lineX(board.frets)}
           y1={stringY(string)}
           y2={stringY(string)}

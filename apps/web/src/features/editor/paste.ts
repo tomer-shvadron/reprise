@@ -159,7 +159,11 @@ export function planPaste(
       const name = KIND_NAMES[from.kind];
       return { refused: `Notes from a ${name} track paste only into a ${name} track` };
     }
-    if (track.kind === 'fretted' && from.tuning.length !== track.tuning.length) {
+    // A drone string stores its frets from its own nut, so clips whose drones differ are refingered
+    // too, or a fret could land beyond the shorter string.
+    const droneDiffers =
+      from.drone?.string !== track.drone?.string || from.drone?.fret !== track.drone?.fret;
+    if (track.kind === 'fretted' && (from.tuning.length !== track.tuning.length || droneDiffers)) {
       const result = refinger(from, track);
       dropped += result.dropped;
       trillsDropped += result.trillsDropped;

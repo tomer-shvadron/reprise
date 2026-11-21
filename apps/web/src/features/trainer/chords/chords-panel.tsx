@@ -61,7 +61,7 @@ export function ChordsPanel() {
     () => (track && fretted && chord ? voicings(chord, track, { limit: MAX_SHAPES }) : []),
     // The track's tuning, capo and fret count decide the shapes, not its notes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [chord, fretted, track?.tuning, track?.capo, track?.fretCount],
+    [chord, fretted, track?.tuning, track?.capo, track?.fretCount, track?.drone],
   );
   const box = useMemo(() => boxOf(shapes.map((entry) => entry.diagram)), [shapes]);
   const songNames = useMemo(() => (score ? chordNamesIn(score).slice(0, SONG_NAMES) : []), [score]);
