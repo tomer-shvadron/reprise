@@ -404,3 +404,25 @@ describe('tie-on-shared-string', () => {
     });
   });
 });
+
+describe('pick-scrape-keeps-slide-out', () => {
+  it('accepts a slide out that alphaTab loses beside a pick slide', () => {
+    const build = HAND_BUILT.pickScrapeWithSlideOut();
+    expect(accepted(build)).toEqual({
+      'tracks[0].bars[0].voices[0].beats[0].notes[0].slides': ['pick-scrape-keeps-slide-out'],
+    });
+    expect(unexplained(build)).toEqual([]);
+  });
+
+  it('has nothing to accept for a pick slide alone, and rejects a differing scrape', () => {
+    expect(HAND_BUILT.pickScrapeAlone().differences).toEqual([]);
+    const { differences, projections } = HAND_BUILT.pickScrapeWithSlideOut();
+    const [difference] = differences;
+    if (!difference?.beat) throw new Error('no slide difference');
+    const changed = { ...difference, beat: structuredClone(difference.beat) };
+    const theirs = changed.beat.alphaTab.notes[0];
+    if (!theirs) throw new Error('no alphaTab note');
+    theirs.pickScrape = 'up';
+    expect(tolerance('pick-scrape-keeps-slide-out').applies(changed, projections)).toBe(false);
+  });
+});

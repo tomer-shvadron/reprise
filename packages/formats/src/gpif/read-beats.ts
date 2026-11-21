@@ -236,7 +236,9 @@ export function readBeat(sink: WarningSink, element: XmlElement, path: string): 
         notModelled(sink, at, 'A dead slap');
         break;
       case 'Golpe':
-        notModelled(sink, at, 'A golpe');
+        if (text === 'Thumb') beat.effects.golpe = 'thumb';
+        else if (text === 'Finger') beat.effects.golpe = 'finger';
+        else unknownValue(sink, at, text);
         break;
       case 'Wah':
         notModelled(sink, at, 'A wah pedal mark');

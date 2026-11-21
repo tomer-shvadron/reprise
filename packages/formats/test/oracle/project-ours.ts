@@ -38,6 +38,7 @@ function projectNote(note: Note, kind: TrackKind): NoteProjection {
     ghost: note.ghost,
     hammerPull: note.hammerPull,
     slides: [...(note.slide ?? [])].sort(),
+    pickScrape: note.pickScrape ?? null,
     bendPoints: bend?.length ?? null,
     bendFrom: bend?.[0] ?? null,
     bendTo: bend?.at(-1) ?? null,
@@ -117,6 +118,7 @@ function projectBeat(beat: Beat, kind: TrackKind, program: number, first: boolea
       ? strokeName(effects.arpeggio.direction, effects.arpeggio.duration)
       : null,
     pickStroke: effects.pickStroke ?? null,
+    golpe: effects.golpe ?? null,
     fade: fadeOf(beat),
     tapping: effects.tapping ?? false,
     slapping: effects.slapping ?? false,

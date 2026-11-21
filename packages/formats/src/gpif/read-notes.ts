@@ -38,7 +38,7 @@ const HARMONICS: Readonly<Record<string, HarmonicKind>> = {
   feedback: 'feedback',
 };
 
-/** `Slide/Flags` bits, lowest first. 64 and 128 are pick slides, which the model lacks. */
+/** `Slide/Flags` bits, lowest first. 64 and 128 are pick slides, read as `pickScrape` below. */
 const SLIDE_FLAGS: readonly [number, SlideKind][] = [
   [1, 'shift'],
   [2, 'legato'],
@@ -150,7 +150,9 @@ function readProperties(
         const flags = parseIntOr(childText(property, 'Flags'), 0);
         const slides = SLIDE_FLAGS.filter(([bit]) => (flags & bit) !== 0).map(([, kind]) => kind);
         if (slides.length > 0) note.fields.slide = slides;
-        if ((flags & 192) !== 0) notModelled(sink, at, 'A pick slide');
+        // Down wins when both are set, as in alphaTab.
+        if ((flags & 64) !== 0) note.fields.pickScrape = 'down';
+        else if ((flags & 128) !== 0) note.fields.pickScrape = 'up';
         if ((flags & ~255) !== 0) unknownValue(sink, at, String(flags));
         break;
       }

@@ -30,6 +30,7 @@ const {
   BrushType,
   Direction,
   FadeType,
+  GolpeType,
   GraceType,
   HarmonicType,
   KeySignatureType,
@@ -67,8 +68,16 @@ const SLIDES_OUT = new Map<number, string>([
   [SlideOutType.Legato, 'legato'],
   [SlideOutType.OutUp, 'outUp'],
   [SlideOutType.OutDown, 'outDown'],
-  [SlideOutType.PickSlideDown, 'pickSlideDown'],
-  [SlideOutType.PickSlideUp, 'pickSlideUp'],
+]);
+
+const PICK_SCRAPES = new Map<number, string>([
+  [SlideOutType.PickSlideDown, 'down'],
+  [SlideOutType.PickSlideUp, 'up'],
+]);
+
+const GOLPES = new Map<number, string>([
+  [GolpeType.Thumb, 'thumb'],
+  [GolpeType.Finger, 'finger'],
 ]);
 
 const FADES = new Map<number, string>([
@@ -149,6 +158,7 @@ function projectNote(note: AtNote, kind: TrackKind): NoteProjection {
     ghost: note.isGhost,
     hammerPull: note.isHammerPullDestination,
     slides: slides.filter((slide) => slide !== undefined).sort(),
+    pickScrape: PICK_SCRAPES.get(note.slideOutType) ?? null,
     bendPoints: bend?.length ?? null,
     bendFrom: bend?.[0] ?? null,
     bendTo: bend?.at(-1) ?? null,
@@ -237,6 +247,7 @@ function projectBeat(
     brush: strokeOf(beat, [BrushType.BrushUp, BrushType.BrushDown]),
     arpeggio: strokeOf(beat, [BrushType.ArpeggioUp, BrushType.ArpeggioDown]),
     pickStroke: PICK_STROKES.get(beat.pickStroke) ?? null,
+    golpe: GOLPES.get(beat.golpe) ?? null,
     fade: FADES.get(beat.fade) ?? null,
     tapping: beat.tap,
     slapping: beat.slap,

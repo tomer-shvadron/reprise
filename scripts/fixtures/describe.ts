@@ -25,7 +25,8 @@ import {
   type Manifest,
 } from './corpus.ts';
 
-const { AutomationType, BendType, HarmonicType, SlideInType, SlideOutType } = alphaTab.model;
+const { AutomationType, BendType, GolpeType, HarmonicType, SlideInType, SlideOutType } =
+  alphaTab.model;
 
 type Score = alphaTab.model.Score;
 
@@ -109,9 +110,15 @@ export function describeScore(score: Score): Omit<FixtureEntry, 'path' | 'format
               if (chord?.strings.some((fret) => fret >= 0) === true) found.add('chord-diagrams');
             }
 
+            if (beat.golpe !== GolpeType.None) found.add('golpe');
             for (const note of beat.notes) {
               if (note.bendType !== BendType.None) found.add('bends');
-              if (
+              // A pick slide is a scrape of the picking hand, not a slide of the fretting hand.
+              const pickSlide =
+                note.slideOutType === SlideOutType.PickSlideDown ||
+                note.slideOutType === SlideOutType.PickSlideUp;
+              if (pickSlide) found.add('pick-scrape');
+              else if (
                 note.slideInType !== SlideInType.None ||
                 note.slideOutType !== SlideOutType.None
               ) {
