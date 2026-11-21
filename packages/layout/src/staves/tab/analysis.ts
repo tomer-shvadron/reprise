@@ -146,6 +146,7 @@ export interface TabRows {
   /** Upper voices' stems, beams and rests, above the top string. */
   upper: number;
   /** The word lanes' heights. */
+  chordDiagram: number;
   chord: number;
   fingering: number;
   text: number;
@@ -443,7 +444,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   const signature = input.masterBar.timeSignature;
   const rhythm = rhythmOnTab(input);
   const strings = input.track.tuning.length;
-  const key = `${String(space)} ${options.tiedNotes} ${String(signature.numerator)}/${String(signature.denominator)} ${rhythm ? 'rhythm' : 'numbers'} ${String(strings)}`;
+  const key = `${String(space)} ${options.tiedNotes} ${String(signature.numerator)}/${String(signature.denominator)} ${rhythm ? 'rhythm' : 'numbers'} ${String(strings)} ${String(input.chordDiagrams)}`;
   const cached = analyses.get(bar)?.get(key);
   if (cached) return cached;
 
@@ -495,6 +496,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   const words = wordRows(
     beats.map((analysed) => analysed.beat),
     space,
+    input.chordDiagrams,
   );
   const lowerExtra = Math.max(
     0,
@@ -504,6 +506,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   const rows: TabRows = {
     upper: uppers.length > 0 ? stemZone(Math.max(...uppers.map((v) => v.extraStem)), space) : 0,
     fingering: maxFingers * TAB.fingerRow * space,
+    chordDiagram: words.chordDiagram,
     chord: words.chord,
     text: words.text,
     lower: rhythm ? stemZone(lowerExtra, space) : 0,

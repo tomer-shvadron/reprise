@@ -23,6 +23,7 @@ import {
   setNote,
   setNoteEffect,
   type Beat,
+  type ChordDiagram,
   type Command,
   type Id,
   type Dynamics,
@@ -47,6 +48,7 @@ import { layoutWith } from '../layout';
 import { resolveOptions } from '../options';
 import { breakIds, expectInsidePages, expectValid, stable } from './check-result';
 import { withEffects, withNoteMarks } from './effects';
+import { randomScore } from './random-score';
 
 /** The keep rule's band in lines, written out so that changing `UNDERFLOW` or `OVERFLOW` fails here. */
 const MIN_LINES = 0.5;
@@ -66,7 +68,7 @@ type Edit =
   | { kind: 'insertBar'; bar: number }
   | { kind: 'removeBar'; bar: number }
   | { kind: 'masterBar'; bar: number; change: 'time' | 'key' | 'repeat' }
-  | { kind: 'chord'; at: Where }
+  | { kind: 'chord'; at: Where; diagram: 'none' | 'open' | 'barre' }
   | { kind: 'mark'; at: Where; mark: Mark }
   | { kind: 'unison'; at: Where; string: number }
   | { kind: 'voiceUnison'; at: Where; string: number }
@@ -75,7 +77,7 @@ type Edit =
   | { kind: 'redo' }
   | { kind: 'options'; change: OptionChange };
 
-type OptionChange = 'subset' | 'notation' | 'width' | 'zoom';
+type OptionChange = 'subset' | 'notation' | 'width' | 'zoom' | 'diagrams';
 
 /** A note effect the five-line staves draw at the notes, toggled on a beat's first note. */
 type Mark =
@@ -126,7 +128,11 @@ const edit: Arbitrary<Edit> = oneof(
     at: where,
     syllable: constantFrom('la-', 'longer-', 'x', ''),
   }),
-  record({ kind: constantFrom('chord' as const), at: where }),
+  record({
+    kind: constantFrom('chord' as const),
+    at: where,
+    diagram: constantFrom<'none' | 'open' | 'barre'>('none', 'open', 'barre'),
+  }),
   record({
     kind: constantFrom('mark' as const),
     at: where,
@@ -156,7 +162,7 @@ const edit: Arbitrary<Edit> = oneof(
   record({ kind: constantFrom('redo' as const) }),
   record({
     kind: constantFrom('options' as const),
-    change: constantFrom<OptionChange>('subset', 'notation', 'width', 'zoom'),
+    change: constantFrom<OptionChange>('subset', 'notation', 'width', 'zoom', 'diagrams'),
   }),
 );
 
@@ -303,12 +309,39 @@ function command(score: Score, step: Edit): Command | undefined {
     case 'lyric':
       return setBeatEffect({ beatId: beat.id }, { lyrics: [step.syllable] });
     case 'chord':
-      return setBeatEffect({ beatId: beat.id }, { chord: { name: 'Cmaj7(add9,#11)/G' } });
+      return setBeatEffect(
+        { beatId: beat.id },
+        { chord: { name: 'Cmaj7(add9,#11)/G', ...diagramFor(found.track, step.diagram) } },
+      );
     case 'mark':
       return markCommand(beat, step.mark);
     case 'unison':
       return unisonOn(found.track, beat, beat, step.string);
   }
+}
+
+/** A diagram to add, change or leave out of a chord, so the cache sees one come, change and go. */
+function diagramFor(
+  track: Track,
+  kind: 'none' | 'open' | 'barre',
+): { diagram: ChordDiagram } | undefined {
+  const strings = track.tuning.length;
+  if (kind === 'none') return undefined;
+  if (kind === 'open') {
+    return {
+      diagram: {
+        baseFret: 1,
+        frets: Array.from({ length: strings }, (_, i) => (i === 0 ? null : i % 3)),
+      },
+    };
+  }
+  return {
+    diagram: {
+      baseFret: 5,
+      frets: Array.from({ length: strings }, () => 5),
+      barres: [{ fret: 5, firstString: 1, lastString: strings }],
+    },
+  };
 }
 
 function markCommand(beat: Beat, mark: Mark): Command | undefined {
@@ -373,9 +406,23 @@ function withHyphens(built: Score): Score {
   return built;
 }
 
-const SCORES: Record<'large' | 'sparse', () => Score> = {
+/** The first random score, by seed, that is fretted and carries diagrams. */
+function diagramScore(): Score {
+  for (let seed = 1; ; seed += 1) {
+    const built = randomScore(seed, { diagrams: true });
+    const diagrams = built.tracks.some((track) =>
+      track.bars.some((bar) =>
+        bar.voices.some((voice) => voice.beats.some((beat) => beat.chord?.diagram)),
+      ),
+    );
+    if (diagrams) return built;
+  }
+}
+
+const SCORES: Record<'large' | 'sparse' | 'diagrams', () => Score> = {
   large: () => withHyphens(withNoteMarks(withEffects(largeScore(3, 32, { structure: true })))),
   sparse: sparseScore,
+  diagrams: diagramScore,
 };
 
 /**
@@ -441,6 +488,8 @@ function changeOptions(score: Score, options: LayoutOptions, change: OptionChang
     }
     case 'zoom':
       return { ...options, zoom: options.zoom === 1 ? 1.25 : 1 };
+    case 'diagrams':
+      return { ...options, chordDiagrams: options.chordDiagrams === false };
   }
 }
 
@@ -462,7 +511,7 @@ export function checkCachedEqualsCold(
   const split = height !== undefined;
   assert(
     property(
-      constantFrom<'large' | 'sparse'>('large', 'sparse'),
+      constantFrom<'large' | 'sparse' | 'diagrams'>('large', 'sparse', 'diagrams'),
       integer({ min: 0, max: 2 }),
       integer({ min: 0, max: 4 }),
       array(edit, { minLength: 1, maxLength: 8 }),

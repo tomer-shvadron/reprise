@@ -1,0 +1,141 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`chordDiagramPrimitives > matches the snapshots of open C and the F barre 1`] = `
+[
+  {
+    "bbox": {
+      "height": 59,
+      "width": 48,
+      "x": 100,
+      "y": 50,
+    },
+    "d": "M144 59L144 109M136 59L136 109M128 59L128 109M120 59L120 109M112 59L112 109M104 59L104 109M104 69L144 69M104 79L144 79M104 89L144 89M104 99L144 99M104 109L144 109",
+    "fill": false,
+    "kind": "path",
+    "lane": "chordDiagram",
+    "node": "beat-1",
+    "role": "ink",
+    "thickness": 1.3,
+    "x": 100,
+    "y": 50,
+  },
+  {
+    "bbox": {
+      "height": 3.9,
+      "width": 40,
+      "x": 104,
+      "y": 57.05,
+    },
+    "kind": "line",
+    "node": "beat-1",
+    "role": "ink",
+    "thickness": 3.9,
+    "x": 104,
+    "x2": 144,
+    "y": 59,
+    "y2": 59,
+  },
+  {
+    "bbox": {
+      "height": 26.4,
+      "width": 30.4,
+      "x": 108.8,
+      "y": 60.8,
+    },
+    "d": "M132.8 64a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0 -6.4 0ZM116.8 74a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0 -6.4 0ZM108.8 84a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0 -6.4 0Z",
+    "fill": true,
+    "kind": "path",
+    "node": "beat-1",
+    "role": "ink",
+    "thickness": 0,
+    "x": 108.8,
+    "y": 60.8,
+  },
+  {
+    "bbox": {
+      "height": 4,
+      "width": 20,
+      "x": 126,
+      "y": 52.5,
+    },
+    "d": "M142 54.5a2 2 0 1 0 4 0a2 2 0 1 0 -4 0ZM126 54.5a2 2 0 1 0 4 0a2 2 0 1 0 -4 0Z",
+    "fill": false,
+    "kind": "path",
+    "node": "beat-1",
+    "role": "ink",
+    "thickness": 1.3,
+    "x": 126,
+    "y": 52.5,
+  },
+  {
+    "bbox": {
+      "height": 4,
+      "width": 4,
+      "x": 102,
+      "y": 52.5,
+    },
+    "d": "M102 52.5L106 56.5M106 52.5L102 56.5",
+    "fill": false,
+    "kind": "path",
+    "node": "beat-1",
+    "role": "ink",
+    "thickness": 1.3,
+    "x": 102,
+    "y": 52.5,
+  },
+]
+`;
+
+exports[`chordDiagramPrimitives > matches the snapshots of open C and the F barre 2`] = `
+[
+  {
+    "bbox": {
+      "height": 59,
+      "width": 48,
+      "x": 100,
+      "y": 50,
+    },
+    "d": "M144 59L144 109M136 59L136 109M128 59L128 109M120 59L120 109M112 59L112 109M104 59L104 109M104 69L144 69M104 79L144 79M104 89L144 89M104 99L144 99M104 109L144 109",
+    "fill": false,
+    "kind": "path",
+    "lane": "chordDiagram",
+    "node": "beat-1",
+    "role": "ink",
+    "thickness": 1.3,
+    "x": 100,
+    "y": 50,
+  },
+  {
+    "bbox": {
+      "height": 3.9,
+      "width": 40,
+      "x": 104,
+      "y": 57.05,
+    },
+    "kind": "line",
+    "node": "beat-1",
+    "role": "ink",
+    "thickness": 3.9,
+    "x": 104,
+    "x2": 144,
+    "y": 59,
+    "y2": 59,
+  },
+  {
+    "bbox": {
+      "height": 26.4,
+      "width": 46.4,
+      "x": 100.8,
+      "y": 60.8,
+    },
+    "d": "M124.8 74a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0 -6.4 0ZM116.8 84a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0 -6.4 0ZM108.8 84a3.2 3.2 0 1 0 6.4 0a3.2 3.2 0 1 0 -6.4 0ZM104 60.8h40a3.2 3.2 0 0 1 0 6.4h-40a3.2 3.2 0 0 1 0 -6.4Z",
+    "fill": true,
+    "kind": "path",
+    "node": "beat-1",
+    "role": "ink",
+    "thickness": 0,
+    "x": 100.8,
+    "y": 60.8,
+  },
+]
+`;

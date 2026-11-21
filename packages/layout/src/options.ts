@@ -38,6 +38,7 @@ export interface ResolvedOptions {
   systemGap: number;
   tracks: VisibleTrack[];
   tiedNotes: TiedNotes;
+  chordDiagrams: boolean;
   /** Everything a cached bar measurement depends on besides the bars themselves. */
   measureKey: string;
   /** Everything else a cached system depends on. */
@@ -119,7 +120,8 @@ export function resolveOptions(score: Score, options: LayoutOptions): ResolvedOp
   }
   const pageGap = options.pageGap ?? DEFAULT_GAPS.pageGap;
   const tiedNotes = options.tiedNotes ?? 'parentheses';
-  const measureKey = JSON.stringify([space, tiedNotes, trackKey]);
+  const chordDiagrams = options.chordDiagrams ?? true;
+  const measureKey = JSON.stringify([space, tiedNotes, chordDiagrams, trackKey]);
   return {
     mode: options.mode,
     width,
@@ -131,6 +133,7 @@ export function resolveOptions(score: Score, options: LayoutOptions): ResolvedOp
     ...gaps,
     tracks,
     tiedNotes,
+    chordDiagrams,
     measureKey,
     systemKey: JSON.stringify([
       measureKey,

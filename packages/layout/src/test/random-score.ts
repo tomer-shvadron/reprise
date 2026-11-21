@@ -1,4 +1,4 @@
-import type { Beat, BeatEffects, Dynamics, Note, Score } from '@reprise/model';
+import type { Beat, BeatEffects, ChordDiagram, Dynamics, Note, Score } from '@reprise/model';
 import { midi, note, score, type DurationSpec } from '@reprise/model/testing';
 
 /** mulberry32: a seeded generator, so a failing seed rebuilds the same score. */
@@ -48,8 +48,11 @@ const BENDS: readonly NonNullable<Note['bend']>[] = [
  * bends and lane effects, clef and key changes, and dynamics, lyrics and chord names in half the
  * scores: the other half write no dynamic, so nothing hides what reaches below the staff.
  */
-export function randomScore(seed: number): Score {
+export function randomScore(seed: number, options: { diagrams?: boolean } = {}): Score {
   const random = generator(seed);
+  // Diagrams draw from a second stream, so a score without them is the same for a seed as ever and
+  // the pinned regression seeds (#141) keep building what exposed their bugs.
+  const diagramRandom = generator(seed ^ 0x9e3779b9);
   const chance = (p: number): boolean => random() < p;
   const pick = <T>(items: readonly T[]): T => {
     const item = items[Math.floor(random() * items.length)];
@@ -145,6 +148,11 @@ export function randomScore(seed: number): Score {
       ...(chance(0.04) && { text: 'txt' }),
       ...(!plain && chance(0.05) && { lyrics: ['la', chance(0.5) ? 'lo' : ''] }),
       ...(!plain && chance(0.03) && { chord: { name: pick(['Am', 'C#m7b5', 'G']) } }),
+      ...(options.diagrams &&
+        fretted &&
+        diagramRandom() < 0.1 && {
+          chord: { name: 'Em', diagram: randomDiagram(strings, diagramRandom) },
+        }),
     };
   };
   const beat = (duration: DurationSpec, spec: Partial<Beat> = {}, rest = chance(0.12)): void => {
@@ -234,4 +242,15 @@ export function randomScore(seed: number): Score {
     }
   }
   return builder.build();
+}
+
+/** A diagram for `strings` strings: muted, open and fretted ones, sometimes high on the neck. */
+function randomDiagram(strings: number, random: () => number): ChordDiagram {
+  const baseFret = 1 + Math.floor(random() * 8);
+  return {
+    baseFret,
+    frets: Array.from({ length: strings }, (_, i) =>
+      i % 5 === 4 ? null : i % 4 === 3 ? 0 : baseFret + (i % 3),
+    ),
+  };
 }

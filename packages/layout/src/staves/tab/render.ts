@@ -358,6 +358,7 @@ function drawWords(context: Context, xs: Map<TabBeat, number>): void {
       space,
       limit,
       nextSyllable,
+      diagrams: input.chordDiagrams,
     });
     const fingered = analysed.rhythm
       ? beat.labels.flatMap(({ note }) => {
