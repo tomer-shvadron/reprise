@@ -14,6 +14,15 @@ const fretted = (name: string, capo = 0): Pick<Track, 'kind' | 'tuning' | 'capo'
   capo,
 });
 
+describe('stringTargets tuning names', () => {
+  it('names a 12-string by its courses and a banjo by its drone', () => {
+    const twelve = { ...fretted('E standard'), courses: [12, 12, 12, 12, 0, 0] };
+    expect(stringTargets(twelve, 440)?.tuningName).toBe('12-string standard');
+    const banjo = { ...fretted('Banjo Open G'), drone: { string: 5, fret: 5 } };
+    expect(stringTargets(banjo, 440)?.tuningName).toBe('Banjo Open G');
+  });
+});
+
 describe('stringTargets', () => {
   it('lists standard guitar from the lowest string, with the track string numbers', () => {
     const set = stringTargets(fretted('E standard'), 440);

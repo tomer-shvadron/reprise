@@ -4,6 +4,7 @@ import { createHistory } from '../history';
 import { newId } from '../id';
 import { ScoreSchema } from '../score';
 import { validateScore } from '../validate';
+import { note } from '../testing';
 import { buildScore, expectRefusal, roundTrip } from './test-score';
 import { addTrack, moveTrack, removeTrack, setTrackProperties } from './track-commands';
 
@@ -12,6 +13,88 @@ const trackId = (score: ReturnType<typeof buildScore>, index: number): string =>
   if (!track) throw new Error('no track');
   return track.id;
 };
+
+describe('setTrackProperties courses and drone', () => {
+  it('refuses courses that do not match the string count', () => {
+    const score = buildScore();
+    expectRefusal(
+      score,
+      setTrackProperties({ trackId: trackId(score, 0) }, { courses: [0, 0, 0, 0] }),
+      'invariant',
+    );
+  });
+
+  it('still edits a track whose stored courses already break the rule', () => {
+    const score = buildScore();
+    const track = score.tracks[0];
+    if (!track) throw new Error('no track');
+    track.courses = [0, 0, 0, 0];
+    // Not `roundTrip`: the score is already invalid, which that helper rejects.
+    const { score: after } = createHistory().apply(
+      score,
+      setTrackProperties({ trackId: track.id }, { name: 'Renamed', channel: { volume: 80 } }),
+    );
+    expect(after.tracks[0]).toMatchObject({ name: 'Renamed', courses: [0, 0, 0, 0] });
+  });
+
+  it('sets a 12-string course set and refuses a drone off the strings', () => {
+    const score = buildScore();
+    const id = trackId(score, 0);
+    const { score: after } = roundTrip(
+      score,
+      setTrackProperties({ trackId: id }, { courses: [12, 12, 12, 12, 0, 0] }),
+    );
+    expect(after.tracks[0]?.courses).toEqual([12, 12, 12, 12, 0, 0]);
+    expectRefusal(
+      score,
+      setTrackProperties({ trackId: id }, { drone: { string: 9, fret: 5 } }),
+      'invariant',
+    );
+  });
+
+  it('refuses a drone that strands a note above its shorter neck', () => {
+    const score = buildScore();
+    const track = score.tracks[0];
+    const beat = track?.bars[0]?.voices[0].beats[0];
+    if (!track || !beat) throw new Error('no beat');
+    beat.notes = [note(5, 20)];
+    expectRefusal(
+      score,
+      setTrackProperties({ trackId: track.id }, { drone: { string: 5, fret: 5 } }),
+      'invariant',
+    );
+  });
+
+  it('removes the drone and the courses with null', () => {
+    const score = buildScore();
+    const track = score.tracks[0];
+    if (!track) throw new Error('no track');
+    track.courses = [12, 12, 12, 12, 0, 0];
+    track.drone = { string: 5, fret: 5 };
+    const { score: after } = roundTrip(
+      score,
+      setTrackProperties({ trackId: track.id }, { drone: null, courses: null }),
+    );
+    expect(after.tracks[0]).not.toHaveProperty('drone');
+    expect(after.tracks[0]).not.toHaveProperty('courses');
+  });
+
+  it('refuses a tuning change that drops the drone string', () => {
+    const score = buildScore();
+    const track = score.tracks[0];
+    if (!track) throw new Error('no track');
+    track.tuning = [67, 50, 55, 59, 62];
+    track.drone = { string: 5, fret: 5 };
+    for (const bar of track.bars) {
+      for (const beat of bar.voices[0].beats) beat.notes = [];
+    }
+    expectRefusal(
+      score,
+      setTrackProperties({ trackId: track.id }, { tuning: [50, 55, 59, 62] }),
+      'invariant',
+    );
+  });
+});
 
 describe('setTrackProperties', () => {
   it('sets properties and merges channel and display', () => {

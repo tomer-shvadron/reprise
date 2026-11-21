@@ -8,6 +8,7 @@ import {
   canShowTab,
   isVocalTrack,
   shownNotation,
+  stringInstrumentOf,
   type Track,
 } from './track';
 
@@ -98,5 +99,34 @@ describe('isVocalTrack', () => {
   it('is false on drums, even named Vocals or on a voice program', () => {
     expect(isVocalTrack(of(0, 'Vocals', 'drums'))).toBe(false);
     expect(isVocalTrack(of(53, 'Kit', 'drums'))).toBe(false);
+  });
+});
+
+describe('stringInstrumentOf', () => {
+  const base: Pick<Track, 'kind' | 'program' | 'tuning' | 'courses' | 'drone'> = {
+    kind: 'fretted',
+    program: 25,
+    tuning: [...STANDARD_TUNING],
+  };
+
+  it('names a banjo by its drone or by program 105', () => {
+    expect(stringInstrumentOf({ ...base, drone: { string: 5, fret: 5 } })).toBe('banjo');
+    expect(stringInstrumentOf({ ...base, program: 105 })).toBe('banjo');
+  });
+
+  it('names a 12-string by an octave course and a mandolin by four unison courses', () => {
+    expect(stringInstrumentOf({ ...base, courses: [12, 12, 12, 12, 0, 0] })).toBe('twelveString');
+    expect(stringInstrumentOf({ ...base, courses: [-12, null, null, null, null, null] })).toBe(
+      'twelveString',
+    );
+    const mandolin = { ...base, tuning: [55, 62, 69, 76] };
+    expect(stringInstrumentOf({ ...mandolin, courses: [0, 0, 0, 0] })).toBe('mandolin');
+    expect(stringInstrumentOf({ ...mandolin, courses: [0, 0, 0, null] })).toBeUndefined();
+    expect(stringInstrumentOf(mandolin)).toBeUndefined();
+  });
+
+  it('is undefined for a plain guitar and for other kinds', () => {
+    expect(stringInstrumentOf(base)).toBeUndefined();
+    expect(stringInstrumentOf({ ...base, kind: 'pitched', program: 105 })).toBeUndefined();
   });
 });

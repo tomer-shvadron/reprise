@@ -7,6 +7,7 @@ import type { Score } from './score';
 import { TIE_REACH_BARS, tieOriginOf } from './ties';
 import type { TiePosition } from './ties';
 import { barTicks, beatTicks } from './ticks';
+import { maxStoredFret } from './pitch';
 import type { Track } from './track';
 
 export type ViolationRule =
@@ -18,6 +19,8 @@ export type ViolationRule =
   | 'rest-with-notes'
   | 'string-range'
   | 'fret-range'
+  | 'courses-length'
+  | 'drone-string'
   | 'duplicate-string'
   | 'tie-target'
   | 'tie-pitch'
@@ -225,6 +228,24 @@ function checkBar(
   });
 }
 
+function checkStringExtras(track: Track, path: ViolationPath, report: Report): void {
+  if (track.courses && track.courses.length !== track.tuning.length) {
+    report(
+      'courses-length',
+      [...path, 'courses'],
+      `${String(track.courses.length)} courses for ${String(track.tuning.length)} strings`,
+    );
+  }
+  const { drone } = track;
+  if (drone && (drone.string > track.tuning.length || drone.fret >= track.fretCount)) {
+    report(
+      'drone-string',
+      [...path, 'drone'],
+      `drone on string ${String(drone.string)} from fret ${String(drone.fret)} does not fit ${String(track.tuning.length)} strings and ${String(track.fretCount)} frets`,
+    );
+  }
+}
+
 function checkTrackKind(track: Track, path: ViolationPath, report: Report): void {
   if (track.kind === 'fretted') {
     if (track.tuning.length === 0) {
@@ -233,6 +254,7 @@ function checkTrackKind(track: Track, path: ViolationPath, report: Report): void
     if (track.fretCount < 1) {
       report('track-kind', [...path, 'fretCount'], 'a fretted track needs at least one fret');
     }
+    checkStringExtras(track, path, report);
     return;
   }
   // A pitched track may keep the tuning a GP3 to GP5 keyboard part was written against.
@@ -245,6 +267,12 @@ function checkTrackKind(track: Track, path: ViolationPath, report: Report): void
   }
   if (track.fretCount !== 0) {
     report('track-kind', [...path, 'fretCount'], 'a drums track has no frets');
+  }
+  if (track.courses) {
+    report('track-kind', [...path, 'courses'], 'a drums track has no courses');
+  }
+  if (track.drone) {
+    report('track-kind', [...path, 'drone'], 'a drums track has no drone string');
   }
 }
 
@@ -299,11 +327,12 @@ function checkNotes(track: Track, notes: Note[], path: ViolationPath, report: Re
         `string ${String(note.string)} is outside 1 to ${String(stringCount)}`,
       );
     }
-    if (note.fret < 0 || note.fret > track.fretCount) {
+    const maxFret = maxStoredFret(track, note.string);
+    if (note.fret < 0 || note.fret > maxFret) {
       report(
         'fret-range',
         [...path, n, 'fret'],
-        `fret ${String(note.fret)} is outside 0 to ${String(track.fretCount)}`,
+        `fret ${String(note.fret)} is outside 0 to ${String(maxFret)}`,
       );
     }
     if (strings.has(note.string)) {
