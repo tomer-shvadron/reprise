@@ -185,6 +185,17 @@ export interface Thirds {
   frame: number;
 }
 
+/** The shares of `tonic`'s thirds, and of the tonic with its fifth, in `histogram`. */
+export function thirdsIn(histogram: Histogram, tonic: number): Thirds {
+  const total = sumOf(histogram) || 1;
+  return {
+    minor: (histogram[(tonic + 3) % 12] ?? 0) / total,
+    major: (histogram[(tonic + 4) % 12] ?? 0) / total,
+    // What a third is measured against: the tonic and the fifth, the part of a chord that is always there.
+    frame: ((histogram[tonic] ?? 0) + (histogram[(tonic + 7) % 12] ?? 0)) / total,
+  };
+}
+
 /** Either third sounds, in proportion to the tonic and fifth. */
 export const thirdPlayed = (t: Thirds): boolean => t.minor + t.major >= NO_THIRD_RATIO * t.frame;
 
@@ -264,13 +275,7 @@ export function detectKey(table: NoteTable, options: DetectOptions = {}): KeyRes
   const second = scored[1];
   if (!best || !second) return { found: false, reason: 'not-enough-notes' };
 
-  const total = sumOf(histogram);
-  const thirdsOf = (tonic: number) => ({
-    minor: (histogram[(tonic + 3) % 12] ?? 0) / total,
-    major: (histogram[(tonic + 4) % 12] ?? 0) / total,
-    // What a third is measured against: the tonic and the fifth, the part of a chord that is always there.
-    frame: ((histogram[tonic] ?? 0) + (histogram[(tonic + 7) % 12] ?? 0)) / total,
-  });
+  const thirdsOf = (tonic: number): Thirds => thirdsIn(histogram, tonic);
   const hasThird = (tonic: number): boolean => thirdPlayed(thirdsOf(tonic));
   // A key whose third never sounds (a melody over a dominant pedal, or a tonic the bass moved to)
   // is a weak reading when a key with a third correlates nearly as well (the bass evidence is left out of

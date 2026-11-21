@@ -1,7 +1,7 @@
 import type { KeySignature } from '@reprise/model';
 
 import { pitchHistogram } from './histogram';
-import { DEFAULT_PROFILE_SET, bassCues, cueEvidence, rankKeys } from './key';
+import { DEFAULT_PROFILE_SET, bassCues, cueEvidence, rankKeys, thirdPlayed, thirdsIn } from './key';
 import { keyName, type KeyQuality } from './key-names';
 import { profileSetOf } from './key-profiles';
 import type { NoteTable } from './note-table';
@@ -15,7 +15,7 @@ import { sectionSpans } from './sections';
  * in `confidenceOf` (and a bit more), so noise between relative keys never pays for a change and
  * a modulation, whose new key leads by 0.3 or more over 8 bars, does.
  */
-export const CHANGE_PENALTY = 0.15;
+export const CHANGE_PENALTY = 0.1;
 /** A change must hold for this many bars. */
 export const MIN_CHANGE_BARS = 8;
 /** And its key must correlate this much better than the main key over those bars. */
@@ -265,6 +265,14 @@ export function keyChanges(
     const scores = scoresOf(run.from, run.to);
     const gain = (scores.get(run.state) ?? 0) - (scores.get(mainState) ?? 0);
     if (gain < MIN_GAIN) continue;
+    // A change of mode alone is read from the third, so it needs one: a riff of fifths is in no mode.
+    if (run.state >> 1 === main.tonic) {
+      const thirds = thirdsIn(
+        pitchHistogram(subTable(table, rowsInBars(rowsOfBar, run.from, run.to))),
+        main.tonic,
+      );
+      if (main.quality === 'none' || !thirdPlayed(thirds)) continue;
+    }
     const key = { tonic: run.state >> 1, quality: run.state & 1 ? 'minor' : 'major' } as const;
     changes.push({
       fromBar: run.from,
