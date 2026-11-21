@@ -5,6 +5,10 @@ import { useStore } from 'zustand';
 import { useAppServices } from '@/app/services-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import { useCommand } from '@/app/use-command';
+import { useSetting } from '@/app/use-setting';
+import { CHORD_STRIP_SETTING } from '@/state/app-settings';
 import { chordNamesIn, commitEdit } from '@/features/editor';
 import { parseChord, voicings } from '@/lib/chords';
 
@@ -50,6 +54,8 @@ export function ChordsPanel() {
   const [focusAt, setFocusAt] = useState<At>();
   const cancel = useRef<() => void>(undefined);
   const cards = useRef<(HTMLButtonElement | null)[]>([]);
+  const toggleStrip = useCommand('view.toggleChordStrip');
+  const stripOn = useSetting(CHORD_STRIP_SETTING);
 
   const track: Track | undefined =
     score && (score.tracks.find((t) => t.id === currentTrack) ?? score.tracks[0]);
@@ -195,6 +201,18 @@ export function ChordsPanel() {
             ))}
           </div>
         )}
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <label htmlFor="chords-strip" className="text-sm">
+          Chord strip above the score
+        </label>
+        <Switch
+          id="chords-strip"
+          checked={stripOn}
+          onCheckedChange={() => {
+            toggleStrip.run();
+          }}
+        />
       </div>
       <p className="text-muted-foreground text-xs">
         {fretted ? trackLine(track) : 'Chord shapes need a fretted track'}

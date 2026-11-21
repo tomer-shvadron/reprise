@@ -1,4 +1,4 @@
-import { CHORD_DIAGRAMS_SETTING } from '@/state/app-settings';
+import { CHORD_DIAGRAMS_SETTING, CHORD_STRIP_SETTING } from '@/state/app-settings';
 import type { HeaderElement, StatusSegmentName } from '@/state/menu-target';
 import type { PanelView } from '@/state/ui';
 
@@ -88,6 +88,13 @@ const paperItems: readonly MenuItemSpec[] = [
     when: hasScore,
     label: 'Chord diagrams',
     checked: ({ services }) => services.settings.get(CHORD_DIAGRAMS_SETTING),
+  },
+  {
+    command: 'view.toggleChordStrip',
+    group: 'view',
+    when: hasScore,
+    label: 'Chord strip',
+    checked: ({ services }) => services.settings.get(CHORD_STRIP_SETTING),
   },
   { command: 'file.print', group: 'export', when: hasScore },
   { command: 'file.new', group: 'edit', modes: play, when: noScore },

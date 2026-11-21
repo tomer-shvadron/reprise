@@ -1,6 +1,7 @@
 import { DEFAULT_MARGINS } from '@reprise/layout';
 import { useEffect, useEffectEvent } from 'react';
 
+import { renderPrimitive } from './primitive-shape';
 import { useScoreFonts } from './fonts';
 import { PRINT_HEADING, type PrintContent, type PrintHeading } from './print-layout';
 import { ScorePage } from './score-page';
@@ -56,6 +57,25 @@ function PrintHeader({ heading, width }: { heading: PrintHeading; width: number 
   );
 }
 
+/** The chord strip's rows under the title: the same primitives the image export writes. */
+function PrintStrip({ heading, width }: { heading: PrintHeading; width: number }) {
+  const { strip } = heading;
+  if (!strip) return null;
+  const inner = width - margins.left - margins.right;
+  return (
+    <svg
+      className="score-print-strip"
+      aria-hidden="true"
+      width={inner}
+      height={strip.height}
+      viewBox={`0 0 ${String(inner)} ${String(strip.height)}`}
+      style={{ left: margins.left, top: margins.top + (heading.stripTop ?? 0) }}
+    >
+      {strip.primitives.map((primitive, index) => renderPrimitive(primitive, index))}
+    </svg>
+  );
+}
+
 /**
  * Every page of a print layout, one `ScorePage` each with no virtualization, in the light paper:
  * the title on the first page and a page number on every one. Nothing renders before the fonts.
@@ -86,6 +106,7 @@ export function PrintDocument({ content, preview = false, onReady }: PrintDocume
           zoom={1}
         >
           {page.index === 0 && heading && <PrintHeader heading={heading} width={page.bbox.width} />}
+          {page.index === 0 && heading && <PrintStrip heading={heading} width={page.bbox.width} />}
           {settings.pageNumbers && (
             <span
               className="score-print-page-number"

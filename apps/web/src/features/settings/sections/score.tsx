@@ -1,6 +1,7 @@
 import { NOTATION_NAMES } from '@/features/tracks';
 import {
   CHORD_DIAGRAMS_SETTING,
+  CHORD_STRIP_SETTING,
   DEFAULT_NOTATION_STRINGS_SETTING,
   DEFAULT_NOTATION_VOCALS_SETTING,
   DEFAULT_VIEW_MODE_SETTING,
@@ -42,6 +43,11 @@ function Score() {
         label="Chord diagrams"
         description="Draw the chord grids a file carries above the staff. Printing follows it."
       />
+      <SwitchSetting
+        def={CHORD_STRIP_SETTING}
+        label="Chord strip"
+        description="Dock the current track's chords, each with its shape, above the score. Printing follows it."
+      />
       <ChoiceSetting
         def={DEFAULT_NOTATION_STRINGS_SETTING}
         label="Notation for string instruments"
@@ -70,6 +76,7 @@ export const scoreSection: SettingsSection = {
     DEFAULT_VIEW_MODE_SETTING,
     DEFAULT_ZOOM_SETTING,
     CHORD_DIAGRAMS_SETTING,
+    CHORD_STRIP_SETTING,
     DEFAULT_NOTATION_STRINGS_SETTING,
     DEFAULT_NOTATION_VOCALS_SETTING,
   ],

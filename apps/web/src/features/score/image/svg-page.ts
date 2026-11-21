@@ -367,6 +367,14 @@ export function pageSvgReport(input: PageSvgInput): PageSvgReport {
     body.push(
       `<g transform="translate(${num(-crop.x)} ${num(-crop.y)})">${headerSvg(writer, heading, page, outlines)}</g>`,
     );
+    if (heading.strip) {
+      // The strip's frame starts at the content box, under the title and byline.
+      const x = margins.left - crop.x;
+      const y = margins.top + (heading.stripTop ?? 0) - crop.y;
+      body.push(
+        `<g transform="translate(${num(x)} ${num(y)})">${systemBody(writer, heading.strip.primitives, background, `p${String(page.index)}s-`)}</g>`,
+      );
+    }
   }
 
   const w = num(crop.width);
