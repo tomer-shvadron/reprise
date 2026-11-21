@@ -17,7 +17,7 @@ export interface StringSet {
 
 /** The notes the track's strings sound open, with the capo, ordered from the lowest. */
 export function stringTargets(
-  track: Pick<Track, 'kind' | 'tuning' | 'capo'> | undefined,
+  track: Pick<Track, 'kind' | 'tuning' | 'capo' | 'courses' | 'drone'> | undefined,
   referenceHz: number,
 ): StringSet | undefined {
   if (!track || !canShowTab(track)) return undefined;
@@ -29,7 +29,11 @@ export function stringTargets(
     targets.push({ string, midi, hz: hzFromMidi(midi, referenceHz) });
   }
   targets.sort((a, b) => a.midi - b.midi || b.string - a.string);
-  return { targets, capo: track.capo, tuningName: findTuningName(track.tuning) };
+  return {
+    targets,
+    capo: track.capo,
+    tuningName: findTuningName(track.tuning, { courses: track.courses, drone: track.drone }),
+  };
 }
 
 export const AUTO_RANGE_CENTS = 300;

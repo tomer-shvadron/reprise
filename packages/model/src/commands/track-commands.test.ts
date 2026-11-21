@@ -13,6 +13,32 @@ const trackId = (score: ReturnType<typeof buildScore>, index: number): string =>
   return track.id;
 };
 
+describe('setTrackProperties courses and drone', () => {
+  it('refuses courses that do not match the string count', () => {
+    const score = buildScore();
+    expectRefusal(
+      score,
+      setTrackProperties({ trackId: trackId(score, 0) }, { courses: [0, 0, 0, 0] }),
+      'invalid-value',
+    );
+  });
+
+  it('sets a 12-string course set and refuses a drone off the strings', () => {
+    const score = buildScore();
+    const id = trackId(score, 0);
+    const { score: after } = roundTrip(
+      score,
+      setTrackProperties({ trackId: id }, { courses: [12, 12, 12, 12, 0, 0] }),
+    );
+    expect(after.tracks[0]?.courses).toEqual([12, 12, 12, 12, 0, 0]);
+    expectRefusal(
+      score,
+      setTrackProperties({ trackId: id }, { drone: { string: 9, fret: 5 } }),
+      'invariant',
+    );
+  });
+});
+
 describe('setTrackProperties', () => {
   it('sets properties and merges channel and display', () => {
     const score = buildScore();

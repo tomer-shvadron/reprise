@@ -321,7 +321,7 @@ export function shiftStrings(selection: Selection, direction: 'higher' | 'lower'
           }
           const interval = open(note.string) - open(string);
           const fret = note.fret + interval;
-          if (fret < 0 || fret > maxFret(track)) {
+          if (fret < 0 || fret > maxFret(track, string)) {
             throw new CommandError(
               name,
               'off-fretboard',
@@ -329,7 +329,7 @@ export function shiftStrings(selection: Selection, direction: 'higher' | 'lower'
             );
           }
           const trill = note.trill ? note.trill.fret + interval : 0;
-          if (trill < 0 || trill > maxFret(track)) {
+          if (trill < 0 || trill > maxFret(track, string)) {
             throw new CommandError(
               name,
               'off-fretboard',

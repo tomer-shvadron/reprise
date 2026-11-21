@@ -159,6 +159,9 @@ describe('the gp writer round trip', () => {
     delete first.section.color;
     guitar.channel.reverb = 0;
     delete guitar.sound;
+    // The writer does not encode courses or the drone yet (#348, parts 2 and 3).
+    delete guitar.courses;
+    delete guitar.drone;
     delete beat.chord.diagram.barres;
     beat.mix = {
       ...(beat.mix?.program !== undefined && { program: beat.mix.program }),

@@ -6,6 +6,7 @@ import type { MasterBar } from '../master-bar';
 import type { Note } from '../note';
 import type { Score } from '../score';
 import { TIE_REACH_BARS, hasTieOrigin } from '../ties';
+import { maxStoredFret } from '../pitch';
 import type { Track } from '../track';
 import { BAR_RULE_REACH, validateMasterBars, validateScore, validateTrackBars } from '../validate';
 import type { Violation } from '../validate';
@@ -126,8 +127,8 @@ export function assertBarsValid(
 }
 
 /** Guitar Pro numbers frets up to the neck length whatever the capo; `transpose` and `fret-range` use the same bound. */
-export function maxFret(track: Track): number {
-  return track.fretCount;
+export function maxFret(track: Track, string?: number): number {
+  return string === undefined ? track.fretCount : maxStoredFret(track, string);
 }
 
 export function assertNotePlaced(
@@ -153,11 +154,11 @@ export function assertNotePlaced(
       `string ${String(note.string)} is outside 1 to ${String(strings)}`,
     );
   }
-  if (note.fret < 0 || note.fret > maxFret(track)) {
+  if (note.fret < 0 || note.fret > maxFret(track, note.string)) {
     throw new CommandError(
       command,
       'off-fretboard',
-      `fret ${String(note.fret)} is outside 0 to ${String(maxFret(track))}`,
+      `fret ${String(note.fret)} is outside 0 to ${String(maxFret(track, note.string))}`,
     );
   }
 }

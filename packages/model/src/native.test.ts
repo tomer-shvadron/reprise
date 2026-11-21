@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createBeat, createEmptyScore, createNote } from './factories';
+import { midiNote } from './pitch';
 import { fullScore, largeScore } from './testing';
 import { MIGRATIONS, migrate } from './migrations';
 import { NativeFormatError, formatPath, parseNative, serializeNative } from './native';
@@ -481,5 +482,24 @@ describe('formatPath', () => {
       'score.tracks[0].bars[12].id',
     );
     expect(formatPath([])).toBe('');
+  });
+});
+
+describe('courses and the drone', () => {
+  it('round-trips both through the native format', () => {
+    const score = fullScore();
+    const [track] = parseNative(serializeNative(score, APP)).score.tracks;
+    expect(track?.courses).toEqual([12, 12, 12, 12, 0, 0]);
+    expect(track?.drone).toEqual({ string: 5, fret: 5 });
+  });
+
+  it('plays the same pitches when an older reader strips both keys', () => {
+    const track = fullScore().tracks[0];
+    if (!track) throw new Error('the fixture has no track');
+    const older = { ...track };
+    delete older.courses;
+    delete older.drone;
+    const note = { string: 5, fret: 2 };
+    expect(midiNote(older, note)).toBe(midiNote(track, note));
   });
 });

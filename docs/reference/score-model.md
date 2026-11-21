@@ -253,7 +253,7 @@ What a reader does on the way in and a writer undoes on the way out. The reasons
 Readers drop these with a warning; each would be a contract change.
 
 - Song: RSE settings, page setup, master volume and reverb, hidden tempo marks, MIDI ports and channels.
-- Track: 12-string and banjo flags, tuning labels and flat display, partial capo, ottava lines and chromatic transposition (`octaveShift` covers whole octaves), multiple staves per track (collapsed onto one by ADR-0006; a track whose further staff has its own tuning or capo reads as pitched).
+- Track: (the 12-string and banjo flags are modelled as `courses` and `drone`, #348; the readers and writer do not use them yet) tuning labels and flat display, partial capo, ottava lines and chromatic transposition (`octaveShift` covers whole octaves), multiple staves per track (collapsed onto one by ADR-0006; a track whose further staff has its own tuning or capo reads as pitched).
 - Bar: GP5 beam grouping, fermatas, free time, simile marks (readers copy the previous bar's beats instead), stem orientation overrides.
 - Beat: hairpins, legato slurs, slashed beats, timers, golpe, dead slap, rasgueado, wah, nested tuplets, note duration percentage.
 - Note: tenuto and staccatissimo, left-hand tapping, ornaments, the vibrato byte on GP5 bend points, the chord wizard's construction data.

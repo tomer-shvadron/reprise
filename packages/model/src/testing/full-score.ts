@@ -78,6 +78,9 @@ export function fullScore(): Score {
   const tiny = createBeat({ duration: 256, rest: true, chord: { name: 'E7' } });
 
   const guitar = createTrack('fretted', {
+    // Both #348 fields, so the round-trip tests cover them.
+    courses: [12, 12, 12, 12, 0, 0],
+    drone: { string: 5, fret: 5 },
     bars: [
       {
         ...createBar(),

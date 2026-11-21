@@ -31,6 +31,8 @@ validateScore(score); // cross-node invariants: [] when the score is sound
 | `duplicate-id`                    | Every id is unique across the score.                                                                                                                        |
 | `first-bar-tempo`                 | The first master bar carries a tempo mark.                                                                                                                  |
 | `bar-count`                       | Every track has one bar per master bar.                                                                                                                     |
+| `courses-length`                  | `Track.courses` has the tuning's length.                                                                                                                    |
+| `drone-string`                    | `Track.drone` names a string of the tuning and a fret below `fretCount`.                                                                                    |
 | `track-kind`                      | Fretted tracks have strings and frets; drum tracks have no tuning, capo or frets.                                                                           |
 | `voice-overfull`                  | A voice's beats sum to at most the bar length. Incomplete bars are allowed. An imported over-full voice is kept, reported as a warning, and played in full. |
 | `rest-with-notes`                 | A rest carries no notes.                                                                                                                                    |
@@ -375,9 +377,19 @@ capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro write
   `natural-harmonic-moved` when the moved note carries a natural harmonic: its `value` is a node
   on the string and is left for the editor to re-derive, while an artificial harmonic's `value`
   is an offset and travels with the note.
-- **`STANDARD_TUNINGS`** names fourteen tunings (guitar, 7-string, 4- and 5-string bass,
-  ukulele), each in `Track.tuning` order. The ukulele is re-entrant, so its array is in string
-  order, not pitch order. **`findTuningName(tuning)`** matches exactly, string count included.
+- **`STANDARD_TUNINGS`** names the presets (guitar in 6, 7 and 8 strings, bass in 4, 5 and 6,
+  ukulele, 12-string, 5-string and tenor banjo, mandolin), each in `Track.tuning` order. The
+  ukulele and the 5-string banjos are re-entrant, so their arrays are in string order, not pitch
+  order. A preset may carry `courses` and `drone`. **`findTuningName(tuning, { courses, drone })`**
+  matches exactly, string count, courses and drone included, so a 12-string's E standard is
+  "12-string standard".
+- **Courses and the drone (#348).** `Track.courses` is one offset per string in `tuning` order
+  (`null` single, 0 unison, 12 octave); `Track.drone` is `{ string, fret }`, a short string that
+  starts at a neck fret. Frets on the drone string are stored from its own nut, so `midiNote` is
+  unchanged. `writtenFret`, `storedFret`, `maxStoredFret` and `courseOffset` convert and bound
+  them, and `stringInstrumentOf(track)` derives `'twelveString' | 'mandolin' | 'banjo'`.
+  `validateScore` reports `courses-length` and `drone-string`; both fields are additive with no
+  version bump, and an older reader that strips them plays the same pitches.
 - **`spell(midi, key, accidental?)`** returns `{ letter, octave, alter, accidental? }`.
   `octave` is scientific (C4 = 60) and belongs to the letter, so B#3 is MIDI 60. Preference:
   a stored accidental that can spell the pitch, then the key's own notes, then a minor key's
