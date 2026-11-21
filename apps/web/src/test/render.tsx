@@ -5,6 +5,7 @@ import { createAppMenus } from '@/app/app-menus';
 import { createAppRegistry } from '@/app/app-registry';
 import { MenuRegistryContext } from '@/app/context-menu/menu-context';
 import { AppServicesProvider } from '@/app/services-context';
+import { CommandSourceContext } from '@/app/use-command';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 import { createTestServices } from './services';
@@ -20,7 +21,9 @@ export function renderWithServices(
   const result = render(
     <AppServicesProvider services={services}>
       <MenuRegistryContext value={menus}>
-        <TooltipProvider>{ui}</TooltipProvider>
+        <CommandSourceContext value={{ registry, keyboard: 'other' }}>
+          <TooltipProvider>{ui}</TooltipProvider>
+        </CommandSourceContext>
       </MenuRegistryContext>
     </AppServicesProvider>,
   );

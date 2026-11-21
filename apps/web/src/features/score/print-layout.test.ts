@@ -1,10 +1,11 @@
 import { DEFAULT_MARGINS, PAGE_SIZES, type LayoutResult, type Rect } from '@reprise/layout';
 import { createScoreMeta, type Score } from '@reprise/model';
-import { fullScore, largeScore } from '@reprise/model/testing';
+import { fullScore, largeScore, note, score as scoreBuilder } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import {
   layoutForPrint,
+  PRINT_HEADING,
   printHeading,
   printLayoutOptions,
   type PrintHeading,
@@ -177,5 +178,57 @@ describe('printLayoutOptions', () => {
       headerHeight: 68,
     });
     expect(printLayoutOptions(settings, {}, 0)).not.toHaveProperty('headerHeight');
+  });
+});
+
+describe('the chord strip under the title (#352)', () => {
+  const chords = (() => {
+    const b = scoreBuilder().track('guitar');
+    b.bar()
+      .beat('4', [note(1, 0)], { chord: { name: 'Am' } })
+      .beat('4', [note(1, 0)], { chord: { name: 'G' } })
+      .beat('4', [note(1, 0)], { chord: { name: 'Am' } })
+      .beat('4', [note(1, 0)]);
+    return { ...b.build({ ids: 'sequential' }), meta: createScoreMeta({ title: 'Chords' }) };
+  })();
+  const settings: PrintSettings = {
+    tracks: chords.tracks.map(({ id }) => id),
+    paper: 'a4',
+    header: true,
+    pageNumbers: false,
+  };
+
+  it('adds its rows to the heading, and nothing without the setting', () => {
+    const off = layoutForPrint(chords, settings, {}, undefined);
+    const on = layoutForPrint(chords, settings, {}, undefined, { chordStrip: true });
+    expect(off.heading?.strip).toBeUndefined();
+    expect(on.heading?.strip?.primitives.length).toBeGreaterThan(0);
+    const strip = on.heading?.strip;
+    expect(on.heading?.height).toBe(
+      (off.heading?.height ?? 0) + (strip?.height ?? 0) + PRINT_HEADING.stripGap,
+    );
+    // The first system starts lower by exactly that much.
+    const first = (content: typeof on) => content.result.systems[0]?.bbox.y ?? 0;
+    expect(first(on) - first(off)).toBeCloseTo(
+      (on.heading?.height ?? 0) - (off.heading?.height ?? 0),
+      0,
+    );
+  });
+
+  it('prints the strip without the title when the heading is off', () => {
+    const quiet = { ...settings, header: false };
+    expect(layoutForPrint(chords, quiet, {}, undefined).heading).toBeUndefined();
+    const on = layoutForPrint(chords, quiet, {}, undefined, { chordStrip: true });
+    expect(on.heading?.title).toBeUndefined();
+    expect(on.heading?.strip).toBeDefined();
+    expect(on.heading?.stripTop).toBe(0);
+  });
+
+  it('draws the strip of the first printed track, and none for a track without chords', () => {
+    const none = { ...fullScore(), tracks: [] };
+    expect(
+      layoutForPrint(none, { ...settings, tracks: [] }, {}, undefined, { chordStrip: true }).heading
+        ?.strip,
+    ).toBeUndefined();
   });
 });

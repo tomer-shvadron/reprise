@@ -1,7 +1,7 @@
 import { startNewSong } from '@/features/editor';
 import { libraryOf } from '@/features/library/library';
 import type { MenuCommandId } from '@/platform/bridge';
-import { CHORD_DIAGRAMS_SETTING, THEME_SETTING } from '@/state/app-settings';
+import { CHORD_DIAGRAMS_SETTING, CHORD_STRIP_SETTING, THEME_SETTING } from '@/state/app-settings';
 import { selectScoreZoom, ZOOM } from '@/state/ui';
 
 import type { Command } from './command-registry';
@@ -25,6 +25,7 @@ export type AppCommandId =
   | 'file.showImportDetails'
   | 'view.followPlayback'
   | 'view.toggleChordDiagrams'
+  | 'view.toggleChordStrip'
   | 'view.toggleRightPanel'
   | 'app.contextMenu'
   | 'app.contextMenuWindows';
@@ -282,6 +283,13 @@ export function appCommands(services: AppServices): AppCommand[] {
       title: 'Toggle chord diagrams',
       run: () => {
         settings.set(CHORD_DIAGRAMS_SETTING, !settings.get(CHORD_DIAGRAMS_SETTING));
+      },
+    },
+    {
+      id: 'view.toggleChordStrip',
+      title: 'Toggle chord strip',
+      run: () => {
+        settings.set(CHORD_STRIP_SETTING, !settings.get(CHORD_STRIP_SETTING));
       },
     },
     {

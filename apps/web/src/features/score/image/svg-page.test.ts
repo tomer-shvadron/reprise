@@ -8,6 +8,7 @@ import {
 import { fullScore, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
+import { stripLayout } from '../chord-strip-layout';
 import { layoutForPrint } from '../print-layout';
 import bravuraJson from './outlines/bravura.json';
 import geistJson from './outlines/geist.json';
@@ -191,6 +192,32 @@ describe('pageSvg', () => {
 
   it('matches the one-bar snapshot', async () => {
     await expect(svg).toMatchFileSnapshot('__snapshots__/one-bar.svg');
+  });
+});
+
+describe('the chord strip under the title', () => {
+  const content = oneBar();
+  const diagram = { baseFret: 1, frets: [0, 1, 2, 2, 0, null] };
+  const strip = stripLayout(
+    [
+      { name: 'Am', diagram, suggested: false },
+      { name: 'G', diagram, suggested: true },
+    ],
+    700,
+  );
+  if (!strip) throw new Error('no strip');
+
+  it('writes the strip on the first page, in the same document, and only there', () => {
+    const plain = parse(render(content));
+    const heading = { ...content.heading, strip, stripTop: 50, height: 200 };
+    const withStrip = parse(render(content, { heading }));
+    const paths = (doc: Document) => doc.querySelectorAll('path').length;
+    expect(paths(withStrip)).toBeGreaterThan(paths(plain));
+    // Both names are drawn as outlines, so more `use` elements; the strip's text is not `<text>`.
+    expect(withStrip.querySelectorAll('use').length).toBeGreaterThan(
+      plain.querySelectorAll('use').length,
+    );
+    expect(withStrip.querySelectorAll('text')).toHaveLength(0);
   });
 });
 

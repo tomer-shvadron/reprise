@@ -56,6 +56,8 @@ export interface ImageExportRequest {
   /** The view's settings, as Print takes them; left out, layout's defaults. */
   tiedNotes?: LayoutOptions['tiedNotes'];
   chordDiagrams?: boolean;
+  /** The chord strip under the title (#352); a bar range has no title, so none either. */
+  chordStrip?: boolean;
 }
 
 export interface ImageExportDeps {
@@ -153,6 +155,7 @@ function planOf(request: ImageExportRequest): Plan {
     ...(request.tiedNotes !== undefined && { tiedNotes: request.tiedNotes }),
     ...(request.chordDiagrams !== undefined && { chordDiagrams: request.chordDiagrams }),
   };
+  const printContent = { ...content, ...(request.chordStrip && { chordStrip: true }) };
   const settings: PrintSettings = { tracks: [...tracks], paper, header: true, pageNumbers: false };
   if (scope.kind === 'bars') {
     const range = clampRange(score, scope.start, scope.end);
@@ -191,7 +194,7 @@ function planOf(request: ImageExportRequest): Plan {
       label: `bars ${String(range.start + 1)}-${String(range.end)}`,
     };
   }
-  const { result, heading } = layoutForPrint(score, settings, notation, fileName, content);
+  const { result, heading } = layoutForPrint(score, settings, notation, fileName, printContent);
   const all = result.pages.map((page, i) => ({ page, number: i + 1 }));
   if (scope.kind === 'page') {
     const wanted = Math.min(Math.max(1, Math.round(scope.page)), all.length);

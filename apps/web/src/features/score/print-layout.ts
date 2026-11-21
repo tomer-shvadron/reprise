@@ -1,6 +1,15 @@
-import { layout, type LayoutOptions, type LayoutResult } from '@reprise/layout';
+import {
+  layout,
+  PAGE_SIZES,
+  DEFAULT_MARGINS,
+  type LayoutOptions,
+  type LayoutResult,
+} from '@reprise/layout';
 import type { Id, Notation, Score, ScoreMeta } from '@reprise/model';
 
+import { chordList } from '@/lib/chords';
+
+import { stripLayout, type PrintStrip } from './chord-strip-layout';
 import { viewLayoutOptions, type ContentOptions, type PaperSize } from './view-options';
 
 export interface PrintSettings {
@@ -14,6 +23,10 @@ export interface PrintSettings {
 export interface PrintHeading {
   title?: string;
   byline?: string;
+  /** The chord strip (#352), under the lines of text, when it is on and the track has chords. */
+  strip?: PrintStrip;
+  /** Where the strip starts, from the top of the heading's box: under the title and byline. */
+  stripTop?: number;
   /** The room layout keeps for it on the first page, its gap to the first system included. */
   height: number;
 }
@@ -24,6 +37,7 @@ export const PRINT_HEADING = {
   bylineSize: 13,
   bylineLine: 20,
   gap: 18,
+  stripGap: 8,
 } as const;
 
 function withoutExtension(name: string): string {
@@ -35,15 +49,21 @@ function withoutExtension(name: string): string {
 export function printHeading(
   meta: Pick<ScoreMeta, 'title' | 'artist' | 'album'>,
   fileName: string | undefined,
+  strip?: PrintStrip,
 ): PrintHeading | undefined {
   const title = meta.title.trim() || withoutExtension(fileName?.trim() ?? '');
   const byline = [meta.artist.trim(), meta.album.trim()].filter(Boolean).join(' — ');
-  if (!title && !byline) return undefined;
-  const height =
-    (title ? PRINT_HEADING.titleLine : 0) +
-    (byline ? PRINT_HEADING.bylineLine : 0) +
-    PRINT_HEADING.gap;
-  return { ...(title && { title }), ...(byline && { byline }), height };
+  if (!title && !byline && !strip) return undefined;
+  const stripTop = (title ? PRINT_HEADING.titleLine : 0) + (byline ? PRINT_HEADING.bylineLine : 0);
+  // The strip sits a little under the text, not against it.
+  const stripRoom = strip ? strip.height + (stripTop > 0 ? PRINT_HEADING.stripGap : 0) : 0;
+  return {
+    ...(title && { title }),
+    ...(byline && { byline }),
+    ...(strip && { strip }),
+    ...(strip && { stripTop: stripTop + (stripTop > 0 ? PRINT_HEADING.stripGap : 0) }),
+    height: stripTop + stripRoom + PRINT_HEADING.gap,
+  };
 }
 
 export function printLayoutOptions(
@@ -65,10 +85,24 @@ export function printLayoutOptions(
   };
 }
 
+/** What the screen's settings choose for a print or an export. */
+export type PrintContentOptions = Pick<ContentOptions, 'chordDiagrams' | 'tiedNotes'> & {
+  /** Draw the chord strip under the title (#352). */
+  chordStrip?: boolean;
+};
+
 export interface PrintContent {
   result: LayoutResult;
   settings: PrintSettings;
   heading: PrintHeading | undefined;
+}
+
+/** The strip of the first printed track's chords, across the page's content width. */
+function stripOf(score: Score, settings: PrintSettings): PrintStrip | undefined {
+  const track = score.tracks.find(({ id }) => id === settings.tracks[0]);
+  const margins = DEFAULT_MARGINS.paged;
+  const width = PAGE_SIZES[settings.paper].width - margins.left - margins.right;
+  return stripLayout(chordList(track), width);
 }
 
 /**
@@ -83,12 +117,16 @@ export function layoutForPrint(
   /** `run` is the layout function, for tests; the rest is what the screen's settings choose. */
   {
     run = layout,
+    chordStrip = false,
     ...content
-  }: { run?: typeof layout } & Pick<ContentOptions, 'chordDiagrams' | 'tiedNotes'> = {},
+  }: { run?: typeof layout } & PrintContentOptions = {},
 ): PrintContent {
   const present = new Set(score.tracks.map(({ id }) => id));
   const kept = { ...settings, tracks: settings.tracks.filter((id) => present.has(id)) };
-  const heading = settings.header ? printHeading(score.meta, fileName) : undefined;
+  const strip = chordStrip ? stripOf(score, kept) : undefined;
+  const heading = settings.header
+    ? printHeading(score.meta, fileName, strip)
+    : printHeading({ title: '', artist: '', album: '' }, undefined, strip);
   const result = run(score, printLayoutOptions(kept, notation, heading?.height ?? 0, content));
   return { result, settings: kept, heading };
 }

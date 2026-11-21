@@ -24,7 +24,7 @@ import { createPracticeStore, type PracticeStore } from '@/state/practice';
 import { createSelectionStore, type SelectionStore } from '@/state/selection';
 import { applyNotationDefaults } from '@/state/notation-defaults';
 import { notationDefaultsOf } from '@/state/notation-defaults-setting';
-import { CHORD_DIAGRAMS_SETTING } from '@/state/app-settings';
+import { CHORD_DIAGRAMS_SETTING, CHORD_STRIP_SETTING } from '@/state/app-settings';
 import { createSettingsStore, type SettingsStore } from '@/state/settings';
 import type { DefaultSounds } from '@/state/sound-packs';
 import { createUiStore, type UiStore } from '@/state/ui';
@@ -204,6 +204,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
       ui,
       platform,
       chordDiagrams: () => settings.get(CHORD_DIAGRAMS_SETTING),
+      chordStrip: () => settings.get(CHORD_STRIP_SETTING),
     }),
     editing,
     entry,
