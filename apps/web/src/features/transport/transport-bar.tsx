@@ -26,7 +26,8 @@ const divider = <Separator orientation="vertical" className="h-6!" />;
  * Not `role="toolbar"`: that role takes the arrow keys for roving focus, and the sliders need them.
  */
 export function TransportBar({ registry, keyboard, speedTrainer, tuner }: TransportBarProps) {
-  const source = useCommandSource(registry, keyboard, useAppServices().settings);
+  const { settings, editing } = useAppServices();
+  const source = useCommandSource(registry, keyboard, settings, editing);
 
   return (
     <CommandSourceContext value={source}>

@@ -93,17 +93,21 @@ function keyName(key: string, platform: KeyboardPlatform): string {
   return key.length === 1 ? key.toUpperCase() : key;
 }
 
-export function formatShortcut(shortcut: Shortcut, platform: KeyboardPlatform): string {
+/** One string per key cap, in the order and spelling `formatShortcut` prints them. */
+export function shortcutParts(shortcut: Shortcut, platform: KeyboardPlatform): string[] {
   // A punctuation character already implies Shift where the layout needs it (`?`, `+`, `:`), and
   // is what the user types, so its Shift is not printed.
   const shift = shortcut.shift && (/^[a-z\d ]$/i.test(shortcut.key) || shortcut.key.length > 1);
   const key = keyName(shortcut.key, platform);
-  if (platform === 'mac') {
-    return `${shortcut.alt ? '⌥' : ''}${shift ? '⇧' : ''}${shortcut.mod ? '⌘' : ''}${key}`;
-  }
-  return [shortcut.mod && 'Ctrl', shortcut.alt && 'Alt', shift && 'Shift', key]
-    .filter(Boolean)
-    .join('+');
+  const parts =
+    platform === 'mac'
+      ? [shortcut.alt && '⌥', shift && '⇧', shortcut.mod && '⌘']
+      : [shortcut.mod && 'Ctrl', shortcut.alt && 'Alt', shift && 'Shift'];
+  return [...parts.filter((part): part is string => typeof part === 'string'), key];
+}
+
+export function formatShortcut(shortcut: Shortcut, platform: KeyboardPlatform): string {
+  return shortcutParts(shortcut, platform).join(platform === 'mac' ? '' : '+');
 }
 
 /** The shortcut in `aria-keyshortcuts` syntax, which names keys as `KeyboardEvent.key` does. */
