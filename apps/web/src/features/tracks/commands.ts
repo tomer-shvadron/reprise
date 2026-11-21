@@ -4,6 +4,7 @@ import type { Command } from '@/app/command-registry';
 import type { Shortcut } from '@/app/keyboard';
 import type { AppServices } from '@/app/services';
 
+import { targetTrackOf } from './menu-target';
 import { toggleSidebarFocus } from './sidebar-focus';
 import {
   clearMuteSolo,
@@ -63,13 +64,9 @@ export type TrackCommandId =
 type TrackCommand = Command & { id: TrackCommandId };
 
 export function trackCommands(services: TrackServices & Pick<AppServices, 'ui'>): TrackCommand[] {
-  const { document, selection } = services;
-  const current = () => {
-    const id = selection.getState().currentTrack;
-    return document.getState().score?.tracks.find((track) => track.id === id);
-  };
+  const { document } = services;
   const onCurrent = (run: (id: string) => void) => () => {
-    const track = current();
+    const track = targetTrackOf(services);
     if (track) run(track.id);
   };
   const notation = (choice: Notation) =>

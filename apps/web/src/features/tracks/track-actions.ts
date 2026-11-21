@@ -14,7 +14,10 @@ import {
   visibleSet,
 } from './track-model';
 
-export type TrackServices = Pick<AppServices, 'document' | 'selection' | 'playback' | 'audio'>;
+export type TrackServices = Pick<
+  AppServices,
+  'document' | 'selection' | 'playback' | 'audio' | 'menuTarget'
+>;
 
 function trackOf(services: TrackServices, id: Id): Track | undefined {
   return services.document.getState().score?.tracks.find((track) => track.id === id);

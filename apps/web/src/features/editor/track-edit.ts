@@ -10,7 +10,7 @@ import {
 
 import type { AppServices } from '@/app/services';
 import { singleTrackOf } from '@/state/document';
-import { selectTrack } from '@/features/tracks';
+import { selectTrack, targetTrackOf } from '@/features/tracks';
 
 import { dialogsOf } from './dialogs';
 import { describeRefusal } from './refusal';
@@ -22,7 +22,10 @@ import {
   type TrackForm,
 } from './track-form';
 
-export type TrackEditServices = Pick<AppServices, 'document' | 'selection' | 'playback' | 'audio'>;
+export type TrackEditServices = Pick<
+  AppServices,
+  'document' | 'selection' | 'playback' | 'audio' | 'menuTarget'
+>;
 
 export const LAST_TRACK_REASON = 'A score keeps at least one track';
 
@@ -30,11 +33,9 @@ function trackOf(services: TrackEditServices, id: Id | undefined): Track | undef
   return services.document.getState().score?.tracks.find((track) => track.id === id);
 }
 
-/** The track a keyboard command acts on: the current one, else the first. */
+/** The track a command acts on: the one a menu was opened on, else the current one, else the first. */
 export function currentTrackOf(services: TrackEditServices): Track | undefined {
-  const { score } = services.document.getState();
-  const id = services.selection.getState().currentTrack;
-  return score?.tracks.find((track) => track.id === id) ?? score?.tracks[0];
+  return targetTrackOf(services) ?? services.document.getState().score?.tracks[0];
 }
 
 export function openTrackProperties(

@@ -1,16 +1,20 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { createTestServices } from '@/test/services';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { BOTTOM_PANEL_HEIGHT, createUiStore } from '@/state/ui';
 
 import { AppFrame } from './app-frame';
+import { AppServicesProvider } from './services-context';
 
 function renderFrame(ui = createUiStore('dark')) {
   render(
-    <TooltipProvider>
-      <AppFrame ui={ui} score={<p>score</p>} bottom={<p>fret content</p>} />
-    </TooltipProvider>,
+    <AppServicesProvider services={createTestServices()}>
+      <TooltipProvider>
+        <AppFrame ui={ui} score={<p>score</p>} bottom={<p>fret content</p>} />
+      </TooltipProvider>
+    </AppServicesProvider>,
   );
   return ui;
 }
@@ -19,14 +23,16 @@ describe('the header slot', () => {
   it('renders before the banner, above the score row, which keeps its floor', () => {
     const ui = createUiStore('dark');
     render(
-      <TooltipProvider>
-        <AppFrame
-          ui={ui}
-          header={<header>slim</header>}
-          banner={<p>strip</p>}
-          score={<p>score</p>}
-        />
-      </TooltipProvider>,
+      <AppServicesProvider services={createTestServices()}>
+        <TooltipProvider>
+          <AppFrame
+            ui={ui}
+            header={<header>slim</header>}
+            banner={<p>strip</p>}
+            score={<p>score</p>}
+          />
+        </TooltipProvider>
+      </AppServicesProvider>,
     );
     const header = screen.getByText('slim');
     expect(header.nextElementSibling).toBe(screen.getByText('strip'));
@@ -38,9 +44,11 @@ describe('the status slot', () => {
   it('is the last row, after the transport footer, which no longer holds the zoom readout', () => {
     const ui = createUiStore('dark');
     render(
-      <TooltipProvider>
-        <AppFrame ui={ui} score={<p>score</p>} transport={<p>controls</p>} status={<p>bar</p>} />
-      </TooltipProvider>,
+      <AppServicesProvider services={createTestServices()}>
+        <TooltipProvider>
+          <AppFrame ui={ui} score={<p>score</p>} transport={<p>controls</p>} status={<p>bar</p>} />
+        </TooltipProvider>
+      </AppServicesProvider>,
     );
     const footer = screen.getByRole('contentinfo', { name: 'Transport' });
     expect(footer.nextElementSibling).toBe(screen.getByText('bar'));
@@ -210,22 +218,24 @@ describe('practice mode', () => {
   function renderPractising() {
     const ui = createUiStore('dark');
     render(
-      <TooltipProvider>
-        <AppFrame
-          ui={ui}
-          header={<header>slim</header>}
-          banner={<p>strip</p>}
-          score={<p>score</p>}
-          transport={<p>controls</p>}
-          status={<p>bar</p>}
-          sidebar={<p>tracks</p>}
-          panel={<p>mixer</p>}
-          rail={<p>rail</p>}
-          bottom={<p>fret content</p>}
-          sectionStrip={<nav aria-label="Sections">sections</nav>}
-          capsule={<div role="region" aria-label="Practice controls" />}
-        />
-      </TooltipProvider>,
+      <AppServicesProvider services={createTestServices()}>
+        <TooltipProvider>
+          <AppFrame
+            ui={ui}
+            header={<header>slim</header>}
+            banner={<p>strip</p>}
+            score={<p>score</p>}
+            transport={<p>controls</p>}
+            status={<p>bar</p>}
+            sidebar={<p>tracks</p>}
+            panel={<p>mixer</p>}
+            rail={<p>rail</p>}
+            bottom={<p>fret content</p>}
+            sectionStrip={<nav aria-label="Sections">sections</nav>}
+            capsule={<div role="region" aria-label="Practice controls" />}
+          />
+        </TooltipProvider>
+      </AppServicesProvider>,
     );
     return ui;
   }

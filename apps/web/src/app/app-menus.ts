@@ -1,4 +1,5 @@
 import { editorMenus } from '@/features/editor/menus';
+import { trackMenus } from '@/features/tracks/menus';
 import { trainerMenus } from '@/features/trainer/menus';
 import { transportMenus } from '@/features/transport/menus';
 
@@ -15,6 +16,7 @@ import { practiceMenus } from './practice-mode/menus';
  */
 export const appMenuContributions: readonly MenuContribution[] = [
   ...shellMenus,
+  ...trackMenus,
   ...transportMenus,
   ...trainerMenus,
   ...editorMenus,

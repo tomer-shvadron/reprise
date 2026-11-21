@@ -10,7 +10,7 @@ import { renderWithServices } from '@/test/render';
 import { createTestServices } from '@/test/services';
 
 import { Fretboard } from './fretboard';
-import { LEFT_HANDED_STORAGE_KEY } from './fretboard-prefs';
+import { LEFT_HANDED_STORAGE_KEY } from '@/state/fretboard-prefs';
 
 afterEach(() => {
   window.localStorage.clear();

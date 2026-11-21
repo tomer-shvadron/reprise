@@ -3,6 +3,7 @@ import { cn } from 'cn';
 import { memo, type ReactNode } from 'react';
 
 import { tooltipText } from '@/app/command-control';
+import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { instrumentName } from '@/lib/gm-programs';
 import type { TrackActions } from './track-actions';
@@ -60,6 +61,11 @@ export const TrackRow = memo(function TrackRow({
   rowMenu,
 }: TrackRowProps) {
   const label = trackLabel(track, index);
+  const menu = useStaticContextMenu({
+    surface: 'track.row',
+    target: { kind: 'track', track: track.id },
+    label: `Track ${label}`,
+  });
   const disabledReason = single
     ? 'Turn on multitrack view to choose the tracks shown'
     : visible && lastVisible
@@ -68,6 +74,7 @@ export const TrackRow = memo(function TrackRow({
 
   return (
     <li
+      {...menu}
       data-audible={audible}
       className={cn(
         'flex gap-2 border-b px-2 py-1.5',

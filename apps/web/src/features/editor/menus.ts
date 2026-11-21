@@ -12,6 +12,14 @@ const clipboard: readonly MenuItemSpec[] = [
   { command: 'editor.paste', group: 'clipboard' },
 ];
 
+/** Track management is global, not `editing`, so its items name edit mode themselves. */
+const trackManagement: readonly MenuItemSpec[] = [
+  { command: ['track.add', 'track.addWindows'], group: 'track', modes: edit },
+  { command: 'track.moveUp', group: 'track', modes: edit },
+  { command: 'track.moveDown', group: 'track', modes: edit },
+  { command: 'track.remove', group: 'danger', modes: edit },
+];
+
 /**
  * The editor's items on the score's menus. In play mode each menu has one way into editing,
  * "Edit here", which switches the mode and acts on what was clicked; a play-mode menu never lists
@@ -19,6 +27,8 @@ const clipboard: readonly MenuItemSpec[] = [
  * the "Beat" and "Bar" submenus, so the menus stay short.
  */
 export const editorMenus: readonly MenuContribution[] = [
+  { surface: 'track.row', items: trackManagement },
+  { surface: 'mixer.strip', items: trackManagement },
   {
     surface: 'score.note',
     items: [
