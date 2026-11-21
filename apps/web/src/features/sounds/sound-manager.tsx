@@ -41,12 +41,25 @@ export function SoundManager() {
   const job = useStore(sounds.api, (state) => state.job);
   const problems = useStore(sounds.api, (state) => state.problems);
   const tracks = useStore(document, (state) => state.score?.tracks);
-  const [removing, setRemoving] = useState<InstalledPack | undefined>();
+  const removingId = useStore(sounds.api, (state) => state.removingId);
+  const renamingId = useStore(sounds.api, (state) => state.renamingId);
+  const removing = packs.find((pack) => pack.id === removingId);
+  const setRemoving = (pack: InstalledPack | undefined) => {
+    sounds.api.setState({ removingId: pack?.id });
+  };
   const [notice, setNotice] = useState<string | undefined>();
   const [announcement, setAnnouncement] = useState('');
   const root = useRef<HTMLDivElement>(null);
   const canDownload = platform.download !== undefined;
   const busy = job !== undefined;
+
+  // A request a menu made while the sheet was closed must not open a dialog on the next visit.
+  useEffect(
+    () => () => {
+      sounds.api.setState({ removingId: undefined, renamingId: undefined });
+    },
+    [sounds],
+  );
 
   // Focus: what a click removed (a row, the progress block, a problem) leaves focus on <body>,
   // where Escape no longer reaches the sheet. Each action names the element that gets it next.
@@ -274,6 +287,10 @@ export function SoundManager() {
                   busy={busy}
                   canDownload={canDownload}
                   onRemove={setRemoving}
+                  renaming={renamingId === pack.id}
+                  onRenaming={(on) => {
+                    sounds.api.setState({ renamingId: on ? pack.id : undefined });
+                  }}
                   onRename={(target, name) => {
                     void sounds.rename(target.id, name);
                   }}

@@ -29,12 +29,28 @@ export function LibraryScreen() {
   const error = useStore(library.store, (state) => state.error);
   // Read once per mount: relative dates need not tick while the screen is open.
   const [now] = useState(() => Date.now());
-  const [deleting, setDeleting] = useState<SongRow | undefined>();
-  const [viewing, setViewing] = useState<SongRow | undefined>();
+  const deleteId = useStore(library.store, (state) => state.deleteId);
+  const practiceLogId = useStore(library.store, (state) => state.practiceLogId);
+  const deleting = entries.find((entry) => entry.row.id === deleteId)?.row;
+  const viewing = entries.find((entry) => entry.row.id === practiceLogId)?.row;
+  const setDeleting = (row: SongRow | undefined) => {
+    library.store.setState({ deleteId: row?.id });
+  };
+  const setViewing = (row: SongRow | undefined) => {
+    library.store.setState({ practiceLogId: row?.id });
+  };
 
   useEffect(() => {
     void library.load();
   }, [library]);
+
+  // A request a menu made while the sheet was closed must not open a dialog on the next visit.
+  useEffect(
+    () => () => {
+      library.store.setState({ deleteId: undefined, practiceLogId: undefined });
+    },
+    [library],
+  );
 
   // Closing the page returns focus to the song list, on the row whose log was open.
   const wasViewing = useRef(false);

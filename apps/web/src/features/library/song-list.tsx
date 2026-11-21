@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 import { cn } from 'cn';
 
+import { useContextMenu } from '@/app/context-menu/use-context-menu';
 import { Button } from '@/components/ui/button';
 
 import type { LibraryEntry } from './search';
@@ -127,6 +128,32 @@ export function SongList({ entries, now, onOpen, onDelete, onPracticeLog }: Song
     handler();
   };
 
+  // One handler on the listbox: its rows are virtual, and a keyboard open arrives at the listbox
+  // (it keeps focus) and means the active row.
+  const menu = useContextMenu((via, event) => {
+    let entry: LibraryEntry | undefined;
+    if (via === 'pointer') {
+      const option =
+        event.target instanceof Element ? event.target.closest('[role="option"]') : null;
+      const index = entries.findIndex((candidate) => `song-${candidate.row.id}` === option?.id);
+      entry = entries[index];
+      // A right-click selects the row, as it does in a file manager.
+      if (index >= 0) setActive(index);
+    } else {
+      entry = entries[current];
+    }
+    if (!entry) return undefined;
+    const anchor = scroller.current
+      ?.querySelector(`[id="song-${entry.row.id}"]`)
+      ?.getBoundingClientRect();
+    return {
+      surface: 'library.song',
+      target: { kind: 'libraryEntry', id: entry.row.id },
+      label: `Song ${entry.row.title}`,
+      ...(anchor && { anchor }),
+    };
+  });
+
   const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
   const end = Math.min(entries.length, Math.ceil((scrollTop + height) / ROW_HEIGHT) + OVERSCAN);
   // The active row is always mounted, even scrolled out of the window, so `aria-activedescendant`
@@ -165,6 +192,7 @@ export function SongList({ entries, now, onOpen, onDelete, onPracticeLog }: Song
           setScrollTop(event.currentTarget.scrollTop);
         }}
         onKeyDown={onKeyDown}
+        {...menu}
       >
         <div style={{ height: entries.length * ROW_HEIGHT, position: 'relative' }}>
           {visible.map(({ entry, index }) => {

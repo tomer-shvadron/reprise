@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { Input } from '@/components/ui/input';
 
 import { curatedPack, updateAvailable } from './curated-packs';
@@ -132,11 +133,14 @@ const hasFiles = (transfer: DataTransfer) => transfer.types.includes('Files');
 /** A row that takes a zip dropped on it. The screen behind skips an event the row already handled. */
 function DropRow({
   packId,
+  menu,
   onDropFiles,
   className,
   children,
 }: {
   packId: string;
+  /** The row's context menu handler. */
+  menu: { onContextMenu: (event: MouseEvent<HTMLElement>) => void };
   onDropFiles?: (transfer: DataTransfer) => void;
   className: string;
   children: ReactNode;
@@ -145,6 +149,7 @@ function DropRow({
     <li
       data-pack-id={packId}
       className={className}
+      {...menu}
       onDragOver={(event) => {
         if (onDropFiles && hasFiles(event.dataTransfer)) event.preventDefault();
       }}
@@ -168,6 +173,9 @@ export interface InstalledRowProps {
   busy: boolean;
   canDownload: boolean;
   onRemove: (pack: InstalledPack) => void;
+  /** The rename form is open: held by the screen so the row's menu can open it. */
+  renaming: boolean;
+  onRenaming: (on: boolean) => void;
   onRename: (pack: InstalledPack, name: string) => void;
   onUpdate: (pack: InstalledPack) => void;
   onChooseZip: (pack: InstalledPack) => void;
@@ -175,9 +183,20 @@ export interface InstalledRowProps {
 }
 
 export function InstalledRow(props: InstalledRowProps) {
-  const { pack, usedBy, busy, canDownload } = props;
-  const [renaming, setRenaming] = useState(false);
+  const { pack, usedBy, busy, canDownload, renaming } = props;
+  const setRenaming = props.onRenaming;
   const [draft, setDraft] = useState(pack.name);
+  // However the form was opened (the button or the menu), it starts from the current name.
+  const [wasRenaming, setWasRenaming] = useState(renaming);
+  if (wasRenaming !== renaming) {
+    setWasRenaming(renaming);
+    if (renaming) setDraft(pack.name);
+  }
+  const menu = useStaticContextMenu({
+    surface: 'sounds.pack',
+    target: { kind: 'soundPack', id: pack.id, state: 'installed' },
+    label: `Sound pack ${pack.name}`,
+  });
   const listed = pack.curated ? curatedPack(pack.id) : undefined;
   const outdated = pack.curated && updateAvailable(pack);
   const renameButton = useRef<HTMLButtonElement>(null);
@@ -204,6 +223,7 @@ export function InstalledRow(props: InstalledRowProps) {
   return (
     <DropRow
       packId={pack.id}
+      menu={menu}
       {...(pack.curated && {
         onDropFiles: (transfer: DataTransfer) => {
           props.onDropZip(pack, transfer);
@@ -346,9 +366,15 @@ export function AvailableRow({
   onDropZip,
 }: AvailableRowProps) {
   const direct = pack.directDownload && canDownload;
+  const menu = useStaticContextMenu({
+    surface: 'sounds.pack',
+    target: { kind: 'soundPack', id: pack.id, state: 'available' },
+    label: `Sound pack ${pack.name}`,
+  });
   return (
     <DropRow
       packId={pack.id}
+      menu={menu}
       onDropFiles={(transfer) => {
         onDropZip(pack, transfer);
       }}
@@ -413,8 +439,13 @@ export function DamagedRow({
   damaged: DamagedPack;
   onRemove: (folder: string) => void;
 }) {
+  const menu = useStaticContextMenu({
+    surface: 'sounds.pack',
+    target: { kind: 'soundPack', id: damaged.folder, state: 'damaged' },
+    label: `Damaged folder ${damaged.folder}`,
+  });
   return (
-    <li className="border-destructive/40 flex items-center gap-3 rounded-lg border p-3">
+    <li className="border-destructive/40 flex items-center gap-3 rounded-lg border p-3" {...menu}>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <h3 className="truncate text-sm font-medium">{damaged.folder}</h3>
         <p className="text-muted-foreground text-xs">Damaged: {damaged.reason}</p>

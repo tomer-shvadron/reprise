@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 
+import { modalOpen } from '../shortcut-dispatcher';
 import { contextMenuVia, openContextMenuOn, raisedByUs, SCORE_SURFACE_SELECTOR } from './open-on';
 
 /**
@@ -17,6 +18,8 @@ export function useBodyContextMenuFallback(): void {
       if (event.defaultPrevented || raisedByUs(event)) return;
       if (doc.activeElement && doc.activeElement !== doc.body) return;
       if (contextMenuVia(event) !== 'keyboard') return;
+      // A sheet or dialog covers the score: its own surfaces answer the key, not the paper behind.
+      if (modalOpen()) return;
       const surface = doc.querySelector(SCORE_SURFACE_SELECTOR);
       if (!surface) return;
       // Only when the score answers does this event end here; else it goes on to what is under
