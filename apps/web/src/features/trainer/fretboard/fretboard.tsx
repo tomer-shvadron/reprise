@@ -342,7 +342,7 @@ export function Fretboard() {
               data-scale-chip
               className="bg-muted text-foreground flex items-center gap-1 rounded-md py-0.5 pr-0.5 pl-2"
             >
-              Scale: {overlay.label}
+              {overlay.none ? 'Song scale: none found' : `Scale: ${overlay.label}`}
               <CommandTooltip command="trainer.fretboardClearScale" label="Hide the scale">
                 <Button
                   variant="ghost"
@@ -382,7 +382,7 @@ export function Fretboard() {
         data-left-handed={leftHanded}
       >
         <StaticBoard board={board} geometry={geometry} names={names} />
-        {overlay && tuning && stableBoard && (
+        {overlay && !overlay.none && tuning && stableBoard && (
           <ScaleLayer board={stableBoard} tuning={tuning} geometry={geometry} overlay={overlay} />
         )}
         <g ref={layer} data-fretboard-notes />

@@ -16,14 +16,15 @@ import { CommandTooltip } from '@/app/command-tooltip';
 import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useAppServices } from '@/app/services-context';
 import { Button } from '@/components/ui/button';
-import type { PanelView } from '@/state/ui';
 
 import {
   PANEL_TABS,
   PRACTICE_VIEWS,
+  SONG_VIEWS,
   tabOfView,
   type PanelTabId,
   type PracticeView,
+  type SongView,
 } from './panel-views';
 import { panelId, TabList } from './tab-list';
 
@@ -32,21 +33,33 @@ const TAB_ICONS: Record<PanelTabId, LucideIcon> = {
   practice: TimerIcon,
   effects: SparklesIcon,
   history: HistoryIcon,
-  chords: MusicIcon,
+  song: MusicIcon,
 };
 
 const SUB_TAB_COMMANDS = {
   speedTrainer: 'trainer.speedTrainer',
   tuner: 'trainer.tuner',
   metronome: 'trainer.metronome',
-} as const satisfies Record<PracticeView, string>;
+  insights: 'trainer.insights',
+  chords: 'trainer.chords',
+} as const satisfies Record<PracticeView | SongView, string>;
 
 const PANEL_PREFIX = 'right-panel';
-const PRACTICE_PREFIX = 'practice';
 
-function isPracticeView(view: PanelView): view is PracticeView {
-  return tabOfView(view) === 'practice';
-}
+/** The tabs that hold several views, each with its own strip under the tab list. */
+const SUB_TABS: Partial<
+  Record<
+    PanelTabId,
+    {
+      label: string;
+      prefix: string;
+      views: readonly { view: PracticeView | SongView; label: string }[];
+    }
+  >
+> = {
+  practice: { label: 'Practice tools', prefix: 'practice', views: PRACTICE_VIEWS },
+  song: { label: 'Song views', prefix: 'song', views: SONG_VIEWS },
+};
 
 /** The tab strip over the panel's content; it reads and sets `rightPanelView` and holds no state. */
 export function PanelTabs({ children }: { children: ReactNode }) {
@@ -54,6 +67,7 @@ export function PanelTabs({ children }: { children: ReactNode }) {
   const view = useStore(ui, (state) => state.rightPanelView);
   const showPanelView = useStore(ui, (state) => state.showPanelView);
   const tab = tabOfView(view);
+  const sub = SUB_TABS[tab];
 
   return (
     <>
@@ -63,7 +77,7 @@ export function PanelTabs({ children }: { children: ReactNode }) {
         items={PANEL_TABS}
         selected={tab}
         onSelect={(id) => {
-          // Pressing the Practice tab while a practice tool shows keeps that tool.
+          // Pressing a tab that holds several views while one of them shows keeps that view.
           if (id === tab) return;
           const target = PANEL_TABS.find((item) => item.id === id);
           if (target) showPanelView(target.view);
@@ -75,12 +89,12 @@ export function PanelTabs({ children }: { children: ReactNode }) {
         aria-labelledby={`${PANEL_PREFIX}-tab-${tab}`}
         className="flex min-h-0 flex-1 flex-col"
       >
-        {isPracticeView(view) ? (
+        {sub ? (
           <>
             <TabList
-              label="Practice tools"
-              idPrefix={PRACTICE_PREFIX}
-              items={PRACTICE_VIEWS.map(({ view: id, label }) => ({
+              label={sub.label}
+              idPrefix={sub.prefix}
+              items={sub.views.map(({ view: id, label }) => ({
                 id,
                 label,
                 view: id,
@@ -92,8 +106,8 @@ export function PanelTabs({ children }: { children: ReactNode }) {
             />
             <div
               role="tabpanel"
-              id={panelId(PRACTICE_PREFIX)}
-              aria-labelledby={`${PRACTICE_PREFIX}-tab-${view}`}
+              id={panelId(sub.prefix)}
+              aria-labelledby={`${sub.prefix}-tab-${view}`}
               className="flex min-h-0 flex-1 flex-col"
             >
               {children}

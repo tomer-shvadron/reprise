@@ -1,4 +1,4 @@
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { write } from '@reprise/formats';
 import { fullScore } from '@reprise/model/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { scaleOverlayFor } from '@/features/trainer/fretboard/scale-overlay';
 import { stubViewport } from '@/features/score/test/viewport-stub';
 import type { PanelView } from '@/state/ui';
+import { aMinorRiff } from '@/test/a-minor-riff';
 import { createTestServices, fakePlatform } from '@/test/services';
 
 import { App } from './app';
@@ -38,6 +39,8 @@ type Scenario = {
   scale?: boolean;
   /** Loops the first section from the strip, the one state where its button runs a command. */
   loop?: boolean;
+  /** A song with a key to find, for the insights cards (`fullScore` has too few notes). */
+  riff?: boolean;
 };
 
 // Each right-panel view and the dock once, in the modes that show different controls. A control
@@ -49,6 +52,7 @@ const SCENARIOS: readonly Scenario[] = [
   { name: 'play, metronome', editing: false, panel: 'metronome' },
   { name: 'play, history', editing: false, panel: 'history' },
   { name: 'play, chords', editing: false, panel: 'chords' },
+  { name: 'play, song insights', editing: false, panel: 'insights', dock: true, riff: true },
   { name: 'play, scale overlay', editing: false, dock: true, scale: true },
   { name: 'edit, effects', editing: true, panel: 'effects', dock: true },
   { name: 'practice mode', editing: false, practice: true },
@@ -81,7 +85,7 @@ async function mount(scenario: Scenario, bindAll = false) {
   stubViewport(1280, 800);
   const services = createTestServices({ platform: fakePlatform() });
   render(<App services={services} keyboard="mac" onMenuCommand={() => () => undefined} />);
-  const { bytes } = await write(fullScore(), 'reprise');
+  const { bytes } = await write(scenario.riff ? aMinorRiff() : fullScore(), 'reprise');
   await act(async () => {
     await services.document.getState().openBytes('full.reprise', bytes);
   });
@@ -94,6 +98,12 @@ async function mount(scenario: Scenario, bindAll = false) {
     if (scenario.practice) ui.enterPracticeMode('play');
     if (scenario.scale) scaleOverlayFor(services).getState().show(9, 'minorPentatonic', 'manual');
   });
+  // The insights are analysed after the view opens; its cards hold the controls to check.
+  if (scenario.panel === 'insights') {
+    await waitFor(() => {
+      expect(document.querySelector('[data-insight-card="scale"]')).not.toBeNull();
+    });
+  }
   if (scenario.loop) {
     act(() => {
       document.querySelector<HTMLElement>('[data-section]')?.click();
