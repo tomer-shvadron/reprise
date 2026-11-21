@@ -4,7 +4,7 @@ import { cleanup } from '@testing-library/react';
 import { Dexie } from 'dexie';
 import { afterEach, vi } from 'vitest';
 
-import { settleLibraryWrites } from '@/features/library/library';
+import { settleLibraryWrites } from '@/features/library/library-writes';
 
 import { stubMatchMedia } from './match-media';
 
