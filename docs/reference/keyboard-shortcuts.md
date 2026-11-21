@@ -125,6 +125,9 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Import folder to library… | Library | Global | — | — |
 | Open without importing… | Library | Global | — | — |
 | Open recent song… | Library | Global | — | — |
+| Open song | Library | Global | — | — |
+| Show practice log | Library | Global | — | — |
+| Delete from library… | Library | Global | — | — |
 | Show speed trainer | Trainer | Global | — | — |
 | Start, hold or resume speed trainer | Trainer | Global | ⌥S | Alt+S |
 | Mark speed trainer pass missed | Trainer | Global | ⌥X | Alt+X |
@@ -260,4 +263,9 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Lyrics | Editor | Editing | ⌥L | Alt+L |
 | Remove chord name | Editor | Editing | — | — |
 | Show sound manager | Sounds | Global | — | — |
+| Rename sound pack | Sounds | Global | — | — |
+| Update sound pack | Sounds | Global | — | — |
+| Open download page | Sounds | Global | — | — |
+| Remove sound pack | Sounds | Global | — | — |
+| Download sound pack | Sounds | Global | — | — |
 <!-- shortcuts:end -->
