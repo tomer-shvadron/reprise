@@ -65,7 +65,13 @@ describe('the settings dialog', () => {
     });
 
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
-    expect(tabNames()).toEqual(['Appearance', 'Score', 'Playback and practice', 'Keyboard']);
+    expect(tabNames()).toEqual([
+      'Appearance',
+      'Sounds',
+      'Score',
+      'Playback and practice',
+      'Keyboard',
+    ]);
     expect(services.ui.getState().settings.open).toBe(true);
   });
 
@@ -77,8 +83,8 @@ describe('the settings dialog', () => {
     screen.getByRole('tab', { name: 'Appearance' }).focus();
     await user.keyboard('{ArrowDown}');
 
-    expect(screen.getByRole('tab', { name: 'Score', selected: true })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: 'Page' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Sounds', selected: true })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Electric guitar' })).toBeInTheDocument();
   });
 
   it('opens at the section asked for, and at the first for an unknown id', async () => {

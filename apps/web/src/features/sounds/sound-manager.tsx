@@ -35,12 +35,13 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
  * pack. The memory panel is at the top and the effects demo stays below.
  */
 export function SoundManager() {
-  const { sounds, platform, document } = useAppServices();
+  const { sounds, platform, document, playback } = useAppServices();
   const packs = useStore(sounds.api, (state) => state.packs);
   const damaged = useStore(sounds.api, (state) => state.damaged);
   const job = useStore(sounds.api, (state) => state.job);
   const problems = useStore(sounds.api, (state) => state.problems);
   const tracks = useStore(document, (state) => state.score?.tracks);
+  const trackSounds = useStore(playback, (state) => state.trackSounds);
   const [removing, setRemoving] = useState<InstalledPack | undefined>();
   const [notice, setNotice] = useState<string | undefined>();
   const [announcement, setAnnouncement] = useState('');
@@ -98,8 +99,15 @@ export function SoundManager() {
     }
   }, [job, sounds]);
 
+  // A track that names the pack, plus one that plays it as its family's default (#346).
   const usedBy = (id: string): number | undefined =>
-    tracks?.filter((track) => track.sound?.packId === id).length;
+    tracks?.filter(
+      (track) =>
+        track.sound?.packId === id ||
+        (track.sound?.packId === undefined &&
+          trackSounds[track.id]?.source === 'default' &&
+          trackSounds[track.id]?.packId === id),
+    ).length;
 
   const available = useMemo(
     () => CURATED_PACKS.filter((pack) => !packs.some((installed) => installed.id === pack.id)),
