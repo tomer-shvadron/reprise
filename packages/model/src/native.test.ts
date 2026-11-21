@@ -169,6 +169,27 @@ describe('serializeNative', () => {
     expect(decode(serializeNative(shuffled, APP))).toBe(decode(serializeNative(score, APP)));
   });
 
+  it('round-trips golpe and pick scrape, and an older document loads to the same score', () => {
+    const score = fullScore();
+    expect(parseNative(serializeNative(score, APP)).score).toEqual(score);
+
+    // The document an app from before #354 wrote: the same score, minus both keys.
+    const without = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(without);
+      if (typeof value !== 'object' || value === null) return value;
+      return Object.fromEntries(
+        Object.entries(value)
+          .filter(([key]) => key !== 'golpe' && key !== 'pickScrape')
+          .map(([key, inner]) => [key, without(inner)]),
+      );
+    };
+    const old: unknown = without(JSON.parse(decode(serializeNative(score, APP))));
+    expect(JSON.stringify(old)).not.toMatch(/golpe|pickScrape/);
+    const result = parseNative(bytesOf(old));
+    expect(result.warnings).toEqual([]);
+    expect(result.score).toEqual(without(score));
+  });
+
   it('sorts keys inside the score and keeps array order', () => {
     const score = fullScore();
     const written: unknown = JSON.parse(decode(serializeNative(score, APP)));

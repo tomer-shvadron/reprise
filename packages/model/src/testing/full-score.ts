@@ -25,6 +25,7 @@ export function fullScore(): Score {
       ],
     },
     slide: ['legato'],
+    pickScrape: 'down',
     harmonic: { kind: 'artificial', value: 12 },
     trill: { fret: 9, speed: 32 },
     leftHandFinger: 'ring',
@@ -51,6 +52,7 @@ export function fullScore(): Score {
     effects: {
       tremoloPicking: 16,
       pickStroke: 'down',
+      golpe: 'thumb',
       fadeIn: true,
       arpeggio: { direction: 'up', duration: 16 },
       brush: { direction: 'down' },
