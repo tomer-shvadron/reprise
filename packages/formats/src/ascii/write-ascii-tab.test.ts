@@ -1,4 +1,4 @@
-import type { Whammy } from '@reprise/model';
+import type { Bend, Whammy } from '@reprise/model';
 import { note, midi, score as scoreBuilder, type ScoreBuilder } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
@@ -47,6 +47,27 @@ describe('note tokens', () => {
         .beat('4', [note(5, 2)]),
     ).text;
     expect(text).toContain('G|-0-7-|');
+  });
+
+  it('writes bend targets, trills and harmonics of the drone string as neck frets', () => {
+    const bend: Bend = {
+      kind: 'bend',
+      points: [
+        { position: 0, value: 0 },
+        { position: 60, value: 4 },
+      ],
+    } as const;
+    const text = tab(
+      scoreBuilder()
+        .track('banjo')
+        .bar()
+        .beat('4', [note(5, 2, { bend })])
+        .beat('4', [note(5, 2, { trill: { fret: 4, speed: 16 } })])
+        .beat('4', [note(5, 2, { harmonic: { kind: 'natural' } })]),
+    ).text;
+    expect(text).toContain('7b9');
+    expect(text).toContain('7tr9');
+    expect(text).toContain('<7>');
   });
 
   it('writes a tie as dashes', () => {

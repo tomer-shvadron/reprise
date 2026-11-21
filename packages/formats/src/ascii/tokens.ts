@@ -123,7 +123,7 @@ function fretText(
   const { harmonic } = note;
   if (harmonic?.kind === 'natural') {
     used.add('<>');
-    return `<${num(harmonic.value ?? note.fret)}>`;
+    return `<${num(harmonic.value ?? fret)}>`;
   }
   if (harmonic) {
     const value = num(fret + (harmonic.value ?? 0));
@@ -165,7 +165,10 @@ export function noteToken(
   if (note.tie) {
     const slide = slideText(track, at, note, used);
     if (note.trill || slide.prefix !== '' || note.hammerPull) report('tied-effects');
-    const bend = note.bend && note.bend.kind !== 'hold' ? bendText(note.fret, note.bend, used) : '';
+    const bend =
+      note.bend && note.bend.kind !== 'hold'
+        ? bendText(writtenFret(track, note), note.bend, used)
+        : '';
     if (vibrato) used.add('~');
     return bend + slide.suffix + (vibrato ? '~' : '');
   }
@@ -189,10 +192,10 @@ export function noteToken(
   }
   const slide = slideText(track, at, note, used);
   let text = prefix + slide.prefix + fretText(note, used, report, track);
-  if (note.bend) text += bendText(note.fret, note.bend, used);
+  if (note.bend) text += bendText(writtenFret(track, note), note.bend, used);
   if (note.trill) {
     used.add('tr');
-    text += `tr${String(note.trill.fret)}`;
+    text += `tr${String(writtenFret(track, { string: note.string, fret: note.trill.fret }))}`;
   }
   text += slide.suffix;
   if (vibrato) {

@@ -750,6 +750,20 @@ describe('a merged second staff', () => {
   });
 });
 
+describe('a banjo drone track', () => {
+  it('is named Banjo whatever its program, and still reports the drone as lost', () => {
+    const source = score()
+      .track('banjo', { program: 25 })
+      .bar()
+      .beat('4', [note(1, 0)])
+      .build();
+    const { bytes, dropped } = writeGp(source);
+    const xml = new TextDecoder().decode(unzipSync(bytes)['Content/score.gpif']);
+    expect(xml).toContain('<Instrument>Banjo</Instrument>');
+    expect(dropped.map((drop) => drop.code)).toContain('drone');
+  });
+});
+
 describe('writing a large score', () => {
   it('writes 8 tracks by 300 bars without losses, under a megabyte', { timeout: 30_000 }, () => {
     const source = largeScore(8, 300);
