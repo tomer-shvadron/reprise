@@ -38,3 +38,20 @@ test('keyboard focus shows a control’s key caps at once, and a rebind updates 
   await expect(caps).toHaveCount(2);
   await expect(app.playButton).toHaveAttribute('aria-keyshortcuts', 'Alt+K');
 });
+
+test('a tooltip reopened while another is leaving still opens (#438)', async ({ app, page }) => {
+  await app.openWithPicker(generated('song.gp'));
+  const tooltip = page.getByRole('tooltip');
+
+  await app.playButton.focus();
+  await expect(tooltip).toContainText('Play');
+
+  // Shift+Tab then Tab straight back: Play's tooltip is reopened while its own is still leaving.
+  const previous = page.getByRole('tooltip').filter({ hasText: 'Toggle tracks' });
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  await expect(app.playButton).toBeFocused();
+  // The other tooltip's exit ends when Play's does, so this waits out the window on state.
+  await expect(previous).toHaveCount(0);
+  await expect(tooltip).toContainText('Play');
+});
