@@ -52,6 +52,7 @@ describe('timelineNeutral', () => {
   it.each([
     ['tuning', { tuning: [40, 45, 50, 55, 59, 62] }],
     ['capo', { capo: 2 }],
+    ['courses', { courses: [12, 12, 12, 12, 0, 0] }],
     ['bank', { bank: 1 }],
     ['sound pack', { sound: { packId: 'steelpack001' } }],
   ])('is false for a %s change', (_, changes) => {

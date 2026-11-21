@@ -44,6 +44,34 @@ describe('soundFamilyOf', () => {
     expect(soundFamilyOf(fretted(program))).toBe(family);
   });
 
+  it('keeps a mandolin on program 25 and a banjo out of the guitar families', () => {
+    const tuning = [55, 62, 69, 76];
+    expect(soundFamilyOf({ kind: 'fretted', program: 25, tuning, courses: [0, 0, 0, 0] })).toBe(
+      'other',
+    );
+    expect(soundFamilyOf({ kind: 'fretted', program: 25, tuning })).toBe('acoustic-guitar');
+    expect(
+      soundFamilyOf({
+        kind: 'fretted',
+        program: 25,
+        tuning: [67, 50, 55, 59, 62],
+        drone: { string: 5, fret: 5 },
+      }),
+    ).toBe('other');
+    expect(soundFamilyOf({ kind: 'fretted', program: 105, tuning })).toBe('other');
+  });
+
+  it('leaves a 12-string with its program family, so Emilyguitar plays it doubled', () => {
+    const track = {
+      kind: 'fretted' as const,
+      program: 25,
+      tuning: [40, 45, 50, 55, 59, 64],
+      courses: [12, 12, 12, 12, 0, 0],
+    };
+    expect(soundFamilyOf(track)).toBe('acoustic-guitar');
+    expect(soundFamilyOf({ ...track, program: 26 })).toBe('electric-guitar');
+  });
+
   it('takes a drum track from its kind, whatever its program', () => {
     expect(soundFamilyOf({ kind: 'drums', program: 25 })).toBe('drums');
   });

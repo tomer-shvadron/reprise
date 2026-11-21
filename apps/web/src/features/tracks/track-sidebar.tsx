@@ -183,7 +183,8 @@ function TrackList({ headerActions, rowMenu }: TrackSidebarSlots) {
 
 /** The left sidebar: every track with its mute, solo, volume, notation and visibility. */
 export function TrackSidebar({ registry, keyboard, headerActions, rowMenu }: TrackSidebarProps) {
-  const source = useCommandSource(registry, keyboard, useAppServices().settings);
+  const { settings, editing } = useAppServices();
+  const source = useCommandSource(registry, keyboard, settings, editing);
   return (
     <CommandSourceContext value={source}>
       <TrackList headerActions={headerActions} rowMenu={rowMenu} />

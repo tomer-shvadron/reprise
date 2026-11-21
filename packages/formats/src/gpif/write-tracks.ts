@@ -79,6 +79,23 @@ export function reportTrackLosses(track: Track, index: number, drops: DropCollec
       'A capo off a fretted track is lost: the notes are fingered without one, and Guitar Pro would sound them a capo higher',
     );
   }
+  // Unverified until the owner's Guitar Pro 8 reference files show how it stores a 12-string and a
+  // mandolin (#348): the gpif form is not guessed, so a track with courses is written as single
+  // strings and the lossy-export dialog says so.
+  if (track.courses?.some((offset) => offset !== null) === true) {
+    drops.drop(
+      'courses',
+      [...path, 'courses'],
+      'Doubled courses (a 12-string or mandolin) are not saved in gp files: the track reads back as single strings',
+    );
+  }
+  if (track.drone) {
+    drops.drop(
+      'drone',
+      [...path, 'drone'],
+      "A banjo's short fifth string (drone) is not saved in gp files: the track reads back without it",
+    );
+  }
   const { chorus, reverb, phaser, tremolo } = track.channel;
   if (chorus !== 0 || reverb !== 0 || phaser !== 0 || tremolo !== 0) {
     drops.drop(

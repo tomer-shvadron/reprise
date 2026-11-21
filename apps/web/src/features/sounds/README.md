@@ -151,7 +151,7 @@ and `playback.settings.memoryBudgetBytes`:
 
 ## Default sounds
 
-A track that chose no sound plays its family's default (#346). `soundFamilyOf(track)` gives the family (drums by kind, then GM programs 0-23 keys, 24-25 acoustic guitar, 26-31 electric guitar, 32-39 bass, 40-79 orchestral, else other), and `DEFAULT_SOUND_SETTINGS` holds one handle per family, `sounds.default.<family>`: `'gm'`, or a pack and optional instrument. Both guitar families default to Karoryfer Emilyguitar "Five voices" (`EMILYGUITAR_FIVE_VOICES`), the rest to General MIDI.
+A track that chose no sound plays its family's default (#346). `soundFamilyOf(track)` gives the family (drums by kind, then a banjo or a mandolin (`stringInstrumentOf`) as other, so the Emilyguitar default never plays a mandolin on program 25, while a 12-string follows its program's family and is doubled by the engine; then GM programs 0-23 keys, 24-25 acoustic guitar, 26-31 electric guitar, 32-39 bass, 40-79 orchestral, else other), and `DEFAULT_SOUND_SETTINGS` holds one handle per family, `sounds.default.<family>`: `'gm'`, or a pack and optional instrument. Both guitar families default to Karoryfer Emilyguitar "Five voices" (`EMILYGUITAR_FIVE_VOICES`), the rest to General MIDI.
 
 - `createDefaultSounds(settings)` is the `DefaultSounds` source the audio service reads (`state/sound-packs.ts`); it notifies on any handle, and the service reloads the song.
 - Precedence, in `app/audio/track-sound.ts` (`resolveTrackSound`): a pack the track names, an explicit `sound.generalMidi`, the family default, the track's GM program. The file's program only picks the family; it is never a choice.

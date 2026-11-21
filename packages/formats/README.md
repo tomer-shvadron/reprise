@@ -165,6 +165,10 @@ specifics and the places the file is ambiguous.
   fret byte, which is the GM percussion note. `GpReadResult.implicitNotation` lists the tracks
   whose file states no notation: every gp3 and gp4 track, and a GP5 track with neither flag. The
   `track-flags-dropped` info about tablature on a track without frets is now for drums only.
+  The 12-string flag (0x02) on a fretted track sets `courses`: an octave course (12) on every
+  string but the two highest, which are unison (0), so six strings give `[12, 12, 12, 12, 0, 0]`.
+  The flag is reported as dropped only where it is not applied. This is unverified against a file saved by Guitar Pro
+  (#348): `fixtures/gp5/twelve-string.gp5` is `effects.gp5` with the flag set, not a Guitar Pro file.
 - **Strings**: the file lists string 1 (highest) first and the beat's string mask uses bit 6 for
   string 1; `Track.tuning` is reversed to lowest first. A mask bit for a string the track lacks
   carries no note block (every reader of the format skips it unread) and is reported as
@@ -261,32 +265,32 @@ up in, or the `path` of an invariant violation; through `read`, a gp or gpx warn
 gpif `element` instead. `info` warnings are folded by code: one entry,
 the first location, and `count`.
 
-| Code                              | Severity | Meaning                                                                                                                                                        |
-| --------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `truncated-file`                  | error    | The file ends inside a structure; the score stops at the last complete beat.                                                                                   |
-| `corrupt-file`                    | error    | A count no real file holds (negative, or past the reader's limits: 2048 bars, 127 tracks, 1000 notice lines, 512 beats, 240 bend points); reading stops there. |
-| `invalid-value`                   | warning  | A value out of range (time signature, key, duration, fret, mixer value, tuning, …), replaced.                                                                  |
-| `note-off-string`                 | warning  | A string-mask bit for a string the track does not have, skipped.                                                                                               |
-| `tie-without-origin`              | warning  | A tied note with no earlier note on its string within three bars, released.                                                                                    |
-| `hammer-pull-without-destination` | warning  | A hammer-on or pull-off with no following note on its string.                                                                                                  |
-| `lyrics-unplaced`                 | warning  | Syllables past the lyric track's last played beat, or lyrics for a track the file lacks.                                                                       |
-| `trailing-data`                   | info     | Non-zero bytes after the last bar (GP3's four zero bytes are not reported).                                                                                    |
-| `rse-dropped`                     | info     | RSE master, track, instrument or effect settings.                                                                                                              |
-| `page-setup-dropped`              | info     | GP5 page size, margins and header and footer templates.                                                                                                        |
-| `hidden-tempo-dropped`            | info     | GP5.10's hidden tempo marks, which will show.                                                                                                                  |
-| `song-key-dropped`                | info     | The song-level key and octave (bar key signatures are kept).                                                                                                   |
-| `master-reverb-dropped`           | info     | GP5's master reverb.                                                                                                                                           |
-| `midi-routing-dropped`            | info     | MIDI port and channel numbers; the channel's settings are kept on the track.                                                                                   |
-| `track-flags-dropped`             | info     | 12-string, banjo, tuning display, hidden from the multitrack view, tablature on a drum track.                                                                  |
-| `beam-grouping-dropped`           | info     | GP5's beam grouping per time signature.                                                                                                                        |
-| `beat-display-dropped`            | info     | GP5's beam breaks, stem directions and bracket display.                                                                                                        |
-| `ottava-dropped`                  | info     | GP5's ottava lines.                                                                                                                                            |
-| `rasgueado-dropped`               | info     | A rasgueado.                                                                                                                                                   |
-| `wah-dropped`                     | info     | A GP5 wah pedal position.                                                                                                                                      |
-| `chord-construction-dropped`      | info     | The chord wizard's root, type, extensions and omissions (name and diagram are kept).                                                                           |
-| `note-duration-dropped`           | info     | A note's time-independent duration or duration percentage.                                                                                                     |
-| `bend-vibrato-dropped`            | info     | The vibrato byte on a bend point.                                                                                                                              |
-| any `validateScore` rule          | warning  | The finished score breaks an invariant; `location.path` points at it.                                                                                          |
+| Code                              | Severity | Meaning                                                                                                                                                                   |
+| --------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `truncated-file`                  | error    | The file ends inside a structure; the score stops at the last complete beat.                                                                                              |
+| `corrupt-file`                    | error    | A count no real file holds (negative, or past the reader's limits: 2048 bars, 127 tracks, 1000 notice lines, 512 beats, 240 bend points); reading stops there.            |
+| `invalid-value`                   | warning  | A value out of range (time signature, key, duration, fret, mixer value, tuning, …), replaced.                                                                             |
+| `note-off-string`                 | warning  | A string-mask bit for a string the track does not have, skipped.                                                                                                          |
+| `tie-without-origin`              | warning  | A tied note with no earlier note on its string within three bars, released.                                                                                               |
+| `hammer-pull-without-destination` | warning  | A hammer-on or pull-off with no following note on its string.                                                                                                             |
+| `lyrics-unplaced`                 | warning  | Syllables past the lyric track's last played beat, or lyrics for a track the file lacks.                                                                                  |
+| `trailing-data`                   | info     | Non-zero bytes after the last bar (GP3's four zero bytes are not reported).                                                                                               |
+| `rse-dropped`                     | info     | RSE master, track, instrument or effect settings.                                                                                                                         |
+| `page-setup-dropped`              | info     | GP5 page size, margins and header and footer templates.                                                                                                                   |
+| `hidden-tempo-dropped`            | info     | GP5.10's hidden tempo marks, which will show.                                                                                                                             |
+| `song-key-dropped`                | info     | The song-level key and octave (bar key signatures are kept).                                                                                                              |
+| `master-reverb-dropped`           | info     | GP5's master reverb.                                                                                                                                                      |
+| `midi-routing-dropped`            | info     | MIDI port and channel numbers; the channel's settings are kept on the track.                                                                                              |
+| `track-flags-dropped`             | info     | banjo, the 12-string flag where it is not applied (a drum or pitched track, under 3 strings), tuning display, hidden from the multitrack view, tablature on a drum track. |
+| `beam-grouping-dropped`           | info     | GP5's beam grouping per time signature.                                                                                                                                   |
+| `beat-display-dropped`            | info     | GP5's beam breaks, stem directions and bracket display.                                                                                                                   |
+| `ottava-dropped`                  | info     | GP5's ottava lines.                                                                                                                                                       |
+| `rasgueado-dropped`               | info     | A rasgueado.                                                                                                                                                              |
+| `wah-dropped`                     | info     | A GP5 wah pedal position.                                                                                                                                                 |
+| `chord-construction-dropped`      | info     | The chord wizard's root, type, extensions and omissions (name and diagram are kept).                                                                                      |
+| `note-duration-dropped`           | info     | A note's time-independent duration or duration percentage.                                                                                                                |
+| `bend-vibrato-dropped`            | info     | The vibrato byte on a bend point.                                                                                                                                         |
+| any `validateScore` rule          | warning  | The finished score breaks an invariant; `location.path` points at it.                                                                                                     |
 
 ## Known gaps
 
@@ -584,13 +588,15 @@ What a score can hold and gpif cannot. Practice data never reaches the writer; n
 | `volta-bracket`         | a bracket layout the reader cannot rebuild from first-bar marks (a final ending followed by unmarked bars and a repeat end)                                                                                                                                                                                                        |
 | `anacrusis`             | `anacrusis` on a bar other than the first                                                                                                                                                                                                                                                                                          |
 | `notation`              | a drum or keyboard track not on standard notation; a fretted track with a non-guitar program on standard notation only (it gets tablature, or it would read back as a keyboard); a keyboard track with a guitar program and a tuning (written without the tuning, or it reads back fretted; it reads back pitched with every note) |
+| `courses`               | `Track.courses` (a 12-string or mandolin): Guitar Pro 7 and 8's encoding of doubled courses is not known (#348), so the track is written as single strings and reads back plain                                                                                                                                                    |
+| `drone`                 | `Track.drone` (a 5-string banjo's short string): Guitar Pro 7 and 8's encoding is not known (#348), so the track is written without it and reads back without one                                                                                                                                                                  |
 | `capo`                  | a capo on a drum or keyboard track: the notes are fingered without one, so `CapoFret` stays 0 or Guitar Pro would sound them a capo higher                                                                                                                                                                                         |
 | `tempo-ramp`            | a ramp cut short by the next change, ending past the score, between beats, or on a different mark; written as a step                                                                                                                                                                                                               |
 | `tempo-collision`       | two different tempo changes at one moment; playback's winner is written                                                                                                                                                                                                                                                            |
 | `notices`               | a lone empty notice, or one holding a line break                                                                                                                                                                                                                                                                                   |
 | `text-characters`       | characters XML cannot hold (C0 controls, lone surrogates), removed                                                                                                                                                                                                                                                                 |
 
-`fullScore()` drops exactly `section-color`, `channel-effect`, `sound-override`, `chord-barre`, `mixer-change`, `stroke`, `note-dynamics` and `trill-speed`; the gp and gpx fixtures and `largeScore()` drop nothing.
+`fullScore()` drops exactly `section-color`, `courses`, `channel-effect`, `sound-override`, `chord-barre`, `drone`, `mixer-change`, `stroke`, `note-dynamics` and `trill-speed`; the gp and gpx fixtures and `largeScore()` drop nothing.
 
 ### The zip
 
