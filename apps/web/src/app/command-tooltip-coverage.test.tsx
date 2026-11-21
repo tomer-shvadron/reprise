@@ -3,6 +3,7 @@ import { write } from '@reprise/formats';
 import { fullScore } from '@reprise/model/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { scaleOverlayFor } from '@/features/trainer/fretboard/scale-overlay';
 import { stubViewport } from '@/features/score/test/viewport-stub';
 import type { PanelView } from '@/state/ui';
 import { createTestServices, fakePlatform } from '@/test/services';
@@ -33,6 +34,8 @@ type Scenario = {
   practice?: boolean;
   panel?: PanelView;
   dock?: boolean;
+  /** Marks a scale on the fretboard, which shows the chip with its Hide button. */
+  scale?: boolean;
   /** Loops the first section from the strip, the one state where its button runs a command. */
   loop?: boolean;
 };
@@ -46,6 +49,7 @@ const SCENARIOS: readonly Scenario[] = [
   { name: 'play, metronome', editing: false, panel: 'metronome' },
   { name: 'play, history', editing: false, panel: 'history' },
   { name: 'play, chords', editing: false, panel: 'chords' },
+  { name: 'play, scale overlay', editing: false, dock: true, scale: true },
   { name: 'edit, effects', editing: true, panel: 'effects', dock: true },
   { name: 'practice mode', editing: false, practice: true },
   { name: 'practice mode, section looped', editing: false, practice: true, loop: true },
@@ -88,6 +92,7 @@ async function mount(scenario: Scenario, bindAll = false) {
     if (scenario.panel) ui.showPanelView(scenario.panel);
     if (scenario.dock) ui.showBottomPanelView('fretboard');
     if (scenario.practice) ui.enterPracticeMode('play');
+    if (scenario.scale) scaleOverlayFor(services).getState().show(9, 'minorPentatonic', 'manual');
   });
   if (scenario.loop) {
     act(() => {

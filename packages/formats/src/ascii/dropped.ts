@@ -2,7 +2,7 @@ import type { ViolationPath } from '@reprise/model';
 
 /**
  * What an ASCII tab export leaves out. Rhythm, dynamics, accents, staccato, fingering, fades,
- * key signatures, clefs and mixer changes are absent by the format's convention and are not
+ * golpes, pick scrapes, key signatures, clefs and mixer changes are absent by the format's convention and are not
  * reported; these are the things a reader of the text would expect to find and will not.
  */
 export type AsciiDropCode =

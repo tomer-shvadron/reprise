@@ -161,6 +161,8 @@ function withSoundChange(
 const midiProperty = (value: number): string =>
   property('Midi', `<Number>${String(value)}</Number>`);
 
+const slideFlags = (flags: number): string => property('Slide', `<Flags>${String(flags)}</Flags>`);
+
 const TIE_DESTINATION = '<Tie origin="false" destination="true" />';
 
 /** The same tie across a barline: the two notes share a string in the last beat of bar 0. */
@@ -196,6 +198,18 @@ export const HAND_BUILT = {
         ],
         QUARTER,
       ),
+    ),
+  /** A pick slide down beside a slide out (flags 64 + 4): we keep both, alphaTab keeps one. */
+  pickScrapeWithSlideOut: (): HandBuilt =>
+    compareGpif(
+      'pick scrape beside a slide out',
+      oneBar([beat('0', '0', '0')], [note('0', 2, 5, '', slideFlags(64 + 4))], QUARTER),
+    ),
+  /** A pick slide on its own: both sides agree. */
+  pickScrapeAlone: (): HandBuilt =>
+    compareGpif(
+      'pick scrape alone',
+      oneBar([beat('0', '0', '0')], [note('0', 2, 5, '', slideFlags(128))], QUARTER),
     ),
   /** Origin, two equal middle values and a destination, falling: alphaTab keeps two points. */
   whammyMonotonic: (): HandBuilt => whammyBar('whammy monotonic', [0, -25, -50], [0, 35, 35, 43]),

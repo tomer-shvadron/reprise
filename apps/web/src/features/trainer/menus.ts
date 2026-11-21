@@ -19,6 +19,8 @@ const fretboardShown = ({ services }: MenuContext) => {
 /** The fretboard's own switches; the dock's tab carries them too, since the board is not focusable. */
 const fretboardItems: readonly MenuItemSpec[] = [
   leftHandedItem,
+  { command: 'trainer.fretboardSongScale', group: 'view' },
+  { command: 'trainer.fretboardClearScale', group: 'view' },
   { command: 'trainer.fretboard', group: 'view', label: 'Hide fretboard' },
 ];
 

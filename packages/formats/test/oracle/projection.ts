@@ -16,6 +16,8 @@ export interface NoteProjection {
   /** On the destination note, as the score model keeps it. */
   hammerPull: boolean;
   slides: string[];
+  /** The picking hand's pick scrape, which alphaTab keeps as a slide-out. */
+  pickScrape: string | null;
   bendPoints: number | null;
   /** Quarter tones at the first point, the last point and the highest point. */
   bendFrom: number | null;
@@ -77,6 +79,7 @@ export interface BeatProjection {
   brush: string | null;
   arpeggio: string | null;
   pickStroke: string | null;
+  golpe: string | null;
   fade: string | null;
   tapping: boolean;
   slapping: boolean;
