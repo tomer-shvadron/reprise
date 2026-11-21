@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { GolpeSchema } from '../beat';
 import { createHistory } from '../history';
+import { parseNative, serializeNative } from '../native';
 import { PickScrapeSchema } from '../note';
 import { validateScore } from '../validate';
 import { setBeatEffect, setBeatEffects } from './beat-commands';
@@ -44,6 +45,22 @@ describe('golpe', () => {
     expect(beatOf(batched.score, 0, 0, 0).effects.golpe).toBe('thumb');
     expect(validateScore(batched.score)).toEqual([]);
     expect(history.undo()?.score).toEqual(score);
+  });
+});
+
+describe('golpe on a rest', () => {
+  it('is valid and survives the native format', () => {
+    const score = buildScore();
+    const rest = beatOf(score, 0, 0, 2);
+    expect(rest.rest).toBe(true);
+    const { score: after } = roundTrip(
+      score,
+      setBeatEffect({ beatId: rest.id }, { effects: { golpe: 'thumb' } }),
+    );
+    expect(beatOf(after, 0, 0, 2)).toMatchObject({ rest: true, effects: { golpe: 'thumb' } });
+    expect(validateScore(after)).toEqual([]);
+    const bytes = serializeNative(after, { name: 'Reprise', version: '0.0.0' });
+    expect(parseNative(bytes).score).toEqual(after);
   });
 });
 
