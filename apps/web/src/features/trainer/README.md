@@ -208,3 +208,7 @@ together: starting one stops the other.
   (⌥S, ⌥B, the capsule's chip) does not show their panel, because a panel would end the mode; the
   capsule's `SpeedTrainerChip command="trainer.speedTrainerToggle"` shows the progress and the
   trainer announces its own steps. The explicit "Show ..." commands still open the panel.
+
+## Chords panel (#352)
+
+`chords/` is the right panel's Chords tab: a name field (with the song's own chord names as buttons), the current track's tuning and capo, and cards of generated shapes from `lib/chords`, painted by the layout's `chordDiagramPrimitives`. A card strums the shape (`strum.ts`, one `previewNote` per sounding string, 25 ms apart); in edit mode two buttons write the picked shape to the cursor's beat or to every beat of that name (`write-shape.ts`, one "Chord diagram" undo step each). `trainer.chords` and the score.chord item `trainer.chordShapesFor` open it. Not done: the playhead's chord as the starting name, and the chord strip (part 4).

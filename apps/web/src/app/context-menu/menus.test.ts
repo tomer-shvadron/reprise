@@ -180,4 +180,14 @@ describe('the context menus', () => {
       expect(top).toContain('editor.nameChordFromNotes');
     }
   });
+
+  it('list "Chord shapes…" on a chord in both modes', () => {
+    const [target] = TARGETS['score.chord'] ?? [];
+    if (!target) throw new Error('no chord target');
+    for (const mode of ['play', 'edit'] as const) {
+      const entries = resolveFor('score.chord', target, mode);
+      const all = entries.flatMap((entry) => (entry.kind === 'item' ? [entry.command.id] : []));
+      expect(all, mode).toContain('trainer.chordShapesFor');
+    }
+  });
 });
