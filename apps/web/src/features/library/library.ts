@@ -20,6 +20,7 @@ import { draftNativePath, draftSidecarPath } from './drafts/draft-paths';
 import { createDraftRecovery, type DraftRecovery } from './drafts/recovery';
 import { stem } from './import/song-row';
 import { fromPicked, resolveDrop, type DropSnapshot, type ImportSource } from './import/sources';
+import { createAsciiExporter, type AsciiExporter } from './save/ascii-export';
 import {
   createExporter,
   createExportPromptStore,
@@ -85,6 +86,8 @@ export interface Library {
   exportGuitarPro(): Promise<void>;
   /** The question the export dialog is asking, if any. */
   exportPrompt: ExportPromptStore;
+  /** File > Export as ASCII tab and Copy as ASCII tab (#350); neither is a save. */
+  asciiExport: AsciiExporter;
   dismissNotice(): void;
   drafts: Drafts;
   /** The progress of the running or last batch import. */
@@ -150,7 +153,7 @@ export interface LibraryOptions {
 export function createLibrary(
   services: Pick<
     AppServices,
-    'document' | 'playback' | 'selection' | 'audio' | 'platform' | 'ui' | 'settings'
+    'document' | 'playback' | 'selection' | 'audio' | 'platform' | 'ui' | 'settings' | 'menuTarget'
   >,
   options: LibraryOptions = {},
 ): Library {
@@ -249,6 +252,14 @@ export function createLibrary(
     repo,
     promptStore: exportPrompt,
     onUpdated: replaceRow,
+    notify,
+  });
+
+  const asciiExport = createAsciiExporter({
+    document: services.document,
+    selection: services.selection,
+    menuTarget: services.menuTarget,
+    platform: services.platform,
     notify,
   });
 
@@ -480,6 +491,7 @@ export function createLibrary(
     saver,
     exportGuitarPro,
     exportPrompt,
+    asciiExport,
     dismissNotice() {
       store.setState({ notice: undefined });
     },

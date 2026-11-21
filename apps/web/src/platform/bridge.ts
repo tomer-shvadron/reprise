@@ -182,6 +182,7 @@ export const MENU_COMMAND_IDS = [
   'file.save',
   'file.saveAs',
   'file.export',
+  'file.exportAsciiTab',
   'file.print',
   'edit.undo',
   'edit.redo',

@@ -3,6 +3,7 @@ import type { AppServices } from '@/app/services';
 import { whenSaved } from '@/app/when-saved';
 
 import { libraryOf } from './library';
+import { asciiScopeOf, hasFrettedTrack } from './save/ascii-scope';
 
 export type LibraryCommandId =
   | 'library.show'
@@ -12,7 +13,9 @@ export type LibraryCommandId =
   | 'library.openRecent'
   | 'library.openSong'
   | 'library.showPracticeLog'
-  | 'library.deleteSong';
+  | 'library.deleteSong'
+  | 'file.exportAsciiTab'
+  | 'edit.copyAsciiTab';
 
 type LibraryCommand = Command & { id: LibraryCommandId };
 
@@ -29,7 +32,35 @@ export function libraryCommands(services: AppServices): LibraryCommand[] {
     return target?.kind === 'libraryEntry' ? target.id : undefined;
   };
   const onRow = () => services.menuTarget.getState().target?.kind === 'libraryEntry';
+  const hasScore = () => services.document.getState().score !== undefined;
   return [
+    {
+      id: 'file.exportAsciiTab',
+      title: 'Export as ASCII tab…',
+      // No default key: Settings > Keyboard can bind one. Writes a .txt copy, never a save.
+      enabled: hasScore,
+      run: () => {
+        libraryOf(services).asciiExport.open();
+      },
+    },
+    {
+      id: 'edit.copyAsciiTab',
+      title: 'Copy as ASCII tab',
+      // Greyed in the palette when nothing is selected or the selection has no strings; a menu
+      // has set its target by the time this is read.
+      enabled: () => {
+        const { score, view } = services.document.getState();
+        if (!score) return false;
+        const scope = asciiScopeOf(
+          score,
+          services.selection.getState(),
+          services.menuTarget.getState().target,
+          view,
+        );
+        return scope !== undefined && hasFrettedTrack(score, scope.tracks);
+      },
+      run: () => libraryOf(services).asciiExport.copy(),
+    },
     {
       id: 'library.show',
       title: 'Show library',

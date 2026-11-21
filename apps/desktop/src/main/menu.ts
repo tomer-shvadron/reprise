@@ -16,7 +16,9 @@ export const MENU_COMMANDS = {
   'file.open': { label: 'Open…' },
   'file.save': { label: 'Save' },
   'file.saveAs': { label: 'Save As…' },
-  'file.export': { label: 'Export as Guitar Pro…' },
+  // The labels of the File > Export submenu's items; the submenu's own title is in the template.
+  'file.export': { label: 'Guitar Pro…' },
+  'file.exportAsciiTab': { label: 'ASCII Tab…' },
   'file.print': { label: 'Print…' },
   // The renderer replays a focused text field's own undo, so these replace the native roles.
   'edit.undo': { label: 'Undo' },
@@ -127,6 +129,12 @@ export function menuTemplate({
           })),
   };
 
+  // #351 adds its Image… item here.
+  const exportMenu: MenuItemConstructorOptions = {
+    label: 'Export',
+    submenu: [command('file.export'), command('file.exportAsciiTab')],
+  };
+
   return [
     ...(isMac
       ? [
@@ -159,7 +167,7 @@ export function menuTemplate({
         separator,
         command('file.save'),
         command('file.saveAs'),
-        command('file.export'),
+        exportMenu,
         separator,
         command('file.print'),
         // macOS keeps Settings… and Quit in the application menu.
