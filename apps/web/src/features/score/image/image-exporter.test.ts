@@ -24,9 +24,14 @@ function song() {
 
 const png = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
 
-function setup(bars?: { start: number; end: number }) {
+function longSong() {
+  const builder = score().title('Long').track('guitar', { name: 'Lead' });
+  for (let bar = 0; bar < 120; bar++) builder.bar().beat('4', [note(1, bar % 12)]);
+  return builder.build({ ids: 'sequential' });
+}
+
+function setup(bars?: { start: number; end: number }, built = song()) {
   const services = createTestServices();
-  const built = song();
   const selection: ImageSelection | undefined = bars && {
     tracks: built.tracks.map(({ id }) => id),
     bars,
@@ -148,6 +153,33 @@ describe('Export', () => {
     expect(exporter.store.getState().dialog).toBeDefined();
   });
 
+  it('refuses, rather than export the whole score, when the selected bars are gone', async () => {
+    const services = createTestServices();
+    const built = song();
+    services.document.setState({ score: built });
+    let selected: { tracks: string[]; bars: { start: number; end: number } } | undefined = {
+      tracks: built.tracks.map(({ id }) => id),
+      bars: { start: 0, end: 2 },
+    };
+    const saveFile = vi.fn<(name: string, bytes: Uint8Array) => Promise<string | undefined>>(() =>
+      Promise.resolve('/x/out'),
+    );
+    const exporter = createImageExporter({
+      document: services.document,
+      ui: services.ui,
+      platform: fakePlatform({ saveFile }),
+      selectionScope: () => selected,
+      notify: () => undefined,
+      render: { outlines: () => Promise.resolve(outlines), yieldFrame: () => Promise.resolve() },
+    });
+    exporter.open();
+    expect(exporter.store.getState().dialog?.scope).toBe('bars');
+    selected = undefined;
+    await exporter.submit();
+    expect(saveFile).not.toHaveBeenCalled();
+    expect(exporter.store.getState().dialog?.error).toMatch(/selected bars are gone/u);
+  });
+
   it('shows the failure in the dialog and keeps it open', async () => {
     const { exporter, saveFile } = setup();
     saveFile.mockRejectedValueOnce(new Error('disk full'));
@@ -231,6 +263,30 @@ describe('Copy as image', () => {
       expect.objectContaining({ scale: 2 }),
     );
     expect(notify).toHaveBeenCalledWith('Copied 2 bars as an image.');
+  });
+
+  it('copies page 1 of a selection longer than a page, renders only that page and says so', async () => {
+    const written = clipboard();
+    const { exporter, rasterise, notify } = setup({ start: 0, end: 120 }, longSong());
+    await exporter.copy();
+    expect(rasterise).toHaveBeenCalledTimes(1);
+    const blob = await written[0]?.['image/png'];
+    expect(
+      new Uint8Array(await (blob?.arrayBuffer() ?? Promise.resolve(new ArrayBuffer(0)))),
+    ).toEqual(png);
+    expect(notify).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^Copied page 1 of \d+ as an image; the selection is longer than a page\.$/u,
+      ),
+    );
+  });
+
+  it('reaches clipboard.write before its first await, so the click is still the activation', async () => {
+    const written = clipboard();
+    const { exporter } = setup({ start: 0, end: 2 });
+    const copying = exporter.copy();
+    expect(written).toHaveLength(1);
+    await copying;
   });
 
   it('asks for a selection when there is none', async () => {

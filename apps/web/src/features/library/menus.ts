@@ -1,6 +1,6 @@
 import type { MenuContext, MenuContribution } from '@/app/context-menu/types';
 
-import { asciiScopeOf, hasFrettedTrack } from './save/ascii-scope';
+import { asciiScopeOf, hasFrettedTrack, imageScopeOf } from './save/ascii-scope';
 
 /** Hidden when everything the menu would copy is a drum or pitched track, which has no strings. */
 const copyable = ({ services, target }: MenuContext) => {
@@ -20,7 +20,7 @@ const selected = ({ services, target }: MenuContext) => {
   const { score, view } = services.document.getState();
   return (
     score !== undefined &&
-    asciiScopeOf(score, services.selection.getState(), target, view) !== undefined
+    imageScopeOf(score, services.selection.getState(), target, view) !== undefined
   );
 };
 

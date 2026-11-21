@@ -8,6 +8,15 @@ function pngSize(bytes: Uint8Array): { width: number; height: number } {
   return { width: view.getUint32(16), height: view.getUint32(20) };
 }
 
+test('the preview serves the CSP the export has to live under, with data: images and no blob:', async ({
+  page,
+}) => {
+  const response = await page.request.get('/');
+  const policy = response.headers()['content-security-policy'] ?? '';
+  expect(policy).toMatch(/img-src [^;]*data:/u);
+  expect(policy).not.toMatch(/img-src [^;]*blob:/u);
+});
+
 test('Export as image writes a 2x PNG of page 1 through the save dialog, under the production CSP', async ({
   app,
   page,

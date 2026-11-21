@@ -23,7 +23,7 @@ import { createDraftRecovery, type DraftRecovery } from './drafts/recovery';
 import { stem } from './import/song-row';
 import { fromPicked, resolveDrop, type DropSnapshot, type ImportSource } from './import/sources';
 import { createAsciiExporter, type AsciiExporter } from './save/ascii-export';
-import { asciiScopeOf } from './save/ascii-scope';
+import { imageScopeOf } from './save/ascii-scope';
 import { trackWrite } from './library-writes';
 import {
   createExporter,
@@ -279,7 +279,7 @@ export function createLibrary(
     selectionScope: (useTarget) => {
       const { score, view } = services.document.getState();
       return score
-        ? asciiScopeOf(
+        ? imageScopeOf(
             score,
             services.selection.getState(),
             useTarget ? services.menuTarget.getState().target : undefined,

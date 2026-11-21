@@ -3,7 +3,7 @@ import type { AppServices } from '@/app/services';
 import { whenSaved } from '@/app/when-saved';
 
 import { libraryOf } from './library';
-import { asciiScopeOf, hasFrettedTrack } from './save/ascii-scope';
+import { asciiScopeOf, hasFrettedTrack, imageScopeOf } from './save/ascii-scope';
 
 export type LibraryCommandId =
   | 'library.show'
@@ -81,7 +81,7 @@ export function libraryCommands(services: AppServices): LibraryCommand[] {
         const { score, view } = services.document.getState();
         return (
           score !== undefined &&
-          asciiScopeOf(
+          imageScopeOf(
             score,
             services.selection.getState(),
             services.menuTarget.getState().target,

@@ -85,7 +85,7 @@ export function ImageExportDialog({ exporter }: { exporter: ImageExporter }) {
         <DialogHeader>
           <DialogTitle>Export as image</DialogTitle>
           <DialogDescription>
-            Writes the score as SVG or PNG in print colours. Several pages go into one zip.
+            Writes the score as SVG or PNG. Several pages go into one zip.
           </DialogDescription>
         </DialogHeader>
         <div role="radiogroup" aria-labelledby={scopeLabel} className="flex flex-col gap-2">
@@ -157,7 +157,7 @@ export function ImageExportDialog({ exporter }: { exporter: ImageExporter }) {
             )}
           </OptionRow>
         )}
-        <OptionRow label="Background">
+        <OptionRow label="Background" hint="Exported in print colours.">
           {(labelledBy) => (
             <ToggleGroup
               type="single"
@@ -174,7 +174,7 @@ export function ImageExportDialog({ exporter }: { exporter: ImageExporter }) {
             </ToggleGroup>
           )}
         </OptionRow>
-        <OptionRow label="Paper" hint="Exported in print colours.">
+        <OptionRow label="Paper">
           {(labelledBy) => (
             <ToggleGroup
               type="single"

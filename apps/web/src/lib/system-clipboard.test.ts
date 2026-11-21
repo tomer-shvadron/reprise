@@ -88,3 +88,29 @@ describe('copyImage', () => {
     );
   });
 });
+
+describe('copyImage when the image fails', () => {
+  it('says the image could not be made, not that the clipboard refused it', async () => {
+    Object.defineProperty(globalThis, 'ClipboardItem', {
+      value: class {
+        constructor(readonly parts: Record<string, Promise<Blob>>) {}
+      },
+      configurable: true,
+    });
+    // Chromium rejects `write` with the image promise's own error.
+    provide({
+      write: async (items: { parts: Record<string, Promise<Blob>> }[]) => {
+        await Promise.all(items.flatMap((item) => Object.values(item.parts)));
+        throw new Error('layout failed');
+      },
+    });
+    try {
+      const failing = Promise.reject<Blob>(new Error('layout failed'));
+      await expect(copyImage(failing)).rejects.toThrow(
+        'the image could not be made (layout failed)',
+      );
+    } finally {
+      Reflect.deleteProperty(globalThis, 'ClipboardItem');
+    }
+  });
+});

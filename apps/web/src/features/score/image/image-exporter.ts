@@ -186,7 +186,13 @@ export function createImageExporter(deps: ImageExporterDeps): ImageExporter {
       const { dialog } = store.getState();
       if (!dialog || running) return;
       // `selectionScope` is read now, not at open: the selection may have moved since.
-      const request = requestOf(dialog, selectionScope(false));
+      const selection = selectionScope(false);
+      if (dialog.scope === 'bars' && !selection) {
+        // Exporting the whole score instead would hand over what was not asked for.
+        patch({ error: 'The selected bars are gone. Choose another scope.' });
+        return;
+      }
+      const request = requestOf(dialog, selection);
       if (!request || request.tracks.length === 0) return;
       const { format, scale, background, paper } = dialog;
       remembered = { format, scale, background, paper };
@@ -268,9 +274,9 @@ export function createImageExporter(deps: ImageExporterDeps): ImageExporter {
         await copyImage(png);
         const bars = selection.bars.end - selection.bars.start;
         notify(
-          `Copied ${String(bars)} ${bars === 1 ? 'bar' : 'bars'} as an image.${
-            pages > 1 ? ' The selection is longer than a page: only the first page was copied.' : ''
-          }`,
+          pages > 1
+            ? `Copied page 1 of ${String(pages)} as an image; the selection is longer than a page.`
+            : `Copied ${String(bars)} ${bars === 1 ? 'bar' : 'bars'} as an image.`,
         );
       } catch (error) {
         notify(`Could not copy as an image: ${message(error)}`, 'error');
