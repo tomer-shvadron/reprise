@@ -13,7 +13,7 @@ It holds the speed trainer (WP-070) and the entry points the lead stubbed in WP-
 ## What it can rely on
 
 - `ui.rightPanelView` and `ui.showPanelView(view)`: which tool the right panel shows
-  (`'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'effects' | 'history'`; the last two are not trainer tools, so `app.tsx` renders them and `TrainerView` excludes them). The fretboard lives in the bottom region
+  (`'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'effects' | 'history' | 'insights' | 'chords'`; the last two are not trainer tools, so `app.tsx` renders them and `TrainerView` excludes them). The fretboard lives in the bottom region
   instead: `ui.bottomPanel` (`{ open, view }`), `ui.toggleBottomPanelView('fretboard')` and
   `ui.bottomPanelHeight` (#206). `TrainerPanel` renders it there as `view="fretboard"`.
 - `practice` (`state/practice.ts`), the running session WP-073 stores: `start` on first play, which
@@ -211,7 +211,7 @@ together: starting one stops the other.
 
 ## Chords panel (#352)
 
-`chords/` is the right panel's Chords tab: a name field (with the song's own chord names as buttons), the current track's tuning and capo, and cards of generated shapes from `lib/chords`, painted by the layout's `chordDiagramPrimitives`. A card strums the shape (`strum.ts`, one `previewNote` per sounding string, 25 ms apart); in edit mode two buttons write the picked shape to the cursor's beat or to every beat of that name (`write-shape.ts`, one "Chord diagram" undo step each). `trainer.chords` and the score.chord item `trainer.chordShapesFor` open it. An empty tab seeds its name from the cursor's chord, the playhead's, then the song's first. A switch in the tab turns the chord strip (`score.chordStrip`, drawn by `app/chord-strip.tsx`, see the score README) on and off.
+`chords/` is the Chords sub-tab of the right panel's Song tab (beside Insights): a name field (with the song's own chord names as buttons), the current track's tuning and capo, and cards of generated shapes from `lib/chords`, painted by the layout's `chordDiagramPrimitives`. A card strums the shape (`strum.ts`, one `previewNote` per sounding string, 25 ms apart); in edit mode two buttons write the picked shape to the cursor's beat or to every beat of that name (`write-shape.ts`, one "Chord diagram" undo step each). `trainer.chords` and the score.chord item `trainer.chordShapesFor` open it. An empty tab seeds its name from the cursor's chord, the playhead's, then the song's first. A switch in the tab turns the chord strip (`score.chordStrip`, drawn by `app/chord-strip.tsx`, see the score README) on and off.
 
 ### The scale overlay (#353)
 
@@ -224,7 +224,7 @@ tool (`scale-picker.tsx`, a tonic and a scale from `SCALES`). `trainer.fretboard
 insights store for the song's scale (`songScaleOf`) and `trainer.fretboardClearScale` hides the
 overlay; neither has a default key. Tones are spelled by degree (A blues has E♭, D harmonic minor a C♯) and a
 picked tonic keeps its spelling. A song overlay retains the insights store while it shows and takes
-each new result's scale, so it follows edits (and clears when the song no longer has a scale).
+each new result's scale, so it follows edits; while the song has no scale it stays on, draws nothing and the chip reads "Song scale: none found".
 
 ### Song insights (#353)
 
@@ -236,5 +236,5 @@ never cloned, which would cost about 20 times the analysis. `insights-store.ts` 
 analyses only while retained (the panel is mounted or a song overlay shows), at once on a document
 open and 400 ms after the last edit, one request at a time with the latest winning, caching per
 score object and dropping an answer for a score that is no longer open. "Analysing…" is announced
-only after 300 ms. `insights-panel.tsx` shows the Key, Scale, Key changes and Shape cards (`cards/`);
+only after 300 ms. When nothing wants the insights (the panel unmounted, no song overlay, the document closed) the worker is ended and a later request makes a new one; a document open is analysed one macrotask after the open. `insights-panel.tsx` shows the Key, Scale, Key changes and Shape cards (`cards/`);
 `trainer.insights` opens it. The right panel's Song tab holds Insights and Chords as sub-tabs.
