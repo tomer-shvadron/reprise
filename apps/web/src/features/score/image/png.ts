@@ -4,6 +4,8 @@
  */
 const SIGNATURE_AND_IHDR = 8 + 25;
 const METRES_PER_INCH = 0.0254;
+const SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const IHDR = [0x49, 0x48, 0x44, 0x52];
 
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -23,7 +25,11 @@ export function crc32(bytes: Uint8Array): number {
 
 /** `png` with a `pHYs` chunk after `IHDR`; the input is returned unchanged when it is not a PNG. */
 export function withDpi(png: Uint8Array, dpi: number): Uint8Array {
-  const isPng = png.length >= SIGNATURE_AND_IHDR && png[1] === 0x50 && png[2] === 0x4e;
+  // The splice is at a fixed offset, so the whole signature and an IHDR right after it must be there.
+  const isPng =
+    png.length >= SIGNATURE_AND_IHDR &&
+    SIGNATURE.every((byte, i) => png[i] === byte) &&
+    IHDR.every((byte, i) => png[12 + i] === byte);
   if (!isPng) return png;
   const perMetre = Math.round(dpi / METRES_PER_INCH);
   const chunk = new Uint8Array(4 + 4 + 9 + 4);

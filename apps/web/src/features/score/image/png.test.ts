@@ -31,6 +31,13 @@ describe('png', () => {
     expect([...out.subarray(54)]).toEqual([...PIXEL.subarray(33)]);
   });
 
+  it('leaves a file with the signature but no IHDR in place, and a truncated one', () => {
+    const noHeader = PIXEL.slice();
+    noHeader.set([0x58, 0x58, 0x58, 0x58], 12);
+    expect(withDpi(noHeader, 96)).toBe(noHeader);
+    expect(withDpi(PIXEL.subarray(0, 20), 96)).toEqual(PIXEL.subarray(0, 20));
+  });
+
   it('returns something that is not a PNG unchanged', () => {
     const text = new TextEncoder().encode('not a png at all, but long enough to try'.repeat(2));
     expect(withDpi(text, 96)).toBe(text);

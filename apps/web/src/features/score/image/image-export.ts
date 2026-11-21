@@ -6,9 +6,14 @@
  * is what Print paints. A bar range is cut out with `sliceScore`, laid out without the heading on
  * 24 px margins and cropped to its content.
  */
-import { zipSync, type Zippable } from 'fflate';
+import { Zip, ZipDeflate, ZipPassThrough } from 'fflate';
 
-import { layout as layoutScore, type LayoutResult, type Page } from '@reprise/layout';
+import {
+  layout as layoutScore,
+  type LayoutOptions,
+  type LayoutResult,
+  type Page,
+} from '@reprise/layout';
 import type { Id, Notation, Score } from '@reprise/model';
 
 import { safeName } from '@/features/library/import/safe-name';
@@ -17,7 +22,7 @@ import type { Platform } from '@/platform/platform';
 
 import { loadOutlines, type Outlines } from './outlines';
 import { svgToPng, type Rasterise } from './rasterise';
-import { sliceScore } from './slice-score';
+import { clampRange, sliceScore } from './slice-score';
 import { pageSvgReport, type ImageBackground } from './svg-page';
 import { layoutForPrint, printLayoutOptions, type PrintSettings } from '../print-layout';
 import type { PaperSize } from '../view-options';
@@ -48,6 +53,9 @@ export interface ImageExportRequest {
    */
   tracks: readonly Id[];
   notation: Record<Id, Notation>;
+  /** The view's settings, as Print takes them; left out, layout's defaults. */
+  tiedNotes?: LayoutOptions['tiedNotes'];
+  chordDiagrams?: boolean;
 }
 
 export interface ImageExportDeps {
@@ -56,7 +64,7 @@ export interface ImageExportDeps {
   outlines?: () => Promise<Outlines>;
   /** `svgToPng` unless given. */
   rasterise?: Rasterise;
-  /** Resolves when the UI has had a frame; tests pass `Promise.resolve`. */
+  /** Resolves when the UI has had a turn; tests pass `Promise.resolve`. */
   yieldFrame?: () => Promise<void>;
   signal?: AbortSignal;
   onProgress?: (progress: { done: number; total: number }) => void;
@@ -98,13 +106,23 @@ export class ExportCancelled extends Error {
   }
 }
 
-function afterFrame(): Promise<void> {
+/**
+ * Gives the UI its turn between pages. A `MessageChannel` message is a macrotask that is neither
+ * held until a frame (`requestAnimationFrame` stalls in a hidden or occluded window and costs a
+ * frame per page) nor throttled like a background timer.
+ */
+function afterTask(): Promise<void> {
   return new Promise((resolve) => {
-    if (typeof requestAnimationFrame === 'function')
-      requestAnimationFrame(() => {
-        resolve();
-      });
-    else setTimeout(resolve, 0);
+    if (typeof MessageChannel === 'undefined') {
+      setTimeout(resolve, 0);
+      return;
+    }
+    const { port1, port2 } = new MessageChannel();
+    port1.onmessage = () => {
+      port1.close();
+      resolve();
+    };
+    port2.postMessage(null);
   });
 }
 
@@ -131,9 +149,14 @@ interface Plan {
 
 function planOf(request: ImageExportRequest): Plan {
   const { score, scope, paper, tracks, notation, fileName } = request;
+  const content = {
+    ...(request.tiedNotes !== undefined && { tiedNotes: request.tiedNotes }),
+    ...(request.chordDiagrams !== undefined && { chordDiagrams: request.chordDiagrams }),
+  };
   const settings: PrintSettings = { tracks: [...tracks], paper, header: true, pageNumbers: false };
   if (scope.kind === 'bars') {
-    const sliced = sliceScore(score, scope.start, scope.end);
+    const range = clampRange(score, scope.start, scope.end);
+    const sliced = sliceScore(score, range.start, range.end);
     const present = new Set(sliced.tracks.map(({ id }) => id));
     const kept = {
       ...settings,
@@ -141,7 +164,7 @@ function planOf(request: ImageExportRequest): Plan {
       tracks: settings.tracks.filter((id) => present.has(id)),
     };
     const options = {
-      ...printLayoutOptions(kept, notation, 0),
+      ...printLayoutOptions(kept, notation, 0, content),
       margins: {
         top: SELECTION_MARGIN,
         right: SELECTION_MARGIN,
@@ -165,10 +188,10 @@ function planOf(request: ImageExportRequest): Plan {
           height: Math.min(page.bbox.height, bottom - page.bbox.y + SELECTION_MARGIN),
         };
       },
-      label: `bars ${String(scope.start + 1)}-${String(scope.end)}`,
+      label: `bars ${String(range.start + 1)}-${String(range.end)}`,
     };
   }
-  const { result, heading } = layoutForPrint(score, settings, notation, fileName);
+  const { result, heading } = layoutForPrint(score, settings, notation, fileName, content);
   const all = result.pages.map((page, i) => ({ page, number: i + 1 }));
   if (scope.kind === 'page') {
     const wanted = Math.min(Math.max(1, Math.round(scope.page)), all.length);
@@ -177,15 +200,23 @@ function planOf(request: ImageExportRequest): Plan {
   return { result, heading, pages: all, label: '' };
 }
 
-/** The images of a request, in page order, with the name to save them under. */
-export async function renderImages(
+export interface PreparedImages {
+  pageCount: number;
+  /** What the saved file is called: the image itself, or the zip of several. */
+  fileName: string;
+  /** Renders each page in order and hands it over; nothing is kept here. */
+  run: (onImage: (image: ExportedImage) => void) => Promise<{ fallbackTexts: number }>;
+}
+
+/** Lays the request out and names its files; `run` then renders page by page. */
+export async function prepareImages(
   request: ImageExportRequest,
   deps: Omit<ImageExportDeps, 'platform'>,
-): Promise<RenderedImages> {
+): Promise<PreparedImages> {
   const { signal, onProgress } = deps;
   const outlines = await (deps.outlines ?? loadOutlines)();
   const rasterise = deps.rasterise ?? svgToPng;
-  const yieldFrame = deps.yieldFrame ?? afterFrame;
+  const yieldFrame = deps.yieldFrame ?? afterTask;
   const throwIfAborted = (): void => {
     if (signal?.aborted) throw new ExportCancelled();
   };
@@ -196,54 +227,95 @@ export async function renderImages(
   const base = baseName(request.score, request.fileName);
   const stem = plan.label ? `${base} ${plan.label}` : base;
   const suffix = format === 'png' && scale > 1 ? `@${String(scale)}x` : '';
-  const digits = String(plan.pages.length).length;
-  const single = plan.pages.length === 1;
+  // Padded to the layout's page count, so page 7 of 64 is `p07` whether it is alone or in a zip.
+  const digits = String(plan.result.pages.length).length;
   const total = plan.pages.length;
+  const single = total === 1;
+  // A page of a whole-score export is `p01`; a lone page keeps its number so it names itself.
+  const nameOf = ({ number }: { number: number }): string =>
+    `${stem}${single && request.scope.kind !== 'page' ? '' : ` p${pad(number, digits)}`}${suffix}.${format}`;
 
-  const images: ExportedImage[] = [];
-  let fallbackTexts = 0;
-  for (const [i, { page, number }] of plan.pages.entries()) {
-    throwIfAborted();
-    onProgress?.({ done: i, total });
-    const crop = plan.crop?.(page, plan.result);
-    const report = pageSvgReport({
-      layout: plan.result,
-      page,
-      outlines,
-      background: request.background,
-      heading: plan.heading,
-      title: request.score.meta.title.trim() || undefined,
-      ...(crop && { crop }),
-    });
-    fallbackTexts += report.fallbackTexts;
-    const width = crop?.width ?? page.bbox.width;
-    const height = crop?.height ?? page.bbox.height;
-    const bytes =
-      format === 'svg'
-        ? new TextEncoder().encode(report.svg)
-        : await rasterise(report.svg, { width, height, scale });
-    // A page of a whole-score export is `p01`; a lone page keeps its number so it names itself.
-    const pageTag = single && request.scope.kind !== 'page' ? '' : ` p${pad(number, digits)}`;
-    images.push({ name: `${stem}${pageTag}${suffix}.${format}`, bytes, width, height });
-    await yieldFrame();
-  }
-  throwIfAborted();
-  onProgress?.({ done: total, total });
   return {
-    images,
-    fileName: single
-      ? (images[0]?.name ?? `${stem}.${format}`)
-      : `${stem} (${format}${suffix}).zip`,
-    fallbackTexts,
+    pageCount: total,
+    fileName: single ? nameOf(plan.pages[0] ?? { number: 1 }) : `${stem} (${format}${suffix}).zip`,
+    run: async (onImage) => {
+      let fallbackTexts = 0;
+      for (const [i, item] of plan.pages.entries()) {
+        throwIfAborted();
+        onProgress?.({ done: i, total });
+        const crop = plan.crop?.(item.page, plan.result);
+        const report = pageSvgReport({
+          layout: plan.result,
+          page: item.page,
+          outlines,
+          background: request.background,
+          heading: plan.heading,
+          title: request.score.meta.title.trim() || undefined,
+          ...(crop && { crop }),
+        });
+        fallbackTexts += report.fallbackTexts;
+        const width = crop?.width ?? item.page.bbox.width;
+        const height = crop?.height ?? item.page.bbox.height;
+        const bytes =
+          format === 'svg'
+            ? new TextEncoder().encode(report.svg)
+            : await rasterise(report.svg, { width, height, scale });
+        onImage({ name: nameOf(item), bytes, width, height });
+        await yieldFrame();
+      }
+      throwIfAborted();
+      onProgress?.({ done: total, total });
+      return { fallbackTexts };
+    },
   };
 }
 
-/** Zips the images: PNGs stored, since they are deflated already, SVGs compressed. */
-export function zipImages(images: readonly ExportedImage[], format: ImageFormat): Uint8Array {
-  const entries: Zippable = {};
-  for (const { name, bytes } of images)
-    entries[name] = [bytes, { level: format === 'png' ? 0 : 6 }];
-  return zipSync(entries);
+/** The images of a request, in page order, all in memory: for Copy as image and for tests. */
+export async function renderImages(
+  request: ImageExportRequest,
+  deps: Omit<ImageExportDeps, 'platform'>,
+): Promise<RenderedImages> {
+  const { fileName, run } = await prepareImages(request, deps);
+  const images: ExportedImage[] = [];
+  const { fallbackTexts } = await run((image) => images.push(image));
+  return { images, fileName, fallbackTexts };
+}
+
+/**
+ * A zip built as pages arrive, so the PNGs are not all held and then zipped again: each entry is
+ * pushed to fflate's streaming `Zip` and only the zip's own chunks stay. PNGs are stored (they are
+ * deflated already), SVGs compressed.
+ */
+function zipSink(format: ImageFormat): {
+  add: (image: ExportedImage) => void;
+  finish: () => Uint8Array;
+} {
+  const chunks: Uint8Array[] = [];
+  let failure: Error | undefined;
+  const zip = new Zip((error, chunk) => {
+    if (error) failure = error;
+    else chunks.push(chunk);
+  });
+  return {
+    add: ({ name, bytes }) => {
+      const file = format === 'png' ? new ZipPassThrough(name) : new ZipDeflate(name, { level: 6 });
+      zip.add(file);
+      file.push(bytes, true);
+    },
+    finish: () => {
+      zip.end();
+      if (failure) throw failure;
+      const out = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.length, 0));
+      let at = 0;
+      // Dropping each chunk as it is copied keeps the second copy from doubling the peak.
+      for (const [i, chunk] of chunks.entries()) {
+        out.set(chunk, at);
+        at += chunk.length;
+        chunks[i] = new Uint8Array(0);
+      }
+      return out;
+    },
+  };
 }
 
 /**
@@ -254,17 +326,27 @@ export async function exportImages(
   request: ImageExportRequest,
   deps: ImageExportDeps,
 ): Promise<ImageExportResult> {
-  let rendered: RenderedImages;
+  let bytes: Uint8Array | undefined;
+  let fileName = '';
+  let files = 0;
+  let fallbackTexts = 0;
   try {
-    rendered = await renderImages(request, deps);
+    const prepared = await prepareImages(request, deps);
+    fileName = prepared.fileName;
+    const sink = prepared.pageCount > 1 ? zipSink(request.format) : undefined;
+    const run = await prepared.run((image) => {
+      files++;
+      if (sink) sink.add(image);
+      else bytes = image.bytes;
+    });
+    fallbackTexts = run.fallbackTexts;
+    if (sink) bytes = sink.finish();
   } catch (error) {
     if (error instanceof ExportCancelled) return { status: 'cancelled' };
     throw error;
   }
-  const { images, fileName, fallbackTexts } = rendered;
-  const bytes =
-    images.length === 1 && images[0] ? images[0].bytes : zipImages(images, request.format);
-  const filter = images.length === 1 ? IMAGE_FILTERS[request.format] : IMAGE_FILTERS.zip;
+  if (!bytes) throw new Error('the export made no image');
+  const filter = files === 1 ? IMAGE_FILTERS[request.format] : IMAGE_FILTERS.zip;
   const path = await deps.platform.saveFile(fileName, bytes, [filter]);
-  return { status: 'saved', path, files: images.length, fallbackTexts };
+  return { status: 'saved', path, files, fallbackTexts };
 }
