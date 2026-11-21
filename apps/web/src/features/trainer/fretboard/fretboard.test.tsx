@@ -248,6 +248,16 @@ describe('Fretboard empty state', () => {
 describe('Fretboard scale overlay', () => {
   const tones = () => document.querySelectorAll('[data-fretboard-scale] [data-scale-tone]');
 
+  it('keeps a song overlay on with no dots while the song has no scale', async () => {
+    const { services } = await open(song('guitar', {}, [[1, 5]]));
+    act(() => {
+      scaleOverlayFor(services).getState().show(9, 'minorPentatonic', 'song');
+      scaleOverlayFor(services).getState().showNone();
+    });
+    expect(screen.getByText('Song scale: none found')).toBeTruthy();
+    expect(document.querySelector('[data-fretboard-scale]')).toBeNull();
+  });
+
   it('marks the scale with the tonic ringed, under the lit notes, and clears from the chip', async () => {
     const { services } = await open(song('guitar', {}, [[1, 5]]));
     expect(document.querySelector('[data-fretboard-scale]')).toBeNull();

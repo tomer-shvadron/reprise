@@ -60,14 +60,23 @@ describe('a song overlay', () => {
     await vi.waitFor(() => {
       expect(store.getState().overlay).toMatchObject({ tonic: 9, scaleId: 'minorPentatonic' });
     });
-    // Replacing the score with one that has no key takes the overlay away, as the song has no scale.
+    // An edit that leaves the song with no scale (select all, delete) keeps the overlay on with
+    // nothing to draw, and undoing it brings the scale back from the cache.
+    const original = services.document.getState().score;
     const bare = score().tempo(120).track('guitar').bar().beat('4', []).build();
     act(() => {
       services.document.setState({ score: bare });
     });
     await vi.waitFor(() => {
-      expect(store.getState().overlay).toBeUndefined();
+      expect(store.getState().overlay).toMatchObject({ source: 'song', none: true });
     });
+    act(() => {
+      services.document.setState({ score: original });
+    });
+    await vi.waitFor(() => {
+      expect(store.getState().overlay).toMatchObject({ tonic: 9, scaleId: 'minorPentatonic' });
+    });
+    expect(store.getState().overlay?.none).toBeUndefined();
   });
 
   it('is not retained by a manual overlay', () => {
