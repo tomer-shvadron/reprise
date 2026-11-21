@@ -99,6 +99,12 @@ export const DEFAULT_NOTATION_VOCALS_SETTING = defineSetting({
   schema: NotationSchema,
   default: 'tab',
 });
+/** Whether the score draws the chord diagrams a file carries; the View menu flips it. */
+export const CHORD_DIAGRAMS_SETTING = defineSetting({
+  key: 'score.chordDiagrams',
+  schema: z.boolean(),
+  default: true,
+});
 /**
  * The practice mode's zoom, remembered like the panel width: the distance from the screen is the
  * one thing worth tuning there, and nothing else sets it. The normal zoom is not stored.
@@ -123,6 +129,7 @@ export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
   DEFAULT_ZOOM_SETTING,
   DEFAULT_NOTATION_STRINGS_SETTING,
   DEFAULT_NOTATION_VOCALS_SETTING,
+  CHORD_DIAGRAMS_SETTING,
   RIGHT_PANEL_OPEN_SETTING,
   RIGHT_PANEL_WIDTH_SETTING,
   BOTTOM_DOCK_OPEN_SETTING,

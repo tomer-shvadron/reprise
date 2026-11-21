@@ -15,12 +15,21 @@ export interface ViewSettings {
   paper: PaperSize;
 }
 
-export type ContentOptions = Pick<LayoutOptions, 'tracks' | 'notation' | 'tiedNotes'>;
+export type ContentOptions = Pick<
+  LayoutOptions,
+  'tracks' | 'notation' | 'tiedNotes' | 'chordDiagrams'
+>;
 
 /** Layout options for a view. Zoom is always 1: the painter scales, layout never re-runs on zoom. */
 export function viewLayoutOptions(view: ViewSettings, content: ContentOptions): LayoutOptions {
-  const { tracks, notation, tiedNotes } = content;
-  const shared = { zoom: 1, tracks, notation, ...(tiedNotes !== undefined && { tiedNotes }) };
+  const { tracks, notation, tiedNotes, chordDiagrams } = content;
+  const shared = {
+    zoom: 1,
+    tracks,
+    notation,
+    ...(tiedNotes !== undefined && { tiedNotes }),
+    ...(chordDiagrams !== undefined && { chordDiagrams }),
+  };
   if (view.mode === 'continuous') {
     return { mode: 'continuous', width: CONTINUOUS_SYSTEM_WIDTH, ...shared };
   }
