@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { PAGE_SIZES } from '@reprise/layout';
 import { describe, expect, it } from 'vitest';
 
@@ -58,5 +61,25 @@ describe('score.css', () => {
       /html:has\(> body > \.score-print\),\s*body:has\(> \.score-print\)\s*{\s*height: auto;\s*overflow: visible;/,
     );
     expect(print).toMatch(/\.score-print \.score-page\s*{\s*overflow: clip;/);
+  });
+
+  it('styles the selection pill from the pill tokens and hides it in print', () => {
+    const pill = /\.score-pill\s*{([^}]*)}/.exec(css)?.[1] ?? '';
+    expect(pill).toContain('box-shadow: var(--pill-shadow);');
+    expect(pill).toContain('border: 1px solid var(--pill-border);');
+    expect(css).toMatch(/@media print\s*{[\s\S]*\.score-pill\s*{\s*display: none;/);
+  });
+
+  it('defines the pill tokens in the light and the dark theme', () => {
+    // Read from disk: the build's CSS pipeline turns a raw import of this file into nothing.
+    const theme = readFileSync(join(import.meta.dirname, '../../index.css'), 'utf8');
+    const light = /:root\[data-theme='light'\]\s*{([\s\S]*?)\n}/.exec(theme)?.[1] ?? '';
+    const dark = /:root,\s*:root\[data-theme='dark'\]\s*{([\s\S]*?)\n}/.exec(theme)?.[1] ?? '';
+    for (const block of [light, dark]) {
+      expect(block).toContain('--pill-shadow:');
+      expect(block).toContain('--pill-border:');
+    }
+    expect(light).toContain('--pill-border: transparent;');
+    expect(dark).toContain('--pill-shadow: none;');
   });
 });

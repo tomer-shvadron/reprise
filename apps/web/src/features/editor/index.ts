@@ -135,6 +135,7 @@ export { shiftDiagram, transposeChordName, transposeKey } from './chord-names';
 export {
   adoptEditMenuTarget,
   adoptMenuTarget,
+  barsLabel,
   scoreKeyboardRequest,
   scoreMenuRequest,
 } from './menu-target';
