@@ -404,6 +404,7 @@ async function createWindow(): Promise<BrowserWindow> {
   return window;
 }
 
+// The microphone and the clipboard write, to the app's own top frame; see `media-permission.ts`.
 function allowMicrophoneOnly(): void {
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback, details) => {
     const media = 'mediaTypes' in details ? details : undefined;
@@ -412,7 +413,7 @@ function allowMicrophoneOnly(): void {
       {
         mediaTypes: media?.mediaTypes,
         requestingUrl: details.requestingUrl,
-        isMainFrame: media?.isMainFrame,
+        isMainFrame: details.isMainFrame,
       },
       {
         platform: process.platform,

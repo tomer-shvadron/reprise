@@ -12,7 +12,9 @@ export type LibraryCommandId =
   | 'library.openRecent'
   | 'library.openSong'
   | 'library.showPracticeLog'
-  | 'library.deleteSong';
+  | 'library.deleteSong'
+  | 'file.exportAsciiTab'
+  | 'score.copyAsciiTab';
 
 type LibraryCommand = Command & { id: LibraryCommandId };
 
@@ -29,7 +31,23 @@ export function libraryCommands(services: AppServices): LibraryCommand[] {
     return target?.kind === 'libraryEntry' ? target.id : undefined;
   };
   const onRow = () => services.menuTarget.getState().target?.kind === 'libraryEntry';
+  const hasScore = () => services.document.getState().score !== undefined;
   return [
+    {
+      id: 'file.exportAsciiTab',
+      title: 'Export as ASCII tab…',
+      // No default key: Settings > Keyboard can bind one. Writes a .txt copy, never a save.
+      enabled: hasScore,
+      run: () => {
+        libraryOf(services).asciiExport.open();
+      },
+    },
+    {
+      id: 'score.copyAsciiTab',
+      title: 'Copy as ASCII tab',
+      enabled: hasScore,
+      run: () => libraryOf(services).asciiExport.copy(),
+    },
     {
       id: 'library.show',
       title: 'Show library',

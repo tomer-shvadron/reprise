@@ -14,21 +14,28 @@ export interface MediaPermissionDeps {
 }
 
 /**
- * Whether the page may have the permission it asked for: only a microphone request, never the
- * camera or anything else, and only from the app's own top frame, not a subframe or a page
- * that is not ours. On macOS the system asks (or reports its stored answer) first.
+ * Whether the page may have the permission it asked for: a microphone request (never the camera),
+ * or writing the clipboard (`clipboard-sanitized-write`, which Copy as ASCII tab and Copy as image
+ * use; never reading it), and nothing else, only from the app's own top frame, not a subframe or
+ * a page that is not ours. On macOS the system asks (or reports its stored answer) first for the
+ * microphone.
  */
 export async function decideMediaPermission(
   permission: string,
   details: MediaPermissionDetails,
   { platform, askForMicrophone, isAppUrl }: MediaPermissionDeps,
 ): Promise<boolean> {
+  const fromApp =
+    details.isMainFrame === true &&
+    details.requestingUrl !== undefined &&
+    isAppUrl(details.requestingUrl);
+  // The browser's sanitised write: plain text and images the page itself chose to copy.
+  if (permission === 'clipboard-sanitized-write') return fromApp;
   const types = details.mediaTypes ?? [];
   const audioOnly =
     permission === 'media' && types.length > 0 && types.every((type) => type === 'audio');
   if (!audioOnly) return false;
-  if (details.isMainFrame !== true) return false;
-  if (details.requestingUrl === undefined || !isAppUrl(details.requestingUrl)) return false;
+  if (!fromApp) return false;
   if (platform !== 'darwin') return true;
   try {
     return await askForMicrophone();

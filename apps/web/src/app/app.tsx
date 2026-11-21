@@ -13,6 +13,7 @@ import {
 } from '@/features/editor';
 import {
   DraftRecoveryDialog,
+  AsciiExportDialog,
   ExportDialog,
   installLibrary,
   installSettings,
@@ -289,6 +290,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
           <EditorDialogs />
           <UnsavedChangesHost />
           <ExportDialog />
+          <AsciiExportDialog />
           <DraftRecoveryDialog />
           <PrintDialog store={services.print} />
           <PrintRoot store={services.print} />

@@ -55,12 +55,18 @@ describe('menuTemplate', () => {
     }
   });
 
-  it('puts Export as Guitar Pro under Save As in the File menu', () => {
-    const { items } = template();
+  it('puts an Export submenu under Save As in the File menu', () => {
+    const { items, options } = template();
     const file = items.find((item) => item.label === 'File');
-    const labels = Array.isArray(file?.submenu) ? file.submenu.map((item) => item.label) : [];
+    const entries = Array.isArray(file?.submenu) ? file.submenu : [];
+    const labels = entries.map((item) => item.label);
+    const exported = entries[labels.indexOf('Export')];
 
-    expect(labels.indexOf('Export as Guitar Pro…')).toBe(labels.indexOf('Save As…') + 1);
+    expect(labels.indexOf('Export')).toBe(labels.indexOf('Save As…') + 1);
+    const inside = Array.isArray(exported?.submenu) ? exported.submenu : [];
+    expect(inside.map((item) => item.label)).toEqual(['Guitar Pro…', 'ASCII Tab…']);
+    press(inside[1]);
+    expect(options.sendCommand).toHaveBeenLastCalledWith('file.exportAsciiTab');
   });
 
   it('puts New Song first in the File menu on CmdOrCtrl+N', () => {

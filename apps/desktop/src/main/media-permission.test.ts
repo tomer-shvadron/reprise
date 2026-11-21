@@ -64,4 +64,43 @@ describe('decideMediaPermission', () => {
     };
     expect(await decideMediaPermission('media', ask, d)).toBe(false);
   });
+
+  describe('clipboard-sanitized-write', () => {
+    const copy = { requestingUrl: APP, isMainFrame: true };
+
+    it("is granted to the app's own top frame, on every platform, without a system prompt", async () => {
+      for (const platform of ['darwin', 'win32', 'linux'] as const) {
+        const d = deps(platform);
+        expect(await decideMediaPermission('clipboard-sanitized-write', copy, d)).toBe(true);
+        expect(d.askForMicrophone).not.toHaveBeenCalled();
+      }
+    });
+
+    it('is refused to a subframe, a page that is not the app and an unknown page', async () => {
+      const d = deps('win32');
+      const write = (details: typeof copy | { isMainFrame?: boolean; requestingUrl?: string }) =>
+        decideMediaPermission('clipboard-sanitized-write', details, d);
+      expect(await write({ ...copy, isMainFrame: false })).toBe(false);
+      expect(await write({ requestingUrl: APP })).toBe(false);
+      expect(await write({ ...copy, requestingUrl: 'https://example.com/' })).toBe(false);
+      expect(await write({ isMainFrame: true })).toBe(false);
+    });
+
+    it('does not grant the neighbouring permissions to the same frame', async () => {
+      const d = deps('win32');
+      for (const permission of [
+        'clipboard-read',
+        'deprecated-sync-clipboard-read',
+        'geolocation',
+        'notifications',
+        'midi',
+        'fileSystem',
+        'display-capture',
+        'openExternal',
+        'unknown',
+      ]) {
+        expect(await decideMediaPermission(permission, copy, d)).toBe(false);
+      }
+    });
+  });
 });
