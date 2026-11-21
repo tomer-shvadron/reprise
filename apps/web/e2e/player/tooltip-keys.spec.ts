@@ -27,8 +27,8 @@ test('keyboard focus shows a control’s key caps at once, and a rebind updates 
   await expect(dialog).toHaveCount(0);
 
   // The dialog hands focus back to the play button a tick after it unmounts, which opens the
-  // tooltip. Refocusing while that one is still animating out leaves Radix's Presence to unmount
-  // it after the second focus opened it again, so wait for it to be gone before the second focus.
+  // tooltip. Wait for that one to be gone so the second focus is a fresh open; a reopen while it
+  // is leaving is covered by the test below (#438).
   await expect(app.playButton).toBeFocused();
   await app.playButton.blur();
   await expect(page.getByRole('tooltip')).toHaveCount(0);

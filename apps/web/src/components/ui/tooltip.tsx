@@ -27,8 +27,32 @@ function TooltipProvider({
   );
 }
 
-function Tooltip({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  return <TooltipPrimitive.Root data-slot="tooltip" {...props} />;
+/**
+ * Radix announces a tooltip opening with a `tooltip.open` event so the others close. Uncontrolled,
+ * it sends that from a passive effect after the commit, by which time a tooltip reopened while its
+ * content is still animating out has that content mounted and listening: it hears its own
+ * announcement and closes again (#438). Controlled, Radix sends it synchronously from the setter,
+ * before the commit, and the leaving content's close is then a no-op.
+ */
+function Tooltip({
+  open: openProp,
+  defaultOpen = false,
+  onOpenChange,
+  ...props
+}: React.ComponentProps<typeof TooltipPrimitive.Root>) {
+  const [own, setOwn] = React.useState(defaultOpen);
+  const controlled = openProp !== undefined;
+  return (
+    <TooltipPrimitive.Root
+      data-slot="tooltip"
+      open={controlled ? openProp : own}
+      onOpenChange={(next) => {
+        if (!controlled) setOwn(next);
+        onOpenChange?.(next);
+      }}
+      {...props}
+    />
+  );
 }
 
 function TooltipTrigger({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
