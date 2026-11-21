@@ -82,8 +82,8 @@ describe('songOutline', () => {
       .beat('1', [note(1, 0)], { chord: { name: 'F' } })
       .build();
     expect(songOutline(built).chords).toEqual([
-      { bar: 0, onset: 0, name: 'Am' },
-      { bar: 1, onset: 0, name: 'F' },
+      { bar: 0, onset: 0, name: 'Am', lastBar: 1 },
+      { bar: 1, onset: 0, name: 'F', lastBar: 1 },
     ]);
   });
 
