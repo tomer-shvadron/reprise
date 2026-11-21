@@ -50,6 +50,12 @@ export type GpifDropCode =
    * not known yet (#348), so the writer leaves them out and the track reads back as a plain one.
    */
   | 'courses'
+  /**
+   * `Track.drone` (the 5-string banjo's short string): Guitar Pro 7 and 8's encoding is not known
+   * yet (#348), so the writer leaves it out and the track reads back without one. A native file
+   * can carry a drone, so the loss is reported before the banjo parts land.
+   */
+  | 'drone'
   /** A tempo ramp gpif's linear automations cannot express (overlapping or past the end). */
   | 'tempo-ramp'
   /** Two different tempo marks at one moment; the one playback uses is kept. */

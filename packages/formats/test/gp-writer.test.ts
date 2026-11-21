@@ -143,6 +143,7 @@ describe('the gp writer round trip', () => {
       ['channel-effect', 'score.tracks[0].channel'],
       ['sound-override', 'score.tracks[0].sound'],
       ['chord-barre', 'score.tracks[0]'],
+      ['drone', 'score.tracks[3].drone'],
       ['mixer-change', 'score.tracks[0].bars[0].voices[0].beats[0].mix'],
       ['stroke', 'score.tracks[0].bars[0].voices[0].beats[0].effects.arpeggio'],
       ['note-dynamics', 'score.tracks[0].bars[0].voices[0].beats[0]'],
@@ -162,8 +163,8 @@ describe('the gp writer round trip', () => {
     guitar.channel.reverb = 0;
     delete guitar.sound;
     // The writer reports `courses` as a loss until Guitar Pro 8's reference files show how it
-    // stores a 12-string (#348, part 2); it does not encode the drone yet either (part 3), and the
-    // delete below goes away in the PR that teaches the writer, instead of hiding a loss.
+    // stores a 12-string or a banjo's drone (#348, parts 2 and 3); the deletes below go away in the
+    // PRs that teach the writer, instead of hiding a loss.
     delete guitar.courses;
     delete banjo?.drone;
     delete beat.chord.diagram.barres;
@@ -436,6 +437,7 @@ describe('what the writer reports as dropped', () => {
     ],
     ['capo', () => score().track('piano', { capo: 2 }).bar().build({ validate: false })],
     ['courses', () => score().track('twelveString').bar().build()],
+    ['drone', () => score().track('banjo').bar().build()],
     [
       'tempo-ramp',
       () =>

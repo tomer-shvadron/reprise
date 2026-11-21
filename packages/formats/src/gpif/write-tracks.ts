@@ -89,6 +89,13 @@ export function reportTrackLosses(track: Track, index: number, drops: DropCollec
       'Doubled courses (a 12-string or mandolin) are not saved in gp files: the track reads back as single strings',
     );
   }
+  if (track.drone) {
+    drops.drop(
+      'drone',
+      [...path, 'drone'],
+      "A banjo's short fifth string (drone) is not saved in gp files: the track reads back without it",
+    );
+  }
   const { chorus, reverb, phaser, tremolo } = track.channel;
   if (chorus !== 0 || reverb !== 0 || phaser !== 0 || tremolo !== 0) {
     drops.drop(

@@ -418,6 +418,18 @@ describe.each(VERSIONS)('a 12-string flagged track in a v%s file', (version) => 
     expect(twelve({ percussion: true, flags: 0x02 }).score.tracks[0]?.courses).toBeUndefined();
   });
 
+  it('still reports the flag where it cannot be applied: a drum track and a two-string track', () => {
+    for (const track of [
+      { percussion: true, flags: 0x02 },
+      { flags: 0x02, strings: [64, 59] },
+    ]) {
+      const { warnings } = twelve(track);
+      const count = warnings.find((warning) => warning.code === 'track-flags-dropped')?.count;
+      // A GP5 file also reports its missing multi-track flag.
+      expect(count, JSON.stringify(track)).toBe(version >= '5' ? 2 : 1);
+    }
+  });
+
   it('no longer reports the 12-string flag as dropped', () => {
     const { warnings } = twelve({ flags: 0x02 });
     // Only a GP5 file reports its missing multi-track flag; the 12-string flag adds nothing.

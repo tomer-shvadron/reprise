@@ -171,6 +171,13 @@ export function readTrack(context: Context, header: Header, index: number): Trac
   if (kind === 'fretted' && hasFlag(flags, 0x02) && tuning.length > 2) {
     track.courses = tuning.map((_, index) => (index < tuning.length - 2 ? 12 : 0));
   }
+  if (hasFlag(flags, 0x02) && !track.courses) {
+    log.info(
+      'track-flags-dropped',
+      '12-string flag on a track that is not fretted or has too few strings for courses',
+      location,
+    );
+  }
   if (kind === 'fretted' && notation) track.display.notation = notation;
   if (kind === 'drums' && notation === 'tab') {
     log.info('track-flags-dropped', 'tablature display on a track without frets', location);
