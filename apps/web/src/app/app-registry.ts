@@ -14,6 +14,7 @@ import { createKeymapResolver } from './keymap';
 import { appCommands } from './commands';
 import { editCommands } from './edit-commands';
 import { practiceCommands } from './practice-mode/commands';
+import { selectionPillCommands } from './selection-pill/commands';
 import type { AppServices } from './services';
 
 /** Every command the app registers, in the order the palette and the shortcut table list them. */
@@ -40,6 +41,7 @@ export function createAppRegistry(
     ...trainerCommands(services),
     ...editorCommands(services),
     ...soundsCommands(services),
+    ...selectionPillCommands(),
   ]) {
     registry.register(command);
   }

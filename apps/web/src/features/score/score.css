@@ -269,3 +269,55 @@
     display: none;
   }
 }
+
+/*
+ * The selection pill (#339) rides in the zoomed canvas; its transform is written by the pill. It
+ * stays out of sight until it has been placed, so it never shows at the canvas corner.
+ */
+.score-pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 1.75rem;
+  padding: 0 0.25rem;
+  border: 1px solid var(--pill-border);
+  border-radius: 9999px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--pill-shadow);
+  visibility: hidden;
+  user-select: none;
+}
+
+.score-pill[data-placed] {
+  visibility: visible;
+}
+
+/*
+ * The buttons' `transition: all` would also ease the inherited visibility, leaving them
+ * unfocusable for a moment after the pill appears, when Tab or Alt+F10 is already pressed.
+ */
+.score-pill button {
+  transition-property: color, background-color, box-shadow;
+}
+
+.score-pill[hidden] {
+  display: none;
+}
+
+.score-pill-separator {
+  width: 1px;
+  height: 1rem;
+  margin: 0 2px;
+  background: var(--border);
+}
+
+@media print {
+  .score-pill {
+    display: none;
+  }
+}

@@ -69,6 +69,20 @@ function candidates(
   return found;
 }
 
+type ResolvedItem = Extract<ResolvedEntry, { kind: 'item' }>;
+
+function itemOf({ id, command, item }: Candidate, at: MenuContext): ResolvedItem {
+  return {
+    kind: 'item',
+    id,
+    command,
+    label: typeof item.label === 'function' ? item.label(at) : (item.label ?? command.title),
+    enabled: command.enabled?.() !== false,
+    checked: item.checked?.(at),
+    group: item.group,
+  };
+}
+
 /** Orders by group, then contribution order; one entry per command; a separator between groups. */
 function entriesOf(found: readonly Candidate[], at: MenuContext): ResolvedEntry[] {
   const seen = new Set<string>();
@@ -82,19 +96,33 @@ function entriesOf(found: readonly Candidate[], at: MenuContext): ResolvedEntry[
     const inGroup = unique.filter(({ item }) => item.group === group);
     if (inGroup.length === 0) continue;
     if (entries.length > 0) entries.push({ kind: 'separator' });
-    for (const { id, command, item } of inGroup) {
-      entries.push({
-        kind: 'item',
-        id,
-        command,
-        label: typeof item.label === 'function' ? item.label(at) : (item.label ?? command.title),
-        enabled: command.enabled?.() !== false,
-        checked: item.checked?.(at),
-        group,
-      });
-    }
+    for (const candidate of inGroup) entries.push(itemOf(candidate, at));
   }
   return entries;
+}
+
+/**
+ * The resolved items for `ids` on one surface and its parent levels, flat and in `ids` order: the
+ * resolution the menu itself uses (modes, `when`, the command's context, the mode rule, label,
+ * `checked`, a disabled command kept, disabled), for a surface that mirrors some of the menu's
+ * items, such as the selection pill. An id the menu does not offer here is left out. Where a
+ * level and its parent both name a command, the level's own item wins, as in the menu.
+ */
+export function resolveItems(
+  menus: MenuRegistry,
+  registry: CommandRegistry,
+  surface: MenuSurface,
+  at: MenuContext,
+  keyboard: KeyboardPlatform,
+  ids: readonly RegisteredCommandId[],
+): ResolvedItem[] {
+  const found = [surface, ...(SURFACE_PARENTS[surface] ?? [])].flatMap((level) =>
+    candidates(menus, registry, level, at, keyboard),
+  );
+  return ids.flatMap((id) => {
+    const candidate = found.find((entry) => entry.command.id === id);
+    return candidate ? [itemOf(candidate, at)] : [];
+  });
 }
 
 /**
