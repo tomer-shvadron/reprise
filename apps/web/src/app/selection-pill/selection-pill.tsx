@@ -99,7 +99,7 @@ function PillButton({
   const bound = bindCommand(source, commandId);
   return (
     // CommandTooltip wraps a disabled button in a span, which can take the hover to say why.
-    <CommandTooltip command={commandId} label={label} reason={reason} wrapped>
+    <CommandTooltip command={commandId} label={label} reason={reason}>
       <Button
         variant="ghost"
         size="xs"

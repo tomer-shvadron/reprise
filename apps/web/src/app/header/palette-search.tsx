@@ -1,7 +1,7 @@
 import { SearchIcon } from 'lucide-react';
 
 import { keepFocus } from '@/app/command-control';
-import { CommandTooltip } from '@/app/command-tooltip';
+import { CommandTooltip, ShortcutKeys } from '@/app/command-tooltip';
 import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
@@ -33,10 +33,10 @@ export function PaletteSearch() {
         <span className="text-muted-foreground hidden flex-1 text-left font-normal whitespace-nowrap lg:inline">
           Search commands…
         </span>
-        {palette.keys && (
-          <kbd className="text-muted-foreground hidden font-sans text-[0.7rem] lg:inline">
-            {palette.keys}
-          </kbd>
+        {palette.bindings.length > 0 && (
+          <span className="text-muted-foreground hidden lg:inline">
+            <ShortcutKeys bindings={palette.bindings} platform={palette.keyboard} />
+          </span>
         )}
       </Button>
     </CommandTooltip>

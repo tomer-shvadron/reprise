@@ -1,4 +1,4 @@
-import { STANDARD_TUNING } from '@reprise/model';
+import { STANDARD_TUNING, type Score } from '@reprise/model';
 import { score } from '@reprise/model/testing';
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -257,9 +257,9 @@ describe('TrackSidebar', () => {
 });
 
 describe('TrackSidebar keys', () => {
-  async function opened() {
+  async function opened(song?: Score) {
     const made = setup();
-    const ids = await made.open();
+    const ids = await made.open(song);
     const select = (id: string) => {
       const button = list().querySelector<HTMLElement>(`[data-track-select="${id}"]`);
       if (!button) throw new Error(`no row ${id}`);
@@ -272,13 +272,23 @@ describe('TrackSidebar keys', () => {
     const { user, ids, select } = await opened();
     await user.hover(select(ids[0] ?? ''));
     const tip = await screen.findByRole('tooltip');
-    expect(tip).toHaveTextContent('Track 1');
-    expect(tip).toHaveTextContent('With the name focused');
+    expect(tip).toHaveTextContent('Track 1, Option+1. With the name focused: M mutes, S solos');
     const caps = [
       ...document.querySelectorAll('[data-slot="tooltip-content"] [data-slot="kbd"]'),
     ].map((cap) => cap.textContent.toLowerCase());
     expect(caps).toEqual(
       expect.arrayContaining([TRACK_LIST_KEYS.mute.key, TRACK_LIST_KEYS.solo.key]),
+    );
+  });
+
+  it('keeps Track N and the spoken keys on a row with no jump key', async () => {
+    let builder = score();
+    for (let at = 1; at <= 11; at += 1)
+      builder = builder.track('guitar', { name: `T${String(at)}` });
+    const { user, select, ids } = await opened(builder.build());
+    await user.hover(select(ids[10] ?? ''));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      'Track 11. With the name focused: M mutes, S solos',
     );
   });
 

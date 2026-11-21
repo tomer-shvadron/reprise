@@ -43,13 +43,12 @@ interface CommandTooltipProps {
   whenUnbound?: 'label' | 'none';
   /** False for a text field, so the tooltip never covers what is being typed; hover still opens it. */
   openOnFocus?: boolean;
-  /** Why the control is disabled: shown instead of the keys, on a wrapper that can take the hover. */
-  reason?: string | undefined;
   /**
-   * Always put the control in the hover wrapper, as `reason` does, so a control that can become
-   * disabled keeps its place in the tree (and its focus) when a reason appears.
+   * Why the control is disabled: shown instead of the keys, on a wrapper that can take the hover.
+   * Passing the prop at all, even as `undefined`, puts the control in that wrapper for good, so a
+   * reason that comes and goes never remounts the control or takes its focus.
    */
-  wrapped?: boolean;
+  reason?: string | undefined;
   /** Extra content after the keys, with its spoken text for the accessible label. */
   detail?: { node: ReactNode; spoken: string };
   children: ReactElement<Record<string, unknown>>;
@@ -59,22 +58,25 @@ interface CommandTooltipProps {
  * A control that runs a registered command, with its keys read from the registry (so a rebind
  * reaches the tooltip and `aria-keyshortcuts` together). Call sites do not set either themselves.
  */
-export function CommandTooltip({
-  command,
-  label,
-  side,
-  whenUnbound = 'label',
-  openOnFocus = true,
-  reason,
-  detail,
-  wrapped = false,
-  children,
-}: CommandTooltipProps) {
+export function CommandTooltip(props: CommandTooltipProps) {
+  const wrapped = 'reason' in props;
+  const {
+    command,
+    label,
+    side,
+    whenUnbound = 'label',
+    openOnFocus = true,
+    reason,
+    detail,
+    children,
+  } = props;
   const bound = useCommand(command);
   const reasonId = useId();
   if (bound.bindings.length === 0 && whenUnbound === 'none' && reason === undefined && !wrapped) {
+    // A bare return changes the tree if a key comes or goes later; only unwrapped controls take it.
     return children;
   }
+  const hidden = bound.bindings.length === 0 && whenUnbound === 'none' && reason === undefined;
   const keyed = reason === undefined && bound.bindings.length > 0;
   const spoken =
     reason === undefined
@@ -114,27 +116,33 @@ export function CommandTooltip({
       <TooltipTrigger asChild onFocus={onFocus}>
         {trigger}
       </TooltipTrigger>
-      <TooltipContent aria-label={accessibleLabel} side={side}>
-        {reason === undefined ? label : `${label}: ${reason}`}
-        {keyed && <ShortcutKeys bindings={bound.bindings} platform={bound.keyboard} />}
-        {detail && reason === undefined && detail.node}
-      </TooltipContent>
+      {!hidden && (
+        <TooltipContent aria-label={accessibleLabel} side={side}>
+          {reason === undefined ? label : `${label}: ${reason}`}
+          {keyed && <ShortcutKeys bindings={bound.bindings} platform={bound.keyboard} />}
+          {detail && reason === undefined && detail.node}
+        </TooltipContent>
+      )}
     </Tooltip>
   );
 }
 
 interface HintTooltipProps {
   label: ReactNode;
+  /** The spoken form, when the label holds key caps that assistive technology skips. */
+  spoken?: string;
   side?: 'top' | 'right' | 'bottom' | 'left';
   children: ReactElement<Record<string, unknown>>;
 }
 
 /** A tooltip for a control that runs no command, so every tooltip in the app comes from this file. */
-export function HintTooltip({ label, side, children }: HintTooltipProps) {
+export function HintTooltip({ label, spoken, side, children }: HintTooltipProps) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent side={side}>{label}</TooltipContent>
+      <TooltipContent aria-label={spoken} side={side}>
+        {label}
+      </TooltipContent>
     </Tooltip>
   );
 }

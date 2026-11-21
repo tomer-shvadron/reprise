@@ -98,7 +98,6 @@ function EffectToggle({
       label={item.label}
       whenUnbound="none"
       reason={known?.reason}
-      wrapped
     >
       <button
         type="button"
@@ -135,7 +134,6 @@ function EffectOpener({
       label={item.label.replace('…', '')}
       whenUnbound="none"
       reason={blocked}
-      wrapped
     >
       <button
         type="button"

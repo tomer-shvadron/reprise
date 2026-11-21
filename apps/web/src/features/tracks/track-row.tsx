@@ -4,7 +4,7 @@ import { memo, use, type ReactElement, type ReactNode } from 'react';
 
 import { CommandTooltip, HintTooltip, ShortcutKeys } from '@/app/command-tooltip';
 import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
-import { spokenShortcut } from '@/app/keyboard';
+import { spokenShortcut, type Shortcut } from '@/app/keyboard';
 import { CommandSourceContext } from '@/app/use-command';
 import { instrumentName } from '@/lib/gm-programs';
 import type { TrackActions } from './track-actions';
@@ -54,26 +54,45 @@ function NameTooltip({
   const source = use(CommandSourceContext);
   if (!source) throw new Error('A track row needs a CommandSourceContext');
   const label = `Track ${String(index + 1)}`;
+  // One list builds both the visible hint and the spoken one, so they cannot drift apart.
+  const parts: readonly (string | Shortcut)[] = [
+    'With the name focused:',
+    TRACK_LIST_KEYS.mute,
+    'mutes,',
+    TRACK_LIST_KEYS.solo,
+    'solos',
+  ];
   const listKeys = (
     <span className="inline-flex items-center gap-1">
-      <span>With the name focused:</span>
-      <ShortcutKeys bindings={[TRACK_LIST_KEYS.mute]} platform={source.keyboard} />
-      <span>mutes,</span>
-      <ShortcutKeys bindings={[TRACK_LIST_KEYS.solo]} platform={source.keyboard} />
-      <span>solos</span>
+      {parts.map((part, at) =>
+        typeof part === 'string' ? (
+          <span key={at}>{part}</span>
+        ) : (
+          <ShortcutKeys key={at} bindings={[part]} platform={source.keyboard} />
+        ),
+      )}
     </span>
   );
+  const listSpoken = parts
+    .map((part) => (typeof part === 'string' ? part : spokenShortcut(part, source.keyboard)))
+    .join(' ');
   const goId = goCommandId(index + 1);
-  if (goId === undefined) return <HintTooltip label={listKeys}>{children}</HintTooltip>;
+  if (goId === undefined) {
+    return (
+      <HintTooltip
+        label={
+          <>
+            {label} {listKeys}
+          </>
+        }
+        spoken={`${label}. ${listSpoken}`}
+      >
+        {children}
+      </HintTooltip>
+    );
+  }
   return (
-    <CommandTooltip
-      command={goId}
-      label={label}
-      detail={{
-        node: listKeys,
-        spoken: `With the name focused: ${spokenShortcut(TRACK_LIST_KEYS.mute, source.keyboard)} mutes, ${spokenShortcut(TRACK_LIST_KEYS.solo, source.keyboard)} solos`,
-      }}
-    >
+    <CommandTooltip command={goId} label={label} detail={{ node: listKeys, spoken: listSpoken }}>
       {children}
     </CommandTooltip>
   );
