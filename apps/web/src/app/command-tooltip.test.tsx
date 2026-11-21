@@ -1,5 +1,6 @@
 import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { TOOLTIP_DELAY_MS } from '@/components/ui/tooltip';
@@ -29,7 +30,7 @@ function Fixture({
   disabled?: boolean;
   reason?: string;
 }) {
-  const registry = createAppRegistry(services, keyboard);
+  const [registry] = useState(() => createAppRegistry(services, keyboard));
   const source = useCommandSource(registry, keyboard, services.settings, services.editing);
   return (
     <CommandSourceContext value={source}>
@@ -58,6 +59,7 @@ describe('CommandTooltip', () => {
     await userEvent.setup().tab();
     const tip = await screen.findByRole('tooltip');
     expect(tip).toHaveTextContent('Thing, Command+S');
+    expect(tip.textContent).not.toMatch(/[⌘⌥⇧↩]/);
     const caps = [...document.querySelectorAll('[data-slot=tooltip-content] [data-slot=kbd]')];
     expect(caps.map((cap) => cap.textContent)).toEqual(['⌘', 'S']);
   });
@@ -85,7 +87,7 @@ describe('CommandTooltip', () => {
       await new Promise((resolve) => setTimeout(resolve, TOOLTIP_DELAY_MS + 100));
     });
     expect(screen.getByRole('tooltip')).toBeTruthy();
-  }, 10_000);
+  });
 
   it('follows a rebind in the open tooltip and in aria-keyshortcuts', async () => {
     const services = render({ keyboard: 'mac', command: 'file.save' });
@@ -116,8 +118,14 @@ describe('CommandTooltip', () => {
 
   it('does not open on focus for a text field, but does on hover', async () => {
     render({ keyboard: 'mac', command: 'file.save', openOnFocus: false });
-    await userEvent.setup().tab();
+    const user = userEvent.setup();
+    await user.tab();
     expect(screen.queryByRole('tooltip')).toBeNull();
+    await user.hover(screen.getByRole('button'));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, TOOLTIP_DELAY_MS + 100));
+    });
+    expect(screen.getByRole('tooltip')).toBeTruthy();
   });
 
   it('explains a disabled control instead of showing keys', async () => {
@@ -132,5 +140,5 @@ describe('CommandTooltip', () => {
     const tip = screen.getByRole('tooltip');
     expect(within(tip).queryByText('S')).toBeNull();
     expect(tip).toHaveTextContent('Thing: Nothing to save');
-  }, 10_000);
+  });
 });

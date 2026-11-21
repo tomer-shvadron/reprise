@@ -69,7 +69,7 @@ import { installShortcutDispatcher, menuCommandAllowed } from './shortcut-dispat
 import { SETTINGS_SECTIONS } from './settings-sections';
 import { UnsavedChangesHost } from './unsaved-dialog';
 import { installWindowTitle } from './window-title';
-import { CommandSourceContext, useCommandSource } from './use-command';
+import { CommandSourceProvider } from './command-source-provider';
 
 checkSections(SETTINGS_SECTIONS);
 
@@ -98,7 +98,6 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   const { ui, audio } = services;
   const [registry] = useState(() => createAppRegistry(services, keyboard));
   const [menus] = useState(() => createAppMenus(registry));
-  const source = useCommandSource(registry, keyboard, services.settings, services.editing);
   const menuRegistry = useMemo(() => ({ menus, registry, keyboard }), [menus, registry, keyboard]);
   const theme = useStore(ui, (state) => state.theme);
   const rightPanelView = useStore(ui, (state) => state.rightPanelView);
@@ -201,7 +200,12 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
     <AppServicesProvider services={services}>
       <MenuRegistryContext value={menuRegistry}>
         <TooltipProvider>
-          <CommandSourceContext value={source}>
+          <CommandSourceProvider
+            registry={registry}
+            keyboard={keyboard}
+            settings={services.settings}
+            editing={services.editing}
+          >
             <div className="h-full">
               <AppFrame
                 ui={ui}
@@ -240,10 +244,8 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
                 rail={<PanelRail />}
               />
             </div>
-          </CommandSourceContext>
-          <CommandSourceContext value={source}>
             <SettingsDialog sections={SETTINGS_SECTIONS} />
-          </CommandSourceContext>
+          </CommandSourceProvider>
           <AppSheet id="library" title="Library" width="wide">
             <LibraryScreen />
           </AppSheet>

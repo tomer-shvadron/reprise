@@ -1,4 +1,4 @@
-import { createContext, use, useMemo, useSyncExternalStore } from 'react';
+import { createContext, use, useCallback, useMemo, useSyncExternalStore } from 'react';
 
 import type { EditorCommandId } from '@/features/editor/commands';
 import type { LibraryCommandId } from '@/features/library/commands';
@@ -57,10 +57,11 @@ export interface CommandSource {
 
 /** The user's key overrides, re-rendering on a change; takes the store because `App` sits outside the services provider. */
 export function useKeyOverrides(settings: Pick<SettingsStore, 'get' | 'subscribe'>) {
-  return useSyncExternalStore(
-    (notify) => settings.subscribe(SHORTCUT_OVERRIDES_SETTING, notify),
-    () => settings.get(SHORTCUT_OVERRIDES_SETTING),
+  const subscribe = useCallback(
+    (notify: () => void) => settings.subscribe(SHORTCUT_OVERRIDES_SETTING, notify),
+    [settings],
   );
+  return useSyncExternalStore(subscribe, () => settings.get(SHORTCUT_OVERRIDES_SETTING));
 }
 
 /** A memoised `CommandSource` that follows the user's key overrides. */
@@ -71,10 +72,11 @@ export function useCommandSource(
   editingStore?: Pick<EditingStore, 'getState' | 'subscribe'>,
 ): CommandSource {
   const keys = useKeyOverrides(settings);
-  const editing = useSyncExternalStore(
-    (notify) => editingStore?.subscribe(notify) ?? (() => undefined),
-    () => editingStore?.getState().editing,
+  const subscribeEditing = useCallback(
+    (notify: () => void) => editingStore?.subscribe(notify) ?? (() => undefined),
+    [editingStore],
   );
+  const editing = useSyncExternalStore(subscribeEditing, () => editingStore?.getState().editing);
   return useMemo(
     () => ({ registry, keyboard, keys, editing }),
     [registry, keyboard, keys, editing],

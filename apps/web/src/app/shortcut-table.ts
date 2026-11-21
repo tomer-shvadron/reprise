@@ -26,7 +26,12 @@ export const categoryRank = (category: string): number =>
 
 export const categoryOf = (id: string) => CATEGORIES[id.split('.')[0] ?? ''] ?? 'Other';
 
-/** What makes commands one control's aliases: the same category, context and title. */
+/**
+ * What makes commands one control's aliases: the same category, context and title. That suits
+ * the cheat sheet; a tooltip assumes the commands of a group are one action's alternate keys, so
+ * it is wrong for a family such as `editor.fret0` to `fret9` ("Type fret digit"), which no
+ * control binds as a whole.
+ */
 export const bindingGroup = (command: Command): string =>
   `${categoryOf(command.id)}\n${command.context === 'editing' ? 'Editing' : 'Global'}\n${command.title}`;
 const cell = (text: string) => text.replaceAll('|', '\\|');
