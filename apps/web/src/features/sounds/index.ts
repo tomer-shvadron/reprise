@@ -1,4 +1,6 @@
 export { SoundManager } from './sound-manager';
+export { DefaultSoundOffer } from './default-sound-offer';
+export { soundsSection } from './sounds-section';
 export { TrackEffectsPicker } from './track-effects-picker';
 export { TrackSoundPicker } from './track-sound-picker';
 export { createSoundPackStore } from './pack-store';

@@ -5,6 +5,7 @@ import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
+import { DEFAULT_SOUND_SETTINGS } from './default-sounds';
 import { renderWithServices } from '@/test/render';
 import { createTestServices } from '@/test/services';
 
@@ -43,6 +44,7 @@ describe('TrackSoundPicker', () => {
         .getAllByRole('option')
         .map((o) => o.textContent),
     ).toEqual([
+      'Default: General MIDI (Electric Bass (finger))',
       'General MIDI (Electric Bass (finger))',
       'Synthetic Pack: Default',
       'Synthetic Pack: Alt',
@@ -69,13 +71,87 @@ describe('TrackSoundPicker', () => {
       services.document.getState().redo();
     });
 
-    await user.selectOptions(select, 'General MIDI (Electric Bass (finger))');
+    await user.selectOptions(select, 'Default: General MIDI (Electric Bass (finger))');
     expect(sound()).toBeUndefined();
     act(() => {
       services.document.getState().undo();
     });
     expect(sound()).toEqual({ packId: 'SynthPack001', instrument: 'alt' });
     expect(select).toHaveValue('SynthPack001/alt');
+  });
+
+  it('stores General MIDI as an explicit choice, and Default removes it again', async () => {
+    const { select, sound, user } = await setup();
+    await user.selectOptions(select, 'gm');
+    expect(sound()).toEqual({ generalMidi: true });
+    expect(select).toHaveValue('gm');
+    await user.selectOptions(select, 'Synthetic Pack: Alt');
+    expect(sound()).toEqual({ packId: 'SynthPack001', instrument: 'alt' });
+    await user.selectOptions(select, 'gm');
+    expect(sound()).toEqual({ generalMidi: true });
+    await user.selectOptions(select, '');
+    expect(sound()).toBeUndefined();
+  });
+
+  it('keeps the effects preset across General MIDI and Default', async () => {
+    const { services, id, select, sound, user } = await setup();
+    act(() => {
+      services.document
+        .getState()
+        .apply(setTrackProperties({ trackId: id }, { sound: { preset: 'clean' } }));
+    });
+    await user.selectOptions(select, 'gm');
+    expect(sound()).toEqual({ preset: 'clean', generalMidi: true });
+    await user.selectOptions(select, '');
+    expect(sound()).toEqual({ preset: 'clean' });
+  });
+
+  it('says General MIDI plays, and why, when the default pack fails to load', async () => {
+    const { services, id, select } = await setup();
+    act(() => {
+      services.settings.set(DEFAULT_SOUND_SETTINGS.bass, { packId: 'SynthPack001' });
+    });
+    expect(screen.getByRole('option', { name: 'Default: Synthetic Pack: Default' })).toBeVisible();
+    act(() => {
+      services.playback.setState({
+        trackSounds: {
+          [id]: {
+            tier: 'gm',
+            packId: 'SynthPack001',
+            problem: 'failed',
+            message: 'no regions',
+            source: 'default',
+          },
+        },
+      });
+    });
+    expect(
+      screen.getByRole('option', { name: 'Default: General MIDI (Electric Bass (finger))' }),
+    ).toBeVisible();
+    expect(select).toHaveAccessibleDescription(
+      'The sound pack could not be loaded: playing General MIDI (no regions)',
+    );
+  });
+
+  it('names what the family default plays, and falls back to General MIDI when it is missing', async () => {
+    const { services, select } = await setup();
+    act(() => {
+      services.settings.set(DEFAULT_SOUND_SETTINGS.bass, {
+        packId: 'SynthPack001',
+        instrument: 'alt',
+      });
+    });
+    expect(select).toHaveValue('');
+    expect(screen.getByRole('option', { name: 'Default: Synthetic Pack: Alt' })).toBeVisible();
+    act(() => {
+      services.settings.set(DEFAULT_SOUND_SETTINGS.bass, { packId: 'Gone00000001' });
+    });
+    expect(
+      screen.getByRole('option', { name: 'Default: General MIDI (Electric Bass (finger))' }),
+    ).toBeVisible();
+    // A default whose pack is missing is silent: no notice, no (not installed) option.
+    expect(select).toHaveAccessibleDescription('');
+    expect(screen.queryByRole('option', { name: /not installed/ })).toBeNull();
   });
 
   it('keeps the effects preset when General MIDI drops the pack', async () => {

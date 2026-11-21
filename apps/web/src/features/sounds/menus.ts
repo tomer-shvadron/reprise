@@ -1,6 +1,6 @@
 import type { MenuContext, MenuContribution } from '@/app/context-menu/types';
 
-import { curatedPack, updateAvailable } from './curated-packs';
+import { curatedPack, packPageUrl, updateAvailable } from './curated-packs';
 
 const packOf = ({ services, target }: MenuContext) =>
   target.kind === 'soundPack' && target.state === 'installed'
@@ -17,7 +17,7 @@ const canDownload = ({ services }: MenuContext) => services.platform.download !=
 const pageUrl = (at: MenuContext) => {
   const { target } = at;
   if (target.kind !== 'soundPack' || target.state === 'damaged') return undefined;
-  return curatedPack(target.id)?.sourceUrl ?? packOf(at)?.sourceUrl;
+  return packPageUrl(target.id, packOf(at));
 };
 
 /** The Sounds sheet's pack rows: installed, available (listed, not installed) and damaged folders. */

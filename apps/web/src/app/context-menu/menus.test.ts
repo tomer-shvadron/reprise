@@ -20,8 +20,9 @@ const registry = createAppRegistry(services);
 const menus = createAppMenus(registry);
 
 /**
- * The surfaces nobody has contributed to yet, each of which a later PR of #337 removes from here
- * when it adds its items: the test below then holds the new surface to the same rules.
+ * The surfaces nobody has contributed to yet. Empty since #337 closed; a surface added to
+ * `MenuSurface` without items must be listed here, and the test below then holds it to the same
+ * rules once it has some.
  */
 const NOT_YET: readonly MenuSurface[] = [];
 

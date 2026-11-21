@@ -35,7 +35,7 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
  * pack. The memory panel is at the top and the effects demo stays below.
  */
 export function SoundManager() {
-  const { sounds, platform, document } = useAppServices();
+  const { sounds, platform, document, playback } = useAppServices();
   const packs = useStore(sounds.api, (state) => state.packs);
   const damaged = useStore(sounds.api, (state) => state.damaged);
   const job = useStore(sounds.api, (state) => state.job);
@@ -47,19 +47,23 @@ export function SoundManager() {
   const setRemoving = (pack: InstalledPack | undefined) => {
     sounds.api.setState({ removingId: pack?.id });
   };
+  const trackSounds = useStore(playback, (state) => state.trackSounds);
   const [notice, setNotice] = useState<string | undefined>();
   const [announcement, setAnnouncement] = useState('');
   const root = useRef<HTMLDivElement>(null);
   const canDownload = platform.download !== undefined;
   const busy = job !== undefined;
 
-  // A request a menu made while the sheet was closed must not open a dialog on the next visit.
+  // The requests live in the store, which outlives this screen: one left open when the sheet
+  // closes (Open on a song closes it) must not reopen on the next visit.
   useEffect(
     () => () => {
-      sounds.api.setState({ removingId: undefined, renamingId: undefined });
+      sounds.api.setState({ removingId: undefined, renamingId: undefined, focusAfter: undefined });
     },
     [sounds],
   );
+  // A command that removed a row asks for focus here, where the focus keys live.
+  const focusAfter = useStore(sounds.api, (state) => state.focusAfter);
 
   // Focus: what a click removed (a row, the progress block, a problem) leaves focus on <body>,
   // where Escape no longer reaches the sheet. Each action names the element that gets it next.
@@ -76,6 +80,10 @@ export function SoundManager() {
     focusTarget.current = key;
   };
   useEffect(() => {
+    if (focusAfter !== undefined) {
+      focusTarget.current = focusAfter;
+      sounds.api.setState({ focusAfter: undefined });
+    }
     if (removing === undefined) applyFocus();
   });
 
@@ -111,8 +119,15 @@ export function SoundManager() {
     }
   }, [job, sounds]);
 
+  // A track that names the pack, plus one that plays it as its family's default (#346).
   const usedBy = (id: string): number | undefined =>
-    tracks?.filter((track) => track.sound?.packId === id).length;
+    tracks?.filter(
+      (track) =>
+        track.sound?.packId === id ||
+        (track.sound?.packId === undefined &&
+          trackSounds[track.id]?.source === 'default' &&
+          trackSounds[track.id]?.packId === id),
+    ).length;
 
   const available = useMemo(
     () => CURATED_PACKS.filter((pack) => !packs.some((installed) => installed.id === pack.id)),
@@ -315,6 +330,7 @@ export function SoundManager() {
               <DamagedRow
                 key={entry.folder}
                 damaged={entry}
+                busy={busy}
                 onRemove={(folder) => {
                   focusNext('installed-heading');
                   void sounds.removeDamaged(folder);

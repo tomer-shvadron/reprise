@@ -44,7 +44,8 @@ export function LibraryScreen() {
     void library.load();
   }, [library]);
 
-  // A request a menu made while the sheet was closed must not open a dialog on the next visit.
+  // The requests live in the store, which outlives this screen: Open on the practice page closes
+  // the sheet with the log still requested, and it must not reopen on the next visit.
   useEffect(
     () => () => {
       library.store.setState({ deleteId: undefined, practiceLogId: undefined });

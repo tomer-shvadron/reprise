@@ -1,7 +1,7 @@
 import type { Command } from '@/app/command-registry';
 import type { AppServices } from '@/app/services';
 
-import { curatedPack } from './curated-packs';
+import { curatedPack, packPageUrl } from './curated-packs';
 
 export type SoundsCommandId =
   | 'sounds.show'
@@ -34,7 +34,7 @@ export function soundsCommands(
     const current = target();
     if (!current || current.state === 'damaged') return undefined;
     const pack = installed();
-    return curatedPack(current.id)?.sourceUrl ?? pack?.sourceUrl;
+    return packPageUrl(current.id, pack);
   };
   return [
     {
@@ -87,11 +87,9 @@ export function soundsCommands(
           sounds.api.setState({ removingId: current.id });
           return;
         }
-        // The damaged row is gone afterwards and took focus with it: the sheet's heading takes it.
-        void sounds.removeDamaged(current.id).then(() => {
-          globalThis.document
-            .querySelector<HTMLElement>('[data-focus="installed-heading"]')
-            ?.focus();
+        // The row is gone afterwards and took focus with it: the screen moves it to its heading.
+        void sounds.removeDamaged(current.id).then((removed) => {
+          if (removed) sounds.api.setState({ focusAfter: 'installed-heading' });
         });
       },
     },

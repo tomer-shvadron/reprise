@@ -67,6 +67,8 @@ export interface SoundPackState {
    */
   removingId: string | undefined;
   renamingId: string | undefined;
+  /** A `data-focus` key a command asks the screen to focus once, after it removed a row. */
+  focusAfter: string | undefined;
 }
 
 /** A zip the user picked or dropped. */
@@ -129,6 +131,7 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
     scanned: false,
     removingId: undefined,
     renamingId: undefined,
+    focusAfter: undefined,
   }));
   /** A source object per installed pack version: reinstalling is what makes a new one. */
   const sources = new Map<

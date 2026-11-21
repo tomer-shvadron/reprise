@@ -140,7 +140,8 @@ function leavesKeyToTarget(event: KeyboardEvent): boolean {
  *   palette, Cmd/Ctrl+G to switch the open palette to a bar number, ? or Cmd/Ctrl+/ for the cheat
  *   sheet) when that dialog is the only modal, and Space for play and pause (`transport.playPause`)
  *   when every open modal is an app sheet (the Library or Sounds), outside a text field and off a
- *   control that takes Space itself. Escape and the rest stay with the dialog. The desktop menu
+ *   control that takes Space itself, and Shift+F10 (`app.contextMenu`) when every open modal is
+ *   an app sheet, for the row menus; with nothing focused it opens no menu while a modal is open. Escape and the rest stay with the dialog. The desktop menu
  *   obeys the same rule through `menuCommandAllowed`, so its Play/Pause also runs over a sheet.
  * - A key that was already handled (`defaultPrevented`) or is part of IME composition.
  * - A bare key (no Cmd or Ctrl) typed in a text field, and Space or Enter on a focused control.

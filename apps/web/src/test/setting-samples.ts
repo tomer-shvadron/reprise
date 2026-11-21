@@ -1,5 +1,5 @@
 import { SETTINGS_SECTIONS } from '@/app/settings-sections';
-import { DEFAULT_SOUND_SETTINGS, OFFERED_PACKS_SETTING } from '@/features/sounds';
+import { OFFERED_PACKS_SETTING } from '@/features/sounds';
 import { LIBRARY_SORT_SETTING } from '@/features/library/search';
 import { APP_SETTINGS } from '@/state/app-settings';
 import type { SettingDef } from '@/state/settings';
@@ -16,8 +16,6 @@ export const REGISTERED: readonly SettingDef<unknown>[] = [
       LIBRARY_SORT_SETTING,
       // Belongs to no section: only the download offer reads it.
       OFFERED_PACKS_SETTING,
-      // Until the Sounds section lists them (#346, part 2).
-      ...Object.values(DEFAULT_SOUND_SETTINGS),
       ...SETTINGS_SECTIONS.flatMap((s) => s.settings),
     ].map((def) => [def.key, def] as const),
   ).values(),

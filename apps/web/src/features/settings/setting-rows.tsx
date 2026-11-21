@@ -13,12 +13,15 @@ export function SettingRow({
   description,
   htmlFor,
   labelId,
+  descriptionId,
   children,
 }: {
   label: string;
   description?: string;
   htmlFor?: string;
   labelId?: string;
+  /** For a control's `aria-describedby`. */
+  descriptionId?: string;
   children: ReactNode;
 }) {
   return (
@@ -27,7 +30,11 @@ export function SettingRow({
         <label id={labelId} htmlFor={htmlFor} className="text-sm font-medium">
           {label}
         </label>
-        {description && <p className="text-muted-foreground mt-0.5 text-xs">{description}</p>}
+        {description && (
+          <p id={descriptionId} className="text-muted-foreground mt-0.5 text-xs">
+            {description}
+          </p>
+        )}
       </div>
       <div className="shrink-0">{children}</div>
     </div>

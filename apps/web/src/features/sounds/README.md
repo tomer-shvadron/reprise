@@ -84,6 +84,8 @@ folder holds the UI:
 
 ## Sounds screen (WP-091)
 
+Each pack row has a context menu (`menus.ts`, `commands.ts`: Rename, Update, Download, Open download page, Remove); the Remove confirm and the rename form are opened through `removingId` and `renamingId` in the pack store.
+
 `SoundManager` lists installed packs by family (licence link, size, version, tracks of the open song
 that use it, Update when the list has a newer version, Rename for custom packs, Remove behind a
 confirm that says how many tracks fall back to General MIDI), the curated packs not yet installed
@@ -98,13 +100,16 @@ pack (`drop.ts`; the drop zone leaves drops to this screen). The memory panel is
 
 `TrackSoundPicker` is a compact select in the mixer strip, under "Instrument":
 
-- The first option is "General MIDI (<program name>)", the mixer supplying the name. Installed packs
+- The first option is "Default (<what the family default plays now>)", value `''`, which stores nothing:
+  the pack instrument's name, or "General MIDI (<program name>)" when the family is GM or its pack is
+  missing, so the select shows what actually plays. The second is "General MIDI (<program name>)",
+  which stores `sound.generalMidi: true` (the mixer supplies the name). Installed packs
   follow, "Suggested" first (a pack whose `gmPrograms` include the track's program, or a drum pack on
   a drum track), then "Other packs". A pack with several instruments has one option each
   ("Black and Blue Basses: Blue"); a single-instrument pack has one.
 - A choice is one undoable `setTrackProperties` with `sound: { ...sound, packId, instrument? }`.
-  `instrument` is stored only for a multi-instrument pack (absent means the pack's first). General
-  MIDI drops `packId` and `instrument`, and drops `sound` with `null` once nothing is left, so the
+  `instrument` is stored only for a multi-instrument pack (absent means the pack's first). Every
+  choice clears `packId`, `instrument` and `generalMidi` before setting its own, and drops `sound` with `null` once nothing is left, so the
   effects preset survives and the gp writer reports no `sound-override` loss.
 - A `packId` (or instrument) the directory lacks stays selected as "<name or id> (not installed)",
   with "<name> is not installed: playing General MIDI" under the select. The score is never edited:
@@ -151,6 +156,7 @@ A track that chose no sound plays its family's default (#346). `soundFamilyOf(tr
 - `createDefaultSounds(settings)` is the `DefaultSounds` source the audio service reads (`state/sound-packs.ts`); it notifies on any handle, and the service reloads the song.
 - Precedence, in `app/audio/track-sound.ts` (`resolveTrackSound`): a pack the track names, an explicit `sound.generalMidi`, the family default, the track's GM program. The file's program only picks the family; it is never a choice.
 - A default applies at play time only. It is never written into the score, the `.reprise` file or a gp export.
-- A default whose pack is not installed (or lacks the instrument) plays GM with no warning: the track's `trackSounds` entry is `{ tier: 'gm', packId, problem: 'missing', source: 'default' }`, which the mixer's notice ignores and the download offer will read.
+- A default whose pack is not installed (or lacks the instrument) plays GM with no warning: the track's `trackSounds` entry is `{ tier: 'gm', packId, problem: 'missing', source: 'default' }`, which the mixer's notice ignores and the download offer reads.
 - All guitar tracks share one resident instrument, so memory does not grow with the track count (`hq-memory-budget.test.ts`).
 - `sounds.offeredPacks` records which curated packs the one-time download offer has shown.
+- UI: the Settings "Sounds" section (`sounds-section.tsx`, one select per family, Download or Open Sounds beside a pack that is not installed); `DefaultSoundOffer` (`default-sound-offer.tsx`, mounted in `app/notices.tsx`) shows once per pack id when the open song has a track defaulting to a missing curated pack, with Download on desktop and Open Sounds on the web; the Sounds sheet counts tracks that play a pack as the default too.

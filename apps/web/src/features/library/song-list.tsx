@@ -140,7 +140,12 @@ export function SongList({ entries, now, onOpen, onDelete, onPracticeLog }: Song
       // A right-click selects the row, as it does in a file manager.
       if (index >= 0) setActive(index);
     } else {
-      entry = entries[current];
+      // The focused control's row first (a row's own button), else the active row.
+      const focused = globalThis.document.activeElement?.closest('[role="option"]');
+      entry =
+        entries.find((candidate) => `song-${candidate.row.id}` === focused?.id) ?? entries[current];
+      // The active row may be scrolled out of view; the menu anchors to a row on screen.
+      if (entry && entry === entries[current]) reveal(current);
     }
     if (!entry) return undefined;
     const anchor = scroller.current
@@ -250,6 +255,8 @@ export function SongList({ entries, now, onOpen, onDelete, onPracticeLog }: Song
                     aria-label={`Delete ${row.title}`}
                     onClick={(event) => {
                       event.stopPropagation();
+                      // The row stays the active one, as for the practice log.
+                      setActive(index);
                       onDelete(row.id);
                     }}
                     onDoubleClick={(event) => {

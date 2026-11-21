@@ -4,6 +4,7 @@ import {
   playbackSection,
   scoreSection,
 } from '@/features/settings';
+import { soundsSection } from '@/features/sounds';
 
 /**
  * The Settings dialog's sections, in order. A feature adds its section here, with its own folder's
@@ -11,6 +12,7 @@ import {
  */
 export const SETTINGS_SECTIONS = [
   appearanceSection,
+  soundsSection,
   scoreSection,
   playbackSection,
   keyboardSection,

@@ -434,9 +434,11 @@ export function AvailableRow({
 
 export function DamagedRow({
   damaged,
+  busy,
   onRemove,
 }: {
   damaged: DamagedPack;
+  busy: boolean;
   onRemove: (folder: string) => void;
 }) {
   const menu = useStaticContextMenu({
@@ -453,6 +455,7 @@ export function DamagedRow({
       <Button
         variant="destructive"
         size="sm"
+        disabled={busy}
         aria-label={`Remove damaged folder ${damaged.folder}`}
         onClick={() => {
           onRemove(damaged.folder);
