@@ -1,7 +1,7 @@
 import { write } from '@reprise/formats';
 import { layout, PAGE_SIZES, type LayoutOptions } from '@reprise/layout';
 import type { Score } from '@reprise/model';
-import { score } from '@reprise/model/testing';
+import { note, score } from '@reprise/model/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createTestServices } from '@/test/services';
@@ -162,6 +162,25 @@ describe('the print store', () => {
     await renderJob();
     await printing;
     expect(run.mock.calls[0]?.[1].chordDiagrams).toBe(false);
+  });
+
+  it('reserves the strip under the title with the setting as it is when Print is pressed', async () => {
+    let strip = false;
+    const { store, services, renderJob } = await setup({ chordStrip: () => strip }, false);
+    const built = score().track('guitar');
+    built
+      .bar()
+      .beat('4', [note(1, 0)], { chord: { name: 'Am' } })
+      .rest('2')
+      .rest('4');
+    const { bytes } = await write(built.build({ ids: 'sequential' }), 'reprise');
+    await services.document.getState().openBytes('chords.reprise', bytes);
+    store.getState().open();
+    strip = true;
+    const printing = store.getState().print();
+    const job = await renderJob();
+    await printing;
+    expect(job.heading?.strip).toBeDefined();
   });
 
   it('waits for the rendered signal of its own job, and prints once', async () => {

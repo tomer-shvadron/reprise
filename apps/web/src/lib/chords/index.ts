@@ -1,3 +1,4 @@
+export { chordList, type ChordListEntry } from './chord-list';
 export { fingerShape, type Fingering, type ShapeFrets } from './fingering';
 export { nameChord, type ChordName } from './identify';
 export { parseChordName, spellPitchClass, type ParsedChordName, type PitchClass } from './names';

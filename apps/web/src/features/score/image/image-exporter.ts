@@ -74,6 +74,10 @@ export interface ImageExporterDeps {
   selectionScope: (useTarget: boolean) => ImageSelection | undefined;
   /** Whether chord diagrams are drawn, read when the image is made so it follows the screen. */
   chordDiagrams?: () => boolean;
+  /** Whether the chord strip is on, read the same way; the whole score and a page draw it. */
+  chordStrip?: () => boolean;
+  /** The current track, which the strip prefers. */
+  currentTrack?: () => Id | undefined;
   notify: (message: string, kind?: 'error') => void;
   /** Rendering overrides, for tests. */
   render?: Pick<ImageExportDeps, 'outlines' | 'rasterise' | 'yieldFrame'>;
@@ -147,6 +151,10 @@ export function createImageExporter(deps: ImageExporterDeps): ImageExporter {
       tracks: bars ? bars.tracks : tracksOnScreen(),
       notation: view.notation,
       ...(deps.chordDiagrams && { chordDiagrams: deps.chordDiagrams() }),
+      ...(deps.chordStrip && {
+        chordStrip: deps.chordStrip(),
+        currentTrack: deps.currentTrack?.(),
+      }),
     };
   };
 

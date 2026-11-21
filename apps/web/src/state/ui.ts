@@ -1,4 +1,5 @@
 import type { LayoutOptions, PAGE_SIZES } from '@reprise/layout';
+import type { Id } from '@reprise/model';
 import { create } from 'zustand';
 
 import { BOTTOM_PANEL_HEIGHT } from './bottom-panel-height';
@@ -68,6 +69,12 @@ export interface PracticeModeState {
   returnTo: 'play' | 'edit';
 }
 
+export interface ChordHighlight {
+  track: Id;
+  key: string;
+  at: number;
+}
+
 export interface UiState {
   theme: Theme;
   view: UiView;
@@ -77,6 +84,14 @@ export interface UiState {
   rightPanelView: PanelView;
   /** The chord the Chords tab lists shapes for (#352); the text the user typed or a menu passed. */
   chordsName: string;
+  /**
+   * The chord picked in the chord strip (#352): every beat of `track` with that `key` (name plus
+   * diagram, as `chordList` keys it) is boxed in the score, and `at` is the occurrence the arrow
+   * keys are on. A transient pick, never stored.
+   */
+  chordHighlight: ChordHighlight | undefined;
+  /** The chord strip is folded to its title bar; the strip itself is the `score.chordStrip` setting. */
+  chordStripFolded: boolean;
   panelWidths: Record<PanelId, number>;
   /** The right panel is open because the stored state said so, not because the user opened it. */
   panelRestored: boolean;
@@ -118,6 +133,8 @@ export interface UiState {
   /** Shows `view` in the right panel and opens the panel. */
   showPanelView: (view: PanelView) => void;
   setChordsName: (name: string) => void;
+  setChordHighlight: (highlight: ChordHighlight | undefined) => void;
+  setChordStripFolded: (folded: boolean) => void;
   setPanelWidth: (panel: PanelId, width: number) => void;
   /** Shows `view` in the bottom region and opens it. */
   showBottomPanelView: (view: BottomPanelView) => void;
@@ -175,6 +192,8 @@ export function createUiStore(theme: Theme = initialTheme()) {
     panelRestored: false,
     rightPanelView: 'mixer',
     chordsName: '',
+    chordHighlight: undefined,
+    chordStripFolded: false,
     panelWidths: {
       sidebar: PANEL_WIDTH.sidebar.default,
       rightPanel: PANEL_WIDTH.rightPanel.default,
@@ -238,6 +257,20 @@ export function createUiStore(theme: Theme = initialTheme()) {
         panels: { ...state.panels, rightPanel: true },
         panelRestored: false,
       }));
+    },
+    setChordHighlight: (chordHighlight) => {
+      const was = get().chordHighlight;
+      if (
+        was?.track === chordHighlight?.track &&
+        was?.key === chordHighlight?.key &&
+        was?.at === chordHighlight?.at
+      ) {
+        return;
+      }
+      set({ chordHighlight });
+    },
+    setChordStripFolded: (chordStripFolded) => {
+      if (get().chordStripFolded !== chordStripFolded) set({ chordStripFolded });
     },
     setChordsName: (name) => {
       if (get().chordsName !== name) set({ chordsName: name });

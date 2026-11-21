@@ -1,7 +1,7 @@
 import { render } from '@testing-library/react';
 import { DEFAULT_MARGINS } from '@reprise/layout';
 import { createScoreMeta } from '@reprise/model';
-import { largeScore } from '@reprise/model/testing';
+import { largeScore, note, score } from '@reprise/model/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PrintDocument } from './print-document';
@@ -96,5 +96,35 @@ describe('PrintDocument', () => {
     rerender(<PrintDocument content={content} onReady={onReady} />);
     expect(onReady).toHaveBeenCalledOnce();
     expect(pagesAtReady).toBe(content.result.pages.length);
+  });
+
+  it('draws the chord strip under the title on the first page, from the layout the heading carries', () => {
+    const b = score().track('guitar');
+    b.bar()
+      .beat('4', [note(1, 0)], { chord: { name: 'Am' } })
+      .rest('2')
+      .rest('4');
+    const chords = {
+      ...b.build({ ids: 'sequential' }),
+      meta: createScoreMeta({ title: 'Song', artist: 'Band' }),
+    };
+    const chordSettings: PrintSettings = {
+      ...settings,
+      tracks: chords.tracks.map(({ id }) => id),
+    };
+    const withStrip = layoutForPrint(chords, chordSettings, {}, 'song.gp', { chordStrip: true });
+    const { container } = render(<PrintDocument content={withStrip} />);
+    const strips = container.querySelectorAll<SVGElement>('.score-print-strip');
+    expect(strips).toHaveLength(1);
+    expect(strips[0]?.closest('.score-page')?.getAttribute('data-page')).toBe('0');
+    expect(strips[0]?.getAttribute('aria-hidden')).toBe('true');
+    expect(strips[0]?.style.top).toBe(
+      `${String(margins.top + (withStrip.heading?.stripTop ?? 0))}px`,
+    );
+    expect(strips[0]?.querySelector('text')?.textContent).toBe('Am');
+    // Not drawn when the setting is off.
+    expect(
+      render(<PrintDocument content={content} />).container.querySelector('.score-print-strip'),
+    ).toBeNull();
   });
 });

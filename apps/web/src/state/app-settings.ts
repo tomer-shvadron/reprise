@@ -105,6 +105,12 @@ export const CHORD_DIAGRAMS_SETTING = defineSetting({
   schema: z.boolean(),
   default: true,
 });
+/** Whether the chord strip (#352) is docked above the score; off until turned on, and printed when on. */
+export const CHORD_STRIP_SETTING = defineSetting({
+  key: 'score.chordStrip',
+  schema: z.boolean(),
+  default: false,
+});
 /**
  * The practice mode's zoom, remembered like the panel width: the distance from the screen is the
  * one thing worth tuning there, and nothing else sets it. The normal zoom is not stored.
@@ -130,6 +136,7 @@ export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
   DEFAULT_NOTATION_STRINGS_SETTING,
   DEFAULT_NOTATION_VOCALS_SETTING,
   CHORD_DIAGRAMS_SETTING,
+  CHORD_STRIP_SETTING,
   RIGHT_PANEL_OPEN_SETTING,
   RIGHT_PANEL_WIDTH_SETTING,
   BOTTOM_DOCK_OPEN_SETTING,

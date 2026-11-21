@@ -8,7 +8,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { HintTooltip } from '@/app/command-tooltip';
 
 import { keepFocus } from '../command-control';
 import { useMenuFocusReturn } from '../menu-focus-return';
@@ -34,27 +34,24 @@ export function DurationMenu({
   const text = rhythmLabel(rhythm);
   return (
     <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="xs"
-              className="rounded-full"
-              aria-label={`Duration, ${text}`}
-              data-pill-item={itemKey}
-              tabIndex={tabStop ? 0 : -1}
-              disabled={!enabled}
-              onMouseDown={keepFocus}
-              onPointerDownCapture={focusReturn.remember}
-              onKeyDownCapture={focusReturn.remember}
-            >
-              {text}
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent>Duration</TooltipContent>
-      </Tooltip>
+      <HintTooltip label="Duration">
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="xs"
+            className="rounded-full"
+            aria-label={`Duration, ${text}`}
+            data-pill-item={itemKey}
+            tabIndex={tabStop ? 0 : -1}
+            disabled={!enabled}
+            onMouseDown={keepFocus}
+            onPointerDownCapture={focusReturn.remember}
+            onKeyDownCapture={focusReturn.remember}
+          >
+            {text}
+          </Button>
+        </DropdownMenuTrigger>
+      </HintTooltip>
       <DropdownMenuContent
         side="bottom"
         align="start"

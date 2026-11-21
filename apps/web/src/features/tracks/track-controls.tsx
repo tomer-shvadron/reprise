@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Slider } from '@/components/ui/slider';
 import { Toggle } from '@/components/ui/toggle';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { HintTooltip } from '@/app/command-tooltip';
 import type { InstrumentLoad } from '@/state/playback';
 
 import { GM_DRUM_KITS, GM_FAMILIES, GM_PROGRAMS } from '@/lib/gm-programs';
@@ -91,12 +91,7 @@ export function VisibilityToggle({
     </Toggle>
   );
   if (!locked) return toggle;
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{toggle}</TooltipTrigger>
-      <TooltipContent>{disabledReason}</TooltipContent>
-    </Tooltip>
-  );
+  return <HintTooltip label={disabledReason}>{toggle}</HintTooltip>;
 }
 
 export function NotationMenu({
