@@ -130,6 +130,19 @@ describe('tab staff: strings and fret numbers', () => {
     expect(texts(result)).toEqual(['3', '0', '7', '(7)']);
   });
 
+  it('prints neck frets in the trill and harmonic suffixes of the drone string', () => {
+    const result = laid(
+      score()
+        .track('banjo')
+        .bar()
+        .beat('4', [note(5, 2, { trill: { fret: 4, speed: 16 } })])
+        .beat('4', [note(5, 2, { harmonic: { kind: 'artificial' } })])
+        .beat('4', [note(5, 2, { harmonic: { kind: 'natural' } })])
+        .build({ ids: 'sequential' }),
+    );
+    expect(texts(result)).toEqual(['7', '(9)', '7', '<19>', '<7>']);
+  });
+
   it('writes dead notes as x, ghost notes and tied notes in parentheses', () => {
     const result = laid(
       guitar()

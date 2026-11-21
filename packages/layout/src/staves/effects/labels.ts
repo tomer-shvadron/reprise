@@ -1,4 +1,4 @@
-import type { HarmonicKind, Note } from '@reprise/model';
+import { writtenFret, type HarmonicKind, type Note, type Track } from '@reprise/model';
 
 const QUARTERS = ['', '¼', '½', '¾'] as const;
 
@@ -28,9 +28,9 @@ export function fretNumber(value: number): string {
 }
 
 /** What a natural harmonic writes in place of its fret: the node, in angle brackets. */
-export function naturalHarmonicText(note: Note): string | undefined {
+export function naturalHarmonicText(note: Note, track: Pick<Track, 'drone'>): string | undefined {
   return note.harmonic?.kind === 'natural'
-    ? `<${fretNumber(note.harmonic.value ?? note.fret)}>`
+    ? `<${fretNumber(note.harmonic.value ?? writtenFret(track, note))}>`
     : undefined;
 }
 
@@ -38,9 +38,11 @@ export function naturalHarmonicText(note: Note): string | undefined {
  * The small text after a fret number: a trill's other fret in parentheses, else an artificial
  * harmonic's sounding fret in angle brackets.
  */
-export function suffixText(note: Note): string | undefined {
-  if (note.trill) return `(${String(note.trill.fret)})`;
+export function suffixText(note: Note, track: Pick<Track, 'drone'>): string | undefined {
+  // Neck frets: a banjo's drone string stores its frets from its own nut.
+  if (note.trill)
+    return `(${String(writtenFret(track, { string: note.string, fret: note.trill.fret }))})`;
   const { harmonic } = note;
   if (!harmonic || harmonic.kind === 'natural') return undefined;
-  return `<${fretNumber(note.fret + (harmonic.value ?? 12))}>`;
+  return `<${fretNumber(writtenFret(track, note) + (harmonic.value ?? 12))}>`;
 }

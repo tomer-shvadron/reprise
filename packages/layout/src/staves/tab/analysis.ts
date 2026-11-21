@@ -215,7 +215,9 @@ export function fretText(
   options: TabOptions,
   track: Pick<Track, 'drone'>,
 ): string | undefined {
-  const value = note.dead ? 'x' : (naturalHarmonicText(note) ?? String(writtenFret(track, note)));
+  const value = note.dead
+    ? 'x'
+    : (naturalHarmonicText(note, track) ?? String(writtenFret(track, note)));
   if (note.tie && options.tiedNotes === 'hidden') return undefined;
   return note.ghost || note.tie ? `(${value})` : value;
 }
@@ -232,7 +234,7 @@ export function labelOf(
     text,
     width: textWidth(text ?? String(writtenFret(track, note)), size),
   };
-  const suffix = text === undefined || note.dead ? undefined : suffixText(note);
+  const suffix = text === undefined || note.dead ? undefined : suffixText(note, track);
   if (suffix) label.suffix = { text: suffix, width: textWidth(suffix, size * TAB.graceScale) };
   return label;
 }
