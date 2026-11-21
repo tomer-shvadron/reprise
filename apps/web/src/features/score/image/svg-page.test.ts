@@ -12,7 +12,7 @@ import { layoutForPrint } from '../print-layout';
 import bravuraJson from './outlines/bravura.json';
 import geistJson from './outlines/geist.json';
 import { parseOutlines } from './outlines';
-import { pageSvg } from './svg-page';
+import { pageSvg, pageSvgReport } from './svg-page';
 
 const outlines = parseOutlines(bravuraJson, geistJson);
 
@@ -217,10 +217,21 @@ describe('pageSvg text', () => {
     expect(at([word({})])).toContain(`<use xlink:href="#g400-66" x="${String(A)}"/>`);
   });
 
-  it('draws italic text from the italic outlines', () => {
-    const svg = at([word({ italic: true })]);
-    expect(svg).toContain('#g400i-65');
-    expect(svg).not.toContain('#g400-65');
+  it('draws italic as the upright outlines under the painter’s 0.25 oblique, same advances', () => {
+    const upright = at([word({})]);
+    const slanted = at([word({ italic: true })]);
+    const k = 10 / outlines.geist.unitsPerEm;
+    expect(slanted).toContain('#g400-65');
+    expect(slanted).not.toContain('g400i');
+    expect(slanted).toContain(`matrix(${String(k)} 0 ${String(k * 0.25)} ${String(-k)} 50 40)`);
+    expect(slanted).toContain(`x="${String(A)}"`);
+    expect(upright).not.toContain('matrix(');
+  });
+
+  it('keeps ♯ ♭ ♮ in a chord name as shapes', () => {
+    const svg = at([word({ text: 'F♯m7 B♭ E♮' })]);
+    expect(svg).not.toContain('<text');
+    for (const codepoint of [9839, 9837, 9838]) expect(svg).toContain(`#g400-${String(codepoint)}`);
   });
 
   it('falls back to escaped <text> when a character has no outline', () => {
@@ -234,6 +245,83 @@ describe('pageSvg text', () => {
   it('drops C0 controls from fallback text', () => {
     const doc = parse(at([word({ text: '歌\u0001\u0008x' })]));
     expect(doc.querySelector('text')?.textContent).toBe('歌x');
+  });
+});
+
+describe('pageSvgReport', () => {
+  const run = (primitives: Primitive[]) => {
+    const { layout, page } = handmade(primitives);
+    return pageSvgReport({ layout, page, outlines, background: 'white' });
+  };
+
+  it('counts the strings that fell back to <text>', () => {
+    expect(run([word({ text: '歌' }), word({ text: 'ok' })]).fallbackTexts).toBe(1);
+  });
+
+  it('counts a glyph with no outline instead of dropping it silently', () => {
+    const glyph: Primitive = {
+      kind: 'glyph',
+      glyph: 'gClef',
+      codepoint: 0x10ffff,
+      x: 10,
+      y: 20,
+      size: 40,
+      bbox: box,
+      role: 'ink',
+    };
+    const report = run([glyph]);
+    expect(report.missingGlyphs).toBe(1);
+    expect(report.svg).not.toContain('<use');
+  });
+});
+
+describe('pageSvg heading', () => {
+  const heading = (title: string, byline?: string) => {
+    const { layout, page } = handmade([]);
+    return pageSvgReport({
+      layout,
+      page,
+      outlines,
+      background: 'white',
+      heading: { title, ...(byline && { byline }), height: 68 },
+    });
+  };
+
+  it('cuts a title that falls back to <text> too, and never past the content width', () => {
+    const report = heading('歌'.repeat(60));
+    const text = new DOMParser()
+      .parseFromString(report.svg, 'image/svg+xml')
+      .querySelector('text')?.textContent;
+    expect(report.fallbackTexts).toBe(1);
+    expect(text?.endsWith('…')).toBe(true);
+    // The page is 200 wide with margins, so far fewer than 60 characters fit.
+    expect(Array.from(text ?? '').length).toBeLessThan(20);
+  });
+
+  it('draws nothing when not even the ellipsis fits', () => {
+    const { layout, page } = handmade([]);
+    const narrow = { ...page, bbox: { ...page.bbox, width: 90 } };
+    const report = pageSvgReport({
+      layout,
+      page: narrow,
+      outlines,
+      background: 'white',
+      heading: { title: 'A long title that cannot fit', height: 68 },
+    });
+    expect(report.svg).not.toContain('#g600-');
+  });
+
+  it('kerns the heading as print does and no score text', () => {
+    const k = 22 / outlines.geist.unitsPerEm;
+    const pair = (text: string): number | undefined => {
+      const svg = heading(text).svg;
+      const match = /<use xlink:href="#g600-\d+" x="(-?\d+)"\/>/.exec(svg);
+      return match ? Number(match[1]) * k : undefined;
+    };
+    const advance = outlines.geist.styles['600']['65']?.advance ?? 0;
+    const kern = outlines.geist.kern['600']['AV'] ?? 0;
+    expect(kern).toBeLessThan(0);
+    expect(pair('AV')).toBeCloseTo((advance + kern) * k, 2);
   });
 });
 
@@ -298,6 +386,18 @@ describe('pageSvg backgrounds', () => {
     const doc = parse(pageSvg({ layout, page, outlines, background: 'transparent' }));
     const lines = [...doc.querySelectorAll('line')];
     expect(lines.map((line) => line.hasAttribute('mask'))).toEqual([true, false, false]);
+  });
+
+  it('keeps a mask no larger than its line, and ids apart between pages', () => {
+    const { layout, page } = handmade(scene);
+    const second = { ...page, index: 1 };
+    const a = parse(pageSvg({ layout, page, outlines, background: 'transparent' }));
+    const b = parse(pageSvg({ layout, page: second, outlines, background: 'transparent' }));
+    const maskA = a.querySelector('mask');
+    const maskB = b.querySelector('mask');
+    expect(Number(maskA?.getAttribute('width'))).toBeLessThan(200);
+    expect(Number(maskA?.getAttribute('height'))).toBeLessThan(10);
+    expect(maskA?.getAttribute('id')).not.toBe(maskB?.getAttribute('id'));
   });
 
   it('crops to a page rectangle and moves the content with it', () => {

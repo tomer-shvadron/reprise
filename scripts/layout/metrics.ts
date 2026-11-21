@@ -350,8 +350,12 @@ export function outlinePath(commands: readonly { command: string; args: number[]
   return out;
 }
 
-function outlineOf(glyph: ReturnType<Font['glyphForCodePoint']>): OutlineGlyph {
-  return { d: outlinePath(glyph.path.commands), advance: Math.round(glyph.advanceWidth) };
+function outlineOf(glyph: ReturnType<Font['glyphForCodePoint']>, dy = 0): OutlineGlyph {
+  const commands = glyph.path.commands.map(({ command, args }) => ({
+    command,
+    args: args.map((value, i) => (i % 2 === 1 ? value + dy : value)),
+  }));
+  return { d: outlinePath(commands), advance: Math.round(glyph.advanceWidth) };
 }
 
 /** One glyph per line, so a regenerated table diffs by glyph. */
@@ -384,26 +388,79 @@ export function bravuraOutlines(): string {
     Object.entries(glyphs).sort(([a], [b]) => Number(a) - Number(b)),
   );
   return outlineText(
-    { font: 'Bravura', version: metadata['fontVersion'], unitsPerEm: font.unitsPerEm },
+    {
+      ...NOTICES.bravura,
+      font: 'Bravura',
+      version: metadata['fontVersion'],
+      unitsPerEm: font.unitsPerEm,
+    },
     { glyphs: sorted },
   );
 }
 
-/** The faces the export draws text in; `400i` is regular italic. */
+/**
+ * The faces the export draws text in. Italic is the painter's synthetic oblique of the upright
+ * face (a skew in the SVG), so there is no italic table.
+ */
 const GEIST_STYLES = [
   { key: '400', file: '400-normal' },
-  { key: '400i', file: '400-italic' },
   { key: '600', file: '600-normal' },
 ] as const;
 
+/** Geist has no sharp, flat or natural sign; the chord names `F♯m7` take them from Bravura. */
+const ACCIDENTAL_SIGNS = [0x266f, 0x266d, 0x266e] as const;
+
+/** Pairs of printable ASCII: what a title or byline kerns, which print does and layout does not. */
+const KERN_CHARACTERS = Array.from({ length: 0x7f - 0x20 }, (_, i) =>
+  String.fromCodePoint(0x20 + i),
+);
+
+function kerning(font: Font): Record<string, number> {
+  const pairs: Record<string, number> = {};
+  for (const left of KERN_CHARACTERS) {
+    for (const right of KERN_CHARACTERS) {
+      const run = font.layout(left + right, ['kern']);
+      // A ligature (ff, fi) is one glyph, not a kern pair; the export draws characters one by one.
+      if (run.glyphs.length !== 2) continue;
+      const [first] = run.positions;
+      const natural = font.glyphForCodePoint(left.codePointAt(0) ?? 0).advanceWidth;
+      const delta = Math.round((first?.xAdvance ?? natural) - natural);
+      if (delta !== 0) pairs[left + right] = delta;
+    }
+  }
+  return pairs;
+}
+
+const NOTICES = {
+  bravura: {
+    copyright: 'Copyright (c) 2015, Steinberg Media Technologies GmbH (http://www.steinberg.net/)',
+    license: 'SIL Open Font License 1.1 (OFL-1.1), see apps/web/public/fonts/bravura/OFL.txt',
+    note: 'Outlines of the Bravura glyphs the score draws, converted to SVG path data. The Reserved Font Name "Bravura" belongs to the font; this table is data for drawing, not a font.',
+  },
+  geist: {
+    copyright: 'Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font)',
+    license: 'SIL Open Font License 1.1 (OFL-1.1), see node_modules/@fontsource/geist/LICENSE',
+    note: 'Outlines of Latin and Latin Extended Geist, converted to SVG path data, with the sharp, flat and natural signs from Bravura (OFL-1.1, Copyright (c) 2015, Steinberg Media Technologies GmbH). This table is data for drawing, not a font.',
+  },
+} as const;
+
 export function geistOutlines(): string {
   const groups: Record<string, Record<string, OutlineGlyph>> = {};
+  const kern: Record<string, Record<string, number>> = {};
+  const bravura = openFont(join(BRAVURA_DIR, 'Bravura.otf'));
   let unitsPerEm = 0;
+  let ascent = 0;
+  let descent = 0;
   for (const { key, file } of GEIST_STYLES) {
     const glyphs = new Map<number, OutlineGlyph>();
     for (const subset of ['latin', 'latin-ext']) {
       const font = openFont(join(GEIST_STATIC, 'files', `geist-${subset}-${file}.woff2`));
-      unitsPerEm = font.unitsPerEm;
+      if (subset === 'latin') {
+        unitsPerEm = font.unitsPerEm;
+        ascent = font.ascent;
+        descent = -font.descent;
+        kern[key] = kerning(font);
+      }
       for (const codepoint of font.characterSet) {
         // Controls have no shape and no business in a score's text.
         if (codepoint < 0x20 || (codepoint >= 0x7f && codepoint < 0xa0)) continue;
@@ -411,12 +468,27 @@ export function geistOutlines(): string {
         glyphs.set(codepoint, outlineOf(font.glyphForCodePoint(codepoint)));
       }
     }
+    for (const codepoint of ACCIDENTAL_SIGNS) {
+      if (glyphs.has(codepoint)) continue;
+      const glyph = bravura.glyphForCodePoint(codepoint);
+      if (glyph.id === 0) throw new Error(`Bravura has no glyph for U+${codepoint.toString(16)}`);
+      // Bravura centres a sign on the staff line; text sets it on the baseline.
+      glyphs.set(codepoint, outlineOf(glyph, -glyph.bbox.minY));
+    }
     groups[key] = Object.fromEntries(
       [...glyphs].sort(([a], [b]) => a - b).map(([codepoint, glyph]) => [String(codepoint), glyph]),
     );
   }
   return outlineText(
-    { font: 'Geist', package: `@fontsource/geist@${packageVersion(GEIST_STATIC)}`, unitsPerEm },
+    {
+      ...NOTICES.geist,
+      font: 'Geist',
+      package: `@fontsource/geist@${packageVersion(GEIST_STATIC)}`,
+      unitsPerEm,
+      ascent,
+      descent,
+      kern,
+    },
     groups,
   );
 }
