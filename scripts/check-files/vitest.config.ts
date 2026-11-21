@@ -28,6 +28,15 @@ export default defineConfig({
       },
       {
         test: {
+          name: 'check-insights',
+          root: 'apps/web',
+          environment: 'node',
+          include: ['src/lib/insights/**/*.check.ts'],
+          globalSetup: [SETUP],
+        },
+      },
+      {
+        test: {
           name: 'check-layout',
           root: 'packages/layout/test',
           include: ['**/*.check.ts'],

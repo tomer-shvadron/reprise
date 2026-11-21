@@ -24,7 +24,7 @@ This is Part B in short; the sections below say what each row means.
 ```sh
 pnpm check:files                      # fixtures/ and local-tabs/
 pnpm check:files local-tabs           # only your tabs
-pnpm check:files local-tabs/song.gp5 --only audio   # one file, one project (formats, layout, audio)
+pnpm check:files local-tabs/song.gp5 --only audio   # one file, one project (formats, layout, audio, insights)
 ```
 
 Paths resolve against the directory you run it from. Folders are walked recursively for `.gp3`, `.gp4`, `.gp5`, `.gpx` and `.gp` files, in any case; an empty `local-tabs/`, or a missing one when you give no path, is reported and skipped, and the previous run's reports are cleared. A path you give that does not exist exits with code 2. The command exits 0 only when no check fails, crashes or leaves a known entry stale. CI runs `pnpm check:files fixtures` as the "Real-file pass" step and uploads `.check-files/` when it fails.
@@ -47,6 +47,7 @@ Reports go to `.check-files/` at the repository root, which is gitignored and wi
 - `drafts/NN-<check>-<code>.md`: one draft `type:bug` issue per group of unknown violations, also printed at the end of the run.
 - `listening/<fixture path>.md` and `listening/local/<hash>.md`: the sheet for Part B, created once and never overwritten; a local tab's is keyed by its hash, so it stays with the tab when the numbers shift.
 - `exports/`: our writer's `.gp` output for each file (`local-<n>.gp` for a local one), for C4.
+- `insights.md`: the key the song-insights engine detects per file (key, confidence, correlation, runner-up, best-fit scale, whether the file's own signature agrees), a local tab by its `local-<n> (sha256 …)` label only. It comes from the `insights` project (`pnpm check:files --only insights`), a report with no pass or fail. When `local-tabs/keys.json` exists it also lists the true key beside each detected one and ends with the exact count and the mean MIREX score (1 right, 0.5 a fifth away, 0.3 the relative key, 0.2 the parallel key). The file is yours and never committed (`local-tabs/*` is ignored): a JSON object from a label to a key name, where a label is the tab's hash from the report (any prefix of 6 or more hex digits, or the full hash) or a fixture path, never `local-<n>` (it changes with the paths a run is given) and never a file name. A key name is a tonic and optionally a mode, in any case, such as `"A minor"`, `"F# major"`, `"Bb"`, `"Cm"`. The report names only an entry with a valid label and a bad key; every other entry is counted ("ignored"), as are listed keys that matched no file, so a file name you typed never reaches the report. A `keys.json` that is not valid JSON gets a fixed message and no figure.
 
 The known list is `scripts/check-files/known.ts`: each entry names its open issue and the fixtures it must fire on. When a run covers one of those fixtures and the entry no longer fires there, the run fails as stale; the PR that fixes the issue deletes its entry.
 
@@ -151,6 +152,7 @@ These need Guitar Pro 7 or 8; a trial installation is enough. They are optional 
 - **C4:** open `.check-files/exports/<file>.gp` for two or three songs: one with drums, one with a tuning-less pitched track such as piano, one with several tracks. Check that each opens, then the drum kit, the instruments and the page layout (#50, the WP-044 comment; the #71 review).
 - **C5:** any GP4 file with chord diagrams: the report's `version` (400 or 406), and whether the diagrams match Guitar Pro's (#50, comment (b)).
 - **C6:** an over-full bar, `fixtures/gp3/notes.gp3` (one bar) and bar 24 of `fixtures/gp5/effects.gp5` (ten quarter notes in a bar of eight), in Guitar Pro and in Reprise: does Guitar Pro stretch the bar to its longest voice and play every note, as Reprise does since #121, play the overflow over the following bars, as alphaTab does, or drop it? The model README's "Deviations from alphaTab" row calls Guitar Pro's behaviour unverified. Also a `.gp` export of a bar with a tempo change on an overflow beat (#123): does Guitar Pro apply the automation written at a `Position` past 1 at that beat? Ask the same of a program change at a `Position` past 1.
+- **C7 (#348):** how Guitar Pro 8 stores a 12-string and a mandolin, which Reprise does not know yet. Save a 12-string guitar track (if Guitar Pro 8 offers one) and a mandolin track as `.gp5` and `.gp`, and open both in Reprise: does the gp5 12-string flag (track flags 0x02) read as octave courses on strings 6 to 3 and unison on 2 and 1, as `fixtures/gp5/twelve-string.gp5` assumes? What does the `.gp` hold for each (the `Tuning/Instrument` text, the instrument set, the sound path)? Until then the gp writer reports `courses` as lost and the 12-string and mandolin read back as plain tracks.
 
 ## Part D: from findings to issues
 
