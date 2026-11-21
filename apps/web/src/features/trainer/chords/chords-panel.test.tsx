@@ -63,9 +63,9 @@ describe('the Chords panel', () => {
     expect(screen.getAllByText('Suggestion').length).toBeGreaterThan(1);
   });
 
-  it('says so for a name it does not know and for a track with no frets', async () => {
+  it('says so for a name it does not know', async () => {
     await setup({ name: 'Cfoo' });
-    expect(screen.getByText('No shapes for this chord name')).toBeTruthy();
+    expect(screen.getByRole('status')).toHaveTextContent('No shapes for this chord name');
   });
 
   it('asks for a fretted track on a drum track', async () => {
@@ -98,8 +98,38 @@ describe('the Chords panel', () => {
       vi.advanceTimersByTime(STRUM_STAGGER_MS * 8);
     });
     const calls = services.fakeAudio.previewNote.mock.calls.map((call) => call[1]);
-    // x02210 stored string 1 first: strings 2, 3, 4, 5 sound, low pitch first is 5, 4, 3, 2... plus open 1.
+    // x02210 sounds strings 5 to 1; low pitch first is 5, 4, 3, 2, 1.
     expect(calls.map((c) => (c as { string: number }).string)).toEqual([5, 4, 3, 2, 1]);
+  });
+
+  it('shows the tuning, marks the picked card and clamps it when the list shrinks', async () => {
+    const { user } = await setup();
+    expect(screen.getByText(/, E A D G B E$/)).toBeTruthy();
+    expect(cards()[0]).toHaveAttribute('aria-pressed', 'true');
+    await user.click(cards()[2] as HTMLElement);
+    expect(cards()[2]).toHaveAttribute('aria-pressed', 'true');
+    expect(cards()[0]).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('moves focus with the arrow keys, Home and End, and the tab stop follows', async () => {
+    const { user } = await setup();
+    act(() => {
+      cards()[0]?.focus();
+    });
+    await user.keyboard('{ArrowRight}');
+    expect(cards()[1]).toHaveFocus();
+    expect(cards()[1]).toHaveAttribute('tabindex', '0');
+    expect(cards()[0]).toHaveAttribute('tabindex', '-1');
+    await user.keyboard('{End}');
+    expect(cards().at(-1)).toHaveFocus();
+    await user.keyboard('{Home}');
+    expect(cards()[0]).toHaveFocus();
+  });
+
+  it('opens on the cursor chord, else the chord at the playhead, else the first of the song', async () => {
+    // The cursor sits on a beat with no chord, and nothing is playing: the song's most used chord.
+    await setup({ name: '' });
+    expect(screen.getByRole('textbox', { name: 'Chord' })).toHaveValue('Am');
   });
 
   it('hides the write buttons in play mode', async () => {
