@@ -574,6 +574,19 @@ describe('text fields and open dialogs', () => {
       );
       expect(modalBlocksCommand('app.drop')).toBe(true);
     });
+
+    it('lets the context menu key through in a sheet, not over a dialog on it', () => {
+      const { unmount } = render(sheet);
+      expect(modalBlocksCommand('app.contextMenu')).toBe(false);
+      unmount();
+      render(
+        <>
+          {sheet}
+          <div role="alertdialog" data-state="open" />
+        </>,
+      );
+      expect(modalBlocksCommand('app.contextMenu')).toBe(true);
+    });
   });
 
   it('is not blocked by a dialog that is closing', () => {

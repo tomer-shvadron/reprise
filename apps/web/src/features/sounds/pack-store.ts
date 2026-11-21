@@ -61,6 +61,14 @@ export interface SoundPackState {
   problems: Readonly<Record<string, PackProblem>>;
   /** `scan` has finished once. */
   scanned: boolean;
+  /**
+   * The installed pack whose Remove confirmation is open and the one being renamed, kept here so a
+   * row's context menu can start them (#337). The Sounds sheet clears both when it unmounts.
+   */
+  removingId: string | undefined;
+  renamingId: string | undefined;
+  /** A `data-focus` key a command asks the screen to focus once, after it removed a row. */
+  focusAfter: string | undefined;
 }
 
 /** A zip the user picked or dropped. */
@@ -121,6 +129,9 @@ export function createSoundPackStore(options: SoundPackStoreOptions): SoundPackS
     job: undefined,
     problems: {},
     scanned: false,
+    removingId: undefined,
+    renamingId: undefined,
+    focusAfter: undefined,
   }));
   /** A source object per installed pack version: reinstalling is what makes a new one. */
   const sources = new Map<

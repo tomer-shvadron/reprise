@@ -84,6 +84,8 @@ folder holds the UI:
 
 ## Sounds screen (WP-091)
 
+Each pack row has a context menu (`menus.ts`, `commands.ts`: Rename, Update, Download, Open download page, Remove); the Remove confirm and the rename form are opened through `removingId` and `renamingId` in the pack store.
+
 `SoundManager` lists installed packs by family (licence link, size, version, tracks of the open song
 that use it, Update when the list has a newer version, Rename for custom packs, Remove behind a
 confirm that says how many tracks fall back to General MIDI), the curated packs not yet installed

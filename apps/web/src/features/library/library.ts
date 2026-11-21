@@ -48,6 +48,13 @@ export interface LibraryState {
   unimportedId: Id | undefined;
   /** A short, non-blocking message about a save or an export, until dismissed. */
   notice: LibraryNotice | undefined;
+  /**
+   * The song whose delete confirmation is open and the song whose practice log is open. They live
+   * here, not in the screen, so the row's context menu can open them (#337). The screen clears
+   * both when it unmounts.
+   */
+  deleteId: Id | undefined;
+  practiceLogId: Id | undefined;
 }
 
 export interface LibraryNotice {
@@ -161,6 +168,8 @@ export function createLibrary(
     bannerError: undefined,
     unimportedId: undefined,
     notice: undefined,
+    deleteId: undefined,
+    practiceLogId: undefined,
   }));
   let keeper: SessionKeeper | undefined;
   let keeperId: Id | undefined;

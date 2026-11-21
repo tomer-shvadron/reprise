@@ -1,9 +1,10 @@
 import { write } from '@reprise/formats';
 import { score } from '@reprise/model/testing';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { openContextMenuOn } from '@/app/context-menu/open-on';
 import { setTrackVisible } from '@/features/tracks/track-actions';
 import { installPracticeLog } from '@/features/trainer';
 import { mirrorAudio } from '@/test/mirror-audio';
@@ -305,5 +306,58 @@ describe('the practice log page', () => {
     listbox().focus();
     await userEvent.keyboard('{ArrowDown}l');
     expect(await screen.findByRole('heading', { name: 'Beta' })).toBeInTheDocument();
+  });
+});
+
+describe('the library row requests', () => {
+  it('opens the delete confirm and the practice log from the store, and clears both on unmount', async () => {
+    const { services, library } = setup();
+    const alpha = await addSong(library, 'Alpha');
+    const beta = await addSong(library, 'Beta');
+    const view = renderWithServices(<LibraryScreen />, services);
+    await screen.findByRole('option', { name: /Alpha/ });
+
+    act(() => {
+      library.store.setState({ deleteId: alpha.id });
+    });
+    expect(await screen.findByRole('dialog', { name: /Delete/ })).toBeInTheDocument();
+    act(() => {
+      library.store.setState({ deleteId: undefined, practiceLogId: beta.id });
+    });
+    expect(await screen.findByRole('heading', { name: 'Beta' })).toBeInTheDocument();
+
+    act(() => {
+      library.store.setState({ deleteId: alpha.id });
+    });
+    view.unmount();
+    expect(library.store.getState().deleteId).toBeUndefined();
+    expect(library.store.getState().practiceLogId).toBeUndefined();
+  });
+
+  it('opens the menu of the row whose button has focus, not the active row’s', async () => {
+    const { services, library } = setup();
+    await addSong(library, 'Alpha');
+    const beta = await addSong(library, 'Beta');
+    renderWithServices(<LibraryScreen />, services);
+    await screen.findByRole('option', { name: /Alpha/ });
+    const show = vi.fn();
+    services.contextMenu.setState({ show });
+
+    // Row 0 (Alpha) is the active one; focus is on Beta's Delete button.
+    const button = screen.getByRole('button', { name: 'Delete Beta' });
+    button.focus();
+    expect(openContextMenuOn(button)).toBe(true);
+    expect(show).toHaveBeenCalledOnce();
+    expect(show.mock.calls[0]?.[0]).toMatchObject({
+      surface: 'library.song',
+      target: { kind: 'libraryEntry', id: beta.id },
+    });
+
+    // With the list itself focused it is the active row.
+    show.mockClear();
+    const list = screen.getByRole('listbox', { name: 'Songs' });
+    list.focus();
+    openContextMenuOn(list);
+    expect(show.mock.calls[0]?.[0]).toMatchObject({ label: 'Song Alpha' });
   });
 });

@@ -11,7 +11,8 @@ import { createTestServices, fakeDownload, fakePlatform } from '@/test/services'
 import { createMemoryStorage } from '@/test/memory-storage';
 
 import { CURATED_PACKS } from './curated-packs';
-import type { PackManifest } from './manifest';
+import type { InstalledPack, PackManifest } from './manifest';
+import { createAppRegistry } from '@/app/app-registry';
 import { DropZone } from '@/app/drop-zone';
 
 import { fakeDir, fakeFile } from './test/fake-entries';
@@ -633,5 +634,78 @@ describe('SoundManager: keyboard, focus and announcements', () => {
     await waitFor(() => {
       expect(region).toHaveTextContent('Downloading, 50%');
     });
+  });
+});
+
+describe('the pack row requests', () => {
+  const custom: InstalledPack = {
+    ...SWAG,
+    id: 'custompack01',
+    name: 'Mine',
+    curated: false,
+    source: 'folder',
+    installedAt: '2026-01-01T00:00:00.000Z',
+    files: [],
+    directDownload: false,
+  };
+
+  it('opens the rename form on the current name, the Remove confirm, and clears both on unmount', () => {
+    const { services, view } = setup();
+    act(() => {
+      services.sounds.api.setState({ packs: [custom], renamingId: custom.id });
+    });
+    const field = screen.getByRole('textbox', { name: 'Name of Mine' });
+    expect(field).toHaveValue('Mine');
+    expect(field).toHaveFocus();
+
+    act(() => {
+      services.sounds.api.setState({ renamingId: undefined, removingId: custom.id });
+    });
+    expect(screen.getByRole('dialog', { name: /Remove .Mine./ })).toBeInTheDocument();
+
+    act(() => {
+      services.sounds.api.setState({ renamingId: custom.id });
+    });
+    view.unmount();
+    expect(services.sounds.getState().removingId).toBeUndefined();
+    expect(services.sounds.getState().renamingId).toBeUndefined();
+  });
+
+  it('runs sounds.removePack as the confirm for an installed pack and directly for a damaged one', async () => {
+    const { services } = setup();
+    const registry = createAppRegistry(services);
+    const removeDamaged = vi.spyOn(services.sounds, 'removeDamaged').mockResolvedValue(true);
+    act(() => {
+      services.sounds.api.setState({
+        packs: [custom],
+        damaged: [{ folder: 'broken', reason: 'x' }],
+      });
+      services.menuTarget.getState().set({ kind: 'soundPack', id: custom.id, state: 'installed' });
+    });
+    act(() => {
+      void registry.get('sounds.removePack')?.run();
+    });
+    expect(await screen.findByRole('dialog', { name: /Remove .Mine./ })).toBeInTheDocument();
+    expect(removeDamaged).not.toHaveBeenCalled();
+
+    act(() => {
+      services.sounds.api.setState({ removingId: undefined });
+      services.menuTarget.getState().set({ kind: 'soundPack', id: 'broken', state: 'damaged' });
+    });
+    act(() => {
+      void registry.get('sounds.removePack')?.run();
+    });
+    expect(removeDamaged).toHaveBeenCalledWith('broken');
+  });
+
+  it('disables Remove folder while an install runs', () => {
+    const { services } = setup();
+    act(() => {
+      services.sounds.api.setState({
+        damaged: [{ folder: 'broken', reason: 'x' }],
+        job: { packId: 'p', name: 'P', phase: 'downloading', done: 0, total: undefined },
+      });
+    });
+    expect(screen.getByRole('button', { name: 'Remove damaged folder broken' })).toBeDisabled();
   });
 });

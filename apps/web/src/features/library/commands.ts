@@ -9,7 +9,10 @@ export type LibraryCommandId =
   | 'library.importFiles'
   | 'library.importFolder'
   | 'library.openWithoutImport'
-  | 'library.openRecent';
+  | 'library.openRecent'
+  | 'library.openSong'
+  | 'library.showPracticeLog'
+  | 'library.deleteSong';
 
 type LibraryCommand = Command & { id: LibraryCommandId };
 
@@ -20,6 +23,12 @@ export function libraryCommands(services: AppServices): LibraryCommand[] {
     ui.getState().showSheet('library');
     return run();
   };
+  // The row a menu was opened on. The commands that need one are for the row menus alone.
+  const targetSong = () => {
+    const target = services.menuTarget.getState().target;
+    return target?.kind === 'libraryEntry' ? target.id : undefined;
+  };
+  const onRow = () => services.menuTarget.getState().target?.kind === 'libraryEntry';
   return [
     {
       id: 'library.show',
@@ -52,6 +61,36 @@ export function libraryCommands(services: AppServices): LibraryCommand[] {
       title: 'Open recent song…',
       run: () => {
         libraryOf(services).showRecent();
+      },
+    },
+    {
+      id: 'library.openSong',
+      title: 'Open song',
+      inPalette: false,
+      enabled: onRow,
+      run: () => {
+        const id = targetSong();
+        if (id !== undefined) void libraryOf(services).requestOpenSong(id);
+      },
+    },
+    {
+      id: 'library.showPracticeLog',
+      title: 'Show practice log',
+      inPalette: false,
+      enabled: onRow,
+      run: () => {
+        const id = targetSong();
+        if (id !== undefined) libraryOf(services).store.setState({ practiceLogId: id });
+      },
+    },
+    {
+      id: 'library.deleteSong',
+      title: 'Delete from library…',
+      inPalette: false,
+      enabled: onRow,
+      run: () => {
+        const id = targetSong();
+        if (id !== undefined) libraryOf(services).store.setState({ deleteId: id });
       },
     },
   ];
