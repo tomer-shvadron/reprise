@@ -55,8 +55,11 @@ export function projectsToRun(
   skips: Partial<Record<CheckId, string>>,
 ): string[] {
   return selected.filter((project) => {
-    const checks = PROJECT_CHECKS[project] ?? [];
-    return checks.length === 0 || checks.some((check) => skips[check] === undefined);
+    const checks = PROJECT_CHECKS[project];
+    return (
+      checks !== undefined &&
+      (checks.length === 0 || checks.some((check) => skips[check] === undefined))
+    );
   });
 }
 
