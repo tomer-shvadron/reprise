@@ -117,6 +117,18 @@ describe('add mode', () => {
     expect(applyPreset(form, 'Ukulele standard', true).program).toBe(24);
   });
 
+  it('names a new 6-string bass and an 8-string guitar from their presets', () => {
+    expect(applyPreset(newTrackForm('fretted'), '6-string bass standard', true)).toMatchObject({
+      name: 'Bass',
+      shortName: 'Bs.',
+      program: 33,
+      strings: [48, 43, 38, 33, 28, 23],
+    });
+    const eight = applyPreset(newTrackForm('fretted'), '8-string standard', true);
+    expect(eight).toMatchObject({ name: 'Guitar', program: 25 });
+    expect(eight.strings).toHaveLength(8);
+  });
+
   it('does not touch the name when editing an existing track', () => {
     const edited = applyPreset(formFromTrack(guitar()), 'Bass standard', false);
     expect(edited.name).toBe('Guitar');

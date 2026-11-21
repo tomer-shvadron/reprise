@@ -78,9 +78,9 @@ export function fullScore(): Score {
   const tiny = createBeat({ duration: 256, rest: true, chord: { name: 'E7' } });
 
   const guitar = createTrack('fretted', {
-    // Both #348 fields, so the round-trip tests cover them.
+    // A 12-string, so the round-trip tests cover `courses` (#348). The drone is on the banjo
+    // track below, and `soundFamilyOf` and the tab digits treat the two differently in parts 2 and 3.
     courses: [12, 12, 12, 12, 0, 0],
-    drone: { string: 5, fret: 5 },
     bars: [
       {
         ...createBar(),
@@ -142,6 +142,28 @@ export function fullScore(): Score {
     ],
   });
 
+  // Last, so the other tracks keep their indices. A 5-string banjo with a drone from fret 5.
+  const banjo = createTrack('fretted', {
+    name: 'Banjo',
+    shortName: 'Bjo.',
+    program: 105,
+    tuning: [67, 50, 55, 59, 62],
+    fretCount: 22,
+    drone: { string: 5, fret: 5 },
+    bars: [
+      {
+        ...createBar(),
+        voices: [
+          createVoice([createBeat({ notes: [createNote({ string: 5, fret: 2 })] })]),
+          createVoice(),
+          createVoice(),
+          createVoice(),
+        ],
+      },
+      createBar(),
+    ],
+  });
+
   return {
     id: newId(),
     meta: createScoreMeta({ title: 'Fixture', notices: ['one', 'two'] }),
@@ -163,6 +185,6 @@ export function fullScore(): Score {
         doubleBar: true,
       }),
     ],
-    tracks: [guitar, drums, keys],
+    tracks: [guitar, drums, keys, banjo],
   };
 }

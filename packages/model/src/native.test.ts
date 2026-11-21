@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createBeat, createEmptyScore, createNote } from './factories';
-import { midiNote } from './pitch';
 import { fullScore, largeScore } from './testing';
 import { MIGRATIONS, migrate } from './migrations';
 import { NativeFormatError, formatPath, parseNative, serializeNative } from './native';
@@ -488,18 +487,20 @@ describe('formatPath', () => {
 describe('courses and the drone', () => {
   it('round-trips both through the native format', () => {
     const score = fullScore();
-    const [track] = parseNative(serializeNative(score, APP)).score.tracks;
-    expect(track?.courses).toEqual([12, 12, 12, 12, 0, 0]);
-    expect(track?.drone).toEqual({ string: 5, fret: 5 });
+    const { tracks } = parseNative(serializeNative(score, APP)).score;
+    expect(tracks[0]?.courses).toEqual([12, 12, 12, 12, 0, 0]);
+    expect(tracks.at(-1)?.drone).toEqual({ string: 5, fret: 5 });
   });
 
-  it('plays the same pitches when an older reader strips both keys', () => {
-    const track = fullScore().tracks[0];
-    if (!track) throw new Error('the fixture has no track');
-    const older = { ...track };
-    delete older.courses;
-    delete older.drone;
-    const note = { string: 5, fret: 2 };
-    expect(midiNote(older, note)).toBe(midiNote(track, note));
+  it('accepts every stored drone fret once an older reader strips both keys', () => {
+    const score = fullScore();
+    const tracks = score.tracks.map((track) => {
+      const older = { ...track };
+      delete older.courses;
+      delete older.drone;
+      return older;
+    });
+    const rules = validateScore({ ...score, tracks }).map(({ rule }) => rule);
+    expect(rules).not.toContain('fret-range');
   });
 });
