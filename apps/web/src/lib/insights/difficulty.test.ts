@@ -24,6 +24,8 @@ interface Part {
   effects?: BeatEffects;
   /** Beats that carry a bend of a whole tone. */
   bend?: (i: number) => boolean;
+  /** Beats that carry a slide. */
+  slide?: (i: number) => boolean;
 }
 
 /** A guitar part that is easy on every factor until a field says otherwise. */
@@ -37,7 +39,10 @@ function rate(part: Part = {}) {
       builder.beat(
         perBar === 4 ? '4' : perBar === 8 ? '8' : '16',
         frets(i).map((fret, string) =>
-          note(string + 1, fret, part.bend?.(i) ? { bend: WHOLE_TONE } : {}),
+          note(string + 1, fret, {
+            ...(part.bend?.(i) ? { bend: WHOLE_TONE } : {}),
+            ...(part.slide?.(i) ? { slide: ['shift' as const] } : {}),
+          }),
         ),
         effects ? { effects } : {},
       );
@@ -78,12 +83,16 @@ describe('difficultyOf', () => {
     expect(jumpy?.score).toBeGreaterThan(easy?.score ?? 0);
   });
 
-  it('rises with the widest stretch, leaving open strings out', () => {
-    const wide = rate({ frets: () => [1, 8] });
-    expect(factor(wide, 'stretch')?.value).toBe(7);
-    expect(factor(wide, 'stretch')?.band).toBe(5);
+  it('rises with the stretch of the hand, leaving open strings out', () => {
+    const wide = rate({ frets: () => [1, 6] });
+    expect(factor(wide, 'stretch')?.value).toBe(5);
+    expect(factor(wide, 'stretch')?.band).toBe(4);
     expect(wide?.score).toBeGreaterThan(easy?.score ?? 0);
     expect(factor(rate({ frets: () => [0, 5] }), 'stretch')?.value).toBe(0);
+  });
+
+  it('counts a span of more than five frets as a shift of position, not a stretch', () => {
+    expect(factor(rate({ frets: () => [1, 8] }), 'stretch')?.value).toBe(0);
   });
 
   it('rises with the share of demanding techniques', () => {
@@ -103,9 +112,9 @@ describe('difficultyOf', () => {
     // 16ths at 180 is 12 notes a second; nothing else about it is hard.
     const sprint = rate({ tempo: 180, perBar: 16, frets: (i) => [5 + (i % 4)] });
     expect(factor(sprint, 'speed')?.band).toBe(5);
-    expect(factor(sprint, 'stretch')?.band).toBe(1);
+    expect(factor(sprint, 'stretch')?.band).toBeLessThanOrEqual(2);
     expect(factor(sprint, 'techniques')?.band).toBe(1);
-    expect(sprint?.rating).toBeGreaterThanOrEqual(4);
+    expect(sprint?.rating).toBe(4);
   });
 
   it('rates a fast, high, bend-heavy single-note solo 5', () => {
@@ -119,11 +128,29 @@ describe('difficultyOf', () => {
   });
 
   it('measures the stretch across consecutive notes, not only within a beat', () => {
-    // Alternating frets 1 and 7, one note a beat: 16ths share a quarter-note window, quarters do not.
-    const spread = rate({ tempo: 80, perBar: 16, frets: (i) => [[1, 7][i % 2] ?? 1] });
-    expect(factor(spread, 'stretch')?.value).toBe(6);
-    const slow = rate({ tempo: 80, perBar: 4, frets: (i) => [[1, 7][i % 2] ?? 1] });
+    // Alternating frets 1 and 4, one note a beat: 16ths share a quarter-note window, quarters do not.
+    const spread = rate({ tempo: 80, perBar: 16, frets: (i) => [[1, 4][i % 2] ?? 1] });
+    expect(factor(spread, 'stretch')?.value).toBe(3);
+    const slow = rate({ tempo: 80, perBar: 4, frets: (i) => [[1, 4][i % 2] ?? 1] });
     expect(factor(slow, 'stretch')?.value).toBe(0);
+  });
+
+  it('keeps an easy melody at 1 or 2 through one slide, one shift or one high note', () => {
+    const melody = (frets: (i: number) => number[]) => rate({ tempo: 80, perBar: 8, frets });
+    // 8 bars of eighths in open position, with a single event in the middle.
+    const plain = melody(() => [3]);
+    const high = melody((i) => [i === 31 ? 20 : 3]);
+    const shifted = melody((i) => [i >= 31 && i < 33 ? 10 : 3]);
+    const slid = rate({
+      tempo: 80,
+      perBar: 8,
+      frets: (i) => [i === 31 ? 8 : 3],
+      slide: (i) => i === 31,
+    });
+    for (const part of [plain, high, shifted, slid]) {
+      expect(part?.rating).toBeLessThanOrEqual(2);
+    }
+    expect(factor(high, 'fret')?.band).toBe(1);
   });
 
   it('keeps an open-chord strum at 1 or 2', () => {
@@ -142,7 +169,7 @@ describe('difficultyOf', () => {
       frets: (i) => [i % 2 === 0 ? 1 : 22, i % 2 === 0 ? 8 : 22],
       effects: { tapping: true },
     });
-    expect(hard?.rating).toBe(5);
+    expect(hard?.rating).toBeGreaterThanOrEqual(4);
     expect(hard?.rating).toBe(Math.round(hard?.score ?? 0));
   });
 

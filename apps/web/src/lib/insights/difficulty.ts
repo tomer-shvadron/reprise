@@ -27,24 +27,42 @@ export interface Difficulty {
  * one edit. They are judgement, not measurement: no validated model of guitar difficulty exists, so
  * each reads as "a player at this level can do it": 4 notes a second is a quick eighth-note run at
  * 120 bpm, 9 is a fast sixteenth-note passage; a jump of more than 4 frets is a position shift;
- * a span of 4 frets is the comfortable hand, 7 a real reach.
+ * a span of 3 frets is the comfortable hand, 5 a real reach. Speed, stretch and fret are read at
+ * `PERCENTILE`, not at the maximum, so one slide, one high note or one quick fill does not set them.
  */
 export const BANDS: Record<FactorId, readonly [number, number, number, number]> = {
   speed: [2, 4, 6, 9],
   shifts: [4, 10, 20, 40],
-  stretch: [3, 4, 5, 6],
+  stretch: [2, 3, 4, 5],
   techniques: [0.01, 0.05, 0.15, 0.3],
   fret: [7, 12, 15, 19],
 };
 
-/** Speed counts most: it is what makes a part hard to play at tempo. Weights are relative. */
+/**
+ * The weighted mean of the bands, relative weights. Speed counts seven times as much as any other
+ * factor: it is what makes a part hard at tempo, and a fast line in one position has little else
+ * to be hard about (no shifts, a small stretch, no tricks) but still rates 4.
+ */
 export const WEIGHTS: Record<FactorId, number> = {
-  speed: 0.35,
-  shifts: 0.15,
-  stretch: 0.15,
-  techniques: 0.2,
-  fret: 0.15,
+  speed: 7,
+  shifts: 1,
+  stretch: 1,
+  techniques: 1,
+  fret: 1,
 };
+
+/** Speed, stretch and fret are read at this percentile of their samples, not at the maximum. */
+export const PERCENTILE = 0.9;
+/** A span of more than this many frets is a shift of position, counted there and not as a stretch. */
+export const MAX_STRETCH_FRETS = 5;
+
+export function percentile(values: readonly number[], share: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  return (
+    sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(share * sorted.length) - 1))] ?? 0
+  );
+}
 
 /** A strummed chord counts this much of a single note in the speed: raking six strings is not six notes. */
 export const CHORD_SPEED_SHARE = 0.4;
@@ -88,7 +106,7 @@ export function difficultyOf(
   const beats = new Map<number, Beat>();
   let notes = 0;
   let demanding = 0;
-  let highest = 0;
+  const fretValues: number[] = [];
   for (let i = 0; i < track.length; i++) {
     if ((track.flags[i] ?? 0) & (NOTE_FLAG.dead | NOTE_FLAG.tie | NOTE_FLAG.grace)) continue;
     notes++;
@@ -101,8 +119,10 @@ export function difficultyOf(
     }
     beat.notes++;
     const fret = track.fret[i] ?? 0;
-    highest = Math.max(highest, fret);
-    if (fret > 0) beat.frets.push(fret);
+    if (fret > 0) {
+      beat.frets.push(fret);
+      fretValues.push(fret);
+    }
   }
   if (notes < MIN_RATED_NOTES) return undefined;
 
@@ -120,22 +140,23 @@ export function difficultyOf(
   }
   const tickOf = (beat: Beat): number => (barStart[beat.bar] ?? 0) + beat.onset;
 
-  // Peak onsets a second over any two bars in a row, at the written tempo.
-  let speed = 0;
+  // Onsets a second over every two bars in a row, at the written tempo; the part's speed is the
+  // 90th percentile of them.
+  const rates: number[] = [];
   for (const [bar, count] of perBar) {
     const next = outline.bars[bar + 1];
     const here = outline.bars[bar];
     const seconds = (here?.passSeconds ?? 0) + (next?.passSeconds ?? 0);
-    if (seconds <= 0) continue;
-    speed = Math.max(speed, (count + (perBar.get(bar + 1) ?? 0)) / seconds);
+    if (seconds > 0) rates.push((count + (perBar.get(bar + 1) ?? 0)) / seconds);
   }
+  const speed = percentile(rates, PERCENTILE);
 
   const factors: Factor[] = [
     { id: 'speed', value: speed, unit: 'notes per second', band: bandOf(speed, BANDS.speed) },
   ];
   if (kind === 'fretted') {
     let shifts = 0;
-    let stretch = 0;
+    const spans: number[] = [];
     let previous: number | undefined;
     const fretted = ordered.filter((beat) => beat.frets.length > 0);
     fretted.forEach((beat, index) => {
@@ -151,8 +172,10 @@ export function difficultyOf(
         low = Math.min(low, ...other.frets);
         high = Math.max(high, ...other.frets);
       }
-      stretch = Math.max(stretch, high - low);
+      if (high - low <= MAX_STRETCH_FRETS) spans.push(high - low);
     });
+    const stretch = percentile(spans, PERCENTILE);
+    const highest = percentile(fretValues, PERCENTILE);
     const minutes = outline.bars.reduce((sum, bar) => sum + bar.passSeconds, 0) / 60;
     const perMinute = minutes > 0 ? shifts / minutes : 0;
     factors.push(
@@ -171,7 +194,7 @@ export function difficultyOf(
         unit: 'share of notes',
         band: bandOf(demanding / notes, BANDS.techniques),
       },
-      { id: 'fret', value: highest, unit: 'highest fret', band: bandOf(highest, BANDS.fret) },
+      { id: 'fret', value: highest, unit: 'fret reached', band: bandOf(highest, BANDS.fret) },
     );
   } else {
     factors.push({
@@ -183,9 +206,6 @@ export function difficultyOf(
   }
 
   const weight = factors.reduce((sum, factor) => sum + WEIGHTS[factor.id], 0);
-  const mean = factors.reduce((sum, factor) => sum + WEIGHTS[factor.id] * factor.band, 0) / weight;
-  // A part that is hard on one count is hard whatever else is easy: a fast single-note line in one
-  // box has no stretch, shifts or tricks, and a mean would call it middling.
-  const score = Math.max(mean, Math.max(...factors.map((factor) => factor.band)) - 1);
+  const score = factors.reduce((sum, factor) => sum + WEIGHTS[factor.id] * factor.band, 0) / weight;
   return { rating: Math.min(5, Math.max(1, Math.round(score))), score, factors };
 }
