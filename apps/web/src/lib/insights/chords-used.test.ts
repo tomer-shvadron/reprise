@@ -244,35 +244,85 @@ describe('chords by section', () => {
     ]);
   });
 
-  it('weighs a chord only to the end of its section, and infers where a section names fewer than four', () => {
-    // Four names over an intro, then 8 bars with none: the intro is written, the rest inferred.
-    const intro = loop('Intro');
-    const rest: SongBar[] = [
-      ...[chord(A, true), F, Cc, G].map((voicing, i) => ({
-        chord: voicing,
-        ...(i === 0 ? { section: 'Verse' } : {}),
-      })),
-      ...[chord(A, true), F, Cc, G].map((voicing) => ({ chord: voicing })),
-    ];
-    const result = used([...intro, ...rest]);
-    expect(result.source).toBe('mixed');
-    expect(result.progressions.map(({ section, source }) => [section, source])).toEqual([
-      ['Intro', 'written'],
-      ['Verse', 'inferred'],
-    ]);
-    const shares = Object.fromEntries(result.chords.map((chord) => [chord.name, chord.share]));
-    // Each chord holds about a quarter of the time; none of them 90%.
-    for (const name of ['Am', 'F', 'C', 'G']) expect(shares[name]).toBeGreaterThan(0.2);
-    expect(result.chords.every((chord) => !chord.inferred)).toBe(true);
+  it('keeps every written chord however the marks are spread, and never infers once there are four', () => {
+    // Chords on every bar from 0 to 27 and none on the last 12: all 28 bars of names stay.
+    const written = Array.from({ length: 28 }, (_, i): SongBar => {
+      const names = ['Am', 'F', 'C', 'G'];
+      const voicings = [chord(A, true), F, Cc, G];
+      return { chord: voicings[i % 4] ?? Cc, name: names[i % 4] ?? '' };
+    });
+    const tail = Array.from({ length: 12 }, (): SongBar => ({ chord: chord(2, true) }));
+    const result = used([...written, ...tail]);
+    expect(result.source).toBe('written');
+    expect(result.chords.map(({ name }) => name).sort()).toEqual(['Am', 'C', 'F', 'G']);
   });
 
-  it('does not let a chord outlast the track that wrote it', () => {
-    // Names only in an intro of a song with no sections; the guitar then plays 36 more bars unnamed.
-    const bars = [...loop(), ...Array.from({ length: 36 }, () => ({ chord: chord(A, true) }))];
+  it('keeps the chords of a short section that writes only two', () => {
+    const E7 = [40, 64, 68, 74];
+    const bars: SongBar[] = [
+      ...loop('Verse'),
+      ...loop(),
+      { chord: E7, name: 'E7', section: 'Bridge' },
+      { chord: E7 },
+      { chord: E7 },
+      { chord: E7 },
+      { chord: chord(9, true), name: 'Am' },
+      { chord: chord(9, true) },
+      { chord: chord(9, true) },
+      { chord: chord(9, true) },
+    ];
     const result = used(bars);
-    // The four names do not reach the end of the song, so the notes are read instead.
-    expect(result.source).toBe('inferred');
+    expect(result.source).toBe('written');
+    expect(result.progressions.at(-1)).toMatchObject({ section: 'Bridge', chords: ['E7', 'Am'] });
+    expect(result.chords.some((c) => c.name === 'E7')).toBe(true);
+  });
+
+  it('holds a chord to the end of its section, not the end of the song', () => {
+    // A held last chord of an outro, marks on its first 4 bars only, then a section with no marks.
+    const bars: SongBar[] = [
+      ...loop('Intro'),
+      ...Array.from({ length: 8 }, (_, i): SongBar => ({
+        chord: G,
+        ...(i === 0 ? { section: 'Verse' } : {}),
+      })),
+    ];
+    const result = used(bars);
     const g = result.chords.find((chord) => chord.name === 'G');
-    expect(g?.share ?? 1).toBeLessThan(0.5);
+    // The Verse has no marks: no chords, and its time is credited to nobody.
+    expect(result.progressions.map(({ section }) => section)).toEqual(['Intro']);
+    expect(g?.share).toBeCloseTo(0.25);
+  });
+
+  it('carries a held chord into a section only up to its first mark, and only if it has marks', () => {
+    const bars: SongBar[] = [
+      { chord: Cc, name: 'C', section: 'A' },
+      { chord: G, name: 'G' },
+      { chord: Cc, name: 'C' },
+      { chord: G, name: 'G' },
+      { chord: G, section: 'B' },
+      { chord: F, name: 'F' },
+      { chord: Cc, name: 'C' },
+      { chord: G, name: 'G' },
+      { chord: chord(9, true), name: 'Am' },
+    ];
+    const withB = used(bars);
+    expect(withB.progressions.map(({ section, chords }) => [section, chords.join('')])).toEqual([
+      ['A', 'CGCG'],
+      ['B', 'GFCGAm'],
+    ]);
+  });
+
+  it('reads the notes of a file that names fewer than four chords, wherever they fall', () => {
+    const bars: SongBar[] = [
+      { chord: Cc, name: 'C' },
+      { chord: G, name: 'G' },
+      { chord: Cc },
+      { chord: G },
+      { chord: F },
+      { chord: Cc },
+    ];
+    const result = used(bars);
+    expect(result.source).toBe('inferred');
+    expect(result.chords.map(({ name }) => name).sort()).toEqual(['C', 'F', 'G']);
   });
 });

@@ -57,8 +57,6 @@ export interface ChordMark {
   bar: number;
   onset: number;
   name: string;
-  /** The last master bar the writing track plays in; the chord does not sound past it. */
-  lastBar: number;
 }
 
 /** What the analysis needs of a score beyond its notes: small, and safe to post to a worker. */
@@ -105,10 +103,6 @@ function chordMarksOf(score: Score): ChordMark[] {
   const seen = new Set<string>();
   const marks: ChordMark[] = [];
   for (const track of score.tracks) {
-    let lastBar = -1;
-    track.bars.forEach((bar, barIndex) => {
-      if (bar.voices.some((voice) => voice.beats.some((beat) => !beat.rest))) lastBar = barIndex;
-    });
     track.bars.forEach((bar, barIndex) => {
       const voice = bar.voices[0];
       let onset = 0;
@@ -118,7 +112,7 @@ function chordMarksOf(score: Score): ChordMark[] {
           const key = `${String(barIndex)}:${String(Math.round(onset))}`;
           if (!seen.has(key)) {
             seen.add(key);
-            marks.push({ bar: barIndex, onset, name, lastBar });
+            marks.push({ bar: barIndex, onset, name });
           }
         }
         onset += beatTicks(beat);

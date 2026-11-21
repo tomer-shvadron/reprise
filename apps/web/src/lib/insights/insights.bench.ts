@@ -89,6 +89,9 @@ test('Song insights note table, long score, cold', BENCH, async (context) => {
       {
         beforeEach() {
           fresh = withFreshBars(base);
+          // Without --expose-gc this is a no-op; with it, a collection between iterations keeps the
+          // previous copy's garbage out of the next timing.
+          (globalThis as { gc?: () => void }).gc?.();
         },
       },
       () => {
