@@ -153,6 +153,19 @@ describe('difficultyOf', () => {
     expect(factor(high, 'fret')?.band).toBe(1);
   });
 
+  it('rates a slow, high, bend-heavy solo at least 3, and the shred box still 4', () => {
+    // 8ths at 70 bpm, frets 15 to 20, a whole-tone bend on every fourth note.
+    const blues = rate({
+      tempo: 70,
+      perBar: 8,
+      frets: (i) => [[15, 17, 20, 18][i % 4] ?? 15],
+      bend: (i) => i % 4 === 0,
+    });
+    expect(blues?.rating).toBeGreaterThanOrEqual(3);
+    const shred = rate({ tempo: 180, perBar: 16, frets: (i) => [5 + (i % 4)] });
+    expect(shred?.rating).toBe(4);
+  });
+
   it('keeps an open-chord strum at 1 or 2', () => {
     const G = [3, 0, 0, 0, 2, 3];
     const C = [0, 1, 0, 2, 3, 0];

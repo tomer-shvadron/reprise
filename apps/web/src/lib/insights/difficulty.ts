@@ -39,7 +39,7 @@ export const BANDS: Record<FactorId, readonly [number, number, number, number]> 
 };
 
 /**
- * The weighted mean of the bands, relative weights. Speed counts seven times as much as any other
+ * The speed-led weighted mean of the bands, relative weights. Speed counts seven times as much as any other
  * factor: it is what makes a part hard at tempo, and a fast line in one position has little else
  * to be hard about (no shifts, a small stretch, no tricks) but still rates 4.
  */
@@ -49,6 +49,20 @@ export const WEIGHTS: Record<FactorId, number> = {
   stretch: 1,
   techniques: 1,
   fret: 1,
+};
+
+/**
+ * The second mean, for a part that is hard to play rather than fast: a slow, high, bend-heavy
+ * solo. The score is the larger of the two means, so neither kind of part is rated by the
+ * other's factors. No single set of weights does both: the shred line in one box needs speed at
+ * 5.3 or more to the others' 1, the slow solo needs it at 4 or less.
+ */
+export const TECHNIQUE_WEIGHTS: Record<FactorId, number> = {
+  speed: 1,
+  shifts: 2,
+  stretch: 2,
+  techniques: 3,
+  fret: 3,
 };
 
 /** Speed, stretch and fret are read at this percentile of their samples, not at the maximum. */
@@ -205,7 +219,9 @@ export function difficultyOf(
     });
   }
 
-  const weight = factors.reduce((sum, factor) => sum + WEIGHTS[factor.id], 0);
-  const score = factors.reduce((sum, factor) => sum + WEIGHTS[factor.id] * factor.band, 0) / weight;
+  const meanOf = (weights: Record<FactorId, number>): number =>
+    factors.reduce((sum, factor) => sum + weights[factor.id] * factor.band, 0) /
+    factors.reduce((sum, factor) => sum + weights[factor.id], 0);
+  const score = Math.max(meanOf(WEIGHTS), meanOf(TECHNIQUE_WEIGHTS));
   return { rating: Math.min(5, Math.max(1, Math.round(score))), score, factors };
 }
