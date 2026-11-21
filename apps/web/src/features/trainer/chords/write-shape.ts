@@ -1,6 +1,7 @@
 import {
   chain,
   setBeatEffect,
+  setBeatEffects,
   type ChordDiagram,
   type Command,
   type Id,
@@ -34,8 +35,8 @@ export function shapeOnEveryBeat(
 ): Command | undefined {
   const ids = beatsNamed(track, name);
   if (ids.length === 0) return undefined;
-  return chain(
-    SHAPE_LABEL,
-    ids.map((beatId) => setBeatEffect({ beatId }, { chord: { name, diagram } })),
-  );
+  // The model's batch: one lookup, one draft and each touched track validated once, however many beats.
+  return chain(SHAPE_LABEL, [
+    setBeatEffects(ids.map((beatId) => ({ beatId, changes: { chord: { name, diagram } } }))),
+  ]);
 }

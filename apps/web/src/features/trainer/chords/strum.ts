@@ -23,18 +23,28 @@ export function strumOrder(
 
 /**
  * Strums a shape with one `previewNote` per sounding string, `STRUM_STAGGER_MS` apart, from the
- * lowest pitch up. Returns a canceller for the strings not yet struck. A library shape is not in
- * the score, so `previewBeat` (which plays a beat that is) cannot play it.
+ * lowest pitch up; the first string sounds inside the call, so the click that asked for it is the
+ * gesture that unlocks audio. Returns a canceller for the strings not yet struck. `alive` is asked
+ * before each later string: a song or track that went away mid-strum must not reach the engine,
+ * which throws for a track it does not have. A library shape is not in the score, so
+ * `previewBeat` (which plays a beat that is) cannot play it.
  */
 export function strum(
   audio: StrumAudio,
   track: Pick<Track, 'id' | 'kind' | 'tuning' | 'capo'>,
   diagram: ChordDiagram,
+  alive: () => boolean = () => true,
 ): () => void {
-  const timers = strumOrder(track, diagram).map((note, index) =>
-    setTimeout(() => {
-      audio.previewNote(track.id, { string: note.string, fret: note.fret });
-    }, index * STRUM_STAGGER_MS),
+  const order = strumOrder(track, diagram);
+  const first = order[0];
+  if (first) audio.previewNote(track.id, { string: first.string, fret: first.fret });
+  const timers = order.slice(1).map((note, index) =>
+    setTimeout(
+      () => {
+        if (alive()) audio.previewNote(track.id, { string: note.string, fret: note.fret });
+      },
+      (index + 1) * STRUM_STAGGER_MS,
+    ),
   );
   return () => {
     for (const timer of timers) clearTimeout(timer);
