@@ -73,6 +73,15 @@ Print… runs the flow in `print-store.ts`: paint "Preparing…", await `loadSco
 - **Electron** passes `{ printBackground: false, margins: { marginType: 'none' }, pageSize }` to `webContents.print`, so the system dialog opens on our paper; the browser relies on `@page`.
 - **The long score** (8 tracks, 300 bars, tab) prints 202 A4 pages: in Chromium's visual suite on an M4 Pro, 1.2 s from navigation to mounted pages in the dev server, about 173 000 DOM nodes and 188 MB of JS heap while the job lives, and 1.1 s and 1.2 MB for the PDF.
 
+### Image export: the SVG page writer (`image/`)
+
+`pageSvg` (`image/svg-page.ts`, pure) writes one page of a `LayoutResult` as a standalone SVG string, from the same primitives the painter draws but not from the DOM: the painter's colours are CSS variables in `oklch`, its text is web fonts, and neither survives outside the app (Inkscape, an `<img>`). The SVG has literal sRGB colours (`palette.ts`, the `--*-light` tokens, checked against `index.css` by a test), no CSS, class or `currentColor`, and A4 or Letter's size in unitless px so Inkscape reads the paper size.
+
+- **Text and glyphs are shapes.** Bravura glyphs and Geist text (Latin and Latin Extended; 400, 400 italic and 600) are `<use>` of `<path>` defs from `image/outlines/*.json`, which `scripts/layout/metrics.ts` generates from the committed fonts (`pnpm layout:metrics`; `pnpm layout:metrics:check` and `scripts/layout/metrics.test.ts` fail on a stale table). Positions are the sum of advances with no kerning, as layout measured. A string with a character outside the tables goes out whole as `<text>` in a sans-serif stack. `loadOutlines()` imports the tables on demand, so the main chunk does not carry them. The weight-600 and italic faces come from the static `@fontsource/geist` files, because fontkit cannot instance a variable WOFF2 at a weight.
+- **Transparent background.** The paper boxes that hide staff lines behind fret numbers would be light patches, so each line drawn before a box that overlaps it gets an SVG `<mask>` cutting the box out. A tie or slide path crossing a fret number is not cut; white is exact.
+- **Header** (title 600 ink, byline 400 muted, cut with an ellipsis) is redrawn as shapes on page 1 at the `PRINT_HEADING` sizes.
+- **Licences.** Bravura (SIL OFL 1.1, `public/fonts/bravura/OFL.txt`) and Geist (SIL OFL 1.1, the Geist Project Authors) allow outlines in documents; the OFL's reserved-name clause covers a font file, not a drawing made with it.
+
 ### Zoom
 
 Zoom is display only: each system `<svg>` keeps its `viewBox` in its own frame, in layout px, and takes `width`/`height` × zoom, and pages and canvas are sized and placed × zoom. Vector-crisp at every zoom, with exact scrollbars, which a CSS transform would not give. A zoom change re-renders sizes only; nothing inside a system changes (tested). The view keeps the layout point at the viewport's centre where it was.

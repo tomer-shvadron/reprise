@@ -7,3 +7,4 @@ docs/
 apps/desktop/release/
 apps/web/public/fonts/
 scripts/layout/data/
+apps/web/src/features/score/image/outlines/
