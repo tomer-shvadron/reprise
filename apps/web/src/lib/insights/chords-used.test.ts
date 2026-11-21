@@ -1,0 +1,153 @@
+import { describe, expect, it } from 'vitest';
+
+import { chordsUsed, loopOf, progressionOf } from './chords-used';
+import { noteTableOf } from './note-table';
+import { songOutline } from './outline';
+import { chord, repeat, song, type SongBar } from './test/songs';
+
+const A = 9;
+const NEUTRAL = { fifths: 0, minor: false };
+
+/** Am F C G, the chord names written above the bars. */
+const loop = (section?: string): SongBar[] =>
+  [
+    { chord: chord(A, true), name: 'Am' },
+    { chord: chord(5), name: 'F' },
+    { chord: chord(0), name: 'C' },
+    { chord: chord(7), name: 'G' },
+  ].map((bar, index) => (index === 0 && section ? { ...bar, section } : bar));
+
+function used(bars: SongBar[], options = {}) {
+  const built = song(bars, options);
+  return chordsUsed(noteTableOf(built), songOutline(built), NEUTRAL);
+}
+
+describe('written chords', () => {
+  it('lists the names the file writes with their counts and shares, as standard names', () => {
+    const result = used([...repeat(loop(), 3), { chord: chord(A, true), name: 'Am' }]);
+    expect(result.source).toBe('written');
+    expect(result.chords.map(({ name, count }) => [name, count])).toEqual([
+      ['Am', 4],
+      ['C', 3],
+      ['F', 3],
+      ['G', 3],
+    ]);
+    expect(result.chords.reduce((sum, chord) => sum + chord.share, 0)).toBeCloseTo(1);
+    expect(result.chords[0]?.share).toBeCloseTo(4 / 13);
+  });
+
+  it('finds the loop and writes it as chord names, never numerals', () => {
+    const [progression] = used(repeat(loop(), 4)).progressions;
+    expect(progression?.label).toBe('Am–F–C–G ×4');
+    expect(progression?.loop).toEqual({ chords: ['Am', 'F', 'C', 'G'], times: 4, partial: false });
+  });
+
+  it('reads a progression per section', () => {
+    const verse = [...loop('Verse'), ...loop()];
+    const chorus = Array.from({ length: 6 }, (_, i): SongBar => {
+      const bar = i % 2 === 0 ? { chord: chord(5), name: 'F' } : { chord: chord(7), name: 'G' };
+      return i === 0 ? { ...bar, section: 'Chorus' } : bar;
+    });
+    const result = used([...verse, ...chorus]);
+    expect(result.progressions.map(({ section, label }) => [section, label])).toEqual([
+      ['Verse', 'Am–F–C–G ×2'],
+      ['Chorus', 'F–G ×3'],
+    ]);
+  });
+
+  it('counts a chord held over several bars once and weighs it by time', () => {
+    const result = used([
+      { chord: chord(0), name: 'C' },
+      { chord: chord(0), name: 'C' },
+      { chord: chord(7), name: 'G' },
+      { chord: chord(5), name: 'F' },
+      { chord: chord(0), name: 'C' },
+    ]);
+    expect(result.source).toBe('written');
+    expect(result.chords.find((c) => c.name === 'C')).toMatchObject({ count: 2 });
+    expect(result.chords[0]?.name).toBe('C');
+  });
+});
+
+describe('inferred chords', () => {
+  it('reads chords from the notes when the file names fewer than four', () => {
+    const bars = repeat(loop(), 2).map(({ chord: voicing }) => ({ chord: voicing }));
+    const result = used(bars);
+    expect(result.source).toBe('inferred');
+    expect(result.chords.map(({ name }) => name).sort()).toEqual(['Am', 'C', 'F', 'G']);
+    expect(result.progressions[0]?.label).toBe('Am–F–C–G ×2');
+  });
+
+  it('never infers from an arpeggio', () => {
+    const bars = repeat(loop(), 2).map(({ chord: voicing }) => ({ chord: voicing }));
+    const result = used(bars, { arpeggiate: true });
+    expect(result).toEqual({ source: 'none', chords: [], progressions: [] });
+  });
+
+  it('prefers the written names once there are four', () => {
+    expect(used(repeat(loop(), 2)).source).toBe('written');
+  });
+
+  it('keeps the few names a file writes when the notes give no chord', () => {
+    const bars = [{ chord: chord(0), name: 'C' }];
+    const built = song(bars, { arpeggiate: true });
+    const result = chordsUsed(noteTableOf(built), songOutline(built), NEUTRAL);
+    expect(result.source).toBe('written');
+    expect(result.chords).toHaveLength(1);
+  });
+
+  it('reads only the track with the most chord beats', () => {
+    const built = song(
+      repeat(loop(), 2).map(({ chord: voicing }) => ({
+        chord: voicing,
+        melody: [72, 76, 79, 76, 72, 76, 79, 76],
+      })),
+    );
+    const result = chordsUsed(noteTableOf(built), songOutline(built), NEUTRAL);
+    expect(result.chords.map(({ name }) => name).sort()).toEqual(['Am', 'C', 'F', 'G']);
+  });
+
+  it('marks nothing for a song with no chords at all', () => {
+    expect(used([{ chord: [60] }]).source).toBe('none');
+  });
+});
+
+describe('loopOf', () => {
+  it('takes the shortest period that tiles at least twice, allowing a short tail', () => {
+    expect(loopOf(['A', 'B', 'A', 'B', 'A', 'B'])).toEqual({
+      chords: ['A', 'B'],
+      times: 3,
+      partial: false,
+    });
+    expect(loopOf(['A', 'B', 'C', 'A', 'B', 'C', 'A'])).toEqual({
+      chords: ['A', 'B', 'C'],
+      times: 2,
+      partial: true,
+    });
+  });
+
+  it('finds none in a sequence that does not repeat, or is a single chord', () => {
+    expect(loopOf(['A', 'B', 'C', 'D'])).toBeUndefined();
+    expect(loopOf(['A'])).toBeUndefined();
+    expect(loopOf(['A', 'B', 'A', 'C'])).toBeUndefined();
+  });
+
+  it('does not look for a loop longer than eight chords', () => {
+    const nine = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'A#', 'B#'];
+    expect(loopOf([...nine, ...nine])).toBeUndefined();
+  });
+});
+
+describe('progressionOf', () => {
+  it('shows the first twelve changes and an ellipsis when there is no loop', () => {
+    const names = Array.from({ length: 14 }, (_, i) => `C${String(i)}`);
+    const progression = progressionOf(names, 'Bridge');
+    expect(progression.chords).toHaveLength(12);
+    expect(progression.label.endsWith('…')).toBe(true);
+    expect(progression.section).toBe('Bridge');
+  });
+
+  it('marks a partial last repeat', () => {
+    expect(progressionOf(['A', 'B', 'A', 'B', 'A']).label).toBe('A–B ×2+');
+  });
+});

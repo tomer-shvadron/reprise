@@ -1,8 +1,8 @@
-import { PPQ, soundingPitch } from '@reprise/model';
+import { PPQ, soundingPitch, type Bend } from '@reprise/model';
 import { midi, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
-import { METRIC, NOTE_FLAG, extraction, noteTableOf } from './note-table';
+import { METRIC, NOTE_FLAG, TECH, extraction, noteTableOf } from './note-table';
 
 describe('noteTableOf', () => {
   it('reads sounding pitch with the capo, and skips drums and rests', () => {
@@ -176,5 +176,79 @@ describe('noteTableOf', () => {
     );
     expect(table.pitch.buffer).toBeInstanceOf(ArrayBuffer);
     expect(table.onset.buffer).toBeInstanceOf(ArrayBuffer);
+  });
+});
+
+describe('noteTableOf, techniques and positions', () => {
+  it('carries the string and fret of a fretted track and none for a pitched one', () => {
+    const built = score()
+      .track('guitar')
+      .bar()
+      .beat('4', [note(2, 7), note(5, 0)])
+      .track('piano')
+      .bar()
+      .beat('4', [midi(60)])
+      .build();
+    const table = noteTableOf(built);
+    expect([...table.string]).toEqual([2, 5, 0]);
+    expect([...table.fret]).toEqual([7, 0, 0]);
+  });
+
+  it('sets a bit for each technique of a note and of its beat', () => {
+    const wide: Bend = {
+      kind: 'bend',
+      points: [
+        { position: 0, value: 0 },
+        { position: 60, value: 4 },
+      ],
+    };
+    const narrow: Bend = {
+      kind: 'bend',
+      points: [
+        { position: 0, value: 0 },
+        { position: 60, value: 2 },
+      ],
+    };
+    const built = score()
+      .track('guitar')
+      .bar()
+      .beat('4', [note(1, 5, { bend: wide })])
+      .beat('4', [note(1, 5, { bend: narrow })])
+      .beat('4', [
+        note(1, 5, { slide: ['legato'], hammerPull: true, palmMute: true, letRing: true }),
+      ])
+      .beat('4', [note(1, 5, { harmonic: { kind: 'pinch' } })], {
+        effects: { tapping: true, slapping: true },
+      })
+      .bar()
+      .beat(
+        '4',
+        [note(1, 5, { harmonic: { kind: 'natural' }, accent: 'accent', staccato: true })],
+        {
+          effects: {
+            tremoloPicking: 16,
+            whammy: {
+              kind: 'dive',
+              points: [
+                { position: 0, value: 0 },
+                { position: 60, value: -4 },
+              ],
+            },
+          },
+        },
+      )
+      .beat('4', [note(1, 5)], {
+        effects: { vibrato: 'slight', arpeggio: { direction: 'down' }, brush: { direction: 'up' } },
+      })
+      .beat('4', [note(1, 5, { trill: { fret: 7, speed: 16 } })], { effects: { popping: true } })
+      .build();
+    const { tech } = noteTableOf(built);
+    expect(tech[0]).toBe(TECH.bend | TECH.bendWide);
+    expect(tech[1]).toBe(TECH.bend);
+    expect(tech[2]).toBe(TECH.slide | TECH.hammerPull | TECH.palmMute | TECH.letRing);
+    expect(tech[3]).toBe(TECH.harmonicHard | TECH.tapping | TECH.slap);
+    expect(tech[4]).toBe(TECH.accent | TECH.staccato | TECH.tremoloPicking | TECH.whammy);
+    expect(tech[5]).toBe(TECH.vibrato | TECH.arpeggio | TECH.brush);
+    expect(tech[6]).toBe(TECH.trill | TECH.pop);
   });
 });
