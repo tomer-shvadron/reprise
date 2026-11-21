@@ -199,11 +199,14 @@ export function applyPreset(form: TrackForm, name: string | undefined, adding: b
 export function setStringCount(form: TrackForm, count: number): TrackForm {
   const current = form.strings.length;
   if (count === current || count < 1 || count > MAX_STRINGS) return form;
+  // The drone is a string of its own: with it gone the model would refuse the form (`drone-string`).
+  const drone = form.drone && form.drone.string <= count ? form.drone : undefined;
   if (count < current) {
     return {
       ...form,
       strings: form.strings.slice(0, count),
       courses: form.courses?.slice(0, count),
+      drone,
     };
   }
   const strings = [...form.strings];
@@ -214,7 +217,7 @@ export function setStringCount(form: TrackForm, count: number): TrackForm {
     // The new string joins the lowest course's layout: an octave course on a 12-string, a unison one on a mandolin.
     courses?.push(courses.at(-1) ?? null);
   }
-  return { ...form, strings, courses };
+  return { ...form, strings, courses, drone };
 }
 
 export function setString(form: TrackForm, string: number, note: number): TrackForm {

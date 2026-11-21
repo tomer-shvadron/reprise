@@ -165,6 +165,8 @@ export const GM_DRUM_KITS: ReadonlyMap<number, string> = new Map([
   [56, 'SFX Kit'],
 ]);
 
+const STEEL_GUITAR_PROGRAM = 25;
+
 /** The GM name of the track's instrument; names come from this table, not the sound bank. */
 export function instrumentName(
   track: Pick<Track, 'kind' | 'program'> & Partial<Pick<Track, 'tuning' | 'courses' | 'drone'>>,
@@ -172,10 +174,13 @@ export function instrumentName(
   if (track.kind === 'drums') {
     return GM_DRUM_KITS.get(track.program) ?? `Kit ${String(track.program)}`;
   }
-  // GM has no 12-string or mandolin, so both carry the steel guitar's program; the derived
-  // identity gives the sidebar and the mixer the name the player expects instead.
+  // GM has no 12-string or mandolin, so both usually carry the steel guitar's program; the derived
+  // identity gives the sidebar and the mixer the name the player expects instead. Any other
+  // program is a sound the track chose, and keeps its own name.
   const instrument = stringInstrumentOf({ ...track, tuning: track.tuning ?? [] });
-  if (instrument === 'twelveString') return '12-string Guitar';
-  if (instrument === 'mandolin') return 'Mandolin';
+  if (track.program === STEEL_GUITAR_PROGRAM) {
+    if (instrument === 'twelveString') return '12-string Guitar';
+    if (instrument === 'mandolin') return 'Mandolin';
+  }
   return GM_PROGRAMS[track.program] ?? `Program ${String(track.program)}`;
 }

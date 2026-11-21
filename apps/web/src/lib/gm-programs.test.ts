@@ -36,6 +36,15 @@ describe('GM names', () => {
         courses: [0, 0, 0, 0],
       }),
     ).toBe('Mandolin');
+    // A 12-string on another program keeps that program's name.
+    expect(
+      instrumentName({
+        kind: 'fretted',
+        program: 30,
+        tuning: six,
+        courses: [12, 12, 12, 12, 0, 0],
+      }),
+    ).toBe('Distortion Guitar');
     expect(instrumentName({ kind: 'fretted', program: 25, tuning: six })).toBe(
       'Acoustic Guitar (steel)',
     );

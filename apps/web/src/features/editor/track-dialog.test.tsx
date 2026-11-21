@@ -191,7 +191,7 @@ describe('the track dialog, adding', () => {
     });
   });
 
-  it('adds a mandolin on four strings and a banjo with its drone', async () => {
+  it('adds a mandolin on four strings, and offers the tenor banjos but no 5-string banjo yet', async () => {
     const { services, run, user } = setup();
     run('track.add');
     await user.selectOptions(field('Strings'), '4');
@@ -211,13 +211,11 @@ describe('the track dialog, adding', () => {
 
     run('track.add');
     await user.selectOptions(field('Strings'), '5');
-    await user.selectOptions(field('Tuning'), 'Banjo Open G');
-    await user.click(screen.getByRole('button', { name: 'Add track' }));
-    expect(tracksOf(services).at(-1)).toMatchObject({
-      tuning: [67, 50, 55, 59, 62],
-      drone: { string: 5, fret: 5 },
-      program: 105,
-    });
+    // The 5-string banjo presets have a drone, which waits for part 3 of #348.
+    const names = [...within(dialog()).getByLabelText('Tuning').querySelectorAll('option')].map(
+      (option) => option.textContent,
+    );
+    expect(names.some((name) => name.startsWith('Banjo'))).toBe(false);
   });
 
   it('adds a drum track with no strings', async () => {

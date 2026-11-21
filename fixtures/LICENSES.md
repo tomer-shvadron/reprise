@@ -1,7 +1,7 @@
 # Fixture licenses
 
 Every file in this directory comes from the test data of [alphaTab](https://github.com/CoderLine/alphaTab),
-taken unmodified from tag `v1.8.4`, commit `022a45c8e42370f9e12e68949d11eada370da83d`, matching the
+taken unmodified from tag `v1.8.4` (except the one file listed under **Modified** below), commit `022a45c8e42370f9e12e68949d11eada370da83d`, matching the
 `@coderline/alphatab@1.8.4` oracle that describes them. alphaTab is licensed under the Mozilla Public
 License 2.0; a copy is in [`MPL-2.0.txt`](MPL-2.0.txt), and the source form of each file is at the URL
 in the table.
@@ -50,7 +50,7 @@ third-party transcriber (`fade-to-black.gp4`, `nightwish.gp5`, `canon.gp5`, `ser
 **Modified.** `gp5/twelve-string.gp5` is `gp5/effects.gp5` (source above) with one byte changed: the
 first track's flags byte, `0x08` to `0x0a`, which sets Guitar Pro 3 to 5's 12-string flag. The change
 is made by `scripts/fixtures/make-twelve-string.ts` (`node scripts/fixtures/make-twelve-string.ts
---check` fails on a stale file), so the file is reproducible, and the MPL-2.0 permits the
+--check`, run by `pnpm fixtures:check`, fails on a stale file), so the file is reproducible, and the MPL-2.0 permits the
 modification. Guitar Pro never saved this file: it proves only that Reprise reads the flag the way
 the format's documents describe it (#348), and an owner-made Guitar Pro 8 file replaces it when one
 arrives.

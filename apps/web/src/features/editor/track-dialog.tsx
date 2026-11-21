@@ -43,6 +43,9 @@ const KINDS: readonly { kind: TrackKind; label: string }[] = [
   { kind: 'pitched', label: 'Pitched' },
 ];
 
+const listed = (name: string): boolean =>
+  STANDARD_TUNINGS.find((tuning) => tuning.name === name)?.drone === undefined;
+
 const SELECT_CLASS =
   'border-input bg-background h-8 w-full min-w-0 rounded-lg border px-2 text-sm aria-invalid:border-destructive';
 
@@ -311,7 +314,7 @@ export function TrackDialog({
                   <select
                     id={id('preset')}
                     className={SELECT_CLASS}
-                    value={preset ?? ''}
+                    value={preset !== undefined && listed(preset) ? preset : ''}
                     onChange={(event) => {
                       update(applyPreset(form, event.target.value || undefined, adding));
                     }}
@@ -321,7 +324,10 @@ export function TrackDialog({
                       const presets = STANDARD_TUNINGS.filter(
                         (tuning) =>
                           tuning.instrument === instrument &&
-                          tuning.strings.length === form.strings.length,
+                          tuning.strings.length === form.strings.length &&
+                          // The 5-string banjos wait for part 3 (#348): their drone has no entry,
+                          // drawing or control yet, so a track made from one would be half a banjo.
+                          tuning.drone === undefined,
                       );
                       return presets.length === 0 ? null : (
                         <optgroup key={instrument} label={label}>
