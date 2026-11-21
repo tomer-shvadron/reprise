@@ -38,6 +38,7 @@ export const SAMPLES: Record<string, unknown> = {
   'score.defaultZoom': 1.5,
   'score.defaultNotationStrings': 'both',
   'score.defaultNotationVocals': 'standard',
+  'score.chordDiagrams': false,
   'layout.bottomDockOpen': true,
   'layout.bottomDockHeight': 300,
   'layout.rightPanelOpen': true,

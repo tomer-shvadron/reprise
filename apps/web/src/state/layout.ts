@@ -22,15 +22,17 @@ export interface LayoutStoreDeps {
   ui: UiStore;
   options: (view: UiView, content: DocumentView) => LayoutOptions;
   layout?: typeof layoutScore;
+  /** Another input of `options` (a setting): subscribe to it, and a change re-lays out. */
+  watch?: (rerun: () => void) => () => void;
 }
 
 /**
  * The layout of the open document, derived outside render. It re-runs only when the document,
- * its score, its view or the ui's view (mode, paper) changes; zoom, theme and panels never do.
+ * its score, its view, the ui's view (mode, paper) or a watched setting changes; zoom, theme and panels never do.
  * An edit hands its touched bars to the same cache, so only they re-flow.
  */
 export function createLayoutStore(deps: LayoutStoreDeps) {
-  const { document, ui, options, layout = layoutScore } = deps;
+  const { document, ui, options, layout = layoutScore, watch } = deps;
   const store = create<LayoutStoreState>()(() => ({
     documentId: undefined,
     result: undefined,
@@ -74,12 +76,16 @@ export function createLayoutStore(deps: LayoutStoreDeps) {
   const unsubscribeUi = ui.subscribe((state, previous) => {
     if (state.view !== previous.view) run();
   });
+  const unsubscribeWatch = watch?.(() => {
+    run();
+  });
   run();
 
   return Object.assign(store, {
     dispose() {
       unsubscribeDocument();
       unsubscribeUi();
+      unsubscribeWatch?.();
     },
   });
 }

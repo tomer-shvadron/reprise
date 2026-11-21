@@ -69,6 +69,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Toggle mixer | View | Global | F8 | F8 |
 | Toggle right panel | View | Global | — | — |
 | Toggle page and continuous view | View | Global | F4 | F4 |
+| Toggle chord diagrams | View | Global | — | — |
 | Follow playback | View | Global | — | — |
 | Toggle practice mode | View | Global | F11 | F11 |
 | Leave practice mode | View | Global | Escape | Escape |
