@@ -256,7 +256,7 @@ interface Track {
   name: string; shortName: string; color: Color;
   kind: 'fretted' | 'drums' | 'pitched';
   tuning: number[];              // open-string MIDI notes 0..127, lowest string first, up to MAX_STRINGS (10); empty on drums.
-                                 // A GP5 keyboard track is read as pitched and keeps its tuning and fretCount for gp5 export
+                                 // A GP5 keyboard track is read as pitched (unless its file flags tablature) and keeps its tuning and fretCount for gp5 export
   capo: number;                  // >= 0; frets count from the capo
   fretCount: number;             // neck length, 24 by default; 0 on drums
   program: number; bank: number; // GM program 0..127 and bank 0..16383; on drums, program is the GM2 kit
@@ -531,7 +531,7 @@ Usage is in `../reference/score-model.md`.
 ```ts
 type Format = 'gp3' | 'gp4' | 'gp5' | 'gp' | 'gpx' | 'reprise';
 function detect(bytes: Uint8Array): Format | undefined;
-function read(bytes: Uint8Array, format?: Format): Promise<{ score: Score; warnings: Warning[] }>;
+function read(bytes: Uint8Array, format?: Format): Promise<{ score: Score; warnings: Warning[]; implicitNotation?: readonly Id[] }>;
 function write(score: Score, format: 'reprise' | 'gp', options?: { app?: AppInfo }): Promise<{ bytes: Uint8Array; dropped: Warning[] }>;
 ```
 
@@ -661,3 +661,5 @@ The browser implementation exists so `pnpm dev` works without Electron; the Elec
 - Public API of each package is its `index.ts`; nothing else is imported across packages. The exceptions are `@reprise/model/testing`, the model's test builders, and `@reprise/audio/testing`, the audio engine's diagnostics, which only test files may import.
 
 Changed by #343, the Settings dialog (2026-11-20): `features/settings` holds the dialog shell, the row controls (`SettingRow`, `SwitchSetting`, `ChoiceSetting`, `SliderSetting`, each bound to a handle and writing through `services.settings`) and the first sections (Appearance, Score, Playback and practice). A section is `{ id, title, settings, Component }`, where `settings` lists the handles "Restore defaults" resets, a key belonging to one section only; `app/settings-sections.ts` exports the ordered array and `app.tsx` calls `checkSections` on it and mounts `<SettingsDialog sections={SETTINGS_SECTIONS} />`. A later feature adds one entry and its own section component, and touches neither the store nor the dialog. `ui.settings` (`{ open, section }`) with `openSettings(section?)` and `closeSettings()` lets another feature's command open a given section; an absent id shows the section shown last (the first, on the first open) and an unknown id shows the first. Changes apply at once, with no OK or Cancel. The new handles are `playback.followPlayhead` (default on; off, the playhead driver never scrolls on its own, though the Follow playback command and the seeks still scroll once), `score.defaultViewMode` and `score.defaultZoom`; `app/install-view-defaults.ts` applies the last two to `ui` when the settings load and on each change in the dialog, and F4 or the zoom commands change only the current view, never the setting. `app.settings` ("Settings…", ⌘, or Ctrl+,) opens the dialog, and `MenuCommandId` gains it: the macOS application menu lists it under About, and the Windows File menu before Quit. `ZOOM` moved to `state/zoom.ts` so a setting can name its range without importing the ui store.
+
+Changed by #347 (2026-11-21), part 1 (formats): `@reprise/model` gains `isVocalTrack(track: Pick<Track, 'kind' | 'program' | 'name'>)` and `VOCAL_PROGRAMS` (GM 52 to 54), beside `canShowTab`: true when the program is a voice program or the name has the whole word vocal(s), vox, voice(s), singer or choir (English only), never on drums; no schema change. `ReadResult` gains `implicitNotation?: readonly Id[]`, the tracks whose file states no notation, so their `display.notation` is the reader's default (every gp3 and gp4 track, a gp5 track with neither staff flag, a gpif track with no `PartConfiguration` entry); absent means none and `.reprise` never sets it. `GpReadResult` and `GpifReadResult` carry the same list, and `read()` passes it through. The readers agree on a track whose file asks for tab: a gp5 track with the tab flag keeps its strings (fretted, tab or both) whatever its program, as the gpif reader already did, and a vocal track with no notation instruction stays fretted in both readers so a default can show tab; a fretted track on a non-fretted program has `octaveShift` 0. The `track-flags-dropped` info about tablature without frets now fires only for drum tracks. The writer is unchanged.

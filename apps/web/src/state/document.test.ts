@@ -246,7 +246,7 @@ describe('the document store', () => {
     const { store, read } = setup();
     read.mockImplementationOnce(
       () =>
-        new Promise((resolve) => {
+        new Promise<ReadResult>((resolve) => {
           finish = resolve;
         }),
     );
@@ -263,7 +263,7 @@ describe('the document store', () => {
     const { store, read } = setup();
     read.mockImplementationOnce(
       () =>
-        new Promise((resolve) => {
+        new Promise<ReadResult>((resolve) => {
           finishFirst = resolve;
         }),
     );
