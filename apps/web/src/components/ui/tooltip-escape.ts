@@ -20,15 +20,3 @@ export function claimEscape(event: Event): void {
 export function isTooltipEscape(event: Event): boolean {
   return tooltipEscapes.has(event);
 }
-
-/**
- * Whether a popover or menu is open. Radix lets only the topmost layer take an Escape, so a
- * tooltip opened over one would hide it from the key; the popover must still get its close.
- */
-export function otherLayerOpen(): boolean {
-  return [...document.querySelectorAll('[data-radix-popper-content-wrapper]')].some(
-    (wrapper) =>
-      wrapper.querySelector('[data-slot="tooltip-content"]') === null &&
-      wrapper.querySelector('[data-state="open"]') !== null,
-  );
-}
