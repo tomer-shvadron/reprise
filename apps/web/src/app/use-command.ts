@@ -11,6 +11,7 @@ import { runCommand, type CommandRegistry } from './command-registry';
 import type { AppCommandId } from './commands';
 import type { EditCommandId } from './edit-commands';
 import type { PracticeCommandId } from './practice-mode/commands';
+import type { SelectionPillCommandId } from './selection-pill/commands';
 import type { SettingsStore } from '@/state/settings';
 
 import { SHORTCUT_OVERRIDES_SETTING, type ShortcutOverrides } from './keymap';
@@ -26,7 +27,8 @@ export type RegisteredCommandId =
   | LibraryCommandId
   | TrainerCommandId
   | EditorCommandId
-  | SoundsCommandId;
+  | SoundsCommandId
+  | SelectionPillCommandId;
 
 export interface CommandSource {
   registry: CommandRegistry;

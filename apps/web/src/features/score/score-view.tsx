@@ -96,6 +96,12 @@ export interface ScoreViewHandle {
   revealRect(rect: Rect, options?: { margin?: number; behavior?: 'auto' | 'smooth' }): void;
   /** The visible window in layout px, from the live scroll position. */
   viewport(): Rect;
+  /**
+   * Calls `listener` when the window settles: the end of a scroll, and after each render of the
+   * view (zoom, size, layout or new props). Never per scroll frame, so a thing that follows the window (the selection pill)
+   * places itself without rendering. Returns the unsubscribe.
+   */
+  subscribeViewport(listener: () => void): () => void;
   /** Moves the playhead by writing its styles: no React state, no render. Undefined hides it. */
   setPlayhead(cursor: PlaybackCursor | undefined): void;
   /** Scrolls to keep the playhead in view by `policy`; see the feature README. */
@@ -274,6 +280,7 @@ export function ScoreView({
   const wroteInstantly = useRef(false);
   /** The position at the last scroll event. */
   const lastScroll = useRef<Point | undefined>(undefined);
+  const viewportListeners = useRef(new Set<() => void>());
   const land = useCallback((target: HTMLElement | null, destination?: Point) => {
     flight.current = destination;
     if (!target) return;
@@ -382,6 +389,7 @@ export function ScoreView({
     if (!element) return;
     let check = 0;
     const onScrollEnd = () => {
+      for (const listener of viewportListeners.current) listener();
       const instant = wroteInstantly.current;
       wroteInstantly.current = false;
       const aim = flight.current;
@@ -524,6 +532,12 @@ export function ScoreView({
         scrollTo(target, { x, y }, smooth);
       },
       viewport: () => (scroller.current ? live(scroller.current) : visible),
+      subscribeViewport: (listener) => {
+        viewportListeners.current.add(listener);
+        return () => {
+          viewportListeners.current.delete(listener);
+        };
+      },
       revealRect: (rect, options = {}) => {
         const target = scroller.current;
         if (!target) return;
@@ -533,6 +547,15 @@ export function ScoreView({
       },
     };
   }, [viewport, zoom, offset, size, visible, layout, land]);
+
+  // After the handle above was rebuilt, so a listener reads the new window. Every render rather
+  // than on a list of changes: a child's own layout effect runs while the handle is detached, so
+  // this is the first moment a render's new geometry (zoom, size, layout, a moved selection) is
+  // readable. The view renders only when its props or its mounted set change, never per scroll
+  // frame.
+  useLayoutEffect(() => {
+    for (const listener of viewportListeners.current) listener();
+  });
 
   const pointer =
     (type: ScorePointerEvent['type']) => (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -588,8 +611,9 @@ export function ScoreView({
   };
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    // A field inside the canvas keeps its keys: its arrows and Space are not scrolling.
-    if (event.target instanceof HTMLInputElement) return;
+    // A control inside the canvas (the word field, the selection pill) keeps its keys: Space on a
+    // button is a press, not a hand scroll.
+    if (event.target !== event.currentTarget) return;
     const axis = KEY_AXES[event.key];
     if (!axis) return;
     const native = event.nativeEvent;
