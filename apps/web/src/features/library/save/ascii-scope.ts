@@ -1,5 +1,6 @@
 import { canShowTab, type Id, type Score } from '@reprise/model';
 
+import { visibleTrackIds, type DocumentView } from '@/state/document';
 import type { SelectionState } from '@/state/selection';
 import type { MenuTarget } from '@/state/menu-target';
 
@@ -21,11 +22,17 @@ export function asciiScopeOf(
   score: Score,
   selection: Pick<SelectionState, 'range' | 'bars' | 'currentTrack'>,
   target: MenuTarget | undefined,
+  view: DocumentView,
 ): AsciiScope | undefined {
   const barIndex = (id: Id) => score.masterBars.findIndex((bar) => bar.id === id);
   const trackIndex = (id: Id) => score.tracks.findIndex((track) => track.id === id);
+  // A range is a rectangle over the tracks the view shows, as the editor's own range is.
+  const shown = visibleTrackIds(view, score);
   const tracksFrom = (first: number, last: number) =>
-    score.tracks.slice(first, last + 1).map((track) => track.id);
+    score.tracks
+      .slice(first, last + 1)
+      .filter((track) => shown === 'all' || shown.includes(track.id))
+      .map((track) => track.id);
   const current = selection.currentTrack ?? score.tracks[0]?.id;
   if (target && target.kind !== 'range' && 'masterBar' in target) {
     const bar = barIndex(target.masterBar);
@@ -44,10 +51,10 @@ export function asciiScopeOf(
       trackIndex(range.focus.track),
     );
     if (firstBar < 0 || firstTrack < 0) return undefined;
-    return {
-      tracks: tracksFrom(firstTrack, lastTrack),
-      bars: { start: firstBar, end: lastBar + 1 },
-    };
+    const tracks = tracksFrom(firstTrack, lastTrack);
+    return tracks.length === 0
+      ? undefined
+      : { tracks, bars: { start: firstBar, end: lastBar + 1 } };
   }
   if (bars) {
     const [firstBar, lastBar] = between(barIndex(bars.startBar), barIndex(bars.endBar));

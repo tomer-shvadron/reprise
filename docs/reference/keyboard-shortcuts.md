@@ -41,7 +41,6 @@ The table is generated from the command registry in `apps/web`, always with the 
 <!-- shortcuts:start -->
 | Command | Category | Context | macOS | Windows |
 | ------- | -------- | ------- | ----- | ------- |
-| Copy as ASCII tab | Other | Global | — | — |
 | Show command palette | App | Global | ⌘K | Ctrl+K |
 | Go to bar… | App | Global | ⌘G | Ctrl+G |
 | Go to section… | App | Global | — | — |
@@ -61,6 +60,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Export as ASCII tab… | File | Global | — | — |
 | Undo | Edit | Global | ⌘Z | Ctrl+Z |
 | Redo | Edit | Global | ⇧⌘Z | Ctrl+Shift+Z or Ctrl+Y |
+| Copy as ASCII tab | Edit | Global | — | — |
 | Zoom in | View | Global | ⌘= | Ctrl+= |
 | Zoom out | View | Global | ⌘- | Ctrl+- |
 | Actual size | View | Global | ⌘0 | Ctrl+0 |

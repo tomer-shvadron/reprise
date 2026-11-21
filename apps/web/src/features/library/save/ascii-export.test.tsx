@@ -75,7 +75,14 @@ describe('asciiScopeOf', () => {
         focus: { track: lead.id, masterBar: ids[1] ?? '', beat: undefined },
       },
     });
-    expect(asciiScopeOf(built, services.selection.getState(), undefined)).toEqual({
+    expect(
+      asciiScopeOf(
+        built,
+        services.selection.getState(),
+        undefined,
+        services.document.getState().view,
+      ),
+    ).toEqual({
       tracks: [lead.id, rhythm.id],
       bars: { start: 1, end: 3 },
     });
@@ -84,22 +91,59 @@ describe('asciiScopeOf', () => {
   it('falls back to the current track for a play-mode bar selection, and takes a bar target alone', () => {
     const { services, built, ids } = setup();
     services.selection.getState().selectBars({ startBar: ids[0] ?? '', endBar: ids[1] ?? '' });
-    expect(asciiScopeOf(built, services.selection.getState(), undefined)).toEqual({
+    expect(
+      asciiScopeOf(
+        built,
+        services.selection.getState(),
+        undefined,
+        services.document.getState().view,
+      ),
+    ).toEqual({
       tracks: [built.tracks[0]?.id],
       bars: { start: 0, end: 2 },
     });
     expect(
-      asciiScopeOf(built, services.selection.getState(), {
-        kind: 'bar',
-        masterBar: ids[2] ?? '',
-        track: built.tracks[1]?.id,
-      }),
+      asciiScopeOf(
+        built,
+        services.selection.getState(),
+        { kind: 'bar', masterBar: ids[2] ?? '', track: built.tracks[1]?.id },
+        services.document.getState().view,
+      ),
     ).toEqual({ tracks: [built.tracks[1]?.id], bars: { start: 2, end: 3 } });
+  });
+
+  it('leaves out a hidden track inside the range, as the editor range does', () => {
+    const { services, built, ids } = setup();
+    const [lead, rhythm, kit] = built.tracks;
+    if (!lead || !rhythm || !kit) throw new Error('fixture');
+    services.document.getState().setVisibleTracks([lead.id, kit.id]);
+    services.selection.setState({
+      range: {
+        kind: 'bars',
+        anchor: { track: lead.id, masterBar: ids[0] ?? '', beat: undefined },
+        focus: { track: kit.id, masterBar: ids[0] ?? '', beat: undefined },
+      },
+    });
+    expect(
+      asciiScopeOf(
+        built,
+        services.selection.getState(),
+        undefined,
+        services.document.getState().view,
+      )?.tracks,
+    ).toEqual([lead.id, kit.id]);
   });
 
   it('has nothing to take without a selection', () => {
     const { services, built } = setup();
-    expect(asciiScopeOf(built, services.selection.getState(), undefined)).toBeUndefined();
+    expect(
+      asciiScopeOf(
+        built,
+        services.selection.getState(),
+        undefined,
+        services.document.getState().view,
+      ),
+    ).toBeUndefined();
   });
 });
 
@@ -184,11 +228,10 @@ describe('Export as ASCII tab', () => {
     expect(new TextDecoder().decode(bytes)).toMatch(/^\s*2\b/mu);
   });
 
-  it('reports what a track left out in the notice, and a drum track among the ticked ones', async () => {
+  it('reports what a track left out in the notice', async () => {
     const { services, library, saveFile } = setup();
     const built = services.document.getState().score;
     if (!built) throw new Error('fixture');
-    const lead = built.tracks[0];
     const withTwoVoices = structuredClone(built);
     const first = withTwoVoices.tracks[0]?.bars[0];
     const voice = first?.voices[0];
@@ -199,7 +242,6 @@ describe('Export as ASCII tab', () => {
     act(() => {
       library.asciiExport.open();
     });
-    expect(lead).toBeDefined();
     await userEvent.click(await screen.findByRole('button', { name: 'Export' }));
     await waitFor(() => {
       expect(saveFile).toHaveBeenCalled();
@@ -384,6 +426,31 @@ describe('Copy as ASCII tab', () => {
     expect(notice(library)).toEqual({
       kind: 'error',
       message: 'Could not copy as ASCII tab: the clipboard refused the text (denied)',
+    });
+  });
+
+  it('copies the fretted tracks of a range that reaches a drum track, and says so', async () => {
+    const { services, library, built, ids } = setup();
+    const written: string[] = [];
+    stubClipboard((text) => {
+      written.push(text);
+      return Promise.resolve();
+    });
+    const [, rhythm, kit] = built.tracks;
+    services.selection.setState({
+      range: {
+        kind: 'bars',
+        anchor: { track: rhythm?.id ?? '', masterBar: ids[0] ?? '', beat: undefined },
+        focus: { track: kit?.id ?? '', masterBar: ids[0] ?? '', beat: undefined },
+      },
+    });
+    await library.asciiExport.copy();
+    expect(written[0]).toContain('Rhythm | Tuning');
+    expect(written[0]).not.toContain('Kit');
+    expect(notice(library)).toEqual({
+      kind: 'info',
+      message:
+        'Copied 1 bar as ASCII tab. Tracks without strings (drums and pitched tracks) were left out.',
     });
   });
 

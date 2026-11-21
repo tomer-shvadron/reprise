@@ -42,7 +42,7 @@ describe('Copy as ASCII tab on the score menus', () => {
     const { services, bar, resolve } = setup();
     services.selection.getState().selectBars({ startBar: bar.id, endBar: bar.id });
     for (const mode of ['play', 'edit'] as const) {
-      expect(resolve('score.range', { kind: 'range' }, mode)).toContain('score.copyAsciiTab');
+      expect(resolve('score.range', { kind: 'range' }, mode)).toContain('edit.copyAsciiTab');
     }
   });
 
@@ -50,27 +50,27 @@ describe('Copy as ASCII tab on the score menus', () => {
     const { bar, lead, kit, resolve } = setup();
     const on = (track: typeof lead, mode: MenuMode) =>
       resolve('score.bar', { kind: 'bar', masterBar: bar.id, track: track.id }, mode);
-    expect(on(lead, 'play')).toContain('score.copyAsciiTab');
-    expect(on(lead, 'edit')).toContain('score.copyAsciiTab');
-    expect(on(kit, 'play')).not.toContain('score.copyAsciiTab');
-    expect(on(kit, 'edit')).not.toContain('score.copyAsciiTab');
+    expect(on(lead, 'play')).toContain('edit.copyAsciiTab');
+    expect(on(lead, 'edit')).toContain('edit.copyAsciiTab');
+    expect(on(kit, 'play')).not.toContain('edit.copyAsciiTab');
+    expect(on(kit, 'edit')).not.toContain('edit.copyAsciiTab');
   });
 
   it('is hidden on a range whose only track is a drum track', () => {
     const { services, bar, kit, resolve } = setup();
     services.selection.getState().setCurrentTrack(kit.id);
     services.selection.getState().selectBars({ startBar: bar.id, endBar: bar.id });
-    expect(resolve('score.range', { kind: 'range' }, 'play')).not.toContain('score.copyAsciiTab');
+    expect(resolve('score.range', { kind: 'range' }, 'play')).not.toContain('edit.copyAsciiTab');
   });
 
   it('has a command in the palette for each of the two, with no default key', () => {
     const { registry } = setup();
-    for (const id of ['file.exportAsciiTab', 'score.copyAsciiTab'] as const) {
+    for (const id of ['file.exportAsciiTab', 'edit.copyAsciiTab'] as const) {
       const command = registry.get(id);
       expect(command?.inPalette).not.toBe(false);
       expect(command?.shortcut).toBeUndefined();
     }
     expect(registry.get('file.exportAsciiTab')?.title).toBe('Export as ASCII tab…');
-    expect(registry.get('score.copyAsciiTab')?.title).toBe('Copy as ASCII tab');
+    expect(registry.get('edit.copyAsciiTab')?.title).toBe('Copy as ASCII tab');
   });
 });

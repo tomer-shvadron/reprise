@@ -6,7 +6,12 @@ import { asciiScopeOf, hasFrettedTrack } from './save/ascii-scope';
 const copyable = ({ services, target }: MenuContext) => {
   const { score } = services.document.getState();
   if (!score) return false;
-  const scope = asciiScopeOf(score, services.selection.getState(), target);
+  const scope = asciiScopeOf(
+    score,
+    services.selection.getState(),
+    target,
+    services.document.getState().view,
+  );
   return scope !== undefined && hasFrettedTrack(score, scope.tracks);
 };
 
@@ -14,13 +19,13 @@ const copyable = ({ services, target }: MenuContext) => {
 export const libraryMenus: readonly MenuContribution[] = [
   {
     surface: 'score.range',
-    items: [{ command: 'score.copyAsciiTab', group: 'export', when: copyable }],
+    items: [{ command: 'edit.copyAsciiTab', group: 'export', when: copyable }],
   },
   {
     surface: 'score.bar',
     items: [
       {
-        command: 'score.copyAsciiTab',
+        command: 'edit.copyAsciiTab',
         group: 'export',
         label: 'Copy bar as ASCII tab',
         when: copyable,

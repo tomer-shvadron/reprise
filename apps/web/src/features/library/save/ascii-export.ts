@@ -4,7 +4,7 @@ import { create } from 'zustand';
 
 import { copyText } from '@/lib/system-clipboard';
 import type { FileFilter, Platform } from '@/platform/platform';
-import type { DocumentStore } from '@/state/document';
+import { visibleTrackIds, type DocumentStore } from '@/state/document';
 import type { MenuTargetStore } from '@/state/menu-target';
 import type { SelectionStore } from '@/state/selection';
 
@@ -109,16 +109,25 @@ export function createAsciiExporter(deps: AsciiExportDeps): AsciiExporter {
     open() {
       const { score } = document.getState();
       if (!score) return;
-      const choices = score.tracks.map((track, index) => ({
-        id: track.id,
-        name: track.name.trim() || `Track ${String(index + 1)}`,
-        fretted: canShowTab(track),
-      }));
+      const shown = visibleTrackIds(document.getState().view, score);
+      const choices = score.tracks
+        .map((track, index) => ({ track, index }))
+        .filter(({ track }) => shown === 'all' || shown.includes(track.id))
+        .map(({ track, index }) => ({
+          id: track.id,
+          name: track.name.trim() || `Track ${String(index + 1)}`,
+          fretted: canShowTab(track),
+        }));
       const { currentTrack } = selection.getState();
       const initial =
         choices.find((choice) => choice.id === currentTrack && choice.fretted) ??
         choices.find((choice) => choice.fretted);
-      const bars = asciiScopeOf(score, selection.getState(), undefined)?.bars;
+      const bars = asciiScopeOf(
+        score,
+        selection.getState(),
+        undefined,
+        document.getState().view,
+      )?.bars;
       store.setState({
         dialog: {
           choices,
@@ -167,7 +176,8 @@ export function createAsciiExporter(deps: AsciiExportDeps): AsciiExporter {
           new TextEncoder().encode(result.text),
           TEXT_FILES,
         );
-        // A cancelled picker and a browser download both resolve with no path: nothing to report.
+        // A cancelled picker, and the download fallback of a browser with no save picker, both
+        // resolve with no path: nothing to report.
         if (path !== undefined) {
           const left = leftOut(result.dropped);
           notify(`Exported ${name}.${left === '' ? '' : ` ${left}`}`);
@@ -185,7 +195,12 @@ export function createAsciiExporter(deps: AsciiExportDeps): AsciiExporter {
       const { score } = document.getState();
       if (!score) return;
       // Before the first await: the host clears the menu target once `run` returns.
-      const scope = asciiScopeOf(score, selection.getState(), menuTarget.getState().target);
+      const scope = asciiScopeOf(
+        score,
+        selection.getState(),
+        menuTarget.getState().target,
+        document.getState().view,
+      );
       if (!scope) {
         notify('Select some bars to copy them as ASCII tab.', 'error');
         return;

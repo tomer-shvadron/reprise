@@ -3,6 +3,7 @@ import type { AppServices } from '@/app/services';
 import { whenSaved } from '@/app/when-saved';
 
 import { libraryOf } from './library';
+import { asciiScopeOf, hasFrettedTrack } from './save/ascii-scope';
 
 export type LibraryCommandId =
   | 'library.show'
@@ -14,7 +15,7 @@ export type LibraryCommandId =
   | 'library.showPracticeLog'
   | 'library.deleteSong'
   | 'file.exportAsciiTab'
-  | 'score.copyAsciiTab';
+  | 'edit.copyAsciiTab';
 
 type LibraryCommand = Command & { id: LibraryCommandId };
 
@@ -43,9 +44,21 @@ export function libraryCommands(services: AppServices): LibraryCommand[] {
       },
     },
     {
-      id: 'score.copyAsciiTab',
+      id: 'edit.copyAsciiTab',
       title: 'Copy as ASCII tab',
-      enabled: hasScore,
+      // Greyed in the palette when nothing is selected or the selection has no strings; a menu
+      // has set its target by the time this is read.
+      enabled: () => {
+        const { score, view } = services.document.getState();
+        if (!score) return false;
+        const scope = asciiScopeOf(
+          score,
+          services.selection.getState(),
+          services.menuTarget.getState().target,
+          view,
+        );
+        return scope !== undefined && hasFrettedTrack(score, scope.tracks);
+      },
       run: () => libraryOf(services).asciiExport.copy(),
     },
     {
