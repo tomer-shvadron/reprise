@@ -40,6 +40,8 @@ function FamilyRow({ family }: { family: PackFamily }) {
   const packs = useStore(sounds.api, (state) => state.packs);
   const scanned = useStore(sounds.api, (state) => state.scanned);
   const job = useStore(sounds.api, (state) => state.job);
+  const problems = useStore(sounds.api, (state) => state.problems);
+  const descriptionId = useId();
   const id = useId();
 
   const suggested = packs.filter((pack) => pack.family === family).flatMap(optionsOf);
@@ -47,25 +49,45 @@ function FamilyRow({ family }: { family: PackFamily }) {
   const all = [...suggested, ...others];
 
   let value = GM;
-  let missingName: string | undefined;
+  let missingLabel: string | undefined;
+  let description: string | undefined;
+  // An installed pack without the stored instrument is not fixed by downloading it again.
+  let pack: InstalledPack | undefined;
   if (stored !== 'gm') {
-    const pack = packs.find((p) => p.id === stored.packId);
+    pack = packs.find((p) => p.id === stored.packId);
     // The first instrument plays for a stored choice that names none.
     const key = stored.instrument ?? pack?.instruments[0]?.key;
+    const listed = curatedPack(stored.packId);
+    const instrumentName =
+      pack?.instruments.find((i) => i.key === key)?.name ??
+      listed?.instruments.find((i) => i.key === key)?.name ??
+      stored.instrument;
+    const packName = pack?.name ?? listed?.name ?? stored.packId;
     if (pack?.instruments.some((i) => i.key === key)) {
       value = pack.instruments.length === 1 ? stored.packId : `${stored.packId}/${String(key)}`;
     } else {
       value = MISSING;
-      missingName = curatedPack(stored.packId)?.name ?? stored.packId;
+      const full = instrumentName === undefined ? packName : `${packName}: ${instrumentName}`;
+      missingLabel = pack ? `${full} (not in the installed version)` : full;
+      description = pack
+        ? 'Not in the installed version of the pack: plays General MIDI.'
+        : 'Not installed: plays General MIDI.';
     }
   }
 
   const curated = stored === 'gm' ? undefined : curatedPack(stored.packId);
   const installing = stored !== 'gm' && job?.packId === stored.packId ? job : undefined;
+  const failure = stored === 'gm' ? undefined : problems[stored.packId];
+  if (!scanned) description = undefined;
+  if (description !== undefined && failure) {
+    description = `${description} The download failed: ${failure.message}`;
+  }
   // Before the first scan every pack reads as not installed.
-  const showAction = missingName !== undefined && scanned;
+  const showAction = missingLabel !== undefined && scanned;
   const downloadable =
-    platform.download !== undefined && curated?.directDownload === true ? curated : undefined;
+    pack === undefined && platform.download !== undefined && curated?.directDownload === true
+      ? curated
+      : undefined;
 
   const options = (entries: readonly Option[]) =>
     entries.map((option) => (
@@ -75,7 +97,11 @@ function FamilyRow({ family }: { family: PackFamily }) {
     ));
 
   return (
-    <SettingRow label={FAMILY_LABELS[family]} htmlFor={id}>
+    <SettingRow
+      label={FAMILY_LABELS[family]}
+      htmlFor={id}
+      {...(description !== undefined && { description, descriptionId })}
+    >
       <div className="flex items-center gap-2">
         {showAction &&
           (installing ? (
@@ -90,7 +116,7 @@ function FamilyRow({ family }: { family: PackFamily }) {
                 void sounds.installCurated(downloadable);
               }}
             >
-              Download
+              {failure ? 'Retry' : 'Download'}
             </Button>
           ) : (
             <Button
@@ -106,6 +132,7 @@ function FamilyRow({ family }: { family: PackFamily }) {
           ))}
         <select
           id={id}
+          aria-describedby={description === undefined ? undefined : descriptionId}
           value={value}
           className="border-input bg-background h-8 w-56 rounded-md border px-2 text-sm"
           onChange={(event) => {
@@ -118,9 +145,7 @@ function FamilyRow({ family }: { family: PackFamily }) {
           }}
         >
           <option value={GM}>General MIDI</option>
-          {missingName !== undefined && (
-            <option value={MISSING}>{missingName} (not installed)</option>
-          )}
+          {missingLabel !== undefined && <option value={MISSING}>{missingLabel}</option>}
           {suggested.length > 0 && <optgroup label="Suggested">{options(suggested)}</optgroup>}
           {others.length > 0 && <optgroup label="Other packs">{options(others)}</optgroup>}
         </select>

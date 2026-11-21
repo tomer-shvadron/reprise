@@ -4,7 +4,6 @@ import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 
 import { Button } from '@/components/ui/button';
-import { DefaultSoundOffer } from '@/features/sounds';
 import { libraryOf } from '@/features/library/library';
 
 import { useAppServices } from './services-context';
@@ -208,7 +207,6 @@ export function Notices() {
       <WarningsNotice />
       <LibraryNotice />
       <SoundsNotice />
-      <DefaultSoundOffer />
     </section>
   );
 }

@@ -31,6 +31,8 @@ interface AppFrameProps {
   onRightPanelResizeEnd?: () => void;
   /** The icon rail on the right panel's edge; it stays when the panel is collapsed. */
   rail?: ReactNode;
+  /** Drawn over the bottom left of the score area, where it covers no control (#346's offer). */
+  scoreOverlay?: ReactNode;
   /** A full-width strip above the panels, such as the library's "not in your library" banner. */
   banner?: ReactNode;
   /** The bottom region's content (the live fretboard); the dock above the transport always shows its tab strip and the view while `ui.bottomPanel.open`. */
@@ -76,6 +78,7 @@ export function AppFrame({
   rail,
   onRightPanelResizeEnd,
   banner,
+  scoreOverlay,
   bottom,
   sectionStrip,
   capsule,
@@ -123,6 +126,7 @@ export function AppFrame({
           className="bg-muted dark:bg-muted/40 relative min-w-0 flex-1 overflow-hidden outline-none"
         >
           {score}
+          {!practising && scoreOverlay}
           {practising && capsule}
         </main>
 

@@ -73,8 +73,8 @@ function soundWith(track: Track, choice: Choice | 'gm' | 'default'): SoundOverri
 }
 
 /**
- * The track's sound: General MIDI, or an installed pack (one option per instrument of a
- * multi-instrument pack). A change is one undoable edit of `Track.sound`, so it saves with the song.
+ * The track's sound: the family default (nothing stored), General MIDI (stored as
+ * `generalMidi`), or an installed pack (one option per instrument of a multi-instrument pack). A change is one undoable edit of `Track.sound`, so it saves with the song.
  * A pack the song names that is not installed stays selected, with a notice: the track plays
  * General MIDI until the pack is installed again, and the score is never edited for it.
  *
@@ -121,14 +121,19 @@ export function TrackSoundPicker({
       missing = instrument === undefined ? packName : `${packName}: ${instrument}`;
     }
   }
+  // A default that fails to load plays GM too; unlike a missing pack, that is worth saying.
+  const failedDefault =
+    packId === undefined && status?.source === 'default' && status.problem === 'failed';
+  const failedText = `The sound pack could not be loaded: playing General MIDI${status?.message ? ` (${status.message})` : ''}`;
   const notice =
     missing !== undefined
       ? // Before the first scan the directory is empty, and every pack would read as removed.
         scanned
         ? `${missing} is not installed: playing General MIDI`
         : undefined
-      : packId !== undefined && status?.problem === 'failed' && status.packId === packId
-        ? `The sound pack could not be loaded: playing General MIDI${status.message ? ` (${status.message})` : ''}`
+      : (packId !== undefined && status?.problem === 'failed' && status.packId === packId) ||
+          failedDefault
+        ? failedText
         : undefined;
 
   const gmLabel = generalMidi === undefined ? 'General MIDI' : `General MIDI (${generalMidi})`;
@@ -141,12 +146,13 @@ export function TrackSoundPicker({
       (defaultSound.instrument === undefined || i.key === defaultSound.instrument),
   );
   const defaultLabel =
-    defaultPack === undefined || defaultInstrument === undefined
+    defaultPack === undefined || defaultInstrument === undefined || failedDefault
       ? gmLabel
       : defaultPack.instruments.length === 1
         ? defaultPack.name
         : `${defaultPack.name}: ${defaultInstrument.name}`;
 
+  const defaultText = `Default: ${defaultLabel}`;
   const options = (entries: readonly Choice[]) =>
     entries.map((choice) => (
       <option key={choice.value} value={choice.value}>
@@ -175,7 +181,7 @@ export function TrackSoundPicker({
             .apply(setTrackProperties({ trackId }, { sound: soundWith(track, choice) }));
         }}
       >
-        <option value={DEFAULT}>Default ({defaultLabel})</option>
+        <option value={DEFAULT}>{defaultText}</option>
         <option value={GENERAL_MIDI}>{gmLabel}</option>
         {missing !== undefined && <option value={MISSING}>{missing} (not installed)</option>}
         {suggested.length > 0 && <optgroup label="Suggested">{options(suggested)}</optgroup>}

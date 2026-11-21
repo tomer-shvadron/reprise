@@ -63,6 +63,15 @@ describe('the Sounds section', () => {
     expect(services.ui.getState().sheet).toBe('sounds');
   });
 
+  it('says in the row description that a stored pack is not installed', async () => {
+    await setup();
+    const select = screen.getByRole('combobox', { name: 'Electric guitar' });
+    expect(select).toHaveAccessibleDescription('Not installed: plays General MIDI.');
+    expect(
+      within(select).getByRole('option', { name: 'Karoryfer Emilyguitar: Five voices' }),
+    ).toBeInTheDocument();
+  });
+
   it('offers Download with a platform that downloads', async () => {
     await setup(true);
     const row = screen.getByRole('combobox', { name: 'Electric guitar' }).parentElement;

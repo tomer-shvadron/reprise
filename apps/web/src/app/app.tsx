@@ -22,7 +22,7 @@ import {
   UnimportedBanner,
 } from '@/features/library';
 import { checkSections, SettingsDialog } from '@/features/settings';
-import { SoundManager } from '@/features/sounds';
+import { DefaultSoundOffer, SoundManager } from '@/features/sounds';
 import {
   installPracticeLog,
   SpeedTrainerChip,
@@ -207,6 +207,7 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
             }
             score={<ScorePane hint={hint} />}
             banner={<UnimportedBanner />}
+            scoreOverlay={<DefaultSoundOffer />}
             transport={
               <TransportBar
                 registry={registry}
