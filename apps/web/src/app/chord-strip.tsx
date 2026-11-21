@@ -1,7 +1,7 @@
 import { chordDiagramPrimitives, chordDiagramSize } from '@reprise/layout';
 import type { Track } from '@reprise/model';
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, XIcon } from 'lucide-react';
-import { useMemo, type KeyboardEvent } from 'react';
+import { memo, useMemo, type KeyboardEvent } from 'react';
 import { useStore } from 'zustand';
 
 import { Button } from '@/components/ui/button';
@@ -16,20 +16,51 @@ import { useCommand } from './use-command';
 const SPACE = 8;
 const PAD = 4;
 
-/** What a chip says to a screen reader: the name, where it is played and where the shape came from. */
-export function chipLabel(entry: ChordListEntry): string {
+/** Past this fret a shape is not in open position, so its chip says where it is. */
+const OPEN_POSITION_LAST_FRET = 3;
+
+/** The lowest fretted fret of a shape (not `baseFret`, which a file may leave at 1); 0 when all open or muted. */
+function lowestFret(entry: ChordListEntry): number {
+  const frets = entry.diagram?.frets.filter((fret): fret is number => fret !== null && fret > 0);
+  return frets && frets.length > 0 ? Math.min(...frets) : 0;
+}
+
+interface ChipPosition {
+  /** "3fr" or "open": under the name. */
+  short: string;
+  /** "at fret 3" or "open position": for a screen reader. */
+  spoken: string;
+}
+
+/**
+ * Where a shape sits, when that tells two chips of one name apart or the shape is up the neck;
+ * undefined for a name that appears once in open position, which needs no label.
+ */
+function positionOf(entry: ChordListEntry, repeated: boolean): ChipPosition | undefined {
+  if (!entry.diagram) return undefined;
+  const fret = lowestFret(entry);
+  if (!repeated && fret <= OPEN_POSITION_LAST_FRET) return undefined;
+  return fret <= 1
+    ? { short: 'open', spoken: 'open position' }
+    : { short: `${String(fret)}fr`, spoken: `at fret ${String(fret)}` };
+}
+
+/** What a chip says to a screen reader: the name, its position, where it is played and where the shape came from. */
+export function chipLabel(entry: ChordListEntry, position?: ChipPosition): string {
   const places = entry.beats.length === 1 ? '1 place' : `${String(entry.beats.length)} places`;
   const shape = entry.diagram ? (entry.suggested ? ', suggested shape' : ', shape') : ', no shape';
-  return `${entry.name}, ${places}${shape}`;
+  return `${entry.name}${position ? ` ${position.spoken}` : ''}, ${places}${shape}`;
 }
 
 function Chip({
   entry,
   box,
   active,
+  position,
   onPick,
 }: {
   entry: ChordListEntry;
+  position: ChipPosition | undefined;
   box: { width: number; height: number };
   active: boolean;
   onPick: () => void;
@@ -52,7 +83,7 @@ function Chip({
       <button
         type="button"
         aria-pressed={active}
-        aria-label={chipLabel(entry)}
+        aria-label={chipLabel(entry, position)}
         onClick={onPick}
         className={cn(
           'hover:bg-accent focus-visible:ring-ring flex flex-col items-center gap-0.5 rounded-md border px-1 pt-1 outline-none focus-visible:ring-2',
@@ -67,6 +98,9 @@ function Chip({
           )}
         >
           {entry.name}
+          {position && (
+            <span className="text-muted-foreground font-normal"> · {position.short}</span>
+          )}
         </span>
         {diagram ? (
           <svg
@@ -99,7 +133,7 @@ function currentTrack(
  * every place that chord is played; the arrows step through them and the score scrolls there,
  * never moving playback. The strip is the `score.chordStrip` setting; this only shows it.
  */
-export function ChordStrip() {
+export const ChordStrip = memo(function ChordStrip() {
   const { ui, document, selection } = useAppServices();
   const tracks = useStore(document, (state) => state.score?.tracks);
   const currentId = useStore(selection, (state) => state.currentTrack);
@@ -121,6 +155,11 @@ export function ChordStrip() {
   }, [entries]);
 
   if (!track) return null;
+  const repeated = new Set(
+    entries
+      .filter((a, i) => entries.some((b, j) => j !== i && b.name === a.name))
+      .map((e) => e.name),
+  );
   const picked = highlight?.track === track.id ? highlight : undefined;
   const entry = picked && entries.find((candidate) => candidate.key === picked.key);
   const at = entry ? Math.min(picked.at, entry.beats.length - 1) : 0;
@@ -174,8 +213,8 @@ export function ChordStrip() {
         <h2 className="truncate text-xs font-medium">
           Chords <span className="text-muted-foreground font-normal">· {track.name}</span>
         </h2>
-        {entry && (
-          <div className="ml-2 flex items-center gap-0.5">
+        <div className="ml-2 flex items-center gap-0.5">
+          {entry && (
             <HintTooltip label="Previous place">
               <Button
                 variant="ghost"
@@ -188,9 +227,12 @@ export function ChordStrip() {
                 <ChevronLeftIcon aria-hidden="true" />
               </Button>
             </HintTooltip>
-            <span role="status" className="text-muted-foreground text-xs tabular-nums">
-              {entry.name}: {at + 1} of {entry.beats.length}
-            </span>
+          )}
+          {/* Always mounted, so the first pick is announced as a change to a live region. */}
+          <span role="status" className="text-muted-foreground text-xs tabular-nums">
+            {entry ? `${entry.name}: ${String(at + 1)} of ${String(entry.beats.length)}` : ''}
+          </span>
+          {entry && (
             <HintTooltip label="Next place">
               <Button
                 variant="ghost"
@@ -203,8 +245,8 @@ export function ChordStrip() {
                 <ChevronRightIcon aria-hidden="true" />
               </Button>
             </HintTooltip>
-          </div>
-        )}
+          )}
+        </div>
         <div className="ml-auto">
           <CommandTooltip command="view.toggleChordStrip" label="Hide chord strip">
             <Button
@@ -212,8 +254,9 @@ export function ChordStrip() {
               size="icon-xs"
               aria-label="Hide chord strip"
               onClick={() => {
-                ui.getState().setChordHighlight(undefined);
                 hide.run();
+                // The button unmounts with the strip; focus goes back to the score, not to body.
+                window.document.querySelector<HTMLElement>('[aria-label^="Score: "]')?.focus();
               }}
             >
               <XIcon aria-hidden="true" />
@@ -230,6 +273,7 @@ export function ChordStrip() {
               <Chip
                 key={candidate.key}
                 entry={candidate}
+                position={positionOf(candidate, repeated.has(candidate.name))}
                 box={box}
                 active={candidate.key === entry?.key}
                 onPick={() => {
@@ -241,4 +285,4 @@ export function ChordStrip() {
         ))}
     </section>
   );
-}
+});

@@ -289,6 +289,8 @@ export function appCommands(services: AppServices): AppCommand[] {
       id: 'view.toggleChordStrip',
       title: 'Toggle chord strip',
       run: () => {
+        // Every way of turning the strip off drops its pick, so it is not boxed on its return.
+        ui.getState().setChordHighlight(undefined);
         settings.set(CHORD_STRIP_SETTING, !settings.get(CHORD_STRIP_SETTING));
       },
     },

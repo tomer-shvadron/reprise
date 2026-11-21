@@ -20,7 +20,7 @@ export interface ChordListEntry {
  * frets, has none and the entry is just the name.
  */
 export function chordList(
-  track: Pick<Track, 'bars' | 'tuning' | 'capo' | 'fretCount'> | undefined,
+  track: Pick<Track, 'bars' | 'tuning' | 'capo' | 'fretCount' | 'kind'> | undefined,
 ): ChordListEntry[] {
   if (!track) return [];
   const byKey = new Map<string, ChordListEntry>();
@@ -46,7 +46,7 @@ export function chordList(
     }
   }
   const entries = [...byKey.values()];
-  if (!canShowTab(track as Track)) return entries;
+  if (!canShowTab(track)) return entries;
   const suggestions = new Map<string, ChordDiagram | undefined>();
   for (const entry of entries) {
     if (entry.diagram) continue;

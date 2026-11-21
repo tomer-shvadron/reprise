@@ -89,6 +89,8 @@ export function printLayoutOptions(
 export type PrintContentOptions = Pick<ContentOptions, 'chordDiagrams' | 'tiedNotes'> & {
   /** Draw the chord strip under the title (#352). */
   chordStrip?: boolean;
+  /** The track current on screen, which the strip prefers when it is printed. */
+  currentTrack?: Id | undefined;
 };
 
 export interface PrintContent {
@@ -97,9 +99,21 @@ export interface PrintContent {
   heading: PrintHeading | undefined;
 }
 
-/** The strip of the first printed track's chords, across the page's content width. */
-function stripOf(score: Score, settings: PrintSettings): PrintStrip | undefined {
-  const track = score.tracks.find(({ id }) => id === settings.tracks[0]);
+/**
+ * The strip of one printed track's chords, across the page's content width: the track current on
+ * screen when it is printed and has chords, so the page matches the screen, else the first
+ * printed track that has any.
+ */
+function stripOf(
+  score: Score,
+  settings: PrintSettings,
+  current: Id | undefined,
+): PrintStrip | undefined {
+  const printed = settings.tracks.flatMap((id) => score.tracks.find((t) => t.id === id) ?? []);
+  const track =
+    printed.find((t) => t.id === current && chordList(t).length > 0) ??
+    printed.find((t) => chordList(t).length > 0) ??
+    printed[0];
   const margins = DEFAULT_MARGINS.paged;
   const width = PAGE_SIZES[settings.paper].width - margins.left - margins.right;
   return stripLayout(chordList(track), width);
@@ -118,12 +132,13 @@ export function layoutForPrint(
   {
     run = layout,
     chordStrip = false,
+    currentTrack,
     ...content
   }: { run?: typeof layout } & PrintContentOptions = {},
 ): PrintContent {
   const present = new Set(score.tracks.map(({ id }) => id));
   const kept = { ...settings, tracks: settings.tracks.filter((id) => present.has(id)) };
-  const strip = chordStrip ? stripOf(score, kept) : undefined;
+  const strip = chordStrip ? stripOf(score, kept, currentTrack) : undefined;
   const heading = settings.header
     ? printHeading(score.meta, fileName, strip)
     : printHeading({ title: '', artist: '', album: '' }, undefined, strip);

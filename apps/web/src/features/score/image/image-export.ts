@@ -58,6 +58,8 @@ export interface ImageExportRequest {
   chordDiagrams?: boolean;
   /** The chord strip under the title (#352); a bar range has no title, so none either. */
   chordStrip?: boolean;
+  /** The track current on screen, which the strip prefers when it is drawn. */
+  currentTrack?: Id | undefined;
 }
 
 export interface ImageExportDeps {
@@ -155,7 +157,10 @@ function planOf(request: ImageExportRequest): Plan {
     ...(request.tiedNotes !== undefined && { tiedNotes: request.tiedNotes }),
     ...(request.chordDiagrams !== undefined && { chordDiagrams: request.chordDiagrams }),
   };
-  const printContent = { ...content, ...(request.chordStrip && { chordStrip: true }) };
+  const printContent = {
+    ...content,
+    ...(request.chordStrip && { chordStrip: true, currentTrack: request.currentTrack }),
+  };
   const settings: PrintSettings = { tracks: [...tracks], paper, header: true, pageNumbers: false };
   if (scope.kind === 'bars') {
     const range = clampRange(score, scope.start, scope.end);

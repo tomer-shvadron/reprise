@@ -20,6 +20,8 @@ export interface PrintStoreDeps {
   chordDiagrams?: () => boolean;
   /** Whether the chord strip is on (#352); read at print time too. */
   chordStrip?: () => boolean;
+  /** The current track, which the printed strip prefers. */
+  currentTrack?: () => Id | undefined;
   /** Resolves after the next paint; tests pass `Promise.resolve`. */
   nextPaint?: () => Promise<void>;
 }
@@ -125,6 +127,7 @@ export function createPrintStore(deps: PrintStoreDeps) {
             ...(deps.layout && { run: deps.layout }),
             ...(deps.chordDiagrams && { chordDiagrams: deps.chordDiagrams() }),
             ...(deps.chordStrip && { chordStrip: deps.chordStrip() }),
+            ...(deps.currentTrack && { currentTrack: deps.currentTrack() }),
           });
         } catch (error) {
           console.error(error);

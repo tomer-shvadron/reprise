@@ -11,6 +11,7 @@ import {
   type PrintHeading,
   type PrintSettings,
 } from './print-layout';
+import { PRINT_STRIP } from './chord-strip-layout';
 import { longScore } from './test/long-score';
 import { uniformNotation, type NotationChoice } from './view-options';
 
@@ -224,11 +225,62 @@ describe('the chord strip under the title (#352)', () => {
     expect(on.heading?.stripTop).toBe(0);
   });
 
-  it('draws the strip of the first printed track, and none for a track without chords', () => {
+  it('prints no strip for a score with no tracks', () => {
     const none = { ...fullScore(), tracks: [] };
+    const empty = { ...settings, tracks: [] };
     expect(
-      layoutForPrint(none, { ...settings, tracks: [] }, {}, undefined, { chordStrip: true }).heading
-        ?.strip,
+      layoutForPrint(none, empty, {}, undefined, { chordStrip: true }).heading?.strip,
     ).toBeUndefined();
+  });
+
+  describe('which track it draws', () => {
+    const two = (() => {
+      const b = scoreBuilder().track('guitar');
+      b.bar()
+        .beat('4', [note(1, 0)], { chord: { name: 'Am' } })
+        .rest('2')
+        .rest('4');
+      b.track('guitar');
+      b.bar()
+        .beat('4', [note(1, 0)], { chord: { name: 'G' } })
+        .rest('2')
+        .rest('4');
+      return b.build({ ids: 'sequential' });
+    })();
+    const printAll: PrintSettings = {
+      tracks: two.tracks.map(({ id }) => id),
+      paper: 'a4',
+      header: false,
+      pageNumbers: false,
+    };
+    const names = (currentTrack: string | undefined) =>
+      layoutForPrint(two, printAll, {}, undefined, {
+        chordStrip: true,
+        currentTrack,
+      }).heading?.strip?.primitives.flatMap((p) =>
+        p.kind === 'text' && p.size === PRINT_STRIP.nameSize ? [p.text] : [],
+      );
+
+    it('prefers the current track when it is printed', () => {
+      expect(names(two.tracks[1]?.id)).toEqual(['G']);
+    });
+
+    it('falls back to the first printed track with chords', () => {
+      expect(names(undefined)).toEqual(['Am']);
+      expect(names('not-a-track')).toEqual(['Am']);
+    });
+
+    it('skips a current track that is not printed', () => {
+      const only = { ...printAll, tracks: [two.tracks[0]?.id ?? ''] };
+      const strip = layoutForPrint(two, only, {}, undefined, {
+        chordStrip: true,
+        currentTrack: two.tracks[1]?.id,
+      }).heading?.strip;
+      expect(
+        strip?.primitives.flatMap((p) =>
+          p.kind === 'text' && p.size === PRINT_STRIP.nameSize ? [p.text] : [],
+        ),
+      ).toEqual(['Am']);
+    });
   });
 });

@@ -49,6 +49,41 @@ const deps = {
   yieldFrame: () => Promise.resolve(),
 };
 
+describe('the chord strip in an export (#352)', () => {
+  function chorded(): Score {
+    const builder = score().title('Chords').track('guitar');
+    builder
+      .bar()
+      .beat('4', [note(1, 0)], { chord: { name: 'Am' } })
+      .beat('4', [note(1, 0)], { chord: { name: 'G' } })
+      .rest('2');
+    return builder.build({ ids: 'sequential' });
+  }
+
+  it('draws the strip on a whole-score image when asked, which pushes the first system down', async () => {
+    const built = chorded();
+    const without = await renderImages(requestFor(built), deps);
+    const withStrip = await renderImages(requestFor(built, { chordStrip: true }), deps);
+    const text = (r: typeof without) => new TextDecoder().decode(r.images[0]?.bytes);
+    expect(text(withStrip).length).toBeGreaterThan(text(without).length);
+    // The strip's rows are written as outlines inside the page; the layout test pins the first
+    // system's drop by exactly their height.
+    expect((text(withStrip).match(/<use /g) ?? []).length).toBeGreaterThan(
+      (text(without).match(/<use /g) ?? []).length,
+    );
+  });
+
+  it('leaves a bar range without one, as it has no heading', async () => {
+    const built = chorded();
+    const range = { kind: 'bars', start: 0, end: 1 } as const;
+    const a = await renderImages(requestFor(built, { scope: range }), deps);
+    const b = await renderImages(requestFor(built, { scope: range, chordStrip: true }), deps);
+    expect(new TextDecoder().decode(b.images[0]?.bytes)).toBe(
+      new TextDecoder().decode(a.images[0]?.bytes),
+    );
+  });
+});
+
 describe('exportImages', () => {
   it('saves a one-page score as one plain svg', async () => {
     const saveFile = vi.fn(() => Promise.resolve('/x/Small song.svg'));

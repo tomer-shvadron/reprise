@@ -5,7 +5,7 @@ import type { AppServices } from '@/app/services';
 import { whenSaved } from '@/app/when-saved';
 import { createImageExporter, type ImageExporter } from '@/features/score';
 import { restoreTrackSession } from '@/features/tracks';
-import { CHORD_DIAGRAMS_SETTING } from '@/state/app-settings';
+import { CHORD_DIAGRAMS_SETTING, CHORD_STRIP_SETTING } from '@/state/app-settings';
 import type { FileHandle } from '@/platform/platform';
 import { contentKey, SCORE_FILES, type Saver } from '@/state/document';
 import { notationDefaultsOf } from '@/state/notation-defaults-setting';
@@ -288,6 +288,8 @@ export function createLibrary(
         : undefined;
     },
     chordDiagrams: () => services.settings.get(CHORD_DIAGRAMS_SETTING),
+    chordStrip: () => services.settings.get(CHORD_STRIP_SETTING),
+    currentTrack: () => services.selection.getState().currentTrack,
     notify,
   });
 

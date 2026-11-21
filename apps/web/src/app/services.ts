@@ -141,6 +141,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     const { id, score } = state;
     audio.setDocument(id !== undefined && score ? { id, score } : undefined);
     if (state.id !== previous.id) {
+      ui.getState().setChordHighlight(undefined);
       selection.getState().reset(score?.tracks[0]?.id);
       // A document starts in play mode. The practice session is not ended here: WP-073 stores it
       // first, and `start` replaces a session of another document.
@@ -151,6 +152,11 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     if (score && !score.tracks.some((track) => track.id === currentTrack)) {
       selection.getState().setCurrentTrack(score.tracks[0]?.id);
     }
+  });
+
+  // A pick in the chord strip belongs to the track it was made on; the strip shows the current one.
+  const unsubscribeChordPick = selection.subscribe((state, previous) => {
+    if (state.currentTrack !== previous.currentTrack) ui.getState().setChordHighlight(undefined);
   });
 
   // After the document wiring above, so a new document has reset the selection before the editor
@@ -205,6 +211,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
       platform,
       chordDiagrams: () => settings.get(CHORD_DIAGRAMS_SETTING),
       chordStrip: () => settings.get(CHORD_STRIP_SETTING),
+      currentTrack: () => selection.getState().currentTrack,
     }),
     editing,
     entry,
@@ -213,6 +220,7 @@ export function createAppServices(options: AppServicesOptions): AppServices {
     menuTarget,
     contextMenu: createContextMenuStore({ menuTarget }),
     dispose() {
+      unsubscribeChordPick();
       uninstallClipboard();
       uninstallEntry();
       uninstallEditor();

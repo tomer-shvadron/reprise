@@ -168,16 +168,20 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
   }, [result, zoom, mode]);
 
   const stripOn = useSetting(CHORD_STRIP_SETTING);
+  const currentTrackId = useStore(selection, (state) => state.currentTrack);
   const picked = useStore(ui, (state) => state.chordHighlight);
   const pickedTrack = picked?.track;
   const pickedKey = picked?.key;
   const pickedAt = picked?.at ?? 0;
   // The beats of the chord picked in the strip, boxed where this layout draws them.
   const chordBeats = useMemo(() => {
-    if (!stripOn || !score || pickedTrack === undefined) return undefined;
+    // The strip shows the current track, so a pick on another one is not drawn.
+    if (!stripOn || !score || pickedTrack === undefined || pickedTrack !== currentTrackId) {
+      return undefined;
+    }
     const track = score.tracks.find(({ id }) => id === pickedTrack);
     return chordList(track).find((entry) => entry.key === pickedKey)?.beats;
-  }, [stripOn, score, pickedTrack, pickedKey]);
+  }, [stripOn, score, pickedTrack, pickedKey, currentTrackId]);
   const chordBoxesNow = useMemo(
     () => (chordBeats ? chordBoxes(result, new Set(chordBeats)) : undefined),
     [result, chordBeats],
@@ -207,7 +211,12 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
     if (!chordBeats || !chordBoxesNow) return;
     const beat = chordBeats[Math.min(pickedAt, chordBeats.length - 1)];
     const first = beat === undefined ? undefined : chordBoxesNow.get(beat)?.[0];
-    if (first) handle.current?.revealRect(first.box, { behavior: 'smooth' });
+    if (first) {
+      // Follow would pull the view back to the playhead on its next frame; a step is a scroll by
+      // hand, so it pauses follow as `onUserScroll` does, and "Follow playback" is the way back.
+      if (selectRunning(playback.getState())) ui.getState().pauseFollow();
+      handle.current?.revealRect(first.box, { behavior: 'smooth' });
+    }
     // Keyed on the pick, not the boxes: a re-layout must not scroll the score back.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickedTrack, pickedKey, pickedAt]);
