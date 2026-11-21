@@ -97,7 +97,7 @@ pnpm dev                   # the web app on the Vite dev server
 pnpm build                 # production build of the web app
 pnpm desktop:dev           # the Electron app around the web core
 pnpm desktop:build         # fetches the GM sound bank first, then electron-vite build plus electron-builder installers for the host arch only; the release workflow passes --mac/--win and --arm64/--x64
-pnpm desktop:smoke         # launches the packaged app, opens a fixture, plays and edits it, recovers a killed session and expects a clean exit; REPRISE_EXPECTED_VERSION checks the version; the release workflow runs it on macOS arm64, macOS x64 and Windows (after desktop:build)
+pnpm desktop:smoke         # launches the packaged app, opens a fixture, plays it, copies to the clipboard, edits it, recovers a killed session and expects a clean exit; REPRISE_EXPECTED_VERSION checks the version; the release workflow runs it on macOS arm64, macOS x64 and Windows (after desktop:build)
 pnpm fixtures:check        # re-describes fixtures/ with alphaTab, fails on a stale manifest
 pnpm check:files [paths]   # the real-file pass (fixtures/ and local-tabs/ by default); reports in .check-files/
 pnpm sounds:fetch          # downloads the GM soundfont, verified by SHA-256
