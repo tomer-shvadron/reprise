@@ -1,4 +1,5 @@
 import { CommandError, openStringPitch } from '@reprise/model';
+import { score } from '@reprise/model/testing';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -144,7 +145,40 @@ describe('the track dialog, editing', () => {
   });
 });
 
+describe('the track dialog, a percussion track', () => {
+  it('is shown as Drums when edited', () => {
+    const built = score();
+    built.track('drums', { name: 'Percussion' });
+    const { run } = setupTracks(built.build());
+    run('track.properties');
+    expect(within(dialog()).getByText('Drums')).toBeInTheDocument();
+  });
+});
+
 describe('the track dialog, adding', () => {
+  it('adds a percussion track as a drums track under its own name', async () => {
+    const { services, run, user } = setup();
+    run('track.add');
+    await user.click(within(dialog()).getByRole('radio', { name: 'Percussion' }));
+    expect(within(dialog()).getByRole('radio', { name: 'Drums' })).not.toBeChecked();
+    expect(field('Name')).toHaveValue('Percussion');
+    expect(field('Short name')).toHaveValue('Perc.');
+    await user.selectOptions(field('Instrument'), 'Jazz Kit');
+    await user.click(within(dialog()).getByRole('radio', { name: 'Drums' }));
+    expect(field('Name')).toHaveValue('Drums');
+    expect(field('Short name')).toHaveValue('Drs.');
+    expect(field('Instrument')).toHaveDisplayValue('Jazz Kit');
+    await user.click(within(dialog()).getByRole('radio', { name: 'Percussion' }));
+    expect(field('Name')).toHaveValue('Percussion');
+    expect(field('Instrument')).toHaveDisplayValue('Jazz Kit');
+    await user.click(screen.getByRole('button', { name: 'Add track' }));
+    expect(tracksOf(services).at(-1)).toMatchObject({
+      kind: 'drums',
+      name: 'Percussion',
+      program: 32,
+    });
+  });
+
   it('starts from the defaults and adds a bass at the end with the capo', async () => {
     const { services, run, user } = setup();
     run('track.add');
