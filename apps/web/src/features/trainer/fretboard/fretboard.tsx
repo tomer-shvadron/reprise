@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useStore } from 'zustand';
 
+import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useAppServices } from '@/app/services-context';
 import { Switch } from '@/components/ui/switch';
 import { selectRunning } from '@/state/playback';
@@ -17,7 +18,6 @@ import {
   type Dot,
 } from './fretboard-model';
 import { geometryOf, type Geometry } from './fretboard-geometry';
-import { readStoredLeftHanded, writeStoredLeftHanded } from './fretboard-prefs';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const DOT_RADIUS = 10;
@@ -162,10 +162,17 @@ function paintDots(layer: SVGGElement, dots: readonly Dot[], geometry: Geometry)
  * region, so the changing highlights are not announced.
  */
 export function Fretboard() {
-  const { document, selection, playback, editing, heard } = useAppServices();
+  const services = useAppServices();
+  const { document, selection, playback, editing, heard } = services;
   const score = useStore(document, (state) => state.score);
   const currentTrack = useStore(selection, (state) => state.currentTrack);
-  const [leftHanded, setLeftHanded] = useState(() => readStoredLeftHanded());
+  const { ui } = services;
+  const leftHanded = useStore(ui, (state) => state.fretboardLeftHanded);
+  const menu = useStaticContextMenu({
+    surface: 'fretboard',
+    target: { kind: 'dock', view: 'fretboard' },
+    label: 'Fretboard',
+  });
 
   const track = useMemo(
     () => score?.tracks.find((candidate) => candidate.id === currentTrack) ?? score?.tracks[0],
@@ -241,6 +248,7 @@ export function Fretboard() {
   if (!track || !board || !geometry) {
     return (
       <div
+        {...menu}
         data-fretboard-empty
         className="text-muted-foreground flex h-full items-center justify-center p-4 text-sm"
       >
@@ -250,7 +258,7 @@ export function Fretboard() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-1 p-2">
+    <div {...menu} className="flex h-full flex-col gap-1 p-2">
       <div className="flex items-center justify-between gap-2 text-xs">
         <span className="text-muted-foreground">
           {board.strings} strings, tuning {names.join(' ')}
@@ -262,8 +270,7 @@ export function Fretboard() {
             size="sm"
             checked={leftHanded}
             onCheckedChange={(checked) => {
-              setLeftHanded(checked);
-              writeStoredLeftHanded(checked);
+              ui.getState().setFretboardLeftHanded(checked);
             }}
           />
         </label>

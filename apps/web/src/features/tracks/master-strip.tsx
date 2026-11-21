@@ -1,6 +1,7 @@
 import { useId } from 'react';
 import { useStore } from 'zustand';
 
+import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useAppServices } from '@/app/services-context';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
@@ -17,9 +18,14 @@ export function MasterStrip() {
   const percent = volume * 100;
   const bypassId = useId();
   const noteId = useId();
+  const menu = useStaticContextMenu({
+    surface: 'mixer.master',
+    target: { kind: 'mixerMaster' },
+    label: 'Master',
+  });
 
   return (
-    <div className="flex flex-col gap-1.5 border-t px-3 py-2">
+    <div {...menu} className="flex flex-col gap-1.5 border-t px-3 py-2">
       <div className="flex items-center gap-2">
         <span className="w-16 shrink-0 text-xs font-medium">Master</span>
         <Slider

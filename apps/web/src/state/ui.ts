@@ -2,6 +2,7 @@ import type { LayoutOptions, PAGE_SIZES } from '@reprise/layout';
 import { create } from 'zustand';
 
 import { BOTTOM_PANEL_HEIGHT } from './bottom-panel-height';
+import { readStoredLeftHanded, writeStoredLeftHanded } from './fretboard-prefs';
 import { PANEL_WIDTH } from './panel-width';
 import { initialTheme, type Theme } from './theme';
 import { PRACTICE_ZOOM_DEFAULT, ZOOM } from './zoom';
@@ -84,6 +85,8 @@ export interface UiState {
   bottomPanelHeight: number;
   /** The height last committed by `persistBottomPanelHeight`, which is what gets stored. */
   bottomPanelHeightCommitted: number;
+  /** The fretboard is drawn for a left-handed player; stored through `fretboard-prefs`, so it outlives a restart. */
+  fretboardLeftHanded: boolean;
   zoom: number;
   /** The practice mode's own zoom, read in its place while the mode is on. */
   practiceZoom: number;
@@ -122,6 +125,7 @@ export interface UiState {
   setBottomPanelHeight: (height: number) => void;
   /** Commits the height for storing; call when a resize ends, not on every step. */
   persistBottomPanelHeight: () => void;
+  setFretboardLeftHanded: (leftHanded: boolean) => void;
   setZoom: (zoom: number) => void;
   setPracticeZoom: (zoom: number) => void;
   /** Hides the chrome; `returnTo` is what leaving gives back. Nothing stored changes. */
@@ -173,6 +177,7 @@ export function createUiStore(theme: Theme = initialTheme()) {
     bottomPanel: { open: false, view: 'fretboard' },
     bottomPanelHeight: BOTTOM_PANEL_HEIGHT.default,
     bottomPanelHeightCommitted: BOTTOM_PANEL_HEIGHT.default,
+    fretboardLeftHanded: readStoredLeftHanded(),
     zoom: ZOOM.default,
     practiceZoom: PRACTICE_ZOOM_DEFAULT,
     practiceMode: { on: false, returnTo: 'play' },
@@ -261,6 +266,10 @@ export function createUiStore(theme: Theme = initialTheme()) {
     },
     persistBottomPanelHeight: () => {
       set({ bottomPanelHeightCommitted: get().bottomPanelHeight });
+    },
+    setFretboardLeftHanded: (leftHanded) => {
+      set({ fretboardLeftHanded: leftHanded });
+      writeStoredLeftHanded(leftHanded);
     },
     setZoom: (zoom) => {
       set({ zoom: clamp(zoom, ZOOM.min, ZOOM.max) });

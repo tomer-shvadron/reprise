@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useStore } from 'zustand';
 
+import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useAppServices } from '@/app/services-context';
 import { useCommand } from '@/app/use-command';
 import {
@@ -27,6 +28,11 @@ export function TempoControl() {
   const setTempoCommand = useCommand('transport.setTempo');
   const slowDown = useCommand('transport.slowDown');
   const speedUp = useCommand('transport.speedUp');
+  const menu = useStaticContextMenu({
+    surface: 'transport.tempo',
+    target: { kind: 'transport', control: 'tempo' },
+    label: 'Tempo',
+  });
   const stepKeys = [slowDown.ariaKeys, speedUp.ariaKeys].filter(Boolean).join(' ') || undefined;
 
   const [written, setWritten] = useState<number | undefined>(undefined);
@@ -130,7 +136,7 @@ export function TempoControl() {
   const speedLabel = `${String(Math.round(percent))}%`;
 
   return (
-    <div role="group" aria-label="Tempo" className="flex items-center gap-2">
+    <div {...menu} role="group" aria-label="Tempo" className="flex items-center gap-2">
       <InputGroup className="h-7 w-auto" data-command="transport.setTempo">
         <InputGroupInput
           ref={input}

@@ -135,6 +135,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Start or stop standalone metronome | Trainer | Global | ⌥B | Alt+B |
 | Toggle fretboard | Trainer | Global | — | — |
 | Speed trainer on selection | Trainer | Global | — | — |
+| Left-handed fretboard | Trainer | Global | — | — |
 | Show fretboard | Trainer | Global | — | — |
 | Toggle edit mode | Editor | Global | ⌘E | Ctrl+E |
 | Edit here | Editor | Global | — | — |

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 
+import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useAppServices } from '@/app/services-context';
 
 import { TransportToggle } from './controls';
@@ -27,6 +28,21 @@ export function PracticeToggles({ speedTrainer, tuner }: PracticeTogglesProps) {
     })),
   );
   const score = useStore(document, (state) => state.score);
+  const loopMenu = useStaticContextMenu({
+    surface: 'transport.loop',
+    target: { kind: 'transport', control: 'loop' },
+    label: 'Loop',
+  });
+  const countInMenu = useStaticContextMenu({
+    surface: 'transport.countIn',
+    target: { kind: 'transport', control: 'countIn' },
+    label: 'Count-in',
+  });
+  const metronomeMenu = useStaticContextMenu({
+    surface: 'transport.metronome',
+    target: { kind: 'transport', control: 'metronome' },
+    label: 'Metronome',
+  });
   const bars = loop && loopBarNumbers(score, loop);
   const range =
     bars &&
@@ -39,29 +55,43 @@ export function PracticeToggles({ speedTrainer, tuner }: PracticeTogglesProps) {
         label={range ? `Loop bars ${range}` : 'Loop'}
         pressed={loop !== undefined}
         disabled={!score}
+        {...loopMenu}
       >
         <RepeatIcon />
         {range && <span className="text-xs tabular-nums">{range}</span>}
       </TransportToggle>
       {speedTrainer}
-      <TransportToggle command="transport.toggleCountIn" label="Count-in" pressed={countIn}>
+      <TransportToggle
+        command="transport.toggleCountIn"
+        label="Count-in"
+        pressed={countIn}
+        {...countInMenu}
+      >
         <TimerIcon />
       </TransportToggle>
-      <TransportToggle command="transport.toggleMetronome" label="Metronome" pressed={metronome.on}>
+      <TransportToggle
+        command="transport.toggleMetronome"
+        label="Metronome"
+        pressed={metronome.on}
+        {...metronomeMenu}
+      >
         <MetronomeIcon />
       </TransportToggle>
-      <LevelPopover
-        popover="metronome"
-        command="transport.metronomeVolume"
-        label="Metronome volume"
-        value={metronome.volume}
-        note="Also the count-in’s volume."
-        onChange={(volume) => {
-          audio.setMetronome(playback.getState().settings.metronome.on, volume);
-        }}
-      >
-        <ChevronUpIcon />
-      </LevelPopover>
+      {/* The chevron has no props to spread on, so a wrapper takes its right-click. */}
+      <span {...metronomeMenu} className="contents">
+        <LevelPopover
+          popover="metronome"
+          command="transport.metronomeVolume"
+          label="Metronome volume"
+          value={metronome.volume}
+          note="Also the count-in’s volume."
+          onChange={(volume) => {
+            audio.setMetronome(playback.getState().settings.metronome.on, volume);
+          }}
+        >
+          <ChevronUpIcon />
+        </LevelPopover>
+      </span>
       {tuner}
     </div>
   );
