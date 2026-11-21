@@ -33,9 +33,12 @@ type Scenario = {
   practice?: boolean;
   panel?: PanelView;
   dock?: boolean;
+  /** Loops the first section from the strip, the one state where its button runs a command. */
+  loop?: boolean;
 };
 
-// Each right-panel view and the dock once, in the modes that show different controls.
+// Each right-panel view and the dock once, in the modes that show different controls. A control
+// that runs a command only in a state none of these opens would go unchecked: add the state here.
 const SCENARIOS: readonly Scenario[] = [
   { name: 'play, mixer', editing: false, panel: 'mixer' },
   { name: 'play, practice tools', editing: false, panel: 'speedTrainer', dock: true },
@@ -45,13 +48,8 @@ const SCENARIOS: readonly Scenario[] = [
   { name: 'play, chords', editing: false, panel: 'chords' },
   { name: 'edit, effects', editing: true, panel: 'effects', dock: true },
   { name: 'practice mode', editing: false, practice: true },
+  { name: 'practice mode, section looped', editing: false, practice: true, loop: true },
 ];
-
-/**
- * Controls that run a command on a click yet show no key by design, each with its reason. A new
- * entry needs a real reason: a control that runs a command shows the command's keys (#412).
- */
-const ALLOWED: readonly { name: RegExp; reason: string }[] = [];
 
 const KEYS = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
@@ -91,6 +89,11 @@ async function mount(scenario: Scenario, bindAll = false) {
     if (scenario.dock) ui.showBottomPanelView('fretboard');
     if (scenario.practice) ui.enterPracticeMode('play');
   });
+  if (scenario.loop) {
+    act(() => {
+      document.querySelector<HTMLElement>('[data-section]')?.click();
+    });
+  }
   const registry = built.registry;
   if (!registry) throw new Error('App did not build a registry');
   if (bindAll) {
@@ -124,6 +127,8 @@ function clickable(): HTMLElement[] {
 
 const label = (element: Element) =>
   element.getAttribute('aria-label') ?? element.textContent.trim().slice(0, 40);
+
+const proven = new Set<string>();
 
 afterEach(cleanup);
 beforeEach(() => {
@@ -160,48 +165,55 @@ describe('command tooltip coverage', () => {
         services.settings.set(SHORTCUT_OVERRIDES_SETTING, overrides);
       });
       check();
-    }, 60_000);
+    });
 
-    it(`a control that runs a command carries its tooltip (${scenario.name})`, async () => {
+    it(`a control runs only the command its tooltip names (${scenario.name})`, async () => {
       await mount(scenario, true);
-      const names = clickable()
-        .filter((element) => element.closest('[data-command-tooltip]') === null)
-        .map(label);
+      const keyOf = (element: HTMLElement) =>
+        `${label(element)}|${element.closest('[data-command-tooltip]')?.getAttribute('data-command-tooltip') ?? ''}`;
+      // The same control (a track's Mute, a chord) proven in an earlier scenario is not clicked again.
+      const todo = clickable()
+        .map((element, at) => ({ at, key: keyOf(element) }))
+        .filter(({ key }) => !proven.has(key));
       cleanup();
       const offenders: string[] = [];
-      for (const [at] of names.entries()) {
+      for (const { at, key } of todo) {
         built.registry = undefined;
         const { registry } = await mount(scenario, true);
-        const candidates = clickable().filter(
-          (element) => element.closest('[data-command-tooltip]') === null,
-        );
-        const target = candidates[at];
-        if (!target) continue;
-        const ran: string[] = [];
-        for (const command of registry.list()) {
-          command.run = () => {
-            ran.push(command.id);
-          };
-        }
-        const name = label(target);
-        act(() => {
-          target.click();
-        });
-        if (ran.length === 0) {
-          cleanup();
-          continue;
-        }
-        const allowed = ALLOWED.some((entry) => entry.name.test(name));
-        const groups = new Set(
-          ran.map((id) => {
+        const target = clickable()[at];
+        if (target && keyOf(target) === key) {
+          const ran: string[] = [];
+          for (const command of registry.list()) {
+            command.run = () => {
+              ran.push(command.id);
+            };
+          }
+          const named = target
+            .closest('[data-command-tooltip]')
+            ?.getAttribute('data-command-tooltip');
+          const group = (id: string) => {
             const command = registry.get(id);
             return command ? bindingGroup(command) : id;
-          }),
-        );
-        if (!allowed) offenders.push(`${name} ran ${[...groups].join(', ').replaceAll('\n', '/')}`);
+          };
+          act(() => {
+            target.click();
+          });
+          const wrong = ran.filter(
+            (id) => named === null || named === undefined || group(id) !== group(named),
+          );
+          if (wrong.length > 0) {
+            offenders.push(
+              `${key} ran ${wrong.join(', ')}${named ? '' : ' with no CommandTooltip'}`,
+            );
+          }
+        }
+        proven.add(key);
         cleanup();
       }
-      expect(offenders, 'controls that run a command without CommandTooltip').toEqual([]);
-    }, 120_000);
+      expect(
+        offenders,
+        'controls that run a command other than the one their tooltip names',
+      ).toEqual([]);
+    }, 60_000);
   }
 });
