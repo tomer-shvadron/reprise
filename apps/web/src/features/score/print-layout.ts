@@ -50,7 +50,7 @@ export function printLayoutOptions(
   settings: PrintSettings,
   notation: Record<Id, Notation>,
   headerHeight: number,
-  content: Pick<ContentOptions, 'chordDiagrams'> = {},
+  content: Pick<ContentOptions, 'chordDiagrams' | 'tiedNotes'> = {},
 ): LayoutOptions {
   return {
     ...viewLayoutOptions(
@@ -84,7 +84,7 @@ export function layoutForPrint(
   {
     run = layout,
     ...content
-  }: { run?: typeof layout } & Pick<ContentOptions, 'chordDiagrams'> = {},
+  }: { run?: typeof layout } & Pick<ContentOptions, 'chordDiagrams' | 'tiedNotes'> = {},
 ): PrintContent {
   const present = new Set(score.tracks.map(({ id }) => id));
   const kept = { ...settings, tracks: settings.tracks.filter((id) => present.has(id)) };
