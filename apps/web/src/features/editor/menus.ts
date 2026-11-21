@@ -34,6 +34,7 @@ export const editorMenus: readonly MenuContribution[] = [
     items: [
       { command: 'editor.moveNoteUp', group: 'note' },
       { command: 'editor.moveNoteDown', group: 'note' },
+      { command: 'editor.nameChordFromNotes', group: 'note' },
       { command: 'editor.toggleTie', group: 'note' },
       { command: 'editor.effect.hammerOn', group: 'effects' },
       { command: 'editor.effect.legatoSlide', group: 'effects' },
@@ -62,6 +63,7 @@ export const editorMenus: readonly MenuContribution[] = [
       { command: 'editor.toggleDot', group: 'beat' },
       { command: 'editor.toggleTriplet', group: 'beat' },
       { command: 'editor.chordName', group: 'beat' },
+      { command: 'editor.nameChordFromNotes', group: 'beat' },
       { command: 'editor.beatText', group: 'beat' },
       { command: 'editor.lyrics', group: 'beat' },
       { command: 'editor.editVoice1', group: 'beat' },
@@ -131,6 +133,7 @@ export const editorMenus: readonly MenuContribution[] = [
     items: [
       { command: 'editor.editHere', group: 'edit', modes: play, label: 'Edit chord name' },
       { command: 'editor.chordName', group: 'beat', label: 'Edit chord name…' },
+      { command: 'editor.nameChordFromNotes', group: 'beat' },
       { command: 'editor.removeChordName', group: 'danger' },
     ],
   },
