@@ -24,6 +24,7 @@ import {
   formFromTrack,
   hasErrors,
   newTrackForm,
+  percussionForm,
   noteLabel,
   presetNameOf,
   setName,
@@ -37,9 +38,10 @@ import {
   type TrackForm,
 } from './track-form';
 
-const KINDS: readonly { kind: TrackKind; label: string }[] = [
+const KINDS: readonly { kind: TrackKind; label: string; percussion?: true }[] = [
   { kind: 'fretted', label: 'Fretted' },
   { kind: 'drums', label: 'Drums' },
+  { kind: 'drums', label: 'Percussion', percussion: true },
   { kind: 'pitched', label: 'Pitched' },
 ];
 
@@ -134,7 +136,7 @@ export function TrackDialog({
 
   const fretted = form.kind === 'fretted';
   const preset = presetNameOf(form);
-  const kind = KINDS.find((entry) => entry.kind === form.kind)?.label;
+  const kind = KINDS.find((entry) => entry.kind === form.kind && !entry.percussion)?.label;
 
   return (
     <Dialog
@@ -163,13 +165,15 @@ export function TrackDialog({
             {adding ? (
               <div className="flex gap-4">
                 {KINDS.map((entry) => (
-                  <label key={entry.kind} className="flex items-center gap-1.5 text-sm">
+                  <label key={entry.label} className="flex items-center gap-1.5 text-sm">
                     <input
                       type="radio"
                       name={id('kind')}
-                      checked={form.kind === entry.kind}
+                      checked={form.kind === entry.kind && form.percussion === !!entry.percussion}
                       onChange={() => {
-                        update(changeKind(form, entry.kind));
+                        update(
+                          entry.percussion ? percussionForm(form) : changeKind(form, entry.kind),
+                        );
                       }}
                     />
                     {entry.label}

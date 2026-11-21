@@ -293,6 +293,16 @@ export function detectKey(table: NoteTable, options: DetectOptions = {}): KeyRes
       : best.key;
   const pickScore = scored.find((entry) => entry.key === pick)?.score ?? best.score;
   const other = scored.find((entry) => entry.key !== pick) ?? second;
+  // What the card names as the alternative is the best other key whose mode the thirds do not
+  // flip: the bass bonus is mode-blind, so the parallel key otherwise always ranks second and a
+  // minor riff would read "or A major" with no C sharp in it. Confidence keeps the numeric
+  // runner-up, since the thresholds were set against it.
+  const contradicted = (entry: { key: KeyEstimate }): boolean => {
+    const mode = qualityFromThirds(entry.key.quality, thirdsOf(entry.key.tonic));
+    return mode !== 'none' && mode !== entry.key.quality;
+  };
+  const alternative =
+    scored.find((entry) => entry.key !== pick && !contradicted(entry))?.key ?? other.key;
   const { tonic } = pick;
   const quality = qualityFromThirds(pick.quality, thirdsOf(tonic));
 
@@ -303,7 +313,7 @@ export function detectKey(table: NoteTable, options: DetectOptions = {}): KeyRes
     quality,
     confidence: confidenceOf(pick.correlation, pick.correlation - (pickScore - other.score)),
     correlation: pick.correlation,
-    runnerUp: other.key,
+    runnerUp: alternative,
     movedByCues: pick !== byCorrelation[0],
     name: keyName(tonic, quality, options.fileKey),
     signature,

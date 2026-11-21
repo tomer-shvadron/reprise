@@ -1,4 +1,4 @@
-import { midi, score } from '@reprise/model/testing';
+import { midi, note, score } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -17,6 +17,8 @@ import {
 } from './key';
 import { PROFILE_SETS, profileSetOf } from './key-profiles';
 import { noteTableOf } from './note-table';
+import { aMinorRiff } from '../../test/a-minor-riff';
+
 import { fromBars, fromMelody } from './test/corpus';
 
 describe('pearson', () => {
@@ -359,5 +361,43 @@ describe('the third', () => {
     ] as const;
     const key = detectKey(noteTableOf(fromMelody([...melody, ...melody], { bass: pedal })));
     expect(key).toMatchObject({ found: true, tonic: 0, quality: 'major' });
+  });
+});
+
+describe('the runner-up the card names', () => {
+  const riff = (frets: readonly number[], bass: number[] = [0]) => {
+    const builder = score().tempo(120).track('guitar');
+    for (let round = 0; round < 6; round++) {
+      builder.bar();
+      frets.forEach((fret, at) => {
+        builder.beat(
+          '8',
+          at === 0 ? [note(1, fret), ...bass.map((f) => note(5, f))] : [note(1, fret)],
+        );
+      });
+    }
+    return builder.build();
+  };
+
+  it('skips the parallel key whose third the notes contradict', () => {
+    const key = detectKey(noteTableOf(aMinorRiff()));
+    expect(key).toMatchObject({ found: true, tonic: 9, quality: 'minor' });
+    // A major would be second by score (the bass bonus ignores the mode), but C sharp never sounds.
+    if (key.found) expect(key.runnerUp).toMatchObject({ tonic: 0, quality: 'major' });
+  });
+
+  it('keeps the parallel key second when both thirds sound', () => {
+    // A blues: C and C sharp both played.
+    const key = detectKey(noteTableOf(riff([5, 8, 9, 10, 12, 10, 8, 5])));
+    expect(key).toMatchObject({ found: true, tonic: 9 });
+    if (key.found) expect(key.runnerUp).toMatchObject({ tonic: 9 });
+  });
+
+  it('keeps the plain second place when no third sounds', () => {
+    // A power-chord riff: A, D and E only.
+    const key = detectKey(noteTableOf(riff([5, 10, 12, 10, 5, 10, 12, 10])));
+    expect(key).toMatchObject({ found: true, tonic: 9, quality: 'none' });
+    // D major, the key of the A, D and E it plays: no third contradicts it, so nothing is skipped.
+    if (key.found) expect(key.runnerUp).toMatchObject({ tonic: 2, quality: 'major' });
   });
 });

@@ -55,6 +55,8 @@ const panelItems: readonly MenuItemSpec[] = [
   { command: 'trainer.speedTrainer', group: 'view', when: onPanel('speedTrainer') },
   { command: 'trainer.tuner', group: 'view', when: onPanel('tuner') },
   { command: 'trainer.metronome', group: 'view', when: onPanel('metronome') },
+  { command: 'trainer.insights', group: 'view', when: onPanel('insights') },
+  { command: 'trainer.chords', group: 'view', when: onPanel('chords') },
   {
     command: 'editor.toggleEffectsPanel',
     group: 'view',
