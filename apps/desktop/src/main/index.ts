@@ -33,7 +33,7 @@ import { createDownloadManager } from './download';
 import { electronGet } from './electron-http';
 import { readPath, writePath } from './file-io';
 import { registerInvokeHandlers, sendEvent } from './ipc';
-import { decideMediaPermission } from './media-permission';
+import { decidePermission } from './permission';
 import { aboutDetail, aboutPanelOptions } from './about';
 import { menuTemplate } from './menu';
 import { openedFile } from './opened-file';
@@ -404,15 +404,16 @@ async function createWindow(): Promise<BrowserWindow> {
   return window;
 }
 
-function allowMicrophoneOnly(): void {
+// The microphone and the clipboard write, to the app's own top frame; see `permission.ts`.
+function allowAppPermissions(): void {
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback, details) => {
     const media = 'mediaTypes' in details ? details : undefined;
-    void decideMediaPermission(
+    void decidePermission(
       permission,
       {
         mediaTypes: media?.mediaTypes,
         requestingUrl: details.requestingUrl,
-        isMainFrame: media?.isMainFrame,
+        isMainFrame: details.isMainFrame,
       },
       {
         platform: process.platform,
@@ -435,7 +436,7 @@ async function start(): Promise<void> {
     APP_SCHEME,
     createAppProtocolHandler(RENDERER_DIR, { contentSecurityPolicy: __REPRISE_CSP__ }),
   );
-  allowMicrophoneOnly();
+  allowAppPermissions();
   app.setAboutPanelOptions(aboutPanelOptions(app.getVersion()));
   applyMenu();
   await createWindow();
