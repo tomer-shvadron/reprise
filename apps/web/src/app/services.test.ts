@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { write } from '@reprise/formats';
 import { setNote, type Score } from '@reprise/model';
 import { beatOf, note, score } from '@reprise/model/testing';
@@ -9,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { createMemorySettingsBackend, createTestSettings } from '@/test/settings-backend';
 import { createSettingsStore } from '@/state/settings';
 import { DEFAULT_NOTATION_STRINGS_SETTING } from '@/state/app-settings';
+import { readFixture } from '@/test/read-fixture';
 import { createTestServices } from '@/test/services';
 
 async function bytes(song: Score) {
@@ -46,10 +44,6 @@ const staves = ({ layout }: Services) =>
     .result?.systems.flatMap((system) => system.staves.map((staff) => staff.track)) ?? [];
 const tracksShown = (services: Services) => [...new Set(staves(services))];
 
-// The project root is the working directory of every Vitest run; jsdom tests have no file URLs.
-const fetchFixture = (path: string) =>
-  Promise.resolve(new Uint8Array(readFileSync(join(process.cwd(), 'fixtures', path))));
-
 describe('the notation defaults at open', () => {
   const notations = (services: Services) =>
     services.document.getState().score?.tracks.map((track) => track.display.notation);
@@ -60,7 +54,7 @@ describe('the notation defaults at open', () => {
     settings.set(DEFAULT_NOTATION_STRINGS_SETTING, 'both');
     const services = createTestServices({ settings });
 
-    await services.document.getState().openBytes('notes.gp4', await fetchFixture('gp4/notes.gp4'));
+    await services.document.getState().openBytes('notes.gp4', readFixture('gp4/notes.gp4'));
 
     expect(new Set(notations(services))).toEqual(new Set(['both']));
     const state = services.document.getState();
@@ -74,24 +68,40 @@ describe('the notation defaults at open', () => {
     settings.set(DEFAULT_NOTATION_STRINGS_SETTING, 'both');
     const services = createTestServices({ settings });
 
-    await services.document
-      .getState()
-      .openBytes('staves.gp5', await fetchFixture('gp5/staves.gp5'));
+    await services.document.getState().openBytes('staves.gp5', readFixture('gp5/staves.gp5'));
 
     const shown = new Set(notations(services));
     expect(shown).toEqual(new Set(['tab', 'standard', 'both']));
   });
 
   it('wait for the stored settings to load', async () => {
-    const backend = createMemorySettingsBackend([['score.defaultNotationStrings', 'standard']]);
+    let release: () => void = () => undefined;
+    const loaded = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const backend = {
+      ...createMemorySettingsBackend(),
+      load: async () => {
+        await loaded;
+        return new Map<string, unknown>([['score.defaultNotationStrings', 'standard']]);
+      },
+    };
     const settings = createSettingsStore({ local: () => window.localStorage });
     const services = createTestServices({ settings });
+    void settings.attach(backend);
+    let opened = false;
     const opening = services.document
       .getState()
-      .openBytes('notes.gp4', await fetchFixture('gp4/notes.gp4'));
-    await settings.attach(backend);
-    await opening;
+      .openBytes('notes.gp4', readFixture('gp4/notes.gp4'))
+      .then(() => {
+        opened = true;
+      });
+    // Let the read finish; only the settings are still missing.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(opened).toBe(false);
 
+    release();
+    await opening;
     expect(new Set(notations(services))).toEqual(new Set(['standard']));
   });
 });

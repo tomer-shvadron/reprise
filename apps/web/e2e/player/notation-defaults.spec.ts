@@ -10,8 +10,8 @@ test('a notation default applies to a file that chooses none, never to one that 
   const dialog = page.getByRole('dialog', { name: 'Settings' });
   await dialog.getByRole('tab', { name: 'Score' }).click();
   await dialog
-    .getByRole('radiogroup', { name: 'String instruments' })
-    .getByRole('radio', { name: 'Both' })
+    .getByRole('radiogroup', { name: 'Notation for string instruments' })
+    .getByRole('radio', { name: 'Tab and standard notation' })
     .click();
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);

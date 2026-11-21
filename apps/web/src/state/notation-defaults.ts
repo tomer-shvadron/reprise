@@ -1,19 +1,9 @@
 import { isVocalTrack, type Id, type Notation, type Score, type Track } from '@reprise/model';
 
-import { DEFAULT_NOTATION_STRINGS_SETTING, DEFAULT_NOTATION_VOCALS_SETTING } from './app-settings';
-import type { SettingsStore } from './settings';
-
 /** Plain data, so it survives the structured clone to the import worker. */
 export interface NotationDefaults {
   strings: Notation;
   vocals: Notation;
-}
-
-export function notationDefaultsOf(settings: Pick<SettingsStore, 'get'>): NotationDefaults {
-  return {
-    strings: settings.get(DEFAULT_NOTATION_STRINGS_SETTING),
-    vocals: settings.get(DEFAULT_NOTATION_VOCALS_SETTING),
-  };
 }
 
 /** undefined for drums and pitched tracks: they keep the reader's `standard`, they cannot show tab. */

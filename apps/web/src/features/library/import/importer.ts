@@ -57,7 +57,7 @@ export interface ImporterDeps {
   repo: SongsRepository;
   files: LibraryFiles;
   createParser: () => Parser;
-  /** The notation defaults a batch applies to tracks whose file chooses none, read once per batch. */
+  /** The notation defaults a batch applies to tracks whose file chooses none, read for each file, so a change during a long batch counts. */
   defaults?: () => NotationDefaults;
   now: () => number;
   /** Rows added since the last call, a few at a time. */
@@ -100,7 +100,6 @@ export function createImporter(deps: ImporterDeps): Importer {
 
   const run = async () => {
     let parser = deps.createParser();
-    const defaults = deps.defaults?.();
     let index = 0;
     let prefetched: { index: number; read: Promise<Read> } | undefined;
     let pendingRows: SongRow[] = [];
@@ -129,7 +128,7 @@ export function createImporter(deps: ImporterDeps): Importer {
       let outcome;
       try {
         // A copy, because the worker takes the buffer and the original is written to the library.
-        outcome = await parser.parse(bytes.slice(), stem(source.name), defaults);
+        outcome = await parser.parse(bytes.slice(), stem(source.name), deps.defaults?.());
       } catch (error) {
         // A dead worker fails every later call; the next file gets a fresh one.
         parser.dispose();

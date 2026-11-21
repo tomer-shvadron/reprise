@@ -10,7 +10,7 @@ import {
 
 import type { AppServices } from '@/app/services';
 import { singleTrackOf } from '@/state/document';
-import { notationDefaultsOf } from '@/state/notation-defaults';
+import { notationDefaultsOf } from '@/state/notation-defaults-setting';
 import { selectTrack } from '@/features/tracks';
 
 import { dialogsOf } from './dialogs';

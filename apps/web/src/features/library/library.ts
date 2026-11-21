@@ -6,7 +6,7 @@ import { whenSaved } from '@/app/when-saved';
 import { restoreTrackSession } from '@/features/tracks';
 import type { FileHandle } from '@/platform/platform';
 import { contentKey, SCORE_FILES, type Saver } from '@/state/document';
-import { notationDefaultsOf } from '@/state/notation-defaults';
+import { notationDefaultsOf } from '@/state/notation-defaults-setting';
 
 import { createSongsRepository, type SongsRepository } from './db/repository';
 import type { SongRow } from './db/rows';

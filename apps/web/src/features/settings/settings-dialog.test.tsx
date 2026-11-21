@@ -115,11 +115,11 @@ describe('the settings dialog', () => {
     await user.keyboard('{ArrowRight}');
     expect(settings.get(DEFAULT_ZOOM_SETTING)).toBeCloseTo(1.1, 5);
     expect(zoom).toHaveAttribute('aria-valuetext', '110%');
-    const strings = screen.getByRole('radiogroup', { name: 'String instruments' });
-    await user.click(within(strings).getByRole('radio', { name: 'Both' }));
+    const strings = screen.getByRole('radiogroup', { name: 'Notation for string instruments' });
+    await user.click(within(strings).getByRole('radio', { name: 'Tab and standard notation' }));
     expect(settings.get(DEFAULT_NOTATION_STRINGS_SETTING)).toBe('both');
-    const vocals = screen.getByRole('radiogroup', { name: 'Vocals' });
-    await user.click(within(vocals).getByRole('radio', { name: 'Standard' }));
+    const vocals = screen.getByRole('radiogroup', { name: 'Notation for vocals' });
+    await user.click(within(vocals).getByRole('radio', { name: 'Standard notation' }));
     expect(settings.get(DEFAULT_NOTATION_VOCALS_SETTING)).toBe('standard');
 
     await user.click(screen.getByRole('tab', { name: 'Playback and practice' }));

@@ -2,7 +2,8 @@ import { createEmptyScore } from '@reprise/model';
 
 import type { AppServices } from '@/app/services';
 import { whenSaved } from '@/app/when-saved';
-import { applyNotationDefaults, notationDefaultsOf } from '@/state/notation-defaults';
+import { applyNotationDefaults } from '@/state/notation-defaults';
+import { notationDefaultsOf } from '@/state/notation-defaults-setting';
 
 export type NewSongServices = Pick<AppServices, 'document' | 'ui' | 'editing' | 'settings'>;
 
