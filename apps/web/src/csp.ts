@@ -9,7 +9,10 @@ export const CSP_DIRECTIVES: Readonly<Record<string, readonly string[]>> = {
   // Radix and cmdk inject <style> elements; React `style` props go through the CSSOM, which CSP
   // does not govern.
   'style-src': ["'self'", "'unsafe-inline'"],
-  // data: stays for Vite, which inlines small assets as data: URLs when a bundle imports them.
+  // data: stays for Vite, which inlines small assets as data: URLs when a bundle imports them, and
+  // for image export, which rasterises a page SVG through an <img> on a data: URL (blob: is not
+  // allowed). Dropping it breaks PNG export and Copy as image, and no test runs under this policy
+  // but the e2e suite served by `vite preview`.
   'img-src': ["'self'", 'data:'],
   'font-src': ["'self'", 'data:'],
   // The sound bank and the fonts load with fetch from the app's own origin.
