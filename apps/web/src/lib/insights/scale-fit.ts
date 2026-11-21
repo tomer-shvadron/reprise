@@ -1,6 +1,6 @@
 import type { Histogram } from './histogram';
 import { sumOf } from './histogram';
-import { SCALES, type Scale, type ScaleId } from './scales';
+import { SCALES, thirdOf, type Scale, type ScaleId } from './scales';
 
 /** A scale explains the notes when it holds at least this share of their weight. */
 export const FIT_THRESHOLD = 0.95;
@@ -19,20 +19,33 @@ export interface ScaleFit {
   mixedThirds: boolean;
 }
 
+/** The scales a key's quality allows: its own third or both, never a third the song does not play. */
+function allowed(scale: Scale, quality: 'major' | 'minor' | 'none' | undefined): boolean {
+  if (quality === undefined) return true;
+  const third = thirdOf(scale);
+  if (quality === 'none') return third === 'none';
+  return third === quality || third === 'both';
+}
+
 const coverageOf = (shares: readonly number[], scale: Scale, tonic: number): number =>
   scale.intervals.reduce((sum, interval) => sum + (shares[(tonic + interval) % 12] ?? 0), 0);
 
 /**
  * The smallest scale on `tonic` that explains the notes: of the scales covering at least 95% of
  * the weight, the one with the fewest tones, then the best coverage. When none reaches 95% the
- * best-covering scale wins and its outside tones are listed. A parsimony rule, so a solo on the
+ * best-covering scale wins and its outside tones are listed. The key's `quality` limits the
+ * scales to those with its third (or both), or with none for a riff on fifths. A parsimony rule, so a solo on the
  * minor pentatonic is named that and not the natural minor that contains it.
  */
-export function fitScale(histogram: Histogram, tonic: number): ScaleFit | undefined {
+export function fitScale(
+  histogram: Histogram,
+  tonic: number,
+  quality?: 'major' | 'minor' | 'none',
+): ScaleFit | undefined {
   const total = sumOf(histogram);
   if (total <= 0) return undefined;
   const shares = histogram.map((value) => value / total);
-  const scored = SCALES.map((scale, order) => ({
+  const scored = SCALES.filter((scale) => allowed(scale, quality)).map((scale, order) => ({
     scale,
     order,
     coverage: coverageOf(shares, scale, tonic),
@@ -47,7 +60,8 @@ export function fitScale(histogram: Histogram, tonic: number): ScaleFit | undefi
     );
   const winner =
     fitting[0] ?? [...scored].sort((a, b) => b.coverage - a.coverage || a.order - b.order)[0];
-  if (!winner) return undefined;
+  // A riff with no third is named only by a scale without one, and only when it explains the notes.
+  if (!winner || (quality === 'none' && winner.coverage < FIT_THRESHOLD)) return undefined;
   const inside = new Set(winner.scale.intervals.map((interval) => (tonic + interval) % 12));
   const outside = shares
     .map((share, pitchClass) => ({ pitchClass, share }))

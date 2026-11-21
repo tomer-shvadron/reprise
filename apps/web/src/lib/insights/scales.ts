@@ -13,7 +13,10 @@ export type ScaleId =
   | 'majorPentatonic'
   | 'minorPentatonic'
   | 'blues'
-  | 'majorBlues';
+  | 'majorBlues'
+  | 'suspendedPentatonic'
+  | 'rootFourthFifth'
+  | 'rootFifth';
 
 export interface Scale {
   id: ScaleId;
@@ -28,6 +31,16 @@ export interface Scale {
    * the key of D major, so 10.
    */
   parentOffset: number;
+}
+
+/** Which third a scale holds: none (a riff on fifths), the minor, the major or both (the major blues). */
+export type ThirdOf = 'none' | 'minor' | 'major' | 'both';
+
+export function thirdOf(scale: Pick<Scale, 'intervals'>): ThirdOf {
+  const minor = scale.intervals.includes(3);
+  const major = scale.intervals.includes(4);
+  if (minor && major) return 'both';
+  return minor ? 'minor' : major ? 'major' : 'none';
 }
 
 // The order is the tie-break: major and natural minor come before their modes.
@@ -128,6 +141,28 @@ export const SCALES: readonly Scale[] = [
     name: 'major blues',
     intervals: [0, 2, 3, 4, 7, 9],
     degrees: ['1', '2', '♭3', '3', '5', '6'],
+    parentOffset: 0,
+  },
+  // The scales without a third, for a riff on fifths. A key with a third never gets one of these.
+  {
+    id: 'suspendedPentatonic',
+    name: 'suspended pentatonic',
+    intervals: [0, 2, 5, 7, 10],
+    degrees: ['1', '2', '4', '5', '♭7'],
+    parentOffset: 5,
+  },
+  {
+    id: 'rootFourthFifth',
+    name: 'root, fourth and fifth',
+    intervals: [0, 5, 7],
+    degrees: ['1', '4', '5'],
+    parentOffset: 0,
+  },
+  {
+    id: 'rootFifth',
+    name: 'root and fifth',
+    intervals: [0, 7],
+    degrees: ['1', '5'],
     parentOffset: 0,
   },
 ];

@@ -46,4 +46,35 @@ describe('fitScale', () => {
   it('has no fit for an empty histogram', () => {
     expect(fitScale(new Array<number>(12).fill(0), 0)).toBeUndefined();
   });
+
+  describe('with the key quality', () => {
+    it('never gives a minor key a major-third scale, or a major key a minor-third one', () => {
+      expect(fitScale(histogramOf(0, 'minorPentatonic'), 0, 'major')?.scale).not.toBe(
+        'minorPentatonic',
+      );
+      expect(fitScale(histogramOf(0, 'majorPentatonic'), 0, 'minor')?.scale).not.toBe(
+        'majorPentatonic',
+      );
+      expect(fitScale(histogramOf(0, 'minorPentatonic'), 0, 'minor')?.scale).toBe(
+        'minorPentatonic',
+      );
+    });
+
+    it('keeps the scales with both thirds for either quality', () => {
+      expect(fitScale(histogramOf(0, 'majorBlues'), 0, 'major')?.scale).toBe('majorBlues');
+      expect(fitScale(histogramOf(0, 'majorBlues'), 0, 'minor')?.scale).toBe('majorBlues');
+    });
+
+    it('limits a riff with no third to scales without one', () => {
+      const bins = new Array<number>(12).fill(0);
+      for (const pc of [0, 7, 10, 5]) bins[pc] = 1;
+      expect(fitScale(bins, 0, 'none')?.scale).toBe('suspendedPentatonic');
+    });
+
+    it('reports no scale when none without a third covers the notes', () => {
+      const bins = new Array<number>(12).fill(0);
+      for (const pc of [0, 1, 6, 8]) bins[pc] = 1;
+      expect(fitScale(bins, 0, 'none')).toBeUndefined();
+    });
+  });
 });
