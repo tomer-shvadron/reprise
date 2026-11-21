@@ -222,4 +222,6 @@ document store (`scaleOverlayFor`): a song or section overlay goes when another 
 manual pick stays, nothing persists. The header carries a chip with a clear button and the scale
 tool (`scale-picker.tsx`, a tonic and a scale from `SCALES`). `trainer.fretboardSongScale` runs the
 key engine on the open score (`songScaleOf`) and `trainer.fretboardClearScale` hides the overlay;
-neither has a default key.
+neither has a default key. Tones are spelled by degree (A blues has E♭, D harmonic minor a C♯) and a
+picked tonic keeps its spelling. A song overlay is a snapshot of the score when the command ran; it
+does not follow edits until the insights worker lands (#353, PR 5).
