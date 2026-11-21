@@ -4,7 +4,7 @@ import { useStore } from 'zustand';
 import { keepFocus } from '@/app/command-control';
 import { loopBars } from '@/app/palette/actions';
 import { useAppServices } from '@/app/services-context';
-import { HintTooltip } from '@/app/command-tooltip';
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useCommand } from '@/app/use-command';
 import { sectionAt, sectionBars, sectionsOf, type ScoreSection } from '@/features/transport';
 import { cn } from 'cn';
@@ -61,7 +61,11 @@ export function SectionStrip() {
           const current = section === playing;
           return (
             <li key={section.startIndex} className="flex shrink-0">
-              <HintTooltip label={sectionBars(section)}>
+              <CommandTooltip
+                command="transport.toggleLoop"
+                label={sectionBars(section)}
+                active={pressed}
+              >
                 <button
                   ref={(node) => {
                     if (node) refs.current.set(section.startIndex, node);
@@ -88,7 +92,7 @@ export function SectionStrip() {
                 >
                   {section.label}
                 </button>
-              </HintTooltip>
+              </CommandTooltip>
             </li>
           );
         })}

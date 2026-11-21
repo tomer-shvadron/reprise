@@ -49,6 +49,12 @@ interface CommandTooltipProps {
    * reason that comes and goes never remounts the control or takes its focus.
    */
   reason?: string | undefined;
+  /**
+   * False while the control's click does something else than the command (a section button runs
+   * the loop command only once it is the looped section): a label-only tooltip, with no keys and
+   * no `aria-keyshortcuts`, in the same place in the tree so the control keeps its focus.
+   */
+  active?: boolean;
   /** Extra content after the keys, with its spoken text for the accessible label. */
   detail?: { node: ReactNode; spoken: string };
   children: ReactElement<Record<string, unknown>>;
@@ -64,13 +70,16 @@ export function CommandTooltip(props: CommandTooltipProps) {
     command,
     label,
     side,
-    whenUnbound = 'label',
+    whenUnbound: requested = 'label',
     openOnFocus = true,
+    active = true,
     reason,
     detail,
     children,
   } = props;
-  const bound = useCommand(command);
+  const own = useCommand(command);
+  const whenUnbound = active ? requested : 'label';
+  const bound = active ? own : { ...own, bindings: [], ariaKeys: undefined, spoken: undefined };
   const reasonId = useId();
   if (bound.bindings.length === 0 && whenUnbound === 'none' && reason === undefined && !wrapped) {
     // A bare return changes the tree if a key comes or goes later; only unwrapped controls take it.
@@ -95,10 +104,10 @@ export function CommandTooltip(props: CommandTooltipProps) {
     reason === undefined && !wrapped ? (
       cloneElement(children, {
         'aria-keyshortcuts': bound.ariaKeys,
-        'data-command-tooltip': command,
+        'data-command-tooltip': active ? command : undefined,
       })
     ) : (
-      <span className="flex min-w-0" data-command-tooltip={command}>
+      <span className="flex min-w-0" data-command-tooltip={active ? command : undefined}>
         {cloneElement(children, {
           'aria-keyshortcuts': bound.ariaKeys,
           'aria-describedby': reason === undefined ? undefined : reasonId,
