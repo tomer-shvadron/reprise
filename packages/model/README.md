@@ -232,6 +232,11 @@ Where the architecture sketch (`docs/specs/architecture.md`, "Score model") left
   stroke's speed that GP files carry.
 - **Beat vibrato** is the same `'slight' | 'wide'` enum as note vibrato, replacing the
   sketch's two booleans. `fadeOut` and `volumeSwell` join `fadeIn`.
+- **Golpe and pick scrape** (#354): `effects.golpe` (`'thumb' | 'finger'`) is a body hit on the
+  beat, beat-level as gpif stores it and allowed on a rest. `Note.pickScrape` (`'down' | 'up'`)
+  is a picking-hand scrape along the string. It is not a `SlideKind`, since every consumer of
+  `slide` reads a fretting-hand slide, and a note may carry both. Both are optional, with no
+  `SCORE_VERSION` bump; `setBeatEffect(s)` and `setNoteEffect(s)` set them, `null` removes.
 - **Fingering**: `thumb`, `index`, `middle`, `ring`, `little` for both hands; the readers map
   Guitar Pro's T 1 2 3 4 and p i m a c onto it.
 - **`Note.accidental`** (new, optional) records an explicit spelling for standard notation, so
@@ -594,7 +599,7 @@ the lead for the phase-1 freeze and re-checked in WP-015.
 - Bar level: GP5 beam grouping, fermatas, free time, simile marks (the reader copies the
   previous bar's beats into the bar with fresh ids, or the bar would play silent), stem
   orientation overrides.
-- Beat level: hairpins, legato slurs, slashed beats, timers, golpe, dead slap, rasgueado, wah,
+- Beat level: hairpins, legato slurs, slashed beats, timers, dead slap, rasgueado, wah,
   nested (secondary) tuplets, note duration percentage.
 - Note level: tenuto and staccatissimo, left-hand tapping, ornaments, the vibrato byte on each
   GP5 bend point, the chord wizard's construction data (root, type, extensions, omissions,

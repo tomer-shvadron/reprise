@@ -10,6 +10,8 @@ import { renderWithServices } from '@/test/render';
 import { createTestServices } from '@/test/services';
 
 import { Fretboard } from './fretboard';
+import { geometryOf } from './fretboard-geometry';
+import { scaleOverlayFor } from './scale-overlay';
 import { LEFT_HANDED_STORAGE_KEY } from '@/state/fretboard-prefs';
 
 afterEach(() => {
@@ -240,5 +242,127 @@ describe('Fretboard empty state', () => {
       await services.document.getState().openBytes('drums.reprise', bytes);
     });
     expect(screen.getByText(/No fretted track selected/)).toBeInTheDocument();
+  });
+});
+
+describe('Fretboard scale overlay', () => {
+  const tones = () => document.querySelectorAll('[data-fretboard-scale] [data-scale-tone]');
+
+  it('marks the scale with the tonic ringed, under the lit notes, and clears from the chip', async () => {
+    const { services } = await open(song('guitar', {}, [[1, 5]]));
+    expect(document.querySelector('[data-fretboard-scale]')).toBeNull();
+    act(() => {
+      scaleOverlayFor(services).getState().show(9, 'minorPentatonic', 'manual');
+    });
+    const layer = document.querySelector('[data-fretboard-scale]');
+    expect(layer?.getAttribute('aria-label')).toBe('A minor pentatonic: A C D E G');
+    // Five tones on six strings across 24 frets, every one a scale tone.
+    expect(tones().length).toBeGreaterThan(30);
+    expect(document.querySelectorAll('[data-scale-tonic]').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Scale: A minor pentatonic/)).toBeTruthy();
+    // The notes layer comes after, so it paints on top.
+    const order = [...document.querySelectorAll('[data-fretboard] > g')].map((g) =>
+      g.hasAttribute('data-fretboard-scale')
+        ? 'scale'
+        : g.hasAttribute('data-fretboard-notes')
+          ? 'notes'
+          : 'board',
+    );
+    expect(order).toEqual(['board', 'scale', 'notes']);
+    expect(lit()).toHaveLength(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Hide the scale' }));
+    expect(document.querySelector('[data-fretboard-scale]')).toBeNull();
+  });
+
+  const ringXs = () =>
+    [...document.querySelectorAll('[data-fretboard-scale] circle')].map((c) =>
+      Number(c.getAttribute('cx')),
+    );
+
+  it('starts at the capo fret, which is the leftmost ring', async () => {
+    const { services } = await open(song('guitar', { capo: 3 }, [[1, 0]]));
+    act(() => {
+      scaleOverlayFor(services).getState().show(9, 'minorPentatonic', 'manual');
+    });
+    const geometry = geometryOf({ strings: 6, frets: 24, capo: 3 }, false);
+    expect(Math.min(...ringXs())).toBeCloseTo(geometry.dotX(3));
+    // Without the capo the open strings' tones sit further left.
+    const plain = await open(song('guitar', {}, [[1, 0]]));
+    act(() => {
+      scaleOverlayFor(plain.services).getState().show(9, 'minorPentatonic', 'manual');
+    });
+    expect(Math.min(...ringXs())).toBeLessThan(geometry.dotX(3));
+  });
+
+  it('mirrors the rings for a left-handed player', async () => {
+    const { services } = await open(song('guitar', {}, [[1, 5]]));
+    act(() => {
+      scaleOverlayFor(services).getState().show(9, 'minorPentatonic', 'manual');
+    });
+    const right = ringXs().sort((x, y) => x - y);
+    act(() => {
+      services.ui.getState().setFretboardLeftHanded(true);
+    });
+    const left = ringXs().sort((x, y) => x - y);
+    const { width } = geometryOf({ strings: 6, frets: 24, capo: 0 }, false);
+    expect(left.length).toBe(right.length);
+    expect(left).toEqual(right.map((x) => width - x).sort((x, y) => x - y));
+  });
+
+  it('keeps the picked spelling in the chip and the label', async () => {
+    const user = userEvent.setup();
+    await open(song('guitar', {}, [[1, 5]]));
+    await user.click(screen.getByRole('button', { name: 'Choose a scale' }));
+    const picker = within(screen.getByRole('dialog', { name: 'Scale tool' }));
+    await user.click(picker.getByRole('button', { name: 'E♭' }));
+    await user.click(picker.getByRole('button', { name: 'blues' }));
+    expect(screen.getByText(/Scale: E♭ blues/)).toBeTruthy();
+    expect(document.querySelector('[data-fretboard-scale]')?.getAttribute('aria-label')).toBe(
+      'E♭ blues: E♭ G♭ A♭ A B♭ D♭',
+    );
+  });
+
+  it('shows what is on the neck as the picker selection', async () => {
+    const user = userEvent.setup();
+    const { services } = await open(song('guitar', {}, [[1, 5]]));
+    await user.click(screen.getByRole('button', { name: 'Choose a scale' }));
+    const picker = within(screen.getByRole('dialog', { name: 'Scale tool' }));
+    await user.click(picker.getByRole('button', { name: 'A' }));
+    await user.click(picker.getByRole('button', { name: 'minor pentatonic' }));
+    act(() => {
+      scaleOverlayFor(services).getState().show(4, 'dorian', 'song');
+    });
+    expect(picker.getByRole('button', { name: 'E' }).getAttribute('aria-pressed')).toBe('true');
+    expect(picker.getByRole('button', { name: 'Dorian' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    await user.click(picker.getByRole('button', { name: 'Mixolydian' }));
+    expect(screen.getByText(/Scale: E Mixolydian/)).toBeTruthy();
+  });
+
+  it('moves focus to the Scale button after Hide', async () => {
+    const user = userEvent.setup();
+    const { services } = await open(song('guitar', {}, [[1, 5]]));
+    act(() => {
+      scaleOverlayFor(services).getState().show(9, 'minorPentatonic', 'manual');
+    });
+    screen.getByRole('button', { name: 'Hide the scale' }).focus();
+    await user.keyboard('{Enter}');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Choose a scale' }));
+  });
+
+  it('picks a tonic and a scale from the header', async () => {
+    const user = userEvent.setup();
+    const { services } = await open(song('guitar', {}, [[1, 5]]));
+    await user.click(screen.getByRole('button', { name: 'Choose a scale' }));
+    const picker = within(screen.getByRole('dialog', { name: 'Scale tool' }));
+    await user.click(picker.getByRole('button', { name: 'D' }));
+    await user.click(picker.getByRole('button', { name: 'Dorian' }));
+    expect(scaleOverlayFor(services).getState().overlay).toMatchObject({
+      tonic: 2,
+      scaleId: 'dorian',
+      source: 'manual',
+    });
+    expect(screen.getByText(/Scale: D Dorian/)).toBeTruthy();
   });
 });

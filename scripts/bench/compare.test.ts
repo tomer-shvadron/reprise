@@ -22,6 +22,7 @@ import {
   textTable,
   touchesWatched,
   verdict,
+  WATCH_OVERRIDES,
   watchedPaths,
   type Verdict,
 } from './compare.ts';
@@ -299,6 +300,38 @@ describe('watched paths', () => {
       'tsconfig.base.json',
       '.github/workflows/ci.yml',
     ]);
+  });
+
+  it('lets a row watch only the paths it names, not its workspace', () => {
+    const web = comparedRows([bench('Insights', 'apps/web/src/lib/insights/insights.bench.ts')]);
+    const overridden = watchedPaths(web, workspaces, {
+      Insights: ['apps/web/src/lib/', 'apps/web/src/test/', 'packages/model/'],
+    });
+    expect(overridden.slice(0, 3)).toEqual([
+      'apps/web/src/lib/',
+      'apps/web/src/test/',
+      'packages/model/',
+    ]);
+    expect(touchesWatched(['apps/web/src/lib/insights/key.ts'], overridden)).toBe(true);
+    expect(touchesWatched(['packages/model/src/note.ts'], overridden)).toBe(true);
+    expect(touchesWatched(['apps/web/src/features/score/score.tsx'], overridden)).toBe(false);
+    expect(touchesWatched(['packages/layout/src/layout.ts'], overridden)).toBe(false);
+    // Without the override the same row watches the web workspace and what it depends on.
+    expect(
+      touchesWatched(['apps/web/src/features/score/score.tsx'], watchedPaths(web, workspaces, {})),
+    ).toBe(true);
+  });
+
+  it('overrides the two song insights rows, and only rows that exist in the roadmap', () => {
+    const roadmap = readFileSync(ROADMAP, 'utf8');
+    expect(Object.keys(WATCH_OVERRIDES).sort()).toEqual([
+      'Song insights analysis, long score',
+      'Song insights note table, long score, cold',
+    ]);
+    for (const metric of Object.keys(WATCH_OVERRIDES)) expect(roadmap).toContain(`| ${metric}`);
+    for (const paths of Object.values(WATCH_OVERRIDES)) {
+      expect(paths).toEqual(['apps/web/src/lib/', 'apps/web/src/test/', 'packages/model/']);
+    }
   });
 
   it('keeps only ms bench rows', () => {

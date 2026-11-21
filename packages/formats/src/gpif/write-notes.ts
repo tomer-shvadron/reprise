@@ -287,10 +287,11 @@ export function writeNote(xml: XmlWriter, id: number, note: Note, options: NoteW
   }
   if (options.hopoOrigin) enableProperty(xml, 'HopoOrigin');
   if (note.hammerPull) enableProperty(xml, 'HopoDestination');
-  if (note.slide && note.slide.length > 0) {
-    const flags = note.slide.reduce((sum, kind) => sum | SLIDE_FLAGS[kind], 0);
-    valueProperty(xml, 'Slide', 'Flags', flags);
-  }
+  const slideFlags = (note.slide ?? []).reduce((sum, kind) => sum | SLIDE_FLAGS[kind], 0);
+  // A pick scrape shares the `Slide/Flags` integer: 64 is down, 128 is up.
+  const scrapeFlag = note.pickScrape === 'down' ? 64 : note.pickScrape === 'up' ? 128 : 0;
+  if ((slideFlags | scrapeFlag) !== 0)
+    valueProperty(xml, 'Slide', 'Flags', slideFlags | scrapeFlag);
   xml.close('Properties');
 
   if (note.letRing) xml.empty('LetRing');

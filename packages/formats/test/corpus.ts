@@ -86,12 +86,14 @@ export function featuresOf(score: Score): Set<string> {
           if (beat.chord?.diagram?.frets.some((fret) => fret !== null) === true) {
             found.add('chord-diagrams');
           }
+          if (beat.effects.golpe) found.add('golpe');
           for (const note of beat.notes) {
             if (note.bend) found.add('bends');
             if (note.slide) found.add('slides');
             if (note.hammerPull) found.add('hammer-ons');
             if (note.harmonic) found.add('harmonics');
             if (note.palmMute) found.add('palm-mute');
+            if (note.pickScrape) found.add('pick-scrape');
           }
         }
       });
