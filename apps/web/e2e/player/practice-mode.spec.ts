@@ -95,6 +95,16 @@ test('a section loops from the strip, and the loop survives leaving', async ({ p
   ).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('Escape leaves with a tooltip open, in one press', async ({ page }) => {
+  await radio(page, 'Practice').click();
+  await expect(capsule(page)).toBeVisible();
+  await strip(page).getByRole('button').first().hover();
+  await expect(page.getByRole('tooltip')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(capsule(page)).toHaveCount(0);
+  await expect(radio(page, 'Play')).toBeChecked();
+});
+
 test('F11 enters, the first Escape closes a popover, the second leaves, and Edit comes back', async ({
   page,
 }) => {

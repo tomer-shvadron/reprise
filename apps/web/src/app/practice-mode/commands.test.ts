@@ -202,32 +202,36 @@ describe('the practice commands', () => {
     it('Escape that only a tooltip took still leaves, but not one a popover is open under', async () => {
       const { services, registry } = await setup();
       const stop = installShortcutDispatcher(window, registry, 'mac');
-      services.ui.getState().enterPracticeMode('play');
+      const wrappers: HTMLElement[] = [];
+      try {
+        services.ui.getState().enterPracticeMode('play');
+        for (const inner of [
+          '<div data-slot="tooltip-content" data-state="delayed-open"></div>',
+          '<div role="dialog" data-state="open"></div>',
+        ]) {
+          const wrapper = document.createElement('div');
+          wrapper.setAttribute('data-radix-popper-content-wrapper', '');
+          wrapper.innerHTML = inner;
+          document.body.append(wrapper);
+          wrappers.push(wrapper);
+        }
+        const taken = () => {
+          const event = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+          markTooltipEscape(event);
+          event.preventDefault();
+          return event;
+        };
+        window.dispatchEvent(taken());
+        expect(services.ui.getState().practiceMode.on).toBe(true);
+        wrappers[1]?.remove();
 
-      const tooltip = document.createElement('div');
-      tooltip.setAttribute('data-radix-popper-content-wrapper', '');
-      tooltip.innerHTML = '<div data-slot="tooltip-content" data-state="delayed-open"></div>';
-      document.body.append(tooltip);
-      const popover = document.createElement('div');
-      popover.setAttribute('data-radix-popper-content-wrapper', '');
-      popover.innerHTML = '<div role="dialog" data-state="open"></div>';
-      document.body.append(popover);
-
-      const taken = () => {
-        const event = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
-        markTooltipEscape(event);
-        event.preventDefault();
-        return event;
-      };
-      window.dispatchEvent(taken());
-      expect(services.ui.getState().practiceMode.on).toBe(true);
-      popover.remove();
-
-      // With the popover gone the tooltip alone took it, and the mode leaves.
-      window.dispatchEvent(taken());
-      expect(services.ui.getState().practiceMode.on).toBe(false);
-      tooltip.remove();
-      stop();
+        // With the popover gone the tooltip alone took it, and the mode leaves.
+        window.dispatchEvent(taken());
+        expect(services.ui.getState().practiceMode.on).toBe(false);
+      } finally {
+        for (const wrapper of wrappers) wrapper.remove();
+        stop();
+      }
     });
   });
 });
