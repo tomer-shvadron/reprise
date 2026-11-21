@@ -64,6 +64,29 @@ describe('editor.nameChordFromNotes', () => {
     expect(t.beat(0).chord?.name).toBe('Cadd');
   });
 
+  it('acts on the right-clicked chord, not the cursor', async () => {
+    const t = await setup();
+    t.goTo(1);
+    const beat = t.beat(0);
+    t.services.menuTarget.getState().set({
+      kind: 'chord',
+      beat: beat.id,
+      track: must(t.services.document.getState().score?.tracks[0]).id,
+      masterBar: must(t.services.document.getState().score?.masterBars[0]).id,
+    });
+    t.run();
+    expect(t.beat(0).chord?.name).toBe('C');
+  });
+
+  it('does nothing in play mode', async () => {
+    const t = await setup();
+    t.goTo(0);
+    t.services.editing.getState().setEditing(false);
+    const before = t.services.document.getState().score;
+    t.run();
+    expect(t.services.document.getState().score).toBe(before);
+  });
+
   it('refuses on the status line when the notes name nothing', async () => {
     const t = await setup();
     t.goTo(1);

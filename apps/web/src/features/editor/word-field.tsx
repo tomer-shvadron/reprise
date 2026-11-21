@@ -256,6 +256,7 @@ export function WordField() {
               key={name}
               id={`${LIST_ID}-${String(index)}`}
               role="option"
+              aria-label={index < fromNotes ? `${name}, from the notes` : undefined}
               aria-selected={index === active}
               className="aria-selected:bg-muted cursor-pointer px-2 py-0.5"
               // Keeps the field focused, so the click does not blur and commit first.
@@ -268,7 +269,9 @@ export function WordField() {
             >
               {name}
               {index < fromNotes && (
-                <span className="text-muted-foreground ml-2 text-xs">From the notes</span>
+                <span aria-hidden="true" className="text-muted-foreground ml-2 text-xs">
+                  From the notes
+                </span>
               )}
             </li>
           ))}

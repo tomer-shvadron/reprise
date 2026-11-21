@@ -190,7 +190,8 @@ describe('the word field', () => {
     t.goTo(0, 0);
     t.press('a');
     const options = screen.getAllByRole('option').map((o) => o.textContent);
-    expect(options[0]).toBe('CFrom the notes');
+    expect(screen.getAllByRole('option')[0]?.getAttribute('aria-label')).toBe('C, from the notes');
+    expect(screen.getByRole('option', { name: 'C, from the notes' })).toBeDefined();
     expect(options).toContain('Am');
     t.press('ArrowDown');
     t.press('Enter');

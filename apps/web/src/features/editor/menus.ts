@@ -34,8 +34,8 @@ export const editorMenus: readonly MenuContribution[] = [
     items: [
       { command: 'editor.moveNoteUp', group: 'note' },
       { command: 'editor.moveNoteDown', group: 'note' },
-      { command: 'editor.nameChordFromNotes', group: 'note' },
       { command: 'editor.toggleTie', group: 'note' },
+      { command: 'editor.nameChordFromNotes', group: 'note' },
       { command: 'editor.effect.hammerOn', group: 'effects' },
       { command: 'editor.effect.legatoSlide', group: 'effects' },
       { command: 'editor.effect.vibrato', group: 'effects' },

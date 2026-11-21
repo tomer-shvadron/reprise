@@ -1,4 +1,4 @@
-import { midiNote, type Id, type Score } from '@reprise/model';
+import { midiNote, openStringPitch, soundingPitch, type Id, type Score } from '@reprise/model';
 
 import { nameChord } from '@/lib/chords';
 import { scoreIndex } from '@/lib/score-index';
@@ -28,21 +28,23 @@ export function chordNamesIn(score: Score): readonly string[] {
 }
 
 /**
- * The names the beat's own notes spell, best first, as they sound (capo included) and spelled for
- * the key of the bar. Dead notes do not sound a pitch, and a track that is not fretted has no
- * strings to read, so both leave nothing.
+ * The names the beat's own notes spell, best first, as they sound (capo and harmonics included)
+ * and spelled for the key of the bar. Only the beat's own voice is read, so a bass in another
+ * voice is not counted. Dead notes sound no pitch, a drum track has none to name, and a note on a
+ * string the tuning lacks (a validation finding) is skipped.
  */
 export function chordNamesFromNotes(score: Score, beatId: Id): string[] {
   const found = beatWithTrack(score, beatId);
   const info = scoreIndex(score).beats.get(beatId);
   const masterBar = info && score.masterBars[info.masterBarIndex];
-  if (!found || !masterBar || found.track.kind !== 'fretted') return [];
+  if (!found || !masterBar || found.track.kind === 'drums') return [];
+  const { track } = found;
   const pitches: number[] = [];
   for (const note of found.beat.notes) {
     if (note.dead) continue;
-    // A string the tuning lacks is a validation finding, not something to name.
-    if (note.string > found.track.tuning.length) continue;
-    pitches.push(midiNote(found.track, note));
+    if (track.kind === 'fretted' && openStringPitch(track, note.string) === undefined) continue;
+    // Overtones are pure, so a harmonic is rounded to the pitch a staff would show.
+    pitches.push(note.harmonic ? Math.round(soundingPitch(track, note)) : midiNote(track, note));
   }
   const names = nameChord(pitches, masterBar.keySignature).map((entry) => entry.name);
   return [...new Set(names)];
@@ -64,9 +66,4 @@ export function suggestChordsFor(
   const spelled = beatId === undefined ? [] : chordNamesFromNotes(score, beatId).filter(keep);
   const own = chordNamesIn(score).filter((name) => keep(name) && !spelled.includes(name));
   return { names: [...spelled, ...own], fromNotes: spelled.length };
-}
-
-/** The names that start with `typed`, ignoring case, leaving out the exact match; all of them when nothing is typed. */
-export function suggestChords(score: Score, typed: string, beatId?: Id): string[] {
-  return suggestChordsFor(score, typed, beatId).names;
 }
