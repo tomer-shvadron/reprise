@@ -1,12 +1,17 @@
 import type { Command } from '@/app/command-registry';
 import type { AppServices } from '@/app/services';
 
+import { chordNamesFromNotes } from './chord-suggestions';
 import { commitEdit } from './commit';
 import { openWord } from './word-session';
 import { beatWithTrack, planWord, type WordKind } from './words';
 
 export type WordCommandId =
-  'editor.chordName' | 'editor.beatText' | 'editor.lyrics' | 'editor.removeChordName';
+  | 'editor.chordName'
+  | 'editor.nameChordFromNotes'
+  | 'editor.beatText'
+  | 'editor.lyrics'
+  | 'editor.removeChordName';
 
 type WordCommand = Command & { id: WordCommandId };
 
@@ -30,6 +35,29 @@ export function wordCommands(
     const id = target?.kind === 'chord' ? target.beat : services.selection.getState().cursor?.beat;
     return id !== undefined && beatWithTrack(score, id)?.beat.chord?.name ? id : undefined;
   };
+  // The beat a naming acts on: the right-clicked chord's, else the cursor's.
+  const namedBeat = () => {
+    if (!services.editing.getState().editing) return undefined;
+    const target = services.menuTarget.getState().target;
+    return target?.kind === 'chord' ? target.beat : services.selection.getState().cursor?.beat;
+  };
+  const nameFromNotes = () => {
+    const { score } = services.document.getState();
+    const beatId = namedBeat();
+    if (!score || beatId === undefined) return;
+    const name = chordNamesFromNotes(score, beatId)[0];
+    if (name === undefined) {
+      services.entry.getState().setMessage("These notes don't name a chord");
+      return;
+    }
+    const plan = planWord(score, { kind: 'chord', beatId, value: name });
+    if ('refused' in plan) {
+      services.entry.getState().setMessage(plan.refused);
+      return;
+    }
+    if ('nothing' in plan) return;
+    commitEdit(services, plan.command, { moveCursor: false });
+  };
   return [
     {
       id: 'editor.chordName',
@@ -38,6 +66,13 @@ export function wordCommands(
       context: 'editing',
       repeat: false,
       run: open('chord'),
+    },
+    {
+      id: 'editor.nameChordFromNotes',
+      title: 'Name chord from notes',
+      context: 'editing',
+      repeat: false,
+      run: nameFromNotes,
     },
     {
       id: 'editor.beatText',
