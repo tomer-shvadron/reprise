@@ -96,7 +96,10 @@ test('a right-click on a bar loops it without seeking, and Space still plays', a
   await expect(menu).toHaveAttribute('data-context-menu-via', 'pointer');
   await expect(menu.getByRole('menuitem', { name: /^Edit here/ })).toBeVisible();
   await menu.getByRole('menuitem', { name: /^Loop this bar/ }).click();
-  await expect(page.getByRole('button', { name: /^Loop/ })).toHaveAttribute('aria-pressed', 'true');
+  // In the transport: the selection pill over the bar has a Loop button of its own.
+  await expect(
+    page.getByRole('contentinfo', { name: 'Transport' }).getByRole('button', { name: /^Loop/ }),
+  ).toHaveAttribute('aria-pressed', 'true');
   // The playhead stayed where it was.
   await expect(app.field('time')).toHaveText(before ?? '');
   await page.keyboard.press('Space');
