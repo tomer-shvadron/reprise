@@ -179,6 +179,8 @@ describe('the gp writer round trip', () => {
     // 5 (the editor) waits for part 2, so no user can make them first. Part 2 removes both deletes.
     delete beat.effects.golpe;
     delete bent.pickScrape;
+    // Wah is lost the same way until #355, part 2; part 5 (the editor) waits for part 2.
+    delete beat.effects.wah;
     other.dynamics = bent.dynamics;
     bent.trill.speed = 16;
     expect(roundTripView(result.score)).toEqual(roundTripView(expected));

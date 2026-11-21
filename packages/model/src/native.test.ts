@@ -190,6 +190,28 @@ describe('serializeNative', () => {
     expect(result.score).toEqual(without(score));
   });
 
+  it('round-trips wah, and an older document loads to the same score', () => {
+    const score = fullScore();
+    expect(JSON.stringify(score)).toContain('"wah":"closed"');
+    expect(parseNative(serializeNative(score, APP)).score).toEqual(score);
+
+    // The document an app from before #355 wrote: the same score, minus the key.
+    const without = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(without);
+      if (typeof value !== 'object' || value === null) return value;
+      return Object.fromEntries(
+        Object.entries(value)
+          .filter(([key]) => key !== 'wah')
+          .map(([key, inner]) => [key, without(inner)]),
+      );
+    };
+    const old: unknown = without(JSON.parse(decode(serializeNative(score, APP))));
+    expect(JSON.stringify(old)).not.toMatch(/wah/);
+    const result = parseNative(bytesOf(old));
+    expect(result.warnings).toEqual([]);
+    expect(result.score).toEqual(without(score));
+  });
+
   it('sorts keys inside the score and keeps array order', () => {
     const score = fullScore();
     const written: unknown = JSON.parse(decode(serializeNative(score, APP)));
