@@ -1,5 +1,5 @@
 import type { LayoutResult } from '@reprise/layout';
-import type { Score } from '@reprise/model';
+import type { Chord, Score } from '@reprise/model';
 import { midi, note, score, type ScoreBuilder } from '@reprise/model/testing';
 import { expect } from 'vitest';
 
@@ -528,6 +528,64 @@ function atLeastTwoSystems(result: LayoutResult): void {
   );
 }
 
+/**
+ * A 7-string track: a barre at base fret 7, muted and open strings, two diagrams on consecutive
+ * eighths, and a diagram on the last beat of every bar, so each system ends on one.
+ */
+function chordDiagramsBuilt(): Score {
+  const strings = 7;
+  const builder = score().track('guitar', { tuning: [64, 59, 55, 50, 45, 40, 35] });
+  const barre: Chord = {
+    name: 'B7 barre',
+    diagram: {
+      baseFret: 7,
+      frets: Array.from({ length: strings }, (_, i) => [7, 9, 8, 7, 7, 7, 7][i] ?? 7),
+      barres: [{ fret: 7, firstString: 1, lastString: strings }],
+      fingering: ['index', 'little', 'ring', 'index', 'index', 'index', 'index'],
+    },
+  };
+  const open: Chord = {
+    name: 'Em',
+    diagram: {
+      baseFret: 1,
+      frets: [0, 0, 0, 2, 2, 0, null],
+    },
+  };
+  const muted: Chord = {
+    name: 'D',
+    diagram: {
+      baseFret: 1,
+      frets: [2, 3, 2, 0, null, null, null],
+    },
+  };
+  builder
+    .bar()
+    .beat('4', [note(1, 7)], { chord: barre })
+    .beat('4', [note(2, 9)])
+    .beat('4', [note(3, 8)])
+    .beat('4', [note(4, 7)], { chord: muted });
+  builder
+    .bar()
+    .beat('8', [note(1, 0)], { chord: open })
+    .beat('8', [note(1, 0)], { chord: muted })
+    .beat('4', [note(2, 3)])
+    .beat('2', [note(3, 2)]);
+  for (let i = 0; i < 2; i++) {
+    builder
+      .bar()
+      .beat('4', [note(1, i)])
+      .beat('4', [note(2, i)])
+      .beat('4', [note(3, i)])
+      .beat('4', [note(4, i)], { chord: i % 2 === 0 ? open : barre });
+  }
+  return builder.build({ ids: 'sequential' });
+}
+
+const hasDiagrams = (result: LayoutResult): void => {
+  const grids = result.primitives.filter((p) => p.kind === 'path' && p.lane === 'chordDiagram');
+  expect(grids.length, 'the scene draws chord diagrams').toBeGreaterThan(0);
+};
+
 export const SCENES: readonly Scene[] = [
   {
     id: 'rhythm-values',
@@ -582,6 +640,27 @@ export const SCENES: readonly Scene[] = [
     covers: 'Grace notes, chord names, text, lyrics, fingering and dynamics on each staff',
     source: { build: words },
     notations: ALL,
+  },
+  {
+    id: 'chord-diagrams',
+    covers:
+      'Chord diagrams a real file carries, above each beat on the tab staff, in every notation',
+    source: { fixture: 'gp5/chords.gp5' },
+    notations: ALL,
+    light: ['tab'],
+    guard: hasDiagrams,
+  },
+  {
+    id: 'chord-diagrams-built',
+    covers:
+      'A 7-string barre at base fret 7 with fingering, muted and open strings, diagrams on consecutive eighths and on the last beat of each system',
+    source: { build: chordDiagramsBuilt },
+    notations: ['tab'],
+    width: 400,
+    guard: (result) => {
+      hasDiagrams(result);
+      expect(result.systems.length, 'a system ends on a diagram').toBeGreaterThan(1);
+    },
   },
   {
     id: 'word-placement',

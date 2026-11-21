@@ -84,6 +84,7 @@ function firstBar(built: Score): StaffBar {
     barIndex: 0,
     clef: 'treble',
     keySignature: masterBar.keySignature,
+    chordDiagrams: true,
     space: STAFF_SPACE,
   };
 }
