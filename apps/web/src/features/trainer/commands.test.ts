@@ -1,4 +1,5 @@
 import { write } from '@reprise/formats';
+import { setBeatEffect } from '@reprise/model';
 import { act } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -238,5 +239,27 @@ describe('trainer commands', () => {
     await flip?.run();
     expect(services.ui.getState().fretboardLeftHanded).toBe(false);
     window.localStorage.clear();
+  });
+
+  it('the chord shapes command opens the Chords tab on the right-clicked chord', async () => {
+    const { services, registry } = await setup();
+    await registry.get('trainer.chords')?.run();
+    expect(services.ui.getState().rightPanelView).toBe('chords');
+    expect(services.ui.getState().chordsName).toBe('');
+    const beat = services.document.getState().score?.tracks[0]?.bars[0]?.voices[0]?.beats[0];
+    const track = services.document.getState().score?.tracks[0];
+    const bar = services.document.getState().score?.masterBars[0];
+    if (!beat || !track || !bar) throw new Error('no beat');
+    // A chord on the first beat, as the song's own.
+    act(() => {
+      services.document
+        .getState()
+        .apply(setBeatEffect({ beatId: beat.id }, { chord: { name: 'Dm' } }));
+    });
+    services.menuTarget
+      .getState()
+      .set({ kind: 'chord', beat: beat.id, track: track.id, masterBar: bar.id });
+    await registry.get('trainer.chordShapesFor')?.run();
+    expect(services.ui.getState().chordsName).toBe('Dm');
   });
 });

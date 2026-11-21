@@ -97,6 +97,9 @@ export const trainerMenus: readonly MenuContribution[] = [
   },
   {
     surface: 'score.chord',
-    items: [{ command: 'trainer.showFretboard', group: 'practice', modes: play }],
+    items: [
+      { command: 'trainer.showFretboard', group: 'practice', modes: play },
+      { command: 'trainer.chordShapesFor', group: 'practice' },
+    ],
   },
 ];

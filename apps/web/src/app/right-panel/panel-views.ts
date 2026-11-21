@@ -3,7 +3,7 @@ import type { PanelView } from '@/state/ui';
 import type { RegisteredCommandId } from '../use-command';
 
 /** The right panel's tabs: three trainer tools share the Practice tab as sub-tabs. */
-export type PanelTabId = 'mixer' | 'practice' | 'effects' | 'history';
+export type PanelTabId = 'mixer' | 'practice' | 'effects' | 'history' | 'chords';
 
 export type PracticeView = Extract<PanelView, 'speedTrainer' | 'tuner' | 'metronome'>;
 
@@ -27,6 +27,7 @@ export const PANEL_TABS: readonly {
   { id: 'practice', label: 'Practice', view: 'speedTrainer', command: 'trainer.speedTrainer' },
   { id: 'effects', label: 'Effects', view: 'effects', command: 'editor.toggleEffectsPanel' },
   { id: 'history', label: 'History', view: 'history', command: 'editor.showHistory' },
+  { id: 'chords', label: 'Chords', view: 'chords', command: 'trainer.chords' },
 ];
 
 export function tabOfView(view: PanelView): PanelTabId {

@@ -25,7 +25,8 @@ export type SheetId = 'library' | 'sounds';
  * What the right panel shows; the mixer is the default and the trainer tools and the effects
  * palette (WP-082) and the history panel (WP-084) take turns with it.
  */
-export type PanelView = 'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'effects' | 'history';
+export type PanelView =
+  'mixer' | 'speedTrainer' | 'tuner' | 'metronome' | 'effects' | 'history' | 'chords';
 
 /**
  * The bottom dock's views in tab order, one shown at a time; the live fretboard (WP-074) is the
@@ -74,6 +75,8 @@ export interface UiState {
   /** The sheet open over the player, if any; one at a time. */
   sheet: SheetId | undefined;
   rightPanelView: PanelView;
+  /** The chord the Chords tab lists shapes for (#352); the text the user typed or a menu passed. */
+  chordsName: string;
   panelWidths: Record<PanelId, number>;
   /** The right panel is open because the stored state said so, not because the user opened it. */
   panelRestored: boolean;
@@ -114,6 +117,7 @@ export interface UiState {
   closeSheet: () => void;
   /** Shows `view` in the right panel and opens the panel. */
   showPanelView: (view: PanelView) => void;
+  setChordsName: (name: string) => void;
   setPanelWidth: (panel: PanelId, width: number) => void;
   /** Shows `view` in the bottom region and opens it. */
   showBottomPanelView: (view: BottomPanelView) => void;
@@ -170,6 +174,7 @@ export function createUiStore(theme: Theme = initialTheme()) {
     sheet: undefined,
     panelRestored: false,
     rightPanelView: 'mixer',
+    chordsName: '',
     panelWidths: {
       sidebar: PANEL_WIDTH.sidebar.default,
       rightPanel: PANEL_WIDTH.rightPanel.default,
@@ -233,6 +238,9 @@ export function createUiStore(theme: Theme = initialTheme()) {
         panels: { ...state.panels, rightPanel: true },
         panelRestored: false,
       }));
+    },
+    setChordsName: (name) => {
+      if (get().chordsName !== name) set({ chordsName: name });
     },
     setPanelWidth: (panel, width) => {
       const { min, max } = PANEL_WIDTH[panel];
