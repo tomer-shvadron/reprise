@@ -15,7 +15,9 @@ export type LibraryCommandId =
   | 'library.showPracticeLog'
   | 'library.deleteSong'
   | 'file.exportAsciiTab'
-  | 'edit.copyAsciiTab';
+  | 'edit.copyAsciiTab'
+  | 'file.exportImage'
+  | 'edit.copyImage';
 
 type LibraryCommand = Command & { id: LibraryCommandId };
 
@@ -60,6 +62,34 @@ export function libraryCommands(services: AppServices): LibraryCommand[] {
         return scope !== undefined && hasFrettedTrack(score, scope.tracks);
       },
       run: () => libraryOf(services).asciiExport.copy(),
+    },
+    {
+      id: 'file.exportImage',
+      title: 'Export as image…',
+      // No default key: Settings > Keyboard can bind one. Writes SVG or PNG files, never a save.
+      enabled: hasScore,
+      run: () => {
+        libraryOf(services).imageExport.open();
+      },
+    },
+    {
+      id: 'edit.copyImage',
+      title: 'Copy as image',
+      // Greyed in the palette when nothing is selected; a menu has set its target by the time this
+      // is read.
+      enabled: () => {
+        const { score, view } = services.document.getState();
+        return (
+          score !== undefined &&
+          asciiScopeOf(
+            score,
+            services.selection.getState(),
+            services.menuTarget.getState().target,
+            view,
+          ) !== undefined
+        );
+      },
+      run: () => libraryOf(services).imageExport.copy(),
     },
     {
       id: 'library.show',

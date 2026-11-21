@@ -3,7 +3,9 @@ import { create, type StoreApi, type UseBoundStore } from 'zustand';
 
 import type { AppServices } from '@/app/services';
 import { whenSaved } from '@/app/when-saved';
+import { createImageExporter, type ImageExporter } from '@/features/score';
 import { restoreTrackSession } from '@/features/tracks';
+import { CHORD_DIAGRAMS_SETTING } from '@/state/app-settings';
 import type { FileHandle } from '@/platform/platform';
 import { contentKey, SCORE_FILES, type Saver } from '@/state/document';
 import { notationDefaultsOf } from '@/state/notation-defaults-setting';
@@ -21,6 +23,7 @@ import { createDraftRecovery, type DraftRecovery } from './drafts/recovery';
 import { stem } from './import/song-row';
 import { fromPicked, resolveDrop, type DropSnapshot, type ImportSource } from './import/sources';
 import { createAsciiExporter, type AsciiExporter } from './save/ascii-export';
+import { asciiScopeOf } from './save/ascii-scope';
 import {
   createExporter,
   createExportPromptStore,
@@ -88,6 +91,8 @@ export interface Library {
   exportPrompt: ExportPromptStore;
   /** File > Export as ASCII tab and Copy as ASCII tab (#350); neither is a save. */
   asciiExport: AsciiExporter;
+  /** File > Export as image and Copy as image (#351); neither is a save. */
+  imageExport: ImageExporter;
   dismissNotice(): void;
   drafts: Drafts;
   /** The progress of the running or last batch import. */
@@ -260,6 +265,26 @@ export function createLibrary(
     selection: services.selection,
     menuTarget: services.menuTarget,
     platform: services.platform,
+    notify,
+  });
+
+  const imageExport = createImageExporter({
+    document: services.document,
+    ui: services.ui,
+    platform: services.platform,
+    // The same bars and tracks as Copy as ASCII tab: a menu's target first, then the selection.
+    selectionScope: (useTarget) => {
+      const { score, view } = services.document.getState();
+      return score
+        ? asciiScopeOf(
+            score,
+            services.selection.getState(),
+            useTarget ? services.menuTarget.getState().target : undefined,
+            view,
+          )
+        : undefined;
+    },
+    chordDiagrams: () => services.settings.get(CHORD_DIAGRAMS_SETTING),
     notify,
   });
 
@@ -492,6 +517,7 @@ export function createLibrary(
     exportGuitarPro,
     exportPrompt,
     asciiExport,
+    imageExport,
     dismissNotice() {
       store.setState({ notice: undefined });
     },
