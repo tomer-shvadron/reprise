@@ -1,10 +1,10 @@
 import { useStore } from 'zustand';
 
-import { keepFocus, tooltipText } from '@/app/command-control';
+import { keepFocus } from '@/app/command-control';
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useAppServices } from '@/app/services-context';
 import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useCommand } from '@/app/use-command';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 type Mode = 'play' | 'practice' | 'edit';
@@ -55,23 +55,19 @@ export function ModeSwitch() {
       }}
     >
       {MODES.map(({ mode: value, label }) => {
-        const command = value === 'practice' ? practice : toggle;
+        const commandId = value === 'practice' ? 'view.practiceMode' : 'editor.toggleMode';
         return (
-          <Tooltip key={value}>
-            <TooltipTrigger asChild>
-              <ToggleGroupItem
-                value={value}
-                aria-label={label}
-                aria-keyshortcuts={command.ariaKeys}
-                disabled={value !== 'play' && !hasScore}
-                onMouseDown={keepFocus}
-                className="text-foreground hover:bg-background/60 hover:text-foreground aria-checked:bg-primary aria-checked:text-primary-foreground aria-checked:hover:bg-primary aria-checked:hover:text-primary-foreground h-5 min-w-0 rounded-md px-2.5 text-xs aria-checked:shadow-xs dark:aria-checked:shadow-none"
-              >
-                {label}
-              </ToggleGroupItem>
-            </TooltipTrigger>
-            <TooltipContent>{tooltipText(`${label} mode`, command.keys)}</TooltipContent>
-          </Tooltip>
+          <CommandTooltip key={value} command={commandId} label={`${label} mode`}>
+            <ToggleGroupItem
+              value={value}
+              aria-label={label}
+              disabled={value !== 'play' && !hasScore}
+              onMouseDown={keepFocus}
+              className="text-foreground hover:bg-background/60 hover:text-foreground aria-checked:bg-primary aria-checked:text-primary-foreground aria-checked:hover:bg-primary aria-checked:hover:text-primary-foreground h-5 min-w-0 rounded-md px-2.5 text-xs aria-checked:shadow-xs dark:aria-checked:shadow-none"
+            >
+              {label}
+            </ToggleGroupItem>
+          </CommandTooltip>
         );
       })}
     </ToggleGroup>

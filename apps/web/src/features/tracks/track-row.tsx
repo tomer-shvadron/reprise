@@ -1,10 +1,11 @@
 import type { Notation, Track } from '@reprise/model';
 import { cn } from 'cn';
-import { memo, type ReactNode } from 'react';
+import { memo, use, type ReactElement, type ReactNode } from 'react';
 
-import { tooltipText } from '@/app/command-control';
+import { CommandTooltip, HintTooltip, ShortcutKeys } from '@/app/command-tooltip';
 import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { spokenShortcut } from '@/app/keyboard';
+import { CommandSourceContext } from '@/app/use-command';
 import { instrumentName } from '@/lib/gm-programs';
 import type { TrackActions } from './track-actions';
 import {
@@ -14,7 +15,8 @@ import {
   TrackVolume,
   VisibilityToggle,
 } from './track-controls';
-import { TRACK_SELECT_ATTR } from './sidebar-focus';
+import { goCommandId } from './commands';
+import { TRACK_LIST_KEYS, TRACK_SELECT_ATTR } from './sidebar-focus';
 import { trackLabel } from './track-model';
 
 interface TrackRowProps {
@@ -31,15 +33,50 @@ interface TrackRowProps {
   /** Single-track view is on, which leaves the multitrack set alone. */
   single: boolean;
   loading: boolean;
-  /** The jump key as printed, such as `⌥3`, for the tooltip; only rows 1 to 9 have one. */
-  jumpKeys?: string | undefined;
-  /** The same key in `aria-keyshortcuts` syntax. */
-  jumpAriaKeys?: string | undefined;
   /** The one name button in the Tab order; the others take focus from the arrows. Default true. */
   tabStop?: boolean;
   actions: TrackActions;
   /** The app's menu for the row; see `TrackSidebar`. */
   rowMenu?: ((track: Track, index: number) => ReactNode) | undefined;
+}
+
+/**
+ * The name button's tooltip: the jump key from the registry (rows 1 to 9 have one), then the
+ * list's own M and S, read from the constant the key handler matches against.
+ */
+function NameTooltip({
+  index,
+  children,
+}: {
+  index: number;
+  children: ReactElement<Record<string, unknown>>;
+}) {
+  const source = use(CommandSourceContext);
+  if (!source) throw new Error('A track row needs a CommandSourceContext');
+  const label = `Track ${String(index + 1)}`;
+  const listKeys = (
+    <span className="inline-flex items-center gap-1">
+      <span>With the name focused:</span>
+      <ShortcutKeys bindings={[TRACK_LIST_KEYS.mute]} platform={source.keyboard} />
+      <span>mutes,</span>
+      <ShortcutKeys bindings={[TRACK_LIST_KEYS.solo]} platform={source.keyboard} />
+      <span>solos</span>
+    </span>
+  );
+  const goId = goCommandId(index + 1);
+  if (goId === undefined) return <HintTooltip label={listKeys}>{children}</HintTooltip>;
+  return (
+    <CommandTooltip
+      command={goId}
+      label={label}
+      detail={{
+        node: listKeys,
+        spoken: `With the name focused: ${spokenShortcut(TRACK_LIST_KEYS.mute, source.keyboard)} mutes, ${spokenShortcut(TRACK_LIST_KEYS.solo, source.keyboard)} solos`,
+      }}
+    >
+      {children}
+    </CommandTooltip>
+  );
 }
 
 export const TrackRow = memo(function TrackRow({
@@ -54,8 +91,6 @@ export const TrackRow = memo(function TrackRow({
   notation,
   single,
   loading,
-  jumpKeys,
-  jumpAriaKeys,
   tabStop = true,
   actions,
   rowMenu,
@@ -97,30 +132,23 @@ export const TrackRow = memo(function TrackRow({
       </span>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-current={current ? 'true' : undefined}
-                aria-keyshortcuts={jumpAriaKeys}
-                tabIndex={tabStop ? 0 : -1}
-                {...{ [TRACK_SELECT_ATTR]: track.id }}
-                className="min-w-0 flex-1 truncate text-left text-sm"
-                onClick={() => {
-                  actions.selectTrack(track.id);
-                }}
-              >
-                <span className="block truncate font-medium">{label}</span>
-                <span className="text-muted-foreground block truncate text-xs">
-                  {loading ? 'Loading…' : instrumentName(track)}
-                </span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {tooltipText(`Track ${String(index + 1)}`, jumpKeys)}. With the name focused: M mutes,
-              S solos.
-            </TooltipContent>
-          </Tooltip>
+          <NameTooltip index={index}>
+            <button
+              type="button"
+              aria-current={current ? 'true' : undefined}
+              tabIndex={tabStop ? 0 : -1}
+              {...{ [TRACK_SELECT_ATTR]: track.id }}
+              className="min-w-0 flex-1 truncate text-left text-sm"
+              onClick={() => {
+                actions.selectTrack(track.id);
+              }}
+            >
+              <span className="block truncate font-medium">{label}</span>
+              <span className="text-muted-foreground block truncate text-xs">
+                {loading ? 'Loading…' : instrumentName(track)}
+              </span>
+            </button>
+          </NameTooltip>
           <VisibilityToggle
             id={track.id}
             label={label}

@@ -3,7 +3,6 @@ import { CopyIcon, EllipsisIcon, FocusIcon, GaugeIcon, RepeatIcon } from 'lucide
 import {
   useEffect,
   useEffectEvent,
-  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -17,7 +16,6 @@ import {
 import { useStore } from 'zustand';
 
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { claimEscape } from '@/components/ui/tooltip-escape';
 import {
   pressedOf,
@@ -28,7 +26,8 @@ import {
 import type { ScoreOverlays, ScoreViewHandle } from '@/features/score';
 import { selectRunning } from '@/state/playback';
 
-import { keepFocus, tooltipText } from '../command-control';
+import { keepFocus } from '../command-control';
+import { CommandTooltip } from '../command-tooltip';
 import { useMenuRegistry } from '../context-menu/menu-context';
 import type { MenuContext, MenuRequest } from '../context-menu/types';
 import { useContextMenu } from '../context-menu/use-context-menu';
@@ -96,46 +95,29 @@ function PillButton({
   reason,
   onPress,
 }: PillButtonProps) {
-  const reasonId = useId();
-  const bound = bindCommand(
-    source,
-    pressed === true && spec.pressedCommand ? spec.pressedCommand : spec.command,
-  );
+  const commandId = pressed === true && spec.pressedCommand ? spec.pressedCommand : spec.command;
+  const bound = bindCommand(source, commandId);
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        {/* On a wrapper: a disabled button takes no pointer events, so it could not say why. */}
-        <span className="flex">
-          <Button
-            variant="ghost"
-            size="xs"
-            className={PRESSED_CLASS}
-            aria-label={label}
-            aria-pressed={pressed}
-            aria-haspopup={onPress ? 'dialog' : undefined}
-            aria-keyshortcuts={bound.ariaKeys}
-            aria-describedby={reason === undefined ? undefined : reasonId}
-            data-pill-item={spec.key}
-            data-command={spec.command}
-            tabIndex={tabStop ? 0 : -1}
-            disabled={!enabled}
-            onMouseDown={keepFocus}
-            onClick={onPress ?? bound.run}
-          >
-            {ICONS[spec.key]}
-            {spec.text}
-          </Button>
-          {reason !== undefined && (
-            <span id={reasonId} className="sr-only">
-              {reason}
-            </span>
-          )}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>
-        {reason === undefined ? tooltipText(label, bound.keys) : `${label}: ${reason}`}
-      </TooltipContent>
-    </Tooltip>
+    // CommandTooltip wraps a disabled button in a span, which can take the hover to say why.
+    <CommandTooltip command={commandId} label={label} reason={reason} wrapped>
+      <Button
+        variant="ghost"
+        size="xs"
+        className={PRESSED_CLASS}
+        aria-label={label}
+        aria-pressed={pressed}
+        aria-haspopup={onPress ? 'dialog' : undefined}
+        data-pill-item={spec.key}
+        data-command={spec.command}
+        tabIndex={tabStop ? 0 : -1}
+        disabled={!enabled}
+        onMouseDown={keepFocus}
+        onClick={onPress ?? bound.run}
+      >
+        {ICONS[spec.key]}
+        {spec.text}
+      </Button>
+    </CommandTooltip>
   );
 }
 

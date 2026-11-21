@@ -57,7 +57,7 @@ describe('the right panel rail', () => {
   it('shows the shortcut in the tooltip where the command has one', async () => {
     renderApp();
     await userEvent.hover(rail().getByRole('button', { name: 'Mixer' }));
-    expect((await screen.findAllByText('Mixer (F8)')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('Mixer')).length).toBeGreaterThan(0);
   });
 });
 

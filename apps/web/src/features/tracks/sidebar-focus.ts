@@ -1,7 +1,17 @@
+import type { Shortcut } from '@/app/keyboard';
 import type { AppServices } from '@/app/services';
 
 export const TRACK_LIST_ATTR = 'data-track-list';
 export const TRACK_SELECT_ATTR = 'data-track-select';
+
+/**
+ * The keys a focused track name answers to, outside the registry: they act on the row that has
+ * focus, which the registry has no notion of. The key handler and the name's tooltip both read this.
+ */
+export const TRACK_LIST_KEYS = {
+  mute: { key: 'm' },
+  solo: { key: 's' },
+} satisfies Record<string, Shortcut>;
 
 function focusSelector(selector: string): boolean {
   const element = document.querySelector<HTMLElement>(selector);

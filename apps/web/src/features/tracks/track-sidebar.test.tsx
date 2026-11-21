@@ -11,6 +11,7 @@ import { useAppServices } from '@/app/services-context';
 
 import { renderTracks, threeTracks } from './test/render-tracks';
 import { NO_TAB_REASON } from './track-model';
+import { TRACK_LIST_KEYS } from './sidebar-focus';
 import { TrackSidebar } from './track-sidebar';
 
 function Collapsible({ registry }: { registry: CommandRegistry }) {
@@ -266,6 +267,20 @@ describe('TrackSidebar keys', () => {
     };
     return { ...made, ids, select };
   }
+
+  it('hints the jump key and the list keys on a track name, from the shared constant', async () => {
+    const { user, ids, select } = await opened();
+    await user.hover(select(ids[0] ?? ''));
+    const tip = await screen.findByRole('tooltip');
+    expect(tip).toHaveTextContent('Track 1');
+    expect(tip).toHaveTextContent('With the name focused');
+    const caps = [
+      ...document.querySelectorAll('[data-slot="tooltip-content"] [data-slot="kbd"]'),
+    ].map((cap) => cap.textContent.toLowerCase());
+    expect(caps).toEqual(
+      expect.arrayContaining([TRACK_LIST_KEYS.mute.key, TRACK_LIST_KEYS.solo.key]),
+    );
+  });
 
   it('numbers each row', async () => {
     await opened();

@@ -44,7 +44,14 @@ interface CommandTooltipProps {
   /** False for a text field, so the tooltip never covers what is being typed; hover still opens it. */
   openOnFocus?: boolean;
   /** Why the control is disabled: shown instead of the keys, on a wrapper that can take the hover. */
-  reason?: string;
+  reason?: string | undefined;
+  /**
+   * Always put the control in the hover wrapper, as `reason` does, so a control that can become
+   * disabled keeps its place in the tree (and its focus) when a reason appears.
+   */
+  wrapped?: boolean;
+  /** Extra content after the keys, with its spoken text for the accessible label. */
+  detail?: { node: ReactNode; spoken: string };
   children: ReactElement<Record<string, unknown>>;
 }
 
@@ -59,20 +66,23 @@ export function CommandTooltip({
   whenUnbound = 'label',
   openOnFocus = true,
   reason,
+  detail,
+  wrapped = false,
   children,
 }: CommandTooltipProps) {
   const bound = useCommand(command);
   const reasonId = useId();
-  if (bound.bindings.length === 0 && whenUnbound === 'none' && reason === undefined) {
+  if (bound.bindings.length === 0 && whenUnbound === 'none' && reason === undefined && !wrapped) {
     return children;
   }
   const keyed = reason === undefined && bound.bindings.length > 0;
-  const accessibleLabel =
+  const spoken =
     reason === undefined
       ? bound.spoken
         ? `${label}, ${bound.spoken}`
         : label
       : `${label}: ${reason}`;
+  const accessibleLabel = detail && reason === undefined ? `${spoken}. ${detail.spoken}` : spoken;
   const onFocus = openOnFocus
     ? undefined
     : (event: FocusEvent) => {
@@ -80,20 +90,22 @@ export function CommandTooltip({
       };
 
   const trigger =
-    reason === undefined ? (
+    reason === undefined && !wrapped ? (
       cloneElement(children, {
         'aria-keyshortcuts': bound.ariaKeys,
         'data-command-tooltip': command,
       })
     ) : (
-      <span className="flex" data-command-tooltip={command}>
+      <span className="flex min-w-0" data-command-tooltip={command}>
         {cloneElement(children, {
           'aria-keyshortcuts': bound.ariaKeys,
-          'aria-describedby': reasonId,
+          'aria-describedby': reason === undefined ? undefined : reasonId,
         })}
-        <span id={reasonId} className="sr-only">
-          {reason}
-        </span>
+        {reason !== undefined && (
+          <span id={reasonId} className="sr-only">
+            {reason}
+          </span>
+        )}
       </span>
     );
 
@@ -105,6 +117,7 @@ export function CommandTooltip({
       <TooltipContent aria-label={accessibleLabel} side={side}>
         {reason === undefined ? label : `${label}: ${reason}`}
         {keyed && <ShortcutKeys bindings={bound.bindings} platform={bound.keyboard} />}
+        {detail && reason === undefined && detail.node}
       </TooltipContent>
     </Tooltip>
   );

@@ -3,8 +3,8 @@ import { EllipsisIcon, PlusIcon } from 'lucide-react';
 import { useRef } from 'react';
 import { useStore } from 'zustand';
 
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useAppServices } from '@/app/services-context';
-import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -13,7 +13,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import {
   LAST_TRACK_REASON,
@@ -28,28 +27,21 @@ export function AddTrackButton() {
   const services = useAppServices();
   const { document } = services;
   const open = useStore(document, (state) => state.score !== undefined);
-  // The mac and Windows bindings are two commands with one title; only one prints keys per platform.
-  const mac = useCommand('track.add');
-  const other = useCommand('track.addWindows');
-  const keys = mac.keys ?? other.keys;
+  // The mac and Windows bindings are two commands with one title; the command resolves its alias.
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Add track"
-          aria-keyshortcuts={mac.ariaKeys ?? other.ariaKeys}
-          disabled={!open}
-          onClick={(event) => {
-            openAddTrack(services, event.currentTarget);
-          }}
-        >
-          <PlusIcon />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>Add track{keys !== undefined && ` (${keys})`}</TooltipContent>
-    </Tooltip>
+    <CommandTooltip command="track.add" label="Add track">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Add track"
+        disabled={!open}
+        onClick={(event) => {
+          openAddTrack(services, event.currentTarget);
+        }}
+      >
+        <PlusIcon />
+      </Button>
+    </CommandTooltip>
   );
 }
 

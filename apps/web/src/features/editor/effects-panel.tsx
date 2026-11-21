@@ -3,10 +3,10 @@ import { useEffect, useId, useRef, type MouseEvent } from 'react';
 import { useStore } from 'zustand';
 
 import { focusPanelSection } from '@/app/right-panel';
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useAppServices } from '@/app/services-context';
 import { useCommand, type RegisteredCommandId } from '@/app/use-command';
 import { toggleVariants } from '@/components/ui/toggle';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import type { EffectPicker } from './dialogs';
 import type { EffectKeyName } from './effect-commands';
@@ -80,39 +80,6 @@ const PICKER_COMMAND: Record<EffectPicker | 'grace', RegisteredCommandId> = {
   grace: 'editor.effect.grace',
 };
 
-/**
- * The tooltip sits on a wrapper: a disabled button takes no pointer events, so it could never
- * show why it is disabled. The reason is also the button's description for assistive tech.
- */
-function Tip({
-  text,
-  reason,
-  children,
-}: {
-  text: string;
-  reason?: string | undefined;
-  children: (describedBy: string | undefined) => React.ReactElement;
-}) {
-  const reasonId = useId();
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="flex min-w-0">
-          {children(reason === undefined ? undefined : reasonId)}
-          {reason !== undefined && (
-            <span id={reasonId} className="sr-only">
-              {reason}
-            </span>
-          )}
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{reason ?? text}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-const tipText = (label: string, keys: string | undefined) => (keys ? `${label} (${keys})` : label);
-
 /** An effect that toggles: pressed, not pressed or mixed from the selection, run as its key does. */
 function EffectToggle({
   item,
@@ -126,22 +93,24 @@ function EffectToggle({
   const bound = useCommand(`editor.effect.${item.toggle}`);
   const state = known?.state ?? 'unavailable';
   return (
-    <Tip text={tipText(item.label, bound.keys)} reason={known?.reason}>
-      {(describedBy) => (
-        <button
-          type="button"
-          className={BUTTON_CLASS}
-          aria-pressed={pressedOf(state)}
-          aria-keyshortcuts={bound.ariaKeys}
-          aria-describedby={describedBy}
-          disabled={disabled || state === 'unavailable'}
-          onMouseDown={keepFocus}
-          onClick={bound.run}
-        >
-          {item.label}
-        </button>
-      )}
-    </Tip>
+    <CommandTooltip
+      command={`editor.effect.${item.toggle}`}
+      label={item.label}
+      whenUnbound="none"
+      reason={known?.reason}
+      wrapped
+    >
+      <button
+        type="button"
+        className={BUTTON_CLASS}
+        aria-pressed={pressedOf(state)}
+        disabled={disabled || state === 'unavailable'}
+        onMouseDown={keepFocus}
+        onClick={bound.run}
+      >
+        {item.label}
+      </button>
+    </CommandTooltip>
   );
 }
 
@@ -159,25 +128,26 @@ function EffectOpener({
   disabled: boolean;
   blocked: string | undefined;
 }) {
-  const bound = useCommand(PICKER_COMMAND[item.picker]);
   const open = usePickerOpener(item.picker);
   return (
-    <Tip text={tipText(item.label.replace('…', ''), bound.keys)} reason={blocked}>
-      {(describedBy) => (
-        <button
-          type="button"
-          className={BUTTON_CLASS}
-          aria-haspopup="dialog"
-          aria-keyshortcuts={bound.ariaKeys}
-          aria-describedby={describedBy}
-          disabled={disabled || blocked !== undefined}
-          onMouseDown={keepFocus}
-          onClick={open}
-        >
-          {item.label}
-        </button>
-      )}
-    </Tip>
+    <CommandTooltip
+      command={PICKER_COMMAND[item.picker]}
+      label={item.label.replace('…', '')}
+      whenUnbound="none"
+      reason={blocked}
+      wrapped
+    >
+      <button
+        type="button"
+        className={BUTTON_CLASS}
+        aria-haspopup="dialog"
+        disabled={disabled || blocked !== undefined}
+        onMouseDown={keepFocus}
+        onClick={open}
+      >
+        {item.label}
+      </button>
+    </CommandTooltip>
   );
 }
 
