@@ -21,7 +21,7 @@ B|---|
 Bass 4 Strings | Tuning: E A D G | 120 bpm
 
   1
-g|---|
+G|---|
 D|---|
 A|---|
 E|---|

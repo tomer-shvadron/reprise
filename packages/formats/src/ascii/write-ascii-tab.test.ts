@@ -399,7 +399,7 @@ describe('string labels and the header', () => {
     expect(labels([38, 45, 50, 55, 59, 64])).toEqual(['e', 'B', 'G', 'D', 'A', 'D']);
     expect(labels([39, 44, 49, 54, 58, 63])).toEqual(['eb', 'Bb', 'Gb', 'Db', 'Ab', 'Eb']);
     expect(labels([35, 40, 45, 50, 55, 59, 64])).toEqual(['e', 'B', 'G', 'D', 'A', 'E', 'B']);
-    expect(labels([28, 33, 38, 43], 'bass')).toEqual(['g', 'D', 'A', 'E']);
+    expect(labels([28, 33, 38, 43], 'bass')).toEqual(['G', 'D', 'A', 'E']);
   });
 
   it('writes the title, artist, track name, tuning, capo and tempo', () => {

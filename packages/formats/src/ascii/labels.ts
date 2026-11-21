@@ -19,8 +19,8 @@ export interface StringLabels {
 
 /**
  * Open-string names in C with sharps; a tuning whose every string is altered (E flat standard)
- * is spelled with flats. The highest string is always lowercased, the usual `e`, which is how a
- * guitarist tells it from the low E.
+ * is spelled with flats. The highest string is lowercased (the usual `e`) on six strings or more, and
+ * on fewer only when another string has its name.
  */
 export function stringLabels(tuning: readonly number[]): StringLabels {
   const sharps = tuning.map((midi) => nameOf(midi, SHARP_KEY));
@@ -29,8 +29,13 @@ export function stringLabels(tuning: readonly number[]): StringLabels {
     : sharps;
   const top = names.slice().reverse();
   const [highest, ...rest] = top;
+  // Six strings or more: the high string is always `e`-style lowercase. Fewer (a bass): only when
+  // another string has its name.
+  const lower = highest !== undefined && (names.length >= 6 || rest.includes(highest));
   const lines =
-    highest === undefined ? top : [highest.slice(0, 1).toLowerCase() + highest.slice(1), ...rest];
+    highest !== undefined && lower
+      ? [highest.slice(0, 1).toLowerCase() + highest.slice(1), ...rest]
+      : top;
   const width = Math.max(1, ...lines.map((name) => name.length));
   return { lines: lines.map((name) => name.padEnd(width)), tuning: names };
 }
