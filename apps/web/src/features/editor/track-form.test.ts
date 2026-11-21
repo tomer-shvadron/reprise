@@ -336,11 +336,12 @@ describe('doubled courses', () => {
     expect(setStringCount(newTrackForm('fretted'), 7).courses).toBeUndefined();
   });
 
-  it('drops the drone when its string is cut, and keeps it while the string stays', () => {
+  it('clears the drone on any string count but five', () => {
     const banjo = applyPreset(newTrackForm('fretted'), 'Banjo Open G', true);
     expect(banjo.drone).toEqual({ string: 5, fret: 5 });
     expect(setStringCount(banjo, 4).drone).toBeUndefined();
-    expect(setStringCount(banjo, 6).drone).toEqual({ string: 5, fret: 5 });
+    expect(setStringCount(banjo, 6).drone).toBeUndefined();
+    expect(setStringCount(setStringCount(banjo, 6), 5).drone).toBeUndefined();
     // Cut to 4 strings the form no longer sends a drone the model would refuse.
     const track = createTrack('fretted', {
       tuning: [67, 50, 55, 59, 62],

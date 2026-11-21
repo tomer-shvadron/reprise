@@ -238,6 +238,22 @@ describe('the track dialog, adding', () => {
     expect(tracksOf(services).at(-1)?.drone).toBeUndefined();
   });
 
+  it('drops the drone with the fifth string count, and offers none on a 5-string bass', async () => {
+    const { services, run, user } = setup();
+    run('track.add');
+    await user.selectOptions(field('Strings'), '5');
+    await user.selectOptions(field('Tuning'), 'Banjo Open G');
+    await user.selectOptions(field('Strings'), '6');
+    await user.click(screen.getByRole('button', { name: 'Add track' }));
+    expect(tracksOf(services).at(-1)?.drone).toBeUndefined();
+
+    run('track.add');
+    await user.selectOptions(field('Strings'), '4');
+    await user.selectOptions(field('Tuning'), 'Bass standard');
+    await user.selectOptions(field('Strings'), '5');
+    expect(within(dialog()).queryByLabelText(/Short 5th string/)).toBeNull();
+  });
+
   it('offers no drone checkbox off five strings', async () => {
     const { run, user } = setup();
     run('track.add');

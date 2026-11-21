@@ -46,6 +46,11 @@ const KINDS: readonly { kind: TrackKind; label: string }[] = [
 /** A banjo's fifth string starts at the fifth fret, as Guitar Pro's Banjo Drone does. */
 const SHORT_FIFTH: Drone = { string: 5, fret: 5 };
 
+/** The checkbox is for a 5-string banjo: five strings, and not a bass, whose program is 32 to 39. */
+const offersDrone = (form: TrackForm): boolean =>
+  form.drone !== undefined ||
+  (form.strings.length === 5 && !(form.program >= 32 && form.program <= 39));
+
 const SELECT_CLASS =
   'border-input bg-background h-8 w-full min-w-0 rounded-lg border px-2 text-sm aria-invalid:border-destructive';
 
@@ -385,7 +390,7 @@ export function TrackDialog({
               {coursesSummary(form.courses) !== undefined && (
                 <p className="text-muted-foreground text-xs">{coursesSummary(form.courses)}</p>
               )}
-              {form.strings.length === 5 && (
+              {offersDrone(form) && (
                 <label htmlFor={id('drone')} className="flex items-center gap-1.5 text-sm">
                   <input
                     id={id('drone')}
@@ -397,6 +402,11 @@ export function TrackDialog({
                   />
                   Short 5th string (drone) from fret 5
                 </label>
+              )}
+              {offersDrone(form) && !adding && (
+                <p className="text-muted-foreground text-xs">
+                  The drone keeps every note and its pitch; only the tab numbers on string 5 change.
+                </p>
               )}
               {!adding && (
                 <p className="text-muted-foreground text-xs">
