@@ -1,5 +1,6 @@
 import {
   HistoryIcon,
+  MusicIcon,
   PanelRightCloseIcon,
   PanelRightOpenIcon,
   SlidersVerticalIcon,
@@ -32,6 +33,7 @@ const TAB_ICONS: Record<PanelTabId, LucideIcon> = {
   practice: TimerIcon,
   effects: SparklesIcon,
   history: HistoryIcon,
+  chords: MusicIcon,
 };
 
 const SUB_TAB_COMMANDS = {

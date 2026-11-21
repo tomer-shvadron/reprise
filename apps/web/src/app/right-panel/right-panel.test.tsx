@@ -89,18 +89,18 @@ describe('the right panel tabs', () => {
       ui.getState().showPanelView('mixer');
     });
     expect(tab('Mixer')).toHaveAttribute('tabindex', '0');
-    expect(tab('History')).toHaveAttribute('tabindex', '-1');
+    expect(tab('Chords')).toHaveAttribute('tabindex', '-1');
 
     act(() => {
       tab('Mixer').focus();
     });
     await userEvent.keyboard('{ArrowLeft}');
-    expect(ui.getState().rightPanelView).toBe('history');
-    expect(tab('History')).toHaveFocus();
+    expect(ui.getState().rightPanelView).toBe('chords');
+    expect(tab('Chords')).toHaveFocus();
     await userEvent.keyboard('{ArrowRight}');
     expect(ui.getState().rightPanelView).toBe('mixer');
     await userEvent.keyboard('{End}');
-    expect(ui.getState().rightPanelView).toBe('history');
+    expect(ui.getState().rightPanelView).toBe('chords');
     await userEvent.keyboard('{Home}');
     expect(ui.getState().rightPanelView).toBe('mixer');
     expect(tab('Mixer')).toHaveFocus();
