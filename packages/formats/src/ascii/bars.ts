@@ -60,6 +60,8 @@ export interface BeatCell {
   text: string;
   lyric: string;
   effect: 'PM' | 'LR' | undefined;
+  /** `+` for a closed wah mark, `o` for an open one, `''` for none. */
+  wah: '+' | 'o' | '';
 }
 
 export type CloseKind = 'end' | 'double' | 'plain';
@@ -186,7 +188,13 @@ function rawCell(ctx: BlockContext, barIndex: number, beatIndex: number, beat: B
     text: singleLine(beat.text ?? ''),
     lyric: singleLine(beat.lyrics?.[0] ?? ''),
     effect,
+    wah: wahMark(beat.effects.wah),
   };
+}
+
+function wahMark(wah: 'open' | 'closed' | undefined): BeatCell['wah'] {
+  if (wah === 'closed') return '+';
+  return wah === 'open' ? 'o' : '';
 }
 
 /**
