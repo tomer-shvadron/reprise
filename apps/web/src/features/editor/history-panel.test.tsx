@@ -39,8 +39,8 @@ describe('the history panel', () => {
     await setup();
     expect(screen.getByText('No changes yet')).toBeTruthy();
     expect(rows()).toEqual(['Opened']);
-    expect(screen.getByRole('button', { name: 'Undo' })).toHaveProperty('disabled', true);
-    expect(screen.getByRole('button', { name: 'Redo' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Undo' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('button', { name: 'Redo' })).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('shows the Undo and Redo keys as caps on focus, and a click still undoes', async () => {
@@ -60,6 +60,36 @@ describe('the history panel', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Undo Edit note' }));
     expect(doc.getState().historyLabels.undo).toHaveLength(1);
+  });
+
+  it('shows both Redo keys off macOS once there is something to redo', async () => {
+    const { edit, doc } = await setup();
+    edit();
+    act(() => {
+      doc.getState().undo();
+    });
+    const redo = screen.getByRole('button', { name: 'Redo Edit note' });
+    act(() => {
+      redo.focus();
+    });
+    await screen.findByRole('tooltip');
+    const caps = [...document.querySelectorAll('[data-slot=tooltip-content] [data-slot=kbd]')].map(
+      (cap) => cap.textContent,
+    );
+    expect(caps).toEqual(['Ctrl', 'Shift', 'Z', 'Ctrl', 'Y']);
+    expect(redo).toHaveAttribute('aria-keyshortcuts', 'Control+Shift+Z Control+Y');
+  });
+
+  it('keeps a disabled Undo focusable with its keys, and a click does nothing', async () => {
+    const { doc, user } = await setup();
+    const undo = screen.getByRole('button', { name: 'Undo' });
+    act(() => {
+      undo.focus();
+    });
+    expect(undo).toHaveFocus();
+    await screen.findByRole('tooltip');
+    await user.click(undo);
+    expect(doc.getState().historyLabels.undo).toHaveLength(0);
   });
 
   it('lists the edits oldest first, marks the current one and carries the labels on the buttons', async () => {
@@ -119,6 +149,8 @@ describe('the history panel', () => {
     const options = () => screen.getAllByRole('option');
     // The current row is the one tab stop.
     expect(options().map((row) => row.tabIndex)).toEqual([-1, -1, 0]);
+    // Undo, then Redo (aria-disabled, so still focusable), then the list.
+    await user.tab();
     await user.tab();
     await user.tab();
     expect(options()[2]).toBe(document.activeElement);

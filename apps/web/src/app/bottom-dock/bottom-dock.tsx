@@ -1,12 +1,12 @@
 import { ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
-import { useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useRef, type KeyboardEvent, type ReactElement, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import { keepFocus } from '@/app/command-control';
 import { CommandTooltip } from '@/app/command-tooltip';
 import { useContextMenu } from '@/app/context-menu/use-context-menu';
 import { ResizeHandle } from '@/app/resize-handle';
-import type { RegisteredCommandId } from '@/app/use-command';
+import { useCommand, type RegisteredCommandId } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -23,6 +23,22 @@ const VIEWS = BOTTOM_PANEL_VIEWS;
 const VIEW_COMMANDS = {
   fretboard: 'trainer.showFretboard',
 } satisfies Record<BottomPanelView, RegisteredCommandId>;
+
+/** The tab's tooltip, titled by the view's own command so the two cannot drift. */
+function DockTabTip({
+  view,
+  children,
+}: {
+  view: BottomPanelView;
+  children: ReactElement<Record<string, unknown>>;
+}) {
+  const { title } = useCommand(VIEW_COMMANDS[view]);
+  return (
+    <CommandTooltip command={VIEW_COMMANDS[view]} label={title} whenUnbound="none">
+      {children}
+    </CommandTooltip>
+  );
+}
 
 const tabId = (view: string) => `bottom-dock-tab-${view}`;
 const PANEL_ID = 'bottom-dock-panel';
@@ -163,14 +179,9 @@ export function BottomDock({ ui, children }: { ui: UiStore; children?: ReactNode
               );
               // Its text names the view, so the tooltip shows only once a key is bound.
               return (
-                <CommandTooltip
-                  key={id}
-                  command={VIEW_COMMANDS[id]}
-                  label={`Show ${BOTTOM_PANEL_TITLES[id].toLowerCase()}`}
-                  whenUnbound="none"
-                >
+                <DockTabTip key={id} view={id}>
                   {tab}
-                </CommandTooltip>
+                </DockTabTip>
               );
             })}
           </div>

@@ -18,7 +18,7 @@ import { timelineOf, writtenBpmAt } from '@/state/timeline';
 import { TransportButton } from './controls';
 import { bpmFor, parseBpm, percentForBpm, percentOf, TEMPO_PERCENT } from './tempo';
 
-/** The slider's two keys in its tooltip, "Slower [ [ ] Faster [ ] ]", each only while it is bound. */
+/** The slider's step keys in its tooltip, "Slower [, Faster ]", each only while it is bound. */
 function SpeedStepKeys({ slower, faster }: { slower: BoundCommand; faster: BoundCommand }) {
   return (
     <>
@@ -189,6 +189,13 @@ export function TempoControl() {
         </InputGroupAddon>
       </InputGroup>
       <HintTooltip
+        spoken={[
+          'Speed',
+          slowDown.spoken && `slower ${slowDown.spoken}`,
+          speedUp.spoken && `faster ${speedUp.spoken}`,
+        ]
+          .filter(Boolean)
+          .join(', ')}
         label={
           <>
             Speed

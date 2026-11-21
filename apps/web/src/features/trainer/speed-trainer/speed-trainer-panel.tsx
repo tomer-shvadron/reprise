@@ -293,7 +293,7 @@ export function SpeedTrainerPanel() {
           command="trainer.speedTrainerToggle"
           label={toggle.title}
           whenUnbound="none"
-          {...(!canStart && !active && { reason: 'Loop some bars first' })}
+          reason={!canStart && !active ? 'Loop some bars first' : undefined}
         >
           <Button
             size="sm"
@@ -308,12 +308,28 @@ export function SpeedTrainerPanel() {
           label={missed.title}
           whenUnbound="none"
         >
-          <Button variant="outline" size="sm" onClick={missed.run} disabled={status !== 'running'}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="aria-disabled:cursor-default aria-disabled:opacity-50"
+            onClick={() => {
+              if (status === 'running') missed.run();
+            }}
+            aria-disabled={status !== 'running' || undefined}
+          >
             Missed pass
           </Button>
         </CommandTooltip>
         <CommandTooltip command="trainer.speedTrainerReset" label={reset.title} whenUnbound="none">
-          <Button variant="outline" size="sm" onClick={reset.run} disabled={status === 'idle'}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="aria-disabled:cursor-default aria-disabled:opacity-50"
+            onClick={() => {
+              if (status !== 'idle') reset.run();
+            }}
+            aria-disabled={status === 'idle' || undefined}
+          >
             Reset
           </Button>
         </CommandTooltip>

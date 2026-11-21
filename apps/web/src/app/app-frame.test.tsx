@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { createTestServices } from '@/test/services';
@@ -13,8 +13,9 @@ import { CommandSourceProvider } from './command-source-provider';
 import { AppServicesProvider, useAppServices } from './services-context';
 
 function renderFrame(ui = createUiStore('dark')) {
+  // The registry's commands act on the services' store, which `App` shares with the frame.
   render(
-    <AppServicesProvider services={createTestServices()}>
+    <AppServicesProvider services={createTestServices({ ui })}>
       <TooltipProvider>
         <WithCommands>
           <AppFrame ui={ui} score={<p>score</p>} bottom={<p>fret content</p>} />
@@ -28,9 +29,11 @@ function renderFrame(ui = createUiStore('dark')) {
 /** The frame's own controls read their keys from a command source, as `App` provides one. */
 function WithCommands({ children }: { children: ReactNode }) {
   const services = useAppServices();
+  // Held across renders: a new registry each time would rebuild the source and the alias index.
+  const [registry] = useState(() => createAppRegistry(services, 'other'));
   return (
     <CommandSourceProvider
-      registry={createAppRegistry(services, 'other')}
+      registry={registry}
       keyboard="other"
       settings={services.settings}
       editing={services.editing}
@@ -42,12 +45,13 @@ function WithCommands({ children }: { children: ReactNode }) {
 
 describe('the Toggle tracks button', () => {
   it('has a label-only tooltip while no key is bound, and the key once one is', async () => {
-    const services = createTestServices();
+    const ui = createUiStore('dark');
+    const services = createTestServices({ ui });
     render(
       <AppServicesProvider services={services}>
         <TooltipProvider>
           <WithCommands>
-            <AppFrame ui={createUiStore('dark')} score={<p>score</p>} />
+            <AppFrame ui={ui} score={<p>score</p>} />
           </WithCommands>
         </TooltipProvider>
       </AppServicesProvider>,
@@ -66,6 +70,24 @@ describe('the Toggle tracks button', () => {
       });
     });
     expect(button).toHaveAttribute('aria-keyshortcuts', 'Alt+K');
+  });
+
+  it('still toggles the tracks panel on a click', () => {
+    const ui = createUiStore('dark');
+    render(
+      <AppServicesProvider services={createTestServices({ ui })}>
+        <TooltipProvider>
+          <WithCommands>
+            <AppFrame ui={ui} score={<p>score</p>} />
+          </WithCommands>
+        </TooltipProvider>
+      </AppServicesProvider>,
+    );
+    const button = screen.getByRole('button', { name: 'Toggle tracks' });
+    const before = ui.getState().panels.sidebar;
+    fireEvent.click(button);
+    expect(ui.getState().panels.sidebar).toBe(!before);
+    expect(button).toHaveAttribute('aria-pressed', String(!before));
   });
 });
 

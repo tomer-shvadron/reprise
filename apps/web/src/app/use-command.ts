@@ -102,7 +102,8 @@ export interface BoundCommand {
 
 interface GroupIndex {
   version: number;
-  groups: Map<string, Command[]>;
+  /** Each command id to its whole alias group; by id, as a live title (Redo's) would miss a title key. */
+  byId: Map<string, Command[]>;
   /** Commands that only run in a context, which can take a global command's key. */
   contextual: Command[];
 }
@@ -119,9 +120,13 @@ function indexOf(registry: CommandRegistry): GroupIndex {
     const key = bindingGroup(command);
     groups.set(key, [...(groups.get(key) ?? []), command]);
   }
+  const byId = new Map<string, Command[]>();
+  for (const members of groups.values()) {
+    for (const member of members) byId.set(member.id, members);
+  }
   const index = {
     version: registry.version,
-    groups,
+    byId,
     contextual: list.filter((command) => command.context !== undefined),
   };
   indexes.set(registry, index);
@@ -152,7 +157,7 @@ function takenOver(source: CommandSource, command: Command, shortcut: Shortcut):
 export function bindCommand(source: CommandSource, id: RegisteredCommandId): BoundCommand {
   const command = source.registry.get(id);
   if (!command) throw new Error(`Command "${id}" is not registered`);
-  const group = indexOf(source.registry).groups.get(bindingGroup(command)) ?? [command];
+  const group = indexOf(source.registry).byId.get(command.id) ?? [command];
   const bindings: Shortcut[] = [];
   for (const member of group) {
     const shortcut = shortcutOn(source.registry.shortcutOf(member), source.keyboard);

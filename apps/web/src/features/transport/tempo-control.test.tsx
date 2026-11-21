@@ -33,10 +33,9 @@ describe('TempoControl', () => {
     act(() => {
       field().focus();
     });
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    });
+    // Radix opens on focus synchronously, so there is nothing to wait for.
     expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(field()).toHaveAttribute('data-state', 'closed');
   });
 
   it('shows both step keys in the speed slider tooltip', async () => {

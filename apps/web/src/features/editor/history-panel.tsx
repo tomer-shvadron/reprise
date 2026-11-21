@@ -88,16 +88,16 @@ export function HistoryPanel() {
         History
       </h2>
       <div className="flex gap-2 border-t px-3 py-2">
-        {/* The click calls the document directly: the command's run first undoes a focused text field's typing. */}
+        {/* aria-disabled, not disabled: the buttons stay focusable and hoverable, so their keys show. The click calls the document directly: the command's run first undoes a focused text field's typing. */}
         <CommandTooltip command="edit.undo" label="Undo" whenUnbound="none">
           <Button
             variant="outline"
             size="sm"
-            className="min-w-0 flex-1 whitespace-normal"
-            disabled={undoLabel === undefined}
+            className="min-w-0 flex-1 whitespace-normal aria-disabled:cursor-default aria-disabled:opacity-50"
+            aria-disabled={undoLabel === undefined || undefined}
             onMouseDown={keepFocus}
             onClick={() => {
-              document.getState().undo();
+              if (undoLabel !== undefined) document.getState().undo();
             }}
           >
             {undoLabel === undefined ? 'Undo' : `Undo ${historyLabel(undoLabel)}`}
@@ -107,11 +107,11 @@ export function HistoryPanel() {
           <Button
             variant="outline"
             size="sm"
-            className="min-w-0 flex-1 whitespace-normal"
-            disabled={redoLabel === undefined}
+            className="min-w-0 flex-1 whitespace-normal aria-disabled:cursor-default aria-disabled:opacity-50"
+            aria-disabled={redoLabel === undefined || undefined}
             onMouseDown={keepFocus}
             onClick={() => {
-              document.getState().redo();
+              if (redoLabel !== undefined) document.getState().redo();
             }}
           >
             {redoLabel === undefined ? 'Redo' : `Redo ${historyLabel(redoLabel)}`}
