@@ -137,7 +137,7 @@ What each licence asks of a mirror:
 
 ## Decisions for the owner, in order
 
-1. **The mirror ADR** (amending ADR-0028, above). It decides whether ranks 2 to 6 below are a download and a family default or only a link: without it the FreePats 7z and tar.xz packs are drop-only (the user finds the page, unpacks the archive and drops the folder), FSS cannot replace Emilyguitar as the acoustic default, and AVL's wrong keys cannot be remapped.
+1. **The mirror ADR** (amending ADR-0028, above). It decides whether ranks 2, 3, 4, 6 and 8 below are a download and a family default or only a link: without it the FreePats 7z and tar.xz packs are drop-only (the user finds the page, unpacks the archive and drops the folder), FSS cannot replace Emilyguitar as the acoustic default, and AVL's wrong keys cannot be remapped.
 2. **CC-conditioned regions** in the SFZ loader (size M). It unblocks the cello, the Karoryfer basses and keyswitch libraries.
 3. **Memory in a band song**: accept eviction when a song combines several packs (399.1 MiB at the upper bound for drums, electric, bass and acoustic), or first measure a real song and make the planner keep one take per key resident under pressure.
 4. **Then the picks** from the shortlist.
