@@ -83,6 +83,12 @@ Print… runs the flow in `print-store.ts`: paint "Preparing…", await `loadSco
 - **Header** (title 600 ink, byline 400 muted, cut with an ellipsis) is redrawn as shapes on page 1 at the `PRINT_HEADING` sizes.
 - **Licences.** Bravura (SIL OFL 1.1, `public/fonts/bravura/OFL.txt`) and Geist (SIL OFL 1.1, the Geist Project Authors) allow outlines in documents; the OFL's reserved-name clause covers a font file, not a drawing made with it. The committed tables are converted subsets, so each carries the copyright, `OFL-1.1` and (Bravura) the Reserved Font Name note in its header; they are drawing data, not fonts.
 
+### Image export: PNG, bar ranges and the runner (`image/`)
+
+`exportImages` (`image/image-export.ts`) turns a request (scope, format, scale, background, paper, tracks) into files: the print layout pass (`layoutForPrint`, so a page is what Print paints), one `pageSvgReport` per page, and for PNG `svgToPng` (`rasterise.ts`: the SVG through an `<img>` on a `data:` URL, which the CSP allows, drawn at the target size on a canvas that is released after each page, then a `pHYs` chunk of 96 dpi times the scale from `png.ts`). One image is saved as it is; several are one `.zip` (PNGs stored, SVGs deflated) through one `saveFile`, so an export is not a save and never touches `dirty`, the handle or `songId`. A signal cancels between pages and writes nothing; `renderImages` is the same without the save, for Copy as image. The caller passes the tracks to draw (the ones on screen, or the edit range's for a selection).
+
+A bar range is `sliceScore` (`image/slice-score.ts`: the bars, with the tempo and each track's clef in effect put back on the first bar and a tie whose origin is outside the range cleared) laid out without the heading on 24 px margins and cropped to its content. Bar numbers restart in the slice; layout draws them only on split systems, so nothing shows. A bar number on every system (F048) would need a first-bar-number option here.
+
 ### Zoom
 
 Zoom is display only: each system `<svg>` keeps its `viewBox` in its own frame, in layout px, and takes `width`/`height` × zoom, and pages and canvas are sized and placed × zoom. Vector-crisp at every zoom, with exact scrollbars, which a CSS transform would not give. A zoom change re-renders sizes only; nothing inside a system changes (tested). The view keeps the layout point at the viewport's centre where it was.
