@@ -3,6 +3,7 @@
 The Settings dialog (⌘, or Ctrl+,, "Settings…" in the palette and the desktop menu): a vertical list of sections on the left, the section's rows on the right. Owner lane: app. Work packages: #343 (the shell and the first sections), #344 (Keyboard), #346 (Sounds), #347 (Notation).
 
 - **Changes apply at once.** There is no OK or Cancel; every control writes its handle through `services.settings`, which persists it ([architecture.md](../../../../../docs/specs/architecture.md), "Changed by #343"). Each section has a "Restore defaults" button that resets the keys in its `settings` list.
+- **Score** has the default view and zoom and, from #347, the notation defaults for string instruments and vocals (`state/notation-defaults.ts`; architecture.md, "Changed by #347, part 2"). Drums and keyboards have no row: they show standard only.
 - **The shell never changes for a new section.** `app/settings-sections.ts` lists them in order; `checkSections` throws on a repeated id or a key two sections reset.
 - **`openSettings(section?)`** (on the ui store) opens the dialog at a section id. An absent id shows the section shown last (the first, on the first open); an unknown id shows the first.
 

@@ -3,6 +3,7 @@ import {
   STANDARD_TUNINGS,
   createTrack,
   findTuningName,
+  isVocalTrack,
   type Score,
   type Track,
   type TrackChanges,
@@ -10,6 +11,8 @@ import {
   type TrackProperties,
   type TuningInstrument,
 } from '@reprise/model';
+
+import type { NotationDefaults } from '@/state/notation-defaults';
 
 /** Ten swatches that read on both themes, so a track keeps its colour when the theme flips. */
 export const TRACK_COLORS: readonly string[] = [
@@ -299,7 +302,7 @@ export function trackChanges(track: Track, form: TrackForm): TrackChanges {
 }
 
 /** The properties for `addTrack`; strings and capo only for a fretted track. */
-export function newTrackProperties(form: TrackForm): TrackProperties {
+export function newTrackProperties(form: TrackForm, defaults: NotationDefaults): TrackProperties {
   const properties: TrackProperties = {
     name: form.name.trim(),
     shortName: form.shortName.trim(),
@@ -309,6 +312,12 @@ export function newTrackProperties(form: TrackForm): TrackProperties {
   if (form.kind === 'fretted') {
     properties.tuning = modelOrder(form.strings);
     properties.capo = Number(form.capo);
+    properties.display = {
+      ...createTrack('fretted').display,
+      notation: isVocalTrack({ kind: 'fretted', program: form.program, name: form.name })
+        ? defaults.vocals
+        : defaults.strings,
+    };
   }
   return properties;
 }

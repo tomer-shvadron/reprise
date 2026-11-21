@@ -42,6 +42,7 @@ export function editorCommands(
     | 'ui'
     | 'menuTarget'
     | 'transport'
+    | 'settings'
   >,
 ): EditorCommand[] {
   const { editing, document } = services;

@@ -23,6 +23,8 @@ import {
 
 const guitar = (): Track => createTrack('fretted', { barCount: 2 });
 
+const DEFAULTS = { strings: 'tab', vocals: 'tab' } as const;
+
 describe('formFromTrack', () => {
   it('lists the strings highest first, the reverse of the model, and flips them back', () => {
     const track = guitar();
@@ -121,11 +123,25 @@ describe('add mode', () => {
   });
 
   it('builds addTrack properties with strings and capo only for a fretted track', () => {
-    expect(newTrackProperties({ ...newTrackForm('fretted'), capo: '2' })).toMatchObject({
+    expect(newTrackProperties({ ...newTrackForm('fretted'), capo: '2' }, DEFAULTS)).toMatchObject({
       tuning: [...STANDARD_TUNING],
       capo: 2,
     });
-    expect(newTrackProperties(newTrackForm('drums'))).not.toHaveProperty('tuning');
+    expect(newTrackProperties(newTrackForm('drums'), DEFAULTS)).not.toHaveProperty('tuning');
+  });
+
+  it('gives a new fretted track the strings default and a vocal one the vocals default', () => {
+    const defaults = { strings: 'both', vocals: 'standard' } as const;
+    const fretted = newTrackForm('fretted');
+    expect(newTrackProperties(fretted, defaults).display?.notation).toBe('both');
+    expect(newTrackProperties({ ...fretted, program: 53 }, defaults).display?.notation).toBe(
+      'standard',
+    );
+    expect(
+      newTrackProperties({ ...fretted, name: 'Lead Vocals' }, defaults).display?.notation,
+    ).toBe('standard');
+    expect(newTrackProperties(newTrackForm('drums'), defaults)).not.toHaveProperty('display');
+    expect(newTrackProperties(newTrackForm('pitched'), defaults)).not.toHaveProperty('display');
   });
 
   it('keeps a typed name across a kind change, and its short name', () => {

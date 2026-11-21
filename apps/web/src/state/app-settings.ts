@@ -1,4 +1,5 @@
 import { HQ_BUDGET_BYTES } from '@reprise/audio';
+import { NotationSchema } from '@reprise/model';
 import { z } from 'zod';
 
 import { BOTTOM_PANEL_HEIGHT } from './bottom-panel-height';
@@ -86,6 +87,18 @@ export const DEFAULT_ZOOM_SETTING = defineSetting({
   schema: z.number().min(ZOOM.min).max(ZOOM.max),
   default: ZOOM.default,
 });
+/** The notation of a fretted track the file does not choose one for (gp3, gp4, a new track). */
+export const DEFAULT_NOTATION_STRINGS_SETTING = defineSetting({
+  key: 'score.defaultNotationStrings',
+  schema: NotationSchema,
+  default: 'tab',
+});
+/** The same for a vocal track. */
+export const DEFAULT_NOTATION_VOCALS_SETTING = defineSetting({
+  key: 'score.defaultNotationVocals',
+  schema: NotationSchema,
+  default: 'tab',
+});
 /**
  * The practice mode's zoom, remembered like the panel width: the distance from the screen is the
  * one thing worth tuning there, and nothing else sets it. The normal zoom is not stored.
@@ -108,6 +121,8 @@ export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
   FOLLOW_PLAYHEAD_SETTING,
   DEFAULT_VIEW_MODE_SETTING,
   DEFAULT_ZOOM_SETTING,
+  DEFAULT_NOTATION_STRINGS_SETTING,
+  DEFAULT_NOTATION_VOCALS_SETTING,
   RIGHT_PANEL_OPEN_SETTING,
   RIGHT_PANEL_WIDTH_SETTING,
   BOTTOM_DOCK_OPEN_SETTING,

@@ -1,6 +1,8 @@
 import { detect, read, write, type Format, type Warning } from '@reprise/formats';
 import type { Score } from '@reprise/model';
 
+import { applyNotationDefaults, type NotationDefaults } from '@/state/notation-defaults';
+
 /** What the library row needs from a score, without the score itself. */
 export interface ScoreSummary {
   title: string;
@@ -62,13 +64,21 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
  * detect, read, write native, summarize and hash, as one pure step. It runs in the parse worker
  * (or inline where there is no `Worker`), so a batch never blocks a frame on a real song.
  */
-export async function parseImport(bytes: Uint8Array, fallbackTitle = ''): Promise<ParseOutcome> {
+export async function parseImport(
+  bytes: Uint8Array,
+  fallbackTitle = '',
+  defaults?: NotationDefaults,
+): Promise<ParseOutcome> {
   try {
     const format = detect(bytes);
     if (format === undefined) {
       return { ok: false, code: 'unknown-format', message: 'Not a Guitar Pro or Reprise file' };
     }
-    const [{ score, warnings }, key] = await Promise.all([read(bytes), sha256Hex(bytes)]);
+    const [result, key] = await Promise.all([read(bytes), sha256Hex(bytes)]);
+    const { warnings } = result;
+    const score = defaults
+      ? applyNotationDefaults(result.score, result.implicitNotation, defaults)
+      : result.score;
     const native = format === 'reprise' ? bytes : (await write(score, 'reprise')).bytes;
     const meta = summarize(score);
     if (meta.title.trim() === '') meta.title = fallbackTitle;
