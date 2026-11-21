@@ -263,6 +263,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Move to the string above | Editor | Editing | ⌥↑ | Alt+Up |
 | Move to the string below | Editor | Editing | ⌥↓ | Alt+Down |
 | Chord name | Editor | Editing | A | A |
+| Name chord from notes | Editor | Editing | — | — |
 | Beat text | Editor | Editing | T | T |
 | Lyrics | Editor | Editing | ⌥L | Alt+L |
 | Remove chord name | Editor | Editing | — | — |

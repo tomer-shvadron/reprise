@@ -170,4 +170,14 @@ describe('the context menus', () => {
       }
     }
   });
+
+  it('list "Name chord from notes" at the top level of the chord and note menus in edit mode', () => {
+    for (const surface of ['score.chord', 'score.note'] as const) {
+      const [target] = TARGETS[surface] ?? [];
+      if (!target) throw new Error(`no target for ${surface}`);
+      const entries = resolveFor(surface, target, 'edit');
+      const top = entries.flatMap((entry) => (entry.kind === 'item' ? [entry.command.id] : []));
+      expect(top).toContain('editor.nameChordFromNotes');
+    }
+  });
 });

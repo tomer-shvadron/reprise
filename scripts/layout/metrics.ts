@@ -7,12 +7,20 @@
  * Reads the fonts from apps/web/public/fonts/bravura and @fontsource-variable/geist, and the
  * SMuFL metadata from ./data.
  *
- *   node scripts/layout/metrics.ts           rewrite both files
- *   node scripts/layout/metrics.ts --check   exit 1 if either is out of date
+ * It also writes the outline tables the SVG image export draws text and glyphs from, so the SVG
+ * needs no font installed:
+ *
+ *   apps/web/src/features/score/image/outlines/bravura.json   the GLYPHS above as SVG path data
+ *   apps/web/src/features/score/image/outlines/geist.json     Latin and Latin Extended, 400, 400 italic and 600
+ *
+ * Both fonts are SIL OFL 1.1, which allows their outlines in documents (see the score README).
+ *
+ *   node scripts/layout/metrics.ts           rewrite every file
+ *   node scripts/layout/metrics.ts --check   exit 1 if any is out of date
  */
 import { readFileSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { argv, exit } from 'node:process';
 
 import { create, type Font } from 'fontkit';
@@ -33,6 +41,11 @@ const GEIST_PACKAGE = join(
 const METRICS_DIR = join(ROOT_DIR, 'packages', 'layout', 'src', 'metrics');
 export const BRAVURA_METRICS = join(METRICS_DIR, 'bravura.json');
 export const GEIST_METRICS = join(METRICS_DIR, 'geist.json');
+const OUTLINES_DIR = join(ROOT_DIR, 'apps', 'web', 'src', 'features', 'score', 'image', 'outlines');
+export const BRAVURA_OUTLINES = join(OUTLINES_DIR, 'bravura.json');
+export const GEIST_OUTLINES = join(OUTLINES_DIR, 'geist.json');
+/** Static Geist faces: the variable files cannot be instanced at weight 600 through fontkit's WOFF2 reader. */
+const GEIST_STATIC = join(ROOT_DIR, 'apps', 'web', 'node_modules', '@fontsource', 'geist');
 
 /** The SMuFL glyphs layout draws or measures. Adding one here and rerunning is all it takes. */
 export const GLYPHS = [
@@ -280,6 +293,206 @@ export function geistMetrics(): Record<string, unknown> {
   };
 }
 
+/** An outline table: font units, y up, origin on the baseline. */
+export interface OutlineGlyph {
+  /** Path data, integer coordinates, relative commands. Empty for a blank glyph such as a space. */
+  d: string;
+  advance: number;
+}
+
+/**
+ * Path data in font units with integer coordinates. Relative commands keep the numbers short, and
+ * each is taken between the rounded absolute points, so rounding never drifts along a contour.
+ */
+export function outlinePath(commands: readonly { command: string; args: number[] }[]): string {
+  let cx = 0;
+  let cy = 0;
+  let startX = 0;
+  let startY = 0;
+  let out = '';
+  const rel = (x: number, y: number): string => {
+    const dx = Math.round(x) - cx;
+    const dy = Math.round(y) - cy;
+    return `${String(dx)} ${String(dy)}`;
+  };
+  const numbers = (text: string) => text.replaceAll(' -', '-');
+  for (const { command, args } of commands) {
+    const [a = 0, b = 0, c = 0, d = 0, e = 0, f = 0] = args;
+    switch (command) {
+      case 'moveTo':
+        out += `m${numbers(rel(a, b))}`;
+        cx = startX = Math.round(a);
+        cy = startY = Math.round(b);
+        break;
+      case 'lineTo':
+        out += `l${numbers(rel(a, b))}`;
+        cx = Math.round(a);
+        cy = Math.round(b);
+        break;
+      case 'quadraticCurveTo':
+        out += `q${numbers(`${rel(a, b)} ${rel(c, d)}`)}`;
+        cx = Math.round(c);
+        cy = Math.round(d);
+        break;
+      case 'bezierCurveTo':
+        out += `c${numbers(`${rel(a, b)} ${rel(c, d)} ${rel(e, f)}`)}`;
+        cx = Math.round(e);
+        cy = Math.round(f);
+        break;
+      case 'closePath':
+        out += 'z';
+        // A closed subpath leaves the current point at its start.
+        cx = startX;
+        cy = startY;
+        break;
+    }
+  }
+  return out;
+}
+
+function outlineOf(glyph: ReturnType<Font['glyphForCodePoint']>, dy = 0): OutlineGlyph {
+  const commands = glyph.path.commands.map(({ command, args }) => ({
+    command,
+    args: args.map((value, i) => (i % 2 === 1 ? value + dy : value)),
+  }));
+  return { d: outlinePath(commands), advance: Math.round(glyph.advanceWidth) };
+}
+
+/** One glyph per line, so a regenerated table diffs by glyph. */
+function outlineText(
+  header: Record<string, unknown>,
+  groups: Record<string, Record<string, OutlineGlyph>>,
+): string {
+  const lines = Object.entries(groups).map(([group, glyphs]) => {
+    const rows = Object.entries(glyphs).map(
+      ([key, glyph]) => `${JSON.stringify(key)}:${JSON.stringify(glyph)}`,
+    );
+    return `${JSON.stringify(group)}:{\n${rows.join(',\n')}\n}`;
+  });
+  return `{\n${JSON.stringify(header).slice(1, -1)},\n${lines.join(',\n')}\n}\n`;
+}
+
+export function bravuraOutlines(): string {
+  const metadata = readJson(join(DATA_DIR, 'bravura_metadata.json'));
+  const names = readJson(join(DATA_DIR, 'glyphnames.json'));
+  const font = openFont(join(BRAVURA_DIR, 'Bravura.otf'));
+  const glyphs: Record<string, OutlineGlyph> = {};
+  for (const name of GLYPHS) {
+    const entry = names[name];
+    const codepointText = isRecord(entry) ? entry['codepoint'] : undefined;
+    if (typeof codepointText !== 'string') throw new Error(`${name} is not a SMuFL glyph`);
+    const codepoint = Number.parseInt(codepointText.slice(2), 16);
+    glyphs[String(codepoint)] = outlineOf(font.glyphForCodePoint(codepoint));
+  }
+  const sorted = Object.fromEntries(
+    Object.entries(glyphs).sort(([a], [b]) => Number(a) - Number(b)),
+  );
+  return outlineText(
+    {
+      ...NOTICES.bravura,
+      font: 'Bravura',
+      version: metadata['fontVersion'],
+      unitsPerEm: font.unitsPerEm,
+    },
+    { glyphs: sorted },
+  );
+}
+
+/**
+ * The faces the export draws text in. Italic is the painter's synthetic oblique of the upright
+ * face (a skew in the SVG), so there is no italic table.
+ */
+const GEIST_STYLES = [
+  { key: '400', file: '400-normal' },
+  { key: '600', file: '600-normal' },
+] as const;
+
+/** Geist has no sharp, flat or natural sign; the chord names `F♯m7` take them from Bravura. */
+const ACCIDENTAL_SIGNS = [0x266f, 0x266d, 0x266e] as const;
+
+/** Pairs of printable ASCII: what a title or byline kerns, which print does and layout does not. */
+const KERN_CHARACTERS = Array.from({ length: 0x7f - 0x20 }, (_, i) =>
+  String.fromCodePoint(0x20 + i),
+);
+
+function kerning(font: Font): Record<string, number> {
+  const pairs: Record<string, number> = {};
+  for (const left of KERN_CHARACTERS) {
+    for (const right of KERN_CHARACTERS) {
+      const run = font.layout(left + right, ['kern']);
+      // A ligature (ff, fi) is one glyph, not a kern pair; the export draws characters one by one.
+      if (run.glyphs.length !== 2) continue;
+      const [first] = run.positions;
+      const natural = font.glyphForCodePoint(left.codePointAt(0) ?? 0).advanceWidth;
+      const delta = Math.round((first?.xAdvance ?? natural) - natural);
+      if (delta !== 0) pairs[left + right] = delta;
+    }
+  }
+  return pairs;
+}
+
+const NOTICES = {
+  bravura: {
+    copyright: 'Copyright (c) 2015, Steinberg Media Technologies GmbH (http://www.steinberg.net/)',
+    license: 'SIL Open Font License 1.1 (OFL-1.1), see apps/web/public/fonts/bravura/OFL.txt',
+    note: 'Outlines of the Bravura glyphs the score draws, converted to SVG path data. The Reserved Font Name "Bravura" belongs to the font; this table is data for drawing, not a font.',
+  },
+  geist: {
+    copyright: 'Copyright 2024 The Geist Project Authors (https://github.com/vercel/geist-font)',
+    license: 'SIL Open Font License 1.1 (OFL-1.1), see node_modules/@fontsource/geist/LICENSE',
+    note: 'Outlines of Latin and Latin Extended Geist, converted to SVG path data, with the sharp, flat and natural signs from Bravura (OFL-1.1, Copyright (c) 2015, Steinberg Media Technologies GmbH). This table is data for drawing, not a font.',
+  },
+} as const;
+
+export function geistOutlines(): string {
+  const groups: Record<string, Record<string, OutlineGlyph>> = {};
+  const kern: Record<string, Record<string, number>> = {};
+  const bravura = openFont(join(BRAVURA_DIR, 'Bravura.otf'));
+  let unitsPerEm = 0;
+  let ascent = 0;
+  let descent = 0;
+  for (const { key, file } of GEIST_STYLES) {
+    const glyphs = new Map<number, OutlineGlyph>();
+    for (const subset of ['latin', 'latin-ext']) {
+      const font = openFont(join(GEIST_STATIC, 'files', `geist-${subset}-${file}.woff2`));
+      if (subset === 'latin') {
+        unitsPerEm = font.unitsPerEm;
+        ascent = font.ascent;
+        descent = -font.descent;
+        kern[key] = kerning(font);
+      }
+      for (const codepoint of font.characterSet) {
+        // Controls have no shape and no business in a score's text.
+        if (codepoint < 0x20 || (codepoint >= 0x7f && codepoint < 0xa0)) continue;
+        if (glyphs.has(codepoint)) continue;
+        glyphs.set(codepoint, outlineOf(font.glyphForCodePoint(codepoint)));
+      }
+    }
+    for (const codepoint of ACCIDENTAL_SIGNS) {
+      if (glyphs.has(codepoint)) continue;
+      const glyph = bravura.glyphForCodePoint(codepoint);
+      if (glyph.id === 0) throw new Error(`Bravura has no glyph for U+${codepoint.toString(16)}`);
+      // Bravura centres a sign on the staff line; text sets it on the baseline.
+      glyphs.set(codepoint, outlineOf(glyph, -glyph.bbox.minY));
+    }
+    groups[key] = Object.fromEntries(
+      [...glyphs].sort(([a], [b]) => a - b).map(([codepoint, glyph]) => [String(codepoint), glyph]),
+    );
+  }
+  return outlineText(
+    {
+      ...NOTICES.geist,
+      font: 'Geist',
+      package: `@fontsource/geist@${packageVersion(GEIST_STATIC)}`,
+      unitsPerEm,
+      ascent,
+      descent,
+      kern,
+    },
+    groups,
+  );
+}
+
 export async function render(path: string, value: unknown): Promise<string> {
   const options = await resolveConfig(path);
   return format(JSON.stringify(value), { ...options, filepath: path });
@@ -289,6 +502,8 @@ export async function generate(): Promise<{ path: string; text: string }[]> {
   return [
     { path: BRAVURA_METRICS, text: await render(BRAVURA_METRICS, bravuraMetrics()) },
     { path: GEIST_METRICS, text: await render(GEIST_METRICS, geistMetrics()) },
+    { path: BRAVURA_OUTLINES, text: bravuraOutlines() },
+    { path: GEIST_OUTLINES, text: geistOutlines() },
   ];
 }
 
@@ -307,7 +522,10 @@ async function main(): Promise<void> {
     console.log('Layout font metrics are up to date.');
     return;
   }
-  for (const { path, text } of outputs) await writeFile(path, text);
+  for (const { path, text } of outputs) {
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, text);
+  }
   console.log(`Wrote ${outputs.map(({ path }) => path.slice(ROOT_DIR.length + 1)).join(', ')}.`);
 }
 
