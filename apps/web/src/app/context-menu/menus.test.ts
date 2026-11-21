@@ -20,7 +20,7 @@ const menus = createAppMenus(registry);
  * The surfaces nobody has contributed to yet, each of which a later PR of #337 removes from here
  * when it adds its items: the test below then holds the new surface to the same rules.
  */
-const NOT_YET: readonly MenuSurface[] = ['status.segment', 'library.song', 'sounds.pack'];
+const NOT_YET: readonly MenuSurface[] = ['library.song', 'sounds.pack'];
 
 const bar = song.masterBars[1];
 const beat = song.tracks[0]?.bars[1]?.voices[0]?.beats[1];
@@ -38,6 +38,9 @@ const TARGETS: Partial<Record<MenuSurface, readonly MenuTarget[]>> = {
   'score.section': [{ kind: 'section', masterBar: bar.id }],
   'score.chord': [{ kind: 'chord', ...found }],
   'score.paper': [{ kind: 'paper' }],
+  'status.segment': (['saved', 'sound', 'library', 'edit', 'notation', 'zoom'] as const).map(
+    (segment) => ({ kind: 'status', segment }),
+  ),
   header: (['crumb', 'mode', 'view', 'search', 'band'] as const).map((element) => ({
     kind: 'header',
     element,
@@ -112,6 +115,8 @@ describe('the context menus', () => {
     (surface, targets) => {
       for (const target of targets) {
         for (const mode of MODES) {
+          // The edit-state segment is only on screen, and only has items, while editing.
+          if (target.kind === 'status' && target.segment === 'edit' && mode === 'play') continue;
           const enabled = enabledItems(resolveFor(surface, target, mode));
           expect(enabled, `${surface} ${JSON.stringify(target)} in ${mode}`).toBeGreaterThan(0);
         }

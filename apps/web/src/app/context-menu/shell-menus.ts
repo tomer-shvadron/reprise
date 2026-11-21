@@ -1,4 +1,4 @@
-import type { HeaderElement } from '@/state/menu-target';
+import type { HeaderElement, StatusSegmentName } from '@/state/menu-target';
 import type { PanelView } from '@/state/ui';
 
 import type { MenuContext, MenuContribution, MenuItemSpec } from './types';
@@ -7,6 +7,12 @@ const onHeader =
   (...elements: HeaderElement[]) =>
   ({ target }: MenuContext) =>
     target.kind === 'header' && elements.includes(target.element);
+
+/** A status bar segment's own menu: the target names the segment. */
+export const onStatus =
+  (...segments: StatusSegmentName[]) =>
+  ({ target }: MenuContext) =>
+    target.kind === 'status' && segments.includes(target.segment);
 
 const onPanel =
   (...views: PanelView[]) =>
@@ -99,6 +105,28 @@ export const shellMenus: readonly MenuContribution[] = [
       { command: 'app.shortcuts', group: 'properties', when: onHeader('search', 'band') },
       { command: 'app.settings', group: 'properties', when: onHeader('band') },
       { command: 'view.toggleTheme', group: 'properties', when: onHeader('band') },
+    ],
+  },
+  {
+    surface: 'status.segment',
+    items: [
+      { command: 'file.save', group: 'edit', when: onStatus('saved') },
+      { command: 'file.saveAs', group: 'edit', when: onStatus('saved') },
+      { command: 'file.export', group: 'export', when: onStatus('saved') },
+      { command: 'sounds.show', group: 'view', when: onStatus('sound') },
+      { command: 'library.show', group: 'view', when: onStatus('library') },
+      // The edit state's items are editing commands, so the segment's menu is edit mode's alone.
+      { command: 'editor.toggleInsertMode', group: 'edit', when: onStatus('edit') },
+      { command: 'editor.editVoice1', group: 'edit', when: onStatus('edit') },
+      { command: 'editor.editVoice2', group: 'edit', when: onStatus('edit') },
+      { command: 'editor.durationLonger', group: 'note', when: onStatus('edit') },
+      { command: 'editor.durationShorter', group: 'note', when: onStatus('edit') },
+      { command: 'editor.toggleDot', group: 'note', when: onStatus('edit') },
+      { command: 'editor.toggleTriplet', group: 'note', when: onStatus('edit') },
+      { command: 'view.zoomIn', group: 'view', when: onStatus('zoom') },
+      { command: 'view.zoomOut', group: 'view', when: onStatus('zoom') },
+      { command: 'view.zoomReset', group: 'view', when: onStatus('zoom') },
+      { command: 'view.toggleViewMode', group: 'view', when: onStatus('zoom') },
     ],
   },
   { surface: 'panel.tab', items: panelItems },

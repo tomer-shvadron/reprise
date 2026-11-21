@@ -1,5 +1,7 @@
 import type { Notation } from '@reprise/model';
 
+import type { RegisteredCommandId } from '@/app/use-command';
+import { onStatus } from '@/app/context-menu/shell-menus';
 import type { MenuContext, MenuContribution, MenuItemSpec } from '@/app/context-menu/types';
 
 import { trackOfTarget } from './menu-target';
@@ -64,9 +66,29 @@ const rowItems: readonly MenuItemSpec[] = [
   propertiesItem,
 ];
 
+const statusNotation = (
+  command: RegisteredCommandId,
+  choice: Notation,
+  label: string,
+): MenuItemSpec => ({
+  command,
+  group: 'view',
+  label,
+  ...notation(choice),
+  when: (at) => onStatus('notation')(at) && notation(choice).when(at),
+});
+
 /** The track list, the mixer's strips and its master strip. Edit mode adds the track management in `editor/menus.ts`. */
 export const trackMenus: readonly MenuContribution[] = [
   { surface: 'track.row', items: rowItems },
+  {
+    surface: 'status.segment',
+    items: [
+      statusNotation('track.notationTab', 'tab', 'Show as tab'),
+      statusNotation('track.notationStandard', 'standard', 'Show as standard notation'),
+      statusNotation('track.notationBoth', 'both', 'Show as tab and standard notation'),
+    ],
+  },
   { surface: 'mixer.strip', items: trackItems },
   {
     surface: 'mixer.master',

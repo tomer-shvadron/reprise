@@ -17,7 +17,7 @@ export function SavedSegment() {
   const text = savedLabel(state);
   if (text === undefined) return null;
   return (
-    <StatusSegment command="file.save" label="Save the song">
+    <StatusSegment command="file.save" label="Save the song" segment="saved" menuLabel="Saved">
       {text}
     </StatusSegment>
   );
@@ -42,7 +42,13 @@ export function LibrarySegment() {
   if (text === undefined) return null;
   // The library is also the header's crumb, so a narrow window drops this one first.
   return (
-    <StatusSegment command="library.show" label="Show the library" className="@max-[60rem]:hidden">
+    <StatusSegment
+      command="library.show"
+      label="Show the library"
+      segment="library"
+      menuLabel="Library"
+      className="@max-[60rem]:hidden"
+    >
       {text}
     </StatusSegment>
   );
