@@ -20,7 +20,11 @@ const CATEGORIES: Record<string, string> = {
   sounds: 'Sounds',
 };
 
-const categoryOf = (id: string) => CATEGORIES[id.split('.')[0] ?? ''] ?? 'Other';
+/** The position of a category in the listing order. */
+export const categoryRank = (category: string): number =>
+  Object.values(CATEGORIES).indexOf(category);
+
+export const categoryOf = (id: string) => CATEGORIES[id.split('.')[0] ?? ''] ?? 'Other';
 const cell = (text: string) => text.replaceAll('|', '\\|');
 
 /** One line of the reference: every command of a title, with the keys each platform prints. */
@@ -116,3 +120,20 @@ export function shortcutTable(
     ...lines,
   ].join('\n');
 }
+
+/** Spelled-out names a user types for the symbols the Mac prints. */
+const ALIASES: readonly (readonly [string, string])[] = [
+  ['command', 'cmd command'],
+  ['option', 'option opt alt'],
+];
+
+/** Lower-cased search text with the spoken names of Mac symbols widened ("command" also finds "cmd"). */
+export const searchText = (text: string): string =>
+  ALIASES.reduce((all, [name, aliases]) => all.replaceAll(name, aliases), text.toLowerCase());
+
+/** Every word of a filter must appear: "cmd+s" or "shift p" narrow down, not just one phrase. */
+export const filterWords = (filter: string): string[] =>
+  filter
+    .toLowerCase()
+    .split(/[\s+]+/)
+    .filter(Boolean);

@@ -31,7 +31,8 @@ const beatsOf = (score: Score, barIndex = 0, voiceIndex = 0, track = 0): Beat[] 
 
 const firstNote = (score: Score): Note | undefined => beatsOf(score)[0]?.notes[0];
 
-const codes = (result: GpifReadResult): string[] => result.warnings.map((warning) => warning.code);
+const codes = (result: Pick<GpifReadResult, 'warnings'>): string[] =>
+  result.warnings.map((warning) => warning.code);
 
 const QUARTERS = [rhythm('0', 'Quarter')];
 
@@ -442,7 +443,7 @@ describe('beats and rhythms', () => {
       [1, false],
       [1, true],
     ]);
-    expect(codes({ score, warnings })).toContain('long-note-tied');
+    expect(codes({ warnings })).toContain('long-note-tied');
   });
 
   it('reads beat effects, text and the whammy bar', () => {
@@ -582,7 +583,7 @@ describe('master bars', () => {
     );
     expect(score.masterBars.map((m) => m.alternateEndings)).toEqual([[], [1], [1], [1], [2], []]);
     expect(score.masterBars[3]?.repeat).toEqual({ start: false, endCount: 2 });
-    expect(codes({ score, warnings })).not.toContain('alternate-ending-outside-repeat');
+    expect(codes({ warnings })).not.toContain('alternate-ending-outside-repeat');
   });
 
   it('reads tempo units and labels and defaults a missing first tempo', () => {
@@ -683,6 +684,99 @@ describe('tracks', () => {
     expect(pitched?.bars[0]?.voices[0].beats[0]?.notes[0]).toMatchObject({ string: 0, fret: 55 });
   });
 
+  describe('a fretted track on a non-fretted program with no Transpose', () => {
+    const noTranspose = (track: string): string =>
+      track.replace(/<Transpose>.*<\/Transpose>\n/, '');
+    const tab = new Uint8Array([0, 0, 0, 1, 0, 0, 0, 0, 1, 3]);
+    const xml = (track: string): string =>
+      oneBar([beat('0', '0', '0')], [note('0', 2, 5)], QUARTERS, { tracks: [track] });
+
+    it('is written at sounding pitch, as GP6 PartSounding gives', () => {
+      const piano = read(xml(noTranspose(guitarTrack('0', { program: 0 }))), tab);
+      expect(piano.score.tracks[0]).toMatchObject({
+        kind: 'fretted',
+        display: { octaveShift: 0 },
+      });
+    });
+
+    it('leaves a guitar at the fretted default of 1', () => {
+      const guitar = read(xml(noTranspose(guitarTrack('0', { program: 25 }))), tab);
+      expect(guitar.score.tracks[0]).toMatchObject({
+        kind: 'fretted',
+        display: { octaveShift: 1 },
+      });
+    });
+  });
+
+  it('reads a vocal track with string-less pitched notes as pitched, keeping them', () => {
+    const track = guitarTrack('0', { program: 53 });
+    const stringless = `<Note id="0"><Properties>${property('Midi', '<Number>60</Number>')}</Properties></Note>`;
+    const xml = oneBar([beat('0', '0', '0')], [stringless], QUARTERS, { tracks: [track] });
+    const { score, warnings } = read(xml);
+    expect(score.tracks[0]?.kind).toBe('pitched');
+    expect(codes({ warnings })).toContain('off-fretboard');
+  });
+
+  describe('a vocal track with no notation instruction', () => {
+    const noTranspose = (track: string): string =>
+      track.replace(/<Transpose>.*<\/Transpose>\n/, '');
+    const voice53 = noTranspose(guitarTrack('0', { program: 53 }));
+    const xml = (track: string): string =>
+      oneBar([beat('0', '0', '0')], [note('0', 2, 5)], QUARTERS, { tracks: [track] });
+    const standard = new Uint8Array([0, 0, 0, 1, 0, 0, 0, 0, 1, 1]);
+    const both = new Uint8Array([0, 0, 0, 1, 0, 0, 0, 0, 1, 3]);
+
+    it('stays fretted, unshifted and implicit with no part configuration', () => {
+      const { score, implicitNotation } = read(xml(voice53));
+      expect(score.tracks[0]).toMatchObject({
+        kind: 'fretted',
+        display: { notation: 'tab', octaveShift: 0 },
+      });
+      expect(implicitNotation).toEqual(score.tracks.map((track) => track.id));
+    });
+
+    it('is recognised by its name too', () => {
+      const named = noTranspose(guitarTrack('0', { program: 0 })).replace(
+        'Guitar 0',
+        'Lead Vocals',
+      );
+      const { score, implicitNotation } = read(xml(named));
+      expect(score.tracks[0]).toMatchObject({ kind: 'fretted', display: { octaveShift: 0 } });
+      expect(implicitNotation).toHaveLength(1);
+    });
+
+    it('follows a part configuration that says standard, and is then explicit', () => {
+      const { score, implicitNotation } = read(xml(voice53), standard);
+      expect(score.tracks[0]).toMatchObject({ kind: 'pitched', display: { notation: 'standard' } });
+      expect(implicitNotation).toEqual([]);
+    });
+
+    it('follows a part configuration that says both, and is then explicit', () => {
+      const { score, implicitNotation } = read(xml(voice53), both);
+      expect(score.tracks[0]).toMatchObject({ kind: 'fretted', display: { notation: 'both' } });
+      expect(implicitNotation).toEqual([]);
+    });
+
+    it('makes every track implicit when the part configuration has the wrong count', () => {
+      const twoEntries = new Uint8Array([0, 0, 0, 1, 0, 0, 0, 0, 2, 3, 3]);
+      const { score, implicitNotation, warnings } = read(xml(voice53), twoEntries);
+      expect(codes({ warnings })).toContain('invalid-value');
+      expect(implicitNotation).toEqual(score.tracks.map((track) => track.id));
+    });
+
+    it('stays pitched when it has no tuning', () => {
+      const bare = voice53.replace(/<Property name="Tuning">[\s\S]*?<\/Property>/, '');
+      const { score } = read(xml(bare));
+      expect(score.tracks[0]?.kind).toBe('pitched');
+    });
+
+    it('lists a keyboard track with no part configuration as implicit but pitched', () => {
+      const { score, implicitNotation } = read(xml(guitarTrack('0', { program: 0 })));
+      expect(score.tracks[0]?.kind).toBe('pitched');
+      expect(implicitNotation).toHaveLength(1);
+    });
+  });
+
   it('keeps a GP6 drum note without an articulation and reports one outside GM', () => {
     const gp6Drums = guitarTrack('0', {
       extra: '<GeneralMidi table="Percussion"><Program>0</Program></GeneralMidi>',
@@ -722,7 +816,7 @@ describe('tracks', () => {
       }),
     );
     expect(score.tracks[0]?.bars[0]?.voices.map((v) => v.beats.length)).toEqual([1, 1, 0, 0]);
-    expect(codes({ score, warnings })).toContain('multiple-staves');
+    expect(codes({ warnings })).toContain('multiple-staves');
   });
 
   describe('a second staff with its own tuning', () => {
@@ -896,7 +990,7 @@ describe('tracks', () => {
       [1, 1, 1, 0],
     ]);
     // The tie in bar 2 continues staff 2's note in bar 1, which only holds in a stable slot.
-    expect(codes({ score, warnings })).not.toContain('tie-target');
+    expect(codes({ warnings })).not.toContain('tie-target');
   });
 
   it('drops a second-staff voice once, counting its bars, when staff 1 uses every slot', () => {
@@ -1146,7 +1240,7 @@ describe('tracks', () => {
     expect(second?.notes[0]?.fret).toBe(5);
     expect(second?.id).not.toBe(first?.id);
     expect(second?.notes[0]?.id).not.toBe(first?.notes[0]?.id);
-    expect(codes({ score, warnings })).toContain('simile-expanded');
+    expect(codes({ warnings })).toContain('simile-expanded');
   });
 });
 

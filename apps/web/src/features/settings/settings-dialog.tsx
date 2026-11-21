@@ -45,6 +45,13 @@ export function SettingsDialog({ sections }: { sections: readonly SettingsSectio
         showCloseButton
         className="h-[min(80vh,40rem)] gap-0 overflow-hidden p-0 sm:max-w-3xl"
         aria-describedby="settings-description"
+        onEscapeKeyDown={(event) => {
+          // Radix listens for Escape in the capture phase, before a React handler can stop it; a
+          // local Escape (the key recorder, its swap prompt) cancels only itself.
+          if (event.target instanceof Element && event.target.closest('[data-escape-local]')) {
+            event.preventDefault();
+          }
+        }}
         onOpenAutoFocus={() => {
           // Fires before Radix moves focus in, so this is still the opener.
           returnTo.current = globalThis.document.activeElement;

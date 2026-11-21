@@ -3,3 +3,4 @@ export { SettingsDialog } from './settings-dialog';
 export { appearanceSection } from './sections/appearance';
 export { playbackSection } from './sections/playback';
 export { scoreSection } from './sections/score';
+export { keyboardSection } from './sections/keyboard/keyboard-section';
