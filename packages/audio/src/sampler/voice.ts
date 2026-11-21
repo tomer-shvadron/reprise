@@ -136,6 +136,8 @@ export interface VoiceStart {
    * string of a doubled course. It is not automation, so a bend's detune curve stacks on it.
    */
   tuneCents?: number;
+  /** The second string of a doubled course: the first thing lost at the polyphony cap, before any fundamental. */
+  partner?: boolean;
   /** A fixed level trim in dB, folded into the voice's base level, so gain automation keeps it. */
   trimDb?: number;
 }
@@ -175,6 +177,8 @@ export class Voice {
   readonly oneShot: boolean;
   /** A release region's voice: decoration, the first thing lost at the polyphony cap. */
   readonly tail: boolean;
+  /** A course's second string: stolen before a fundamental, since losing the fundamental leaves a wrong note. */
+  readonly partner: boolean;
   readonly instrument: RegionMap | undefined;
   letRing = false;
 
@@ -220,6 +224,7 @@ export class Voice {
     this.offBy = region.offBy ?? region.exclusiveClass ?? 0;
     this.oneShot = region.oneShot ?? false;
     this.tail = start.tail ?? false;
+    this.partner = start.partner ?? false;
     this.instrument = start.instrument;
     this.#region = region;
     this.#delay = Math.max(envelope.delay ?? 0, 0);

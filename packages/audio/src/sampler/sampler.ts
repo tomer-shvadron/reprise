@@ -136,6 +136,7 @@ type Partner = { tuneCents: number; trimDb: number };
 
 /** One region's sample as it starts: the partner string's carry their own key, detune and trim. */
 interface Layer extends Partial<Partner> {
+  partner?: boolean;
   region: Region;
   buffer: AudioBuffer;
   key: number;
@@ -395,7 +396,7 @@ export class Sampler {
       for (const region of resolved) {
         const buffer = source.peekBuffer(region.sample);
         if (buffer) {
-          layers.push({ region, buffer, key, ...partner });
+          layers.push({ region, buffer, key, ...partner, ...(partner && { partner: true }) });
           continue;
         }
         this.#misses += 1;
@@ -431,7 +432,7 @@ export class Sampler {
     }
 
     const voices: Voice[] = [];
-    for (const { region, buffer, key, tuneCents, trimDb } of layers) {
+    for (const { region, buffer, key, tuneCents, trimDb, partner } of layers) {
       this.pool.reserve(request.when);
       const voice = new Voice(
         this.context,
@@ -446,6 +447,7 @@ export class Sampler {
           string,
           preview: request.preview ?? false,
           instrument: regions,
+          ...(partner && { partner }),
           ...(tuneCents !== undefined && { tuneCents }),
           ...(trimDb !== undefined && { trimDb }),
           ...(request.offset !== undefined && { offset: request.offset }),

@@ -2,8 +2,8 @@ import type { Voice } from './voice';
 
 /**
  * Bounds the voices sounding at once, as a hard cap. A new note over the limit steals one voice:
- * released voices and release-region tails first, then ones already started (the quietest at that moment, then the
- * oldest), and only then one starting with or after the new note, the quietest of those.
+ * released voices and release-region tails first, then ones already started (a course's second
+ * string before any fundamental, then the quietest at that moment, then the oldest), and only then one starting with or after the new note, the quietest of those.
  */
 export class VoicePool {
   readonly polyphony: number;
@@ -64,6 +64,9 @@ export class VoicePool {
       const rank = [
         voice.tail || (voice.released && voice.releaseAt <= time) ? 0 : 1,
         voice.startTime < time ? 0 : 1,
+        // A partner goes before its fundamental whatever their levels: its region can sit at a
+        // louder zone, and a stolen fundamental leaves the note sounding only an octave up.
+        voice.partner ? 0 : 1,
         voice.stealLevelAt(time),
         voice.startTime,
       ];

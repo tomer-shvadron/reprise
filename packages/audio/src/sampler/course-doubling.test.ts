@@ -21,7 +21,13 @@ const beat: Beat = firstBeat;
 /** A 12-string: octave strings on courses 6 to 3, unison on 2 and 1. */
 const twelve: Track = { ...plain, courses: [12, 12, 12, 12, 0, 0] };
 
-function event(track: Track, played: Note, when: number, duration: number): NoteEvent {
+function event(
+  track: Track,
+  played: Note,
+  when: number,
+  duration: number,
+  next?: NoteEvent['nextOnString'],
+): NoteEvent {
   return {
     track,
     trackIndex: 0,
@@ -37,7 +43,7 @@ function event(track: Track, played: Note, when: number, duration: number): Note
     masterBarIndex: 0,
     passIndex: 0,
     barEnd: when + duration,
-    nextOnString: undefined,
+    nextOnString: next,
     continuations: [],
   };
 }
@@ -122,15 +128,48 @@ describe('doubled courses', () => {
     expect(toneLevel(data, hz(twelve, bent, 12), 0.2, 0.7)).toBeLessThan(0.02);
   });
 
-  it('plays a ghost note and a dead note on one string', async () => {
-    const { context, sink } = setup(twelve, 1);
-    const ghost = note(6, 0, { ghost: true });
+  it('plays a ghost note and a dead note on one voice, and a plain note on two', () => {
+    const voices = (played: Note): number => {
+      const { sampler, sink } = setup(twelve, 1);
+      sink.noteOn(event(twelve, played, 0, 0.8));
+      return sampler.pool.active(0.01).length;
+    };
 
-    sink.noteOn(event(twelve, ghost, 0, 0.8));
+    expect(voices(note(6, 0))).toBe(2);
+    expect(voices(note(6, 0, { ghost: true }))).toBe(1);
+    expect(voices(note(6, 0, { dead: true }))).toBe(1);
+  });
+
+  it('carries both strings through a legato slide without striking either again', async () => {
+    const { context, sampler, sink } = setup(twelve, 1.2);
+    const first = note(6, 0, { slide: ['legato'] });
+    const second = note(6, 5);
+
+    sink.noteOn(event(twelve, first, 0, 0.4, { note: second, beat, when: 0.4 }));
+    sink.noteOn(event(twelve, second, 0.4, 0.5));
+    // Two voices, not four: the slide's handle is the same pair into the second note.
+    expect(sampler.pool.active(0.6).length).toBe(2);
     const data = (await context.startRendering()).getChannelData(0);
 
-    expect(toneLevel(data, hz(twelve, ghost), 0.2, 0.7)).toBeGreaterThan(0.01);
-    expect(toneLevel(data, hz(twelve, ghost, 12), 0.2, 0.7)).toBeLessThan(0.001);
+    expect(toneLevel(data, hz(twelve, second), 0.6, 0.85)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, hz(twelve, second, 12), 0.6, 0.85)).toBeGreaterThan(0.05);
+    expect(toneLevel(data, hz(twelve, first), 0.6, 0.85)).toBeLessThan(0.02);
+  });
+
+  it('keeps a let-ring note and its partner ringing until the next note on the string', async () => {
+    const { context, sink } = setup(twelve, 1.5);
+    const ring = note(6, 0, { letRing: true });
+    const next = note(6, 7);
+
+    // The bar runs past the note, so the let-ring holds both strings until the next strike.
+    sink.noteOn({ ...event(twelve, ring, 0, 0.2), barEnd: 1.5 });
+    sink.noteOn(event(twelve, next, 0.8, 0.4));
+    const data = (await context.startRendering()).getChannelData(0);
+
+    expect(toneLevel(data, hz(twelve, ring), 0.4, 0.7)).toBeGreaterThan(0.1);
+    expect(toneLevel(data, hz(twelve, ring, 12), 0.4, 0.7)).toBeGreaterThan(0.05);
+    // Gone after the next strike (what is left is the master bus's harmonics of the new note).
+    expect(toneLevel(data, hz(twelve, ring, 12), 1, 1.3)).toBeLessThan(0.01);
   });
 
   it('doubles an editor preview', async () => {
@@ -142,5 +181,29 @@ describe('doubled courses', () => {
 
     expect(toneLevel(data, hz(twelve, low), 0.1, 0.5)).toBeGreaterThan(0.1);
     expect(toneLevel(data, hz(twelve, low, 12), 0.1, 0.5)).toBeGreaterThan(0.05);
+  });
+});
+
+describe('a full pool', () => {
+  it('steals a course partner before any fundamental', () => {
+    const context = offline(1);
+    // Room for two doubled strikes, so the third note must steal two voices.
+    const sampler = new Sampler(context, { polyphony: 4 });
+    sampler.addTrack(twelve, sineInstrument());
+    const sink = createSamplerSink(sampler);
+    const strings = [note(6, 0), note(5, 0), note(4, 0)];
+
+    for (const [index, played] of strings.entries()) {
+      sink.noteOn(event(twelve, played, index * 0.1, 0.8));
+    }
+
+    const voices = sampler.pool.active(0.25);
+    expect(voices).toHaveLength(4);
+    // The third strike's own pair stays, and of the first two only the fundamentals are left.
+    expect(voices.filter((voice) => !voice.partner).map((voice) => voice.string)).toEqual([
+      6, 5, 4,
+    ]);
+    expect(voices.filter((voice) => voice.partner)).toHaveLength(1);
+    expect(sampler.pool.stolen).toBe(2);
   });
 });
