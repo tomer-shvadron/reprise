@@ -18,7 +18,8 @@ export function pillEntry(root: Element): HTMLElement | undefined {
 
 function shownPill(): Element | undefined {
   const root = globalThis.document.querySelector(PILL_SELECTOR);
-  return root && !root.hasAttribute('hidden') ? root : undefined;
+  // Placed: a pill whose selection is scrolled out of view is not focusable.
+  return root?.matches('[data-placed]:not([hidden])') ? root : undefined;
 }
 
 /**

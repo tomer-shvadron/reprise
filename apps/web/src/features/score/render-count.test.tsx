@@ -1,6 +1,6 @@
 import { act, fireEvent, render } from '@testing-library/react';
 import { createRef } from 'react';
-import { LayoutCache, layout, PAGE_SIZES, type LayoutOptions } from '@reprise/layout';
+import { LayoutCache, anchorBox, layout, PAGE_SIZES, type LayoutOptions } from '@reprise/layout';
 import { applyCommand, setBeatDuration, setNote } from '@reprise/model';
 import { beatOf } from '@reprise/model/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -116,6 +116,12 @@ describe('re-rendering after an edit', () => {
   });
 });
 
+function layoutBar(result: ReturnType<typeof layout>) {
+  const anchor = result.anchors.find((each) => each.kind === 'bar' && each.track === undefined);
+  if (!anchor) throw new Error('no bar anchor');
+  return { anchor, box: anchorBox(result, anchor) };
+}
+
 describe('a child that follows the window', () => {
   it('renders neither the child nor a system again for a scroll, which it hears of at the scroll end', () => {
     const result = layout(smallScore(), paged);
@@ -143,6 +149,15 @@ describe('a child that follows the window', () => {
     for (const top of [4, 8, 12, 16]) {
       region.scrollTop = top;
       fireEvent.scroll(region);
+    }
+    expect(renders).toBe(0);
+    expect(drawn).not.toHaveBeenCalled();
+    expect(heard).not.toHaveBeenCalled();
+
+    // Playhead frames write styles and render nothing.
+    const bar = layoutBar(result);
+    for (let frame = 0; frame < 5; frame += 1) {
+      handle.current?.setPlayhead({ x: bar.box.x + frame * 3, bar: bar.anchor, box: bar.box });
     }
     expect(renders).toBe(0);
     expect(drawn).not.toHaveBeenCalled();

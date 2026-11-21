@@ -124,17 +124,19 @@ export function SelectionPill({ view, layout, zoom, dragging }: SelectionPillPro
     entry,
     (state) => state.word !== undefined || state.pending !== undefined,
   );
+  // What the `when`s of the menu items read, so Focus drops out in practice mode by itself.
+  const practising = useStore(services.ui, (state) => state.practiceMode.on);
   const menuOpen = useStore(contextMenu, (state) => state.open);
   const menuRequest = useStore(contextMenu, (state) => state.request);
   const root = useRef<HTMLDivElement>(null);
   /** The request of the menu this pill opened, so a menu opened elsewhere can hide it. */
-  const [own, setOwn] = useState<MenuRequest>();
+  const [own, setOwn] = useState<{ request: MenuRequest; via: 'more' | 'context' }>();
   const size = useRef({ width: 0, height: 0 });
   const [current, setCurrent] = useState<string>();
   const returnTo = useRef<Element | null>(null);
   const focusInside = useRef(false);
 
-  const ownMenu = menuOpen && menuRequest === own;
+  const ownMenu = menuOpen && menuRequest === own?.request;
   const foreignMenu = menuOpen && !ownMenu;
   const hidden = !score || !bars || isEditing || running || dragging || foreignMenu || typing;
 
@@ -231,17 +233,17 @@ export function SelectionPill({ view, layout, zoom, dragging }: SelectionPillPro
   const pressedOf = (item: ResolvedPillItem): boolean | undefined =>
     item.spec.key === 'loop' ? loopPressed(loop, bars) : undefined;
 
-  const request = () => {
+  const request = (via: 'more' | 'context') => {
     const handle = view.current;
     if (!handle) return undefined;
     const made = scoreKeyboardRequest(services, layout, (rect) => handle.clientRect(rect), 'play');
-    setOwn(made);
+    if (made) setOwn({ request: made, via });
     return made;
   };
-  const menu = useContextMenu(() => request());
+  const menu = useContextMenu(() => request('context'));
 
   const openMenu = (event: MouseEvent<HTMLButtonElement>) => {
-    const made = request();
+    const made = request('more');
     if (!made || !contextMenu.getState().hasItems(made)) return;
     const rect = event.currentTarget.getBoundingClientRect();
     // A key press on the button is a keyboard open: focus comes back to it, not to the score.
@@ -285,7 +287,6 @@ export function SelectionPill({ view, layout, zoom, dragging }: SelectionPillPro
     buttons[to]?.focus();
   };
 
-  if (isEditing) return null;
   const label = score && bars ? barsLabel(score, bars) : 'Selection';
 
   return (
@@ -296,6 +297,7 @@ export function SelectionPill({ view, layout, zoom, dragging }: SelectionPillPro
       aria-label={label}
       className="score-pill"
       data-selection-pill=""
+      data-practice={practising || undefined}
       hidden={hidden}
       onPointerDown={stop}
       onPointerMove={stop}
@@ -306,7 +308,12 @@ export function SelectionPill({ view, layout, zoom, dragging }: SelectionPillPro
       onFocus={(event) => {
         focusInside.current = true;
         const related = event.relatedTarget;
-        if (related instanceof Element && !event.currentTarget.contains(related)) {
+        // A closed menu's item is no place to go back to.
+        if (
+          related instanceof Element &&
+          !event.currentTarget.contains(related) &&
+          !related.closest('[role="menu"]')
+        ) {
           returnTo.current = related;
         }
         if (event.target instanceof HTMLElement) {
@@ -338,7 +345,7 @@ export function SelectionPill({ view, layout, zoom, dragging }: SelectionPillPro
         className="rounded-full"
         aria-label="More actions"
         aria-haspopup="menu"
-        aria-expanded={ownMenu}
+        aria-expanded={ownMenu && own?.via === 'more'}
         data-pill-item={MORE_KEY}
         tabIndex={stopKey === MORE_KEY ? 0 : -1}
         onMouseDown={keepFocus}

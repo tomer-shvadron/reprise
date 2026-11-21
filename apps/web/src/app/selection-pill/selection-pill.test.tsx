@@ -4,11 +4,13 @@ import type { Score } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Profiler } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { stubViewport } from '@/features/score/test/viewport-stub';
 import { mirrorAudio } from '@/test/mirror-audio';
 import { renderWithServices } from '@/test/render';
+import { positionEventAt } from '@/test/position';
 import { createTestServices } from '@/test/services';
 
 import { createAppMenus } from '../app-menus';
@@ -33,17 +35,19 @@ function song(): Score {
   return builder.build();
 }
 
-async function setup() {
+async function setup(options: { editing?: boolean; onRender?: () => void } = {}) {
   stubViewport(1280, 800);
   const services = createTestServices();
   mirrorAudio(services);
   const registry = createAppRegistry(services, 'other');
   const menus = createAppMenus(registry);
+  // The score opens in edit mode, as File > New Song does: the pill mounts while editing.
+  if (options.editing) services.editing.setState({ editing: true });
   renderWithServices(
-    <>
+    <Profiler id="pane" onRender={() => options.onRender?.()}>
       <ScorePane hint={null} />
       <ContextMenuHost registry={registry} menus={menus} keyboard="other" />
-    </>,
+    </Profiler>,
     services,
   );
   await act(async () => {
@@ -315,6 +319,121 @@ describe('the selection pill over a bar range', () => {
     });
     expect(screen.queryByRole('button', { name: 'Focus on loop' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Loop these bars' })).not.toBeNull();
+  });
+
+  it('is placed again by zoom and by a scroll end when it first mounted in edit mode', async () => {
+    const { services, select } = await setup({ editing: true });
+    act(() => {
+      services.editing.setState({ editing: false });
+    });
+    select(1, 3);
+    const root = () => {
+      const found = document.querySelector<HTMLElement>('[data-selection-pill]');
+      if (!found) throw new Error('no pill');
+      return found;
+    };
+    const before = root().style.transform;
+    expect(before).not.toBe('');
+    act(() => {
+      services.ui.getState().setZoom(2);
+    });
+    expect(root().style.transform).not.toBe(before);
+    // A scroll end re-places it: with its selection scrolled away, it is no longer placed.
+    delete root().dataset['placed'];
+    act(() => {
+      region().dispatchEvent(new Event('scrollend'));
+    });
+    expect(root()).toHaveAttribute('data-placed');
+  });
+
+  it('stays the same mounted root across edit mode, so what observes it keeps tracking it', async () => {
+    const { services, select } = await setup();
+    select(1, 3);
+    const first = document.querySelector('[data-selection-pill]');
+    act(() => {
+      services.editing.setState({ editing: true });
+    });
+    expect(first?.hasAttribute('hidden')).toBe(true);
+    act(() => {
+      services.editing.setState({ editing: false });
+    });
+    expect(document.querySelector('[data-selection-pill]')).toBe(first);
+    expect(first?.hasAttribute('hidden')).toBe(false);
+  });
+
+  it('leaves focus on the score when Mod+E enters edit mode from inside it', async () => {
+    const { services, registry, select } = await setup();
+    const off = installShortcutDispatcher(window, registry, 'other');
+    select(1, 3);
+    act(() => {
+      button('Copy bars').focus();
+    });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'e', ctrlKey: true });
+    expect(services.editing.getState().editing).toBe(true);
+    expect(screen.queryByRole('toolbar')).toBeNull();
+    expect(document.activeElement).toBe(region());
+    off();
+  });
+
+  it('is not enabled for Alt+F10 once its selection is scrolled out of view', async () => {
+    const { registry, select } = await setup();
+    select(1, 3);
+    const focus = registry.get('view.focusSelectionPill');
+    expect(focus?.enabled?.()).toBe(true);
+    delete document.querySelector<HTMLElement>('[data-selection-pill]')?.dataset['placed'];
+    expect(focus?.enabled?.()).toBe(false);
+  });
+
+  it('reports ⋯ expanded only for the menu ⋯ opened, and Escape goes back past a menu round trip', async () => {
+    const user = userEvent.setup();
+    const { select } = await setup();
+    select(1, 3);
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    act(() => {
+      outside.focus();
+    });
+    act(() => {
+      button('Loop these bars').focus();
+    });
+    fireEvent.contextMenu(button('Loop these bars'), { clientX: 5, clientY: 5, button: 2 });
+    await screen.findByRole('menu');
+    // The open menu hides the rest of the page from the accessibility tree.
+    expect(screen.getByRole('button', { name: 'More actions', hidden: true })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    await user.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+    // Back from where focus came before the pill, not the closed menu's item.
+    act(() => {
+      button('Loop these bars').focus();
+    });
+    await user.keyboard('{Escape}');
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
+  });
+
+  it('does not render for playback ticks or scroll frames while hidden', async () => {
+    const renders = vi.fn();
+    const { services, score: opened, select } = await setup({ onRender: renders });
+    select(1, 3);
+    act(() => {
+      services.playback.setState({ transport: 'playing' });
+    });
+    renders.mockClear();
+    for (let tick = 0; tick < 5; tick += 1) {
+      act(() => {
+        services.playback.setState({ position: positionEventAt(opened, tick * 100) });
+      });
+    }
+    for (const top of [4, 8, 12]) {
+      region().scrollTop = top;
+      fireEvent.scroll(region());
+    }
+    expect(renders).not.toHaveBeenCalled();
   });
 
   it('does not render in edit mode', async () => {
