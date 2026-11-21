@@ -19,7 +19,8 @@ export type TrainerCommandId =
   | 'trainer.metronomeToggle'
   | 'trainer.fretboard'
   | 'trainer.speedTrainerOnSelection'
-  | 'trainer.showFretboard';
+  | 'trainer.showFretboard'
+  | 'trainer.fretboardLeftHanded';
 
 type TrainerCommand = Command & { id: TrainerCommandId };
 
@@ -121,6 +122,14 @@ export function trainerCommands(
         // Idle: start. Running or held, the run belongs to the loop it began on, so it starts over.
         if (trainer.status !== 'idle') trainer.reset();
         trainer.start();
+      },
+    },
+    {
+      id: 'trainer.fretboardLeftHanded',
+      title: 'Left-handed fretboard',
+      repeat: false,
+      run: () => {
+        ui.getState().setFretboardLeftHanded(!ui.getState().fretboardLeftHanded);
       },
     },
     {

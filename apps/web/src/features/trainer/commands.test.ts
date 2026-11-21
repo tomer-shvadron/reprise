@@ -226,4 +226,17 @@ describe('trainer commands', () => {
       expect(services.fakeAudio.seek).not.toHaveBeenCalled();
     });
   });
+
+  it('flip the fretboard for a left-handed player, and keep the choice', async () => {
+    window.localStorage.clear();
+    const { services, registry } = await setup();
+    const flip = registry.get('trainer.fretboardLeftHanded');
+    expect(services.ui.getState().fretboardLeftHanded).toBe(false);
+    await flip?.run();
+    expect(services.ui.getState().fretboardLeftHanded).toBe(true);
+    expect(createTestServices().ui.getState().fretboardLeftHanded).toBe(true);
+    await flip?.run();
+    expect(services.ui.getState().fretboardLeftHanded).toBe(false);
+    window.localStorage.clear();
+  });
 });

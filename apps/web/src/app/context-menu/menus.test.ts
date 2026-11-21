@@ -20,19 +20,7 @@ const menus = createAppMenus(registry);
  * The surfaces nobody has contributed to yet, each of which a later PR of #337 removes from here
  * when it adds its items: the test below then holds the new surface to the same rules.
  */
-const NOT_YET: readonly MenuSurface[] = [
-  'track.row',
-  'mixer.strip',
-  'mixer.master',
-  'transport.tempo',
-  'transport.countIn',
-  'transport.metronome',
-  'dock.tab',
-  'fretboard',
-  'status.segment',
-  'library.song',
-  'sounds.pack',
-];
+const NOT_YET: readonly MenuSurface[] = ['status.segment', 'library.song', 'sounds.pack'];
 
 const bar = song.masterBars[1];
 const beat = song.tracks[0]?.bars[1]?.voices[0]?.beats[1];
@@ -57,6 +45,14 @@ const TARGETS: Partial<Record<MenuSurface, readonly MenuTarget[]>> = {
   'panel.tab': PANEL_TABS.map(({ view }) => ({ kind: 'panel', view })),
   // "Focus on loop" needs bars to focus on: `beforeAll` selects one.
   'transport.loop': [{ kind: 'transport', control: 'loop' }],
+  'transport.tempo': [{ kind: 'transport', control: 'tempo' }],
+  'transport.countIn': [{ kind: 'transport', control: 'countIn' }],
+  'transport.metronome': [{ kind: 'transport', control: 'metronome' }],
+  'track.row': [{ kind: 'track', track: track.id }],
+  'mixer.strip': [{ kind: 'track', track: track.id }],
+  'mixer.master': [{ kind: 'mixerMaster' }],
+  'dock.tab': [{ kind: 'dock', view: 'fretboard' }],
+  fretboard: [{ kind: 'dock', view: 'fretboard' }],
   'panel.rail': [
     ...PANEL_TABS.map(({ view }): MenuTarget => ({ kind: 'panel', view })),
     { kind: 'panel', view: undefined },
