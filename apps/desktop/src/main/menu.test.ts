@@ -13,6 +13,7 @@ import {
 const KEYS: NonNullable<MenuOptions['keys']> = {
   'app.settings': { key: ',', mod: true },
   'file.new': { key: 'n', mod: true },
+  'file.export': { key: 'e', mod: true, shift: true },
   'edit.undo': { key: 'z', mod: true },
   'edit.redo': { key: 'z', mod: true, shift: true },
 };
@@ -65,6 +66,8 @@ describe('menuTemplate', () => {
     expect(labels.indexOf('Export')).toBe(labels.indexOf('Save As…') + 1);
     const inside = Array.isArray(exported?.submenu) ? exported.submenu : [];
     expect(inside.map((item) => item.label)).toEqual(['Guitar Pro…', 'ASCII Tab…']);
+    expect(inside[0]).toMatchObject({ accelerator: 'CmdOrCtrl+Shift+E' });
+    expect(inside[1]).not.toHaveProperty('accelerator');
     press(inside[1]);
     expect(options.sendCommand).toHaveBeenLastCalledWith('file.exportAsciiTab');
   });
