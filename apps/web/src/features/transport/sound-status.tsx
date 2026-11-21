@@ -101,6 +101,8 @@ export function SoundStatus() {
         // desktop smoke test waits on.
         <StatusSegment
           command="sounds.show"
+          segment="sound"
+          menuLabel="Sounds"
           label={`Sounds: ${megabytes(memory.decodedBytes)} of ${megabytes(memory.budgetBytes)} MB decoded · ${String(memory.residents.length)} ${memory.residents.length === 1 ? 'instrument' : 'instruments'} loaded (${String(memory.unused.length)} unused)`}
           aria-live="off"
           data-sound-status

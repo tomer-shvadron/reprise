@@ -29,7 +29,7 @@ export function useContextMenu(resolve: ResolveMenuRequest): {
       if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return;
       const via = contextMenuVia(event.nativeEvent);
       const request = resolve(via, event);
-      if (!request) return;
+      if (!request || !contextMenu.getState().hasItems(request)) return;
       event.preventDefault();
       event.stopPropagation();
       let point = { x: event.clientX, y: event.clientY };

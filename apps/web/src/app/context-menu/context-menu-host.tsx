@@ -120,6 +120,19 @@ export function ContextMenuHost({ registry, menus, keyboard }: HostProps) {
     })),
   );
   const mode = useStore(editing, (state) => (state.editing ? 'edit' : 'play'));
+  // A surface whose menu resolves to nothing (a drum track's notation) lets the event through.
+  useEffect(() => {
+    contextMenu.setState({
+      hasItems: (asked) =>
+        resolveMenu(
+          menus,
+          registry,
+          asked.surface,
+          { services, target: asked.target, mode: editing.getState().editing ? 'edit' : 'play' },
+          keyboard,
+        ).length > 0,
+    });
+  }, [contextMenu, menus, registry, services, editing, keyboard]);
   const chosen = useRef<Command | undefined>(undefined);
   // Whether a press has begun inside the menu since it opened. The release of the right-click
   // that opened it lands on an item whenever the menu appears under the pointer (it slides in),

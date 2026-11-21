@@ -6,6 +6,9 @@ import type { PanelView } from './ui';
 /** The header's regions, each with its own menu; `band` is the bar itself. */
 export type HeaderElement = 'crumb' | 'mode' | 'view' | 'search' | 'band';
 
+/** The status bar's segments, each with its own menu. */
+export type StatusSegmentName = 'saved' | 'sound' | 'library' | 'edit' | 'notation' | 'zoom';
+
 /**
  * What a context menu was opened on: ids and names only, never the data itself. A command reads
  * it through a helper and falls back to the selection, the cursor or the current track, so the
@@ -27,7 +30,7 @@ export type MenuTarget =
   | { kind: 'panel'; view: PanelView | undefined }
   | { kind: 'dock'; view: 'fretboard' }
   | { kind: 'header'; element: HeaderElement }
-  | { kind: 'status'; segment: string }
+  | { kind: 'status'; segment: StatusSegmentName }
   | { kind: 'libraryEntry'; id: string }
   | { kind: 'soundPack'; id: string; state: 'installed' | 'available' | 'damaged' };
 
