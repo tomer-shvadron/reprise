@@ -121,6 +121,8 @@ export interface TrackSpec {
   /** 1-based MIDI channel; its program comes from `programs`. */
   channel?: number;
   percussion?: boolean;
+  /** Extra bits of the track flags byte: `0x02` is the 12-string flag, `0x04` the banjo's. */
+  flags?: number;
   capo?: number;
   /** GP5 staff flags: `0x01` tab, `0x02` standard; both unless given. */
   staffFlags?: number;
@@ -183,7 +185,10 @@ export function buildGpFile(spec: FileSpec): Uint8Array {
   }
   spec.tracks.forEach((track, index) => {
     const strings = track.strings ?? [64, 59, 55, 50, 45, 40];
-    w.byte(track.percussion ? 0x01 : 0).fixedString(track.name ?? `Track ${String(index + 1)}`, 40);
+    w.byte((track.percussion ? 0x01 : 0) | (track.flags ?? 0)).fixedString(
+      track.name ?? `Track ${String(index + 1)}`,
+      40,
+    );
     w.int(strings.length);
     for (let i = 0; i < 7; i++) w.int(strings[i] ?? 0);
     const channel = track.channel ?? 1;

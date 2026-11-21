@@ -602,6 +602,22 @@ soloed one; it still goes through the insert, the fader and the panner.
 
 ### Decisions
 
+- **Doubled courses (#348).** `NoteOnRequest.course` is the semitone offset of a course's second
+  string; the sink sets it from `courseOffset(track, string)` for every strike except a dead or
+  ghost note, and `previewNote` does the same. `noteOn` starts the partner's voices in the same
+  call as the first string's, behind the one handle, so the partner never chokes its sibling (the
+  choke runs before either starts), the next note on the string chokes both, and every detune,
+  gain and release call, a bend or a slide included, reaches both. The partner sounds the key plus
+  the offset with a fixed detune and level trim (`COURSE_PARTNER`: an octave string +3 cents and
+  -4 dB, a unison one -3 cents and -3 dB), folded into its playback rate and base level, not into
+  automation, so a bend curve stacks on them. No randomness: a render repeats. A partner whose
+  sample is not resident is skipped alone. Release samples play once, for the first string. A
+  12-string keeps its own program, and GM and packs double alike, because the doubling is the
+  engine's. `courses.bench.ts` measures it: eight strummed tracks cost about 1.7 times the voices
+  and time when doubled.
+- **The Mandolin variation.** `GmBank` plays GeneralUser's Mandolin (bank 16, program 25) for a
+  mandolin on program 25 in bank 0, chosen at play time and never stored in `Track.bank` (#411);
+  a soundfont without it falls back to program 25 in bank 0.
 - **Two gains per voice.** The envelope and the articulation automation (dB) live on separate
   `GainNode`s, so a gain ramp from an articulation never cancels the ADSR, and the release can
   `cancelAndHoldAtTime` the envelope alone. The plan's order (source, gain, filter) holds; the

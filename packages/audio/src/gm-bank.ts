@@ -1,3 +1,4 @@
+import { stringInstrumentOf } from '@reprise/model';
 import type { Track } from '@reprise/model';
 
 import type { RegionMap } from './sampler/region-map';
@@ -7,7 +8,30 @@ import type { InstrumentId } from './samples/types';
 import { PERCUSSION_BANK } from './sf2/soundfont';
 import type { Sf2Soundfont } from './sf2/soundfont';
 
-type TrackKey = Pick<Track, 'kind' | 'bank'>;
+type TrackKey = Pick<Track, 'kind' | 'bank'> & Partial<Pick<Track, 'tuning' | 'courses' | 'drone'>>;
+
+/** General MIDI's steel guitar program, which a mandolin track carries (GM has no mandolin). */
+const MANDOLIN_PROGRAM = 25;
+/** GeneralUser GS's Mandolin variation of that program. */
+const MANDOLIN_BANK = 16;
+
+/**
+ * The bank a track plays: a mandolin on program 25 in the default bank takes GeneralUser's
+ * Mandolin variation, chosen here at play time rather than stored in `Track.bank` (#411). A font
+ * without it falls back to the program's own preset, as any missing bank does.
+ */
+function bankOf(track: TrackKey, program: number): number {
+  if (
+    track.kind === 'fretted' &&
+    program === MANDOLIN_PROGRAM &&
+    track.bank === 0 &&
+    track.tuning &&
+    stringInstrumentOf({ ...track, tuning: track.tuning, program }) === 'mandolin'
+  ) {
+    return MANDOLIN_BANK;
+  }
+  return track.bank;
+}
 
 interface Entry {
   id: InstrumentId;
@@ -40,7 +64,7 @@ export class GmBank {
     this.#entry(track, program).instrument;
 
   #entry(track: TrackKey, program: number): Entry {
-    const bank = track.kind === 'drums' ? PERCUSSION_BANK : track.bank;
+    const bank = track.kind === 'drums' ? PERCUSSION_BANK : bankOf(track, program);
     const key = `${String(bank)}:${String(program)}`;
     const cached = this.#entries.get(key);
     if (cached) return cached;

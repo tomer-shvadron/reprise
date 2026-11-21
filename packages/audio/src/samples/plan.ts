@@ -1,4 +1,10 @@
-import { beatTicks, expandPlaybackSequence, midiNote, soundingPitch } from '@reprise/model';
+import {
+  beatTicks,
+  courseOffset,
+  expandPlaybackSequence,
+  midiNote,
+  soundingPitch,
+} from '@reprise/model';
 import type { Beat, BeatEffects, Id, Note, Score, Track } from '@reprise/model';
 
 import { availableSets, voicingOf } from '../articulations/sets';
@@ -53,7 +59,13 @@ export function gmInstrumentId(track: Pick<Track, 'kind' | 'bank'>, program: num
 function addKeys(track: Track, note: Note, keys: Set<number>): void {
   const struck = [Math.round(soundingPitch(track, note))];
   if (note.trill) struck.push(midiNote(track, { string: note.string, fret: note.trill.fret }));
-  for (const key of struck) if (key >= 0 && key <= 127) keys.add(key);
+  // A doubled course strikes its partner string too, except a dead or ghost note (the sink's rule).
+  const offset = note.dead || note.ghost ? null : courseOffset(track, note.string);
+  for (const key of struck) {
+    if (key >= 0 && key <= 127) keys.add(key);
+    const partner = offset === null ? undefined : key + offset;
+    if (partner !== undefined && partner >= 0 && partner <= 127) keys.add(partner);
+  }
 }
 
 /** The keys one instrument is played on, by layer. */

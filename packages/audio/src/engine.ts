@@ -237,7 +237,9 @@ function sameTuning(a: Track, b: Track): boolean {
   return (
     a.capo === b.capo &&
     a.tuning.length === b.tuning.length &&
-    a.tuning.every((pitch, index) => pitch === b.tuning[index])
+    a.tuning.every((pitch, index) => pitch === b.tuning[index]) &&
+    a.courses?.length === b.courses?.length &&
+    (a.courses ?? []).every((offset, index) => offset === b.courses?.[index])
   );
 }
 

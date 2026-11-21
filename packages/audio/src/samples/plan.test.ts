@@ -112,6 +112,23 @@ describe('planInstruments', () => {
     expect(planInstruments(song).tracks[0]?.uses[0]?.keys).toEqual([69 + 12, 64 + 19]);
   });
 
+  it('plans the second string of a doubled course, but not for a dead or ghost note', () => {
+    const song = score()
+      .track('guitar')
+      .bar()
+      // E2 open on an octave course (E3 with it), and the high E on a unison one.
+      .beat('4', [note(6, 0)])
+      .beat('4', [note(1, 0)])
+      .beat('4', [note(5, 0, { ghost: true })])
+      .beat('4', [note(4, 0, { dead: true })])
+      .build();
+    const [track] = song.tracks;
+    if (!track) throw new Error('the song has a track');
+    const twelve = { ...song, tracks: [{ ...track, courses: [12, 12, 12, 12, 0, 0] }] };
+    expect(planInstruments(twelve).tracks[0]?.uses[0]?.keys).toEqual([40, 45, 50, 52, 64]);
+    expect(planInstruments(song).tracks[0]?.uses[0]?.keys).toEqual([40, 45, 50, 64]);
+  });
+
   it('takes an instrument resolver for other tiers', () => {
     const song = score()
       .track('guitar')

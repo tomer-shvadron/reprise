@@ -1,4 +1,4 @@
-import { ScoreSchema, midiNote, validateScore } from '@reprise/model';
+import { ScoreSchema, midiNote, stringInstrumentOf, validateScore } from '@reprise/model';
 import { beatOf, noteOf } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
@@ -383,6 +383,58 @@ describe.each(['4.06', '5.10'] satisfies BuildVersion[])('lyrics in v%s', (versi
     expect(warnings).toContainEqual(
       expect.objectContaining({ code: 'lyrics-unplaced', severity: 'warning' }),
     );
+  });
+});
+
+describe.each(VERSIONS)('a 12-string flagged track in a v%s file', (version) => {
+  const twelve = (track: { strings?: number[]; percussion?: boolean; flags?: number }) =>
+    read(
+      buildGpFile({
+        version,
+        tracks: [{ name: 'Twelve', ...track }],
+        bars: [[[[quarter(1, 0)]]]],
+      }),
+    );
+
+  // The flag's meaning is unverified against Guitar Pro itself (#348); this pins the reader's reading.
+  it('doubles every course but the two highest, an octave up, and leaves those two unison', () => {
+    const { score } = twelve({ flags: 0x02 });
+    expect(score.tracks[0]?.courses).toEqual([12, 12, 12, 12, 0, 0]);
+    const [track] = score.tracks;
+    expect(track && stringInstrumentOf(track)).toBe('twelveString');
+  });
+
+  it('lays the courses over any string count', () => {
+    expect(twelve({ flags: 0x02, strings: [64, 59, 55, 50] }).score.tracks[0]?.courses).toEqual([
+      12, 12, 0, 0,
+    ]);
+    expect(
+      twelve({ flags: 0x02, strings: [64, 59, 55, 50, 45, 40, 35] }).score.tracks[0]?.courses,
+    ).toHaveLength(7);
+  });
+
+  it('leaves a plain track and a drum track single', () => {
+    expect(twelve({}).score.tracks[0]?.courses).toBeUndefined();
+    expect(twelve({ percussion: true, flags: 0x02 }).score.tracks[0]?.courses).toBeUndefined();
+  });
+
+  it('still reports the flag where it cannot be applied: a drum track and a two-string track', () => {
+    for (const track of [
+      { percussion: true, flags: 0x02 },
+      { flags: 0x02, strings: [64, 59] },
+    ]) {
+      const { warnings } = twelve(track);
+      const count = warnings.find((warning) => warning.code === 'track-flags-dropped')?.count;
+      // A GP5 file also reports its missing multi-track flag.
+      expect(count, JSON.stringify(track)).toBe(version >= '5' ? 2 : 1);
+    }
+  });
+
+  it('no longer reports the 12-string flag as dropped', () => {
+    const { warnings } = twelve({ flags: 0x02 });
+    // Only a GP5 file reports its missing multi-track flag; the 12-string flag adds nothing.
+    const count = warnings.find((warning) => warning.code === 'track-flags-dropped')?.count;
+    expect(count).toBe(version >= '5' ? 1 : undefined);
   });
 });
 

@@ -365,9 +365,11 @@ describe('gp export', () => {
     const { dropped } = await write(fullScore(), 'gp');
     expect(dropped.map((w) => [w.code, w.location.path])).toEqual([
       ['section-color', ['masterBars', 0, 'section', 'color']],
+      ['courses', ['tracks', 0, 'courses']],
       ['channel-effect', ['tracks', 0, 'channel']],
       ['sound-override', ['tracks', 0, 'sound']],
       ['chord-barre', ['tracks', 0]],
+      ['drone', ['tracks', 3, 'drone']],
       ['mixer-change', ['tracks', 0, 'bars', 0, 'voices', 0, 'beats', 0, 'mix']],
       ['stroke', ['tracks', 0, 'bars', 0, 'voices', 0, 'beats', 0, 'effects', 'arpeggio']],
       ['note-dynamics', ['tracks', 0, 'bars', 0, 'voices', 0, 'beats', 0]],
