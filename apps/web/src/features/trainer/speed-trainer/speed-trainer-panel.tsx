@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent } from 'react';
 import { useStore } from 'zustand';
 
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useAppServices } from '@/app/services-context';
 import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
@@ -112,8 +113,6 @@ export function SpeedTrainerPanel() {
   const missed = useCommand('trainer.speedTrainerMissed');
   const reset = useCommand('trainer.speedTrainerReset');
   const toggleLoop = useCommand('transport.toggleLoop');
-  const titled = (command: { title: string; keys: string | undefined }) =>
-    command.keys ? `${command.title} (${command.keys})` : command.title;
   const { config, status, plan } = state;
   const active = status === 'running' || status === 'held';
   const hasRun = status !== 'idle' && plan !== undefined;
@@ -166,15 +165,14 @@ export function SpeedTrainerPanel() {
             : 'Select bars and loop them to train'}
         </p>
         {!loop && score && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-fit"
-            title="Loops the selected bars, else the clicked bar while the playhead is in it, else the whole song"
-            onClick={toggleLoop.run}
+          <CommandTooltip
+            command="transport.toggleLoop"
+            label="Loops the selected bars, else the clicked bar while the playhead is in it, else the whole song"
           >
-            Loop selection
-          </Button>
+            <Button variant="outline" size="sm" className="w-fit" onClick={toggleLoop.run}>
+              Loop selection
+            </Button>
+          </CommandTooltip>
         )}
         {loop && (
           <p className="text-muted-foreground text-xs">
@@ -291,35 +289,34 @@ export function SpeedTrainerPanel() {
       )}
 
       <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          onClick={toggle.run}
-          disabled={status !== 'running' && status !== 'held' && !canStart}
-          title={!canStart && !active ? 'Loop some bars first' : titled(toggle)}
-          aria-keyshortcuts={toggle.ariaKeys}
+        <CommandTooltip
+          command="trainer.speedTrainerToggle"
+          label={toggle.title}
+          whenUnbound="none"
+          {...(!canStart && !active && { reason: 'Loop some bars first' })}
         >
-          {toggleLabel}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={missed.run}
-          disabled={status !== 'running'}
-          title={titled(missed)}
-          aria-keyshortcuts={missed.ariaKeys}
+          <Button
+            size="sm"
+            onClick={toggle.run}
+            disabled={status !== 'running' && status !== 'held' && !canStart}
+          >
+            {toggleLabel}
+          </Button>
+        </CommandTooltip>
+        <CommandTooltip
+          command="trainer.speedTrainerMissed"
+          label={missed.title}
+          whenUnbound="none"
         >
-          Missed pass
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={reset.run}
-          disabled={status === 'idle'}
-          title={titled(reset)}
-          aria-keyshortcuts={reset.ariaKeys}
-        >
-          Reset
-        </Button>
+          <Button variant="outline" size="sm" onClick={missed.run} disabled={status !== 'running'}>
+            Missed pass
+          </Button>
+        </CommandTooltip>
+        <CommandTooltip command="trainer.speedTrainerReset" label={reset.title} whenUnbound="none">
+          <Button variant="outline" size="sm" onClick={reset.run} disabled={status === 'idle'}>
+            Reset
+          </Button>
+        </CommandTooltip>
       </div>
     </section>
   );

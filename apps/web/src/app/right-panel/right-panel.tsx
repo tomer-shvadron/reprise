@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import { keepFocus, tooltipText } from '@/app/command-control';
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useStaticContextMenu } from '@/app/context-menu/use-context-menu';
 import { useAppServices } from '@/app/services-context';
 import { useCommand } from '@/app/use-command';
@@ -172,25 +173,22 @@ export function PanelRail() {
       {PANEL_TABS.map((item) => (
         <RailButton key={item.id} entry={item} />
       ))}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Right panel"
-            aria-expanded={open}
-            {...foldMenu}
-            onMouseDown={keepFocus}
-            onClick={() => {
-              setPanelOpen('rightPanel', !open);
-            }}
-            className="mt-auto"
-          >
-            <Icon />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="left">{verb}</TooltipContent>
-      </Tooltip>
+      <CommandTooltip command="view.toggleRightPanel" label={verb} side="left">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Right panel"
+          aria-expanded={open}
+          {...foldMenu}
+          onMouseDown={keepFocus}
+          onClick={() => {
+            setPanelOpen('rightPanel', !open);
+          }}
+          className="mt-auto"
+        >
+          <Icon />
+        </Button>
+      </CommandTooltip>
     </div>
   );
 }

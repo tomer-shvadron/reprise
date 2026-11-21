@@ -3,8 +3,10 @@ import { useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 
 import { keepFocus } from '@/app/command-control';
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useContextMenu } from '@/app/context-menu/use-context-menu';
 import { ResizeHandle } from '@/app/resize-handle';
+import type { RegisteredCommandId } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -17,6 +19,10 @@ import {
 import { cn } from 'cn';
 
 const VIEWS = BOTTOM_PANEL_VIEWS;
+
+const VIEW_COMMANDS = {
+  fretboard: 'trainer.showFretboard',
+} satisfies Record<BottomPanelView, RegisteredCommandId>;
 
 const tabId = (view: string) => `bottom-dock-tab-${view}`;
 const PANEL_ID = 'bottom-dock-panel';
@@ -128,9 +134,8 @@ export function BottomDock({ ui, children }: { ui: UiStore; children?: ReactNode
             {VIEWS.map((id, index) => {
               // By index: with one view the types see `id === view` as always true.
               const selected = index === current;
-              return (
+              const tab = (
                 <button
-                  key={id}
                   ref={(node) => {
                     if (node) tabs.current.set(id, node);
                     else tabs.current.delete(id);
@@ -155,6 +160,17 @@ export function BottomDock({ ui, children }: { ui: UiStore; children?: ReactNode
                 >
                   {BOTTOM_PANEL_TITLES[id]}
                 </button>
+              );
+              // Its text names the view, so the tooltip shows only once a key is bound.
+              return (
+                <CommandTooltip
+                  key={id}
+                  command={VIEW_COMMANDS[id]}
+                  label={`Show ${BOTTOM_PANEL_TITLES[id].toLowerCase()}`}
+                  whenUnbound="none"
+                >
+                  {tab}
+                </CommandTooltip>
               );
             })}
           </div>

@@ -43,6 +43,25 @@ describe('the history panel', () => {
     expect(screen.getByRole('button', { name: 'Redo' })).toHaveProperty('disabled', true);
   });
 
+  it('shows the Undo and Redo keys as caps on focus, and a click still undoes', async () => {
+    const { edit, doc, user } = await setup();
+    edit();
+    act(() => {
+      screen.getByRole('button', { name: 'Undo Edit note' }).focus();
+    });
+    await screen.findByRole('tooltip');
+    const caps = [...document.querySelectorAll('[data-slot=tooltip-content] [data-slot=kbd]')].map(
+      (cap) => cap.textContent,
+    );
+    expect(caps).toEqual(['Ctrl', 'Z']);
+    expect(screen.getByRole('button', { name: 'Undo Edit note' })).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Control+Z',
+    );
+    await user.click(screen.getByRole('button', { name: 'Undo Edit note' }));
+    expect(doc.getState().historyLabels.undo).toHaveLength(1);
+  });
+
   it('lists the edits oldest first, marks the current one and carries the labels on the buttons', async () => {
     const { edit, doc } = await setup();
     edit();

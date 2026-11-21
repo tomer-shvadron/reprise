@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent } from 'react';
 import { useStore } from 'zustand';
 
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useAppServices } from '@/app/services-context';
 import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
@@ -115,7 +116,6 @@ export function MetronomePanel() {
     if (bpm !== undefined) setBpm(bpm);
   };
   const accented = settings.accents.length > 0 && settings.accents[0] === true;
-  const toggleLabel = toggle.keys ? `${toggle.title} (${toggle.keys})` : toggle.title;
 
   return (
     <section aria-label="Metronome" className="flex flex-col gap-3 p-3 text-sm">
@@ -123,15 +123,11 @@ export function MetronomePanel() {
         Metronome
       </h2>
 
-      <Button
-        size="sm"
-        variant={running ? 'default' : 'outline'}
-        aria-keyshortcuts={toggle.ariaKeys}
-        title={toggleLabel}
-        onClick={toggle.run}
-      >
-        {running ? 'Stop' : 'Start'}
-      </Button>
+      <CommandTooltip command="trainer.metronomeToggle" label={toggle.title} whenUnbound="none">
+        <Button size="sm" variant={running ? 'default' : 'outline'} onClick={toggle.run}>
+          {running ? 'Stop' : 'Start'}
+        </Button>
+      </CommandTooltip>
 
       <div className="flex flex-col gap-1">
         <label htmlFor="metronome-bpm" className="text-muted-foreground text-xs">

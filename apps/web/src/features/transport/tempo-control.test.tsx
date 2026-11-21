@@ -15,9 +15,41 @@ describe('TempoControl', () => {
     renderBar();
     expect(field()).toBeDisabled();
     expect(field()).toHaveValue('');
-    // A dotted-quarter mark still reads in quarter notes, so the field says which.
-    expect(field()).toHaveAttribute('title', 'Quarter notes per minute · Set tempo… (⌥T)');
+    expect(field()).toHaveAttribute('aria-keyshortcuts', 'Alt+T');
     expect(percentButton()).toBeDisabled();
+  });
+
+  it('shows its tooltip on hover with the key', async () => {
+    const { open } = renderBar();
+    await open(fourBars());
+    await userEvent.setup().hover(field());
+    const tip = await screen.findByRole('tooltip', undefined, { timeout: 2000 });
+    expect(tip).toHaveTextContent(/^Quarter notes per minute, \w+\+T$/);
+  });
+
+  it('never opens its tooltip on focus, so it cannot cover the number', async () => {
+    const { open } = renderBar();
+    await open(fourBars());
+    act(() => {
+      field().focus();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('shows both step keys in the speed slider tooltip', async () => {
+    const { open } = renderBar();
+    await open(fourBars());
+    const wrapper = speed().closest('[data-commands]');
+    if (!wrapper) throw new Error('no slider wrapper');
+    fireEvent.pointerMove(wrapper);
+    await screen.findByRole('tooltip', undefined, { timeout: 2000 });
+    const content = document.querySelector('[data-slot=tooltip-content]');
+    expect(content).toHaveTextContent('Speed');
+    const caps = [...(content?.querySelectorAll('[data-slot=kbd]') ?? [])];
+    expect(caps.map((cap) => cap.textContent)).toEqual(['[', ']']);
   });
 
   it('links the slider to the BPM field', async () => {
