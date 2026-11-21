@@ -69,7 +69,7 @@ import { installShortcutDispatcher, menuCommandAllowed } from './shortcut-dispat
 import { SETTINGS_SECTIONS } from './settings-sections';
 import { UnsavedChangesHost } from './unsaved-dialog';
 import { installWindowTitle } from './window-title';
-import { CommandSourceContext, useCommandSource } from './use-command';
+import { CommandSourceProvider } from './command-source-provider';
 
 checkSections(SETTINGS_SECTIONS);
 
@@ -98,7 +98,6 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
   const { ui, audio } = services;
   const [registry] = useState(() => createAppRegistry(services, keyboard));
   const [menus] = useState(() => createAppMenus(registry));
-  const source = useCommandSource(registry, keyboard, services.settings);
   const menuRegistry = useMemo(() => ({ menus, registry, keyboard }), [menus, registry, keyboard]);
   const theme = useStore(ui, (state) => state.theme);
   const rightPanelView = useStore(ui, (state) => state.rightPanelView);
@@ -201,73 +200,52 @@ export function App({ services, keyboard, onMenuCommand }: AppProps) {
     <AppServicesProvider services={services}>
       <MenuRegistryContext value={menuRegistry}>
         <TooltipProvider>
-          <div className="h-full">
-            <AppFrame
-              ui={ui}
-              header={
-                <CommandSourceContext value={source}>
-                  <AppHeader />
-                </CommandSourceContext>
-              }
-              score={<ScorePane hint={hint} />}
-              banner={<UnimportedBanner />}
-              scoreOverlay={<DefaultSoundOffer />}
-              transport={
-                <TransportBar
-                  registry={registry}
-                  keyboard={keyboard}
-                  speedTrainer={<SpeedTrainerChip />}
-                  tuner={<TunerButton />}
-                />
-              }
-              status={
-                <CommandSourceContext value={source}>
-                  <StatusBar />
-                </CommandSourceContext>
-              }
-              sidebar={
-                <TrackSidebar
-                  registry={registry}
-                  keyboard={keyboard}
-                  headerActions={addTrackButton}
-                  rowMenu={renderTrackRowMenu}
-                />
-              }
-              bottom={
-                <CommandSourceContext value={source}>
-                  <TrainerPanel view={bottomView} />
-                </CommandSourceContext>
-              }
-              panel={
-                <CommandSourceContext value={source}>
+          <CommandSourceProvider
+            registry={registry}
+            keyboard={keyboard}
+            settings={services.settings}
+            editing={services.editing}
+          >
+            <div className="h-full">
+              <AppFrame
+                ui={ui}
+                header={<AppHeader />}
+                score={<ScorePane hint={hint} />}
+                banner={<UnimportedBanner />}
+                scoreOverlay={<DefaultSoundOffer />}
+                transport={
+                  <TransportBar
+                    registry={registry}
+                    keyboard={keyboard}
+                    speedTrainer={<SpeedTrainerChip />}
+                    tuner={<TunerButton />}
+                  />
+                }
+                status={<StatusBar />}
+                sidebar={
+                  <TrackSidebar
+                    registry={registry}
+                    keyboard={keyboard}
+                    headerActions={addTrackButton}
+                    rowMenu={renderTrackRowMenu}
+                  />
+                }
+                bottom={<TrainerPanel view={bottomView} />}
+                panel={
                   <PanelTabs>
                     <RightPanel view={rightPanelView} />
                   </PanelTabs>
-                </CommandSourceContext>
-              }
-              sectionStrip={
-                <CommandSourceContext value={source}>
-                  <SectionStrip />
-                </CommandSourceContext>
-              }
-              capsule={
-                <CommandSourceContext value={source}>
-                  <PracticeCapsule />
-                </CommandSourceContext>
-              }
-              onRightPanelResizeEnd={() => {
-                storeRightPanelWidth(services);
-              }}
-              rail={
-                <CommandSourceContext value={source}>
-                  <PanelRail />
-                </CommandSourceContext>
-              }
-            />
-          </div>
-          <CommandSourceContext value={source}>
+                }
+                sectionStrip={<SectionStrip />}
+                capsule={<PracticeCapsule />}
+                onRightPanelResizeEnd={() => {
+                  storeRightPanelWidth(services);
+                }}
+                rail={<PanelRail />}
+              />
+            </div>
             <SettingsDialog sections={SETTINGS_SECTIONS} />
-          </CommandSourceContext>
+          </CommandSourceProvider>
           <AppSheet id="library" title="Library" width="wide">
             <LibraryScreen />
           </AppSheet>

@@ -1,15 +1,14 @@
 import { useRef, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useAppServices } from '@/app/services-context';
-import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Slider } from '@/components/ui/slider';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import type { TransportCommandId } from './commands';
-import { keepFocus, tooltipText } from './controls';
+import { keepFocus } from './controls';
 import type { TransportPopover } from './transport-ui';
 
 interface LevelPopoverProps {
@@ -37,7 +36,6 @@ export function LevelPopover({
 }: LevelPopoverProps) {
   const { transport } = useAppServices();
   const open = useStore(transport, (state) => state.popover === popover);
-  const bound = useCommand(command);
   const percent = value * 100;
   // Where focus was when the popover opened: Radix would return it to the trigger, which then
   // takes the next Space, so only someone who tabbed to the trigger goes back to it.
@@ -50,23 +48,19 @@ export function LevelPopover({
         transport.getState().setPopover(next ? popover : undefined);
       }}
     >
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={label}
-              aria-keyshortcuts={bound.ariaKeys}
-              data-command={command}
-              onMouseDown={keepFocus}
-            >
-              {children}
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent>{tooltipText(label, bound.keys)}</TooltipContent>
-      </Tooltip>
+      <CommandTooltip command={command} label={label}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={label}
+            data-command={command}
+            onMouseDown={keepFocus}
+          >
+            {children}
+          </Button>
+        </PopoverTrigger>
+      </CommandTooltip>
       <PopoverContent
         side="top"
         className="w-56"

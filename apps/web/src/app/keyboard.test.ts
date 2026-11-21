@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { ariaKeyShortcuts, formatShortcut, matchesShortcut, shortcutOn } from './keyboard';
+import { createTestServices } from '@/test/services';
+
+import { createAppRegistry } from './app-registry';
+import {
+  ariaKeyShortcuts,
+  formatShortcut,
+  matchesShortcut,
+  shortcutOn,
+  shortcutParts,
+  type KeyboardPlatform,
+} from './keyboard';
 
 const key = (init: Partial<KeyboardEvent>) => ({
   key: '',
@@ -58,6 +68,16 @@ describe('keyboard', () => {
     expect(ariaKeyShortcuts({ key: 'm', alt: true, shift: true }, 'mac')).toBe('Alt+Shift+M');
   });
 
+  it('writes valid WAI-ARIA tokens for punctuation', () => {
+    expect(ariaKeyShortcuts({ key: '+', mod: true }, 'mac')).toBe('Meta+Plus');
+    expect(ariaKeyShortcuts({ key: '+', shift: true }, 'other')).toBe('Plus');
+    expect(ariaKeyShortcuts({ key: '?', shift: true }, 'other')).toBe('Shift+/');
+    expect(ariaKeyShortcuts({ key: ':', shift: true }, 'other')).toBe('Shift+;');
+    expect(ariaKeyShortcuts({ key: '!', shift: true }, 'other')).toBe('Shift+1');
+    expect(ariaKeyShortcuts({ key: '[' }, 'other')).toBe('[');
+    expect(ariaKeyShortcuts({ key: '=' }, 'other')).toBe('=');
+  });
+
   it('names the arrows and passes them to aria as KeyboardEvent names', () => {
     expect(formatShortcut({ key: 'ArrowDown', mod: true }, 'mac')).toBe('⌘↓');
     expect(formatShortcut({ key: 'ArrowUp', mod: true }, 'other')).toBe('Ctrl+Up');
@@ -80,5 +100,27 @@ describe('keyboard', () => {
     expect(shortcutOn(redo, 'mac')).toBeUndefined();
     expect(shortcutOn({ key: 'z', mod: true }, 'mac')).toEqual({ key: 'z', mod: true });
     expect(shortcutOn(undefined, 'mac')).toBeUndefined();
+  });
+
+  it('splits a shortcut into one cap per key', () => {
+    const save = { key: 's', mod: true, alt: true, shift: true };
+    expect(shortcutParts(save, 'mac')).toEqual(['⌥', '⇧', '⌘', 'S']);
+    expect(shortcutParts(save, 'other')).toEqual(['Ctrl', 'Alt', 'Shift', 'S']);
+    expect(shortcutParts({ key: ' ' }, 'other')).toEqual(['Space']);
+    // Punctuation does not print Shift.
+    expect(shortcutParts({ key: '?', shift: true }, 'other')).toEqual(['?']);
+  });
+
+  it('prints every default binding as its parts joined', () => {
+    const registry = createAppRegistry(createTestServices(), 'mac');
+    for (const platform of ['mac', 'other'] as KeyboardPlatform[]) {
+      for (const command of registry.list()) {
+        const shortcut = shortcutOn(registry.shortcutOf(command), platform);
+        if (!shortcut) continue;
+        expect(shortcutParts(shortcut, platform).join(platform === 'mac' ? '' : '+')).toBe(
+          formatShortcut(shortcut, platform),
+        );
+      }
+    }
   });
 });

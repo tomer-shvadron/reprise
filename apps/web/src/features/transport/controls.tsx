@@ -1,10 +1,10 @@
 import type { ComponentProps, ReactNode } from 'react';
 
 import { keepFocus, tooltipText } from '@/app/command-control';
+import { CommandTooltip } from '@/app/command-tooltip';
 import { useCommand } from '@/app/use-command';
 import { Button } from '@/components/ui/button';
 import { Toggle } from '@/components/ui/toggle';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 import type { TransportCommandId } from './commands';
 
@@ -19,23 +19,19 @@ interface TransportButtonProps extends Omit<ComponentProps<typeof Button>, 'onCl
 export function TransportButton({ command, label, tip, children, ...props }: TransportButtonProps) {
   const bound = useCommand(command);
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={label}
-          aria-keyshortcuts={bound.ariaKeys}
-          data-command={command}
-          onMouseDown={keepFocus}
-          onClick={bound.run}
-          {...props}
-        >
-          {children}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{tooltipText(tip ?? label, bound.keys)}</TooltipContent>
-    </Tooltip>
+    <CommandTooltip command={command} label={tip ?? label}>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={label}
+        data-command={command}
+        onMouseDown={keepFocus}
+        onClick={bound.run}
+        {...props}
+      >
+        {children}
+      </Button>
+    </CommandTooltip>
   );
 }
 
@@ -60,23 +56,19 @@ export function TransportToggle({
 }: TransportToggleProps) {
   const bound = useCommand(command);
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Toggle
-          size="sm"
-          aria-label={label}
-          aria-keyshortcuts={bound.ariaKeys}
-          data-command={command}
-          pressed={pressed}
-          onMouseDown={keepFocus}
-          onPressedChange={bound.run}
-          {...props}
-        >
-          {children}
-        </Toggle>
-      </TooltipTrigger>
-      <TooltipContent>{tooltipText(tip ?? label, bound.keys)}</TooltipContent>
-    </Tooltip>
+    <CommandTooltip command={command} label={tip ?? label}>
+      <Toggle
+        size="sm"
+        aria-label={label}
+        data-command={command}
+        pressed={pressed}
+        onMouseDown={keepFocus}
+        onPressedChange={bound.run}
+        {...props}
+      >
+        {children}
+      </Toggle>
+    </CommandTooltip>
   );
 }
 
