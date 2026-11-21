@@ -1,7 +1,7 @@
 import { anchorBox, type LayoutResult, type Rect } from '@reprise/layout';
-import type { Score } from '@reprise/model';
+import type { Id, Score } from '@reprise/model';
 
-import { barColumns, type OverlayBox } from '@/features/score';
+import { barColumns, staffBand, type OverlayBox, type ScoreOverlays } from '@/features/score';
 import type { BarRange } from '@/state/selection';
 
 function union(a: Rect, b: Rect): Rect {
@@ -53,4 +53,28 @@ export function lineAbove(layout: LayoutResult, part: OverlayBox): Rect | undefi
     }
   }
   return nearest;
+}
+
+/**
+ * Where the pill anchors in edit mode: the edit range's boxes, else the caret widened to its
+ * track's staff band on that system, so the pill sits above the staff and not over the strings
+ * above the cursor. One box per system part. Layout px.
+ */
+export function editAnchor(
+  layout: LayoutResult,
+  edit: Pick<ScoreOverlays, 'caret' | 'range'>,
+  track: Id | undefined,
+): OverlayBox[] {
+  if (edit.range && edit.range.length > 0) return edit.range.filter((part) => !part.muted);
+  if (!edit.caret || track === undefined) return [];
+  const bySystem = new Map<number, Rect>();
+  for (const part of edit.caret) {
+    const band = staffBand(layout, track, part.system);
+    const box = band ? { ...part.box, y: band.y, height: band.height } : part.box;
+    const known = bySystem.get(part.system);
+    bySystem.set(part.system, known ? union(known, box) : box);
+  }
+  return [...bySystem.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([system, box]) => ({ system, box }));
 }

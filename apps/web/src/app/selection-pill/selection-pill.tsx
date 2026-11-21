@@ -3,6 +3,7 @@ import { CopyIcon, EllipsisIcon, FocusIcon, GaugeIcon, RepeatIcon } from 'lucide
 import {
   useEffect,
   useEffectEvent,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -17,8 +18,13 @@ import { useStore } from 'zustand';
 
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { barsLabel, scoreKeyboardRequest } from '@/features/editor';
-import type { ScoreViewHandle } from '@/features/score';
+import {
+  pressedOf,
+  scoreKeyboardRequest,
+  useEffectPanelState,
+  usePickerOpener,
+} from '@/features/editor';
+import type { ScoreOverlays, ScoreViewHandle } from '@/features/score';
 import { selectRunning } from '@/state/playback';
 
 import { keepFocus, tooltipText } from '../command-control';
@@ -26,10 +32,18 @@ import { useMenuRegistry } from '../context-menu/menu-context';
 import type { MenuContext, MenuRequest } from '../context-menu/types';
 import { useContextMenu } from '../context-menu/use-context-menu';
 import { useAppServices } from '../services-context';
-import { bindCommand, useCommandSource, type CommandSource } from '../use-command';
-import { PILL_BUTTON_SELECTOR } from './commands';
-import { lineAbove, pillAnchor } from './pill-anchor';
 import {
+  bindCommand,
+  CommandSourceContext,
+  useCommandSource,
+  type CommandSource,
+} from '../use-command';
+import { PILL_BUTTON_SELECTOR } from './commands';
+import { DurationMenu } from './duration-menu';
+import { editAnchor, lineAbove, pillAnchor } from './pill-anchor';
+import {
+  EDIT_PILL,
+  EDIT_PILL_ONLY,
   loopPressed,
   PLAY_PILL,
   resolvePillItems,
@@ -47,6 +61,11 @@ const ICONS: Readonly<Record<string, ReactNode>> = {
 
 const MORE_KEY = 'more';
 
+// A pressed toggle fills, a mixed one is dashed and half filled: the effects panel's look, since
+// the ghost button styles nothing for aria-pressed.
+const PRESSED_CLASS =
+  'rounded-full aria-pressed:bg-muted aria-[pressed=mixed]:border-dashed aria-[pressed=mixed]:border-border aria-[pressed=mixed]:bg-muted/50';
+
 // The pill is a sibling of the score's gesture surface inside the canvas: a press on it must
 // never reach the gesture tracker, which would seek, clear the selection or capture the pointer.
 const stop = (event: PointerEvent) => {
@@ -58,37 +77,63 @@ interface PillButtonProps {
   spec: PillItemSpec;
   label: string;
   enabled: boolean;
-  pressed: boolean | undefined;
+  pressed: boolean | 'mixed' | undefined;
   tabStop: boolean;
+  /** Why the button is disabled, which its tooltip says and assistive tech reads. */
+  reason?: string | undefined;
+  /** Replaces running the command: a dialog opener. */
+  onPress?: ((event: MouseEvent<HTMLButtonElement>) => void) | undefined;
 }
 
-function PillButton({ source, spec, label, enabled, pressed, tabStop }: PillButtonProps) {
+function PillButton({
+  source,
+  spec,
+  label,
+  enabled,
+  pressed,
+  tabStop,
+  reason,
+  onPress,
+}: PillButtonProps) {
+  const reasonId = useId();
   const bound = bindCommand(
     source,
-    pressed && spec.pressedCommand ? spec.pressedCommand : spec.command,
+    pressed === true && spec.pressedCommand ? spec.pressedCommand : spec.command,
   );
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="xs"
-          className="rounded-full"
-          aria-label={label}
-          aria-pressed={pressed}
-          aria-keyshortcuts={bound.ariaKeys}
-          data-pill-item={spec.key}
-          data-command={spec.command}
-          tabIndex={tabStop ? 0 : -1}
-          disabled={!enabled}
-          onMouseDown={keepFocus}
-          onClick={bound.run}
-        >
-          {ICONS[spec.key]}
-          {spec.text}
-        </Button>
+        {/* On a wrapper: a disabled button takes no pointer events, so it could not say why. */}
+        <span className="flex">
+          <Button
+            variant="ghost"
+            size="xs"
+            className={PRESSED_CLASS}
+            aria-label={label}
+            aria-pressed={pressed}
+            aria-haspopup={onPress ? 'dialog' : undefined}
+            aria-keyshortcuts={bound.ariaKeys}
+            aria-describedby={reason === undefined ? undefined : reasonId}
+            data-pill-item={spec.key}
+            data-command={spec.command}
+            tabIndex={tabStop ? 0 : -1}
+            disabled={!enabled}
+            onMouseDown={keepFocus}
+            onClick={onPress ?? bound.run}
+          >
+            {ICONS[spec.key]}
+            {spec.text}
+          </Button>
+          {reason !== undefined && (
+            <span id={reasonId} className="sr-only">
+              {reason}
+            </span>
+          )}
+        </span>
       </TooltipTrigger>
-      <TooltipContent>{tooltipText(label, bound.keys)}</TooltipContent>
+      <TooltipContent>
+        {reason === undefined ? tooltipText(label, bound.keys) : `${label}: ${reason}`}
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -100,6 +145,8 @@ export interface SelectionPillProps {
   zoom: number;
   /** A drag over the score is unfinished. */
   dragging: boolean;
+  /** The edit caret and range boxes (layout px), which anchor the pill in edit mode. */
+  edit: Pick<ScoreOverlays, 'caret' | 'range'>;
 }
 
 /**
@@ -110,13 +157,17 @@ export interface SelectionPillProps {
  * state, so nothing renders again for a scroll or a playhead frame. It never takes focus by
  * itself: Tab from the score, or Alt+F10, goes in.
  */
-export function SelectionPill({ view, layout, zoom, dragging }: SelectionPillProps) {
+export function SelectionPill({ view, layout, zoom, dragging, edit }: SelectionPillProps) {
   const services = useAppServices();
   const { document, playback, selection, editing, entry, contextMenu, settings } = services;
   const { menus, registry, keyboard } = useMenuRegistry();
   const source = useCommandSource(registry, keyboard, settings);
   const score = useStore(document, (state) => state.score);
   const bars = useStore(selection, (state) => state.bars);
+  const cursor = useStore(selection, (state) => state.cursor);
+  const range = useStore(selection, (state) => state.range);
+  const rhythm = useStore(entry, (state) => state.rhythm);
+  const openBend = usePickerOpener('bend');
   const loop = useStore(playback, (state) => state.settings.loop);
   const running = useStore(playback, selectRunning);
   const isEditing = useStore(editing, (state) => state.editing);
@@ -138,15 +189,30 @@ export function SelectionPill({ view, layout, zoom, dragging }: SelectionPillPro
 
   const ownMenu = menuOpen && menuRequest === own?.request;
   const foreignMenu = menuOpen && !ownMenu;
-  const hidden = !score || !bars || isEditing || running || dragging || foreignMenu || typing;
 
   const parts = useMemo((): PillPart[] => {
-    if (!score || !bars) return [];
-    return pillAnchor(layout, score, bars).map((part) => ({
-      box: part.box,
-      above: lineAbove(layout, part),
-    }));
-  }, [layout, score, bars]);
+    if (!score) return [];
+    const anchors = isEditing
+      ? editAnchor(layout, edit, cursor?.track)
+      : bars
+        ? pillAnchor(layout, score, bars)
+        : [];
+    return anchors.map((part) => ({ box: part.box, above: lineAbove(layout, part) }));
+  }, [layout, score, bars, isEditing, edit, cursor?.track]);
+  const hidden = !score || parts.length === 0 || running || dragging || foreignMenu || typing;
+  // Only the shown edit pill pays for the effect state: 4 toggles and the bend blocker.
+  const effects = useEffectPanelState(EDIT_PILL_ONLY, isEditing && !hidden);
+
+  const mode = isEditing ? 'edit' : 'play';
+  // What the keys' Menu key would open here: its label names the toolbar, its target feeds the items.
+  const base = useMemo(
+    () =>
+      score && parts.length > 0
+        ? scoreKeyboardRequest(services, layout, () => new DOMRect(), mode)
+        : undefined,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the cursor and the range are the selection the request reads
+    [services, layout, score, parts, mode, cursor, range, bars],
+  );
 
   const place = useEffectEvent(() => {
     const element = root.current;
@@ -219,24 +285,69 @@ export function SelectionPill({ view, layout, zoom, dragging }: SelectionPillPro
     }
   }, [hidden]);
 
+  // Items come and go with the mode (Copy leaves, the effects arrive): focus on one that goes
+  // would fall to the body, so it goes to the score.
+  useLayoutEffect(() => {
+    if (!focusInside.current) return;
+    focusInside.current = false;
+    root.current?.closest<HTMLElement>('[data-score-view]')?.focus();
+  }, [mode]);
+
+  // The focused item can become disabled under the user (the cursor moved to a string with nothing
+  // to hammer to): focus goes to the nearest enabled item, never to the body.
+  useLayoutEffect(() => {
+    const element = root.current;
+    if (!element || !focusInside.current || hidden) return;
+    const active = globalThis.document.activeElement;
+    const buttons = [...element.querySelectorAll<HTMLButtonElement>('button[data-pill-item]')];
+    const at = buttons.findIndex((button) => button === active);
+    if (at < 0 || !buttons[at]?.disabled) return;
+    const order = buttons
+      .map((_, index) => index)
+      .sort((a, b) => Math.abs(a - at) - Math.abs(b - at));
+    buttons[order.find((index) => buttons[index]?.disabled === false) ?? -1]?.focus();
+  });
+
   const at = useMemo(
-    (): MenuContext => ({ services, target: { kind: 'range' }, mode: 'play' }),
-    [services],
+    (): MenuContext => ({ services, target: base?.target ?? { kind: 'range' }, mode }),
+    [services, base, mode],
   );
-  const items = hidden ? [] : resolvePillItems(menus, registry, PLAY_PILL, at, keyboard);
+  const pill = isEditing ? EDIT_PILL : PLAY_PILL;
+  const resolved = hidden ? [] : resolvePillItems(menus, registry, pill, at, keyboard);
+  // An effect the selection cannot take is disabled, with the reason the effects panel gives.
+  const items = resolved.map((item) => {
+    const { effect, picker, kind } = item.spec;
+    const known = effect ? effects.known.get(effect) : undefined;
+    const blocked = picker ? effects.blockers[picker] : undefined;
+    return {
+      ...item,
+      enabled:
+        item.enabled &&
+        (kind === 'effect' ? known !== undefined && known.state !== 'unavailable' : true) &&
+        (kind === 'picker' ? blocked === undefined : true),
+      reason: known?.reason ?? blocked,
+    };
+  });
   const enabledKeys = [
     ...items.filter((item) => item.enabled).map((item) => item.spec.key),
     MORE_KEY,
   ];
   const stopKey = current && enabledKeys.includes(current) ? current : enabledKeys[0];
 
-  const pressedOf = (item: ResolvedPillItem): boolean | undefined =>
-    item.spec.key === 'loop' ? loopPressed(loop, bars) : undefined;
+  const pressedFor = (item: ResolvedPillItem): boolean | 'mixed' | undefined => {
+    const { key, kind, effect } = item.spec;
+    if (key === 'loop') return loopPressed(loop, bars);
+    if (key === 'dot') return rhythm.dots > 0;
+    if (key === 'triplet') return rhythm.tuplet !== undefined;
+    if (kind === 'effect' && effect)
+      return pressedOf(effects.known.get(effect)?.state ?? 'unavailable');
+    return undefined;
+  };
 
   const request = (via: 'more' | 'context') => {
     const handle = view.current;
     if (!handle) return undefined;
-    const made = scoreKeyboardRequest(services, layout, (rect) => handle.clientRect(rect), 'play');
+    const made = scoreKeyboardRequest(services, layout, (rect) => handle.clientRect(rect), mode);
     if (made) setOwn({ request: made, via });
     return made;
   };
@@ -255,7 +366,8 @@ export function SelectionPill({ view, layout, zoom, dragging }: SelectionPillPro
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     const element = root.current;
-    if (!element) return;
+    // A menu portaled out of the pill (Duration) still bubbles its keys here through React: they are its own.
+    if (!element || !(event.target instanceof Node) || !element.contains(event.target)) return;
     if (event.key === 'Escape') {
       // Not the editor's Escape (clear the selection) or practice mode's (leave the mode).
       event.preventDefault();
@@ -265,6 +377,11 @@ export function SelectionPill({ view, layout, zoom, dragging }: SelectionPillPro
       } else {
         element.closest<HTMLElement>('[data-score-view]')?.focus();
       }
+      return;
+    }
+    // The editor's own vertical arrows would move the cursor, and with it the toolbar's items.
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
       return;
     }
     const buttons = [...element.querySelectorAll<HTMLElement>(PILL_BUTTON_SELECTOR)];
@@ -287,7 +404,7 @@ export function SelectionPill({ view, layout, zoom, dragging }: SelectionPillPro
     buttons[to]?.focus();
   };
 
-  const label = score && bars ? barsLabel(score, bars) : 'Selection';
+  const label = base?.label ?? 'Selection';
 
   return (
     <div
@@ -306,6 +423,8 @@ export function SelectionPill({ view, layout, zoom, dragging }: SelectionPillPro
       onContextMenu={menu.onContextMenu}
       onKeyDown={onKeyDown}
       onFocus={(event) => {
+        // A portaled menu's focus bubbles here through React: it is not the toolbar's.
+        if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return;
         focusInside.current = true;
         const related = event.relatedTarget;
         // A closed menu's item is no place to go back to.
@@ -327,32 +446,46 @@ export function SelectionPill({ view, layout, zoom, dragging }: SelectionPillPro
         }
       }}
     >
-      {items.map((item) => (
-        <PillButton
-          source={source}
-          key={item.spec.key}
-          spec={item.spec}
-          label={item.label}
-          enabled={item.enabled}
-          pressed={pressedOf(item)}
-          tabStop={stopKey === item.spec.key}
-        />
-      ))}
-      <span role="separator" aria-orientation="vertical" className="score-pill-separator" />
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        className="rounded-full"
-        aria-label="More actions"
-        aria-haspopup="menu"
-        aria-expanded={ownMenu && own?.via === 'more'}
-        data-pill-item={MORE_KEY}
-        tabIndex={stopKey === MORE_KEY ? 0 : -1}
-        onMouseDown={keepFocus}
-        onClick={openMenu}
-      >
-        <EllipsisIcon aria-hidden="true" />
-      </Button>
+      {/* The score is outside the app's command contexts: the Duration steps need the source. */}
+      <CommandSourceContext value={source}>
+        {items.map((item) =>
+          item.spec.kind === 'duration' ? (
+            <DurationMenu
+              key={item.spec.key}
+              itemKey={item.spec.key}
+              enabled={item.enabled}
+              tabStop={stopKey === item.spec.key}
+            />
+          ) : (
+            <PillButton
+              source={source}
+              key={item.spec.key}
+              spec={item.spec}
+              label={item.label}
+              enabled={item.enabled}
+              pressed={pressedFor(item)}
+              tabStop={stopKey === item.spec.key}
+              reason={item.enabled ? undefined : item.reason}
+              onPress={item.spec.kind === 'picker' ? openBend : undefined}
+            />
+          ),
+        )}
+        <span role="separator" aria-orientation="vertical" className="score-pill-separator" />
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="rounded-full"
+          aria-label="More actions"
+          aria-haspopup="menu"
+          aria-expanded={ownMenu && own?.via === 'more'}
+          data-pill-item={MORE_KEY}
+          tabIndex={stopKey === MORE_KEY ? 0 : -1}
+          onMouseDown={keepFocus}
+          onClick={openMenu}
+        >
+          <EllipsisIcon aria-hidden="true" />
+        </Button>
+      </CommandSourceContext>
     </div>
   );
 }

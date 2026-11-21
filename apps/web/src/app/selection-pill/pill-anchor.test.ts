@@ -5,7 +5,7 @@ import { barColumns } from '@/features/score';
 import { smallScore } from '@/features/score/test/small-score';
 import { uniformNotation, viewLayoutOptions } from '@/features/score/view-options';
 
-import { lineAbove, pillAnchor } from './pill-anchor';
+import { editAnchor, lineAbove, pillAnchor } from './pill-anchor';
 
 function laidOut() {
   const score = smallScore();
@@ -103,5 +103,37 @@ describe('lineAbove', () => {
     const box = { x: system.bbox.x, y: lower.top, width: 100, height: lower.bottom - lower.top };
     const above = lineAbove(result, { system: 0, box });
     expect(above && above.y + above.height).toBe(upper.bottom);
+  });
+});
+
+describe('editAnchor', () => {
+  it('widens the caret to the cursor track’s staff band, one box per system', () => {
+    const { score, result } = laidOut();
+    const track = score.tracks[0]?.id ?? '';
+    const system = result.systems[0];
+    const band = system?.staves.find((staff) => staff.track === track);
+    if (!system || !band) throw new Error('no staff');
+    const caret = [{ system: 0, box: { x: 100, y: band.top + 10, width: 2, height: 8 } }];
+    const [part] = editAnchor(result, { caret }, track);
+    expect(part?.box.x).toBe(100);
+    expect(part?.box.width).toBe(2);
+    expect(part?.box.y).toBeLessThanOrEqual(band.top);
+    expect((part?.box.y ?? 0) + (part?.box.height ?? 0)).toBeGreaterThanOrEqual(band.bottom);
+  });
+
+  it('prefers the range’s own boxes, and is empty with neither', () => {
+    const { result } = laidOut();
+    const range = [{ system: 1, box: { x: 10, y: 20, width: 30, height: 40 } }];
+    expect(
+      editAnchor(
+        result,
+        {
+          range,
+          caret: [{ system: 0, box: range[0]?.box ?? { x: 0, y: 0, width: 1, height: 1 } }],
+        },
+        'x',
+      ),
+    ).toEqual(range);
+    expect(editAnchor(result, {}, 'x')).toEqual([]);
   });
 });

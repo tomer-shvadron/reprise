@@ -19,14 +19,15 @@ Songs typed in the app, the generated `song.reprise` and `song.gp`, and the comm
 
 ## Specs
 
-| Spec            | What                                                                                                             |
-| --------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `new-song`      | New song from the palette, and the first Save into the library                                                   |
-| `note-entry`    | A sixteen-bar riff from the keyboard alone, one undo step per entry                                              |
-| `bar-structure` | A song built from the bar dialogs, saved with its repeats, endings and jumps, and played in order                |
-| `clipboard`     | A four-bar cross-track paste is one History row and one undo restores it; cut, paste as insert and paste over    |
-| `round-trip`    | WP-086's chain: effects, bars, a paste, History undo and redo, a gp export and its reopening, on a typed riff    |
-| `effects`       | The Effects panel: toggles, mixed, the bend picker with Remove, disabled outside edit mode, one History row each |
-| `words`         | Chord names, beat text and a lyric line in the inline field; editing a lyric of `beat-lyrics.gp`                 |
-| `transpose`     | The Transpose dialog and its refusal off the neck, the semitone and string keys                                  |
-| `navigation`    | In edit mode, a click places the cursor, Shift+click and a drag make ranges, the arrows step from there          |
+| Spec             | What                                                                                                                                         |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `new-song`       | New song from the palette, and the first Save into the library                                                                               |
+| `note-entry`     | A sixteen-bar riff from the keyboard alone, one undo step per entry                                                                          |
+| `bar-structure`  | A song built from the bar dialogs, saved with its repeats, endings and jumps, and played in order                                            |
+| `clipboard`      | A four-bar cross-track paste is one History row and one undo restores it; cut, paste as insert and paste over                                |
+| `round-trip`     | WP-086's chain: effects, bars, a paste, History undo and redo, a gp export and its reopening, on a typed riff                                |
+| `effects`        | The Effects panel: toggles, mixed, the bend picker with Remove, disabled outside edit mode, one History row each                             |
+| `words`          | Chord names, beat text and a lyric line in the inline field; editing a lyric of `beat-lyrics.gp`                                             |
+| `transpose`      | The Transpose dialog and its refusal off the neck, the semitone and string keys                                                              |
+| `navigation`     | In edit mode, a click places the cursor, Shift+click and a drag make ranges, the arrows step from there                                      |
+| `selection-pill` | The toolbar over a clicked note or a range: an effect press keeps focus, a typed digit hides it, B opens the bend dialog, Alt+F10 and Escape |

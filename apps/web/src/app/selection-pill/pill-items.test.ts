@@ -6,7 +6,13 @@ import { createAppMenus } from '../app-menus';
 import { createAppRegistry } from '../app-registry';
 import { createMenuRegistry } from '../context-menu/menu-registry';
 import type { MenuContext } from '../context-menu/types';
-import { checkPillItems, PLAY_PILL, resolvePillItems, type PillSpec } from './pill-items';
+import {
+  checkPillItems,
+  EDIT_PILL,
+  PLAY_PILL,
+  resolvePillItems,
+  type PillSpec,
+} from './pill-items';
 
 const services = createTestServices();
 const registry = createAppRegistry(services, 'other');
@@ -116,5 +122,37 @@ describe('resolvePillItems', () => {
     for (const { spec } of resolve()) {
       expect(registry.get(spec.command)?.context).not.toBe('editing');
     }
+  });
+});
+
+describe('the edit pill', () => {
+  const resolve = () => {
+    services.editing.setState({ editing: true });
+    const items = resolvePillItems(menus, registry, EDIT_PILL, at('edit'), 'other');
+    services.editing.setState({ editing: false });
+    return items;
+  };
+
+  it('resolves every item from the score note menu in edit mode', () => {
+    expect(resolve().map((item) => item.spec.key)).toEqual(EDIT_PILL.items.map((item) => item.key));
+  });
+
+  it('names each button with its visible word', () => {
+    for (const { spec, label } of resolve()) {
+      if (spec.kind === 'duration') continue;
+      expect(label.toLowerCase()).toContain(spec.text.toLowerCase());
+    }
+  });
+
+  it('throws when a step of the duration menu leaves the surface', () => {
+    const bare = createMenuRegistry(registry, [
+      {
+        surface: 'score.beat',
+        items: [{ command: 'editor.durationLonger', group: 'beat' }],
+      },
+    ]);
+    expect(() => {
+      checkPillItems(bare, registry, [EDIT_PILL]);
+    }).toThrow(/"editor\.durationShorter"/);
   });
 });
