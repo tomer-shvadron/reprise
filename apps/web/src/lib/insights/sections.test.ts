@@ -8,7 +8,7 @@ import { chord, repeat, run, song, type SongBar } from './test/songs';
 
 const A = 9;
 /** A minor pentatonic over A, as eight eighths. */
-const PENTATONIC = [57, 60, 62, 64, 67, 69, 72, 76];
+const PENTATONIC = [69, 72, 74, 76, 79, 81, 84, 88];
 
 const aMinor = (section?: string): SongBar[] =>
   [chord(A, true), chord(5), chord(0), chord(7)].map((voicing, index) => ({
@@ -79,35 +79,104 @@ describe('sectionInsights', () => {
   });
 });
 
+/** Four bars of eight eighths (`eighths`) or four quarters, as a track of single notes or chords. */
+function arrangement(
+  tracks: readonly { name: string; notes: readonly (readonly number[])[]; beat: '4' | '8' }[],
+) {
+  const builder = score();
+  for (const { name, notes, beat } of tracks) {
+    builder.track('piano', { name });
+    for (let bar = 0; bar < 4; bar++) {
+      builder.bar();
+      for (let slot = 0; slot < (beat === '8' ? 8 : 4); slot++) {
+        builder.beat(
+          beat,
+          (notes[slot % notes.length] ?? []).map((pitch) => midi(pitch)),
+        );
+      }
+    }
+  }
+  return builder.build();
+}
+
+const names = ['Rhythm', 'Bass', 'Lead Guitar'];
+const GUITAR = { name: names[0] ?? '', beat: '8', notes: [[64, 69, 72]] } as const;
+const BASS = { name: names[1] ?? '', beat: '8', notes: [[45], [45], [52], [45]] } as const;
+const LEAD = { name: names[2] ?? '', beat: '4', notes: [[76, 79, 83]] } as const;
+const MELODY = { name: 'Melody', beat: '8', notes: [[84], [86], [88], [91]] } as const;
+
 describe('trackScales', () => {
-  it('marks a track whose name says solo or lead, and skips one with too few notes', () => {
+  const minor = { tonic: A, quality: 'minor' } as const;
+  const soloOf = (built: ReturnType<typeof arrangement>, section?: string) =>
+    trackScales(noteTableOf(built), minor, undefined, section).map((t) => [t.track, t.solo]);
+
+  it('marks neither a bass in eighths nor a strummed part called Lead Guitar', () => {
+    const built = arrangement([GUITAR, BASS, LEAD]);
+    expect(soloOf(built, 'Verse')).toEqual([
+      [0, false],
+      [1, false],
+      [2, false],
+    ]);
+    expect(soloOf(built)).toEqual([
+      [0, false],
+      [1, false],
+      [2, false],
+    ]);
+  });
+
+  it('marks the single-note track that is higher and busier than the rest', () => {
+    expect(soloOf(arrangement([GUITAR, BASS, MELODY]))).toEqual([
+      [0, false],
+      [1, false],
+      [2, true],
+    ]);
+  });
+
+  it('marks nobody for a single-note track that sits below the others', () => {
+    const low = { name: 'Low line', beat: '8', notes: [[50], [52], [53], [55]] } as const;
+    expect(soloOf(arrangement([GUITAR, low]))).toEqual([
+      [0, false],
+      [1, false],
+    ]);
+  });
+
+  it('takes the soloist of a section named like a solo from the busiest single-note track', () => {
+    const quiet = { name: 'Counter', beat: '4', notes: [[67], [69]] } as const;
+    const built = arrangement([GUITAR, quiet, MELODY]);
+    expect(soloOf(built, 'Guitar Solo')).toEqual([
+      [0, false],
+      [1, false],
+      [2, true],
+    ]);
+    // A word merely containing "lead" is not a solo section.
+    expect(soloOf(arrangement([GUITAR, BASS]), 'Misleading')).toEqual([
+      [0, false],
+      [1, false],
+    ]);
+  });
+
+  it('skips a track with too few notes', () => {
     const built = score()
-      .track('piano', { name: 'Guitar 1 (Lead)' })
+      .track('piano', { name: 'Rhythm' })
       .bar()
       .beat('4', [midi(57), midi(60), midi(64)])
       .beat('4', [midi(57), midi(60), midi(64)])
       .beat('4', [midi(57), midi(60), midi(64)])
-      .track('piano', { name: 'Rhythm' })
+      .track('piano', { name: 'Few' })
       .bar()
       .beat('1', [midi(57)])
       .build();
-    const table = noteTableOf(built);
-    const result = trackScales(table, { tonic: A, quality: 'minor' }, [
-      'Guitar 1 (Lead)',
-      'Rhythm',
-    ]);
-    expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({ track: 0, solo: true });
+    expect(trackScales(noteTableOf(built), minor)).toHaveLength(1);
   });
 
   it('gives no scale without a key to fit against', () => {
     const table = noteTableOf(song(aMinor()));
-    expect(trackScales(table, undefined, ['Chords', 'Melody']).every((t) => !t.scale)).toBe(true);
+    expect(trackScales(table, undefined).every((t) => !t.scale)).toBe(true);
   });
 
   it('names a scale on the tonic the key gives', () => {
     const built = song(repeat([{ chord: chord(0), melody: run(0) }], 2));
-    const [track] = trackScales(noteTableOf(built), { tonic: 0, quality: 'major' }, ['Chords']);
+    const [track] = trackScales(noteTableOf(built), { tonic: 0, quality: 'major' });
     expect(track?.scale?.name).toBe('C major pentatonic');
   });
 });
