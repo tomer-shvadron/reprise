@@ -140,6 +140,16 @@ export interface AudioEngine {
    * the engine passes them through, the audio service validates and clamps them.
    */
   previewNote(track: Id, note: PreviewNote, options?: PreviewOptions): void;
+  /**
+   * One beat of the song as it is written, effects included (bends, slides, vibrato, palm mute,
+   * golpe, wah, harmonics, grace notes, ties), planned by the scheduler that plans playback and
+   * sounded now through the track's strip, past mute and solo, while stopped or playing. It
+   * takes no options: the beat's own dynamics, tempo and notes, each ringing at least 0.6 s.
+   * Previews choke only previews and never touch the song's voices, mixer or round robins. A
+   * rest is silent; a sample not yet decoded is requested and misses this once, as in playback.
+   * Throws a `RangeError` for a track or beat the song lacks, and unlocks the context.
+   */
+  previewBeat(track: Id, beat: Id): void;
   on<K extends keyof AudioEngineEvents>(
     event: K,
     handler: (payload: AudioEngineEvents[K]) => void,
@@ -1061,6 +1071,20 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       // A track that is new in the score is not in the sampler until its pack's SFZ has been read.
       const made = unlock();
       if (made?.sampler.trackIds.includes(track)) made.sampler.previewNote(track, note, options);
+    },
+
+    previewBeat(track, beat) {
+      const current = requireSong('previewBeat');
+      const found = current.tracks.find((entry) => entry.id === track);
+      if (!found) throw new RangeError(`AudioEngine.previewBeat: the song has no track ${track}`);
+      const exists = found.bars.some((bar) =>
+        bar.voices.some((voice) => voice.beats.some((entry) => entry.id === beat)),
+      );
+      if (!exists)
+        throw new RangeError(`AudioEngine.previewBeat: track ${track} has no beat ${beat}`);
+      // The transport holds the song the sampler was built for; until a queued rebuild attaches
+      // the new one it does not know a beat added since, and stays silent.
+      unlock()?.transport.previewBeat(track, beat);
     },
 
     on(event, handler) {

@@ -394,7 +394,12 @@ export class Sampler {
    */
   noteOn(id: Id, request: NoteOnRequest): VoiceHandle | undefined {
     const state = this.#state(id);
-    return this.#start(state, request, state.strip.input);
+    // A preview note (`AudioEngine.previewBeat`) goes past the mute gate, like `previewNote`.
+    return this.#start(
+      state,
+      request,
+      request.preview ? state.strip.previewInput : state.strip.input,
+    );
   }
 
   #start(

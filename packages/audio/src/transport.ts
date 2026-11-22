@@ -2,7 +2,17 @@ import { positionAtSeconds, secondsAtTick } from '@reprise/model';
 import type { Id, PlaybackPosition, Score } from '@reprise/model';
 
 import { ClickSynth } from './click-synth';
-import { advance, retime, startRun, tickAtTime, withLoop } from './scheduler';
+import {
+  advance,
+  hitEventOf,
+  noteEventOf,
+  previewBeatEvents,
+  retime,
+  startRun,
+  tickAtTime,
+  wahEventOf,
+  withLoop,
+} from './scheduler';
 import type { Anchor, Run } from './scheduler';
 import type { InstrumentSink, MetronomeSink } from './sink';
 import { frameTicker, workerTicker } from './ticker';
@@ -51,6 +61,14 @@ export interface Transport {
   pause(): void;
   stop(): void;
   seek(tick: number): void;
+  /**
+   * Sounds one beat as playback would, effects and all, now: stopped or playing, through the
+   * sink's preview path (`NoteEvent.preview`), so it neither touches the run, the mixer, the
+   * sink's round robins and legato chains nor a song voice. Does nothing for a rest with no
+   * golpe or a beat the loaded timeline lacks. The beat's pedal change is sent only when no run
+   * is playing, and undone after its longest note.
+   */
+  previewBeat(trackId: Id, beatId: Id): void;
   setTempo(mode: TempoMode, value: number): void;
   setLoop(range?: { startBar: Id; endBar: Id }): void;
   setCountIn(on: boolean): void;
@@ -212,53 +230,10 @@ export function createTransport(options: TransportOptions): Transport {
           passIndex: mix.passIndex,
         });
       }
-      for (const wah of result.wahs) {
-        sink.wah?.({
-          track: wah.track,
-          trackIndex: wah.trackIndex,
-          state: wah.state,
-          when: wah.when,
-          playbackTick: wah.tick,
-          sequenceIndex: wah.sequenceIndex,
-          masterBarIndex: wah.masterBarIndex,
-          passIndex: wah.passIndex,
-          restore: wah.restore,
-        });
-      }
-      for (const hit of result.hits) {
-        sink.hit?.({
-          track: hit.track,
-          trackIndex: hit.trackIndex,
-          voiceIndex: hit.voiceIndex,
-          beat: hit.beat,
-          beatIndex: hit.beatIndex,
-          golpe: hit.golpe,
-          when: hit.when,
-          playbackTick: hit.tick,
-          sequenceIndex: hit.sequenceIndex,
-          masterBarIndex: hit.masterBarIndex,
-          passIndex: hit.passIndex,
-        });
-      }
+      for (const wah of result.wahs) sink.wah?.(wahEventOf(wah));
+      for (const hit of result.hits) sink.hit?.(hitEventOf(hit));
       for (const note of result.notes) {
-        sink.noteOn({
-          track: note.track,
-          trackIndex: note.trackIndex,
-          voiceIndex: note.voiceIndex,
-          beat: note.beat,
-          beatIndex: note.beatIndex,
-          note: note.note,
-          when: note.when,
-          duration: note.duration,
-          playbackTick: note.tick,
-          durationTicks: note.durationTicks,
-          sequenceIndex: note.sequenceIndex,
-          masterBarIndex: note.masterBarIndex,
-          passIndex: note.passIndex,
-          barEnd: note.barEnd,
-          nextOnString: note.nextOnString,
-          continuations: note.continuations,
-        });
+        sink.noteOn(noteEventOf(note));
       }
       if (!result.loop) break;
       emit('loop', result.loop);
@@ -337,6 +312,22 @@ export function createTransport(options: TransportOptions): Transport {
       resolveLoop(line, target);
       rate = rateFor(target);
       place(line, target);
+    },
+
+    previewBeat(trackId, beatId) {
+      if (!timeline) return;
+      const when = context.currentTime + startLatency;
+      const { notes, hits, wahs } = previewBeatEvents(timeline, trackId, beatId, when);
+      // Only when stopped: the pedal is state, and a running song keeps its own.
+      const pedal = isRunning() ? [] : wahs;
+      for (const wah of pedal) sink.wah?.(wah);
+      for (const hit of hits) sink.hit?.(hit);
+      for (const note of notes) sink.noteOn(note);
+      const first = pedal[0];
+      if (first) {
+        const end = Math.max(when, ...notes.map((note) => note.when + note.duration));
+        sink.wah?.({ ...first, state: 'off', when: end, restore: true });
+      }
     },
 
     unload() {

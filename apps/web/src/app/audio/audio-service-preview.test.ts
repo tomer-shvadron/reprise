@@ -7,6 +7,7 @@ import { MEMORY_BUDGET_RANGE, createAudioService } from './audio-service';
 
 const engine = vi.hoisted(() => ({
   previewNote: vi.fn<(...args: unknown[]) => void>(),
+  previewBeat: vi.fn<(...args: unknown[]) => void>(),
   unlock: vi.fn(),
   setGmTierBypass: vi.fn<(on: boolean) => void>(),
   setMemoryBudget: vi.fn<(bytes: number) => void>(),
@@ -53,6 +54,7 @@ const song = score()
   .beat('4', [note(1, 3)])
   .build();
 const trackId = song.tracks[0]?.id ?? '';
+const beatId = song.tracks[0]?.bars[0]?.voices[0].beats[0]?.id ?? '';
 
 async function open(
   defer: (run: () => void) => void = (run) => {
@@ -73,6 +75,7 @@ async function open(
 
 beforeEach(() => {
   engine.previewNote.mockClear();
+  engine.previewBeat.mockClear();
   engine.unlock.mockClear();
   engine.setGmTierBypass.mockClear();
 });
@@ -232,5 +235,36 @@ describe('AudioService.setStageBypass', () => {
     const { audio } = await open();
     audio.setStageBypass(trackId, 'drive', true);
     expect(engine.setStageBypass).toHaveBeenCalledWith(trackId, 'drive', true);
+  });
+});
+
+describe('AudioService.previewBeat', () => {
+  it('hands the engine the track and the beat, unlocking first', async () => {
+    const { audio } = await open();
+    audio.previewBeat(trackId, beatId);
+    expect(engine.previewBeat).toHaveBeenCalledWith(trackId, beatId);
+    expect(engine.unlock).toHaveBeenCalled();
+  });
+
+  it('refuses a track or a beat the open song lacks, before the engine', async () => {
+    const { audio } = await open();
+    expect(() => {
+      audio.previewBeat('nope', beatId);
+    }).toThrow(RangeError);
+    expect(() => {
+      audio.previewBeat(trackId, 'nope');
+    }).toThrow(RangeError);
+    expect(engine.previewBeat).not.toHaveBeenCalled();
+    expect(engine.unlock).not.toHaveBeenCalled();
+  });
+
+  it('does nothing with no document', () => {
+    const audio = createAudioService({
+      playback: createPlaybackStore(),
+      loadSoundfont: () => Promise.resolve(new Uint8Array(1)),
+      createContext: () => new AudioContext(),
+    });
+    audio.previewBeat(trackId, beatId);
+    expect(engine.previewBeat).not.toHaveBeenCalled();
   });
 });

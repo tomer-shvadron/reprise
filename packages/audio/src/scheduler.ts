@@ -8,17 +8,19 @@
  * a loop wrap starts a new anchor at the cursor, so events already handed out never move.
  */
 import { PPQ, positionAtSeconds, secondsAtTick } from '@reprise/model';
-import type { MixerChange } from '@reprise/model';
+import type { Id, MixerChange } from '@reprise/model';
 
 import {
   beatEventsInRange,
   bpmAtTick,
   clicksInRange,
   countInTicks,
+  locateBeat,
   mixesInRange,
   notesInRange,
   passIndexAt,
 } from './timeline';
+import type { HitEvent, NoteEvent, WahEvent } from './sink';
 import { wahChangesInRange, wahRestores } from './wah-lane';
 import type { WahOnset } from './wah-lane';
 import type {
@@ -364,4 +366,119 @@ export function advance(timeline: Timeline, run: Run, window: Window): Advanced 
     if (target < limit) break;
   }
   return { run: next, notes, mixes, hits, wahs, clicks, anchors, loop: undefined };
+}
+
+/** The one mapping from a scheduled note to what the sink is sent, shared by playback and preview. */
+export function noteEventOf(note: ScheduledNote): NoteEvent {
+  return {
+    track: note.track,
+    trackIndex: note.trackIndex,
+    voiceIndex: note.voiceIndex,
+    beat: note.beat,
+    beatIndex: note.beatIndex,
+    note: note.note,
+    when: note.when,
+    duration: note.duration,
+    playbackTick: note.tick,
+    durationTicks: note.durationTicks,
+    sequenceIndex: note.sequenceIndex,
+    masterBarIndex: note.masterBarIndex,
+    passIndex: note.passIndex,
+    barEnd: note.barEnd,
+    nextOnString: note.nextOnString,
+    continuations: note.continuations,
+  };
+}
+
+/** The golpe counterpart of `noteEventOf`. */
+export function hitEventOf(hit: ScheduledHit): HitEvent {
+  return {
+    track: hit.track,
+    trackIndex: hit.trackIndex,
+    voiceIndex: hit.voiceIndex,
+    beat: hit.beat,
+    beatIndex: hit.beatIndex,
+    golpe: hit.golpe,
+    when: hit.when,
+    playbackTick: hit.tick,
+    sequenceIndex: hit.sequenceIndex,
+    masterBarIndex: hit.masterBarIndex,
+    passIndex: hit.passIndex,
+  };
+}
+
+/** The wah counterpart of `noteEventOf`. */
+export function wahEventOf(wah: ScheduledWah): WahEvent {
+  return {
+    track: wah.track,
+    trackIndex: wah.trackIndex,
+    state: wah.state,
+    when: wah.when,
+    playbackTick: wah.tick,
+    sequenceIndex: wah.sequenceIndex,
+    masterBarIndex: wah.masterBarIndex,
+    passIndex: wah.passIndex,
+    restore: wah.restore,
+  };
+}
+
+/** The shortest a previewed note rings: a beat at a fast tempo would otherwise be a click. */
+export const PREVIEW_MIN_SECONDS = 0.6;
+
+/** What sounds one beat: the sink's calls, in the order playback makes them. */
+export interface BeatPreview {
+  notes: NoteEvent[];
+  hits: HitEvent[];
+  /** The beat's own pedal change, when it has one; never the run-start restore. */
+  wahs: WahEvent[];
+}
+
+/**
+ * The events that sound one beat, planned by the same `advance` that plans playback over a run
+ * that starts at the beat's grace-note lead and stops at its end, so bends,
+ * slides, ties, golpes and the rest follow from one code path. Starts at `when`, at the beat's
+ * own tempo and the written speed. Other beats in the lead window (a tie's origin) are dropped,
+ * and a note shorter than `PREVIEW_MIN_SECONDS` rings that long. Empty for a rest with no golpe,
+ * or for a track or beat the score lacks. No mixer change is sent: a preview never moves the mixer.
+ */
+export function previewBeatEvents(
+  timeline: Timeline,
+  trackId: Id,
+  beatId: Id,
+  when: number,
+): BeatPreview {
+  const preview: BeatPreview = { notes: [], hits: [], wahs: [] };
+  const span = locateBeat(timeline, trackId, beatId);
+  if (!span) return preview;
+  const startTick = Math.max(0, span.tick - span.leadTicks);
+  const endTick = span.tick + span.ticks;
+  // No loop: the run's limit is the song's end, so a slide still finds its target and a tie its
+  // whole chain, as in playback; the horizon alone stops the window at the beat's end.
+  const run = startRun(timeline, {
+    tick: startTick,
+    time: when,
+    rate: 1,
+    loop: undefined,
+    countIn: false,
+  });
+  const seconds = timeAtTick(timeline, run.anchor, endTick) - when;
+  const advanced = advance(timeline, run, {
+    now: when,
+    horizon: when + seconds,
+    metronome: false,
+  });
+  const own = (event: { track: { id: Id }; beat: { id: Id } }): boolean =>
+    event.track.id === trackId && event.beat.id === beatId;
+  preview.notes = advanced.notes.filter(own).map((note) => ({
+    ...noteEventOf(note),
+    duration: Math.max(note.duration, PREVIEW_MIN_SECONDS),
+    preview: true,
+  }));
+  preview.hits = advanced.hits.filter(own).map((hit) => ({ ...hitEventOf(hit), preview: true }));
+  preview.wahs = advanced.wahs
+    .filter(
+      (wah) => !wah.restore && wah.track.id === trackId && Math.abs(wah.tick - span.tick) < EPSILON,
+    )
+    .map(wahEventOf);
+  return preview;
 }

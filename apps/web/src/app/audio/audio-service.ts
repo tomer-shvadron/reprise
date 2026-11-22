@@ -159,6 +159,17 @@ export interface AudioService {
    */
   previewNote(trackId: Id, note: PreviewNote, options?: PreviewOptions): void;
   /**
+   * Sounds one beat of the open song as written, effects included (bends, slides, palm mute,
+   * golpe, wah and the rest), through the same planning as playback, so applying an effect in the
+   * editor is heard. No options: the beat's own notes, dynamics and tempo, each ringing at least
+   * 0.6 s. Stopped or playing, past mute and solo; it never touches the song's voices.
+   * Contract, as `previewNote`: a `RangeError` for a track or beat the open song lacks, thrown
+   * before unlocking or touching the engine, so call it last in a handler; nothing happens, with
+   * no error, with no document, while it loads, when the engine's song does not have the beat yet
+   * (a queued rebuild) or when the output failed. A rest is silent. It unlocks the context.
+   */
+  previewBeat(trackId: Id, beatId: Id): void;
+  /**
    * Undoes `releasePack` for a pack that is still installed (the folder removal failed): the song
    * reloads with it. A no-op for a pack that was not released.
    */
@@ -709,6 +720,26 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
           }),
         },
       );
+    },
+
+    previewBeat(trackId, beatId) {
+      if (disposed) return;
+      if (!doc || !loaded) return;
+      const has = (score: Score): boolean | undefined =>
+        score.tracks
+          .find((entry) => entry.id === trackId)
+          ?.bars.some((bar) =>
+            bar.voices.some((voice) => voice.beats.some((beat) => beat.id === beatId)),
+          );
+      const known = has(doc.score);
+      if (known === undefined)
+        throw new RangeError(`previewBeat: the open song has no track ${trackId}`);
+      if (!known) throw new RangeError(`previewBeat: track ${trackId} has no beat ${beatId}`);
+      // A queued rebuild: the track or beat is new in the document and the engine lacks it yet.
+      if (!engineScore || !has(engineScore)) return;
+      service.unlock();
+      if (playback.getState().output.status === 'error') return;
+      engine.previewBeat(trackId, beatId);
     },
 
     async releasePack(id) {

@@ -1,7 +1,7 @@
 import { PPQ, midiNote } from '@reprise/model';
 import type { Beat, Note, Track } from '@reprise/model';
 import { note, score } from '@reprise/model/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { NoteEvent } from '../sink';
 import { midiToFrequency } from './sample-source';
@@ -224,5 +224,46 @@ describe('createSamplerSink', () => {
     expect(toneLevel(data, midiToFrequency(midiNote(guitar, firstNote)), 0.5, 1)).toBeLessThan(
       0.001,
     );
+  });
+});
+
+describe('createSamplerSink preview events', () => {
+  it('sounds past a muted track, and neither chokes nor is choked by a song note on its string', async () => {
+    const context = offline(1.5);
+    const sampler = new Sampler(context);
+    sampler.addTrack({ ...guitar, channel: { ...guitar.channel, mute: true } }, sineInstrument());
+    const sink = createSamplerSink(sampler);
+    const frequency = midiToFrequency(midiNote(guitar, firstNote));
+
+    sink.noteOn({
+      ...event({ note: firstNote, beat: first, when: 0.1, duration: 1, barEnd: 2 }),
+      preview: true,
+    });
+    // A song note on the same string, struck while the preview rings: muted, and chokes nothing.
+    sink.noteOn(event({ note: firstNote, beat: first, when: 0.4, duration: 0.5, barEnd: 2 }));
+    const data = (await context.startRendering()).getChannelData(0);
+
+    expect(toneLevel(data, frequency, 0.5, 0.9)).toBeGreaterThan(0.1);
+  });
+
+  it('leaves the round robins and the legato chains of playback alone', () => {
+    const context = offline(1);
+    const sampler = new Sampler(context);
+    sampler.addTrack(guitar, sineInstrument());
+    const sink = createSamplerSink(sampler);
+    const noteOn = vi.spyOn(sampler, 'noteOn');
+
+    sink.noteOn({
+      ...event({ note: firstNote, beat: first, when: 0, duration: 0.2, barEnd: 1 }),
+      preview: true,
+    });
+    sink.noteOn(event({ note: firstNote, beat: first, when: 0.5, duration: 0.2, barEnd: 1 }));
+
+    const [previewed, played] = noteOn.mock.calls.map(([, request]) => request);
+    expect(previewed?.preview).toBe(true);
+    expect(previewed?.select?.sequence).toBe(0);
+    expect(played?.preview).toBeUndefined();
+    // The preview did not advance the counter: the song's first strike is still the cycle's first.
+    expect(played?.select?.sequence).toBe(0);
   });
 });

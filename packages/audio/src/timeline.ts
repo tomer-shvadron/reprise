@@ -272,6 +272,35 @@ function nextOnString(
   return next ? { note: next, beat: after.beat, tick: after.tick } : undefined;
 }
 
+/** Where a beat first sounds: its tick, its length and the grace-note lead before it. */
+export interface BeatSpan {
+  tick: number;
+  ticks: number;
+  leadTicks: number;
+}
+
+/**
+ * The first pass over `beatId` on `trackId`, or undefined for a track or beat the score lacks.
+ * A repeated bar is located at its first play: a preview has no pass of its own.
+ */
+export function locateBeat(timeline: Timeline, trackId: Id, beatId: Id): BeatSpan | undefined {
+  const track = timeline.score.tracks.find((entry) => entry.id === trackId);
+  if (!track) return undefined;
+  for (const pass of timeline.map.passes) {
+    for (const voice of track.bars[pass.masterBarIndex]?.voices ?? []) {
+      let offset = 0;
+      for (const beat of voice.beats) {
+        const ticks = beatTicks(beat);
+        if (beat.id === beatId) {
+          return { tick: pass.startTick + offset, ticks, leadTicks: graceLeadTicks(beat) };
+        }
+        offset += ticks;
+      }
+    }
+  }
+  return undefined;
+}
+
 /**
  * Every note due in `[from, to)`: its onset, or earlier by the grace notes before it (never
  * before `runStartTick`), so the sink gets those in time. A tied note held from its origin in

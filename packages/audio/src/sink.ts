@@ -37,6 +37,12 @@ export interface NoteEvent {
    * already in `duration`.
    */
   continuations: { note: Note; beat: Beat; when: number; durationTicks: number }[];
+  /**
+   * An editor preview (`AudioEngine.previewBeat`), not playback: its voices go through the
+   * track's preview input, choke and are choked by previews only, and leave the sink's
+   * round-robin counters and legato chains alone.
+   */
+  preview?: boolean;
 }
 
 /**
@@ -76,6 +82,8 @@ export interface HitEvent {
   golpe: Golpe;
   /** `AudioContext` time of the beat; never earlier than `currentTime` when handed out. */
   when: number;
+  /** An editor preview: the hit goes past mute and solo and is never choked by the song. */
+  preview?: boolean;
   playbackTick: number;
   sequenceIndex: number;
   masterBarIndex: number;
