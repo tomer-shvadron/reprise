@@ -221,7 +221,8 @@ together: starting one stops the other.
   never in the `.reprise` file, a gp export or the draft. The tuner's microphone and the standalone
   metronome are never observed: the capture imports nothing from `tuner/` or `metronome/`.
 - Not done: a weekly summary and streaks (they would want a `startedAt` index, a Dexie version 3),
-  export of the log, pruning or a clear-history button, and a Resume command.
+  export of the log, pruning or a clear-history button.
+- **Resume practice command**: `trainer.resumePractice` in the palette runs the song page's Resume on the open song. It is offered for any open library song (the log is async, so availability cannot depend on it) and announces when there is no history.
 - **In the practice mode (#341)** starting the speed trainer, the standalone metronome or the tuner
   (⌥S, ⌥B, the capsule's chip) does not show their panel, because a panel would end the mode; the
   capsule's `SpeedTrainerChip command="trainer.speedTrainerToggle"` shows the progress and the

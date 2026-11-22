@@ -12,12 +12,16 @@ import { arpeggioOverlayFor } from './fretboard/arpeggio-overlay';
 import { scaleOverlayFor, songScaleOf } from './fretboard/scale-overlay';
 import { insightsFor } from './insights/insights-for';
 import { speedTrainerFor } from './speed-trainer/speed-trainer-for';
+import { practiceLogFor } from './practice-log/install';
+import { resumePractice, type ResumeServices } from './practice-log/resume';
+import { resumeTarget } from './practice-log/summary';
 
 export type TrainerCommandId =
   | 'trainer.speedTrainer'
   | 'trainer.speedTrainerToggle'
   | 'trainer.speedTrainerMissed'
   | 'trainer.speedTrainerReset'
+  | 'trainer.resumePractice'
   | 'trainer.tuner'
   | 'trainer.tunerToggle'
   | 'trainer.metronome'
@@ -39,8 +43,9 @@ type TrainerCommand = Command & { id: TrainerCommandId };
 export function trainerCommands(
   services: Pick<
     AppServices,
-    'ui' | 'platform' | 'document' | 'selection' | 'menuTarget' | 'heard'
+    'ui' | 'platform' | 'document' | 'selection' | 'menuTarget' | 'heard' | 'practice'
   > &
+    ResumeServices &
     SpeedTrainerServices,
 ): TrainerCommand[] {
   const { ui } = services;
@@ -81,6 +86,31 @@ export function trainerCommands(
       repeat: false,
       run: () => {
         speedTrainer().reset();
+      },
+    },
+    {
+      id: 'trainer.resumePractice',
+      title: 'Resume practice',
+      repeat: false,
+      // The log is read from IndexedDB, which a synchronous check cannot do: the command is offered
+      // for any library song that is open, and says so when that song has no history.
+      enabled: () => {
+        const { songId, score } = services.document.getState();
+        return (
+          songId !== undefined && score !== undefined && practiceLogFor(services) !== undefined
+        );
+      },
+      run: async () => {
+        const { songId } = services.document.getState();
+        const log = practiceLogFor(services);
+        if (songId === undefined || !log) return;
+        const target = resumeTarget(await log.forSong(songId));
+        if (!target) {
+          services.transport.getState().announce('No practice to resume for this song yet.');
+          return;
+        }
+        // The song is already open, so there is nothing to open first.
+        await resumePractice(services, songId, target, () => Promise.resolve());
       },
     },
     { id: 'trainer.tuner', title: 'Show tuner', run: show('tuner') },
