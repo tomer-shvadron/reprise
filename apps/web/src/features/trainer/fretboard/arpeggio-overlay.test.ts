@@ -26,6 +26,14 @@ describe('the arpeggio overlay store', () => {
     });
   });
 
+  it('does not reset the chord shown when turned on again', () => {
+    const { store } = setup();
+    store.getState().turnOn();
+    store.getState().setShown({ kind: 'chord', name: 'C', source: 'written' });
+    store.getState().turnOn();
+    expect(store.getState().shown).toEqual({ kind: 'chord', name: 'C', source: 'written' });
+  });
+
   it('turns on and off', () => {
     const { store } = setup();
     store.getState().turnOn();
@@ -55,8 +63,8 @@ describe('the arpeggio overlay store', () => {
 
   it('holds a picked chord, turning follow off and the overlay on', () => {
     const { store } = setup();
-    store.getState().hold('F♯m7b5');
-    expect(store.getState()).toMatchObject({ on: true, follow: false, held: 'F♯m7b5' });
+    store.getState().hold('F#m7b5');
+    expect(store.getState()).toMatchObject({ on: true, follow: false, held: 'F#m7b5' });
   });
 
   it('keeps a held chord when another document opens', () => {

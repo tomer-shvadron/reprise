@@ -288,6 +288,16 @@ describe('trainer commands', () => {
     expect(services.ui.getState().bottomPanel.open).toBe(true);
     await command?.run();
     expect(store.getState().on).toBe(false);
+    // On with the dock closed: the command brings the dock back instead of hiding unseen.
+    await command?.run();
+    act(() => {
+      services.ui.getState().setBottomPanelOpen(false);
+    });
+    await command?.run();
+    expect(store.getState().on).toBe(true);
+    expect(services.ui.getState().bottomPanel.open).toBe(true);
+    await command?.run();
+    expect(store.getState().on).toBe(false);
   });
 
   it('says so when no scale can be named for the song', async () => {

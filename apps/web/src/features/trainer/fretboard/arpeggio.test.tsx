@@ -14,6 +14,7 @@ import { insightsFor } from '../insights/insights-for';
 
 import { arpeggioOverlayFor } from './arpeggio-overlay';
 import { Fretboard } from './fretboard';
+import { geometryOf } from './fretboard-geometry';
 import { scaleOverlayFor } from './scale-overlay';
 
 afterEach(() => {
@@ -159,13 +160,20 @@ describe('Fretboard arpeggio overlay', () => {
       expect(chip()).toBe('Arpeggio: Am');
     });
     const first = layer();
+    let writes = 0;
+    store.subscribe(() => {
+      writes++;
+    });
     at(1000);
     expect(layer()).toBe(first);
     expect(first?.querySelector('[data-arpeggio-tone]')).not.toBeNull();
     const node = first?.querySelector('[data-arpeggio-tone]');
     at(2000);
     expect(layer()?.querySelector('[data-arpeggio-tone]')).toBe(node);
+    // Frames inside one chord write nothing to the store.
+    expect(writes).toBe(0);
     at(BAR);
+    expect(writes).toBe(1);
     expect(chip()).toBe('Arpeggio: F');
     expect(layer()?.getAttribute('aria-label')).toMatch(/^F chord tones/);
     at(3 * BAR + 100);
@@ -264,9 +272,115 @@ describe('Fretboard arpeggio overlay', () => {
     const picker = within(screen.getByRole('dialog', { name: 'Arpeggio tool' }));
     await user.click(picker.getByRole('button', { name: 'F♯' }));
     await user.click(picker.getByRole('button', { name: 'm7♭5' }));
-    expect(store.getState()).toMatchObject({ on: true, follow: false, held: 'F♯m7b5' });
+    expect(store.getState()).toMatchObject({ on: true, follow: false, held: 'F#m7b5' });
     expect(picker.getByRole('button', { name: 'F♯' }).getAttribute('aria-pressed')).toBe('true');
-    expect(layer()?.getAttribute('aria-label')).toBe('F♯m7b5 chord tones: F♯ R, A ♭3, C ♭5, E ♭7');
+    expect(picker.getByRole('button', { name: 'm7♭5' }).getAttribute('aria-pressed')).toBe('true');
+    expect(chip()).toBe('Arpeggio: F#m7b5 · held');
+    expect(layer()?.getAttribute('aria-label')).toBe('F#m7b5 chord tones: F♯ R, A ♭3, C ♭5, E ♭7');
+  });
+
+  const pressedIn = (picker: { getAllByRole: (role: 'button') => HTMLElement[] }) =>
+    picker
+      .getAllByRole('button')
+      .filter((button) => button.getAttribute('aria-pressed') === 'true')
+      .map((button) => button.textContent);
+
+  it('presses a root but no quality for a chord no button stands for', async () => {
+    const user = userEvent.setup();
+    const { store } = await open(chords());
+    act(() => {
+      store.getState().hold('E5');
+    });
+    await user.click(screen.getByRole('button', { name: 'Choose an arpeggio' }));
+    const picker = within(screen.getByRole('dialog', { name: 'Arpeggio tool' }));
+    // Degrees is pressed too; the quality buttons are the ones that must not be.
+    expect(pressedIn(picker)).toEqual(['Degrees', 'E']);
+    // The next click starts from the default quality, not from a stale pick.
+    await user.click(picker.getByRole('button', { name: 'E' }));
+    expect(store.getState().held).toBe('Em');
+  });
+
+  it('presses no root or quality while no chord is drawn', async () => {
+    const user = userEvent.setup();
+    const { store } = await open(chords([undefined, undefined]));
+    act(() => {
+      store.getState().turnOn();
+    });
+    await waitFor(() => {
+      expect(chip()).toBe('Arpeggio: no chords in this song');
+    });
+    await user.click(screen.getByRole('button', { name: 'Choose an arpeggio' }));
+    const picker = within(screen.getByRole('dialog', { name: 'Arpeggio tool' }));
+    expect(pressedIn(picker)).toEqual(['Degrees']);
+  });
+
+  it('mirrors the rings for a left-handed player', async () => {
+    const { services, store } = await open(chords());
+    act(() => {
+      store.getState().hold('Am7');
+    });
+    const xs = () =>
+      [...document.querySelectorAll('[data-fretboard-arpeggio] circle')]
+        .map((circle) => Number(circle.getAttribute('cx')))
+        .sort((x, y) => x - y);
+    const right = xs();
+    act(() => {
+      services.ui.getState().setFretboardLeftHanded(true);
+    });
+    const { width } = geometryOf({ strings: 6, frets: 24, capo: 0 }, false);
+    expect(xs()).toEqual(right.map((x) => width - x).sort((x, y) => x - y));
+  });
+
+  it('says the chords are unavailable when the analysis fails', async () => {
+    const services = createTestServices();
+    insightsFor(services, {
+      client: { analyse: () => Promise.reject(new Error('boom')), dispose: () => undefined },
+    });
+    renderWithServices(<Fretboard />, services);
+    const { bytes } = await write(chords(), 'reprise');
+    await act(async () => {
+      await services.document.getState().openBytes('song.reprise', bytes);
+    });
+    act(() => {
+      arpeggioOverlayFor(services).getState().turnOn();
+    });
+    await waitFor(() => {
+      expect(chip()).toBe('Arpeggio: chords unavailable');
+    });
+  });
+
+  it('says it is finding the chords until the analysis lands', async () => {
+    const services = createTestServices();
+    let answer: (insights: ReturnType<typeof analyseScore>) => void = () => undefined;
+    insightsFor(services, {
+      client: {
+        analyse: () =>
+          new Promise((resolve) => {
+            answer = resolve;
+          }),
+        dispose: () => undefined,
+      },
+    });
+    renderWithServices(<Fretboard />, services);
+    const built = chords();
+    const { bytes } = await write(built, 'reprise');
+    await act(async () => {
+      await services.document.getState().openBytes('song.reprise', bytes);
+    });
+    const opened = services.document.getState().score;
+    if (!opened) throw new Error('no score');
+    act(() => {
+      services.playback.setState({ position: positionEventAt(opened, 0) });
+      arpeggioOverlayFor(services).getState().turnOn();
+    });
+    expect(chip()).toBe('Arpeggio: finding chords…');
+    await act(async () => {
+      answer(analyseScore(opened));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(chip()).toBe('Arpeggio: Am');
+    });
   });
 
   it('moves focus to the Arpeggio button after Hide', async () => {
