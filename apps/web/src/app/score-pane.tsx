@@ -11,6 +11,7 @@ import {
   chordBoxes,
   createGestureTracker,
   firstBarInView,
+  mountedSystems,
   pointerTarget,
   ScoreView,
   type ScoreOverlays,
@@ -171,6 +172,14 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
     return services.viewProbe.attach(() => {
       const view = handle.current;
       return view ? firstBarInView(result.systems, view.viewport()) : undefined;
+    });
+  }, [services, result]);
+
+  // An edit's layout redraws at once what is mounted here, so nothing on screen is left stale (#229).
+  useEffect(() => {
+    return services.viewProbe.attachMounted(() => {
+      const view = handle.current;
+      return view ? mountedSystems(result.systems, view.viewport()) : undefined;
     });
   }, [services, result]);
 
