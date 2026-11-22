@@ -53,7 +53,7 @@ export interface SystemPlan {
    * voice shifts) is scaled by it, and `squeeze` is 0.
    */
   rigidScale: number;
-  /** Below 1 only when the fixed parts alone overflow: they are scaled by it, and `rigidScale` is 0. */
+  /** Below 1 only when the fixed parts alone overflow: only their spacing room shrinks by it (the glyphs keep their size and may still pass the bar), and `rigidScale` is 0. */
   fixedScale: number;
   /** Header pad taken back from an over-wide bar, from its bars' `pad` in order. */
   trim: number;

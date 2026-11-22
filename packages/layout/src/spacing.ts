@@ -65,8 +65,8 @@ export function squeezedMin(
 }
 
 /**
- * Each spring at `factor` times its natural width, never below its minimum, which `squeeze` and
- * `rigidScale` shrink only in a bar whose minimums alone overflow its line.
+ * Each spring at `factor` times its natural width, never below its minimum, which `squeeze`,
+ * `rigidScale` and `fixedScale` shrink only in a bar whose minimums alone overflow its line.
  */
 export function stretch(
   springs: readonly Spring[],

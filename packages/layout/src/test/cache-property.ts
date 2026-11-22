@@ -433,9 +433,9 @@ const SCORES: Record<'large' | 'sparse' | 'diagrams', () => Score> = {
  */
 const SPLIT_PAGE_HEIGHTS = [300, 640] as const;
 
-/** Widths a sequence starts at and steps through: A4, the narrow content widths 320, 480 and 640 px, Letter. */
+/** Widths a sequence starts at and steps through: A4, the narrow content widths 240, 320, 480 and 640 px, Letter. */
 const WIDTHS: Readonly<Record<LayoutOptions['mode'], readonly number[]>> = {
-  paged: [PAGE_SIZES.a4.width, 416, 576, 736, PAGE_SIZES.letter.width],
+  paged: [PAGE_SIZES.a4.width, 336, 416, 576, 736, PAGE_SIZES.letter.width],
   continuous: [640, 900, 320, 480],
 };
 

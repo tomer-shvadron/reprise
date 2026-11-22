@@ -112,9 +112,10 @@ export interface StaffBarPlacement {
   /** The bar opens a line: a paged system's first bar, or the first bar of the continuous line. */
   readonly lineStart: boolean;
   /**
-   * The factor `SystemPlan.rigidScale` applies to the bar's rigid room, below 1 only when the
-   * rigid parts alone overflow the line. A module scales by it whatever it reserved as rigid
-   * room and can move, such as the standard staff's voice shifts.
+   * The factor `SystemPlan.rigidScale` applies to the bar's movable room, below 1 only when the
+   * fixed and movable parts alone overflow the line. A module scales by it what it can move,
+   * such as the standard staff's voice shifts; what it reserved as `OnsetExtent.fixed` is not
+   * scaled.
    */
   readonly rigidScale: number;
 }
