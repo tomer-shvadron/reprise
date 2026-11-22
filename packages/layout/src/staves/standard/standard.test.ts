@@ -21,6 +21,7 @@ import {
 import { expectValid, overlappingMarks, stable, strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
 import type { StaffBar } from '../staff-module';
+import { standardModule } from './index';
 import { MARGIN, planBar, type BarPlan } from './plan';
 
 const paged: LayoutOptions = {
@@ -501,6 +502,31 @@ describe('standard staff', () => {
     }
   });
 
+  it('reserves the fingering around the drawn mark, a shifted head included (#523)', () => {
+    const built = score()
+      .track('guitar', { display: { notation: 'standard', octaveShift: 0 } })
+      .bar()
+      .beat('4', [note(1, 0, { leftHandFinger: 'index', rightHandFinger: 'middle' })])
+      .voice(1)
+      .beat('4', [note(1, 1, { leftHandFinger: 'index' })])
+      .build({ ids: 'sequential' });
+    // The second voice's head moves right and its mark follows it: the beats' extents merge in
+    // `measureBar`, so each beat reports its own.
+    const shifted = standardModule()
+      .measure(staffBar(built, 0))
+      .onsets.map((extent) => extent.marks);
+    // The first voice's mark is centred on its head, the second one's is not.
+    expect(shifted[0]?.right).toBeCloseTo(shifted[0]?.left ?? 0, 9);
+    expect((shifted[1]?.right ?? 0) - (shifted[1]?.left ?? 0)).toBeGreaterThan(1e-6);
+    // A bar with no fingering reserves nothing.
+    const plain = score()
+      .track('guitar', { display: { notation: 'standard', octaveShift: 0 } })
+      .bar()
+      .beat('4', [note(1, 0)])
+      .build({ ids: 'sequential' });
+    expect(standardModule().measure(staffBar(plain, 0)).onsets[0]?.marks).toBeUndefined();
+  });
+
   it('stacks the fingering of voices that start together, the higher head on top (#511)', () => {
     for (const notation of ['standard', 'both'] as const) {
       const built = score()
@@ -929,7 +955,7 @@ describe('room for everything the five-line staves draw', () => {
       ['both', 2],
     ] as const) {
       const built = originHalves(notation);
-      const result = laid(built, { width: 420 });
+      const result = laid(built, { width: 300 });
       expect(result.systems, notation).toHaveLength(4);
       const origin = beatOf(built, 0, 0, 0).notes[0]?.id;
       const system = result.systems[0];

@@ -10,7 +10,7 @@ import {
   type LayoutOptions,
   type LayoutResult,
 } from '../../index';
-import { glyphMetrics } from '../../metrics';
+import { glyphMetrics, textWidth } from '../../metrics';
 import type { LayoutSink } from '../../primitives';
 import { SCRAPE, analyseEffects } from '../effects';
 import { expectValid, overlappingAnchors, overlappingMarks, stable } from '../../test/check-result';
@@ -537,6 +537,22 @@ describe('tab staff: words', () => {
     const [first, second] = onsets;
     expect(first?.left).toBeGreaterThan(second?.left ?? Infinity);
     expect(first?.right).toBeGreaterThan(second?.right ?? Infinity);
+  });
+
+  it('reserves half a fingering label either side of its onset, the whole combined text (#523)', () => {
+    const builder = guitar().bar();
+    builder.beat('16', [note(1, 0, { leftHandFinger: 'ring', rightHandFinger: 'ring' })]);
+    builder.beat('16', [note(2, 0, { rightHandFinger: 'middle' })]);
+    builder.beat('16', [note(3, 0)]);
+    builder.voice(1);
+    builder.beat('16', [note(4, 0, { leftHandFinger: 'thumb' })]);
+    const { onsets } = tabModule().measure(firstBar(builder.build({ ids: 'sequential' })));
+    const half = (text: string) => textWidth(text, TAB.fingerSize * STAFF_SPACE) / 2;
+    // Two voices at the first onset: the wider label, `3 a`, sets both sides.
+    expect(onsets[0]?.marks?.left).toBeCloseTo(half('3 a'), 9);
+    expect(onsets[0]?.marks?.right).toBeCloseTo(half('3 a'), 9);
+    expect(onsets[1]?.marks?.left).toBeCloseTo(half('m'), 9);
+    expect(onsets[2]?.marks).toBeUndefined();
   });
 
   it('writes chord names and beat text above the staff', () => {
