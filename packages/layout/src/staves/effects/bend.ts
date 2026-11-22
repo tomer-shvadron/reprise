@@ -30,7 +30,12 @@ export const BEND_FRAME = { gap: 0.15, stop: 0.6, min: 1, graceStop: 0.3 } as co
 /** Room kept right of a bent note, and right of a grace column holding a bend, in staff spaces. */
 export const BEND_ROOM = { main: 2.2, grace: 1.2 } as const;
 
-/** What a beat's bends have drawn so far: keys of shared marks, and the boxes of their labels. */
+/**
+ * What a bar's bends have drawn so far: the boxes of their labels, kept for the whole bar so an
+ * equal label of a neighbouring beat or of another voice is printed once and a different one
+ * stacks; the keys of shared marks and the arrowheads, which only a beat's own notes share
+ * (`beginBeat`); and the lifts of the beat being drawn.
+ */
 export interface BendDrawn {
   keys: Set<string>;
   labels: { text: string; bbox: Rect }[];
@@ -45,6 +50,32 @@ export const newBendDrawn = (): BendDrawn => ({
   arrows: [],
   lifts: new Map(),
 });
+
+/**
+ * Where a beat's first labelled tip stands in its frame, in positions: 0 for a pre-bend, 60 when
+ * nothing rises. The bends of several voices are drawn in the order of these, so the label kept
+ * where equal ones meet is the leftmost.
+ */
+export function firstTipPosition(bends: readonly (Bend | undefined)[]): number {
+  let first = 60;
+  for (const bend of bends) {
+    const points = [...(bend?.points ?? [])].sort((a, b) => a.position - b.position);
+    for (const [i, q] of points.entries()) {
+      const p = points[i - 1];
+      if (i === 0 ? q.value > 0 : p && q.value > p.value) {
+        first = Math.min(first, q.position);
+        break;
+      }
+    }
+  }
+  return first;
+}
+
+/** Starts a beat's bends: its notes share marks and arrowheads, but not with other beats'. */
+export function beginBeat(drawn: BendDrawn): void {
+  drawn.keys.clear();
+  drawn.arrows.length = 0;
+}
 
 const overlap = (a: Rect, b: Rect): boolean =>
   a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;

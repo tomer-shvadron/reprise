@@ -337,7 +337,10 @@ const overlaps = (a: [number, number], b: [number, number]): boolean => a[0] < b
  * over all its notes), with the lift that keeps its label clear of the labels and arrowheads of
  * tips close to it in position. Equal amounts never conflict: an equal label is drawn once.
  */
-function bendTips(bends: readonly (Bend | undefined)[]): BendTip[] {
+function bendTips(
+  bends: readonly (Bend | undefined)[],
+  before: readonly (Bend | undefined)[] = [],
+): BendTip[] {
   const seen = new Set<string>();
   const tips: BendTip[] = [];
   const add = (position: number, value: number, raised: boolean, key: string): void => {
@@ -370,13 +373,22 @@ function bendTips(bends: readonly (Bend | undefined)[]): BendTip[] {
     return a.raised || gap >= 0 || a.position > 60 - BEND_LABEL_SPREAD;
   };
   const height = labelHeight();
-  const placed: BendTip[] = [];
+  // The labelled tips at the end of the previous onset's frames lie just left of this onset: a
+  // pre-bend's label, centred on the onset, can meet theirs, so they count as placed tips left of
+  // position 0. They are never drawn here, and their own lifts come from their onset alone.
+  const behind = before.length === 0 ? [] : bendTips(before);
+  const ghosts = behind
+    .filter((tip) => tip.position >= 60 - BEND_LABEL_SPREAD)
+    .map((tip) => ({ ...tip, position: tip.position - 60 }));
+  const placed: BendTip[] = [...ghosts];
   for (const tip of [...tips].sort((a, b) => a.base - b.base || a.value - b.value)) {
     let at = tip.base;
     for (let pass = 0; pass < 8; pass++) {
-      const before = at;
-      for (const other of tips) {
+      const previous = at;
+      for (const other of [...tips, ...ghosts]) {
         if (!near(tip, other)) continue;
+        // Only a quarter tone away does the previous onset's label sit at the very level of this one.
+        if (ghosts.includes(other) && Math.abs(other.value - tip.value) > 1) continue;
         if (placed.includes(other)) {
           const edge = other.base + other.lift;
           if (at < edge + bendRow() && edge < at + bendRow()) at = edge + bendRow();
@@ -384,7 +396,7 @@ function bendTips(bends: readonly (Bend | undefined)[]): BendTip[] {
         const arrow = arrowBox(other);
         if (overlaps([at, at + height], arrow)) at = arrow[1] + BEND_LABEL_GAP;
       }
-      if (at === before) break;
+      if (at === previous) break;
     }
     tip.lift = at - tip.base;
     placed.push(tip);
@@ -397,9 +409,12 @@ function bendTips(bends: readonly (Bend | undefined)[]): BendTip[] {
  * key a tip is drawn with: its position, or `pre`). The labels of tips close together read in the
  * order of their amounts, each above the arrowheads of the tips next to it.
  */
-export function bendLifts(bends: readonly (Bend | undefined)[]): Map<string, number> {
+export function bendLifts(
+  bends: readonly (Bend | undefined)[],
+  before: readonly (Bend | undefined)[] = [],
+): Map<string, number> {
   return new Map(
-    bendTips(bends)
+    bendTips(bends, before)
       .filter((tip) => tip.raised)
       .map((tip) => [`${tip.key} ${String(tip.value)}`, tip.lift]),
   );
@@ -442,13 +457,19 @@ export function bendLabelNeed(bends: readonly (Bend | undefined)[], stop: number
   return Math.min(need, BEND_LABEL_CAP);
 }
 
-function bendLane(notes: readonly Note[]): number | undefined {
+function bendLane(
+  notes: readonly Note[],
+  before: readonly (Bend | undefined)[] = [],
+): number | undefined {
   const top = Math.max(0, ...notes.map(bendTop));
   if (top <= 0) return undefined;
   // The highest label's top, which a lifted label may exceed only when it rises above the lane's.
   const height = labelHeight();
   const highest = Math.max(
-    ...bendTips(notes.map((note) => note.bend)).map((tip) => tip.base + tip.lift + height),
+    ...bendTips(
+      notes.map((note) => note.bend),
+      before,
+    ).map((tip) => tip.base + tip.lift + height),
   );
   return Math.max(BEND_STEP * top + BEND_LABEL_ROOM, highest);
 }
@@ -461,6 +482,17 @@ export function glyphHeight(name: GlyphName): number {
 export function glyphSpan(name: GlyphName): number {
   const { bbox } = glyphMetrics(name);
   return bbox.right - bbox.left;
+}
+
+/** The bends of the notes of the last onset before `tick` in the bar, over all its voices. */
+export function previousBends(bar: Bar, tick: number): Bend[] {
+  const timed = timedBeats(bar);
+  const earlier = timed.filter((item) => item.tick < tick - TICK_EPSILON);
+  const at = Math.max(-Infinity, ...earlier.map((item) => item.tick));
+  return earlier
+    .filter((item) => Math.abs(item.tick - at) < TICK_EPSILON)
+    .flatMap(({ beat }) => playedNotes(beat))
+    .flatMap((note) => (note.bend ? [note.bend] : []));
 }
 
 const effectsMemo = new WeakMap<Bar, Map<string, BarEffects>>();
@@ -492,6 +524,8 @@ export function analyseEffects(bar: Bar, space: number, options: EffectOptions):
   const textSpan = (content: string, size: number): number =>
     textWidth(content, size * space) / space;
 
+  // The bends of the onset before the group, whose last labels a pre-bend's label can meet.
+  let before: Bend[] = [];
   for (let start = 0; start < timed.length;) {
     const first = timed[start];
     if (!first) break;
@@ -500,6 +534,10 @@ export function analyseEffects(bar: Bar, space: number, options: EffectOptions):
       stop++;
     const group = timed.slice(start, stop);
     start = stop;
+    const previous = before;
+    before = group
+      .flatMap(({ beat }) => playedNotes(beat))
+      .flatMap((n) => (n.bend ? [n.bend] : []));
     if (!group.some(({ beat }) => hasItemEffect(beat))) continue;
     const { tick } = first;
     const notes = group.flatMap(({ beat }) => playedNotes(beat));
@@ -549,7 +587,7 @@ export function analyseEffects(bar: Bar, space: number, options: EffectOptions):
       raise('tap', LANE_HEIGHT.tap);
       centred(tick, textSpan(letter, EFFECT_TEXT));
     }
-    const bent = bendLane(notes);
+    const bent = bendLane(notes, previous);
     if (bent !== undefined) raise('bend', bent);
   }
   for (const { beat } of timed) {

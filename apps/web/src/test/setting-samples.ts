@@ -30,6 +30,7 @@ export const SAMPLES: Record<string, unknown> = {
   'playback.countIn': true,
   'playback.metronomeOn': true,
   'playback.metronomeVolume': 0.25,
+  'playback.countInVolume': 0.45,
   'playback.masterVolume': 0.6,
   'playback.gmTierBypass': false,
   'sounds.memoryBudgetBytes': 256 * 1024 * 1024,

@@ -3,6 +3,7 @@ import type { DocumentStore } from '@/state/document';
 import type { PlaybackStore, TempoSetting } from '@/state/playback';
 import {
   COUNT_IN_SETTING,
+  COUNT_IN_VOLUME_SETTING,
   GM_TIER_BYPASS_SETTING,
   MASTER_VOLUME_SETTING,
   MEMORY_BUDGET_SETTING,
@@ -53,6 +54,7 @@ export function installTransport(deps: TransportDeps): () => void {
     }
   };
   audio.setCountIn(settings.get(COUNT_IN_SETTING));
+  audio.setCountInVolume(settings.get(COUNT_IN_VOLUME_SETTING));
   audio.setMetronome(settings.get(METRONOME_ON_SETTING), settings.get(METRONOME_VOLUME_SETTING));
   audio.setMasterVolume(settings.get(MASTER_VOLUME_SETTING));
   audio.setGmTierBypass(settings.get(GM_TIER_BYPASS_SETTING));
@@ -61,6 +63,9 @@ export function installTransport(deps: TransportDeps): () => void {
   const unsubscribeSettings = [
     settings.subscribe(COUNT_IN_SETTING, (value) => {
       if (now().countIn !== value) audio.setCountIn(value);
+    }),
+    settings.subscribe(COUNT_IN_VOLUME_SETTING, (value) => {
+      if (now().countInVolume !== value) audio.setCountInVolume(value);
     }),
     settings.subscribe(METRONOME_ON_SETTING, metronome),
     settings.subscribe(METRONOME_VOLUME_SETTING, metronome),
@@ -80,6 +85,7 @@ export function installTransport(deps: TransportDeps): () => void {
       if (value !== previous && settings.get(def) !== value) settings.set(def, value);
     };
     put(COUNT_IN_SETTING, current.countIn, before.countIn);
+    put(COUNT_IN_VOLUME_SETTING, current.countInVolume, before.countInVolume);
     put(METRONOME_ON_SETTING, current.metronome.on, before.metronome.on);
     put(METRONOME_VOLUME_SETTING, current.metronome.volume, before.metronome.volume);
     put(MASTER_VOLUME_SETTING, current.masterVolume, before.masterVolume);

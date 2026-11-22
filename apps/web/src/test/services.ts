@@ -89,6 +89,7 @@ export function fakeAudioService(): FakeAudioService {
     setLoop: vi.fn(),
     setCountIn: vi.fn(),
     setMetronome: vi.fn(),
+    setCountInVolume: vi.fn(),
     startClick: vi.fn(),
     updateClick: vi.fn(),
     stopClick: vi.fn(),
