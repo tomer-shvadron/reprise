@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 // eslint-disable-next-line import-x/no-relative-packages -- a doc file, not code: the root package exports nothing to import it through
 import doc from '../../../../../docs/reference/sound-packs.md?raw';
 
+import { splitEntry } from '@reprise/audio';
+
 import { CURATED_PACKS, curatedPack, updateAvailable } from './curated-packs';
 import { PackManifestSchema } from './manifest';
 
@@ -54,6 +56,18 @@ describe('the curated list', () => {
       expect(new Set(keys).size).toBe(keys.length);
       for (const instrument of pack.instruments)
         expect(instrument.entries['default']).toMatch(/\.sfz$/);
+    }
+  });
+
+  it('reads every entry as a file, and puts noise keys only on the dead set', () => {
+    for (const pack of CURATED_PACKS) {
+      for (const instrument of pack.instruments) {
+        for (const [set, value] of Object.entries(instrument.entries)) {
+          const split = splitEntry(value);
+          expect(split, `${pack.name} ${instrument.key} ${set}`).toBeDefined();
+          if (split?.keys) expect(set).toBe('dead');
+        }
+      }
     }
   });
 

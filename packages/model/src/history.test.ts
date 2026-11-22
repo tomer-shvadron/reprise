@@ -7,7 +7,8 @@ import { setNote } from './commands/note-commands';
 import { beatOf, buildScore, noteOf } from './commands/test-score';
 import { moveTrack } from './commands/track-commands';
 import { HistoryError, applyCommand, createHistory } from './history';
-import type { Command } from './history';
+import type { Command, History } from './history';
+import type { Score } from './score';
 
 const retitle = (title: string): Command => ({
   name: 'retitle',
@@ -239,6 +240,97 @@ describe('createHistory', () => {
     history.beginGroup('Open');
     expect(() => history.undo()).toThrow(HistoryError);
     expect(history.canUndo).toBe(false);
+  });
+});
+
+describe('step', () => {
+  const edits = (): { score: Score; history: History; scores: Score[] } => {
+    const score = buildScore();
+    const history = createHistory();
+    const scores = [score];
+    let current = score;
+    const commands: ((now: Score) => Command)[] = [
+      (now) => setNote({ beatId: beatOf(now, 0, 2, 0).id }, { string: 2, fret: 9 }),
+      () => insertBar({ index: 1 }),
+      () => retitle('Two'),
+      (now) => removeBar({ masterBarId: now.masterBars[0]?.id ?? '' }),
+      (now) => setNote({ beatId: beatOf(now, 0, 2, 0).id }, { string: 1, fret: 3 }),
+    ];
+    for (const command of commands) {
+      current = history.apply(current, command(current)).score;
+      scores.push(current);
+    }
+    return { score, history, scores };
+  };
+
+  it('matches repeated undo and redo, with the merged change replaying both ways', () => {
+    const { score, history, scores } = edits();
+    const end = scores[5] as Score;
+    const singles = [history.undo(), history.undo(), history.undo(), history.undo()];
+    const twin = { undoLabels: history.undoLabels, redoLabels: history.redoLabels };
+    const twinFlags = { canUndo: history.canUndo, canRedo: history.canRedo };
+    for (let i = 0; i < 4; i += 1) history.redo();
+    const undone = history.step(-4);
+    expect(undone?.count).toBe(4);
+    expect(undone?.score).toEqual(singles[3]?.score);
+    expect(undone?.score).toEqual(scores[1]);
+    expect(undone?.last).toEqual(singles[3]?.change);
+    expect(history.undoLabels).toEqual(twin.undoLabels);
+    expect(history.redoLabels).toEqual(twin.redoLabels);
+    expect(history.canUndo).toBe(twinFlags.canUndo);
+    expect(history.canRedo).toBe(twinFlags.canRedo);
+    const change = undone?.change;
+    expect(applyPatches(end, change?.patches ?? [])).toEqual(scores[1]);
+    expect(applyPatches(scores[1] as Score, change?.inverse ?? [])).toEqual(end);
+    expect([...new Set(singles.flatMap((single) => single?.change.touchedBars ?? []))]).toEqual(
+      change?.touchedBars,
+    );
+    const redone = history.step(4);
+    expect(redone?.score).toEqual(end);
+    expect(redone?.count).toBe(4);
+    expect(history.step(-5)?.score).toEqual(score);
+  });
+
+  it('returns the one change itself for a single step', () => {
+    const { history } = edits();
+    const one = history.step(-1);
+    expect(one?.change).toBe(one?.last);
+  });
+
+  it('clamps, ignores zero and an empty stack, and refuses a fraction or an open group', () => {
+    const { score, history } = edits();
+    expect(history.step(-99)?.count).toBe(5);
+    expect(history.step(-1)).toBeUndefined();
+    expect(history.step(0)).toBeUndefined();
+    expect(() => history.step(1.5)).toThrow(RangeError);
+    history.beginGroup('open');
+    expect(() => history.step(1)).toThrow(HistoryError);
+    history.endGroup();
+    expect(history.undoLabels).toHaveLength(0);
+    expect(history.redoLabels).toHaveLength(5);
+    expect(history.step(99)?.count).toBe(5);
+    expect(score).toBeDefined();
+  });
+
+  it('is all or nothing when a patch no longer applies', () => {
+    const { history, scores } = edits();
+    const stored = history.steps[2];
+    stored?.inverse.push({ op: 'replace', path: ['tracks', 99, 'name'], value: 'x' });
+    const before = { undo: history.undoLabels, redo: history.redoLabels };
+    let thrown: unknown;
+    try {
+      history.step(-3);
+    } catch (error) {
+      thrown = error;
+    }
+    // The patch failure itself, not a guard that fired before the loop.
+    expect(thrown).toBeInstanceOf(Error);
+    expect(thrown).not.toBeInstanceOf(HistoryError);
+    expect(thrown).not.toBeInstanceOf(RangeError);
+    expect(history.undoLabels).toBe(before.undo);
+    expect(history.redoLabels).toBe(before.redo);
+    expect(history.canRedo).toBe(false);
+    expect(history.undo()?.score).toEqual(scores[4]);
   });
 });
 

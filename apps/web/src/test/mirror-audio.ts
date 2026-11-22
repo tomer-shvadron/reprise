@@ -33,6 +33,9 @@ export function mirrorAudio(services: AppServices & { fakeAudio: FakeAudioServic
   fakeAudio.setGmTierBypass.mockImplementation((gmTierBypass) => {
     settings({ gmTierBypass });
   });
+  fakeAudio.setChannelEffects.mockImplementation((channelEffects) => {
+    settings({ channelEffects });
+  });
   fakeAudio.setMemoryBudget.mockImplementation((memoryBudgetBytes) => {
     settings({ memoryBudgetBytes });
   });

@@ -24,6 +24,7 @@ describe('the playback store', () => {
       metronome: { on: false, volume: 0.7 },
       masterVolume: 1,
       gmTierBypass: true,
+      channelEffects: true,
       memoryBudgetBytes: HQ_BUDGET_BYTES,
     });
     expect(state.mixer).toEqual({});

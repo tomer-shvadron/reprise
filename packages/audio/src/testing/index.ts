@@ -8,6 +8,7 @@ export type { SyntheticSfzPack, SyntheticSfzPackOptions } from './synthetic-pack
 export {
   GUITAR_EXTRA_TONES,
   GUITAR_FILE_TONES,
+  GUITAR_NOISES,
   GUITAR_RELEASE_DECAY,
   GUITAR_ROOT_KEY,
   GUITAR_SELECTION,

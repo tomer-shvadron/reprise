@@ -122,6 +122,12 @@ export interface AudioService {
    */
   setGmTierBypass(on: boolean): void;
   /**
+   * Whether the file's channel reverb and chorus drive the effect sends where no preset applies
+   * (GM-tier automatic tracks with the GM tier bypass on), mirrored into
+   * `settings.channelEffects`; on by default.
+   */
+  setChannelEffects(on: boolean): void;
+  /**
    * "Memory for sounds": the HQ tier's budget, which also caps the GM tier's at 80 MiB, mirrored
    * into `settings.memoryBudgetBytes` and `memory.budgetBytes`. Lowering it evicts at once and
    * raising it decodes the open song again. Throws a `RangeError` outside `MEMORY_BUDGET_RANGE`.
@@ -229,6 +235,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   engine.setCountInVolume(initial.countInVolume);
   engine.setMasterVolume(initial.masterVolume);
   engine.setGmTierBypass(initial.gmTierBypass);
+  engine.setChannelEffects(initial.channelEffects);
   engine.updateClick(playback.getState().click.settings);
   let bankLoad: Promise<void> | undefined;
   let doc: OpenDocument | undefined;
@@ -653,6 +660,11 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     setGmTierBypass(on) {
       engine.setGmTierBypass(on);
       setSettings({ gmTierBypass: on });
+    },
+
+    setChannelEffects(on) {
+      engine.setChannelEffects(on);
+      setSettings({ channelEffects: on });
     },
 
     setMemoryBudget(bytes) {

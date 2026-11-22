@@ -660,3 +660,35 @@ describe('planNote with the effects a layer carries', () => {
     expect(plan.filterChanges).toEqual([]);
   });
 });
+
+describe('a dead note on a noise key of the pack', () => {
+  const sampled = new Set(['dead', 'palmMute'] as const);
+  const dead = (spec: Parameters<typeof note>[2] = {}, extra: Partial<PlanInput> = {}) =>
+    planNote(
+      input(guitar, note(1, 7, { dead: true, ...spec }), { sampled, fixedKey: 93, ...extra }),
+    );
+
+  it('strikes the fixed key, unshifted and unfiltered, let go at the sampled length', () => {
+    const plan = dead();
+    expect(plan.dead).toBe(false);
+    expect(plan.filter).toBeUndefined();
+    expect(plan.strikes).toEqual([
+      expect.objectContaining({
+        key: 93,
+        detune: 0,
+        when: 1,
+        end: 1 + ARTICULATION.dead.sampledLength,
+      }),
+    ]);
+  });
+
+  it('is not damped again when it is palm muted', () => {
+    expect(dead({ palmMute: true }).gain).toEqual([]);
+  });
+
+  it('is still the burst without a fixed key', () => {
+    const plan = planNote(input(guitar, note(1, 7, { dead: true })));
+    expect(plan.dead).toBe(true);
+    expect(plan.strikes[0]?.end).toBeCloseTo(1 + ARTICULATION.dead.length, 9);
+  });
+});

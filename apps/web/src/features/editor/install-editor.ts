@@ -31,12 +31,12 @@ export function installEditor(deps: InstallDeps): () => void {
       // Only while editing: the cursor outlives edit mode, and an undo in play mode must not move
       // the hidden cursor or switch the current track under the sidebar and the fretboard.
       (state.lastStep === 'undo' || state.lastStep === 'redo') &&
-      state.lastChange &&
+      state.lastReplayed &&
       current.cursor &&
       editing.getState().editing
         ? undoLanding(
             state.score,
-            state.lastChange,
+            state.lastReplayed,
             current.cursor,
             visibleTracks(state.score, state.view),
           )

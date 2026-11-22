@@ -50,18 +50,36 @@ export const CURATED_PACKS: readonly PackManifest[] = [
     },
     sizeBytes: 174_246_979,
     instruments: [
-      { key: 'swagbass', name: 'Swagbass', entries: { default: 'swagbass.sfz' } },
-      { key: 'clean', name: 'Clean', entries: { default: 'swagbass_clean.sfz' } },
+      {
+        key: 'swagbass',
+        name: 'Swagbass',
+        entries: { default: 'swagbass.sfz', dead: 'swagbass.sfz#key:75-78' },
+      },
+      {
+        key: 'clean',
+        name: 'Clean',
+        entries: { default: 'swagbass_clean.sfz', dead: 'swagbass_clean.sfz#key:75-78' },
+      },
       {
         key: 'clean-four-voices',
         name: 'Clean, four voices',
-        entries: { default: 'swagbass_clean_things.sfz' },
+        entries: {
+          default: 'swagbass_clean_things.sfz',
+          dead: 'swagbass_clean_things.sfz#key:75-78',
+        },
       },
-      { key: 'shiny', name: 'Shiny', entries: { default: 'swagbass_shiny.sfz' } },
+      {
+        key: 'shiny',
+        name: 'Shiny',
+        entries: { default: 'swagbass_shiny.sfz', dead: 'swagbass_shiny.sfz#key:75-78' },
+      },
       {
         key: 'shiny-four-voices',
         name: 'Shiny, four voices',
-        entries: { default: 'swagbass_shiny_things.sfz' },
+        entries: {
+          default: 'swagbass_shiny_things.sfz',
+          dead: 'swagbass_shiny_things.sfz#key:75-78',
+        },
       },
     ],
   },
@@ -137,10 +155,26 @@ export const CURATED_PACKS: readonly PackManifest[] = [
     },
     sizeBytes: 125_538_629,
     instruments: [
-      { key: 'basic', name: 'Basic', entries: { default: 'emily_basic.sfz' } },
-      { key: 'clean', name: 'Clean', entries: { default: 'emily_clean.sfz' } },
-      { key: 'three-voices', name: 'Three voices', entries: { default: 'emily_three_voice.sfz' } },
-      { key: 'five-voices', name: 'Five voices', entries: { default: 'emily_five_voice.sfz' } },
+      {
+        key: 'basic',
+        name: 'Basic',
+        entries: { default: 'emily_basic.sfz', dead: 'emily_basic.sfz#key:91-95' },
+      },
+      {
+        key: 'clean',
+        name: 'Clean',
+        entries: { default: 'emily_clean.sfz', dead: 'emily_clean.sfz#key:91-95' },
+      },
+      {
+        key: 'three-voices',
+        name: 'Three voices',
+        entries: { default: 'emily_three_voice.sfz', dead: 'emily_three_voice.sfz#key:91-95' },
+      },
+      {
+        key: 'five-voices',
+        name: 'Five voices',
+        entries: { default: 'emily_five_voice.sfz', dead: 'emily_basic.sfz#key:91-95' },
+      },
     ],
   },
 ];

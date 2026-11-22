@@ -15,16 +15,17 @@ row, `TrackEffectsPicker` from `features/sounds`, which applies its own command.
 
 ## Where each value lives
 
-| Value                         | State                                                                                             | Undo | Modified | Saved in the file                                                 |
-| ----------------------------- | ------------------------------------------------------------------------------------------------- | ---- | -------- | ----------------------------------------------------------------- |
-| Volume, pan, instrument       | the score, through `setTrackProperties`                                                           | yes  | yes      | yes                                                               |
-| Effects preset                | the score, `sound.preset`, through `setTrackProperties` (`TrackEffectsPicker`, `features/sounds`) | yes  | yes      | yes                                                               |
-| Notation per track            | `document.view.notation`                                                                          | no   | yes      | yes, folded in on Save; a track without strings saved as standard |
-| Visibility, single-track view | `document.view.tracks`, `view.only`                                                               | no   | no       | no (library, WP-060)                                              |
-| Mute, solo                    | `playback.mixer`, the audio service's overrides                                                   | no   | no       | the file's own flags, as read                                     |
-| Current track                 | `selection.currentTrack`                                                                          | no   | no       | no (library, WP-060)                                              |
-| Master volume                 | `settings.masterVolume` (WP-051)                                                                  | no   | no       | no (a preference)                                                 |
-| GM tier bypass                | `settings.gmTierBypass`, the master strip's "No automatic effects on GM sounds" switch            | no   | no       | no (a preference)                                                 |
+| Value                         | State                                                                                                                       | Undo | Modified | Saved in the file                                                 |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---- | -------- | ----------------------------------------------------------------- |
+| Volume, pan, instrument       | the score, through `setTrackProperties`                                                                                     | yes  | yes      | yes                                                               |
+| Effects preset                | the score, `sound.preset`, through `setTrackProperties` (`TrackEffectsPicker`, `features/sounds`)                           | yes  | yes      | yes                                                               |
+| Notation per track            | `document.view.notation`                                                                                                    | no   | yes      | yes, folded in on Save; a track without strings saved as standard |
+| Visibility, single-track view | `document.view.tracks`, `view.only`                                                                                         | no   | no       | no (library, WP-060)                                              |
+| Mute, solo                    | `playback.mixer`, the audio service's overrides                                                                             | no   | no       | the file's own flags, as read                                     |
+| Current track                 | `selection.currentTrack`                                                                                                    | no   | no       | no (library, WP-060)                                              |
+| Master volume                 | `settings.masterVolume` (WP-051)                                                                                            | no   | no       | no (a preference)                                                 |
+| Channel effects               | `settings.channelEffects`, the master strip's "Reverb and chorus from the file" switch, disabled while the GM switch is off | no   | no       | no (a preference)                                                 |
+| GM tier bypass                | `settings.gmTierBypass`, the master strip's "No automatic effects on GM sounds" switch                                      | no   | no       | no (a preference)                                                 |
 
 ## Decisions
 
