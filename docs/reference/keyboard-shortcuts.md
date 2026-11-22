@@ -140,6 +140,7 @@ The table is generated from the command registry in `apps/web`, always with the 
 | Start, hold or resume speed trainer | Trainer | Global | ⌥S | Alt+S |
 | Mark speed trainer pass missed | Trainer | Global | ⌥X | Alt+X |
 | Reset speed trainer | Trainer | Global | ⌥⇧S | Alt+Shift+S |
+| Resume practice | Trainer | Global | — | — |
 | Show tuner | Trainer | Global | — | — |
 | Start or stop tuner | Trainer | Global | — | — |
 | Show metronome | Trainer | Global | — | — |
