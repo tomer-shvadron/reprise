@@ -9,6 +9,7 @@ import {
   settleFramesFor,
   TRACKER,
   type Reading,
+  type TrackerStep,
 } from './tracker';
 
 describe('the tracker', () => {
@@ -346,6 +347,58 @@ describe('the tracker', () => {
     expect(live.length).toBeGreaterThan(3);
     for (const cents of live) expect(Math.abs(cents)).toBeLessThan(3);
     expect(Math.abs(at(0, 0.1, 1200).cutoffHz - 275)).toBeLessThan(1);
+  });
+
+  describe('a re-pluck inside the hold (#332)', () => {
+    const start = () => {
+      const tracker = createTracker();
+      const at = (cents: number, timeMs: number) =>
+        tracker.push({ hz: 110 * 2 ** (cents / 1200), clarity: 0.99 }, 0.1, timeMs);
+      const settle = settleFramesFor(43);
+      for (let i = 0; i < settle + 8; i += 1) at(0, i * 20);
+      for (let i = 0; i < TRACKER.openAfterRejects + 2; i += 1)
+        tracker.push(undefined, 0, 400 + i * 20);
+      return { at, settle };
+    };
+    // An attack frame, then the body of the note; the cents are from the note held before.
+    const rePluck = (attack: number, body: number) => {
+      const { at, settle } = start();
+      const out = [at(attack, 600)];
+      for (let i = 1; i < settle + 6; i += 1) out.push(at(body, 600 + i * 20));
+      return { out, settle };
+    };
+    const centsOf = (step?: TrackerStep) => ((step?.reading?.midi ?? 0) - 45) * 100;
+
+    it('continues the reading when the attack frame sits on the other side of the note', () => {
+      // Each frame is near the old centre but 60 cents from the other, so a history emptied by
+      // the re-pluck would call the second away.
+      const { out, settle } = rePluck(-30, 30);
+      // The note continues: held readings until the cutoff change has cleared the window. A
+      // re-lock on the attack frame's centre would light a fresh live reading at once.
+      expect(out.every((s) => s.reading !== undefined)).toBe(true);
+      expect(out.slice(0, settle - 3).every((s) => s.reading?.held === true)).toBe(true);
+      expect(Math.abs(centsOf(out.at(-1)) - 30)).toBeLessThan(1);
+    });
+
+    it.each([
+      [45, 55],
+      [20, 70],
+      [40, 100],
+    ])('hides the frames in the cutoff change when the attack is +%i and the body +%i', (a, b) => {
+      // The body is beyond `awayCents` from the old note, so the lock moves, but the settle the
+      // re-pluck began is kept.
+      const { out, settle } = rePluck(a, b);
+      // The first frame is the attack; the away path may return the old reading unheld for the
+      // two frames that follow it, before the lock moves.
+      expect(out.slice(3, settle - 3).every((s) => s.reading?.held !== false)).toBe(true);
+      expect(Math.abs(centsOf(out.at(-1)) - b)).toBeLessThan(1);
+    });
+
+    it('re-locks on a different pitch whose attack frame is near the old note', () => {
+      const { out } = rePluck(40, 200);
+      expect(Math.abs(centsOf(out.at(-1)) - 200)).toBeLessThan(1);
+      expect(out.at(-1)?.reading?.held).toBe(false);
+    });
   });
 
   it('keeps every reading within 3 cents when a string is plucked again inside the hold', () => {

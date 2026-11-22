@@ -3,9 +3,10 @@ import { largeScore, note, score } from '@reprise/model/testing';
 import type { Score } from '@reprise/model';
 import { describe, expect, it, vi } from 'vitest';
 
+import { layoutForPrint } from '../print-layout';
 import { fakePlatform } from '@/test/services';
 
-import { exportImages, renderImages, type ImageExportRequest } from './image-export';
+import { exportImages, pageOfBar, renderImages, type ImageExportRequest } from './image-export';
 import bravuraJson from './outlines/bravura.json';
 import geistJson from './outlines/geist.json';
 import { parseOutlines } from './outlines';
@@ -280,5 +281,30 @@ describe('exportImages', () => {
     expect(rendered.images).toHaveLength(1);
     expect(frames).not.toHaveBeenCalled();
     frames.mockRestore();
+  });
+});
+
+describe('pageOfBar (#421)', () => {
+  const long = (() => {
+    const builder = score().title('Long').track('guitar');
+    for (let bar = 0; bar < 120; bar++) builder.bar().beat('4', [note(1, bar % 20)]);
+    return builder.build({ ids: 'sequential' });
+  })();
+  const laid = layoutForPrint(
+    long,
+    { tracks: long.tracks.map(({ id }) => id), paper: 'a4', header: true, pageNumbers: false },
+    {},
+    undefined,
+    {},
+  ).result;
+  const secondPage = laid.pages[1];
+
+  it('maps the first bar of page 2, the last bar of page 1 and a bar past the end', () => {
+    expect(secondPage).toBeDefined();
+    const first = laid.systems[secondPage?.systems.start ?? 0];
+    const request = requestFor(long);
+    expect(pageOfBar(request, first?.bars.start ?? 0)).toBe(2);
+    expect(pageOfBar(request, (first?.bars.start ?? 1) - 1)).toBe(1);
+    expect(pageOfBar(request, 9999)).toBe(1);
   });
 });

@@ -10,6 +10,7 @@ import {
   barColumns,
   chordBoxes,
   createGestureTracker,
+  firstBarInView,
   pointerTarget,
   ScoreView,
   type ScoreOverlays,
@@ -164,6 +165,14 @@ function PlayingScore({ result, label }: { result: LayoutResult; label: string }
       driver.current = undefined;
     };
   }, [services]);
+
+  // The export dialog asks which bar is on screen when it opens (#421); nothing is pushed.
+  useEffect(() => {
+    return services.viewProbe.attach(() => {
+      const view = handle.current;
+      return view ? firstBarInView(result.systems, view.viewport()) : undefined;
+    });
+  }, [services, result]);
 
   // After the view's own layout effects, so the new geometry is in place.
   useLayoutEffect(() => {

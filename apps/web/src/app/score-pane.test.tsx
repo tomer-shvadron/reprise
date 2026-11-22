@@ -47,4 +47,14 @@ describe('ScorePane', () => {
       'This score could not be drawn. no room for the bar',
     );
   });
+
+  it('answers the view probe while a score is shown, and not after it unmounts', async () => {
+    stubViewport(1280, 800);
+    const { services, unmount } = renderWithServices(<ScorePane hint={<p>Open a file</p>} />);
+    const bytes = await bytesOf('Riff');
+    await act(() => services.document.getState().openBytes('riff.reprise', bytes));
+    expect(services.viewProbe.barInView()).toBe(0);
+    unmount();
+    expect(services.viewProbe.barInView()).toBeUndefined();
+  });
 });

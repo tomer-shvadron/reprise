@@ -632,6 +632,7 @@ describe('tab staff: both mode', () => {
           lyrics: { top: bottom, bottom: bottom + (lanes.lyrics ?? 0) },
         },
         lineStart: true,
+        rigidScale: 1,
       },
       sink,
     );

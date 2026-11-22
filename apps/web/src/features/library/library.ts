@@ -161,7 +161,15 @@ export interface LibraryOptions {
 export function createLibrary(
   services: Pick<
     AppServices,
-    'document' | 'playback' | 'selection' | 'audio' | 'platform' | 'ui' | 'settings' | 'menuTarget'
+    | 'document'
+    | 'playback'
+    | 'selection'
+    | 'audio'
+    | 'platform'
+    | 'ui'
+    | 'settings'
+    | 'menuTarget'
+    | 'viewProbe'
   >,
   options: LibraryOptions = {},
 ): Library {
@@ -287,6 +295,7 @@ export function createLibrary(
           )
         : undefined;
     },
+    barInView: () => services.viewProbe.barInView(),
     chordDiagrams: () => services.settings.get(CHORD_DIAGRAMS_SETTING),
     chordStrip: () => services.settings.get(CHORD_STRIP_SETTING),
     currentTrack: () => services.selection.getState().currentTrack,

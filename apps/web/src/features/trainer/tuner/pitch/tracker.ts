@@ -231,9 +231,13 @@ export function createTracker(options: TrackerOptions = {}) {
     clarityAvg = clarity;
     const target = cutoffFor(hz);
     // Only a cutoff that closes in leaves sharp frames behind; one that opens does not.
-    dirty = target < 0.85 * cutoffHz;
+    const closes = target < 0.85 * cutoffHz;
+    // A lock that moves while a re-pluck's settle is pending keeps it: its frames still hold the
+    // cutoff change.
+    const pendingUntil = dirty || refill !== 'none' ? settleUntilMs : 0;
+    dirty = closes || pendingUntil > timeMs;
     refill = 'none';
-    settleUntilMs = dirty ? timeMs + settleFrames * TRACKER.hopMs : 0;
+    settleUntilMs = closes ? timeMs + settleFrames * TRACKER.hopMs : dirty ? pendingUntil : 0;
     cutoffHz = target;
   };
 
@@ -361,7 +365,9 @@ export function createTracker(options: TrackerOptions = {}) {
           settleUntilMs = timeMs + settleFrames * TRACKER.hopMs;
           dirty = true;
           cutoffHz = cutoffFor(detection.hz);
-          history = [];
+          // The history stays, as in the refill below: it is the centre `near` is judged against,
+          // and emptying it here made an attack frame the centre, so the real pitch read as away
+          // and re-locked (#332). It is emptied at the settle deadline.
         }
         if (dirty && settlingAt(timeMs) <= 2) {
           // The frames from here on went through the new cutoff alone.

@@ -103,6 +103,21 @@ export function intersects(a: Rect, b: Rect): boolean {
   return a.x < right(b) && b.x < right(a) && a.y < bottom(b) && b.y < bottom(a);
 }
 
+/**
+ * The first bar of the system the reader is on, for a thing that needs "where the reader is" (the
+ * export dialog's page): the first system whose top-left corner is in the window, else the first
+ * one that intersects it. A system showing only its bottom edge is on its way out, so it does not
+ * count while another one starts in view. Systems are in reading order.
+ */
+export function firstBarInView(systems: readonly System[], window: Rect): number | undefined {
+  const starts = ({ bbox }: System) =>
+    bbox.x >= window.x &&
+    bbox.x < window.x + window.width &&
+    bbox.y >= window.y &&
+    bbox.y < window.y + window.height;
+  return (systems.find(starts) ?? systems.find(({ bbox }) => intersects(bbox, window)))?.bars.start;
+}
+
 export function distance(a: Rect, b: Rect): number {
   const dx = Math.max(0, a.x - right(b), b.x - right(a));
   const dy = Math.max(0, a.y - bottom(b), b.y - bottom(a));

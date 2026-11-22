@@ -97,6 +97,12 @@ export interface StaffBarPlacement {
   readonly lanes: LaneBands;
   /** The bar opens a line: a paged system's first bar, or the first bar of the continuous line. */
   readonly lineStart: boolean;
+  /**
+   * The factor `SystemPlan.rigidScale` applies to the bar's rigid room, below 1 only when the
+   * rigid parts alone overflow the line. A module scales by it whatever it reserved as rigid
+   * room and can move, such as the standard staff's voice shifts.
+   */
+  readonly rigidScale: number;
 }
 
 /**

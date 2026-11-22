@@ -285,6 +285,7 @@ export function renderSystem(input: SystemInput, sink: LayoutSink): RenderedSyst
           ...(next && { next }),
           lanes,
           lineStart: opens,
+          rigidScale: plan.rigidScale,
         },
         sink,
       );

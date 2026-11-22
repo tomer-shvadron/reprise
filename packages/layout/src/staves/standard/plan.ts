@@ -750,6 +750,7 @@ function bridgeLedgers(onset: readonly BeatPlan[], count: number, later: BeatPla
       for (const other of beat.chord?.ledgers ?? []) {
         const right = other.right + offset;
         if (Math.abs(other.y - ledger.y) < 1e-6 && right < ledger.left) {
+          ledger.own ??= ledger.left;
           ledger.left = right;
         }
       }
