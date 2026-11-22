@@ -150,7 +150,7 @@ describe('the clipboard events', () => {
     fire('paste', must(data.get('text/plain')));
     expect(score()).toBe(before);
     expect(services.entry.getState()).toMatchObject({
-      message: 'Bar 3 has an eighth left: a half does not fit',
+      message: 'Bar 3 has an eighth left: a quarter does not fit',
       tone: 'refusal',
     });
   });

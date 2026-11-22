@@ -20,6 +20,7 @@ import { cursorTick, resolveCursor } from './cursor';
 import type { Landing } from './entry';
 import type { EntryMode } from './entry-store';
 import { rangeSpan } from './range';
+import { reflow, type Flow } from './reflow';
 import { refinger } from './refinger';
 import { overfullMessage, restBeats, ticksOf } from './rhythm';
 
@@ -129,13 +130,6 @@ export function planPaste(
   const anchor = anchorOf(score, state, visible);
   if (!anchor) return { refused: 'Put the cursor where the paste should go' };
 
-  const crossing = clip.tracks.some(({ bars }) => bars.length > 1);
-  if (clip.kind === 'beats' && crossing && Math.abs(anchor.tick - clip.start) > EPSILON) {
-    return {
-      refused: 'Paste this at the same beat position it was copied from, or copy whole bars',
-    };
-  }
-
   const shown = new Set(visible);
   const candidates = score.tracks.flatMap((track, index) =>
     index >= anchor.track && shown.has(track.id) ? [{ track, index }] : [],
@@ -176,8 +170,31 @@ export function planPaste(
     }
   }
 
-  const count = Math.max(...sources.map(({ bars }) => bars.length));
   const bars = score.masterBars.length;
+  const lastMaster = score.masterBars[bars - 1];
+  if (!lastMaster) return { refused: 'There is nothing to paste' };
+  // A beats clip is laid out again across the target's own barlines; the bars it appends take the
+  // last bar's length, because `insertBar` copies the bar before it.
+  const flows: Flow[] = [];
+  if (clip.kind === 'beats') {
+    const capacity = (bar: number) => barTicks(score.masterBars[anchor.bar + bar] ?? lastMaster);
+    for (const source of sources) {
+      const flow = reflow(source, clip.start, anchor.tick, anchor.bar, capacity);
+      if ('refused' in flow) return flow;
+      flows.push(flow);
+    }
+  }
+  const count =
+    clip.kind === 'bars'
+      ? Math.max(...sources.map(({ bars: clipBars }) => clipBars.length))
+      : Math.max(
+          1,
+          ...flows.flatMap(({ voices }) =>
+            voices.flatMap(({ segments }) =>
+              segments.filter(({ gapOnly }) => !gapOnly).map(({ bar }) => bar + 1),
+            ),
+          ),
+        );
   // Bars the paste adds: new bars at the target for an insert of bars, else only those past the end.
   const insertBars = clip.kind === 'bars' && mode === 'insert';
   const added: { index: number; id: Id; clipBar: number }[] = [];
@@ -193,39 +210,120 @@ export function planPaste(
 
   const splices: Splice[] = [];
   const placed: Placed[] = [];
-  for (const [t, source] of sources.entries()) {
-    const target = targets[t];
-    if (!target) continue;
-    const usedVoices = new Set(source.bars.flatMap((bar) => bar.voices.map(({ voice }) => voice)));
-    // A beats clip of one voice goes into the voice the cursor is in.
-    const lone = clip.kind === 'beats' && usedVoices.size === 1;
-    for (const [k, clipBar] of source.bars.entries()) {
-      const bar = anchor.bar + k;
-      const created = isNew(bar);
-      const masterBar = score.masterBars[bar];
-      const limit = barTicks({
-        timeSignature: created || !masterBar ? clipBar.timeSignature : masterBar.timeSignature,
+  const place = (
+    target: { track: Track; index: number },
+    bar: number,
+    voice: number,
+    segment: { start: number; beats: readonly Beat[]; gapOnly: boolean },
+  ): string | undefined => {
+    const created = isNew(bar);
+    const masterBar = score.masterBars[bar] ?? lastMaster;
+    const limit = barTicks(masterBar);
+    const current: readonly Beat[] = created
+      ? []
+      : (target.track.bars[bar]?.voices[voice]?.beats ?? []);
+    const { beats, start } = segment;
+    // Rests that only keep a voice's time need not fill a voice the target does not use.
+    if (segment.gapOnly && current.length === 0) return undefined;
+    const length = ticksOf(beats);
+    const filled = ticksOf(current);
+    const label = `Bar ${String(bar + 1)}, voice ${String(voice + 1)}`;
+    let index = current.length;
+    let gap = 0;
+    if (start > filled + EPSILON) {
+      gap = start - filled;
+    } else if (start < filled - EPSILON) {
+      let tick = 0;
+      const found = current.findIndex((beat) => {
+        const here = tick;
+        tick += beatTicks(beat);
+        return Math.abs(here - start) < EPSILON;
       });
-      // A bars clip names all four voices, so a voice it lacks is cleared too.
-      const jobs =
-        clip.kind === 'bars'
-          ? [0, 1, 2, 3].map((voice) => ({
-              voice,
-              entry: clipBar.voices.find((candidate) => candidate.voice === voice),
-            }))
-          : clipBar.voices.map((entry) => ({ voice: lone ? anchor.voice : entry.voice, entry }));
-      for (const { voice, entry } of jobs) {
-        const current: readonly Beat[] = created
-          ? []
-          : (target.track.bars[bar]?.voices[voice]?.beats ?? []);
-        const beats = entry?.beats ?? [];
-        const length = ticksOf(beats);
-        const filled = ticksOf(current);
-        const label = `Bar ${String(bar + 1)}, voice ${String(voice + 1)}`;
-        if (clip.kind === 'bars') {
-          if (length > limit + EPSILON) {
-            return { refused: overfullMessage(bar + 1, limit, length) };
-          }
+      if (found < 0) return `${label} has no beat starting where the paste begins`;
+      index = found;
+    }
+    let remove = 0;
+    let removed = 0;
+    let pad = 0;
+    if (mode === 'overwrite' && index < current.length) {
+      for (const beat of current.slice(index)) {
+        if (removed >= length - EPSILON) break;
+        removed += beatTicks(beat);
+        remove += 1;
+      }
+      pad = Math.max(0, removed - length);
+    }
+    const room = limit - (filled - removed);
+    if (gap + length > room + EPSILON) {
+      return overfullMessage(bar + 1, Math.max(0, room), gap + length);
+    }
+    const before = gap > 0 ? restBeats(gap) : [];
+    const after = pad > 0 ? restBeats(pad) : [];
+    if (!before || !after) {
+      return `${label} would split a tuplet or leave a gap no rest can fill`;
+    }
+    const renewed = fresh(beats);
+    splices.push({
+      track: target.index,
+      bar,
+      voice,
+      index,
+      remove,
+      beats: [...before, ...renewed, ...after],
+    });
+    const [firstBeat] = renewed;
+    const lastBeat = renewed.at(-1);
+    if (firstBeat && lastBeat && !segment.gapOnly) {
+      placed.push({
+        track: target.index,
+        bar,
+        from: start,
+        to: start + length,
+        first: firstBeat.id,
+        last: lastBeat.id,
+      });
+    }
+    return undefined;
+  };
+
+  if (clip.kind === 'beats') {
+    for (const [t, flow] of flows.entries()) {
+      const target = targets[t];
+      if (!target) continue;
+      // A beats clip of one voice goes into the voice the cursor is in.
+      const lone = flow.voices.length === 1;
+      for (const { voice, segments } of flow.voices) {
+        for (const segment of segments) {
+          const refused = place(
+            target,
+            anchor.bar + segment.bar,
+            lone ? anchor.voice : voice,
+            segment,
+          );
+          if (refused) return { refused };
+        }
+      }
+    }
+  } else {
+    for (const [t, source] of sources.entries()) {
+      const target = targets[t];
+      if (!target) continue;
+      for (const [k, clipBar] of source.bars.entries()) {
+        const bar = anchor.bar + k;
+        const limit = barTicks({
+          timeSignature: isNew(bar)
+            ? clipBar.timeSignature
+            : (score.masterBars[bar] ?? lastMaster).timeSignature,
+        });
+        // A bars clip names all four voices, so a voice it lacks is cleared too.
+        for (const voice of [0, 1, 2, 3]) {
+          const entry = clipBar.voices.find((candidate) => candidate.voice === voice);
+          const current: readonly Beat[] = isNew(bar)
+            ? []
+            : (target.track.bars[bar]?.voices[voice]?.beats ?? []);
+          const beats = entry?.beats ?? [];
+          const length = ticksOf(beats);
+          if (length > limit + EPSILON) return { refused: overfullMessage(bar + 1, limit, length) };
           if (beats.length === 0 && current.length === 0) continue;
           const renewed = fresh(beats);
           splices.push({
@@ -248,66 +346,6 @@ export function planPaste(
               last: lastBeat.id,
             });
           }
-          continue;
-        }
-        if (beats.length === 0) continue;
-        const start = (k === 0 ? anchor.tick : 0) + (entry?.offset ?? 0);
-        let index = current.length;
-        let gap = 0;
-        if (start > filled + EPSILON) {
-          gap = start - filled;
-        } else if (start < filled - EPSILON) {
-          let tick = 0;
-          const found = current.findIndex((beat) => {
-            const here = tick;
-            tick += beatTicks(beat);
-            return Math.abs(here - start) < EPSILON;
-          });
-          if (found < 0) {
-            return { refused: `${label} has no beat starting where the paste begins` };
-          }
-          index = found;
-        }
-        let remove = 0;
-        let removed = 0;
-        let pad = 0;
-        if (mode === 'overwrite' && index < current.length) {
-          for (const beat of current.slice(index)) {
-            if (removed >= length - EPSILON) break;
-            removed += beatTicks(beat);
-            remove += 1;
-          }
-          pad = Math.max(0, removed - length);
-        }
-        const room = limit - (filled - removed);
-        if (gap + length > room + EPSILON) {
-          return { refused: overfullMessage(bar + 1, Math.max(0, room), gap + length) };
-        }
-        const before = gap > 0 ? restBeats(gap) : [];
-        const after = pad > 0 ? restBeats(pad) : [];
-        if (!before || !after) {
-          return { refused: `${label} would split a tuplet or leave a gap no rest can fill` };
-        }
-        const renewed = fresh(beats);
-        splices.push({
-          track: target.index,
-          bar,
-          voice,
-          index,
-          remove,
-          beats: [...before, ...renewed, ...after],
-        });
-        const [firstBeat] = renewed;
-        const lastBeat = renewed.at(-1);
-        if (firstBeat && lastBeat) {
-          placed.push({
-            track: target.index,
-            bar,
-            from: start,
-            to: start + length,
-            first: firstBeat.id,
-            last: lastBeat.id,
-          });
         }
       }
     }
@@ -316,7 +354,8 @@ export function planPaste(
   if (splices.length === 0 && added.length === 0) return { refused: 'There is nothing to paste' };
 
   const steps: ChainStep[] = added.map(({ index, id, clipBar }) => {
-    const timeSignature = sources[0]?.bars[clipBar]?.timeSignature;
+    const timeSignature =
+      clip.kind === 'bars' ? sources[0]?.bars[clipBar]?.timeSignature : undefined;
     return insertBar({ index, id }, timeSignature ? { timeSignature: { ...timeSignature } } : {});
   });
   if (splices.length > 0) {
@@ -386,10 +425,12 @@ export function planPaste(
         ]
           .filter(Boolean)
           .join('; ');
+  const cut = flows.reduce((sum, { split }) => sum + split, 0);
+  const tied = cut > 0 ? `; ${plural(cut, 'note')} tied over a barline` : '';
   return {
     command: chain(clip.kind === 'bars' ? 'pasteBars' : 'pasteBeats', steps),
     land,
     range,
-    notice: `Pasted ${what}${where}${warning}`,
+    notice: `Pasted ${what}${where}${warning}${tied}`,
   };
 }

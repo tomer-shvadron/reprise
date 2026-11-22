@@ -24,6 +24,11 @@ export type ClipVoice = z.infer<typeof ClipVoiceSchema>;
  */
 export const ClipBarSchema = z.object({
   timeSignature: TimeSignatureSchema,
+  /**
+   * How long the source bar played, in ticks: a pickup or an over-full imported bar keeps its real
+   * length when the clip is laid out again. Absent in a clip from an older build.
+   */
+  ticks: z.number().positive().exactOptional(),
   voices: z.array(ClipVoiceSchema),
 });
 export type ClipBar = z.infer<typeof ClipBarSchema>;
@@ -49,8 +54,8 @@ export const ClipSchema = z.object({
   version: z.literal(CLIPBOARD_VERSION),
   kind: z.enum(['beats', 'bars']),
   /**
-   * Ticks into the first bar where a beats clip started. A clip over a barline pastes only at the
-   * same position in its bar, or its later bars would land around the target's own beats.
+   * Ticks into the first bar where a beats clip started: the clip's timeline begins here, and a
+   * paste lays it out again from the target's tick across the target's own barlines.
    */
   start: z.number().min(0).default(0),
   tracks: z.array(ClipTrackSchema).min(1),
