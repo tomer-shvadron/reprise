@@ -643,3 +643,116 @@ describe('planEffect: golpe and pick scrape', () => {
     expect(effectReason(tied, scrape('down'))).toBe('A tied note is held, not struck');
   });
 });
+
+describe('planEffect: wah', () => {
+  const wah = (value: 'open' | 'closed'): EffectAction => ({ kind: 'wah', wah: value });
+  const FRETTED_ONLY = 'That effect needs a fretted track';
+
+  it('toggles closed and open, which replace each other, and removes them', () => {
+    const built = riff();
+    const noteIds = ids(built, [0, 0, 0]);
+    const closed = apply(built, { noteIds }, wah('closed'));
+    expect(closed.label).toBe('Wah (closed)');
+    expect(beatOf(closed.after ?? built, 0, 0, 0).effects).toEqual({ wah: 'closed' });
+    const open = apply(closed.after ?? built, { noteIds }, wah('open'));
+    expect(open.label).toBe('Wah (open)');
+    expect(beatOf(open.after ?? built, 0, 0, 0).effects).toEqual({ wah: 'open' });
+    const off = apply(open.after ?? built, { noteIds }, wah('open'));
+    expect(off.label).toBe('Remove wah (open)');
+    expect(beatOf(off.after ?? built, 0, 0, 0).effects).toEqual({});
+    const removed = apply(closed.after ?? built, { noteIds }, wah('open'), 'remove');
+    expect(removed.label).toBe('Remove wah (open)');
+    expect(beatOf(removed.after ?? built, 0, 0, 0).effects.wah).toBeUndefined();
+  });
+
+  it('refuses on a drums track and on a keys track, with the fretted-only reason', () => {
+    for (const instrument of ['drums', 'piano'] as const) {
+      const other = score().track(instrument);
+      other.bar().beat('4', [note(0, instrument === 'drums' ? 0 : 60)]);
+      const built = other.build({ ids: 'sequential' });
+      const noteIds = [noteOf(built, 0, 0, 0).id];
+      for (const value of ['open', 'closed'] as const) {
+        expect(planEffect({ score: built, state: state({ noteIds }) }, wah(value))).toEqual({
+          refused: FRETTED_ONLY,
+        });
+      }
+    }
+  });
+
+  it('skips a drum beat when a mark goes on two beats, and says so', () => {
+    const built = editScore();
+    const beatIds = [beatOf(built, 0, 0, 0).id, beatOf(built, 1, 0, 0).id];
+    const result = apply(built, { beatIds }, wah('closed'));
+    expect(beatOf(result.after ?? built, 0, 0, 0).effects.wah).toBe('closed');
+    expect(beatOf(result.after ?? built, 1, 0, 0).effects.wah).toBeUndefined();
+    expect(result.plan).toMatchObject({ notice: `Skipped 1 of 2: ${FRETTED_ONLY}` });
+  });
+
+  describe('on rests', () => {
+    /** Beat 0 a rest, beat 1 a note, beat 2 a rest that already carries a mark, beat 3 a note. */
+    function withRests(): Score {
+      const built = score().track('guitar');
+      built
+        .bar()
+        .rest('4')
+        .beat('4', [note(1, 5)])
+        .rest('4', { effects: { wah: 'open' } })
+        .beat('4', [note(2, 7)]);
+      return built.build({ ids: 'sequential' });
+    }
+    const beatIdsOf = (built: Score, ...at: number[]): Id[] =>
+      at.map((index) => beatOf(built, 0, 0, index).id);
+
+    it('sets a mark on a rest under the cursor, and takes it off again', () => {
+      const built = withRests();
+      const beatIds = beatIdsOf(built, 0);
+      const set = apply(built, { beatIds }, wah('closed'));
+      expect(set.label).toBe('Wah (closed)');
+      expect(beatOf(set.after ?? built, 0, 0, 0).effects.wah).toBe('closed');
+      const off = apply(set.after ?? built, { beatIds }, wah('closed'));
+      expect(off.label).toBe('Remove wah (closed)');
+      expect(beatOf(off.after ?? built, 0, 0, 0).effects.wah).toBeUndefined();
+    });
+
+    it('swaps a mark on a rest for the other one', () => {
+      const built = withRests();
+      const swapped = apply(built, { beatIds: beatIdsOf(built, 2) }, wah('closed'));
+      expect(swapped.label).toBe('Wah (closed)');
+      expect(beatOf(swapped.after ?? built, 0, 0, 2).effects.wah).toBe('closed');
+    });
+
+    it('takes a mark off a rest in a range, but never puts one on bare rests', () => {
+      const built = withRests();
+      const range = beatIdsOf(built, 0, 1, 2, 3);
+      const set = apply(built, { beatIds: range }, wah('open'));
+      expect(beatOf(set.after ?? built, 0, 0, 0).effects.wah).toBeUndefined();
+      expect(beatOf(set.after ?? built, 0, 0, 1).effects.wah).toBe('open');
+      expect(beatOf(set.after ?? built, 0, 0, 3).effects.wah).toBe('open');
+      const off = apply(set.after ?? built, { beatIds: range }, wah('open'));
+      expect(off.label).toBe('Remove wah (open)');
+      for (const index of [0, 1, 2, 3]) {
+        expect(beatOf(off.after ?? built, 0, 0, index).effects.wah).toBeUndefined();
+      }
+    });
+  });
+
+  it('reports on, off, mixed and unavailable through effectState and effectReason', () => {
+    const built = riff();
+    const noteIds = ids(built, [0, 0, 0], [0, 1, 0]);
+    const one = apply(built, { noteIds: noteIds.slice(0, 1) }, wah('closed')).after ?? built;
+    const input = (picked: Id[]) => ({ score: one, state: state({ noteIds: picked }) });
+    expect(effectState(input(noteIds.slice(0, 1)), wah('closed'))).toBe('on');
+    expect(effectState(input(noteIds.slice(0, 1)), wah('open'))).toBe('off');
+    expect(effectState(input(noteIds), wah('closed'))).toBe('mixed');
+
+    const drums = score().track('drums');
+    drums.bar().beat('4', [note(0, 0)]);
+    const drumScore = drums.build({ ids: 'sequential' });
+    const onDrums = {
+      score: drumScore,
+      state: state({ noteIds: [noteOf(drumScore, 0, 0, 0).id] }),
+    };
+    expect(effectState(onDrums, wah('closed'))).toBe('unavailable');
+    expect(effectReason(onDrums, wah('closed'))).toBe(FRETTED_ONLY);
+  });
+});

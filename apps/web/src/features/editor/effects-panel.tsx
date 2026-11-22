@@ -61,6 +61,8 @@ const BEAT_ITEMS: readonly Item[] = [
   { toggle: 'pickStrokeUp', label: 'Pick stroke up' },
   { toggle: 'golpeThumb', label: 'Golpe (thumb)' },
   { toggle: 'golpeFinger', label: 'Golpe (finger)' },
+  { toggle: 'wahClosed', label: 'Wah closed (+)' },
+  { toggle: 'wahOpen', label: 'Wah open (o)' },
   { toggle: 'fadeIn', label: 'Fade in' },
   { toggle: 'fadeOut', label: 'Fade out' },
   { toggle: 'volumeSwell', label: 'Volume swell' },

@@ -9,7 +9,15 @@ import {
 } from '@reprise/audio';
 import { write } from '@reprise/formats';
 import { PAGE_SIZES, layout, type Primitive } from '@reprise/layout';
-import { PPQ, beatTicks, type Golpe, type Id, type Score, type SlideKind } from '@reprise/model';
+import {
+  PPQ,
+  beatTicks,
+  type Golpe,
+  type Id,
+  type Score,
+  type SlideKind,
+  type Wah,
+} from '@reprise/model';
 import { beatOf, note, noteOf, score } from '@reprise/model/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -157,7 +165,11 @@ interface Row {
   /** The marks layout draws for it, found among the primitives of the first two beats. */
   draws: readonly string[];
   /** `hit`: a golpe is no note, so the timeline's `hitsInRange` schedules it instead of `planNote`. */
-  sounds: Sound | { todo: string } | { hit: Golpe };
+  /**
+   * `wah`: the pedal mark is on the beat in the model. Playback (#355, part 4) reads that field
+   * and is tested in `@reprise/audio`; once it is on main this row asserts `wahStateAt` too.
+   */
+  sounds: Sound | { todo: string } | { hit: Golpe } | { wah: Wah };
 }
 
 /** The most the pitch curve moves away from zero over the note. */
@@ -429,6 +441,18 @@ const ROWS: readonly Row[] = [
     sounds: { hit: 'finger' },
   },
   {
+    name: 'wah closed',
+    draws: ['glyph:guitarClosePedal'],
+    how: { command: 'editor.effect.wahClosed' },
+    sounds: { wah: 'closed' },
+  },
+  {
+    name: 'wah open',
+    draws: ['glyph:guitarOpenPedal'],
+    how: { command: 'editor.effect.wahOpen' },
+    sounds: { wah: 'open' },
+  },
+  {
     name: 'pick scrape down',
     draws: ['text:P.S.', 'path'],
     how: { command: 'editor.effect.pickScrapeDown' },
@@ -575,6 +599,8 @@ describe('every effect applies, draws, sounds and comes off again', () => {
           limitTick: timeline.endTick,
         });
         expect(hits.map((hit) => [hit.beatIndex, hit.golpe])).toEqual([[0, row.sounds.hit]]);
+      } else if ('wah' in row.sounds) {
+        expect(beatOf(applied, 0, 0, 0).effects.wah).toBe(row.sounds.wah);
       } else if (!('todo' in row.sounds)) {
         const plans = plansOf(applied);
         const plan = plans.get(targetId);
