@@ -377,10 +377,55 @@ export function layoutWith(
     const part = entry.parts.at(-1);
     return placement && part ? advance(resolved, placement, part.system) : pageStart(resolved, 0);
   };
+  /** Clean and in the same bars: reusable but for the shared vertical layout. */
+  const intact = (old: CachedSystem, plan: SystemPlan): boolean =>
+    isClean(changed, plan.start, plan.end) && sameInputs(barIds(score, plan), old.barIds);
   const unchanged = (old: CachedSystem, plan: SystemPlan): boolean =>
-    isClean(changed, plan.start, plan.end) &&
-    sameInputs(barIds(score, plan), old.barIds) &&
-    (global === undefined || old.verticalKey === global.key);
+    intact(old, plan) && (global === undefined || old.verticalKey === global.key);
+
+  // `verticalReach`: of the previous segments the shared vertical layout left stale, only the
+  // nearest to the edit are redrawn now; the others stay as drawn until a later call.
+  let firstChanged = -1;
+  for (let i = 0; i < contexts.length; i++) {
+    if ((changed[i + 1] ?? 0) > (changed[i] ?? 0)) {
+      firstChanged = i;
+      break;
+    }
+  }
+  const focusId = firstChanged >= 0 ? score.masterBars[firstChanged]?.id : state?.focus;
+  const focusBar = focusId === undefined ? -1 : score.masterBars.findIndex((m) => m.id === focusId);
+  const eager = new Set<number>();
+  let lastToRender = -1;
+  if (global) {
+    const stale: number[] = [];
+    // The segment that held the focus bar, by id: its index in the previous score, which a bar
+    // inserted or removed ahead of it shifts. A bar the previous score lacked falls back to its
+    // index here, which an edit's first re-measured bar shares with the previous score.
+    const held =
+      focusId === undefined
+        ? -1
+        : previous.findIndex(({ barIds }) => barIds.slice(0, -1).includes(focusId));
+    let focusAt = Math.max(held, 0);
+    previous.forEach((old, i) => {
+      if (held < 0 && old.plan.start <= Math.max(focusBar, 0)) focusAt = i;
+      if (old.verticalKey !== global.key) stale.push(i);
+    });
+    if (Number.isFinite(resolved.verticalReach)) {
+      // Nearest by index, ties to the right.
+      stale.sort((a, b) => Math.abs(a - focusAt) - Math.abs(b - focusAt) || b - a);
+      for (const i of stale.slice(0, resolved.verticalReach)) eager.add(i);
+    }
+    for (const i of stale) {
+      if (!Number.isFinite(resolved.verticalReach) || eager.has(i))
+        lastToRender = Math.max(lastToRender, i);
+    }
+  }
+  /** Whether the previous segment at `position` keeps its drawing for the old vertical layout. */
+  const deferred = (old: CachedSystem, position: number): boolean =>
+    global !== undefined &&
+    old.verticalKey !== global.key &&
+    !eager.has(position) &&
+    Number.isFinite(resolved.verticalReach);
 
   // Systems before the first change stay as they were, objects and all.
   let next = 0;
@@ -410,7 +455,12 @@ export function layoutWith(
     )) {
       const position = byStart.get(plan.start);
       const old = position === undefined ? undefined : previous[position];
-      if (old && position !== undefined && samePlan(old.plan, plan) && unchanged(old, plan)) {
+      if (
+        old &&
+        position !== undefined &&
+        samePlan(old.plan, plan) &&
+        (unchanged(old, plan) || (intact(old, plan) && deferred(old, position)))
+      ) {
         // The next placement follows from this one, the system's stack (its slots' extents and
         // rows) and the page geometry in `systemKey`, so equal placements converge.
         const at = placeSystem(resolved, cursor, old.vertical, groups);
@@ -422,7 +472,8 @@ export function layoutWith(
           cursor = after(keep(old, exact ? old.at : at));
           // Past the last change by more than any module reads, the breaks, placements and
           // entering dynamics all follow from this system's, so the rest is as it was.
-          if (sameBarCount && plan.start - BAR_REACH > lastChanged) {
+          // A stale segment still to be redrawn later in the list rules the shortcut out.
+          if (sameBarCount && plan.start - BAR_REACH > lastChanged && position >= lastToRender) {
             for (const later of previous.slice(position + 1)) {
               if (!continuous) {
                 keep(later);
@@ -504,6 +555,12 @@ export function layoutWith(
     }
   }
   const parts = systems.flatMap((entry) => entry.parts);
+  const staleSystems = global
+    ? systems.reduce(
+        (n, entry) => (entry.verticalKey === global.key ? n : n + entry.parts.length),
+        0,
+      )
+    : 0;
   const systemList = parts.map(({ system }) => system);
   // One copy per array: pushing item by item cost several times as much on the long score.
   const noPrimitives: Primitive[] = [];
@@ -518,6 +575,7 @@ export function layoutWith(
       bars,
       barCount: score.masterBars.length,
       systems,
+      ...(focusId !== undefined && { focus: focusId }),
     });
   }
 
@@ -532,6 +590,7 @@ export function layoutWith(
       anchors: anchors.length,
       measuredBars: measured,
       reusedSystems: reused,
+      staleSystems,
     },
   };
 }

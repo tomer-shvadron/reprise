@@ -13,4 +13,8 @@ describe('LayoutCache: random edits', () => {
     },
     60_000,
   );
+
+  it('keeps cached equal to cold in standard notation, continuous, with verticalReach (#229)', () => {
+    checkCachedEqualsCold('standard', 'continuous', undefined, true);
+  }, 60_000);
 });

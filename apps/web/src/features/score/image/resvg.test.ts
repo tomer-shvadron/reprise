@@ -54,7 +54,14 @@ describe('pageSvg through a renderer that knows no fonts', () => {
       },
     ],
     anchors: [],
-    metrics: { layoutMs: 0, primitives: 2, anchors: 0, measuredBars: 0, reusedSystems: 0 },
+    metrics: {
+      layoutMs: 0,
+      primitives: 2,
+      anchors: 0,
+      measuredBars: 0,
+      reusedSystems: 0,
+      staleSystems: 0,
+    },
   };
 
   const page = layout.pages[0];

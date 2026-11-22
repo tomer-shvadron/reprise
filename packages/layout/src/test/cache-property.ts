@@ -502,11 +502,21 @@ export const CACHE_PROPERTY_MODES = [
   ),
 ] as const;
 
-/** Asserts, over random edit sequences, that the warm cache equals a cold layout after every step. */
+/**
+ * Asserts, over random edit sequences, that the warm cache equals a cold layout after every step.
+ *
+ * With `withReach` (continuous mode), every edit's layout passes a random `verticalReach` (0 to 6),
+ * then 0 to 2 follow-up calls with no dirty bars (reach 1 to 6; 0 never makes progress, as nothing
+ * is redrawn without dirty bars), each strictly lowering `staleSystems`. The next edit may land on
+ * a cache that is still stale, as the app's does when a new edit cancels the follow-ups. A layout
+ * is compared with cold whenever nothing is stale, and the sequence ends by converging, randomly
+ * by reach calls or by one call without the option, and comparing.
+ */
 export function checkCachedEqualsCold(
   notation: Notation,
   mode: LayoutOptions['mode'],
   height: number | undefined,
+  withReach = false,
 ): void {
   const split = height !== undefined;
   assert(
@@ -515,7 +525,12 @@ export function checkCachedEqualsCold(
       integer({ min: 0, max: 2 }),
       integer({ min: 0, max: 4 }),
       array(edit, { minLength: 1, maxLength: 8 }),
-      (which, subsetDie, widthDie, edits) => {
+      integer({ min: 0, max: 6 }),
+      integer({ min: 1, max: 6 }),
+      array(integer({ min: 0, max: 2 }), { minLength: 8, maxLength: 8 }),
+      (which, subsetDie, widthDie, edits, reachDie, followReach, follows) => {
+        const verticalReach = withReach ? reachDie : undefined;
+        const followUp = withReach ? followReach : undefined;
         let score = SCORES[which]();
         const width = widthAt(mode, widthDie);
         let options = optionsFor(score, notation, mode, subsetDie === 0, width, height);
@@ -530,7 +545,8 @@ export function checkCachedEqualsCold(
           }
         }
         const history = createHistory();
-        for (const step of edits) {
+        let lastStale = false;
+        for (const [stepIndex, step] of edits.entries()) {
           let touched: string[] = [];
           let afresh = false;
           if (step.kind === 'options') {
@@ -557,7 +573,21 @@ export function checkCachedEqualsCold(
               throw error;
             }
           }
-          const cached = layout(score, { ...options, dirtyBars: touched }, cache);
+          let cached = layout(score, { ...options, dirtyBars: touched, verticalReach }, cache);
+          let stale = cached.metrics.staleSystems;
+          if (verticalReach === undefined) expect(stale).toBe(0);
+          for (let call = 0; call < (follows[stepIndex] ?? 0) && stale > 0; call++) {
+            cached = layout(score, { ...options, verticalReach: followUp }, cache);
+            expect(cached.metrics.staleSystems, JSON.stringify(step)).toBeLessThan(stale);
+            stale = cached.metrics.staleSystems;
+          }
+          if (stale > 0) {
+            // Breaks do not depend on the vertical layout, so a stale layout's are the right ones.
+            breaks = breakIds(score, cached);
+            lastStale = true;
+            continue;
+          }
+          lastStale = false;
           const cold = layoutWith(score, options, undefined, afresh ? undefined : breaks);
           expect(stable(cached), JSON.stringify(step)).toBe(stable(cold));
           breaks = breakIds(score, cached);
@@ -593,6 +623,21 @@ export function checkCachedEqualsCold(
           if (!split) expectInsidePages(cached, DEFAULT_MARGINS[mode]);
           // At the split heights only the bottom margin overflows by design (#85): a staff taller than the room.
           else expectInsidePagesHorizontally(cached);
+        }
+        if (lastStale) {
+          // Converge as the app does, by reach calls, or as a full run does, by one call without
+          // the option; both must give a cold layout.
+          const oneCall = reachDie % 2 === 0;
+          let stale = Infinity;
+          let converged = oneCall ? layout(score, options, cache) : undefined;
+          while (!converged || converged.metrics.staleSystems > 0) {
+            converged = layout(score, { ...options, verticalReach: followUp }, cache);
+            if (converged.metrics.staleSystems === 0) break;
+            expect(converged.metrics.staleSystems).toBeLessThan(stale);
+            stale = converged.metrics.staleSystems;
+          }
+          expect(converged.metrics.staleSystems).toBe(0);
+          expect(stable(converged)).toBe(stable(layoutWith(score, options, undefined, breaks)));
         }
       },
     ),

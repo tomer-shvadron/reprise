@@ -89,6 +89,7 @@ function handmade(primitives: Primitive[]): { layout: LayoutResult; page: Page }
       anchors: 0,
       measuredBars: 0,
       reusedSystems: 0,
+      staleSystems: 0,
     },
   };
   return { layout, page };

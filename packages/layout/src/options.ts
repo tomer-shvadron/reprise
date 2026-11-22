@@ -39,6 +39,8 @@ export interface ResolvedOptions {
   tracks: VisibleTrack[];
   tiedNotes: TiedNotes;
   chordDiagrams: boolean;
+  /** `LayoutOptions.verticalReach`; `Infinity` when unset. Not part of any key, as `dirtyBars` is not. */
+  verticalReach: number;
   /** Everything a cached bar measurement depends on besides the bars themselves. */
   measureKey: string;
   /** Everything else a cached system depends on. */
@@ -64,6 +66,29 @@ export function stavesFor(track: Track, notation: Notation): StaffType[] {
 function positive(value: number, name: string): number {
   if (!Number.isFinite(value) || value <= 0) {
     throw new RangeError(`layout option ${name} must be a positive number`);
+  }
+  return value;
+}
+
+/**
+ * Segments an edit that changes the continuous vertical layout redraws at once (`verticalReach`):
+ * the mounted window and its neighbours at any zoom of 0.5 or more.
+ */
+export const VERTICAL_EDIT_REACH = 8;
+
+/**
+ * `verticalReach` of the follow-up calls that redraw the remaining stale segments, one per timer
+ * turn. Chosen so one call stays well inside a frame on the long score in mixed notation (see
+ * "Re-layout follow-up call, continuous" in the budgets table); every call also pays the base
+ * cost of a cached layout, so a smaller value only lengthens convergence.
+ */
+export const VERTICAL_FOLLOW_UP_REACH = 8;
+
+function reach(value: number): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new RangeError(
+      `layout option verticalReach (${String(value)}) must be a non-negative integer`,
+    );
   }
   return value;
 }
@@ -135,6 +160,7 @@ export function resolveOptions(score: Score, options: LayoutOptions): ResolvedOp
     tracks,
     tiedNotes,
     chordDiagrams,
+    verticalReach: options.verticalReach === undefined ? Infinity : reach(options.verticalReach),
     measureKey,
     systemKey: JSON.stringify([
       measureKey,
