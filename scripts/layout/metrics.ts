@@ -163,6 +163,7 @@ export const GLYPHS = [
   'tremolo3',
   'stringsDownBow',
   'stringsUpBow',
+  'guitarGolpe',
   'guitarFadeIn',
   'guitarFadeOut',
   'guitarVolumeSwell',

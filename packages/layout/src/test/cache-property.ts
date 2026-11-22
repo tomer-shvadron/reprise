@@ -409,7 +409,7 @@ function withHyphens(built: Score): Score {
 /** The first random score, by seed, that is fretted and carries diagrams. */
 function diagramScore(): Score {
   for (let seed = 1; ; seed += 1) {
-    const built = randomScore(seed, { diagrams: true });
+    const built = randomScore(seed, { diagrams: true, techniques: true });
     const diagrams = built.tracks.some((track) =>
       track.bars.some((bar) =>
         bar.voices.some((voice) => voice.beats.some((beat) => beat.chord?.diagram)),

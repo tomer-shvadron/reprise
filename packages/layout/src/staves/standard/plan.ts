@@ -47,7 +47,7 @@ import {
   type ShownAccidental,
 } from './pitch';
 import { beamCount, beamGroups, tupletGroups, type RhythmEvent } from '../rhythm';
-import { BEND_FRAME, BEND_ROOM, connections, letterReach } from '../effects';
+import { BEND_FRAME, BEND_ROOM, SCRAPE, connections, letterReach } from '../effects';
 import {
   beamLine,
   dotsWidth,
@@ -860,8 +860,18 @@ function planBeside(
   if (slides.some((kind) => kind === 'intoFromBelow' || kind === 'intoFromAbove')) {
     plan.left -= SLIDE.room * space;
   }
-  if (slides.some((kind) => kind === 'outDown' || kind === 'outUp')) {
+  if (
+    slides.some((kind) => kind === 'outDown' || kind === 'outUp') ||
+    beat.notes.some((note) => note.pickScrape)
+  ) {
     plan.right += SLIDE.room * space;
+  }
+  for (const note of beat.notes) {
+    if (!note.pickScrape || heads.length === 0) continue;
+    const ys = heads.map(({ y }) => y);
+    if (note.pickScrape === 'down')
+      plan.bottom = Math.max(plan.bottom, Math.max(...ys) + SCRAPE.reach * space);
+    else plan.top = Math.min(plan.top, Math.min(...ys) - SCRAPE.reach * space);
   }
   // In both mode the tab draws the brush; an arpeggio's wave belongs beside the heads.
   const { arpeggio, brush } = beat.effects;

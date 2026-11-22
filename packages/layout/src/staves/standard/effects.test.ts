@@ -30,6 +30,8 @@ import {
   texts,
 } from '../../test/effects';
 import { positionY } from './chord';
+import type { StaffBar } from '../staff-module';
+import { planBar } from './plan';
 
 const EPSILON = 0.05;
 
@@ -1406,5 +1408,88 @@ describe('bend target heads on a standard staff shown alone', () => {
       );
       expect(reach).toBeLessThanOrEqual(next.bbox.x + next.bbox.width + EPSILON);
     }
+  });
+});
+
+describe('golpe and pick scrape on the standard staff (#354)', () => {
+  const wave = (p: Primitive): boolean =>
+    p.kind === 'path' && !p.fill && p.node?.startsWith('note') === true;
+
+  function scored(notation: 'standard' | 'both'): Score {
+    return guitar(notation)
+      .bar()
+      .beat('4', [note(3, 5, { pickScrape: 'down' })], { effects: { golpe: 'thumb' } })
+      .beat('4', [note(3, 5, { pickScrape: 'up' })], { effects: { golpe: 'finger' } })
+      .beat('2', [note(3, 5)])
+      .build({ ids: 'sequential' });
+  }
+
+  it('alone: draws the golpes and the P.S. lane, and a wave out of each scraped head', () => {
+    const result = laid(scored('standard'));
+    expect(named(result, 'guitarGolpe')).toHaveLength(2);
+    expect(result.primitives.filter(isText('P.S.'))).toHaveLength(2);
+    expect(result.primitives.filter(wave)).toHaveLength(2);
+  });
+
+  it('in both mode: the tab keeps the lanes and each staff draws its waves', () => {
+    const result = laid(scored('both'));
+    expect(named(result, 'guitarGolpe')).toHaveLength(2);
+    expect(result.primitives.filter(isText('P.S.'))).toHaveLength(2);
+    // One wave on the tab and one on the standard staff for each note.
+    expect(result.primitives.filter(wave)).toHaveLength(4);
+  });
+
+  it('draws nothing of either on a percussion staff', () => {
+    const built = drums()
+      .bar()
+      .beat('4', [midi(38, { pickScrape: 'down' })], { effects: { golpe: 'thumb' } })
+      .beat('4', [midi(38)])
+      .build({ ids: 'sequential' });
+    const result = laid(built);
+    expect(named(result, 'guitarGolpe')).toEqual([]);
+    expect(texts(result)).toEqual([]);
+    expect(result.primitives.filter(wave)).toEqual([]);
+  });
+});
+
+describe('standard staff room for a pick scrape (#354)', () => {
+  // The first of two beats on a string is not its last note, so no tie's room hides the wave's.
+  const first = (string: number, fret: number, scrape?: 'up' | 'down') => {
+    const built = guitar('standard')
+      .bar()
+      .beat('4', [note(string, fret, scrape ? { pickScrape: scrape } : {})])
+      .beat('4', [note(string, fret)])
+      .build({ ids: 'sequential' });
+    const track = built.tracks[0];
+    const bar = track?.bars[0];
+    const masterBar = built.masterBars[0];
+    if (!track || !bar || !masterBar) throw new Error('fixture');
+    const input: StaffBar = {
+      score: built,
+      track,
+      trackIndex: 0,
+      staves: ['standard'],
+      bar,
+      masterBar,
+      barIndex: 0,
+      clef: 'treble',
+      keySignature: masterBar.keySignature,
+      chordDiagrams: true,
+      space: 7,
+    };
+    const [beat] = planBar(input, { percussion: false, courtesyAccidentals: true }).beats;
+    if (!beat) throw new Error('no beat');
+    return beat;
+  };
+
+  it('grows the room below for a down scrape on a low head, and above for an up one on a high head', () => {
+    expect(first(6, 0, 'down').bottom).toBeGreaterThan(first(6, 0).bottom);
+    expect(first(1, 20, 'up').top).toBeLessThan(first(1, 20).top);
+    // The other side is untouched.
+    expect(first(6, 0, 'down').top).toBe(first(6, 0).top);
+  });
+
+  it('reserves room right of the chord', () => {
+    expect(first(3, 5, 'down').right).toBeGreaterThan(first(3, 5).right);
   });
 });
