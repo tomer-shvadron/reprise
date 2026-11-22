@@ -17,6 +17,8 @@ import {
   type Note,
   type NoteEffects,
   type SlideKind,
+  type Golpe,
+  type PickScrape,
   type StrokeDirection,
   type Trill,
   type Whammy,
@@ -55,6 +57,8 @@ export type EffectAction =
   | { kind: 'beatFlag'; flag: BeatFlag }
   | { kind: 'tremolo'; speed: 8 | 16 | 32 }
   | { kind: 'pickStroke'; direction: StrokeDirection }
+  | { kind: 'golpe'; golpe: Golpe }
+  | { kind: 'pickScrape'; direction: PickScrape }
   | { kind: 'beatVibrato'; vibrato: 'slight' | 'wide' }
   | { kind: 'whammy'; whammy: Whammy; label?: string }
   | { kind: 'brush'; direction: StrokeDirection }
@@ -330,6 +334,17 @@ function noteSpec(action: EffectAction): NoteSpec | undefined {
     }
     case 'slide':
       return slideSpec(action.slide);
+    case 'pickScrape':
+      return valueSpec(
+        `pick scrape ${action.direction}`,
+        (note) => note.pickScrape,
+        action.direction,
+        { pickScrape: action.direction },
+        { pickScrape: null },
+        {
+          unavailable: (ref) => (ref.note.tie ? 'A tied note is held, not struck' : undefined),
+        },
+      );
     case 'harmonic':
       return harmonicSpec(action.harmonic);
     case 'dynamics':
@@ -442,6 +457,16 @@ function beatSpec(action: EffectAction): BeatSpec | undefined {
         present: (beat) => beat.effects.pickStroke !== undefined,
         set: { effects: { pickStroke: action.direction } },
         clear: { effects: { pickStroke: null } },
+      };
+    case 'golpe':
+      // One field holds the value, so thumb and finger exclude each other; a rest may carry one.
+      return {
+        label: `golpe (${action.golpe})`,
+        anyTrack: false,
+        has: (beat) => beat.effects.golpe === action.golpe,
+        present: (beat) => beat.effects.golpe !== undefined,
+        set: { effects: { golpe: action.golpe } },
+        clear: { effects: { golpe: null } },
       };
     case 'beatVibrato':
       return {

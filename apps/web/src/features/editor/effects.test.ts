@@ -479,3 +479,67 @@ describe('planEffect: grace notes and mixed targets', () => {
     });
   });
 });
+
+describe('planEffect: golpe and pick scrape', () => {
+  const golpe = (value: 'thumb' | 'finger'): EffectAction => ({ kind: 'golpe', golpe: value });
+  const scrape = (direction: 'down' | 'up'): EffectAction => ({ kind: 'pickScrape', direction });
+
+  it('toggles a golpe, swaps thumb for finger, and removes it', () => {
+    const built = riff();
+    const noteIds = ids(built, [0, 0, 0]);
+    const thumb = apply(built, { noteIds }, golpe('thumb'));
+    expect(beatOf(thumb.after ?? built, 0, 0, 0).effects).toEqual({ golpe: 'thumb' });
+    const finger = apply(thumb.after ?? built, { noteIds }, golpe('finger'));
+    expect(beatOf(finger.after ?? built, 0, 0, 0).effects).toEqual({ golpe: 'finger' });
+    const off = apply(finger.after ?? built, { noteIds }, golpe('finger'));
+    expect(beatOf(off.after ?? built, 0, 0, 0).effects).toEqual({});
+    const removed = apply(thumb.after ?? built, { noteIds }, golpe('finger'), 'remove');
+    expect(beatOf(removed.after ?? built, 0, 0, 0).effects.golpe).toBeUndefined();
+    expect(thumb.label).toBe('Golpe (thumb)');
+  });
+
+  it('toggles a pick scrape and swaps its direction', () => {
+    const built = riff();
+    const noteIds = ids(built, [0, 0, 0]);
+    const down = apply(built, { noteIds }, scrape('down'));
+    expect(noteOf(down.after ?? built, 0, 0, 0).pickScrape).toBe('down');
+    const up = apply(down.after ?? built, { noteIds }, scrape('up'));
+    expect(noteOf(up.after ?? built, 0, 0, 0).pickScrape).toBe('up');
+    const off = apply(up.after ?? built, { noteIds }, scrape('up'));
+    expect(noteOf(off.after ?? built, 0, 0, 0).pickScrape).toBeUndefined();
+  });
+
+  it('refuses both on an unfretted track', () => {
+    const drums = score().track('drums');
+    drums.bar().beat('4', [note(0, 0)]);
+    const built = drums.build({ ids: 'sequential' });
+    const noteIds = [noteOf(built, 0, 0, 0).id];
+    expect(planEffect({ score: built, state: state({ noteIds }) }, golpe('thumb'))).toHaveProperty(
+      'refused',
+    );
+    expect(planEffect({ score: built, state: state({ noteIds }) }, scrape('down'))).toHaveProperty(
+      'refused',
+    );
+  });
+
+  it('refuses a pick scrape on a tied note and takes it elsewhere', () => {
+    const built = riff();
+    const tied = ids(built, [1, 2, 0]);
+    expect(planEffect({ score: built, state: state({ noteIds: tied }) }, scrape('down'))).toEqual({
+      refused: 'A tied note is held, not struck',
+    });
+    const mixed = ids(built, [1, 2, 0], [0, 0, 0]);
+    const result = apply(built, { noteIds: mixed }, scrape('down'));
+    expect(noteOf(result.after ?? built, 0, 0, 0).pickScrape).toBe('down');
+    expect(noteOf(result.after ?? built, 0, 1, 2).pickScrape).toBeUndefined();
+  });
+
+  it('reports the toggle state through effectState', () => {
+    const built = riff();
+    const noteIds = ids(built, [0, 0, 0]);
+    const on = apply(built, { noteIds }, golpe('thumb')).after ?? built;
+    const input = { score: on, state: state({ noteIds }) };
+    expect(effectState(input, golpe('thumb'))).toBe('on');
+    expect(effectState(input, golpe('finger'))).toBe('off');
+  });
+});
