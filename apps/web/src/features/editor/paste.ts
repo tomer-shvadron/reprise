@@ -117,8 +117,11 @@ function neckLabel(track: Track): string {
  *   which take the clip's time signatures. Overwrite never edits a bar's properties and refuses
  *   content that would overflow its bar.
  * - A beats clip starts at the cursor's stop in the cursor's voice (a clip of several voices
- *   keeps their indices); overwrite replaces the beats its length covers, insert pushes the rest
- *   along. Past the last bar it appends bars, in the same step.
+ *   keeps their indices) and is laid out again across the target's own barlines (`reflow`): a
+ *   beat over a barline becomes tied beats, so overwrite never overflows a bar. Overwrite replaces
+ *   the beats its length covers; insert pushes the rest along and refuses when a bar's own beats
+ *   would pass its barline. Past the last bar it appends bars, in the same step, in the last
+ *   bar's time signature.
  */
 export function planPaste(
   score: Score,
@@ -431,6 +434,6 @@ export function planPaste(
     command: chain(clip.kind === 'bars' ? 'pasteBars' : 'pasteBeats', steps),
     land,
     range,
-    notice: `Pasted ${what}${where}${warning}${tied}`,
+    notice: `Pasted ${what}${where}${tied}${warning}`,
   };
 }

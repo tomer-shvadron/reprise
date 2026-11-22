@@ -152,22 +152,23 @@ export function restsFor(ticks: number): Rhythm[] | undefined {
   return rests;
 }
 
-/** Every note value the model allows, with at most one dot, as `valuesFor` splits a length into them. */
-const ALL_DURATIONS: readonly Duration[] = [1, 2, 4, 8, 16, 32, 64, 128, 256];
+/** Every plain and single-dotted value the model allows, longest first, down to a 256th. */
+const SPLIT_VALUES: Rhythm[] = ([1, 2, 4, 8, 16, 32, 64, 128, 256] as const)
+  .flatMap((duration) =>
+    ([0, 1] as const).map((dots): Rhythm => ({ duration, dots, tuplet: undefined })),
+  )
+  .sort((a, b) => rhythmTicks(b) - rhythmTicks(a));
 
 /**
- * A length in ticks as note values at one tuplet ratio, longest first: the greedy split that
- * `restsFor` does, but reaching the 128th and 256th the model allows, and carrying a tuplet.
- * Undefined when the length is not a multiple of the shortest value at that ratio.
+ * A length in ticks as note values, longest first: the greedy split that `restsFor` does, but
+ * reaching the 128th and 256th the model allows. Undefined when the length is not a multiple of
+ * the shortest value.
  */
-export function valuesFor(ticks: number, tuplet?: Tuplet): Rhythm[] | undefined {
-  const candidates = ALL_DURATIONS.flatMap((duration) =>
-    ([0, 1] as const).map((dots): Rhythm => ({ duration, dots, tuplet })),
-  ).sort((a, b) => rhythmTicks(b) - rhythmTicks(a));
+export function valuesFor(ticks: number): Rhythm[] | undefined {
   const values: Rhythm[] = [];
   let left = ticks;
   while (left > EPSILON) {
-    const next = candidates.find((rhythm) => rhythmTicks(rhythm) <= left + EPSILON);
+    const next = SPLIT_VALUES.find((rhythm) => rhythmTicks(rhythm) <= left + EPSILON);
     if (!next) return undefined;
     values.push(next);
     left -= rhythmTicks(next);

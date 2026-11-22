@@ -24,7 +24,7 @@ export interface VoiceFlow {
 
 export interface Flow {
   voices: VoiceFlow[];
-  /** Notes that a barline (or a length no note value writes) cut into tied pieces. */
+  /** Notes that a barline cut into tied pieces. */
   split: number;
 }
 

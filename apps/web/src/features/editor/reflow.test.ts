@@ -82,10 +82,4 @@ describe('valuesFor', () => {
   it('is undefined when no value fits the length', () => {
     expect(valuesFor(7)).toBeUndefined();
   });
-
-  it('carries a tuplet', () => {
-    const values = valuesFor(640, { n: 3, of: 2 });
-    expect(values).toHaveLength(1);
-    expect(values?.[0]?.tuplet).toEqual({ n: 3, of: 2 });
-  });
 });

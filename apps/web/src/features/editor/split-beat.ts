@@ -96,15 +96,28 @@ const flat = (whammy: Whammy): boolean => {
 /**
  * The beat as a run of tied beats of these note values, one per value: the first is the beat as
  * it was, every later one holds the same notes on with `tie: true`. Each field goes where
- * playback reads it from a tie chain, so the split note sounds as it did (a bend stays on the
- * first piece and spans the links, a legato slide moves to the last). A rest splits into rests,
- * and on a drum track every piece after the first is a rest, since a hit holds no length.
- * Ids are copied: the caller gives every beat a fresh one.
+ * playback reads it from a tie chain, as close to the original sound as a tie chain allows (a
+ * bend stays on the first piece and spans the links, a legato slide moves to the last). Some
+ * marks are measured from the piece that carries them, not the whole note, and the model cannot
+ * say otherwise: a staccato note ends half a last piece in, a fade in or out runs over its one
+ * piece, and a glide or out-slide is timed from the last piece, so a short one is quicker.
+ * A volume swell is left off every piece: it would fade the first piece to silence, and the
+ * continuations would stay there. A dead note is left out of the continuations, which become rests
+ * when it was the only note. A rest splits into rests, and on a drum track every piece after the
+ * first is a rest, since a hit holds no length. Ids are copied: the caller gives every beat a
+ * fresh one.
  */
 export function splitBeat(beat: Beat, values: readonly Rhythm[], kind: TrackKind): Beat[] {
   const total = values.reduce((sum, value) => sum + rhythmTicks(value), 0);
   const pitched = !beat.rest && beat.notes.length > 0;
-  const { fadeOut, whammy, vibrato, tremoloPicking, ...attack } = beat.effects;
+  const { fadeOut, whammy, vibrato, tremoloPicking } = beat.effects;
+  // What the first piece keeps: the attack marks. The rest is copied, moved or sliced below.
+  const attack: BeatEffects = { ...beat.effects };
+  delete attack.fadeOut;
+  delete attack.whammy;
+  delete attack.vibrato;
+  delete attack.tremoloPicking;
+  delete attack.volumeSwell;
   const bends = beat.notes.some((note) => note.bend);
   let elapsed = 0;
   let previousEnd = 0;
@@ -129,6 +142,8 @@ export function splitBeat(beat: Beat, values: readonly Rhythm[], kind: TrackKind
         : { ...piece, rest: true };
     }
     if (!first && !pitched) return piece;
+    const sustained = beat.notes.filter((note) => !note.dead);
+    if (!first && sustained.length === 0) return { ...piece, rest: true };
     const effects: BeatEffects = first ? { ...attack } : {};
     if (tremoloPicking !== undefined) effects.tremoloPicking = tremoloPicking;
     if (vibrato !== undefined && (first || !bends)) effects.vibrato = vibrato;
@@ -154,7 +169,7 @@ export function splitBeat(beat: Beat, values: readonly Rhythm[], kind: TrackKind
     }
     return {
       ...piece,
-      notes: beat.notes.map((note) =>
+      notes: sustained.map((note) =>
         continuation(
           note,
           last,
