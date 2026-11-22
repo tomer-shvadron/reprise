@@ -2,7 +2,14 @@ import { note, score } from '@reprise/model/testing';
 import { assert, constant, constantFrom, integer, oneof, property, tuple } from 'fast-check';
 import { describe, expect, inject, it } from 'vitest';
 
-import { parseNative, type Bend, type Notation, type Score } from '@reprise/model';
+import {
+  beatTicks,
+  parseNative,
+  type Bend,
+  type Note,
+  type Notation,
+  type Score,
+} from '@reprise/model';
 
 import {
   DEFAULT_MARGINS,
@@ -10,8 +17,11 @@ import {
   layout,
   type LayoutOptions,
   type LayoutResult,
+  type Primitive,
 } from './index';
+import { describePrimitive } from './test/describe';
 import { expectValid, overlappingMarks } from './test/check-result';
+import { fingering } from './staves/tab/analysis';
 import { randomScore } from './test/random-score';
 
 const EPSILON = 0.02;
@@ -220,6 +230,72 @@ describe('primitives stay inside their system', () => {
       const built = randomScore(seed, { diagrams: true });
       const result = layout(built, options(built, 320, 'tab'));
       expect(fullLabelOverlaps(result), `seed ${String(seed)}`).toEqual([]);
+    }
+  }, 60_000);
+
+  it('draws no two fingering marks of one onset on one baseline, in any notation (#511)', () => {
+    // Seeds 116, 215, 218 and 384 stacked the fingering of two voices at one onset in one row.
+    // Every width and notation guards the same-onset case, on the seeds that have one. On the tab
+    // at 480 px and A4 no two fingering marks overlap at all, neighbouring onsets included, except
+    // seeds 298, 363 and 364 at 480 px (#523). Elsewhere neighbouring onsets may touch: in a bar
+    // squeezed far below its minimum (notation.md, Tab staff, Words), and on the standard staff
+    // (#523).
+    const openAt480 = new Set([298, 363, 364]);
+    for (let seed = 0; seed <= 400; seed++) {
+      const built = randomScore(seed, { diagrams: true });
+      const notes = new Map<string, { note: Note; onset: string }>();
+      const fingered = new Map<string, number>();
+      for (const track of built.tracks) {
+        for (const [index, bar] of track.bars.entries()) {
+          for (const voice of bar.voices) {
+            let tick = 0;
+            for (const beat of voice.beats) {
+              const onset = `${track.id} ${String(index)} ${String(tick)}`;
+              for (const note of beat.notes) {
+                notes.set(note.id, { note, onset });
+                if (fingering(note) !== undefined)
+                  fingered.set(onset, (fingered.get(onset) ?? 0) + 1);
+              }
+              tick += beatTicks(beat);
+            }
+          }
+        }
+      }
+      // Most seeds never have two fingered notes at one onset, so only the tab neighbour check
+      // lays them out.
+      const shared = [...fingered.values()].some((count) => count > 1);
+      const onsetOf = (p: Primitive): string | undefined => {
+        const entry = p.node === undefined ? undefined : notes.get(p.node);
+        if (p.kind === 'glyph') return p.glyph.startsWith('fingering') ? entry?.onset : undefined;
+        return p.kind === 'text' && entry && fingering(entry.note) === p.text
+          ? entry.onset
+          : undefined;
+      };
+      const pairs = (result: LayoutResult, sameOnset: boolean): string[] =>
+        overlappingMarks(result)
+          .filter(([a, b]) => {
+            const onset = onsetOf(a);
+            if (onset === undefined || onsetOf(b) === undefined) return false;
+            if (!sameOnset) return true;
+            return (
+              onset === onsetOf(b) &&
+              (a.kind === 'glyph' || a.kind === 'text') &&
+              (b.kind === 'glyph' || b.kind === 'text') &&
+              Math.abs(a.y - b.y) < 0.5
+            );
+          })
+          .map(([a, b]) => `${describePrimitive(a)} ${describePrimitive(b)}`);
+      for (const notation of ['tab', 'standard', 'both'] as const) {
+        for (const width of [320, 480, PAGE_SIZES.a4.width]) {
+          const label = `seed ${String(seed)} ${String(width)} ${notation}`;
+          if (shared) {
+            expect(pairs(layout(built, options(built, width, notation)), true), label).toEqual([]);
+          }
+          if (notation === 'tab' && width !== 320 && !(width === 480 && openAt480.has(seed))) {
+            expect(pairs(layout(built, options(built, width, notation)), false), label).toEqual([]);
+          }
+        }
+      }
     }
   }, 60_000);
 
