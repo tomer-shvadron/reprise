@@ -1,9 +1,8 @@
 import type { Bend, Score } from '@reprise/model';
 import { beatOf, note } from '@reprise/model/testing';
-import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import { layout } from '../../index';
+import { layout, type LayoutResult } from '../../index';
 import { strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
 import { guitar, paged } from '../../test/effects';
@@ -15,12 +14,71 @@ const bend = (kind: Bend['kind'], values: [number, number][]): Bend => ({
   points: values.map(([position, value]) => ({ position, value })),
 });
 
-const SHAPES: [string, Bend][] = [
+type NoteSpec = { string: number; fret: number; bend?: Bend };
+
+/** One bar of 8ths with `bent` on beat 2, then a plain bar. */
+function bar(bent: NoteSpec[] | undefined): Score {
+  const builder = guitar('standard');
+  for (let b = 0; b < 8; b += 1) {
+    builder.beat(
+      '8',
+      b === 2 && bent
+        ? bent.map((n) => note(n.string, n.fret, n.bend ? { bend: n.bend } : {}))
+        : [note(3, 7)],
+    );
+  }
+  builder.bar();
+  for (let b = 0; b < 8; b += 1) builder.beat('8', [note(3, 7)]);
+  return builder.build();
+}
+
+interface Measured {
+  /** Next beat's leftmost glyph minus the bent beat's rightmost glyph edge (target heads included). */
+  clearance: number;
+  gap: number;
+  right: number;
+  systems: number;
+}
+
+function measure(built: Score): Measured {
+  const result: LayoutResult = layout(built, paged);
+  const ids = (beat: number): Set<string> => {
+    const b = beatOf(built, 0, 0, beat);
+    return new Set([b.id, ...b.notes.map((n) => n.id)]);
+  };
+  const glyphs = (beat: number) => {
+    const set = ids(beat);
+    return result.primitives.filter(
+      (p) => p.kind === 'glyph' && p.node !== undefined && set.has(p.node),
+    );
+  };
+  const right = Math.max(...glyphs(2).map((p) => p.bbox.x + p.bbox.width));
+  const nextLeft = Math.min(...glyphs(3).map((p) => p.bbox.x));
+  const anchor = (beat: number): number =>
+    result.anchors.find((a) => a.kind === 'beat' && a.id === beatOf(built, 0, 0, beat).id)?.bbox
+      .x ?? NaN;
+  expect(strayPrimitives(result, built).map(describePrimitive)).toEqual([]);
+  return {
+    clearance: nextLeft - right,
+    gap: anchor(3) - anchor(2),
+    right,
+    systems: result.systems.length,
+  };
+}
+
+/** 0.6 staff spaces at the default 7 px space. */
+const CLEARANCE = 0.6 * 7 - 0.1;
+
+const SHAPES: [string, Bend, Bend][] = [
   [
     'release ending at 59.4',
     bend('release', [
       [0, 4],
       [59.4, 0],
+    ]),
+    bend('release', [
+      [0, 4],
+      [60, 0],
     ]),
   ],
   [
@@ -29,12 +87,20 @@ const SHAPES: [string, Bend][] = [
       [0, 4],
       [58.2, 0],
     ]),
+    bend('release', [
+      [0, 4],
+      [60, 0],
+    ]),
   ],
   [
     'release ending at 57',
     bend('release', [
       [0, 4],
       [57, 0],
+    ]),
+    bend('release', [
+      [0, 4],
+      [60, 0],
     ]),
   ],
   [
@@ -45,6 +111,12 @@ const SHAPES: [string, Bend][] = [
       [30, 2],
       [60, 0],
     ]),
+    bend('bendRelease', [
+      [0, 0],
+      [30, 2],
+      [30, 2],
+      [60, 0],
+    ]),
   ],
   [
     'prebendRelease ending at 59.4',
@@ -52,37 +124,105 @@ const SHAPES: [string, Bend][] = [
       [0, 4],
       [59.4, 0],
     ]),
+    bend('prebendRelease', [
+      [0, 4],
+      [60, 0],
+    ]),
   ],
 ];
 
-function bar(withBend: Bend | undefined, bent: number): Score {
-  const builder = guitar('standard');
-  for (let b = 0; b < 8; b += 1) {
-    builder.beat('8', [note(3, 7, b === bent && withBend ? { bend: withBend } : {})]);
-  }
-  builder.bar();
-  for (let b = 0; b < 8; b += 1) builder.beat('8', [note(3, 7)]);
-  return builder.build();
-}
-
-function beatX(built: Score, result: ReturnType<typeof layout>, bar: number, beat: number): number {
-  const id = beatOf(built, 0, bar, beat).id;
-  const anchor = result.anchors.find((a) => a.kind === 'beat' && a.id === id);
-  expect(anchor, `beat ${String(beat)}`).toBeDefined();
-  return anchor?.bbox.x ?? 0;
-}
-
 describe('bends with percentage positions', () => {
-  it.each(SHAPES)('%s does not stretch the bar', (_name, shape) => {
-    const plain = bar(undefined, 2);
-    const built = bar(shape, 2);
-    const base = layout(plain, paged);
-    const result = layout(built, paged);
-    const gap = (score: Score, r: typeof result): number =>
-      beatX(score, r, 0, 3) - beatX(score, r, 0, 2);
-    expect(result.systems).toHaveLength(base.systems.length);
-    expect(gap(built, result)).toBeLessThanOrEqual(3 * gap(plain, base));
-    expect(strayPrimitives(result, built).map(describePrimitive)).toEqual([]);
+  it.each(SHAPES)('%s lays out like its integer positions', (_name, shape, integer) => {
+    const got = measure(bar([{ string: 3, fret: 7, bend: shape }]));
+    const want = measure(bar([{ string: 3, fret: 7, bend: integer }]));
+    expect(got.systems).toBe(want.systems);
+    expect(Math.abs(got.gap - want.gap)).toBeLessThan(1);
+    expect(Math.abs(got.right - want.right)).toBeLessThan(1);
+    expect(got.clearance).toBeGreaterThanOrEqual(CLEARANCE);
+  });
+
+  it('draws targets within the snap distance of each other as one chord, as 30 and 30 would', () => {
+    const at = (a: number, b: number): Measured =>
+      measure(
+        bar([
+          {
+            string: 3,
+            fret: 7,
+            bend: bend('bend', [
+              [0, 0],
+              [a, 4],
+              [60, 4],
+            ]),
+          },
+          {
+            string: 2,
+            fret: 5,
+            bend: bend('bend', [
+              [0, 0],
+              [b, 2],
+              [60, 2],
+            ]),
+          },
+        ]),
+      );
+    const got = at(28, 30);
+    const want = at(30, 30);
+    // The group sits at 28, so its heads sit up to 2/60 of the frame left of the 30 case's.
+    expect(Math.abs(got.right - want.right)).toBeLessThan(2);
+    expect(Math.abs(got.gap - want.gap)).toBeLessThan(2);
+  });
+
+  it('keeps every head clear of the next onset for arrivals from 50 to 59.4, with and without a sign', () => {
+    for (const arrival of [50, 51, 54, 55, 56, 57, 58.2, 59.4]) {
+      for (const [kind, value, fret] of [
+        ['bend', 2, 7], // a half bend: its D-sharp head takes an accidental
+        ['bend', 4, 6],
+        ['release', 0, 7],
+      ] as const) {
+        const shape =
+          kind === 'bend'
+            ? bend('bend', [
+                [0, 0],
+                [arrival, value],
+                [60, value],
+              ])
+            : bend('release', [
+                [0, 4],
+                [arrival, value],
+              ]);
+        const got = measure(bar([{ string: 3, fret, bend: shape }]));
+        expect(
+          got.clearance,
+          `${kind} ${String(value)} at ${String(arrival)}`,
+        ).toBeGreaterThanOrEqual(CLEARANCE);
+      }
+    }
+  });
+
+  it('keeps a chord whose bends arrive at 56 and 59.4 clear of itself and the next onset', () => {
+    const got = measure(
+      bar([
+        {
+          string: 3,
+          fret: 7,
+          bend: bend('bend', [
+            [0, 0],
+            [56, 2],
+            [60, 2],
+          ]),
+        },
+        {
+          string: 2,
+          fret: 5,
+          bend: bend('bend', [
+            [0, 0],
+            [59.4, 4],
+            [60, 4],
+          ]),
+        },
+      ]),
+    );
+    expect(got.clearance).toBeGreaterThanOrEqual(CLEARANCE);
   });
 });
 
@@ -100,31 +240,6 @@ describe('bendSpan with percentage positions', () => {
     expect(bendSpan([{ position: 29.4, width: 7 }], [{ position: 30, offset: 0 }], space)).toEqual(
       none,
     );
-  });
-
-  it('never asks for more than maxNeed', () => {
-    fc.assert(
-      fc.property(
-        fc.array(
-          fc.record({
-            position: fc.double({ min: 0, max: 60, noNaN: true }),
-            width: fc.double({ min: 0, max: 12, noNaN: true }),
-          }),
-          { minLength: 1, maxLength: 8 },
-        ),
-        fc.array(
-          fc.record({
-            position: fc.double({ min: 0, max: 60, noNaN: true }),
-            offset: fc.double({ min: 0, max: 10, noNaN: true }),
-          }),
-          { maxLength: 8 },
-        ),
-        (groups, obstacles) => {
-          expect(bendSpan(groups, obstacles, space).need).toBeLessThanOrEqual(
-            TARGET.maxNeed * space,
-          );
-        },
-      ),
-    );
+    expect(TARGET.snap).toBe(3);
   });
 });

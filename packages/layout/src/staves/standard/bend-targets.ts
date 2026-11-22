@@ -3,13 +3,12 @@ import type { Bend, Note, Track } from '@reprise/model';
 import type { ChordPlan } from './chord';
 
 /**
- * Target heads: `gap` is the room from the arrival x and around each obstacle, `maxNeed` the
- * most a frame is stretched for them (both in staff spaces), and `snap` how close two positions
+ * Target heads: `gap` is the room from the arrival x and around each obstacle, and `snap` how close two positions
  * (0 to 60) or a position and the end count as one. Guitar Pro 6 and 7 store percentages, so a
  * bend "to the end" holds 59.4 and a peak and its release dip 29.4 and 30; dividing by the
  * sliver between them would stretch the bar by hundreds of px (#323).
  */
-export const TARGET = { gap: 0.2, snap: 3, maxNeed: 6 } as const;
+export const TARGET = { gap: 0.2, snap: 3 } as const;
 
 /** A position within `snap` of the end is the end. */
 export function snapPosition(position: number): number {
@@ -114,5 +113,5 @@ export function bendSpan(
     }
     if (f < 1) need = Math.max(need, (group.width + gap - tail) / (1 - f));
   }
-  return { need: Math.min(need, TARGET.maxNeed * space), tail };
+  return { need, tail };
 }
