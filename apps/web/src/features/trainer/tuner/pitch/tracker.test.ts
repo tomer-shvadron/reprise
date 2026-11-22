@@ -174,6 +174,38 @@ describe('the tracker', () => {
       }
     });
 
+    // Clarity wobbles frame to frame on a real mic; a turn of the peg must still move the meter.
+    it.each([5, 6])(
+      'never freezes a glide of %i cents a hop with clarity jittering by 0.03',
+      (perHop) => {
+        const at = rig();
+        // A note whose own clarity is 0.96, as a real mic's is.
+        for (let i = 0; i < settleFramesFor(43) + 8; i += 1) at(0, 0.96);
+        let seed = 3;
+        const jitter = () => {
+          seed = (seed * 1664525 + 1013904223) >>> 0;
+          return (seed / 2 ** 32 - 0.5) * 0.06;
+        };
+        let previous: Reading | undefined;
+        for (let i = 1; i <= 40; i += 1) {
+          const { reading } = at(i * perHop, 0.96 + jitter());
+          expect(reading).not.toBe(previous);
+          previous = reading;
+        }
+      },
+    );
+
+    it('does not light the stale reading for the attack frame of a re-pluck in the hold', () => {
+      const at = rig();
+      lockAt(at, -20);
+      const live = at(-20, 1).reading;
+      expect(at(-20, 0.1).reading?.held).toBe(true);
+      // The attack frame 15 cents away at a dipped clarity: a new pluck, so the gate stays out.
+      const { reading, frozen } = at(-5, 0.95);
+      expect(frozen).toBe(false);
+      expect(reading).not.toBe(live);
+    });
+
     it('takes a clean change of pitch over at once', () => {
       const at = rig();
       lockAt(at, 7);

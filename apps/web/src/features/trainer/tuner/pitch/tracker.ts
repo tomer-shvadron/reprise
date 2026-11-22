@@ -60,9 +60,10 @@ export const TRACKER = {
   cleanFrames: 3,
   glitchCents: 2,
   /**
-   * A jump this far inside one hop is no string moving (a bend is a couple of cents a frame), and
-   * the frames a stream dropout left, 18 and 38 cents off in #433, kept a clarity only 0.03
-   * under the note's, so they need a smaller dip to be suspect than a few cents' drift does.
+   * A frame this far from the one before it is no string moving (a bend is a couple of cents a
+   * frame, a fast peg turn under 8), and the frames a stream dropout left, 18 and 38 cents off in
+   * #433, kept a clarity only 0.03 under the note's, so they need a smaller dip to be suspect than
+   * a few cents' drift does.
    */
   bigGlitchCents: 8,
   bigGlitchClarityDip: 0.02,
@@ -261,17 +262,23 @@ export function createTracker(options: TrackerOptions = {}) {
         return { reading: undefined, cutoffHz };
       }
 
+      // The frame right after a rejected one is a new pluck, not a dropout: its attack is no glitch.
+      const afterReject = rejects > 0;
       rejects = 0;
       lastAcceptedMs = wallMs;
 
+      // The jump is from the last frame the history took, not the median, which trails a moving
+      // pitch by a couple of hops: a peg turn is then never a jump, a dropout still is.
+      const jump = centsBetween(midi, history.at(-1) ?? centre ?? midi);
       const suspect =
         locked &&
         near &&
         !dirty &&
+        !afterReject &&
         centsBetween(midi, centre) > TRACKER.glitchCents &&
         detection.clarity <
           clarityAvg -
-            (centsBetween(midi, centre) > TRACKER.bigGlitchCents
+            (jump > TRACKER.bigGlitchCents
               ? TRACKER.bigGlitchClarityDip
               : TRACKER.glitchClarityDip);
       if (suspect && glitches < TRACKER.glitchFrames) {
@@ -328,7 +335,8 @@ export function createTracker(options: TrackerOptions = {}) {
         peakRms = Math.max(peakRms, rmsValue);
         // Frames a hop apart share most of their samples, so a splice in the input (dropped
         // samples, #433) biases several in a row and a median of three can be mostly bad: the
-        // first reading waits until they agree, or until the history is a full median.
+        // first reading waits until they agree, or until the history is a full median. At the 4096
+        // window a splice spans most of five frames and this does not help; see the README.
         if (
           refill === 'filling' &&
           history.length >= TRACKER.settledFrames &&
