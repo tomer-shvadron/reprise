@@ -13,4 +13,8 @@ describe('LayoutCache: random edits', () => {
     },
     60_000,
   );
+
+  it('keeps cached equal to cold in tab notation, continuous, with verticalReach (#229)', () => {
+    checkCachedEqualsCold('tab', 'continuous', undefined, true);
+  }, 60_000);
 });

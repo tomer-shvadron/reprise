@@ -60,6 +60,15 @@ export interface LayoutOptions {
   systemGap?: number;
   /** Master-bar ids to re-measure when a cache is given, usually `Change.touchedBars`. */
   dirtyBars?: readonly Id[];
+  /**
+   * Continuous mode with a cache: when the shared vertical layout changes (a staff's extents, a
+   * lane appearing or growing), at most this many unedited segments, nearest the edit, are
+   * redrawn for it in this call; the others keep their previous drawing, stale, until a later
+   * call redraws them (see `LayoutMetrics.staleSystems`). Unset: every segment, as without it.
+   * A non-negative integer; 0 only defers, as a call with no dirty bars then redraws nothing, so
+   * follow-up calls need at least 1. Paged mode and a call without a cache ignore it.
+   */
+  verticalReach?: number | undefined;
 }
 
 /** In layout coordinates, or in the segment's own frame in continuous mode (see `System.offsetX`). */
@@ -215,6 +224,11 @@ export interface LayoutMetrics {
   measuredBars: number;
   /** Systems carried over unchanged from the cache. */
   reusedSystems: number;
+  /**
+   * Segments (parts) still drawn with an older vertical layout, because of `verticalReach`; 0 in
+   * paged mode and when the option is unset.
+   */
+  staleSystems: number;
 }
 
 export interface LayoutResult {

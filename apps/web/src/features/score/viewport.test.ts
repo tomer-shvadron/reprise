@@ -53,7 +53,14 @@ describe('extent and offsets', () => {
       systems: [system(0, rect(48, 48, 698, 1445))],
       primitives: [],
       anchors: [],
-      metrics: { layoutMs: 0, primitives: 0, anchors: 0, measuredBars: 0, reusedSystems: 0 },
+      metrics: {
+        layoutMs: 0,
+        primitives: 0,
+        anchors: 0,
+        measuredBars: 0,
+        reusedSystems: 0,
+        staleSystems: 0,
+      },
     };
     expect(layoutExtent(layout)).toEqual(rect(0, 0, 794, 1493));
   });
