@@ -112,15 +112,24 @@ shared field is a `type:contract` issue for the lead.
   lock; three accepted frames more than 50 cents from the median move the lock, and a single
   octave-off frame is ignored. The reading is the median of the last five accepted frames in
   fractional MIDI. When the gate closes the last reading is held 1.5 s (`held`, dimmed), then
-  clears. In tune is entered after five readings within 3 cents and left beyond 5.
+  clears. In tune is entered after five readings within 3 cents and left beyond 5. A **glitch
+  gate** freezes the reading (undimmed) for up to 8 frames that sit more than 2 cents from the
+  median with the clarity 0.05 under the note's running clarity, or 0.02 under it when the frame
+  is also more than 8 cents from the last frame the history took (a dropout, not a peg turn,
+  which moves a few cents a hop). The frame right after a rejected one is a new pluck and skips
+  the gate.
 - **Settling.** Moving the cutoff changes the filter under a loud periodic tone, and for as long
   as the window still holds the change the frames read tens of cents off at high clarity (the
   browser test showed 17 to 19 cents). So whenever the cutoff closes in (a fresh lock, a move to
   a lower note, or a string plucked again inside the hold after the silence opened the cutoff)
   the reading is hidden, or shown held, for `settleFramesFor(window)` hops (7 at 2048 and 48 kHz,
   9 at 4096), counted in time, not in accepted frames. The frames taken through the old cutoff
-  are dropped, and the first median is the frames after it. A fresh note shows a reading about 8
-  hops (0.16 s) after the window fills.
+  are dropped, and the first median is the frames after it. That first reading waits until its
+  frames agree within 2 cents, or until there are five (at most 2 hops, 40 ms, more, only when
+  the first three spread over 2 cents): dropped samples bias several frames in a row (#433). A
+  fresh note shows a reading about 8 hops (0.16 s) after the window fills. Known limit: at the
+  4096 window (bass, a low B, no track) a splice spans most of five frames, and 20 dropped
+  samples still read about 9.5 cents off.
 - **Allocation.** `createDetector(n)` owns the FFT tables and every buffer, and the tracker sorts
   its median in a scratch array, so a frame allocates only its small result objects; the panel
   re-renders only the readout per frame. Over 5000 frames (100 s of hops) in Node: 0 GC events
