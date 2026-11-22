@@ -48,6 +48,9 @@ test('at the narrowest window the groups never overlap and nothing leaves the ba
   page,
 }) => {
   await page.setViewportSize({ width: 800, height: 600 });
+  // The standalone click running adds the metronome segment, which must shed to its dot.
+  await page.keyboard.press('Alt+b');
+  await expect(page.getByRole('button', { name: 'Metronome on' })).toBeVisible();
   await page.getByRole('radiogroup', { name: 'Mode' }).getByRole('radio', { name: 'Edit' }).click();
   const bar = page.getByRole('region', { name: 'Status' });
   const edit = page.getByTestId('edit-status');
@@ -87,7 +90,13 @@ test('at the narrowest window the groups never overlap and nothing leaves the ba
     expect(fit.songLeft).toBeGreaterThanOrEqual(fit.barLeft);
     expect(fit.cursorRight).toBeLessThanOrEqual(fit.barRight);
   }
-  for (const name of [/^(Saved|Unsaved)$/, /^(Insert|Overwrite)$/, /^Voice \d$/, /^\d+%$/]) {
+  for (const name of [
+    /^(Saved|Unsaved)$/,
+    /^Metronome on$/,
+    /^(Insert|Overwrite)$/,
+    /^Voice \d$/,
+    /^\d+%$/,
+  ]) {
     await expect(bar.getByRole('button', { name }).first()).toBeVisible();
   }
 });

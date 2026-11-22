@@ -3,14 +3,15 @@ import { TrackFlash } from '@/features/tracks';
 import { SoundStatus } from '@/features/transport';
 
 import { useAppServices } from '@/app/services-context';
-import { LibrarySegment, SavedSegment } from './song-status';
 import { MetronomeSegment } from './click-status';
+import { LibrarySegment, SavedSegment } from './song-status';
 import { NotationSegment, ZoomSegment } from './view-status';
 
 /**
- * The window's last row, a fixed 24 px: the song on the left (saved, sound, library), the cursor
+ * The window's last row, a fixed 24 px: the song on the left (saved, sound, metronome, library), the cursor
  * and the view on the right (the edit state, notation, zoom). It never wraps, so entering edit
- * mode adds no row and moves nothing; a narrow window sheds the lowest priority segments by
+ * mode adds no row and moves nothing; a narrow window sheds the library segment, then the
+ * notation segment, then the tier prefix, and shrinks the running metronome to its dot, by
  * container width instead.
  *
  * Not a `<footer>`, which would be a second `contentinfo` landmark beside the transport; not a

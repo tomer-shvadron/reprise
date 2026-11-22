@@ -116,4 +116,31 @@ describe('StatusBar', () => {
     });
     expect(screen.queryByRole('button', { name: /Metronome/ })).toBeNull();
   });
+
+  it('moves focus to the score when a keyboard press stops the metronome', async () => {
+    const { services } = renderHeader(
+      <>
+        <main aria-roledescription="score" role="region" tabIndex={-1}>
+          score
+        </main>
+        <StatusBar />
+      </>,
+    );
+    act(() => {
+      services.playback.setState({
+        click: { ...services.playback.getState().click, running: true },
+      });
+    });
+    const user = userEvent.setup();
+    const indicator = screen.getByRole('button', { name: 'Metronome on' });
+    indicator.focus();
+    expect(indicator).toHaveFocus();
+    await user.keyboard('{Enter}');
+    act(() => {
+      services.playback.setState({
+        click: { ...services.playback.getState().click, running: false },
+      });
+    });
+    expect(document.activeElement).toBe(screen.getByText('score'));
+  });
 });

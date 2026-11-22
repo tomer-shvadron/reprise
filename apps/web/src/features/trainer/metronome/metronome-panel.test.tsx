@@ -55,12 +55,16 @@ describe('MetronomePanel from the empty state', () => {
     expect(services.playback.getState().click.running).toBe(false);
   });
 
-  it('starts and stops from the command, which shows the panel', () => {
+  it('starts and stops from the command, which shows the panel only when it starts', () => {
     const { services, run } = renderEmptyApp();
+    services.ui.getState().setPanelOpen('rightPanel', false);
     run('trainer.metronomeToggle');
     expect(services.playback.getState().click.running).toBe(true);
+    expect(services.ui.getState().panels.rightPanel).toBe(true);
+    services.ui.getState().setPanelOpen('rightPanel', false);
     run('trainer.metronomeToggle');
     expect(services.playback.getState().click.running).toBe(false);
+    expect(services.ui.getState().panels.rightPanel).toBe(false);
   });
 
   it('sets the tempo from the field, ignoring a value outside the range', () => {
