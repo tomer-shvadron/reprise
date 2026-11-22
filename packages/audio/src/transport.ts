@@ -14,7 +14,7 @@ import {
   withLoop,
 } from './scheduler';
 import type { Anchor, Run } from './scheduler';
-import { PREVIEW_MIN_SECONDS } from './sink';
+import { PREVIEW_LET_RING_SECONDS, PREVIEW_MIN_SECONDS } from './sink';
 import type { InstrumentSink, MetronomeSink } from './sink';
 import { frameTicker, workerTicker } from './ticker';
 import type { Ticker } from './ticker';
@@ -104,6 +104,8 @@ export function createTransport(options: TransportOptions): Transport {
   const schedulerTicker = options.scheduler ?? workerTicker(25);
   const frames = options.frames ?? frameTicker();
   const lookahead = options.lookahead ?? 0.2;
+  /** Seconds past a previewed voice's release before its pedal is undone. */
+  const PREVIEW_RELEASE_MARGIN = 0.3;
   const startLatency = options.startLatency ?? 0.03;
 
   const handlers: { [K in keyof TransportEvents]: Set<(payload: TransportEvents[K]) => void> } = {
@@ -324,10 +326,19 @@ export function createTransport(options: TransportOptions): Transport {
       for (const hit of hits) sink.hit?.(hit);
       for (const note of notes) sink.noteOn(note);
       const first = wahs[0];
-      if (first) {
+      if (first && first.state !== 'off') {
+        // After the last voice has really ended: the sustain, a let-ring note's extension and
+        // the release's fade.
         const end = Math.max(
           when,
-          ...notes.map((note) => note.when + Math.max(note.duration, PREVIEW_MIN_SECONDS)),
+          ...notes.map(
+            (note) =>
+              note.when +
+              (note.note.letRing
+                ? PREVIEW_LET_RING_SECONDS
+                : Math.max(note.duration, PREVIEW_MIN_SECONDS)) +
+              PREVIEW_RELEASE_MARGIN,
+          ),
         );
         sink.wah?.({ ...first, state: 'off', when: end, restore: true });
       }

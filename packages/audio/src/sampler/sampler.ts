@@ -629,6 +629,7 @@ export class Sampler {
     const requested = this.context.currentTime;
     const play = (): VoiceHandle | undefined => {
       const when = this.context.currentTime;
+      state.strip.resetPreviewWah(when);
       const voice = this.#start(
         state,
         { key, velocity, when, string, preview: true, ...(course !== null && { course }) },

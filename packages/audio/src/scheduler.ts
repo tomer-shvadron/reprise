@@ -21,7 +21,7 @@ import {
   passIndexAt,
 } from './timeline';
 import type { HitEvent, NoteEvent, WahEvent } from './sink';
-import { wahChangesInRange, wahRestores } from './wah-lane';
+import { wahChangesInRange, wahLane, wahRestores, wahStateBefore } from './wah-lane';
 import type { WahOnset } from './wah-lane';
 import type {
   HitOnset,
@@ -470,10 +470,24 @@ export function previewBeatEvents(
     .filter(own)
     .map((note) => ({ ...noteEventOf(note), preview: true }));
   preview.hits = advanced.hits.filter(own).map((hit) => ({ ...hitEventOf(hit), preview: true }));
-  preview.wahs = advanced.wahs
-    .filter(
-      (wah) => !wah.restore && wah.track.id === trackId && Math.abs(wah.tick - span.tick) < EPSILON,
-    )
-    .map((wah) => ({ ...wahEventOf(wah), preview: true }));
+  // The lane stores changes only, and a grace-led beat's sits before its tick: the preview pedal
+  // is sent the state in effect at the beat, `off` included, for a track the lane has.
+  const trackIndex = timeline.score.tracks.findIndex((entry) => entry.id === trackId);
+  const track = timeline.score.tracks[trackIndex];
+  if (track && wahLane(timeline).has(trackIndex)) {
+    const pass = timeline.map.passes[passIndexAt(timeline, span.tick)];
+    preview.wahs.push({
+      track,
+      trackIndex,
+      state: wahStateBefore(timeline, trackIndex, span.tick + 1),
+      when,
+      playbackTick: span.tick,
+      sequenceIndex: passIndexAt(timeline, span.tick),
+      masterBarIndex: pass?.masterBarIndex ?? 0,
+      passIndex: pass?.passIndex ?? 0,
+      restore: false,
+      preview: true,
+    });
+  }
   return preview;
 }

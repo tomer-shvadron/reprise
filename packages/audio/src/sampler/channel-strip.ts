@@ -183,6 +183,16 @@ export class ChannelStrip {
     this.#previewWah.set(state, at, restore);
   }
 
+  /**
+   * A new `previewNote` starts clean: the preview pedal, if a `previewBeat` built one, goes off at
+   * `at` and its pending undo is cancelled, so the note is not filtered by an earlier preview.
+   */
+  resetPreviewWah(at: number): void {
+    if (!this.#previewWah) return;
+    this.#previewWah.cancelAfter(at);
+    this.#previewWah.set('off', at, true);
+  }
+
   /** The send into the reverb bus, while it is connected. */
   get reverbSend(): GainNode | undefined {
     return this.#send;

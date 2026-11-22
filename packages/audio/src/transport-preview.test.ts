@@ -119,10 +119,6 @@ describe('Transport.previewBeat', () => {
       expect(previewed.sink.hits.map((h) => [h.golpe, h.preview])).toEqual(
         hits.map((h) => [h.golpe, true]),
       );
-      const wantWah = played.sink.wahs
-        .filter((w) => !w.restore && w.playbackTick === ownNotes[0]?.playbackTick)
-        .map((w) => w.state);
-      expect(previewed.sink.wahs.filter((w) => !w.restore).map((w) => w.state)).toEqual(wantWah);
       // Everything sounds from now plus the start latency, at the beat's own tempo.
       for (const n of previewed.sink.notes) expect(n.when).toBeCloseTo(LATENCY, 6);
     },
@@ -249,6 +245,73 @@ describe('Transport.previewBeat', () => {
       expect(
         previewed.map((n) => [n.note.string, n.durationTicks, n.continuations.length]),
       ).toEqual([[2, 2 * PPQ, 0]]);
+    });
+  });
+
+  describe('the preview pedal', () => {
+    const wahSong = (): Score =>
+      score()
+        .tempo(120)
+        .track('guitar')
+        .bar()
+        .beat('4', [note(1, 5)], { effects: { wah: 'closed' } })
+        .beat('4', [note(1, 5)], { effects: { wah: 'closed' } })
+        .beat('4', [note(1, 5)], {
+          effects: { wah: 'open' },
+          grace: [{ duration: 16, before: true, notes: [note(1, 4)] }],
+        })
+        .beat('4', [note(1, 5)])
+        .build();
+
+    async function states(song: Score, order: number[]): Promise<string[][]> {
+      const trackId = song.tracks[0]?.id;
+      const beats = beatsOf(song);
+      if (!trackId) throw new Error('fixture');
+      const out: string[][] = [];
+      for (const index of order) {
+        const h = await harness(song, 3);
+        const beat = beats[index];
+        if (!beat) throw new Error('fixture');
+        h.transport.previewBeat(trackId, beat.id);
+        out.push(h.sink.wahs.filter((w) => !w.restore).map((w) => w.state));
+      }
+      return out;
+    }
+
+    it('sends each beat the state in effect there, grace-led and held beats included', async () => {
+      expect(await states(wahSong(), [0, 1, 2, 3])).toEqual([
+        ['closed'],
+        ['closed'],
+        ['open'],
+        ['off'],
+      ]);
+    });
+
+    it('sends a plain beat previewed right after a wah one the off state', async () => {
+      const song = wahSong();
+      const trackId = song.tracks[0]?.id;
+      const [wah, , , plain] = beatsOf(song);
+      if (!trackId || !wah || !plain) throw new Error('fixture');
+      const h = await harness(song, 3);
+      h.transport.previewBeat(trackId, wah.id);
+      h.transport.previewBeat(trackId, plain.id);
+      expect(h.sink.wahs.filter((w) => !w.restore).map((w) => w.state)).toEqual(['closed', 'off']);
+    });
+
+    it('undoes the pedal after a let-ring note has stopped ringing', async () => {
+      const song = score()
+        .tempo(120)
+        .track('guitar')
+        .bar()
+        .beat('4', [note(1, 5, { letRing: true })], { effects: { wah: 'closed' } })
+        .build();
+      const trackId = song.tracks[0]?.id;
+      const beat = beatsOf(song)[0];
+      if (!trackId || !beat) throw new Error('fixture');
+      const h = await harness(song, 3);
+      h.transport.previewBeat(trackId, beat.id);
+      const undo = h.sink.wahs.find((w) => w.restore);
+      expect(undo?.when).toBeGreaterThanOrEqual(LATENCY + 2);
     });
   });
 });

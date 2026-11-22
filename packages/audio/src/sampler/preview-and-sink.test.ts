@@ -337,4 +337,34 @@ describe('createSamplerSink preview events', () => {
     expect(plain).toBeGreaterThan(0.1);
     expect(wah).toBeLessThan(plain * 0.6);
   });
+
+  it('starts a previewed note clean after a wah preview: its pedal is off, not left closed', async () => {
+    const context = offline(2.5);
+    const sampler = new Sampler(context);
+    sampler.addTrack(guitar, sineInstrument());
+    const sink = createSamplerSink(sampler);
+    sink.wah?.({
+      track: guitarTrack,
+      trackIndex: 0,
+      state: 'closed',
+      when: 0,
+      playbackTick: 0,
+      sequenceIndex: 0,
+      masterBarIndex: 0,
+      passIndex: 0,
+      restore: false,
+      preview: true,
+    });
+    const high = note(1, 24);
+    // At 0.5 s, within the beat's wah, a plain note is previewed.
+    context.suspend(0.5).then(
+      () => {
+        sampler.previewNote(guitar.id, high);
+        return context.resume();
+      },
+      () => undefined,
+    );
+    const data = (await context.startRendering()).getChannelData(0);
+    expect(toneLevel(data, midiToFrequency(midiNote(guitar, high)), 0.8, 1.0)).toBeGreaterThan(0.1);
+  });
 });
