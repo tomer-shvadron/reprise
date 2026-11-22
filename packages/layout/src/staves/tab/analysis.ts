@@ -476,7 +476,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   const signature = input.masterBar.timeSignature;
   const rhythm = rhythmOnTab(input);
   const strings = input.track.tuning.length;
-  const key = `${String(space)} ${options.tiedNotes} ${String(signature.numerator)}/${String(signature.denominator)} ${rhythm ? 'rhythm' : 'numbers'} ${String(strings)} ${String(input.chordDiagrams)} ${String(input.track.drone?.string)}:${String(input.track.drone?.fret)}`;
+  const key = `${String(space)} ${options.tiedNotes} ${String(signature.numerator)}/${String(signature.denominator)} ${String(input.masterBar.anacrusis)} ${rhythm ? 'rhythm' : 'numbers'} ${String(strings)} ${String(input.chordDiagrams)} ${String(input.track.drone?.string)}:${String(input.track.drone?.fret)}`;
   const cached = analyses.get(bar)?.get(key);
   if (cached) return cached;
 

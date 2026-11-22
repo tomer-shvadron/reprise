@@ -5,7 +5,9 @@ import { barTicks, beatStartTicks, beatTicks, type Bar, type MasterBar } from '@
  * with notes, is not drawn and does not make the bar two-voice. Any other voice holding only rests
  * (a short rest, several rests) is a voice like any other. Shared by the standard and tab staves
  * so tab-only and standard agree. A pickup (anacrusis) bar is as long as its longest voice with
- * notes, capped at the time signature, so a rest filling that is hidden too.
+ * notes, capped at the time signature, so a rest filling that is hidden too. That length is per
+ * track, not the score-wide `playedBarTicks` the bar is drawn with: the plan keeps it bar-local so
+ * the analysis caches, keyed by the bar and its master bar, stay valid.
  */
 export function hiddenVoices(
   bar: Bar,

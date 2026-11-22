@@ -24,7 +24,7 @@ export const SONG = {
   bar2First: '0:02',
   bar2Second: '0:23',
   total: '/ 1:21',
-  description: '16 bars, 3 pages',
+  description: '16 bars, 2 pages',
   bars: 16,
 } as const;
 
