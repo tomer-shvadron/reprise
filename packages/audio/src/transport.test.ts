@@ -429,6 +429,18 @@ describe('Transport (OfflineAudioContext)', () => {
       }).toThrow(RangeError);
     });
 
+    it('keeps the scheduled count-in clicks when the metronome is switched off during it', () => {
+      const h = split(6.5);
+      h.engine.setCountIn(true);
+      h.engine.setMetronome(true, 0.5);
+      h.engine.play();
+      const clicksCut = (sink: RecordingSink) =>
+        sink.cuts.filter((c) => c.kind === 'clicks').length;
+      h.engine.setMetronome(false, 0.5);
+      expect(clicksCut(h.metronome)).toBe(1);
+      expect(clicksCut(h.countIn)).toBe(0);
+    });
+
     it('starts both sinks at 0.7 and silences both on stop', () => {
       const h = split(2);
       expect(h.metronome.volume).toBe(0.7);

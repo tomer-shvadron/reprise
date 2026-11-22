@@ -3,11 +3,11 @@ import type { DocumentStore } from '@/state/document';
 import type { PlaybackStore, TempoSetting } from '@/state/playback';
 import {
   COUNT_IN_SETTING,
+  COUNT_IN_VOLUME_SETTING,
   GM_TIER_BYPASS_SETTING,
   MASTER_VOLUME_SETTING,
   MEMORY_BUDGET_SETTING,
   METRONOME_ON_SETTING,
-  COUNT_IN_VOLUME_SETTING,
   METRONOME_VOLUME_SETTING,
 } from '@/state/app-settings';
 import type { SelectionStore } from '@/state/selection';

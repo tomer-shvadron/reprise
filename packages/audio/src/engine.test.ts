@@ -660,6 +660,37 @@ describe('createAudioEngine', () => {
     engine.dispose();
   });
 
+  it('plays the count-in at its own volume, whatever the metronome is set to', async () => {
+    const song = quarters(1);
+    const id = trackOf(song);
+    const quiet = await setup({ lazy: true, seconds: 3 });
+    quiet.engine.setTempo('percent', 50);
+    quiet.engine.setCountIn(true);
+    quiet.engine.setCountInVolume(0);
+    quiet.engine.setMetronome(true, 1);
+    quiet.engine.setTrack(id, { mute: true });
+    await quiet.engine.load(song, GM);
+    quiet.engine.unlock();
+    quiet.engine.play();
+    const silent = await quiet.render();
+    // The count-in bar lasts 4 s at half speed; the metronome's own beats start after it.
+    expect(rms(silent, 0.1, 2.9)).toBeLessThan(1e-6);
+    quiet.engine.dispose();
+
+    const loud = await setup({ lazy: true, seconds: 3 });
+    loud.engine.setTempo('percent', 50);
+    loud.engine.setCountIn(true);
+    loud.engine.setCountInVolume(1);
+    loud.engine.setMetronome(false, 0);
+    loud.engine.setTrack(id, { mute: true });
+    await loud.engine.load(song, GM);
+    loud.engine.unlock();
+    loud.engine.play();
+    const audible = await loud.render();
+    expect(rms(audible, 0.1, 2.9)).toBeGreaterThan(0.001);
+    loud.engine.dispose();
+  });
+
   it('needs one sound bank before a load', async () => {
     const context = new OfflineAudioContext({ numberOfChannels: 1, length: 1, sampleRate: 44_100 });
     const engine = createAudioEngine({ context });

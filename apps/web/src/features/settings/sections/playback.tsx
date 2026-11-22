@@ -19,6 +19,7 @@ function Playback() {
       <SliderSetting
         def={COUNT_IN_VOLUME_SETTING}
         label="Count-in volume"
+        description="The level of the count-in clicks, apart from the metronome's."
         min={0}
         max={1}
         step={0.05}
