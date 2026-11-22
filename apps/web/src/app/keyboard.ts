@@ -28,8 +28,9 @@ export function detectKeyboardPlatform(): KeyboardPlatform {
 }
 
 const LATIN_KEY = /^[a-z\d]$/i;
-// A Latin letter with a mark (ß, ù) is a key's own character, not a layout that lacks one.
-const NON_LATIN_CHARACTER = /^(?![\p{Script=Latin}\p{ASCII}])[\s\S]$/u;
+// A letter of another script (Hebrew, Cyrillic, Greek). A Latin letter with a mark (ß, ù) is the
+// key's own character, and a symbol (§, £, ¡) is not a letter a layout swapped in for punctuation.
+const NON_LATIN_CHARACTER = /^(?![\p{Script=Latin}\p{ASCII}])\p{L}$/u;
 
 // On the Hebrew layout the physical `[` key types `]`, which would swap the pair by character.
 const BRACKETS: Record<string, string> = { '[': 'BracketLeft', ']': 'BracketRight' };
@@ -82,7 +83,7 @@ function matchesKey(
   if (/^[a-z]$/i.test(key)) {
     return !LATIN_KEY.test(event.key) && event.code === `Key${key.toUpperCase()}`;
   }
-  // Only a single non-Latin character (a Hebrew or Cyrillic letter): a named or dead key printed
+  // Only a single letter of another script: a named or dead key printed
   // nothing to compare.
   if (!NON_LATIN_CHARACTER.test(event.key)) return false;
   const code = (event.shiftKey ? SHIFTED_PUNCTUATION : BASE_PUNCTUATION)[key];

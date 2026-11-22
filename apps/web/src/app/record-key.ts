@@ -77,6 +77,8 @@ function characterOf(
   if (LATIN.test(event.key)) return { key: event.key.toLowerCase() };
   // An Option-symbol (⌥; gives "…") would print as a key nobody can find.
   if (optionOnMac && isShortcutCharacter(event.key)) return { reason: 'option-symbol' };
+  // Here the key is not a bracket key, and a bracket shortcut fires only from one (Dvorak's `[`).
+  if (event.key === '[' || event.key === ']') return { reason: 'unsupported' };
   if (ASCII_PRINTABLE.test(event.key)) return { key: event.key.toLowerCase() };
   if (letter !== undefined) return { key: letter };
   if (isShortcutCharacter(event.key)) return { key: event.key.toLowerCase() };
