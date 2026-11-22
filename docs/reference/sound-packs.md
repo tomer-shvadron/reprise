@@ -94,8 +94,12 @@ file (`sw_label`), which the engine reads at load with no entry.
 - **Growlybass**: `staccato` is `growlybass_vicious.sfz` on `dirty` and `clean`. `angry` and
   `excessive` already layer staccato samples into every note, `vicious` is staccato
   already, so the other sounds list no set. Emilyguitar and Swagbass list no articulation files: their
-  palm-mute, dead and harmonic sounds are not separate files, and their dead-note noise keys are
-  left to #286. No curated pack has a keyswitch library.
+  palm-mute and harmonic sounds are not separate files. Their dead notes use the muted-string
+  noise keys the SFZ text maps (#286), declared as `dead: '<file>#key:<keys>'`, one key per string,
+  lowest first: Swagbass has four on keys 75 to 78 in every instrument's own file, and
+  Emilyguitar five on 91 to 95 in `basic`, `clean` and `three-voices`. `five-voices`, the default
+  guitar sound, has none, so its `dead` entry borrows `emily_basic.sfz`'s keys. Growlybass has
+  none listed. No curated pack has a keyswitch library.
 - **Installed copies** keep the manifest of their install, so a same-version copy takes its
   instruments from the list on every scan (the files are the same). A listed file the copy lacks
   drops that set, or that instrument when it is the default, and the Sounds screen says so and

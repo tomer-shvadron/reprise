@@ -64,6 +64,11 @@ export interface SetVoicing {
   instrument?: Instrument;
   /** A keyswitch layer of the default instrument (`sw:<k>`), when a labelled one matches. */
   layer?: string;
+  /**
+   * Fixed MIDI keys, lowest string first (`dead` only, `entries.dead = '<file>#key:<keys>'`): the
+   * set plays the pack's muted-string noise at the key `keyOnString` picks, not at the note's pitch.
+   */
+  keys?: readonly number[];
 }
 
 /**
@@ -108,7 +113,7 @@ export function availableSets(
  * one. The planner's mirror of `Voicing.sets`, which holds sampler instruments.
  */
 export type PlanVoicing = Partial<
-  Record<ArticulationSet, { instrument?: InstrumentId; layer?: string }>
+  Record<ArticulationSet, { instrument?: InstrumentId; layer?: string; keys?: readonly number[] }>
 >;
 
 /** The WP-033 automations a set's own samples already carry, so the planner leaves them out. */
@@ -129,14 +134,15 @@ export interface NoteVoicing {
 }
 
 const NONE: ReadonlySet<SampledEffect> = new Set();
-const SAMPLED: Readonly<Partial<Record<ArticulationSet, SampledEffect>>> = {
-  palmMute: 'palmMute',
-  dead: 'dead',
-  harmonic: 'harmonic',
-  artificialHarmonic: 'harmonic',
-  legato: 'legato',
+const SAMPLED: Readonly<Partial<Record<ArticulationSet, readonly SampledEffect[]>>> = {
+  palmMute: ['palmMute'],
+  // A muted-string sample is already damped, so an x with P.M. is not damped twice.
+  dead: ['dead', 'palmMute'],
+  harmonic: ['harmonic'],
+  artificialHarmonic: ['harmonic'],
+  legato: ['legato'],
   // A tap layer starts without a pick, as a legato one does.
-  tap: 'legato',
+  tap: ['legato'],
 };
 
 /**
@@ -173,7 +179,46 @@ export function voicingOf(
     const set = chain.find((candidate) => available.has(candidate));
     if (set === undefined) continue;
     const effect = SAMPLED[set];
-    return { set, sampled: effect === undefined ? NONE : new Set([effect]) };
+    return { set, sampled: effect === undefined ? NONE : new Set(effect) };
   }
   return { set: 'default', sampled: NONE };
+}
+
+/** Most keys an `entries` noise list may name: a string instrument has at most this many strings. */
+const MAX_STRINGS = 10;
+
+/**
+ * An `entries` value split into its file and, for `<file>#key:<keys>`, the fixed keys (a comma
+ * list of MIDI keys and ranges, lowest string first: `75-78`, `91,92,93`). Only a value that
+ * ENDS in `#key:` is read so; any other `#` stays in the path (`C#.sfz`). Malformed keys, or too
+ * many of them, give `undefined`: the whole entry is invalid.
+ */
+export function splitEntry(value: string): { path: string; keys?: readonly number[] } | undefined {
+  const at = value.lastIndexOf('#key:');
+  if (at < 0) return { path: value };
+  const path = value.slice(0, at);
+  const keys: number[] = [];
+  for (const part of value.slice(at + '#key:'.length).split(',')) {
+    const match = /^(\d{1,3})(?:-(\d{1,3}))?$/.exec(part.trim());
+    if (!match) return undefined;
+    const first = Number(match[1]);
+    const last = match[2] === undefined ? first : Number(match[2]);
+    if (first > last || last > 127) return undefined;
+    for (let key = first; key <= last; key += 1) keys.push(key);
+    if (keys.length > MAX_STRINGS) return undefined;
+  }
+  return path === '' ? undefined : { path, keys };
+}
+
+/**
+ * The fixed key a string plays: strings count from the lowest (like `Track.tuning`), and strings
+ * past the last key take the last. A track with no strings (string 0) takes the first.
+ */
+export function keyOnString(
+  keys: readonly number[],
+  track: { tuning: readonly number[] },
+  string: number,
+): number {
+  const index = string > 0 ? track.tuning.length - string : 0;
+  return keys[Math.min(Math.max(index, 0), keys.length - 1)] ?? 0;
 }

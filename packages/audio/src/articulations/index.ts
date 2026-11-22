@@ -6,5 +6,5 @@ export { ARTICULATION, DYNAMICS_VELOCITY, VELOCITY_STEP } from './parameters';
 export { planNote } from './plan';
 export type { GainPoint, NotePlan, PlanInput, PlanLink, PlanTrack, Strike } from './plan';
 export { noteVelocity } from './velocity';
-export { ARTICULATION_SETS, articulationSetOf } from './sets';
+export { ARTICULATION_SETS, articulationSetOf, splitEntry } from './sets';
 export type { ArticulationSet, SetVoicing, Voicing } from './sets';

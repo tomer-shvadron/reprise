@@ -8,7 +8,7 @@ import {
 import type { Beat, BeatEffects, Id, Note, Score, Track } from '@reprise/model';
 
 import { soundfontBankOf } from '../gm-bank';
-import { availableSets, voicingOf } from '../articulations/sets';
+import { availableSets, keyOnString, voicingOf } from '../articulations/sets';
 import type { ArticulationSet, PlanVoicing } from '../articulations/sets';
 import type { RegionMap, SampleRef } from '../sampler/region-map';
 import type { InstrumentId } from './types';
@@ -98,6 +98,11 @@ function addNote(placing: Placing, note: Note, effects: BeatEffects): void {
   const target = set === 'default' ? undefined : voicing?.[set];
   const used = target?.instrument === undefined ? placing.base : usedBy(target.instrument);
   let keys = used.keys;
+  if (set === 'dead' && target?.keys && note.dead) {
+    // A noise key replaces the pitch and the course partner: only the string's key is struck.
+    keys.add(keyOnString(target.keys, placing.track, note.string));
+    return;
+  }
   if (target?.layer !== undefined) {
     keys = used.layers.get(target.layer) ?? new Set();
     used.layers.set(target.layer, keys);
