@@ -38,8 +38,8 @@ export function separateAnchors(
     if (anchor.kind !== 'note' && anchor.kind !== 'beat') continue;
     const span = anchor.masterBar === undefined ? undefined : spans.get(anchor.masterBar);
     if (span) {
-      // Anchors are clipped to their bar; the glyphs are drawn inside it, so nothing needs
-      // collapsing onto its edge.
+      // Anchors are clipped to their bar; the glyphs are drawn inside it on any line the
+      // properties test (320 px and wider), so nothing needs collapsing onto its edge (#476).
       const left = Math.max(anchor.bbox.x, round(span.left));
       const right = Math.min(anchor.bbox.x + anchor.bbox.width, round(span.right));
       anchors[i] = {
