@@ -86,7 +86,12 @@ describe('inferred chords', () => {
   it('never infers from an arpeggio', () => {
     const bars = repeat(loop(), 2).map(({ chord: voicing }) => ({ chord: voicing }));
     const result = used(bars, { arpeggiate: true });
-    expect(result).toEqual({ source: 'none', chords: [], progressions: [] });
+    expect(result).toEqual({
+      source: 'none',
+      chords: [],
+      progressions: [],
+      timeline: [],
+    });
   });
 
   it('prefers the written names once there are four', () => {

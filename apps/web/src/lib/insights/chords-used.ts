@@ -3,6 +3,7 @@ import type { KeySignature } from '@reprise/model';
 import { nameChord } from '../chords';
 import { NOTE_FLAG, type NoteTable } from './note-table';
 import type { SongOutline } from './outline';
+import { chordTimeline, type ChordSpan } from './chord-timeline';
 import { sectionSpans } from './sections';
 
 /** The file counts as naming its chords from this many chord marks on; fewer and the notes are read too. */
@@ -48,6 +49,8 @@ export interface ChordsInsight {
   source: 'written' | 'inferred' | 'none';
   chords: ChordUse[];
   progressions: Progression[];
+  /** Which chord sounds where, from the same events and source as `chords`; the fretboard follows it. */
+  timeline: ChordSpan[];
 }
 
 interface Event {
@@ -268,14 +271,13 @@ export function chordsUsed(
   const inferred = outline.chords.length < MIN_WRITTEN_CHORDS ? inferredEvents(table, key) : [];
   const partsOf = (from: 'written' | 'inferred') =>
     spans
-      .map((span) => ({
-        span,
-        events: collapse(
+      .map((span) => {
+        const raw =
           from === 'written'
             ? writtenEvents(outline, span)
-            : inferred.filter((e) => e.bar >= span.fromBar && e.bar <= span.toBar),
-        ),
-      }))
+            : inferred.filter((e) => e.bar >= span.fromBar && e.bar <= span.toBar);
+        return { span, raw, events: collapse(raw) };
+      })
       .filter((part) => part.events.length > 0);
   // The few names a file writes still stand when its notes name no chord (an arpeggiated part).
   let source: 'written' | 'inferred' =
@@ -285,7 +287,7 @@ export function chordsUsed(
     source = 'written';
     parts = partsOf(source);
   }
-  if (parts.length === 0) return { source: 'none', chords: [], progressions: [] };
+  if (parts.length === 0) return { source: 'none', chords: [], progressions: [], timeline: [] };
 
   const uses = new Map<string, { count: number; weight: number }>();
   for (const { events } of parts) {
@@ -312,6 +314,12 @@ export function chordsUsed(
         events.map((event) => event.name),
         sections.length > 0 ? span.name : undefined,
       ),
+    ),
+    // The uncollapsed events: a repeated chord far from its first mark is still a chord there.
+    timeline: chordTimeline(
+      parts.flatMap(({ raw }) => raw),
+      outline,
+      MAX_HOLD_BARS,
     ),
   };
 }
