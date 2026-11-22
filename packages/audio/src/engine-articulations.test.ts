@@ -8,7 +8,7 @@ import type { LoadOptions } from './engine';
 import { drive, manualTicker } from './offline-driver';
 import { packInstrumentsOf } from './samples/provider-router';
 import { Sf2Soundfont } from './sf2/soundfont';
-import { signalOf, toneLevel } from './test/signal';
+import { rms, signalOf, toneLevel } from './test/signal';
 import type { Signal } from './test/signal';
 import {
   GUITAR_EXTRA_TONES,
@@ -337,7 +337,8 @@ describe('HQ dead notes on the muted-string noise keys of a pack', () => {
     };
     expect([0, 1, 2].map((beat) => heardNoise(signal, beat))).toEqual([low[0], low[1], low[0]]);
     expect(level(1)).toBeLessThan(level(0));
-    expect(level(2)).toBeGreaterThan(level(0) * 0.5);
+    // Measured 1.00; a synthesized palm-mute decay would give about 0.45.
+    expect(level(2)).toBeGreaterThan(level(0) * 0.9);
     engine.dispose();
   });
 
@@ -363,26 +364,67 @@ describe('HQ dead notes on the muted-string noise keys of a pack', () => {
     engine.dispose();
   });
 
+  async function loadedWith(entries: Record<string, string>, pack: SyntheticGuitarPack) {
+    const built = deadSong([6]);
+    const { engine, render } = await setup(START + BEAT + 0.3);
+    await engine.load(built, {
+      tier: 'hq',
+      packs: [
+        {
+          trackId: trackOf(built),
+          pack: { id: 'guitarpack01', files: pack.files },
+          entries: { ...pack.entries, ...entries },
+        },
+      ],
+    });
+    return {
+      engine,
+      render,
+      skipped: debugAudioEngine(engine).skippedEntries?.get(trackOf(built)),
+    };
+  }
+
   it.each(['default.sfz#key:104', 'default.sfz#key:100-110', 'default.sfz#key:x'])(
     'drops the set for %s and plays the burst',
     async (dead) => {
-      const pack = syntheticGuitarPack({ noises: true });
-      const built = deadSong([6]);
-      const { engine, render } = await setup(START + BEAT + 0.3);
-      await engine.load(built, {
-        tier: 'hq',
-        packs: [
-          {
-            trackId: trackOf(built),
-            pack: { id: 'guitarpack01', files: pack.files },
-            entries: { ...pack.entries, dead },
-          },
-        ],
-      });
-      expect(debugAudioEngine(engine).skippedEntries?.get(trackOf(built))).toEqual(['dead']);
+      const { engine, render, skipped } = await loadedWith(
+        { dead },
+        syntheticGuitarPack({ noises: true }),
+      );
+      expect(skipped).toEqual(['dead']);
       engine.play();
-      expect(heardNoise(signalOf(await render()), 0)).toBeUndefined();
+      const signal = signalOf(await render());
+      expect(heardNoise(signal, 0)).toBeUndefined();
+      // The burst itself is heard: not silence.
+      expect(rms(signal, START, START + 0.08)).toBeGreaterThan(0.001);
       engine.dispose();
     },
   );
+
+  it('does not take a key only a legato region maps as covered', async () => {
+    const pack = syntheticGuitarPack({ noises: true });
+    const legatoOnly = new TextEncoder().encode(
+      '<region> sample=samples/default.wav lokey=104 hikey=104 pitch_keycenter=104 trigger=legato\n',
+    );
+    const extended: SyntheticGuitarPack = {
+      ...pack,
+      files: {
+        read: (path) =>
+          path === 'legato-only.sfz' ? Promise.resolve(legatoOnly) : pack.files.read(path),
+        size: (path) => (path === 'legato-only.sfz' ? legatoOnly.length : pack.files.size?.(path)),
+      },
+    };
+    const { engine, skipped } = await loadedWith({ dead: 'legato-only.sfz#key:104' }, extended);
+    expect(skipped).toEqual(['dead']);
+    engine.dispose();
+  });
+
+  it('drops a key list on any set but dead', async () => {
+    const { engine, skipped } = await loadedWith(
+      { palmMute: 'default.sfz#key:100' },
+      syntheticGuitarPack({ noises: true }),
+    );
+    expect(skipped).toEqual(['palmMute']);
+    engine.dispose();
+  });
 });

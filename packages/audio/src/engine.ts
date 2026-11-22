@@ -792,7 +792,8 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
                 !parsed.regions.regions.some(
                   (region) =>
                     region.layer === undefined &&
-                    region.trigger !== 'release' &&
+                    // Only an attack covers a key: a legato or release region plays no noise alone.
+                    (region.trigger === undefined || region.trigger === 'first') &&
                     region.keyLo <= key &&
                     key <= region.keyHi,
                 ),
