@@ -74,6 +74,9 @@ export const MIN_ROOM = 1.5;
 export const MARGIN = 0.3;
 const FINGERING_GAP = 0.4;
 const FINGERING_STEP = 1.1;
+/** Ticks closer than this are one onset. */
+const TICK_EPSILON = 1e-6;
+
 /** Gap between two voices' chords at one onset when the later moves right, in spaces. */
 const VOICE_GAP = 0.2;
 
@@ -710,14 +713,16 @@ function separateVoices(
   let sounding = 0;
   for (const voice of voices) if (voice.some(({ chord }) => chord)) sounding += 1;
   if (sounding < 2) return;
-  const byTick = new Map<number, BeatPlan[]>();
+  // Ticks that sums of tuplet and grace durations leave a float apart are one onset: `measure`
+  // draws them at one x, so keying on the exact tick would leave the voices unseparated there.
+  const onsets: BeatPlan[][] = [];
   for (const beat of beats) {
     if (!beat.chord) continue;
-    const at = byTick.get(beat.tick);
+    const at = onsets.find(([first]) => first && Math.abs(first.tick - beat.tick) < TICK_EPSILON);
     if (at) at.push(beat);
-    else byTick.set(beat.tick, [beat]);
+    else onsets.push([beat]);
   }
-  for (const onset of byTick.values()) {
+  for (const onset of onsets) {
     for (const [i, later] of onset.entries()) {
       const shares: { up: HeadPlan; down: HeadPlan }[] = [];
       let moved = true;
