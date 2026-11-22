@@ -1,8 +1,16 @@
 import { act, fireEvent, render } from '@testing-library/react';
 import { createRef } from 'react';
-import { LayoutCache, anchorBox, layout, PAGE_SIZES, type LayoutOptions } from '@reprise/layout';
-import { applyCommand, setBeatDuration, setNote } from '@reprise/model';
-import { beatOf } from '@reprise/model/testing';
+import {
+  LayoutCache,
+  VERTICAL_EDIT_REACH,
+  VERTICAL_FOLLOW_UP_REACH,
+  anchorBox,
+  layout,
+  PAGE_SIZES,
+  type LayoutOptions,
+} from '@reprise/layout';
+import { applyCommand, setBeatDuration, setNote, setNoteEffect } from '@reprise/model';
+import { beatOf, largeScore } from '@reprise/model/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { primitiveToSvg } from './primitive-svg';
@@ -104,6 +112,61 @@ describe('re-rendering after an edit', () => {
     }
     const second = after.systems[1];
     expect(svgOf(second?.id ?? '')?.style.left).not.toBe(`${String(before.systems[1]?.bbox.x)}px`);
+  });
+
+  it('draws only the mounted segments a height-changing continuous edit changed, and nothing again as the rest converge', () => {
+    const options: LayoutOptions = { ...paged, mode: 'continuous', width: 640 };
+    const score = largeScore(2, 60, { structure: true });
+    const cache = new LayoutCache();
+    const before = layout(score, options, cache);
+    const { rerender, container } = render(<ScoreView layout={before} zoom={1} />);
+    const mountedIds = [...container.querySelectorAll('svg[data-system-id]')].map((svg) =>
+      svg.getAttribute('data-system-id'),
+    );
+    expect(mountedIds.length).toBeGreaterThan(1);
+    expect(before.systems.length).toBeGreaterThan(mountedIds.length + VERTICAL_EDIT_REACH);
+
+    const note = beatOf(score, 0, 1, 0).notes[0];
+    if (!note) throw new Error('no note');
+    const { score: next, change } = applyCommand(
+      score,
+      setNoteEffect({ noteId: note.id }, { letRing: true }),
+    );
+    const after = layout(
+      next,
+      { ...options, dirtyBars: change.touchedBars, verticalReach: VERTICAL_EDIT_REACH },
+      cache,
+    );
+    // The premise: the shared vertical layout changed and some segments are stale.
+    expect(after.metrics.staleSystems).toBeGreaterThan(0);
+
+    const mounted = after.systems.filter(({ id }) => mountedIds.includes(id));
+    // Every mounted segment is drawn with the new vertical layout: none is stale.
+    const redrawn = (system: (typeof after.systems)[number], i: number) =>
+      after.primitives[system.primitives.start] !==
+      before.primitives[before.systems[i]?.primitives.start ?? -1];
+    for (const system of mounted) expect(redrawn(system, after.systems.indexOf(system))).toBe(true);
+
+    const drawn = vi.mocked(primitiveToSvg);
+    drawn.mockClear();
+    rerender(<ScoreView layout={after} zoom={1} />);
+    const expected = mounted.reduce(
+      (count, { primitives }) => count + primitives.end - primitives.start,
+      0,
+    );
+    expect(drawn).toHaveBeenCalledTimes(expected);
+
+    // Convergence redraws only segments off screen: nothing mounted is drawn again.
+    let calls = 0;
+    for (let stale = after.metrics.staleSystems; stale > 0; calls += 1) {
+      const followed = layout(next, { ...options, verticalReach: VERTICAL_FOLLOW_UP_REACH }, cache);
+      expect(followed.metrics.staleSystems).toBeLessThan(stale);
+      stale = followed.metrics.staleSystems;
+      drawn.mockClear();
+      rerender(<ScoreView layout={followed} zoom={1} />);
+      expect(drawn).not.toHaveBeenCalled();
+    }
+    expect(calls).toBeGreaterThan(0);
   });
 
   it('renders nothing inside a system for a zoom change', () => {

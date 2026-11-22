@@ -1,6 +1,12 @@
 import { write } from '@reprise/formats';
-import { layout, LayoutCache, type LayoutOptions } from '@reprise/layout';
-import { setNote } from '@reprise/model';
+import {
+  layout,
+  LayoutCache,
+  VERTICAL_EDIT_REACH,
+  VERTICAL_FOLLOW_UP_REACH,
+  type LayoutOptions,
+} from '@reprise/layout';
+import { setNote, setNoteEffect } from '@reprise/model';
 import { beatOf, largeScore, note, score } from '@reprise/model/testing';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -8,7 +14,7 @@ import { viewLayoutOptions } from '@/features/score';
 import { fakePlatform } from '@/test/services';
 
 import { createDocumentStore, type DocumentStore } from './document';
-import { createLayoutStore } from './layout';
+import { createLayoutStore, FOLLOW_UP_DELAY_MS } from './layout';
 import { createUiStore } from './ui';
 
 const options = viewLayoutOptions;
@@ -179,5 +185,147 @@ describe('the layout store', () => {
     expect(result.pages).toEqual(fresh.pages);
     expect(result.primitives).toEqual(fresh.primitives);
     expect(result.anchors).toEqual(fresh.anchors);
+  });
+});
+
+describe('the layout store, stale segments (#229)', () => {
+  /** A layout that reports `stale` segments left, one fewer after each call that asks for a reach. */
+  function staleSetup(stale: number) {
+    let left = stale;
+    const calls: LayoutOptions[] = [];
+    const fake = vi.fn((...args: Parameters<typeof layout>): ReturnType<typeof layout> => {
+      const result = layout(...args);
+      calls.push(args[1]);
+      if (args[1].verticalReach !== undefined) left = Math.max(0, left - 1);
+      return { ...result, metrics: { ...result.metrics, staleSystems: left } };
+    });
+    const made = setup(fake);
+    return { ...made, calls, fake, left: () => left, reset: (n: number) => (left = n) };
+  }
+
+  async function open(setupResult: ReturnType<typeof staleSetup>, bars = 3) {
+    await setupResult.document.getState().openBytes('a.reprise', await bytesOf('A', bars));
+    setupResult.ui.getState().setViewMode('continuous');
+    setupResult.fake.mockClear();
+    setupResult.calls.length = 0;
+  }
+
+  it('passes the edit reach on an edit run in continuous mode, and none on a full run', async () => {
+    vi.useFakeTimers();
+    try {
+      const made = staleSetup(0);
+      await open(made);
+      edit(made.document, 5);
+      expect(made.calls.at(-1)?.verticalReach).toBe(VERTICAL_EDIT_REACH);
+      made.ui.getState().setViewMode('paged');
+      made.ui.getState().setViewMode('continuous');
+      expect(made.calls.at(-1)?.verticalReach).toBeUndefined();
+      made.ui.getState().setViewMode('paged');
+      edit(made.document, 6);
+      expect(made.calls.at(-1)?.verticalReach).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('follows up one call per frame with the follow-up reach until nothing is stale', async () => {
+    vi.useFakeTimers();
+    try {
+      const made = staleSetup(3);
+      await open(made);
+      edit(made.document, 5);
+      // The edit call itself reports 3 stale: its own call left one fewer.
+      expect(made.fake).toHaveBeenCalledTimes(1);
+      expect(made.store.getState().result?.metrics.staleSystems).toBe(2);
+      vi.advanceTimersByTime(FOLLOW_UP_DELAY_MS - 1);
+      expect(made.fake).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1);
+      expect(made.fake).toHaveBeenCalledTimes(2);
+      expect(made.calls.at(-1)).toMatchObject({ verticalReach: VERTICAL_FOLLOW_UP_REACH });
+      expect(made.calls.at(-1)?.dirtyBars).toBeUndefined();
+      expect(made.store.getState().result?.metrics.staleSystems).toBe(1);
+      vi.advanceTimersByTime(FOLLOW_UP_DELAY_MS);
+      expect(made.store.getState().result?.metrics.staleSystems).toBe(0);
+      vi.advanceTimersByTime(10 * FOLLOW_UP_DELAY_MS);
+      expect(made.fake).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels a pending follow-up on a new edit, a switch of document and dispose', async () => {
+    vi.useFakeTimers();
+    try {
+      const made = staleSetup(50);
+      await open(made);
+      edit(made.document, 5);
+      edit(made.document, 6);
+      // One follow-up pending, not two.
+      expect(made.fake).toHaveBeenCalledTimes(2);
+      vi.advanceTimersByTime(FOLLOW_UP_DELAY_MS);
+      expect(made.fake).toHaveBeenCalledTimes(3);
+
+      // The new document's own layout is exact, and the pending follow-up is gone.
+      made.reset(0);
+      await made.document.getState().openBytes('b.reprise', await bytesOf('B', 3));
+      expect(vi.getTimerCount()).toBe(0);
+
+      made.reset(50);
+      made.ui.getState().setViewMode('paged');
+      made.ui.getState().setViewMode('continuous');
+      edit(made.document, 7);
+      made.fake.mockClear();
+      made.store.dispose();
+      vi.advanceTimersByTime(5 * FOLLOW_UP_DELAY_MS);
+      expect(made.fake).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('schedules nothing when no segment is stale, or in paged mode', async () => {
+    vi.useFakeTimers();
+    try {
+      const made = staleSetup(0);
+      await open(made);
+      edit(made.document, 5);
+      expect(vi.getTimerCount()).toBe(0);
+      made.ui.getState().setViewMode('paged');
+      edit(made.document, 6);
+      expect(made.calls.at(-1)?.verticalReach).toBeUndefined();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('catches up to a cold layout of the edited score with the real layout', async () => {
+    vi.useFakeTimers();
+    try {
+      const big = largeScore(2, 40, { structure: true });
+      const made = setup(layout);
+      await made.document.getState().openBytes('big.reprise', (await write(big, 'reprise')).bytes);
+      made.ui.getState().setViewMode('continuous');
+      const current = made.document.getState().score;
+      if (!current) throw new Error('no score');
+      const note = beatOf(current, 0, 20, 0).notes[0];
+      if (!note) throw new Error('no note');
+      made.document.getState().apply(setNoteEffect({ noteId: note.id }, { letRing: true }));
+      const first = made.store.getState().result;
+      expect(first?.metrics.staleSystems).toBeGreaterThan(0);
+      vi.advanceTimersByTime(100 * FOLLOW_UP_DELAY_MS);
+      const result = made.store.getState().result;
+      expect(result?.metrics.staleSystems).toBe(0);
+      const edited = made.document.getState().score;
+      if (!edited || !result) throw new Error('no layout');
+      const cold = layout(
+        edited,
+        options({ mode: 'continuous', paper: 'a4' }, { tracks: 'all', notation: {} }),
+      );
+      expect(result.systems).toEqual(cold.systems);
+      expect(result.primitives).toEqual(cold.primitives);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
