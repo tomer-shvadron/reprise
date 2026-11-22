@@ -19,9 +19,9 @@ import {
   graceOrigin,
   lettersOfLinks,
   type BendDrawn,
+  beginBeat,
   bendLifts,
   drawBend,
-  newBendDrawn,
   drawLetter,
   diagonalWave,
   drawStroke,
@@ -710,7 +710,11 @@ export function drawStrokes(context: ConnectionContext): void {
  * bends in a chord share their arrows: from right of the bent heads up into the bend lane, with
  * releases to zero ending above the highest bent head.
  */
-export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]): void {
+export function drawBends(
+  context: ConnectionContext,
+  beats: readonly BeatPlan[],
+  drawn: BendDrawn,
+): void {
   const { placement, space } = context;
   const band = placement.lanes.bend;
   if (!band) return;
@@ -719,7 +723,7 @@ export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]
     const { chord } = beat;
     if (!chord) continue;
     const x = context.beatX(beat);
-    const drawn = newBendDrawn();
+    beginBeat(drawn);
     const following = beats[i + 1];
     // Target heads end clear of what the next onset of any voice draws left of it: its heads,
     // accidentals and graces, which the spacing measured the beat's room against.

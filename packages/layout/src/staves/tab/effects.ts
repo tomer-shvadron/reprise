@@ -4,9 +4,9 @@ import {
   BEND_FRAME,
   connections,
   type BendDrawn,
+  beginBeat,
   bendLifts,
   drawBend,
-  newBendDrawn,
   drawLetter,
   drawStroke,
   diagonalWave,
@@ -256,10 +256,16 @@ function drawBendGroup(
   }
 }
 
-function drawBends(context: TabContext, beat: TabBeat, x: number, next: number): void {
+function drawBends(
+  context: TabContext,
+  beat: TabBeat,
+  x: number,
+  next: number,
+  drawn: BendDrawn,
+): void {
   const { space } = context;
   const size = TAB.fretSize * space;
-  const drawn = newBendDrawn();
+  beginBeat(drawn);
   drawBendGroup(context, beat.labels, x, size, next - BEND.stop * space, BEND.min, drawn);
   const centres = graceCentres(beat, x, space);
   const graceSize = size * TAB.graceScale;
@@ -326,7 +332,12 @@ function drawLooseSlides(context: TabContext, label: NoteLabel, x: number): void
  * half from the bar's left edge otherwise; a bar ending a system draws the origin half of each
  * connection whose target is in the next bar.
  */
-export function drawNoteEffects(context: TabContext, voice: TabVoice, xs: readonly number[]): void {
+export function drawNoteEffects(
+  context: TabContext,
+  voice: TabVoice,
+  xs: readonly number[],
+  drawn: BendDrawn,
+): void {
   const { input, placement, space } = context;
   const { track, barIndex } = input;
   const size = TAB.fretSize * space;
@@ -341,7 +352,7 @@ export function drawNoteEffects(context: TabContext, voice: TabVoice, xs: readon
     if (x === undefined || beat.beat.rest) continue;
     if (!beat.connects && !slidesIn && !leavesLine) continue;
     const next = xs[i + 1] ?? contentEnd(context);
-    if (beat.connects) drawBends(context, beat, x, next);
+    if (beat.connects) drawBends(context, beat, x, next, drawn);
     const at: TiePosition = { bar: barIndex, voice: voice.index, beat: beat.index };
     const letters = lettered(context, beat);
     const centres = graceCentres(beat, x, space);

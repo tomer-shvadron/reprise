@@ -11,6 +11,7 @@ import {
   type StaffPlacement,
 } from '../../index';
 import { overlappingMarks, stable, strayPrimitives } from '../../test/check-result';
+import { randomScore } from '../../test/random-score';
 import { describePrimitive } from '../../test/describe';
 import { BENDS, content, everyEffectScore, guitar, laid, paged, texts } from '../../test/effects';
 import { analyseEffects, glyphHeight } from './analysis';
@@ -1169,6 +1170,89 @@ describe('bend labels never overlap', () => {
     const cache = new LayoutCache();
     layout(built, paged, cache);
     expect(stable(layout(built, paged, cache))).toBe(stable(layout(built, paged)));
+  });
+
+  describe('across beats and voices', () => {
+    const labels = (result: LayoutResult, content: string) =>
+      result.primitives.filter(isText(content));
+    const neighbours = (mode: Mode, first: number, second: number, duration: '32' | '64' = '64') =>
+      laid(
+        guitar(mode)
+          .bar()
+          .beat(duration, [note(3, 14, { bend: rise(first) })])
+          .beat(duration, [note(3, 14, { bend: rise(second) })])
+          .rest('2')
+          .build({ ids: 'sequential' }),
+        { width: 200 },
+      );
+
+    it.each(modes)('prints an equal label of neighbouring beats once in %s', (mode) => {
+      expect(labels(neighbours(mode, 4, 4), 'full')).toHaveLength(1);
+      expect(labels(neighbours(mode, 2, 2), '½')).toHaveLength(1);
+    });
+
+    it.each(modes)('stacks different labels of neighbouring beats in %s', (mode) => {
+      const result = neighbours(mode, 2, 4);
+      expect(labels(result, '½')).toHaveLength(1);
+      expect(labels(result, 'full')).toHaveLength(1);
+    });
+
+    it.each(modes)('prints a label once where two voices bend alike at one onset in %s', (mode) => {
+      const result = laid(
+        guitar(mode)
+          .bar()
+          .beat('4', [note(3, 14, { bend: rise(4) })])
+          .rest('2.')
+          .voice(1)
+          .beat('4', [note(5, 12, { bend: rise(4) })])
+          .rest('2.')
+          .build({ ids: 'sequential' }),
+      );
+      expect(labels(result, 'full')).toHaveLength(1);
+    });
+
+    it.each(modes)(
+      'leaves no two bend labels overlapping on random scores in %s',
+      (mode) => {
+        // Dense random scores bend to `full` on neighbouring beats and in two voices at one onset.
+        let found = 0;
+        for (let seed = 0; seed < 401; seed++) {
+          const built = randomScore(seed, { diagrams: true });
+          const result = layout(built, {
+            ...paged,
+            notation: Object.fromEntries(built.tracks.map(({ id }) => [id, mode])),
+          });
+          found += overlappingMarks(result).filter(
+            ([a, b]) =>
+              a.kind === 'text' && b.kind === 'text' && a.text === 'full' && b.text === 'full',
+          ).length;
+        }
+        expect(found).toBe(0);
+      },
+      60_000,
+    );
+
+    it('lays a bar out the same cached as cold after an edit makes a label equal to the last beat', () => {
+      const built = guitar('both')
+        .bar()
+        .beat('64', [note(3, 14, { bend: rise(4) })])
+        .beat('64', [note(3, 14, { bend: rise(2) })])
+        .rest('2')
+        .bar()
+        .beat('64', [note(3, 14, { bend: rise(4) })])
+        .beat('64', [note(3, 14, { bend: rise(4) })])
+        .rest('2')
+        .build({ ids: 'sequential' });
+      const cache = new LayoutCache();
+      layout(built, paged, cache);
+      const edit = applyCommand(
+        built,
+        setNoteEffect({ noteId: noteOf(built, 0, 0, 1).id }, { bend: rise(4) }),
+      );
+      const after = layout(edit.score, { ...paged, dirtyBars: edit.change.touchedBars }, cache);
+      expect(stable(after)).toBe(stable(layout(edit.score, paged)));
+      expect(labels(after, 'full')).toHaveLength(labels(layout(edit.score, paged), 'full').length);
+    });
   });
 });
 

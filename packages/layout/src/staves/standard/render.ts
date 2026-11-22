@@ -4,6 +4,7 @@ import { engraving } from '../../metrics';
 import { glyph, glyphWidth, line, rect, union, type LayoutSink } from '../../primitives';
 import type { Rect, StaffType } from '../../types';
 import { DYNAMICS_GLYPHS, dynamicsBaseline, shownDynamics } from '../dynamics';
+import { newBendDrawn } from '../effects';
 import { drawWords, syllableLookup } from '../words';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
 import {
@@ -402,7 +403,10 @@ export function renderBar(
     for (const [voice, beats] of plan.voices.entries()) drawConnections(connecting, voice, beats);
     drawStrokes(connecting);
     if (input.staves.length === 1) {
-      for (const beats of plan.voices) drawBends(connecting, beats);
+      // One per bar: equal bend labels of neighbouring beats and of two voices at one onset print
+      // once, and different ones stack.
+      const drawn = newBendDrawn();
+      for (const beats of plan.voices) drawBends(connecting, beats, drawn);
     }
   }
 

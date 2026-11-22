@@ -23,7 +23,7 @@ import {
 } from '../rhythm';
 import type { StaffBar, StaffBarPlacement } from '../staff-module';
 import { DYNAMICS_GLYPHS, dynamicsBaseline, shownDynamics } from '../dynamics';
-import { analyseEffects, drawLanes, tickOf, tremoloGlyph } from '../effects';
+import { analyseEffects, drawLanes, newBendDrawn, tickOf, tremoloGlyph } from '../effects';
 import {
   TAB,
   analyseBar,
@@ -400,6 +400,8 @@ export function renderTab(
   const positions = new Map<TabBeat, number>();
   const reach = TAB.beatReach * space;
 
+  // One per bar: equal bend labels of neighbouring beats and of voices at one onset print once.
+  const bends = newBendDrawn();
   for (const voice of analysed.voices) {
     // A rest alone in its voice is centred in the bar, as Guitar Pro draws a whole-bar rest.
     const [only] = voice.beats;
@@ -431,7 +433,7 @@ export function renderTab(
     if (analysed.rhythm) drawRhythm(context, voice, xs);
     drawTies(context, voice, xs);
     drawStrokes(context, voice, xs);
-    drawNoteEffects(context, voice, xs);
+    drawNoteEffects(context, voice, xs, bends);
   }
   drawWords(context, positions);
   drawLanes({
