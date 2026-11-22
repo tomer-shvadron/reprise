@@ -284,7 +284,7 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
   const noteVoices = bar.voices.filter(hasNotes).length;
   // A secondary voice that is one whole-bar rest beside a voice with notes is not drawn and does
   // not make the bar two-voice; any other voice of rests only counts (see `hiddenVoices`).
-  const hiddenSet = hiddenVoices(bar, barTicks(input.masterBar));
+  const hiddenSet = hiddenVoices(bar, input.masterBar);
   const counted = bar.voices.filter(
     (voice, i) => !hiddenSet.has(i) && voice.beats.some(hasContent),
   ).length;
