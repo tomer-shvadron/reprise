@@ -13,9 +13,10 @@ function ScrollArea({
       className={cn('relative', className)}
       {...props}
     >
+      {/* The ring is inset: the viewport is flush with its overflow-hidden parent, which would clip an outer ring. */}
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        className="focus-visible:ring-ring size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:outline-1"
+        className="focus-visible:ring-ring size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-inset"
       >
         {children}
       </ScrollAreaPrimitive.Viewport>

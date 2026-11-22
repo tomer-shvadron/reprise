@@ -68,13 +68,15 @@ describe.each<ThemeName>(['dark', 'light'])('theme contrast, %s', (name) => {
     expect(tokenContrast(values, fg, bg)).toBeGreaterThanOrEqual(3);
   });
 
-  // The halo alone (`ring-ring/50`) is about 1.85:1, under 1.4.11's 3:1, so a component that draws
-  // only a halo fails. The solid indicator is the `--ring` mark above; focus-indicator.test.ts
-  // pins which components draw it.
-  it('the 50% halo alone would not meet 3, which is why the indicator is solid', () => {
+  // A 50% halo is about 1.85:1, under 1.4.11's 3:1, which is why focus must draw the solid `--ring`
+  // (MARKS above); focus-indicator.test.ts pins which components do. Pinned so the number only moves
+  // on purpose.
+  it('pins the 50% focus halo near 1.85, under 3', () => {
     const halo = { rgb: paint(values, '--ring').rgb, alpha: 0.5 };
     const background = paint(values, '--background').rgb;
-    expect(contrastRatio(over(halo, background), background)).toBeLessThan(3);
+    const ratio = contrastRatio(over(halo, background), background);
+    expect(ratio).toBeGreaterThan(1.7);
+    expect(ratio).toBeLessThan(2);
   });
 
   it.each(OVERLAYS)('score ink stays at least 7 under the %s overlay', (_overlay, alpha) => {
