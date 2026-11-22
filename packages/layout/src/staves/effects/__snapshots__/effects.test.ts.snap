@@ -107,7 +107,7 @@ exports[`note effects on the tab: bends > draws every bend kind with its arrows 
   "text "full" @363.07,95.6 size 7 middle <note00000008>",
   "path stroked M363.07 97.7C366.75 97.7 370.43 97.7 370.43 95.95 <note00000008>",
   "path filled M370.43 101.55L372.88 95.95L367.98 95.95Z <note00000008>",
-  "text "¾" @373.23,104.04 size 7 start <note00000008>",
+  "text "¾" @367.63,88.21 size 7 end <note00000008>",
   "path filled M379.28 135.3h6.95v8.1h-6.95Z (paper) <note00000009>",
   "text "7" @382.75,142.58 size 9.1 middle <note00000009>",
   "path filled M424.73 135.3h11.94v8.1h-11.94Z (paper) <note00000010>",

@@ -117,7 +117,7 @@ exports[`a standard staff shown alone > draws the lane effects the tab draws in 
   "path stroked M363.58 115.2Q364.92 112.68 366.26 115.2Q367.59 117.72 368.93 115.2Q370.27 112.68 371.61 115.2Q372.94 117.72 374.28 115.2Q375.62 112.68 376.96 115.2Q378.29 117.72 379.63 115.2Q380.97 112.68 382.31 115.2Q383.64 117.72 384.98 115.2 <beat00000008>",
   "text "w/bar" @355.58,78.8 size 6.3 start <beat00000008>",
   "path stroked M355.58 93.38L384.28 100.38 <beat00000008>",
-  "text "-2" @384.28,105.76 size 5.6 middle <beat00000008>",
+  "text "-2" @383.48,105.76 size 5.6 middle <beat00000008>",
 ]
 `;
 
