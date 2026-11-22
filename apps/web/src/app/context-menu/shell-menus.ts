@@ -136,6 +136,7 @@ export const shellMenus: readonly MenuContribution[] = [
       { command: 'file.saveAs', group: 'edit', when: onStatus('saved') },
       { command: 'file.export', group: 'export', when: onStatus('saved') },
       { command: 'sounds.show', group: 'view', when: onStatus('sound') },
+      { command: 'trainer.metronomeToggle', group: 'practice', when: onStatus('metronome') },
       { command: 'library.show', group: 'view', when: onStatus('library') },
       // The edit state's items are editing commands, so the segment's menu is edit mode's alone.
       {

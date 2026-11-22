@@ -124,6 +124,16 @@ describe('trainer commands', () => {
     }
   });
 
+  it('stops a running standalone click without showing the metronome panel', async () => {
+    const { services, registry } = await setup();
+    services.playback.setState({ click: { ...services.playback.getState().click, running: true } });
+    const command = registry.get('trainer.metronomeToggle');
+    if (!command) throw new Error('no command');
+    runCommand(command);
+    expect(services.fakeAudio.stopClick).toHaveBeenCalledOnce();
+    expect(services.ui.getState().panels.rightPanel).toBe(false);
+  });
+
   describe('in the practice mode', () => {
     it('start the trainer, the click and the tuner without opening a panel or leaving', async () => {
       const { services, registry, loop, trainer } = await setup();

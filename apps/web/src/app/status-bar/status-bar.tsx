@@ -4,6 +4,7 @@ import { SoundStatus } from '@/features/transport';
 
 import { useAppServices } from '@/app/services-context';
 import { LibrarySegment, SavedSegment } from './song-status';
+import { MetronomeSegment } from './click-status';
 import { NotationSegment, ZoomSegment } from './view-status';
 
 /**
@@ -28,6 +29,7 @@ export function StatusBar() {
         <SavedSegment />
         <SoundStatus />
         <LibrarySegment />
+        <MetronomeSegment />
         <TrackFlash />
       </div>
       <div role="group" aria-label="Cursor and view" className="flex min-w-0 items-center gap-1">

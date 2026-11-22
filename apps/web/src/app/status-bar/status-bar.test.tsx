@@ -94,4 +94,26 @@ describe('StatusBar', () => {
     renderHeader(<StatusBar />);
     expect(fireEvent.mouseDown(screen.getByRole('button', { name: '100%' }))).toBe(false);
   });
+
+  it('shows the metronome only while the standalone click runs, and a press stops it', async () => {
+    const { services } = renderHeader(<StatusBar />);
+    expect(screen.queryByRole('button', { name: /Metronome/ })).toBeNull();
+    act(() => {
+      services.playback.setState({
+        click: { ...services.playback.getState().click, running: true },
+      });
+    });
+    const indicator = screen.getByRole('button', { name: 'Metronome on' });
+    expect(indicator).toHaveAttribute('aria-keyshortcuts');
+    await userEvent.setup().click(indicator);
+    expect(services.fakeAudio.stopClick).toHaveBeenCalledOnce();
+    // Stopping from here opens no panel.
+    expect(services.ui.getState().panels.rightPanel).toBe(false);
+    act(() => {
+      services.playback.setState({
+        click: { ...services.playback.getState().click, running: false },
+      });
+    });
+    expect(screen.queryByRole('button', { name: /Metronome/ })).toBeNull();
+  });
 });
