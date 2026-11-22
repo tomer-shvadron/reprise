@@ -8,6 +8,7 @@ import {
   tieChainOf,
   tieOriginOf,
 } from '@reprise/model';
+import { MAX_GRACE_LEAD, graceLeadTicks } from './grace-lead';
 import type {
   Beat,
   Golpe,
@@ -103,8 +104,6 @@ export interface ClickOnset {
 }
 
 const EPSILON = 1e-6;
-/** The most a beat is handed out early for the grace notes before it: a quarter note. */
-const MAX_GRACE_LEAD = PPQ;
 
 export function createTimeline(score: Score): Timeline {
   const { sequence, warnings } = expandPlaybackSequence(score);
@@ -263,15 +262,6 @@ function followTies(
   return { end, continuations, after: beatAfter(timeline, track, start.voiceIndex, last) };
 }
 
-/** Ticks the grace notes played before `beat` take, which the sink needs before `when`. */
-function graceLeadTicks(beat: Beat): number {
-  let ticks = 0;
-  for (const grace of beat.grace ?? []) {
-    if (grace.before) ticks += beatTicks({ duration: grace.duration, dots: 0 });
-  }
-  return Math.min(ticks, MAX_GRACE_LEAD);
-}
-
 /** The sounding note on `note`'s string in `after`; fretted tracks only, so drums never match. */
 function nextOnString(
   note: Note,
@@ -346,7 +336,8 @@ export function notesInRange(
  * The beat-level events in `[from, to)`, from `runStartTick` up to `limitTick`, found in one
  * walk of the beats: every beat carrying `Beat.mix` and every beat carrying `BeatEffects.golpe`,
  * rests and tied continuations included, which send no note. The next beat-level effect joins
- * this walk rather than adding another.
+ * this walk rather than adding another; a wah is state that depends on the beats before it, so
+ * it has its own memoised lane (`wah-lane.ts`).
  */
 export function beatEventsInRange(
   timeline: Timeline,

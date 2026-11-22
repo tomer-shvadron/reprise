@@ -39,6 +39,15 @@ describe('analyseScore', () => {
     expect(insights.sections.map((section) => section.name)).toEqual(['Verse', 'Chorus']);
     expect(insights.chords.source).toBe('written');
     expect(insights.chords.progressions[0]?.label).toBe('Am–F–C–G ×2');
+    expect(
+      insights.chords.timeline.slice(0, 5).map((span) => [span.name, span.bar, span.endBar]),
+    ).toEqual([
+      ['Am', 0, 1],
+      ['F', 1, 2],
+      ['C', 2, 3],
+      ['G', 3, 4],
+      ['Am', 4, 5],
+    ]);
     expect(insights.shape.barsWritten).toBe(16);
     expect(insights.tracks.map((track) => track.name)).toEqual(['Chords', 'Melody']);
     expect(insights.tracks[0]?.scale?.name).toBe('A natural minor');

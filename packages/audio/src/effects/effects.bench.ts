@@ -12,7 +12,8 @@ import type { EffectPresetId } from './presets';
  * The CPU of the effects chains: 16 tracks, each with a three-note chord every 1.25 s, rendered
  * offline for 5 s at 44.1 kHz. The render's wall time is the cost of the song; an offline render
  * runs the convolvers inline, so it is a pessimistic proxy for the audio thread. The first row has
- * a budget in the roadmap's table; the second, the same song with no chain, is only reported.
+ * a budget in the roadmap's table; the second, the same song with no chain, and the third, the
+ * same with every track's wah pedal rocking, are only reported.
  */
 const SECONDS = 5;
 const TRACKS = 16;
@@ -31,7 +32,7 @@ function track(id: string): SamplerTrack {
   };
 }
 
-async function renderSong(preset: EffectPresetId | undefined): Promise<void> {
+async function renderSong(preset: EffectPresetId | undefined, wah = false): Promise<void> {
   const context = new OfflineAudioContext({
     numberOfChannels: 2,
     length: SECONDS * SAMPLE_RATE,
@@ -42,6 +43,12 @@ async function renderSong(preset: EffectPresetId | undefined): Promise<void> {
     const id = `t${String(i)}`;
     sampler.addTrack(track(id), sineInstrument(undefined, SECONDS));
     if (preset) sampler.setEffects(id, stagesOf(preset));
+    // Closed and open every 0.25 s: the pedal engages at 0 and glides at each mark after.
+    if (wah) {
+      for (let step = 0; step < SECONDS * 4; step += 1) {
+        sampler.setWah(id, step % 2 === 0 ? 'closed' : 'open', step * 0.25);
+      }
+    }
     for (let note = 0; note < 4; note += 1) {
       for (const key of [57 + (i % 7), 64 + (i % 5), 69]) {
         sampler.noteOn(id, {
@@ -78,3 +85,19 @@ test('Effects: 16 tracks with no chain, 5 s rendered offline', BENCH, async (con
     .run(RUN);
   await recordMeasurement(context, metric, result.latency.p50);
 });
+
+// The same song with every track's wah pedal rocking: one k-rate band-pass and three gains a track.
+test(
+  'Effects: 16 tracks of distortion chains with a sweeping wah, 5 s rendered offline',
+  BENCH,
+  async (context) => {
+    const metric =
+      'Effects: 16 tracks of distortion chains with a sweeping wah, 5 s rendered offline';
+    const result = await context
+      .bench(metric, async () => {
+        await renderSong('distortion', true);
+      })
+      .run(RUN);
+    await recordMeasurement(context, metric, result.latency.p50);
+  },
+);

@@ -85,6 +85,33 @@ export const ARTICULATION = {
     restVelocity: DYNAMICS_VELOCITY.mf,
   },
 
+  /**
+   * The wah pedal (`effects/wah.ts`): a band-pass swept between two centre frequencies, closed
+   * (heel down, dark) and open (toe down, bright). Reprise's own playback of the o and + marks:
+   * Guitar Pro 8 treats them as notation only.
+   */
+  wah: {
+    /** Centre frequency in Hz with the pedal closed (+). */
+    closed: 400,
+    /** Centre frequency in Hz with the pedal open (o). */
+    open: 2200,
+    q: 4,
+    /** Time constant of the glide between two marks, in seconds: 95% of the way in 3x this. */
+    glide: 0.04,
+    /**
+     * Seconds a restore (the state at a run's start, or a reset after a stop) takes to settle:
+     * a loop wrap restores while the notes at the loop end still ring, so it must not step.
+     */
+    restore: 0.02,
+    /**
+     * Gain after the band-pass. The filter has unity gain at its centre, so a partial there is
+     * boosted and the rest cut; chosen from GM steel, clean electric and overdrive notes (E2 to
+     * A5), where 3.5 puts the median of closed 1 to 2.5 dB over and of open 3 to 6 dB under the plain note
+     * (`engine-wah.test.ts`). 5 left a loud chord over 0 dBFS before the master limiter; 3.5 keeps it under.
+     */
+    makeup: 3.5,
+  },
+
   staccatoFraction: 0.5,
   /** Where fade-in, fade-out and volume swell start or end. */
   fadeFloor: -48,

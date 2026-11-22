@@ -17,6 +17,8 @@ import {
   type Note,
   type NoteEffects,
   type SlideKind,
+  type Golpe,
+  type PickScrape,
   type StrokeDirection,
   type Trill,
   type Whammy,
@@ -55,6 +57,8 @@ export type EffectAction =
   | { kind: 'beatFlag'; flag: BeatFlag }
   | { kind: 'tremolo'; speed: 8 | 16 | 32 }
   | { kind: 'pickStroke'; direction: StrokeDirection }
+  | { kind: 'golpe'; golpe: Golpe }
+  | { kind: 'pickScrape'; direction: PickScrape }
   | { kind: 'beatVibrato'; vibrato: 'slight' | 'wide' }
   | { kind: 'whammy'; whammy: Whammy; label?: string }
   | { kind: 'brush'; direction: StrokeDirection }
@@ -330,6 +334,22 @@ function noteSpec(action: EffectAction): NoteSpec | undefined {
     }
     case 'slide':
       return slideSpec(action.slide);
+    case 'pickScrape':
+      return valueSpec(
+        `pick scrape ${action.direction}`,
+        (note) => note.pickScrape,
+        action.direction,
+        { pickScrape: action.direction },
+        { pickScrape: null },
+        {
+          unavailable: (ref) =>
+            ref.grace
+              ? "A grace note can't take a pick scrape"
+              : ref.note.tie
+                ? 'A tied note is held, not struck'
+                : undefined,
+        },
+      );
     case 'harmonic':
       return harmonicSpec(action.harmonic);
     case 'dynamics':
@@ -395,6 +415,8 @@ interface BeatSpec {
   present?(beat: Beat): boolean;
   set: BeatChanges;
   clear: BeatChanges;
+  /** A rest can carry the effect: see `resolveEffect` for which rests join the target. */
+  onRests?: boolean;
 }
 
 function strokeSpec(field: 'brush' | 'arpeggio', direction: StrokeDirection): BeatSpec {
@@ -442,6 +464,17 @@ function beatSpec(action: EffectAction): BeatSpec | undefined {
         present: (beat) => beat.effects.pickStroke !== undefined,
         set: { effects: { pickStroke: action.direction } },
         clear: { effects: { pickStroke: null } },
+      };
+    case 'golpe':
+      // One field holds the value, so thumb and finger exclude each other; a rest may carry one.
+      return {
+        onRests: true,
+        label: `golpe (${action.golpe})`,
+        anyTrack: false,
+        has: (beat) => beat.effects.golpe === action.golpe,
+        present: (beat) => beat.effects.golpe !== undefined,
+        set: { effects: { golpe: action.golpe } },
+        clear: { effects: { golpe: null } },
       };
     case 'beatVibrato':
       return {
@@ -536,11 +569,18 @@ export function resolveEffect(
     return noteBased ? resolveNotes(refs, noteBased) : resolveHammer(refs);
   }
   const spec = beatSpec(action);
-  if (!spec || target.beats.length === 0) return refuse(NOTHING_SELECTED);
+  // A rest joins only when it already carries the effect (so a range toggle can take it off) or
+  // when it is all that is targeted (the cursor on a rest, which can set it): a range never gets
+  // the effect sprayed onto bare rests, and one bare rest does not turn a remove into a set.
+  const rests = spec?.onRests
+    ? target.rests.filter(({ beat }) => target.beats.length === 0 || spec.present?.(beat))
+    : [];
+  const targeted = [...target.beats, ...rests];
+  if (!spec || targeted.length === 0) return refuse(NOTHING_SELECTED);
   return {
     kind: 'beat',
     label: spec.label,
-    items: target.beats.map(({ beat, track }) => {
+    items: targeted.map(({ beat, track }) => {
       const has = spec.has(beat);
       return {
         id: beat.id,

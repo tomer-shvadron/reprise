@@ -33,8 +33,10 @@ export interface BeatRef {
 export interface EffectTarget {
   /** The notes picked, plus every main note of the beats picked (D7), grace notes only when picked. */
   notes: NoteRef[];
-  /** The beats picked and the beats of the notes picked; rests and empty beats are left out. */
+  /** The beats picked and the beats of the notes picked; rests (see `rests`) and empty beats are left out. */
   beats: BeatRef[];
+  /** Rests picked or under the cursor, for the beat effects a rest can carry (golpe, wah). */
+  rests: BeatRef[];
   /** Every main note of `beats`: what an effect on the whole beat reaches. */
   beatNotes: NoteRef[];
 }
@@ -74,10 +76,13 @@ export function effectTarget(input: EffectTargetInput): EffectTarget {
   const selection = editTarget(score, input.state, input.visible);
   const index = scoreIndex(score);
   const beats = new Map<Id, BeatRef>();
+  const rests = new Map<Id, BeatRef>();
   const addBeat = (id: Id) => {
-    if (beats.has(id)) return;
+    if (beats.has(id) || rests.has(id)) return;
     const ref = beatRef(score, id);
-    if (ref && !ref.beat.rest && ref.beat.notes.length > 0) beats.set(id, ref);
+    if (!ref) return;
+    if (ref.beat.rest) rests.set(id, ref);
+    else if (ref.beat.notes.length > 0) beats.set(id, ref);
   };
   const notes = new Map<Id, NoteRef>();
   for (const id of selection.beatIds ?? []) {
@@ -100,6 +105,7 @@ export function effectTarget(input: EffectTargetInput): EffectTarget {
   return {
     notes: [...notes.values()],
     beats: beatList,
+    rests: [...rests.values()],
     beatNotes: beatList.flatMap(mainNotes),
   };
 }

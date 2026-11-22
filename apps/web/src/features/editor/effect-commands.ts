@@ -117,6 +117,10 @@ export type EffectKeyName =
   | 'slap'
   | 'pickStrokeDown'
   | 'pickStrokeUp'
+  | 'golpeThumb'
+  | 'golpeFinger'
+  | 'pickScrapeDown'
+  | 'pickScrapeUp'
   | 'fadeIn'
   | 'fadeOut'
   | 'volumeSwell'
@@ -254,6 +258,28 @@ export const EFFECT_KEY_TABLE: readonly EffectKey[] = [
     title: 'Toggle pick stroke up',
     action: { kind: 'pickStroke', direction: 'up' },
     key: { key: 'u', shift: true },
+  },
+  // Golpe and pick scrape have no default key; bind them in Settings, Keyboard. Wah (#355) adds
+  // its entries here: closed on Shift+W, open on Alt+Shift+W.
+  {
+    id: 'golpeThumb',
+    title: 'Toggle golpe (thumb)',
+    action: { kind: 'golpe', golpe: 'thumb' },
+  },
+  {
+    id: 'golpeFinger',
+    title: 'Toggle golpe (finger)',
+    action: { kind: 'golpe', golpe: 'finger' },
+  },
+  {
+    id: 'pickScrapeDown',
+    title: 'Toggle pick scrape down',
+    action: { kind: 'pickScrape', direction: 'down' },
+  },
+  {
+    id: 'pickScrapeUp',
+    title: 'Toggle pick scrape up',
+    action: { kind: 'pickScrape', direction: 'up' },
   },
   {
     id: 'fadeIn',

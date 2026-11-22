@@ -52,6 +52,7 @@ interface InstrumentSink {
   noteOn(event: NoteEvent): void;
   mix?(event: MixEvent): void; // a beat's mixer change, rests and tied continuations included
   hit?(event: HitEvent): void; // a beat's golpe, rests and tied continuations included
+  wah?(event: WahEvent): void; // a fretted track's wah pedal changing state, a run's start included
   allNotesOff(when: number): void;
   dispose?(): void;
 }
@@ -111,6 +112,17 @@ interface MixEvent {
   replay the hits before it (`hitsInRange`, which mirrors `mixesInRange` without the replay),
   and `allNotesOff` cancels one like a note. `ToneSink` has no `hit`. A pick scrape needs no
   event: it is `Note.pickScrape` on the ordinary `NoteEvent`.
+- **Wah** arrives as a `WahEvent` through `wah`: a track's pedal moving to `closed`, `open` or
+  `off` at `when`. It is state, like a mixer change, so a run start (play, seek, a loop wrap)
+  sends each wah track's state there first, `off` included, with `restore` set, settling over about 20 ms,
+  and `allNotesOff` cancels the changes scheduled after it. The rule (`wah-lane.ts`, memoised
+  per timeline, searched by `wahChangesInRange`, which the scheduler calls beside `beatEventsInRange`): per fretted track
+  with any `BeatEffects.wah`, the latest deciding beat in playback order, over all voices, sets
+  the state. A beat with a mark engages it; a beat with at least one note that is not a tied
+  continuation and has no mark turns it off; rests, empty beats and beats of tied notes only
+  decide nothing, so the pedal holds through them. At one onset a mark wins over an unmarked
+  beat and the lower voice between two marks. A repeat carries the state into its next pass. A
+  score with no marks builds nothing. `ToneSink` has no `wah`. See **Wah pedal** below.
 - **Mixer changes** arrive as `MixEvent`s through `mix`, one per beat carrying `Beat.mix`,
   whether the beat is played, a rest or a tied continuation; a `NoteEvent` with no note was the
   alternative, but it would make `note` optional for every consumer and send a mixer change once
@@ -1308,6 +1320,58 @@ as `entries` (`GUITAR_FILE_TONES`). The default pack keeps its shape.
   reset WP-050 owns covers the instrument too; on the sampler side the baseline is `addTrack`'s.
 - **Vibrato is in Hz, not tempo-synced**, and starts at the onset; Guitar Pro's sounds the same at
   any tempo too.
+
+## Wah pedal
+
+Reprise's own playback of the o and + marks (#355): Guitar Pro 8 treats them as notation only.
+`WahPedal` (`effects/wah.ts`) is `input -> dry -> output` beside `input -> band-pass -> makeup ->
+wet -> output`, spliced between a strip's mute gate and its effects insert on the first wah event
+for that track (a silent swap: off, dry is gain 1 and wet 0, so the output is the dry signal
+exactly) and kept for the strip's life. It sits before the effects, as a pedal sits before the
+amp, so a distortion stage distorts the swept signal. Notes previewed in the editor join after
+it and stay dry; tracks that are not fretted never get one. Constants are `ARTICULATION.wah`:
+
+| Constant | Value                                                                                    |
+| -------- | ---------------------------------------------------------------------------------------- |
+| closed   | band-pass centre 400 Hz (dark)                                                           |
+| open     | 2 200 Hz (bright)                                                                        |
+| Q        | 4                                                                                        |
+| glide    | time constant 0.04 s (95% in 120 ms) between two marks, so each attack sweeps, no zipper |
+| fade     | 20 ms linear crossfade on engage and release (`FADE_SECONDS`)                            |
+| makeup   | 3.5 after the band-pass, chosen from GM guitar notes (below)                             |
+| restore  | 20 ms settling (time constant a third of it) at a run start, a loop wrap or a stop       |
+
+The centre frequency is k-rate (coefficients once per 128-frame block). Everything is scheduled
+on `AudioParam`s at the change's time, so an offline render matches the realtime one and no
+timer is involved. A restore settles into the state over 20 ms, from wherever the parameters are,
+because a loop wrap restores while the notes at the loop end still ring and a step would click.
+`cancelAfter` drops the changes after a stop, and the sink's `allNotesOff` then turns every built
+pedal off, so a pedal stopped inside a passage cannot stay engaged on a track whose marks were
+edited away (the next run's restore sets the lane's tracks again). The wet branch stays connected
+while off: the band-pass keeps filtering the live track signal and only `wet` is 0, which Web Audio
+does not skip, so an idle pedal costs about what an engaged one does (the bench row below), and its
+state stays warm for the next engage.
+
+Level: a partial on the band-pass centre is boosted and the rest cut, so a single pitch swings far
+(+6 to -15 dB), which is the wah's character. The makeup gain is chosen so the medians stay near the
+plain note. Measured on GeneralUser GS 2.0.3 (`engine-wah.test.ts`), median over E2 to A5 of the wah
+level against the plain note, dB:
+
+| Instrument          | Closed | Open |
+| ------------------- | ------ | ---- |
+| steel (25)          | +1.0   | -3.2 |
+| clean electric (27) | +1.7   | -6.1 |
+| overdrive (29)      | +2.5   | -3.0 |
+
+A loud six-string chord (fff, overdrive) peaks before the master limiter at 0.78 plain, 0.93
+closed and 0.74 open of full scale. A grace note before a beat takes the beat's state (the change
+is sent as early as the graces). A tied note that sounds afresh after a repeat or a seek counts as
+a played note for the end rule; one held from its origin does not.
+
+Measured on GeneralUser GS 2.0.3 (`engine-wah.test.ts`), the
+spectral centroid of a steel-guitar E3 is 1044 Hz plain, 392 Hz closed and 2028 Hz open.
+`pnpm bench`: "16 tracks of distortion chains with a sweeping wah" is reported without a budget,
+about 13% over the budgeted chains row (849 ms against 753 ms); that row builds no wah.
 
 ## Memory manager
 
