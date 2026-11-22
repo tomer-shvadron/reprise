@@ -216,12 +216,15 @@ together: starting one stops the other.
   best tempos, and Resume. Resume restores the most recent session's last loop at that session's
   last tempo (`resume.ts`), by bar id, so it still works after bars were inserted before the loop; a
   loop whose bars are gone restores the tempo only and says so. The library's song list has a
-  "Practice log" button per row and its screen hosts the page.
+  "Practice log" button per row and its screen hosts the page. The **Resume practice** palette
+  command (`trainer.resumePractice`) runs the same Resume on the open song; it is offered for any
+  open library song, since the log is async and availability cannot depend on it, and announces
+  when the song has no history.
 - **Privacy.** The log lives only in this machine's IndexedDB: no network call, no `localStorage`,
   never in the `.reprise` file, a gp export or the draft. The tuner's microphone and the standalone
   metronome are never observed: the capture imports nothing from `tuner/` or `metronome/`.
 - Not done: a weekly summary and streaks (they would want a `startedAt` index, a Dexie version 3),
-  export of the log, pruning or a clear-history button, and a Resume command.
+  export of the log, pruning or a clear-history button.
 - **In the practice mode (#341)** starting the speed trainer, the standalone metronome or the tuner
   (⌥S, ⌥B, the capsule's chip) does not show their panel, because a panel would end the mode; the
   capsule's `SpeedTrainerChip command="trainer.speedTrainerToggle"` shows the progress and the
