@@ -1,8 +1,22 @@
-import { type Score } from '@reprise/model';
-import { note, noteOf, type ScoreBuilder } from '@reprise/model/testing';
+import {
+  applyCommand,
+  createNote,
+  removeNote,
+  setBeatEffect,
+  setNote,
+  type Command,
+  type Score,
+} from '@reprise/model';
+import { beatOf, note, noteOf, type ScoreBuilder } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
-import { LayoutCache, layout, type LayoutResult, type Primitive } from '../../index';
+import {
+  LayoutCache,
+  layout,
+  type LayoutOptions,
+  type LayoutResult,
+  type Primitive,
+} from '../../index';
 import { stable, strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
 import { guitar, laid, paged, texts } from '../../test/effects';
@@ -15,6 +29,45 @@ const arcsOf = (result: LayoutResult, node: string): Primitive[] =>
   );
 
 const letters = (result: LayoutResult): string[] => texts(result).filter((t) => /^[HP]$/.test(t));
+
+/**
+ * Warms a cache on `built`, then applies each command in turn and checks the cached layout, told
+ * only the touched bars, against a cold one, paged and continuous.
+ */
+function expectCachedAsCold(built: Score, commands: (score: Score) => Command[]): void {
+  for (const mode of ['paged', 'continuous'] as const) {
+    const options: LayoutOptions = { ...paged, mode, width: 320 };
+    const cache = new LayoutCache();
+    layout(built, options, cache);
+    let current = built;
+    const steps = commands(current);
+    for (const [i, command] of steps.entries()) {
+      const step = applyCommand(current, command);
+      current = step.score;
+      const cached = layout(current, { ...options, dirtyBars: step.change.touchedBars }, cache);
+      expect(stable(cached), `${mode} step ${String(i)}`).toBe(stable(layout(current, options)));
+    }
+  }
+}
+
+/** Twelve bars of a string-2 note, the last bar's first beat optionally holding a grace note. */
+function chain(notation: Notation): Score {
+  const builder = guitar(notation);
+  for (let bar = 0; bar < 12; bar++) {
+    builder
+      .bar()
+      .beat('2', [note(2, 5)])
+      .beat('2', [note(2, 5)]);
+  }
+  return builder
+    .bar()
+    .beat('4', [note(2, 7)])
+    .build({ ids: 'sequential' });
+}
+
+const graceOn = (hammerPull: boolean) => [
+  { duration: 32 as const, before: true, notes: [createNote({ string: 2, fret: 9, hammerPull })] },
+];
 
 /** Two grace notes on string 2, the second hammered, then a main note. */
 function twoGraces(notation: Notation, first: number, second: number): ScoreBuilder {
@@ -241,12 +294,29 @@ describe('hammer-ons and pull-offs between grace notes (#160)', () => {
   });
 
   it.each<Notation>(['tab', 'standard', 'both'])(
-    'lays a cached bar out as a cold one, in %s',
+    'lays an edited bar out as a cold one, grace link on and off, in %s',
     (notation) => {
       const built = twoGraces(notation, 5, 7).build({ ids: 'sequential' });
-      const cache = new LayoutCache();
-      layout(built, paged, cache);
-      expect(stable(layout(built, paged, cache))).toBe(stable(layout(built, paged)));
+      expectCachedAsCold(built, (score) => {
+        const beat = beatOf(score, 0, 0, 0);
+        const grace = (hammerPull: boolean) => [
+          {
+            duration: 32 as const,
+            before: true,
+            notes: [createNote({ string: 2, fret: 5 })],
+          },
+          {
+            duration: 32 as const,
+            before: true,
+            notes: [createNote({ string: 2, fret: 7, hammerPull })],
+          },
+        ];
+        return [
+          setBeatEffect({ beatId: beat.id }, { grace: grace(false) }),
+          setBeatEffect({ beatId: beat.id }, { grace: grace(true) }),
+          setNote({ beatId: beat.id }, { string: 2, fret: 9, hammerPull: true }),
+        ];
+      });
     },
   );
 
@@ -305,32 +375,95 @@ describe('hammer-ons and pull-offs between grace notes (#160)', () => {
     );
 
     it.each<Notation>(['tab', 'standard', 'both'])(
-      'lays a cached score out as a cold one, in %s',
+      'lays an edited score out as a cold one, in %s',
       (notation) => {
-        const built = across(notation, true);
-        const cache = new LayoutCache();
-        layout(built, paged, cache);
-        expect(stable(layout(built, paged, cache))).toBe(stable(layout(built, paged)));
+        expectCachedAsCold(chain(notation), (score) => {
+          const target = beatOf(score, 0, 12, 0);
+          const origin = beatOf(score, 0, 11, 1);
+          const originNote = origin.notes[0];
+          if (!originNote) throw new Error('no origin');
+          return [
+            setBeatEffect({ beatId: target.id }, { grace: graceOn(true) }),
+            setNote({ beatId: origin.id }, { string: 2, fret: 3 }),
+            setBeatEffect({ beatId: target.id }, { grace: graceOn(false) }),
+            setBeatEffect({ beatId: target.id }, { grace: graceOn(true) }),
+            removeNote({ noteId: originNote.id }),
+          ];
+        });
       },
     );
 
     it.each<Notation>(['tab', 'standard'])(
       'draws the origin half at the end of a system, in %s',
       (notation) => {
-        const builder = guitar(notation);
-        for (let bar = 0; bar < 12; bar++) {
-          builder
-            .bar()
-            .beat('2', [note(2, 5)])
-            .beat('2', [note(2, 5)]);
-        }
-        builder.bar().beat('4', [note(2, 7)], {
-          grace: [{ duration: 32, before: true, notes: [note(2, 9, { hammerPull: true })] }],
-        });
-        const built = builder.build({ ids: 'sequential' });
+        const base = chain(notation);
+        const { score: built } = applyCommand(
+          base,
+          setBeatEffect({ beatId: beatOf(base, 0, 12, 0).id }, { grace: graceOn(true) }),
+        );
         const result = laid(built, { width: 320 });
+        // The target bar opens a system, so the origin note draws a half of its own.
+        expect(result.systems.some(({ bars }) => bars.start === 12)).toBe(true);
+        expect(arcsOf(result, noteOf(built, 0, 11, 1).id)).toHaveLength(1);
         expect(strayPrimitives(result, built).map(describePrimitive)).toEqual([]);
-        expect(letters(result)).toEqual(['H']);
+        expect(result.primitives.filter((p) => p.kind === 'text' && p.text === 'H')).toHaveLength(
+          1,
+        );
+      },
+    );
+
+    it.each<Notation>(['tab', 'standard'])(
+      'bends both halves of a split slur to a grace note the same way on string 1 and 2, in %s',
+      (notation) => {
+        for (const string of [1, 2]) {
+          const builder = guitar(notation);
+          for (let bar = 0; bar < 12; bar++) {
+            builder
+              .bar()
+              .beat('2', [note(string, 5)])
+              .beat('2', [note(string, 5)]);
+          }
+          const built = builder
+            .bar()
+            .beat('4', [note(string, 7)], {
+              grace: [
+                { duration: 32, before: true, notes: [note(string, 9, { hammerPull: true })] },
+              ],
+            })
+            .build({ ids: 'sequential' });
+          const result = laid(built, { width: 320 });
+          expect(result.systems.some(({ bars }) => bars.start === 12)).toBe(true);
+          const [half] = arcsOf(result, noteOf(built, 0, 11, 1).id);
+          const graceId = built.tracks[0]?.bars[12]?.voices[0]?.beats[0]?.grace?.[0]?.notes[0]?.id;
+          const [other] = arcsOf(result, graceId ?? '');
+          if (!half || !other) throw new Error('missing half');
+          // A slur's bulge is the middle of its path: both bulge to the same side of their ends.
+          const side = (p: Primitive): number => {
+            if (p.kind !== 'path') throw new Error('not a path');
+            const n = p.d.match(/-?\d+(\.\d+)?/g)?.map(Number) ?? [];
+            return Math.sign((n[3] ?? 0) - (n[1] ?? 0));
+          };
+          expect(side(half)).toBe(side(other));
+        }
+      },
+    );
+
+    it.each<Notation>(['tab', 'standard'])(
+      'draws no origin half when the next bar hammers a main note from its own grace note, in %s',
+      (notation) => {
+        const base = chain(notation);
+        const target = beatOf(base, 0, 12, 0);
+        const { score: graced } = applyCommand(
+          base,
+          setBeatEffect({ beatId: target.id }, { grace: graceOn(false) }),
+        );
+        const { score: built } = applyCommand(
+          graced,
+          setNote({ beatId: target.id }, { string: 2, fret: 7, hammerPull: true }),
+        );
+        const result = laid(built, { width: 320 });
+        expect(result.systems.some(({ bars }) => bars.start === 12)).toBe(true);
+        expect(arcsOf(result, noteOf(built, 0, 11, 1).id)).toHaveLength(0);
       },
     );
   });
@@ -346,9 +479,8 @@ describe('hammer-ons and pull-offs between grace notes (#160)', () => {
         .build({ ids: 'sequential' });
       const result = laid(built);
       const arc = arcsOf(result, noteOf(built, 0, 0, 0).id)[0];
-      if (hammered && !arc) throw new Error('no arc');
       return arc?.bbox.width ?? 0;
     };
-    expect(length(true)).toBeGreaterThan(5);
+    expect(length(true)).toBeGreaterThan(length(false) + 5);
   });
 });

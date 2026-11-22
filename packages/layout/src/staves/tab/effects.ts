@@ -19,7 +19,7 @@ import {
   SCRAPE,
   WAVES,
   firstGraceHammers,
-  graceHammerFrom,
+  hammerAhead,
   graceLinks,
   graceOrigin,
   hammerLetter,
@@ -408,10 +408,9 @@ export function drawNoteEffects(context: TabContext, voice: TabVoice, xs: readon
       if (!leavesLine) continue;
       const target = nextOnString(track, at, note);
       const crossing = target && target.bar !== barIndex ? target.note : undefined;
-      // The first grace note of a later beat hammered from this one.
-      const graced = graceHammerFrom(track, at, note);
-      const hammer =
-        (crossing?.hammerPull ?? false) || (graced !== undefined && graced.bar !== barIndex);
+      // The first touch of the string in a later beat decides, a grace note included.
+      const ahead = hammerAhead(track, at, note);
+      const hammer = (ahead?.hammer ?? false) && ahead?.bar !== barIndex;
       if (hammer || (crossing && shifts(note))) {
         drawOriginHalf(context, note, label, x, crossing, hammer);
       }
@@ -442,8 +441,6 @@ function drawFirstGraceHammers(
     const label = column.labels.find((candidate) => candidate.note === target);
     const origin = tieOriginOf(track, at, target);
     if (!label || !origin || origin.bar < barIndex - TIE_REACH_BARS) continue;
-    // A legato slide draws its own arc.
-    if (origin.note.slide?.includes('legato')) continue;
     found.push({ label, link: origin });
   }
   const links = found.map(({ label, link }) => ({

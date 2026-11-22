@@ -16,7 +16,7 @@ import {
   articulationMarks,
   connections,
   firstGraceHammers,
-  graceHammerFrom,
+  hammerAhead,
   graceLinks,
   graceOrigin,
   lettersOfLinks,
@@ -575,8 +575,6 @@ function drawFirstGraceHammers(
     const head = grace.chord.heads.find((other) => !other.sounding && other.note === target);
     const link = tieOriginOf(track, at, target);
     if (!head || !link || link.bar < barIndex - TIE_REACH_BARS) continue;
-    // A legato slide draws its own slur.
-    if (link.note.slide?.includes('legato')) continue;
     found.push({ head, link });
   }
   const letters = lettersOfLinks(
@@ -701,10 +699,9 @@ export function drawConnections(
       if (!leavesLine) continue;
       const target = nextOnString(track, at, note);
       const crossing = target && target.bar !== barIndex ? target : undefined;
-      // The first grace note of a later beat hammered from this one.
-      const graced = graceHammerFrom(track, at, note);
-      const hammer =
-        (crossing?.note.hammerPull ?? false) || (graced !== undefined && graced.bar !== barIndex);
+      // The first touch of the string in a later beat decides, a grace note included.
+      const ahead = hammerAhead(track, at, note);
+      const hammer = (ahead?.hammer ?? false) && ahead?.bar !== barIndex;
       if (!crossing && !hammer) continue;
       if (crossing && shifts(note)) {
         const drop = (targetIsHigher(note, crossing.note) ? -1 : 1) * SLIDE.drop * space;
@@ -724,7 +721,8 @@ export function drawConnections(
           spot.y,
           contentEnd,
           spot.y,
-          spot.direction,
+          // A grace note's slur bends down, so its origin half does too.
+          ahead?.hammer && ahead.grace ? 'down' : spot.direction,
           note.id,
           undefined,
         );

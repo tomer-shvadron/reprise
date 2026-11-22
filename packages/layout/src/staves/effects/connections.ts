@@ -126,23 +126,30 @@ export function firstGraceHammers(
 }
 
 /**
- * The next beat on the voice, in this bar or the next, that touches `note`'s string with a main
- * note or a grace note in its first column, when that first touch is a grace note hammered from
- * `note`; its bar. Draws the origin half of a hammer-on whose target is a grace note.
+ * Whether the first later beat on the voice, in this bar or the next, that touches `note`'s
+ * string (with a main note or any grace note) is hammered from `note`, and whether through its
+ * first grace column. A main note hammered from its own grace note is not: that beat draws its
+ * arc itself. Draws the origin half of a hammer-on at a system end.
  */
-export function graceHammerFrom(
+export function hammerAhead(
   track: Track,
   at: TiePosition,
   note: Note,
-): { bar: number } | undefined {
+): { bar: number; hammer: boolean; grace: boolean } | undefined {
   for (let bar = at.bar; bar <= at.bar + 1; bar++) {
     const beats = voiceBeats(track, bar, at.voice);
     for (let i = bar === at.bar ? at.beat + 1 : 0; i < beats.length; i++) {
       const beat = beats[i];
       if (!beat || beat.rest) continue;
-      const grace = beat.grace?.[0]?.notes.find((candidate) => candidate.string === note.string);
-      if (grace) return grace.hammerPull ? { bar } : undefined;
-      if (beat.notes.some((candidate) => candidate.string === note.string)) return undefined;
+      const first = beat.grace?.[0]?.notes.find((candidate) => candidate.string === note.string);
+      const main = beat.notes.find((candidate) => candidate.string === note.string);
+      const touched =
+        first ?? main ?? beat.grace?.some((g) => g.notes.some((n) => n.string === note.string));
+      if (!touched) continue;
+      if (first?.hammerPull) return { bar, hammer: true, grace: true };
+      const graces = beat.grace ?? [];
+      const own = main && graceOrigin(graces, graces.length, main.string) === undefined;
+      return { bar, hammer: (own && main.hammerPull) ?? false, grace: false };
     }
   }
   return undefined;
