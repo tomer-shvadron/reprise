@@ -9,6 +9,7 @@ import { EDIT_SOUND_SETTING } from '@/state/app-settings';
 import { createTestServices } from '@/test/services';
 
 import { cursorAtPosition } from './cursor';
+import { applyEffect } from './effect-commands';
 
 function riff(): Score {
   const built = score().track('guitar');
@@ -227,10 +228,17 @@ describe('sounding an applied effect', () => {
     expect(preview).toHaveBeenLastCalledWith(expect.anything(), beats()[0]?.id);
   });
 
-  it('is silent when nothing was written', async () => {
+  it('is silent when the effect is refused by the planner', async () => {
     const { services, press, preview } = await editing();
     services.selection.getState().setEdit({ cursor: undefined, currentTrack: undefined });
     press('p');
+    expect(preview).not.toHaveBeenCalled();
+  });
+
+  it('is silent when there is nothing to change', async () => {
+    const { services, preview } = await editing();
+    const outcome = applyEffect(services, { kind: 'flag', flag: 'palmMute' }, 'remove');
+    expect(outcome).toEqual({ nothing: true });
     expect(preview).not.toHaveBeenCalled();
   });
 

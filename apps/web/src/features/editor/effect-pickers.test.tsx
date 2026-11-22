@@ -327,5 +327,7 @@ describe('the effect pickers', () => {
     await user.click(within(dialog()).getByRole('button', { name: '½ prebend' }));
     expect(within(dialog()).getByRole('alert')).toBeInTheDocument();
     expect(services.entry.getState().message).toBeUndefined();
+    // The model refused at commit, so nothing was written and nothing sounds.
+    expect(services.fakeAudio.previewBeat).not.toHaveBeenCalled();
   });
 });
