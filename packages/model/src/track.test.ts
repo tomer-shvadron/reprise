@@ -125,6 +125,34 @@ describe('stringInstrumentOf', () => {
     expect(stringInstrumentOf(mandolin)).toBeUndefined();
   });
 
+  it('names a ukulele by four single strings on program 24, whatever their pitch', () => {
+    const uke = { ...base, program: 24, tuning: [67, 60, 64, 69] };
+    expect(stringInstrumentOf(uke)).toBe('ukulele');
+    expect(stringInstrumentOf({ ...uke, tuning: [45, 40, 36, 43] })).toBe('ukulele');
+    expect(stringInstrumentOf({ ...uke, courses: [null, null, null, null] })).toBe('ukulele');
+  });
+
+  it('is not a ukulele with 5 strings, courses, a drone, another program or another kind', () => {
+    const uke = { ...base, program: 24, tuning: [67, 60, 64, 69] };
+    expect(stringInstrumentOf({ ...uke, tuning: [67, 60, 64, 69, 72] })).toBeUndefined();
+    expect(stringInstrumentOf({ ...uke, courses: [12, 0, 0, 0] })).toBe('twelveString');
+    expect(stringInstrumentOf({ ...uke, courses: [0, 0, 0, null] })).toBeUndefined();
+    expect(stringInstrumentOf({ ...uke, drone: { string: 4, fret: 5 } })).toBe('banjo');
+    expect(stringInstrumentOf({ ...uke, program: 25 })).toBeUndefined();
+    expect(stringInstrumentOf({ ...uke, kind: 'drums' })).toBeUndefined();
+    expect(stringInstrumentOf({ ...uke, kind: 'pitched' })).toBeUndefined();
+  });
+
+  it('keeps a mandola and an octave mandolin a mandolin', () => {
+    const unison = [0, 0, 0, 0];
+    expect(stringInstrumentOf({ ...base, tuning: [48, 55, 62, 69], courses: unison })).toBe(
+      'mandolin',
+    );
+    expect(
+      stringInstrumentOf({ ...base, program: 24, tuning: [43, 50, 57, 64], courses: unison }),
+    ).toBe('mandolin');
+  });
+
   it('is undefined for a plain guitar and for other kinds', () => {
     expect(stringInstrumentOf(base)).toBeUndefined();
     expect(stringInstrumentOf({ ...base, kind: 'pitched', program: 105 })).toBeUndefined();
