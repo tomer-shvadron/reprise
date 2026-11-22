@@ -244,6 +244,7 @@ function drawBendGroup(
       numberTop: y - labelHalfHeight(size),
       releaseTop,
       tied: label.note.tie,
+      limit: contentEnd(context),
     };
     drawBend(sink, bend, frame, space, label.note.id, drawn);
   }

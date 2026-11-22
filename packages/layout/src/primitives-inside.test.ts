@@ -1,8 +1,8 @@
 import { note, score } from '@reprise/model/testing';
 import { assert, constant, constantFrom, integer, oneof, property, tuple } from 'fast-check';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, inject, it } from 'vitest';
 
-import type { Bend, Notation, Score } from '@reprise/model';
+import { parseNative, type Bend, type Notation, type Score } from '@reprise/model';
 
 import {
   DEFAULT_MARGINS,
@@ -15,6 +15,15 @@ import { expectValid } from './test/check-result';
 import { randomScore } from './test/random-score';
 
 const EPSILON = 0.02;
+
+// The package compiles against ES2022 alone, which declares no TextEncoder.
+declare const TextEncoder: new () => { encode(input: string): Uint8Array };
+
+declare module 'vitest' {
+  export interface ProvidedContext {
+    scoreFixtures: { path: string; native: string }[];
+  }
+}
 
 /**
  * Primitives, as `kind node`, that reach past the right edge of the system drawing them. Only the
@@ -186,8 +195,7 @@ describe('primitives stay inside their system', () => {
   it('holds for random scores in paged mode at narrow and wide lines', () => {
     // Paged only: continuous mode never squeezes (`finish` squeezes only paged lines), so it
     // could not reach the squeezed cases this guards. At 320 px tab and standard are held to it,
-    // `both` is not: its
-    // rigid extent scales the tab's fixed glyphs along with the voice shifts.
+    // `both` is not: its rigid extent scales the tab's fixed glyphs along with the voice shifts.
     assert(
       property(
         integer({ min: 0, max: 400 }),
@@ -206,4 +214,20 @@ describe('primitives stay inside their system', () => {
       { numRuns: 240 },
     );
   }, 60_000);
+
+  it('keeps every fixture inside its system at 320 px in tab and standard', () => {
+    // The random scores draw no whammy bar and few bends, so the corpus holds the labels the
+    // sweep cannot reach (a whammy's `-½`, a bend's `1½`).
+    const found: string[] = [];
+    const fixtures = inject('scoreFixtures');
+    expect(fixtures.length).toBeGreaterThan(0);
+    for (const { path, native } of fixtures) {
+      const built = parseNative(new TextEncoder().encode(native)).score;
+      for (const notation of ['tab', 'standard'] as const) {
+        const result = layout(built, options(built, 320, notation));
+        for (const entry of outside(result)) found.push(`${path} ${notation} ${entry}`);
+      }
+    }
+    expect(found).toEqual([]);
+  }, 120_000);
 });
