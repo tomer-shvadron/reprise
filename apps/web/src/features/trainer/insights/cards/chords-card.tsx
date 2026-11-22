@@ -48,7 +48,10 @@ export function ChordsCard({ chords }: { chords: ChordsInsight }) {
           );
         })}
       </ul>
-      <CommandTooltip command="trainer.fretboardArpeggio" label="Show on fretboard">
+      <CommandTooltip
+        command="trainer.fretboardArpeggio"
+        label={on ? 'Hide chord tones from fretboard' : 'Show chord tones on fretboard'}
+      >
         <Button
           variant="outline"
           size="xs"

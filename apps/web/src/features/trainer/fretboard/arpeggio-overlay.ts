@@ -15,6 +15,8 @@ export type ShownChord =
   | { kind: 'none-here' }
   /** Follow is on and the song names or implies no chords. */
   | { kind: 'no-chords' }
+  /** Follow is on and the analysis failed. */
+  | { kind: 'unavailable' }
   /** Follow is off and nothing has been picked. */
   | { kind: 'pick' };
 
@@ -62,7 +64,8 @@ export function arpeggioOverlayFor(services: ArpeggioOverlayServices): ArpeggioO
       held: undefined,
       shown: { kind: 'finding' },
       turnOn: () => {
-        const { follow, held } = get();
+        const { on, follow, held } = get();
+        if (on) return;
         set({ on: true, shown: follow ? { kind: 'finding' } : heldShown(held) });
       },
       turnOff: () => {

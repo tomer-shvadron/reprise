@@ -298,7 +298,9 @@ export function Fretboard() {
       const chords = insights.getState().insights?.chords;
       if (!chords) {
         lastKnown = false;
-        arpeggio.getState().setShown({ kind: 'finding' });
+        arpeggio
+          .getState()
+          .setShown({ kind: insights.getState().status === 'error' ? 'unavailable' : 'finding' });
         return;
       }
       if (chords.source === 'none') {
@@ -373,7 +375,7 @@ export function Fretboard() {
         }
       }),
       insights.subscribe((state, previous) => {
-        if (state.insights !== previous.insights) update();
+        if (state.insights !== previous.insights || state.status !== previous.status) update();
       }),
     ];
     update();

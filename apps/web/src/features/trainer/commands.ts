@@ -225,7 +225,9 @@ export function trainerCommands(
       enabled: () => services.document.getState().score !== undefined,
       run: () => {
         const arpeggio = arpeggioOverlayFor(services).getState();
-        if (arpeggio.on) {
+        // Hide only what is in view: with the dock closed the overlay may be on out of sight, and
+        // the command then brings the dock back instead of switching it off unseen.
+        if (arpeggio.on && ui.getState().bottomPanel.open) {
           arpeggio.turnOff();
           return;
         }

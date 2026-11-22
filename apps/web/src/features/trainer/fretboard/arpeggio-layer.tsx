@@ -32,6 +32,8 @@ export function chipText(shown: ShownChord): string {
       return 'Arpeggio: finding chords…';
     case 'none-here':
       return 'Arpeggio: no chord here';
+    case 'unavailable':
+      return 'Arpeggio: chords unavailable';
     case 'no-chords':
       return 'Arpeggio: no chords in this song';
     case 'pick':
@@ -115,6 +117,9 @@ function placedDots(
   return dots;
 }
 
+/** A long gap: at the board's real size (about two thirds of its viewBox) a short one reads as solid. */
+const OUTSIDE_DASH = '3 4';
+
 const TONE = 'var(--color-arpeggio, #14b8a6)';
 
 /**
@@ -176,7 +181,7 @@ export const ArpeggioLayer = memo(function ArpeggioLayer({
               fillOpacity={dot.root ? 0.45 : 0.22}
               stroke="currentColor"
               strokeWidth={dot.root ? 3 : 2}
-              strokeDasharray={dot.outsideScale ? '3 2' : undefined}
+              strokeDasharray={dot.outsideScale ? OUTSIDE_DASH : undefined}
               data-arpeggio-root={dot.root ? '' : undefined}
               data-outside-scale={dot.outsideScale ? '' : undefined}
             />
