@@ -22,7 +22,6 @@ const STACK_GAP = 0.25;
 const STACK_MARGIN = 0.4;
 const STROKE_MARGIN = 0.5;
 const GOLPE_MARGIN = 0.5;
-const WAH_MARGIN = 0.5;
 /** How far a golpe glyph hangs under the top of the lane below the staff, in staff spaces. */
 export const GOLPE_HANG = 0.25;
 
@@ -402,7 +401,7 @@ export function analyseEffects(bar: Bar, space: number, options: EffectOptions):
     if (wah) {
       const name = wah.beat.effects.wah === 'open' ? 'guitarOpenPedal' : 'guitarClosePedal';
       items.push({ lane: 'wah', tick, beat: wah.beat, glyphs: [name] });
-      raise('wah', glyphHeight(name) + WAH_MARGIN);
+      raise('wah', glyphHeight(name) + STROKE_MARGIN);
       centred(tick, glyphSpan(name));
     }
     const tapped = played.find(({ beat }) => tap(beat));

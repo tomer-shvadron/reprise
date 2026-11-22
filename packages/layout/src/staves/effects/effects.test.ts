@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   LayoutCache,
+  STAFF_SPACE,
   layout,
   type LayoutResult,
   type Primitive,
@@ -12,6 +13,7 @@ import {
 import { overlappingMarks, stable, strayPrimitives } from '../../test/check-result';
 import { describePrimitive } from '../../test/describe';
 import { BENDS, content, everyEffectScore, guitar, laid, paged, texts } from '../../test/effects';
+import { analyseEffects, glyphHeight } from './analysis';
 import { bendLabel } from './labels';
 
 const isText = (value: string) => (p: Primitive) => p.kind === 'text' && p.text === value;
@@ -1401,6 +1403,16 @@ describe('wah marks (#355)', () => {
     expect(pedals(result)[0]?.node).toBe(beatOf(built, 0, 0, 0).id);
   });
 
+  it('draws a mark that only a rest carries, with no other voice at that onset', () => {
+    const built = guitar()
+      .bar()
+      .rest('4', { effects: { wah: 'closed' } })
+      .beat('4', [note(3, 5)])
+      .beat('2', [note(3, 5)])
+      .build({ ids: 'sequential' });
+    expect(names(laid(built))).toEqual(['guitarClosePedal']);
+  });
+
   it('keeps a bar without a mark free of the lane', () => {
     const plain = guitar()
       .bar()
@@ -1411,9 +1423,16 @@ describe('wah marks (#355)', () => {
       .bar()
       .beat('4', [note(3, 5)], { effects: { wah: 'open' } })
       .build({ ids: 'sequential' });
-    expect(laid(withMark).systems[0]?.bbox.height).toBeGreaterThan(
-      laid(plain).systems[0]?.bbox.height ?? Infinity,
-    );
+    // The lane is the glyph's height plus 0.5 staff spaces; the tab's floor hides it in a system.
+    const bar = withMark.tracks[0]?.bars[0];
+    if (!bar) throw new Error('no bar');
+    const { lanes } = analyseEffects(bar, STAFF_SPACE, { articulations: false });
+    expect(lanes.wah).toBeCloseTo((glyphHeight('guitarOpenPedal') + 0.5) * STAFF_SPACE, 5);
+    const plainBar = plain.tracks[0]?.bars[0];
+    if (!plainBar) throw new Error('no bar');
+    expect(
+      analyseEffects(plainBar, STAFF_SPACE, { articulations: false }).lanes.wah,
+    ).toBeUndefined();
   });
 
   it('draws once, on the tab, in both mode', () => {
@@ -1444,7 +1463,7 @@ describe('wah marks (#355)', () => {
     expect(y(glyphOf('guitarClosePedal'))).toBeGreaterThan(y(tap));
   });
 
-  it('repeats a mark at a line start in its own lane: each line draws its marks at one y', () => {
+  it('draws a mark in each system that has one', () => {
     const wah = { effects: { wah: 'open' as const } };
     const built = guitar()
       .bar()
