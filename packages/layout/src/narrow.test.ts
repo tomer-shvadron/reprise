@@ -52,7 +52,6 @@ function optionsFor(built: Score, notation: Notation, width: number, zoom: numbe
   };
 }
 
-// Corpus files stay out of the system-edge check: bend labels (#76) may reach past it, inside the page.
 function expectFits(result: LayoutResult, width: number, label: string, systemEdge = false): void {
   expectValid(result);
   expectInsidePages(result, DEFAULT_MARGINS.paged);
@@ -160,7 +159,7 @@ describe('narrow pages', () => {
 
   for (const fixture of fixtures) {
     it(`fit ${fixture.path}`, () => {
-      expectFitsEverywhere(read(fixture.native), false);
+      expectFitsEverywhere(read(fixture.native), true);
     });
   }
 
