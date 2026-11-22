@@ -104,13 +104,24 @@ export function trainerCommands(
         const { songId } = services.document.getState();
         const log = practiceLogFor(services);
         if (songId === undefined || !log) return;
-        const target = resumeTarget(await log.forSong(songId));
-        if (!target) {
-          services.transport.getState().announce('No practice to resume for this song yet.');
-          return;
+        const announce = (text: string) => {
+          services.transport.getState().announce(text);
+        };
+        try {
+          const target = resumeTarget(await log.forSong(songId));
+          // The read is async: another song may be open by now, and saying nothing beats a wrong answer.
+          if (services.document.getState().songId !== songId) return;
+          if (!target) {
+            announce('No practice to resume for this song yet.');
+            return;
+          }
+          // The song is already open, so there is nothing to open first.
+          await resumePractice(services, songId, target, () => Promise.resolve());
+        } catch (failure) {
+          announce(
+            `Could not resume: ${failure instanceof Error ? failure.message : 'unknown error'}`,
+          );
         }
-        // The song is already open, so there is nothing to open first.
-        await resumePractice(services, songId, target, () => Promise.resolve());
       },
     },
     { id: 'trainer.tuner', title: 'Show tuner', run: show('tuner') },

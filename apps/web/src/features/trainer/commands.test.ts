@@ -2,7 +2,7 @@ import { write } from '@reprise/formats';
 import { setBeatEffect } from '@reprise/model';
 import { score } from '@reprise/model/testing';
 import { act } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { insightsFor } from './insights/insights-for';
 import { createAppRegistry } from '@/app/app-registry';
@@ -391,6 +391,21 @@ describe('trainer.resumePractice', () => {
     expect(command?.enabled?.()).toBe(true);
     services.document.getState().close();
     expect(command?.enabled?.()).toBe(false);
+    // A document opened without importing has no song id, so no log to read.
+    const { bytes } = await write(fourBars(), 'reprise');
+    await act(async () => {
+      await services.document.getState().openBytes('loose.reprise', bytes);
+    });
+    expect(command?.enabled?.()).toBe(false);
+  });
+
+  it('announces a failed read instead of staying silent', async () => {
+    const { services, registry, table } = await resumeSetup();
+    vi.spyOn(table, 'where').mockImplementation(() => {
+      throw new Error('disk gone');
+    });
+    await registry.get('trainer.resumePractice')?.run();
+    expect(services.transport.getState().announcement?.text).toBe('Could not resume: disk gone');
   });
 
   it('restores the latest loop and tempo of the open song', async () => {
