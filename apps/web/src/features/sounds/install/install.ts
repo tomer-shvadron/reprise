@@ -274,7 +274,15 @@ const fileStem = (path: string) => path.slice(path.lastIndexOf('/') + 1).replace
  * left out because `synth_pop` is a genre far more often than a bass technique.
  */
 const FILE_TAIL =
-  /^(?:pm|palm|palm mute[d]?|dead|dead notes?|x notes?|harm|harms|harmonics?|nh|natural harmonics?|ah|pinch|pinch harmonics?|artificial harmonics?|legato|hammer[- ]?ons?|ho|pull(?: ?offs?)?|po|stacc|staccato|tap|tapping|slap|slapping)$/i;
+  /^(?:pm|palm|palm mute[d]?|dead|dead notes?|x notes?|harm|harms|harmonics?|nh|natural harmonics?|ah|pinch|pinch harmonics?|artificial harmonics?|legato|hammer[- ]?ons?|ho|po|pull ?offs?|(?:ho|hammer[- ]?ons?) (?:po|pull ?offs?)|hammer pull|stacc|staccato|tap|tapping|slap|slapping)$/i;
+
+/**
+ * Who wins when several files claim one set: an explicit `legato` file, then a hammer-on file, then
+ * a pull-off one (`ho po` and `hammer pull` count as hammer-ons). Only `legato` has rivals, since
+ * hammer-ons and pull-offs share it; every other tail ranks the same.
+ */
+const claimRank = (tail: string) =>
+  /^(?:ho|hammer)/i.test(tail) ? 1 : /^(?:po|pull)/i.test(tail) ? 2 : 0;
 
 /**
  * A stem split into an instrument's stem and the set its tail names (`guitar_pm` is `guitar` plus
@@ -285,14 +293,16 @@ const FILE_TAIL =
 function splitSetSuffix(
   stem: string,
   isBase: (base: string) => boolean,
-): { base: string; set: string } | undefined {
+): { base: string; set: string; rank: number } | undefined {
   const separators = [...stem.matchAll(/[ _-]+/g)];
   for (const separator of separators.slice(-2).reverse()) {
     const base = stem.slice(0, separator.index);
     const tail = stem.slice(separator.index + separator[0].length).replaceAll(/[ _-]+/g, ' ');
     if (!FILE_TAIL.test(tail)) continue;
     const set = articulationSetOf(tail);
-    if (set !== undefined && set !== 'default' && isBase(base)) return { base, set };
+    if (set !== undefined && set !== 'default' && isBase(base)) {
+      return { base, set, rank: claimRank(tail) };
+    }
   }
   return undefined;
 }
@@ -328,6 +338,7 @@ function customInstruments(checks: readonly SfzFileCheck[]): {
   );
   const setFiles = new Map<string, Record<string, string>>();
   const grouped = new Set<string>();
+  const ranks = new Map<string, number>();
   // A base is a strict prefix of its file's stem, so shorter stems are settled first and a grouped
   // file is known to be grouped before anything could name it as a base. Path order breaks ties,
   // so which of two files claims a set does not depend on the archive's order.
@@ -342,8 +353,15 @@ function customInstruments(checks: readonly SfzFileCheck[]): {
     const basePath = split && bases.get(baseKey(check.path, split.base));
     if (!split || basePath === undefined) continue;
     const taken = setFiles.get(basePath) ?? {};
-    if (Object.hasOwn(taken, split.set)) continue;
+    const holder = taken[split.set];
+    if (holder !== undefined) {
+      // The better claim takes the set and the loser goes back to being an instrument, so the
+      // outcome does not depend on the archive's order or on stem length.
+      if (split.rank >= (ranks.get(holder) ?? 0)) continue;
+      grouped.delete(holder);
+    }
     setFiles.set(basePath, { ...taken, [split.set]: check.path });
+    ranks.set(check.path, split.rank);
     grouped.add(check.path);
   }
   for (const check of passing) {
