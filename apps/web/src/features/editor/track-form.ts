@@ -33,6 +33,13 @@ const INSTRUMENT_DEFAULTS: Record<
   twelveString: { name: '12-string Guitar', shortName: '12-str.', program: 25 },
   banjo: { name: 'Banjo', shortName: 'Bjo.', program: 105 },
   mandolin: { name: 'Mandolin', shortName: 'Mand.', program: 25 },
+  violin: { name: 'Violin', shortName: 'Vln.', program: 40 },
+  viola: { name: 'Viola', shortName: 'Vla.', program: 41 },
+  cello: { name: 'Cello', shortName: 'Vc.', program: 42 },
+  doubleBass: { name: 'Double Bass', shortName: 'Cb.', program: 43 },
+  shamisen: { name: 'Shamisen', shortName: 'Sham.', program: 106 },
+  mandola: { name: 'Mandola', shortName: 'Mdla.', program: 25 },
+  octaveMandolin: { name: 'Octave Mandolin', shortName: 'O.Mand.', program: 25 },
 };
 
 /**

@@ -388,16 +388,19 @@ capo + fret` on fretted tracks, so frets count from the capo as Guitar Pro write
   on the string and is left for the editor to re-derive, while an artificial harmonic's `value`
   is an offset and travels with the note.
 - **`STANDARD_TUNINGS`** names the presets (guitar in 6, 7 and 8 strings, bass in 4, 5 and 6,
-  ukulele, 12-string, 5-string and tenor banjo, mandolin), each in `Track.tuning` order. The
+  ukulele (also low G and baritone), 12-string, 5-string and tenor banjo, mandolin, mandola,
+  octave mandolin, violin, viola, cello, double bass, shamisen), each in `Track.tuning` order. The
   ukulele and the 5-string banjos are re-entrant, so their arrays are in string order, not pitch
-  order. A preset may carry `courses` and `drone`. **`findTuningName(tuning, { courses, drone })`**
-  matches exactly, string count, courses and drone included, so a 12-string's E standard is
-  "12-string standard".
+  order. A preset may carry `courses` and `drone`. **`findTuningName(tuning, { courses, drone,
+program })`** matches exactly, string count, courses and drone included, so a 12-string's E
+  standard is "12-string standard". Equal strings on different instruments (viola and tenor banjo
+  CGDA, double bass and bass EADG) are told apart by the optional `program`; without it the first
+  row wins. The violin, viola, cello, double bass and shamisen rows match only on their own program (40, 41, 42, 43, 106), so a mandolin read from a gp file stays Custom. `stringInstrumentOf` also returns `'ukulele'` (four single strings on program 24).
 - **Courses and the drone (#348).** `Track.courses` is one offset per string in `tuning` order
   (`null` single, 0 unison, 12 octave); `Track.drone` is `{ string, fret }`, a short string that
   starts at a neck fret. Frets on the drone string are stored from its own nut, so `midiNote` is
   unchanged. `writtenFret`, `storedFret`, `maxStoredFret` and `courseOffset` convert and bound
-  them, and `stringInstrumentOf(track)` derives `'twelveString' | 'mandolin' | 'banjo'`.
+  them, and `stringInstrumentOf(track)` derives `'twelveString' | 'mandolin' | 'banjo' | 'ukulele'`.
   `validateScore` reports `courses-length` and `drone-string`; both fields are additive with no
   version bump, and an older reader that strips them plays the same pitches.
 - **`spell(midi, key, accidental?)`** returns `{ letter, octave, alter, accidental? }`.
@@ -576,8 +579,8 @@ const s = score()
   `section`, `jump`, `target`, `anacrusis`, `masterBar`) apply to the open bar's column; before any
   bar, `tempo`, `timeSignature` and `key` set the defaults. A new master bar copies the previous
   one's signatures. `bar()` before any track builds master-bar-only scores.
-- `track('guitar' | 'bass' | 'drums' | 'piano', spec)` presets `createTrack`; `bass` is four
-  strings E1 A1 D2 G2 on GM 33 with a bass clef.
+- `track('guitar' | 'bass' | 'drums' | 'piano' | 'banjo' | 'mandolin' | 'twelveString' | 'violin' | 'shamisen' | 'ukulele', spec)` presets `createTrack`; `bass` is four
+  strings E1 A1 D2 G2 on GM 33 with a bass clef. `violin` (GM 40) and `ukulele` (GM 24, re-entrant) sit at pitch, `octaveShift` 0; `shamisen` (GM 106, C3 F3 C4) is written an octave up like a guitar.
 - `build()` pads short tracks, adds a guitar when none was declared, gives the first bar the
   default tempo when it has no mark, and throws `ScoreBuildError` (with `violations`) when the
   schema or `validateScore` fails; `build({ validate: false })` skips the invariants. A builder

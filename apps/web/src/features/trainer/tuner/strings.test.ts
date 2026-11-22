@@ -23,6 +23,20 @@ describe('stringTargets tuning names', () => {
   });
 });
 
+describe('stringTargets tuning names by program', () => {
+  it('names a viola on 41, a tenor banjo on 105 and leaves a GDAE on 25 or 40 as its table says', () => {
+    const cgda = { ...fretted('Tenor banjo CGDA') };
+    expect(stringTargets({ ...cgda, program: 41 }, 440)?.tuningName).toBe('Viola CGDA');
+    expect(stringTargets({ ...cgda, program: 105 }, 440)?.tuningName).toBe('Tenor banjo CGDA');
+    const gdae = fretted('Mandolin GDAE');
+    expect(stringTargets({ ...gdae, program: 25 }, 440)?.tuningName).toBeUndefined();
+    expect(stringTargets({ ...gdae, program: 40 }, 440)?.tuningName).toBe('Violin GDAE');
+    const eadg = { ...fretted('Bass standard') };
+    expect(stringTargets({ ...eadg, program: 43 }, 440)?.tuningName).toBe('Double bass EADG');
+    expect(stringTargets({ ...eadg, program: 33 }, 440)?.tuningName).toBe('Bass standard');
+  });
+});
+
 describe('stringTargets', () => {
   it('lists standard guitar from the lowest string, with the track string numbers', () => {
     const set = stringTargets(fretted('E standard'), 440);
