@@ -2,6 +2,11 @@ import type { Beat, Golpe, MixerChange, Note, Track } from '@reprise/model';
 
 import type { WahState } from './wah-lane';
 
+/** How long the last strike of a previewed note sounds at least, whatever its written length. */
+export const PREVIEW_MIN_SECONDS = 0.6;
+/** The longest a previewed let-ring note rings. */
+export const PREVIEW_LET_RING_SECONDS = 2;
+
 /** One note the scheduler wants sounded, with everything a sampler needs to voice it. */
 export interface NoteEvent {
   track: Track;
@@ -37,6 +42,12 @@ export interface NoteEvent {
    * already in `duration`.
    */
   continuations: { note: Note; beat: Beat; when: number; durationTicks: number }[];
+  /**
+   * An editor preview (`AudioEngine.previewBeat`), not playback: its voices go through the
+   * track's preview input, choke and are choked by previews only, and leave the sink's
+   * round-robin counters and legato chains alone.
+   */
+  preview?: boolean;
 }
 
 /**
@@ -76,6 +87,8 @@ export interface HitEvent {
   golpe: Golpe;
   /** `AudioContext` time of the beat; never earlier than `currentTime` when handed out. */
   when: number;
+  /** An editor preview: the hit goes past mute and solo and is never choked by the song. */
+  preview?: boolean;
   playbackTick: number;
   sequenceIndex: number;
   masterBarIndex: number;
@@ -98,6 +111,8 @@ export interface WahEvent {
   passIndex: number;
   /** The state at a run's start, set at once with no glide or fade. */
   restore: boolean;
+  /** An editor preview's pedal: the track's second one, so the song's is never moved. */
+  preview?: boolean;
 }
 
 /**

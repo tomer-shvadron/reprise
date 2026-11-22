@@ -7,6 +7,7 @@ import { MEMORY_BUDGET_RANGE, createAudioService } from './audio-service';
 
 const engine = vi.hoisted(() => ({
   previewNote: vi.fn<(...args: unknown[]) => void>(),
+  previewBeat: vi.fn<(...args: unknown[]) => void>(),
   unlock: vi.fn(),
   setGmTierBypass: vi.fn<(on: boolean) => void>(),
   setMemoryBudget: vi.fn<(bytes: number) => void>(),
@@ -54,6 +55,7 @@ const song = score()
   .beat('4', [note(1, 3)])
   .build();
 const trackId = song.tracks[0]?.id ?? '';
+const beatId = song.tracks[0]?.bars[0]?.voices[0].beats[0]?.id ?? '';
 
 async function open(
   defer: (run: () => void) => void = (run) => {
@@ -74,6 +76,7 @@ async function open(
 
 beforeEach(() => {
   engine.previewNote.mockClear();
+  engine.previewBeat.mockClear();
   engine.unlock.mockClear();
   engine.setGmTierBypass.mockClear();
 });
@@ -233,5 +236,75 @@ describe('AudioService.setStageBypass', () => {
     const { audio } = await open();
     audio.setStageBypass(trackId, 'drive', true);
     expect(engine.setStageBypass).toHaveBeenCalledWith(trackId, 'drive', true);
+  });
+});
+
+describe('AudioService.previewBeat', () => {
+  it('hands the engine the track and the beat, unlocking first', async () => {
+    const { audio } = await open();
+    audio.previewBeat(trackId, beatId);
+    expect(engine.previewBeat).toHaveBeenCalledWith(trackId, beatId);
+    expect(engine.unlock).toHaveBeenCalled();
+  });
+
+  it('refuses a track or a beat the open song lacks, before the engine', async () => {
+    const { audio } = await open();
+    expect(() => {
+      audio.previewBeat('nope', beatId);
+    }).toThrow(RangeError);
+    expect(() => {
+      audio.previewBeat(trackId, 'nope');
+    }).toThrow(RangeError);
+    expect(engine.previewBeat).not.toHaveBeenCalled();
+    expect(engine.unlock).not.toHaveBeenCalled();
+  });
+
+  it('waits for the rebuild an edit queued, so it sounds the edited beat, and a newer preview replaces it', async () => {
+    const queue: (() => void)[] = [];
+    const { audio } = await open((run) => {
+      queue.push(run);
+    });
+    const edited = structuredClone(song);
+    const beat = edited.tracks[0]?.bars[0]?.voices[0].beats[0];
+    if (beat) beat.effects = { ...beat.effects, golpe: 'thumb' };
+    audio.setDocument({ id: 'doc', score: edited });
+    audio.previewBeat(trackId, beatId);
+    audio.previewBeat(trackId, beatId);
+    expect(engine.previewBeat).not.toHaveBeenCalled();
+    for (const run of queue.splice(0)) run();
+    await audio.settled();
+    await vi.waitFor(() => {
+      expect(engine.previewBeat).toHaveBeenCalledTimes(1);
+    });
+    expect(engine.unlock).toHaveBeenCalled();
+  });
+
+  it('drops a preview that waited longer than the lateness bound', async () => {
+    const queue: (() => void)[] = [];
+    const { audio } = await open((run) => {
+      queue.push(run);
+    });
+    const edited = structuredClone(song);
+    const beat = edited.tracks[0]?.bars[0]?.voices[0].beats[0];
+    if (beat) beat.effects = { ...beat.effects, golpe: 'thumb' };
+    audio.setDocument({ id: 'doc', score: edited });
+    const clock = vi.spyOn(performance, 'now');
+    clock.mockReturnValue(1000);
+    audio.previewBeat(trackId, beatId);
+    clock.mockReturnValue(1500);
+    for (const run of queue.splice(0)) run();
+    await audio.settled();
+    clock.mockRestore();
+    expect(engine.previewBeat).not.toHaveBeenCalled();
+  });
+
+  it('does nothing with no document', () => {
+    const audio = createAudioService({
+      playback: createPlaybackStore(),
+      loadSoundfont: () => Promise.resolve(new Uint8Array(1)),
+      createContext: () => new AudioContext(),
+    });
+    audio.previewBeat(trackId, beatId);
+    expect(engine.previewBeat).not.toHaveBeenCalled();
   });
 });

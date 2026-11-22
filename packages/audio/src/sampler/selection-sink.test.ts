@@ -46,7 +46,7 @@ interface Strike {
 /** What the sink asks of the sampler and the take the map gives each request, in order. */
 async function strikes(
   song: ReturnType<typeof beatsOf>,
-  options: { passes?: number; from?: number } = {},
+  options: { passes?: number; from?: number; previewAt?: number } = {},
 ): Promise<Strike[]> {
   const regions = await regionsOf();
   const sampler = new Sampler(offline(1));
@@ -67,6 +67,10 @@ async function strikes(
     for (const [index, beat] of beats.entries()) {
       if (index < (options.from ?? 0)) continue;
       if (beat.notes.length === 0) continue;
+      // An editor preview of the beat, struck just before the song's own.
+      if (index === options.previewAt) {
+        sink.noteOn({ ...eventOf(track, beats, index, pass), preview: true });
+      }
       sink.noteOn(eventOf(track, beats, index, pass));
     }
     sink.allNotesOff(0);
@@ -169,6 +173,20 @@ describe('the sink selects takes from the synthetic guitar pack', () => {
     expect(made.map((strike) => strike.sample)).toEqual(legato.tones.map(take));
     // The legato region is the transition itself, so it starts at frame 0, not 20 ms in.
     expect(made[1]?.request.offset).toBeUndefined();
+  });
+
+  it('keeps the legato of a hammer-on when a preview of its beat comes in between', async () => {
+    const song = score()
+      .track('guitar', { tuning: tuning(legato.key) })
+      .bar()
+      .beat('8', [note(1, 0)])
+      .beat('8', [note(1, 0, { hammerPull: true })])
+      .build();
+    const made = (await strikes(song, { previewAt: 1 })).filter(
+      (strike) => strike.request.preview !== true,
+    );
+    expect(made.map((strike) => strike.sample)).toEqual(legato.tones.map(take));
+    expect(made[1]?.request.select?.legato).toBe(true);
   });
 
   it('strikes a tapped note after a rest with the first-trigger region, not the legato one', async () => {
