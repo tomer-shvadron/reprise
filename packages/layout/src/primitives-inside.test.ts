@@ -11,7 +11,7 @@ import {
   type LayoutOptions,
   type LayoutResult,
 } from './index';
-import { expectValid } from './test/check-result';
+import { expectValid, overlappingMarks } from './test/check-result';
 import { randomScore } from './test/random-score';
 
 const EPSILON = 0.02;
@@ -43,6 +43,15 @@ function outside(result: LayoutResult): string[] {
     }
   }
   return found;
+}
+
+/** Pairs of `full` bend labels that overlap: random scores bend to nothing else. */
+function fullLabelOverlaps(result: LayoutResult): string[] {
+  return overlappingMarks(result)
+    .filter(
+      ([a, b]) => a.kind === 'text' && b.kind === 'text' && a.text === 'full' && b.text === 'full',
+    )
+    .map(([a, b]) => `${a.node ?? '-'} ${b.node ?? '-'}`);
 }
 
 /** Systems, as `index`, that end right of the line, the page width less the right margin. */
@@ -188,7 +197,16 @@ describe('primitives stay inside their system', () => {
       const built = randomScore(seed, { diagrams: true });
       const result = layout(built, options(built, 320, 'standard'));
       expect(outside(result), `seed ${String(seed)}`).toEqual([]);
+      expect(fullLabelOverlaps(result), `seed ${String(seed)}`).toEqual([]);
       expectValid(result);
+    }
+  }, 60_000);
+
+  it('prints no two overlapping bend labels in any tab seed at 320 px', () => {
+    for (let seed = 0; seed <= 400; seed++) {
+      const built = randomScore(seed, { diagrams: true });
+      const result = layout(built, options(built, 320, 'tab'));
+      expect(fullLabelOverlaps(result), `seed ${String(seed)}`).toEqual([]);
     }
   }, 60_000);
 
