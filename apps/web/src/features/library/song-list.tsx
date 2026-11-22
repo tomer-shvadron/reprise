@@ -213,7 +213,7 @@ export function SongList({ entries, now, onOpen, onDelete, onPracticeLog }: Song
                 className={cn(
                   COLUMNS,
                   'absolute inset-x-0 cursor-default items-center text-sm',
-                  index === current && 'bg-accent text-accent-foreground muted-on-accent',
+                  index === current && 'bg-accent text-accent-foreground',
                 )}
                 style={{ top: index * ROW_HEIGHT, height: ROW_HEIGHT }}
                 onClick={() => {

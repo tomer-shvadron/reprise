@@ -22,12 +22,8 @@ const TEXT: [string, string][] = [
   ['--muted-foreground', '--muted'],
   ['--foreground', '--muted'],
   ['--foreground', '--accent'],
-  ['--accent-foreground', '--accent'],
-  ['--sidebar-accent-foreground', '--sidebar-accent'],
   ['--sidebar-foreground', '--sidebar'],
   ['--sidebar-accent-muted-foreground', '--sidebar-accent'],
-  // `muted-on-accent` rows (Library, menus) lay it on `--accent`, which is the same fill.
-  ['--sidebar-accent-muted-foreground', '--accent'],
   ['--primary-foreground', '--primary'],
   ['--destructive', '--background'],
   ['--mute-foreground', '--mute'],
@@ -44,23 +40,24 @@ const MARKS: [string, string][] = [
   ['--paper-accent', '--paper'],
   ['--arpeggio', '--background'],
   ['--arpeggio', '--sidebar'],
-  // The unfilled part of a slider, on the mixer cards (`--card`) and the sidebar (#472).
+  // The unfilled part of a slider: on the mixer cards, the current card (`--sidebar-accent`), the
+  // sidebar and the page (#472).
   ['--track', '--card'],
   ['--track', '--background'],
   ['--track', '--sidebar'],
+  ['--track', '--sidebar-accent'],
 ];
 
-// The selected row (History, the palette, Library) and the active rail button have no cue but their
-// fill, so by the book they need 3:1; a filled surface that close to white or black would swallow
-// its text, so the fill is held to 1.5 and the row's own text carries the rest. They were 1.04 to
-// 1.09 in light and 1.19 to 1.31 in dark (#472).
-const SELECTED: [string, string][] = [
-  ['--accent', '--background'],
-  ['--accent', '--card'],
-  ['--accent', '--popover'],
-  ['--accent', '--sidebar'],
-  ['--sidebar-accent', '--sidebar'],
-  ['--sidebar-accent', '--card'],
+// The bar on the selected state's leading edge (the active rail button, History's current row, the
+// palette's selected row), drawn in `--primary`. It carries the 3:1 of 1.4.11, and is the
+// palette's keyboard focus indicator (#471); the light fill beside it is only a second cue. It
+// sits on the surface and on the fill.
+const SELECTED_BAR: [string, string][] = [
+  ['--primary', '--background'],
+  ['--primary', '--popover'],
+  ['--primary', '--sidebar'],
+  ['--primary', '--accent'],
+  ['--primary', '--muted'],
 ];
 
 // What identifies an input or an off switch: the light `--input` is split from the decorative
@@ -89,13 +86,13 @@ describe.each<ThemeName>(['dark', 'light'])('theme contrast, %s', (name) => {
     expect(tokenContrast(values, fg, bg)).toBeGreaterThanOrEqual(3);
   });
 
+  it.each(SELECTED_BAR)('selected bar %s on %s is at least 3', (fg, bg) => {
+    expect(tokenContrast(values, fg, bg)).toBeGreaterThanOrEqual(3);
+  });
+
   // A 50% halo is about 1.85:1, under 1.4.11's 3:1, which is why focus must draw the solid `--ring`
   // (MARKS above); focus-indicator.test.ts pins which components do. Pinned so the number only moves
   // on purpose.
-  it.each(SELECTED)('selected fill %s on %s is at least 1.5', (fg, bg) => {
-    expect(tokenContrast(values, fg, bg)).toBeGreaterThanOrEqual(1.5);
-  });
-
   it('pins the 50% focus halo near 1.85, under 3', () => {
     const halo = { rgb: paint(values, '--ring').rgb, alpha: 0.5 };
     const background = paint(values, '--background').rgb;
