@@ -10,7 +10,7 @@ vi.mock('./fonts', () => ({
 stubFollowEnvironment();
 
 describe('following the long score', () => {
-  // Track 1 sits in the first part of each split A4 system, tracks 6 and 8 in the second.
+  // Track 1 sits in the first part of each split A4 system, tracks 7 and 8 in the second.
   const mode = 'continuous';
   for (const zoom of [1, 2]) {
     for (const index of [0, 7]) {

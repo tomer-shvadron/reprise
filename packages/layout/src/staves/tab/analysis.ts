@@ -1,5 +1,4 @@
 import {
-  barTicks,
   beatTicks,
   type Bar,
   type Beat,
@@ -477,7 +476,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   const signature = input.masterBar.timeSignature;
   const rhythm = rhythmOnTab(input);
   const strings = input.track.tuning.length;
-  const key = `${String(space)} ${options.tiedNotes} ${String(signature.numerator)}/${String(signature.denominator)} ${rhythm ? 'rhythm' : 'numbers'} ${String(strings)} ${String(input.chordDiagrams)} ${String(input.track.drone?.string)}:${String(input.track.drone?.fret)}`;
+  const key = `${String(space)} ${options.tiedNotes} ${String(signature.numerator)}/${String(signature.denominator)} ${String(input.masterBar.anacrusis)} ${rhythm ? 'rhythm' : 'numbers'} ${String(strings)} ${String(input.chordDiagrams)} ${String(input.track.drone?.string)}:${String(input.track.drone?.fret)}`;
   const cached = analyses.get(bar)?.get(key);
   if (cached) return cached;
 
@@ -485,7 +484,7 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   const beats: TabBeat[] = [];
   const reserved: ReadonlySet<string> = rhythm ? reservedDynamics(bar) : new Set();
   let maxFingers = 0;
-  const hidden = hiddenVoices(bar, barTicks(input.masterBar));
+  const hidden = hiddenVoices(bar, input.masterBar);
   for (const [index, voice] of bar.voices.entries()) {
     if (!voicePresent(voice)) continue;
     const direction = voiceDirection(bar, index);
@@ -543,9 +542,9 @@ export function analyseBar(input: StaffBar, options: TabOptions): TabBar {
   );
   const lowerExtra = Math.max(
     0,
-    ...voices.filter((v) => v.direction === 'down').map((v) => v.extraStem),
+    ...voices.filter((v) => v.direction === 'down' && !v.hidden).map((v) => v.extraStem),
   );
-  const uppers = rhythm ? voices.filter((v) => v.direction === 'up') : [];
+  const uppers = rhythm ? voices.filter((v) => v.direction === 'up' && !v.hidden) : [];
   const rows: TabRows = {
     upper: uppers.length > 0 ? stemZone(Math.max(...uppers.map((v) => v.extraStem)), space) : 0,
     fingering: maxFingers * TAB.fingerRow * space,

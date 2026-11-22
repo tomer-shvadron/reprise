@@ -285,7 +285,7 @@ describe('LayoutCache', () => {
       score,
       setBeatEffect({ beatId: beatOf(score, 0, 5, 0).id }, { chord: { name: wide } }),
     );
-    const options = { ...paged, pageHeight: 1300 };
+    const options = { ...paged, pageHeight: 1050 };
     const { cache, first } = warm(score, options);
     const result = layout(edited, { ...options, dirtyBars: change.touchedBars }, cache);
     expect(stable(result)).toBe(stable(layout(edited, options)));
@@ -393,8 +393,11 @@ describe('LayoutCache', () => {
 
   describe('with systems split across pages', () => {
     const split = largeScore(8, 40, { structure: true });
+    // A page a little shorter than A4: the first part of a split system has the room left that
+    // a lane needs to outgrow (hidden voices take no tab rhythm row, so the systems are shorter).
     const tab: LayoutOptions = {
       ...paged,
+      pageHeight: 1060,
       notation: Object.fromEntries(split.tracks.map(({ id }) => [id, 'tab'])),
     };
     /** The first parts of systems within `BAR_REACH` bars of bar `index`. */
