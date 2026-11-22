@@ -8,7 +8,11 @@ export const LETTER = { size: 1, gap: 0.25 } as const;
 /** Paper kept around a text so the lines under it stop short, in ems of the text. */
 export const KNOCKOUT = { x: 0.12, y: 0.09 } as const;
 
-/** A letter centred on `x` just outside an arc's `apex`, over a paper knockout. */
+/**
+ * A letter centred on `x` just outside an arc's `apex`, over a paper knockout. Where `limit` is
+ * given, the letter slides left until its knockout ends there, for an arc cut short by a bar's
+ * end, but never past `floor`, the arc's left end, so it stays over the arc it labels.
+ */
 export function drawLetter(
   sink: LayoutSink,
   x: number,
@@ -17,6 +21,8 @@ export function drawLetter(
   space: number,
   node: Id,
   letter: string,
+  limit?: number,
+  floor = Number.NEGATIVE_INFINITY,
 ): void {
   const size = LETTER.size * space;
   const { ascent } = textExtent(size);
@@ -25,10 +31,11 @@ export function drawLetter(
   const width = textWidth(letter, size);
   const knockX = KNOCKOUT.x * size;
   const knockY = KNOCKOUT.y * size;
+  const centre = limit === undefined ? x : Math.max(Math.min(x, limit - width / 2 - knockX), floor);
   sink.primitives.push(
     box(
       rect(
-        x - width / 2 - knockX,
+        centre - width / 2 - knockX,
         baseline - ascent - knockY,
         width + 2 * knockX,
         ascent + 2 * knockY,
@@ -36,7 +43,7 @@ export function drawLetter(
       0,
       { fill: true, role: 'paper', node },
     ),
-    text(letter, x, baseline, size, { anchor: 'middle', node }),
+    text(letter, centre, baseline, size, { anchor: 'middle', node }),
   );
 }
 
