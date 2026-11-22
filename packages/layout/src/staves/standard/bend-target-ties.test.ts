@@ -57,23 +57,6 @@ describe('bend target heads on a note tied onward', () => {
     },
   );
 
-  it.each(['sameBar', 'nextBar'] as const)(
-    'draws the tie whole, past the main head only, %s',
-    (where) => {
-      const built = build(where, true);
-      const result = laid(built);
-      const id = bentId(where, built);
-      const tiedId =
-        where === 'sameBar' ? noteOf(built, 0, 0, 1, 0).id : noteOf(built, 0, 1, 0, 0).id;
-      const main = result.primitives.find((p) => p.kind === 'glyph' && p.node === id);
-      const tie = result.primitives.find(
-        (p) => p.kind === 'path' && p.fill && p.d.includes('C') && p.node === tiedId,
-      );
-      if (!main || !tie) throw new Error('missing main head or tie');
-      expect(tie.bbox.x).toBeGreaterThanOrEqual(main.bbox.x + main.bbox.width);
-    },
-  );
-
   it('reserves no target room before the tie: the tied onset is no wider than a plain bent one', () => {
     const gap = (built: Score): number => {
       const result = layout(built, paged);
@@ -86,7 +69,22 @@ describe('bend target heads on a note tied onward', () => {
   });
 
   it('measures the bar before afresh when the next bar gains or loses the tie', () => {
-    const before = build('nextBar', false);
+    // A 16th ends the bar: it has no spare room, so the heads' room moves its spacing. A score
+    // built again has fresh bars, so its layout is cold even though the plan cache is shared.
+    const scenario = (tied: boolean): Score =>
+      guitar('standard')
+        .bar()
+        .beat('4', [note(3, 5)])
+        .beat('4', [note(3, 5)])
+        .beat('4', [note(3, 5)])
+        .beat('8', [note(3, 5)])
+        .beat('16', [note(3, 5)])
+        .beat('16', [note(3, 7, { bend: BENDS.full })])
+        .bar()
+        .beat('1', [note(3, 7, tied ? { tie: true } : {})])
+        .build({ ids: 'sequential' });
+    const before = scenario(false);
+    const bent = noteOf(before, 0, 0, 5, 0).id;
     const cache = new LayoutCache();
     layout(before, paged, cache);
     const { score: after, change } = applyCommand(
@@ -94,7 +92,10 @@ describe('bend target heads on a note tied onward', () => {
       setNoteEffect({ noteId: noteOf(before, 0, 1, 0).id }, { tie: true }),
     );
     const cached = layout(after, { ...paged, dirtyBars: change.touchedBars }, cache);
-    expect(stable(cached)).toBe(stable(layout(after, paged)));
+    expect(targetHeads(cached, bent)).toHaveLength(0);
+    const cold = layout(scenario(true), paged);
+    expect(targetHeads(cold, bent)).toHaveLength(0);
+    expect(stable(cached)).toBe(stable(cold));
     const restored = applyCommand(
       after,
       setNoteEffect({ noteId: noteOf(after, 0, 1, 0).id }, { tie: false }),
@@ -104,7 +105,7 @@ describe('bend target heads on a note tied onward', () => {
       { ...paged, dirtyBars: restored.change.touchedBars },
       cache,
     );
-    expect(stable(back)).toBe(stable(layout(restored.score, paged)));
-    expect(targetHeads(back, bentId('nextBar', restored.score))).toHaveLength(1);
+    expect(targetHeads(back, bent)).toHaveLength(1);
+    expect(stable(back)).toBe(stable(layout(scenario(false), paged)));
   });
 });

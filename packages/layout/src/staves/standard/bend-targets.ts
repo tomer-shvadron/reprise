@@ -148,7 +148,7 @@ export function bendSpan(
  * elsewhere in the bar does not re-measure the bar before.
  */
 export function tiesIntoNext(next: Bar | undefined): string {
-  if (!next) return '';
+  if (!next?.voices.some((voice) => voice.beats[0]?.notes.some((note) => note.tie))) return '';
   return JSON.stringify(
     next.voices.map((voice) =>
       voice.beats[0]?.notes.filter((note) => note.tie).map((note) => [note.string, note.fret]),

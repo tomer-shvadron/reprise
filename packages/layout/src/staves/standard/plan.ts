@@ -278,8 +278,8 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
         options.courtesyAccidentals && previousBar && previousKey
           ? { bar: previousBar, key: previousKey }
           : undefined,
-        lone,
         nextBar,
+        lone,
       );
   const hasNotes = (voice: Bar['voices'][number]): boolean =>
     voice.beats.some((beat) => !beat.rest && beat.notes.length > 0);
@@ -319,7 +319,7 @@ export function planBar(input: StaffBar, options: NotationOptions): BarPlan {
         note,
         key,
         input.clef,
-        tiedOnward(track, bar, nextBar, plan.voice, plan.index, note),
+        Boolean(note.bend) && tiedOnward(track, bar, nextBar, plan.voice, plan.index, note),
       )) {
         const shown = accidentals.get(id);
         const entry: ChordNote = {

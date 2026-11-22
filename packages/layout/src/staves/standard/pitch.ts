@@ -260,7 +260,7 @@ function timedNotes(
             track,
             note,
             key,
-            tiedOnward(track, bar, next, voice, beatIndex, note),
+            Boolean(note.bend) && tiedOnward(track, bar, next, voice, beatIndex, note),
           )) {
             out.push({
               tick,
@@ -417,8 +417,8 @@ export function barAccidentals(
   bar: Bar,
   key: KeySignature,
   previous: { bar: Bar; key: KeySignature } | undefined,
+  next: Bar | undefined,
   targets: boolean,
-  next?: Bar,
 ): Map<string, ShownAccidental> {
   const shown = new Map<string, ShownAccidental>();
   const memory = previous && barMemory(track, previous.bar, bar, previous.key, targets);
