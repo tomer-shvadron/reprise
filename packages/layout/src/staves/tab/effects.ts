@@ -1,4 +1,10 @@
-import { TIE_REACH_BARS, tieOriginOf, type Note, type TiePosition } from '@reprise/model';
+import {
+  TIE_REACH_BARS,
+  tieOriginOf,
+  type Note,
+  type TieLink,
+  type TiePosition,
+} from '@reprise/model';
 
 import {
   BEND_FRAME,
@@ -12,6 +18,8 @@ import {
   diagonalWave,
   SCRAPE,
   WAVES,
+  firstGraceHammers,
+  hammerAhead,
   graceLinks,
   graceOrigin,
   hammerLetter,
@@ -45,7 +53,7 @@ const STROKE = { reach: 0.4 };
 /** The x of each grace column's centre, in column order, for a beat at `x`. */
 export function graceCentres(beat: TabBeat, x: number, space: number): number[] {
   const centres: number[] = [];
-  let cursor = x - beat.half - beat.stroke - TAB.graceGap * space;
+  let cursor = x - beat.half - beat.stroke - (beat.graces.at(-1)?.gap ?? TAB.graceGap * space);
   for (let g = beat.graces.length - 1; g >= 0; g--) {
     const column = beat.graces[g];
     if (!column) continue;
@@ -164,15 +172,16 @@ function drawOriginHalf(
   note: Note,
   label: NoteLabel,
   x: number,
-  target: Note,
+  target: Note | undefined,
+  hammer: boolean,
 ): void {
   const { space } = context;
   const size = TAB.fretSize * space;
   const left = x + rightEdge(label, size);
   const right = contentEnd(context);
-  const legato = note.slide?.includes('legato') ?? false;
-  if (target.hammerPull || legato) drawArc(context, note, left, right, legato ? 'sl.' : undefined);
-  if (shifts(note)) {
+  const legato = (target && note.slide?.includes('legato')) ?? false;
+  if (hammer || legato) drawArc(context, note, left, right, legato ? 'sl.' : undefined);
+  if (target && shifts(note)) {
     drawSlideLine(context, note, left + SLIDE.gap * space, right, -slideRise(note, target), 0);
   }
 }
@@ -377,6 +386,7 @@ export function drawNoteEffects(
         letter,
       );
     }
+    drawFirstGraceHammers(context, voice, xs, beat, centres, at);
     for (const label of beat.labels) {
       const { note } = label;
       drawLooseSlides(context, label, x);
@@ -408,10 +418,58 @@ export function drawNoteEffects(
       }
       if (!leavesLine) continue;
       const target = nextOnString(track, at, note);
-      if (target && target.bar !== barIndex && (target.note.hammerPull || shifts(note))) {
-        drawOriginHalf(context, note, label, x, target.note);
+      const crossing = target && target.bar !== barIndex ? target.note : undefined;
+      // The first touch of the string in a later beat decides, a grace note included.
+      const ahead = hammerAhead(track, at, note);
+      const hammer = (ahead?.hammer ?? false) && ahead?.bar !== barIndex;
+      if (hammer || (crossing && shifts(note))) {
+        drawOriginHalf(context, note, label, x, crossing, hammer);
       }
     }
+  }
+}
+
+/**
+ * The arcs of first-column grace notes hammered from the note before the beat, which may lie in
+ * the previous bar or, as a half from the bar's left edge, in an earlier system.
+ */
+function drawFirstGraceHammers(
+  context: TabContext,
+  voice: TabVoice,
+  xs: readonly number[],
+  beat: TabBeat,
+  centres: readonly number[],
+  at: TiePosition,
+): void {
+  const { input, placement, space } = context;
+  const { track, barIndex } = input;
+  const graceSize = TAB.fretSize * space * TAB.graceScale;
+  const centre = centres[0];
+  const column = beat.graces[0];
+  if (!column || centre === undefined) return;
+  const found: { label: NoteLabel; link: TieLink }[] = [];
+  for (const target of firstGraceHammers(beat.beat.grace)) {
+    const label = column.labels.find((candidate) => candidate.note === target);
+    const origin = tieOriginOf(track, at, target);
+    if (!label || !origin || origin.bar < barIndex - TIE_REACH_BARS) continue;
+    found.push({ label, link: origin });
+  }
+  const links = found.map(({ label, link }) => ({
+    from: -1,
+    to: 0,
+    origin: link.note,
+    target: label.note,
+  }));
+  const letters = lettersOfLinks(
+    links,
+    ({ target }) => arcDirection(context, target),
+    ({ target }) => (arcDirection(context, target) === 'down' ? target.string : -target.string),
+  );
+  for (const { label, link } of found) {
+    const spot = locate(context, voice, xs, link);
+    const left = spot.x === undefined ? placement.x : spot.x + spot.edge;
+    const letter = letters.has(label.note) ? hammerLetter(link.note, label.note) : undefined;
+    drawArc(context, label.note, left, centre - leftEdge(label, graceSize), letter);
   }
 }
 

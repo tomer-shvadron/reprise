@@ -28,8 +28,10 @@ import { WORDS, wordRows } from '../words';
 import {
   BEND_FRAME,
   BEND_ROOM,
+  firstGraceHammers,
   bendLabelNeed,
   graceLinks,
+  mainLinked,
   KNOCKOUT,
   LETTER,
   naturalHarmonicText,
@@ -330,6 +332,9 @@ function analyseBeat(
       if (column) column.gap = (TAB.graceGap + TAB.graceLink) * space;
     }
   }
+  // The main note's arc from the last grace column needs the same room.
+  const lastGrace = graces.at(-1);
+  if (lastGrace && mainLinked(beat)) lastGrace.gap = (TAB.graceGap + TAB.graceLink) * space;
   const rhythm = event(beat, tick);
   let half: number;
   let right: number;
@@ -391,6 +396,9 @@ function analyseBeat(
   let left = half + stroke;
   if (slideIn) left += TAB.slideRoom * space;
   for (const column of graces) left += column.gap + column.width + column.room;
+  // A first-column grace note hammered from the note before the beat: the arc comes from there,
+  // so the beat keeps room before the column, whether or not an origin exists.
+  if (firstGraceHammers(beat.grace).length > 0) left += TAB.graceLink * space;
   return {
     voice,
     index,
