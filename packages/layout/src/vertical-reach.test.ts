@@ -3,7 +3,7 @@
  * the segments nearest the edit; the rest keep their drawing until later calls catch them up, and
  * the converged result equals a cold layout from the same breaks.
  */
-import { applyCommand, setNoteEffect, type Notation, type Score } from '@reprise/model';
+import { applyCommand, insertBar, setNoteEffect, type Notation, type Score } from '@reprise/model';
 import { beatOf, largeScore } from '@reprise/model/testing';
 import { describe, expect, it } from 'vitest';
 
@@ -149,6 +149,37 @@ describe.each(CASES)('verticalReach, continuous %s', (_name, build) => {
     const after = layout(edited, { ...build(score), dirtyBars: touched }, cache);
     expect(after.metrics.staleSystems).toBe(0);
     expect(rendered(after)).toBeGreaterThan(REACH + 3);
+  });
+
+  it('redraws every stale segment in one call without the option, equal to cold', () => {
+    const { cache, first } = warm();
+    const { score: edited, touched } = ring(score, bar, true);
+    const deferred = layout(edited, { ...options, dirtyBars: touched }, cache);
+    expect(deferred.metrics.staleSystems).toBeGreaterThan(0);
+    const all = layout(edited, build(score), cache);
+    expect(all.metrics.staleSystems).toBe(0);
+    expectCold(all, edited, first, score);
+  });
+
+  it('converges to cold after a bar is inserted ahead of the stale segments', () => {
+    const { cache } = warm();
+    const one = ring(score, bar, true);
+    layout(one.score, { ...options, dirtyBars: one.touched }, cache);
+    const inserted = applyCommand(one.score, insertBar({ index: 3 }));
+    const after = layout(
+      inserted.score,
+      { ...options, dirtyBars: inserted.change.touchedBars },
+      cache,
+    );
+    // Segments after the insertion start at other bar indices, so they are redrawn anyway.
+    const calls = converge(inserted.score, options, cache);
+    const cold = layoutWith(
+      inserted.score,
+      { ...options, verticalReach: undefined },
+      undefined,
+      breaksOf(after, inserted.score),
+    );
+    expect(stable(calls.at(-1) ?? after)).toEqual(stable(cold));
   });
 
   it('catches stale segments up in a call with no dirty bars, past the unchanged ones', () => {

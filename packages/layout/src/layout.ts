@@ -398,9 +398,16 @@ export function layoutWith(
   let lastToRender = -1;
   if (global) {
     const stale: number[] = [];
-    let focusAt = 0;
+    // The segment that held the focus bar, by id: its index in the previous score, which a bar
+    // inserted or removed ahead of it shifts. A bar the previous score lacked falls back to its
+    // index here, which an edit's first re-measured bar shares with the previous score.
+    const held =
+      focusId === undefined
+        ? -1
+        : previous.findIndex(({ barIds }) => barIds.slice(0, -1).includes(focusId));
+    let focusAt = Math.max(held, 0);
     previous.forEach((old, i) => {
-      if (old.plan.start <= Math.max(focusBar, 0)) focusAt = i;
+      if (held < 0 && old.plan.start <= Math.max(focusBar, 0)) focusAt = i;
       if (old.verticalKey !== global.key) stale.push(i);
     });
     if (Number.isFinite(resolved.verticalReach)) {
