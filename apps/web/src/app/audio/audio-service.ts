@@ -98,6 +98,8 @@ export interface AudioService {
   setLoop(range?: BarRange): void;
   setCountIn(on: boolean): void;
   setMetronome(on: boolean, volume: number): void;
+  /** The count-in clicks' level, 0 to 1, apart from the metronome's; mirrored into `settings.countInVolume`. */
+  setCountInVolume(volume: number): void;
   /**
    * Starts a metronome that needs no song, from `settings` over what the last call set
    * (`playback.click.settings`; 100 bpm in 4 with the downbeat stressed at first). Unlocks the
@@ -224,6 +226,7 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
   engine.setTempo(initial.tempo.mode, initial.tempo.value);
   engine.setCountIn(initial.countIn);
   engine.setMetronome(initial.metronome.on, initial.metronome.volume);
+  engine.setCountInVolume(initial.countInVolume);
   engine.setMasterVolume(initial.masterVolume);
   engine.setGmTierBypass(initial.gmTierBypass);
   engine.updateClick(playback.getState().click.settings);
@@ -605,6 +608,11 @@ export function createAudioService(options: AudioServiceOptions): AudioService {
     setMetronome(on, volume) {
       engine.setMetronome(on, volume);
       setSettings({ metronome: { on, volume } });
+    },
+
+    setCountInVolume(volume) {
+      engine.setCountInVolume(volume);
+      setSettings({ countInVolume: volume });
     },
 
     startClick(settings) {

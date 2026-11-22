@@ -34,6 +34,11 @@ export const METRONOME_VOLUME_SETTING = defineSetting({
   schema: level,
   default: 0.7,
 });
+export const COUNT_IN_VOLUME_SETTING = defineSetting({
+  key: 'playback.countInVolume',
+  schema: level,
+  default: 0.7,
+});
 export const MASTER_VOLUME_SETTING = defineSetting({
   key: 'playback.masterVolume',
   schema: level,
@@ -125,6 +130,7 @@ export const PRACTICE_ZOOM_SETTING = defineSetting({
 export const APP_SETTINGS: readonly SettingDef<unknown>[] = [
   THEME_SETTING,
   COUNT_IN_SETTING,
+  COUNT_IN_VOLUME_SETTING,
   METRONOME_ON_SETTING,
   METRONOME_VOLUME_SETTING,
   MASTER_VOLUME_SETTING,

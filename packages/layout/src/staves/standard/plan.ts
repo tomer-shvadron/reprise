@@ -53,6 +53,7 @@ import {
   SCRAPE,
   bendLabelNeed,
   connections,
+  firstGraceHammers,
   graceLinks,
   graceOrigin,
   letterReach,
@@ -1011,6 +1012,28 @@ function planSlurs(
       );
       if (start && end) plan.bottom = Math.max(plan.bottom, Math.max(start.y, end.y) + reach);
     }
+    // A first-column grace note hammered from the note before the beat: that slur bends down too.
+    for (const target of firstGraceHammers(plan.beat.grace)) {
+      const end = plan.graces[0]?.chord.heads.find(
+        (head) => !head.sounding && head.note === target,
+      );
+      if (!end) continue;
+      let low = end.y;
+      const origin = nearOrigin(track, input.barIndex, voice, plan.index, target);
+      if (origin?.bar === input.barIndex) {
+        const from = planned[origin.beat]?.chord?.heads.find(
+          (other) => !other.sounding && other.note === origin.note,
+        );
+        if (from) low = Math.max(low, from.y);
+      } else if (origin && input.bar.clef === undefined) {
+        const key = input.score.masterBars[input.barIndex - 1]?.keySignature;
+        if (key) {
+          const placed = placeNote(track, origin.note, key, input.clef, false);
+          low = Math.max(low, positionY(placed.position, space));
+        }
+      }
+      plan.bottom = Math.max(plan.bottom, low + reach);
+    }
   }
   for (const head of mainHeads(chord)) {
     const { note } = head;
@@ -1089,7 +1112,10 @@ function planGraces(
     plan.bottom = Math.max(plan.bottom, chord.bottom);
   }
   plan.graces = placed;
-  plan.left = Math.min(plan.left, cursor);
+  // The slur from the note before the beat to a hammered first grace note needs room too.
+  const hammered = firstGraceHammers(graces).length > 0;
+  plan.left =
+    Math.min(plan.left, cursor) - (hammered ? (GRACE_LINKED_STEP - GRACE_STEP) * space : 0);
   if (!single) {
     const stems = placed.flatMap(({ offset, chord }) =>
       chord.stem ? [{ x: offset + chord.stem.x, head: chord.stem.head, beams: chord.beams }] : [],

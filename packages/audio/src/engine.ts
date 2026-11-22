@@ -118,6 +118,8 @@ export interface AudioEngine {
   setLoop(range?: { startBar: Id; endBar: Id }): void;
   setCountIn(on: boolean): void;
   setMetronome(on: boolean, volume: number): void;
+  /** 0 to 1; the level of the count-in clicks, apart from the metronome's. */
+  setCountInVolume(volume: number): void;
   /**
    * Starts the standalone click: a metronome with no score, on the master bus. Makes the context
    * if needed, pauses a playing song (it keeps its position) and keeps `settings` for later when
@@ -361,6 +363,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
   let loopBars: { startBar: Id; endBar: Id } | undefined;
   let countIn = false;
   let metronome = { on: false, volume: 0.7 };
+  let countInVolume = 0.7;
   let masterVolume = 1;
   let gmTierBypass = true;
   /** The assignments whose pack loaded, by track: what the tier and the strips follow. */
@@ -524,6 +527,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       sink,
       // Through the bus, so clicks carry the limiter's pre-delay as the notes do.
       metronome: new ClickSynth(context, sampler.master.input),
+      countIn: new ClickSynth(context, sampler.master.input),
       ...(options.scheduler && { scheduler: options.scheduler }),
       ...(options.frames && { frames: options.frames }),
       ...(options.lookahead !== undefined && { lookahead: options.lookahead }),
@@ -536,6 +540,7 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
     transport.setTempo(tempo.mode, tempo.value);
     transport.setCountIn(countIn);
     transport.setMetronome(metronome.on, metronome.volume);
+    transport.setCountInVolume(countInVolume);
     transport.setLoop(loopBars);
     sampler.master.gain = masterVolume;
     transport.on('state', (state) => {
@@ -1028,6 +1033,12 @@ export function createAudioEngine(options: AudioEngineOptions): AudioEngine {
       checkVolume('setMetronome', volume);
       metronome = { on, volume };
       live?.transport.setMetronome(on, volume);
+    },
+
+    setCountInVolume(volume) {
+      checkVolume('setCountInVolume', volume);
+      countInVolume = volume;
+      live?.transport.setCountInVolume(volume);
     },
 
     startClick(settings) {

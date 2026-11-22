@@ -57,6 +57,8 @@ function harness(song: Score, seconds: number): Promise<Harness> {
     context,
     sink,
     metronome: sink,
+    // One recorder for both, so the older tests read the count-in beside the metronome's beats.
+    countIn: sink,
     scheduler: scheduler.ticker,
     frames: frames.ticker,
     startLatency: LATENCY,
@@ -363,6 +365,95 @@ describe('Transport (OfflineAudioContext)', () => {
       h.positions.filter((p) => p.at < LATENCY + 2).every((p) => p.position.playbackTick === 0),
     ).toBe(true);
     expectNothingInThePast(h.sink);
+  });
+
+  describe('count-in sink', () => {
+    function split(seconds: number) {
+      const context = new OfflineAudioContext({
+        numberOfChannels: 1,
+        length: Math.ceil(seconds * SAMPLE_RATE),
+        sampleRate: SAMPLE_RATE,
+      });
+      const scheduler = manualTicker();
+      const frames = manualTicker();
+      const metronome = new RecordingSink(context);
+      const countIn = new RecordingSink(context);
+      const engine = createTransport({
+        context,
+        sink: new RecordingSink(context),
+        metronome,
+        countIn,
+        scheduler: scheduler.ticker,
+        frames: frames.ticker,
+        startLatency: LATENCY,
+      });
+      engine.load(bars(2));
+      return {
+        engine,
+        metronome,
+        countIn,
+        render: () => drive(context, { tickers: [scheduler, frames], actions: [] }),
+      };
+    }
+
+    it('sends the count-in to its own sink and the metronome beats to the metronome', async () => {
+      const h = split(6.5);
+      h.engine.setCountIn(true);
+      h.engine.setMetronome(true, 0.5);
+      h.engine.play();
+      await h.render();
+      expectTimes(
+        h.countIn.clicks.map((c) => c.when),
+        range(4, LATENCY, 0.5),
+      );
+      expect(h.countIn.clicks.map((c) => c.accent)).toEqual([true, false, false, false]);
+      expect(h.metronome.clicks.length).toBeGreaterThan(0);
+      expect(Math.min(...h.metronome.clicks.map((c) => c.when))).toBeGreaterThanOrEqual(
+        LATENCY + 2 - MS,
+      );
+    });
+
+    it('keeps the two volumes apart and rejects a level out of range', () => {
+      const h = split(1);
+      h.engine.setMetronome(false, 0.3);
+      h.engine.setCountInVolume(0.9);
+      expect(h.metronome.volume).toBe(0.3);
+      expect(h.countIn.volume).toBe(0.9);
+      h.engine.setMetronome(true, 0.2);
+      expect(h.countIn.volume).toBe(0.9);
+      expect(() => {
+        h.engine.setCountInVolume(1.5);
+      }).toThrow(RangeError);
+      expect(() => {
+        h.engine.setCountInVolume(Number.NaN);
+      }).toThrow(RangeError);
+    });
+
+    it('keeps the scheduled count-in clicks when the metronome is switched off during it', () => {
+      const h = split(6.5);
+      h.engine.setCountIn(true);
+      h.engine.setMetronome(true, 0.5);
+      h.engine.play();
+      const clicksCut = (sink: RecordingSink) =>
+        sink.cuts.filter((c) => c.kind === 'clicks').length;
+      h.engine.setMetronome(false, 0.5);
+      expect(clicksCut(h.metronome)).toBe(1);
+      expect(clicksCut(h.countIn)).toBe(0);
+    });
+
+    it('starts both sinks at 0.7 and silences both on stop', () => {
+      const h = split(2);
+      expect(h.metronome.volume).toBe(0.7);
+      expect(h.countIn.volume).toBe(0.7);
+      h.engine.setCountIn(true);
+      h.engine.play();
+      const stops = (sink: RecordingSink) => sink.cuts.filter((c) => c.kind === 'clicks').length;
+      const before = stops(h.countIn);
+      const beforeMetronome = stops(h.metronome);
+      h.engine.stop();
+      expect(stops(h.countIn)).toBeGreaterThan(before);
+      expect(stops(h.metronome)).toBeGreaterThan(beforeMetronome);
+    });
   });
 
   it('counts in only the beats an anacrusis leaves', async () => {
@@ -698,6 +789,8 @@ describe('Transport (OfflineAudioContext)', () => {
 
     expect(h.sink.cuts).toEqual([
       { kind: 'notes', when: stoppedAt, calledAt: stoppedAt },
+      // Cut once for the metronome and once for the count-in, which share this recorder.
+      { kind: 'clicks', when: stoppedAt, calledAt: stoppedAt },
       { kind: 'clicks', when: stoppedAt, calledAt: stoppedAt },
     ]);
     expect(h.sink.notes.every((n) => n.calledAt < stoppedAt)).toBe(true);

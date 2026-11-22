@@ -2,6 +2,7 @@ import {
   TIE_REACH_BARS,
   tieOriginOf,
   type Bar,
+  type Bend,
   type Beat,
   type Note,
   type TieLink,
@@ -15,13 +16,17 @@ import {
   BEND_FRAME,
   articulationMarks,
   connections,
+  firstGraceHammers,
+  hammerAhead,
   graceLinks,
   graceOrigin,
   lettersOfLinks,
   type BendDrawn,
+  beginBeat,
+  firstTipPosition,
+  previousBends,
   bendLifts,
   drawBend,
-  newBendDrawn,
   drawLetter,
   diagonalWave,
   drawStroke,
@@ -553,6 +558,45 @@ function lettered(chord: ChordPlan, multiVoice: boolean): Set<Note> {
 }
 
 /**
+ * The slurs of first-column grace notes hammered from the note before the beat, drawn from its
+ * head in this bar or the previous one, or as a half from the bar's left edge.
+ */
+function drawFirstGraceHammers(
+  context: ConnectionContext,
+  voice: number,
+  beats: readonly BeatPlan[],
+  beat: BeatPlan,
+  at: TiePosition,
+  x: number,
+): void {
+  const { track, barIndex } = context.input;
+  const grace = beat.graces[0];
+  if (!grace) return;
+  const tie = TIE_GAP * context.space;
+  const found: { head: HeadPlan; link: TieLink }[] = [];
+  for (const target of firstGraceHammers(beat.beat.grace)) {
+    const head = grace.chord.heads.find((other) => !other.sounding && other.note === target);
+    const link = tieOriginOf(track, at, target);
+    if (!head || !link || link.bar < barIndex - TIE_REACH_BARS) continue;
+    found.push({ head, link });
+  }
+  const letters = lettersOfLinks(
+    found.map(({ head, link }) => ({ from: -1, to: 0, origin: link.note, target: head.note })),
+    () => 'down',
+    ({ target }) => grace.chord.heads.find((head) => head.note === target)?.y ?? 0,
+  );
+  for (const { head, link } of found) {
+    const end = spotOf(context, grace.chord, head, x + grace.offset, 0);
+    const origin = locate(context, beats, voice, link);
+    const letter = letters.has(head.note) ? hammerLetter(link.note, head.note) : undefined;
+    const x1 = origin ? origin.right + tie : lineStart(context);
+    const y1 = origin ? origin.y : end.y;
+    // A grace note's stem points up, so its slur bends down, away from it.
+    slur(context, x1, y1, end.left - tie, end.y, 'down', head.note.id, letter);
+  }
+}
+
+/**
  * Slides, hammer-ons and pull-offs of one voice, drawn by the bar holding the target: in one
  * piece when the origin is in this bar, or in the previous bar of the system when this bar sets
  * no clef, and as a half from the bar's left edge otherwise; a bar ending a system draws the
@@ -607,6 +651,7 @@ export function drawConnections(
         slur(context, start.right + tie, start.y, end.left - tie, end.y, 'down', target.id, letter);
       }
     }
+    if (fretted) drawFirstGraceHammers(context, voice, beats, beat, at, x);
     for (const head of mainHeads(chord)) {
       const { note } = head;
       const found = graceOrigin(graces ?? [], beat.graces.length, note.string);
@@ -656,10 +701,13 @@ export function drawConnections(
       }
       if (!leavesLine) continue;
       const target = nextOnString(track, at, note);
-      if (!target || target.bar === barIndex) continue;
-      const hammer = target.note.hammerPull;
-      if (shifts(note)) {
-        const drop = (targetIsHigher(note, target.note) ? -1 : 1) * SLIDE.drop * space;
+      const crossing = target && target.bar !== barIndex ? target : undefined;
+      // The first touch of the string in a later beat decides, a grace note included.
+      const ahead = hammerAhead(track, at, note);
+      const hammer = (ahead?.hammer ?? false) && ahead?.bar !== barIndex;
+      if (!crossing && !hammer) continue;
+      if (crossing && shifts(note)) {
+        const drop = (targetIsHigher(note, crossing.note) ? -1 : 1) * SLIDE.drop * space;
         slideLine(
           context,
           spot.right + SLIDE.gap * space,
@@ -669,14 +717,15 @@ export function drawConnections(
           note.id,
         );
       }
-      if (hammer || note.slide?.includes('legato')) {
+      if (hammer || (crossing && note.slide?.includes('legato'))) {
         slur(
           context,
           spot.right + tie,
           spot.y,
           contentEnd,
           spot.y,
-          spot.direction,
+          // A grace note's slur bends down, so its origin half does too.
+          ahead?.hammer && ahead.grace ? 'down' : spot.direction,
           note.id,
           undefined,
         );
@@ -710,24 +759,40 @@ export function drawStrokes(context: ConnectionContext): void {
  * bends in a chord share their arrows: from right of the bent heads up into the bend lane, with
  * releases to zero ending above the highest bent head.
  */
-export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]): void {
+export function drawBends(
+  context: ConnectionContext,
+  voices: readonly (readonly BeatPlan[])[],
+  drawn: BendDrawn,
+): void {
   const { placement, space } = context;
   const band = placement.lanes.bend;
   if (!band) return;
   const contentEnd = placement.x + placement.width;
-  for (const [i, beat] of beats.entries()) {
+  // Every voice's bends in one pass from left to right, so where equal labels meet the leftmost
+  // is the one kept, whichever voice it belongs to.
+  const jobs: { beat: BeatPlan; next: number; key: number }[] = [];
+  for (const beats of voices) {
+    for (const [i, beat] of beats.entries()) {
+      if (!beat.chord) continue;
+      const x = context.beatX(beat);
+      const following = beats[i + 1];
+      // Target heads end clear of what the next onset of any voice draws left of it: its heads,
+      // accidentals and graces, which the spacing measured the beat's room against.
+      const next = beat.bend
+        ? nextOnsetEdge(context, beat.tick, contentEnd)
+        : following
+          ? context.beatX(following)
+          : contentEnd;
+      const tip = firstTipPosition(mainHeads(beat.chord).map((head) => head.note.bend));
+      jobs.push({ beat, next, key: x + (tip / 60) * (next - x) });
+    }
+  }
+  jobs.sort((a, b) => a.key - b.key);
+  for (const { beat, next } of jobs) {
     const { chord } = beat;
     if (!chord) continue;
     const x = context.beatX(beat);
-    const drawn = newBendDrawn();
-    const following = beats[i + 1];
-    // Target heads end clear of what the next onset of any voice draws left of it: its heads,
-    // accidentals and graces, which the spacing measured the beat's room against.
-    const next = beat.bend
-      ? nextOnsetEdge(context, beat.tick, contentEnd)
-      : following
-        ? context.beatX(following)
-        : contentEnd;
+    beginBeat(drawn);
     const frame = bendFrame(
       context,
       chord,
@@ -739,6 +804,7 @@ export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]
       band.bottom,
       drawn,
       beat.bend,
+      previousBends(context.input.bar, beat.tick),
     );
     if (frame) {
       for (const group of beat.bend?.groups ?? []) {
@@ -767,6 +833,7 @@ export function drawBends(context: ConnectionContext, beats: readonly BeatPlan[]
         band.bottom,
         drawn,
         undefined,
+        [],
       );
     }
   }
@@ -794,6 +861,7 @@ function bendFrame(
   laneBottom: number,
   drawn: BendDrawn,
   targets: BendPlan | undefined,
+  before: readonly (Bend | undefined)[],
 ): { x0: number; xEnd: number } | undefined {
   const { sink, space, placement } = context;
   const bent = mainHeads(chord).filter((head) => head.note.bend);
@@ -812,7 +880,10 @@ function bendFrame(
     (head) => placement.top + head.y - glyphMetrics(head.glyph).bbox.top * unit,
   );
   const releaseTop = Math.min(...tops);
-  drawn.lifts = bendLifts(bent.map((head) => head.note.bend));
+  drawn.lifts = bendLifts(
+    bent.map((head) => head.note.bend),
+    before,
+  );
   for (const [j, head] of bent.entries()) {
     const { bend } = head.note;
     const spot = spots[j];

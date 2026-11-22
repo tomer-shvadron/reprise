@@ -74,6 +74,8 @@ export interface Transport {
   setLoop(range?: { startBar: Id; endBar: Id }): void;
   setCountIn(on: boolean): void;
   setMetronome(on: boolean, volume: number): void;
+  /** 0 to 1; the level of the count-in clicks alone, whatever the metronome's. */
+  setCountInVolume(volume: number): void;
   on<K extends keyof TransportEvents>(
     event: K,
     handler: (payload: TransportEvents[K]) => void,
@@ -86,6 +88,8 @@ export interface TransportOptions {
   sink: InstrumentSink;
   /** Defaults to a `ClickSynth` on the context's destination. */
   metronome?: MetronomeSink;
+  /** The count-in clicks' own synth, so their level is independent; defaults to a second `ClickSynth`. */
+  countIn?: MetronomeSink;
   /** Drives the lookahead scheduler; defaults to a 25 ms interval in a worker. */
   scheduler?: Ticker;
   /** Drives position events; defaults to animation frames. */
@@ -101,6 +105,7 @@ export interface TransportOptions {
 export function createTransport(options: TransportOptions): Transport {
   const { context, sink } = options;
   const metronome = options.metronome ?? new ClickSynth(context);
+  const countInSink = options.countIn ?? new ClickSynth(context);
   const schedulerTicker = options.scheduler ?? workerTicker(25);
   const frames = options.frames ?? frameTicker();
   const lookahead = options.lookahead ?? 0.2;
@@ -130,6 +135,7 @@ export function createTransport(options: TransportOptions): Transport {
   let cancelFrames: (() => void) | undefined;
 
   metronome.setVolume(0.7);
+  countInSink.setVolume(0.7);
 
   function emit<K extends keyof TransportEvents>(event: K, payload: TransportEvents[K]): void {
     const set: Set<(payload: TransportEvents[K]) => void> = handlers[event];
@@ -187,6 +193,7 @@ export function createTransport(options: TransportOptions): Transport {
   function silence(when: number): void {
     sink.allNotesOff(when);
     metronome.silence(when);
+    countInSink.silence(when);
   }
 
   function halt(): void {
@@ -216,7 +223,9 @@ export function createTransport(options: TransportOptions): Transport {
       });
       run = result.run;
       anchors.push(...result.anchors);
-      for (const click of result.clicks) metronome.click(click.when, click.accent);
+      for (const click of result.clicks) {
+        (click.countIn ? countInSink : metronome).click(click.when, click.accent);
+      }
       for (const mix of result.mixes) {
         sink.mix?.({
           track: mix.track,
@@ -422,6 +431,13 @@ export function createTransport(options: TransportOptions): Transport {
       if (!on) metronome.silence(context.currentTime);
     },
 
+    setCountInVolume(volume) {
+      if (!Number.isFinite(volume) || volume < 0 || volume > 1) {
+        throw new RangeError(`setCountInVolume: volume must be 0 to 1, got ${String(volume)}`);
+      }
+      countInSink.setVolume(volume);
+    },
+
     on(event, handler) {
       const set: Set<(payload: TransportEvents[typeof event]) => void> = handlers[event];
       set.add(handler);
@@ -436,6 +452,7 @@ export function createTransport(options: TransportOptions): Transport {
       for (const set of Object.values(handlers)) set.clear();
       sink.dispose?.();
       metronome.dispose?.();
+      countInSink.dispose?.();
       state = 'stopped';
       timeline = undefined;
     },

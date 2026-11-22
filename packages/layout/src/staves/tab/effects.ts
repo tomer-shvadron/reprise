@@ -1,17 +1,28 @@
-import { TIE_REACH_BARS, tieOriginOf, type Note, type TiePosition } from '@reprise/model';
+import {
+  TIE_REACH_BARS,
+  tieOriginOf,
+  type Bend,
+  type Note,
+  type TieLink,
+  type TiePosition,
+} from '@reprise/model';
 
 import {
   BEND_FRAME,
   connections,
   type BendDrawn,
+  beginBeat,
+  firstTipPosition,
+  previousBends,
   bendLifts,
   drawBend,
-  newBendDrawn,
   drawLetter,
   drawStroke,
   diagonalWave,
   SCRAPE,
   WAVES,
+  firstGraceHammers,
+  hammerAhead,
   graceLinks,
   graceOrigin,
   hammerLetter,
@@ -45,7 +56,7 @@ const STROKE = { reach: 0.4 };
 /** The x of each grace column's centre, in column order, for a beat at `x`. */
 export function graceCentres(beat: TabBeat, x: number, space: number): number[] {
   const centres: number[] = [];
-  let cursor = x - beat.half - beat.stroke - TAB.graceGap * space;
+  let cursor = x - beat.half - beat.stroke - (beat.graces.at(-1)?.gap ?? TAB.graceGap * space);
   for (let g = beat.graces.length - 1; g >= 0; g--) {
     const column = beat.graces[g];
     if (!column) continue;
@@ -164,15 +175,16 @@ function drawOriginHalf(
   note: Note,
   label: NoteLabel,
   x: number,
-  target: Note,
+  target: Note | undefined,
+  hammer: boolean,
 ): void {
   const { space } = context;
   const size = TAB.fretSize * space;
   const left = x + rightEdge(label, size);
   const right = contentEnd(context);
-  const legato = note.slide?.includes('legato') ?? false;
-  if (target.hammerPull || legato) drawArc(context, note, left, right, legato ? 'sl.' : undefined);
-  if (shifts(note)) {
+  const legato = (target && note.slide?.includes('legato')) ?? false;
+  if (hammer || legato) drawArc(context, note, left, right, legato ? 'sl.' : undefined);
+  if (target && shifts(note)) {
     drawSlideLine(context, note, left + SLIDE.gap * space, right, -slideRise(note, target), 0);
   }
 }
@@ -224,6 +236,7 @@ function drawBendGroup(
   stop: number,
   min: number,
   drawn: BendDrawn,
+  before: readonly (Bend | undefined)[] = [],
 ): void {
   const { placement, sink, space } = context;
   const band = placement.lanes.bend;
@@ -235,7 +248,10 @@ function drawBendGroup(
   // never ends left of where it starts, which would invert it.
   const xEnd = Math.max(x0, Math.min(Math.max(stop, x0 + min * space), contentEnd(context)));
   const releaseTop = lineY(context, top.note.string) - labelHalfHeight(size);
-  drawn.lifts = bendLifts(bent.map((label) => label.note.bend));
+  drawn.lifts = bendLifts(
+    bent.map((label) => label.note.bend),
+    before,
+  );
   for (const label of bent) {
     const { bend } = label.note;
     if (!bend) continue;
@@ -256,11 +272,18 @@ function drawBendGroup(
   }
 }
 
-function drawBends(context: TabContext, beat: TabBeat, x: number, next: number): void {
+function drawBends(
+  context: TabContext,
+  beat: TabBeat,
+  x: number,
+  next: number,
+  drawn: BendDrawn,
+): void {
   const { space } = context;
   const size = TAB.fretSize * space;
-  const drawn = newBendDrawn();
-  drawBendGroup(context, beat.labels, x, size, next - BEND.stop * space, BEND.min, drawn);
+  beginBeat(drawn);
+  const before = previousBends(context.input.bar, beat.tick);
+  drawBendGroup(context, beat.labels, x, size, next - BEND.stop * space, BEND.min, drawn, before);
   const centres = graceCentres(beat, x, space);
   const graceSize = size * TAB.graceScale;
   for (const [g, column] of beat.graces.entries()) {
@@ -326,7 +349,23 @@ function drawLooseSlides(context: TabContext, label: NoteLabel, x: number): void
  * half from the bar's left edge otherwise; a bar ending a system draws the origin half of each
  * connection whose target is in the next bar.
  */
-export function drawNoteEffects(context: TabContext, voice: TabVoice, xs: readonly number[]): void {
+/** A beat's bends, to draw once every voice's are known: `key` is where its first tip stands. */
+export interface BendJob {
+  key: number;
+  draw: (drawn: BendDrawn) => void;
+}
+
+/** Draws every voice's bends in one pass from left to right, so the leftmost equal label is kept. */
+export function drawBendJobs(jobs: readonly BendJob[], drawn: BendDrawn): void {
+  for (const job of [...jobs].sort((a, b) => a.key - b.key)) job.draw(drawn);
+}
+
+export function drawNoteEffects(
+  context: TabContext,
+  voice: TabVoice,
+  xs: readonly number[],
+  jobs: BendJob[],
+): void {
   const { input, placement, space } = context;
   const { track, barIndex } = input;
   const size = TAB.fretSize * space;
@@ -341,7 +380,15 @@ export function drawNoteEffects(context: TabContext, voice: TabVoice, xs: readon
     if (x === undefined || beat.beat.rest) continue;
     if (!beat.connects && !slidesIn && !leavesLine) continue;
     const next = xs[i + 1] ?? contentEnd(context);
-    if (beat.connects) drawBends(context, beat, x, next);
+    if (beat.connects) {
+      const tip = firstTipPosition(beat.labels.map((label) => label.note.bend));
+      jobs.push({
+        key: x + (tip / 60) * (next - x),
+        draw: (drawn) => {
+          drawBends(context, beat, x, next, drawn);
+        },
+      });
+    }
     const at: TiePosition = { bar: barIndex, voice: voice.index, beat: beat.index };
     const letters = lettered(context, beat);
     const centres = graceCentres(beat, x, space);
@@ -366,6 +413,7 @@ export function drawNoteEffects(context: TabContext, voice: TabVoice, xs: readon
         letter,
       );
     }
+    drawFirstGraceHammers(context, voice, xs, beat, centres, at);
     for (const label of beat.labels) {
       const { note } = label;
       drawLooseSlides(context, label, x);
@@ -397,10 +445,58 @@ export function drawNoteEffects(context: TabContext, voice: TabVoice, xs: readon
       }
       if (!leavesLine) continue;
       const target = nextOnString(track, at, note);
-      if (target && target.bar !== barIndex && (target.note.hammerPull || shifts(note))) {
-        drawOriginHalf(context, note, label, x, target.note);
+      const crossing = target && target.bar !== barIndex ? target.note : undefined;
+      // The first touch of the string in a later beat decides, a grace note included.
+      const ahead = hammerAhead(track, at, note);
+      const hammer = (ahead?.hammer ?? false) && ahead?.bar !== barIndex;
+      if (hammer || (crossing && shifts(note))) {
+        drawOriginHalf(context, note, label, x, crossing, hammer);
       }
     }
+  }
+}
+
+/**
+ * The arcs of first-column grace notes hammered from the note before the beat, which may lie in
+ * the previous bar or, as a half from the bar's left edge, in an earlier system.
+ */
+function drawFirstGraceHammers(
+  context: TabContext,
+  voice: TabVoice,
+  xs: readonly number[],
+  beat: TabBeat,
+  centres: readonly number[],
+  at: TiePosition,
+): void {
+  const { input, placement, space } = context;
+  const { track, barIndex } = input;
+  const graceSize = TAB.fretSize * space * TAB.graceScale;
+  const centre = centres[0];
+  const column = beat.graces[0];
+  if (!column || centre === undefined) return;
+  const found: { label: NoteLabel; link: TieLink }[] = [];
+  for (const target of firstGraceHammers(beat.beat.grace)) {
+    const label = column.labels.find((candidate) => candidate.note === target);
+    const origin = tieOriginOf(track, at, target);
+    if (!label || !origin || origin.bar < barIndex - TIE_REACH_BARS) continue;
+    found.push({ label, link: origin });
+  }
+  const links = found.map(({ label, link }) => ({
+    from: -1,
+    to: 0,
+    origin: link.note,
+    target: label.note,
+  }));
+  const letters = lettersOfLinks(
+    links,
+    ({ target }) => arcDirection(context, target),
+    ({ target }) => (arcDirection(context, target) === 'down' ? target.string : -target.string),
+  );
+  for (const { label, link } of found) {
+    const spot = locate(context, voice, xs, link);
+    const left = spot.x === undefined ? placement.x : spot.x + spot.edge;
+    const letter = letters.has(label.note) ? hammerLetter(link.note, label.note) : undefined;
+    drawArc(context, label.note, left, centre - leftEdge(label, graceSize), letter);
   }
 }
 
